@@ -1,11 +1,12 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { productInfo } from "../../repo/catalog.js";
 import { findCustomer, getOrCreateCustomer } from "../../repo/customers.js";
 import { createSecretKey } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
+import { recordDueExpirations } from "../../services/tick.js";
+import { TEST_SCENARIOS, testStoreScenario } from "../../stores/test-store.js";
 import { retryDelivery } from "../../services/webhooks.js";
 import { HISTORY_METRICS, metricHistory, type HistoryMetric } from "../../services/metric-history.js";
 import { customerSummary } from "../../services/customer-summary.js";
@@ -25,7 +26,7 @@ import { appleKeyConfigured, customerShape, googleKeyConfigured, loadCatalog, pu
  *   GET    /v2/projects/{project_id}/api_keys                                  secret keys (never the key itself)
  *   POST   /v2/projects/{project_id}/api_keys                                  create; the plaintext key is returned once
  *   DELETE /v2/projects/{project_id}/api_keys/{key_id}
- *   POST   /v2/projects/{project_id}/test_purchases                            simulate a Test Store purchase
+ *   POST   /v2/projects/{project_id}/test_purchases                            simulate a Test Store purchase or lifecycle (scenario, offset_days)
  *   GET    /v2/projects/{project_id}/metrics/history?metric=&days=&environment= daily history behind an Overview card
  *   GET    /v2/projects/{project_id}/customer_summaries?ids=a,b               revenue, entitlement names, prices per customer
  * Scope `project_configuration:api_keys:read(_write)` is ours too.
@@ -41,6 +42,11 @@ const TestPurchase = z.object({
   currency: z.string().length(3).optional(),
   purchased_at: z.number().int().optional(),
   presented_offering_id: z.string().optional(),
+  /** A lifecycle to simulate (see stores/test-store.ts testStoreScenario); default purchase. */
+  scenario: z.enum(TEST_SCENARIOS).optional(),
+  /** How many days ago the scenario starts (default depends on the scenario). */
+  offset_days: z.number().min(0).max(730).optional(),
+  country_code: z.string().regex(/^[A-Z]{2}$/).optional(),
 });
 
 export function extensionRoutes(r: V2Router, deps: Deps) {
@@ -244,24 +250,44 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const [prod] = await db.select().from(schema.products).where(and(eq(schema.products.projectId, projectId), eq(schema.products.appId, app.id),
       sql`(${schema.products.id} = ${b.product_id} or ${schema.products.storeIdentifier} = ${b.product_id})`)).limit(1);
     if (!prod) throw paramError("product_id does not match a product of the Test Store app.", "product_id");
-    const adapter = deps.stores.test_store;
-    if (!adapter) throw new V2Error(422, "store_error", "The Test Store is not enabled on this server.");
-    const at = b.purchased_at ?? now.getTime();
-    const token = `test_${at}_${crypto.randomUUID()}`;
-    const purchases = await adapter.verify(app, {
-      fetchToken: token, appTransaction: null, transactionId: null, productIds: [prod.storeIdentifier], platformProducts: [],
-      price: b.price ?? null, currency: b.price !== undefined ? b.currency ?? "USD" : null, storeCountry: null, normalDuration: null,
-      isRestore: false, isSandboxHeader: true, storeUserId: null,
-    }, await productInfo(db, app.id));
-    const { customer } = await getOrCreateCustomer(db, projectId, b.app_user_id, now);
-    const owner = await applyPurchases(db, customer, purchases, { projectId, appId: app.id, appUserId: b.app_user_id, now, presentedOfferingId: b.presented_offering_id ?? null, fromDevice: true });
+    if (!deps.stores.test_store) throw new V2Error(422, "store_error", "The Test Store is not enabled on this server.");
+    if (b.purchased_at !== undefined && b.offset_days !== undefined) throw paramError("Send purchased_at or offset_days, not both.", "offset_days");
+    const start = b.purchased_at !== undefined ? new Date(b.purchased_at) : b.offset_days !== undefined ? new Date(now.getTime() - b.offset_days * 86400_000) : null;
+    const scenario = b.scenario ?? "purchase";
+    const token = `test_${(start ?? now).getTime()}_${crypto.randomUUID()}`;
+    let steps;
+    try {
+      steps = testStoreScenario({
+        scenario, token, productId: prod.storeIdentifier, productType: prod.type, duration: prod.duration, start, now,
+        price: b.price !== undefined ? { amount: b.price, currency: b.currency ?? "USD" } : null, countryCode: b.country_code ?? null,
+      });
+    } catch (e) {
+      throw paramError(e instanceof Error ? e.message : String(e), start && start > now ? "purchased_at" : "scenario");
+    }
+    // Each state is applied at the time it happened, through the same pipeline as a receipt post, so events, the
+    // transaction ledger and webhooks come out as they would have. A customer created here was first seen at the first purchase.
+    const { customer, created } = await getOrCreateCustomer(db, projectId, b.app_user_id, now);
+    let owner = customer;
+    for (const [i, step] of steps.entries()) {
+      owner = await applyPurchases(db, owner, [step.purchase], {
+        projectId, appId: app.id, appUserId: b.app_user_id, now: step.at, presentedOfferingId: b.presented_offering_id ?? null,
+        fromDevice: i === 0, customerCreated: i === 0 && created,
+      });
+    }
+    const [chain] = await db.select().from(schema.subscriptions).where(and(eq(schema.subscriptions.projectId, projectId), eq(schema.subscriptions.store, "test_store"), eq(schema.subscriptions.storeKey, token)));
+    const accessEnd = chain?.expiresDate ? Math.max(chain.expiresDate.getTime(), chain.gracePeriodExpiresDate?.getTime() ?? 0) : null;
+    if (chain && !chain.refundedAt && accessEnd !== null && accessEnd <= now.getTime()) {
+      await recordDueExpirations(db, new Date(accessEnd), { projectId, store: "test_store", storeKey: token });
+    }
     deps.kick?.();
     const cat = await loadCatalog(db, projectId);
     const [sub] = await db.select().from(schema.subscriptions).where(and(eq(schema.subscriptions.projectId, projectId), eq(schema.subscriptions.store, "test_store"), eq(schema.subscriptions.storeKey, token)));
     const [one] = await db.select().from(schema.nonSubscriptions).where(and(eq(schema.nonSubscriptions.projectId, projectId), eq(schema.nonSubscriptions.store, "test_store"), eq(schema.nonSubscriptions.storeTransactionId, token)));
     const rev = sub ? await subscriptionRevenue(db, [sub]) : null;
+    const recorded = await db.select({ type: schema.events.type }).from(schema.events)
+      .where(and(eq(schema.events.projectId, projectId), sql`${schema.events.payload}->'event'->>'original_transaction_id' = ${token}`)).orderBy(asc(schema.events.eventTimestampMs), asc(schema.events.createdAt));
     return c.json({
-      object: "test_purchase", store_transaction_id: token,
+      object: "test_purchase", scenario, store_transaction_id: token, event_types: recorded.map((r) => r.type),
       customer: await customerShape(db, owner, { now, detail: true }),
       subscription: sub ? subscriptionShape(sub, owner.originalAppUserId, cat, rev!.get(sub.id) ?? 0, now) : null,
       purchase: one ? purchaseShape(one, owner.originalAppUserId, cat) : null,

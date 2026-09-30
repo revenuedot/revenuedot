@@ -15,9 +15,18 @@ const { subscriptions, customers, customerAliases } = schema;
  * that are due, then send due webhooks. `stores` supplies the Play client (tests inject a fake Google).
  */
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: { stores?: Record<string, StoreAdapter> } = {}) {
+  const expired = await recordDueExpirations(db, now);
+  const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
+  const sent = await deliverDue(db, fetchImpl, now);
+  return { expired, voided, sent };
+}
+
+/** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */
+export async function recordDueExpirations(db: DB, now: Date, only?: { projectId: string; store: string; storeKey: string }) {
   const expired = await db.select().from(subscriptions).where(and(
     isNull(subscriptions.expiredEventAt), isNotNull(subscriptions.expiresDate), lte(subscriptions.expiresDate, now),
     or(isNull(subscriptions.gracePeriodExpiresDate), lte(subscriptions.gracePeriodExpiresDate, now)),
+    ...(only ? [eq(subscriptions.projectId, only.projectId), eq(subscriptions.store, only.store), eq(subscriptions.storeKey, only.storeKey)] : []),
   )).limit(500);
   for (const s of expired) {
     const [customer] = await db.select().from(customers).where(eq(customers.id, s.customerId));
@@ -40,7 +49,5 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     }
     await db.update(subscriptions).set({ expiredEventAt: now }).where(eq(subscriptions.id, s.id));
   }
-  const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
-  const sent = await deliverDue(db, fetchImpl, now);
-  return { expired: expired.length, voided, sent };
+  return expired.length;
 }
