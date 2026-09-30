@@ -211,11 +211,13 @@ RevenueDot is tested against the RevenueCat SDKs' own test fixtures (94 request 
 | `GET /v1/subscribers/{app_user_id}/offerings` | The offerings and packages to show on the paywall |
 | `POST /v1/receipts` | Every purchase and restore |
 | `POST /v1/subscribers/identify` | `logIn` |
-| `POST /v1/subscribers/{app_user_id}/attributes` | Customer attributes such as `$email` |
+| `POST /v1/subscribers/{app_user_id}/attributes` | Customer attributes such as `$email`, `$idfa` and `$ip` |
+| `POST /v1/subscribers/{app_user_id}/attribution` · `.../adservices_attribution` | Apple Search Ads attribution, stored as `$mediaSource`, `$campaign` and the other reserved attributes |
+| `POST /v1/offers` | Promotional offer signatures, made with your App Store In-App Purchase key |
 | `GET /v1/product_entitlement_mapping` | Offline entitlements |
 | `POST /v1/config/app` · `POST /v1/events` · `POST /v1/diagnostics` | Configuration and SDK events |
 
-The full catalogue of 37 SDK endpoints, with request and response shapes, lives in the contract tests.
+The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 40 of them: 12 answer with real data and 28 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The other 18 belong to an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
 
 </details>
 
