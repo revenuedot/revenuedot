@@ -31,8 +31,14 @@ export WRANGLER_DOCKER_BIN="${WRANGLER_DOCKER_BIN:-false}"
 export CF_QUIET=1
 CF=(pnpm --dir apps/server exec cf)
 
-node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=18)?0:1)' \
-  || { echo "cf needs Node 22.18 or newer to load cloudflare.config.ts (this is $(node -v))." >&2; exit 1; }
+node_ok() { "$1" -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=18)?0:1)' 2>/dev/null; }
+# cf loads cloudflare.config.ts, which needs Node 22.18+. If the default node is older, use a newer nvm or Homebrew node.
+if ! node_ok node; then
+  for n in "$HOME"/.nvm/versions/node/v*/bin/node /opt/homebrew/bin/node /usr/local/bin/node; do
+    if [[ -x "$n" ]] && node_ok "$n"; then export PATH="$(dirname "$n"):$PATH"; break; fi
+  done
+fi
+node_ok node || { echo "cf needs Node 22.18 or newer to load cloudflare.config.ts (this is $(node -v))." >&2; exit 1; }
 
 if [[ -z "${CLOUD_DATABASE_URL:-}" && -f "$HOME/.config/revenuedot/prod.env" ]]; then
   # shellcheck disable=SC1091
