@@ -19,10 +19,9 @@ Code is the source of truth: `packages/ui/src/tokens.css` (to be created from th
 6. **Both themes are first class.** The marketing site is dark-first; the dashboard and docs follow the system setting.
 
 ## 2. Brand mark
-- **Mark:** a solid gold dot inside a near-black rounded square, placed where a full stop sits (lower right of centre). It reads as "revenue." — the full stop — and as a live status light.
-- **Wordmark:** `revenuedot` in Geist Semibold, lowercase, tracking −0.04em, followed by the gold dot as the full stop: `revenue●`. Never spell it RevenueDOT or Revenue Dot in the logo. In sentences, write "RevenueDot".
-- **Live dot:** the same gold dot, 8px, with a slow 2s pulse ring, marks live data (incoming purchases, "last notification received").
-- Clear space around the mark: half the mark's width. Minimum size: 16px.
+- **Mark: an R whose leg is finished by a gold dot** ("R3", chosen 2026-09-30). Geometry, files and rules: `brand/README.md`; generated kit in `brand/kit/`.
+- **Wordmark:** "RevenueDot", Geist Semibold, tracking −0.035em, outlined in `brand/kit/wordmark/`.
+- **The gold dot is the only brand colour.** In the product the same dot marks live data (8px, slow pulse).
 
 ## 3. Color tokens
 All values are sRGB hex; contrast ratios are measured against the matching background.
