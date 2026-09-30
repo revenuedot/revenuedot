@@ -8,12 +8,12 @@
 | 1.0 Foundations (monorepo, schema, contract harness) | browser-n/a · tests passing | 39 contract tests from RevenueCat SDK fixtures |
 | 1.1 SDK-compatible API | done · tested | 37 endpoints, fixtures-verified; Apple/Google receipts included |
 | 1.2 Apple ingestion | done · tested | JWS, receipts, ASN v2; real sandbox test needs credentials |
-| 1.3 Google ingestion | done · tested | Play API, RTDN push; real sandbox test needs credentials |
+| 1.3 Google ingestion | done · tested | Play API, RTDN push, daily voided-purchases scan; real sandbox test needs credentials |
 | 1.4 Entitlement engine | done · tested | grace, refunds, promotional, lifetime, transfers; `packages/core` |
 | 1.5 Identity | done · tested | aliasing, merge, transfer behaviours |
 | 1.6 Catalog | done · browser-validated | Offerings, Products, Entitlements pages; SDK offerings response decoded in e2e |
-| 1.7 Webhooks out | done · tested | HMAC, Authorization, 5 retries, filters |
-| 1.8 REST API | done · tested | v1 + v2 validated against RevenueCat OpenAPI, plus dashboard extensions |
+| 1.7 Webhooks out | done · tested | HMAC, Authorization, 5 retries, filters; every event type checked key by key against RevenueCat's sample payloads (`packages/contract/test/webhook-payloads.test.ts`) |
+| 1.8 REST API | done · tested | v1 + v2 validated against RevenueCat OpenAPI, plus dashboard extensions; store actions call Google (revoke, cancel, defer, order refund) and Apple (extend, mass extend); Test Store scenarios through `POST /v2/projects/{id}/test_purchases` |
 | 1.9 Migration importer | done · tested | `npx revenuedot import` / `import verify` / `import plan` (`packages/importer`), bulk import endpoint `POST /v2/projects/{id}/import/customers`; fake-RevenueCat e2e tests with fixtures checked against RevenueCat's OpenAPI; not yet run against a real RevenueCat project. Spec: `prd/migration/PRD.md` |
 | 1.10 Dashboard | pages built · browser-validated | Overview, Customers, Catalog, Apps, API keys, Integrations/Webhooks, Project settings, New project. Later-tier: Analytics, Paywalls, Targeting, Experiments, Funnels, Ads, Lifecycle. `pnpm --filter @revenuedot/dashboard e2e` (8 tests) |
 | 1.11 Self-host (Docker) | done · smoke-tested | `docker compose up -d` with Postgres, signup works; `REVENUEDOT_PORT` sets the host port |
@@ -30,9 +30,9 @@
 
 ## Known gaps (next up)
 - Importer: without the App Store In-App Purchase key, an Apple chain that RevenueCat split after a lapse is keyed by its first known transaction, so a later receipt for it can create a second row; refunded subscriptions import as expired (RevenueCat's v2 subscription has no refund field); paywalls, targeting, experiments and virtual currencies are not imported.
-- Google PRODUCT_CHANGE only fires from notifications; REFUND_REVERSED for one-time purchases, price-increase events, daily voided-purchase scan.
-- Store actions (refund, revoke, defer, extend) not wired to the stores; SDK versions not recorded.
-- Setup health marks an app Ready when a notification arrives even if it failed to process.
-- SDK offerings response includes archived products in packages.
-- Test Store cannot create trials, renewals or refunds through the API.
-- Breadcrumbs overlap top-bar icons at 390px.
+- Store actions are tested against mocked Google and Apple APIs only. The request bodies for `subscriptionsv2.revoke` (`fullRefund`), `cancel` (`DEVELOPER_REQUESTED_STOP_PAYMENTS`) and `defer` (`deferDuration` with the etag) follow Google's reference and need one real sandbox run with store credentials.
+- Webhooks do not send `renewal_number` or `experiments` yet (RevenueCat marks both "Sometimes"); there are no experiments.
+- Google `CANCELLATION` with `PRICE_INCREASE` is inferred: a system cancellation while `priceChangeDetails` is still `OUTSTANDING` (or a price step-up is `PENDING`). RevenueCat does not document its Google rule.
+- The dashboard does not show `setup_health.notification_status` "failing" in the Apps list yet (it says "Waiting for store notifications"; the app page shows the error), and the SDK compatibility panel is not built; `setup_health.sdk_versions` is ready for it.
+- `GET /v2/projects/{id}/subscriptions/{id}/transactions` is not implemented; the refund-a-transaction action is.
+- Apple consumption information (Refund Control) is not sent; RevenueCat does not require it.
