@@ -78,4 +78,3 @@ export function v2Routes(deps: Deps) {
   return r;
 }
 
-export type V2Router = Hono<{ Variables: V2Vars }>;

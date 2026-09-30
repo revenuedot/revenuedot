@@ -1,4 +1,4 @@
-import type { Context, MiddlewareHandler } from "hono";
+import type { Context, Hono, MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import type { Deps } from "../../context.js";
@@ -43,6 +43,7 @@ export type Principal =
 
 export type V2Vars = { principal: Principal; projectId: string; deps: Deps };
 export type V2Context = Context<{ Variables: V2Vars }>;
+export type V2Router = Hono<{ Variables: V2Vars }>;
 
 /**
  * Scope check. Scopes use RevenueCat's names (`project_configuration:apps:read` ...). A key's permissions may hold
