@@ -20,6 +20,7 @@ import { appleKeyConfigured, customerShape, googleKeyConfigured, loadCatalog, pu
  * same auth, scoping, error format and list envelope as the rest of v2:
  *   GET    /v2/projects/{project_id}/transactions                              transaction feed, newest first
  *   GET    /v2/projects/{project_id}/events                                    event log (?type=&customer=&environment=)
+ *   GET    /v2/projects/{project_id}/webhooks                                  whether each webhook integration is enabled
  *   GET    /v2/projects/{project_id}/webhooks/{webhook_id}/deliveries          delivery log (?status=)
  *   POST   /v2/projects/{project_id}/webhooks/{webhook_id}/deliveries/{id}/retry
  *   GET    /v2/projects/{project_id}/setup_health                              store notifications, credentials, webhook health
@@ -129,6 +130,14 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     object: "webhook_delivery", id: d.id, webhook_integration_id: d.webhookId, event_id: d.eventId, event_type: eventType, status: d.status,
     attempts: d.attempts, next_attempt_at: d.status === "pending" ? d.nextAttemptAt.getTime() : null, response_status: d.responseStatus,
     response_ms: d.responseMs, last_error: d.lastError, created_at: d.createdAt.getTime(),
+  });
+
+  // `enabled` is set with RevenueCat's update call (POST …/integrations/webhooks/{id}); RevenueCat's integration object has
+  // no such field, so it is read here and the integration responses keep RevenueCat's exact shape.
+  r.get(`${P}/webhooks`, scope("project_configuration:integrations:read"), async (c) => {
+    const rows = await db.select({ id: schema.webhooks.id, enabled: schema.webhooks.enabled }).from(schema.webhooks)
+      .where(eq(schema.webhooks.projectId, c.get("projectId"))).orderBy(schema.webhooks.createdAt, schema.webhooks.id);
+    return c.json(listOf(c, rows.map((w) => ({ object: "webhook_state" as const, id: w.id, enabled: w.enabled })), null));
   });
 
   r.get(`${P}/webhooks/:webhook_id/deliveries`, scope("project_configuration:integrations:read"), async (c) => {
@@ -271,7 +280,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     for (const [i, step] of steps.entries()) {
       owner = await applyPurchases(db, owner, [step.purchase], {
         projectId, appId: app.id, appUserId: b.app_user_id, now: step.at, presentedOfferingId: b.presented_offering_id ?? null,
-        fromDevice: i === 0, customerCreated: i === 0 && created,
+        fromDevice: i === 0, customerCreated: i === 0 && created, fetch: deps.fetch,
       });
     }
     const [chain] = await db.select().from(schema.subscriptions).where(and(eq(schema.subscriptions.projectId, projectId), eq(schema.subscriptions.store, "test_store"), eq(schema.subscriptions.storeKey, token)));

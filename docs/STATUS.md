@@ -35,7 +35,9 @@
 - Webhooks do not send `renewal_number` or `experiments` yet (RevenueCat marks both "Sometimes"); there are no experiments.
 - Google `CANCELLATION` with `PRICE_INCREASE` is inferred: a system cancellation while `priceChangeDetails` is still `OUTSTANDING` (or a price step-up is `PENDING`). RevenueCat does not document its Google rule.
 - `GET /v2/projects/{id}/subscriptions/{id}/transactions` finds App Store transactions of a chain by customer, product and start date, because revenue rows do not store the chain; Google Play orders match exactly by base order id.
-- Test Store products have no price, so the SDK shows $0.00 and revenue is 0 for Test Store purchases.
+- USD values use the ECB's daily reference rates (about 30 currencies, cached in `fx_rates`, bundled 2026-09-30 rates offline; `apps/server/src/services/fx.ts`). RevenueCat uses Open Exchange Rates, so a currency the ECB does not publish (SAR, AED, TWD and others) has null USD and counts 0 in revenue. Rows saved before migration 0004 keep their old unconverted `price_usd`.
+- Test Store prices: one price per product (`test_store_price` on v2 product create and update, read as `expand=indicative_price`). RevenueCat's multi-currency `…/products/{id}/test_store_prices` and `…/prices` endpoints are not implemented.
+- Webhook `enabled` is a RevenueDot extension (RevenueCat's v2 integration has no such field), read from `GET /v2/projects/{id}/webhooks`.
 - The SDK compatibility panel says whether contract tests cover an SDK's major version; it does not score per-feature coverage like RevenueCat's panel.
 - Attribution calls from the SDK (`/v1/subscribers/{id}/attribution`, ad services token) answer `{}` and store nothing.
 - Six event types are never emitted, though webhooks accept them as filters: TEMPORARY_ENTITLEMENT_GRANT, INVOICE_ISSUANCE, PURCHASE_REDEEMED, VIRTUAL_CURRENCY_TRANSACTION, EXPERIMENT_ENROLLMENT and SUBSCRIBER_ALIAS.

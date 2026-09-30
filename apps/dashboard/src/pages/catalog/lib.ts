@@ -10,6 +10,8 @@ export interface App {
 export interface Product {
   object: "product"; id: string; store_identifier: string; type: string; state: "active" | "inactive"; created_at: number; app_id: string;
   display_name: string | null; subscription?: { duration: string | null }; one_time?: { is_consumable: boolean | null };
+  /** With expand=items.indicative_price: the Test Store price, null when there is none. */
+  indicative_price?: { amount_micros: number; currency: string } | null;
 }
 export interface Entitlement { object: "entitlement"; id: string; lookup_key: string; display_name: string; created_at: number; state: "active" | "inactive"; products?: List<Product> }
 export interface PackageProduct { product: Product; eligibility_criteria: "all" | "google_sdk_lt_6" | "google_sdk_ge_6" }
@@ -35,7 +37,7 @@ export const v2 = (pid: string) => `/v2/projects/${encodeURIComponent(pid)}`;
 export const catalogKey = (pid: string) => ["catalog", pid] as const;
 
 export const useApps = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "apps"], queryFn: () => listAll<App>(`${v2(pid)}/apps`), enabled: !!pid });
-export const useProducts = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "products"], queryFn: () => listAll<Product>(`${v2(pid)}/products`), enabled: !!pid });
+export const useProducts = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "products"], queryFn: () => listAll<Product>(`${v2(pid)}/products?expand=items.indicative_price`), enabled: !!pid });
 export const useEntitlements = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "entitlements"], queryFn: () => listAll<Entitlement>(`${v2(pid)}/entitlements?expand=items.product`), enabled: !!pid });
 export const useOfferings = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "offerings"], queryFn: () => listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`), enabled: !!pid });
 
@@ -84,6 +86,19 @@ export function durationLabel(iso: string | null | undefined): string {
   const parts = [["year", m[1]], ["month", m[2]], ["week", m[3]], ["day", m[4]]].filter(([, n]) => n && Number(n) > 0)
     .map(([u, n]) => `${Number(n)} ${u}${Number(n) === 1 ? "" : "s"}`);
   return parts.join(" ") || iso;
+}
+
+/** "EUR 2.99" style label for a price in micros; "—" without one. */
+export function priceLabel(p: { amount_micros: number; currency: string } | null | undefined): string {
+  if (!p) return "—";
+  const amount = p.amount_micros / 1_000_000;
+  try { return amount.toLocaleString("en-US", { style: "currency", currency: p.currency }); } catch { return `${p.currency} ${amount}`; }
+}
+/** "2.99" -> 2990000 micros; null for an empty field, NaN for anything that is not a non-negative amount. */
+export function parseMicros(amount: string): number | null {
+  const t = amount.trim();
+  if (!t) return null;
+  return /^\d+(\.\d{1,6})?$/.test(t) ? Math.round(Number(t) * 1_000_000) : NaN;
 }
 
 export const PRODUCT_TYPES: { value: string; label: string; help: string }[] = [

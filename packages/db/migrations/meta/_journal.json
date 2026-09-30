@@ -29,6 +29,13 @@
       "when": 1790800844107,
       "tag": "0003_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790803871408,
+      "tag": "0004_offering_prices_fx",
+      "breakpoints": true
     }
   ]
 }

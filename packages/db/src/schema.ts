@@ -53,6 +53,9 @@ export const products = pgTable("products", {
   displayName: text("display_name"),
   /** ISO 8601 period for subscriptions (P1W, P1M, P1Y); used by the Test Store and MRR normalisation. */
   duration: text("duration"),
+  /** Test Store price (what the SDK shows for Test Store products); amount in micros of `test_store_price_currency`. */
+  testStorePriceMicros: bigint("test_store_price_micros", { mode: "number" }),
+  testStorePriceCurrency: text("test_store_price_currency"),
   state: text("state").notNull().default("active"),
   createdAt: created(),
 }, (t) => [uniqueIndex("products_app_store_id").on(t.appId, t.storeIdentifier)]);
@@ -170,6 +173,8 @@ export const subscriptions = pgTable("subscriptions", {
   priceIncreaseStatus: text("price_increase_status"),
   /** Set when EXPIRATION was recorded for the current period; cleared on renewal. */
   expiredEventAt: ts("expired_event_at"),
+  /** Offering identifier the SDK sent with the purchase (presented_offering_identifier); the first one seen stays. */
+  presentedOfferingId: text("presented_offering_id"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("subscriptions_store_key").on(t.projectId, t.store, t.storeKey), index("subscriptions_customer").on(t.customerId)]);
 
@@ -189,6 +194,8 @@ export const nonSubscriptions = pgTable("non_subscriptions", {
   priceCurrency: text("price_currency"),
   priceUsd: doublePrecision("price_usd"),
   countryCode: text("country_code"),
+  /** Offering identifier the SDK sent with the purchase (presented_offering_identifier). */
+  presentedOfferingId: text("presented_offering_id"),
 }, (t) => [uniqueIndex("non_subs_store_tx").on(t.projectId, t.store, t.storeTransactionId), index("non_subs_customer").on(t.customerId)]);
 
 /** Every billing event (purchase, renewal, refund) for revenue charts and the transaction feed. */
@@ -337,4 +344,15 @@ export const oauthCodes = pgTable("oauth_codes", {
   /** RFC 8707 resource indicator the client asked for (the MCP server URL), if any. */
   resource: text("resource"),
   expiresAt: ts("expires_at").notNull(),
+});
+
+/**
+ * Daily ECB reference rates (units of each currency per 1 EUR, EUR itself included as 1), cached from the ECB data API.
+ * Purchases convert to USD at the rate of their purchase date, or the last business day before it.
+ */
+export const fxRates = pgTable("fx_rates", {
+  /** YYYY-MM-DD, a TARGET business day. */
+  date: text("date").primaryKey(),
+  rates: jsonb("rates").$type<Record<string, number>>().notNull(),
+  fetchedAt: ts("fetched_at").notNull().defaultNow(),
 });

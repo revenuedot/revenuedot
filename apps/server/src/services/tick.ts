@@ -42,7 +42,7 @@ export async function recordDueExpirations(db: DB, now: Date, only?: { projectId
           store: d.store, productId: d.productIdentifier, productPlanId: d.productPlanIdentifier, periodType: d.periodType,
           purchasedAt: d.purchaseDate, expiresAt: d.expiresDate, transactionId: d.storeTransactionId ?? null,
           originalTransactionId: d.originalTransactionId ?? s.storeKey, isSandbox: d.isSandbox, isFamilyShare: d.ownershipType === "FAMILY_SHARED",
-          countryCode: s.countryCode, price: d.price, priceUsd: s.priceUsd,
+          countryCode: s.countryCode, price: d.price, priceUsd: s.priceUsd, presentedOfferingId: s.presentedOfferingId,
         },
         now,
       });

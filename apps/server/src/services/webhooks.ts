@@ -58,10 +58,11 @@ export async function attempt(db: DB, deliveryId: string, fetchImpl: typeof fetc
   }).where(eq(webhookDeliveries.id, deliveryId));
 }
 
-/** Sends every due delivery. */
+/** Sends every due delivery. Retries for a disabled webhook wait until it is enabled again. */
 export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50) {
   const due = await db.select({ id: webhookDeliveries.id }).from(webhookDeliveries)
-    .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
+    .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId))
+    .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
   for (const d of due) await attempt(db, d.id, fetchImpl, now);
   return due.length;
 }

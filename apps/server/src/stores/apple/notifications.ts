@@ -125,7 +125,7 @@ async function processNotification(deps: Deps, app: AppRecord, n: NotificationPa
   });
   const applied = await applyFromStore(deps.db, {
     projectId: app.projectId, appId: app.id, purchase, now,
-    createIfUnknown: app.credentials?.track_new_purchases === true, appUserIdHint: tx.appAccountToken ?? null,
+    createIfUnknown: app.credentials?.track_new_purchases === true, appUserIdHint: tx.appAccountToken ?? null, fetch: deps.fetch,
   });
   return applied;
 }

@@ -5,6 +5,7 @@ import { getOrCreateCustomer } from "@revenuedot/server/repo/customers.js";
 import { monthlyFactor } from "@revenuedot/server/routes/v2/metrics.js";
 import { harness, type Harness } from "../src/harness.js";
 import { buy, spec, v2 } from "./v2-helpers.js";
+import { tick } from "@revenuedot/server/services/tick.js";
 
 let h: Harness;
 let call: ReturnType<typeof v2>;
@@ -275,6 +276,34 @@ describe("metrics overview", () => {
     expect(sandbox.body.metrics.find((x: any) => x.id === "active_subscriptions").value).toBe(1);
     expect(sandbox.body.metrics.find((x: any) => x.id === "revenue").value).toBe(5);
     expect((await call("GET", "/v2/projects/{project_id}/metrics/overview", {}, { query: "currency=EUR" })).status).toBe(400);
+  });
+});
+
+describe("presented offering", () => {
+  it("subscriptions and purchases return the offering the SDK sent, as its offering id; store-driven events keep it", async () => {
+    const at = new Date("2026-09-01T11:00:00Z");
+    h.setNow(at);
+    const token = `test_${at.getTime()}_offer`;
+    const receipt = (json: Record<string, unknown>) => h.fetch("/v1/receipts", { method: "POST", key: h.ids.testKey, json: { app_user_id: "shopper", price: 9.99, currency: "USD", ...json } });
+    expect((await receipt({ fetch_token: token, product_id: "pro_monthly", presented_offering_identifier: "default" })).status).toBe(200);
+    expect((await receipt({ fetch_token: `test_${at.getTime()}_life`, product_id: "lifetime", presented_offering_identifier: "retired_offer" })).status).toBe(200);
+    // A later post of the same receipt (a restore) without an offering keeps the one saved with the purchase.
+    expect((await receipt({ fetch_token: token, product_id: "pro_monthly", is_restore: true })).status).toBe(200);
+
+    const [s] = (await call("GET", `${CU}/subscriptions`, { customer_id: "shopper" })).body.items;
+    expect(s.presented_offering_id).toBe("ofr_default");
+    expect((await call("GET", `${SUBS}/{subscription_id}`, { subscription_id: s.id })).body.presented_offering_id).toBe("ofr_default");
+    const [p] = (await call("GET", `${CU}/purchases`, { customer_id: "shopper" })).body.items;
+    // An identifier with no offering behind it (deleted, or never created here) is returned as sent.
+    expect(p.presented_offering_id).toBe("retired_offer");
+    expect((await call("GET", `${PURS}/{purchase_id}`, { purchase_id: p.id })).body.presented_offering_id).toBe("retired_offer");
+
+    // EXPIRATION comes from the server, not the device, and still reports the offering (by identifier, like the webhook).
+    h.setNow(new Date(at.getTime() + 40 * DAY));
+    await tick(h.db, h.now());
+    const events = (await h.db.select().from(schema.events)).map((r) => (r.payload as any).event);
+    expect(events.find((e) => e.type === "INITIAL_PURCHASE").presented_offering_id).toBe("default");
+    expect(events.find((e) => e.type === "EXPIRATION").presented_offering_id).toBe("default");
   });
 });
 

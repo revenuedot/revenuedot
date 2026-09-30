@@ -80,7 +80,7 @@ export async function recordEvent(db: DB, opts: {
     const comm = commission(subject.store);
     const moves = REVENUE_EVENTS.has(type) || (type === "CANCELLATION" && derived.isRefund);
     const sign = derived.isRefund ? -1 : 1;
-    const usd = subject.priceUsd !== undefined && subject.priceUsd !== null ? subject.priceUsd : subject.price ? subject.price.amount : null;
+    const usd = subject.priceUsd !== undefined && subject.priceUsd !== null ? subject.priceUsd : subject.price?.currency === "USD" ? subject.price.amount : null;
     const local = subject.price ? subject.price.amount : null;
     const money = (v: number | null) => (v === null ? null : moves ? sign * v : 0);
     event = {

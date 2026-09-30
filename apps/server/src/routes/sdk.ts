@@ -94,7 +94,7 @@ export function sdkRoutes(deps: Deps) {
     if (!input.fetchToken && !input.appTransaction) throw new RCError(400, Codes.INVALID_RECEIPT, "fetch_token or app_transaction is required.");
     const purchases = input.fetchToken ? await adapter.verify(app, input, await productInfo(deps.db, app.id)) : [];
     customer = await applyPurchases(deps.db, customer, purchases, {
-      projectId: app.projectId, appId: app.id, appUserId, now, presentedOfferingId: b.presented_offering_identifier ?? null, fromDevice: true,
+      projectId: app.projectId, appId: app.id, appUserId, now, presentedOfferingId: b.presented_offering_identifier ?? null, fromDevice: true, fetch: deps.fetch,
       // A customer this receipt creates (a restore on a new install, a server-side post) was first seen at its earliest purchase.
       customerCreated: created,
     });
@@ -202,9 +202,10 @@ export function sdkRoutes(deps: Deps) {
     const rows = await deps.db.select().from(schema.products).where(eq(schema.products.appId, app.id));
     // Shape of RevenueCat's web billing products response (fixtures/ios/resp-web-billing-products.json).
     // The SDKs decode `cycle_count` as a non-null Int, so a null breaks the whole product.
-    // Prices are 0 until the catalog stores Test Store prices.
-    const price = { amount: 0, amount_micros: 0, currency: "USD" };
+    // The price is the product's Test Store price (set in the dashboard or the v2 API), USD 0 when it has none.
     const product_details = rows.filter((p) => ids.length === 0 || ids.includes(p.storeIdentifier)).map((p) => {
+      const micros = p.testStorePriceMicros ?? 0;
+      const price = { amount: micros / 1_000_000, amount_micros: micros, currency: p.testStorePriceCurrency ?? "USD" };
       const sub = p.type === "subscription";
       const period = p.duration ?? "P1M";
       const option = { id: "base", price_id: "base", base: sub ? { period_duration: period, cycle_count: 1, price } : null, base_price: sub ? null : price, trial: null, intro_price: null };

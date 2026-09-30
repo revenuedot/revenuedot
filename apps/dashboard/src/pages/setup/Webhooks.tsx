@@ -4,17 +4,16 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import {
-  Check, CodeBlock, ConfirmDialog, Dialog, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Tag, useProjectId, useToast,
+  Check, CodeBlock, ConfirmDialog, Dialog, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Switch, Tag, useProjectId, useToast,
 } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
-import { base, errMsg, useApps, useSetupHealth, useWebhooks, type Delivery, type Webhook } from "./data";
+import { base, errMsg, useApps, useSetupHealth, useWebhooks, withStates, type Delivery, type Webhook } from "./data";
 
 /**
  * Webhooks (/projects/:projectId/integrations/webhooks): list, the create/edit form (RevenueCat's fields: name, URL,
  * Authorization header value, environment, events filtered by app and by event type), the signing secret shown once,
- * and each webhook's delivery log with Retry and "Send test event".
- * GAPS vs RevenueCat: rotating the signing secret (delete and re-create the webhook to get a new one) and pausing a
- * webhook without deleting it.
+ * each webhook's delivery log with Retry and "Send test event", and a switch that pauses deliveries (`enabled`, ours).
+ * GAPS vs RevenueCat: rotating the signing secret (delete and re-create the webhook to get a new one).
  */
 
 export const EVENT_TYPES: [string, string][] = [
@@ -186,7 +185,7 @@ export function WebhookNew() {
   );
 }
 
-const useHook = (pid: string, id: string) => useQuery({ queryKey: ["webhook", pid, id], queryFn: () => api<Webhook>(`${base(pid)}/integrations/webhooks/${encodeURIComponent(id)}`), enabled: !!id, retry: false });
+const useHook = (pid: string, id: string) => useQuery({ queryKey: ["webhook", pid, id], queryFn: async () => (await withStates(pid, [await api<Webhook>(`${base(pid)}/integrations/webhooks/${encodeURIComponent(id)}`)]))[0]!, enabled: !!id, retry: false });
 
 export function WebhookEdit() {
   const pid = useProjectId();
@@ -236,7 +235,7 @@ export function WebhookList() {
                     <td><Tag tone={w.environment === "sandbox" ? "info" : "muted"}>{w.environment ?? "Both"}</Tag></td>
                     <td>{w.app_id ? apps.data?.find((a) => a.id === w.app_id)?.name ?? w.app_id : "All apps"}</td>
                     <td>{w.event_types.length ? `${w.event_types.length} selected` : "All events"}</td>
-                    <td>{failing ? <StatusLine tone="bad">Failing{failing.last_status ? ` (HTTP ${failing.last_status})` : ""}</StatusLine> : <StatusLine tone="ok">Healthy</StatusLine>}</td>
+                    <td>{w.enabled === false ? <StatusLine tone="idle">Paused</StatusLine> : failing ? <StatusLine tone="bad">Failing{failing.last_status ? ` (HTTP ${failing.last_status})` : ""}</StatusLine> : <StatusLine tone="ok">Healthy</StatusLine>}</td>
                   </tr>
                 );
               })}</tbody>
@@ -290,6 +289,15 @@ export function WebhookDetail() {
       await qc.invalidateQueries({ queryKey: ["deliveries", pid, webhookId] });
     } catch (e) { toast(errMsg(e)); } finally { setRetrying(null); }
   };
+  const [toggling, setToggling] = useState(false);
+  const setEnabled = async (enabled: boolean) => {
+    setToggling(true);
+    try {
+      await api(`${base(pid)}/integrations/webhooks/${webhookId}`, { method: "POST", json: { enabled } });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["webhook", pid, webhookId] }), qc.invalidateQueries({ queryKey: ["webhooks", pid] })]);
+      toast(enabled ? "Deliveries resumed." : "Deliveries paused.");
+    } catch (e) { toast(errMsg(e)); } finally { setToggling(false); }
+  };
   const del = async () => {
     await api(`${base(pid)}/integrations/webhooks/${webhookId}`, { method: "DELETE" });
     await qc.invalidateQueries({ queryKey: ["webhooks", pid] });
@@ -306,11 +314,13 @@ export function WebhookDetail() {
         {w && (
           <>
             <PageHead title={w.name} sub={<span className="mono">{w.url}</span>} actions={<>
-              <button type="button" className="btn btn-dark" disabled={sending} onClick={sendTest}><Icon name="send" />{sending ? "Sending…" : "Send test event"}</button>
+              <button type="button" className="btn btn-dark" disabled={sending || w.enabled === false} title={w.enabled === false ? "Turn deliveries on to send a test event" : undefined} onClick={sendTest}><Icon name="send" />{sending ? "Sending…" : "Send test event"}</button>
               <Link className="btn btn-line" to={`/projects/${pid}/integrations/webhooks/${w.id}/edit`}><Icon name="edit" />Edit</Link>
               <Menu label="More actions" items={[{ label: "Delete webhook", icon: "trash", danger: true, onSelect: () => setDeleting(true) }]} />
             </>} />
+            {w.enabled === false && <div className="banner" role="status">Deliveries are paused. New events are not sent to this URL; queued retries wait until you turn deliveries back on.</div>}
             <KeyValue rows={[
+              ["Deliveries", <span key="en" className="hrow"><Switch checked={w.enabled !== false} onChange={(v) => { if (!toggling) void setEnabled(v); }} label={w.enabled === false ? "Paused" : "On"} /></span>],
               ["Environment", envLabel(w.environment)],
               ["Apps", w.app_id ? apps.data?.find((a) => a.id === w.app_id)?.name ?? w.app_id : "All apps"],
               ["Events", w.event_types.length ? <span className="hrow">{w.event_types.map((t) => <Tag key={t} tone={EVENT_TONE[label(t)] ?? "muted"}>{label(t)}</Tag>)}</span> : "All events"],

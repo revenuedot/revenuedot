@@ -52,6 +52,8 @@ export interface SetupHealth {
 export interface Webhook {
   object: "webhook_integration"; id: string; project_id: string; name: string; url: string; environment: "production" | "sandbox" | null;
   event_types: string[]; app_id: string | null; created_at: number; signing_secret?: string;
+  /** From GET /v2/projects/:id/webhooks (a RevenueDot extension); false while deliveries are paused. */
+  enabled?: boolean;
 }
 
 export interface Delivery {
@@ -102,7 +104,13 @@ export const useStoreSettings = (pid: string, appId: string) => useQuery({
   queryKey: ["store_settings", pid, appId], queryFn: () => api<StoreSettings>(`${base(pid)}/apps/${encodeURIComponent(appId)}/store_settings`), enabled: !!appId, refetchInterval: 10_000,
 });
 export const useSetupHealth = (pid: string) => useQuery({ queryKey: ["setup_health", pid], queryFn: () => api<SetupHealth>(`${base(pid)}/setup_health`), enabled: !!pid, refetchInterval: 15_000 });
-export const useWebhooks = (pid: string) => useQuery({ queryKey: ["webhooks", pid], queryFn: () => all<Webhook>(`${base(pid)}/integrations/webhooks`), enabled: !!pid });
+/** Adds `enabled` to RevenueCat-shaped webhook integrations. */
+export async function withStates(pid: string, hooks: Webhook[]): Promise<Webhook[]> {
+  const states = await api<List<{ id: string; enabled: boolean }>>(`${base(pid)}/webhooks`);
+  const on = new Map(states.items.map((s) => [s.id, s.enabled]));
+  return hooks.map((h) => ({ ...h, enabled: on.get(h.id) ?? true }));
+}
+export const useWebhooks = (pid: string) => useQuery({ queryKey: ["webhooks", pid], queryFn: async () => withStates(pid, await all<Webhook>(`${base(pid)}/integrations/webhooks`)), enabled: !!pid });
 export const useProducts = (pid: string, appId?: string) => useQuery({
   queryKey: ["products", pid, appId ?? "all"], queryFn: () => all<Product>(`${base(pid)}/products${appId ? `?app_id=${encodeURIComponent(appId)}` : ""}`), enabled: !!pid,
 });

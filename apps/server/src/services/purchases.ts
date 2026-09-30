@@ -6,6 +6,7 @@ import { backdateFirstSeen, findCustomer, isOnlyAnonymous, mergeCustomers, nonSu
 import type { VerifiedPurchase, VerifiedSubscription } from "../stores/types.js";
 import { recordEvent, type EventSubject } from "./events.js";
 import { adoptImportedChain } from "./imported-chains.js";
+import { usdValue, type FxFetch } from "./fx.js";
 
 const { subscriptions, nonSubscriptions, transactions, projects, customers } = schema;
 
@@ -19,10 +20,9 @@ export interface ApplyContext {
   fromDevice: boolean;
   /** The customer was created for these purchases: its first-seen date moves back to the earliest purchase. */
   customerCreated?: boolean;
+  /** HTTP client for exchange rates (Deps.fetch); null uses cached and bundled rates only. */
+  fetch?: FxFetch | null;
 }
-
-/** USD value of a price; non-USD currencies need an FX source (TODO: daily rates table). */
-const toUsd = (p?: { amount: number; currency: string } | null) => (p && p.currency === "USD" ? p.amount : p?.amount ?? 0);
 
 /**
  * Saves verified purchases for a customer, resolving ownership, and records lifecycle events and revenue transactions.
@@ -88,6 +88,8 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   let transferFrom: CustomerRow | undefined;
   if (existing) ({ owner, transferFrom } = await resolveOwnership(db, customer, existing.customerId, ctx, p.isSandbox));
   const prev: Subscription | null = existing ? subRowToDomain(existing) : null;
+  // USD at the rate of this period's purchase date.
+  const priceUsd = await usdValue(db, p.price, p.purchaseDate, ctx.fetch);
   const values = {
     projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store, storeKey: p.storeKey,
     productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, isSandbox: p.isSandbox,
@@ -96,11 +98,12 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     billingIssuesDetectedAt: p.billingIssuesDetectedAt ?? null, gracePeriodExpiresDate: p.gracePeriodExpiresDate ?? null,
     refundedAt: p.refundedAt ?? null, autoResumeDate: p.autoResumeDate ?? null, storeTransactionId: p.storeTransactionId,
     originalTransactionId: p.originalTransactionId ?? null, priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null,
-    priceUsd: p.price ? toUsd(p.price) : null, countryCode: p.countryCode ?? null, autoRenewProductId: p.autoRenewProductId ?? null, updatedAt: ctx.now,
+    priceUsd, countryCode: p.countryCode ?? null, autoRenewProductId: p.autoRenewProductId ?? null, updatedAt: ctx.now,
     // `undefined` means the store did not say; keep what we know. A cancel reason only lives while auto-renew is off.
     cancelReason: !p.unsubscribeDetectedAt ? null : p.cancelReason === undefined ? existing?.cancelReason ?? null : p.cancelReason,
     priceIncreaseStatus: p.priceIncreaseStatus === undefined ? existing?.priceIncreaseStatus ?? null : p.priceIncreaseStatus,
     // Access that runs past now reopens the chain for a future EXPIRATION; an EXPIRATION derived below sets it again.
+    presentedOfferingId: existing?.presentedOfferingId ?? ctx.presentedOfferingId ?? null,
     expiredEventAt: (p.expiresDate === null || p.expiresDate > ctx.now || (p.gracePeriodExpiresDate && p.gracePeriodExpiresDate > ctx.now)) ? null : existing?.expiredEventAt ?? null,
   };
   if (existing) await db.update(subscriptions).set(values).where(eq(subscriptions.id, existing.id));
@@ -115,8 +118,9 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     store: p.store, productId: p.productIdentifier, productPlanId: p.productPlanIdentifier, periodType: p.periodType,
     purchasedAt: p.purchaseDate, expiresAt: p.expiresDate, gracePeriodExpiresAt: p.gracePeriodExpiresDate, autoResumeAt: p.autoResumeDate,
     transactionId: p.storeTransactionId, originalTransactionId: p.originalTransactionId ?? p.storeKey, isSandbox: p.isSandbox,
-    isFamilyShare: p.ownershipType === "FAMILY_SHARED", countryCode: p.countryCode, price: p.price, priceUsd: p.price ? toUsd(p.price) : null,
-    presentedOfferingId: ctx.presentedOfferingId,
+    isFamilyShare: p.ownershipType === "FAMILY_SHARED", countryCode: p.countryCode, price: p.price, priceUsd,
+    // Store notifications carry no offering: renewals and cancellations report the one saved with the purchase.
+    presentedOfferingId: ctx.presentedOfferingId ?? values.presentedOfferingId,
   };
   if (transferFrom) await recordTransfer(db, ctx, transferFrom, owner, subject);
   for (const d of diffSubscription(prev, next, ctx.now)) {
@@ -129,7 +133,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         id: newId("txn_", 16), projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store,
         storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind, isSandbox: p.isSandbox,
         purchasedAt: refund ? p.refundedAt ?? ctx.now : d.type === "REFUND_REVERSED" ? ctx.now : p.purchaseDate, expiresAt: p.expiresDate,
-        revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (p.price ? toUsd(p.price) : 0),
+        revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (priceUsd ?? 0),
         priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
       }).onConflictDoNothing();
     }
@@ -153,11 +157,13 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
   let owner = customer;
   let transferFrom: CustomerRow | undefined;
   if (existing) ({ owner, transferFrom } = await resolveOwnership(db, customer, existing.customerId, ctx, p.isSandbox));
+  const priceUsd = await usdValue(db, p.price, p.purchaseDate, ctx.fetch);
   const values = {
     projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store, productIdentifier: p.productIdentifier,
     storeTransactionId: p.storeTransactionId, isSandbox: p.isSandbox, isConsumable: p.isConsumable, purchaseDate: p.purchaseDate,
     refundedAt: p.refundedAt ?? null, priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null,
-    priceUsd: p.price ? toUsd(p.price) : null, countryCode: p.countryCode ?? null,
+    priceUsd, countryCode: p.countryCode ?? null,
+    presentedOfferingId: existing?.presentedOfferingId ?? ctx.presentedOfferingId ?? null,
   };
   const prev = existing ? nonSubRowToDomain(existing) : null;
   let id = existing?.id;
@@ -167,7 +173,7 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
   const subject = {
     store: p.store, productId: p.productIdentifier, periodType: "normal", purchasedAt: p.purchaseDate, expiresAt: null,
     transactionId: p.storeTransactionId, originalTransactionId: p.storeTransactionId, isSandbox: p.isSandbox, isFamilyShare: false,
-    countryCode: p.countryCode, price: p.price, priceUsd: p.price ? toUsd(p.price) : null, presentedOfferingId: ctx.presentedOfferingId,
+    countryCode: p.countryCode, price: p.price, priceUsd, presentedOfferingId: ctx.presentedOfferingId ?? values.presentedOfferingId,
   };
   if (transferFrom) await recordTransfer(db, ctx, transferFrom, owner, subject);
   for (const d of diffNonSubscription(prev, next)) {
@@ -177,7 +183,7 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
       id: newId("txn_", 16), projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store,
       storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind,
       isSandbox: p.isSandbox, purchasedAt: kind === "refund" ? p.refundedAt ?? ctx.now : kind === "refund_reversal" ? ctx.now : p.purchaseDate,
-      revenueUsd: (d.isRefund ? -1 : 1) * (p.price ? toUsd(p.price) : 0),
+      revenueUsd: (d.isRefund ? -1 : 1) * (priceUsd ?? 0),
       priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
     }).onConflictDoNothing();
   }
@@ -225,6 +231,7 @@ async function applyReplacement(db: DB, ctx: ApplyContext, next: VerifiedSubscri
       store: d.store, productId: d.productIdentifier, productPlanId: d.productPlanIdentifier, periodType: d.periodType,
       purchasedAt: d.purchaseDate, expiresAt: expiresDate, transactionId: d.storeTransactionId ?? null, originalTransactionId: oldOriginal,
       isSandbox: d.isSandbox, isFamilyShare: d.ownershipType === "FAMILY_SHARED", countryCode: old.countryCode, price: d.price, priceUsd: old.priceUsd,
+      presentedOfferingId: old.presentedOfferingId,
     },
   });
 }
@@ -237,7 +244,7 @@ export { findCustomer };
  * (RevenueCat's "track new purchases from server-to-server notifications").
  * Returns false when the purchase is unknown and was not created.
  */
-export async function applyFromStore(db: DB, opts: { projectId: string; appId: string; purchase: VerifiedPurchase; now: Date; createIfUnknown?: boolean; appUserIdHint?: string | null }): Promise<boolean> {
+export async function applyFromStore(db: DB, opts: { projectId: string; appId: string; purchase: VerifiedPurchase; now: Date; createIfUnknown?: boolean; appUserIdHint?: string | null; fetch?: FxFetch | null }): Promise<boolean> {
   const { projectId, appId, purchase: p, now } = opts;
   let ownerId: string | null = null;
   if (p.kind === "subscription") {
@@ -261,6 +268,6 @@ export async function applyFromStore(db: DB, opts: { projectId: string; appId: s
   }
   const aliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, owner.id));
   const appUserId = aliases.find((a) => !isAnonymous(a.a))?.a ?? owner.originalAppUserId;
-  await applyPurchases(db, owner, [p], { projectId, appId, appUserId, now, fromDevice: false, customerCreated: created });
+  await applyPurchases(db, owner, [p], { projectId, appId, appUserId, now, fromDevice: false, customerCreated: created, fetch: opts.fetch });
   return true;
 }

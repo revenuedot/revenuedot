@@ -145,6 +145,44 @@ describe("products", () => {
   });
 });
 
+describe("Test Store prices", () => {
+  it("are set on create and update, read as RevenueCat's indicative_price and shown to the SDK", async () => {
+    const created = await call("POST", PRODUCTS, {}, { query: "expand=indicative_price", json: { store_identifier: "pro_weekly", app_id: "app_test", type: "subscription", subscription: { duration: "P1W" }, test_store_price: { amount_micros: 2_990_000, currency: "eur" } } });
+    expect(created.status).toBe(201);
+    expect(created.body.indicative_price).toEqual({ object: "indicative_price", currency: "EUR", country: null, amount_micros: 2_990_000 });
+    const id = created.body.id;
+    // Without the expand the product has RevenueCat's plain shape.
+    expect((await call("GET", `${PRODUCTS}/{product_id}`, { product_id: id })).body.indicative_price).toBeUndefined();
+    const upd = await call("POST", `${PRODUCTS}/{product_id}`, { product_id: "p6" }, { query: "expand=indicative_price", json: { test_store_price: { amount_micros: 990_000, currency: "USD" } } });
+    expect(upd.body.indicative_price).toMatchObject({ amount_micros: 990_000, currency: "USD" });
+    // A display name change keeps the price; lists expand items.indicative_price, and products without one report null.
+    await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { json: { display_name: "Weekly" } });
+    const list = (await call("GET", PRODUCTS, {}, { query: "app_id=app_test&expand=items.indicative_price" })).body.items;
+    expect(list.find((p: any) => p.id === id).indicative_price.amount_micros).toBe(2_990_000);
+    expect(list.find((p: any) => p.store_identifier === "lifetime").indicative_price).toBeNull();
+
+    const rc = await h.fetch("/rcbilling/v1/subscribers/u1/products?id=pro_weekly&id=coins_100&id=lifetime", { key: h.ids.testKey });
+    const details = (await rc.json() as { product_details: Array<Record<string, any>> }).product_details;
+    const weekly = details.find((p) => p.identifier === "pro_weekly")!;
+    expect(weekly.current_price).toEqual({ amount: 2.99, amount_micros: 2_990_000, currency: "EUR" });
+    expect(weekly.purchase_options.base.base.price).toEqual({ amount: 2.99, amount_micros: 2_990_000, currency: "EUR" });
+    expect(details.find((p) => p.identifier === "coins_100")!.purchase_options.base.base_price).toEqual({ amount: 0.99, amount_micros: 990_000, currency: "USD" });
+    // A product without a price shows USD 0.
+    expect(details.find((p) => p.identifier === "lifetime")!.current_price).toEqual({ amount: 0, amount_micros: 0, currency: "USD" });
+
+    // null clears it.
+    const cleared = await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { query: "expand=indicative_price", json: { test_store_price: null } });
+    expect(cleared.body.indicative_price).toBeNull();
+    // Only Test Store products take a price, and the amount and currency are validated.
+    const ios = await call("POST", PRODUCTS, {}, { json: { store_identifier: "ios_weekly", app_id: "app_ios", type: "subscription", test_store_price: { amount_micros: 1, currency: "USD" } } });
+    expect(ios.status).toBe(400);
+    expect(ios.body.param).toBe("test_store_price");
+    expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: "p1" }, { json: { test_store_price: { amount_micros: 1, currency: "USD" } } })).body.param).toBe("test_store_price");
+    expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { json: { test_store_price: { amount_micros: 1.5, currency: "USD" } } })).status).toBe(400);
+    expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { json: { test_store_price: { amount_micros: 100, currency: "dollars" } } })).status).toBe(400);
+  });
+});
+
 describe("entitlements", () => {
   it("full lifecycle: create, duplicate, update, attach, detach, archive, products, delete", async () => {
     const created = await call("POST", ENTS, {}, { json: { lookup_key: "premium", display_name: "Premium" } });
@@ -274,6 +312,13 @@ describe("webhook integrations", () => {
     expect(upd.body.signing_secret).toBeUndefined();
     expect((await call("POST", `${HOOKS}/{webhook_integration_id}`, { webhook_integration_id: id }, { json: { url: "not a url" } })).body.param).toBe("url");
     expect((await call("POST", HOOKS, {}, { json: { name: "x", url: "https://x.io", event_types: ["nope"] } })).status).toBe(400);
+    // `enabled` (a RevenueDot extension) is set with the update call and read from GET /v2/projects/{id}/webhooks.
+    const states = async () => (await call("GET", "/v2/projects/{project_id}/webhooks", {}, { ext: true })).body.items;
+    expect(await states()).toEqual([{ object: "webhook_state", id, enabled: true }]);
+    const paused = await call("POST", `${HOOKS}/{webhook_integration_id}`, { webhook_integration_id: id }, { json: { enabled: false } });
+    expect(paused.body.enabled).toBeUndefined();
+    expect(await states()).toEqual([{ object: "webhook_state", id, enabled: false }]);
+    expect((await call("POST", `${HOOKS}/{webhook_integration_id}`, { webhook_integration_id: id }, { json: { enabled: "no" } })).body.param).toBe("enabled");
     expect((await call("POST", HOOKS, {}, { json: { name: "x", url: "https://x.io", app_id: "appB" } })).body.param).toBe("app_id");
 
     expect((await call("DELETE", `${HOOKS}/{webhook_integration_id}`, { webhook_integration_id: id })).body).toMatchObject({ object: "webhook_integration", id });

@@ -58,7 +58,17 @@ export function appShape(a: AppRow) {
   }
 }
 
-export function productShape(p: ProductRow, app?: AppRow | null) {
+/**
+ * `expand=indicative_price` (RevenueCat's name): the Test Store price when the product has one. RevenueDot has no
+ * App Store or Google Play price source yet, so every other product reports null.
+ */
+export function indicativePrice(p: ProductRow) {
+  return p.testStorePriceMicros !== null && p.testStorePriceCurrency
+    ? { object: "indicative_price" as const, currency: p.testStorePriceCurrency, country: null, amount_micros: p.testStorePriceMicros }
+    : null;
+}
+
+export function productShape(p: ProductRow, app?: AppRow | null, withPrice = false) {
   const isSub = p.type === "subscription";
   const oneTime = p.type === "consumable" || p.type === "non_consumable" || p.type === "one_time" || p.type === "non_renewing_subscription";
   return {
@@ -66,6 +76,7 @@ export function productShape(p: ProductRow, app?: AppRow | null) {
     ...(isSub ? { subscription: { duration: p.duration ?? null, grace_period_duration: null, trial_duration: null } } : {}),
     ...(oneTime ? { one_time: { is_consumable: p.type === "consumable" ? true : p.type === "non_consumable" ? false : null } } : {}),
     created_at: p.createdAt.getTime(), app_id: p.appId, display_name: p.displayName ?? null,
+    ...(withPrice ? { indicative_price: indicativePrice(p) } : {}),
     ...(app ? { app: appShape(app) } : {}),
   };
 }
@@ -121,9 +132,10 @@ export async function entitlementProducts(db: DB, entitlementIds: string[]): Pro
 
 /** The project's catalog, for resolving store identifiers to product ids and entitlements in customer objects. */
 export async function loadCatalog(db: DB, projectId: string) {
-  const [products, ents] = await Promise.all([
+  const [products, ents, offers] = await Promise.all([
     db.select().from(schema.products).where(eq(schema.products.projectId, projectId)),
     db.select().from(schema.entitlements).where(eq(schema.entitlements.projectId, projectId)),
+    db.select({ id: schema.offerings.id, lookupKey: schema.offerings.lookupKey }).from(schema.offerings).where(eq(schema.offerings.projectId, projectId)),
   ]);
   const links = ents.length ? await db.select().from(schema.entitlementProducts).where(inArray(schema.entitlementProducts.entitlementId, ents.map((e) => e.id))) : [];
   const findProduct = (storeId: string, plan: string | null | undefined, appId: string | null | undefined) => {
@@ -140,7 +152,9 @@ export async function loadCatalog(db: DB, projectId: string) {
     const keys = plan ? [`${storeId}:${plan}`, storeId] : [storeId];
     return products.filter((p) => keys.includes(p.storeIdentifier)).map((p) => p.id);
   };
-  return { products, ents, links, findProduct, entitlementsFor, productIdsFor };
+  /** The SDK sends the offering's identifier (lookup key); REST objects carry the offering id, or the identifier when it is gone. */
+  const offeringId = (identifier: string | null | undefined) => (identifier ? offers.find((o) => o.lookupKey === identifier)?.id ?? identifier : null);
+  return { products, ents, links, findProduct, entitlementsFor, productIdsFor, offeringId };
 }
 export type Catalog = Awaited<ReturnType<typeof loadCatalog>>;
 
@@ -176,7 +190,7 @@ export function subscriptionShape(s: SubRow, customerAppUserId: string, cat: Cat
     product_id: prod?.id ?? null, starts_at: s.originalPurchaseDate.getTime(), current_period_starts_at: s.purchaseDate.getTime(),
     current_period_ends_at: ms(s.expiresDate), ends_at: ms(s.expiresDate), gives_access: st.access,
     pending_payment: st.status === "in_billing_retry" || st.status === "in_grace_period", auto_renewal_status: st.renewal, status: st.status,
-    total_revenue_in_usd: monetary(revenueUsd, s.store), presented_offering_id: null,
+    total_revenue_in_usd: monetary(revenueUsd, s.store), presented_offering_id: cat.offeringId(s.presentedOfferingId),
     entitlements: embeddedList(`/v2/projects/${s.projectId}/subscriptions/${s.id}/entitlements`, ents.map((e) => entitlementShape(e))),
     environment: s.isSandbox ? "sandbox" : "production", store: s.store, store_subscription_identifier: s.storeTransactionId ?? s.storeKey,
     ownership: s.ownershipType === "FAMILY_SHARED" ? "family_shared" : "purchased",
@@ -191,7 +205,7 @@ export function purchaseShape(p: NonSubRow, customerAppUserId: string, cat: Cata
   return {
     object: "purchase" as const, id: p.id, customer_id: customerAppUserId, original_customer_id: customerAppUserId,
     product_id: prod?.id ?? p.productIdentifier, purchased_at: p.purchaseDate.getTime(), revenue_in_usd: monetary(gross, p.store),
-    quantity: 1, status: p.refundedAt ? "refunded" : "owned", presented_offering_id: null,
+    quantity: 1, status: p.refundedAt ? "refunded" : "owned", presented_offering_id: cat.offeringId(p.presentedOfferingId),
     entitlements: embeddedList(`/v2/projects/${p.projectId}/purchases/${p.id}/entitlements`, ents.map((e) => entitlementShape(e))),
     environment: p.isSandbox ? "sandbox" : "production", store: p.store, store_purchase_identifier: p.storeTransactionId, ownership: "purchased",
     ...(p.countryCode ? { country: p.countryCode.toUpperCase() } : {}),

@@ -21,7 +21,12 @@ const Create = z.object({
   name: z.string().trim().min(1).max(255), url, authorization_header: z.string().max(2048).nullable().optional(),
   environment: Env, event_types: z.array(z.enum(ALL_WEBHOOK_EVENT_TYPES)).optional(), app_id: z.string().min(1).nullable().optional(),
 });
-const Update = Create.partial();
+/**
+ * `enabled` is a RevenueDot extension (RevenueCat's v2 integration has no such field): false pauses deliveries without
+ * deleting the integration. Events recorded while it is off are not sent; retries already queued resume when it is on again.
+ * The response keeps RevenueCat's shape; GET /v2/projects/{project_id}/webhooks (extensions.ts) reads `enabled`.
+ */
+const Update = Create.partial().extend({ enabled: z.boolean().optional() });
 
 type Row = typeof schema.webhooks.$inferSelect;
 
@@ -81,6 +86,7 @@ export function integrationRoutes(r: V2Router, deps: Deps) {
       ...(b.authorization_header !== undefined ? { authorizationHeader: b.authorization_header } : {}),
       ...(b.environment !== undefined ? { environment: b.environment ?? "both" } : {}),
       ...(b.app_id !== undefined ? { appId: b.app_id } : {}), ...(et !== undefined ? { eventTypes: et } : {}),
+      ...(b.enabled !== undefined ? { enabled: b.enabled } : {}),
     }).where(and(eq(schema.webhooks.projectId, w.projectId), eq(schema.webhooks.id, w.id))).returning();
     return c.json(webhookShape(row!));
   });

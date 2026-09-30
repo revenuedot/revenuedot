@@ -131,7 +131,7 @@ export async function extendSubscription(deps: Deps, sub: SubRow, p: { extendByD
     if (res.success === false) throw new StoreActionError("rejected", "The App Store did not extend the subscription (free offers, billing retry and expired subscriptions cannot be extended).");
     try {
       const fresh = await readAppleSubscription(api, app, original, env, now);
-      if (fresh) await applyFromStore(deps.db, { projectId: app.projectId, appId: app.id, purchase: fresh, now });
+      if (fresh) await applyFromStore(deps.db, { projectId: app.projectId, appId: app.id, purchase: fresh, now, fetch: deps.fetch });
     } catch (e) {
       console.warn(`Reading ${original} back from the App Store after an extension failed: ${e instanceof Error ? e.message : e}`);
     }

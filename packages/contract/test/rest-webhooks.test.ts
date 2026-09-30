@@ -103,6 +103,29 @@ describe("webhooks", () => {
     expect(d!.status).toBe("failed");
     expect(d!.attempts).toBe(6);
   });
+  it("enabled: false set through the v2 API pauses deliveries; queued retries resume when it is enabled again", async () => {
+    await addHook();
+    const hook = (json: unknown) => h.fetch(`/v2/projects/${h.ids.project}/integrations/webhooks/wh1`, { method: "POST", json, key: sk() });
+    await buy("wh_pause", "pro_monthly", new Date("2026-09-01T11:00:00Z"));
+    const fail: typeof fetch = async () => new Response("no", { status: 500 });
+    await tick(h.db, h.now(), fail);
+    expect((await hook({ enabled: false })).status).toBe(200);
+    const [row] = await h.db.select().from(schema.webhooks);
+    expect(row!.enabled).toBe(false);
+    // A purchase while paused queues nothing, and the due retry is held.
+    await buy("wh_pause2", "pro_monthly", new Date("2026-09-01T11:30:00Z"));
+    expect(await h.db.select().from(schema.webhookDeliveries)).toHaveLength(1);
+    expect((await h.fetch(`/v2/projects/${h.ids.project}/integrations/webhooks/wh1/test`, { method: "POST", key: sk() })).status).toBe(422);
+    const calls: string[] = [];
+    const ok: typeof fetch = async (url) => { calls.push(String(url)); return new Response("ok", { status: 200 }); };
+    const later = new Date(h.now().getTime() + 60 * 60_000);
+    expect((await tick(h.db, later, ok)).sent).toBe(0);
+    expect(calls).toHaveLength(0);
+    expect((await hook({ enabled: true })).status).toBe(200);
+    expect((await tick(h.db, later, ok)).sent).toBe(1);
+    const [d] = await h.db.select().from(schema.webhookDeliveries);
+    expect(d!.status).toBe("delivered");
+  });
   it("filters by environment and event type", async () => {
     await addHook({ environment: "production" });
     await buy("wh_user3", "pro_monthly", new Date()); // Test Store is sandbox

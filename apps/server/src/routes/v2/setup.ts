@@ -283,6 +283,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const [w] = await db.select().from(schema.webhooks)
       .where(and(eq(schema.webhooks.projectId, projectId), eq(schema.webhooks.id, c.req.param("webhook_integration_id")))).limit(1);
     if (!w) throw notFound("Webhook integration");
+    if (!w.enabled) throw new V2Error(422, "unprocessable_entity_error", "Deliveries to this webhook are paused. Turn them on to send a test event.", "enabled");
     const now = deps.now();
     const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId));
     const app = (w.appId ? apps.find((x) => x.id === w.appId) : apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())[0]) ?? null;

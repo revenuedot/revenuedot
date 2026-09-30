@@ -6,6 +6,7 @@
  * - Import from App Store Connect / Google Play and the "Product editor" (store-side price and metadata editing) are Tier 2;
  *   products are added by store identifier and a muted note says so.
  * - Price labels ("$9.99/week") come from the store APIs in RevenueCat; we show the duration until store import exists.
+ *   Test Store products have a price set here (the detail page shows it; the SDK reads it).
  * - RevenueCat's "…" menu on each app group (app shortcuts) is left out; the Apps page owns app settings.
  */
 import { useMemo, useState, type ReactNode } from "react";
@@ -15,7 +16,7 @@ import { Copy, Shell } from "../../components/Shell";
 import { ConfirmDialog, Dialog, EmptyState, Field, KeyValue, Menu, PageHead, Panel, Segmented, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog, ProductCell } from "./parts";
-import { count, durationLabel, errMsg, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, v2, type Entitlement, type Offering, type Product } from "./lib";
+import { count, durationLabel, errMsg, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, v2, type Entitlement, type Offering, type Product } from "./lib";
 
 type Filter = "all" | "active" | "inactive";
 
@@ -189,6 +190,7 @@ export function ProductDetail() {
         ["App", <AppName key="a" app={app} sub />],
         ["Type", typeLabel(p.type)],
         ...(p.type === "subscription" ? [["Duration", p.subscription?.duration ? <span key="d">{durationLabel(p.subscription.duration)} <span className="mono subtle">{p.subscription.duration}</span></span> : <span key="d" className="subtle">Not set. Edit the product to set it; MRR uses it.</span>] as [string, ReactNode]] : []),
+        ...(app?.type === "test_store" ? [["Test Store price", p.indicative_price ? <span key="tp" className="mono">{priceLabel(p.indicative_price)}</span> : <span key="tp" className="subtle">None. The SDK shows USD 0.00; edit the product to set a price.</span>] as [string, ReactNode]] : []),
         ["Display name", p.display_name || <span key="n" className="subtle">None</span>],
         ["Status", p.state === "active" ? <Tag tone="up">Active</Tag> : <Tag>Archived</Tag>],
         ["Created", <span key="c" className="mono">{fmt.dateTime(p.created_at)}</span>],
