@@ -239,6 +239,20 @@ describe("endpoints the SDK calls on its own", () => {
     expect((await h.fetch("/v1/events", { method: "POST", json: { events: [] } })).status).toBe(200);
     expect((await h.fetch("/v1/diagnostics", { method: "POST", json: { entries: [] } })).status).toBe(200);
   });
+  it("Test Store products have the keys of a real response and a numeric cycle_count", async () => {
+    const res = await h.fetch("/rcbilling/v1/subscribers/u1/products?id=pro_monthly&id=coins_100", { key: h.ids.testKey, headers: SDK_HEADERS });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { product_details: Array<Record<string, any>> };
+    const real = fx("ios/resp-web-billing-products.json").product_details[0];
+    const sub = body.product_details.find((p) => p.identifier === "pro_monthly")!;
+    expect(Object.keys(sub).sort()).toEqual(Object.keys(real).sort());
+    const base = sub.purchase_options[sub.default_purchase_option_id].base;
+    expect(Number.isInteger(base.cycle_count)).toBe(true);
+    expect(base.price.currency).toBe("USD");
+    const coins = body.product_details.find((p) => p.identifier === "coins_100")!;
+    expect(coins.product_type).toBe("consumable");
+    expect(coins.purchase_options.base.base_price.amount_micros).toBe(0);
+  });
   it("offerings fallback path without a user id works", async () => {
     expect(OfferingsSchema.safeParse(await (await h.fetch("/v1/offerings")).json()).success).toBe(true);
   });

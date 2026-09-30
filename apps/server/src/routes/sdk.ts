@@ -200,11 +200,21 @@ export function sdkRoutes(deps: Deps) {
     const app = c.get("app");
     const ids = new URL(c.req.url).searchParams.getAll("id");
     const rows = await deps.db.select().from(schema.products).where(eq(schema.products.appId, app.id));
-    const product_details = rows.filter((p) => ids.length === 0 || ids.includes(p.storeIdentifier)).map((p) => ({
-      identifier: p.storeIdentifier, product_type: p.type === "subscription" ? "subscription" : p.type === "consumable" ? "consumable" : "non_consumable",
-      title: p.displayName ?? p.storeIdentifier, description: null, default_purchase_option_id: "base",
-      purchase_options: { base: { id: "base", price_id: "base", base: p.type === "subscription" ? { period_duration: p.duration ?? "P1M", cycle_count: null, price: { amount_micros: 0, currency: "USD" } } : null, base_price: p.type === "subscription" ? null : { amount_micros: 0, currency: "USD" } } },
-    }));
+    // Shape of RevenueCat's web billing products response (fixtures/ios/resp-web-billing-products.json).
+    // The SDKs decode `cycle_count` as a non-null Int, so a null breaks the whole product.
+    // Prices are 0 until the catalog stores Test Store prices.
+    const price = { amount: 0, amount_micros: 0, currency: "USD" };
+    const product_details = rows.filter((p) => ids.length === 0 || ids.includes(p.storeIdentifier)).map((p) => {
+      const sub = p.type === "subscription";
+      const period = p.duration ?? "P1M";
+      const option = { id: "base", price_id: "base", base: sub ? { period_duration: period, cycle_count: 1, price } : null, base_price: sub ? null : price, trial: null, intro_price: null };
+      return {
+        identifier: p.storeIdentifier, product_type: sub ? "subscription" : p.type === "consumable" ? "consumable" : "non_consumable",
+        title: p.displayName ?? p.storeIdentifier, description: null, current_price: price, normal_period_duration: sub ? period : null,
+        default_purchase_option_id: "base", default_subscription_option_id: sub ? "base" : null,
+        purchase_options: { base: option }, subscription_options: sub ? { base: option } : {},
+      };
+    });
     return c.json({ product_details });
   });
 
