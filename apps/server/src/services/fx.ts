@@ -1,46 +1,43 @@
-import { desc, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
+import { BUNDLED_ECB, BUNDLED_USD } from "./fx-bundled.js";
 
 /**
  * USD values of store prices, converted at the exchange rate of the purchase date like RevenueCat
- * (company research semantics.md, "Currency conversion"). The source is the ECB's daily reference rates:
- * free, keyless and published every TARGET business day around 16:00 CET. Rates are cached in `fx_rates`; a date
- * with no published rate (weekend, holiday, today before publication) uses the last business day before it.
- * Without network access the bundled rates below are used. Currencies the ECB does not publish (about 30 are covered)
- * have no USD value (null), as RevenueCat's REST API reports "null when no exchange rate exists".
- * Works on Workers: one `fetch` of a small CSV, no Node APIs.
+ * (company research semantics.md, "Currency conversion"). Two keyless sources, both cached in `fx_rates`:
+ * - `ecb`: the ECB's daily reference rates (about 30 currencies), used whenever the ECB publishes the currency.
+ * - `usd`: the fawazahmed0 currency-api (CC0-1.0, https://github.com/fawazahmed0/exchange-api), daily rates for every
+ *   ISO currency, for the rest (SAR, AED, EGP, NGN, PKR, VND, KZT, QAR, TWD ...). jsDelivr first, its Cloudflare Pages
+ *   mirror second. Its history starts on 2024-03-02; earlier purchases use that first day.
+ * A date without rates (ECB weekends and holidays, today before publication) uses the last day before it that has them.
+ * Without network access the bundled rates (fx-bundled.ts) are used. Works on Workers: `fetch` only, no Node APIs.
  */
 
-const ECB = "https://data-api.ecb.europa.eu/service/data/EXR/D..EUR.SP00.A";
-/** The ECB skips weekends and TARGET holidays; the longest gap (Easter) is 4 days. */
-const MAX_GAP_DAYS = 4;
-/** Days of rates fetched before the date asked for, so one call also fills nearby purchases. */
-const WINDOW_DAYS = 14;
-/** A failed or empty fetch for a window is not retried sooner than this. */
-const RETRY_MS = 10 * 60 * 1000;
-const DAY = 86_400_000;
-
-/** ECB reference rates of 2026-09-30 (units per EUR), used when the cache has nothing close and the ECB is unreachable. */
-export const BUNDLED_RATES = {
-  date: "2026-09-30",
-  rates: {
-    EUR: 1, USD: 1.1355, JPY: 178.27, CZK: 24.44, DKK: 7.4755, GBP: 0.85463, HUF: 366.2, PLN: 4.369, RON: 5.2788, SEK: 11.331,
-    CHF: 0.9478, ISK: 137, NOK: 10.9015, TRY: 55.6596, AUD: 1.6297, BRL: 5.9077, CAD: 1.6105, CNY: 7.613, HKD: 8.9095,
-    IDR: 20315.34, ILS: 3.4901, INR: 108.8205, KRW: 1539.06, MXN: 20.5816, MYR: 4.6306, NZD: 2.0115, PHP: 71.204,
-    SGD: 1.4503, THB: 38.113, ZAR: 18.6123,
-  } as Record<string, number>,
-};
+export { BUNDLED_ECB, BUNDLED_USD };
 
 export type FxFetch = (url: string, init?: RequestInit) => Promise<Response>;
 type Rates = { date: string; rates: Record<string, number> };
+type Source = "ecb" | "usd";
+
+/** The ECB skips weekends and TARGET holidays; the longest gap (Easter) is 4 days. */
+const MAX_GAP_DAYS = 4;
+/** A failed or empty fetch for a date is not retried sooner than this. */
+const RETRY_MS = 10 * 60 * 1000;
+const DAY = 86_400_000;
+const ECB = "https://data-api.ecb.europa.eu/service/data/EXR/D..EUR.SP00.A";
+/** Days of ECB rates fetched before the date asked for, so one call also fills nearby purchases. */
+const ECB_WINDOW_DAYS = 14;
+export const USD_SOURCE_FIRST_DAY = "2024-03-02";
+export const usdSourceUrls = (date: string) => [
+  `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${date}/v1/currencies/usd.json`,
+  `https://${date}.currency-api.pages.dev/v1/currencies/usd.json`,
+];
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
+const addDays = (date: string, n: number) => day(new Date(Date.parse(date) + n * DAY));
 const gapDays = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / DAY);
-/** Per isolate and HTTP client: windows whose fetch failed recently, so a down ECB does not slow every purchase. */
-const failures = new WeakMap<FxFetch, Map<string, number>>();
-const globalFetch: FxFetch = (u, i) => globalThis.fetch(u, i);
 
-/** Parses the ECB data API's `csvdata` (detail=dataonly) into rates per day. */
+/** Parses the ECB data API's `csvdata` (detail=dataonly) into rates per day (units per EUR). */
 export function parseEcbCsv(csv: string): Rates[] {
   const lines = csv.trim().split(/\r?\n/);
   const head = (lines.shift() ?? "").split(",");
@@ -58,59 +55,108 @@ export function parseEcbCsv(csv: string): Rates[] {
   return [...byDay].map(([date, rates]) => ({ date, rates })).filter((x) => x.rates.USD);
 }
 
-async function cached(db: DB, date: string): Promise<Rates | null> {
-  const [row] = await db.select({ date: schema.fxRates.date, rates: schema.fxRates.rates }).from(schema.fxRates)
-    .where(lte(schema.fxRates.date, date)).orderBy(desc(schema.fxRates.date)).limit(1);
+/** Parses a currency-api `currencies/usd.json` file into ISO codes per 1 USD. */
+export function parseUsdJson(body: unknown): Rates | null {
+  const b = body as { date?: unknown; usd?: Record<string, unknown> } | null;
+  if (!b || typeof b.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(b.date) || !b.usd || typeof b.usd !== "object") return null;
+  const rates: Record<string, number> = { USD: 1 };
+  for (const [k, v] of Object.entries(b.usd)) if (/^[a-z]{3}$/.test(k) && typeof v === "number" && v > 0) rates[k.toUpperCase()] = v;
+  return Object.keys(rates).length > 1 ? { date: b.date, rates } : null;
+}
+
+async function cachedOnOrBefore(db: DB, source: Source, date: string): Promise<Rates | null> {
+  const F = schema.fxRates;
+  const [row] = await db.select({ date: F.date, rates: F.rates }).from(F).where(and(eq(F.source, source), lte(F.date, date))).orderBy(desc(F.date)).limit(1);
+  return row ?? null;
+}
+async function cachedAfter(db: DB, source: Source, date: string): Promise<Rates | null> {
+  const F = schema.fxRates;
+  const [row] = await db.select({ date: F.date, rates: F.rates }).from(F).where(and(eq(F.source, source), gte(F.date, date))).orderBy(asc(F.date)).limit(1);
   return row ?? null;
 }
 
-/** Fetches the ECB window ending at `date` into the cache. Never throws. */
-async function refresh(db: DB, date: string, fetchFn: FxFetch): Promise<void> {
-  let failedAt = failures.get(fetchFn);
-  if (!failedAt) failures.set(fetchFn, (failedAt = new Map()));
-  const last = failedAt.get(date);
+async function save(db: DB, source: Source, days: Rates[]) {
+  if (!days.length) return;
+  await db.insert(schema.fxRates).values(days.map((d) => ({ source, date: d.date, rates: d.rates })))
+    .onConflictDoUpdate({ target: [schema.fxRates.source, schema.fxRates.date], set: { rates: sql`excluded.rates`, fetchedAt: sql`now()` } });
+}
+
+async function get(fetchFn: FxFetch, url: string, accept: string): Promise<Response | null> {
+  try { return await fetchFn(url, { headers: { accept }, signal: AbortSignal.timeout(5000) }); } catch { return null; }
+}
+
+const FETCHERS: Record<Source, (fetchFn: FxFetch, date: string) => Promise<Rates[]>> = {
+  async ecb(fetchFn, date) {
+    const res = await get(fetchFn, `${ECB}?startPeriod=${addDays(date, -ECB_WINDOW_DAYS)}&endPeriod=${date}&format=csvdata&detail=dataonly`, "text/csv");
+    return res?.ok ? parseEcbCsv(await res.text().catch(() => "")) : [];
+  },
+  async usd(fetchFn, date) {
+    // Today's file may not be published yet: then yesterday's.
+    for (const d of date === day(new Date()) ? [date, addDays(date, -1)] : [date]) {
+      for (const url of usdSourceUrls(d)) {
+        const res = await get(fetchFn, url, "application/json");
+        if (!res?.ok) continue;
+        const parsed = parseUsdJson(await res.json().catch(() => null));
+        if (parsed) return [parsed];
+      }
+    }
+    return [];
+  },
+};
+
+/** Per isolate and HTTP client: dates whose fetch failed recently, so a down source does not slow every purchase. */
+const failures = new WeakMap<FxFetch, Map<string, number>>();
+const globalFetch: FxFetch = (u, i) => globalThis.fetch(u, i);
+
+async function refresh(db: DB, source: Source, date: string, fetchFn: FxFetch): Promise<void> {
+  let failed = failures.get(fetchFn);
+  if (!failed) failures.set(fetchFn, (failed = new Map()));
+  const key = `${source}:${date}`;
+  const last = failed.get(key);
   if (last !== undefined && Date.now() - last < RETRY_MS) return;
-  const start = day(new Date(Date.parse(date) - WINDOW_DAYS * DAY));
   try {
-    const res = await fetchFn(`${ECB}?startPeriod=${start}&endPeriod=${date}&format=csvdata&detail=dataonly`, {
-      headers: { accept: "text/csv" }, signal: AbortSignal.timeout(5000),
-    });
-    const days = res.ok ? parseEcbCsv(await res.text()) : [];
-    if (!days.length) { failedAt.set(date, Date.now()); return; }
-    await db.insert(schema.fxRates).values(days.map((d) => ({ date: d.date, rates: d.rates })))
-      .onConflictDoUpdate({ target: schema.fxRates.date, set: { rates: sql`excluded.rates`, fetchedAt: sql`now()` } });
-    failedAt.delete(date);
+    const days = await FETCHERS[source](fetchFn, date);
+    if (!days.length) { failed.set(key, Date.now()); return; }
+    await save(db, source, days);
+    failed.delete(key);
   } catch {
-    failedAt.set(date, Date.now());
+    failed.set(key, Date.now());
   }
 }
 
-/** Rates for a date: the cache, the ECB, or the closest of what is left (a stale cached day or the bundled rates). */
-export async function ratesOn(db: DB, at: Date, fetchFn: FxFetch | null): Promise<Rates> {
-  // A future date (a clock ahead of the ECB) asks for today.
-  const date = day(at.getTime() > Date.now() ? new Date() : at);
-  let hit = await cached(db, date);
+const BUNDLED: Record<Source, Rates> = { ecb: BUNDLED_ECB, usd: BUNDLED_USD };
+
+/** Rates of one source for a date: the cache, the source, or the closest of what is left (a cached day or the bundled rates). */
+export async function ratesOn(db: DB, at: Date, fetchFn: FxFetch | null, source: Source = "ecb"): Promise<Rates> {
+  // A future date (a clock ahead of the sources) asks for today; the usd source has no history before its first day.
+  let date = day(at.getTime() > Date.now() ? new Date() : at);
+  if (source === "usd" && date < USD_SOURCE_FIRST_DAY) date = USD_SOURCE_FIRST_DAY;
+  let hit = await cachedOnOrBefore(db, source, date);
   if (hit && gapDays(hit.date, date) <= MAX_GAP_DAYS) return hit;
   if (fetchFn) {
-    await refresh(db, date, fetchFn);
-    hit = await cached(db, date);
+    await refresh(db, source, date, fetchFn);
+    hit = await cachedOnOrBefore(db, source, date);
     if (hit && gapDays(hit.date, date) <= MAX_GAP_DAYS) return hit;
   }
-  if (hit && Math.abs(gapDays(hit.date, date)) < Math.abs(gapDays(BUNDLED_RATES.date, date))) return hit;
-  return BUNDLED_RATES;
+  const candidates = [hit, await cachedAfter(db, source, date), BUNDLED[source]].filter((x): x is Rates => !!x);
+  return candidates.sort((a, b) => Math.abs(gapDays(a.date, date)) - Math.abs(gapDays(b.date, date)))[0]!;
 }
 
 /**
- * USD value of a price at `at` (the purchase date), rounded to 4 decimals. USD passes through; a currency
- * without an ECB rate returns null. `fetchFn` null uses the cache and the bundled rates only; undefined uses the global fetch.
+ * USD value of a price at `at` (the purchase date), rounded to 4 decimals. USD passes through. ECB rates first; the
+ * `usd` source for currencies the ECB does not publish; null for a code neither knows. `fetchFn` null uses the cache
+ * and the bundled rates only; undefined uses the global fetch.
  */
 export async function usdValue(db: DB, price: { amount: number; currency: string } | null | undefined, at: Date, fetchFn?: FxFetch | null): Promise<number | null> {
   if (!price) return null;
   const cur = price.currency.toUpperCase();
   if (cur === "USD") return price.amount;
   if (price.amount === 0) return 0;
-  const { rates } = await ratesOn(db, at, fetchFn === undefined ? globalFetch : fetchFn);
-  const perEur = rates[cur];
-  if (!perEur || !rates.USD) return null;
-  return Math.round((price.amount / perEur) * rates.USD * 10_000) / 10_000;
+  const f = fetchFn === undefined ? globalFetch : fetchFn;
+  const round = (n: number) => Math.round(n * 10_000) / 10_000;
+  const ecb = await ratesOn(db, at, f, "ecb");
+  if (ecb.rates[cur] && ecb.rates.USD) return round((price.amount / ecb.rates[cur]!) * ecb.rates.USD);
+  const usd = await ratesOn(db, at, f, "usd");
+  if (usd.rates[cur]) return round(price.amount / usd.rates[cur]!);
+  return null;
 }

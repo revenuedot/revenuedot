@@ -347,12 +347,14 @@ export const oauthCodes = pgTable("oauth_codes", {
 });
 
 /**
- * Daily ECB reference rates (units of each currency per 1 EUR, EUR itself included as 1), cached from the ECB data API.
- * Purchases convert to USD at the rate of their purchase date, or the last business day before it.
+ * Daily exchange rates by source, cached. `ecb`: ECB reference rates, units per 1 EUR (EUR included as 1).
+ * `usd`: the fawazahmed0 currency-api (every ISO currency), units per 1 USD. Purchases convert to USD at the rate of
+ * their purchase date, or the last day before it with rates; ECB first, `usd` for currencies the ECB does not publish.
  */
 export const fxRates = pgTable("fx_rates", {
-  /** YYYY-MM-DD, a TARGET business day. */
-  date: text("date").primaryKey(),
+  source: text("source").notNull().default("ecb"),
+  /** YYYY-MM-DD. */
+  date: text("date").notNull(),
   rates: jsonb("rates").$type<Record<string, number>>().notNull(),
   fetchedAt: ts("fetched_at").notNull().defaultNow(),
-});
+}, (t) => [primaryKey({ columns: [t.source, t.date] })]);
