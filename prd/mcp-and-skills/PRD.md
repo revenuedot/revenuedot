@@ -1,6 +1,6 @@
 # MCP server, agent skills and llms.txt (scope 1.14)
 
-**The MCP server, the OAuth flow and three skills are built and tested; nothing is published or deployed yet.** `revenuedot/mcp` has 17 tools over the REST API v2, Streamable HTTP and stdio transports, bearer-key and OAuth modes, and a Cloudflare Worker config. The server has an OAuth 2.1 authorization server whose access tokens are project-scoped secret keys. `revenuedot/agent-skills` has `migrate-from-revenuecat`, `add-subscriptions` and `self-host`. `@revenuedot/mcp` is not on npm and `mcp.revenuedot.app` is not deployed. `llms.txt` is still hand-written. State: built, unreleased. Code: `../mcp/`, `../agent-skills/`, [`apps/server/src/routes/oauth.ts`](../../apps/server/src/routes/oauth.ts), `../docs/llms.txt` (sibling repos in the local workspace).
+**The hosted MCP server is live at https://mcp.revenuedot.app/mcp (since 2026-09-30); the npm package is not published.** `revenuedot/mcp` has 17 tools over the REST API v2, Streamable HTTP and stdio transports, bearer-key and OAuth modes, and a Cloudflare Worker that its `ci.yml` deploys from `main` after the tests pass, then checks live. The server has an OAuth 2.1 authorization server whose access tokens are project-scoped secret keys. `revenuedot/agent-skills` has `migrate-from-revenuecat`, `add-subscriptions` and `self-host`. `@revenuedot/mcp` and the `revenuedot` CLI are not on npm, so `npx` needs the from-source fallback. `llms.txt`, `llms/` and `llms-full.txt` are generated from `revenuedot/docs` (`npm run build:llms`) and served at https://revenuedot.app/llms.txt. State: hosted MCP live, packages unpublished. Code: `../mcp/`, `../agent-skills/`, [`apps/server/src/routes/oauth.ts`](../../apps/server/src/routes/oauth.ts), `../docs/llms.txt` (sibling repos in the local workspace).
 
 ## Users and jobs to be done
 - **As an indie developer in Claude Code or Cursor**, I want to say "set up a monthly and an annual plan behind a `pro` entitlement" and have the agent create the products, entitlement, offering and packages, so I never open the dashboard for setup.
@@ -74,18 +74,16 @@
 
 No test yet:
 - An agent following `migrate-from-revenuecat` on a sample app reaches a working dual-run. The skills' commands were checked against the code and run against a local server, but not against a real RevenueCat project or a real app build.
-- OAuth sign-in from Claude Desktop, ChatGPT or Cursor against a deployed server (the SDK client test covers the protocol).
-- The Worker running on Cloudflare (the bundle builds for the browser platform and runs with code generation from strings disabled).
-- `llms.txt` and `llms-full.txt` regenerate from the docs on every change and link only to pages that exist.
+- OAuth sign-in from Claude Desktop, ChatGPT or Cursor against https://mcp.revenuedot.app (the SDK client test covers the protocol).
+- The deployed Worker is checked only by `ci.yml`'s live check: `/.well-known/oauth-protected-resource` answers and `POST /mcp` without a token answers 401.
 
 ## Known gaps and next steps
 1. Publish `@revenuedot/mcp` and `revenuedot` (the importer CLI) to npm; the skills and README use `npx` for both.
-2. Deploy the Worker at `mcp.revenuedot.app` and try OAuth from Claude, ChatGPT and Cursor.
+2. Try OAuth at `mcp.revenuedot.app` from Claude, ChatGPT and Cursor.
 3. OAuth tokens never expire and have no refresh token. Add expiry plus refresh tokens if a client needs them.
 4. The MCP server does not check that a token was issued for it (audience); it forwards any secret key to the API, which is the resource that enforces access. The `resource` a client asked for is stored on the code only.
 5. `/auth/signup` is open on self-hosted servers, so anyone who can reach the consent page can make an account (they still see only their own projects).
-6. Generate `llms.txt` and `llms-full.txt` from `revenuedot/docs` instead of maintaining them by hand.
-7. Tools for app creation, customer search and the dashboard's other actions (principle 5) are not built.
+6. Tools for app creation, customer search and the dashboard's other actions (principle 5) are not built.
 
 ## Contact-sheet references
 - [`frames/29-rico-ai.jpg`](../../../company/docs/research/contact-sheets/revenuecat/frames/29-rico-ai.jpg): RevenueCat's in-app AI chat (history rail, new conversation, attachments). Reference for the Tier 2 in-app agent, not for the MCP server.

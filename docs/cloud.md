@@ -1,8 +1,10 @@
 # RevenueDot Cloud (Cloudflare Workers)
 
-RevenueDot Cloud is the same Hono app as self-host, run on Cloudflare Workers with Postgres through Hyperdrive. It is
-live. Everything is built and deployed with the [`cf` CLI](https://www.npmjs.com/package/cf) (not wrangler), on the
-Cloudflare account **Circo** (`5a8f4d72ace5f438725e1dfd1b0380ff`), zone `revenuedot.app`.
+RevenueDot Cloud is the same Hono app as self-host, run on Cloudflare Workers with Postgres through Hyperdrive. It has
+been live since 2026-09-30: sign-up is open at https://app.revenuedot.app and every account is on the free plan.
+Everything is built and deployed with the [`cf` CLI](https://www.npmjs.com/package/cf) (not wrangler), on the
+Cloudflare account **Circo** (`5a8f4d72ace5f438725e1dfd1b0380ff`), zone `revenuedot.app`. Production deploys run from
+GitHub Actions on every push to `main` (see [Deploy](#deploy)).
 
 | Host | Worker | Source | What it serves |
 | --- | --- | --- | --- |
@@ -27,7 +29,8 @@ Every account is on the `free` plan (`users.plan`) until billing plans ship. `/a
 
 ## Requirements
 
-- **Node 22.18 or newer.** `cf` loads `cloudflare.config.ts` with Node's module hooks and refuses older versions.
+- **Node 24** (`.nvmrc`; CI uses the same file). `cf` itself needs Node 22.18 or newer: it loads `cloudflare.config.ts`
+  with Node's module hooks and refuses older versions.
 - **`cf auth login`** as a user with access to the Circo account. The account is selected by `accountId` in each
   `cloudflare.config.ts` (the Circo id); set `CLOUDFLARE_ACCOUNT_ID` to override it. Run `cf` from the folder that has
   the `cloudflare.config.ts` so it picks up that account.
@@ -65,8 +68,10 @@ node scripts/smoke-cloud.mjs https://api.revenuedot.app --read-only --app https:
 ```
 
 Production deploys run from GitHub Actions (`.github/workflows/deploy.yml`) on every push to `main` once CI passes, with
-the `production` environment's secrets. `scripts/deploy-cloud.sh` reads the production URL from `CLOUD_DATABASE_URL`, or,
-for a manual deploy, from 1Password (`op://RevenueDot/Railway production Postgres/url`). Unless `REVENUEDOT_HYPERDRIVE_ID`
+the GitHub `production` environment's secrets. The workflow looks at the changed paths: server, dashboard, package and
+migration changes run migrations, deploy the Worker and run the read-only smoke test above against production; site,
+design and brand changes deploy the site. `scripts/deploy-cloud.sh` reads the production URL from `CLOUD_DATABASE_URL`
+(a manual deploy must set it too). Unless `REVENUEDOT_HYPERDRIVE_ID`
 is set (CI sets it), it looks up the Hyperdrive config named `revenuedot` and passes its id to
 `cloudflare.config.ts` as `REVENUEDOT_HYPERDRIVE_ID`. If there is none, it creates one, writing the connection details
 to a mode-600 temp file that it deletes. Deploy from a clean checkout of `main`: the script deploys and migrates whatever
@@ -74,10 +79,12 @@ is in the working tree. Never run the full smoke test against production; `--rea
 
 The response-signing root key is the secret `REVENUEDOT_SIGNING_KEY` (public key
 `gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=`). It was uploaded on the first deploy with
-`pnpm deploy:cloud --secrets-file <file>`; later versions keep it. The master copy is in 1Password
-(`RevenueDot response-signing root key`). To rotate it, write a new key to a temp file, pass it with the same flag, then delete the file.
+`pnpm deploy:cloud --secrets-file <file>`; later versions keep it. The master copy is kept in the team's password
+manager, not on disk. To rotate it, write a new key to a temp file, pass it with the same flag, then delete the file.
 
-The site and the MCP server deploy on their own:
+The site and the MCP server also deploy from CI: a push to `main` in [revenuedot/docs](https://github.com/revenuedot/docs)
+runs its `deploy-site.yml` (docs checks, then the site), and a push to `main` in
+[revenuedot/mcp](https://github.com/revenuedot/mcp) runs its `ci.yml` (tests, deploy, then a live check). By hand:
 
 ```sh
 pnpm --filter site run deploy               # Astro build, checks, then cf deploy --prebuilt (apps/site/cloudflare.config.ts)
@@ -95,9 +102,9 @@ Cloudflare Vite plugin.
 - `www.revenuedot.app` → `https://revenuedot.app` is a Single Redirect rule in the zone's
   `http_request_dynamic_redirect` phase (301, path and query kept).
 - The site sends HSTS and its security headers from `apps/site/public/_headers`.
-- The zone's SSL/TLS mode is Full, the minimum TLS version is 1.0 and Always Use HTTPS is off, so `http://` requests
-  are served without a redirect. Switching to Full (strict), TLS 1.2, Always Use HTTPS and zone-wide HSTS waits on
-  approval (`cf zones settings edit <setting> -z revenuedot.app`).
+- `http://` requests on every host answer 301 to `https://` (checked 2026-09-30). `api.revenuedot.app` sends
+  `Strict-Transport-Security: max-age=31536000; includeSubDomains`. Change zone settings with
+  `cf zones settings edit <setting> -z revenuedot.app`.
 
 ## Workers differences from self-host
 

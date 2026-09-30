@@ -32,13 +32,13 @@ Works with the RevenueCat SDK you already ship: change one line, keep your app c
 </div>
 
 > [!IMPORTANT]
-> **RevenueDot is open-source app monetization infrastructure.** Self-host it free, or use RevenueDot Cloud. The roadmap is in [prd/SCOPE.md](prd/SCOPE.md).
+> **RevenueDot is open-source app monetization infrastructure.** Self-host it free, or use [RevenueDot Cloud](https://app.revenuedot.app) (live, free plan, open sign-up). No real App Store or Google Play sandbox purchase has run end to end yet: store handling is tested against mocked Apple and Google APIs. What works today: [docs/STATUS.md](docs/STATUS.md). Roadmap: [prd/SCOPE.md](prd/SCOPE.md).
 
 ## In one minute
 
 - **What it is:** an open-source server that validates App Store and Google Play purchases, keeps every customer's entitlements up to date, and sends webhooks to your backend.
 - **Why it's different:** it speaks the same API as RevenueCat, so apps already using the RevenueCat SDK switch by changing one setting. No purchase code to rewrite.
-- **How you run it:** `docker compose up` on your own servers, free forever, or RevenueDot Cloud when you'd rather not run it.
+- **How you run it:** `docker compose up` on your own servers, free forever, or [RevenueDot Cloud](https://app.revenuedot.app) at `https://api.revenuedot.app` when you'd rather not run it.
 - **Who it's for:** subscription apps that want to own their purchase data, stop paying a share of revenue, or keep data in a specific region.
 
 ## Contents
@@ -116,6 +116,7 @@ One TypeScript codebase runs two ways: in Docker next to your own Postgres, or o
    npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project <RevenueCat project id> \
      --to https://api.revenuedot.app --to-key <RevenueDot secret key>
    ```
+   The `revenuedot` package is not on npm yet. Until it is, run it from a clone of this repo: `pnpm install`, then `pnpm --filter revenuedot cli import ...` ([guide](https://revenuedot.app/docs/migrate/importer)).
 2. **Run side by side.** Point App Store and Google Play notifications at RevenueDot. It forwards every notification to RevenueCat, so both systems stay accurate while you compare them.
 3. **Switch.** Ship an app update that sets the proxy URL. When most users are on the new version, turn RevenueCat off.
 
@@ -158,7 +159,7 @@ Purchases.proxyURL = "https://api.revenuedot.app"
 Purchases.configure({ apiKey: "rcb_...", appUserId, httpConfig: { proxyURL: "https://api.revenuedot.app" } });
 ```
 
-Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchases.setProxyURL(url)`. Self-hosting? Use your own server's URL.
+Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchases.setProxyURL(url)`. `https://api.revenuedot.app` is RevenueDot Cloud; self-hosting? Use your own server's URL.
 
 </details>
 
@@ -169,14 +170,14 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 
 | Area | What you get | Status |
 |---|---|---|
-| **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · building |
-| **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · building |
-| **Backend** | RevenueCat-compatible REST API v1 and v2 core, webhooks with the same payloads, signed deliveries, retries and replay | Tier 1 · building |
-| **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · building |
-| **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · designing |
-| **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · building |
-| **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked |
-| **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · scaffolded |
+| **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
+| **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
+| **Backend** | RevenueCat-compatible REST API v1 and v2 core, webhooks with the same payloads, signed deliveries, retries and replay | Tier 1 · built and tested |
+| **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI not on npm yet |
+| **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
+| **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
+| **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
+| **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; `@revenuedot/mcp` not on npm yet |
 | **Growth** | 42 charts, paywalls, experiments, targeting, integrations, virtual currencies, Customer Center | Tier 2 · planned |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
 
@@ -255,37 +256,45 @@ cp .env.example .env        # add your App Store and Google Play credentials
 docker compose up -d        # API, dashboard and Postgres
 ```
 
-<sub>Planned for the first release. What you run yourself: the server, Postgres, backups and upgrades. RevenueDot Cloud adds failover, point-in-time recovery, global edge caching, monitoring and support.</sub>
+<sub>What you run yourself: the server, Postgres, backups and upgrades. Compose builds the image from source; there is no published image yet. Guide: [revenuedot.app/docs/guides/self-hosting](https://revenuedot.app/docs/guides/self-hosting).</sub>
 
 ## RevenueDot Cloud
 
-RevenueDot Cloud runs this repository on Cloudflare Workers: the API at `https://api.revenuedot.app`, the dashboard at
-`https://app.revenuedot.app` and the hosted MCP server at `https://mcp.revenuedot.app/mcp`. It deploys with the `cf` CLI
-(`pnpm deploy:cloud`); the runbook is [docs/cloud.md](docs/cloud.md).
+RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan.
+
+| Host | What it is |
+|---|---|
+| https://app.revenuedot.app | Dashboard: sign up, create a project, apps and keys |
+| https://api.revenuedot.app | API: set the SDK's `proxyURL` here. Responses are signed; the public key is at [`/.well-known/revenuedot-signing-key`](https://api.revenuedot.app/.well-known/revenuedot-signing-key) |
+| https://mcp.revenuedot.app/mcp | Hosted MCP server, sign in with OAuth or a secret key |
+| https://revenuedot.app | Site, [docs](https://revenuedot.app/docs), [blog](https://revenuedot.app/blog) and [llms.txt](https://revenuedot.app/llms.txt) |
+
+Every push to `main` deploys from GitHub Actions (`.github/workflows/deploy.yml`) once CI passes, then runs live smoke checks. The runbook is [docs/cloud.md](docs/cloud.md).
 
 ## Built for AI agents
 
-- **[MCP server](https://github.com/revenuedot/mcp):** manage offerings, look up customers, grant access and check webhooks from Claude, ChatGPT or Cursor.
+- **[MCP server](https://github.com/revenuedot/mcp):** manage offerings, look up customers, grant access and check webhooks from Claude, ChatGPT or Cursor. Hosted at `https://mcp.revenuedot.app/mcp`.
 - **[Agent skills](https://github.com/revenuedot/agent-skills):** `migrate-from-revenuecat`, `add-subscriptions` and `self-host`, for Claude Code, Codex and Cursor.
-- **Docs for machines:** `llms.txt` and Markdown docs, so assistants answer RevenueDot questions correctly.
+- **Docs for machines:** [`llms.txt`](https://revenuedot.app/llms.txt) and Markdown docs, so assistants answer RevenueDot questions correctly.
 
 ## Repository map
 
 ```
 revenuedot/
 ├── apps/
-│   ├── server/        RevenueCat-compatible API (Hono, TypeScript)
-│   └── dashboard/     Web dashboard
+│   ├── server/        RevenueCat-compatible API (Hono, TypeScript) and the App Store and Google Play adapters
+│   ├── dashboard/     Web dashboard
+│   └── site/          revenuedot.app (Astro), renders revenuedot/docs at /docs and /blog
 ├── packages/
 │   ├── core/          Subscription state machine and entitlement engine (pure functions)
-│   ├── stores/        App Store, Google Play, Amazon and Stripe adapters
 │   ├── db/            Postgres schema and migrations
 │   ├── contract/      Contract tests from the RevenueCat SDK fixtures
-│   └── cli/           npx revenuedot (import, init, keys) · MIT
+│   └── importer/      The `revenuedot` CLI: import from RevenueCat, verify, plan · MIT
 ├── ee/                Enterprise features · RevenueDot Enterprise License
 ├── brand/             Logo, icons, social cards and the generator
 ├── prd/               Specs, one folder per feature
-└── docs/              Architecture, status and README assets
+├── scripts/           Cloud deploy, migrations, smoke checks, iOS and Android SDK e2e harnesses, fork pipeline
+└── docs/              Status, the Cloud runbook and README assets
 ```
 
 ## Roadmap
@@ -315,7 +324,7 @@ Import your RevenueCat export, forward App Store and Google Play notifications s
 
 <details><summary><b>Do I have to change my app?</b></summary>
 
-One line: set the SDK's proxy URL to your RevenueDot server. Offerings, purchases, entitlements and customer info work as before.
+One line: set the SDK's proxy URL to `https://api.revenuedot.app` for RevenueDot Cloud, or to your own server. Offerings, purchases, entitlements and customer info work as before.
 </details>
 
 <details><summary><b>How do Google Play purchases migrate if RevenueCat doesn't export purchase tokens?</b></summary>
@@ -330,7 +339,7 @@ RevenueDot serves the same API the RevenueCat SDKs call, so it supports what the
 
 <details><summary><b>How much does RevenueDot cost?</b></summary>
 
-Self-hosting is free. RevenueDot Cloud will have a free plan for small apps. Enterprise licenses cover SSO, audit logs, data regions and support.
+Self-hosting is free. RevenueDot Cloud is live with a free plan on every account; paid plans have not shipped. Enterprise licenses cover SSO, audit logs, data regions and support.
 </details>
 
 <details><summary><b>Is it safe to validate purchases on my own server?</b></summary>
@@ -354,7 +363,7 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md). Every feature starts with a spec
 
 ## Security
 
-Please report vulnerabilities privately through GitHub's **Report a vulnerability** button in the Security tab. See [SECURITY.md](https://github.com/revenuedot/.github/blob/main/SECURITY.md).
+Please report vulnerabilities privately through GitHub's **Report a vulnerability** button in the Security tab, or email security@revenuedot.app. See [SECURITY.md](https://github.com/revenuedot/.github/blob/main/SECURITY.md).
 
 ## License
 

@@ -9,10 +9,10 @@
 
 ## Essential now and later
 Essential (Tier 1)
-- One `docker-compose.yml` with two services: `revenuedot` (built from the repo `Dockerfile`, Node 22) and `db` (Postgres 16 with a named volume and a health check). The server waits for a healthy database.
+- One `docker-compose.yml` with two services: `revenuedot` (built from the repo `Dockerfile`, `node:24-slim`, matching `.nvmrc`) and `db` (Postgres 16 with a named volume and a health check). The server waits for a healthy database.
 - One image runs the API and serves the built dashboard, with single-page-app fallback for dashboard routes.
 - One config file, `.env.example`, copied to `.env`: `POSTGRES_PASSWORD`, `REVENUEDOT_PORT` (host port, default 8787) and `REVENUEDOT_ALLOW_SIGNUP` (default false). `DATABASE_URL` and `PORT` are for running without Docker.
-- Migrations run on start: `openDb` in `packages/db/src/index.ts` applies every file in `packages/db/migrations` (0000 to 0003 today) before the server takes requests.
+- Migrations run on start: `openDb` in `packages/db/src/index.ts` applies every file in `packages/db/migrations` (0000 to 0005 today) before the server takes requests.
 - Owner-only sign-up: the first account becomes the owner; after that `POST /auth/signup` answers 403 with a message naming `REVENUEDOT_ALLOW_SIGNUP=true`.
 - A background job every 30 seconds for expirations, voided purchases and webhook deliveries, and again a moment after any request that queues a webhook.
 - Upgrade: `git pull && docker compose up -d --build`; `.env` and the database volume stay.

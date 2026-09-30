@@ -12,10 +12,12 @@ It runs on your machine, reads RevenueCat through its REST API v2, and writes to
    - Project configuration: apps, products, entitlements, offerings, packages
    - Customer information: customers, subscriptions, purchases
 2. **Your RevenueCat project id.** It starts with `proj` and is in the dashboard URL.
-3. **A running RevenueDot server** (for example `docker compose up`, then `http://localhost:8787`) and **a RevenueDot secret key** for the project you are importing into (Dashboard > API keys).
+3. **A RevenueDot server**: RevenueDot Cloud (`https://api.revenuedot.app`, sign up at https://app.revenuedot.app) or your own (for example `docker compose up`, then `http://localhost:8787`), and **a RevenueDot secret key** for the project you are importing into (Dashboard > API keys).
 4. Node.js 18.17 or newer.
 
 You can pass the keys as environment variables instead of flags, so they stay out of your shell history: `REVENUECAT_API_KEY`, `REVENUEDOT_API_KEY`, `REVENUEDOT_URL`.
+
+The `revenuedot` package is not on npm yet (2026-09-30), so `npx revenuedot` answers 404. Until it is published, run it from a clone of [revenuedot/revenuedot](https://github.com/revenuedot/revenuedot): `pnpm install`, then replace `npx revenuedot` with `pnpm --filter revenuedot cli` in the commands below. pnpm runs it in `packages/importer`, so give file flags such as `--google-tokens` absolute paths.
 
 ## Step 1: dry run
 

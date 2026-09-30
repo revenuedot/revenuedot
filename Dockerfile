@@ -1,6 +1,6 @@
 # RevenueDot: open-source, self-hostable alternative to RevenueCat. https://revenuedot.app
 # One image runs the API and the dashboard. Set DATABASE_URL to a Postgres.
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
@@ -10,7 +10,7 @@ COPY design ./design
 COPY brand ./brand
 RUN pnpm install --frozen-lockfile && pnpm --filter @revenuedot/dashboard build
 
-FROM node:22-slim
+FROM node:24-slim
 RUN corepack enable
 WORKDIR /app
 COPY --from=build /app /app

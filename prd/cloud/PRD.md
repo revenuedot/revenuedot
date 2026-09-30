@@ -1,6 +1,6 @@
 # Cloud (scope 1.12)
 
-**Status:** The cloud build is written but not deployed. The same Hono app runs on Cloudflare Workers with Postgres through Hyperdrive, one worker serves `api.revenuedot.app` and `app.revenuedot.app`, anyone can sign up, and every account is on the free plan. There is no Workers test yet.
+**Status: live since 2026-09-30.** The same Hono app runs on Cloudflare Workers with Postgres through Hyperdrive; one worker serves https://api.revenuedot.app and https://app.revenuedot.app, anyone can sign up, and every account is on the free plan. Every push to `main` deploys from GitHub Actions (`.github/workflows/deploy.yml`): CI, migrations, the Worker, then a read-only smoke test against production. Runbook: [`docs/cloud.md`](../../docs/cloud.md).
 
 ## Users and jobs
 - **A developer who does not want to run servers** signs up at `app.revenuedot.app`, creates a project and points the SDK at `api.revenuedot.app`.
@@ -34,10 +34,10 @@ Later
 ## Tests that prove it
 - `apps/server/test/signup.test.ts`: with `edition: "cloud"` two accounts sign up even when `signup` is `owner_only`, and `/auth/config` says `cloud` and `open`.
 - All server, contract and dashboard tests run the shared `createApp` that the worker also runs, on PGlite through the Node build.
-- `scripts/smoke-cloud.mjs` runs `entry.worker.ts` under `cf dev` against a Railway development database: sign-up, Test Store app, product, secret key, test purchase, subscriber with a verified `X-Signature`, dashboard SPA fallback and the scheduled handler. `--read-only` checks production without writes. Not in CI.
+- `scripts/smoke-cloud.mjs` runs `entry.worker.ts` under `cf dev` against a Railway development database: sign-up, Test Store app, product, secret key, test purchase, subscriber with a verified `X-Signature`, dashboard SPA fallback and the scheduled handler. `--read-only` checks production without writes; `deploy.yml` runs it with `--public-key` after every production deploy. The full (writing) run is not in CI.
 
 ## Known gaps
-- Live since 2026-09-30 at https://api.revenuedot.app and https://app.revenuedot.app (Hyperdrive `29af8eac2bfb43fe801c51d5bd20ee33`).
-- No automated test in CI covers the worker entry, the per-request connection handling or the cron.
+- Hyperdrive config `29af8eac2bfb43fe801c51d5bd20ee33`.
+- CI checks the deployed worker only with the read-only smoke test; no CI test writes through the worker entry, the per-request connection handling or the cron.
 - Password hashes use 100,000 PBKDF2 iterations on both builds (the Workers cap), so hashes made with more iterations by older self-host builds cannot be verified on Workers.
 - Nothing in the dashboard shows the plan.
