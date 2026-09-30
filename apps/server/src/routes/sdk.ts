@@ -201,7 +201,7 @@ export function sdkRoutes(deps: Deps) {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
     const { customer } = await getOrCreateCustomer(deps.db, app.projectId, userId(c.req.param("id")), now);
-    await setAttributionOnce(deps.db, customer.id, attributionDataToAttributes(b, now.getTime()), now);
+    await setAttributionOnce(deps.db, customer.id, attributionDataToAttributes({ network: b.network, data: b.data }, now.getTime()), now);
     return c.json({});
   });
   r.post("/v1/subscribers/:id/adservices_attribution", async (c) => {
@@ -254,9 +254,10 @@ export function sdkRoutes(deps: Deps) {
 
   // 24. Amazon receipt details (Android). Amazon Appstore purchases are not supported, the same answer as a receipt post
   // for an Amazon app; 7662 leaves the purchase unconsumed on Android.
-  r.get("/v1/receipts/amazon/*", () => {
-    throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, "Amazon Appstore purchases are not supported yet.");
-  });
+  const noAmazon = () => { throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, "Amazon Appstore purchases are not supported yet."); };
+  r.get("/v1/receipts/amazon/:storeUserId/:receiptId", noAmazon);
+  // The SDK does not encode the receipt id, which can contain "/".
+  r.get("/v1/receipts/amazon/*", noAmazon);
 
   // 23. Remote config: 204 "unchanged/no config" until Paywalls v2 lands. getOfferings waits on this call.
   r.post("/v1/config/:domain", (c) => c.body(null, 204));
