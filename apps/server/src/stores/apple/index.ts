@@ -65,6 +65,15 @@ export async function verifyRenewalJws(jws: string, o: { xcodeRoots: Uint8Array[
   }
 }
 
+/** Every transaction id Apple proved for each chain, so a chain imported under another of its ids can be matched. */
+function withChainIds(out: VerifiedPurchase[], txs: { transactionId: string; originalTransactionId: string }[]): VerifiedPurchase[] {
+  for (const p of out) {
+    if (p.kind !== "subscription") continue;
+    p.chainTransactionIds = [...new Set(txs.filter((t) => t.originalTransactionId === p.storeKey).map((t) => t.transactionId))];
+  }
+  return out;
+}
+
 const verifyTx = (ctx: Ctx, jws: string, source: Source) => verifyTransactionJws(jws, { bundleId: ctx.bundleId, xcodeRoots: ctx.xcodeRoots, now: ctx.now(), source });
 
 /**
@@ -75,7 +84,7 @@ const verifyTx = (ctx: Ctx, jws: string, source: Source) => verifyTransactionJws
 async function fromServerApi(ctx: Ctx, transactionId: string, env: AppleEnv, known: AppleTransaction[]): Promise<VerifiedPurchase[]> {
   const api = new AppStoreServerApi(ctx.creds!, ctx.fetchFn, ctx.now);
   const detectedAt = ctx.now();
-  const plain = () => latestPerChain(known).map((tx) => fromTransaction(tx, { store: ctx.store, detectedAt }));
+  const plain = () => withChainIds(latestPerChain(known).map((tx) => fromTransaction(tx, { store: ctx.store, detectedAt })), known);
   let usedEnv = env;
   let signed: string[] | null;
   try {
@@ -113,18 +122,18 @@ async function fromServerApi(ctx: Ctx, transactionId: string, env: AppleEnv, kno
       }
     }
   }
-  return latestPerChain(txs).map((tx) => {
+  return withChainIds(latestPerChain(txs).map((tx) => {
     const r = renewals.get(tx.originalTransactionId);
     // Status 3 is billing retry and 4 grace period; both mean the last renewal failed.
     return fromTransaction(tx, { store: ctx.store, renewal: r?.renewal ?? null, detectedAt, billingIssue: r && (r.status === 3 || r.status === 4) ? true : undefined });
-  });
+  }), txs);
 }
 
 /** StoreKit 2: the SDK posts the transaction's JWS. */
 async function verifySignedTransaction(ctx: Ctx, jws: string): Promise<VerifiedPurchase[]> {
   const tx = await verifyTx(ctx, jws, "device");
   const local = tx.environment === "Xcode" || tx.environment === "LocalTesting";
-  if (!ctx.creds || local) return [fromTransaction(tx, { store: ctx.store, detectedAt: ctx.now() })];
+  if (!ctx.creds || local) return withChainIds([fromTransaction(tx, { store: ctx.store, detectedAt: ctx.now() })], [tx]);
   return fromServerApi(ctx, tx.transactionId, tx.environment === "Production" ? "production" : "sandbox", [tx]);
 }
 
@@ -144,7 +153,7 @@ async function verifyXcodeReceipt(ctx: Ctx, bytes: Uint8Array): Promise<Verified
       renewals.set(r.originalTransactionId, r);
     }
   }
-  return latestPerChain(txs).map((tx) => fromTransaction(tx, { store: ctx.store, renewal: renewals.get(tx.originalTransactionId) ?? null, detectedAt: ctx.now() }));
+  return withChainIds(latestPerChain(txs).map((tx) => fromTransaction(tx, { store: ctx.store, renewal: renewals.get(tx.originalTransactionId) ?? null, detectedAt: ctx.now() })), txs);
 }
 
 /**
@@ -199,7 +208,7 @@ function fromReceipt(ctx: Ctx, receipt: AppReceipt, input: ReceiptInput, catalog
       purchaseDate: latest.purchaseDate, originalPurchaseDate: latest.originalPurchaseDate ?? first.purchaseDate, expiresDate: latest.expiresDate,
       periodType: latest.isTrialPeriod ? "trial" : latest.isInIntroOfferPeriod ? "intro" : "normal",
       refundedAt: latest.cancellationDate, storeTransactionId: latest.transactionId, originalTransactionId,
-      price: priceFor(latest.productId), countryCode,
+      price: priceFor(latest.productId), countryCode, chainTransactionIds: items.map((i) => i.transactionId),
     });
   }
   return out;

@@ -5,6 +5,7 @@ import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord, Deps } from "../../context.js";
 import { RCError } from "../../errors.js";
 import { applyFromStore } from "../../services/purchases.js";
+import { adoptImportedChain } from "../../services/imported-chains.js";
 import type { AppRow } from "../types.js";
 import { appleStoreOf, expectedBundleId, verifyRenewalJws, verifyTransactionJws, xcodeRootsOf } from "./index.js";
 import { JwsError, verifyAppleJws } from "./jws.js";
@@ -109,6 +110,10 @@ async function processNotification(deps: Deps, app: AppRecord, n: NotificationPa
     throw e;
   }
   const store = appleStoreOf(app);
+  if (tx.type === "Auto-Renewable Subscription") {
+    // A chain imported under a guessed key takes Apple's original_transaction_id now.
+    await adoptImportedChain(deps.db, app.projectId, { store, storeKey: tx.originalTransactionId, storeTransactionId: tx.transactionId, originalTransactionId: tx.originalTransactionId });
+  }
   const existing = await existingFor(deps.db, app.projectId, store, tx);
   if (!STATE_CHANGES.has(n.notificationType)) return !!existing;
   // An older period (e.g. a refund of a past renewal) never rolls the chain back; RevenueCat reports only the latest period.

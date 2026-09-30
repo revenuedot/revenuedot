@@ -9,7 +9,7 @@ import { defaultStores } from "../src/stores/index.js";
 import { createAppleStore, setAppleRootsForTesting } from "../src/stores/apple/index.js";
 import { createSecretKey } from "../src/services/auth.js";
 import { tick } from "../src/services/tick.js";
-import { DAY, T0, appleHarness, makeP8, makePki, signJws, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
+import { DAY, T0, appleHarness, makeP8, makePki, notificationBody, renewalInfo, signJws, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
 import { env, makeKeys, sub, type Env, type Keys } from "./google-helpers.js";
 
 let pki: Pki;
@@ -86,7 +86,8 @@ describe("POST /v2/projects/{id}/import/customers (App Store)", () => {
     expect(info.subscriber.original_purchase_date).toBe(new Date(T0 - 60 * DAY).toISOString().replace(/\.\d{3}Z$/, "Z"));
     expect(info.subscriber.entitlements.pro).toMatchObject({ product_identifier: "pro_monthly", expires_date: new Date(T0 + 30 * DAY).toISOString().replace(/\.\d{3}Z$/, "Z") });
     const [s] = await h.db.select().from(schema.subscriptions);
-    expect(s).toMatchObject({ storeKey: "2000000001", originalTransactionId: "2000000001", storeTransactionId: "2000000001", appId: "app_ios" });
+    // RevenueCat's first known transaction is only a guess at Apple's original id until the store confirms it.
+    expect(s).toMatchObject({ storeKey: "2000000001", originalTransactionId: null, storeTransactionId: "2000000001", appId: "app_ios" });
     const txns = await h.db.select().from(schema.transactions);
     expect(txns.map((t) => [t.storeTransactionId, t.kind]).sort()).toEqual([["1999999998", "renewal"], ["1999999999", "renewal"], ["2000000001", "purchase"]].sort());
 
@@ -94,6 +95,7 @@ describe("POST /v2/projects/{id}/import/customers (App Store)", () => {
     expect((await h.postReceipt("user1", await signJws(transaction(), pki))).status).toBe(200);
     expect(await h.newEvents()).toEqual([]);
     expect(await h.db.select().from(schema.subscriptions)).toHaveLength(1);
+    expect((await h.db.select().from(schema.subscriptions))[0]!.originalTransactionId).toBe("2000000001");
     // The next renewal is a RENEWAL on the same chain.
     h.setNow(T0 + 30 * DAY + 1000);
     await h.postReceipt("user1", await signJws(transaction({ transactionId: "2000000031", originalTransactionId: "2000000001", purchaseDate: T0 + 30 * DAY, expiresDate: T0 + 60 * DAY }), pki));
@@ -174,6 +176,68 @@ describe("POST /v2/projects/{id}/import/customers (App Store)", () => {
     expect(s).toMatchObject({ storeKey: "5000000001", originalTransactionId: "5000000001" });
   });
 
+  describe("a chain the source split after a lapse (keyed by a guessed original transaction id)", () => {
+    // Apple's chain: 5000000001 (first purchase, 120 days ago), lapsed, resubscribed as 5000000007, renewed as 5000000009.
+    // The export has it as two subscriptions, the second keyed by 5000000007, which Apple never reports as an original id.
+    const firstHalf = { source_id: "sub_rc_a", store_subscription_identifier: "5000000003", original_transaction_id: null, status: "expired", auto_renewal_status: "will_not_renew",
+      starts_at: T0 - 120 * DAY, current_period_starts_at: T0 - 90 * DAY, current_period_ends_at: T0 - 60 * DAY,
+      transactions: [{ id: "5000000001", purchased_at: T0 - 120 * DAY, revenue_usd: 9.99 }, { id: "5000000003", purchased_at: T0 - 90 * DAY, revenue_usd: 9.99 }] };
+    const secondHalf = { source_id: "sub_rc_b", store_subscription_identifier: "5000000009", original_transaction_id: null, starts_at: T0 - 30 * DAY,
+      transactions: [{ id: "5000000007", purchased_at: T0 - 30 * DAY, revenue_usd: 9.99 }, { id: "5000000009", purchased_at: T0, revenue_usd: 9.99 }] };
+    const split = () => {
+      const c = appleCustomer({}, secondHalf);
+      return { ...c, subscriptions: [{ ...c.subscriptions[0]!, ...firstHalf }, c.subscriptions[0]!] };
+    };
+    const current = (over: Record<string, unknown> = {}) => transaction({ transactionId: "5000000009", originalTransactionId: "5000000001", originalPurchaseDate: T0 - 120 * DAY, purchaseDate: T0, expiresDate: T0 + 30 * DAY, ...over });
+
+    it("the device posting the current transaction folds both halves into Apple's chain with no events", async () => {
+      h = await appleHarness();
+      const rest = await restFor(h.db, h.now);
+      await rest.importCustomers([split()]);
+      expect((await h.db.select().from(schema.subscriptions)).map((s) => s.storeKey).sort()).toEqual(["5000000001", "5000000007"]);
+      expect((await h.postReceipt("user1", await signJws(current(), pki))).status).toBe(200);
+      expect(await h.newEvents()).toEqual([]);
+      const subs = await h.db.select().from(schema.subscriptions);
+      expect(subs).toHaveLength(1);
+      expect(subs[0]).toMatchObject({ storeKey: "5000000001", originalTransactionId: "5000000001", storeTransactionId: "5000000009", expiresDate: new Date(T0 + 30 * DAY) });
+      expect(subs[0]!.originalPurchaseDate).toEqual(new Date(T0 - 120 * DAY));
+      // Running the import again finds the re-keyed chain by its transactions: still one row.
+      await rest.importCustomers([split()]);
+      expect(await h.db.select().from(schema.subscriptions)).toHaveLength(1);
+      expect(await h.newEvents()).toEqual([]);
+    });
+
+    it("a store notification for the current transaction re-keys the chain instead of dropping it as unknown", async () => {
+      h = await appleHarness();
+      const rest = await restFor(h.db, h.now);
+      await rest.importCustomers([appleCustomer({}, secondHalf)]);
+      const body = await notificationBody(pki, "DID_CHANGE_RENEWAL_STATUS", "AUTO_RENEW_DISABLED", current(), renewalInfo({ originalTransactionId: "5000000001", autoRenewStatus: 0 }), { signedDate: h.now().getTime() });
+      expect((await h.notify(body)).status).toBe(200);
+      expect((await h.newEvents()).map((x) => x.type)).toEqual(["CANCELLATION"]);
+      const subs = await h.db.select().from(schema.subscriptions);
+      expect(subs.map((s) => [s.storeKey, s.originalTransactionId])).toEqual([["5000000001", "5000000001"]]);
+    });
+
+    it("the device posting a renewal the export never saw is a RENEWAL on the imported chain, not an INITIAL_PURCHASE", async () => {
+      h = await appleHarness();
+      const rest = await restFor(h.db, h.now);
+      await rest.importCustomers([appleCustomer({}, secondHalf)]);
+      h.setNow(T0 + 30 * DAY + 1000);
+      await h.postReceipt("user1", await signJws(current({ transactionId: "5000000031", purchaseDate: T0 + 30 * DAY, expiresDate: T0 + 60 * DAY }), pki));
+      expect((await h.newEvents()).map((x) => x.type)).toEqual(["RENEWAL"]);
+      const subs = await h.db.select().from(schema.subscriptions);
+      expect(subs.map((s) => s.storeKey)).toEqual(["5000000001"]);
+    });
+
+    it("an original transaction id confirmed by the store is not re-keyed by another chain's traffic", async () => {
+      h = await appleHarness();
+      const rest = await restFor(h.db, h.now);
+      await rest.importCustomers([appleCustomer({}, { store_subscription_identifier: "6000000001", original_transaction_id: "6000000001", original_transaction_id_confirmed: true, transactions: [] })]);
+      await h.postReceipt("user1", await signJws(current(), pki));
+      expect((await h.db.select().from(schema.subscriptions)).map((s) => s.storeKey).sort()).toEqual(["5000000001", "6000000001"]);
+    });
+  });
+
   it("emit_events: true records lifecycle events as if the purchase had just arrived", async () => {
     h = await appleHarness();
     const rest = await restFor(h.db, h.now);
@@ -252,6 +316,54 @@ describe("POST /v2/projects/{id}/import/customers (Google Play)", () => {
     expect(again.customers[0]).toMatchObject({ needs_token_refresh: 0 });
     const subs = await e.h.db.select().from(schema.subscriptions);
     expect(subs.map((s) => s.storeKey)).toEqual(["tok_later"]);
+  });
+
+  describe("a chain imported by order id before its purchase token was known", () => {
+    const importWithoutToken = async () => {
+      const rest = await restFor(e!.h.db, e!.h.now, e!.g.fetch);
+      const out = await rest.importCustomers([playCustomer()], { resolve_store_ids: false });
+      expect(out.customers[0]).toMatchObject({ needs_token_refresh: 1 });
+      expect((await e!.h.db.select().from(schema.subscriptions)).map((s) => s.storeKey)).toEqual(["needs_token_refresh:GPA.1111-2222-3333-44444"]);
+    };
+
+    it("the device posting the token attaches it to the imported row: no second row, no INITIAL_PURCHASE", async () => {
+      e = await env(keys);
+      await importWithoutToken();
+      e.g.subs.set("tok_real", sub({ start: T, expiry: MONTH_END, order: "GPA.1111-2222-3333-44444", ack: true }));
+      const res = await e.receipt({ app_user_id: "droid", fetch_token: "tok_real", product_ids: ["pro"], platform_product_ids: [{ product_id: "pro", base_plan_id: "monthly" }], price: 9.99, currency: "USD" });
+      expect(res.status).toBe(200);
+      expect(await e.events()).toEqual([]);
+      const subs = await e.h.db.select().from(schema.subscriptions);
+      expect(subs.map((s) => s.storeKey)).toEqual(["tok_real"]);
+      const status = await (await (await restFor(e.h.db, e.h.now, e.g.fetch)).call("/v2/projects/proj1/import/status")).json() as any;
+      expect(status.needs_token_refresh).toBe(0);
+    });
+
+    it("a renewal notification carrying the token renews the imported row (matched by the order id)", async () => {
+      e = await env(keys);
+      await importWithoutToken();
+      const next = new Date(MONTH_END.getTime() + 30 * DAY);
+      e.h.setNow(new Date(MONTH_END.getTime() + 1000));
+      e.g.subs.set("tok_real", sub({ start: T, expiry: next, order: "GPA.1111-2222-3333-44444..0", ack: true }));
+      expect((await e.rtdn({ subscriptionNotification: { version: "1.0", notificationType: 2, purchaseToken: "tok_real", subscriptionId: "pro" } })).status).toBe(200);
+      expect((await e.events()).map((x) => x.type)).toEqual(["RENEWAL"]);
+      const subs = await e.h.db.select().from(schema.subscriptions);
+      expect(subs.map((s) => [s.storeKey, s.storeTransactionId])).toEqual([["tok_real", "GPA.1111-2222-3333-44444..0"]]);
+    });
+
+    it("an upgrade whose linkedPurchaseToken is the imported purchase keys the old row by that token and ends it with PRODUCT_CHANGE", async () => {
+      e = await env(keys);
+      await importWithoutToken();
+      e.g.subs.set("tok_old", sub({ start: T, expiry: MONTH_END, order: "GPA.1111-2222-3333-44444", replaced: true, ack: true }));
+      e.g.subs.set("tok_up", sub({ product: "premium", start: new Date(T0 + DAY), expiry: new Date(T0 + 31 * DAY), order: "GPA.9999-8888-7777-66666", linked: "tok_old", ack: true }));
+      e.h.setNow(new Date(T0 + DAY));
+      const res = await e.receipt({ app_user_id: "droid", fetch_token: "tok_up", product_ids: ["premium"], platform_product_ids: [{ product_id: "premium", base_plan_id: "monthly" }], price: 19.99, currency: "USD" });
+      expect(res.status).toBe(200);
+      const subs = await e.h.db.select().from(schema.subscriptions);
+      expect(subs.map((s) => s.storeKey).sort()).toEqual(["tok_old", "tok_up"]);
+      expect(new Set(subs.map((s) => s.customerId)).size).toBe(1);
+      expect((await e.events()).map((x) => [x.type, x.product_id]).sort()).toEqual([["INITIAL_PURCHASE", "premium"], ["PRODUCT_CHANGE", "pro"]]);
+    });
   });
 
   it("a purchase token exported with the data is used as is", async () => {

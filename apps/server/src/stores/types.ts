@@ -31,6 +31,10 @@ export interface VerifiedSubscription {
   replacesStoreKey?: string | null;
   /** When the store says the replaced chain ended (its line item expiry), if known. */
   replacedExpiresDate?: Date | null;
+  /** Google Play: order ids of the replaced token (to find a chain imported by order id before its token was known). */
+  replacedOrderIds?: string[] | null;
+  /** Other store transaction ids of this chain that the store proved (Apple receipt history), for matching imported chains. */
+  chainTransactionIds?: string[] | null;
 }
 
 export interface VerifiedOneTime {

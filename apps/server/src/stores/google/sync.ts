@@ -6,7 +6,8 @@ import { productInfo } from "../../repo/catalog.js";
 import { applyFromStore } from "../../services/purchases.js";
 import type { VerifiedOneTime, VerifiedSubscription } from "../types.js";
 import { GoogleApiError, type GooglePlayClient, type SubscriptionPurchaseV2 } from "./api.js";
-import { acknowledgeProductIfNeeded, acknowledgeSubscriptionIfNeeded, replacedExpiry } from "./index.js";
+import { adoptImportedChain } from "../../services/imported-chains.js";
+import { acknowledgeProductIfNeeded, acknowledgeSubscriptionIfNeeded, replacedInfo } from "./index.js";
 import { mapProduct, mapSubscription, S } from "./map.js";
 
 const { subscriptions, nonSubscriptions, customerAliases } = schema;
@@ -78,13 +79,23 @@ export function mergeWithStored(next: VerifiedSubscription, row: SubRow, state: 
  */
 export async function syncSubscription(ctx: SyncCtx, token: string, opts: { refundAt?: Date; voidedOrderId?: string | null; pauseScheduleFor?: string | null } = {}): Promise<SyncResult> {
   const { db, app, client, now } = ctx;
-  const row = await subRow(db, app.projectId, token);
+  let row = await subRow(db, app.projectId, token);
   let sub: SubscriptionPurchaseV2 | null = null;
   try {
     sub = await client.getSubscriptionV2(app, token);
   } catch (e) {
     // A voided purchase can outlive its token (60 days after expiry): refund from what we stored.
     if (!(e instanceof GoogleApiError && e.kind === "invalid_token" && opts.refundAt && row)) throw e;
+  }
+  // A chain imported by order id (no token yet) takes this token: its order ids, or those of the token it replaced, match.
+  if (sub && !row) {
+    const orderIds = [sub.latestOrderId, sub.lineItems?.[0]?.latestSuccessfulOrderId].filter((x): x is string => !!x);
+    let replacedOrderIds: string[] = [];
+    if (sub.linkedPurchaseToken && !(await subRow(db, app.projectId, sub.linkedPurchaseToken))) {
+      replacedOrderIds = (await replacedInfo(client, app, sub.linkedPurchaseToken)).orderIds;
+    }
+    await adoptImportedChain(db, app.projectId, { store: "play_store", storeKey: token, chainTransactionIds: orderIds, replacesStoreKey: sub.linkedPurchaseToken, replacedOrderIds });
+    row = await subRow(db, app.projectId, token);
   }
   const state = sub?.subscriptionState;
   if (state === S.PENDING || state === S.PENDING_CANCELED) return { status: "ignored", sandbox: !!sub?.testPurchase };
@@ -115,7 +126,7 @@ export async function syncSubscription(ctx: SyncCtx, token: string, opts: { refu
   let hint: string | null = null;
   const linked = sub?.linkedPurchaseToken ? await subRow(db, app.projectId, sub.linkedPurchaseToken) : undefined;
   if (!row && linked) hint = await appUserIdOf(db, linked.customerId);
-  if (linked) p.replacedExpiresDate = await replacedExpiry(client, app, linked.storeKey);
+  if (linked) p.replacedExpiresDate = (await replacedInfo(client, app, linked.storeKey)).expiry;
   else p.replacesStoreKey = null;
 
   // A new order on a token whose access had ended is Google renewing it (recovery from account hold, resume from a

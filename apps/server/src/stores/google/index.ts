@@ -73,19 +73,24 @@ export async function verifySubscription(client: GooglePlayClient, app: AppRow, 
   if (state === S.PENDING_CANCELED) throw new RCError(400, Codes.INVALID_RECEIPT, "The pending Google Play purchase was cancelled.");
   const verified = mapSubscription(sub, token, { catalog, now, posted });
   // An upgrade or downgrade posted by the device ends the replaced chain now (PRODUCT_CHANGE), not only when the notification comes.
-  if (verified.replacesStoreKey) verified.replacedExpiresDate = await replacedExpiry(client, app, verified.replacesStoreKey);
+  if (verified.replacesStoreKey) {
+    const r = await replacedInfo(client, app, verified.replacesStoreKey);
+    verified.replacedExpiresDate = r.expiry;
+    verified.replacedOrderIds = r.orderIds;
+  }
   await acknowledgeSubscriptionIfNeeded(client, app, token, sub);
   return verified;
 }
 
-/** Where Google says a replaced purchase token's access ended; null when Google no longer knows the token. */
-export async function replacedExpiry(client: GooglePlayClient, app: AppRow, oldToken: string): Promise<Date | null> {
+/** A replaced purchase token's end of access and its order ids (empty when Google no longer knows the token). */
+export async function replacedInfo(client: GooglePlayClient, app: AppRow, oldToken: string): Promise<{ expiry: Date | null; orderIds: string[] }> {
   try {
     const s = await client.getSubscriptionV2(app, oldToken);
-    const expiry = s.lineItems?.[0]?.expiryTime;
-    return expiry ? new Date(expiry) : null;
+    const li = s.lineItems?.[0];
+    const orderIds = [s.latestOrderId, li?.latestSuccessfulOrderId].filter((x): x is string => !!x);
+    return { expiry: li?.expiryTime ? new Date(li.expiryTime) : null, orderIds };
   } catch (e) {
-    if (e instanceof GoogleApiError && e.kind === "invalid_token") return null;
+    if (e instanceof GoogleApiError && e.kind === "invalid_token") return { expiry: null, orderIds: [] };
     throw e;
   }
 }

@@ -5,6 +5,7 @@ import { Codes, RCError } from "../errors.js";
 import { backdateFirstSeen, findCustomer, isOnlyAnonymous, mergeCustomers, nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
 import type { VerifiedPurchase, VerifiedSubscription } from "../stores/types.js";
 import { recordEvent } from "./events.js";
+import { adoptImportedChain } from "./imported-chains.js";
 
 const { subscriptions, nonSubscriptions, transactions, projects, customers } = schema;
 
@@ -79,6 +80,8 @@ async function resolveOwnership(db: DB, current: CustomerRow, existingOwnerId: s
 }
 
 async function applySubscription(db: DB, customer: CustomerRow, p: Extract<VerifiedPurchase, { kind: "subscription" }>, ctx: ApplyContext) {
+  // A chain imported before its real store key was known takes that key now (instead of a second row and a false INITIAL_PURCHASE).
+  await adoptImportedChain(db, ctx.projectId, p, customer.id);
   const [existing] = await db.select().from(subscriptions)
     .where(and(eq(subscriptions.projectId, ctx.projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey))).limit(1);
   let owner = customer;
@@ -233,6 +236,7 @@ export async function applyFromStore(db: DB, opts: { projectId: string; appId: s
   const { projectId, appId, purchase: p, now } = opts;
   let ownerId: string | null = null;
   if (p.kind === "subscription") {
+    await adoptImportedChain(db, projectId, p);
     const [row] = await db.select({ c: subscriptions.customerId }).from(subscriptions)
       .where(and(eq(subscriptions.projectId, projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey))).limit(1);
     ownerId = row?.c ?? null;

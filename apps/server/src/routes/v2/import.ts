@@ -8,6 +8,7 @@ import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { findCustomer, mergeCustomers, setAttributes, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
 import { applyPurchases } from "../../services/purchases.js";
+import { NEEDS_TOKEN, importedAppleChainKey } from "../../services/imported-chains.js";
 import type { VerifiedOneTime, VerifiedSubscription } from "../../stores/types.js";
 import { googleClientFor, purchaseTokensForOrders } from "../../stores/google/index.js";
 import { baseOrderId } from "../../stores/google/map.js";
@@ -125,8 +126,7 @@ type ImportSub = z.infer<typeof Subscription>;
 type ImportPurchase = z.infer<typeof Purchase>;
 type AppRec = typeof schema.apps.$inferSelect;
 
-/** Placeholder chain key for a Google subscription whose purchase token is not known yet. */
-export const NEEDS_TOKEN = "needs_token_refresh:";
+export { NEEDS_TOKEN };
 
 const KEY_PREFIXES: Record<string, string[]> = {
   app_store: ["appl_"], mac_app_store: ["mac_", "appl_"], play_store: ["goog_"], amazon: ["amzn_"], stripe: ["strp_"], rc_billing: ["rcb_"],
@@ -198,6 +198,7 @@ export function importRoutes(r: V2Router, deps: Deps) {
 }
 
 interface Ctx { projectId: string; now: Date; apps: Map<string, AppRec>; products: (typeof schema.products.$inferSelect)[]; keys: Map<ImportSub, KeyInfo>; emit: boolean }
+/** `original` is null for an Apple chain keyed by a guess (its first known transaction): store traffic may re-key it later. */
 interface KeyInfo { key: string; placeholder: string | null; original: string | null; note?: string }
 
 const chainOriginal = (s: ImportSub) => s.original_transaction_id ?? [...(s.transactions ?? [])].sort((a, b) => a.purchased_at - b.purchased_at)[0]?.id ?? null;
@@ -212,17 +213,18 @@ async function resolveStoreKeys(deps: Deps, apps: Map<string, AppRec>, customers
   for (const cu of customers) for (const s of cu.subscriptions ?? []) {
     if (isApple(s.store)) {
       let original = chainOriginal(s) ?? s.store_subscription_identifier;
+      let confirmed = !!s.original_transaction_id_confirmed;
       let note: string | undefined;
       const app = s.app_id ? apps.get(s.app_id) : undefined;
-      if (resolve && !s.original_transaction_id_confirmed && app) {
+      if (resolve && !confirmed && app) {
         try {
-          const confirmed = await appleOriginal(deps, app, s.store_subscription_identifier, s.environment);
-          if (confirmed) original = confirmed;
+          const fromApple = await appleOriginal(deps, app, s.store_subscription_identifier, s.environment);
+          if (fromApple) { original = fromApple; confirmed = true; }
         } catch (e) {
           note = `Apple lookup failed for ${s.store_subscription_identifier}: ${e instanceof Error ? e.message : e}`;
         }
       }
-      out.set(s, { key: original, placeholder: null, original, note });
+      out.set(s, { key: original, placeholder: null, original: confirmed ? original : null, note });
     } else if (s.store === "play_store") {
       const original = s.original_transaction_id ?? baseOrderId(s.store_subscription_identifier);
       const placeholder = `${NEEDS_TOKEN}${original}`;
@@ -370,6 +372,12 @@ async function importSubscription(db: DB, ctx: Ctx, customer: CustomerRow, cu: I
     const [real] = await db.select({ id: S.id }).from(S).where(where(k.key)).limit(1);
     if (ph && !real) await db.update(S).set({ storeKey: k.key }).where(eq(S.id, ph.id));
     else if (ph && real) await db.delete(S).where(eq(S.id, ph.id));
+  }
+  // An Apple chain the store already re-keyed (a receipt came after an earlier run) is found again by its transactions.
+  if (isApple(s.store) && !k.original) {
+    const [same] = await db.select({ id: S.id }).from(S).where(where(k.key)).limit(1);
+    const rekeyed = same ? null : await importedAppleChainKey(db, projectId, s.store, customer.id, [s.store_subscription_identifier, ...(s.transactions ?? []).map((t) => t.id)]);
+    if (rekeyed) k = { ...k, key: rekeyed, original: rekeyed };
   }
   const promoKeys = s.store === "promotional" ? (s.entitlement_lookup_keys?.length ? s.entitlement_lookup_keys : [null]) : [null];
   for (const [i, ent] of promoKeys.entries()) {
