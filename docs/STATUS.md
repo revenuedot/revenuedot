@@ -5,7 +5,7 @@
 ## Features (Tier 1)
 | Feature | State | Notes |
 |---|---|---|
-| 1.0 Foundations (monorepo, schema, contract harness) | done · tested on the iOS simulator | Contract tests from RevenueCat SDK fixtures and OpenAPI; `pnpm tsx scripts/e2e/ios/run.ts` drives the unmodified RevenueCat iOS SDK (5.92, SPM) on an iPhone 17 Pro simulator: configure, getCustomerInfo, getOfferings, a Test Store purchase through the SDK's alert, logIn, then checks the server. Android emulator run not built yet |
+| 1.0 Foundations (monorepo, schema, contract harness) | done · tested on the iOS simulator and the Android emulator | Contract tests from RevenueCat SDK fixtures and OpenAPI; `pnpm tsx scripts/e2e/ios/run.ts` drives the unmodified RevenueCat iOS SDK (5.92, SPM) on an iPhone 17 Pro simulator: configure, getCustomerInfo, getOfferings, a Test Store purchase through the SDK's alert, logIn, then checks the server. `pnpm tsx scripts/e2e/android/run.ts` does the same with the unmodified RevenueCat Android SDK (10.24.0, Maven Central) on an Android 15 arm64 emulator, headless, with a UIAutomator test that taps the SDK's own Test Store dialog; it passes in about 30s from a cold emulator boot |
 | 1.1 SDK-compatible API | done · tested | 23 SDK routes plus 10 secret-key v1 routes, response shapes checked against RevenueCat's SDK fixtures; Apple/Google receipts included. Not routed yet: promotional offer signing (`POST /v1/offers`), `redeem_purchase`, `external_purchase_tokens`, web billing hosted checkout and offering products, ad reward verification. Spec: `prd/sdk-api/PRD.md` |
 | 1.2 Apple ingestion | done · tested | JWS, receipts, ASN v2; real sandbox test needs credentials |
 | 1.3 Google ingestion | done · tested | Play API, RTDN push, daily voided-purchases scan; real sandbox test needs credentials |
@@ -42,5 +42,4 @@
 - Attribution calls from the SDK (`/v1/subscribers/{id}/attribution`, ad services token) answer `{}` and store nothing.
 - Six event types are never emitted, though webhooks accept them as filters: TEMPORARY_ENTITLEMENT_GRANT, INVOICE_ISSUANCE, PURCHASE_REDEEMED, VIRTUAL_CURRENCY_TRANSACTION, EXPERIMENT_ENROLLMENT and SUBSCRIBER_ALIAS.
 - OpenAPI schema checks skip when RevenueCat's spec is not on disk (public CI), so they run only on machines with the research copy.
-- No Android emulator run yet (SCOPE 1.0 asks for one next to the iOS simulator run).
 - Apple consumption information (Refund Control) is not sent; RevenueCat does not require it.
