@@ -14,7 +14,7 @@
 | 1.6 Catalog | done · browser-validated | Offerings, Products, Entitlements pages; SDK offerings response decoded in e2e |
 | 1.7 Webhooks out | done · tested | HMAC, Authorization, 5 retries, filters |
 | 1.8 REST API | done · tested | v1 + v2 validated against RevenueCat OpenAPI, plus dashboard extensions |
-| 1.9 Migration importer | not started | |
+| 1.9 Migration importer | done · tested | `npx revenuedot import` / `import verify` / `import plan` (`packages/importer`), bulk import endpoint `POST /v2/projects/{id}/import/customers`; fake-RevenueCat e2e tests with fixtures checked against RevenueCat's OpenAPI; not yet run against a real RevenueCat project. Spec: `prd/migration/PRD.md` |
 | 1.10 Dashboard | pages built · browser-validated | Overview, Customers, Catalog, Apps, API keys, Integrations/Webhooks, Project settings, New project. Later-tier: Analytics, Paywalls, Targeting, Experiments, Funnels, Ads, Lifecycle. `pnpm --filter @revenuedot/dashboard e2e` (8 tests) |
 | 1.11 Self-host (Docker) | done · smoke-tested | `docker compose up -d` with Postgres, signup works; `REVENUEDOT_PORT` sets the host port |
 | 1.12 Cloud (Workers) | not started | |
@@ -29,6 +29,7 @@
 - Customer pages of the RevenueCat dashboard were blocked by the agent's personal-data guard.
 
 ## Known gaps (next up)
+- Importer: without the App Store In-App Purchase key, an Apple chain that RevenueCat split after a lapse is keyed by its first known transaction, so a later receipt for it can create a second row; refunded subscriptions import as expired (RevenueCat's v2 subscription has no refund field); paywalls, targeting, experiments and virtual currencies are not imported.
 - Google PRODUCT_CHANGE only fires from notifications; REFUND_REVERSED for one-time purchases, price-increase events, daily voided-purchase scan.
 - Store actions (refund, revoke, defer, extend) not wired to the stores; SDK versions not recorded.
 - Setup health marks an app Ready when a notification arrives even if it failed to process.
