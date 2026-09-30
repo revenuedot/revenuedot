@@ -21,9 +21,18 @@ import com.revenuecat.purchases.PurchasesConfiguration
 import com.revenuecat.purchases.PurchasesError
 import com.revenuecat.purchases.getCustomerInfoWith
 import com.revenuecat.purchases.getOfferingsWith
+import com.revenuecat.purchases.Offerings
+import com.revenuecat.purchases.ads.rewardverification.RewardVerificationResult
+import com.revenuecat.purchases.interfaces.GetVirtualCurrenciesCallback
+import com.revenuecat.purchases.interfaces.PollRewardVerificationCallback
+import com.revenuecat.purchases.interfaces.RedeemWebPurchaseListener
+import com.revenuecat.purchases.interfaces.SyncAttributesAndOfferingsCallback
+import com.revenuecat.purchases.interfaces.SyncPurchasesCallback
 import com.revenuecat.purchases.logInWith
 import com.revenuecat.purchases.purchaseWith
+import com.revenuecat.purchases.virtualcurrencies.VirtualCurrencies
 import java.net.URL
+import java.util.UUID
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
@@ -31,6 +40,7 @@ class MainActivity : Activity() {
     private lateinit var entitlement: TextView
     private lateinit var packagesText: TextView
     private lateinit var buyButtons: LinearLayout
+    private lateinit var results: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +61,29 @@ class MainActivity : Activity() {
         appUserID = label("appUserID", Purchases.sharedInstance.appUserID)
         entitlement = label("entitlement", "pro: unknown")
         packagesText = label("packages", "")
+        results = label("extras", "-")
+        // Attributes through the public API: the reserved setters, campaign attributes and device identifiers.
+        button("attributionButton", "attribution") {
+            step("attribution")
+            val p = Purchases.sharedInstance
+            p.setEmail("harness@revenuedot.test")
+            p.setDisplayName("RD Harness")
+            p.setAttributes(mapOf("harness_run" to "android"))
+            p.setAdjustID("adjust-harness-1")
+            p.setMediaSource("Harness Network")
+            p.setCampaign("Harness Android")
+            p.collectDeviceIdentifiers()
+            // The device identifiers are read off the main thread; sync once they are in.
+            root.postDelayed({
+                p.syncAttributesAndOfferingsIfNeeded(object : SyncAttributesAndOfferingsCallback {
+                    override fun onSuccess(offerings: Offerings) { ok("attribution") }
+                    override fun onError(error: PurchasesError) { fail(error) }
+                })
+            }, 2_000)
+        }
+        // The other public calls that reach RevenueDot: sync, virtual currencies, web purchase redemption and reward
+        // verification, one after another; each result is shown for the UI test to check.
+        button("othersButton", "other calls") { others() }
         button("customerInfoButton", "getCustomerInfo") {
             step("customerInfo")
             Purchases.sharedInstance.getCustomerInfoWith(CacheFetchPolicy.FETCH_CURRENT, ::fail) { show(it); ok("customerInfo") }
@@ -79,6 +112,43 @@ class MainActivity : Activity() {
     private fun step(name: String) { current = name; status.text = "$name: running" }
     private fun ok(name: String) { status.text = "$name: ok" }
     private fun fail(e: PurchasesError) { status.text = "$current: failed ${e.code} ${e.message}" }
+
+    private fun others() {
+        step("others")
+        val p = Purchases.sharedInstance
+        val out = mutableListOf<String>()
+        fun done() { results.text = out.joinToString(" "); ok("others") }
+        fun reward() {
+            p.pollRewardVerification(UUID.randomUUID().toString(), object : PollRewardVerificationCallback {
+                override fun onCompleted(result: RewardVerificationResult) { out += if (result.failed) "reward=failed" else "reward=other"; done() }
+            })
+        }
+        fun redeem() {
+            val redemption = Purchases.parseAsWebPurchaseRedemption("rdharness://redeem_web_purchase?redemption_token=harness-token")!!
+            p.redeemWebPurchase(redemption, object : RedeemWebPurchaseListener {
+                override fun handleResult(result: RedeemWebPurchaseListener.Result) {
+                    out += when (result) {
+                        is RedeemWebPurchaseListener.Result.InvalidToken -> "redeem=invalidToken"
+                        is RedeemWebPurchaseListener.Result.Success -> "redeem=success"
+                        is RedeemWebPurchaseListener.Result.Error -> "redeem=error ${result.error.code}"
+                        is RedeemWebPurchaseListener.Result.PurchaseBelongsToOtherUser -> "redeem=otherUser"
+                        is RedeemWebPurchaseListener.Result.Expired -> "redeem=expired"
+                    }
+                    reward()
+                }
+            })
+        }
+        p.syncPurchases(object : SyncPurchasesCallback {
+            override fun onSuccess(customerInfo: CustomerInfo) {
+                out += "sync=ok"
+                p.getVirtualCurrencies(object : GetVirtualCurrenciesCallback {
+                    override fun onReceived(virtualCurrencies: VirtualCurrencies) { out += "vc=${virtualCurrencies.all.size}"; redeem() }
+                    override fun onError(error: PurchasesError) { fail(error) }
+                })
+            }
+            override fun onError(error: PurchasesError) { fail(error) }
+        })
+    }
 
     private fun show(info: CustomerInfo) {
         appUserID.text = Purchases.sharedInstance.appUserID

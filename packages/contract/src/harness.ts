@@ -11,11 +11,14 @@ export interface Harness {
   ids: { project: string; app: string; iosKey: string; testKey: string; androidKey: string; androidApp: string; secretKey: string };
 }
 
+/** Outbound HTTP (Apple, Google, webhooks) and after-response work, for tests that stub or await them. */
+export interface HarnessOptions { fetch?: typeof fetch; background?: (task: Promise<unknown>) => void }
+
 /** Boots the server on an in-memory Postgres with one project, an App Store app, a Play app and a Test Store app. */
-export async function harness(): Promise<Harness> {
+export async function harness(opts: HarnessOptions = {}): Promise<Harness> {
   const { db, close } = await openDb("pglite://memory");
   let clock = new Date("2026-09-01T12:00:00Z");
-  const app = createApp({ db, now: () => clock, stores: defaultStores() });
+  const app = createApp({ db, now: () => clock, stores: defaultStores(), ...opts });
   const ids = { project: "proj1", app: "app_ios", iosKey: "appl_testkey123", testKey: "test_key123", androidKey: "goog_testkey123", androidApp: "app_play", secretKey: "" };
   await db.insert(schema.projects).values({ id: ids.project, name: "Scanner" });
   await db.insert(schema.apps).values([

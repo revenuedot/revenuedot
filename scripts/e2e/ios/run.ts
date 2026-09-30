@@ -1,7 +1,8 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
-// This file: the iOS simulator contract run (SCOPE 1.0). Starts a RevenueDot server, seeds a Test Store catalog, runs the
-// XCUITest that drives the unmodified RevenueCat iOS SDK (configure, getCustomerInfo, getOfferings, a Test Store
-// purchase, logIn) on a booted simulator, then checks what the server recorded.
+// This file: the iOS simulator contract run (SCOPE 1.0 and 1.1). Starts a RevenueDot server, seeds a Test Store catalog,
+// runs the XCUITest that drives the unmodified RevenueCat iOS SDK (configure, getCustomerInfo, getOfferings, attribution
+// and attributes, a Test Store purchase, logIn, syncPurchases, virtual currencies, web purchase redemption, reward
+// verification, the Customer Center fetch) on a booted simulator, then checks the server's request log and what it stored.
 //
 //   pnpm tsx scripts/e2e/ios/run.ts                     (iPhone 17 Pro, a fresh database)
 //   IOS_DEVICE="iPhone 16" SHOTS=/tmp/shots pnpm tsx scripts/e2e/ios/run.ts
@@ -15,6 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { client, seedProject, session } from "../../../apps/dashboard/e2e/seed.ts";
+import { attributeChecks, readLog, requestChecks, type Expectation } from "../sdk-calls.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
@@ -23,6 +25,7 @@ const PORT = Number(process.env.HARNESS_PORT ?? 8871);
 const BASE = `http://localhost:${PORT}`;
 const DEVICE = process.env.IOS_DEVICE ?? "iPhone 17 Pro";
 const LOGIN_ID = `ios_harness_${Date.now()}`;
+const REQUEST_LOG = join(BUILD, "requests.jsonl");
 // The Postgres client lives in packages/db (pnpm keeps dependencies per package).
 const postgres = createRequire(join(ROOT, "packages/db/package.json"))("postgres") as typeof import("postgres").default;
 
@@ -55,10 +58,11 @@ async function database(): Promise<string> {
 async function startServer(databaseUrl: string): Promise<ChildProcess> {
   // The server logs to a file: xcodebuild blocks this process for minutes, and a full pipe would stall the server.
   mkdirSync(BUILD, { recursive: true });
+  rmSync(REQUEST_LOG, { force: true });
   const logFile = join(BUILD, "server.log");
   const fd = openSync(logFile, "w");
   const child = spawn(join(ROOT, "node_modules/.bin/tsx"), [join(HERE, "harness-server.ts")], {
-    cwd: join(ROOT, "apps/server"), env: { ...process.env, PORT: String(PORT), DATABASE_URL: databaseUrl, REVENUEDOT_ALLOW_SIGNUP: "true" }, stdio: ["ignore", fd, fd],
+    cwd: join(ROOT, "apps/server"), env: { ...process.env, PORT: String(PORT), DATABASE_URL: databaseUrl, REVENUEDOT_ALLOW_SIGNUP: "true", REVENUEDOT_REQUEST_LOG: REQUEST_LOG }, stdio: ["ignore", fd, fd],
     // Its own process group, so stopping it also stops tsx's node child.
     detached: true,
   });
@@ -107,6 +111,24 @@ function stop(child: ChildProcess) {
 }
 
 type Check = { name: string; ok: boolean; detail?: unknown };
+let testStarted = 0;
+
+/** The calls the harness makes beyond configure, with what the inventory in prd/sdk-api/PRD.md documents for each. */
+const EXPECTED: Expectation[] = [
+  { method: "POST", template: "/v1/subscribers/{app_user_id}/attribution", count: 1, statuses: [200], why: "addAttributionData, Apple Search Ads" },
+  // enableAdServicesAttributionTokenCollection() runs, but the SDK sends no token from a simulator (it logs "AdServices
+  // attribution token is not available in the simulator"). The lookup is covered by packages/contract/test/sdk-endpoints.test.ts.
+  { method: "POST", template: "/v1/subscribers/{app_user_id}/adservices_attribution", count: 0, statuses: [200], why: "no AdServices token in the simulator" },
+  { method: "POST", template: "/v1/subscribers/{app_user_id}/attributes", min: 1, statuses: [200], why: "attribute sync" },
+  // syncPurchases in Test Store mode has no store receipt to send, so the purchase is the only receipt post.
+  { method: "POST", template: "/v1/receipts", count: 1, statuses: [200], why: "the Test Store purchase" },
+  { method: "GET", template: "/v1/subscribers/{app_user_id}/virtual_currencies", count: 1, statuses: [200], why: "virtualCurrencies()" },
+  { method: "POST", template: "/v1/subscribers/redeem_purchase", count: 1, statuses: [400], why: "redeemWebPurchase, 7849 invalidToken" },
+  { method: "GET", template: "/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}", count: 1, statuses: [200], why: "pollRewardVerification stops at failed" },
+  { method: "GET", template: "/v1/customercenter/{app_user_id}", count: 1, statuses: [404], why: "Customer Center not configured, 7259" },
+  { method: "POST", template: "/v1/config/app", min: 1, statuses: [204], why: "remote config" },
+  { method: "GET", template: "/v1/subscribers/{app_user_id}/health_report_availability", min: 1, statuses: [200], why: "debug build health report switch" },
+];
 
 async function serverState(cookie: string, projectId: string): Promise<Check[]> {
   const call = client(BASE, cookie);
@@ -131,6 +153,22 @@ async function serverState(cookie: string, projectId: string): Promise<Check[]> 
   const health = await call("GET", `${P}/setup_health`);
   const sdk = (health.sdk_versions ?? []).filter((v: { platform: string }) => /ios/i.test(v.platform));
   check("the SDK compatibility panel saw the iOS SDK", sdk.length > 0, sdk.map((v: Record<string, unknown>) => `${v.platform} ${v.platform_flavor} ${v.sdk_version} (${v.support})`));
+
+  // Attributes and attribution, as the dashboard's customer page reads them (v2 customer attributes).
+  const attrs = Object.fromEntries((await call("GET", `${P}/customers/${LOGIN_ID}/attributes?limit=100`)).items.map((a: { name: string; value: string | null }) => [a.name, a.value]));
+  const want = {
+    $email: "harness@revenuedot.test", $displayName: "RD Harness", harness_run: "ios", $adjustId: "adjust-harness-1",
+    $idfv: /^[0-9A-F-]{36}$/, $ip: /^(\d{1,3}\.){3}\d{1,3}$|:/, $deviceVersion: /iOS/,
+    // Apple Search Ads from the deprecated addAttributionData call.
+    $mediaSource: "Apple Search Ads", $campaign: "Harness Spring", $adGroup: "Harness Group", $keyword: "harness",
+  };
+  checks.push(...attributeChecks(attrs, want, "customer attributes"));
+  // The purchase came after attribution, so its webhook payload carries it.
+  const purchase = (await call("GET", `${P}/customers/${LOGIN_ID}/events?limit=50`)).items.find((e: { type: string }) => e.type === "INITIAL_PURCHASE");
+  const sa = Object.fromEntries(Object.entries((purchase?.body?.subscriber_attributes ?? {}) as Record<string, { value: string | null }>).map(([k, v]) => [k, v.value]));
+  checks.push(...attributeChecks(sa, { $mediaSource: "Apple Search Ads", $email: "harness@revenuedot.test", $campaign: "Harness Spring" }, "INITIAL_PURCHASE webhook subscriber_attributes"));
+  // Only what the device sent while the UI test ran (seeding posts receipts through the same server).
+  checks.push(...requestChecks(readLog(REQUEST_LOG).filter((r) => r.at >= testStarted), EXPECTED));
   return checks;
 }
 
@@ -152,6 +190,7 @@ try {
   console.log(`Server ${BASE}, project ${projectId}, Test Store key ${seeded.testKey.slice(0, 9)}…, device ${DEVICE}, login id ${LOGIN_ID}`);
 
   const t0 = Date.now();
+  testStarted = t0;
   const x = await xcodebuild(seeded.testKey, shots);
   console.log(x.summary);
   console.log(`xcodebuild test: ${x.ok ? "passed" : "FAILED"} in ${Math.round((Date.now() - t0) / 1000)}s (result bundle ${x.result})`);

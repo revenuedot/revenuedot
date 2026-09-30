@@ -1,7 +1,8 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
-// This file: the Android emulator contract run (SCOPE 1.0). Starts a RevenueDot server, seeds a Test Store catalog, boots
-// an emulator headless, runs the UIAutomator test that drives the unmodified RevenueCat Android SDK (configure,
-// getCustomerInfo, getOfferings, a Test Store purchase, logIn), then checks what the server recorded.
+// This file: the Android emulator contract run (SCOPE 1.0 and 1.1). Starts a RevenueDot server, seeds a Test Store
+// catalog, boots an emulator headless, runs the UIAutomator test that drives the unmodified RevenueCat Android SDK
+// (configure, getCustomerInfo, getOfferings, attributes, a Test Store purchase, logIn, syncPurchases, virtual currencies,
+// web purchase redemption, reward verification), then checks the server's request log and what it stored.
 //
 //   pnpm tsx scripts/e2e/android/run.ts                  (AVD rd_harness, a fresh database)
 //   ANDROID_AVD=my_avd SHOTS=/tmp/shots pnpm tsx scripts/e2e/android/run.ts
@@ -16,6 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { client, seedProject, session } from "../../../apps/dashboard/e2e/seed.ts";
+import { attributeChecks, readLog, requestChecks, type Expectation } from "../sdk-calls.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
@@ -28,6 +30,7 @@ const AVD = process.env.ANDROID_AVD ?? "rd_harness";
 const LOGIN_ID = `android_harness_${Date.now()}`;
 const APP_ID = "app.revenuedot.harness";
 const DB_NAME = "rd_android_harness";
+const REQUEST_LOG = join(BUILD, "requests.jsonl");
 const JAVA_HOME = process.env.JAVA_HOME ?? "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home";
 const ANDROID_HOME = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? "/opt/homebrew/share/android-commandlinetools";
 const ENV = { ...process.env, JAVA_HOME, ANDROID_HOME, PATH: `${JAVA_HOME}/bin:${process.env.PATH}` };
@@ -68,10 +71,11 @@ async function database(): Promise<{ url: string; owned: boolean }> {
 async function startServer(databaseUrl: string): Promise<ChildProcess> {
   // The server logs to a file: Gradle and the emulator run for minutes, and a full pipe would stall the server.
   mkdirSync(BUILD, { recursive: true });
+  rmSync(REQUEST_LOG, { force: true });
   const logFile = join(BUILD, "server.log");
   const fd = openSync(logFile, "w");
   const child = spawn(join(ROOT, "node_modules/.bin/tsx"), [join(HERE, "harness-server.ts")], {
-    cwd: join(ROOT, "apps/server"), env: { ...process.env, PORT: String(PORT), DATABASE_URL: databaseUrl, REVENUEDOT_ALLOW_SIGNUP: "true" }, stdio: ["ignore", fd, fd],
+    cwd: join(ROOT, "apps/server"), env: { ...process.env, PORT: String(PORT), DATABASE_URL: databaseUrl, REVENUEDOT_ALLOW_SIGNUP: "true", REVENUEDOT_REQUEST_LOG: REQUEST_LOG }, stdio: ["ignore", fd, fd],
     detached: true,
   });
   for (let i = 0; i < 120; i++) {
@@ -154,6 +158,17 @@ async function instrumentedTest(testKey: string, shots: string | undefined) {
 }
 
 type Check = { name: string; ok: boolean; detail?: unknown };
+let testStarted = 0;
+
+/** The calls the harness makes beyond configure, with what the inventory in prd/sdk-api/PRD.md documents for each. */
+const EXPECTED: Expectation[] = [
+  { method: "POST", template: "/v1/subscribers/{app_user_id}/attributes", min: 1, statuses: [200], why: "attribute sync" },
+  { method: "POST", template: "/v1/receipts", count: 1, statuses: [200], why: "the Test Store purchase; syncPurchases has no store purchase to send" },
+  { method: "GET", template: "/v1/subscribers/{app_user_id}/virtual_currencies", count: 1, statuses: [200], why: "getVirtualCurrencies" },
+  { method: "POST", template: "/v1/subscribers/redeem_purchase", count: 1, statuses: [400], why: "redeemWebPurchase, 7849 InvalidToken" },
+  { method: "GET", template: "/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}", count: 1, statuses: [200], why: "pollRewardVerification stops at failed" },
+  { method: "POST", template: "/v1/config/app", min: 1, statuses: [204], why: "remote config" },
+];
 
 async function serverState(cookie: string, projectId: string): Promise<Check[]> {
   const call = client(BASE, cookie);
@@ -178,6 +193,19 @@ async function serverState(cookie: string, projectId: string): Promise<Check[]> 
   const health = await call("GET", `${P}/setup_health`);
   const sdk = (health.sdk_versions ?? []).filter((v: { platform: string }) => /android/i.test(v.platform));
   check("the SDK compatibility panel saw the Android SDK", sdk.length > 0, sdk.map((v: Record<string, unknown>) => `${v.platform} ${v.platform_flavor} ${v.sdk_version} (${v.support})`));
+
+  // Attributes, as the dashboard's customer page reads them (v2 customer attributes).
+  const attrs = Object.fromEntries((await call("GET", `${P}/customers/${LOGIN_ID}/attributes?limit=100`)).items.map((a: { name: string; value: string | null }) => [a.name, a.value]));
+  checks.push(...attributeChecks(attrs, {
+    $email: "harness@revenuedot.test", $displayName: "RD Harness", harness_run: "android", $adjustId: "adjust-harness-1",
+    $mediaSource: "Harness Network", $campaign: "Harness Android", $ip: /^(\d{1,3}\.){3}\d{1,3}$|:/, $deviceVersion: /android/i,
+  }, "customer attributes"));
+  // The purchase came after the attributes, so its webhook payload carries them.
+  const purchase = (await call("GET", `${P}/customers/${LOGIN_ID}/events?limit=50`)).items.find((e: { type: string }) => e.type === "INITIAL_PURCHASE");
+  const sa = Object.fromEntries(Object.entries((purchase?.body?.subscriber_attributes ?? {}) as Record<string, { value: string | null }>).map(([k, v]) => [k, v.value]));
+  checks.push(...attributeChecks(sa, { $email: "harness@revenuedot.test", $mediaSource: "Harness Network" }, "INITIAL_PURCHASE webhook subscriber_attributes"));
+  // Only what the device sent while the test ran (seeding posts receipts through the same server).
+  checks.push(...requestChecks(readLog(REQUEST_LOG).filter((r) => r.at >= testStarted), EXPECTED));
   return checks;
 }
 
@@ -202,6 +230,7 @@ try {
   console.log(`Server ${BASE} (device sees ${DEVICE_BASE}), project ${projectId}, Test Store key ${seeded.testKey.slice(0, 9)}…, AVD ${AVD}, login id ${LOGIN_ID}`);
 
   const t0 = Date.now();
+  testStarted = t0;
   const x = await instrumentedTest(seeded.testKey, shots);
   console.log(x.summary);
   console.log(`instrumented test: ${x.ok ? "passed" : "FAILED"} in ${Math.round((Date.now() - t0) / 1000)}s`);

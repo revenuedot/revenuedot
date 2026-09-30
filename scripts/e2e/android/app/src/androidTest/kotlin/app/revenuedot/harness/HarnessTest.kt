@@ -1,6 +1,7 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
-// This file: drives the harness app on the Android emulator: configure, getCustomerInfo, getOfferings, a Test Store
-// purchase through the SDK's own purchase dialog, and logIn. run.ts passes the server and key as instrumentation
+// This file: drives the harness app on the Android emulator: configure, getCustomerInfo, getOfferings, attributes, a
+// Test Store purchase through the SDK's own purchase dialog, logIn, then sync, virtual currencies, web purchase
+// redemption and reward verification. run.ts passes the server and key as instrumentation
 // arguments and checks the server's state afterwards. Docs: https://revenuedot.app/docs/sdks/android
 package app.revenuedot.harness
 
@@ -64,6 +65,11 @@ class HarnessTest {
         val packages = find("packages").text
         assertTrue(packages, packages.contains("\$rc_monthly=pro_monthly"))
 
+        // Attributes on the anonymous user, before the purchase, so the purchase's webhook carries them; logIn below
+        // carries them over to the new app user id.
+        find("attributionButton").click()
+        waitStatus("attribution: ok")
+
         // The SDK's Test Store shows its own purchase dialog; tap its success action.
         find("buy-\$rc_monthly").click()
         assertNotNull("the Test Store purchase dialog did not appear", device.wait(Until.findObject(By.text("Test Store Purchase")), 15_000))
@@ -80,5 +86,10 @@ class HarnessTest {
         assertEquals(loginId, find("appUserID").text)
         assertEquals("pro: active (pro_monthly)", find("entitlement").text)
         shot("android-3-logged-in")
+
+        find("othersButton").click()
+        waitStatus("others: ok", 60_000)
+        assertEquals("sync=ok vc=0 redeem=invalidToken reward=failed", find("extras").text)
+        shot("android-4-other-calls")
     }
 }

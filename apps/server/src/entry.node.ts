@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { openDb } from "@revenuedot/db";
 import { createApp } from "./app.js";
@@ -28,5 +28,17 @@ if (existsSync(`${dist}/index.html`)) {
   app.get("*", (c) => (/^\/(v1|v2|auth|rcbilling)\//.test(c.req.path) ? c.notFound() : c.html(html)));
 }
 const port = Number(process.env.PORT ?? 8787);
-serve({ fetch: app.fetch, port });
+// REVENUEDOT_REQUEST_LOG=<file>: one JSON line per request (method, path, status, whether a route answered). The device
+// harnesses read it to check that each SDK call happened once, with the documented status. No bodies or headers.
+const requestLog = process.env.REVENUEDOT_REQUEST_LOG;
+const handler: typeof app.fetch = !requestLog ? app.fetch : async (req, ...rest) => {
+  const t0 = Date.now();
+  const res = await app.fetch(req, ...rest);
+  const url = new URL(req.url);
+  // Hono's own 404 for an unknown path is plain text; every deliberate SDK error is JSON with a code.
+  const routed = !(res.status === 404 && !(res.headers.get("content-type") ?? "").includes("json"));
+  appendFileSync(requestLog, `${JSON.stringify({ at: t0, method: req.method, path: url.pathname, query: url.search, status: res.status, routed, ms: Date.now() - t0 })}\n`);
+  return res;
+};
+serve({ fetch: handler, port });
 console.log(`RevenueDot API on http://localhost:${port}`);

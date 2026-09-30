@@ -1,6 +1,7 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
 // This file: drives the harness app on the iOS simulator: configure, getCustomerInfo, getOfferings, a Test Store purchase
-// through the SDK's own purchase alert, and logIn. run.ts passes the server and key as TEST_RUNNER_RD_* variables and
+// through the SDK's own purchase alert after attribution, logIn, then sync, virtual currencies, web purchase redemption,
+// reward verification and the Customer Center fetch. run.ts passes the server and key as TEST_RUNNER_RD_* variables and
 // checks the server's state afterwards. Docs: https://revenuedot.app/docs/sdks/ios
 import XCTest
 
@@ -38,6 +39,11 @@ final class HarnessUITests: XCTestCase {
         waitStatus("offerings: ok")
         XCTAssertTrue(app.staticTexts["packages"].label.contains("$rc_monthly=pro_monthly"), app.staticTexts["packages"].label)
 
+        // Attribution on the anonymous user, before the purchase, so the purchase's webhook carries it; logIn below
+        // carries it over to the new app user id.
+        app.buttons["attributionButton"].tap()
+        waitStatus("attribution: ok", 30)
+
         // The SDK's Test Store shows its own purchase alert; tap its success action.
         app.buttons["buy-$rc_monthly"].tap()
         let alert = app.alerts["Test Store Purchase"]
@@ -53,5 +59,12 @@ final class HarnessUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["appUserID"].label, env["RD_LOGIN_ID"] ?? "harness_user")
         XCTAssertEqual(app.staticTexts["entitlement"].label, "pro: active (pro_monthly)")
         shot("ios-3-logged-in")
+
+        // The List is lazy: scroll until the row exists.
+        for _ in 0..<5 where !app.buttons["othersButton"].isHittable { app.swipeUp() }
+        app.buttons["othersButton"].tap()
+        waitStatus("others: ok", 60)
+        XCTAssertEqual(app.staticTexts["extras"].label, "sync=ok vc=0 redeem=invalidToken reward=failed cc=error")
+        shot("ios-4-other-calls")
     }
 }

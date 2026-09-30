@@ -19,6 +19,10 @@ export const Codes = {
   /** RevenueCat's "bad request" for malformed parameters. */
   BAD_REQUEST_PARAMS: 7226,
   INVALID_APPLE_SUBSCRIPTION_KEY: 7234,
+  /** Web purchase redemption: the token is not one this server issued (SDK result `invalidToken`). */
+  INVALID_WEB_REDEMPTION_TOKEN: 7849,
+  /** Web Billing: the checkout operation session does not exist. */
+  INVALID_OPERATION_SESSION: 7877,
 } as const;
 
 export class RCError extends Error {

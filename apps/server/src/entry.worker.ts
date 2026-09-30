@@ -52,6 +52,8 @@ const appFor = (env: Env) => (app ??= createApp({
   signingKey: env.REVENUEDOT_SIGNING_KEY ?? "",
   // Send new webhook deliveries after the response, on the request's own connection.
   kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(s.db, "kick")); },
+  // Work that finishes after the response (AdServices attribution) keeps the request's connection open until it is done.
+  background: (task) => { scope.getStore()?.pending.push(task); },
 }));
 
 async function runTick(db: DB, why: string) {

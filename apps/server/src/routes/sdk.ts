@@ -11,6 +11,9 @@ import type { ReceiptInput } from "../stores/types.js";
 import { schema } from "@revenuedot/db";
 import { eq } from "drizzle-orm";
 import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
+import { attributionDataToAttributes, inBackground, resolveAdServicesToken, resolveDeviceAttributes, setAttributionOnce } from "../services/attribution.js";
+import { appleCredentials } from "../stores/apple/api.js";
+import { appAccountTokenFor, signOffer } from "../services/promo-offers.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
 
@@ -25,17 +28,18 @@ export function sdkRoutes(deps: Deps) {
   // Every SDK request carries Authorization: Bearer <public app key>. Health checks are the exception.
   const sdkAuth = async (c: any, next: () => Promise<void>) => {
     const path = c.req.path;
-    if (path === "/v1/health" || path.endsWith("/health_report_availability")) return next();
+    // Every SDK response carries the server time, the unauthenticated health calls too (they are signature-verified).
+    c.header("X-RevenueCat-Request-Time", String(deps.now().getTime()));
+    if (path === "/v1/health" || path === "/v1/health/connectivity" || path.endsWith("/health_report_availability")) return next();
     const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
     const auth = await resolveKey(deps.db, key);
     if (!auth) throw new RCError(401, Codes.INVALID_API_KEY, "Invalid API Key.");
     c.set("auth", auth);
     c.set("app", auth.app ?? (await appForPlatform(deps.db, auth.projectId, c.req.header("x-platform"))) ?? ({ id: null, projectId: auth.projectId, type: "none" } as any));
-    c.header("X-RevenueCat-Request-Time", String(deps.now().getTime()));
     // Which SDK builds call us (setup_health.sdk_versions). Server calls with a secret key are not SDKs.
     if (auth.kind !== "secret") {
       const m = /^\/v1\/subscribers\/([^/]+)/.exec(path);
-      const user = m && m[1] !== "identify" ? safeDecode(m[1]!) : null;
+      const user = m && m[1] !== "identify" && m[1] !== "redeem_purchase" ? safeDecode(m[1]!) : null;
       try { await recordSdkVersion(deps.db, auth.projectId, c.get("app")?.id ?? null, sdkHeaders(c.req), user, deps.now()); } catch (e) { console.warn("Recording the SDK version failed", e); }
     }
     await next();
@@ -86,7 +90,12 @@ export function sdkRoutes(deps: Deps) {
       isSandboxHeader: c.req.header("x-is-sandbox") === "true", storeUserId: b.store_user_id ?? null,
     };
     let { customer, created } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
-    if (b.attributes) await setAttributes(deps.db, customer.id, b.attributes, now);
+    if (b.attributes) await setAttributes(deps.db, customer.id, resolveDeviceAttributes(b.attributes, c), now);
+    // iOS sends the AdServices token with the first receipt when attribution collection is on.
+    if (typeof b.aad_attribution_token === "string" && b.aad_attribution_token) {
+      const id = customer.id, token = b.aad_attribution_token;
+      inBackground(deps, () => resolveAdServicesToken(deps, id, token));
+    }
     const key = c.req.header("authorization")!.replace(/^Bearer\s+/i, "").trim();
     if (!app.id) throw new RCError(400, Codes.BAD_REQUEST, "X-Platform header is required with a secret key.");
     const adapter = key.startsWith("test_") || app.type === "test_store" ? deps.stores.test_store : deps.stores[storeFor(app.type)];
@@ -150,7 +159,7 @@ export function sdkRoutes(deps: Deps) {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
     const { customer } = await getOrCreateCustomer(deps.db, app.projectId, userId(c.req.param("id")), now);
-    const attrs = b.attributes ?? {};
+    const attrs = resolveDeviceAttributes(b.attributes ?? {}, c);
     const errors = Object.keys(attrs).filter((k) => k === "$email" && attrs[k]?.value && !/^\S+@\S+\.\S+$/.test(String(attrs[k].value)))
       .map((k) => ({ key_name: k, message: "Email address is not a valid email." }));
     await setAttributes(deps.db, customer.id, Object.fromEntries(Object.entries(attrs).filter(([k]) => !errors.some((e) => e.key_name === k))) as any, now);
@@ -165,12 +174,49 @@ export function sdkRoutes(deps: Deps) {
     return c.json(Object.fromEntries(ids.map((id) => [id, null])));
   });
 
-  // 9-10. Attribution: accepted and stored as attributes where it maps.
-  r.post("/v1/subscribers/:id/attribution", (c) => c.json({}));
-  r.post("/v1/subscribers/:id/adservices_attribution", (c) => c.json({}));
+  // 8. Promotional offer signing (iOS). Signed with the app's In-App Purchase key; without one the SDK gets 7234
+  // (invalidAppleSubscriptionKeyError), which fails only that offer.
+  r.post("/v1/offers", async (c) => {
+    const app = c.get("app"); const now = deps.now();
+    const b = await c.req.json().catch(() => ({})) as Record<string, any>;
+    const appUserId = userId(String(b.app_user_id ?? ""));
+    const wanted: Array<Record<string, unknown>> = Array.isArray(b.generate_offers) ? b.generate_offers : [];
+    if (!wanted.length) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, "generate_offers is required.");
+    const creds = app.type === "app_store" || app.type === "mac_app_store" ? appleCredentials(app) : null;
+    if (!creds) throw new RCError(400, Codes.INVALID_APPLE_SUBSCRIPTION_KEY, "Promotional offers need the app's App Store In-App Purchase key. Add it in the app's settings.");
+    const sk2 = c.req.header("x-storekit2-enabled") === "true" || c.req.header("x-storekit-version") === "2";
+    const token = appAccountTokenFor(appUserId, sk2);
+    const offers = [];
+    for (const o of wanted) {
+      const productId = String(o.product_id ?? ""), offerId = String(o.offer_id ?? "");
+      const sig = await signOffer(creds, productId, offerId, token, now);
+      offers.push({ key_id: sig.keyId, offer_id: offerId, product_id: productId, signature_data: { nonce: sig.nonce, signature: sig.signature, timestamp: sig.timestamp } });
+    }
+    return c.json({ offers });
+  });
 
-  // 11-13. Health
+  // 9-10. Attribution. The legacy call's identifiers and Apple Search Ads data become reserved attributes; the AdServices
+  // token is resolved with Apple after the response. The SDK ignores both response bodies.
+  r.post("/v1/subscribers/:id/attribution", async (c) => {
+    const app = c.get("app"); const now = deps.now();
+    const b = await c.req.json().catch(() => ({})) as Record<string, any>;
+    const { customer } = await getOrCreateCustomer(deps.db, app.projectId, userId(c.req.param("id")), now);
+    await setAttributionOnce(deps.db, customer.id, attributionDataToAttributes(b, now.getTime()), now);
+    return c.json({});
+  });
+  r.post("/v1/subscribers/:id/adservices_attribution", async (c) => {
+    const app = c.get("app"); const now = deps.now();
+    const b = await c.req.json().catch(() => ({})) as Record<string, any>;
+    const token = typeof b.aad_attribution_token === "string" ? b.aad_attribution_token.trim() : "";
+    if (!token) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, "aad_attribution_token is required.");
+    const { customer } = await getOrCreateCustomer(deps.db, app.projectId, userId(c.req.param("id")), now);
+    inBackground(deps, () => resolveAdServicesToken(deps, customer.id, token));
+    return c.json({});
+  });
+
+  // 11-13. Health, and the API-source probe (iOS, internal failover setting).
   r.get("/v1/health", (c) => c.json({ status: "ok" }));
+  r.get("/v1/health/connectivity", (c) => c.json({ status: "ok" }));
   r.get("/v1/subscribers/:id/health_report_availability", (c) => c.json({ report_logs: false }));
   r.get("/v1/subscribers/:id/health_report", (c) => c.json({ status: "passed", project_id: c.get("app")?.projectId ?? null, app_id: c.get("app")?.id ?? null, checks: [] }));
 
@@ -184,8 +230,33 @@ export function sdkRoutes(deps: Deps) {
   // 17-18. Virtual currencies (Tier 2): empty balances.
   r.get("/v1/subscribers/:id/virtual_currencies", (c) => c.json({ virtual_currencies: {} }));
 
+  // 19. Web purchase redemption. RevenueDot sells nothing on the web, so no token is valid: 7849 is the SDK's
+  // `invalidToken` result, which apps show as "this link is not valid".
+  r.post("/v1/subscribers/redeem_purchase", () => {
+    throw new RCError(400, Codes.INVALID_WEB_REDEMPTION_TOKEN, "This redemption link is not valid: RevenueDot has no web purchases to redeem.");
+  });
+
+  // 20. External purchase tokens (iOS, Apple's external purchase and link-out flows). The token is acknowledged with an
+  // id, which is all the SDK reads; the web checkout it leads to answers 7000 below.
+  r.post("/v1/external_purchase_tokens", async (c) => {
+    const b = await c.req.json().catch(() => ({})) as Record<string, any>;
+    const purchaseType = b.purchase_type === "IN_APP" ? "IN_APP" : "LINK_OUT";
+    return c.json({ id: `ept${crypto.randomUUID().replace(/-/g, "")}`, purchase_type: purchaseType, is_sandbox: c.req.header("x-is-sandbox") === "true", token_source: b.token ? "APPLE_SDK" : "RC_GENERATED" });
+  });
+
   // 21. Restore eligibility (StoreKit 2)
   r.post("/v1/subscribers/:id/restore/eligibility", (c) => c.json({ is_purchase_allowed_by_restore_behavior: true }));
+
+  // 22. Ad reward verification. There is no server-side ad verification, so the answer is final ("failed"), which stops
+  // the SDK's polling after one request.
+  r.get("/v1/subscribers/:id/ads/reward_verifications/:tx", (c) =>
+    c.json({ status: "failed", reward: null, failure_reason: "not_supported", message: "Server-side reward verification is not available on RevenueDot." }));
+
+  // 24. Amazon receipt details (Android). Amazon Appstore purchases are not supported, the same answer as a receipt post
+  // for an Amazon app; 7662 leaves the purchase unconsumed on Android.
+  r.get("/v1/receipts/amazon/*", () => {
+    throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, "Amazon Appstore purchases are not supported yet.");
+  });
 
   // 23. Remote config: 204 "unchanged/no config" until Paywalls v2 lands. getOfferings waits on this call.
   r.post("/v1/config/:domain", (c) => c.body(null, 204));
@@ -218,6 +289,32 @@ export function sdkRoutes(deps: Deps) {
     });
     return c.json({ product_details });
   });
+
+  // 26. Web offering products (iOS; defined, no caller in the SDK): no web offerings.
+  r.get("/rcbilling/v1/subscribers/:id/offering_products", (c) => c.json({ offerings: {} }));
+
+  // Web Billing checkout (iOS hosted checkout; purchases-js with an rcb_ key). RevenueDot takes no payments, so a checkout
+  // cannot start: iOS returns `.failed` from the checkout, purchases-js shows its purchase error.
+  const noCheckout = () => { throw new RCError(400, Codes.INVALID_PLATFORM, "Web checkout is not available on RevenueDot."); };
+  const noSession = () => { throw new RCError(400, Codes.INVALID_OPERATION_SESSION, "There is no such checkout session."); };
+  r.post("/rcbilling/v1/hosted-checkout", noCheckout);
+  r.post("/rcbilling/v1/purchase", noCheckout);
+  r.post("/rcbilling/v1/checkout/prepare", noCheckout);
+  r.post("/rcbilling/v1/checkout/start", noCheckout);
+  r.get("/rcbilling/v1/checkout/:session", noSession);
+  r.patch("/rcbilling/v1/checkout/:session", noSession);
+  r.post("/rcbilling/v1/checkout/:session/complete", noSession);
+  // Branding for the web checkout (purchases-js, rcb_ keys): the app's name and no custom look.
+  r.get("/rcbilling/v1/branding", (c) => {
+    const app = c.get("app");
+    return c.json({
+      id: app.id ?? app.projectId, app_name: app.name ?? null, app_icon: null, app_icon_webp: null, app_wordmark: null, app_wordmark_webp: null,
+      appearance: null, support_email: null, gateway_tax_collection_enabled: false, brand_font_config: null,
+    });
+  });
+  // Paywall workflows (purchases-js presentPaywall): none, so the SDK uses the offering's own paywall.
+  r.get("/v1/subscribers/:id/workflows", (c) => c.json({ workflows: [], ui_config: {} }));
+  r.get("/v1/subscribers/:id/workflows/:workflow", () => { throw new RCError(404, Codes.NOT_FOUND, "Workflow not found."); });
 
   restV1(r, deps);
   return r;

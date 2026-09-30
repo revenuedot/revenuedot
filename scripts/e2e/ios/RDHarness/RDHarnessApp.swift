@@ -2,7 +2,8 @@
 // This file: the iOS contract harness app. The unmodified RevenueCat iOS SDK, pointed at a RevenueDot server with
 // Purchases.proxyURL and a Test Store (test_) key from the launch environment, exposes each SDK call as a button that
 // the XCUITest in RDHarnessUITests drives. Docs: https://revenuedot.app/docs/sdks/ios
-import RevenueCat
+// `@_spi(Internal)` is only for the Customer Center fetch, which RevenueCatUI makes through the same call.
+@_spi(Internal) import RevenueCat
 import SwiftUI
 
 @main
@@ -29,6 +30,7 @@ final class Harness: ObservableObject {
     @Published var packages: [Package] = []
     @Published var entitlement = "pro: unknown"
     @Published var status = "configured"
+    @Published var extras = ""
 
     private func show(_ info: CustomerInfo) {
         appUserID = Purchases.shared.appUserID
@@ -60,6 +62,51 @@ final class Harness: ObservableObject {
     }
 
     func logIn(_ id: String) async { await step("logIn") { show(try await Purchases.shared.logIn(id).customerInfo) } }
+
+    /// Attribution and attributes through the public API: the reserved setters, device identifiers, the deprecated
+    /// Apple Search Ads call (`POST .../attribution`) and AdServices token collection (`POST .../adservices_attribution`).
+    func attribution() async {
+        await step("attribution") {
+            let a = Purchases.shared.attribution
+            a.setEmail("harness@revenuedot.test")
+            a.setDisplayName("RD Harness")
+            a.setAttributes(["harness_run": "ios"])
+            a.setAdjustID("adjust-harness-1")
+            a.collectDeviceIdentifiers()
+            Purchases.addAttributionData(
+                ["Version3.1": ["iad-attribution": "true", "iad-campaign-name": "Harness Spring", "iad-adgroup-name": "Harness Group", "iad-keyword": "harness"]],
+                from: .appleSearchAds, forNetworkUserId: nil
+            )
+            a.enableAdServicesAttributionTokenCollection()
+            _ = try await Purchases.shared.syncAttributesAndOfferingsIfNeeded()
+            // The attribution and AdServices posts run on the SDK's own queue; give them time to finish.
+            try await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+    }
+
+    /// The other public calls that reach RevenueDot: sync, virtual currencies, web purchase redemption, reward
+    /// verification and the Customer Center configuration. Each result is shown for the UI test to check.
+    func others() async {
+        await step("others") {
+            var out: [String] = []
+            _ = try await Purchases.shared.syncPurchases()
+            out.append("sync=ok")
+            let vcs = try await Purchases.shared.virtualCurrencies()
+            out.append("vc=\(vcs.all.count)")
+            let redemption = Purchases.parseAsWebPurchaseRedemption(URL(string: "rdharness://redeem_web_purchase?redemption_token=harness-token")!)!
+            switch await Purchases.shared.redeemWebPurchase(redemption) {
+            case .invalidToken: out.append("redeem=invalidToken")
+            case .success: out.append("redeem=success")
+            case .error(let e): out.append("redeem=error \(e.code)")
+            case .purchaseBelongsToOtherUser: out.append("redeem=otherUser")
+            case .expired: out.append("redeem=expired")
+            }
+            let reward = await Purchases.shared.pollRewardVerification(clientTransactionID: UUID().uuidString)
+            out.append(reward == .failed ? "reward=failed" : "reward=other")
+            do { _ = try await Purchases.shared.loadCustomerCenter(); out.append("cc=loaded") } catch { out.append("cc=error") }
+            extras = out.joined(separator: " ")
+        }
+    }
 }
 
 struct HarnessView: View {
@@ -67,9 +114,14 @@ struct HarnessView: View {
     @State private var loginID = ProcessInfo.processInfo.environment["RD_LOGIN_ID"] ?? "harness_user"
 
     var body: some View {
+        // Status and results stay above the list, so the UI test can read them while the list is scrolled.
+        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(h.status).accessibilityIdentifier("status")
+            Text(h.extras.isEmpty ? "-" : h.extras).font(.caption).accessibilityIdentifier("extras")
+        }.padding(.horizontal)
         List {
             Section("State") {
-                Text(h.status).accessibilityIdentifier("status")
                 Text(h.appUserID).accessibilityIdentifier("appUserID")
                 Text(h.entitlement).accessibilityIdentifier("entitlement")
                 Text(h.packages.map { "\($0.identifier)=\($0.storeProduct.productIdentifier) \($0.localizedPriceString)" }.joined(separator: ", "))
@@ -83,7 +135,10 @@ struct HarnessView: View {
                 }
                 TextField("app user id", text: $loginID).accessibilityIdentifier("loginField")
                 Button("logIn") { Task { await h.logIn(loginID) } }.accessibilityIdentifier("loginButton")
+                Button("attribution") { Task { await h.attribution() } }.accessibilityIdentifier("attributionButton")
+                Button("other calls") { Task { await h.others() } }.accessibilityIdentifier("othersButton")
             }
+        }
         }
     }
 }

@@ -10,6 +10,11 @@ export interface Deps {
   kick?: () => void;
   /** HTTP client for outbound calls (webhooks, stores); injectable for tests. */
   fetch?: typeof fetch;
+  /**
+   * Keeps work that runs after the response alive (Workers: the request's waitUntil). Unset on Node, where a promise
+   * runs on its own. Tests pass a collector and await it.
+   */
+  background?: (task: Promise<unknown>) => void;
   /** Base64 Ed25519 seed for response signing; falls back to REVENUEDOT_SIGNING_KEY. "" turns signing off. */
   signingKey?: string;
   /** "cloud" on RevenueDot Cloud (Workers); self-hosted otherwise. Shown to dashboard users with their plan. */
