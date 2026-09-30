@@ -10,6 +10,7 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - **Never copy RevenueCat's docs text or use its name, logo or domains** in our product names. Plain "works with the RevenueCat SDK" wording is fine.
 - **No AGPL or other copyleft code from other projects.** Reading it for ideas is fine.
 - Keep `docs/STATUS.md` current. Commit and push as you go.
+- **Keep README.md rich and current.** When a feature ships, update its status in the Features table, add a real screenshot or short GIF to `docs/assets/`, and extend the FAQ with questions people search for. Every claim about RevenueCat or other vendors needs a source link.
 
 ## Index
 - `LICENSING.md`: AGPL-3.0 core, `ee/` under the Enterprise License, MIT for SDKs and CLI; `TRADEMARKS.md`; CLA in `.github/CLA.md`. Never import `ee/` code from outside `ee/`.
