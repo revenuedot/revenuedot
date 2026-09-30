@@ -1,0 +1,91 @@
+# Deploys to production on every push to main once CI passes, and when the docs repo changes.
+# Server: migrations, then the Worker for app.revenuedot.app and api.revenuedot.app, then live smoke checks.
+# Site: revenuedot.app with the docs. Secrets live in the GitHub "production" environment (master copies in 1Password).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [docs-updated]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/ci.yml
+
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.f.outputs.server }}
+      site: ${{ steps.f.outputs.site }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: f
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "server=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
+            echo "site=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+          echo "$files" | grep -qE '^(apps/(server|dashboard)|packages|scripts/(deploy-cloud|migrate|smoke-cloud)|pnpm-lock\.yaml|package\.json)' && echo server=true >> "$GITHUB_OUTPUT" || echo server=false >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(apps/site|design|brand|pnpm-lock\.yaml)' && echo site=true >> "$GITHUB_OUTPUT" || echo site=false >> "$GITHUB_OUTPUT"
+
+  server:
+    needs: [ci, changes]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.server == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/deploy-cloud.sh
+      - name: Live smoke checks
+        run: node scripts/smoke-cloud.mjs https://api.revenuedot.app --read-only --app https://app.revenuedot.app --public-key gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=
+
+  site:
+    needs: [ci, changes, server]
+    if: ${{ !failure() && !cancelled() && needs.changes.outputs.site == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      DOCS_DIR: ${{ github.workspace }}/docs-repo
+      CHECK_WORKSPACE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: revenuedot/docs
+          path: docs-repo
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter site run deploy
+      - name: Live check
+        run: |
+          for u in / /docs /pricing /sitemap.xml /llms.txt; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://revenuedot.app$u"); echo "$u $code"; [ "$code" = 200 ]
+          done

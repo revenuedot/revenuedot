@@ -4,7 +4,7 @@
 # domains, the every-minute cron). Steps and background: docs/cloud.md.
 #
 # Needs: Node 22.18 or newer (cf loads cloudflare.config.ts), `cf auth login` with access to the Circo account, and the
-# production Postgres URL in CLOUD_DATABASE_URL (default: REVENUEDOT_PROD_DATABASE_URL from ~/.config/revenuedot/prod.env).
+# production Postgres URL in CLOUD_DATABASE_URL (default: read from 1Password, op://RevenueDot/Railway production Postgres/url).
 # Run it from a clean checkout of main: it deploys and migrates whatever is in the working tree.
 #
 # Usage: pnpm deploy:cloud [--dry-run] [--secrets-file ~/.config/revenuedot/signing-root.key]
@@ -40,10 +40,9 @@ if ! node_ok node; then
 fi
 node_ok node || { echo "cf needs Node 22.18 or newer to load cloudflare.config.ts (this is $(node -v))." >&2; exit 1; }
 
-if [[ -z "${CLOUD_DATABASE_URL:-}" && -f "$HOME/.config/revenuedot/prod.env" ]]; then
-  # shellcheck disable=SC1091
-  source "$HOME/.config/revenuedot/prod.env"
-  CLOUD_DATABASE_URL="${REVENUEDOT_PROD_DATABASE_URL:-}"
+# CI passes CLOUD_DATABASE_URL from the GitHub "production" environment. A manual deploy reads it from 1Password.
+if [[ -z "${CLOUD_DATABASE_URL:-}" && -z "$DRY_RUN" ]] && command -v op >/dev/null; then
+  CLOUD_DATABASE_URL=$(op read "op://RevenueDot/Railway production Postgres/url" | tr -d '\n')
 fi
 if [[ -z "$DRY_RUN" && -z "${CLOUD_DATABASE_URL:-}" ]]; then
   echo "Set CLOUD_DATABASE_URL to the production Postgres URL (the one Hyperdrive points at)." >&2

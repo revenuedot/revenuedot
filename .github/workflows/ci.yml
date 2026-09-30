@@ -1,0 +1,49 @@
+# Type checks and tests on every pull request. On main, deploy.yml runs this first and deploys only if it passes.
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npx tsc -b
+      - run: pnpm vitest run
+
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # The site renders the docs repo at /docs and /blog.
+      - uses: actions/checkout@v4
+        with:
+          repository: revenuedot/docs
+          path: docs-repo
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter site build
+        env:
+          DOCS_DIR: ${{ github.workspace }}/docs-repo
+      - run: pnpm --filter site check
+        env:
+          DOCS_DIR: ${{ github.workspace }}/docs-repo
+          CHECK_WORKSPACE: "0"
