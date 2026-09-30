@@ -6,9 +6,12 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { authRoutes } from "./routes/auth.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { v2Routes } from "./routes/v2/index.js";
+import { withCredentialHealth } from "./services/credential-health.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 
-export function createApp(deps: Deps) {
+export function createApp(input: Deps) {
+  // Receipt checks that the store answers with a credentials error mark the app failing (the credentials alert).
+  const deps: Deps = { ...input, stores: withCredentialHealth(input.stores, input.db, input.now) };
   const app = new Hono();
   // SDK and REST calls come from anywhere; dashboard calls are same-origin with a cookie.
   const sdkCors = cors({ origin: "*", allowHeaders: ["*"], exposeHeaders: ["X-RevenueCat-Request-Time", "X-RevenueCat-ETag", "X-Signature"] });

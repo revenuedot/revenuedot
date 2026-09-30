@@ -28,6 +28,10 @@ export const apps = pgTable("apps", {
   lastNotificationAt: ts("last_notification_at"),
   /** Google Play: when the daily voided-purchases scan last ran for this app. */
   voidedPurchasesCheckedAt: ts("voided_purchases_checked_at"),
+  /** Whether the store accepted the credentials the last time we knew: "ok", "failing", or null (not checked yet). */
+  credentialsStatus: text("credentials_status"),
+  credentialsError: text("credentials_error"),
+  credentialsCheckedAt: ts("credentials_checked_at"),
   createdAt: created(),
 }, (t) => [uniqueIndex("apps_public_key").on(t.publicKey), index("apps_project").on(t.projectId)]);
 
@@ -241,6 +245,9 @@ export const webhooks = pgTable("webhooks", {
   appId: text("app_id"),
   eventTypes: jsonb("event_types").$type<string[] | null>(),
   enabled: boolean("enabled").notNull().default(true),
+  /** Delivery attempts in a row that failed; 0 after any success. 5 or more opens a "webhook failing" alert. */
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  lastError: text("last_error"),
   createdAt: created(),
 });
 
@@ -265,9 +272,14 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   /** RevenueDot Cloud plan for this account. Every account is on "free" until billing plans ship (Tier 2). */
   plan: text("plan").notNull().default("free"),
+  /** When the user proved they read this inbox (verification link, password reset or invite). Cloud gates secret keys and invites on it. */
+  emailVerifiedAt: ts("email_verified_at"),
+  /** Alert emails (failing notifications, webhooks, store credentials) for projects this user administers. */
+  alertEmails: boolean("alert_emails").notNull().default(true),
   createdAt: created(),
 }, (t) => [uniqueIndex("users_email").on(t.email)]);
 
+/** A user's access to a project. `role`: "admin", "developer" or "viewer". */
 export const memberships = pgTable("memberships", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
@@ -358,3 +370,56 @@ export const fxRates = pgTable("fx_rates", {
   rates: jsonb("rates").$type<Record<string, number>>().notNull(),
   fetchedAt: ts("fetched_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.source, t.date] })]);
+
+/**
+ * Single-use email links: password resets (1 hour) and email verification (24 hours). Only the SHA-256 of the token is
+ * stored. `email` is the address the link was sent to, so a link stops working if the account's email changes.
+ */
+export const authTokens = pgTable("auth_tokens", {
+  hash: text("hash").primaryKey(),
+  kind: text("kind").notNull(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: created(),
+}, (t) => [index("auth_tokens_user").on(t.userId, t.kind)]);
+
+/** Invitations to a project by email. The link token is stored as a SHA-256; resending replaces it. */
+export const invites = pgTable("invites", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  invitedBy: text("invited_by").references(() => users.id, { onDelete: "set null" }),
+  expiresAt: ts("expires_at").notNull(),
+  lastSentAt: ts("last_sent_at").notNull().defaultNow(),
+  acceptedAt: ts("accepted_at"),
+  acceptedBy: text("accepted_by").references(() => users.id, { onDelete: "set null" }),
+  revokedAt: ts("revoked_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("invites_token").on(t.tokenHash), index("invites_project").on(t.projectId, t.email)]);
+
+/** Fixed-window counters for rate limits (password reset, verification resend, invites). Works on Workers and Node alike. */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  windowStart: ts("window_start").notNull(),
+  count: integer("count").notNull().default(0),
+});
+
+/**
+ * One row per thing that can break: kind "store_notifications" or "store_credentials" (subject = app id) or "webhook"
+ * (subject = webhook id). The tick opens, reminds (at most once a day) and resolves it, and emails the project's admins.
+ */
+export const alerts = pgTable("alerts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  subjectId: text("subject_id").notNull(),
+  status: text("status").notNull(),
+  message: text("message"),
+  openedAt: ts("opened_at").notNull(),
+  lastNotifiedAt: ts("last_notified_at"),
+  resolvedAt: ts("resolved_at"),
+}, (t) => [uniqueIndex("alerts_subject").on(t.kind, t.subjectId), index("alerts_project").on(t.projectId, t.status)]);

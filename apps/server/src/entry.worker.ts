@@ -7,6 +7,7 @@ import { connectPostgres, type DB } from "@revenuedot/db/worker";
 import { createApp } from "./app.js";
 import { defaultStores } from "./stores/index.js";
 import { tick } from "./services/tick.js";
+import { cloudflareMailer, logMailer, type SendEmailBinding } from "./mail/index.js";
 
 // Minimal Workers types, so the shared tsconfig (DOM lib) needs no @cloudflare/workers-types.
 interface Hyperdrive { connectionString: string }
@@ -20,7 +21,14 @@ export interface Env {
   ASSETS: Fetcher;
   /** Secret. Base64 Ed25519 seed for response signing (Trusted Entitlements). Unset turns signing off. */
   REVENUEDOT_SIGNING_KEY?: string;
+  /** Cloudflare Email Sending (`send_email` binding), sender no-reply@mail.revenuedot.app. Unset: emails go to the log. */
+  EMAIL?: SendEmailBinding;
+  /** Dashboard origin for links in emails; defaults to https://app.revenuedot.app. */
+  REVENUEDOT_PUBLIC_URL?: string;
 }
+
+const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
+const publicUrlFor = (env: Env) => env.REVENUEDOT_PUBLIC_URL || "https://app.revenuedot.app";
 
 /** Paths the API owns. Everything else on app.revenuedot.app is the dashboard. */
 const API_PATH = /^\/(v1|v2|auth|rcbilling|\.well-known)(\/|$)/;
@@ -50,16 +58,21 @@ const appFor = (env: Env) => (app ??= createApp({
   stores,
   edition: "cloud",
   signingKey: env.REVENUEDOT_SIGNING_KEY ?? "",
+  mailer: mailerFor(env),
+  publicUrl: publicUrlFor(env),
   // Send new webhook deliveries after the response, on the request's own connection.
-  kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(s.db, "kick")); },
+  kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(env, s.db, "kick")); },
   // Work that finishes after the response (AdServices attribution) keeps the request's connection open until it is done.
   background: (task) => { scope.getStore()?.pending.push(task); },
+  // Password reset emails and the like go out after the response, on the request's own connection.
+  defer: (task) => { const s = scope.getStore(); if (s) s.pending.push(task()); else void task(); },
 }));
 
-async function runTick(db: DB, why: string) {
+async function runTick(env: Env, db: DB, why: string) {
   try {
-    const r = await tick(db, new Date(), fetch, { stores });
-    if (r.expired || r.voided || r.sent) console.log(`tick (${why})`, JSON.stringify(r));
+    // Credential re-checks call Apple and Google; only the cron does them, not the ticks kicked by requests.
+    const r = await tick(db, new Date(), fetch, { stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron" });
+    if (r.expired || r.voided || r.sent || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
     return r;
   } catch (e) {
     console.error(`tick (${why}) failed`, e);
@@ -88,7 +101,7 @@ export default {
   async scheduled(_c: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
     ctx.waitUntil((async () => {
-      try { await runTick(conn.db, "cron"); } finally { await conn.close(); }
+      try { await runTick(env, conn.db, "cron"); } finally { await conn.close(); }
     })());
   },
 };

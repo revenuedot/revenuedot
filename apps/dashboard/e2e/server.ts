@@ -7,6 +7,7 @@
  *   verified purchases go through the server's own purchase pipeline with the clock set back, exactly as if Apple's
  *   notifications had arrived on those days, so events, transactions and webhooks are the real ones.
  * A second account (fresh@revenuedot.test / e2e-password-1) has an empty project for the first-run checklist.
+ * Every email the server sends is kept in memory and listed at GET /__mail?to=<address> (account-email.spec.ts).
  */
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -14,6 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { openDb, schema } from "@revenuedot/db";
 import { createApp, defaultStores } from "@revenuedot/server";
+import { memoryMailer } from "@revenuedot/server/mail/index.js";
 import { getOrCreateCustomer, touch } from "@revenuedot/server/repo/customers.js";
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
 import { tick } from "@revenuedot/server/services/tick.js";
@@ -33,15 +35,18 @@ let ticking = false;
 const runTick = async () => {
   if (!ready || ticking) return;
   ticking = true;
-  try { await tick(db, now()); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
+  try { await tick(db, now(), fetch, { mailer: mail }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
 };
 setInterval(runTick, 5_000);
-const api = createApp({ db, now, stores: defaultStores(), kick: () => { setTimeout(runTick, 100); } });
+// Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
+const mail = memoryMailer();
+const api = createApp({ db, now, stores: defaultStores(), mailer: mail, kick: () => { setTimeout(runTick, 100); } });
 
 let ready = false;
 const web = new Hono();
 // Playwright waits for this: 503 while seeding, 200 once the data is in.
 web.get("/__ready", (c) => (ready ? c.text("ready") : c.text("seeding", 503)));
+web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
 web.all("/*", async (c) => {
   const path = c.req.path;
   if (/^\/(v1|v2|auth|rcbilling)(\/|$)/.test(path)) return api.fetch(c.req.raw);

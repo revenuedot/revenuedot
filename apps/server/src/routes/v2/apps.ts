@@ -90,7 +90,9 @@ export function appRoutes(r: V2Router, deps: Deps) {
     // null clears a credential; other values replace it.
     const credentials: Record<string, unknown> = { ...a.credentials };
     for (const [k, v] of Object.entries(rest)) { if (v === null) delete credentials[k]; else credentials[k] = v; }
-    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials })
+    // New credentials (or package name) are checked with the store on the next tick; a failing alert resolves only once the store accepts them.
+    const recheck = bundleId || Object.keys(rest).length ? { credentialsCheckedAt: null } : {};
+    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials, ...recheck })
       .where(and(eq(schema.apps.projectId, a.projectId), eq(schema.apps.id, a.id))).returning();
     return c.json(appShape(row!));
   });

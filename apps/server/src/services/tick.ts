@@ -3,6 +3,9 @@ import { expirationReasonOf } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { recordEvent } from "./events.js";
 import { deliverDue } from "./webhooks.js";
+import { runAlerts } from "./alerts.js";
+import { recheckDueCredentials } from "./credential-health.js";
+import type { Mailer } from "../mail/index.js";
 import { subRowToDomain } from "../repo/customers.js";
 import { scanDueVoidedPurchases } from "../stores/google/voided.js";
 import type { StoreAdapter } from "../stores/types.js";
@@ -12,13 +15,26 @@ const { subscriptions, customers, customerAliases } = schema;
 /**
  * The one periodic job (every minute: Workers cron in the cloud, an interval in Node):
  * record EXPIRATION for subscriptions whose access has ended, run the daily Google Play voided-purchases scan for apps
- * that are due, then send due webhooks. `stores` supplies the Play client (tests inject a fake Google).
+ * that are due, send due webhooks, re-check store credentials that are due, then open, remind and resolve alert emails.
+ * `stores` supplies the Play client (tests inject a fake Google).
  */
-export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: { stores?: Record<string, StoreAdapter> } = {}) {
+export interface TickOptions {
+  stores?: Record<string, StoreAdapter>;
+  /** Alert emails to project admins (services/alerts.ts); the log driver when unset. */
+  mailer?: Mailer;
+  /** Dashboard origin for links in alert emails (REVENUEDOT_PUBLIC_URL). */
+  publicUrl?: string;
+  /** Ask Apple and Google whether stored credentials still work (failing apps hourly, others daily). The entry points turn it on; tests leave it off. */
+  checkCredentials?: boolean;
+}
+
+export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
   const expired = await recordDueExpirations(db, now);
   const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
   const sent = await deliverDue(db, fetchImpl, now);
-  return { expired, voided, sent };
+  const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {} }, now) : 0;
+  const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
+  return { expired, voided, sent, credentialsChecked, alerts };
 }
 
 /** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */

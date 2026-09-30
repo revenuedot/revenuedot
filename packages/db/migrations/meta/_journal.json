@@ -43,6 +43,13 @@
       "when": 1790805275731,
       "tag": "0005_fx_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790810259957,
+      "tag": "0006_account_email",
+      "breakpoints": true
     }
   ]
 }

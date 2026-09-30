@@ -7,19 +7,27 @@ import { createApp } from "./app.js";
 import { defaultStores } from "./stores/index.js";
 
 import { tick } from "./services/tick.js";
+import { logMailer, type Mailer } from "./mail/index.js";
 
 const { db } = await openDb(process.env.DATABASE_URL ?? "pglite://./.data/dev");
 const stores = defaultStores();
+// Email: SMTP when REVENUEDOT_SMTP_URL is set, else every email (links included) is printed to this log.
+const publicUrl = process.env.REVENUEDOT_PUBLIC_URL?.trim() || undefined;
+let mailer: Mailer = logMailer();
+if (process.env.REVENUEDOT_SMTP_URL?.trim()) {
+  const { smtpMailer } = await import("./mail/smtp.js");
+  mailer = smtpMailer(process.env.REVENUEDOT_SMTP_URL.trim(), process.env.REVENUEDOT_MAIL_FROM?.trim() || "RevenueDot <no-reply@localhost>", { replyTo: process.env.REVENUEDOT_MAIL_REPLY_TO?.trim() || undefined });
+}
 let running = false;
 const runTick = async () => {
   if (running) return;
   running = true;
-  try { await tick(db, new Date(), fetch, { stores }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
+  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
-const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250), signup });
+const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250), signup, mailer, publicUrl });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 if (existsSync(`${dist}/index.html`)) {
@@ -42,3 +50,4 @@ const handler: typeof app.fetch = !requestLog ? app.fetch : async (req, ...rest)
 };
 serve({ fetch: handler, port });
 console.log(`RevenueDot API on http://localhost:${port}`);
+console.log(mailer.driver === "smtp" ? "Email: SMTP (REVENUEDOT_SMTP_URL)." : "Email: not configured; emails are printed to this log. Set REVENUEDOT_SMTP_URL to send them.");

@@ -24,6 +24,15 @@ export interface Deps {
    * entry.node.ts unless REVENUEDOT_ALLOW_SIGNUP=true). Unset or "open": anyone. The cloud edition is always open.
    */
   signup?: "open" | "owner_only";
+  /** Outgoing email (Cloudflare binding, SMTP, or the log driver when unset). See mail/index.ts. */
+  mailer?: import("./mail/index.js").Mailer;
+  /** Public dashboard origin for links in emails (REVENUEDOT_PUBLIC_URL). Unset: the origin of the request. */
+  publicUrl?: string;
+  /**
+   * Runs work after the response (Workers: waitUntil on the request's connection; Node: fire and forget). Password
+   * reset uses it so the answer takes the same time whether or not the account exists. Tests pass one they can await.
+   */
+  defer?: (task: () => Promise<unknown>) => void;
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

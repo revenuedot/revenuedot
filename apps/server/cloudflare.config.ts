@@ -33,6 +33,10 @@ export default defineConfig({
       // Base64 Ed25519 seed for response signing (Trusted Entitlements). Set by scripts/deploy-cloud.sh from
       // ~/.config/revenuedot/signing-root.key; locally from apps/server/.dev.vars (gitignored).
       REVENUEDOT_SIGNING_KEY: bindings.secret(),
+      // Cloudflare Email Sending: password resets, verification, invites and alerts (prd/account-email/PRD.md). The
+      // sending domain mail.revenuedot.app is onboarded on the Circo account; the binding may only send as no-reply@.
+      // `cf dev` simulates it (emails are logged) unless REVENUEDOT_EMAIL_REMOTE=1, which sends real email.
+      EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
     },
   },
 });

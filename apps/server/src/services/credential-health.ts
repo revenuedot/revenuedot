@@ -1,0 +1,147 @@
+import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { schema, type DB } from "@revenuedot/db";
+import type { Deps } from "../context.js";
+import { Codes, RCError } from "../errors.js";
+import { AppStoreServerApi, AppleApiClientError, appleCredentials } from "../stores/apple/api.js";
+import { GoogleApiError, hasServiceAccount, serviceAccountOf } from "../stores/google/api.js";
+import { googleClientFor } from "../stores/google/index.js";
+import type { AppRow, StoreAdapter } from "../stores/types.js";
+
+/**
+ * Whether Apple and Google accept an app's store credentials (`apps.credentials_status`), for the "store credentials
+ * failing" alert (prd/account-email/PRD.md). Failures are recorded wherever a store call answers 401/403 (receipt checks,
+ * the voided-purchases scan, the dashboard check); the tick re-checks failing apps every hour and every app once a day.
+ */
+
+export type CheckStatus = "valid" | "invalid" | "unreachable";
+export interface CredentialCheck { status: CheckStatus; message: string; extra: Record<string, unknown> }
+
+type CheckDeps = Pick<Deps, "fetch" | "now" | "stores">;
+
+/** Asks Apple or Google whether the credentials work, with one harmless request. */
+export async function checkStoreCredentials(deps: CheckDeps, app: AppRow): Promise<CredentialCheck> {
+  const out = (status: CheckStatus, message: string, extra: Record<string, unknown> = {}) => ({ status, message, extra });
+  if (app.type === "app_store" || app.type === "mac_app_store") {
+    let creds;
+    try { creds = appleCredentials(app); } catch (e) {
+      return out("invalid", e instanceof RCError ? "The in-app purchase key is incomplete. Add the .p8 file, the key ID, the issuer ID and the bundle ID." : String(e));
+    }
+    if (!creds) return out("invalid", "No in-app purchase key yet. Add the .p8 file, the key ID and the issuer ID.");
+    const api = new AppStoreServerApi(creds, deps.fetch ?? ((u, i) => fetch(u, i)), deps.now);
+    try {
+      // Any transaction id works: Apple answers 404 or 400 when the key is accepted and 401 when it is not.
+      await api.get("production", "/inApps/v1/transactions/0");
+      return out("valid", "Apple accepted the in-app purchase key.", { key_id: creds.keyId });
+    } catch (e) {
+      if (e instanceof AppleApiClientError) return out("valid", "Apple accepted the in-app purchase key.", { key_id: creds.keyId });
+      if (e instanceof RCError && e.status >= 500 && e.status !== 503) {
+        return out("invalid", /not a valid \.p8/.test(e.message)
+          ? "The private key is not a valid .p8 file. Upload the file App Store Connect gave you, unchanged."
+          : "Apple rejected the key. Check that the key ID and issuer ID belong to this .p8 file and that the key is an In-App Purchase key.");
+      }
+      return out("unreachable", "Apple could not be reached. Try again in a minute.");
+    }
+  }
+  if (app.type === "play_store") {
+    if (!app.bundleId) return out("invalid", "Add the package name first (for example com.example.app).");
+    const { client } = googleClientFor(deps.stores, deps.fetch);
+    let email: string | null = null;
+    try {
+      const sa = serviceAccountOf(app);
+      email = sa.client_email;
+      await client.accessToken(sa);
+      // A made-up token: Google answers "not found" when the account can see the app, 401/403 when it cannot.
+      await client.call(app, "GET", `/purchases/subscriptionsv2/tokens/${encodeURIComponent("revenuedot-credentials-check")}`);
+      return out("valid", "Google accepted the service account and it can read this app's purchases.", { client_email: email });
+    } catch (e) {
+      if (e instanceof GoogleApiError) {
+        if (e.kind === "invalid_token") return out("valid", "Google accepted the service account and it can read this app's purchases.", { client_email: email });
+        if (e.kind === "transient") return out("unreachable", "Google could not be reached. Try again in a minute.", { client_email: email });
+        const msg = /applicationNotFound|No Play app/.test(e.message)
+          ? `Google Play has no app with the package name ${app.bundleId}. Check the package name.`
+          : e.status === 403
+            ? "The service account works but cannot see this app yet. In Play Console, invite it under Users and permissions with the financial data and order management permissions. New permissions can take up to 36 hours to apply."
+            : e.message.includes("JSON") || e.message.includes("client_email") || e.message.includes("PKCS")
+              ? "This is not a service account key file. Download a JSON key for the service account in Google Cloud and upload it here."
+              : `Google rejected the service account: ${e.message}`;
+        return out("invalid", msg, { client_email: email });
+      }
+      return out("unreachable", "Google could not be reached. Try again in a minute.", { client_email: email });
+    }
+  }
+  return out("invalid", `${app.type} apps have no store credentials to check.`);
+}
+
+/** Stores a check's outcome; "unreachable" says nothing about the credentials, so only the check time moves. */
+export async function recordCredentialCheck(db: DB, appId: string, r: Pick<CredentialCheck, "status" | "message">, now: Date) {
+  if (r.status === "unreachable") { await db.update(schema.apps).set({ credentialsCheckedAt: now }).where(eq(schema.apps.id, appId)); return; }
+  await db.update(schema.apps).set({ credentialsStatus: r.status === "valid" ? "ok" : "failing", credentialsError: r.status === "valid" ? null : r.message, credentialsCheckedAt: now }).where(eq(schema.apps.id, appId));
+}
+
+export async function recordCredentialFailure(db: DB, appId: string, message: string, now: Date) {
+  await db.update(schema.apps).set({ credentialsStatus: "failing", credentialsError: message.slice(0, 500), credentialsCheckedAt: now }).where(eq(schema.apps.id, appId));
+}
+
+/** Whether a store error means the credentials were rejected (Apple 401 / key unusable, Google 401/403 or a bad key). */
+export function credentialFailureOf(e: unknown): string | null {
+  if (e instanceof RCError && e.code === Codes.INVALID_APPLE_SUBSCRIPTION_KEY) return e.message;
+  if (e instanceof GoogleApiError && e.kind === "credentials") return e.message;
+  if (e instanceof RCError && e.status === 503 && e.message.startsWith("Google Play credentials problem")) return e.message;
+  return null;
+}
+
+/**
+ * Wraps the store adapters so every receipt check that the store answers with a credentials error marks the app
+ * failing. Behaviour is otherwise unchanged: the error is rethrown as before.
+ */
+export function withCredentialHealth(stores: Record<string, StoreAdapter>, db: DB, now: () => Date): Record<string, StoreAdapter> {
+  const out: Record<string, StoreAdapter> = {};
+  for (const [type, adapter] of Object.entries(stores)) {
+    if (type !== "app_store" && type !== "mac_app_store" && type !== "play_store") { out[type] = adapter; continue; }
+    // Keep the adapter's own fields (fetchFn, client ...) that appleApiFor/googleClientFor read.
+    out[type] = Object.assign(Object.create(Object.getPrototypeOf(adapter)), adapter, {
+      async verify(app: AppRow, input: Parameters<StoreAdapter["verify"]>[1], catalog: Parameters<StoreAdapter["verify"]>[2]) {
+        try {
+          return await adapter.verify.call(adapter, app, input, catalog);
+        } catch (e) {
+          const why = credentialFailureOf(e);
+          if (why) await recordCredentialFailure(db, app.id, why, now()).catch(() => {});
+          throw e;
+        }
+      },
+    });
+  }
+  return out;
+}
+
+const HOUR = 3600_000;
+const STORE_TYPES = ["app_store", "mac_app_store", "play_store"];
+const hasAppleKey = (c: Record<string, unknown>) => ["subscription_private_key", "private_key"].some((k) => typeof c[k] === "string" && !!(c[k] as string).trim());
+
+/** The tick's re-checks: failing apps every hour, apps never checked or not checked for a day. At most `limit` per run. */
+export async function recheckDueCredentials(deps: CheckDeps & { db: DB }, now: Date, limit = 10) {
+  const A = schema.apps;
+  const due = await deps.db.select().from(A).where(and(inArray(A.type, STORE_TYPES), or(
+    isNull(A.credentialsCheckedAt),
+    and(eq(A.credentialsStatus, "failing"), lte(A.credentialsCheckedAt, new Date(now.getTime() - HOUR))),
+    lte(A.credentialsCheckedAt, new Date(now.getTime() - 24 * HOUR)),
+  ))).limit(limit * 3);
+  let checked = 0;
+  for (const app of due) {
+    if (checked >= limit) break;
+    const configured = app.type === "play_store" ? hasServiceAccount(app) : hasAppleKey(app.credentials ?? {});
+    if (!configured) {
+      // Nothing to check: no status, and try again in a day (the check time also keeps the query small).
+      await deps.db.update(A).set({ credentialsStatus: null, credentialsError: null, credentialsCheckedAt: now }).where(eq(A.id, app.id));
+      continue;
+    }
+    checked++;
+    try {
+      await recordCredentialCheck(deps.db, app.id, await checkStoreCredentials(deps, app), now);
+    } catch (e) {
+      console.warn(`credential check failed for ${app.id}: ${e instanceof Error ? e.message : e}`);
+      await deps.db.update(A).set({ credentialsCheckedAt: now }).where(eq(A.id, app.id));
+    }
+  }
+  return checked;
+}

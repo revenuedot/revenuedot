@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell, useMe } from "../../components/Shell";
 import { Icon } from "../../components/icons";
-import { CopyButton, Dialog, Field, PageHead, Switch, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
+import { ConfirmDialog, CopyButton, Dialog, Field, Menu, PageHead, Switch, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
 import { base, errMsg, type Collaborator, type ProjectSettings as Project, type TransferBehavior } from "./data";
 
@@ -11,7 +11,8 @@ import { base, errMsg, type Collaborator, type ProjectSettings as Project, type 
  * Project settings (/projects/:projectId/settings/:tab): General (name, project ID, transfer behaviour for purchases
  * seen on several app user IDs with an optional sandbox behaviour, sandbox testing access, delete), Collaborators, and
  * Audit logs, Domains and AI features as later-tier tabs.
- * GAPS vs RevenueCat (frame 28): inviting collaborators by email and changing roles, transfer of project ownership,
+ * Collaborators: members with roles (admin, developer, viewer), invites by email with resend and revoke (prd/account-email).
+ * GAPS vs RevenueCat (frame 28): the Operations, Growth and Support roles, transfer of project ownership,
  * limiting sandbox testing access to allowed testers, and the Brand, Blocked customers and Verified Metrics tabs.
  */
 
@@ -160,32 +161,164 @@ function General({ p }: { p: Project }) {
   );
 }
 
+interface Invite { object: "invite"; id: string; email: string; role: Role; status: "pending" | "expired"; created_at: number; last_sent_at: number; expires_at: number; email_sent?: boolean }
+type Role = "admin" | "developer" | "viewer";
+const ROLES: { value: Role; label: string; text: string }[] = [
+  { value: "admin", label: "Admin", text: "Everything, including inviting and removing people, secret API keys and deleting the project." },
+  { value: "developer", label: "Developer", text: "Apps, catalog, customers and integrations. Cannot create secret API keys or manage members." },
+  { value: "viewer", label: "Viewer", text: "Sees everything, changes nothing." },
+];
+/** API v2 names the viewer role read_only, as RevenueCat does. */
+const roleOf = (apiRole: string): Role => (apiRole === "read_only" || apiRole === "viewer" ? "viewer" : apiRole === "developer" ? "developer" : "admin");
+const roleLabel = (r: string) => ROLES.find((x) => x.value === roleOf(r))?.label ?? r;
+
+function InviteDialog({ pid, onClose }: { pid: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<Role>("developer");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setError("Enter a valid email address."); document.getElementById("invite-email")?.focus(); return; }
+    setBusy(true); setError(null);
+    try {
+      const r = await api<Invite>(`${base(pid)}/invites`, { method: "POST", json: { email: email.trim(), role } });
+      await qc.invalidateQueries({ queryKey: ["invites", pid] });
+      toast(r.email_sent === false ? `Invite saved for ${r.email}, but the email could not be sent. Try Resend.` : `Invite sent to ${r.email}.`);
+      onClose();
+    } catch (e) { setError(errMsg(e)); setBusy(false); }
+  };
+  return (
+    <Dialog title="Invite to this project" onClose={busy ? () => {} : onClose} footer={<>
+      <button type="button" className="btn btn-line" disabled={busy} onClick={onClose}>Cancel</button>
+      <button type="button" className="btn btn-dark" disabled={busy} onClick={send}>{busy ? "Sending…" : "Send invite"}</button>
+    </>}>
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+        <Field label="Email" htmlFor="invite-email" hint="They get a link that works for 7 days. People without an account create one from it.">
+          <input id="invite-email" className="input" type="email" autoComplete="off" autoFocus value={email} onChange={(e) => { setEmail(e.target.value); setError(null); }} />
+        </Field>
+        <Field label="Role" htmlFor="invite-role" hint={ROLES.find((r) => r.value === role)!.text}>
+          <select id="invite-role" className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </Field>
+        <button type="submit" hidden />
+      </form>
+      {error && <div className="banner err" role="alert">{error}</div>}
+    </Dialog>
+  );
+}
+
 function Collaborators({ pid }: { pid: string }) {
   const me = useMe();
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const toast = useToast();
+  const [inviting, setInviting] = useState(false);
+  const [confirm, setConfirm] = useState<{ title: string; body: string; label: string; run: () => Promise<unknown> } | null>(null);
   const list = useQuery({ queryKey: ["collaborators", pid], queryFn: async () => (await api<List<Collaborator>>(`${base(pid)}/collaborators`)).items });
+  const invites = useQuery({ queryKey: ["invites", pid], queryFn: async () => (await api<List<Invite>>(`${base(pid)}/invites`)).items });
+  const myRole = me.data?.projects.find((p) => p.id === pid)?.role;
+  const isAdmin = myRole === "admin";
+  const verifyFirst = !!me.data?.account?.email_verification_required;
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["collaborators", pid] }), qc.invalidateQueries({ queryKey: ["invites", pid] })]);
+  const setRole = async (c: Collaborator, role: Role) => {
+    try {
+      await api(`${base(pid)}/collaborators/${encodeURIComponent(c.id)}`, { method: "POST", json: { role } });
+      await refresh();
+      if (c.id === me.data?.user.id) await qc.invalidateQueries({ queryKey: ["me"] });
+      toast(`${c.name ?? c.email} is now ${roleLabel(role).toLowerCase() === "admin" ? "an admin" : `a ${roleLabel(role).toLowerCase()}`}.`);
+    } catch (e) { toast(errMsg(e)); await refresh(); }
+  };
+  const remove = (c: Collaborator) => {
+    const self = c.id === me.data?.user.id;
+    setConfirm({
+      title: self ? "Leave this project?" : `Remove ${c.name ?? c.email}?`,
+      body: self ? "You lose access to this project at once. An admin can invite you again." : `${c.email} loses access to this project at once. You can invite them again later.`,
+      label: self ? "Leave project" : "Remove",
+      run: async () => {
+        await api(`${base(pid)}/collaborators/${encodeURIComponent(c.id)}`, { method: "DELETE" });
+        if (self) { await qc.invalidateQueries({ queryKey: ["me"] }); nav("/"); return; }
+        await refresh(); toast(`${c.email} was removed.`);
+      },
+    });
+  };
+  const resend = async (i: Invite) => {
+    try { const r = await api<Invite>(`${base(pid)}/invites/${i.id}/actions/resend`, { method: "POST" }); await refresh(); toast(r.email_sent === false ? "The email could not be sent. Try again." : `Invite sent again to ${i.email}.`); }
+    catch (e) { toast(errMsg(e)); }
+  };
+  const revoke = (i: Invite) => setConfirm({
+    title: `Revoke the invite for ${i.email}?`, body: "The link in their email stops working. You can invite them again later.", label: "Revoke invite",
+    run: async () => { await api(`${base(pid)}/invites/${i.id}`, { method: "DELETE" }); await refresh(); toast(`Invite for ${i.email} revoked.`); },
+  });
+  const inviteButton = (
+    <button type="button" className="btn btn-dark" disabled={!isAdmin || verifyFirst} title={!isAdmin ? "Only admins can invite people" : verifyFirst ? "Confirm your email address first" : undefined} onClick={() => setInviting(true)}>
+      <Icon name="userplus" />Invite
+    </button>
+  );
   return (
     <div className="stack">
       <section className="panel">
-        <div className="ph"><b>Collaborators</b><button type="button" className="btn btn-line" disabled title="Inviting by email comes in a later release"><Icon name="userplus" />Invite</button></div>
+        <div className="ph"><b>Members</b>{inviteButton}</div>
         {list.isLoading && <div className="pb subtle">Loading…</div>}
         {list.isError && <div className="pb"><div className="banner err" role="alert">{errMsg(list.error)}</div></div>}
         {list.data && (
-          <div className="tbl">
+          <div className="tbl members">
             <table>
-              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
-              <tbody>{list.data.map((c) => (
-                <tr key={c.id}>
-                  <td><b>{c.name ?? "—"}</b>{c.id === me.data?.user.id && <span className="subtle"> (you)</span>}</td>
-                  <td>{c.email}</td>
-                  <td><Tag tone={c.role === "admin" ? "gold" : "muted"}>{c.role === "read_only" ? "Viewer" : "Admin"}</Tag></td>
-                  <td>{fmt.date(c.accepted_at)}</td>
-                </tr>
-              ))}</tbody>
+              <thead><tr><th>Name</th><th className="hide-sm">Email</th><th>Role</th><th className="hide-sm">Joined</th><th aria-label="Actions" /></tr></thead>
+              <tbody>{list.data.map((c) => {
+                const self = c.id === me.data?.user.id;
+                return (
+                  <tr key={c.id}>
+                    <td><b>{c.name ?? c.email}</b>{self && <span className="subtle"> (you)</span>}</td>
+                    <td className="hide-sm">{c.email}</td>
+                    <td>{isAdmin
+                      ? <select className="select" aria-label={`Role of ${c.email}`} value={roleOf(c.role)} onChange={(e) => void setRole(c, e.target.value as Role)}>{ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select>
+                      : <Tag tone={roleOf(c.role) === "admin" ? "gold" : "muted"}>{roleLabel(c.role)}</Tag>}</td>
+                    <td className="hide-sm">{fmt.date(c.accepted_at)}</td>
+                    <td className="actions-cell">{(isAdmin || self) && <Menu label={`Actions for ${c.email}`} items={[{ label: self ? "Leave project" : "Remove from project", icon: "trash", danger: true, onSelect: () => remove(c) }]} />}</td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </div>
         )}
       </section>
-      <p className="section-sub">Inviting people by email and choosing their role (admin, developer, support, viewer) comes in a later release.</p>
+
+      {!!invites.data?.length && (
+        <section className="panel">
+          <div className="ph"><b>Pending invites</b></div>
+          <div className="tbl members">
+            <table>
+              <thead><tr><th>Email</th><th>Role</th><th className="hide-sm">Status</th><th className="hide-sm">Sent</th><th aria-label="Actions" /></tr></thead>
+              <tbody>{invites.data.map((i) => (
+                <tr key={i.id}>
+                  <td><b>{i.email}</b>{i.status === "expired" && <span className="show-sm"> <Tag tone="down">Expired</Tag></span>}</td>
+                  <td>{roleLabel(i.role)}</td>
+                  <td className="hide-sm"><Tag tone={i.status === "expired" ? "down" : "info"}>{i.status === "expired" ? "Expired" : "Pending"}</Tag></td>
+                  <td className="hide-sm">{fmt.date(i.last_sent_at)}</td>
+                  <td className="actions-cell">{isAdmin && <Menu label={`Actions for the invite to ${i.email}`} items={[
+                    { label: "Resend invite", icon: "refresh", onSelect: () => void resend(i) },
+                    { label: "Revoke invite", icon: "trash", danger: true, onSelect: () => revoke(i) },
+                  ]} />}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="panel">
+        <div className="ph"><b>Roles</b></div>
+        <div className="pb stack">
+          {ROLES.map((r) => <p key={r.value} className="section-sub"><b>{r.label}.</b> {r.text}</p>)}
+          {!isAdmin && <p className="section-sub">Only admins can invite people and change roles.</p>}
+          {isAdmin && verifyFirst && <p className="section-sub">Confirm your email address (see the banner at the top) to invite people.</p>}
+        </div>
+      </section>
+      {inviting && <InviteDialog pid={pid} onClose={() => setInviting(false)} />}
+      {confirm && <ConfirmDialog title={confirm.title} confirmLabel={confirm.label} danger onConfirm={confirm.run} onClose={() => setConfirm(null)}>{confirm.body}</ConfirmDialog>}
     </div>
   );
 }

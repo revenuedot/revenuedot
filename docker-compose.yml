@@ -11,6 +11,11 @@ services:
       REVENUEDOT_ALLOW_SIGNUP: ${REVENUEDOT_ALLOW_SIGNUP:-false}
       # Signs SDK responses for Trusted Entitlements when set; empty leaves signing off (see .env.example).
       REVENUEDOT_SIGNING_KEY: ${REVENUEDOT_SIGNING_KEY:-}
+      # Email through SMTP; unset prints emails (reset and invite links included) to the log (see .env.example).
+      REVENUEDOT_SMTP_URL: ${REVENUEDOT_SMTP_URL:-}
+      REVENUEDOT_MAIL_FROM: ${REVENUEDOT_MAIL_FROM:-}
+      REVENUEDOT_MAIL_REPLY_TO: ${REVENUEDOT_MAIL_REPLY_TO:-}
+      REVENUEDOT_PUBLIC_URL: ${REVENUEDOT_PUBLIC_URL:-}
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped

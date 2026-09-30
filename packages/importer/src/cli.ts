@@ -10,6 +10,7 @@ import { RevenueCatClient } from "./revenuecat.js";
 import { RevenueDotClient } from "./revenuedot.js";
 import { formatReport, runImport } from "./run.js";
 import { verifyImport, type VerifyReport } from "./verify.js";
+import { generatePassword, resetPassword, type Query } from "./admin.js";
 
 const HELP = `revenuedot: move a project from RevenueCat to RevenueDot.
 
@@ -17,6 +18,7 @@ Usage
   npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project proj... --to https://your-server --to-key sk_...
   npx revenuedot import verify --rc-key sk_... --rc-project proj... --to https://your-server --to-key sk_...
   npx revenuedot import plan --to https://your-server --to-key sk_... [--rc-project proj...]
+  npx revenuedot admin reset-password <email> [--password <new password>]   (self-host; needs DATABASE_URL)
 
 Options
   --rc-key <key>          RevenueCat secret API key, v2, read-only is enough (or REVENUECAT_API_KEY)
@@ -33,11 +35,13 @@ Options
   --no-public-keys        Keep RevenueDot's own SDK keys instead of RevenueCat's
   --emit-events           Record lifecycle events and send webhooks for imported purchases (default: none)
   --json                  Print the report as JSON
+  --password <password>   admin reset-password: the new password (default: a generated one, printed once)
+  --database-url <url>    admin: the server's Postgres (or DATABASE_URL), e.g. postgres://revenuedot:...@localhost:5432/revenuedot
   -h, --help              Show this help
 
 Docs: https://revenuedot.app/docs/migrate`;
 
-export interface CliIO { out: (s: string) => void; err: (s: string) => void; env: Record<string, string | undefined>; http?: HttpOptions; targetHttp?: HttpOptions; isTTY?: boolean }
+export interface CliIO { out: (s: string) => void; err: (s: string) => void; env: Record<string, string | undefined>; http?: HttpOptions; targetHttp?: HttpOptions; isTTY?: boolean; /** admin commands: SQL runner (tests); default: postgres at DATABASE_URL. */ query?: Query }
 
 /** Runs the CLI; returns the exit code (0 ok, 1 failed or differences found, 2 usage error). */
 export async function main(argv: string[], io: CliIO = { out: (s) => process.stdout.write(`${s}\n`), err: (s) => process.stderr.write(`${s}\n`), env: process.env, isTTY: process.stderr.isTTY }): Promise<number> {
@@ -50,7 +54,7 @@ export async function main(argv: string[], io: CliIO = { out: (s) => process.std
         to: { type: "string" }, "to-key": { type: "string" }, "to-project": { type: "string" }, state: { type: "string" },
         "dry-run": { type: "boolean" }, restart: { type: "boolean" }, concurrency: { type: "string" }, limit: { type: "string" },
         "page-size": { type: "string" }, "google-tokens": { type: "string" }, "no-public-keys": { type: "boolean" }, "emit-events": { type: "boolean" },
-        json: { type: "boolean" }, help: { type: "boolean", short: "h" },
+        json: { type: "boolean" }, help: { type: "boolean", short: "h" }, password: { type: "string" }, "database-url": { type: "string" },
       },
     });
   } catch (e) {
@@ -60,6 +64,7 @@ export async function main(argv: string[], io: CliIO = { out: (s) => process.std
   const { values: v, positionals } = parsed;
   const [cmd, sub] = positionals;
   if (v.help || !cmd) { io.out(HELP); return cmd || v.help ? 0 : 2; }
+  if (cmd === "admin") return admin(sub, positionals.slice(2), v, io);
   if (cmd !== "import" || (sub && sub !== "verify" && sub !== "plan")) { io.err(`Unknown command: ${positionals.join(" ")}\n\n${HELP}`); return 2; }
 
   const rcKey = v["rc-key"] ?? io.env.REVENUECAT_API_KEY;
@@ -136,4 +141,33 @@ export function formatVerify(r: VerifyReport): string {
     out.push("", "Re-run the import to pick up purchases made since it ran, then verify again. Differences that stay point to data the import could not bring over.");
   }
   return out.join("\n");
+}
+
+/** `revenuedot admin reset-password <email>`: for self-hosters without email, straight against the database. */
+async function admin(sub: string | undefined, args: string[], v: { password?: string; "database-url"?: string }, io: CliIO): Promise<number> {
+  if (sub !== "reset-password" || args.length !== 1) { io.err(`Usage: revenuedot admin reset-password <email> [--password <new password>]\n\n${HELP}`); return 2; }
+  const url = v["database-url"] ?? io.env.DATABASE_URL;
+  if (!io.query && !url) { io.err("Set DATABASE_URL (or --database-url) to the RevenueDot server's Postgres. With Docker, run it inside the server container, which has DATABASE_URL: docker compose exec revenuedot pnpm --filter revenuedot cli admin reset-password <email>"); return 2; }
+  const generated = v.password === undefined;
+  const password = v.password ?? generatePassword();
+  let close = async () => {};
+  let q = io.query;
+  if (!q) {
+    const { default: postgres } = await import("postgres");
+    const sql = postgres(url!, { max: 1, prepare: false, onnotice: () => {} });
+    q = (text, params) => sql.unsafe(text, params as never[]) as unknown as Promise<Record<string, unknown>[]>;
+    close = () => sql.end();
+  }
+  try {
+    const r = await resetPassword(q, args[0]!, password);
+    if (!r.ok) { io.err(r.error); return 1; }
+    io.out(`Password changed for ${r.email}; signed out of ${r.sessionsRevoked} session${r.sessionsRevoked === 1 ? "" : "s"}.`);
+    if (generated) io.out(`New password (shown once): ${password}`);
+    return 0;
+  } catch (e) {
+    io.err(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  } finally {
+    await close();
+  }
 }

@@ -30,6 +30,7 @@ pnpm --filter @revenuedot/dashboard seed    # or: fill the dev server (localhost
 | File | Covers |
 |---|---|
 | `overview-customers.spec.ts` | First-run checklist and test purchase flow; Overview cards against `/metrics/overview` and `/metrics/history`, period and sandbox switches, transactions, setup health; customer list, pagination and search; customer page history, grant and revoke, offering override, attributes, delete; phone width; console errors |
+| `account-email.spec.ts` | Forgot and reset password (the link works once), invite and accept as a new and an existing user, role changes, the last admin, resend, revoke, remove, leave, alert email settings, the unverified-email banner and verify link; every page at 390px. Emails come from the e2e server's in-memory mailer, `GET /__mail?to=<address>` |
 | `catalog.spec.ts` | Products, entitlements, offerings and what the SDK receives |
 | `setup.spec.ts` | New project; Apps (App Store, Google Play, Test Store) with credential upload, mocked "Check credentials", forwarding URL (a real notification is forwarded), live notification status, test purchase, SDK snippets, masked keys with reveal and copy; API keys (full and scoped secret keys used against `/v2`, revoke); webhooks (21-type event filter, signing secret once, signed test event and real purchase received by a local listener, failing delivery and Retry, edit, delete); project settings (transfer behaviour checked against real receipt posts, sandbox override), collaborators, app and project deletion; console errors |
 

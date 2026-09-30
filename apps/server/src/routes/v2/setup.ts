@@ -4,13 +4,14 @@ import { webhookStore, type Store } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { RCError } from "../../errors.js";
-import { AppStoreServerApi, AppleApiClientError, appleCredentials } from "../../stores/apple/api.js";
+import { AppleApiClientError } from "../../stores/apple/api.js";
 import { appleApiFor } from "../../stores/apple/index.js";
-import { GoogleApiError, serviceAccountOf } from "../../stores/google/api.js";
-import { googleClientFor } from "../../stores/google/index.js";
+import { serviceAccountOf } from "../../stores/google/api.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { appleKeyConfigured, googleKeyConfigured, projectShape } from "./shapes.js";
 import { notificationHealth } from "./notification-health.js";
+import { apiRole } from "../../services/members.js";
+import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
 
 /**
  * Project setup endpoints for the dashboard (apps, project settings, webhook tests).
@@ -113,7 +114,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId)).where(eq(schema.memberships.projectId, c.get("projectId")));
     rows.sort((a, b) => a.u.createdAt.getTime() - b.u.createdAt.getTime() || a.u.id.localeCompare(b.u.id));
     return c.json(listOf(c, rows.map(({ u, role }) => ({
-      object: "collaborator", id: u.id, name: u.name ?? null, email: u.email, role: role === "viewer" ? "read_only" : "admin",
+      object: "collaborator", id: u.id, name: u.name ?? null, email: u.email, role: apiRole(role),
       accepted_at: u.createdAt.getTime(), has_mfa: false,
     })), null));
   });
@@ -169,66 +170,27 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       return cr;
     };
 
+    let app: AppRow;
+    let overrides = false;
     if (a.type === "app_store" || a.type === "mac_app_store") {
       const over = b[a.type];
-      const bundleId = s(over?.bundle_id) ?? a.bundleId;
-      const app: AppRow = { ...a, bundleId, credentials: merged(over) };
-      let creds;
-      try { creds = appleCredentials(app); } catch (e) {
-        return out("invalid", e instanceof RCError ? "The in-app purchase key is incomplete. Add the .p8 file, the key ID, the issuer ID and the bundle ID." : String(e));
-      }
-      if (!creds) return out("invalid", "No in-app purchase key yet. Add the .p8 file, the key ID and the issuer ID.");
-      const api = new AppStoreServerApi(creds, deps.fetch ?? ((u, i) => fetch(u, i)), deps.now);
-      try {
-        // Any transaction id works: Apple answers 404 or 400 when the key is accepted and 401 when it is not.
-        await api.get("production", "/inApps/v1/transactions/0");
-        return out("valid", "Apple accepted the in-app purchase key.", { key_id: creds.keyId });
-      } catch (e) {
-        if (e instanceof AppleApiClientError) return out("valid", "Apple accepted the in-app purchase key.", { key_id: creds.keyId });
-        if (e instanceof RCError && e.status >= 500 && e.status !== 503) {
-          return out("invalid", /not a valid \.p8/.test(e.message)
-            ? "The private key is not a valid .p8 file. Upload the file App Store Connect gave you, unchanged."
-            : "Apple rejected the key. Check that the key ID and issuer ID belong to this .p8 file and that the key is an In-App Purchase key.");
-        }
-        return out("unreachable", "Apple could not be reached. Try again in a minute.");
-      }
-    }
-
-    if (a.type === "play_store") {
+      overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
+      app = { ...a, bundleId: s(over?.bundle_id) ?? a.bundleId, credentials: merged(over) };
+    } else if (a.type === "play_store") {
       const over = b.play_store;
       const json = over?.play_service_account_credentials_json;
-      const app: AppRow = {
+      overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
+      app = {
         ...a, bundleId: s(over?.package_name) ?? a.bundleId,
         credentials: merged({ play_service_account_credentials_json: json && typeof json === "object" ? JSON.stringify(json) : json }),
       };
-      if (!app.bundleId) return out("invalid", "Add the package name first (for example com.example.app).");
-      const { client } = googleClientFor(deps.stores, deps.fetch);
-      let email: string | null = null;
-      try {
-        const sa = serviceAccountOf(app);
-        email = sa.client_email;
-        await client.accessToken(sa);
-        // A made-up token: Google answers "not found" when the account can see the app, 401/403 when it cannot.
-        await client.call(app, "GET", `/purchases/subscriptionsv2/tokens/${encodeURIComponent("revenuedot-credentials-check")}`);
-        return out("valid", "Google accepted the service account and it can read this app's purchases.", { client_email: email });
-      } catch (e) {
-        if (e instanceof GoogleApiError) {
-          if (e.kind === "invalid_token") return out("valid", "Google accepted the service account and it can read this app's purchases.", { client_email: email });
-          if (e.kind === "transient") return out("unreachable", "Google could not be reached. Try again in a minute.", { client_email: email });
-          const msg = /applicationNotFound|No Play app/.test(e.message)
-            ? `Google Play has no app with the package name ${app.bundleId}. Check the package name.`
-            : e.status === 403
-              ? "The service account works but cannot see this app yet. In Play Console, invite it under Users and permissions with the financial data and order management permissions. New permissions can take up to 36 hours to apply."
-              : e.message.includes("JSON") || e.message.includes("client_email") || e.message.includes("PKCS")
-                ? "This is not a service account key file. Download a JSON key for the service account in Google Cloud and upload it here."
-                : `Google rejected the service account: ${e.message}`;
-          return out("invalid", msg, { client_email: email });
-        }
-        return out("unreachable", "Google could not be reached. Try again in a minute.", { client_email: email });
-      }
+    } else {
+      throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");
     }
-
-    throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");
+    const r = await checkStoreCredentials(deps, app);
+    // A check of what is stored also updates the app's credential health (and the alert it drives).
+    if (!overrides) await recordCredentialCheck(db, a.id, r, deps.now());
+    return out(r.status, r.message, r.extra);
   });
 
   // App Store mass extension (Extend Subscription Renewal Dates for All Active Subscribers). Apple then sends a

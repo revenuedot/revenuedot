@@ -49,10 +49,15 @@ export type V2Router = Hono<{ Variables: V2Vars }>;
 /**
  * Scope check. Scopes use RevenueCat's names (`project_configuration:apps:read` ...). A key's permissions may hold
  * `*`, an exact scope, a `read_write` scope (implies `read`), or a prefix wildcard such as `customer_information:*`.
- * Dashboard users with the `viewer` role only get read scopes; every other role gets everything.
+ * Dashboard users: `viewer` gets read scopes only; `developer` gets everything except creating or revoking secret API
+ * keys (RevenueCat's Developer role cannot generate them); `admin` gets everything.
  */
 export function allows(p: Principal, scope: string): boolean {
-  if (p.kind === "user") return p.role === "viewer" ? scope.endsWith(":read") : true;
+  if (p.kind === "user") {
+    if (p.role === "viewer") return scope.endsWith(":read");
+    if (p.role === "developer") return scope !== "project_configuration:api_keys:read_write";
+    return true;
+  }
   const perms = p.permissions;
   if (perms.includes("*") || perms.includes(scope)) return true;
   if (scope.endsWith(":read") && perms.includes(`${scope.slice(0, -5)}:read_write`)) return true;
@@ -62,7 +67,10 @@ export function allows(p: Principal, scope: string): boolean {
 export const scope = (...scopes: string[]): MiddlewareHandler<{ Variables: V2Vars }> => async (c, next) => {
   const p = c.get("principal");
   const missing = scopes.filter((s) => !allows(p, s));
-  if (missing.length) throw new V2Error(403, "authorization_error", `This API key is missing the permission(s): ${missing.join(", ")}.`);
+  if (missing.length) {
+    if (p.kind === "user") throw new V2Error(403, "authorization_error", `Your role in this project (${p.role ?? "member"}) does not allow this. Ask a project admin.`);
+    throw new V2Error(403, "authorization_error", `This API key is missing the permission(s): ${missing.join(", ")}.`);
+  }
   await next();
 };
 

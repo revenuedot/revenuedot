@@ -5,6 +5,7 @@ import type { StoreAdapter } from "../types.js";
 import { hasServiceAccount, type GooglePlayClient } from "./api.js";
 import { googleClientFor } from "./index.js";
 import { applyVoided } from "./sync.js";
+import { credentialFailureOf, recordCredentialFailure } from "../../services/credential-health.js";
 
 const { apps, subscriptions, nonSubscriptions } = schema;
 const HOUR = 3_600_000;
@@ -57,6 +58,8 @@ export async function scanDueVoidedPurchases(db: DB, now: Date, stores: Record<s
       applied += (await scanVoidedPurchases(db, app, client, now)).applied;
     } catch (e) {
       console.warn(`Google voided purchases scan failed for ${app.id}: ${e instanceof Error ? e.message : e}`);
+      const why = credentialFailureOf(e);
+      if (why) await recordCredentialFailure(db, app.id, why, now);
       await db.update(apps).set({ voidedPurchasesCheckedAt: new Date(now.getTime() - DAY + HOUR) }).where(eq(apps.id, app.id));
     }
   }

@@ -232,6 +232,12 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
   r.post(`${P}/api_keys`, scope("project_configuration:api_keys:read_write"), async (c) => {
     const b = await body(c, KeyCreate);
     const permissions = b.permissions ?? ["*"];
+    // RevenueDot Cloud: secret keys need a confirmed email address (prd/account-email/PRD.md).
+    const who = c.get("principal");
+    if (who.kind === "user" && deps.edition === "cloud") {
+      const [u] = await db.select({ v: schema.users.emailVerifiedAt }).from(schema.users).where(eq(schema.users.id, who.userId));
+      if (!u?.v) throw new V2Error(403, "authorization_error", "Confirm your email address before creating secret API keys. We sent you a link when you signed up; you can send a new one from the banner.");
+    }
     // A key can only mint keys with permissions it holds itself.
     const p = c.get("principal");
     const escalates = permissions.filter((x) => (x === "*" || x.endsWith(":*") ? p.kind === "key" && !p.permissions.includes("*") : !allows(p, x)));

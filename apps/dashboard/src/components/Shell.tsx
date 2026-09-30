@@ -4,7 +4,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Icon, Mark } from "./icons";
 
-export interface Me { user: { id: string; email: string; name: string | null }; projects: { id: string; name: string; role: string }[] }
+export interface Me {
+  user: { id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean };
+  account?: { edition: string; plan: string; email_verification_required: boolean };
+  projects: { id: string; name: string; role: string }[];
+}
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false });
 
 type Item = { label: string; to?: string; icon?: string; soon?: boolean; children?: Item[] };
@@ -79,6 +83,7 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
           {me.projects.map((x) => <button key={x.id} role="menuitem" type="button" onClick={() => { setOpen(false); nav(`/projects/${x.id}/overview`); }}>{x.name}</button>)}
           <hr />
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/new"); }}><Icon name="plus" />New project</button>
+          <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account"); }}><Icon name="settings" />Account settings</button>
           <button role="menuitem" type="button" onClick={async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav("/login"); }}><Icon name="logout" />Sign out</button>
         </div>
       )}
@@ -140,8 +145,26 @@ export function Shell({ title, crumbs, children, actions }: { title: string; cru
             {actions}
           </div>
         </header>
+        {me.data?.account?.email_verification_required && <VerifyBanner email={me.data.user.email} />}
         <div className="scroll">{children}</div>
       </div>
+    </div>
+  );
+}
+
+/** RevenueDot Cloud: shown until the account's email is confirmed (secret API keys and invites wait for it). */
+function VerifyBanner({ email }: { email: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | string>("idle");
+  const send = async () => {
+    setState("sending");
+    try { await api("/auth/email/verify/resend", { method: "POST" }); setState("sent"); } catch (e) { setState(e instanceof Error ? e.message : "The email could not be sent."); }
+  };
+  return (
+    <div className="verify-banner" role="status">
+      <span>Confirm your email address. We sent a link to <b>{email}</b>; you need it to create secret API keys and invite people.</span>
+      {state === "sent" ? <span className="subtle">Sent. Check your inbox.</span>
+        : <button type="button" className="btn btn-line" disabled={state === "sending"} onClick={send}>{state === "sending" ? "Sending…" : "Send a new link"}</button>}
+      {state !== "idle" && state !== "sending" && state !== "sent" && <span className="err" role="alert">{state}</span>}
     </div>
   );
 }

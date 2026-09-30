@@ -1,4 +1,4 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 
 const { webhookDeliveries, webhooks, events } = schema;
@@ -56,6 +56,9 @@ export async function attempt(db: DB, deliveryId: string, fetchImpl: typeof fetc
     status: ok ? "delivered" : retryIn === undefined ? "failed" : "pending",
     nextAttemptAt: ok || retryIn === undefined ? now : new Date(now.getTime() + retryIn * 60_000),
   }).where(eq(webhookDeliveries.id, deliveryId));
+  // Attempts in a row that failed, per webhook: 5 or more opens the "webhook failing" alert (services/alerts.ts).
+  await db.update(webhooks).set(ok ? { consecutiveFailures: 0, lastError: null } : { consecutiveFailures: sql`${webhooks.consecutiveFailures} + 1`, lastError: error?.slice(0, 500) ?? null })
+    .where(eq(webhooks.id, row.h.id));
 }
 
 /** Sends every due delivery. Retries for a disabled webhook wait until it is enabled again. */
