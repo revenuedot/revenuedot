@@ -6,7 +6,7 @@ Portions of this software are licensed as follows:
 
 * All content in the "ee/" directory, and any file whose name contains ".ee.",
   is licensed under the RevenueDot Enterprise License in "ee/LICENSE".
-* All client SDKs, the CLI in "packages/cli/" and any directory containing
+* All client SDKs, the CLI in "packages/importer/" and any directory containing
   its own LICENSE file are licensed under the license in that file.
 * All third-party components in this repository are licensed under their
   original licenses.

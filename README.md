@@ -200,7 +200,7 @@ Keep the RevenueCat SDK you already ship, or switch to our MIT forks. They keep 
 
 ## Compatibility
 
-RevenueDot is tested against the RevenueCat SDKs' own test fixtures (142 request and response samples) and RevenueCat's published OpenAPI files. A change that breaks one of them does not merge.
+RevenueDot is tested against the RevenueCat SDKs' own test fixtures (94 request and response samples, plus 21 webhook samples) and RevenueCat's published OpenAPI files. A change that breaks one of them does not merge.
 
 <details>
 <summary><b>SDK endpoints (the API your app calls)</b></summary>
