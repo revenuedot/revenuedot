@@ -84,7 +84,7 @@ export function toRCError(e: unknown): RCError {
   if (e instanceof RCError) return e;
   if (e instanceof GoogleApiError) {
     if (e.kind === "invalid_token") return new RCError(400, Codes.INVALID_RECEIPT, `The Google Play purchase token is not valid: ${e.message}`);
-    if (e.kind === "credentials") return new RCError(400, Codes.STORE_PROBLEM, `Google Play credentials problem: ${e.message}`);
+    if (e.kind === "credentials") return new RCError(503, Codes.STORE_PROBLEM, `Google Play credentials problem: ${e.message}`);
     return new RCError(503, Codes.STORE_PROBLEM, `There was a problem with Google Play: ${e.message}`);
   }
   return new RCError(503, Codes.STORE_PROBLEM, `There was a problem with Google Play: ${e instanceof Error ? e.message : String(e)}`);
@@ -131,8 +131,10 @@ export class GooglePlayClient {
     const f = this.opts.fetch ?? globalThis.fetch;
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), this.opts.timeoutMs ?? 15_000);
+    // Race the abort too: a fetch that ignores its signal must still time out.
+    const aborted = new Promise<never>((_, reject) => ctl.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
     try {
-      return await f(url, { ...init, signal: ctl.signal });
+      return await Promise.race([f(url, { ...init, signal: ctl.signal }), aborted]);
     } catch (e) {
       const msg = ctl.signal.aborted ? "request timed out" : e instanceof Error ? e.message : String(e);
       throw new GoogleApiError("transient", msg);

@@ -42,17 +42,21 @@ export function diffSubscription(prev: Subscription | null, next: Subscription, 
   }
   if (prev.productIdentifier !== next.productIdentifier) out.push({ type: "PRODUCT_CHANGE", newProductId: next.productIdentifier });
   else if (t(next.purchaseDate)! > t(prev.purchaseDate)! && (next.storeTransactionId ?? "") !== (prev.storeTransactionId ?? "")) {
-    const wasExpired = prev.expiresDate !== null && prev.expiresDate.getTime() <= next.purchaseDate.getTime() - 60_000 * 60 * 24;
-    out.push({ type: wasExpired ? "INITIAL_PURCHASE" : "RENEWAL" });
+    // A renewal, or a lapsed customer resubscribing: RevenueCat sends RENEWAL for both. INITIAL_PURCHASE is only the first purchase of a chain.
+    out.push({ type: "RENEWAL" });
   } else if (next.expiresDate && prev.expiresDate && next.expiresDate > prev.expiresDate && t(next.purchaseDate) === t(prev.purchaseDate)) {
     out.push({ type: "SUBSCRIPTION_EXTENDED" });
   }
+  const renewedNow = out.some((e) => e.type === "RENEWAL");
   if (!prev.refundedAt && next.refundedAt) out.push({ type: "CANCELLATION", cancelReason: "CUSTOMER_SUPPORT", isRefund: true });
   else if (prev.refundedAt && !next.refundedAt) out.push({ type: "REFUND_REVERSED" });
   if (!prev.billingIssuesDetectedAt && next.billingIssuesDetectedAt) out.push({ type: "BILLING_ISSUE" });
   if (!prev.unsubscribeDetectedAt && next.unsubscribeDetectedAt && !next.refundedAt) {
     out.push({ type: "CANCELLATION", cancelReason: next.billingIssuesDetectedAt ? "BILLING_ERROR" : "UNSUBSCRIBE" });
-  } else if (prev.unsubscribeDetectedAt && !next.unsubscribeDetectedAt) out.push({ type: "UNCANCELLATION" });
+  } else if (prev.unsubscribeDetectedAt && !next.unsubscribeDetectedAt && !(renewedNow && prev.billingIssuesDetectedAt)) {
+    // Recovering a failed payment is a RENEWAL, not the customer turning auto-renew back on.
+    out.push({ type: "UNCANCELLATION" });
+  }
   if (!prev.autoResumeDate && next.autoResumeDate) out.push({ type: "SUBSCRIPTION_PAUSED" });
   const prevLive = prev.expiresDate === null || prev.expiresDate > now;
   const nextLive = next.expiresDate === null || next.expiresDate > now || (next.gracePeriodExpiresDate ?? null) !== null && next.gracePeriodExpiresDate! > now;

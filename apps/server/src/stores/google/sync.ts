@@ -119,7 +119,16 @@ export async function syncSubscription(ctx: SyncCtx, token: string, opts: { refu
   const linked = sub?.linkedPurchaseToken ? await subRow(db, app.projectId, sub.linkedPurchaseToken) : undefined;
   if (!row && linked) hint = await appUserIdOf(db, linked.customerId);
 
+  // A new order on a token whose access had ended is Google renewing it (recovery from account hold, resume from a
+  // pause): RevenueCat reports RENEWAL, not a new purchase. Moving the stored end to now keeps the event a RENEWAL.
+  const newOrder = !!row && row.storeTransactionId !== p.storeTransactionId && !!p.expiresDate && p.expiresDate > now;
+  if (newOrder && row!.expiresDate && row!.expiresDate < now) {
+    await db.update(subscriptions).set({ expiresDate: now }).where(eq(subscriptions.id, row!.id));
+  }
+
   const applied = await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: createIfUnknown(app), appUserIdHint: hint });
+  // The expiration worker records EXPIRATION once per row; a renewed period needs it again at its own end.
+  if (newOrder) await db.update(subscriptions).set({ expiredEventAt: null }).where(eq(subscriptions.id, row!.id));
   if (sub && !(await acknowledgeSubscriptionIfNeeded(client, app, token, sub))) {
     throw new GoogleApiError("transient", "acknowledging the purchase failed; Pub/Sub will retry");
   }

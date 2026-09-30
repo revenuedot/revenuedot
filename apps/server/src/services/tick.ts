@@ -24,7 +24,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch) {
     if (!s.refundedAt) {
       await recordEvent(db, {
         projectId: s.projectId, appId: s.appId, customer, appUserId,
-        derived: { type: "EXPIRATION", expirationReason: s.billingIssuesDetectedAt ? "BILLING_ERROR" : s.store === "promotional" ? "UNSUBSCRIBE" : "UNSUBSCRIBE" },
+        derived: { type: "EXPIRATION", expirationReason: s.autoResumeDate ? "SUBSCRIPTION_PAUSED" : s.billingIssuesDetectedAt ? "BILLING_ERROR" : "UNSUBSCRIBE" },
         subject: {
           store: d.store, productId: d.productIdentifier, productPlanId: d.productPlanIdentifier, periodType: d.periodType,
           purchasedAt: d.purchaseDate, expiresAt: d.expiresDate, transactionId: d.storeTransactionId ?? null,
