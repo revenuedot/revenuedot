@@ -1,0 +1,63 @@
+# Publishes the `revenuedot` CLI (packages/importer) to npm when a tag v<version> is pushed.
+# npm trusted publishing: the package trusts this repo + release.yml + environment production over GitHub OIDC,
+# so no npm token is stored anywhere. Provenance is attached automatically.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run everything but publish with --dry-run
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency: { group: release-cli, cancel-in-progress: false }
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - run: npm install -g npm@latest && npm --version
+      - run: pnpm install --frozen-lockfile
+      - name: Tag matches the package version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(node -p "require('./packages/importer/package.json').version")
+          [ "${GITHUB_REF_NAME}" = "v${version}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match packages/importer version ${version}"; exit 1; }
+      - run: npx tsc -b
+      - run: pnpm vitest run packages/importer
+      - run: pnpm --filter revenuedot build
+      # pnpm pack applies publishConfig (dist entry points) and rewrites workspace: ranges; npm publishes the tarball.
+      - run: pnpm pack --pack-destination "$RUNNER_TEMP"
+        working-directory: packages/importer
+      - name: Publish
+        run: |
+          version=$(node -p "require('./packages/importer/package.json').version")
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm publish "$RUNNER_TEMP/revenuedot-${version}.tgz" --provenance --access public --dry-run
+          elif npm view "revenuedot@${version}" version >/dev/null 2>&1; then
+            echo "revenuedot@${version} is already on npm; nothing to publish."
+          else
+            npm publish "$RUNNER_TEMP/revenuedot-${version}.tgz" --provenance --access public
+          fi
+      - name: Check the published CLI runs
+        if: inputs.dry_run != true
+        run: |
+          version=$(node -p "require('./packages/importer/package.json').version")
+          cd "$RUNNER_TEMP" && for i in 1 2 3 4 5 6; do npx -y "revenuedot@${version}" --help >/dev/null && exit 0; sleep 10; done; exit 1

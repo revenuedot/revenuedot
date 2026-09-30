@@ -17,7 +17,7 @@ It runs on your machine, reads RevenueCat through its REST API v2, and writes to
 
 You can pass the keys as environment variables instead of flags, so they stay out of your shell history: `REVENUECAT_API_KEY`, `REVENUEDOT_API_KEY`, `REVENUEDOT_URL`.
 
-The `revenuedot` package is not on npm yet (2026-09-30), so `npx revenuedot` answers 404. Until it is published, run it from a clone of [revenuedot/revenuedot](https://github.com/revenuedot/revenuedot): `pnpm install`, then replace `npx revenuedot` with `pnpm --filter revenuedot cli` in the commands below. pnpm runs it in `packages/importer`, so give file flags such as `--google-tokens` absolute paths.
+The CLI is published on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot), so `npx revenuedot` runs the latest release. To run it from a clone of [revenuedot/revenuedot](https://github.com/revenuedot/revenuedot) instead, run `pnpm install` and replace `npx revenuedot` with `pnpm --filter revenuedot cli`; pnpm runs it in `packages/importer`, so give file flags such as `--google-tokens` absolute paths.
 
 ## Step 1: dry run
 
