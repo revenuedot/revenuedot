@@ -1,0 +1,76 @@
+/* RevenueDot global design tokens. The single source for every colour, font, size and motion value.
+   Rules and usage: DESIGN.md. Reference implementation: prd/dashboard/mockup.html.
+   Components use these variables, never raw values. Light is the default; dark follows the system
+   or data-theme="dark". */
+:root {
+  /* Surfaces: warm paper, not grey */
+  --bg: #FDFEF6;            /* page */
+  --panel: #FFFFFF;         /* cards, tables, inputs */
+  --sidebar: #F8F9EF;       /* navigation rail */
+  --hover: #F3F4E8;         /* row and item hover */
+  --active: #ECEEDD;        /* selected nav item, pressed */
+
+  /* Ink */
+  --fg: #0C0B0A;            /* text, primary buttons, selected segment */
+  --fg-2: #5E5852;          /* secondary text, inactive nav */
+  --fg-3: #8B837C;          /* labels, captions, placeholders */
+
+  /* Lines: olive hairlines, one per edge */
+  --border: #E2E4D0;        /* panel edges, grid dividers */
+  --border-2: #ECEEDD;      /* row separators inside panels */
+
+  /* Brand and state */
+  --accent: #F7B500;        /* the gold dot: live, current period, focus ring, sparkline endpoint */
+  --accent-ink: #8A5A00;    /* gold text on paper (5.9:1) */
+  --accent-wash: rgb(247 181 0 / .14);
+  --up: #5F822B;            /* growth, renewals, healthy */
+  --down: #C2410C;          /* decline, refunds, failures */
+  --info: #2F6F9F;          /* trials, sandbox */
+
+  /* Charts */
+  --spark: #0C0B0A;
+  --spark-fill: rgb(12 11 10 / .06);
+
+  /* Type */
+  --font: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --tracking-body: -0.005em;
+  --tracking-title: -0.035em;
+  --tracking-label: 0.04em;   /* uppercase labels and buttons */
+
+  /* Shape: square. The only rounded things are the live dot and avatars. */
+  --radius: 0;
+
+  /* Layout */
+  --sidebar-w: 232px;
+  --topbar-h: 56px;
+  --page-max: 1200px;
+  --page-pad: 32px;
+  --gap: 24px;
+  --control-h: 32px;
+  --row-h: 44px;
+
+  /* Motion */
+  --ease: cubic-bezier(.23, 1, .32, 1);
+  --fast: 150ms;
+  --base: 200ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0C0B0A; --panel: #121110; --sidebar: #0F0E0D; --hover: #181715; --active: #211F1D;
+    --fg: #FDFEF6; --fg-2: #B5AEA6; --fg-3: #8B837C;
+    --border: #211F1D; --border-2: #1A1917;
+    --accent-ink: #FFD35C; --up: #9BC75A; --down: #F0875A; --info: #7FB7E0;
+    --spark: #FDFEF6; --spark-fill: rgb(253 254 246 / .06);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0C0B0A; --panel: #121110; --sidebar: #0F0E0D; --hover: #181715; --active: #211F1D;
+  --fg: #FDFEF6; --fg-2: #B5AEA6; --fg-3: #8B837C;
+  --border: #211F1D; --border-2: #1A1917;
+  --accent-ink: #FFD35C; --up: #9BC75A; --down: #F0875A; --info: #7FB7E0;
+  --spark: #FDFEF6; --spark-fill: rgb(253 254 246 / .06);
+  color-scheme: dark;
+}

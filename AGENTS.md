@@ -20,5 +20,5 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - `prd/SCOPE.md`: tiers and build order.
 - `docs/STATUS.md`: current phase, feature table, blockers.
 - `docs/architecture.md`: stack and portability rules (to be added).
-- `DESIGN.md`: design system (monochrome + gold dot; Accountable money-chart grammar). Live preview: `docs/design/brand.html` (artifact https://claude.ai/artifact/Fv2ebb7NCjvG591CE4s831).
+- `DESIGN.md` + `design/tokens.css`: the locked design system (RevenueCat sidebar IA, Superwall tokens, Vercel restraint, gold accent). Every UI uses these tokens; reference screen `prd/dashboard/mockup.html`.
 - Sibling repos and the org map: `../AGENTS.md` (= `company/WORKSPACE.md`, private).
