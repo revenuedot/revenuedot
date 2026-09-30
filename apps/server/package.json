@@ -1,0 +1,23 @@
+{
+  "name": "@revenuedot/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/entry.node.ts",
+    "start": "tsx src/entry.node.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@revenuedot/core": "workspace:*",
+    "@revenuedot/db": "workspace:*",
+    "hono": "^4.6.14",
+    "jose": "^5.9.6",
+    "zod": "^3.24.1",
+    "drizzle-orm": "^0.38.3"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  }
+}

@@ -1,0 +1,32 @@
+{
+    "product_entitlement_mapping": {
+        "com.revenuecat.foo_1:p1m": {
+            "product_identifier": "com.revenuecat.foo_1",
+            "base_plan_id": "p1m",
+            "entitlements": [
+                "pro_1"
+            ]
+        },
+        "com.revenuecat.foo_1:p1y": {
+            "product_identifier": "com.revenuecat.foo_1",
+            "base_plan_id": "p1y",
+            "entitlements": [
+                "pro_1",
+                "pro_2"
+            ]
+        },
+        "com.revenuecat.foo_1": {
+            "product_identifier": "com.revenuecat.foo_1",
+            "base_plan_id": "p1m",
+            "entitlements": [
+                "pro_1"
+            ]
+        },
+        "com.revenuecat.foo_2": {
+            "product_identifier": "com.revenuecat.foo_2",
+            "entitlements": [
+                "pro_3"
+            ]
+        }
+    }
+}

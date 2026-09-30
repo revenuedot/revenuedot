@@ -1,0 +1,140 @@
+{
+  "customer_center": {
+    "localization": {
+      "locale": "en_US",
+      "localized_strings": {
+        "cancel": "Cancel",
+        "back": "Back"
+      },
+      "supported": [
+        "en_US"
+      ]
+    },
+    "screens": {
+      "MANAGEMENT": {
+        "paths": [
+          {
+            "id": "ownmsldfow",
+            "title": "Didn't receive purchase",
+            "type": "MISSING_PURCHASE"
+          },
+          {
+            "id": "nwodkdnfaoeb",
+            "promotional_offer": {
+              "ios_offer_id": "rc-refund-offer",
+              "eligible": true,
+              "title": "Wait!",
+              "subtitle": "Here's an offer for you",
+              "product_mapping": {
+                "product_id": "offer_id"
+              }
+            },
+            "title": "Request a refund",
+            "type": "REFUND_REQUEST"
+          },
+          {
+            "id": "nfoaiodifj9",
+            "title": "Change plans",
+            "type": "CHANGE_PLANS"
+          },
+          {
+            "feedback_survey": {
+              "options": [
+                {
+                  "id": "iewrthals",
+                  "promotional_offer": {
+                    "ios_offer_id": "rc-cancel-offer",
+                    "eligible": false,
+                    "title": "Wait!",
+                    "subtitle": "Here's an offer for you",
+                    "product_mapping": {
+                      "product_id": "offer_id"
+                    }
+                  },
+                  "title": "Too expensive"
+                },
+                {
+                  "id": "qklpadsfj",
+                  "promotional_offer": {
+                    "ios_offer_id": "rc-cancel-offer",
+                    "eligible": false,
+                    "title": "Wait!",
+                    "subtitle": "Here's an offer for you",
+                    "product_mapping": {
+                      "product_id": "offer_id"
+                    }
+                  },
+                  "title": "Don't use the app"
+                },
+                {
+                  "id": "jargnapocps",
+                  "title": "Bought by mistake"
+                }
+              ],
+              "title": "Why are you cancelling?"
+            },
+            "id": "jnkasldfhas",
+            "title": "Cancel subscription",
+            "type": "CANCEL"
+          }
+        ],
+        "title": "How can we help?",
+        "type": "MANAGEMENT"
+      },
+      "NO_ACTIVE": {
+        "paths": [
+          {
+            "id": "9q9719171o",
+            "title": "Check purchases",
+            "type": "MISSING_PURCHASE"
+          }
+        ],
+        "subtitle": "We can try checking your account for any previous purchases",
+        "title": "No subscriptions found",
+        "type": "NO_ACTIVE"
+      }
+    },
+    "appearance": {
+      "dark": {
+        "accent_color": "#ffffff",
+        "background_color": "#000000",
+        "text_color": "#000000"
+      },
+      "light": {
+        "accent_color": "#000000",
+        "background_color": "#ffffff",
+        "text_color": "#ffffff"
+      },
+      "mode": "CUSTOM"
+    },
+    "support": {
+      "email": "support@revenuecat.com",
+      "should_warn_customer_to_update": false,
+      "display_purchase_history_link": true,
+      "display_user_details_section": true,
+      "display_virtual_currencies": true
+    },
+    "change_plans": [
+      {
+        "group_id": "group_id",
+        "group_name": "group_name",
+        "products": [
+          {
+            "product_id": "product_id",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "group_id": "group_id2",
+        "group_name": "group_name2",
+        "products": [
+          {
+            "product_id": "product_id",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+    "offerings": [
+        {
+            "identifier": "offering_a",
+            "description": "This is the base offering",
+            "packages": [
+                {
+                    "identifier": "$rc_monthly",
+                    "platform_product_identifier": "monthly_freetrial"
+                }
+            ],
+            "paywall": {
+                "template_name": "1",
+                "localized_strings": {
+                    "en_US": {
+                        "title": "Paywall",
+                        "call_to_action": "Purchase",
+                        "subtitle": "Description"
+                    }
+                },
+                "config": {
+                    "packages": ["$rc_monthly"],
+                    "default_package": "$rc_monthly",
+                    "images": {},
+                    "colors": {
+                        "light": {
+                            "background": "#FF00AA",
+                            "text_1": "#FF00AA22",
+                            "call_to_action_background": "#FF00AACC",
+                            "call_to_action_foreground": "#FF00AA"
+                        }
+                    }
+                },
+                "asset_base_url": "https://rc-paywalls.s3.amazonaws.com",
+                "zero_decimal_place_countries": {
+                    "apple": ["TWA", "THA", "PHL", "MEX", "KAZ"],
+                    "google": ["PH", "KZ", "TW", "MX", "TH"]
+                },
+                "revision": 7
+            }
+        }
+    ],
+    "current_offering_id": "offering_a"
+}

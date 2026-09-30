@@ -1,0 +1,12 @@
+{
+"attributes_error_response": {
+    "attribute_errors": [
+        {
+            "key_name": "$email",
+            "message": "Email address is not a valid email."
+        }
+    ],
+    "code": "7263",
+    "message": "Some subscriber attributes keys were unable to be saved."
+    }
+}

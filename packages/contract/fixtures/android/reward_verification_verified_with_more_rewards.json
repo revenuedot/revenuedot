@@ -1,0 +1,18 @@
+{
+  "status":"verified",
+  "reward": {
+    "type":"virtual_currency",
+    "code":"coins",
+    "amount":10
+  },
+  "more_rewards": [
+    {
+      "type":"entitlement",
+      "identifier":"pro",
+      "expires_at":"2026-06-16T12:00:00Z"
+    },
+    {
+      "type":"other_reward"
+    }
+  ]
+}

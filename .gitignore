@@ -1,5 +1,9 @@
 node_modules/
 .env*.local
+.env
 .DS_Store
 dist/
 .wrangler/
+*.tsbuildinfo
+.data/
+coverage/

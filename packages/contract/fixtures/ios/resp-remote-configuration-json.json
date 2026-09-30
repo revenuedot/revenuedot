@@ -1,0 +1,37 @@
+{
+  "domain": "app",
+  "subdomains": ["app_workflows"],
+  "manifest": "v1.1710000100.product_entitlement_mapping:9v1DnUu6rXbE,sources:Jc83RzcK1LqA",
+  "active_topics": ["sources", "product_entitlement_mapping"],
+  "prefetch_blobs": ["AAECAwQFBgcICQoLDA0ODxAREhMUFRYX"],
+  "topics": {
+    "sources": {
+      "api": {
+        "sources": [
+          {
+            "id": "primary",
+            "url": "https://api.revenuecat.com/",
+            "priority": 0,
+            "weight": 100
+          }
+        ]
+      },
+      "blob": {
+        "sources": [
+          {
+            "id": "primary",
+            "url_format": "https://assets.revenuecat.com/app-prefix/{blob_ref}",
+            "priority": 0,
+            "weight": 100
+          }
+        ]
+      }
+    },
+    "product_entitlement_mapping": {
+      "default": {
+        "blob_ref": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+        "prefetch": true
+      }
+    }
+  }
+}

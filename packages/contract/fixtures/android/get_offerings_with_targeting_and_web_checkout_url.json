@@ -1,0 +1,21 @@
+{
+    "offerings": [
+        {
+            "identifier": "offering_a",
+            "description": "This is the base offering",
+            "packages": [
+                {
+                    "identifier": "$rc_monthly",
+                    "platform_product_identifier": "monthly_freetrial",
+                    "web_checkout_url": "http://revenuecat.com?package_id=$rc_monthly"
+                }
+            ],
+            "web_checkout_url": "http://revenuecat.com"
+        }
+    ],
+    "current_offering_id": "offering_a",
+    "targeting": {
+        "revision": 1,
+        "rule_id": "abc123"
+    }
+}

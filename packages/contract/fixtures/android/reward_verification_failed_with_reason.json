@@ -1,0 +1,5 @@
+{
+  "status":"failed",
+  "failure_reason":"ssv_not_enabled",
+  "message":"AdMob server-side reward verification is not enabled for this app."
+}

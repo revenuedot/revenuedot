@@ -1,0 +1,8 @@
+{
+  "status": "verified",
+  "reward": {
+    "type": "virtual_currency",
+    "code": "coins",
+    "amount": 10
+  }
+}

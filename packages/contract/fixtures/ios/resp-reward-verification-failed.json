@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "reward": null,
+  "failure_reason": "no_access",
+  "message": "AdMob server-side reward verification is not enabled for this app."
+}

@@ -1,0 +1,1 @@
+{"id":"<UUID.randomUUID()>","version":1,"name":"http_request_performed","properties":{"test-key-1":"test-value-1","test-key-2":123,"test-key-3":true},"app_session_id":"<UUID.randomUUID()>","timestamp":"2023-02-09T14:49:05.000Z"}
