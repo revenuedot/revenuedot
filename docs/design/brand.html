@@ -117,6 +117,24 @@ p{margin:0}
 .hero{position:relative;border-radius:16px;overflow:hidden;background:#0A0A0A;color:#EDEDED;border:1px solid #1F1F1F;padding:clamp(28px,5vw,64px);display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:40px;align-items:center}
 .hero::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgb(255 255 255/.09) 1px,transparent 1.2px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 30% 40%,#000 30%,transparent 80%);mask-image:radial-gradient(ellipse 70% 70% at 30% 40%,#000 30%,transparent 80%);pointer-events:none}
 .hero>*{position:relative}
+.hero canvas.field{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.hero.has-field::before{display:none}
+.ticker{display:flex;gap:24px;flex-wrap:wrap;margin-top:28px;font:400 12px/16px var(--font);color:#737373}
+.ticker b{display:block;font:400 28px/34px var(--font);letter-spacing:-.02em;color:#EDEDED;font-variant-numeric:tabular-nums}
+.ticker b.gold{color:#F7B500}
+.hero.lightv{background:#FAFAFA;color:#0A0A0A;border-color:#EAEAEA}
+.hero.lightv .kicker{color:#666;border-color:#E5E5E5;background:#fff}
+.hero.lightv h2 em,.hero.lightv p,.hero.lightv .ticker{color:#666}
+.hero.lightv .ticker b{color:#0A0A0A}.hero.lightv .ticker b.gold{color:#8A5A00}
+.hero.lightv .h-primary{background:#0A0A0A;color:#fff;border-color:#0A0A0A}
+.hero.lightv .h-sec{color:#0A0A0A;border-color:#D4D4D4;background:#fff}
+.hero.lightv .code{background:#fff;border-color:#EAEAEA;box-shadow:0 24px 60px -24px rgb(0 0 0/.18)}
+.hero.lightv .code-top{border-color:#F0F0F0;color:#8F8F8F}
+.hero.lightv .code pre{color:#666}.hero.lightv .code .k{color:#0A0A0A}.hero.lightv .code .s{color:#8A5A00}.hero.lightv .code .c{color:#A3A3A3}
+.hero.lightv .code .add{background:#FFF8E1;color:#0A0A0A;box-shadow:inset 2px 0 0 #D69A00}
+.hero.lightv .feed{border-color:#F0F0F0}.hero.lightv .feed-row{border-color:#F5F5F5;color:#666}.hero.lightv .feed-row b{color:#0A0A0A}
+.hero.lightv .t-ren{color:#0A0A0A;background:#F2F2F2}.hero.lightv .t-new{color:#15803D;background:rgb(21 128 61/.08)}.hero.lightv .t-ref{color:#DC2626;background:rgb(220 38 38/.08)}
+
 .hero .kicker{display:inline-flex;gap:10px;align-items:center;font:500 12px/16px var(--font);color:#A1A1A1;border:1px solid #262626;border-radius:999px;padding:6px 12px;width:max-content;max-width:100%}
 .hero h2{font:600 clamp(34px,5vw,56px)/1.02 var(--font);letter-spacing:-.045em;margin-top:18px}
 .hero h2 em{font-style:normal;color:#A1A1A1}
@@ -277,13 +295,14 @@ td .uid{font:400 12px/16px var(--mono);color:var(--fg-muted)}
   </section>
 
   <section class="sec">
-    <div class="sec-head"><span class="eyebrow">Marketing hero · dark-first</span><h2>The product is the hero</h2><p>The dot grid is the brand pattern. The code shows the one line a developer changes; the feed shows purchases arriving. Example data.</p></div>
-    <div class="hero">
+    <div class="sec-head"><span class="eyebrow">Signature · the revenue field</span><h2>Every purchase lights a dot</h2><p>The brand pattern is alive: a grid of quiet dots where each incoming purchase lights one gold, with a ripple, while the totals tick up. It says "revenue, live" before anyone reads a word. Shown dark (default) and light. Example data.</p></div>
+    <div class="hero has-field" data-field="dark"><canvas class="field" aria-hidden="true"></canvas>
       <div>
         <span class="kicker"><span class="live-dot"></span>Works with the RevenueCat SDK</span>
         <h2>Keep your app.<br><em>Change one line.</em></h2>
         <p>Open-source subscription and in-app purchase infrastructure for iOS, Android, React Native and Flutter. Self-host free, or run on our cloud.</p>
         <div class="ctas"><span class="h-btn h-primary">Start free</span><span class="h-btn h-sec">Read the migration guide</span></div>
+        <div class="ticker"><span><b class="gold" data-count="usd">$48,213.60</b>tracked in the last hour</span><span><b data-count="n">1,284</b>purchases</span></div>
       </div>
       <div class="code">
         <div class="code-top"><span>AppDelegate.swift</span><span class="live" style="color:#A1A1A1;font-size:12px"><span class="live-dot"></span>Live</span></div>
@@ -291,7 +310,24 @@ td .uid{font:400 12px/16px var(--mono);color:var(--fg-muted)}
 
 <span class="add">Purchases.proxyURL = URL(string: <span class="s">"https://api.revenuedot.app"</span>)!</span>Purchases.configure(withAPIKey: <span class="s">"appl_…"</span>)
 <span class="c">// Offerings, purchases, entitlements: unchanged.</span></pre>
-        <div class="feed" id="feed" aria-live="polite"></div>
+        <div class="feed" data-feed="dark" aria-live="polite"></div>
+      </div>
+    </div>
+  <div class="hero has-field lightv" data-field="light" style="margin-top:12px"><canvas class="field" aria-hidden="true"></canvas>
+      <div>
+        <span class="kicker"><span class="live-dot"></span>Works with the RevenueCat SDK</span>
+        <h2>Keep your app.<br><em>Change one line.</em></h2>
+        <p>Open-source subscription and in-app purchase infrastructure for iOS, Android, React Native and Flutter. Self-host free, or run on our cloud.</p>
+        <div class="ctas"><span class="h-btn h-primary">Start free</span><span class="h-btn h-sec">Read the migration guide</span></div>
+        <div class="ticker"><span><b class="gold" data-count="usd">$48,213.60</b>tracked in the last hour</span><span><b data-count="n">1,284</b>purchases</span></div>
+      </div>
+      <div class="code">
+        <div class="code-top"><span>AppDelegate.swift</span><span class="live" style="color:#A1A1A1;font-size:12px"><span class="live-dot"></span>Live</span></div>
+<pre><span class="k">import</span> RevenueCat
+
+<span class="add">Purchases.proxyURL = URL(string: <span class="s">"https://api.revenuedot.app"</span>)!</span>Purchases.configure(withAPIKey: <span class="s">"appl_…"</span>)
+<span class="c">// Offerings, purchases, entitlements: unchanged.</span></pre>
+        <div class="feed" data-feed="light" aria-live="polite"></div>
       </div>
     </div>
   </section>
@@ -392,11 +428,35 @@ td .uid{font:400 12px/16px var(--mono);color:var(--fg-muted)}
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
 
   var events=[['t-new','Initial purchase','Pro yearly','$39.99'],['t-ren','Renewal','Pro monthly','$9.99'],['t-new','Initial purchase','Pro weekly','$4.99'],['t-ren','Renewal','Pro yearly','$39.99'],['t-ref','Refund','Pro monthly','−$9.99'],['t-ren','Renewal','Pro weekly','$4.99']];
-  var feed=document.getElementById('feed'), i=0;
   function row(e,fresh){var d=document.createElement('div');d.className='feed-row'+(fresh?' new':'');d.innerHTML='<span class="tag '+e[0]+'">'+e[1]+'</span><span class="ev">'+e[2]+' · App Store</span><b>'+e[3]+'</b>';return d;}
-  for(;i<4;i++) feed.appendChild(row(events[i],false));
-  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
-    setInterval(function(){feed.insertBefore(row(events[i%events.length],true),feed.firstChild); if(feed.children.length>4) feed.removeChild(feed.lastChild); i++;},2600);
-  }
+  var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('[data-feed]').forEach(function(feed,k){
+    var i=k*2; for(var j=0;j<4;j++) feed.appendChild(row(events[(i+j)%events.length],false)); i+=4;
+    if(!reduce) setInterval(function(){feed.insertBefore(row(events[i%events.length],true),feed.firstChild); if(feed.children.length>4) feed.removeChild(feed.lastChild); i++;},2600+k*400);
+  });
+  var usd=48213.60, n=1284;
+  function fmt(v){return '$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  document.querySelectorAll('.hero.has-field').forEach(function(hero){
+    var cv=hero.querySelector('canvas.field'), ctx=cv.getContext('2d'), light=hero.dataset.field==='light';
+    var base=light?'rgba(10,10,10,0.13)':'rgba(255,255,255,0.10)', gold=light?'214,154,0':'247,181,0', gap=22, dots=[], lit=[], W=0, H=0, dpr=Math.min(2,window.devicePixelRatio||1);
+    function size(){var r=hero.getBoundingClientRect(); W=r.width; H=r.height; cv.width=W*dpr; cv.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); dots=[]; for(var y=gap/2;y<H;y+=gap) for(var x=gap/2;x<W;x+=gap) dots.push([x,y]);}
+    function fade(x,y){var dx=(x/W)-.72, dy=(y/H)-.5; return Math.max(0,1-Math.sqrt(dx*dx*1.2+dy*dy*1.6)*1.25);}
+    function draw(t){
+      ctx.clearRect(0,0,W,H);
+      for(var k=0;k<dots.length;k++){var d=dots[k], f=fade(d[0],d[1]); if(f<=0) continue; ctx.fillStyle=base; ctx.globalAlpha=Math.min(1,.25+f); ctx.fillRect(d[0]-.75,d[1]-.75,1.5,1.5);}
+      ctx.globalAlpha=1;
+      lit=lit.filter(function(L){return t-L.t<2600;});
+      lit.forEach(function(L){var p=(t-L.t)/2600, a=1-p;
+        ctx.beginPath(); ctx.arc(L.x,L.y,2+4*Math.min(1,p*4)*(1-p*.5),0,7); ctx.fillStyle='rgba('+gold+','+a+')'; ctx.fill();
+        ctx.beginPath(); ctx.arc(L.x,L.y,4+p*26,0,7); ctx.strokeStyle='rgba('+gold+','+(a*.35)+')'; ctx.lineWidth=1; ctx.stroke();
+      });
+    }
+    function spark(t){ if(!dots.length) return; for(var tries=0;tries<20;tries++){var d=dots[(Math.random()*dots.length)|0]; if(fade(d[0],d[1])>.3 && (W<700 ? d[1]<H*.35 || d[1]>H*.9 : d[0]>W*.5)){lit.push({x:d[0],y:d[1],t:t}); break;}} }
+    size(); new ResizeObserver(size).observe(hero);
+    if(reduce){ var now=performance.now(); for(var q=0;q<14;q++) spark(now-q*120); draw(now+400); return; }
+    var last=0;
+    (function loop(t){ if(t-last>260+Math.random()*420){ spark(t); last=t; if(!light){ usd+=2.99+Math.random()*37; n+=1; } } draw(t); requestAnimationFrame(loop); })(performance.now());
+  });
+  if(!reduce) setInterval(function(){document.querySelectorAll('[data-count="usd"]').forEach(function(e){e.textContent=fmt(usd)}); document.querySelectorAll('[data-count="n"]').forEach(function(e){e.textContent=n.toLocaleString('en-US')});},500);
 })();
 </script>

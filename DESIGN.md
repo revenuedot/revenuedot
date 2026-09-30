@@ -123,7 +123,8 @@ Follows the Compact Workspace measurements:
 - Icons: Lucide, 16px, 1.5 stroke.
 
 ## 8. Marketing site
-- Dark-first hero on `--bg` near-black with a **dot grid** background: 1px dots every 24px at 6% white, fading out towards the edges. It is the brand's pattern; use it in heroes and feature panels only.
+- **Signature: the revenue field.** Heroes sit on a dot grid (1.5px dots every 22px, 10% white on dark, 13% black on light, fading towards the edges). Each incoming purchase lights one dot gold with a 2.6s ripple while the totals tick up (`$48,213.60 tracked in the last hour`). Lit dots stay clear of the headline. It is the one exciting moment on the site; nothing else animates in the hero. Reduced motion shows a still field with a few gold dots.
+- The hero is dark by default and has a light version (`#FAFAFA` field, gold `#D69A00` dots, dark text) for light pages and light-mode visitors.
 - The hero shows the product, not an illustration: the one-line switch (`Purchases.proxyURL = …`) next to a live purchase feed with the gold live dot.
 - Proof section: logos in monochrome at 40% opacity; numbers in the metric style.
 - Comparison and pricing tables in the app table style.
