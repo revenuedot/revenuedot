@@ -10,4 +10,4 @@
 ## Blockers
 - Browser click study of the RevenueCat dashboard stopped at the account overview: the permission classifier blocked opening project pages.
 - License text is not added yet (AGPL-3.0 server, MIT SDKs, commercial `ee/` pending lawyer review).
-- Nothing pushed to GitHub yet.
+- Pushed 2026-09-30: this repo, mcp, agent-skills and 10 SDK hard forks are public under github.com/revenuedot.
