@@ -90,6 +90,54 @@ describe("customers", () => {
     expect((await call("GET", CU, { customer_id: "known" })).body.active_entitlements.items).toHaveLength(1);
   });
 
+  it("a subscription's transactions: one per store order, sorted and paged, refunds end access early", async () => {
+    const { customer } = await getOrCreateCustomer(h.db, "proj1", "txn_user", h.now());
+    const t0 = new Date("2026-06-01T00:00:00Z").getTime();
+    const at = (d: number) => new Date(t0 + d * DAY);
+    const base = { projectId: "proj1", customerId: customer.id, productIdentifier: "pro_monthly", priceAmount: 9.99, priceCurrency: "USD", priceUsd: 9.99 };
+    await h.db.insert(schema.subscriptions).values([
+      { ...base, id: "sub_play", appId: h.ids.androidApp, store: "play_store", storeKey: "tok_1", storeTransactionId: "GPA.1234-5678-9012-34567..1", originalTransactionId: "GPA.1234-5678-9012-34567",
+        purchaseDate: at(30), originalPurchaseDate: at(0), expiresDate: at(60), gracePeriodExpiresDate: at(67), billingIssuesDetectedAt: at(60) },
+      { ...base, id: "sub_ios", appId: h.ids.app, store: "app_store", storeKey: "1000000001", storeTransactionId: "1000000001", originalTransactionId: "1000000001",
+        purchaseDate: at(0), originalPurchaseDate: at(0), expiresDate: at(30) },
+    ]);
+    const tx = (id: string, store: string, kind: string, d: number, exp: number | null, usd = 9.99) => ({
+      id: `txn_${id}_${kind}`, projectId: "proj1", customerId: customer.id, store, storeTransactionId: id, productIdentifier: "pro_monthly", kind,
+      purchasedAt: at(d), expiresAt: exp === null ? null : at(exp), revenueUsd: usd, priceAmount: Math.abs(usd), priceCurrency: "USD",
+    });
+    await h.db.insert(schema.transactions).values([
+      tx("GPA.1234-5678-9012-34567", "play_store", "purchase", 0, 30),
+      tx("GPA.1234-5678-9012-34567..0", "play_store", "renewal", 30, 60),
+      tx("GPA.1234-5678-9012-34567..0", "play_store", "refund", 40, 60, -9.99),
+      // Another Play purchase of the same customer is another chain.
+      tx("GPA.9999-9999-9999-99999", "play_store", "purchase", 5, 35),
+      tx("1000000001", "app_store", "purchase", 0, 30),
+    ]);
+    const T = `${SUBS}/{subscription_id}/transactions`;
+    const all = await call("GET", T, { subscription_id: "sub_play" });
+    expect(all.status).toBe(200);
+    expect(all.body).toMatchObject({ object: "list", next_page: null, url: "/v2/projects/proj1/subscriptions/sub_play/transactions" });
+    expect(all.body.items).toEqual([
+      { object: "subscription_transaction", id: "GPA.1234-5678-9012-34567", purchased_at: at(0).getTime(), product_store_identifier: "pro_monthly",
+        revenue_in_local_currency: expect.objectContaining({ currency: "USD", gross: 9.99 }), revenue_in_usd: expect.objectContaining({ currency: "USD", gross: 9.99 }),
+        expiration_date: at(30).getTime(), effective_expiration_date: at(30).getTime() },
+      expect.objectContaining({ id: "GPA.1234-5678-9012-34567..0", expiration_date: at(60).getTime(), effective_expiration_date: at(40).getTime() }),
+      // The current order has no revenue row yet; it is in grace, so access runs to the grace end.
+      expect.objectContaining({ id: "GPA.1234-5678-9012-34567..1", purchased_at: at(30).getTime(), expiration_date: at(60).getTime(), effective_expiration_date: at(67).getTime() }),
+    ]);
+    const desc = await call("GET", T, { subscription_id: "sub_play" }, { query: "sort=purchased_at&direction=desc&limit=2" });
+    expect(desc.body.items.map((t: any) => t.id)).toEqual(["GPA.1234-5678-9012-34567..1", "GPA.1234-5678-9012-34567..0"]);
+    expect(desc.body.next_page).toBe("/v2/projects/proj1/subscriptions/sub_play/transactions?sort=purchased_at&direction=desc&limit=2&starting_after=GPA.1234-5678-9012-34567..0");
+    const next = await call("GET", T, { subscription_id: "sub_play" }, { query: "sort=purchased_at&direction=desc&limit=2&starting_after=GPA.1234-5678-9012-34567..0" });
+    expect(next.body.items.map((t: any) => t.id)).toEqual(["GPA.1234-5678-9012-34567"]);
+    expect(next.body.next_page).toBeNull();
+
+    expect((await call("GET", T, { subscription_id: "sub_ios" })).body.items.map((t: any) => t.id)).toEqual(["1000000001"]);
+    expect((await call("GET", T, { subscription_id: "nope" })).status).toBe(404);
+    expect((await call("GET", T, { subscription_id: "sub_play" }, { query: "sort=price" })).status).toBe(400);
+    expect((await call("GET", T, { subscription_id: "sub_play" }, { query: "starting_after=unknown" })).status).toBe(400);
+  });
+
   it("subscriptions and purchases, by customer and at project level", async () => {
     await buy(h, "buyer", "pro_monthly", new Date("2026-09-01T11:00:00Z"), 9.99);
     await buy(h, "buyer", "lifetime", new Date("2026-09-01T11:30:00Z"), 49.99);
@@ -238,6 +286,7 @@ describe("schema coverage", () => {
       `GET ${CU}/active_entitlements 200`, `GET ${CU}/subscriptions 200`, `GET ${CU}/purchases 200`, `GET ${CU}/events 200`,
       `POST ${CU}/actions/grant_entitlement 201`, `POST ${CU}/actions/revoke_granted_entitlement 200`, `POST ${CU}/actions/assign_offering 200`,
       `GET ${SUBS} 200`, `GET ${SUBS}/{subscription_id} 200`, `GET ${SUBS}/{subscription_id}/entitlements 200`,
+      `GET ${SUBS}/{subscription_id}/transactions 200`, `GET ${SUBS}/{subscription_id}/transactions 404`, `GET ${SUBS}/{subscription_id}/transactions 400`,
       `GET ${PURS} 200`, `GET ${PURS}/{purchase_id} 200`, `GET ${PURS}/{purchase_id}/entitlements 200`,
       "GET /v2/projects/{project_id}/metrics/overview 200",
       `GET ${CU} 404`, `POST ${C} 409`, `POST ${C} 400`,

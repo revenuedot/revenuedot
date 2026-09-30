@@ -5,6 +5,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { findCustomer, getOrCreateCustomer, setAttributes, type CustomerRow } from "../../repo/customers.js";
 import { applyPurchases } from "../../services/purchases.js";
+import { subscriptionTransactions } from "../../services/subscription-transactions.js";
 import { StoreActionError, cancelSubscription, extendSubscription, refundOrder, revokeSubscription } from "../../services/store-actions.js";
 import { V2Error, body, conflict, expands, listOf, monetaryFor, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { activeEntitlements, attributeItems, customerShape, loadCatalog, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
@@ -243,6 +244,24 @@ export function customerRoutes(r: V2Router, deps: Deps) {
   r.get(`${S}/:subscription_id/entitlements`, scope("customer_information:subscriptions:read"), async (c) => {
     const [shape] = await subsList(c, [await findSub(c)]);
     return c.json(paginate(c, shape!.entitlements.items, (e) => e.id, (e) => e.created_at, (e) => e));
+  });
+
+  const TxQuery = z.object({ sort: z.enum(["id", "purchased_at"]).default("id"), direction: z.enum(["asc", "desc"]).default("asc") });
+  r.get(`${S}/:subscription_id/transactions`, scope("customer_information:subscriptions:read"), async (c) => {
+    const { s } = await findSub(c);
+    const q = TxQuery.safeParse({ sort: c.req.query("sort") || undefined, direction: c.req.query("direction") || undefined });
+    if (!q.success) throw paramError("sort must be id or purchased_at, and direction asc or desc.", q.error.issues[0]?.path[0]?.toString());
+    const { limit, startingAfter } = pageParams(c);
+    const sign = q.data.direction === "asc" ? 1 : -1;
+    const items = (await subscriptionTransactions(db, s)).sort((a, b) => sign * (q.data.sort === "purchased_at" ? a.purchased_at - b.purchased_at || (a.id < b.id ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    let start = 0;
+    if (startingAfter) {
+      const i = items.findIndex((t) => t.id === startingAfter);
+      if (i < 0) throw paramError("starting_after does not match a transaction of this subscription.", "starting_after");
+      start = i + 1;
+    }
+    const page = items.slice(start, start + limit);
+    return c.json(listOf(c, page, start + limit < items.length && page.length ? page[page.length - 1]!.id : null));
   });
 
   // Store actions (services/store-actions.ts). RevenueCat offers cancel and refund for its own web billing; here they act on
