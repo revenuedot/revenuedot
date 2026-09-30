@@ -1,6 +1,7 @@
 // RevenueDot Cloud: the same Hono app as self-host, on Cloudflare Workers with Postgres through Hyperdrive.
-// Config: apps/server/wrangler.jsonc. Deploy steps: docs/cloud.md. Node-only code (PGlite, node:fs, migrations,
-// process.env) stays in entry.node.ts and @revenuedot/db's Node build; wrangler picks the "workerd" build of the db.
+// Config: apps/server/cloudflare.config.ts (built and deployed with the `cf` CLI). Deploy steps: docs/cloud.md. Node-only
+// code (PGlite, node:fs, migrations, process.env) stays in entry.node.ts and @revenuedot/db's Node build; the Workers
+// build picks the "workerd" build of the db.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { connectPostgres, type DB } from "@revenuedot/db/worker";
 import { createApp } from "./app.js";

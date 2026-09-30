@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "REVENUEDOT_ALLOW_SIGNUP=${REVENUEDOT_ALLOW_SIGNUP:-true} tsx watch src/entry.node.ts",
     "start": "tsx src/entry.node.ts",
-    "dev:worker": "wrangler dev"
+    "dev:worker": "cf dev",
+    "build:worker": "cf build"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
@@ -22,6 +23,8 @@
     "./*": "./src/*"
   },
   "devDependencies": {
-    "wrangler": "^4.145.0"
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-ad79608dd",
+    "cf": "1.0.0-beta.5",
+    "vite": "^8.3.1"
   }
 }
