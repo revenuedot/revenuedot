@@ -21,7 +21,8 @@ const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url)
  */
 export async function openDb(url = process.env.DATABASE_URL ?? "pglite://memory"): Promise<{ db: DB; close: () => Promise<void> }> {
   if (url.startsWith("postgres")) {
-    const sql = postgres(url, { max: 10, prepare: false });
+    // Migrations re-check the drizzle schema on every start; Postgres NOTICEs about it are noise in self-host logs.
+    const sql = postgres(url, { max: 10, prepare: false, onnotice: () => {} });
     const db = drizzlePg(sql, { schema }) as unknown as DB;
     await migratePg(db as never, { migrationsFolder });
     return { db, close: () => sql.end() };
