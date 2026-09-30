@@ -18,9 +18,10 @@
 | 1.10 Dashboard | pages built · browser-validated | Overview, Customers, Catalog, Apps, API keys, Integrations/Webhooks, Project settings, New project. Later-tier: Analytics, Paywalls, Targeting, Experiments, Funnels, Ads, Lifecycle. `pnpm --filter @revenuedot/dashboard e2e` (8 tests) |
 | 1.11 Self-host (Docker) | done · smoke-tested | `docker compose up -d` with Postgres, signup works; `REVENUEDOT_PORT` sets the host port |
 | 1.12 Cloud (Workers) | not started | |
-| 1.13 SDK forks | forked · pipeline not started | 10 repos at upstream main |
-| 1.14 MCP + skills | scaffolds | |
-| 1.15 Docs | README done | |
+| 1.13 SDK forks | pipeline done · web SDK e2e-tested | All 10 forks patched on `revenuedot/main-patches` (host, signing key, registry names, leak scan clean); server response signing so Trusted Entitlements verify. Not published: needs npm, CocoaPods, Maven Central credentials. Spec: `prd/sdk-forks/PRD.md` |
+| 1.14 MCP + skills | done · tested · not published | 17 tools (15 with RevenueCat's names), secret-key and OAuth 2.1 sign-in (`apps/server/src/routes/oauth.ts`), 16 MCP tests; skills migrate-from-revenuecat, add-subscriptions, self-host. npm packages and mcp.revenuedot.app not live yet |
+| 1.15 Docs | in progress | Docs builder writing all sections, OpenAPI reference and llms.txt in `revenuedot/docs` |
+| 1.17 Examples | done · 17 backends live-tested | 34 examples in `revenuedot/examples`; `scripts/e2e-webhook.sh` delivers a real signed webhook to 17 receivers; web and entitlement-check examples tested; Spring Boot, Ktor, PHP, Laravel, ASP.NET, Elixir, Android Compose and Flutter written but not built here (no toolchain) |
 | 1.16 Brand and site | site built · browser-validated · not deployed | `apps/site` (Astro, static): home, pricing, compare, migrate, self-host, docs hub, blog, changelog, legal, security; SEO/JSON-LD/llms.txt; Lighthouse 100/96+/100/100. Deploy (`pnpm --filter site run deploy`), DNS and email routing await approval. Spec: `prd/site/PRD.md` |
 
 ## Blockers and notes
