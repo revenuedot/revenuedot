@@ -92,6 +92,12 @@ await check("SDK call with a bad key is a 401 JSON with code 7225", async () => 
   return JSON.stringify(r.body);
 });
 
+await check("Test Store products (rcbilling) with a bad key is a 401 JSON with code 7225", async () => {
+  const r = await req("GET", "/rcbilling/v1/subscribers/smoke_nobody/products", { bearer: "test_not_a_real_key" });
+  assert(r.status === 401 && r.body?.code === 7225, `status ${r.status}, body ${r.raw.slice(0, 200)}`);
+  return "401";
+});
+
 await check("dashboard /login renders the single-page app", async () => {
   const r = await req("GET", "/login", { url: appBase });
   assert(r.status === 200 && /<div id="root"|<script type="module"/i.test(r.raw), `status ${r.status}, body ${r.raw.slice(0, 120)}`);
@@ -160,6 +166,20 @@ if (!readOnly) {
     assert(publicKey, "no public key to verify against");
     await verifySignature(publicKey, sig, { apiKey: sdkKey, nonce, path, requestTime: r.headers.get("x-revenuecat-request-time") ?? "", etag: r.headers.get("x-revenuecat-etag") ?? "", body: r.raw });
     return "subscription active, X-Signature verifies";
+  });
+
+  await check("GET /rcbilling/v1/subscribers/{id}/products keeps RevenueCat's web billing shape", async () => {
+    const r = await req("GET", `/rcbilling/v1/subscribers/${userId}/products?id=smoke_monthly`, { bearer: sdkKey });
+    assert(r.status === 200, `status ${r.status}, ${r.raw.slice(0, 200)}`);
+    const p = r.body.product_details?.[0];
+    assert(p, `no product_details: ${r.raw.slice(0, 200)}`);
+    const keys = ["current_price", "default_purchase_option_id", "default_subscription_option_id", "description", "identifier", "normal_period_duration", "product_type", "purchase_options", "subscription_options", "title"];
+    assert(JSON.stringify(Object.keys(p).sort()) === JSON.stringify(keys), `keys ${Object.keys(p).sort()}`);
+    const price = p.current_price;
+    assert(typeof price.amount === "number" && Number.isInteger(price.amount_micros) && typeof price.currency === "string", `price ${JSON.stringify(price)}`);
+    const base = p.purchase_options?.base?.base;
+    assert(base && Number.isInteger(base.cycle_count) && base.period_duration === "P1M", `base option ${JSON.stringify(p.purchase_options)}`);
+    return `${p.identifier} ${p.product_type} ${price.currency} ${price.amount}`;
   });
 
   if (isLocal) {
