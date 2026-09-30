@@ -18,9 +18,11 @@ export interface AppleCredentials { keyId: string; issuerId: string; privateKey:
 /** Returns the credentials, null when none are configured, and throws 7234 when they are only partly filled in. */
 export function appleCredentials(app: AppRow): AppleCredentials | null {
   const c = app.credentials ?? {};
-  const keyId = typeof c.key_id === "string" ? c.key_id.trim() : "";
-  const issuerId = typeof c.issuer_id === "string" ? c.issuer_id.trim() : "";
-  const privateKey = typeof c.private_key === "string" ? c.private_key.replace(/\\n/g, "\n").trim() : "";
+  // RevenueCat's field names (what the REST API stores) win over the short names.
+  const str = (...keys: string[]) => { for (const k of keys) { const v = c[k]; if (typeof v === "string" && v.trim()) return v; } return ""; };
+  const keyId = str("subscription_key_id", "key_id").trim();
+  const issuerId = str("subscription_key_issuer", "issuer_id").trim();
+  const privateKey = str("subscription_private_key", "private_key").replace(/\\n/g, "\n").trim();
   if (!keyId && !issuerId && !privateKey) return null;
   const bundleId = (typeof c.bundle_id === "string" && c.bundle_id) || app.bundleId || "";
   if (!keyId || !issuerId || !privateKey || !bundleId) {

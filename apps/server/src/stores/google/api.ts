@@ -92,7 +92,7 @@ export function toRCError(e: unknown): RCError {
 
 /** Reads `credentials.service_account` (object or JSON string). */
 export function serviceAccountOf(app: Pick<AppRow, "credentials">): ServiceAccount {
-  let raw = app.credentials?.service_account as unknown;
+  let raw = (app.credentials?.play_service_account_credentials_json ?? app.credentials?.service_account) as unknown;
   if (raw === undefined || raw === null || raw === "") {
     throw new GoogleApiError("credentials", "no service account is configured for this Play app (credentials.service_account).");
   }
