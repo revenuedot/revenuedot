@@ -1,4 +1,4 @@
-# Deploys to production on every push to main once CI passes, and when the docs repo changes.
+# Deploys to production on every push to main once CI passes. Docs changes deploy the site from revenuedot/docs.
 # Server: migrations, then the Worker for app.revenuedot.app and api.revenuedot.app, then live smoke checks.
 # Site: revenuedot.app with the docs. Secrets live in the GitHub "production" environment (master copies in 1Password).
 name: Deploy
@@ -6,8 +6,6 @@ name: Deploy
 on:
   push:
     branches: [main]
-  repository_dispatch:
-    types: [docs-updated]
   workflow_dispatch:
 
 concurrency:
@@ -25,7 +23,7 @@ jobs:
       server: ${{ steps.f.outputs.server }}
       site: ${{ steps.f.outputs.site }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
       - id: f
@@ -50,9 +48,9 @@ jobs:
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
       REVENUEDOT_HYPERDRIVE_ID: ${{ vars.REVENUEDOT_HYPERDRIVE_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -73,13 +71,13 @@ jobs:
       DOCS_DIR: ${{ github.workspace }}/docs-repo
       CHECK_WORKSPACE: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           repository: revenuedot/docs
           path: docs-repo
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
