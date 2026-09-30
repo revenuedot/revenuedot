@@ -1,0 +1,167 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Code from "../components/Code.astro";
+import Faq from "../components/Faq.astro";
+import CtaBand from "../components/CtaBand.astro";
+import { SDKS } from "../lib/sdks";
+import { FAQ_NO_LOSS, FAQ_GOOGLE, FAQ_CHANGE_APP, FAQ_STORES, FAQ_SELF_HOST } from "../lib/faq";
+import { SITE } from "../site";
+
+const faq = [
+  FAQ_NO_LOSS,
+  FAQ_CHANGE_APP,
+  FAQ_GOOGLE,
+  { q: "Do my existing RevenueCat API keys keep working?", a: "Yes. The importer copies your apps' public SDK key strings (appl_, goog_, rcb_) into RevenueDot, so builds already in the App Store and Google Play authenticate against RevenueDot without a new key." },
+  { q: "Will the importer send webhooks for old purchases?", a: "No. Imported history is written directly, with no events and no webhooks, so your backend does not see a flood of old purchases. Pass --emit-events only if you want them." },
+  { q: "What does the importer not bring over yet?", a: "Paywalls, targeting rules, experiments, integrations other than webhooks and virtual currency balances. RevenueCat's v2 API does not expose subscription refunds, so a refunded subscription imports as expired." },
+  FAQ_STORES,
+  FAQ_SELF_HOST,
+];
+---
+<Base
+  title="Migrate from RevenueCat: one line, no lost subscribers"
+  description="Move from RevenueCat to RevenueDot: import your catalog and customers, run both side by side, then change the SDK proxy URL. Code for every SDK."
+  path="/migrate-from-revenuecat"
+  crumbs={[{ name: "Migrate from RevenueCat", path: "/migrate-from-revenuecat" }]}
+  faq={faq}
+  jsonld={[{
+    "@type": "HowTo",
+    name: "Migrate from RevenueCat to RevenueDot",
+    description: "Import your RevenueCat project, run both systems side by side, then switch the SDK's proxy URL.",
+    step: [
+      { "@type": "HowToStep", position: 1, name: "Import", text: "Run npx revenuedot import with a read-only RevenueCat secret key to copy the catalog, SDK keys, customers and purchase history." },
+      { "@type": "HowToStep", position: 2, name: "Run side by side", text: "Point App Store and Google Play server notifications at RevenueDot, which forwards each notification to RevenueCat." },
+      { "@type": "HowToStep", position: 3, name: "Switch", text: "Ship an app update that sets the SDK's proxy URL to your RevenueDot server, then turn RevenueCat off." },
+    ],
+  }]}
+>
+  <div class="wrap">
+    <PageHead label="Migration guide" title="Migrate from RevenueCat without losing a subscriber" lede="Import your project, run both systems side by side with forwarded store notifications, then ship one line. Your app code, offerings, API keys and customers stay the same." />
+  </div>
+
+  <section class="section first tight">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-3">
+        <a class="cell step" href="#import"><p class="num">01</p><h2 class="h3">Import</h2><p>Copy the catalog, SDK keys, customers and history with one command.</p></a>
+        <a class="cell step" href="#dual-run"><p class="num">02</p><h2 class="h3">Run side by side</h2><p>Forward every App Store and Google Play notification to RevenueCat.</p></a>
+        <a class="cell step" href="#switch"><p class="num">03</p><h2 class="h3">Switch</h2><p>Set the proxy URL in your next release, or swap to a fork package.</p></a>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="import">
+    <div class="wrap two">
+      <div class="copy">
+        <p class="label">Step 1</p>
+        <h2 class="h2">Import your RevenueCat project</h2>
+        <p class="muted">The importer runs on your own machine with your own RevenueCat secret key (read-only is enough). It reads RevenueCat's REST API v2 and writes to your RevenueDot server:</p>
+        <ul class="list">
+          <li>Apps and their public SDK keys, so shipped builds keep working</li>
+          <li>Products, entitlements, offerings and packages, with metadata and the current offering</li>
+          <li>Customers, aliases, attributes, subscriptions and one-time purchases</li>
+          <li>Current access, so nobody loses a subscription on switch day</li>
+        </ul>
+        <p class="muted small">It is resumable and idempotent, so a re-run is also the incremental sync during the side-by-side run. Try <code>--dry-run</code> or <code>--limit 50</code> first. Apple purchases are keyed by their original transaction; Google purchase tokens are recovered from order IDs through Google's Orders API with your own service account.</p>
+      </div>
+      <div class="stack">
+        <Code title="Import" label="terminal" code={`npx revenuedot import --from-revenuecat \\
+  --rc-key sk_...        # RevenueCat secret key, v2, read-only
+  --rc-project proj...   # from the RevenueCat dashboard URL
+  --to https://api.revenuedot.app \\
+  --to-key sk_...        # RevenueDot secret key`} />
+        <Code title="Check" label="terminal" code={`# Compare active entitlements customer by customer
+npx revenuedot import verify --rc-key sk_... --rc-project proj... --to ... --to-key sk_...
+
+# Print the cutover steps with your own app ids and URLs
+npx revenuedot import plan --to ... --to-key sk_...`} />
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="dual-run">
+    <div class="wrap two">
+      <div class="copy">
+        <p class="label">Step 2</p>
+        <h2 class="h2">Run both systems side by side</h2>
+        <p class="muted">Change the server notification URLs in App Store Connect and Google Play (Pub/Sub push) to RevenueDot. RevenueDot processes each notification and forwards it unchanged to RevenueCat, so both systems stay accurate while your current app version still talks to RevenueCat.</p>
+        <ul class="list">
+          <li>Compare customer info and webhooks between the two for as long as you like</li>
+          <li>Re-run the importer to pick up anything RevenueCat saw first</li>
+          <li>Undo at any time by pointing the notification URLs back</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <Code title="Notification URLs" label="per app" code={`# App Store Connect → App Information → App Store Server Notifications (v2)
+https://api.revenuedot.app/v1/notifications/apple/<app id>
+
+# Google Play → Monetization setup → Real-time developer notifications
+# Pub/Sub push subscription endpoint
+https://api.revenuedot.app/v1/notifications/google/<app id>
+
+# RevenueDot dashboard → Apps → your app → Forwarding URL
+# paste the notification URL RevenueCat gave you`} />
+        <p class="tiny">The dashboard shows each app's exact notification URL and when the last notification arrived.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="switch">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Step 3</p>
+        <h2 class="h2">Switch: one line in every SDK</h2>
+        <p class="lede">Set the proxy URL before <code>configure</code> in your next release. Self-hosting? Use your own server's URL. When most active users are on the new version, turn RevenueCat off.</p>
+      </div>
+      <div class="sdk-grid">
+        {SDKS.map((s) => <Code title={s.name} label={s.language} code={s.proxy} />)}
+      </div>
+      <div class="notice">
+        <p class="label">Signature checks</p>
+        <p class="small">With the stock RevenueCat SDK, turn off its response-signature check (Trusted Entitlements), or it reports every RevenueDot response as unverified. On Android, the stock SDK also still sends paywall and ad events to RevenueCat. The RevenueDot forks below fix both.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="forks">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Or swap the package</p>
+        <h2 class="h2">MIT forks of all ten RevenueCat SDKs</h2>
+        <p class="lede">Each fork keeps RevenueCat's class and method names and every name your code imports. It defaults to <code>api.revenuedot.app</code>, trusts RevenueDot's signing key so entitlements verify, and sends every event to your server.</p>
+      </div>
+      <div class="fork-grid">
+        {SDKS.map((s) => (
+          <div class="fork">
+            <Code title={`${s.name} fork`} label={s.platforms} code={s.fork} />
+            <p class="small muted">{s.forkNote} <a href={s.repo} rel="noopener">{s.repo.replace("https://github.com/", "")}</a></p>
+          </div>
+        ))}
+      </div>
+      <p class="tiny caption">Fork packages publish to their registries with the first release; until then, build from the repositories. The shared layer for the cross-platform SDKs is <a href={`${SITE.org}/purchases-hybrid-common`} rel="noopener">revenuedot/purchases-hybrid-common</a>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2">Migration questions</h2></div>
+      <Faq items={faq} open={0} />
+    </div>
+  </section>
+
+  <CtaBand title="Try the migration on a copy first." body="Run the importer with --dry-run against a self-hosted RevenueDot on your laptop. Nothing changes in RevenueCat or in your app." />
+</Base>
+<style>
+  .step { text-decoration: none; transition: background var(--fast) var(--ease); }
+  .step:hover { background: var(--hover); }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
+  .copy { display: grid; gap: 16px; }
+  .stack { display: grid; gap: 16px; min-width: 0; }
+  .list { margin: 0; padding-left: 18px; display: grid; gap: 8px; color: var(--fg-2); }
+  .sdk-grid, .fork-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .fork-grid { gap: 24px 16px; }
+  .fork { display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .notice { margin-top: 24px; padding: 20px 24px; border: 1px solid var(--border); border-left: 2px solid var(--accent); background: var(--panel); display: grid; gap: 8px; }
+  @media (max-width: 900px) { .two { grid-template-columns: 1fr; gap: 32px; } }
+  @media (max-width: 760px) { .sdk-grid, .fork-grid { grid-template-columns: 1fr; } }
+</style>

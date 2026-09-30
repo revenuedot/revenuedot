@@ -1,0 +1,39 @@
+---
+import Logo from "./Logo.astro";
+import { FOOTER, SITE } from "../site";
+---
+<footer class="foot">
+  <div class="wrap">
+    <div class="cols">
+      <div class="about">
+        <a href="/" aria-label="RevenueDot home" class="brand"><Logo height={20} /></a>
+        <p class="small muted">The open-source backend for in-app purchases and subscriptions. Works with the RevenueCat SDK.</p>
+        <p class="pill"><span class="dot" aria-hidden="true"></span>Pre-alpha, built in the open</p>
+      </div>
+      {FOOTER.map((col) => (
+        <nav aria-label={col.title}>
+          <p class="label">{col.title}</p>
+          <ul>{col.links.map((l) => <li><a href={l.href}>{l.label}</a></li>)}</ul>
+        </nav>
+      ))}
+    </div>
+    <div class="legal tiny">
+      <p>© 2026 RevenueDot. Server AGPL-3.0, SDKs MIT. <a href={`mailto:${SITE.email.hello}`}>{SITE.email.hello}</a></p>
+      <p>RevenueDot is not affiliated with, endorsed by or sponsored by RevenueCat, Inc. "RevenueCat" is a trademark of RevenueCat, Inc., used only to describe compatibility.</p>
+    </div>
+  </div>
+</footer>
+<style>
+  .foot { border-top: 1px solid var(--border); background: var(--sidebar); padding: 64px 0 40px; margin-top: 0; }
+  .cols { display: grid; grid-template-columns: 1.6fr repeat(3, 1fr); gap: 40px; }
+  .about { display: grid; gap: 16px; align-content: start; max-width: 320px; }
+  .brand { color: var(--fg); display: inline-flex; }
+  .pill { width: fit-content; }
+  ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+  ul a { font-size: 14px; color: var(--fg-2); text-decoration: none; }
+  ul a:hover { color: var(--fg); }
+  .legal { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); display: grid; gap: 6px; }
+  .legal a { color: var(--fg-2); }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr 1fr; } .about { grid-column: 1 / -1; } }
+  @media (max-width: 420px) { .cols { grid-template-columns: 1fr; } }
+</style>

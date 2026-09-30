@@ -1,0 +1,165 @@
+---
+import Base from "../layouts/Base.astro";
+import Code from "../components/Code.astro";
+import Shot from "../components/Shot.astro";
+import Faq from "../components/Faq.astro";
+import CtaBand from "../components/CtaBand.astro";
+import { SDKS } from "../lib/sdks";
+import { softwareApplication } from "../lib/jsonld";
+import { cloudBill, revenueCatBill, usd } from "../lib/pricing";
+import { FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED } from "../lib/faq";
+import { SITE } from "../site";
+import overviewLight from "../assets/screens/overview-light.png";
+import overviewDark from "../assets/screens/overview-dark.png";
+import customer from "../assets/screens/customer-light.png";
+import offerings from "../assets/screens/offerings-light.png";
+
+const faq = [FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED];
+const quick = SDKS.filter((s) => ["ios", "android", "react-native", "flutter"].includes(s.id));
+const tiers = [10_000, 50_000, 250_000, 1_000_000];
+---
+<Base
+  title="RevenueDot: the open-source RevenueCat alternative"
+  description="Open-source, self-hostable in-app purchase and subscription backend that works with the RevenueCat SDK. Change one line, keep your app code, pay no revenue share."
+  path="/"
+  faq={faq}
+  jsonld={[softwareApplication()]}
+>
+  <section class="hero">
+    <div class="wrap">
+      <a class="pill rise" href="/changelog"><span class="dot" aria-hidden="true"></span>Pre-alpha · built in the open <span class="arrow">→</span></a>
+      <h1 class="display rise d1">The open-source RevenueCat alternative</h1>
+      <p class="lede rise d2">RevenueDot is a self-hostable backend for in-app purchases and subscriptions. Keep the RevenueCat SDK you already ship, change one line, and own your purchase data, with no share of your revenue.</p>
+      <div class="btns rise d3">
+        <a class="btn" href="/self-host">Self-host free</a>
+        <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
+      </div>
+      <div class="hero-code rise d3">
+        <Code title="The one line" label="Swift · AppDelegate" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!  // or your own server
+Purchases.configure(withAPIKey: "appl_...")                       // unchanged`} />
+      </div>
+    </div>
+    <div class="wrap hero-shot">
+      <Shot light={overviewLight} dark={overviewDark} eager alt="RevenueDot dashboard overview: active trials, active subscriptions, MRR, revenue, new and active customers with sparklines, recent transactions and setup health" caption="The RevenueDot dashboard, captured from the running app with demo data." />
+    </div>
+  </section>
+
+  <section class="section tight" aria-label="RevenueDot in numbers">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-4">
+        <div class="cell"><p class="label">SDK endpoints</p><p class="stat">37</p><p>Every endpoint the RevenueCat SDKs call, answered in the same shape.</p></div>
+        <div class="cell"><p class="label">SDKs supported</p><p class="stat">10</p><p>iOS, Android, React Native, Flutter, web and five more, stock or forked.</p></div>
+        <div class="cell"><p class="label">Revenue share, self-hosted</p><p class="stat">0%</p><p>You pay for your own servers. Nothing scales with your revenue.</p></div>
+        <div class="cell"><p class="label">Lines of app code to change</p><p class="stat">1</p><p>The SDK's proxy URL. Purchases, offerings and entitlements stay as they are.</p></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">How switching works</p>
+        <h2 class="h2">Move off RevenueCat in an afternoon, without losing a subscriber</h2>
+        <p class="lede">RevenueDot speaks the RevenueCat SDK protocol, REST API and webhook format field for field, so your app, your backend handlers and your paywalls keep working.</p>
+      </div>
+      <div class="grid"><div class="gi cols-3">
+        <div class="cell"><p class="num">01</p><h3 class="h3">Import</h3><p>One command copies your products, entitlements, offerings, SDK keys, customers and purchase history. Current access comes with it.</p></div>
+        <div class="cell"><p class="num">02</p><h3 class="h3">Run side by side</h3><p>Point App Store and Google Play notifications at RevenueDot. It forwards each one to RevenueCat, so both stay accurate while you compare.</p></div>
+        <div class="cell"><p class="num">03</p><h3 class="h3">Switch</h3><p>Ship an app update with the proxy URL. When most users have it, turn RevenueCat off. Your existing public API keys keep working.</p></div>
+      </div></div>
+      <div class="sdk-grid">
+        {quick.map((s) => <Code title={s.name} label={s.language} code={s.proxy} />)}
+      </div>
+      <p class="small muted more"><a href="/migrate-from-revenuecat">See the line for all nine SDKs, the fork packages and the importer <span class="arrow">→</span></a></p>
+    </div>
+  </section>
+
+  <section class="section" id="why">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Why teams switch</p>
+        <h2 class="h2">Your purchases, your servers, your bill</h2>
+      </div>
+      <div class="grid"><div class="gi cols-3">
+        <div class="cell"><h3 class="h3">No revenue share when you self-host</h3><p>RevenueCat charges 1% of tracked revenue above $2,500 a month. Self-hosted RevenueDot costs your server bill.</p></div>
+        <div class="cell"><h3 class="h3">Your data, your region</h3><p>Purchases, customers and receipts live in your own Postgres, in the region your customers and your lawyers need.</p></div>
+        <div class="cell"><h3 class="h3">Same API, no rewrite</h3><p>The same SDK calls, customer info and webhook payloads, checked against RevenueCat's own SDK test fixtures.</p></div>
+        <div class="cell"><h3 class="h3">A safe migration</h3><p>Import everything, run both systems side by side with forwarded store notifications, then switch when the numbers match.</p></div>
+        <div class="cell"><h3 class="h3">Open source</h3><p>Read, audit and change the code that decides who has access to your app. AGPL-3.0 server, MIT SDKs.</p></div>
+        <div class="cell"><h3 class="h3">Built for AI agents</h3><p>An MCP server, agent skills and llms.txt let Claude, ChatGPT, Codex and Cursor set it up and run it for you.</p></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="product">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">The dashboard</p>
+        <h2 class="h2">Everything you look at in RevenueCat, where you expect it</h2>
+        <p class="lede">The navigation follows RevenueCat's, so your team finds customers, offerings and API keys on day one.</p>
+      </div>
+      <div class="pair">
+        <div class="pair-item">
+          <Shot light={customer} alt="A customer page in RevenueDot: total spent, active Pro entitlement, App Store subscription, customer details and history" sizes="(max-width: 900px) 100vw, 600px" />
+          <p class="small"><strong>Customers.</strong> <span class="muted">Every purchase, entitlement, alias and event for one app user, with grants and refunds a click away.</span></p>
+        </div>
+        <div class="pair-item">
+          <Shot light={offerings} alt="The Offerings page in RevenueDot: default and win-back offerings with their packages" sizes="(max-width: 900px) 100vw, 600px" />
+          <p class="small"><strong>Product catalog.</strong> <span class="muted">Offerings, packages, products and entitlements, served to the SDK exactly as RevenueCat serves them.</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="cost">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">What it costs</p>
+        <h2 class="h2">A bill that does not grow with your revenue</h2>
+        <p class="lede">Monthly price at each level of tracked revenue. RevenueCat figures use its public pricing, checked {SITE.pricesChecked}.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueCat</th><th scope="col">RevenueDot self-hosted</th><th scope="col">RevenueDot Cloud</th></tr></thead>
+          <tbody>
+            {tiers.map((t) => (
+              <tr>
+                <th scope="row" class="num-cell">{usd(t)}</th>
+                <td class="num-cell">{usd(revenueCatBill(t))}</td>
+                <td class="num-cell">$0 + your servers</td>
+                <td class="num-cell">{usd(cloudBill(t))}{cloudBill(t) > 0 ? " (coming)" : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny caption">Source: <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>. RevenueDot Cloud paid pricing is planned and not yet available. <a href="/pricing">See pricing</a>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">FAQ</p>
+        <h2 class="h2">Questions teams ask before switching</h2>
+      </div>
+      <Faq items={faq} open={0} />
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>
+
+<style>
+  .hero { padding: 72px 0 0; }
+  .hero .wrap:first-child { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; justify-items: start; }
+  .hero h1 { max-width: 980px; }
+  .hero-code { width: 100%; max-width: 760px; margin-top: 8px; }
+  .hero-shot { margin-top: 56px; margin-bottom: 96px; }
+  .sdk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+  .more { margin-top: 20px; }
+  .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+  .pair-item { display: grid; gap: 16px; align-content: start; }
+  @media (max-width: 900px) { .pair, .sdk-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .hero { padding-top: 40px; } .hero-shot { margin: 40px auto 64px; } }
+</style>

@@ -1,7 +1,35 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "api", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@revenuedot/server", "dev"], "port": 8787 },
-    { "name": "dashboard", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@revenuedot/dashboard", "dev"], "port": 5178 }
+    {
+      "name": "api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@revenuedot/server",
+        "dev"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@revenuedot/dashboard",
+        "dev"
+      ],
+      "port": 5178
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "site",
+        "dev"
+      ],
+      "port": 4321
+    }
   ]
 }

@@ -1,0 +1,133 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Faq from "../components/Faq.astro";
+import CtaBand from "../components/CtaBand.astro";
+import { FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_AFFILIATED, FAQ_CHANGE_APP, FAQ_READY, FAQ_NO_LOSS } from "../lib/faq";
+import { revenueCatBill, cloudBill, usd } from "../lib/pricing";
+import { SITE } from "../site";
+
+const RC_PRICING = "https://www.revenuecat.com/pricing";
+const RC_HOME = "https://www.revenuecat.com/";
+const RC_DOCS = "https://www.revenuecat.com/docs";
+const RC_SDK_LICENSE = "https://github.com/RevenueCat/purchases-ios/blob/main/LICENSE";
+
+const LABEL: Record<string, string> = {
+  [RC_PRICING]: "Pricing page",
+  [RC_HOME]: "Homepage",
+  [RC_DOCS]: "Docs",
+  [RC_SDK_LICENSE]: "SDK license",
+};
+type Row = { topic: string; rd: string; rc: string; src?: string };
+const rows: Row[] = [
+  { topic: "Server source code", rd: "Open source, AGPL-3.0", rc: "Closed source", src: RC_HOME },
+  { topic: "Where it runs", rd: "Your servers (Docker and Postgres) or RevenueDot Cloud", rc: "RevenueCat's cloud only", src: RC_HOME },
+  { topic: "Client SDKs", rd: "Works with RevenueCat's SDKs; MIT forks of all ten", rc: "Its own SDKs, MIT licensed", src: RC_SDK_LICENSE },
+  { topic: "Price", rd: "Self-host free with no revenue share; cloud free to $10K a month, paid plans coming", rc: "Free to $2,500 monthly tracked revenue, then 1% of tracked revenue above that", src: RC_PRICING },
+  { topic: "Purchase data", rd: "In your own Postgres when self-hosted, queryable with SQL", rc: "In RevenueCat's cloud; exports and integrations", src: RC_DOCS },
+  { topic: "Maturity", rd: "Pre-alpha, built in the open", rc: "Mature and widely used; its homepage says 147,000+ apps", src: RC_HOME },
+  { topic: "Stores", rd: "App Store and Google Play; Amazon and Stripe next", rc: "App Store, Google Play, Amazon, Stripe, web billing and more", src: RC_DOCS },
+  { topic: "Webhooks and REST API", rd: "Same payloads and endpoints (v1, core v2)", rc: "Webhooks and REST API v1 and v2", src: RC_DOCS },
+  { topic: "Charts and analytics", rd: "Overview metrics now; full charts planned", rc: "Dozens of built-in charts", src: RC_DOCS },
+  { topic: "Paywalls, experiments, targeting", rd: "Planned", rc: "Available (paywall tools priced separately)", src: RC_PRICING },
+  { topic: "Third-party integrations", rd: "Webhooks now; Slack, Segment, Amplitude and others planned", rc: "Many built-in integrations", src: RC_DOCS },
+  { topic: "Compliance", rd: "Self-host inherits your controls; no certification yet", rc: "States SOC 2 compliance", src: RC_HOME },
+  { topic: "Support", rd: "GitHub and email", rc: "Vendor support, by plan", src: RC_PRICING },
+];
+const levels = [10_000, 50_000, 250_000, 1_000_000];
+const faq = [FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_AFFILIATED];
+---
+<Base
+  title="RevenueDot vs RevenueCat: open source and self-hosted"
+  description="A fair, sourced comparison of RevenueDot and RevenueCat: license, self-hosting, price, data location, features and maturity. Same SDK, one line to switch."
+  path="/revenuedot-vs-revenuecat"
+  crumbs={[{ name: "RevenueDot vs RevenueCat", path: "/revenuedot-vs-revenuecat" }]}
+  faq={faq}
+>
+  <div class="wrap">
+    <PageHead label="Comparison" title="RevenueDot vs RevenueCat" lede="RevenueDot is an open-source server that the RevenueCat SDKs already talk to. RevenueCat is the mature, hosted product. Here is how they differ, with a source for every claim about RevenueCat." />
+  </div>
+
+  <section class="section first tight">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-2">
+        <div class="cell"><p class="label">Choose RevenueDot if</p><ul class="list">
+          <li>You want no share of revenue going to your purchase backend.</li>
+          <li>Your purchase data must stay in your own database, cloud or region.</li>
+          <li>You want to read and change the code that grants access.</li>
+          <li>You are happy to adopt a young, open project and help shape it.</li>
+        </ul></div>
+        <div class="cell"><p class="label">Stay on RevenueCat if</p><ul class="list">
+          <li>You need a proven service with years of production history today.</li>
+          <li>You rely on its paywall builder, experiments, charts or integrations.</li>
+          <li>You need a vendor with SOC 2 and paid support right now.</li>
+          <li>You would rather not run or evaluate a pre-alpha backend.</li>
+        </ul></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="table">
+    <div class="wrap">
+      <div class="head"><p class="label">Side by side</p><h2 class="h2">Feature and policy comparison</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Topic</th><th scope="col">RevenueDot</th><th scope="col">RevenueCat</th><th scope="col">Source</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr><th scope="row">{r.topic}</th><td>{r.rd}</td><td>{r.rc}</td><td>{r.src ? <a href={r.src} rel="noopener" class="tiny">{LABEL[r.src]}</a> : null}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny caption">RevenueCat facts from its public website, docs and GitHub, checked {SITE.pricesChecked}. Tell us about anything out of date at <a href={`mailto:${SITE.email.hello}`}>{SITE.email.hello}</a>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="price">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Price</p>
+        <h2 class="h2">The monthly bill at four sizes</h2>
+        <p class="lede">RevenueCat's rate is 1% of tracked revenue above $2,500 a month. Self-hosted RevenueDot has no rate at all; RevenueDot Cloud's planned rate is 0.5% above $10,000, capped at $999.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueCat</th><th scope="col">RevenueDot Cloud (planned)</th><th scope="col">RevenueDot self-hosted</th></tr></thead>
+          <tbody>{levels.map((m) => <tr><th scope="row" class="num-cell">{usd(m)}</th><td class="num-cell">{usd(revenueCatBill(m))}</td><td class="num-cell">{usd(cloudBill(m))}</td><td class="num-cell">$0 + servers</td></tr>)}</tbody>
+        </table>
+      </div>
+      <p class="tiny caption">Source: <a href={RC_PRICING} rel="noopener">revenuecat.com/pricing</a>. <a href="/pricing">RevenueDot pricing</a>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="compat">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Compatibility</p>
+        <h2 class="h2">What stays the same when you switch</h2>
+      </div>
+      <div class="grid"><div class="gi cols-3">
+        <div class="cell"><h3 class="h3">Your app code</h3><p>The SDK, <code>Purchases.configure</code>, offerings, purchases, restores and <code>CustomerInfo</code>. Only the proxy URL changes.</p></div>
+        <div class="cell"><h3 class="h3">Your backend</h3><p>Webhook event names and payloads, the Authorization header, and REST API v1 and core v2 responses.</p></div>
+        <div class="cell"><h3 class="h3">Your customers</h3><p>App user IDs, aliases, attributes, active entitlements and purchase history, brought over by the importer.</p></div>
+      </div></div>
+      <p class="small muted more">Compatibility is checked against the RevenueCat SDKs' own test fixtures and RevenueCat's published OpenAPI files. <a href="/migrate-from-revenuecat">How to migrate <span class="arrow">→</span></a></p>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2">RevenueDot and RevenueCat, answered</h2></div>
+      <Faq items={faq} open={0} />
+      <p class="tiny caption">RevenueDot is not affiliated with, endorsed by or sponsored by RevenueCat, Inc. "RevenueCat" is a trademark of RevenueCat, Inc., used here only to describe compatibility.</p>
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>
+<style>
+  .list { margin: 0; padding-left: 18px; display: grid; gap: 8px; color: var(--fg-2); font-size: 15px; }
+  .more { margin-top: 20px; }
+  td a.tiny { color: var(--fg-3); white-space: nowrap; }
+</style>

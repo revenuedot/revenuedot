@@ -1,0 +1,19 @@
+---
+// A plain code block: monospace, comments muted, no colour theme (DESIGN.md: one accent, nothing decorative).
+interface Props { code: string; title?: string; label?: string }
+const { code, title, label } = Astro.props;
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const html = code
+  .trim()
+  .split("\n")
+  .map((line) => {
+    const m = line.match(/^(.*?)(\s*(?:\/\/|#(?!!)).*)$/);
+    if (m && !/["'`][^"'`]*$/.test(m[1])) return `${esc(m[1])}<span class="c">${esc(m[2])}</span>`;
+    return esc(line);
+  })
+  .join("\n");
+---
+<div class="code">
+  {title && <div class="code-head"><span class="label">{title}</span>{label && <span class="num">{label}</span>}</div>}
+  <pre tabindex="0" aria-label={title ? `${title} code` : "Code"}><code set:html={html} /></pre>
+</div>

@@ -1,0 +1,11 @@
+---
+// The outlined lockup from brand/kit, recoloured to currentColor so it follows the theme. The dot stays gold.
+import raw from "../../../../brand/kit/wordmark/revenuedot-lockup-black.svg?raw";
+interface Props { height?: number }
+const { height = 22 } = Astro.props;
+const svg = raw
+  .replaceAll('"#0a0a0a"', '"currentColor"')
+  .replace("<svg ", `<svg role="img" aria-label="RevenueDot" height="${height}" style="width:auto;height:${height}px" `)
+  .replace(/ width="708" height="102"/, "");
+---
+<Fragment set:html={svg} />

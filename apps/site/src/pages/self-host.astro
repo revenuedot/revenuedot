@@ -1,0 +1,100 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Code from "../components/Code.astro";
+import Faq from "../components/Faq.astro";
+import CtaBand from "../components/CtaBand.astro";
+import { FAQ_SELF_HOST, FAQ_DATA, FAQ_LICENSE, FAQ_READY } from "../lib/faq";
+import { SITE } from "../site";
+
+const faq = [
+  FAQ_SELF_HOST,
+  { q: "What do I need to self-host RevenueDot?", a: "A machine that runs Docker, plus Postgres 16, which docker compose starts for you. For production, use a managed Postgres with backups and put the server behind HTTPS." },
+  { q: "Does self-hosted RevenueDot send data to RevenueDot?", a: "No. The self-hosted server has no telemetry and never calls RevenueDot's servers. It talks only to Apple, Google, your webhook endpoints and any forwarding URL you set." },
+  { q: "How do upgrades work?", a: "Pull the new image and restart. Database migrations run automatically when the server starts, and there is one config file." },
+  FAQ_DATA,
+  FAQ_LICENSE,
+  FAQ_READY,
+];
+---
+<Base
+  title="Self-host an in-app purchase backend with Docker"
+  description="Self-host RevenueDot, the open-source RevenueCat alternative, with docker compose and Postgres. Free forever under AGPL-3.0, no revenue share, your data in your region."
+  path="/self-host"
+  crumbs={[{ name: "Self-host", path: "/self-host" }]}
+  faq={faq}
+>
+  <div class="wrap">
+    <PageHead label="Self-host" title="Run your own purchase backend in three commands" lede="One Docker image serves the RevenueCat-compatible API and the dashboard, next to your own Postgres. Free forever under AGPL-3.0, with no limits and no share of your revenue." />
+  </div>
+
+  <section class="section first tight">
+    <div class="wrap two">
+      <Code title="Start" label="terminal" code={`git clone https://github.com/revenuedot/revenuedot && cd revenuedot
+cp .env.example .env        # set POSTGRES_PASSWORD
+docker compose up -d        # API, dashboard and Postgres on http://localhost:8787`} />
+      <div class="copy">
+        <p class="muted">Open <code>http://localhost:8787</code>, create your account and project, and add your App Store and Google Play credentials. Then point your app's SDK at your server:</p>
+        <Code title="Your app" label="Swift" code={`Purchases.proxyURL = URL(string: "https://iap.example.com")!`} />
+        <p class="tiny">Set <code>REVENUEDOT_PORT</code> to change the host port. <a href="/migrate-from-revenuecat#switch">The line for every SDK</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="what">
+    <div class="wrap">
+      <div class="head"><p class="label">What you run</p><h2 class="h2">One image, one database, one config file</h2></div>
+      <div class="grid"><div class="gi cols-3">
+        <div class="cell"><h3 class="h3">The server</h3><p>A TypeScript (Hono) API that answers every endpoint the RevenueCat SDKs call, the REST API and store notifications.</p></div>
+        <div class="cell"><h3 class="h3">The dashboard</h3><p>Customers, catalog, apps, API keys, webhooks with a delivery log, and setup health, served by the same image.</p></div>
+        <div class="cell"><h3 class="h3">Postgres</h3><p>Every purchase, customer and receipt, in tables you can query with SQL. Migrations run on start.</p></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="compare">
+    <div class="wrap">
+      <div class="head"><p class="label">Self-host or cloud</p><h2 class="h2">Same code, your choice of who runs it</h2><p class="lede">Self-host and RevenueDot Cloud share the code, API and schema, so a project moves either way with an export and import.</p></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col"></th><th scope="col">Self-host</th><th scope="col">RevenueDot Cloud</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Price</th><td>Free, AGPL-3.0</td><td>Free up to $10K monthly tracked revenue; paid plans coming</td></tr>
+            <tr><th scope="row">Who runs it</th><td>You: server, Postgres, backups, upgrades</td><td>RevenueDot</td></tr>
+            <tr><th scope="row">Data location</th><td>Any cloud and region you choose</td><td>Cloudflare's network; EU and US regions with Enterprise</td></tr>
+            <tr><th scope="row">Extras</th><td>Everything in the open-source server</td><td>Failover, point-in-time recovery, edge caching, monitoring, support</td></tr>
+            <tr><th scope="row">Enterprise features</th><td>SSO, audit logs and high availability with an Enterprise license</td><td>With Enterprise</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="production">
+    <div class="wrap">
+      <div class="head"><p class="label">Before production</p><h2 class="h2">A short checklist</h2></div>
+      <div class="grid"><div class="gi cols-2">
+        <div class="cell"><p class="num">01</p><h3 class="h3">Serve it over HTTPS</h3><p>Put the server behind a load balancer or reverse proxy with TLS. The SDKs and the stores need an HTTPS URL.</p></div>
+        <div class="cell"><p class="num">02</p><h3 class="h3">Use managed Postgres with backups</h3><p>Point <code>DATABASE_URL</code> at a managed Postgres 16 with point-in-time recovery, and keep a strong password.</p></div>
+        <div class="cell"><p class="num">03</p><h3 class="h3">Connect the stores</h3><p>Add your App Store In-App Purchase key and Google Play service account, then set the notification URLs the dashboard shows.</p></div>
+        <div class="cell"><p class="num">04</p><h3 class="h3">Watch setup health</h3><p>The dashboard shows when each app last received a store notification and flags missing keys before purchases fail.</p></div>
+      </div></div>
+      <p class="small muted more">Status: RevenueDot is pre-alpha. Docker self-host works and is smoke-tested; run it next to RevenueCat before you rely on it. <a href={SITE.github} rel="noopener">Source on GitHub</a>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2">Self-hosting questions</h2></div>
+      <Faq items={faq} open={0} />
+    </div>
+  </section>
+
+  <CtaBand title="Moving from RevenueCat?" body="Self-host RevenueDot, import your project with one command, and run both side by side until the numbers match." />
+</Base>
+<style>
+  .two { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+  .copy { display: grid; gap: 16px; }
+  .more { margin-top: 20px; }
+  @media (max-width: 900px) { .two { grid-template-columns: 1fr; gap: 24px; } }
+</style>

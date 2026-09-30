@@ -1,0 +1,82 @@
+---
+import "../../../../design/tokens.css";
+import "../styles/site.css";
+import manrope from "@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2?url";
+import mono400 from "@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff2?url";
+import mono500 from "@fontsource/geist-mono/files/geist-mono-latin-500-normal.woff2?url";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import Breadcrumbs from "../components/Breadcrumbs.astro";
+import { SITE, type Crumb, type Faq } from "../site";
+import { organization, website, breadcrumbList, faqPage } from "../lib/jsonld";
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  crumbs?: Crumb[];
+  faq?: Faq[];
+  jsonld?: object[];
+  ogType?: "website" | "article";
+  noindex?: boolean;
+}
+const { title, description, path, crumbs, faq, jsonld = [], ogType = "website", noindex = false } = Astro.props;
+const canonical = new URL(path, SITE.url).href;
+const fullTitle = path === "/" ? title : `${title} | RevenueDot`;
+const ogImage = new URL(SITE.ogImage, SITE.url).href;
+const graph = [organization(), ...(path === "/" ? [website()] : []), ...jsonld];
+if (crumbs?.length) graph.push(breadcrumbList(crumbs));
+if (faq?.length) graph.push(faqPage(faq));
+const ld = JSON.stringify({ "@context": "https://schema.org", "@graph": graph }).replace(/</g, "\\u003c");
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{fullTitle}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonical} />
+  {noindex && <meta name="robots" content="noindex" />}
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0A0A0A" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="/favicon.ico" sizes="32x32" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+  <link rel="preload" href={manrope} as="font" type="font/woff2" crossorigin />
+  <style set:html={`
+    @font-face{font-family:"Manrope";font-style:normal;font-display:swap;font-weight:200 800;src:url(${manrope}) format("woff2")}
+    @font-face{font-family:"Geist Mono";font-style:normal;font-display:swap;font-weight:400;src:url(${mono400}) format("woff2")}
+    @font-face{font-family:"Geist Mono";font-style:normal;font-display:swap;font-weight:500;src:url(${mono500}) format("woff2")}
+  `} />
+  <meta property="og:type" content={ogType} />
+  <meta property="og:site_name" content="RevenueDot" />
+  <meta property="og:title" content={fullTitle} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={canonical} />
+  <meta property="og:image" content={ogImage} />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="640" />
+  <meta property="og:image:alt" content={SITE.ogImageAlt} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={fullTitle} />
+  <meta name="twitter:description" content={description} />
+  <meta name="twitter:image" content={ogImage} />
+  <meta name="twitter:image:alt" content={SITE.ogImageAlt} />
+  <script type="application/ld+json" is:inline set:html={ld} />
+  {SITE.analyticsToken && (
+    <script defer is:inline src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon={JSON.stringify({ token: SITE.analyticsToken })} />
+  )}
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <Header path={path} />
+  <main id="main">
+    {crumbs?.length ? <div class="wrap"><Breadcrumbs crumbs={crumbs} /></div> : null}
+    <slot />
+  </main>
+  <Footer />
+</body>
+</html>

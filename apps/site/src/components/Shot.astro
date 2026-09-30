@@ -1,0 +1,27 @@
+---
+// A real dashboard capture in a hairline frame. Light and dark captures swap with the reader's colour scheme.
+import { getImage } from "astro:assets";
+import type { ImageMetadata } from "astro";
+interface Props { light: ImageMetadata; dark?: ImageMetadata; alt: string; caption?: string; eager?: boolean; sizes?: string }
+const { light, dark, alt, caption, eager = false, sizes = "(max-width: 1264px) 100vw, 1200px" } = Astro.props;
+const widths = [640, 960, 1280, 1920, 2400];
+const make = (src: ImageMetadata, format: "avif" | "webp") =>
+  Promise.all(widths.filter((w) => w <= src.width).map((w) => getImage({ src, width: w, format, quality: format === "avif" ? 60 : 78 })));
+const srcset = (imgs: Awaited<ReturnType<typeof getImage>>[]) => imgs.map((i) => `${i.src} ${i.options.width}w`).join(", ");
+const [lAvif, lWebp] = await Promise.all([make(light, "avif"), make(light, "webp")]);
+const [dAvif, dWebp] = dark ? await Promise.all([make(dark, "avif"), make(dark, "webp")]) : [null, null];
+const fallback = lWebp[Math.min(2, lWebp.length - 1)]!;
+---
+<figure class="figure">
+  <div class="shot">
+    <picture>
+      {dAvif && <source media="(prefers-color-scheme: dark)" type="image/avif" srcset={srcset(dAvif)} sizes={sizes} />}
+      {dWebp && <source media="(prefers-color-scheme: dark)" type="image/webp" srcset={srcset(dWebp)} sizes={sizes} />}
+      <source type="image/avif" srcset={srcset(lAvif)} sizes={sizes} />
+      <img src={fallback.src} srcset={srcset(lWebp)} sizes={sizes} alt={alt} width={light.width} height={light.height}
+        loading={eager ? "eager" : "lazy"} fetchpriority={eager ? "high" : undefined} decoding="async" />
+    </picture>
+  </div>
+  {caption && <figcaption class="caption tiny">{caption}</figcaption>}
+</figure>
+<style>.figure { margin: 0; }</style>

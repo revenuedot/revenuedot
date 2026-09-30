@@ -1,0 +1,33 @@
+---
+// LEGAL DRAFT: not yet reviewed by counsel.
+import Legal from "../../layouts/Legal.astro";
+import { SITE } from "../../site";
+---
+<Legal
+  title="Acceptable use policy"
+  description="What you may not do with RevenueDot Cloud and revenuedot.app: no unlawful apps, abuse of store APIs, attacks on the Service, or sensitive data in customer attributes."
+  path="/legal/acceptable-use"
+  updated="2026-09-30"
+  lede="The short list of things you may not do with RevenueDot Cloud or this website."
+>
+  <h2>You may not</h2>
+  <ul>
+    <li>Use the Service for apps or purchases that break the law, or that break the App Store or Google Play rules they are sold under.</li>
+    <li>Send data you have no right to process, or special-category data (such as health or biometric data) as customer attributes.</li>
+    <li>Commit fraud, including fake purchases, receipt forgery or granting access you have not been paid for on behalf of others.</li>
+    <li>Probe, scan or test the Service's security without following our <a href="/security">responsible disclosure policy</a>.</li>
+    <li>Overload the Service, get around rate limits or plan limits, or disrupt other customers.</li>
+    <li>Access other customers' data, share accounts or resell the Service without our written agreement.</li>
+    <li>Use the Service to send spam, malware or harassment through webhooks or integrations.</li>
+    <li>Use the RevenueDot name or logo in ways our <a href="/legal/licensing">trademark policy</a> does not allow.</li>
+  </ul>
+
+  <h2>What happens if you do</h2>
+  <p>We may remove content, limit or suspend access, or close accounts, as described in the <a href="/legal/terms">Terms of service</a>. Where we reasonably can, we warn you first.</p>
+
+  <h2>Self-hosted RevenueDot</h2>
+  <p>This policy covers our hosted Service. Self-hosted use is governed by the software licenses, though we ask everyone to use RevenueDot lawfully.</p>
+
+  <h2>Report abuse</h2>
+  <p>Email <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>. For security issues, use <a href={`mailto:${SITE.email.security}`}>{SITE.email.security}</a>.</p>
+</Legal>

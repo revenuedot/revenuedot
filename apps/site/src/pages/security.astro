@@ -1,0 +1,60 @@
+---
+// LEGAL DRAFT: safe-harbor wording not yet reviewed by counsel.
+import Legal from "../layouts/Legal.astro";
+import { SITE } from "../site";
+---
+<Legal
+  title="Security and responsible disclosure"
+  description="Report a security vulnerability in RevenueDot to security@revenuedot.app. Our scope, response times and safe-harbor promise for good-faith research."
+  path="/security"
+  updated="2026-09-30"
+  lede="RevenueDot decides who gets paid access to apps, so we take reports seriously. Please tell us privately and give us time to fix it."
+>
+  <h2>How to report</h2>
+  <ul>
+    <li>Email <a href={`mailto:${SITE.email.security}`}><strong>{SITE.email.security}</strong></a>, or use GitHub's private <a href={`${SITE.github}/security/advisories/new`} rel="noopener">Report a vulnerability</a> form on the repository.</li>
+    <li>Include the affected component and version or URL, steps to reproduce, the impact you think it has, and how to reach you.</li>
+    <li>Please do not open a public issue or discuss it publicly until we have released a fix.</li>
+  </ul>
+
+  <h2>What happens next</h2>
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        <tr><th scope="row">Acknowledgement</th><td>Within 2 business days</td></tr>
+        <tr><th scope="row">First assessment</th><td>Within 5 business days, with a severity and a plan</td></tr>
+        <tr><th scope="row">Fix</th><td>Critical and high issues as fast as we can, usually within 30 days; we keep you updated</td></tr>
+        <tr><th scope="row">Disclosure</th><td>We publish an advisory with the fix and credit you, if you want credit</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>In scope</h2>
+  <ul>
+    <li>The open-source server, dashboard, importer, CLI and MCP server in <a href={SITE.org} rel="noopener">github.com/revenuedot</a>.</li>
+    <li>The RevenueDot SDK forks, for issues our patches introduce. Issues in upstream RevenueCat code should also go to RevenueCat.</li>
+    <li>RevenueDot Cloud and revenuedot.app, including api.revenuedot.app.</li>
+  </ul>
+  <p>We are especially interested in: granting or keeping entitlements without a valid purchase, bypassing receipt or notification signature checks, reading another project's data, webhook signature bypass, and authentication or session flaws.</p>
+
+  <h2>Out of scope</h2>
+  <ul>
+    <li>Denial-of-service and volumetric testing, spam and social engineering of our team.</li>
+    <li>Findings that need a compromised device, a rooted phone or physical access.</li>
+    <li>Missing security headers or best-practice notes without a working exploit.</li>
+    <li>Other customers' self-hosted installs. Report those to their operators.</li>
+  </ul>
+
+  <h2>Safe harbor</h2>
+  <p>If you act in good faith and follow this policy, we will not pursue or support legal action against you for your research. Good faith means: use only your own accounts and test data, stop and tell us as soon as you reach data that is not yours, do not keep or share it, and do not degrade the Service for others. If in doubt, ask first at <a href={`mailto:${SITE.email.security}`}>{SITE.email.security}</a>.</p>
+
+  <h2>How we protect RevenueDot</h2>
+  <ul>
+    <li>Every App Store transaction is verified against Apple's signed JWS and the App Store Server API, and every Google Play purchase with the Play Developer API, on the server. Nothing is trusted from the device alone.</li>
+    <li>App Store notifications are checked against Apple's signature, Google Play pushes can require a Google-signed token, and every Google notification is confirmed with the Play Developer API before it changes state.</li>
+    <li>Webhooks carry an Authorization header and an HMAC signature so your backend can verify them.</li>
+    <li>Passwords are hashed with PBKDF2; sessions use HttpOnly cookies.</li>
+    <li>SDK responses are signed so the SDKs' Trusted Entitlements verification works with the RevenueDot forks.</li>
+  </ul>
+  <p>A machine-readable contact file is at <a href="/.well-known/security.txt">/.well-known/security.txt</a>.</p>
+</Legal>

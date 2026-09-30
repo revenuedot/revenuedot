@@ -1,0 +1,42 @@
+---
+// Wrapper for legal pages: breadcrumbs, a last-updated line and a side list of every legal page.
+import Base from "./Base.astro";
+interface Props { title: string; description: string; path: string; updated: string; lede?: string }
+const { title, description, path, updated, lede } = Astro.props;
+const pages = [
+  { href: "/legal/terms", label: "Terms of service" },
+  { href: "/legal/privacy", label: "Privacy policy" },
+  { href: "/legal/cookies", label: "Cookie policy" },
+  { href: "/legal/dpa", label: "DPA summary" },
+  { href: "/legal/acceptable-use", label: "Acceptable use" },
+  { href: "/security", label: "Security" },
+  { href: "/legal/licensing", label: "Licensing and trademarks" },
+];
+---
+<Base title={title} description={description} path={path} crumbs={[{ name: "Legal", path: "/legal/terms" }, { name: title, path }]}>
+  <div class="wrap">
+    <header class="page-head">
+      <p class="label">Legal</p>
+      <h1>{title}</h1>
+      {lede && <p class="lede">{lede}</p>}
+      <p class="tiny">Last updated <time datetime={updated}>{new Date(updated + "T00:00:00Z").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" })}</time></p>
+    </header>
+  </div>
+  <section class="section first tight">
+    <div class="wrap legal">
+      <article class="prose"><slot /></article>
+      <nav aria-label="Legal pages" class="side">
+        <p class="label">Legal pages</p>
+        <ul>{pages.map((p) => <li><a href={p.href} aria-current={p.href === path ? "page" : undefined}>{p.label}</a></li>)}</ul>
+      </nav>
+    </div>
+  </section>
+</Base>
+<style>
+  .legal { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 64px; align-items: start; }
+  .side { position: sticky; top: 96px; border: 1px solid var(--border); background: var(--panel); padding: 20px; }
+  .side ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+  .side a { font-size: 14px; color: var(--fg-2); text-decoration: none; }
+  .side a[aria-current="page"] { color: var(--fg); font-weight: 600; box-shadow: inset 2px 0 0 var(--fg); padding-left: 8px; }
+  @media (max-width: 900px) { .legal { grid-template-columns: minmax(0, 1fr); gap: 40px; } .side { position: static; } }
+</style>

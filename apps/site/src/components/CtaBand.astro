@@ -1,0 +1,23 @@
+---
+interface Props { title?: string; body?: string }
+const { title = "Own your purchase backend.", body = "Self-host RevenueDot free with Docker and Postgres, or move an existing RevenueCat app with one line of code." } = Astro.props;
+---
+<section class="dark cta">
+  <div class="wrap inner">
+    <div class="copy">
+      <p class="label">Get started</p>
+      <h2 class="h2">{title}</h2>
+      <p class="lede">{body}</p>
+    </div>
+    <div class="btns">
+      <a class="btn" href="/self-host">Self-host free</a>
+      <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
+    </div>
+  </div>
+</section>
+<style>
+  .cta { padding: 96px 0; }
+  .inner { display: grid; gap: 32px; }
+  .copy { display: grid; gap: 16px; }
+  @media (max-width: 720px) { .cta { padding: 64px 0; } }
+</style>

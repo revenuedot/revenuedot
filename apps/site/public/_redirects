@@ -1,0 +1,12 @@
+# Deep links from the examples and docs (revenuedot.app/docs/...) land on the closest page until the docs site exists.
+/docs/guides/self-hosting /self-host 302
+/docs/self-hosting /self-host 302
+/docs/migrate /migrate-from-revenuecat 302
+/docs/migrate/* /migrate-from-revenuecat 302
+/docs/* /docs 302
+/compare /revenuedot-vs-revenuecat 301
+/vs/revenuecat /revenuedot-vs-revenuecat 301
+/migrate /migrate-from-revenuecat 301
+/legal /legal/terms 301
+/terms /legal/terms 301
+/privacy /legal/privacy 301

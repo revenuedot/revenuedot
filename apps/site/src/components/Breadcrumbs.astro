@@ -1,0 +1,14 @@
+---
+import type { Crumb } from "../site";
+interface Props { crumbs: Crumb[] }
+const { crumbs } = Astro.props;
+---
+<nav class="crumbs" aria-label="Breadcrumb">
+  <a href="/">Home</a>
+  {crumbs.map((c, i) => (
+    <>
+      <span aria-hidden="true">/</span>
+      {i === crumbs.length - 1 ? <span aria-current="page">{c.name}</span> : <a href={c.path}>{c.name}</a>}
+    </>
+  ))}
+</nav>

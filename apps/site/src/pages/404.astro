@@ -1,0 +1,19 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="Page not found" description="This page does not exist on revenuedot.app." path="/404" noindex>
+  <div class="wrap">
+    <header class="page-head nf">
+      <p class="label">404</p>
+      <h1>This page does not exist</h1>
+      <p class="lede">It may have moved. These are the pages people look for most.</p>
+      <div class="btns">
+        <a class="btn" href="/">Home</a>
+        <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat</a>
+        <a class="btn secondary" href="/pricing">Pricing</a>
+        <a class="btn secondary" href="/docs">Docs</a>
+      </div>
+    </header>
+  </div>
+</Base>
+<style>.nf { padding: 96px 0 128px; }</style>

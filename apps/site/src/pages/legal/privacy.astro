@@ -1,0 +1,66 @@
+---
+// LEGAL DRAFT: written for launch, not yet reviewed by counsel. Counsel must review before RevenueDot Cloud takes
+// customers (GDPR/UK GDPR/CCPA wording, international transfers, subprocessor list, retention periods).
+import Legal from "../../layouts/Legal.astro";
+import { SITE } from "../../site";
+---
+<Legal
+  title="Privacy policy"
+  description="How RevenueDot handles personal data: cookieless analytics, no ad trackers on revenuedot.app, and nothing collected from self-hosted servers."
+  path="/legal/privacy"
+  updated="2026-09-30"
+  lede="We collect as little as we can. This website sets no cookies and runs no advertising trackers, and self-hosted RevenueDot never sends us anything."
+>
+  <h2>Who is responsible</h2>
+  <p>RevenueDot is operated by <strong>Circo, Inc.</strong> For this website and for RevenueDot Cloud account data, Circo, Inc. is the controller. For the purchase data your apps send to RevenueDot Cloud, you are the controller and we act as your processor (see the <a href="/legal/dpa">DPA summary</a>). Contact: <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>.</p>
+
+  <h2>Self-hosted RevenueDot</h2>
+  <p>When you run RevenueDot on your own servers, we receive no data from it. The self-hosted server has no telemetry and does not contact our servers. It talks only to Apple, Google, your webhook endpoints and any forwarding URL you configure.</p>
+
+  <h2>This website</h2>
+  <ul>
+    <li><strong>Analytics.</strong> We may use Cloudflare Web Analytics to count page views. It sets no cookies, does not use local storage, and does not fingerprint or track visitors across sites. It records the page, referrer, browser type, country and performance timings in aggregate. When it is switched off, no analytics script loads at all.</li>
+    <li><strong>Hosting logs.</strong> The site is served by Cloudflare, which processes IP addresses and request details to deliver pages and block attacks. We do not use these logs to identify visitors.</li>
+    <li><strong>No cookies, no ad trackers.</strong> This website sets no cookies and loads no advertising or social-media trackers. Fonts are served from our own domain.</li>
+    <li><strong>Email.</strong> If you email us, we keep your message and address to reply and to keep a record of the conversation.</li>
+  </ul>
+
+  <h2>RevenueDot Cloud</h2>
+  <h3>Account data (we are the controller)</h3>
+  <ul>
+    <li>Your name, work email, hashed password and the projects you belong to, to run your account and sign you in.</li>
+    <li>Billing details when paid plans launch, processed by our payment provider; we do not store full card numbers.</li>
+    <li>Service logs and security events (IP address, time, action), to secure the Service and investigate abuse.</li>
+  </ul>
+  <h3>Customer Data (you are the controller)</h3>
+  <p>The purchase, subscription, receipt and customer data your apps and stores send to the Service, including app user IDs and any attributes you choose to set, such as an email address. We process it only on your instructions, to provide the Service. We never sell it, use it for advertising or combine it across customers. Anonymized, aggregated benchmarks would be offered only if you opt in.</p>
+
+  <h2>Legal bases (EEA and UK)</h2>
+  <ul>
+    <li>Performing our contract with you: running your account and the Service.</li>
+    <li>Legitimate interests: securing the Service, preventing abuse, counting page views without cookies, and answering your messages.</li>
+    <li>Legal obligations: tax and accounting records.</li>
+  </ul>
+
+  <h2>Who we share data with</h2>
+  <p>We share personal data only with providers who help us run the Service, under contracts that limit their use of it, and when the law requires. Current providers: <strong>Cloudflare, Inc.</strong> (hosting, network, database connectivity, web analytics). We list any new provider on the <a href="/legal/dpa">DPA summary</a> before it starts processing Customer Data.</p>
+
+  <h2>International transfers</h2>
+  <p>Our providers may process data in the United States and other countries. Where the law requires, we rely on the EU Standard Contractual Clauses or an equivalent safeguard.</p>
+
+  <h2>How long we keep data</h2>
+  <ul>
+    <li>Account data: while your account is open, then up to 30 days.</li>
+    <li>Customer Data: while your project exists; deleted within 30 days after you delete the project or close your account.</li>
+    <li>Security logs: up to 90 days. Email: as long as needed to handle your request.</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <p>Depending on where you live, you can ask to access, correct, delete or export your personal data, object to or restrict its processing, and complain to your data protection authority. Email <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>. If your request is about an app that uses RevenueDot Cloud, we will pass it to that app's developer, who controls that data. We do not sell or share personal data for cross-context advertising.</p>
+
+  <h2>Children</h2>
+  <p>The Service is for developers and businesses, not children. Apps that use it are responsible for their own users' privacy, including children's.</p>
+
+  <h2>Changes</h2>
+  <p>We will post changes here and update the date above. For material changes to how we handle Cloud data, we will also email account owners.</p>
+</Legal>

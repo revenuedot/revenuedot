@@ -1,0 +1,11 @@
+dist/
+.astro/
+screenshots/
+lighthouse/
+# Copied from brand/ by scripts/copy-brand.mjs at build time
+public/favicon.ico
+public/favicon.svg
+public/favicon-*.png
+public/apple-touch-icon.png
+public/android-chrome-*.png
+public/og.png

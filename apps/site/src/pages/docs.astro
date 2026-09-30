@@ -1,0 +1,49 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import { SITE } from "../site";
+
+const D = `${SITE.docs}/tree/main/docs`;
+const sections = [
+  { title: "Getting started", body: "Quickstart: a server, a project and your first test purchase.", href: `${D}/getting-started` },
+  { title: "Concepts", body: "Projects, apps, products, entitlements, offerings and customers.", href: `${D}/concepts` },
+  { title: "SDK guides", body: "Set up each RevenueCat SDK or RevenueDot fork against your server.", href: `${D}/sdks` },
+  { title: "Store setup and guides", body: "App Store and Google Play credentials, notifications, webhooks and testing.", href: `${D}/guides` },
+  { title: "Migrate from RevenueCat", body: "Import, side-by-side run, cutover checklist and what differs.", href: `${D}/migrate` },
+  { title: "API reference", body: "The SDK endpoints, REST API v1 and v2, and webhook events.", href: `${SITE.docs}/tree/main/api` },
+];
+---
+<Base
+  title="Docs: set up, migrate and self-host RevenueDot"
+  description="RevenueDot docs: quickstart, concepts, SDK guides, App Store and Google Play setup, webhooks, API reference and migrating from RevenueCat."
+  path="/docs"
+  crumbs={[{ name: "Docs", path: "/docs" }]}
+>
+  <div class="wrap">
+    <PageHead label="Documentation" title="The docs live on GitHub while the docs site is built" lede="Every guide and reference page is Markdown in the open revenuedot/docs repository, so you can read it, search it and suggest changes in one place.">
+      <div class="btns"><a class="btn" href={SITE.docs} rel="noopener">Open the docs on GitHub</a><a class="btn secondary" href="/llms.txt">llms.txt for AI assistants</a></div>
+    </PageHead>
+  </div>
+  <section class="section first tight">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-3">
+        {sections.map((s) => <a class="cell link" href={s.href} rel="noopener"><h2 class="h3">{s.title} <span class="arrow">↗</span></h2><p>{s.body}</p></a>)}
+      </div></div>
+    </div>
+  </section>
+  <section class="section">
+    <div class="wrap">
+      <div class="head"><p class="label">On this site</p><h2 class="h2">Start here</h2></div>
+      <div class="grid"><div class="gi cols-3">
+        <a class="cell link" href="/self-host"><h3 class="h3">Self-host</h3><p>docker compose up with Postgres, and a production checklist.</p></a>
+        <a class="cell link" href="/migrate-from-revenuecat"><h3 class="h3">Migrate from RevenueCat</h3><p>The importer, forwarding and the proxy line for every SDK.</p></a>
+        <a class="cell link" href={SITE.examples} rel="noopener"><h3 class="h3">Examples <span class="arrow">↗</span></h3><p>Runnable sample apps and backends for every popular stack.</p></a>
+      </div></div>
+    </div>
+  </section>
+</Base>
+<style>
+  .link { text-decoration: none; transition: background var(--fast) var(--ease); }
+  .link:hover { background: var(--hover); }
+  .arrow { color: var(--fg-3); font-size: .85em; }
+</style>

@@ -21,7 +21,7 @@
 | 1.13 SDK forks | forked · pipeline not started | 10 repos at upstream main |
 | 1.14 MCP + skills | scaffolds | |
 | 1.15 Docs | README done | |
-| 1.16 Brand and site | brand kit done · site not started | |
+| 1.16 Brand and site | site built · browser-validated · not deployed | `apps/site` (Astro, static): home, pricing, compare, migrate, self-host, docs hub, blog, changelog, legal, security; SEO/JSON-LD/llms.txt; Lighthouse 100/96+/100/100. Deploy (`pnpm --filter site run deploy`), DNS and email routing await approval. Spec: `prd/site/PRD.md` |
 
 ## Blockers and notes
 - RevenueCat dashboard side-by-side studies are saved under `company/docs/research/contact-sheets/revenuecat/`.

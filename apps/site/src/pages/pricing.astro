@@ -1,0 +1,134 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Faq from "../components/Faq.astro";
+import CtaBand from "../components/CtaBand.astro";
+import { PLANS, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE, RC_FREE_UP_TO, RC_RATE, cloudBill, revenueCatBill, usd } from "../lib/pricing";
+import { softwareApplication } from "../lib/jsonld";
+import { FAQ_COST, FAQ_PRICE_ALT, FAQ_SELF_HOST, FAQ_ALTERNATIVE, FAQ_DATA, FAQ_LICENSE } from "../lib/faq";
+import { SITE } from "../site";
+
+const faq = [
+  FAQ_COST,
+  FAQ_PRICE_ALT,
+  { q: "What counts as tracked revenue?", a: "Tracked revenue is the gross value of the App Store, Google Play and other store purchases RevenueDot Cloud processes for your apps in a calendar month, before store fees and taxes. Sandbox and test purchases never count." },
+  { q: "Is self-hosting really free for commercial apps?", a: "Yes. The server and dashboard are AGPL-3.0, so any company can run them for its own apps at any scale without paying us. The AGPL asks that if you modify the server and offer it to others over a network, you share those changes. Enterprise features in the ee/ folder need a commercial license." },
+  { q: "Can I move between self-host and cloud?", a: "Yes. Self-host and cloud run the same code, API and database schema, so a project moves either way with a data export and import. Your apps change only the proxy URL." },
+  FAQ_SELF_HOST,
+  FAQ_ALTERNATIVE,
+  FAQ_DATA,
+  FAQ_LICENSE,
+];
+const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
+---
+<Base
+  title="Pricing: free to self-host, cloud free up to $10K a month"
+  description="Self-host RevenueDot free forever with no revenue share. RevenueDot Cloud is free up to $10,000 monthly tracked revenue; paid plans cap at $999 a month."
+  path="/pricing"
+  crumbs={[{ name: "Pricing", path: "/pricing" }]}
+  faq={faq}
+  jsonld={[softwareApplication()]}
+>
+  <div class="wrap">
+    <PageHead label="Pricing" title="Free to self-host. Cloud free up to $10K a month." lede="Self-hosted RevenueDot takes no share of your revenue, at any size. RevenueDot Cloud is free while your app tracks up to $10,000 a month; paid cloud plans are coming, and their bill is capped." />
+  </div>
+
+  <section class="section first plans-section" aria-label="Plans">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-4 plans">
+        {PLANS.map((p) => (
+          <div class="cell plan">
+            <div class="plan-top">
+              <h2 class="h3">{p.name}</h2>
+              {p.available ? <span class="tag">Available</span> : <span class="tag gold">Coming</span>}
+            </div>
+            <p class="price">{p.price}</p>
+            <p class="tiny">{p.priceNote}</p>
+            <p class="summary">{p.summary}</p>
+            <ul>{p.features.map((f) => <li>{f}</li>)}</ul>
+            <a class={`btn ${p.id === "self-host" ? "" : "secondary"}`} href={p.cta.href} rel={p.cta.href.startsWith("http") ? "noopener" : undefined}>{p.cta.label}</a>
+          </div>
+        ))}
+      </div></div>
+      <p class="tiny note">RevenueDot is pre-alpha. The cloud free plan opens to early-access projects first. Prices for plans marked "Coming" are what we intend to charge at launch and may change before then. Outcome add-ons (failed-payment recovery, win-backs, refund defense) will be priced as a share of the money they recover.</p>
+    </div>
+  </section>
+
+  <section class="section" id="calculator">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Compare your bill</p>
+        <h2 class="h2">What you would pay each month</h2>
+        <p class="lede">RevenueCat charges {Math.round(RC_RATE * 100)}% of tracked revenue above {usd(RC_FREE_UP_TO)} a month. RevenueDot Cloud Standard will charge {CLOUD_RATE * 100}% above {usd(CLOUD_FREE_UP_TO)}, capped at {usd(CLOUD_CAP)}. Self-hosting costs your servers.</p>
+      </div>
+      <div class="grid calc"><div class="gi cols-3">
+        <div class="cell span">
+          <label for="mtr" class="label">Monthly tracked revenue</label>
+          <output id="mtr-out" for="mtr" class="stat">$50,000</output>
+          <input id="mtr" type="range" min="0" max="1000000" step="5000" value="50000" aria-describedby="mtr-help" />
+          <p id="mtr-help" class="tiny">Drag to set your app's monthly revenue from the stores, before fees.</p>
+        </div>
+        <div class="cell"><p class="label">RevenueCat</p><p class="stat" id="rc">{usd(revenueCatBill(50_000))}</p><p>a month, from its public pricing</p></div>
+        <div class="cell"><p class="label">RevenueDot Cloud</p><p class="stat" id="cloud">{usd(cloudBill(50_000))}</p><p>a month (Standard plan, coming)</p></div>
+        <div class="cell"><p class="label">RevenueDot self-hosted</p><p class="stat">$0</p><p>plus your own server and database</p></div>
+      </div></div>
+      <div class="table-wrap examples">
+        <table>
+          <caption class="sr-only">Monthly price at common revenue levels</caption>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueCat</th><th scope="col">RevenueDot Cloud</th><th scope="col">You keep with Cloud</th><th scope="col">Self-hosted</th></tr></thead>
+          <tbody>
+            {examples.map((m) => (
+              <tr>
+                <th scope="row" class="num-cell">{usd(m)}</th>
+                <td class="num-cell">{usd(revenueCatBill(m))}</td>
+                <td class="num-cell">{usd(cloudBill(m))}</td>
+                <td class="num-cell">{usd(revenueCatBill(m) - cloudBill(m))}</td>
+                <td class="num-cell">$0</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny caption">RevenueCat price from <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>, checked {SITE.pricesChecked}; RevenueCat's paywall and funnel tools are priced separately. RevenueDot Cloud Standard pricing is planned.</p>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2">Pricing questions</h2></div>
+      <Faq items={faq} open={0} />
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>
+
+<script is:inline define:vars={{ RC_FREE_UP_TO, RC_RATE, CLOUD_FREE_UP_TO, CLOUD_RATE, CLOUD_CAP }}>
+  const f = (n) => "$" + Math.round(n).toLocaleString("en-US");
+  const input = document.getElementById("mtr");
+  const update = () => {
+    const m = Number(input.value);
+    document.getElementById("mtr-out").textContent = f(m);
+    document.getElementById("rc").textContent = f(Math.max(0, m - RC_FREE_UP_TO) * RC_RATE);
+    document.getElementById("cloud").textContent = f(Math.min(CLOUD_CAP, Math.max(0, m - CLOUD_FREE_UP_TO) * CLOUD_RATE));
+  };
+  input.addEventListener("input", update);
+</script>
+
+<style>
+  .plans-section { padding-top: 0; }
+  .plan { display: flex; flex-direction: column; gap: 12px; }
+  .plan-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .plan .price { color: var(--fg); font: 600 44px/1 var(--font); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; margin-top: 8px; }
+  .summary { min-height: 96px; }
+  .plan ul { list-style: none; margin: 4px 0 12px; padding: 0; display: grid; gap: 8px; font-size: 14px; color: var(--fg-2); }
+  .plan li { padding-left: 16px; position: relative; }
+  .plan li::before { content: ""; position: absolute; left: 0; top: .65em; width: 6px; height: 6px; background: var(--fg); }
+  .plan .btn { justify-content: center; margin-top: auto; }
+  .note { margin-top: 20px; max-width: 820px; }
+  .calc .span { grid-column: 1 / -1; }
+  .calc input[type="range"] { width: 100%; accent-color: var(--fg); height: 32px; margin: 4px 0; }
+  .examples { margin-top: 32px; }
+  @media (max-width: 1100px) { .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary { min-height: 0; } }
+  @media (max-width: 640px) { .plans { grid-template-columns: 1fr; } }
+</style>

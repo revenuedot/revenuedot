@@ -1,0 +1,49 @@
+---
+// LEGAL DRAFT: summarizes LICENSING.md and TRADEMARKS.md in the monorepo; those files are authoritative. Counsel must
+// confirm the license stack and the SDK fork naming position (prd/sdk-forks/PRD.md, open question 1).
+import Legal from "../../layouts/Legal.astro";
+import { SITE } from "../../site";
+---
+<Legal
+  title="Licensing and trademarks"
+  description="RevenueDot licenses: AGPL-3.0 server and dashboard, MIT SDKs, CLI, MCP server and skills, the Enterprise License for ee/, and our trademark policy."
+  path="/legal/licensing"
+  updated="2026-09-30"
+  lede="The code is open source. The name and logo are not. Here is what applies where."
+>
+  <h2>Licenses</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">What</th><th scope="col">License</th><th scope="col">In short</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Server and dashboard</th><td>AGPL-3.0</td><td>Use, change and self-host freely, including commercially. If you offer a modified server to others over a network, share your changes.</td></tr>
+        <tr><th scope="row">SDK forks, CLI, MCP server, agent skills, examples</th><td>MIT</td><td>Use them in any app, open or closed, with the copyright notice kept.</td></tr>
+        <tr><th scope="row">The <code>ee/</code> folder and files named <code>.ee.</code></th><td>RevenueDot Enterprise License</td><td>Enterprise features such as SSO and audit logs. Production use needs a commercial license.</td></tr>
+        <tr><th scope="row">Documentation text</th><td>CC BY 4.0</td><td>Reuse with attribution. Code samples in the docs are MIT.</td></tr>
+        <tr><th scope="row">Third-party components</th><td>Their own licenses</td><td>Kept as their authors released them.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The software is copyright Circo, Inc. The authoritative texts are <a href={`${SITE.github}/blob/main/LICENSING.md`} rel="noopener">LICENSING.md</a> and the LICENSE file in each repository. Outside contributions are accepted under a contributor license agreement.</p>
+
+  <h2>The SDK forks</h2>
+  <p>The RevenueDot SDKs are forks of RevenueCat's MIT-licensed SDKs. Each keeps RevenueCat's original copyright notice and adds ours for our changes. They keep RevenueCat's module and package names only so existing app code compiles unchanged; they are published under RevenueDot names and are not RevenueCat products.</p>
+
+  <h2>Trademarks</h2>
+  <p>"RevenueDot" and the RevenueDot logo are trademarks of Circo, Inc. The open-source licenses cover the code, not the name or logo.</p>
+  <h3>You may</h3>
+  <ul>
+    <li>Say that your product works with, or is built on, RevenueDot.</li>
+    <li>Use the name to refer to the unmodified project.</li>
+  </ul>
+  <h3>You may not, without written permission</h3>
+  <ul>
+    <li>Use "RevenueDot" or a confusingly similar name for your own product, service, company or domain.</li>
+    <li>Offer a modified build or a hosted service under the RevenueDot name.</li>
+    <li>Use the logo in a way that suggests we endorse you.</li>
+  </ul>
+  <p>Questions: <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>.</p>
+
+  <h2>Other companies' marks</h2>
+  <p>"RevenueCat" is a trademark of RevenueCat, Inc. RevenueDot is not affiliated with, endorsed by or sponsored by RevenueCat, Inc., and uses the name only to describe compatibility. App Store is a trademark of Apple Inc. Google Play is a trademark of Google LLC. Other names belong to their owners.</p>
+</Legal>

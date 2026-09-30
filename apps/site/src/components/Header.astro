@@ -1,0 +1,46 @@
+---
+import Logo from "./Logo.astro";
+import { NAV, SITE } from "../site";
+interface Props { path: string }
+const { path } = Astro.props;
+const current = (href: string) => path === href || path.startsWith(href + "/");
+---
+<header class="top">
+  <div class="wrap bar">
+    <a href="/" class="brand" aria-label="RevenueDot home"><Logo height={22} /></a>
+    <nav class="nav" aria-label="Main">
+      {NAV.map((n) => <a href={n.href} aria-current={current(n.href) ? "page" : undefined}>{n.label}</a>)}
+    </nav>
+    <div class="actions">
+      <a class="btn secondary sm gh" href={SITE.github} rel="noopener">GitHub</a>
+      <a class="btn sm" href="/self-host">Self-host free</a>
+      <details class="menu">
+        <summary aria-label="Menu"><span></span><span></span></summary>
+        <nav class="sheet" aria-label="Mobile">
+          {NAV.map((n) => <a href={n.href} aria-current={current(n.href) ? "page" : undefined}>{n.label}</a>)}
+          <a href="/changelog">Changelog</a>
+          <a href={SITE.github} rel="noopener">GitHub</a>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>
+<style>
+  .top { position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .bar { display: flex; align-items: center; gap: 32px; height: 64px; }
+  .brand { display: inline-flex; color: var(--fg); flex: none; }
+  .nav { display: flex; gap: 24px; flex: 1; }
+  .nav a { font-size: 14px; font-weight: 600; color: var(--fg-2); text-decoration: none; }
+  .nav a:hover, .nav a[aria-current="page"] { color: var(--fg); }
+  .nav a[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--accent); }
+  .actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .menu { display: none; position: relative; }
+  .menu summary { list-style: none; width: 40px; height: 40px; border: 1px solid var(--border); background: var(--panel); display: grid; place-content: center; gap: 5px; cursor: pointer; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu summary span { display: block; width: 16px; height: 1.5px; background: var(--fg); }
+  .sheet { position: fixed; left: 0; right: 0; top: 64px; background: var(--bg); border-bottom: 1px solid var(--border); display: grid; padding: 8px 16px 16px; }
+  .sheet a { padding: 14px 0; border-bottom: 1px solid var(--border-2); font-weight: 600; text-decoration: none; }
+  .sheet a:last-child { border-bottom: 0; }
+  @media (max-width: 960px) { .nav { display: none; } .menu { display: block; } .bar { gap: 16px; } }
+  @media (max-width: 480px) { .gh { display: none; } }
+</style>

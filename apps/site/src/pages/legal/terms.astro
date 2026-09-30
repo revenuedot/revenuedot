@@ -1,0 +1,79 @@
+---
+// LEGAL DRAFT: written for launch, not yet reviewed by counsel. Counsel must review before RevenueDot Cloud takes
+// customers, including governing law, liability caps, and the entity details for Circo, Inc.
+import Legal from "../../layouts/Legal.astro";
+import { SITE } from "../../site";
+---
+<Legal
+  title="Terms of service"
+  description="The terms for using RevenueDot Cloud and the revenuedot.app website, operated by Circo, Inc. Self-hosted RevenueDot is governed by its open-source licenses."
+  path="/legal/terms"
+  updated="2026-09-30"
+  lede="These terms cover RevenueDot Cloud and this website. Software you run yourself is covered by its open-source licenses instead."
+>
+  <h2>1. Who we are and what these terms cover</h2>
+  <p>RevenueDot is operated by <strong>Circo, Inc.</strong> ("we", "us"). These terms govern your use of the hosted RevenueDot service ("RevenueDot Cloud", or the "Service") and of revenuedot.app (the "Site"). By creating an account or using the Service you agree to them on behalf of yourself and the organization you represent ("you").</p>
+  <p>The RevenueDot software that you download and run yourself is licensed under the GNU Affero General Public License v3.0, the MIT License or the RevenueDot Enterprise License, as marked in each repository. Those licenses, not these terms, govern self-hosted use. See <a href="/legal/licensing">Licensing and trademarks</a>.</p>
+
+  <h2>2. Your account</h2>
+  <ul>
+    <li>You must give accurate sign-up information and keep your password and API keys secret. You are responsible for activity under your account.</li>
+    <li>You must be at least 18 and able to enter a contract for the organization you represent.</li>
+    <li>Tell us promptly at <a href={`mailto:${SITE.email.security}`}>{SITE.email.security}</a> if you think your account or keys are compromised.</li>
+  </ul>
+
+  <h2>3. Using the Service</h2>
+  <p>We grant you a non-exclusive, non-transferable right to use the Service during your subscription to validate in-app purchases, manage entitlements and send events for your own apps. You must follow our <a href="/legal/acceptable-use">Acceptable use policy</a>, the App Store and Google Play terms that apply to your apps, and applicable law.</p>
+
+  <h2>4. Your data</h2>
+  <ul>
+    <li><strong>You own your data.</strong> "Customer Data" means the purchase, subscription, customer and configuration data you or your apps send to the Service. You keep all rights to it.</li>
+    <li>You grant us permission to process Customer Data only to provide, secure and support the Service, as described in the <a href="/legal/privacy">Privacy policy</a> and the <a href="/legal/dpa">Data processing terms</a>.</li>
+    <li>You are responsible for having the right to send us Customer Data, including telling your app's users how their purchase data is processed.</li>
+    <li>You can export your data at any time through the API, and move it to a self-hosted RevenueDot.</li>
+  </ul>
+
+  <h2>5. Plans, fees and changes</h2>
+  <ul>
+    <li>The Cloud Free plan is free up to the monthly tracked revenue shown on the <a href="/pricing">pricing page</a>. Paid plans, when available, are billed as described there when you choose them.</li>
+    <li>If you exceed a free plan's limit, we will tell you and give you at least 30 days to choose a paid plan or move to self-hosting before anything changes.</li>
+    <li>We will give at least 30 days' notice of any price change. Where a plan carries a price lock, its rate does not rise for as long as you stay on it.</li>
+    <li>Fees exclude taxes, which you pay except for taxes on our income.</li>
+  </ul>
+
+  <h2>6. Early-access status</h2>
+  <p>RevenueDot is pre-alpha. Until we announce general availability, the Service is provided for evaluation and early access, may change or be interrupted, and is not covered by any service level. Run it next to your existing system before you rely on it for access decisions.</p>
+
+  <h2>7. Open-source components and third parties</h2>
+  <p>The Service is built on open-source software and connects to third-party services you choose, such as the App Store, Google Play and your webhook endpoints. Their terms govern your use of them, and we are not responsible for them.</p>
+
+  <h2>8. Suspension and termination</h2>
+  <ul>
+    <li>You can stop using the Service and delete your account at any time.</li>
+    <li>We may suspend access if you breach these terms, fail to pay, or put the Service or others at risk. Where we reasonably can, we will warn you first and give you time to fix the problem.</li>
+    <li>After termination you have 30 days to export Customer Data. We then delete it from the Service, except where the law requires us to keep it.</li>
+  </ul>
+
+  <h2>9. Warranties and disclaimers</h2>
+  <p>We will provide the Service with reasonable skill and care. Otherwise, to the extent the law allows, the Service is provided "as is" and "as available", without warranties of merchantability, fitness for a particular purpose or non-infringement. We do not promise that the Service will be uninterrupted or error-free.</p>
+
+  <h2>10. Limitation of liability</h2>
+  <p>To the extent the law allows, neither party is liable for indirect, incidental, special, consequential or punitive damages, or for lost profits or revenue. Each party's total liability arising out of these terms is limited to the greater of the fees you paid us in the 12 months before the claim and US$100. These limits do not apply to your payment obligations, a party's indemnity obligations, or liability that cannot be limited by law.</p>
+
+  <h2>11. Indemnity</h2>
+  <p>You will defend us against third-party claims arising from Customer Data you send us or your breach of the Acceptable use policy, and pay resulting damages and reasonable costs. We will defend you against third-party claims that the Service, as we provide it, infringes their intellectual property, and pay resulting damages and reasonable costs.</p>
+
+  <h2>12. Changes to these terms</h2>
+  <p>We may update these terms. For material changes we will give at least 30 days' notice by email or in the dashboard. If you keep using the Service after the change takes effect, the new terms apply.</p>
+
+  <h2>13. General</h2>
+  <ul>
+    <li>These terms are the whole agreement between us about the Service and replace earlier discussions on the same subject.</li>
+    <li>If a provision is unenforceable, the rest stays in force.</li>
+    <li>Neither party may assign these terms without the other's consent, except to a successor in a merger or sale of substantially all of its assets.</li>
+    <li>These terms are governed by the laws of the state in which Circo, Inc. is incorporated, without regard to conflict-of-law rules, and disputes go to the courts of that state.</li>
+  </ul>
+
+  <h2>14. Contact</h2>
+  <p>Questions about these terms: <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>.</p>
+</Legal>

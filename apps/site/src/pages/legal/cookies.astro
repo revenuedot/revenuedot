@@ -1,0 +1,30 @@
+---
+// LEGAL DRAFT: not yet reviewed by counsel. Keep in sync with the session cookie in apps/server (rd_session).
+import Legal from "../../layouts/Legal.astro";
+import { SITE } from "../../site";
+---
+<Legal
+  title="Cookie policy"
+  description="revenuedot.app sets no cookies. The RevenueDot dashboard uses one strictly necessary session cookie to keep you signed in."
+  path="/legal/cookies"
+  updated="2026-09-30"
+  lede="This website sets no cookies, so there is no cookie banner. The dashboard uses one cookie, only to keep you signed in."
+>
+  <h2>This website</h2>
+  <p>revenuedot.app sets no cookies and uses no local storage for tracking. Page views are counted, when analytics is on, with Cloudflare Web Analytics, which works without cookies. See the <a href="/legal/privacy">Privacy policy</a>.</p>
+
+  <h2>The RevenueDot dashboard</h2>
+  <p>The dashboard, in RevenueDot Cloud and in self-hosted installs, sets one strictly necessary cookie:</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Name</th><th scope="col">Purpose</th><th scope="col">Duration</th><th scope="col">Type</th></tr></thead>
+      <tbody>
+        <tr><td class="num-cell">rd_session</td><td>Keeps you signed in. HttpOnly, SameSite=Lax, Secure over HTTPS.</td><td>30 days, or until you sign out</td><td>Strictly necessary, first party</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Strictly necessary cookies do not need consent under the ePrivacy rules, because the dashboard cannot sign you in without it. The dashboard also keeps two preferences in your browser's local storage, your theme and whether the setup checklist is hidden; they never leave your device.</p>
+
+  <h2>Questions</h2>
+  <p>Email <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>.</p>
+</Legal>

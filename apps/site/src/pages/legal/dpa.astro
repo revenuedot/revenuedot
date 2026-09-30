@@ -1,0 +1,55 @@
+---
+// LEGAL DRAFT: a summary for launch, not the signed DPA. Counsel must draft the full DPA (with SCCs) and review
+// this summary before RevenueDot Cloud takes customers.
+import Legal from "../../layouts/Legal.astro";
+import { SITE } from "../../site";
+---
+<Legal
+  title="Data processing summary"
+  description="How RevenueDot Cloud processes your apps' purchase data as your processor: scope, security, subprocessors, breach notice, deletion and international transfers."
+  path="/legal/dpa"
+  updated="2026-09-30"
+  lede="A plain summary of how RevenueDot Cloud processes your apps' purchase data on your behalf. The full data processing agreement is available on request."
+>
+  <h2>Roles</h2>
+  <p>For the purchase and customer data your apps send to RevenueDot Cloud ("Customer Data"), you are the controller and <strong>Circo, Inc.</strong>, which operates RevenueDot, is your processor. Self-hosted RevenueDot involves no processing by us.</p>
+
+  <h2>What we process</h2>
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        <tr><th scope="row">Data subjects</th><td>Users of your apps who make or restore purchases, and your team members</td></tr>
+        <tr><th scope="row">Categories of data</th><td>App user IDs and aliases, store transaction IDs, product, price, currency, country, purchase and renewal dates, entitlement state, device platform and app version, and any customer attributes you set (for example an email address)</td></tr>
+        <tr><th scope="row">Purpose</th><td>Validating purchases with Apple and Google, keeping entitlements current, sending your webhooks and integrations, and showing your dashboard</td></tr>
+        <tr><th scope="row">Duration</th><td>For the life of your project, then deletion within 30 days</td></tr>
+        <tr><th scope="row">Special categories</th><td>None expected. Do not send health, biometric or similar data as customer attributes.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Our commitments</h2>
+  <ul>
+    <li>Process Customer Data only on your documented instructions: these terms, your configuration and your API calls.</li>
+    <li>Bind our staff and subprocessors to confidentiality.</li>
+    <li>Protect data with encryption in transit (TLS) and at rest, access limited to the people who need it, and logged administrative access.</li>
+    <li>Tell you without undue delay, and within 72 hours of confirming it, about a personal data breach affecting your Customer Data.</li>
+    <li>Help you answer data subject requests and carry out impact assessments, through the API and on request.</li>
+    <li>Delete or return Customer Data when your project or account ends, unless the law requires us to keep it.</li>
+    <li>Make information available to show compliance, and allow reasonable audits on 30 days' notice.</li>
+  </ul>
+
+  <h2>Subprocessors</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Subprocessor</th><th scope="col">Purpose</th><th scope="col">Location</th></tr></thead>
+      <tbody><tr><td>Cloudflare, Inc.</td><td>Hosting, network, compute and database connectivity</td><td>Global network; United States</td></tr></tbody>
+    </table>
+  </div>
+  <p>We add a subprocessor to this list at least 30 days before it starts processing Customer Data. You can object in that time; if we cannot resolve the objection, you can end the affected service.</p>
+
+  <h2>International transfers</h2>
+  <p>Where Customer Data from the EEA, UK or Switzerland is transferred to a country without an adequacy decision, the EU Standard Contractual Clauses (and the UK Addendum) apply.</p>
+
+  <h2>Request the full agreement</h2>
+  <p>Email <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a> with your organization's name.</p>
+</Legal>
