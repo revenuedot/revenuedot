@@ -15,7 +15,7 @@
 
 ## Switching (planned)
 ```swift
-Purchases.proxyURL = URL(string: "https://api.revenuedot.com")!
+Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!
 ```
 
 RevenueDot is not affiliated with RevenueCat, Inc. "RevenueCat" is a trademark of RevenueCat, Inc.

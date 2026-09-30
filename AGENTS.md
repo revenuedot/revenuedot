@@ -12,6 +12,8 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - Keep `docs/STATUS.md` current. Commit and push as you go.
 
 ## Index
+- `LICENSING.md`: AGPL-3.0 core, `ee/` under the Enterprise License, MIT for SDKs and CLI; `TRADEMARKS.md`; CLA in `.github/CLA.md`. Never import `ee/` code from outside `ee/`.
+- Website and API domain: `revenuedot.app` (Cloudflare, Circo account).
 - `LICENSING.md`: AGPL-3.0 core, `ee/` under the Enterprise License, MIT for SDKs/CLI; `TRADEMARKS.md`; CLA in `.github/CLA.md`. Never import `ee/` code from outside `ee/`.
 - Website and API domain: `revenuedot.app` (Cloudflare, Circo account).
 - `prd/SCOPE.md`: tiers and build order.

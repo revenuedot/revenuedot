@@ -15,7 +15,7 @@ An open-source server that the RevenueCat SDKs already talk to. An app moves by 
 ## How apps connect (three modes)
 | Mode | What the developer changes | Limits | Tier |
 |---|---|---|---|
-| Proxy mode | One line: `Purchases.proxyURL = "https://api.revenuedot.com"` and turn signature checks off | Signature checks fail, so they must be turned off; Android still sends paywall and ad events to RevenueCat | 1 |
+| Proxy mode | One line: `Purchases.proxyURL = "https://api.revenuedot.app"` and turn signature checks off | Signature checks fail, so they must be turned off; Android still sends paywall and ad events to RevenueCat | 1 |
 | Forked SDKs | Swap the package (`Purchases` class and methods keep their names) | None of the above | 1 (all SDKs) |
 | Our own API keys | Nothing: the importer keeps the app's existing public key strings working | | 1 |
 
