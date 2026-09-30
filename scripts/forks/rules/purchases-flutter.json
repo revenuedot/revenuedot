@@ -24,6 +24,13 @@
     { "type": "banner", "files": ["README.md"], "install": "in `pubspec.yaml`, `purchases_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, ref: <version>-revenuedot } }`. The package name stays `purchases_flutter`, so `import 'package:purchases_flutter/purchases_flutter.dart'` keeps working. This fork also fixes `Purchases.setProxyURL` on Flutter web." },
     { "type": "banner", "files": ["purchases_ui_flutter/README.md"], "optional": true, "install": "`purchases_ui_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, path: purchases_ui_flutter, ref: <version>-revenuedot } }`." }
   ],
+  "version": {"file": "pubspec.yaml", "regex": "^version: (\\S+)"},
+  "pins": [
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["ios/purchases_flutter.podspec", "macos/purchases_flutter.podspec", "purchases_ui_flutter/ios/purchases_ui_flutter.podspec", "purchases_ui_flutter/macos/purchases_ui_flutter.podspec"], "find": "s\\.dependency 'RevenueDotPurchasesHybridCommon(?:UI)?', '([^']+)'"},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["**/Package.swift"], "find": "github\\.com/{{org}}/purchases-hybrid-common\\.git\", exact: \"([^\"]+?){{gitTagSuffix}}\""},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["android/build.gradle", "purchases_ui_flutter/android/build.gradle"], "find": "ext\\.common_version = '([^']+)'"},
+    {"dep": "purchases-flutter", "follow": "fork", "files": ["purchases_ui_flutter/pubspec.yaml"], "find": "url: https://github\\.com/{{org}}/purchases-flutter\\.git\\n      ref: ([^\\s]+?){{gitTagSuffix}}\\n", "note": "the UI package pins the core package's tag of the same release"}
+  ],
   "scanExclude": ["example/**", "**/example/**", "revenuecat_examples/**", "api_tester/**", "e2e-tests/**", "test/**", "**/test/**"],
   "checks": [
     { "name": "podspec parse", "run": "for f in ios/purchases_flutter.podspec macos/purchases_flutter.podspec purchases_ui_flutter/ios/purchases_ui_flutter.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,JSON.stringify(s.dependencies))' || exit 1; done" },

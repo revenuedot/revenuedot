@@ -34,6 +34,13 @@
     { "type": "banner", "files": ["README.md"], "install": "keep every import with npm aliases: `\"react-native-purchases\": \"npm:@revenuedot/react-native-purchases@<version>\"` and `\"react-native-purchases-ui\": \"npm:@revenuedot/react-native-purchases-ui@<version>\"`. The native side pulls `RevenueDotPurchasesHybridCommon` (CocoaPods) and `app.revenuedot.purchases:purchases-hybrid-common` (Maven)." },
     { "type": "banner", "files": ["react-native-purchases-ui/README.md", "react-native-purchases-store-galaxy/README.md"], "optional": true, "install": "`\"react-native-purchases-ui\": \"npm:@revenuedot/react-native-purchases-ui@<version>\"` next to the `react-native-purchases` alias." }
   ],
+  "version": {"file": "package.json", "regex": "^  \"version\": \"([^\"]+)\""},
+  "pins": [
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["RNPurchases.podspec", "react-native-purchases-ui/RNPaywalls.podspec"], "find": "spec\\.dependency   \"RevenueDotPurchasesHybridCommon(?:UI)?\", '([^']+)'"},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["android/build.gradle", "react-native-purchases-ui/android/build.gradle", "react-native-purchases-store-galaxy/android/build.gradle"], "find": "'{{mavenGroup}}:purchases-hybrid-common(?:-ui|-store-galaxy)?:([^']+)'"},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["package.json", "react-native-purchases-ui/package.json", "react-native-purchases-store-galaxy/package.json"], "find": "\"npm:{{npmScope}}/purchases-(?:typescript-internal|js-hybrid-mappings)@([^\"]+)\""},
+    {"dep": "react-native-purchases", "follow": "fork", "files": ["react-native-purchases-ui/package.json", "react-native-purchases-store-galaxy/package.json"], "find": "\"react-native-purchases\": \"([^\"]+)\"", "note": "peer dependency on the core package of the same release"}
+  ],
   "scanExclude": ["examples/**", "e2e-tests/**", "apitesters/**", "**/__tests__/**", "scripts/docs/**"],
   "checks": [
     { "name": "install (aliases resolved to upstream builds until ours are published)", "run": "node $FORKS_DIR/lib/unalias.mjs --resolutions=package.json package.json react-native-purchases-ui/package.json react-native-purchases-store-galaxy/package.json && node -e 'const f=\"package.json\",p=JSON.parse(require(\"fs\").readFileSync(f));p.workspaces=p.workspaces.filter(w=>!/example|e2e/.test(w));require(\"fs\").writeFileSync(f,JSON.stringify(p,null,2))' && YARN_ENABLE_IMMUTABLE_INSTALLS=false corepack yarn install --mode=skip-build 2>&1 | tail -3", "timeoutSec": 1200 },

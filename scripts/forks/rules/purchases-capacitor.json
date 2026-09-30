@@ -24,6 +24,14 @@
     { "type": "banner", "files": ["README.md"], "install": "npm aliases keep every import and Capacitor's generated native names: `\"@revenuecat/purchases-capacitor\": \"npm:@revenuedot/purchases-capacitor@<version>\"` (and `-ui`), then `npx cap sync`." },
     { "type": "banner", "files": ["purchases-capacitor-ui/README.md"], "optional": true, "install": "`\"@revenuecat/purchases-capacitor-ui\": \"npm:@revenuedot/purchases-capacitor-ui@<version>\"` next to the core alias." }
   ],
+  "version": {"file": "package.json", "regex": "^  \"version\": \"([^\"]+)\""},
+  "pins": [
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["RevenuecatPurchasesCapacitor.podspec", "purchases-capacitor-ui/RevenuecatPurchasesCapacitorUI.podspec"], "find": "s\\.dependency 'RevenueDotPurchasesHybridCommon(?:UI)?', '([^']+)'"},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["Package.swift", "purchases-capacitor-ui/Package.swift"], "find": "github\\.com/{{org}}/purchases-hybrid-common\\.git\", exact: \"([^\"]+?){{gitTagSuffix}}\""},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["android/build.gradle", "purchases-capacitor-ui/android/build.gradle"], "find": "'{{mavenGroup}}:purchases-hybrid-common(?:-ui)?:([^']+)'"},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["package.json", "purchases-capacitor-ui/package.json"], "find": "\"npm:{{npmScope}}/purchases-typescript-internal-esm@([^\"]+)\""},
+    {"dep": "purchases-capacitor", "follow": "fork", "files": ["purchases-capacitor-ui/package.json"], "find": "\"@revenuecat/purchases-capacitor\": \"([^\"]+)\"", "note": "peer dependency on the core package of the same release"}
+  ],
   "scanExclude": ["example/**", "e2e-tests/**", "apitesters/**", "__tests__/**", "**/ios/Tests/**"],
   "checks": [
     { "name": "install (aliases resolved to upstream builds until ours are published)", "run": "node $FORKS_DIR/lib/unalias.mjs package.json && yarn install --ignore-scripts --non-interactive --silent 2>&1 | tail -3", "timeoutSec": 900 },

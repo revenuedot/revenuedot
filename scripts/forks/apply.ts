@@ -4,6 +4,7 @@
  *   pnpm tsx scripts/forks/apply.ts --all                     # patch every fork in place (working tree only)
  *   pnpm tsx scripts/forks/apply.ts --repo purchases-js --commit [--push]
  *   pnpm tsx scripts/forks/apply.ts --all --scan               # leak scan only, no changes
+ *   pnpm tsx scripts/forks/apply.ts --all --pins               # pin check only: every pinned fork version has a release branch or tag
  *   pnpm tsx scripts/forks/apply.ts --repo purchases-ios --var apiHost=https://iap.example.com --var signingPublicKey=...   # self-host build
  *   pnpm tsx scripts/forks/apply.ts --repo purchases-ios --base 5.91.0 --branch revenuedot/release-5.91.0 --push   # patch an upstream tag
  *
@@ -14,6 +15,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyRule, expandIncludes, git, leakScan, render, sha256, type Config, type RepoSpec, type Result, type Rule } from "./lib/rules.ts";
+import { applyPins, checkPins, type PinContext, type PinProblem } from "./lib/pins.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ORDER = ["purchases-ios", "purchases-android", "purchases-hybrid-common", "purchases-js", "react-native-purchases", "purchases-flutter", "purchases-capacitor", "purchases-kmp", "purchases-unity", "cordova-plugin-purchases"];
@@ -29,18 +31,28 @@ export function loadConfig(overrides: Record<string, string> = {}): Config {
 export const loadSpec = (repo: string): RepoSpec => JSON.parse(readFileSync(join(HERE, "rules", `${repo}.json`), "utf8"));
 export const allRepos = () => ORDER.filter((r) => existsSync(join(HERE, "rules", `${r}.json`))).concat(readdirSync(join(HERE, "rules")).map((f) => f.replace(/\.json$/, "")).filter((r) => !r.startsWith("_") && !ORDER.includes(r)));
 
-export function applyRepo(repo: string, root: string, cfg: Config, workspace: string): { results: Result[]; leaks: string[] } {
+export const pinContext = (repo: string, root: string, cfg: Config, workspace: string): PinContext =>
+  ({ root, repo, vars: { ...cfg.vars, org: cfg.org, repo }, workspace, patchBranch: cfg.patchBranch, loadSpec });
+
+export function printPinProblems(problems: PinProblem[]) {
+  for (const p of problems) console.log(`  PIN ${p.repo}${p.where === "working tree" ? "" : `@${p.where}`}: ${p.pin} = ${p.version}: ${p.problem}`);
+}
+
+export function applyRepo(repo: string, root: string, cfg: Config, workspace: string): { results: Result[]; leaks: string[]; pinProblems: PinProblem[] } {
   const spec = loadSpec(repo);
   const vars: Record<string, string> = { ...cfg.vars, org: cfg.org, repo };
   const shared = JSON.parse(readFileSync(join(HERE, "rules", "_shared.json"), "utf8")) as Record<string, Rule[]>;
   const results = expandIncludes(spec.rules, shared).map((r) => applyRule(r, { root, vars, workspace, patchBranch: cfg.patchBranch }));
+  // Pins run after the rules, which put our registry names in place first.
+  const pctx = pinContext(repo, root, cfg, workspace);
+  for (const p of applyPins(pctx)) results.push({ rule: p.pin, changed: p.changed, status: p.changed.length ? "applied" : "unchanged", detail: p.detail });
   // Provenance stamp: which rules and settings produced this tree (no timestamps, so re-runs are no-ops).
   const upstreamBase = git(root, ["merge-base", "HEAD", "upstream/main"], { allowFail: true });
   const stamp = {
     note: render("{{disclaimer}}", vars),
     pipeline: "https://github.com/revenuedot/revenuedot/tree/main/scripts/forks",
     rules: `scripts/forks/rules/${repo}.json`,
-    rulesSha256: sha256(["rules/" + repo + ".json", "rules/_shared.json", "lib/rules.ts"].map((f) => readFileSync(join(HERE, f), "utf8")).join("\n")),
+    rulesSha256: sha256(["rules/" + repo + ".json", "rules/_shared.json", "lib/rules.ts", "lib/pins.ts"].map((f) => readFileSync(join(HERE, f), "utf8")).join("\n")),
     upstream: { repo: spec.upstream, mergeBase: upstreamBase || null },
     apiHost: vars.apiHost,
     signingPublicKey: vars.signingPublicKey,
@@ -49,11 +61,11 @@ export function applyRepo(repo: string, root: string, cfg: Config, workspace: st
   const stampPath = join(root, ".revenuedot", "fork.json");
   const stampText = JSON.stringify(stamp, null, 2) + "\n";
   if (!existsSync(stampPath) || readFileSync(stampPath, "utf8") !== stampText) { mkdirSync(dirname(stampPath), { recursive: true }); writeFileSync(stampPath, stampText); results.push({ rule: "stamp .revenuedot/fork.json", changed: [".revenuedot/fork.json"], status: "applied" }); }
-  return { results, leaks: leakScan(root, cfg, spec) };
+  return { results, leaks: leakScan(root, cfg, spec), pinProblems: checkPins(pctx).problems };
 }
 
 function parseArgs(argv: string[]) {
-  const a = { repos: [] as string[], all: false, commit: false, push: false, scan: false, workspace: resolve(HERE, "../../.."), vars: {} as Record<string, string>, quiet: false, base: "", branch: "" };
+  const a = { repos: [] as string[], all: false, commit: false, push: false, scan: false, pins: false, workspace: resolve(HERE, "../../.."), vars: {} as Record<string, string>, quiet: false, base: "", branch: "" };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === "--repo") a.repos.push(argv[++i]!);
@@ -61,6 +73,7 @@ function parseArgs(argv: string[]) {
     else if (k === "--commit") a.commit = true;
     else if (k === "--push") { a.push = true; a.commit = true; }
     else if (k === "--scan") a.scan = true;
+    else if (k === "--pins") a.pins = true;
     else if (k === "--quiet") a.quiet = true;
     else if (k === "--base") a.base = argv[++i]!;
     else if (k === "--branch") a.branch = argv[++i]!;
@@ -90,6 +103,14 @@ async function main() {
         if (leaks.length) failed = true;
         continue;
       }
+      if (args.pins) {
+        const { ok, problems } = checkPins(pinContext(repo, root, cfg, args.workspace));
+        if (!args.quiet) ok.forEach((l) => console.log(`  ok  ${l}`));
+        printPinProblems(problems);
+        console.log(problems.length ? `  ${problems.length} pin(s) point at a version no fork branch or tag provides` : "  pins ok");
+        if (problems.length) failed = true;
+        continue;
+      }
       if (args.commit) {
         if (git(root, ["status", "--porcelain", "--untracked-files=no"])) throw new Error("working tree has uncommitted changes; commit or stash them first");
         // The patch branch continues from its existing tip; a new branch starts from --base (default main).
@@ -97,8 +118,10 @@ async function main() {
         const local = git(root, ["rev-parse", "--verify", "--quiet", branch], { allowFail: true });
         git(root, ["checkout", "-q", "-B", branch, local || remote || args.base || "main"]);
       }
-      const { results, leaks } = applyRepo(repo, root, cfg, args.workspace);
+      const { results, leaks, pinProblems } = applyRepo(repo, root, cfg, args.workspace);
       for (const r of results) if (!args.quiet || r.status !== "unchanged") console.log(`  ${r.status.padEnd(16)} ${r.rule}${r.changed.length ? ` [${r.changed.length} file(s)]` : ""}${r.detail ? ` — ${r.detail}` : ""}`);
+      // A missing release branch does not block patching; check.ts and sync-upstream.sh fail on it.
+      printPinProblems(pinProblems);
       leaks.forEach((l) => console.log(`  LEAK ${l}`));
       if (leaks.length) { failed = true; console.log(`  ${leaks.length} leak(s): add a rule or a scanExclude entry`); continue; }
       if (args.commit) {

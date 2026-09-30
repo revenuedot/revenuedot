@@ -12,6 +12,11 @@
     { "type": "license", "files": ["LICENSE"] },
     { "type": "banner", "files": ["README.md"], "install": "`cordova plugin add @revenuedot/cordova-plugin-purchases`. The plugin id (`cordova-plugin-purchases`) and the `Purchases` global are unchanged." }
   ],
+  "version": {"file": "package.json", "regex": "^  \"version\": \"([^\"]+)\""},
+  "pins": [
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["plugin.xml"], "find": "<framework src=\"{{mavenGroup}}:purchases-hybrid-common:([^\"]+)\""},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["plugin.xml"], "find": "<pod name=\"RevenueDotPurchasesHybridCommon\" spec=\"([^\"]+)\""}
+  ],
   "scanExclude": ["examples/**", "e2e-tests/**", "apiTester/**", "tests/**"],
   "checks": [
     { "name": "install", "run": "npm install --no-audit --no-fund --ignore-scripts --silent 2>&1 | tail -3", "timeoutSec": 600 },

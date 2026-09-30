@@ -25,6 +25,7 @@
     { "type": "license", "files": ["LICENSE"] },
     { "type": "banner", "files": ["README.md"], "install": "CocoaPods `pod 'RevenueDotPurchases'` (and `pod 'RevenueDotPurchasesUI'`), or Swift Package Manager with `https://github.com/revenuedot/purchases-ios`. The module is still `RevenueCat`, so `import RevenueCat` and `import RevenueCatUI` stay as they are." }
   ],
+  "version": {"file": ".version"},
   "scanExclude": ["Tests/**", "Projects/**", "Examples/**", "Sources/**/*.docc/**", "BackendIntegrationTests/**", "Local.xcconfig.SAMPLE", "**/*.xcconfig"],
   "checks": [
     { "name": "podspec parse", "run": "for f in RevenueDotPurchases.podspec RevenueDotPurchasesUI.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,\"module\",s.module_name,\"tag\",s.source.tag,\"deps\",JSON.stringify(s.dependencies||{}))' || exit 1; done" },

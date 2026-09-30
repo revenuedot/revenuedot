@@ -35,6 +35,13 @@
     { "type": "copy", "from": "LICENSE", "to": "purchases-js-hybrid-mappings/LICENSE" },
     { "type": "banner", "files": ["README.md"], "install": "native pods `RevenueDotPurchasesHybridCommon`, Maven `app.revenuedot.purchases:purchases-hybrid-common`, npm `@revenuedot/purchases-typescript-internal`. Wrappers (React Native, Flutter, Capacitor, Unity, Cordova) pull these in for you." }
   ],
+  "version": {"file": ".version"},
+  "pins": [
+    {"dep": "purchases-ios", "follow": "upstream", "files": ["RevenueDotPurchasesHybridCommon.podspec", "RevenueDotPurchasesHybridCommonUI.podspec"], "find": "s\\.dependency 'RevenueDotPurchases(?:UI)?', '([^']+)'", "note": "the native iOS release this hybrid-common release was built against"},
+    {"dep": "purchases-ios", "follow": "upstream", "files": ["Package.swift"], "find": "github\\.com/{{org}}/purchases-ios\\.git\", exact: \"([^\"]+?){{gitTagSuffix}}\""},
+    {"dep": "purchases-android", "follow": "upstream", "files": ["android/gradle/libs.versions.toml"], "flags": "m", "find": "^purchases = \"([^\"]+)\"", "note": "the native Android release this hybrid-common release was built against"},
+    {"dep": "purchases-js", "follow": "fork", "files": ["purchases-js-hybrid-mappings/package.json"], "find": "\"@revenuecat/purchases-js\": \"npm:{{npmScope}}/purchases-js@([^\"]+)\"", "note": "follows our purchases-js fork, which may be newer than upstream's pin"}
+  ],
   "scanExclude": ["android/api-tests/**", "ios/PurchasesHybridCommon/PurchasesHybridCommonTests/**", "ios/**/*Tests/**", "api-tester/**"],
   "checks": [
     { "name": "podspec parse", "run": "for f in RevenueDotPurchasesHybridCommon.podspec RevenueDotPurchasesHybridCommonUI.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,\"module\",s.module_name,\"tag\",s.source.tag,\"deps\",JSON.stringify(s.dependencies||{}))' || exit 1; done" },

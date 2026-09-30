@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { Pin, VersionSource } from "./pins.ts";
 
 export type Vars = Record<string, string>;
 
@@ -48,6 +49,10 @@ export interface RepoSpec {
   /** Paths ignored by the leak scan (tests, fixtures, examples, docs, changelogs). */
   scanExclude?: string[];
   checks?: Check[];
+  /** Where this fork declares its own version (read by other forks' pins). */
+  version?: VersionSource;
+  /** Version pins on other forks (or on this one); see lib/pins.ts. */
+  pins?: Pin[];
 }
 export interface Config {
   org: string;

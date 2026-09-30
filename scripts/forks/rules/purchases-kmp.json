@@ -14,6 +14,11 @@
     { "type": "license", "files": ["LICENSE"], "note": "copyright holder upstream is JayShortway; kept" },
     { "type": "banner", "files": ["README.md"], "install": "`implementation(\"app.revenuedot.purchases:purchases-kmp-core:<version>\")`. Kotlin packages stay `com.revenuecat.purchases.kmp.*`, so imports stay as they are." }
   ],
+  "version": {"file": "gradle/libs.versions.toml", "regex": "^revenuecat-kmp = \"([^\"]+)\""},
+  "pins": [
+    {"dep": "purchases-android", "follow": "upstream", "files": ["gradle/libs.versions.toml"], "flags": "m", "find": "^revenuecat-android = \"([^\"]+)\"", "note": "KMP depends on native Android directly"},
+    {"dep": "purchases-ios", "follow": "upstream", "files": [".gitmodules"], "find": "path = upstream/purchases-ios\\n[^\\[]*?branch = (\\S+)", "note": "the iOS submodule's upstream tag; the submodule rule pins it to revenuedot/release-<tag>"}
+  ],
   "scanExclude": ["apiTester/**", "composeApp/**", "iosApp/**", "watchosTester/**", "e2e-tests/**", "upstream/**", "**/src/*Test/**"],
   "checks": [
     { "name": "gradle", "run": "echo 'SKIPPED: needs JDK 17, the Android SDK and Xcode cinterop (this machine has Java 8). CI runs ./gradlew check.'" },

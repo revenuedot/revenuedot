@@ -20,6 +20,7 @@
     { "type": "license", "files": ["LICENSE", "vega/LICENSE"] },
     { "type": "banner", "files": ["README.md"], "install": "`npm install @revenuedot/purchases-js`, or keep your imports with an alias: `\"@revenuecat/purchases-js\": \"npm:@revenuedot/purchases-js@<version>\"`. API keys keep their prefixes (`rcb_`, `test_`, `strp_`, `pdl_`)." }
   ],
+  "version": {"file": "package.json", "regex": "^  \"version\": \"([^\"]+)\""},
   "scanExclude": [".env.test", "src/tests/**", "src/stories/**", "test.html", "vitest.setup.js", ".storybook/**", "examples/**"],
   "checks": [
     { "name": "install", "run": "pnpm install --frozen-lockfile --ignore-scripts 2>&1 | tail -3", "timeoutSec": 900 },

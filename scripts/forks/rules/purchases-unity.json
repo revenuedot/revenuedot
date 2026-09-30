@@ -34,6 +34,13 @@
     { "type": "license", "files": ["LICENSE", "RevenueCat/LICENSE.md"] },
     { "type": "banner", "files": ["README.md"], "install": "OpenUPM `com.revenuedot.purchases-unity`, or the `Purchases.unitypackage` from this repo's releases. C# namespaces are unchanged. EDM4U pulls `RevenueDotPurchasesHybridCommon` (CocoaPods) and `app.revenuedot.purchases:purchases-hybrid-common` (Maven)." }
   ],
+  "version": {"file": "RevenueCat/package.json", "regex": "^  \"version\": \"([^\"]+)\""},
+  "pins": [
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "spec=\"{{mavenGroup}}:purchases-hybrid-common(?:-ui)?:\\[([^\\]]+)\\]\""},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "github\\.com/{{org}}/purchases-hybrid-common\\.git\" version=\"([^\"]+?){{gitTagSuffix}}\""},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "<iosPod name=\"RevenueDotPurchasesHybridCommon(?:UI)?\" version=\"(?:~> )?([^\"]+)\""},
+    {"dep": "purchases-hybrid-common", "follow": "fork", "files": ["RevenueCatUI/Plugins/Android/RevenueCatUI.androidlib/build.gradle"], "find": "'{{mavenGroup}}:purchases-hybrid-common(?:-ui)?:([^']+)'"}
+  ],
   "scanExclude": ["Subtester/**", "IntegrationTests/**", "e2e-tests/**"],
   "checks": [
     { "name": "EDM4U XML well-formed", "run": "for f in RevenueCat/Plugins/Editor/RevenueCatDependencies.xml RevenueCatUI/Plugins/Editor/RevenueCatUIDependencies.xml; do xmllint --noout \"$f\" && echo \"$f ok\" || exit 1; done" },

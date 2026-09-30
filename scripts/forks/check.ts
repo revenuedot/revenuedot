@@ -13,7 +13,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { allRepos, loadConfig, loadSpec } from "./apply.ts";
+import { allRepos, loadConfig, loadSpec, pinContext } from "./apply.ts";
+import { checkPins } from "./lib/pins.ts";
 import { git, leakScan } from "./lib/rules.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,11 @@ export function runChecks(repo: string, opts: { workspace: string; ref: string; 
   const leaks = leakScan(wt, cfg, spec);
   results.push({ repo, name: "leak scan (RevenueCat hosts and signing key in shipped code)", status: leaks.length ? "fail" : "pass", seconds: 0, tail: leaks.slice(0, 10).join("\n") || "clean" });
   console.log(`  ${(leaks.length ? "fail" : "pass").padEnd(7)} leak scan${leaks.length ? `: ${leaks.length} RevenueCat host(s) or key(s) left` : ""}`);
+  const pins = checkPins(pinContext(repo, wt, cfg, opts.workspace));
+  const pinTail = pins.problems.map((p) => `${p.repo}${p.where === "working tree" ? "" : `@${p.where}`}: ${p.pin} = ${p.version}: ${p.problem}`);
+  results.push({ repo, name: "pins (every pinned fork version has a revenuedot/release-<v> branch or <v>-revenuedot tag)", status: pinTail.length ? "fail" : "pass", seconds: 0, tail: (pinTail.length ? pinTail : pins.ok).join("\n") || "no pins" });
+  console.log(`  ${(pinTail.length ? "fail" : "pass").padEnd(7)} pins${pinTail.length ? `: ${pinTail.length} pin(s) without a fork release` : ` (${pins.ok.length} resolved)`}`);
+  pinTail.forEach((l) => console.log(`      ${l}`));
   for (const c of spec.checks ?? []) {
     if (opts.only && !c.name.includes(opts.only)) continue;
     const t0 = Date.now();

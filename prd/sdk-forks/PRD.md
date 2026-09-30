@@ -49,27 +49,45 @@ Status and per-repo results: [docs/STATUS.md](../../docs/STATUS.md) row 1.13. Re
 | File | Job |
 |---|---|
 | `config.json` | Org, branch names, variables (`apiHost`, `assetsHost`, `signingPublicKey`, `mavenGroup`, `npmScope`, `gitTagSuffix`, disclaimer and banner text), leak patterns, npm name map |
-| `rules/<repo>.json` | Per-repo patch spec: ordered rules plus `publishes`, `scanExclude` and `checks` |
+| `rules/<repo>.json` | Per-repo patch spec: ordered rules plus `publishes`, `scanExclude`, `checks`, `version` (where the fork declares its own version) and `pins` (version pins on other forks) |
 | `rules/_shared.json` | Rule groups used by several repos: podspec metadata, Gradle POM properties, npm metadata |
+| `lib/pins.ts` | Pins between forks: rewrites each pin that follows a fork to that fork's current version, and checks that every pinned version has a fork release branch or tag |
 | `lib/rules.ts` | The rule engine. Rule types: `replace` (string or regex, file globs), `json` (JSON Pointer set/remove, `{{current}}`), `rename`, `copy`, `delete`, `license`, `banner`, `submodule`, `include` |
-| `apply.ts` | Applies a repo's rules, writes `.revenuedot/fork.json` (rules hash, upstream merge base, host, key), runs the leak scan, and with `--commit`/`--push` commits one "RevenueDot fork patches" commit on the patch branch |
-| `check.ts` | Runs a repo's checks on a committed ref in a throwaway worktree (installs never touch the checkout); `lib/unalias.mjs` points unpublished `@revenuedot/*` aliases at the identical upstream builds for installs |
-| `sync-upstream.sh` | Fetch upstream + tags → branch `upstream-sync` from `revenuedot/main-patches` → merge upstream (conflicts resolved to upstream; the rules regenerate our side) → re-apply rules → checks → push branch and new tags → open or update a PR into `revenuedot/main-patches` |
+| `apply.ts` | Applies a repo's rules, writes `.revenuedot/fork.json` (rules hash, upstream merge base, host, key), runs the leak scan and the pin check (`--pins` runs only the pin check), and with `--commit`/`--push` commits one "RevenueDot fork patches" commit on the patch branch |
+| `check.ts` | Runs the leak scan, the pin check and a repo's checks on a committed ref in a throwaway worktree (installs never touch the checkout); `lib/unalias.mjs` points unpublished `@revenuedot/*` aliases at the identical upstream builds for installs |
+| `sync-upstream.sh` | Fetch upstream + tags → branch `upstream-sync` from `revenuedot/main-patches` → merge upstream (conflicts resolved to upstream; the rules regenerate our side) → re-apply rules → pin check (runs even with `--no-checks`) → checks → push branch and new tags → open or update a PR into `revenuedot/main-patches` |
 | `e2e/purchases-js.e2e.ts` | The forked web SDK against the real server (section 5) |
 
 **Every rule is idempotent and loud.** Running the pipeline twice changes nothing the second time. A rule whose target moved upstream fails with "Rule did not match … update the rule" instead of silently skipping, unless it is marked `optional`. After the rules run, the **leak scan** fails the repo if any RevenueCat API host, events host, fallback host, asset CDN or RevenueCat's signing key is left in shipped code (tests, examples, docs and changelogs are excluded per repo).
+
+**Pins between forks come from the forks, not from hard-coded numbers.** Each pin is declared once in `rules/<repo>.json` `pins`, with the fork it names (`dep`), the files, a regex whose group 1 is the version, and `follow`:
+- `follow: "fork"`: at apply time the pin is rewritten to the version the dependency fork carries on `revenuedot/main-patches` (read from its `version` source). Used for hybrid-mappings → purchases-js (now 1.67.0; upstream pinned 1.66.0), wrappers (React Native, Flutter, Capacitor, Unity, Cordova) → hybrid-common (19.4.1), and the packages that pin their own core (Flutter UI → Flutter core, React Native and Capacitor UI packages → their core). A version that is not a plain release (for example `-SNAPSHOT`) or has a different major version is left alone and reported.
+- `follow: "upstream"`: upstream's number stays. Used for hybrid-common → iOS and Android and KMP → Android and iOS, because the native patch branches are unreleased `-SNAPSHOT` versions and the dependent was built against that exact upstream release.
+
+**The pin check fails when a pin names a version no fork provides.** Every pinned version must exist in the dependency fork as branch `revenuedot/release-<v>` or tag `<v>-revenuedot`; a pin on the same repo must equal its own version. The check follows each release branch and checks its pins too (wrapper → hybrid-common 19.4.1 → Android 10.23.0). It runs in `apply.ts` (reported), `apply.ts --pins` (exit 1), `check.ts` (a failing check) and `sync-upstream.sh` (fails the repo). Its message names the command that creates the missing branch.
+
+Current pins and the release branches they need (all pushed; no tags yet):
+
+| Pin | Version | Fork branch |
+|---|---|---|
+| hybrid-common `main-patches` → iOS, Android, purchases-js | 5.91.0, 10.23.3, 1.67.0 | `purchases-ios` `revenuedot/release-5.91.0`, `purchases-android` `revenuedot/release-10.23.3`, `purchases-js` `revenuedot/release-1.67.0` |
+| hybrid-common release 19.4.1 → iOS, Android, purchases-js | 5.91.0, 10.23.0, 1.67.0 | the same iOS and purchases-js branches, `purchases-android` `revenuedot/release-10.23.0` |
+| Wrappers (React Native, Flutter, Capacitor, Unity, Cordova) → hybrid-common | 19.4.1 | `purchases-hybrid-common` `revenuedot/release-19.4.1` |
+| KMP → Android, iOS submodule | 10.22.1, 5.91.0 | `purchases-android` `revenuedot/release-10.22.1`, `purchases-ios` `revenuedot/release-5.91.0` |
 
 **Branches in each fork:**
 - `main`: upstream `main` at fork time plus the one-line fork notice. The pipeline never pushes to it.
 - `revenuedot/main-patches`: `main` plus one pipeline commit. This is what we build and publish from.
 - `upstream-sync`: created by `sync-upstream.sh`; merges into `revenuedot/main-patches` by PR.
-- `revenuedot/release-<upstream tag>`: an upstream release tag plus the pipeline commit, made with `apply.ts --base <tag> --branch revenuedot/release-<tag>`. Release tags `<tag>-revenuedot` are cut from these. `purchases-ios` has `revenuedot/release-5.91.0`, because KMP pins iOS 5.91.0 as a submodule and must compile the patched source.
+- `revenuedot/release-<upstream tag>`: an upstream release tag plus the pipeline commit, made with `apply.ts --base <tag> --branch revenuedot/release-<tag>`. Release tags `<tag>-revenuedot` are cut from these. Which ones exist follows from the pins (table above).
 
 **Self-host builds:** `apply.ts --var apiHost=https://iap.example.com --var signingPublicKey=<your key>` (or `REVENUEDOT_FORK_API_HOST` / `REVENUEDOT_FORK_SIGNING_PUBLIC_KEY`) produces forks for another host and key.
 
 **Commands:**
 ```
 pnpm tsx scripts/forks/apply.ts --all --commit --push     # (re)patch every fork on revenuedot/main-patches
+pnpm tsx scripts/forks/apply.ts --all --pins              # pin check only
+pnpm tsx scripts/forks/apply.ts --repo purchases-android --base 10.23.3 --branch revenuedot/release-10.23.3 --push   # a release branch a pin needs
 pnpm tsx scripts/forks/check.ts --all --clean             # run every fork's checks
 scripts/forks/sync-upstream.sh --all                      # after upstream releases
 pnpm tsx scripts/forks/e2e/purchases-js.e2e.ts            # web SDK against the real server
@@ -89,7 +107,9 @@ pnpm tsx scripts/forks/e2e/purchases-js.e2e.ts            # web SDK against the 
 ## 5. Verification
 
 - **Leak scan:** clean on all 10 forks.
-- **Idempotency:** a second `apply.ts --all` run changes nothing.
+- **Idempotency:** a second `apply.ts --all` run changes nothing, on `revenuedot/main-patches` and on every release branch.
+- **Pin check:** passes on all 10 forks; a pin moved to a version with no fork branch (tested with hybrid-common 19.9.9 in Cordova) fails with the command that creates the branch.
+- **README banners:** no fork README says "pre-alpha"; the banner says publishing to package registries is in progress.
 - **Web SDK end to end** (`e2e/purchases-js.e2e.ts`): the built fork bundle defaults to `https://api.revenuedot.app` with no RevenueCat host; against the real server (own process, in-memory PGlite, production signing key) it configures with `proxyURL`, reads customer info, reads offerings, buys through the Test Store modal, sees the `pro` entitlement active, and the server's state agrees. Every SDK call, including analytics events, went to the proxy URL, and a nonce-signed response verified with the key baked into the forks.
 - Per-repo checks and what is skipped for missing toolchains: [docs/STATUS.md](../../docs/STATUS.md).
 
@@ -97,7 +117,7 @@ pnpm tsx scripts/forks/e2e/purchases-js.e2e.ts            # web SDK against the 
 
 1. **Counsel sign-off** on keeping `RevenueCat` module/package identifiers (section 1) and on the copyright line naming "RevenueDot" rather than Circo, Inc.
 2. **Publishing credentials (Kai):** npm org `@revenuedot` with an automation token; CocoaPods trunk session; Maven Central namespace `app.revenuedot` (DNS TXT verification on `revenuedot.app`) plus a GPG signing key; OpenUPM listing; GitHub release permissions for the fork repos.
-3. **Release job:** cut `revenuedot/release-<tag>` branches and `<tag>-revenuedot` tags in dependency order (iOS, Android → hybrid-common → purchases-js → hybrid-mappings → wrappers), publish, then rebuild Flutter's vendored `assets/web/purchases_js_hybrid_mappings.js` from our purchases-js instead of string-patching it.
+3. **Release job:** cut `<tag>-revenuedot` tags from the release branches (the branches the current pins need exist) in dependency order (iOS, Android → hybrid-common → purchases-js → hybrid-mappings → wrappers), publish, then rebuild Flutter's vendored `assets/web/purchases_js_hybrid_mappings.js` from our purchases-js instead of string-patching it.
 4. **CI:** a daily GitHub Actions job in this repo running `sync-upstream.sh --all`, with JDK 17 + Android SDK (Android, KMP), Xcode (iOS `swift build`/tests), Flutter, and Unity where licensable.
 5. **Infrastructure:** `api.revenuedot.app` live with `REVENUEDOT_SIGNING_KEY`; `assets.revenuedot.app` serving checkout branding assets.
 6. **Paywall renderer for web:** fork `@revenuecat/purchases-ui-js` from its npm tarball (its source repo is private) so purchases-js stops pulling RevenueCat's package at build time.
