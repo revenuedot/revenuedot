@@ -60,11 +60,17 @@ export class AppStoreServerApi {
   }
 
   /** GET that returns the parsed body, or null on 404 (unknown transaction in this environment). */
-  async get<T>(env: AppleEnv, path: string): Promise<T | null> {
-    const headers = { Authorization: `Bearer ${await this.jwt()}` };
+  get<T>(env: AppleEnv, path: string): Promise<T | null> {
+    return this.send<T>(env, "GET", path);
+  }
+
+  /** One authorised call; null on 404. */
+  async send<T>(env: AppleEnv, method: "GET" | "PUT" | "POST", path: string, body?: unknown): Promise<T | null> {
+    const headers: Record<string, string> = { Authorization: `Bearer ${await this.jwt()}` };
+    if (body !== undefined) headers["content-type"] = "application/json";
     let res: Response;
     try {
-      res = await this.fetchFn(`${HOSTS[env]}${path}`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      res = await this.fetchFn(`${HOSTS[env]}${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(TIMEOUT_MS) });
     } catch {
       throw new RCError(503, Codes.STORE_PROBLEM, "The App Store could not be reached. Try again later.");
     }
@@ -100,6 +106,22 @@ export class AppStoreServerApi {
 
   subscriptionStatuses(env: AppleEnv, transactionId: string): Promise<StatusesResponse | null> {
     return this.get<StatusesResponse>(env, `/inApps/v1/subscriptions/${encodeURIComponent(transactionId)}`);
+  }
+
+  /** Extend a Subscription Renewal Date: up to 90 days, twice a year per customer. */
+  extendRenewalDate(env: AppleEnv, originalTransactionId: string, body: { extendByDays: number; extendReasonCode: number; requestIdentifier: string }) {
+    return this.send<{ effectiveDate?: number; originalTransactionId?: string; success?: boolean; webOrderLineItemId?: string }>(env, "PUT", `/inApps/v1/subscriptions/extend/${encodeURIComponent(originalTransactionId)}`, body);
+  }
+
+  /** Extend Subscription Renewal Dates for All Active Subscribers of one product (optionally some storefronts only). */
+  massExtendRenewalDate(env: AppleEnv, body: { extendByDays: number; extendReasonCode: number; requestIdentifier: string; productId: string; storefrontCountryCodes?: string[] }) {
+    return this.send<{ requestIdentifier?: string }>(env, "POST", "/inApps/v1/subscriptions/extend/mass", body);
+  }
+
+  /** Status of a mass extension request. */
+  massExtendStatus(env: AppleEnv, productId: string, requestIdentifier: string) {
+    return this.get<{ requestIdentifier?: string; complete?: boolean; completeDate?: number; succeededCount?: number; failedCount?: number }>(
+      env, `/inApps/v1/subscriptions/extend/mass/${encodeURIComponent(productId)}/${encodeURIComponent(requestIdentifier)}`);
   }
 }
 

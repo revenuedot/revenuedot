@@ -14,6 +14,10 @@ export const Codes = {
   UNSUPPORTED_RECEIPT: 7662,
   INTERNAL: 7110,
   BAD_REQUEST: 7000,
+  /** RevenueCat's "invalid platform": the request does not apply to this store. Same number as BAD_REQUEST. */
+  INVALID_PLATFORM: 7000,
+  /** RevenueCat's "bad request" for malformed parameters. */
+  BAD_REQUEST_PARAMS: 7226,
   INVALID_APPLE_SUBSCRIPTION_KEY: 7234,
 } as const;
 

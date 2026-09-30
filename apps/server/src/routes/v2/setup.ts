@@ -5,6 +5,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { RCError } from "../../errors.js";
 import { AppStoreServerApi, AppleApiClientError, appleCredentials } from "../../stores/apple/api.js";
+import { appleApiFor } from "../../stores/apple/index.js";
 import { GoogleApiError, serviceAccountOf } from "../../stores/google/api.js";
 import { googleClientFor } from "../../stores/google/index.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
@@ -19,6 +20,8 @@ import { appleKeyConfigured, googleKeyConfigured, projectShape } from "./shapes.
  *   GET    /v2/projects/{project_id}/apps/{app_id}/store_settings                non-secret store setup state (extension)
  *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/verify_credentials    ask Apple or Google whether the credentials work (extension)
  *   POST   /v2/projects/{project_id}/integrations/webhooks/{id}/test             queue a TEST event to one webhook (extension)
+ *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/mass_extend           App Store: extend every active subscriber of a product (extension)
+ *   GET    /v2/projects/{project_id}/apps/{app_id}/mass_extensions/{request_id}  status of a mass extension (?product_id=&environment=) (extension)
  */
 
 export const TRANSFER_BEHAVIORS = ["transfer", "transfer_if_no_active", "keep", "share"] as const;
@@ -34,6 +37,16 @@ const Verify = z.object({
   app_store: z.object({ bundle_id: str, subscription_private_key: str, subscription_key_id: str, subscription_key_issuer: str }).optional(),
   mac_app_store: z.object({ bundle_id: str, subscription_private_key: str, subscription_key_id: str, subscription_key_issuer: str }).optional(),
   play_store: z.object({ package_name: str, play_service_account_credentials_json: z.union([z.string().max(20_000), z.record(z.unknown())]).nullable().optional() }).optional(),
+});
+
+const Reason = z.enum(["undeclared", "customer_satisfaction", "other", "service_issue_or_outage"]);
+const REASON_CODES = { undeclared: 0, customer_satisfaction: 1, other: 2, service_issue_or_outage: 3 } as const;
+const MassExtend = z.object({
+  product_id: z.string().min(1).max(200),
+  extend_by_days: z.number().int().min(1).max(90),
+  extend_reason_code: Reason,
+  storefront_country_codes: z.array(z.string().regex(/^[A-Z]{3}$/, "must be ISO 3166-1 alpha-3 codes such as USA")).max(200).optional(),
+  environment: z.enum(["production", "sandbox"]).optional(),
 });
 
 type ProjectRow = typeof schema.projects.$inferSelect;
@@ -213,6 +226,52 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     }
 
     throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");
+  });
+
+  // App Store mass extension (Extend Subscription Renewal Dates for All Active Subscribers). Apple then sends a
+  // RENEWAL_EXTENDED notification per subscription, which records SUBSCRIPTION_EXTENDED like any single extension.
+  const appleApp = async (c: V2Context) => {
+    const a = await findApp(c);
+    if (a.type !== "app_store" && a.type !== "mac_app_store") throw new V2Error(422, "unprocessable_entity_error", "Mass extensions are only supported for App Store apps.", "app_id");
+    let api;
+    try { api = appleApiFor(deps.stores, a, deps.fetch, deps.now); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
+    if (!api) throw new V2Error(422, "store_error", "Mass extensions need the app's in-app purchase key. Add it in the app's settings.");
+    return { a, api };
+  };
+  const appleFailure = (e: unknown) => {
+    if (e instanceof AppleApiClientError) return new V2Error(422, "store_error", `The App Store rejected the request: ${e.message}`);
+    if (e instanceof RCError) return new V2Error(e.status >= 500 ? 503 : 422, "store_error", e.message, undefined, e.status >= 500);
+    return e;
+  };
+  r.post(`${P}/apps/:app_id/actions/mass_extend`, scope("customer_information:subscriptions:read_write"), async (c) => {
+    const { a, api } = await appleApp(c);
+    const b = await body(c, MassExtend);
+    const env = b.environment ?? "production";
+    const requestIdentifier = crypto.randomUUID();
+    try {
+      await api.massExtendRenewalDate(env, {
+        extendByDays: b.extend_by_days, extendReasonCode: REASON_CODES[b.extend_reason_code], requestIdentifier, productId: b.product_id,
+        ...(b.storefront_country_codes?.length ? { storefrontCountryCodes: b.storefront_country_codes } : {}),
+      });
+    } catch (e) { throw appleFailure(e); }
+    return c.json({
+      object: "subscription_mass_extension", id: requestIdentifier, app_id: a.id, product_id: b.product_id, environment: env,
+      extend_by_days: b.extend_by_days, extend_reason_code: b.extend_reason_code, storefront_country_codes: b.storefront_country_codes ?? null,
+      complete: false, completed_at: null, succeeded_count: null, failed_count: null, requested_at: deps.now().getTime(),
+    }, 202);
+  });
+  r.get(`${P}/apps/:app_id/mass_extensions/:request_id`, scope("customer_information:subscriptions:read"), async (c) => {
+    const { a, api } = await appleApp(c);
+    const productId = c.req.query("product_id");
+    if (!productId) throw paramError("product_id is required.", "product_id");
+    const env = c.req.query("environment") === "sandbox" ? "sandbox" : "production";
+    let st;
+    try { st = await api.massExtendStatus(env, productId, c.req.param("request_id")!); } catch (e) { throw appleFailure(e); }
+    if (!st) throw notFound("Mass extension");
+    return c.json({
+      object: "subscription_mass_extension", id: c.req.param("request_id"), app_id: a.id, product_id: productId, environment: env,
+      complete: st.complete === true, completed_at: st.completeDate ?? null, succeeded_count: st.succeededCount ?? null, failed_count: st.failedCount ?? null,
+    });
   });
 
   // A purchase-shaped TEST event for one webhook, signed and retried like any other delivery; filters do not apply.

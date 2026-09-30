@@ -219,10 +219,18 @@ export interface AppleStoreOptions {
  * With `credentials` { key_id, issuer_id, private_key (.p8), bundle_id? } the App Store Server API supplies the full
  * history and renewal state (auto-renew, billing retry, grace period).
  */
-export function createAppleStore(opts: AppleStoreOptions = {}): StoreAdapter {
+export interface AppleStore extends StoreAdapter {
+  /** The HTTP client and clock this adapter uses for the App Store Server API (the store actions reuse them). */
+  fetchFn: FetchFn;
+  now: () => Date;
+  customFetch: boolean;
+}
+
+export function createAppleStore(opts: AppleStoreOptions = {}): AppleStore {
   const fetchFn: FetchFn = opts.fetch ?? ((url, init) => fetch(url, init));
   const now = opts.now ?? (() => new Date());
   return {
+    fetchFn, now, customFetch: !!opts.fetch,
     async verify(app, input, catalog) {
       const token = input.fetchToken?.trim();
       if (!token) throw invalid("fetch_token is required.");
@@ -236,4 +244,33 @@ export function createAppleStore(opts: AppleStoreOptions = {}): StoreAdapter {
   };
 }
 
-export const appleStore: StoreAdapter = createAppleStore();
+export const appleStore: AppleStore = createAppleStore();
+
+const isAppleStore = (s: unknown): s is AppleStore => !!s && typeof s === "object" && typeof (s as AppleStore).fetchFn === "function";
+
+/** The App Store Server API client for an app, using the adapter's HTTP client (tests inject one), else `fallbackFetch`. */
+export function appleApiFor(stores: Record<string, StoreAdapter>, app: AppRow, fallbackFetch?: typeof fetch, now: () => Date = () => new Date()): AppStoreServerApi | null {
+  const creds = appleCredentials(app);
+  if (!creds) return null;
+  const s = stores.app_store;
+  const fetchFn: FetchFn = isAppleStore(s) && (s.customFetch || !fallbackFetch) ? s.fetchFn : fallbackFetch ? (u, i) => fallbackFetch(u, i) : appleStore.fetchFn;
+  return new AppStoreServerApi(creds, fetchFn, isAppleStore(s) ? s.now : now);
+}
+
+/**
+ * Re-reads one subscription chain from the App Store Server API (Get All Subscription Statuses) and returns its latest
+ * state, ready for `applyFromStore`. Used after a store action (extend) so the response already shows the new state.
+ */
+export async function readAppleSubscription(api: AppStoreServerApi, app: AppRow, originalTransactionId: string, env: AppleEnv, now: Date): Promise<VerifiedPurchase | null> {
+  const statuses = await api.subscriptionStatuses(env, originalTransactionId);
+  const opts = { bundleId: expectedBundleId(app), xcodeRoots: xcodeRootsOf(app), now, source: "apple" as const };
+  for (const group of statuses?.data ?? []) {
+    for (const last of group.lastTransactions ?? []) {
+      if (last.originalTransactionId !== originalTransactionId) continue;
+      const tx = await verifyTransactionJws(last.signedTransactionInfo, opts);
+      const renewal = last.signedRenewalInfo ? await verifyRenewalJws(last.signedRenewalInfo, opts) : null;
+      return fromTransaction(tx, { store: appleStoreOf(app), renewal, detectedAt: now, billingIssue: last.status === 3 || last.status === 4 ? true : undefined });
+    }
+  }
+  return null;
+}

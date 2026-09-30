@@ -5,7 +5,8 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { findCustomer, getOrCreateCustomer, setAttributes, type CustomerRow } from "../../repo/customers.js";
 import { applyPurchases } from "../../services/purchases.js";
-import { V2Error, body, conflict, expands, listOf, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
+import { StoreActionError, cancelSubscription, extendSubscription, refundOrder, revokeSubscription } from "../../services/store-actions.js";
+import { V2Error, body, conflict, expands, listOf, monetaryFor, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { activeEntitlements, attributeItems, customerShape, loadCatalog, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
 
 const AttrName = z.string().min(1).max(500);
@@ -15,6 +16,24 @@ const Grant = z.object({ entitlement_id: z.string().min(1), expires_at: z.number
 const Revoke = z.object({ entitlement_id: z.string().min(1) });
 const Assign = z.object({ offering_id: z.string().min(1).nullable() });
 const Env = z.enum(["sandbox", "production"]).optional();
+const REASON_CODES = { undeclared: 0, customer_satisfaction: 1, other: 2, service_issue_or_outage: 3 } as const;
+const Extend = z.union([
+  z.object({ extend_by_days: z.number().int().min(1), extend_reason_code: z.enum(["undeclared", "customer_satisfaction", "other", "service_issue_or_outage"]).optional() }).strict(),
+  z.object({ extend_until_ms: z.number().int(), extend_reason_code: z.enum(["undeclared", "customer_satisfaction", "other", "service_issue_or_outage"]).optional() }).strict(),
+]);
+
+/** Store action failures in API v2's error vocabulary. */
+function v2ActionError(e: unknown): unknown {
+  if (!(e instanceof StoreActionError)) return e;
+  switch (e.kind) {
+    case "not_found": return new V2Error(404, "resource_missing", e.message);
+    case "unsupported": return new V2Error(422, "unprocessable_entity_error", e.message);
+    case "invalid": return new V2Error(400, "parameter_error", e.message);
+    case "rejected": return new V2Error(422, "store_error", e.message);
+    default: return new V2Error(503, "store_error", e.message, undefined, true);
+  }
+}
+const act = async (run: () => Promise<void>) => { try { await run(); } catch (e) { throw v2ActionError(e); } };
 
 export function customerRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -226,6 +245,52 @@ export function customerRoutes(r: V2Router, deps: Deps) {
     return c.json(paginate(c, shape!.entitlements.items, (e) => e.id, (e) => e.created_at, (e) => e));
   });
 
+  // Store actions (services/store-actions.ts). RevenueCat offers cancel and refund for its own web billing; here they act on
+  // Google Play subscriptions, the only store that lets a server do either. Other stores answer 422.
+  const W = "customer_information:subscriptions:read_write";
+  r.post(`${S}/:subscription_id/actions/cancel`, scope(W), async (c) => {
+    const { s } = await findSub(c);
+    await act(() => cancelSubscription(deps, s));
+    return c.json((await subsList(c, [await findSub(c)]))[0]);
+  });
+  r.post(`${S}/:subscription_id/actions/refund`, scope(W), async (c) => {
+    const { s } = await findSub(c);
+    await act(() => revokeSubscription(deps, s));
+    return c.json((await subsList(c, [await findSub(c)]))[0]);
+  });
+  r.post(`${S}/:subscription_id/actions/extend`, scope(W), async (c) => {
+    const { s } = await findSub(c);
+    const b = await body(c, Extend);
+    const reason = b.extend_reason_code === undefined ? null : REASON_CODES[b.extend_reason_code];
+    if (s.store === "app_store" || s.store === "mac_app_store") {
+      if (reason === null) throw paramError("extend_reason_code is required for App Store subscriptions.", "extend_reason_code");
+      if ("extend_by_days" in b && b.extend_by_days > 90) throw paramError("App Store subscriptions can be extended by at most 90 days.", "extend_by_days");
+    }
+    await act(() => extendSubscription(deps, s, "extend_by_days" in b ? { extendByDays: b.extend_by_days, extendReasonCode: reason } : { expiryTimeMs: b.extend_until_ms, extendReasonCode: reason }));
+    return c.json((await subsList(c, [await findSub(c)]))[0]);
+  });
+  r.post(`${S}/:subscription_id/transactions/:transaction_id/actions/refund`, scope(W), async (c) => {
+    const { s } = await findSub(c);
+    const txId = c.req.param("transaction_id")!;
+    const T = schema.transactions;
+    const [t] = await db.select().from(T).where(and(eq(T.projectId, s.projectId), eq(T.customerId, s.customerId), eq(T.store, s.store), eq(T.storeTransactionId, txId),
+      inArray(T.kind, ["purchase", "renewal", "trial"]))).limit(1);
+    if (!t && txId !== s.storeTransactionId) throw notFound("Transaction");
+    await act(() => refundOrder(deps, { kind: "subscription", row: s, orderId: txId }));
+    const [after] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.id, s.id));
+    const purchasedAt = t?.purchasedAt ?? s.purchaseDate;
+    const expires = t?.expiresAt ?? s.expiresDate;
+    const local = t?.priceAmount ?? s.priceAmount;
+    const currency = t?.priceCurrency ?? s.priceCurrency;
+    return c.json({
+      object: "subscription_transaction", id: txId, purchased_at: purchasedAt.getTime(), product_store_identifier: s.productIdentifier,
+      revenue_in_local_currency: local !== null && currency ? monetaryFor(local, currency, s.store) : null,
+      revenue_in_usd: monetaryFor(t?.revenueUsd ?? s.priceUsd ?? 0, "USD", s.store),
+      expiration_date: expires ? expires.getTime() : null,
+      effective_expiration_date: after?.refundedAt && txId === after.storeTransactionId ? after.refundedAt.getTime() : expires ? expires.getTime() : null,
+    });
+  });
+
   const U = "/v2/projects/:project_id/purchases";
   const purchasesList = async (c: V2Context, rows: { p: typeof schema.nonSubscriptions.$inferSelect; cu: CustomerRow }[]) => {
     const cat = await loadCatalog(db, c.get("projectId"));
@@ -251,6 +316,13 @@ export function customerRoutes(r: V2Router, deps: Deps) {
   r.get(`${U}/:purchase_id/entitlements`, scope("customer_information:purchases:read"), async (c) => {
     const [shape] = await purchasesList(c, [await findPurchase(c)]);
     return c.json(paginate(c, shape!.entitlements.items, (e) => e.id, (e) => e.created_at, (e) => e));
+  });
+
+  // Refund a one-time purchase: Google Play refunds and revokes the order; other stores answer 422.
+  r.post(`${U}/:purchase_id/actions/refund`, scope("customer_information:purchases:read_write"), async (c) => {
+    const { p } = await findPurchase(c);
+    await act(() => refundOrder(deps, { kind: "purchase", row: p }));
+    return c.json((await purchasesList(c, [await findPurchase(c)]))[0]);
   });
 }
 

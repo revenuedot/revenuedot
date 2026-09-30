@@ -8,8 +8,6 @@ export interface Deps {
   stores: Record<string, StoreAdapter>;
   /** Called after writes that may create webhook deliveries; the tick worker sends them. */
   kick?: () => void;
-  /** Store-side subscription actions for the REST API (Google refund/revoke/defer/cancel, Apple extend). */
-  storeActions?: Partial<Record<"revoke" | "defer" | "refund" | "cancel" | "extend", (a: { projectId: string; customerId: string; id: string; body: unknown; now: Date }) => Promise<void>>>;
   /** HTTP client for outbound calls (webhooks, stores); injectable for tests. */
   fetch?: typeof fetch;
 }

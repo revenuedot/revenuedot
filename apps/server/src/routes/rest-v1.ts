@@ -8,6 +8,9 @@ import { entitlementMap } from "../repo/catalog.js";
 import { findCustomer, getOrCreateCustomer, loadState } from "../repo/customers.js";
 import { applyPurchases } from "../services/purchases.js";
 import { addDuration } from "../stores/test-store.js";
+import {
+  StoreActionError, cancelSubscription, extendSubscription, refundOrder, revokeSubscription, subscriptionByProduct, subscriptionByTransaction, transactionTarget,
+} from "../services/store-actions.js";
 
 const DURATIONS: Record<string, string | null> = {
   daily: "P1D", three_day: "P3D", weekly: "P1W", two_week: "P2W", monthly: "P1M", two_month: "P2M", three_month: "P3M", six_month: "P6M", yearly: "P1Y", lifetime: null,
@@ -102,21 +105,51 @@ export function restV1(r: Hono<{ Variables: Vars }>, deps: Deps) {
     return respond(c, projectId, cust.id);
   });
 
-  // Store actions: Google refund/revoke/defer/cancel and Apple extend are performed by the store adapters.
-  for (const [path, action] of [
-    ["/v1/subscribers/:id/subscriptions/:pid/revoke", "revoke"], ["/v1/subscribers/:id/subscriptions/:pid/defer", "defer"],
-    ["/v1/subscribers/:id/transactions/:pid/refund", "refund"], ["/v1/subscribers/:id/subscriptions/:pid/cancel", "cancel"],
-    ["/v1/subscribers/:id/subscriptions/:pid/extend", "extend"],
-  ] as const) {
-    r.post(path, async (c) => {
-      const projectId = requireSecret(c);
-      const cust = await findCustomer(deps.db, projectId, uid(c));
-      if (!cust) throw new RCError(404, Codes.NOT_FOUND, "Subscriber not found.");
-      const b = await c.req.json().catch(() => ({}));
-      const handler = deps.storeActions?.[action];
-      if (!handler) throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, `The ${action} action is not available for this subscription's store.`);
-      await handler({ projectId, customerId: cust.id, id: c.req.param("pid"), body: b, now: deps.now() });
-      return respond(c, projectId, cust.id);
-    });
+  // Store actions, performed by the store that sold the purchase (see services/store-actions.ts). Each answers the customer info.
+  const storeAction = (path: string, run: (c: any, customerId: string, id: string) => Promise<void>) => r.post(path, async (c) => {
+    const projectId = requireSecret(c);
+    const cust = await findCustomer(deps.db, projectId, uid(c));
+    if (!cust) throw new RCError(404, Codes.NOT_FOUND, "Subscriber not found.");
+    try {
+      await run(c, cust.id, decodeURIComponent(c.req.param("pid") ?? ""));
+    } catch (e) {
+      throw v1ActionError(e);
+    }
+    return respond(c, projectId, cust.id);
+  });
+  const num = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
+  storeAction("/v1/subscribers/:id/subscriptions/:pid/revoke", async (_c, customerId, pid) =>
+    revokeSubscription(deps, await subscriptionByProduct(deps, customerId, pid)));
+  storeAction("/v1/subscribers/:id/subscriptions/:pid/defer", async (c, customerId, pid) => {
+    const sub = await subscriptionByProduct(deps, customerId, pid);
+    if (sub.store !== "play_store") throw new StoreActionError("unsupported", "Deferring is only supported for Google Play subscriptions. Use extend for App Store subscriptions.");
+    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    await extendSubscription(deps, sub, { expiryTimeMs: num(b.expiry_time_ms), extendByDays: num(b.extend_by_days) });
+  });
+  storeAction("/v1/subscribers/:id/transactions/:pid/refund", async (_c, customerId, pid) =>
+    refundOrder(deps, await transactionTarget(deps, customerId, pid)));
+  storeAction("/v1/subscribers/:id/subscriptions/:pid/cancel", async (_c, customerId, pid) =>
+    cancelSubscription(deps, await subscriptionByTransaction(deps, customerId, pid)));
+  storeAction("/v1/subscribers/:id/subscriptions/:pid/extend", async (c, customerId, pid) => {
+    const sub = await subscriptionByTransaction(deps, customerId, pid);
+    if (sub.store === "play_store") throw new StoreActionError("unsupported", "Extending is only supported for App Store subscriptions. Use defer for Google Play subscriptions.");
+    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    await extendSubscription(deps, sub, { extendByDays: num(b.extend_by_days), extendReasonCode: num(b.extend_reason_code) });
+  });
+}
+
+/**
+ * v1 errors for store actions, with the backend codes the RevenueCat SDKs and clients know: 7259 no such subscription,
+ * 7000 the action does not exist for this store (RevenueCat's "invalid platform"), 7226 bad parameters, 7101 the store
+ * refused or could not be reached (5xx when it is worth retrying).
+ */
+function v1ActionError(e: unknown) {
+  if (!(e instanceof StoreActionError)) return e;
+  switch (e.kind) {
+    case "not_found": return new RCError(404, Codes.NOT_FOUND, e.message);
+    case "unsupported": return new RCError(400, Codes.INVALID_PLATFORM, e.message);
+    case "invalid": return new RCError(400, Codes.BAD_REQUEST_PARAMS, e.message);
+    case "rejected": return new RCError(400, Codes.STORE_PROBLEM, e.message);
+    default: return new RCError(503, Codes.STORE_PROBLEM, e.message);
   }
 }

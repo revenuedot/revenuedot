@@ -214,6 +214,8 @@ export interface AppleHarness {
   postReceipt: (appUserId: string, fetchToken: string, extra?: Record<string, unknown>) => Promise<Response>;
   customerInfo: (appUserId: string) => Promise<any>;
   notify: (body: string, contentType?: string) => Promise<Response>;
+  /** Any request to the server. */
+  request: (path: string, init?: RequestInit) => Promise<Response>;
   /** Event payloads recorded since the last call, oldest first. */
   newEvents: () => Promise<any[]>;
 }
@@ -243,7 +245,7 @@ export async function appleHarness(o: { credentials?: Record<string, unknown>; f
   const request = (path: string, init: RequestInit = {}) => Promise.resolve(app.fetch(new Request(`http://localhost${path}`, init)));
   const seen = new Set<string>();
   return {
-    db, now, close,
+    db, now, close, request,
     setNow: (d) => { clock = new Date(d); },
     postReceipt: (appUserId, fetchToken, extra = {}) => request("/v1/receipts", {
       method: "POST", headers: { Authorization: `Bearer ${KEY}`, "content-type": "application/json", "X-Platform": "iOS" },
