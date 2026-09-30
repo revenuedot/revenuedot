@@ -1,0 +1,25 @@
+{
+  "name": "revenuedot",
+  "version": "0.1.0",
+  "description": "RevenueDot CLI: move a project from RevenueCat to RevenueDot (catalog, customers, subscriptions, purchases) and verify the result.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://revenuedot.app/docs/migrate",
+  "repository": { "type": "git", "url": "https://github.com/revenuedot/revenuedot.git", "directory": "packages/importer" },
+  "keywords": ["revenuecat", "migration", "in-app purchases", "subscriptions", "revenuedot"],
+  "bin": { "revenuedot": "dist/bin.js" },
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "publishConfig": { "main": "dist/index.js", "types": "dist/index.d.ts" },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=18.17" },
+  "scripts": {
+    "cli": "tsx src/bin.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "@revenuedot/db": "workspace:*",
+    "drizzle-orm": "^0.38.3"
+  }
+}
