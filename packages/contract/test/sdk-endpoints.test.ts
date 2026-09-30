@@ -32,7 +32,7 @@ const appleFetch = (async (url: string | URL | Request, init?: RequestInit) => {
 
 beforeEach(async () => {
   pending = []; appleCalls = [];
-  h = await harness({ fetch: appleFetch, background: (p) => { pending.push(p); } });
+  h = await harness({ fetch: appleFetch, defer: (task) => { pending.push(task()); } });
 });
 // Work the server runs after a response finishes before the database closes.
 afterEach(async () => { while (pending.length) await pending.shift(); await h.close(); });

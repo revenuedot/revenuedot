@@ -110,7 +110,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /**
  * Resolves an AdServices token (`POST .../adservices_attribution` or `aad_attribution_token` on a receipt) with Apple's
  * public attribution API, then stores the result as attributes. Apple answers 404 until the record is ready, so a 404 or
- * 5xx is retried up to 3 times, 5 seconds apart, as Apple recommends. Runs after the response (`deps.background`); a
+ * 5xx is retried up to 3 times, 5 seconds apart, as Apple recommends. Runs after the response (`deps.defer`); a
  * failure is logged and dropped, because the SDK does not resend a token it has posted.
  */
 export async function resolveAdServicesToken(deps: Deps, customerId: string, token: string, retryDelayMs = 5_000) {
@@ -133,8 +133,9 @@ export async function resolveAdServicesToken(deps: Deps, customerId: string, tok
   console.warn("AdServices attribution: no record from Apple after 4 attempts");
 }
 
-/** Runs work after the response: Workers keep the request alive for it (`deps.background`), Node lets it run. */
+/** Runs work after the response (`deps.defer`: Workers keep the request's connection for it), else just starts it. */
 export function inBackground(deps: Deps, task: () => Promise<unknown>) {
-  const p = task().catch((e) => console.error("background task failed", e));
-  if (deps.background) deps.background(p);
+  const safe = () => task().catch((e) => console.error("background task failed", e));
+  if (deps.defer) deps.defer(safe);
+  else void safe();
 }

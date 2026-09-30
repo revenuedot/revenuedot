@@ -62,8 +62,6 @@ const appFor = (env: Env) => (app ??= createApp({
   publicUrl: publicUrlFor(env),
   // Send new webhook deliveries after the response, on the request's own connection.
   kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(env, s.db, "kick")); },
-  // Work that finishes after the response (AdServices attribution) keeps the request's connection open until it is done.
-  background: (task) => { scope.getStore()?.pending.push(task); },
   // Password reset emails and the like go out after the response, on the request's own connection.
   defer: (task) => { const s = scope.getStore(); if (s) s.pending.push(task()); else void task(); },
 }));
