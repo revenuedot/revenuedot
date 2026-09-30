@@ -86,12 +86,27 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
   );
 }
 
+/**
+ * Breadcrumbs never run under the top-bar icons: the trail takes the space left of them, stays on one line, and the
+ * project name and middle crumbs shrink to an ellipsis first; the current page shrinks a third as fast and keeps at least 3em.
+ * Separators (the bare "/" spans pages pass in) never shrink.
+ */
+const CRUMB_CSS = `
+.top .crumb{flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
+.top .top-r{flex:none}
+.top .crumb>*{flex:0 3 auto;min-width:1.6em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top .crumb>.crumb-project{min-width:2.5em}
+.top .crumb>.crumb-sep,.top .crumb>span:not(.crumb-project){flex:none;min-width:0;overflow:visible}
+.top .crumb>b:last-child{flex-shrink:1;min-width:3em}
+`;
+
 export function Shell({ title, crumbs, children, actions }: { title: string; crumbs?: ReactNode; children: ReactNode; actions?: ReactNode }) {
   const { projectId = "" } = useParams();
   const me = useMe();
   const nav = useNavigate();
   const base = `/projects/${projectId}`;
   const [q, setQ] = useState("");
+  const projectName = me.data?.projects.find((p) => p.id === projectId)?.name ?? "Project";
   useEffect(() => { document.title = `${title} · RevenueDot`; }, [title]);
   useEffect(() => { if (me.isError) nav("/login"); }, [me.isError, nav]);
   const toggleTheme = () => {
@@ -112,7 +127,10 @@ export function Shell({ title, crumbs, children, actions }: { title: string; cru
       </aside>
       <div className="main">
         <header className="top">
-          <span className="crumb">{me.data?.projects.find((p) => p.id === projectId)?.name ?? "Project"} <span>/</span> {crumbs ?? <b>{title}</b>}</span>
+          <style>{CRUMB_CSS}</style>
+          <nav className="crumb" aria-label="Breadcrumb">
+            <span className="crumb-project" title={projectName}>{projectName}</span> <span className="crumb-sep">/</span> {crumbs ?? <b>{title}</b>}
+          </nav>
           <div className="top-r">
             <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) nav(`${base}/customers?q=${encodeURIComponent(q.trim())}`); }}>
               <Icon name="search" /><input aria-label="Search customers" placeholder="Search customers, transactions, IDs" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>⌘K</kbd>
