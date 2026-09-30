@@ -1,0 +1,171 @@
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { Shell } from "../../components/Shell";
+import { Icon } from "../../components/icons";
+import { CopyButton, Dialog, Field, PageHead, SecretText, StatusLine, useProjectId, useToast } from "../../components/ui";
+import { api } from "../../lib/api";
+import { STORES, base, errMsg, storeId, useApps, usePublicKey, useSetupHealth, type App, type AppType, type SetupHealth } from "./data";
+
+/**
+ * Apps (/projects/:projectId/apps): every store app in the project, its ids and public SDK key, and "Add app".
+ * GAPS vs RevenueCat (frame 22):
+ * - The SDK compatibility panel (SDK versions seen in the last 30 days, feature coverage) needs the server to record
+ *   the SDK version header; setup_health.sdk_versions is null until it does.
+ * - Amazon, Mac App Store, Stripe, Paddle, Roku and Web Billing apps: the API creates them, the dashboard offers
+ *   only App Store, Google Play and Test Store for now (they show as "Soon" in Add app).
+ */
+
+export function StoreCell({ app }: { app: Pick<App, "name" | "type"> }) {
+  const s = STORES[app.type] ?? { label: app.type, icon: "apps" };
+  return <span className="appcell"><span className="tile"><Icon name={s.icon} /></span><span><b>{app.name}</b><small>{s.label}</small></span></span>;
+}
+
+export function KeyCell({ pid, appId }: { pid: string; appId: string }) {
+  const k = usePublicKey(pid, appId);
+  if (k.isLoading) return <span className="subtle">Loading…</span>;
+  if (!k.data) return <span className="subtle">—</span>;
+  return <SecretText value={k.data.key} label="public SDK key" />;
+}
+
+/** The one next step each app needs, from setup_health. */
+export function setupState(app: App, h: SetupHealth["apps"][number] | undefined): { tone: "ok" | "bad" | "idle"; text: string } {
+  if (app.type === "test_store") return { tone: "ok", text: "Ready" };
+  if (!h) return { tone: "idle", text: "Checking…" };
+  if (!h.credentials_configured) return { tone: "bad", text: app.type === "play_store" ? "Add service account" : "Add in-app purchase key" };
+  if (h.notification_url && !h.last_notification_at) return { tone: "idle", text: "Waiting for store notifications" };
+  return { tone: "ok", text: "Ready" };
+}
+
+const CHOICES: { type: AppType; label: string; text: string; soon?: boolean }[] = [
+  { type: "app_store", label: "App Store", text: "iPhone, iPad, Mac, Apple TV and Vision Pro apps." },
+  { type: "play_store", label: "Google Play", text: "Android apps sold through Google Play." },
+  { type: "test_store", label: "Test Store", text: "Try purchases without any store. Nothing is charged." },
+  { type: "amazon", label: "Amazon Appstore", text: "Fire tablets and Fire TV.", soon: true },
+  { type: "stripe", label: "Stripe", text: "Subscriptions sold on your website.", soon: true },
+  { type: "roku", label: "Roku", text: "Roku Pay channels.", soon: true },
+];
+
+const BUNDLE = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+const PACKAGE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+
+export function AddAppDialog({ pid, onClose, initial }: { pid: string; onClose: () => void; initial?: AppType }) {
+  const nav = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [type, setType] = useState<AppType>(initial ?? "app_store");
+  const [name, setName] = useState(initial === "test_store" ? "Test Store" : "");
+  const [id, setId] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; id?: string; form?: string }>({});
+  const [busy, setBusy] = useState(false);
+  const s = STORES[type]!;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const n = name.trim(), i = id.trim();
+    const errs: typeof errors = {};
+    if (!n) errs.name = "Give the app a name, for example Scanner iOS.";
+    if (s.idField === "bundle_id" && !BUNDLE.test(i)) errs.id = i ? "A bundle ID looks like com.company.app." : "Enter the bundle ID from Xcode.";
+    if (s.idField === "package_name" && !PACKAGE.test(i)) errs.id = i ? "A package name looks like com.company.app (letters, digits and underscores)." : "Enter the package name from Play Console.";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    setBusy(true);
+    try {
+      const app = await api<App>(`${base(pid)}/apps`, { method: "POST", json: { name: n, type, ...(s.idField ? { [type]: { [s.idField]: i } } : {}) } });
+      await qc.invalidateQueries({ queryKey: ["apps", pid] });
+      await qc.invalidateQueries({ queryKey: ["setup_health", pid] });
+      toast(`${n} added. Next: connect it to ${s.label === "Test Store" ? "your app" : s.label}.`);
+      nav(`/projects/${pid}/apps/${app.id}`);
+    } catch (err) { setErrors({ form: errMsg(err) }); setBusy(false); }
+  }
+
+  return (
+    <Dialog title="Add an app" onClose={onClose} footer={<>
+      <button type="button" className="btn btn-line" onClick={onClose}>Cancel</button>
+      <button type="submit" form="add-app" className="btn btn-dark" disabled={busy}>{busy ? "Adding…" : "Add app"}</button>
+    </>}>
+      <form id="add-app" className="stack" onSubmit={submit} noValidate>
+        <div className="choice" role="group" aria-label="Store">
+          {CHOICES.map((c) => (
+            <button key={c.type} type="button" aria-pressed={type === c.type} disabled={c.soon}
+              onClick={() => { setType(c.type); setErrors({}); if (c.type === "test_store" && !name) setName("Test Store"); }}>
+              <Icon name={STORES[c.type]!.icon} /><span><b>{c.label}{c.soon && <span className="soon">SOON</span>}</b><small>{c.text}</small></span>
+            </button>
+          ))}
+        </div>
+        <Field label="App name" htmlFor="app-name" hint="Only you see this name. It helps tell your iOS and Android apps apart." error={errors.name}>
+          <input id="app-name" className="input" maxLength={255} value={name} placeholder={type === "play_store" ? "Scanner Android" : type === "test_store" ? "Test Store" : "Scanner iOS"}
+            aria-invalid={!!errors.name} onChange={(e) => { setName(e.target.value); setErrors((x) => ({ ...x, name: undefined })); }} />
+        </Field>
+        {s.idField && (
+          <Field label={s.idLabel!} htmlFor="app-store-id" error={errors.id}
+            hint={s.idField === "bundle_id" ? "In Xcode: your target → General → Bundle Identifier." : "In Play Console: the id under your app's name, like com.company.app."}>
+            <input id="app-store-id" className="input mono" value={id} placeholder="com.company.app" autoCapitalize="off" spellCheck={false}
+              aria-invalid={!!errors.id} onChange={(e) => { setId(e.target.value); setErrors((x) => ({ ...x, id: undefined })); }} />
+          </Field>
+        )}
+        {type === "test_store" && <p className="section-sub">A Test Store app needs no store account. Use its key in a debug build to buy your products for free and see them here as sandbox purchases.</p>}
+        {errors.form && <div className="banner err" role="alert">{errors.form}</div>}
+      </form>
+    </Dialog>
+  );
+}
+
+export function Apps() {
+  const pid = useProjectId();
+  const nav = useNavigate();
+  const apps = useApps(pid);
+  const health = useSetupHealth(pid);
+  const [adding, setAdding] = useState<AppType | null>(null);
+  const hasTest = apps.data?.some((a) => a.type === "test_store");
+  const add = <button type="button" className="btn btn-dark" onClick={() => setAdding("app_store")}><Icon name="plus" />Add app</button>;
+
+  return (
+    <Shell title="Apps">
+      <div className="page">
+        <PageHead title="Apps" sub="Connect each store where your app sells. Every app gets its own public SDK key; products, entitlements and customers are shared across the project." actions={apps.data?.length ? add : undefined} />
+        {apps.isLoading && <div className="panel pb subtle">Loading apps…</div>}
+        {apps.isError && <div className="banner err" role="alert">The apps could not be loaded: {errMsg(apps.error)} <button type="button" className="linkish" onClick={() => apps.refetch()}>Try again</button></div>}
+        {apps.data && !apps.data.length && (
+          <div className="empty">
+            <h3>Add your first app</h3>
+            <p>Pick the store your app sells through. You will get a public SDK key and step-by-step setup for that store. No store account yet? Start with a Test Store app.</p>
+            <div className="hrow" style={{ justifyContent: "center" }}>{add}<button type="button" className="btn btn-line" onClick={() => setAdding("test_store")}>Create Test Store app</button></div>
+          </div>
+        )}
+        {!!apps.data?.length && (
+          <div className="panel tbl">
+            <table>
+              <thead><tr><th>Name</th><th>App ID</th><th>Bundle / package ID</th><th>Public SDK key</th><th>Setup</th></tr></thead>
+              <tbody>
+                {apps.data.map((a) => {
+                  const st = setupState(a, health.data?.apps.find((x) => x.id === a.id));
+                  const sid = storeId(a);
+                  return (
+                    <tr key={a.id} className="row" tabIndex={0} onClick={() => nav(`/projects/${pid}/apps/${a.id}`)} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) nav(`/projects/${pid}/apps/${a.id}`); }}>
+                      <td><StoreCell app={a} /></td>
+                      <td className="id"><span className="hrow" onClick={(e) => e.stopPropagation()}>{a.id}<CopyButton value={a.id} label="Copy app ID" /></span></td>
+                      <td className="id">{sid ? <span className="hrow" onClick={(e) => e.stopPropagation()}>{sid}<CopyButton value={sid} label="Copy bundle ID" /></span> : <span className="subtle">—</span>}</td>
+                      <td><KeyCell pid={pid} appId={a.id} /></td>
+                      <td><StatusLine tone={st.tone}>{st.text}</StatusLine></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {apps.data && apps.data.length > 0 && !hasTest && (
+          <section className="panel">
+            <div className="ph"><b>Test without a store</b></div>
+            <div className="pb hrow between">
+              <p className="section-sub">A Test Store app lets you buy your own products for free, with no App Store or Google Play account. Test purchases show up as sandbox data.</p>
+              <button type="button" className="btn btn-line" onClick={() => setAdding("test_store")}>Create Test Store app</button>
+            </div>
+          </section>
+        )}
+      </div>
+      {adding && <AddAppDialog pid={pid} initial={adding} onClose={() => setAdding(null)} />}
+    </Shell>
+  );
+}

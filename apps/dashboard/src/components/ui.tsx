@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { Icon } from "./icons";
 
@@ -116,3 +116,200 @@ export const EVENT_TONE: Record<string, "up" | "down" | "info" | "gold" | "muted
   INITIAL_PURCHASE: "gold", RENEWAL: "up", NON_RENEWING_PURCHASE: "gold", UNCANCELLATION: "up", PRODUCT_CHANGE: "info", SUBSCRIPTION_EXTENDED: "up",
   CANCELLATION: "muted", EXPIRATION: "muted", BILLING_ISSUE: "down", REFUND_REVERSED: "up", TRANSFER: "info", SUBSCRIPTION_PAUSED: "muted", TEST: "muted",
 };
+
+/** Moves focus between the enabled buttons of a menu or tab list with the arrow keys, Home and End. */
+function arrowFocus(e: ReactKeyboardEvent<HTMLElement>, selector: string, keys: [string, string]) {
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>(selector)).filter((b) => !b.disabled);
+  const i = items.indexOf(document.activeElement as HTMLButtonElement);
+  const next = e.key === keys[1] ? items[(i + 1) % items.length] : e.key === keys[0] ? items[(i - 1 + items.length) % items.length] : e.key === "Home" ? items[0] : e.key === "End" ? items[items.length - 1] : null;
+  if (next) { e.preventDefault(); next.focus(); return next; }
+  return null;
+}
+
+export interface MenuItem { label: string; onSelect: () => void; icon?: string; danger?: boolean; disabled?: boolean; hint?: string }
+
+/**
+ * The "…" row-actions menu. It floats (position: fixed) so tables that scroll sideways do not clip it, follows its
+ * button when the page scrolls, closes on Escape or an outside click, and supports arrow-key navigation. Clicks and
+ * keys never reach the row underneath.
+ */
+export function Menu({ label, items }: { label: string; items: (MenuItem | "-")[] }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const close = useCallback((focus = false) => { setPos(null); if (focus) btn.current?.focus(); }, []);
+  const isOpen = !!pos;
+  useEffect(() => {
+    if (!isOpen) return;
+    menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    const out = (e: MouseEvent) => { if (!menu.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) close(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(true); } };
+    // Follow the button when something scrolls; close only once it leaves the screen.
+    const away = () => { const next = place(); if (!next) close(); else setPos((p) => (p && p.top === next.top && p.left === next.left ? p : next)); };
+    document.addEventListener("mousedown", out);
+    document.addEventListener("keydown", esc, true);
+    window.addEventListener("scroll", away, true);
+    window.addEventListener("resize", away);
+    return () => { document.removeEventListener("mousedown", out); document.removeEventListener("keydown", esc, true); window.removeEventListener("scroll", away, true); window.removeEventListener("resize", away); };
+  }, [isOpen, close]);
+  const place = () => {
+    const r = btn.current?.getBoundingClientRect();
+    if (!r || r.bottom < 0 || r.top > window.innerHeight) return null;
+    const h = items.length * 34 + 12;
+    return { top: r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4, left: Math.max(8, Math.min(r.right - 232, window.innerWidth - 240)) };
+  };
+  const open = () => setPos(place());
+  return (
+    <span className="rmenu" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <button ref={btn} type="button" className="ib" aria-label={label} aria-haspopup="menu" aria-expanded={!!pos} onClick={() => (pos ? close() : open())}><Icon name="more" /></button>
+      {pos && (
+        <div ref={menu} className="menu float" role="menu" aria-label={label} style={{ top: pos.top, left: pos.left }} onKeyDown={(e) => arrowFocus(e, "button", ["ArrowUp", "ArrowDown"])}>
+          {items.map((it, i) => it === "-" ? <hr key={`sep${i}`} /> : (
+            <button key={it.label} type="button" role="menuitem" disabled={it.disabled} title={it.hint} className={it.danger ? "danger" : undefined}
+              onClick={() => { close(true); it.onSelect(); }}>
+              {it.icon && <Icon name={it.icon} />}<span>{it.label}</span>{it.hint && it.disabled && <small>{it.hint}</small>}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+export interface TabItem<T extends string> { value: T; label: string; disabled?: boolean; badge?: string }
+
+/** Underlined tabs (Packages / Metadata / Paywall). Arrow keys move between tabs. */
+export function Tabs<T extends string>({ value, tabs, onChange, label, right, idBase = "tab" }: { value: T; tabs: TabItem<T>[]; onChange: (v: T) => void; label: string; right?: ReactNode; idBase?: string }) {
+  return (
+    <div className="tabs">
+      <div role="tablist" aria-label={label} onKeyDown={(e) => { const b = arrowFocus(e, "[role=tab]", ["ArrowLeft", "ArrowRight"]); if (b) b.click(); }}>
+        {tabs.map((t) => (
+          <button key={t.value} id={`${idBase}-${t.value}`} type="button" role="tab" aria-selected={value === t.value} aria-controls={`${idBase}-${t.value}-panel`}
+            tabIndex={value === t.value ? 0 : -1} disabled={t.disabled} onClick={() => onChange(t.value)}>
+            {t.label}{t.badge && <span className="soon">{t.badge}</span>}
+          </button>
+        ))}
+      </div>
+      {right && <div className="tabs-r">{right}</div>}
+    </div>
+  );
+}
+
+/**
+ * Confirmation for destructive or high-impact actions. `onConfirm` may return a promise; the dialog shows progress,
+ * keeps itself open and shows the API's message when it rejects, and closes when it resolves.
+ */
+export function ConfirmDialog({ title, children, confirmLabel, danger, onConfirm, onClose }: { title: string; children: ReactNode; confirmLabel: string; danger?: boolean; onConfirm: () => unknown; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const go = async () => {
+    setBusy(true); setError(null);
+    try { await onConfirm(); onClose(); } catch (e) { setError(e instanceof Error ? e.message : "Something went wrong. Try again."); setBusy(false); }
+  };
+  return (
+    <Dialog title={title} onClose={busy ? () => {} : onClose} footer={<>
+      <button type="button" className="btn btn-line" onClick={onClose} disabled={busy}>Cancel</button>
+      <button type="button" className={`btn ${danger ? "btn-danger" : "btn-dark"}`} onClick={go} disabled={busy} autoFocus>{busy ? "Working…" : confirmLabel}</button>
+    </>}>
+      <div className="confirm">{children}</div>
+      {error && <div className="banner err" role="alert">{error}</div>}
+    </Dialog>
+  );
+}
+
+/* Setup building blocks (apps, API keys, webhooks, project settings). */
+
+/** Copies a value and confirms with a check mark. `children` replaces the default icon-only button content. */
+export function CopyButton({ value, label = "Copy", text }: { value: string; label?: string; text?: boolean }) {
+  const [done, setDone] = useState(false);
+  const toast = useToast();
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1400); }
+    catch { toast("Copy failed. Select the text and copy it by hand."); }
+  };
+  return (
+    <button type="button" className={text ? "btn btn-line" : "ib"} aria-label={label} title={label} onClick={copy}>
+      <Icon name={done ? "check" : "copy"} />{text && (done ? "Copied" : label)}
+    </button>
+  );
+}
+
+/** A secret or key shown masked, with reveal and copy. The store prefix (appl_, goog_ ...) stays visible. */
+export function SecretText({ value, label = "key" }: { value: string; label?: string }) {
+  const [shown, setShown] = useState(false);
+  const cut = value.indexOf("_");
+  const masked = (cut > 0 && cut < 6 ? value.slice(0, cut + 1) : "") + "•".repeat(20);
+  return (
+    <span className="secret">
+      <code aria-label={shown ? undefined : `${label} hidden`}>{shown ? value : masked}</code>
+      <button type="button" className="ib" aria-label={shown ? `Hide ${label}` : `Show ${label}`} aria-pressed={shown} onClick={(e) => { e.stopPropagation(); setShown(!shown); }}><Icon name={shown ? "eyeoff" : "eye"} /></button>
+      <span onClick={(e) => e.stopPropagation()}><CopyButton value={value} label={`Copy ${label}`} /></span>
+    </span>
+  );
+}
+
+/** A read-only value (URL, id) in an input-like hairline box with a copy button. */
+export function CopyField({ value, label }: { value: string; label: string }) {
+  return <div className="copyfield"><code title={value}>{value}</code><CopyButton value={value} label={`Copy ${label}`} /></div>;
+}
+
+/** Code with a copy button. */
+export function CodeBlock({ code, label }: { code: string; label?: string }) {
+  return (
+    <div className="codeblock">
+      <div className="codeblock-h"><span>{label}</span><CopyButton value={code} label={label ? `Copy ${label} code` : "Copy code"} /></div>
+      <pre><code>{code}</code></pre>
+    </div>
+  );
+}
+
+/** A section that starts collapsed (the long store forms keep rarely used settings here). */
+export function Disclosure({ title, sub, children, defaultOpen = false }: { title: ReactNode; sub?: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const id = useId();
+  return (
+    <section className="disc">
+      <button type="button" className="disc-h" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+        <Icon name="chev" className="i chev" /><span><b>{title}</b>{sub && <small>{sub}</small>}</span>
+      </button>
+      {open && <div id={id} className="disc-b">{children}</div>}
+    </section>
+  );
+}
+
+/** One status line: an 8px square in the state colour (DESIGN.md health rows), or the gold live dot. */
+export function StatusLine({ tone, children }: { tone: "ok" | "bad" | "idle" | "live"; children: ReactNode }) {
+  return <p className={`status s-${tone}`} role="status">{tone === "live" ? <span className="live" /> : <i className={`dot ${tone}`} />}<span>{children}</span></p>;
+}
+
+/** A square checkbox with an optional muted hint under the label. */
+export function Check({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode; hint?: ReactNode; disabled?: boolean }) {
+  return (
+    <label className={`check${disabled ? " off" : ""}`}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <span><b>{label}</b>{hint && <small>{hint}</small>}</span>
+    </label>
+  );
+}
+
+/** Drop a file or choose one; the text content is handed over (keys and JSON credentials are small text files). */
+export function FileDrop({ id, accept, prompt, onFile, maxBytes = 64_000 }: { id: string; accept: string; prompt: ReactNode; onFile: (name: string, text: string) => void; maxBytes?: number }) {
+  const [over, setOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const read = async (f: File | undefined) => {
+    if (!f) return;
+    if (f.size > maxBytes) { setError(`${f.name} is too large for a key file.`); return; }
+    setError(null);
+    onFile(f.name, await f.text());
+  };
+  return (
+    <div className={`drop${over ? " over" : ""}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); void read(e.dataTransfer.files[0]); }}>
+      <Icon name="docs" />
+      <span>{prompt}</span>
+      <label htmlFor={id} className="btn btn-line">Choose file</label>
+      <input id={id} className="sr" type="file" accept={accept} onChange={(e) => { void read(e.target.files?.[0]); e.target.value = ""; }} />
+      {error && <span className="err" role="alert">{error}</span>}
+    </div>
+  );
+}

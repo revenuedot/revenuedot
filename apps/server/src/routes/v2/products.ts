@@ -7,7 +7,12 @@ import { body, conflict, expands, notFound, paginate, paramError, scope, type V2
 import { appsById, productShape } from "./shapes.js";
 
 export const PRODUCT_TYPES = ["subscription", "one_time", "consumable", "non_consumable", "non_renewing_subscription"] as const;
-const DURATIONS = ["P1W", "P1M", "P2M", "P3M", "P6M", "P1Y"] as const;
+/**
+ * ISO 8601 period (P1W, P1M, P2M, P3M, P6M, P1Y, or a custom one such as P3D or P2W).
+ * RevenueCat takes only its six presets and only for Test Store products. RevenueDot has no store import yet, so it
+ * keeps the duration for every store: MRR normalisation and the dashboard read it.
+ */
+const Duration = z.string().trim().regex(/^P(?=\d)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?$/, "must be an ISO 8601 period such as P1M, P1Y or P3D");
 
 const ProductCreate = z.object({
   store_identifier: z.string().trim().min(1).max(255),
@@ -15,10 +20,14 @@ const ProductCreate = z.object({
   type: z.enum(PRODUCT_TYPES),
   display_name: z.string().max(255).nullable().optional(),
   price_identifier: z.string().nullable().optional(),
-  subscription: z.object({ duration: z.enum(DURATIONS) }).nullable().optional(),
+  subscription: z.object({ duration: Duration.nullable().optional() }).nullable().optional(),
   title: z.string().max(255).nullable().optional(),
 });
-const ProductUpdate = z.object({ display_name: z.string().max(255).optional(), type: z.enum(PRODUCT_TYPES).optional() });
+const ProductUpdate = z.object({
+  display_name: z.string().max(255).optional(), type: z.enum(PRODUCT_TYPES).optional(),
+  // RevenueDot extension: the duration can be corrected later (null clears it).
+  subscription: z.object({ duration: Duration.nullable() }).optional(),
+});
 
 export function productRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -42,7 +51,6 @@ export function productRoutes(r: V2Router, deps: Deps) {
     const projectId = c.get("projectId");
     const [app] = await db.select().from(schema.apps).where(and(eq(schema.apps.projectId, projectId), eq(schema.apps.id, b.app_id))).limit(1);
     if (!app) throw paramError("app_id does not match an app in this project.", "app_id");
-    if (b.subscription && app.type !== "test_store") throw paramError("subscription.duration is only supported for Test Store products.", "subscription");
     const [dup] = await db.select({ id: schema.products.id }).from(schema.products).where(and(eq(schema.products.appId, app.id), eq(schema.products.storeIdentifier, b.store_identifier))).limit(1);
     if (dup) throw conflict(`A product with store_identifier ${b.store_identifier} already exists for this app.`, "store_identifier");
     const [row] = await db.insert(schema.products).values({
@@ -61,7 +69,10 @@ export function productRoutes(r: V2Router, deps: Deps) {
   r.post(`${P}/:product_id`, scope("project_configuration:products:read_write"), async (c) => {
     const p = await find(c.get("projectId"), c.req.param("product_id"));
     const b = await body(c, ProductUpdate);
-    const [row] = await db.update(schema.products).set({ ...(b.display_name !== undefined ? { displayName: b.display_name } : {}), ...(b.type ? { type: b.type } : {}) })
+    const [row] = await db.update(schema.products).set({
+      ...(b.display_name !== undefined ? { displayName: b.display_name } : {}), ...(b.type ? { type: b.type } : {}),
+      ...(b.subscription ? { duration: b.subscription.duration } : {}),
+    })
       .where(and(eq(schema.products.projectId, p.projectId), eq(schema.products.id, p.id))).returning();
     const apps = await withApp(c, expands(c), "app");
     return c.json(productShape(row!, apps?.get(row!.appId)));

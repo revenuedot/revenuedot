@@ -63,6 +63,7 @@ export async function recordEvent(db: DB, opts: {
   if (subject.autoResumeAt) event.auto_resume_at_ms = subject.autoResumeAt.getTime();
   if (derived.cancelReason) event.cancel_reason = derived.cancelReason;
   if (derived.expirationReason) event.expiration_reason = derived.expirationReason;
+  if (derived.type === "RENEWAL") event.is_trial_conversion = derived.isTrialConversion ?? false;
   if (derived.newProductId) event.new_product_id = derived.newProductId;
   Object.assign(event, opts.extra ?? {});
   const payload = { api_version: "1.0", event };

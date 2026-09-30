@@ -7,3 +7,7 @@ dist/
 *.tsbuildinfo
 .data/
 coverage/
+
+# Playwright
+test-results/
+playwright-report/

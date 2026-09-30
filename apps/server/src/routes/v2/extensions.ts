@@ -7,6 +7,8 @@ import { findCustomer, getOrCreateCustomer } from "../../repo/customers.js";
 import { createSecretKey } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { retryDelivery } from "../../services/webhooks.js";
+import { HISTORY_METRICS, metricHistory, type HistoryMetric } from "../../services/metric-history.js";
+import { customerSummary } from "../../services/customer-summary.js";
 import { V2Error, allows, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { appleKeyConfigured, customerShape, googleKeyConfigured, loadCatalog, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
 
@@ -22,6 +24,8 @@ import { appleKeyConfigured, customerShape, googleKeyConfigured, loadCatalog, pu
  *   POST   /v2/projects/{project_id}/api_keys                                  create; the plaintext key is returned once
  *   DELETE /v2/projects/{project_id}/api_keys/{key_id}
  *   POST   /v2/projects/{project_id}/test_purchases                            simulate a Test Store purchase
+ *   GET    /v2/projects/{project_id}/metrics/history?metric=&days=&environment= daily history behind an Overview card
+ *   GET    /v2/projects/{project_id}/customer_summaries?ids=a,b               revenue, entitlement names, prices per customer
  * Scope `project_configuration:api_keys:read(_write)` is ours too.
  */
 
@@ -262,5 +266,32 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
       subscription: sub ? subscriptionShape(sub, owner.originalAppUserId, cat, rev!.get(sub.id) ?? 0, now) : null,
       purchase: one ? purchaseShape(one, owner.originalAppUserId, cat) : null,
     }, 201);
+  });
+
+  // Overview card history (sparklines, deltas and the 7D / 28D / 90D / 12M periods).
+  r.get(`${P}/metrics/history`, scope("charts_metrics:overview:read"), async (c) => {
+    const metric = c.req.query("metric") as HistoryMetric | undefined;
+    if (!metric || !HISTORY_METRICS.includes(metric)) throw paramError(`metric must be one of ${HISTORY_METRICS.join(", ")}.`, "metric");
+    const days = c.req.query("days") === undefined ? 28 : Number(c.req.query("days"));
+    if (!Number.isInteger(days) || days < 1 || days > 366) throw paramError("days must be a whole number from 1 to 366.", "days");
+    const environment = envOf(c) ?? "production";
+    const now = deps.now();
+    const { metric: _, ...h } = await metricHistory(db, c.get("projectId"), now, metric, days, environment);
+    return c.json({ object: "metric_history", id: metric, currency: "USD", days, environment, resolution: "day", ...h, last_updated_at: now.getTime() });
+  });
+
+  // Dashboard rows for customers, by any of their app user ids (missing ids are left out).
+  r.get(`${P}/customer_summaries`, scope("customer_information:customers:read"), async (c) => {
+    const ids = [...new Set((c.req.queries("ids") ?? []).flatMap((x) => x.split(",")).map((x) => x.trim()).filter(Boolean))];
+    if (!ids.length) throw paramError("ids is required.", "ids");
+    if (ids.length > 100) throw paramError("ids takes at most 100 app user ids.", "ids");
+    const projectId = c.get("projectId");
+    const now = deps.now();
+    const items = [];
+    for (const id of ids) {
+      const cust = await findCustomer(db, projectId, id);
+      if (cust) items.push(await customerSummary(db, cust, id, now));
+    }
+    return c.json(listOf(c, items, null));
   });
 }

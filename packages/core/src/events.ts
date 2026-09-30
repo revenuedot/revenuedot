@@ -24,6 +24,8 @@ export interface DerivedEvent {
   newProductId?: string;
   /** For refunds the price is negative. */
   isRefund?: boolean;
+  /** RENEWAL only: the first paid period after a free trial. */
+  isTrialConversion?: boolean;
 }
 
 const t = (d: Date | null | undefined) => (d ? d.getTime() : null);
@@ -43,7 +45,7 @@ export function diffSubscription(prev: Subscription | null, next: Subscription, 
   if (prev.productIdentifier !== next.productIdentifier) out.push({ type: "PRODUCT_CHANGE", newProductId: next.productIdentifier });
   else if (t(next.purchaseDate)! > t(prev.purchaseDate)! && (next.storeTransactionId ?? "") !== (prev.storeTransactionId ?? "")) {
     // A renewal, or a lapsed customer resubscribing: RevenueCat sends RENEWAL for both. INITIAL_PURCHASE is only the first purchase of a chain.
-    out.push({ type: "RENEWAL" });
+    out.push({ type: "RENEWAL", isTrialConversion: prev.periodType === "trial" && next.periodType !== "trial" });
   } else if (next.expiresDate && prev.expiresDate && next.expiresDate > prev.expiresDate && t(next.purchaseDate) === t(prev.purchaseDate)) {
     out.push({ type: "SUBSCRIPTION_EXTENDED" });
   }

@@ -1,0 +1,101 @@
+import { useQuery } from "@tanstack/react-query";
+import { api, type List } from "../../lib/api";
+
+/** API shapes and queries shared by the setup pages (apps, API keys, integrations, project settings). */
+
+export type AppType = "app_store" | "mac_app_store" | "play_store" | "amazon" | "stripe" | "rc_billing" | "roku" | "paddle" | "test_store";
+
+export interface App {
+  object: "app"; id: string; name: string; type: AppType; project_id: string; created_at: number; custom_url_scheme?: string;
+  app_store?: { bundle_id: string; subscription_key_configured: boolean; app_store_connect_api_key_configured: boolean; app_store_connect_vendor_number: string | null };
+  mac_app_store?: { bundle_id: string };
+  play_store?: { package_name: string; play_service_account_credentials_configured: boolean };
+  amazon?: { package_name: string };
+}
+
+export interface PublicKey { object: "public_api_key"; id: string; key: string; environment: "production" | "sandbox"; app_id: string; created_at: number }
+
+export interface StoreSettings {
+  object: "app_store_settings"; app_id: string; type: AppType; api_origin: string;
+  notification_url: string | null; notification_forward_url: string | null;
+  last_notification_at: number | null; last_notification_error: string | null;
+  last_forward: { status: number; at: number } | null;
+  track_new_purchases: boolean; allow_unsigned_receipts: boolean;
+  credentials: {
+    subscription_key: { configured: boolean; key_id: string | null; issuer_id: string | null };
+    app_store_connect_api_key: { configured: boolean; key_id: string | null; issuer_id: string | null; vendor_number: string | null };
+    shared_secret: { configured: boolean };
+    play_service_account: { configured: boolean; client_email: string | null };
+    xcode_certificate: { configured: boolean };
+  };
+}
+
+export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string }
+
+export interface SetupHealth {
+  apps: { id: string; name: string; type: AppType; notification_url: string | null; last_notification_at: number | null; credentials_configured: boolean }[];
+  webhooks: { total: number; failing: { id: string; name: string; last_status: number | null; last_error: string | null }[] };
+}
+
+export interface Webhook {
+  object: "webhook_integration"; id: string; project_id: string; name: string; url: string; environment: "production" | "sandbox" | null;
+  event_types: string[]; app_id: string | null; created_at: number; signing_secret?: string;
+}
+
+export interface Delivery {
+  object: "webhook_delivery"; id: string; webhook_integration_id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed";
+  attempts: number; next_attempt_at: number | null; response_status: number | null; response_ms: number | null; last_error: string | null; created_at: number;
+}
+
+export interface SecretKey { object: "api_key"; id: string; name: string; prefix: string; permissions: string[]; created_at: number; last_used_at: number | null; key?: string }
+
+export type TransferBehavior = "transfer" | "transfer_if_no_active" | "keep" | "share";
+export interface ProjectSettings { object: "project"; id: string; name: string; created_at: number; transfer_behavior: TransferBehavior; sandbox_transfer_behavior: TransferBehavior | null }
+
+export interface Collaborator { object: "collaborator"; id: string; name: string | null; email: string; role: string; accepted_at: number | null; has_mfa: boolean }
+
+export interface Product { object: "product"; id: string; store_identifier: string; type: string; display_name: string | null; app_id: string }
+
+export const STORES: Record<string, { label: string; icon: string; idLabel?: string; idField?: "bundle_id" | "package_name"; notif?: "apple" | "google" }> = {
+  app_store: { label: "App Store", icon: "apple", idLabel: "Bundle ID", idField: "bundle_id", notif: "apple" },
+  mac_app_store: { label: "Mac App Store", icon: "apple", idLabel: "Bundle ID", idField: "bundle_id", notif: "apple" },
+  play_store: { label: "Google Play", icon: "play", idLabel: "Package name", idField: "package_name", notif: "google" },
+  test_store: { label: "Test Store", icon: "flask" },
+  amazon: { label: "Amazon Appstore", icon: "apps", idLabel: "Package name", idField: "package_name" },
+  stripe: { label: "Stripe", icon: "web" }, rc_billing: { label: "Web Billing", icon: "web" }, roku: { label: "Roku", icon: "apps" }, paddle: { label: "Paddle", icon: "web" },
+};
+
+export const storeId = (a: App) => a.app_store?.bundle_id ?? a.mac_app_store?.bundle_id ?? a.play_store?.package_name ?? a.amazon?.package_name ?? null;
+
+const all = async <T,>(path: string): Promise<T[]> => {
+  const out: T[] = [];
+  let next: string | null = `${path}${path.includes("?") ? "&" : "?"}limit=100`;
+  for (let i = 0; next && i < 20; i++) {
+    const page: List<T> = await api<List<T>>(next);
+    out.push(...page.items);
+    next = page.next_page;
+  }
+  return out;
+};
+
+export const base = (pid: string) => `/v2/projects/${encodeURIComponent(pid)}`;
+
+export const useApps = (pid: string) => useQuery({ queryKey: ["apps", pid], queryFn: () => all<App>(`${base(pid)}/apps`), enabled: !!pid });
+export const useApp = (pid: string, appId: string) => useQuery({ queryKey: ["app", pid, appId], queryFn: () => api<App>(`${base(pid)}/apps/${encodeURIComponent(appId)}`), enabled: !!pid && !!appId, retry: false });
+export const usePublicKey = (pid: string, appId: string) => useQuery({
+  queryKey: ["public_key", pid, appId], queryFn: async () => (await api<List<PublicKey>>(`${base(pid)}/apps/${encodeURIComponent(appId)}/public_api_keys`)).items[0] ?? null, enabled: !!appId,
+});
+/** Live: the configuration page shows "last received" and flips to healthy while the developer is setting it up. */
+export const useStoreSettings = (pid: string, appId: string) => useQuery({
+  queryKey: ["store_settings", pid, appId], queryFn: () => api<StoreSettings>(`${base(pid)}/apps/${encodeURIComponent(appId)}/store_settings`), enabled: !!appId, refetchInterval: 10_000,
+});
+export const useSetupHealth = (pid: string) => useQuery({ queryKey: ["setup_health", pid], queryFn: () => api<SetupHealth>(`${base(pid)}/setup_health`), enabled: !!pid, refetchInterval: 15_000 });
+export const useWebhooks = (pid: string) => useQuery({ queryKey: ["webhooks", pid], queryFn: () => all<Webhook>(`${base(pid)}/integrations/webhooks`), enabled: !!pid });
+export const useProducts = (pid: string, appId?: string) => useQuery({
+  queryKey: ["products", pid, appId ?? "all"], queryFn: () => all<Product>(`${base(pid)}/products${appId ? `?app_id=${encodeURIComponent(appId)}` : ""}`), enabled: !!pid,
+});
+
+/** The server this dashboard talks to: what the SDK's proxy URL and the stores' notification URLs point at. */
+export const apiOrigin = () => window.location.origin;
+
+export const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong. Try again.");

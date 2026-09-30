@@ -1,0 +1,128 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, ApiError, type List } from "../../lib/api";
+
+/** Product catalog data: RevenueCat API v2 shapes, read through the dashboard session. */
+
+export interface App {
+  object: "app"; id: string; name: string; type: string; created_at: number; project_id: string;
+  app_store?: { bundle_id: string }; mac_app_store?: { bundle_id: string }; play_store?: { package_name: string }; amazon?: { package_name: string };
+}
+export interface Product {
+  object: "product"; id: string; store_identifier: string; type: string; state: "active" | "inactive"; created_at: number; app_id: string;
+  display_name: string | null; subscription?: { duration: string | null }; one_time?: { is_consumable: boolean | null };
+}
+export interface Entitlement { object: "entitlement"; id: string; lookup_key: string; display_name: string; created_at: number; state: "active" | "inactive"; products?: List<Product> }
+export interface PackageProduct { product: Product; eligibility_criteria: "all" | "google_sdk_lt_6" | "google_sdk_ge_6" }
+export interface Package { object: "package"; id: string; lookup_key: string; display_name: string; position: number; created_at: number; products?: List<PackageProduct> }
+export interface Offering {
+  object: "offering"; id: string; lookup_key: string; display_name: string; is_current: boolean; created_at: number; state: "active" | "inactive";
+  metadata: Record<string, unknown> | null; packages?: List<Package>;
+}
+
+/** Reads every page of a v2 list (100 per page). */
+export async function listAll<T>(path: string): Promise<T[]> {
+  const out: T[] = [];
+  let url: string | null = `${path}${path.includes("?") ? "&" : "?"}limit=100`;
+  while (url) {
+    const page: List<T> = await api<List<T>>(url);
+    out.push(...page.items);
+    url = page.next_page;
+  }
+  return out;
+}
+
+export const v2 = (pid: string) => `/v2/projects/${encodeURIComponent(pid)}`;
+export const catalogKey = (pid: string) => ["catalog", pid] as const;
+
+export const useApps = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "apps"], queryFn: () => listAll<App>(`${v2(pid)}/apps`), enabled: !!pid });
+export const useProducts = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "products"], queryFn: () => listAll<Product>(`${v2(pid)}/products`), enabled: !!pid });
+export const useEntitlements = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "entitlements"], queryFn: () => listAll<Entitlement>(`${v2(pid)}/entitlements?expand=items.product`), enabled: !!pid });
+export const useOfferings = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "offerings"], queryFn: () => listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`), enabled: !!pid });
+
+/** Every catalog mutation refreshes the whole catalog: products, entitlements and offerings reference each other. */
+export function useRefreshCatalog(pid: string) {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: catalogKey(pid) });
+}
+
+/** RevenueCat's reserved package identifiers, in the order its New Offering form lists them. The SDK maps each to a package type. */
+export const PACKAGE_TYPES: { key: string; label: string }[] = [
+  { key: "$rc_monthly", label: "Monthly" }, { key: "$rc_annual", label: "Annual" }, { key: "$rc_six_month", label: "Six Months" },
+  { key: "$rc_three_month", label: "Three Months" }, { key: "$rc_two_month", label: "Two Months" }, { key: "$rc_weekly", label: "Weekly" },
+  { key: "$rc_lifetime", label: "Lifetime" },
+];
+export const packageLabel = (key: string) => PACKAGE_TYPES.find((p) => p.key === key)?.label ?? "Custom";
+
+/** Custom package identifiers: letters, digits, `_ - .`; the `$rc_` prefix is reserved (the SDK reads unknown `$rc_` ids as UNKNOWN). */
+export function customPackageError(v: string): string | null {
+  if (!v.trim()) return "Enter an identifier for the custom package.";
+  if (v.startsWith("$rc_")) return "Identifiers starting with $rc_ are reserved. Pick one of the preset identifiers or drop the prefix.";
+  if (!/^[A-Za-z0-9_.\-]+$/.test(v)) return "Use letters, digits, underscores, dots or dashes only.";
+  if (v.length > 200) return "Use 200 characters or fewer.";
+  return null;
+}
+
+/** Offering and entitlement identifiers the SDK reads by key. */
+export function lookupKeyError(v: string, what: string): string | null {
+  if (!v.trim()) return `Enter an identifier for the ${what}.`;
+  if (/\s/.test(v)) return "Identifiers cannot contain spaces. Use underscores instead, e.g. black_friday.";
+  if (v.length > 200) return "Use 200 characters or fewer.";
+  return null;
+}
+
+export const DURATIONS: { iso: string; label: string }[] = [
+  { iso: "P1W", label: "Weekly" }, { iso: "P1M", label: "Monthly" }, { iso: "P2M", label: "2 months" },
+  { iso: "P3M", label: "3 months" }, { iso: "P6M", label: "6 months" }, { iso: "P1Y", label: "Yearly" },
+];
+export const ISO_PERIOD = /^P(?=\d)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?$/;
+
+/** "P1M" -> "1 month", "P2W" -> "2 weeks", "P1Y6M" -> "1 year 6 months". */
+export function durationLabel(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const m = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?$/.exec(iso);
+  if (!m) return iso;
+  const parts = [["year", m[1]], ["month", m[2]], ["week", m[3]], ["day", m[4]]].filter(([, n]) => n && Number(n) > 0)
+    .map(([u, n]) => `${Number(n)} ${u}${Number(n) === 1 ? "" : "s"}`);
+  return parts.join(" ") || iso;
+}
+
+export const PRODUCT_TYPES: { value: string; label: string; help: string }[] = [
+  { value: "subscription", label: "Subscription", help: "Renews automatically every period." },
+  { value: "consumable", label: "Consumable", help: "Bought again and again, e.g. coins." },
+  { value: "non_consumable", label: "Non-consumable", help: "Bought once, owned forever, e.g. lifetime access." },
+];
+const TYPE_LABEL: Record<string, string> = { subscription: "Subscription", consumable: "Consumable", non_consumable: "Non-consumable", one_time: "One-time", non_renewing_subscription: "Non-renewing" };
+export const typeLabel = (t: string) => TYPE_LABEL[t] ?? t;
+
+/** Two-letter store codes for the square store mark (brand logos are not ours to use). */
+export const STORE_CODE: Record<string, string> = { app_store: "AS", mac_app_store: "MA", play_store: "GP", amazon: "AZ", stripe: "ST", rc_billing: "WB", roku: "RK", paddle: "PD", test_store: "TS" };
+
+export const appIdentifier = (a: App) => a.app_store?.bundle_id ?? a.mac_app_store?.bundle_id ?? a.play_store?.package_name ?? a.amazon?.package_name ?? null;
+
+/** Placeholder and help for the store identifier field, per store. */
+export function storeIdHelp(type: string | undefined): { placeholder: string; hint: string } {
+  switch (type) {
+    case "app_store": case "mac_app_store": return { placeholder: "com.example.pro.monthly", hint: "The product ID from App Store Connect." };
+    case "play_store": return { placeholder: "pro_monthly:monthly-base", hint: "Subscriptions: productId:basePlanId. One-time products: the SKU." };
+    case "amazon": return { placeholder: "com.example.pro.monthly", hint: "The term SKU for subscriptions, the SKU for one-time products." };
+    case "stripe": case "rc_billing": return { placeholder: "prod_1234", hint: "The Stripe product ID, starting with prod_." };
+    case "test_store": return { placeholder: "pro_monthly", hint: "Any identifier. Test Store purchases need no store setup." };
+    default: return { placeholder: "pro_monthly", hint: "The product identifier in the store." };
+  }
+}
+
+export const productName = (p: Product) => p.display_name || p.store_identifier;
+
+/** The API's message, or a plain fallback. */
+export const errMsg = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong. Try again.");
+export const errParam = (e: unknown) => (e instanceof ApiError && e.body && typeof e.body === "object" && "param" in e.body ? String((e.body as { param: unknown }).param) : null);
+export const isConflict = (e: unknown) => e instanceof ApiError && e.status === 409;
+
+/** A free identifier for a copy: `sale_copy`, `sale_copy_2` ... */
+export function copyKey(base: string, taken: Set<string>) {
+  let k = `${base}_copy`;
+  for (let i = 2; taken.has(k); i++) k = `${base}_copy_${i}`;
+  return k;
+}
+
+export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

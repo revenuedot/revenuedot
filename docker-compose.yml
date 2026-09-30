@@ -3,7 +3,7 @@
 services:
   revenuedot:
     build: .
-    ports: ["8787:8787"]
+    ports: ["${REVENUEDOT_PORT:-8787}:8787"]
     environment:
       DATABASE_URL: postgres://revenuedot:${POSTGRES_PASSWORD:-revenuedot}@db:5432/revenuedot
       PORT: "8787"

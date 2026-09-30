@@ -118,7 +118,16 @@ describe("products", () => {
     // Same store id on another app is fine.
     expect((await call("POST", PRODUCTS, {}, { json: { store_identifier: "pro_weekly", app_id: "app_ios", type: "subscription" } })).status).toBe(201);
     expect((await call("POST", PRODUCTS, {}, { json: { store_identifier: "x", app_id: "nope", type: "subscription" } })).body.param).toBe("app_id");
-    expect((await call("POST", PRODUCTS, {}, { json: { store_identifier: "x", app_id: "app_ios", type: "subscription", subscription: { duration: "P1W" } } })).status).toBe(400);
+    // RevenueDot keeps a duration for every store (RevenueCat ignores it outside the Test Store); custom ISO periods are allowed.
+    const ios = await call("POST", PRODUCTS, {}, { json: { store_identifier: "x", app_id: "app_ios", type: "subscription", subscription: { duration: "P2W" } } });
+    expect(ios.status).toBe(201);
+    expect(ios.body.subscription.duration).toBe("P2W");
+    const badDuration = await call("POST", PRODUCTS, {}, { json: { store_identifier: "y", app_id: "app_ios", type: "subscription", subscription: { duration: "monthly" } } });
+    expect(badDuration.status).toBe(400);
+    expect(badDuration.body.param).toBe("subscription.duration");
+    const fixed = await call("POST", `${PRODUCTS}/{product_id}`, { product_id: ios.body.id }, { json: { subscription: { duration: "P1M" } } });
+    expect(fixed.body.subscription.duration).toBe("P1M");
+    expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: ios.body.id }, { json: { subscription: { duration: "1 month" } } })).status).toBe(400);
 
     const filtered = await call("GET", PRODUCTS, {}, { query: "app_id=app_test&expand=items.app" });
     expect(filtered.body.items.every((p: any) => p.app_id === "app_test" && p.app.type === "test_store")).toBe(true);

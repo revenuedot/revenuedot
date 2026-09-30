@@ -15,6 +15,7 @@ import { customerRoutes } from "./customers.js";
 import { metricsRoutes } from "./metrics.js";
 import { integrationRoutes } from "./integrations.js";
 import { extensionRoutes } from "./extensions.js";
+import { setupRoutes } from "./setup.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -73,6 +74,7 @@ export function v2Routes(deps: Deps) {
   metricsRoutes(r, deps);
   integrationRoutes(r, deps);
   extensionRoutes(r, deps);
+  setupRoutes(r, deps);
 
   r.all("/v2/*", () => { throw new V2Error(404, "resource_missing", "Resource not found."); });
   return r;

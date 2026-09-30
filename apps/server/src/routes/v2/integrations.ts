@@ -10,12 +10,16 @@ export const WEBHOOK_EVENT_TYPES = [
   "initial_purchase", "renewal", "product_change", "cancellation", "billing_issue", "non_renewing_purchase", "uncancellation", "transfer",
   "subscription_paused", "expiration", "subscription_extended", "invoice_issuance", "temporary_entitlement_grant", "refund_reversed", "virtual_currency_transaction",
 ] as const;
+/** The dashboard also filters on the other RevenueCat event types (TEST, experiment, redemption, alias, price consent). */
+export const ALL_WEBHOOK_EVENT_TYPES = [
+  ...WEBHOOK_EVENT_TYPES, "test", "experiment_enrollment", "purchase_redeemed", "subscriber_alias", "price_increase_consent_required", "price_increase_consent_approved",
+] as const;
 
 const url = z.string().url().refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL").refine((u) => u.length <= 2048, "is too long");
 const Env = z.enum(["production", "sandbox"]).nullable().optional();
 const Create = z.object({
   name: z.string().trim().min(1).max(255), url, authorization_header: z.string().max(2048).nullable().optional(),
-  environment: Env, event_types: z.array(z.enum(WEBHOOK_EVENT_TYPES)).optional(), app_id: z.string().min(1).nullable().optional(),
+  environment: Env, event_types: z.array(z.enum(ALL_WEBHOOK_EVENT_TYPES)).optional(), app_id: z.string().min(1).nullable().optional(),
 });
 const Update = Create.partial();
 

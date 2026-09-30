@@ -36,6 +36,20 @@ const P: Record<string, ReactNode> = {
   box: <><rect x="2.5" y="3.5" width="11" height="10" /><path d="M2.5 6.5h11" /></>,
   userplus: <><circle cx="7" cy="5.5" r="2.5" /><path d="M2 14c.7-2.4 2.7-3.8 5-3.8M12 9v5M9.5 11.5h5" /></>,
   refresh: <path d="M13.5 8A5.5 5.5 0 113 5.2M3 2v3.2h3.2" />,
+  more: <><circle cx="3.5" cy="8" r=".6" /><circle cx="8" cy="8" r=".6" /><circle cx="12.5" cy="8" r=".6" /></>,
+  grip: <><circle cx="6" cy="4" r=".5" /><circle cx="10" cy="4" r=".5" /><circle cx="6" cy="8" r=".5" /><circle cx="10" cy="8" r=".5" /><circle cx="6" cy="12" r=".5" /><circle cx="10" cy="12" r=".5" /></>,
+  edit: <path d="M10.5 2.5l3 3L6 13H3v-3z" />,
+  archive: <><rect x="2" y="3" width="12" height="3" /><path d="M3 6v7.5h10V6M6.5 9h3" /></>,
+  link: <path d="M7 9a2.5 2.5 0 003.5 0l2.5-2.5a2.5 2.5 0 00-3.5-3.5L8.8 3.7M9 7a2.5 2.5 0 00-3.5 0L3 9.5A2.5 2.5 0 006.5 13l.7-.7" />,
+  duplicate: <><rect x="5" y="5" width="8.5" height="8.5" /><path d="M3 10.5V2.5h8M9.25 7.5v4M7.25 9.5h4" /></>,
+  up: <path d="M4 10l4-4 4 4" />,
+  down: <path d="M4 6l4 4 4-4" />,
+  eye: <><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" /><circle cx="8" cy="8" r="2" /></>,
+  eyeoff: <><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" /><path d="M2.5 2.5l11 11" /></>,
+  send: <path d="M14 2L7 9M14 2l-4.5 12L7 9 2 6.5z" />,
+  apple: <path d="M10.5 1.5c0 1.4-1.1 2.6-2.4 2.6 0-1.4 1.1-2.6 2.4-2.6zM12.9 11c-.5 1.2-1.3 2.7-2.4 2.7-.9 0-1.1-.6-2.3-.6s-1.5.6-2.3.6c-1.1 0-2.2-1.8-2.7-3.2-.8-2.3-.3-5 1.9-5.3.9-.1 1.7.6 2.2.6s1.4-.7 2.5-.6c.5 0 1.9.2 2.6 1.4-2.1 1.2-1.7 4 .5 4.4z" />,
+  play: <path d="M3.5 2l9.5 6-9.5 6z" />,
+  flask: <path d="M6 2v4.5L2.5 13a1 1 0 00.9 1.5h9.2a1 1 0 00.9-1.5L10 6.5V2M5 2h6M4.5 10h7" />,
 };
 
 export function Icon({ name, className = "i", title }: { name: keyof typeof P | string; className?: string; title?: string }) {

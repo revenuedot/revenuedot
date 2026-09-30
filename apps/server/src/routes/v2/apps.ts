@@ -40,6 +40,16 @@ function splitDetails(type: string, d: Record<string, unknown> | null | undefine
   return { id, rest: out };
 }
 
+/** Takes `notification_forward_url` out of the details: undefined = unchanged, null or "" = off, else an http(s) URL. */
+function forwardUrl(rest: Record<string, unknown>): string | null | undefined {
+  if (!("notification_forward_url" in rest)) return undefined;
+  const v = rest.notification_forward_url;
+  delete rest.notification_forward_url;
+  if (v === null || v === "") return null;
+  if (typeof v !== "string" || !/^https?:\/\/[^\s/]+/i.test(v.trim()) || v.length > 2048) throw paramError("notification_forward_url must be an http(s) URL.", "notification_forward_url");
+  return v.trim();
+}
+
 const randomKey = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
 
 export function appRoutes(r: V2Router, deps: Deps) {
@@ -75,10 +85,12 @@ export function appRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, AppUpdate);
     for (const t of APP_TYPES) if (t !== a.type && b[t as keyof typeof b] !== undefined) throw paramError(`${t} details can only be sent for ${t} apps.`, t);
     const { id: bundleId, rest } = splitDetails(a.type, b[a.type as keyof typeof b] as Record<string, unknown> | undefined);
+    // RevenueDot extension: `notification_forward_url` (store notifications are copied there, e.g. to RevenueCat during a dual run).
+    const fwd = forwardUrl(rest);
     // null clears a credential; other values replace it.
     const credentials: Record<string, unknown> = { ...a.credentials };
     for (const [k, v] of Object.entries(rest)) { if (v === null) delete credentials[k]; else credentials[k] = v; }
-    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), credentials })
+    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials })
       .where(and(eq(schema.apps.projectId, a.projectId), eq(schema.apps.id, a.id))).returning();
     return c.json(appShape(row!));
   });
