@@ -188,14 +188,17 @@ export function googleNotificationRoutes(deps: Deps) {
   return r;
 }
 
+/** A forward that has not answered in 10 seconds is recorded as no answer (status 0). */
+export const FORWARD_TIMEOUT_MS = 10_000;
+
 /** Fire-and-forget copy of the raw body to the app's forward URL; the answer's status is recorded (0 = no answer). */
 function forward(c: { executionCtx?: unknown }, deps: Deps, client: GooglePlayClient, app: AppRecord, id: string, raw: string) {
   const url = app.notificationForwardUrl!;
   const p = (async () => {
     let status = 0;
     try {
-      const init: RequestInit = { method: "POST", headers: { "content-type": "application/json" }, body: raw };
-      const res = deps.fetch ? await deps.fetch(url, { ...init, signal: AbortSignal.timeout(10_000) }) : await client.http(url, init);
+      const f = deps.fetch ?? client.fetchImpl;
+      const res = await f(url, { method: "POST", headers: { "content-type": "application/json" }, body: raw, signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS) });
       status = res.status;
     } catch { status = 0; }
     await deps.db.update(storeNotifications).set({ forwardStatus: status }).where(eq(storeNotifications.id, id));

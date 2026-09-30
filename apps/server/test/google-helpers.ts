@@ -39,7 +39,7 @@ export class FakeGoogle {
   forwarded: Call[] = [];
   jwks: unknown = { keys: [] };
   /** Return a Response to override any call (e.g. to simulate outages). */
-  override: ((url: string, method: string) => Response | Promise<Response> | undefined) | null = null;
+  override: ((url: string, method: string, init: RequestInit) => Response | Promise<Response> | undefined) | null = null;
 
   constructor(private publicKey: KeyLike, public now: () => Date = () => new Date()) {}
 
@@ -49,7 +49,7 @@ export class FakeGoogle {
     const headers = new Headers(init.headers);
     const body = typeof init.body === "string" ? init.body : "";
     const call = { method, url, body, auth: headers.get("authorization") };
-    const o = await this.override?.(url, method);
+    const o = await this.override?.(url, method, init);
     if (o) { this.calls.push(call); return o; }
     if (url === "https://oauth2.googleapis.com/token") {
       const form = new URLSearchParams(body);
@@ -174,11 +174,12 @@ export interface Env {
 }
 
 /** Contract harness (project, apps, catalog) plus the server wired to a fake Google, with the Play app's credentials set. */
-export async function env(keys: Keys, credentials: Record<string, unknown> = {}): Promise<Env> {
+/** `depsFetch: false` leaves Deps.fetch unset (the Node server's default), so outbound calls use the store client's fetch. */
+export async function env(keys: Keys, credentials: Record<string, unknown> = {}, opts: { depsFetch?: boolean } = {}): Promise<Env> {
   const h = await harness();
   const g = new FakeGoogle(keys.publicKey, h.now);
   const store = createGoogleStore({ fetch: g.fetch, now: h.now, timeoutMs: 200 });
-  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), play_store: store }, fetch: g.fetch });
+  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), play_store: store }, fetch: opts.depsFetch === false ? undefined : g.fetch });
   await h.db.update(schema.apps).set({ credentials: { service_account: keys.sa, ...credentials } }).where(eq(schema.apps.id, h.ids.androidApp));
   const extra = [
     { id: "gp_premium", storeIdentifier: "premium:monthly", type: "subscription", duration: "P1M" },

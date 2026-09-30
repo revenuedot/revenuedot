@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeProtectedHeader, jwtVerify } from "jose";
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
@@ -6,7 +6,7 @@ import { CustomerInfoSchema, ErrorSchema } from "../../../packages/contract/src/
 import { tick } from "../src/services/tick.js";
 import { GooglePlayClient } from "../src/stores/google/api.js";
 import { purchaseTokensForOrders } from "../src/stores/google/index.js";
-import { flushGoogleForwards } from "../src/stores/google/notifications.js";
+import { flushGoogleForwards, FORWARD_TIMEOUT_MS } from "../src/stores/google/notifications.js";
 import { API, env, FakeGoogle, makeKeys, pushToken, sub, type Env, type Keys } from "./google-helpers.js";
 
 const DAY = 86_400_000;
@@ -196,6 +196,31 @@ describe("Google real-time developer notifications", () => {
     expect(await again.json()).toEqual({ status: "duplicate" });
     await flushGoogleForwards();
     expect(e.g.forwarded).toHaveLength(1);
+  });
+
+  it("a forward that does not answer within 10 seconds is recorded as status 0, also without an injected fetch (the Node server)", async () => {
+    await e.h.close();
+    e = await env(keys, {}, { depsFetch: false });
+    await e.h.db.update(schema.apps).set({ notificationForwardUrl: "https://hooks.example.com/slow" }).where(eq(schema.apps.id, e.h.ids.androidApp));
+    const signals: (AbortSignal | null | undefined)[] = [];
+    e.g.override = (url, _m, init) => {
+      if (!url.startsWith("https://hooks.example.com/")) return undefined;
+      signals.push(init.signal);
+      return new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+    };
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const asked: number[] = [];
+    const spy = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => { asked.push(ms); return timeout(ms === FORWARD_TIMEOUT_MS ? 20 : ms); });
+    try {
+      expect((await e.rtdn({ testNotification: { version: "1.0" } })).status).toBe(200);
+      await flushGoogleForwards();
+    } finally { spy.mockRestore(); }
+    expect(FORWARD_TIMEOUT_MS).toBe(10_000);
+    expect(asked).toContain(10_000);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+    const [row] = await e.h.db.select().from(schema.storeNotifications);
+    expect(row!.forwardStatus).toBe(0);
   });
 
   it("renewal produces RENEWAL with the new order and period", async () => {

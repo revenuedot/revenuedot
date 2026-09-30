@@ -143,6 +143,9 @@ export class GooglePlayClient {
 
   constructor(private opts: GoogleClientOptions = {}) { this.customFetch = !!opts.fetch; }
 
+  /** The raw fetch this client uses (the injected one, else the global). */
+  get fetchImpl(): typeof fetch { return this.opts.fetch ?? ((u, i) => globalThis.fetch(u, i)); }
+
   /** fetch with a timeout; network errors and timeouts become transient GoogleApiErrors. */
   async http(url: string, init: RequestInit = {}): Promise<Response> {
     const f = this.opts.fetch ?? globalThis.fetch;
