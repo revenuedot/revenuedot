@@ -85,7 +85,7 @@ export function sdkRoutes(deps: Deps) {
       storeCountry: b.store_country ?? null, normalDuration: b.normal_duration ?? null, isRestore: !!b.is_restore,
       isSandboxHeader: c.req.header("x-is-sandbox") === "true", storeUserId: b.store_user_id ?? null,
     };
-    let { customer } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
+    let { customer, created } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
     if (b.attributes) await setAttributes(deps.db, customer.id, b.attributes, now);
     const key = c.req.header("authorization")!.replace(/^Bearer\s+/i, "").trim();
     if (!app.id) throw new RCError(400, Codes.BAD_REQUEST, "X-Platform header is required with a secret key.");
@@ -95,6 +95,8 @@ export function sdkRoutes(deps: Deps) {
     const purchases = input.fetchToken ? await adapter.verify(app, input, await productInfo(deps.db, app.id)) : [];
     customer = await applyPurchases(deps.db, customer, purchases, {
       projectId: app.projectId, appId: app.id, appUserId, now, presentedOfferingId: b.presented_offering_identifier ?? null, fromDevice: true,
+      // A customer this receipt creates (a restore on a new install, a server-side post) was first seen at its earliest purchase.
+      customerCreated: created,
     });
     await touch(deps.db, customer.id, now, reqInfo(c));
     deps.kick?.();

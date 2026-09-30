@@ -33,10 +33,11 @@ describe("metrics history", () => {
     expect(r28.body.value).toBe(overview.body.metrics.find((m: any) => m.id === "revenue").value);
     expect((await history("metric=revenue&days=7")).body).toMatchObject({ environment: "production", value: 0, previous_value: 0 });
 
-    // Customers are first seen when the purchase is posted (now), not at the purchase date.
+    // A customer created by posting an older purchase was first seen at that purchase: h_c (Aug 22) is outside the 7 days.
     const nc = await history("metric=new_customers&days=7");
-    expect(nc.body.value).toBe(3);
-    expect(nc.body.values.at(-1).value).toBe(3);
+    expect(nc.body.value).toBe(2);
+    expect(nc.body.values.at(-1).value).toBe(1);
+    expect(nc.body.values.at(-2).value).toBe(1);
     const au = await history("metric=active_users&days=90");
     expect(au.body).toMatchObject({ value: 3, previous_value: null, values: null });
   });
