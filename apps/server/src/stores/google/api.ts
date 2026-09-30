@@ -1,4 +1,4 @@
-import { importPKCS8, SignJWT } from "jose";
+import { importPKCS8, SignJWT, type KeyLike } from "jose";
 import { Codes, RCError } from "../../errors.js";
 import type { AppRow } from "../types.js";
 
@@ -121,7 +121,7 @@ const enc = encodeURIComponent;
 
 export class GooglePlayClient {
   private tokens = new Map<string, { token: string; expiresAt: number }>();
-  private keys = new Map<string, CryptoKey>();
+  private keys = new Map<string, KeyLike>();
   readonly customFetch: boolean;
 
   constructor(private opts: GoogleClientOptions = {}) { this.customFetch = !!opts.fetch; }
@@ -154,12 +154,13 @@ export class GooglePlayClient {
       }
       this.keys.set(sa.private_key, key);
     }
+    const signingKey: KeyLike = key;
     const aud = sa.token_uri ?? OAUTH_TOKEN_URL;
     const iat = Math.floor(nowMs / 1000);
     const assertion = await new SignJWT({ scope: ANDROID_PUBLISHER_SCOPE })
       .setProtectedHeader({ alg: "RS256", typ: "JWT", ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) })
       .setIssuer(sa.client_email).setAudience(aud).setIssuedAt(iat).setExpirationTime(iat + 3600)
-      .sign(key);
+      .sign(signingKey);
     const res = await this.http(aud, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },

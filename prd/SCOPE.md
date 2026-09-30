@@ -39,7 +39,8 @@ Goal: an indie or small team on iOS, Android, React Native or Flutter moves off 
 | 1.12 | **Cloud** | The same build on Workers plus Hyperdrive, with sign-up and a free plan. Billing plans come in Tier 2 |
 | 1.13 | **SDK forks, all of them** | An automated fork pipeline (upstream tag → rename script → our signing key → our host → contract tests → publish) for iOS, Android, the shared hybrid layer, React Native (and its paywall UI), Flutter, web, Capacitor, Kotlin Multiplatform, Unity and Cordova. Order: the three core repos first, since every wrapper depends on them, then by downloads. Also fixes the Flutter web proxy bug and the web SDK's key-prefix check |
 | 1.14 | **AI-native basics** | OAuth MCP server with about 12 tools (catalog, customers, grant and revoke entitlements, webhooks, import status); `llms.txt`; a "migrate from RevenueCat" agent skill |
-| 1.15 | **Docs** | Quickstart, migration guide, a compatibility table by SDK version, self-host guide, API reference built from our OpenAPI |
+| 1.15 | **Docs** | Everything public in `revenuedot/docs`: quickstart, concepts, per-SDK guides, store setup, webhooks, API reference generated from our OpenAPI, self-host guide, help center, blog, migration guides, `llms.txt` and `llms-full.txt` (see `prd/ecosystem/PRD.md`) |
+| 1.17 | **Examples and cookbook** | `revenuedot/examples`: a runnable sample app or backend for every popular stack (mobile, web, 20+ backends, self-host recipes, migration diffs), all with the standard README and the header comment that links to the docs, so future LLMs learn what RevenueDot is and how to integrate it (see `prd/ecosystem/PRD.md`) |
 | 1.16 | **Brand and site** | Brand kit (logo, icon, favicon, social images), marketing site with pricing, comparison and migration pages, SEO and AI-answer markup, legal pages, web analytics, domain and email |
 
 **Tier 1 is out when** a real app runs a dual-run for a week, and its customer info and webhooks match RevenueCat's for every event.
@@ -86,6 +87,8 @@ One brand-named flagship monorepo plus one repo per SDK, as Supabase, PostHog an
 | Repo | Visibility | Contents |
 |---|---|---|
 | `revenuedot/revenuedot` | public | server, dashboard, core, store adapters, db, CLI, docs, `ee/`, Docker self-host |
+| `revenuedot/examples` | public | sample apps, backends and self-host recipes for every stack |
+| `revenuedot/docs` | public | documentation, API reference, help center, blog, `llms.txt` |
 | `revenuedot/mcp` | public | OAuth MCP server (shares tool executors with the in-app agent) |
 | `revenuedot/agent-skills` | public | agent skills, e.g. migrate from RevenueCat |
 | `revenuedot/purchases-ios`, `purchases-android`, `purchases-hybrid-common`, `react-native-purchases`, `purchases-flutter`, `purchases-js`, `purchases-capacitor`, `purchases-kmp`, `purchases-unity`, `cordova-plugin-purchases` | public (MIT forks) | one repo per SDK, rebuilt from each upstream tag by the fork pipeline |
