@@ -47,3 +47,26 @@ jobs:
         env:
           DOCS_DIR: ${{ github.workspace }}/docs-repo
           CHECK_WORKSPACE: "0"
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      # Builds the self-host image and checks it starts and answers health; nothing is pushed.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: revenuedot:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start with Postgres and check health
+        run: |
+          docker network create rd
+          docker run -d --name db --network rd -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=revenuedot postgres:16
+          for i in $(seq 1 30); do docker exec db pg_isready -U postgres && break; sleep 1; done
+          docker run -d --name app --network rd -p 8787:8787 -e DATABASE_URL=postgres://postgres:ci@db:5432/revenuedot revenuedot:ci
+          for i in $(seq 1 60); do curl -sf http://localhost:8787/ && break; sleep 1; done
+          curl -sf http://localhost:8787/ || { docker logs app; exit 1; }
