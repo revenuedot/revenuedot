@@ -5,19 +5,19 @@
 ## Features (Tier 1)
 | Feature | State | Notes |
 |---|---|---|
-| 1.0 Foundations (monorepo, schema, contract harness) | browser-n/a · tests passing | 39 contract tests from RevenueCat SDK fixtures |
-| 1.1 SDK-compatible API | done · tested | 37 endpoints, fixtures-verified; Apple/Google receipts included |
+| 1.0 Foundations (monorepo, schema, contract harness) | done · tested on the iOS simulator | Contract tests from RevenueCat SDK fixtures and OpenAPI; `pnpm tsx scripts/e2e/ios/run.ts` drives the unmodified RevenueCat iOS SDK (5.92, SPM) on an iPhone 17 Pro simulator: configure, getCustomerInfo, getOfferings, a Test Store purchase through the SDK's alert, logIn, then checks the server. Android emulator run not built yet |
+| 1.1 SDK-compatible API | done · tested | 23 SDK routes plus 10 secret-key v1 routes, response shapes checked against RevenueCat's SDK fixtures; Apple/Google receipts included. Not routed yet: promotional offer signing (`POST /v1/offers`), `redeem_purchase`, `external_purchase_tokens`, web billing hosted checkout and offering products, ad reward verification. Spec: `prd/sdk-api/PRD.md` |
 | 1.2 Apple ingestion | done · tested | JWS, receipts, ASN v2; real sandbox test needs credentials |
 | 1.3 Google ingestion | done · tested | Play API, RTDN push, daily voided-purchases scan; real sandbox test needs credentials |
 | 1.4 Entitlement engine | done · tested | grace, refunds, promotional, lifetime, transfers; `packages/core` |
 | 1.5 Identity | done · tested | aliasing, merge, transfer behaviours |
 | 1.6 Catalog | done · browser-validated | Offerings, Products, Entitlements pages; SDK offerings response decoded in e2e |
 | 1.7 Webhooks out | done · tested | HMAC, Authorization, 5 retries, filters; every event type checked key by key against RevenueCat's sample payloads (`packages/contract/test/webhook-payloads.test.ts`) |
-| 1.8 REST API | done · tested | v1 + v2 validated against RevenueCat OpenAPI, plus dashboard extensions; store actions call Google (revoke, cancel, defer, order refund) and Apple (extend, mass extend); Test Store scenarios through `POST /v2/projects/{id}/test_purchases` |
+| 1.8 REST API | done · tested | v1 + v2 validated against RevenueCat OpenAPI, plus dashboard extensions; store actions call Google (revoke, cancel, defer, order refund) and Apple (extend, mass extend); Test Store scenarios through `POST /v2/projects/{id}/test_purchases`; subscription transactions list (`GET /v2/projects/{id}/subscriptions/{id}/transactions`) |
 | 1.9 Migration importer | done · tested | `npx revenuedot import` / `import verify` / `import plan` (`packages/importer`), bulk import endpoint `POST /v2/projects/{id}/import/customers`; fake-RevenueCat e2e tests with fixtures checked against RevenueCat's OpenAPI; not yet run against a real RevenueCat project. Spec: `prd/migration/PRD.md` |
-| 1.10 Dashboard | pages built · browser-validated | Overview, Customers, Catalog, Apps, API keys, Integrations/Webhooks, Project settings, New project. Later-tier: Analytics, Paywalls, Targeting, Experiments, Funnels, Ads, Lifecycle. `pnpm --filter @revenuedot/dashboard e2e` (8 tests) |
-| 1.11 Self-host (Docker) | done · smoke-tested | `docker compose up -d` with Postgres, signup works; `REVENUEDOT_PORT` sets the host port |
-| 1.12 Cloud (Workers) | not started | |
+| 1.10 Dashboard | done · browser-validated | Overview (sandbox switch, setup health), Customers, Catalog, Apps (SDK compatibility panel, failing notifications), app setup wizard (live credential check, notification URL with last received, forwarding URL), API keys, Integrations/Webhooks, Project settings (transfer behaviour, sandbox transfer behaviour), New project, sign-up closed page. Later-tier: Analytics, Paywalls, Targeting, Experiments, Funnels, Ads, Lifecycle. `pnpm --filter @revenuedot/dashboard e2e` (10 tests). Spec: `prd/dashboard/PRD.md` |
+| 1.11 Self-host (Docker) | done · upgrade tested | `docker compose up -d` with Postgres; one config file (`.env`, from `.env.example`). Migrations run on start: a database at migration 0001 with data went to 0003 by itself with the data kept (Node entry on the dev Postgres; the Docker image was smoke-tested earlier). Only the owner's account can sign up unless `REVENUEDOT_ALLOW_SIGNUP=true`. Spec: `prd/self-host/PRD.md` |
+| 1.12 Cloud (Workers) | built · deploy pending | `apps/server/src/entry.worker.ts` with Hyperdrive, `scripts/deploy-cloud.sh`, free plan on every account, open sign-up. Spec: `prd/cloud/PRD.md` |
 | 1.13 SDK forks | pipeline done · web SDK e2e-tested | All 10 forks patched on `revenuedot/main-patches` (host, signing key, registry names, leak scan clean); server response signing so Trusted Entitlements verify. Not published: needs npm, CocoaPods, Maven Central credentials. Spec: `prd/sdk-forks/PRD.md` |
 | 1.14 MCP + skills | done · tested · not published | 17 tools (15 with RevenueCat's names), secret-key and OAuth 2.1 sign-in (`apps/server/src/routes/oauth.ts`), 16 MCP tests; skills migrate-from-revenuecat, add-subscriptions, self-host. npm packages and mcp.revenuedot.app not live yet |
 | 1.15 Docs | done · checked | 63 pages in `revenuedot/docs`: quickstart, concepts, 10 SDK guides, store setup, webhooks, self-host, migration, help center, 5 blog posts; OpenAPI 3.1 reference (142 operations) with a drift check against the server routes; `llms.txt` and `llms-full.txt`; 1,238 internal links checked. Docs site not deployed yet |
@@ -30,10 +30,15 @@
 - Customer pages of the RevenueCat dashboard were blocked by the agent's personal-data guard.
 
 ## Known gaps (next up)
-- Importer: without the App Store In-App Purchase key, an Apple chain that RevenueCat split after a lapse is keyed by its first known transaction, so a later receipt for it can create a second row; refunded subscriptions import as expired (RevenueCat's v2 subscription has no refund field); paywalls, targeting, experiments and virtual currencies are not imported.
+- Importer: refunded subscriptions import as expired (RevenueCat's v2 subscription has no refund field); paywalls, targeting, experiments and virtual currencies are not imported. An Apple chain imported under a guessed original id is re-keyed when store traffic proves the real one; without the In-App Purchase key, a store notification for a renewal the export never saw cannot be matched until the device posts a receipt.
 - Store actions are tested against mocked Google and Apple APIs only. The request bodies for `subscriptionsv2.revoke` (`fullRefund`), `cancel` (`DEVELOPER_REQUESTED_STOP_PAYMENTS`) and `defer` (`deferDuration` with the etag) follow Google's reference and need one real sandbox run with store credentials.
 - Webhooks do not send `renewal_number` or `experiments` yet (RevenueCat marks both "Sometimes"); there are no experiments.
 - Google `CANCELLATION` with `PRICE_INCREASE` is inferred: a system cancellation while `priceChangeDetails` is still `OUTSTANDING` (or a price step-up is `PENDING`). RevenueCat does not document its Google rule.
-- The dashboard does not show `setup_health.notification_status` "failing" in the Apps list yet (it says "Waiting for store notifications"; the app page shows the error), and the SDK compatibility panel is not built; `setup_health.sdk_versions` is ready for it.
-- `GET /v2/projects/{id}/subscriptions/{id}/transactions` is not implemented; the refund-a-transaction action is.
+- `GET /v2/projects/{id}/subscriptions/{id}/transactions` finds App Store transactions of a chain by customer, product and start date, because revenue rows do not store the chain; Google Play orders match exactly by base order id.
+- Test Store products have no price, so the SDK shows $0.00 and revenue is 0 for Test Store purchases.
+- The SDK compatibility panel says whether contract tests cover an SDK's major version; it does not score per-feature coverage like RevenueCat's panel.
+- Attribution calls from the SDK (`/v1/subscribers/{id}/attribution`, ad services token) answer `{}` and store nothing.
+- Six event types are never emitted, though webhooks accept them as filters: TEMPORARY_ENTITLEMENT_GRANT, INVOICE_ISSUANCE, PURCHASE_REDEEMED, VIRTUAL_CURRENCY_TRANSACTION, EXPERIMENT_ENROLLMENT and SUBSCRIBER_ALIAS.
+- OpenAPI schema checks skip when RevenueCat's spec is not on disk (public CI), so they run only on machines with the research copy.
+- No Android emulator run yet (SCOPE 1.0 asks for one next to the iOS simulator run).
 - Apple consumption information (Refund Control) is not sent; RevenueCat does not require it.
