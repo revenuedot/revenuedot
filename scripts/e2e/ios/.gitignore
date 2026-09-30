@@ -2,3 +2,4 @@ build/
 RDHarness.xcodeproj/xcuserdata/
 RDHarness.xcodeproj/project.xcworkspace/xcuserdata/
 RDHarness.xcodeproj/
+RDHarness/Info.plist
