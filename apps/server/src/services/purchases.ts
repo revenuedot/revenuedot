@@ -161,3 +161,35 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
 }
 
 export { findCustomer };
+
+/**
+ * Applies a purchase update that came from a store notification (not from a device).
+ * The owner is whoever holds that store key; unknown chains are created on an anonymous customer only when `createIfUnknown` is set
+ * (RevenueCat's "track new purchases from server-to-server notifications").
+ * Returns false when the purchase is unknown and was not created.
+ */
+export async function applyFromStore(db: DB, opts: { projectId: string; appId: string; purchase: VerifiedPurchase; now: Date; createIfUnknown?: boolean; appUserIdHint?: string | null }): Promise<boolean> {
+  const { projectId, appId, purchase: p, now } = opts;
+  let ownerId: string | null = null;
+  if (p.kind === "subscription") {
+    const [row] = await db.select({ c: subscriptions.customerId }).from(subscriptions)
+      .where(and(eq(subscriptions.projectId, projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey))).limit(1);
+    ownerId = row?.c ?? null;
+  } else {
+    const [row] = await db.select({ c: nonSubscriptions.customerId }).from(nonSubscriptions)
+      .where(and(eq(nonSubscriptions.projectId, projectId), eq(nonSubscriptions.store, p.store), eq(nonSubscriptions.storeTransactionId, p.storeTransactionId))).limit(1);
+    ownerId = row?.c ?? null;
+  }
+  let owner: CustomerRow | undefined;
+  if (ownerId) [owner] = await db.select().from(customers).where(eq(customers.id, ownerId));
+  if (!owner && opts.appUserIdHint) owner = (await findCustomer(db, projectId, opts.appUserIdHint)) ?? undefined;
+  if (!owner) {
+    if (!opts.createIfUnknown) return false;
+    const { getOrCreateCustomer } = await import("../repo/customers.js");
+    owner = (await getOrCreateCustomer(db, projectId, opts.appUserIdHint ?? `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`, now)).customer;
+  }
+  const aliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, owner.id));
+  const appUserId = aliases.find((a) => !isAnonymous(a.a))?.a ?? owner.originalAppUserId;
+  await applyPurchases(db, owner, [p], { projectId, appId, appUserId, now, fromDevice: false });
+  return true;
+}
