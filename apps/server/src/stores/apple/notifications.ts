@@ -151,7 +151,7 @@ export function appleNotificationRoutes(deps: Deps) {
     if (!app || (app.type !== "app_store" && app.type !== "mac_app_store")) return c.json({ error: "Unknown App Store app." }, 404);
     const raw = await c.req.text();
     const id = newId("ntf_", 16);
-    await db.insert(storeNotifications).values({ id, projectId: app.projectId, appId: app.id, store: appleStoreOf(app), body: raw });
+    await db.insert(storeNotifications).values({ id, projectId: app.projectId, appId: app.id, store: appleStoreOf(app), body: raw, receivedAt: deps.now() });
     if (app.notificationForwardUrl) forward(c, db, app.notificationForwardUrl, raw, c.req.header("content-type") ?? "application/json", id);
     const fail = async (status: 400 | 500, message: string) => {
       await db.update(storeNotifications).set({ error: message }).where(eq(storeNotifications.id, id));

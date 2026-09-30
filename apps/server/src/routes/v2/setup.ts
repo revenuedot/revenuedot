@@ -10,6 +10,7 @@ import { GoogleApiError, serviceAccountOf } from "../../stores/google/api.js";
 import { googleClientFor } from "../../stores/google/index.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { appleKeyConfigured, googleKeyConfigured, projectShape } from "./shapes.js";
+import { notificationHealth } from "./notification-health.js";
 
 /**
  * Project setup endpoints for the dashboard (apps, project settings, webhook tests).
@@ -125,8 +126,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const [last] = await db.select().from(schema.storeNotifications)
       .where(and(eq(schema.storeNotifications.appId, a.id), isNotNull(schema.storeNotifications.forwardStatus)))
       .orderBy(desc(schema.storeNotifications.receivedAt)).limit(1);
-    const [lastIn] = await db.select({ at: schema.storeNotifications.receivedAt, error: schema.storeNotifications.error, type: schema.storeNotifications.type })
-      .from(schema.storeNotifications).where(eq(schema.storeNotifications.appId, a.id)).orderBy(desc(schema.storeNotifications.receivedAt)).limit(1);
+    const health = await notificationHealth(db, a);
     let clientEmail: string | null = null;
     if (googleKeyConfigured(cr)) { try { clientEmail = serviceAccountOf(a).client_email; } catch { /* shown as configured but unreadable */ } }
     return c.json({
@@ -135,8 +135,11 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       api_origin: publicOrigin(c),
       notification_url: store ? `${publicOrigin(c)}/v1/notifications/${store}/${a.id}` : null,
       notification_forward_url: a.notificationForwardUrl ?? null,
-      last_notification_at: lastIn ? Math.max(lastIn.at.getTime(), a.lastNotificationAt?.getTime() ?? 0) : a.lastNotificationAt?.getTime() ?? null,
-      last_notification_error: lastIn?.error ?? null,
+      // Only a notification processed for a known purchase counts; the newest failure stays visible until one succeeds.
+      last_notification_at: health.last_notification_at,
+      last_notification_error: health.notification_status === "failing" ? health.last_notification_error!.message : null,
+      last_notification_received_at: health.last_notification_received_at,
+      notification_status: health.notification_status,
       last_forward: last ? { status: last.forwardStatus, at: last.receivedAt.getTime() } : null,
       track_new_purchases: cr.track_new_purchases === true,
       allow_unsigned_receipts: cr.allow_unsigned_receipts === true,

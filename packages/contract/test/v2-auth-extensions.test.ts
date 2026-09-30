@@ -187,7 +187,11 @@ describe("dashboard extensions", () => {
     await h.db.update(schema.apps).set({ lastNotificationAt: new Date("2026-09-01T10:00:00Z"), credentials: { subscription_private_key: "k", subscription_key_id: "i", subscription_key_issuer: "s" } }).where(eq(schema.apps.id, "app_ios"));
     const r = await call("GET", `${P}/setup_health`, {}, { ext: true, headers: { "x-forwarded-host": "api.example.com" } });
     const byId = Object.fromEntries(r.body.apps.map((a: any) => [a.id, a]));
-    expect(byId.app_ios).toEqual({ id: "app_ios", name: "Scanner iOS", type: "app_store", notification_url: "https://api.example.com/v1/notifications/apple/app_ios", last_notification_at: new Date("2026-09-01T10:00:00Z").getTime(), credentials_configured: true });
+    expect(byId.app_ios).toEqual({
+      id: "app_ios", name: "Scanner iOS", type: "app_store", notification_url: "https://api.example.com/v1/notifications/apple/app_ios",
+      last_notification_at: new Date("2026-09-01T10:00:00Z").getTime(), last_notification_received_at: null, last_notification_error: null,
+      notification_status: "ready", credentials_configured: true,
+    });
     expect(byId.app_play).toMatchObject({ notification_url: "https://api.example.com/v1/notifications/google/app_play", last_notification_at: null, credentials_configured: false });
     expect(byId.app_test).toMatchObject({ notification_url: null, credentials_configured: true });
     expect(r.body.webhooks).toMatchObject({ total: 0, delivered_percent_24h: null, failing: [] });

@@ -10,6 +10,9 @@ import { appForPlatform, resolveKey } from "../services/auth.js";
 import type { ReceiptInput } from "../stores/types.js";
 import { schema } from "@revenuedot/db";
 import { eq } from "drizzle-orm";
+import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
+
+const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
 
 /** Store adapter key for an app type. Test Store keys (test_) and test apps use the Test Store. */
 const storeFor = (type: string) => (type === "mac_app_store" ? "app_store" : type);
@@ -29,16 +32,24 @@ export function sdkRoutes(deps: Deps) {
     c.set("auth", auth);
     c.set("app", auth.app ?? (await appForPlatform(deps.db, auth.projectId, c.req.header("x-platform"))) ?? ({ id: null, projectId: auth.projectId, type: "none" } as any));
     c.header("X-RevenueCat-Request-Time", String(deps.now().getTime()));
+    // Which SDK builds call us (setup_health.sdk_versions). Server calls with a secret key are not SDKs.
+    if (auth.kind !== "secret") {
+      const m = /^\/v1\/subscribers\/([^/]+)/.exec(path);
+      const user = m && m[1] !== "identify" ? safeDecode(m[1]!) : null;
+      try { await recordSdkVersion(deps.db, auth.projectId, c.get("app")?.id ?? null, sdkHeaders(c.req), user, deps.now()); } catch (e) { console.warn("Recording the SDK version failed", e); }
+    }
     await next();
   };
   r.use("/v1/*", sdkAuth);
   r.use("/rcbilling/*", sdkAuth);
 
-  const reqInfo = (c: { req: { header: (k: string) => string | undefined } }) => ({
-    appVersion: c.req.header("x-client-version") ?? null,
-    platform: c.req.header("x-platform") ?? null,
-    country: c.req.header("x-storefront") ?? null,
-  });
+  const reqInfo = (c: { req: { header: (k: string) => string | undefined } }) => {
+    const s = sdkHeaders(c.req);
+    return {
+      appVersion: s.appVersion, platform: s.platform, country: c.req.header("x-storefront") ?? null,
+      sdkVersion: s.sdkVersion, sdkFlavor: s.platformFlavor, platformVersion: s.platformVersion, appBuild: s.appBuild,
+    };
+  };
 
   async function customerInfoFor(projectId: string, appUserId: string, now: Date, includeAttributes: boolean) {
     const { customer, created } = await getOrCreateCustomer(deps.db, projectId, appUserId, now);

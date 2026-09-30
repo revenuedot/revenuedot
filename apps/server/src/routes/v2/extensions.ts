@@ -9,6 +9,8 @@ import { applyPurchases } from "../../services/purchases.js";
 import { retryDelivery } from "../../services/webhooks.js";
 import { HISTORY_METRICS, metricHistory, type HistoryMetric } from "../../services/metric-history.js";
 import { customerSummary } from "../../services/customer-summary.js";
+import { sdkVersionsOf } from "../../services/sdk-versions.js";
+import { notificationHealth } from "./notification-health.js";
 import { V2Error, allows, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { appleKeyConfigured, customerShape, googleKeyConfigured, loadCatalog, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
 
@@ -162,20 +164,18 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const fwdHost = c.req.header("x-forwarded-host");
     const origin = fwdHost ? `${c.req.header("x-forwarded-proto") ?? "https"}://${fwdHost}` : new URL(c.req.url).origin;
     const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId));
-    const lastNotif = await db.select({ appId: schema.storeNotifications.appId, at: sql<string>`max(${schema.storeNotifications.receivedAt})` }).from(schema.storeNotifications)
-      .where(eq(schema.storeNotifications.projectId, projectId)).groupBy(schema.storeNotifications.appId);
-    const appItems = apps.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).map((a) => {
+    const appItems = [];
+    for (const a of apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) {
       const store = a.type === "app_store" || a.type === "mac_app_store" ? "apple" : a.type === "play_store" ? "google" : null;
-      const seen = [a.lastNotificationAt?.getTime() ?? null, ...lastNotif.filter((n) => n.appId === a.id).map((n) => (n.at ? new Date(n.at).getTime() : null))].filter((x): x is number => x !== null);
       const cr = a.credentials ?? {};
       const credentials = a.type === "test_store" ? true : store === "apple" ? appleKeyConfigured(cr) : store === "google" ? googleKeyConfigured(cr) : Object.keys(cr).length > 0;
-      return {
+      appItems.push({
         id: a.id, name: a.name, type: a.type,
         notification_url: store ? `${origin}/v1/notifications/${store}/${a.id}` : null,
-        last_notification_at: seen.length ? Math.max(...seen) : null,
+        ...(await notificationHealth(db, a)),
         credentials_configured: credentials,
-      };
-    });
+      });
+    }
 
     const since = new Date(now.getTime() - 86400_000);
     const hooks = await db.select().from(schema.webhooks).where(eq(schema.webhooks.projectId, projectId));
@@ -199,8 +199,8 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
         delivered_percent_24h: attempted.length ? Math.round((delivered / attempted.length) * 1000) / 10 : null,
         failing,
       },
-      // The SDK version header is not recorded yet; the panel shows app versions until it is.
-      sdk_versions: null,
+      // Which SDK builds call the SDK endpoints (X-Platform, X-Version, X-Platform-Flavor ...), newest first.
+      sdk_versions: await sdkVersionsOf(db, projectId),
     });
   });
 

@@ -147,13 +147,12 @@ export function googleNotificationRoutes(deps: Deps) {
     const messageId = String(msg.messageId ?? msg.message_id ?? crypto.randomUUID());
     const id = `gpn_${app.id}_${messageId}`;
     const inserted = await deps.db.insert(storeNotifications).values({
-      id, projectId: app.projectId, appId: app.id, store: "play_store", type, subtype, body: raw,
+      id, projectId: app.projectId, appId: app.id, store: "play_store", type, subtype, body: raw, receivedAt: now,
     }).onConflictDoNothing().returning({ id: storeNotifications.id });
     if (!inserted.length) {
       const [prev] = await deps.db.select({ processedAt: storeNotifications.processedAt }).from(storeNotifications).where(eq(storeNotifications.id, id));
       if (prev?.processedAt) return c.json({ status: "duplicate" });
     }
-    await deps.db.update(apps).set({ lastNotificationAt: now }).where(eq(apps.id, app.id));
     if (inserted.length && app.notificationForwardUrl) forward(c, deps, client, app, id, raw);
 
     const finish = (set: Partial<typeof storeNotifications.$inferInsert>) => deps.db.update(storeNotifications).set(set).where(eq(storeNotifications.id, id));
@@ -170,6 +169,8 @@ export function googleNotificationRoutes(deps: Deps) {
     try {
       const result = await handle({ db: deps.db, app, client, now, eventTime: Number.isNaN(eventTime.getTime()) ? now : eventTime }, n);
       await finish({ processedAt: now, error: null, environment: result.sandbox === undefined ? null : result.sandbox ? "sandbox" : "production" });
+      // "Ready" in setup health means a notification was processed for a purchase we know (or Google's test message).
+      if (result.status === "processed") await deps.db.update(apps).set({ lastNotificationAt: now }).where(eq(apps.id, app.id));
       deps.kick?.();
       return c.json({ status: result.status });
     } catch (e) {
