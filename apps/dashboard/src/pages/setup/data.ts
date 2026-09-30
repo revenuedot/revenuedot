@@ -32,9 +32,21 @@ export interface StoreSettings {
 
 export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string }
 
+export interface SdkVersion {
+  app_id: string | null; platform: string; platform_flavor: string; platform_flavor_version: string | null; sdk_version: string;
+  /** "verified": the contract tests cover this major version. */
+  support: "verified" | "untested"; caveats: string[]; customers_30d: number;
+  platform_version: string | null; app_version: string | null; app_build: string | null; bundle_id: string | null; last_app_user_id: string | null;
+  first_seen_at: number; last_seen_at: number;
+}
+
 export interface SetupHealth {
-  apps: { id: string; name: string; type: AppType; notification_url: string | null; last_notification_at: number | null; credentials_configured: boolean }[];
+  apps: {
+    id: string; name: string; type: AppType; notification_url: string | null; last_notification_at: number | null; credentials_configured: boolean;
+    notification_status?: "ready" | "failing" | "received" | "waiting"; last_notification_error?: { at: number; type: string | null; message: string } | null;
+  }[];
   webhooks: { total: number; failing: { id: string; name: string; last_status: number | null; last_error: string | null }[] };
+  sdk_versions?: SdkVersion[];
 }
 
 export interface Webhook {

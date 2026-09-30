@@ -346,6 +346,7 @@ table.compact th:last-child,table.compact td:last-child{padding-right:16px}
 .hrow.between{justify-content:space-between}
 .cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .section-sub{margin:0;font-size:13px;color:var(--fg-2);max-width:640px}
+.notes{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px;line-height:20px;color:var(--fg-2);max-width:760px}
 .steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--fg-2)}
 .steps b{color:var(--fg);font-weight:600}
 .steps a,.link-u{text-decoration:underline;text-underline-offset:2px}

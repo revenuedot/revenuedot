@@ -206,7 +206,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
         failing,
       },
       // Which SDK builds call the SDK endpoints (X-Platform, X-Version, X-Platform-Flavor ...), newest first.
-      sdk_versions: await sdkVersionsOf(db, projectId),
+      sdk_versions: await sdkVersionsOf(db, projectId, now),
     });
   });
 

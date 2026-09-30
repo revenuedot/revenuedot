@@ -25,7 +25,10 @@ type MetricId = "active_trials" | "active_subscriptions" | "mrr" | "revenue" | "
 interface OverviewMetric { id: MetricId; name: string; description: string; unit: string; period: string; value: number }
 interface History { id: MetricId; days: number; value: number; previous_value: number | null; values: { date: string; value: number }[] | null }
 interface SetupHealth {
-  apps: { id: string; name: string; type: string; notification_url: string | null; last_notification_at: number | null; credentials_configured: boolean }[];
+  apps: {
+    id: string; name: string; type: string; notification_url: string | null; last_notification_at: number | null; credentials_configured: boolean;
+    notification_status?: "ready" | "failing" | "received" | "waiting"; last_notification_error?: { at: number; message: string } | null;
+  }[];
   webhooks: { total: number; attempted_24h: number; delivered_24h: number; failed_24h: number; pending: number; delivered_percent_24h: number | null;
     failing: { id: string; name: string; url: string; last_status: number | null; last_error: string | null; last_attempt_at: number; delivery_status: string }[] };
 }
@@ -184,7 +187,10 @@ function SetupHealthPanel({ pid }: { pid: string }) {
         const label = `${storeLabel(a.type)} notifications${many ? ` · ${a.name}` : ""}`;
         const at = a.last_notification_at;
         const recent = at !== null && now - at < 86400_000;
-        rows.push({
+        const err = a.notification_status === "failing" ? a.last_notification_error : null;
+        rows.push(err ? {
+          key: `${a.id}-n`, tone: "bad", title: label, detail: `The last notification failed ${fmt.ago(err.at)}: ${err.message}`, right: <Link className="r" to={appLink(a.id)}>Fix →</Link>,
+        } : {
           key: `${a.id}-n`, tone: at === null ? "idle" : recent ? "ok" : "bad", title: label,
           detail: at === null ? `None received yet. Add the notification URL in ${a.type === "play_store" ? "Google Play Console" : "App Store Connect"}.`
             : <>{recent && <i className="live" aria-hidden />}Last received {fmt.ago(at).replace(" ago", "")} ago</>,

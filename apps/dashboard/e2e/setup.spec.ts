@@ -251,9 +251,9 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await expect(row).toContainText(testKey);
     await row.getByRole("button", { name: "Copy public SDK key" }).click();
     expect(await clipboard()).toBe(testKey);
-    // The only App Store notification (the forwarded one above) failed verification, so the app is not Ready yet:
-    // setup health counts a notification only once it was processed. Google Play has none yet.
-    await expect(page.getByRole("row", { name: /Scanner iOS/ })).toContainText("Waiting for store notifications");
+    // The only App Store notification (the forwarded one above) failed verification, so the app is not Ready: its
+    // notifications are failing until one is processed. Google Play has none yet.
+    await expect(page.getByRole("row", { name: /Scanner iOS/ })).toContainText("Notifications failing");
     await expect(page.getByRole("row", { name: /Scanner Android/ })).toContainText("Waiting for store notifications");
     await shot("apps-list");
   });

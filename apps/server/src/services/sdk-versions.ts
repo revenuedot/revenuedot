@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 
 /** What an SDK request's headers say about the SDK build (see the wire-protocol research, section 12 "Request headers"). */
@@ -69,13 +69,33 @@ export function sdkSupport(platform: string, sdkVersion: string): "verified" | "
   return f && VERIFIED_MAJORS[f]!.includes(major) ? "verified" : "untested";
 }
 
-/** The `sdk_versions` list of setup health, newest first. */
-export async function sdkVersionsOf(db: DB, projectId: string) {
+/**
+ * What works differently with the stock RevenueCat SDK pointed at us through its proxy URL (proxy mode), per SDK.
+ * The RevenueDot forks (prd/sdk-forks/PRD.md) remove every one of these.
+ */
+export function sdkCaveats(platform: string, flavor: string): string[] {
+  const f = family(platform);
+  const out = ["Trusted Entitlements: the stock SDK checks RevenueCat's signing key, so keep entitlement verification off (the default) or switch to the RevenueDot fork."];
+  if (f === "android") out.push("Paywall and ad events from the stock Android SDK still go to RevenueCat, not to this server.");
+  if (/flutter/i.test(flavor) && !f) out.push("Flutter web ignores setProxyURL in the stock SDK; use the RevenueDot fork on the web.");
+  return out;
+}
+
+/** The `sdk_versions` list of setup health, newest first, with how many customers used each build in the last 30 days. */
+export async function sdkVersionsOf(db: DB, projectId: string, now: Date = new Date()) {
   const V = schema.sdkVersions;
+  const C = schema.customers;
   const rows = await db.select().from(V).where(and(eq(V.projectId, projectId))).orderBy(desc(V.lastSeenAt)).limit(200);
+  const counts = await db.select({ platform: C.lastSeenPlatform, flavor: C.lastSeenSdkFlavor, version: C.lastSeenSdkVersion, n: sql<number>`count(*)` }).from(C)
+    .where(and(eq(C.projectId, projectId), gte(C.lastSeen, new Date(now.getTime() - 30 * 86400_000))))
+    .groupBy(C.lastSeenPlatform, C.lastSeenSdkFlavor, C.lastSeenSdkVersion);
+  const count = (platform: string, flavor: string, version: string) =>
+    counts.filter((x) => x.platform === platform && (x.flavor ?? "native") === flavor && x.version === version).reduce((a, x) => a + Number(x.n), 0);
   return rows.map((r) => ({
     app_id: r.appId || null, platform: r.platform, platform_flavor: r.platformFlavor, platform_flavor_version: r.platformFlavorVersion || null,
-    sdk_version: r.sdkVersion, support: sdkSupport(r.platform, r.sdkVersion), platform_version: r.lastPlatformVersion, app_version: r.lastAppVersion,
+    sdk_version: r.sdkVersion, support: sdkSupport(r.platform, r.sdkVersion), caveats: sdkCaveats(r.platform, r.platformFlavor),
+    customers_30d: count(r.platform, r.platformFlavor, r.sdkVersion),
+    platform_version: r.lastPlatformVersion, app_version: r.lastAppVersion,
     app_build: r.lastAppBuild, bundle_id: r.lastBundleId, last_app_user_id: r.lastAppUserId,
     first_seen_at: r.firstSeenAt.getTime(), last_seen_at: r.lastSeenAt.getTime(),
   }));

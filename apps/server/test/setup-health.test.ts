@@ -70,11 +70,13 @@ describe("SDK versions", () => {
     expect(list).toHaveLength(3);
     const byVersion = Object.fromEntries(list.map((v: any) => [v.sdk_version, v]));
     expect(byVersion["5.91.0"]).toEqual({
-      app_id: "app_ios", platform: "iOS", platform_flavor: "native", platform_flavor_version: null, sdk_version: "5.91.0", support: "verified",
+      app_id: "app_ios", platform: "iOS", platform_flavor: "native", platform_flavor_version: null, sdk_version: "5.91.0", support: "verified", customers_30d: 1,
+      caveats: [expect.stringMatching(/^Trusted Entitlements/)],
       platform_version: "Version 18.4 (Build 22E240)", app_version: "2.3.0", app_build: "412", bundle_id: "com.example.scanner", last_app_user_id: "user_1",
       first_seen_at: T0.getTime(), last_seen_at: T0.getTime(),
     });
-    expect(byVersion["9.2.0"]).toMatchObject({ app_id: "app_play", platform: "android", platform_flavor: "react-native", platform_flavor_version: "8.1.0", support: "verified" });
+    expect(byVersion["9.2.0"]).toMatchObject({ app_id: "app_play", platform: "android", platform_flavor: "react-native", platform_flavor_version: "8.1.0", support: "verified", customers_30d: 1 });
+    expect(byVersion["9.2.0"].caveats).toEqual([expect.stringMatching(/^Trusted Entitlements/), expect.stringMatching(/Paywall and ad events/)]);
     expect(byVersion["4.43.0"]).toMatchObject({ support: "untested" });
 
     // The customer keeps the last SDK it was seen with.
