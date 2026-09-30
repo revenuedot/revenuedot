@@ -18,6 +18,7 @@ interface Ctx {
   store: Store;
   bundleId: string | null;
   creds: AppleCredentials | null;
+  allowUnsignedReceipts: boolean;
   xcodeRoots: Uint8Array[];
   fetchFn: FetchFn;
   now: () => Date;
@@ -149,9 +150,8 @@ async function verifyXcodeReceipt(ctx: Ctx, bytes: Uint8Array): Promise<Verified
 /**
  * StoreKit 1: the SDK posts the base64 app receipt (PKCS#7).
  * With App Store Server API credentials, the receipt only names a transaction and Apple's API is the source of truth
- * (a forged receipt fails there). Without credentials the receipt's PKCS#7 signature is NOT verified: it is trusted when
- * its bundle id matches the app and it comes from the App Store (Production or ProductionSandbox). Configure the in-app
- * purchase key in production so receipts cannot be forged.
+ * (a forged receipt fails there). Without credentials the receipt's PKCS#7 signature is NOT verified, so it is refused
+ * unless `credentials.allow_unsigned_receipts` is true (development only): anyone could forge such a receipt.
  */
 async function verifyAppReceipt(ctx: Ctx, bytes: Uint8Array, input: ReceiptInput, catalog: Catalog): Promise<VerifiedPurchase[]> {
   let receipt: AppReceipt;
@@ -164,6 +164,11 @@ async function verifyAppReceipt(ctx: Ctx, bytes: Uint8Array, input: ReceiptInput
   if (ctx.creds) {
     const latest = receipt.inApp.reduce((a, b) => (b.purchaseDate > a.purchaseDate ? b : a));
     return fromServerApi(ctx, latest.transactionId, receipt.environment === "ProductionSandbox" ? "sandbox" : "production", []);
+  }
+  // Nothing proves the PKCS#7 receipt is genuine, so anyone could forge one and unlock paid features.
+  // Refuse unless the operator opted in explicitly (development only).
+  if (!ctx.allowUnsignedReceipts) {
+    throw new RCError(500, Codes.INVALID_APPLE_SUBSCRIPTION_KEY, "StoreKit 1 receipts need the App Store in-app purchase key. Add the key in the app's settings (or set allow_unsigned_receipts for development), then the app will retry.");
   }
   return fromReceipt(ctx, receipt, input, catalog);
 }
@@ -221,7 +226,7 @@ export function createAppleStore(opts: AppleStoreOptions = {}): StoreAdapter {
     async verify(app, input, catalog) {
       const token = input.fetchToken?.trim();
       if (!token) throw invalid("fetch_token is required.");
-      const ctx: Ctx = { store: appleStoreOf(app), bundleId: expectedBundleId(app), creds: appleCredentials(app), xcodeRoots: xcodeRootsOf(app), fetchFn, now };
+      const ctx: Ctx = { store: appleStoreOf(app), bundleId: expectedBundleId(app), creds: appleCredentials(app), allowUnsignedReceipts: (app.credentials as Record<string, unknown>)?.allow_unsigned_receipts === true, xcodeRoots: xcodeRootsOf(app), fetchFn, now };
       if (looksLikeJws(token)) return verifySignedTransaction(ctx, token);
       let bytes: Uint8Array;
       try { bytes = base64ToBytes(token); } catch { throw invalid("The receipt is not a valid App Store receipt."); }

@@ -195,8 +195,15 @@ describe("StoreKit 1 app receipts", () => {
     expect(r.inApp[3]).toMatchObject({ cancellationDate: new Date("2026-08-22T12:00:00Z"), isInIntroOfferPeriod: true, isTrialPeriod: false });
   });
 
-  it("without API credentials, maps the latest transaction of each chain and one-time purchases", async () => {
+  it("refuses an unsigned receipt by default (anyone could forge it) with 500 and code 7234", async () => {
     h = await appleHarness();
+    const res = await h.postReceipt("user1", makeReceipt({ inApp: items }), { product_id: "pro_monthly" });
+    expect(res.status).toBe(500);
+    expect((await res.json()).code).toBe(7234);
+  });
+
+  it("with allow_unsigned_receipts (development), maps the latest transaction of each chain and one-time purchases", async () => {
+    h = await appleHarness({ credentials: { allow_unsigned_receipts: true } });
     const res = await h.postReceipt("user1", makeReceipt({ inApp: items }), { product_id: "pro_monthly", price: 9.99, currency: "EUR", store_country: "ESP" });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -212,7 +219,7 @@ describe("StoreKit 1 app receipts", () => {
   });
 
   it("reads trial and intro flags from the latest period", async () => {
-    h = await appleHarness();
+    h = await appleHarness({ credentials: { allow_unsigned_receipts: true } });
     const body = await (await h.postReceipt("user1", makeReceipt({ environment: "ProductionSandbox", inApp: [items[0]!] }))).json();
     expect(body.subscriber.subscriptions.pro_monthly).toMatchObject({ period_type: "trial", is_sandbox: true });
   });
