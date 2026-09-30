@@ -211,6 +211,17 @@ describe("offerings and mapping", () => {
     const android = OfferingsSchema.parse(await (await h.fetch("/v1/subscribers/x/offerings", { key: h.ids.androidKey })).json());
     expect(android.offerings[0]!.packages).toEqual([{ identifier: "$rc_monthly", platform_product_identifier: "pro", platform_product_plan_identifier: "monthly" }]);
   });
+  it("archived products are left out of packages, and a package with no active product for the app is dropped", async () => {
+    const res = await h.fetch("/v2/projects/proj1/products/p2/actions/archive", { method: "POST", key: h.ids.secretKey, json: {} });
+    expect(res.status).toBe(200);
+    const ios = OfferingsSchema.parse(await (await h.fetch("/v1/subscribers/x/offerings")).json());
+    expect(ios.offerings[0]!.packages).toEqual([{ identifier: "$rc_monthly", platform_product_identifier: "pro_monthly" }]);
+    // Customers who bought the archived product keep its entitlement.
+    const m = ProductEntitlementMappingSchema.parse(await (await h.fetch("/v1/product_entitlement_mapping")).json()).product_entitlement_mapping;
+    expect(m["pro_annual"]!.entitlements).toEqual(["pro"]);
+    await h.fetch("/v2/projects/proj1/products/p2/actions/unarchive", { method: "POST", key: h.ids.secretKey, json: {} });
+    expect(OfferingsSchema.parse(await (await h.fetch("/v1/subscribers/x/offerings")).json()).offerings[0]!.packages).toHaveLength(2);
+  });
   it("product entitlement mapping includes both the bare Play id and id:plan", async () => {
     const m = ProductEntitlementMappingSchema.parse(await (await h.fetch("/v1/product_entitlement_mapping")).json()).product_entitlement_mapping;
     expect(m["pro_monthly"]!.entitlements).toEqual(["pro"]);

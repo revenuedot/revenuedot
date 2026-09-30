@@ -29,7 +29,14 @@ export async function productInfo(db: DB, appId: string) {
   };
 }
 
-/** `GET /v1/subscribers/{id}/offerings` body for one app: only packages with a product for that app. */
+/**
+ * `GET /v1/subscribers/{id}/offerings` body for one app: only packages with an active product for that app.
+ * Archived products are left out of packages, as in RevenueCat: archiving a product hides it from offerings
+ * ("kept on file, hidden from new Offerings", RevenueCat CLI reference, company research raw/pages/tools_cli_commands.md), and an
+ * active offering cannot serve archived products (unarchiving an offering offers `unarchive_referenced_entities` to
+ * reactivate "any archived products referenced by this offering's packages", raw/openapi/openapi-v2-offering.dump.txt).
+ * Archived products still unlock entitlements for customers who bought them (the entitlement mapping keeps them).
+ */
 export async function offeringsJSON(db: DB, projectId: string, appId: string) {
   const offs = await db.select().from(offerings).where(and(eq(offerings.projectId, projectId), eq(offerings.state, "active"))).orderBy(asc(offerings.createdAt));
   const ids = offs.map((o) => o.id);
@@ -37,7 +44,8 @@ export async function offeringsJSON(db: DB, projectId: string, appId: string) {
   const pkgIds = pkgs.map((p) => p.id);
   const pp = pkgIds.length
     ? await db.select({ packageId: packageProducts.packageId, storeId: products.storeIdentifier, appId: products.appId, type: products.type })
-        .from(packageProducts).innerJoin(products, eq(products.id, packageProducts.productId)).where(inArray(packageProducts.packageId, pkgIds))
+        .from(packageProducts).innerJoin(products, eq(products.id, packageProducts.productId))
+        .where(and(inArray(packageProducts.packageId, pkgIds), eq(products.state, "active")))
     : [];
   const current = offs.find((o) => o.isCurrent) ?? null;
   return {
