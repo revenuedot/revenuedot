@@ -1,0 +1,77 @@
+import { and, eq, gt } from "drizzle-orm";
+import { newId } from "@revenuedot/core";
+import { schema, type DB } from "@revenuedot/db";
+
+const { users, sessions, memberships, projects } = schema;
+const ITER = 210_000;
+const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+/** PBKDF2-SHA256 (WebCrypto, so it runs on Node and Workers). Format: pbkdf2$<iter>$<salt>$<hash>. */
+export async function hashPassword(password: string, salt = crypto.getRandomValues(new Uint8Array(16)), iter = ITER): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iter }, key, 256);
+  return `pbkdf2$${iter}$${b64(salt)}$${b64(new Uint8Array(bits))}`;
+}
+
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const [alg, iter, salt, hash] = stored.split("$");
+  if (alg !== "pbkdf2" || !iter || !salt || !hash) return false;
+  const again = await hashPassword(password, unb64(salt), Number(iter));
+  const a = again.split("$")[3]!, b = hash;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+export const SESSION_COOKIE = "rd_session";
+const SESSION_DAYS = 30;
+
+export async function createSession(db: DB, userId: string, now: Date) {
+  const id = b64(crypto.getRandomValues(new Uint8Array(32))).replace(/[^a-zA-Z0-9]/g, "");
+  await db.insert(sessions).values({ id, userId, expiresAt: new Date(now.getTime() + SESSION_DAYS * 86400_000) });
+  return id;
+}
+
+export async function sessionUser(db: DB, sessionId: string | undefined, now: Date) {
+  if (!sessionId) return null;
+  const [row] = await db.select({ u: users }).from(sessions).innerJoin(users, eq(users.id, sessions.userId))
+    .where(and(eq(sessions.id, sessionId), gt(sessions.expiresAt, now))).limit(1);
+  return row?.u ?? null;
+}
+
+export async function projectsForUser(db: DB, userId: string) {
+  return db.select({ id: projects.id, name: projects.name, role: memberships.role, createdAt: projects.createdAt })
+    .from(memberships).innerJoin(projects, eq(projects.id, memberships.projectId)).where(eq(memberships.userId, userId));
+}
+
+export async function canAccess(db: DB, userId: string, projectId: string) {
+  const [m] = await db.select().from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.projectId, projectId))).limit(1);
+  return !!m;
+}
+
+/** Signup creates the user and, when given, their first project. */
+export async function signup(db: DB, input: { email: string; password: string; name?: string; projectName?: string }) {
+  const email = input.email.trim().toLowerCase();
+  const [exists] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (exists) return { error: "An account with this email already exists." as const };
+  const id = newId("usr_", 16);
+  await db.insert(users).values({ id, email, name: input.name ?? null, passwordHash: await hashPassword(input.password) });
+  if (input.projectName) {
+    const pid = newId("proj", 8);
+    await db.insert(projects).values({ id: pid, name: input.projectName });
+    await db.insert(memberships).values({ userId: id, projectId: pid, role: "admin" });
+  }
+  return { userId: id };
+}
+
+export async function login(db: DB, emailRaw: string, password: string) {
+  const [u] = await db.select().from(users).where(eq(users.email, emailRaw.trim().toLowerCase())).limit(1);
+  if (!u?.passwordHash || !(await verifyPassword(password, u.passwordHash))) return null;
+  return u;
+}
+
+export async function logout(db: DB, sessionId: string) {
+  await db.delete(sessions).where(eq(sessions.id, sessionId));
+}

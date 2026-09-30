@@ -20,7 +20,7 @@ export function sdkRoutes(deps: Deps) {
   r.onError((e, c) => errorResponse(c, e));
 
   // Every SDK request carries Authorization: Bearer <public app key>. Health checks are the exception.
-  r.use("*", async (c, next) => {
+  const sdkAuth = async (c: any, next: () => Promise<void>) => {
     const path = c.req.path;
     if (path === "/v1/health" || path.endsWith("/health_report_availability")) return next();
     const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
@@ -30,7 +30,9 @@ export function sdkRoutes(deps: Deps) {
     c.set("app", auth.app ?? (await appForPlatform(deps.db, auth.projectId, c.req.header("x-platform"))) ?? ({ id: null, projectId: auth.projectId, type: "none" } as any));
     c.header("X-RevenueCat-Request-Time", String(deps.now().getTime()));
     await next();
-  });
+  };
+  r.use("/v1/*", sdkAuth);
+  r.use("/rcbilling/*", sdkAuth);
 
   const reqInfo = (c: { req: { header: (k: string) => string | undefined } }) => ({
     appVersion: c.req.header("x-client-version") ?? null,
