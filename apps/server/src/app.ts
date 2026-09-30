@@ -4,6 +4,7 @@ import type { Deps } from "./context.js";
 import { sdkRoutes } from "./routes/sdk.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { authRoutes } from "./routes/auth.js";
+import { oauthRoutes } from "./routes/oauth.js";
 import { v2Routes } from "./routes/v2/index.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 
@@ -22,6 +23,8 @@ export function createApp(deps: Deps) {
   // Store notifications are mounted before the SDK routes, which require an SDK API key.
   app.route("/", notificationRoutes(deps));
   app.route("/", authRoutes(deps));
+  // OAuth 2.1 for MCP clients: the access token is a project-scoped secret key.
+  app.route("/", oauthRoutes(deps));
   // REST API v2 (secret key or dashboard session); mounted before the SDK routes.
   app.route("/", v2Routes(deps));
   app.route("/", sdkRoutes(deps));

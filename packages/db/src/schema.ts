@@ -309,3 +309,32 @@ export const storeNotifications = pgTable("store_notifications", {
   forwardStatus: integer("forward_status"),
   receivedAt: created(),
 }, (t) => [index("notifications_app_time").on(t.appId, t.receivedAt)]);
+
+/**
+ * OAuth 2.1 clients for MCP clients (Claude, ChatGPT, Cursor ...), registered with dynamic client registration (RFC 7591).
+ * Public clients only: no secret, PKCE (S256) on every authorization.
+ */
+export const oauthClients = pgTable("oauth_clients", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  redirectUris: jsonb("redirect_uris").$type<string[]>().notNull(),
+  createdAt: created(),
+});
+
+/**
+ * One-time authorization codes (only the hash is stored). Exchanging a code creates a secret API key (sk_...) scoped to
+ * the project and permissions the user approved; that key is the OAuth access token and is revoked like any other key.
+ */
+export const oauthCodes = pgTable("oauth_codes", {
+  hash: text("hash").primaryKey(),
+  clientId: text("client_id").notNull().references(() => oauthClients.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  redirectUri: text("redirect_uri").notNull(),
+  codeChallenge: text("code_challenge").notNull(),
+  scope: text("scope").notNull(),
+  permissions: jsonb("permissions").$type<string[]>().notNull(),
+  /** RFC 8707 resource indicator the client asked for (the MCP server URL), if any. */
+  resource: text("resource"),
+  expiresAt: ts("expires_at").notNull(),
+});
