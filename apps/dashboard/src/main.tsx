@@ -7,6 +7,7 @@ import { AuthPage } from "./pages/Auth";
 import { Soon } from "./pages/Soon";
 import { routes } from "./routes";
 import { useMe } from "./components/Shell";
+import { ToastProvider } from "./components/ui";
 
 try { const t = localStorage.getItem("rd-theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* ignore */ }
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } } });
@@ -40,7 +41,7 @@ const SOON: [string, string, string][] = [
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={qc}>
-      <BrowserRouter>
+      <ToastProvider><BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
@@ -49,7 +50,7 @@ createRoot(document.getElementById("root")!).render(
           {SOON.map(([p, t, w]) => <Route key={p} path={`/projects/:projectId/${p}`} element={<Soon title={t} what={w} />} />)}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
+      </BrowserRouter></ToastProvider>
     </QueryClientProvider>
   </StrictMode>,
 );
