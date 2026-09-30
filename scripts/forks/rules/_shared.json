@@ -1,0 +1,31 @@
+{
+  "podspec": [
+    { "type": "replace", "files": "$files", "regex": true, "find": "s\\.summary(\\s*)= \"([^\"]*)\"", "replace": "s.summary$1= \"$2 RevenueDot fork of RevenueCat's MIT SDK.\"", "done": "RevenueDot fork of RevenueCat's MIT SDK.", "optional": true },
+    { "type": "replace", "files": "$files", "regex": true, "find": "Use RevenueCat instead https://www\\.revenuecat\\.com/?", "replace": "This is RevenueDot's drop-in fork of RevenueCat's MIT SDK; it talks to RevenueDot, the open-source subscription server ({{homepage}}). Not affiliated with RevenueCat.", "done": "This is RevenueDot's drop-in fork", "optional": true },
+    { "type": "replace", "files": "$files", "regex": true, "find": "s\\.homepage(\\s*)= \"[^\"]*\"", "replace": "s.homepage$1= \"{{homepage}}\"", "optional": true },
+    { "type": "replace", "files": "$files", "regex": true, "find": "s\\.documentation_url = \"[^\"]*\"", "replace": "s.documentation_url = \"{{homepage}}/docs\"", "optional": true },
+    { "type": "replace", "files": "$files", "regex": true, "find": "s\\.license(\\s*)=\\s*\\{ :type => 'MIT' \\}", "replace": "s.license$1= { :type => 'MIT', :file => 'LICENSE' }", "done": ":file => 'LICENSE'", "optional": true },
+    { "type": "replace", "files": "$files", "regex": true, "find": "s\\.author(\\s*)= \\{[^}]*\\}", "replace": "s.authors$1= {{podAuthors}}", "done": "s.authors", "optional": true },
+    { "type": "replace", "files": "$files", "regex": true, "flags": "i", "find": ":git => \"https://github\\.com/revenuecat/([\\w-]+?)(\\.git)?\", :tag => s\\.version\\.to_s", "replace": ":git => \"https://github.com/{{org}}/$1.git\", :tag => \"#{s.version}{{gitTagSuffix}}\"", "done": ":tag => \"#{s.version}{{gitTagSuffix}}\"", "optional": true }
+  ],
+  "gradle-pom": [
+    { "type": "replace", "files": "$files", "regex": true, "flags": "m", "find": "^GROUP=com\\.revenuecat\\.purchases$", "replace": "GROUP={{mavenGroup}}", "done": "GROUP={{mavenGroup}}" },
+    { "type": "replace", "files": "$files", "regex": true, "flags": "m", "find": "^POM_DESCRIPTION=.*$", "replace": "POM_DESCRIPTION={{disclaimer}}" },
+    { "type": "replace", "files": "$files", "regex": true, "flags": "i", "find": "github\\.com([:/])revenuecat/", "replace": "github.com$1{{org}}/", "done": "github.com/{{org}}/" },
+    { "type": "replace", "files": "$files", "regex": true, "flags": "m", "find": "^POM_DEVELOPER_ID=.*$", "replace": "POM_DEVELOPER_ID=revenuedot" },
+    { "type": "replace", "files": "$files", "regex": true, "flags": "m", "find": "^POM_DEVELOPER_NAME=.*$", "replace": "POM_DEVELOPER_NAME=RevenueDot (fork of RevenueCat's MIT SDK)" }
+  ],
+  "npm-metadata": [
+    {
+      "type": "json", "file": "$file", "skipIfCurrentMatches": "not affiliated with RevenueCat",
+      "set": { "/author": "{{npmAuthor}}" },
+      "setIfPresent": {
+        "/description": "{{current}} ({{disclaimer}})",
+        "/repository/url": "git+https://github.com/{{org}}/{{repo}}.git",
+        "/repository/baseUrl": "https://github.com/{{org}}/{{repo}}",
+        "/bugs/url": "https://github.com/{{org}}/{{repo}}/issues",
+        "/homepage": "https://github.com/{{org}}/{{repo}}#readme"
+      }
+    }
+  ]
+}

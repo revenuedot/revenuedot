@@ -1,0 +1,22 @@
+{
+  "repo": "purchases-kmp",
+  "upstream": "https://github.com/RevenueCat/purchases-kmp",
+  "publishes": ["Maven Central app.revenuedot.purchases:purchases-kmp-core, -ui, -models, -mappings, -either, -result (same artifact ids, Kotlin packages stay com.revenuecat.purchases.kmp.*)"],
+  "rules": [
+    { "type": "replace", "files": ["build.gradle.kts"], "find": "    group = \"com.revenuecat.purchases\"\n", "replace": "    group = \"{{mavenGroup}}\"\n" },
+    { "type": "replace", "files": ["build.gradle.kts"], "find": "description.set(\"Mobile subscriptions in hours, not months.\")", "replace": "description.set(\"{{disclaimer}}\")" },
+    { "type": "replace", "files": ["build.gradle.kts"], "regex": true, "flags": "i", "find": "github\\.com([:/])revenuecat/purchases-kmp", "replace": "github.com$1{{org}}/purchases-kmp", "done": "github.com/{{org}}/purchases-kmp" },
+    { "type": "replace", "files": ["build.gradle.kts"], "find": "id.set(\"revenuecat\")\n                        name.set(\"RevenueCat, Inc.\")\n                        url.set(\"https://www.revenuecat.com/\")", "replace": "id.set(\"revenuedot\")\n                        name.set(\"RevenueDot (fork of RevenueCat's MIT SDK)\")\n                        url.set(\"{{homepage}}\")" },
+    { "type": "replace", "files": ["gradle/libs.versions.toml"], "find": "module = \"com.revenuecat.purchases:", "replace": "module = \"{{mavenGroup}}:", "note": "native Android SDK from our fork" },
+    { "type": "submodule", "path": "upstream/purchases-ios", "url": "https://github.com/{{org}}/purchases-ios.git", "pinToRepo": "purchases-ios", "pinBranch": "revenuedot/release-{branch}", "note": "native iOS source compiled by cinterop comes from our fork" },
+    { "type": "delete", "files": ["**/META-INF/com/revenuecat/purchases/**/verification.properties"], "note": "RevenueCat's Play SDK Console tokens do not belong to our coordinates" },
+
+    { "type": "license", "files": ["LICENSE"], "note": "copyright holder upstream is JayShortway; kept" },
+    { "type": "banner", "files": ["README.md"], "install": "`implementation(\"app.revenuedot.purchases:purchases-kmp-core:<version>\")`. Kotlin packages stay `com.revenuecat.purchases.kmp.*`, so imports stay as they are." }
+  ],
+  "scanExclude": ["apiTester/**", "composeApp/**", "iosApp/**", "watchosTester/**", "e2e-tests/**", "upstream/**", "**/src/*Test/**"],
+  "checks": [
+    { "name": "gradle", "run": "echo 'SKIPPED: needs JDK 17, the Android SDK and Xcode cinterop (this machine has Java 8). CI runs ./gradlew check.'" },
+    { "name": "submodule points at our fork", "run": "git config -f .gitmodules --get submodule.upstream/purchases-ios.url && git ls-tree HEAD upstream/purchases-ios" }
+  ]
+}

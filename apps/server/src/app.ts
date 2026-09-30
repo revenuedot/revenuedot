@@ -5,13 +5,19 @@ import { sdkRoutes } from "./routes/sdk.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { authRoutes } from "./routes/auth.js";
 import { v2Routes } from "./routes/v2/index.js";
+import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 
 export function createApp(deps: Deps) {
   const app = new Hono();
   // SDK and REST calls come from anywhere; dashboard calls are same-origin with a cookie.
-  const sdkCors = cors({ origin: "*", allowHeaders: ["*"], exposeHeaders: ["X-RevenueCat-Request-Time", "X-RevenueCat-ETag"] });
+  const sdkCors = cors({ origin: "*", allowHeaders: ["*"], exposeHeaders: ["X-RevenueCat-Request-Time", "X-RevenueCat-ETag", "X-Signature"] });
   app.use("/v1/*", sdkCors);
   app.use("/rcbilling/*", sdkCors);
+  // Trusted Entitlements: sign SDK responses when REVENUEDOT_SIGNING_KEY (or deps.signingKey) is set.
+  const signer = resolveSigner(deps.signingKey, deps.now);
+  app.use("/v1/*", responseSigning(signer, deps.now));
+  app.use("/rcbilling/*", responseSigning(signer, deps.now));
+  app.get(SIGNING_KEY_PATH, signingKeyHandler(signer));
   app.get("/", (c) => c.json({ name: "RevenueDot", docs: "https://revenuedot.app/docs" }));
   // Store notifications are mounted before the SDK routes, which require an SDK API key.
   app.route("/", notificationRoutes(deps));

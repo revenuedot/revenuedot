@@ -1,0 +1,33 @@
+{
+  "repo": "purchases-ios",
+  "upstream": "https://github.com/RevenueCat/purchases-ios",
+  "publishes": [
+    "CocoaPods RevenueDotPurchases (module RevenueCat)",
+    "CocoaPods RevenueDotPurchasesUI (module RevenueCatUI)",
+    "SPM https://github.com/revenuedot/purchases-ios (products RevenueCat, RevenueCatUI), tags <version>-revenuedot"
+  ],
+  "rules": [
+    { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api.revenuecat.com", "replace": "{{apiHost}}", "note": "main API, web billing, remote config source, test-only force-failure URL" },
+    { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api-diagnostics.revenuecat.com", "replace": "{{apiHost}}", "note": "diagnostics" },
+    { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api-paywalls.revenuecat.com", "replace": "{{apiHost}}", "note": "paywall and customer-center events" },
+    { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://a.revenue.cat", "replace": "{{apiHost}}", "note": "ad events" },
+    { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api-production.8-lives-cat.io", "replace": "{{apiHost}}", "note": "fallback host; our API serves /v1/offerings too" },
+    { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api.rc-backup.com", "replace": "{{apiHost}}", "note": "second built-in API source" },
+    { "type": "replace", "files": ["Sources/Security/Signing.swift"], "regex": true, "find": "private static let publicKey = \"[A-Za-z0-9+/=]+\"", "replace": "private static let publicKey = \"{{signingPublicKey}}\"", "note": "Trusted Entitlements root key" },
+
+    { "type": "rename", "from": "RevenueCat.podspec", "to": "RevenueDotPurchases.podspec" },
+    { "type": "rename", "from": "RevenueCatUI.podspec", "to": "RevenueDotPurchasesUI.podspec" },
+    { "type": "replace", "files": ["RevenueDotPurchases.podspec"], "find": "s.name             = \"RevenueCat\"", "replace": "s.name             = \"RevenueDotPurchases\"\n  s.module_name      = \"RevenueCat\"", "done": "s.module_name      = \"RevenueCat\"" },
+    { "type": "replace", "files": ["RevenueDotPurchasesUI.podspec"], "find": "s.name             = \"RevenueCatUI\"", "replace": "s.name             = \"RevenueDotPurchasesUI\"\n  s.module_name      = \"RevenueCatUI\"", "done": "s.module_name      = \"RevenueCatUI\"" },
+    { "type": "replace", "files": ["RevenueDotPurchasesUI.podspec"], "find": "s.dependency 'RevenueCat', ", "replace": "s.dependency 'RevenueDotPurchases', " },
+    { "type": "include", "group": "podspec", "files": ["RevenueDotPurchases.podspec", "RevenueDotPurchasesUI.podspec"] },
+
+    { "type": "license", "files": ["LICENSE"] },
+    { "type": "banner", "files": ["README.md"], "install": "CocoaPods `pod 'RevenueDotPurchases'` (and `pod 'RevenueDotPurchasesUI'`), or Swift Package Manager with `https://github.com/revenuedot/purchases-ios`. The module is still `RevenueCat`, so `import RevenueCat` and `import RevenueCatUI` stay as they are." }
+  ],
+  "scanExclude": ["Tests/**", "Projects/**", "Examples/**", "Sources/**/*.docc/**", "BackendIntegrationTests/**", "Local.xcconfig.SAMPLE", "**/*.xcconfig"],
+  "checks": [
+    { "name": "podspec parse", "run": "for f in RevenueDotPurchases.podspec RevenueDotPurchasesUI.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,\"module\",s.module_name,\"tag\",s.source.tag,\"deps\",JSON.stringify(s.dependencies||{}))' || exit 1; done" },
+    { "name": "swift build (macOS, RevenueCat target)", "run": "free=$(df -k . | awk 'NR==2{print $4}'); if [ \"$free\" -lt 8000000 ]; then echo \"SKIPPED: swift build needs ~8 GB free disk, $((free/1024)) MB free\"; exit 0; fi; swift build --target RevenueCat 2>&1 | tail -5; exit ${PIPESTATUS[0]}", "timeoutSec": 1800 }
+  ]
+}

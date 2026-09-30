@@ -1,0 +1,54 @@
+{
+  "org": "revenuedot",
+  "patchBranch": "revenuedot/main-patches",
+  "syncBranch": "upstream-sync",
+  "vars": {
+    "apiHost": "https://api.revenuedot.app",
+    "assetsHost": "https://assets.revenuedot.app",
+    "signingPublicKey": "gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=",
+    "mavenGroup": "app.revenuedot.purchases",
+    "npmScope": "@revenuedot",
+    "podPrefix": "RevenueDot",
+    "gitTagSuffix": "-revenuedot",
+    "homepage": "https://revenuedot.app",
+    "copyrightLine": "Copyright (c) 2026 RevenueDot (modifications in this fork)",
+    "disclaimer": "Fork of RevenueCat's MIT SDK, maintained by RevenueDot, not affiliated with RevenueCat.",
+    "bannerBody": "It keeps the upstream public API (`Purchases.configure`, `Purchases.shared`, every class and method name), so app code and RevenueCat's guides work unchanged. It talks to [RevenueDot](https://github.com/revenuedot/revenuedot) at `{{apiHost}}` by default (`setProxyURL` still points it at a self-hosted server) and verifies RevenueDot's response signatures. RevenueCat's copyright notice is kept in `LICENSE`. Patches: [scripts/forks](https://github.com/revenuedot/revenuedot/tree/main/scripts/forks). **Status: pre-alpha, not yet published to package registries.**",
+    "podAuthors": "{ \"RevenueDot\" => \"https://github.com/revenuedot\", \"RevenueCat, Inc. (original MIT SDK)\" => \"https://github.com/RevenueCat\" }",
+    "npmAuthor": "RevenueDot (https://revenuedot.app)"
+  },
+  "npmNames": {
+    "@revenuedot/purchases-js": "@revenuecat/purchases-js",
+    "@revenuedot/purchases-js-hybrid-mappings": "@revenuecat/purchases-js-hybrid-mappings",
+    "@revenuedot/purchases-typescript-internal": "@revenuecat/purchases-typescript-internal",
+    "@revenuedot/purchases-typescript-internal-esm": "@revenuecat/purchases-typescript-internal-esm",
+    "@revenuedot/react-native-purchases": "react-native-purchases",
+    "@revenuedot/purchases-capacitor": "@revenuecat/purchases-capacitor"
+  },
+  "leakPatterns": [
+    "api\\.revenuecat\\.com",
+    "api-diagnostics\\.revenuecat\\.com",
+    "api-paywalls\\.revenuecat\\.com",
+    "(^|[^\\w.-])a\\.revenue\\.cat",
+    "(^|[^\\w.-])e\\.revenue\\.cat",
+    "8-lives-cat\\.io",
+    "rc-backup\\.com",
+    "da08ctfrofx1b\\.cloudfront\\.net",
+    "UC1upXWg5QVmyOSwozp755xLqquBKjjU"
+  ],
+  "scanExcludeDefault": [
+    "**/*.md",
+    "**/*.mdx",
+    "**/*.txt",
+    "**/CHANGELOG*",
+    "**/{test,tests,Tests,__tests__,testing,androidTest,testDefaults,testCustomEntitlementComputation}/**",
+    "**/*{Test,Tests,Spec,.test,.spec,_test}.*",
+    "**/{examples,example,Examples,samples,e2e-tests,e2e,apitesters,api-tester,api_tester,apiTester,IntegrationTests,Subtester,purchase-tester,PurchaseTester,TestingApps,Projects,test-apps,revenuecat_examples,stories,storybook}/**",
+    "**/{fastlane,.circleci,.github,scripts/docs,docs,api-report}/**",
+    "**/*.{snap,lock,resolved}",
+    "**/__snapshots__/**",
+    "**/{fixtures,__fixtures__,__mocks__,mocks,Mocks}/**",
+    ".env.development",
+    ".revenuedot/**"
+  ]
+}

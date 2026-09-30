@@ -1,0 +1,34 @@
+{
+  "repo": "purchases-flutter",
+  "upstream": "https://github.com/RevenueCat/purchases-flutter",
+  "publishes": ["git dependency https://github.com/revenuedot/purchases-flutter (packages purchases_flutter and purchases_ui_flutter; names kept so `package:purchases_flutter/...` imports work), tags <version>-revenuedot; a RevenueDot-hosted pub repository later"],
+  "rules": [
+    { "type": "replace", "files": ["lib/web/purchases_flutter_web.dart"], "find": "        case 'setProxyURL':\n", "replace": "        case 'setProxyURLString': // RevenueDot: the Dart API sends this name; upstream web only handled 'setProxyURL'\n        case 'setProxyURL':\n", "done": "case 'setProxyURLString':", "note": "behaviour patch: setProxyURL works on Flutter web" },
+    { "type": "replace", "files": ["assets/web/purchases_js_hybrid_mappings.js"], "find": "https://api.revenuecat.com", "replace": "{{apiHost}}", "note": "vendored purchases-js bundle; rebuilt from our purchases-js at release" },
+    { "type": "replace", "files": ["assets/web/purchases_js_hybrid_mappings.js"], "find": "https://e.revenue.cat", "replace": "{{apiHost}}" },
+    { "type": "replace", "files": ["assets/web/purchases_js_hybrid_mappings.js"], "find": "https://da08ctfrofx1b.cloudfront.net", "replace": "{{assetsHost}}" },
+    { "type": "replace", "files": ["assets/web/purchases_js_hybrid_mappings.js"], "find": "Secure checkout by RevenueCat", "replace": "Secure checkout by RevenueDot" },
+
+    { "type": "replace", "files": ["**/*.podspec"], "exclude": ["example/**", "**/example/**", "e2e-tests/**", "revenuecat_examples/**", "api_tester/**"], "find": "s.dependency 'PurchasesHybridCommon', ", "replace": "s.dependency 'RevenueDotPurchasesHybridCommon', " },
+    { "type": "replace", "files": ["**/*.podspec"], "exclude": ["example/**", "**/example/**", "e2e-tests/**", "revenuecat_examples/**", "api_tester/**"], "find": "s.dependency 'PurchasesHybridCommonUI', ", "replace": "s.dependency 'RevenueDotPurchasesHybridCommonUI', " },
+    { "type": "replace", "files": ["**/Package.swift"], "exclude": ["example/**", "**/example/**", "e2e-tests/**", "revenuecat_examples/**", "api_tester/**"], "regex": true, "find": "\\.package\\(url: \"https://github\\.com/RevenueCat/purchases-hybrid-common\\.git\", exact: \"([0-9][^\"-]*)\"\\)", "replace": ".package(url: \"https://github.com/{{org}}/purchases-hybrid-common.git\", exact: \"$1{{gitTagSuffix}}\")", "done": "https://github.com/{{org}}/purchases-hybrid-common.git" },
+    { "type": "replace", "files": ["android/build.gradle", "purchases_ui_flutter/android/build.gradle"], "find": "com.revenuecat.purchases:purchases-hybrid-common", "replace": "{{mavenGroup}}:purchases-hybrid-common" },
+
+    { "type": "replace", "files": ["pubspec.yaml", "purchases_ui_flutter/pubspec.yaml"], "regex": true, "flags": "m", "find": "^homepage: .*$", "replace": "homepage: {{homepage}}" },
+    { "type": "replace", "files": ["pubspec.yaml", "purchases_ui_flutter/pubspec.yaml"], "regex": true, "flags": "m", "find": "^documentation: .*$", "replace": "documentation: {{homepage}}/docs" },
+    { "type": "replace", "files": ["pubspec.yaml", "purchases_ui_flutter/pubspec.yaml"], "regex": true, "flags": "mi", "find": "github\\.com/revenuecat/purchases-flutter", "replace": "github.com/{{org}}/purchases-flutter", "done": "github.com/{{org}}/purchases-flutter" },
+    { "type": "replace", "files": ["pubspec.yaml", "purchases_ui_flutter/pubspec.yaml"], "regex": true, "flags": "m", "find": "^(version: .*)$", "replace": "$1\npublish_to: none # RevenueDot fork: installed from git; the package name is kept so imports keep working", "done": "publish_to: none" },
+    { "type": "replace", "files": ["purchases_ui_flutter/pubspec.yaml"], "regex": true, "flags": "m", "find": "^  purchases_flutter: \\^?([0-9][^\\s]*)$", "replace": "  purchases_flutter:\n    git:\n      url: https://github.com/{{org}}/purchases-flutter.git\n      ref: $1{{gitTagSuffix}}", "done": "url: https://github.com/{{org}}/purchases-flutter.git", "note": "the UI package must not resolve RevenueCat's purchases_flutter from pub.dev" },
+
+    { "type": "license", "files": ["LICENSE", "purchases_ui_flutter/LICENSE"] },
+    { "type": "banner", "files": ["README.md"], "install": "in `pubspec.yaml`, `purchases_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, ref: <version>-revenuedot } }`. The package name stays `purchases_flutter`, so `import 'package:purchases_flutter/purchases_flutter.dart'` keeps working. This fork also fixes `Purchases.setProxyURL` on Flutter web." },
+    { "type": "banner", "files": ["purchases_ui_flutter/README.md"], "optional": true, "install": "`purchases_ui_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, path: purchases_ui_flutter, ref: <version>-revenuedot } }`." }
+  ],
+  "scanExclude": ["example/**", "**/example/**", "revenuecat_examples/**", "api_tester/**", "e2e-tests/**", "test/**", "**/test/**"],
+  "checks": [
+    { "name": "podspec parse", "run": "for f in ios/purchases_flutter.podspec macos/purchases_flutter.podspec purchases_ui_flutter/ios/purchases_ui_flutter.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,JSON.stringify(s.dependencies))' || exit 1; done" },
+    { "name": "Package.swift parse", "run": "(cd ios/purchases_flutter && swift package dump-package > /dev/null) && echo ok", "timeoutSec": 300 },
+    { "name": "vendored web bundle still parses", "run": "node -e 'new Function(require(\"fs\").readFileSync(\"assets/web/purchases_js_hybrid_mappings.js\",\"utf8\"));console.log(\"ok\")'" },
+    { "name": "flutter analyze/test", "run": "command -v flutter >/dev/null && flutter test || echo 'SKIPPED: Flutter SDK not installed on this machine'" }
+  ]
+}

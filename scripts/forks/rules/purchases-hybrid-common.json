@@ -1,0 +1,45 @@
+{
+  "repo": "purchases-hybrid-common",
+  "upstream": "https://github.com/RevenueCat/purchases-hybrid-common",
+  "publishes": [
+    "CocoaPods RevenueDotPurchasesHybridCommon (module PurchasesHybridCommon), RevenueDotPurchasesHybridCommonUI (module PurchasesHybridCommonUI)",
+    "SPM https://github.com/revenuedot/purchases-hybrid-common, tags <version>-revenuedot",
+    "Maven Central app.revenuedot.purchases:purchases-hybrid-common, -ui, -store-galaxy",
+    "npm @revenuedot/purchases-typescript-internal, @revenuedot/purchases-typescript-internal-esm, @revenuedot/purchases-js-hybrid-mappings"
+  ],
+  "rules": [
+    { "type": "rename", "from": "PurchasesHybridCommon.podspec", "to": "RevenueDotPurchasesHybridCommon.podspec" },
+    { "type": "rename", "from": "PurchasesHybridCommonUI.podspec", "to": "RevenueDotPurchasesHybridCommonUI.podspec" },
+    { "type": "replace", "files": ["RevenueDotPurchasesHybridCommon.podspec"], "find": "s.name             = \"PurchasesHybridCommon\"", "replace": "s.name             = \"RevenueDotPurchasesHybridCommon\"\n  s.module_name      = \"PurchasesHybridCommon\"", "done": "s.module_name      = \"PurchasesHybridCommon\"" },
+    { "type": "replace", "files": ["RevenueDotPurchasesHybridCommonUI.podspec"], "find": "s.name             = \"PurchasesHybridCommonUI\"", "replace": "s.name             = \"RevenueDotPurchasesHybridCommonUI\"\n  s.module_name      = \"PurchasesHybridCommonUI\"", "done": "s.module_name      = \"PurchasesHybridCommonUI\"" },
+    { "type": "replace", "files": ["RevenueDotPurchasesHybridCommon*.podspec"], "find": "s.dependency 'RevenueCat', ", "replace": "s.dependency 'RevenueDotPurchases', " },
+    { "type": "replace", "files": ["RevenueDotPurchasesHybridCommonUI.podspec"], "find": "s.dependency 'RevenueCatUI', ", "replace": "s.dependency 'RevenueDotPurchasesUI', " },
+    { "type": "replace", "files": ["RevenueDotPurchasesHybridCommonUI.podspec"], "find": "s.dependency 'PurchasesHybridCommon', ", "replace": "s.dependency 'RevenueDotPurchasesHybridCommon', " },
+    { "type": "include", "group": "podspec", "files": ["RevenueDotPurchasesHybridCommon.podspec", "RevenueDotPurchasesHybridCommonUI.podspec"] },
+
+    { "type": "replace", "files": ["Package.swift"], "regex": true, "find": "\\.package\\(url: \"https://github\\.com/RevenueCat/purchases-ios-spm(?:\\.git)?\", exact: \"([0-9][^\"-]*)\"\\)", "replace": ".package(url: \"https://github.com/{{org}}/purchases-ios.git\", exact: \"$1{{gitTagSuffix}}\")", "done": "https://github.com/{{org}}/purchases-ios.git", "note": "native iOS from our fork (RevenueCat uses a separate SPM mirror repo)" },
+    { "type": "replace", "files": ["Package.swift"], "find": "package: \"purchases-ios-spm\"", "replace": "package: \"purchases-ios\"" },
+
+    { "type": "replace", "files": ["android/gradle/libs.versions.toml"], "find": "module = \"com.revenuecat.purchases:", "replace": "module = \"{{mavenGroup}}:" },
+    { "type": "include", "group": "gradle-pom", "files": ["android/gradle.properties"] },
+
+    { "type": "json", "file": "typescript/package.json", "set": { "/name": "{{npmScope}}/purchases-typescript-internal" } },
+    { "type": "include", "group": "npm-metadata", "file": "typescript/package.json" },
+    { "type": "json", "file": "purchases-js-hybrid-mappings/package.json", "set": { "/name": "{{npmScope}}/purchases-js-hybrid-mappings", "/dependencies/@revenuecat~1purchases-js": "npm:{{npmScope}}/purchases-js@{{current}}" }, "skipIfCurrentMatches": "^npm:" },
+    { "type": "include", "group": "npm-metadata", "file": "purchases-js-hybrid-mappings/package.json" },
+    { "type": "replace", "files": ["fastlane/Fastfile"], "find": "\"@revenuecat/purchases-typescript-internal-esm\"", "replace": "\"{{npmScope}}/purchases-typescript-internal-esm\"", "note": "the ESM flavour is renamed at release time" },
+    { "type": "replace", "files": ["fastlane/Fastfile"], "find": "previous_text: \"@revenuecat/purchases-typescript-internal\",", "replace": "previous_text: \"{{npmScope}}/purchases-typescript-internal\"," },
+
+    { "type": "license", "files": ["LICENSE"] },
+    { "type": "copy", "from": "LICENSE", "to": "typescript/LICENSE", "note": "npm tarballs carry the notice" },
+    { "type": "copy", "from": "LICENSE", "to": "purchases-js-hybrid-mappings/LICENSE" },
+    { "type": "banner", "files": ["README.md"], "install": "native pods `RevenueDotPurchasesHybridCommon`, Maven `app.revenuedot.purchases:purchases-hybrid-common`, npm `@revenuedot/purchases-typescript-internal`. Wrappers (React Native, Flutter, Capacitor, Unity, Cordova) pull these in for you." }
+  ],
+  "scanExclude": ["android/api-tests/**", "ios/PurchasesHybridCommon/PurchasesHybridCommonTests/**", "ios/**/*Tests/**", "api-tester/**"],
+  "checks": [
+    { "name": "podspec parse", "run": "for f in RevenueDotPurchasesHybridCommon.podspec RevenueDotPurchasesHybridCommonUI.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,\"module\",s.module_name,\"tag\",s.source.tag,\"deps\",JSON.stringify(s.dependencies||{}))' || exit 1; done" },
+    { "name": "Package.swift parse", "run": "swift package dump-package > /dev/null && echo ok", "timeoutSec": 300 },
+    { "name": "typescript: build + jest", "run": "cd typescript && npm install --no-audit --no-fund --silent && npx tsc --noEmit && npx jest --silent 2>&1 | tail -6", "timeoutSec": 600 },
+    { "name": "purchases-js-hybrid-mappings: typecheck + jest (purchases-js alias resolved to the same upstream version; set LOCAL_PURCHASES_JS=<built fork> to use ours)", "run": "cd purchases-js-hybrid-mappings && node $FORKS_DIR/lib/unalias.mjs package.json && npm install --no-audit --no-fund --silent && npx tsc --noEmit -p . && npx jest --silent 2>&1 | tail -6", "timeoutSec": 900 }
+  ]
+}

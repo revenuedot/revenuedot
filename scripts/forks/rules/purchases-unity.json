@@ -1,0 +1,43 @@
+{
+  "repo": "purchases-unity",
+  "upstream": "https://github.com/RevenueCat/purchases-unity",
+  "publishes": ["OpenUPM com.revenuedot.purchases-unity and com.revenuedot.purchases-ui-unity (C# namespaces and assembly names unchanged)", "Purchases.unitypackage on GitHub releases"],
+  "rules": [
+    { "type": "replace", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "spec=\"com.revenuecat.purchases:purchases-hybrid-common", "replace": "spec=\"{{mavenGroup}}:purchases-hybrid-common" },
+    { "type": "replace", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "regex": true, "find": "<remoteSwiftPackage url=\"https://github\\.com/RevenueCat/purchases-hybrid-common\\.git\" version=\"([0-9][^\"-]*)\">", "replace": "<remoteSwiftPackage url=\"https://github.com/{{org}}/purchases-hybrid-common.git\" version=\"$1{{gitTagSuffix}}\">", "done": "https://github.com/{{org}}/purchases-hybrid-common.git" },
+    { "type": "replace", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "replacesPod=\"PurchasesHybridCommon", "replace": "replacesPod=\"RevenueDotPurchasesHybridCommon" },
+    { "type": "replace", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "<iosPod name=\"PurchasesHybridCommon", "replace": "<iosPod name=\"RevenueDotPurchasesHybridCommon" },
+    { "type": "replace", "files": ["RevenueCatUI/Plugins/Android/RevenueCatUI.androidlib/build.gradle"], "find": "'com.revenuecat.purchases:purchases-hybrid-common", "replace": "'{{mavenGroup}}:purchases-hybrid-common" },
+
+    { "type": "json", "file": "RevenueCat/package.json", "set": {
+      "/name": "com.revenuedot.purchases-unity",
+      "/displayName": "Purchases SDK for Unity (RevenueDot fork of RevenueCat's MIT SDK)",
+      "/documentationUrl": "{{homepage}}/docs",
+      "/changelogUrl": "https://github.com/{{org}}/purchases-unity/blob/main/CHANGELOG.md",
+      "/licensesUrl": "https://github.com/{{org}}/purchases-unity/blob/main/LICENSE",
+      "/repoUrl": "https://github.com/{{org}}/purchases-unity",
+      "/author": { "name": "RevenueDot", "url": "{{homepage}}" }
+    } },
+    { "type": "json", "file": "RevenueCatUI/package.json", "set": {
+      "/name": "com.revenuedot.purchases-ui-unity",
+      "/displayName": "Purchases UI SDK for Unity (RevenueDot fork of RevenueCat's MIT SDK)",
+      "/description": "Unity UI components for paywalls and customer center. Supports iOS and Android. {{disclaimer}}",
+      "/documentationUrl": "{{homepage}}/docs",
+      "/changelogUrl": "https://github.com/{{org}}/purchases-unity/blob/main/CHANGELOG.md",
+      "/licensesUrl": "https://github.com/{{org}}/purchases-unity/blob/main/LICENSE",
+      "/repoUrl": "https://github.com/{{org}}/purchases-unity",
+      "/author": { "name": "RevenueDot", "url": "{{homepage}}" },
+      "/dependencies": { "com.revenuedot.purchases-unity": "file:../RevenueCat" }
+    } },
+    { "type": "replace", "files": ["RevenueCat/package.json"], "find": "\"description\": \"Unity in-app purchases and subscriptions made easy. Supports iOS and Android.\"", "replace": "\"description\": \"Unity in-app purchases and subscriptions made easy. Supports iOS and Android. {{disclaimer}}\"" },
+
+    { "type": "license", "files": ["LICENSE", "RevenueCat/LICENSE.md"] },
+    { "type": "banner", "files": ["README.md"], "install": "OpenUPM `com.revenuedot.purchases-unity`, or the `Purchases.unitypackage` from this repo's releases. C# namespaces are unchanged. EDM4U pulls `RevenueDotPurchasesHybridCommon` (CocoaPods) and `app.revenuedot.purchases:purchases-hybrid-common` (Maven)." }
+  ],
+  "scanExclude": ["Subtester/**", "IntegrationTests/**", "e2e-tests/**"],
+  "checks": [
+    { "name": "EDM4U XML well-formed", "run": "for f in RevenueCat/Plugins/Editor/RevenueCatDependencies.xml RevenueCatUI/Plugins/Editor/RevenueCatUIDependencies.xml; do xmllint --noout \"$f\" && echo \"$f ok\" || exit 1; done" },
+    { "name": "UPM package.json valid", "run": "node -e 'for (const f of [\"RevenueCat/package.json\",\"RevenueCatUI/package.json\"]) { const p=JSON.parse(require(\"fs\").readFileSync(f)); console.log(f,p.name,p.version,JSON.stringify(p.dependencies)) }'" },
+    { "name": "Unity build", "run": "echo 'SKIPPED: needs the Unity editor.'" }
+  ]
+}

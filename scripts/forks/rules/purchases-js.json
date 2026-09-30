@@ -1,0 +1,30 @@
+{
+  "repo": "purchases-js",
+  "upstream": "https://github.com/RevenueCat/purchases-js",
+  "publishes": ["npm @revenuedot/purchases-js", "npm @revenuedot/purchases-js-vega"],
+  "rules": [
+    { "type": "replace", "files": [".env.production"], "regex": true, "flags": "m", "find": "^VITE_RC_ENDPOINT=.*$", "replace": "VITE_RC_ENDPOINT={{apiHost}}", "note": "API host (build-time constant)" },
+    { "type": "replace", "files": [".env.production"], "regex": true, "flags": "m", "find": "^VITE_RC_ANALYTICS_ENDPOINT=.*$", "replace": "VITE_RC_ANALYTICS_ENDPOINT={{apiHost}}", "note": "events go to our API (/v1/events), not e.revenue.cat" },
+    { "type": "replace", "files": [".env.production", ".env.development"], "regex": true, "flags": "m", "find": "^VITE_ASSETS_ENDPOINT=.*$", "replace": "VITE_ASSETS_ENDPOINT={{assetsHost}}", "note": "checkout branding assets (app icon, wordmark)" },
+    { "type": "replace", "files": ["src/behavioural-events/events-tracker.ts"], "find": "props.httpConfig?.eventsURL ?? RC_ANALYTICS_ENDPOINT", "replace": "props.httpConfig?.eventsURL ?? props.httpConfig?.proxyURL ?? RC_ANALYTICS_ENDPOINT", "done": "props.httpConfig?.proxyURL ?? RC_ANALYTICS_ENDPOINT", "note": "behaviour patch: analytics events honour proxyURL (upstream always sends them to e.revenue.cat)" },
+    { "type": "replace", "files": ["src/entities/http-config.ts"], "find": "the built-in analytics endpoint (e.revenue.cat)", "replace": "the built-in analytics endpoint (the API host)" },
+    { "type": "replace", "files": ["src/ui/localization/locale/*.json"], "find": "RevenueCat", "replace": "RevenueDot", "note": "user-visible \"Secure checkout by RevenueCat\" in 34 locales" },
+    { "type": "replace", "files": ["src/ui/localization/keys_context.json"], "find": "secure checkout process by RevenueCat", "replace": "secure checkout process by RevenueDot", "optional": true },
+
+    { "type": "json", "file": "package.json", "set": { "/name": "{{npmScope}}/purchases-js" } },
+    { "type": "include", "group": "npm-metadata", "file": "package.json" },
+    { "type": "replace", "files": ["package.json"], "find": "--filter @revenuecat/purchases-js-vega", "replace": "--filter {{npmScope}}/purchases-js-vega" },
+    { "type": "json", "file": "vega/package.json", "set": { "/name": "{{npmScope}}/purchases-js-vega" } },
+    { "type": "include", "group": "npm-metadata", "file": "vega/package.json" },
+
+    { "type": "license", "files": ["LICENSE", "vega/LICENSE"] },
+    { "type": "banner", "files": ["README.md"], "install": "`npm install @revenuedot/purchases-js`, or keep your imports with an alias: `\"@revenuecat/purchases-js\": \"npm:@revenuedot/purchases-js@<version>\"`. API keys keep their prefixes (`rcb_`, `test_`, `strp_`, `pdl_`)." }
+  ],
+  "scanExclude": [".env.test", "src/tests/**", "src/stories/**", "test.html", "vitest.setup.js", ".storybook/**", "examples/**"],
+  "checks": [
+    { "name": "install", "run": "pnpm install --frozen-lockfile --ignore-scripts 2>&1 | tail -3", "timeoutSec": 900 },
+    { "name": "typecheck", "run": "pnpm -s typecheck", "timeoutSec": 600 },
+    { "name": "unit tests (vitest)", "run": "pnpm -s vitest run --reporter=dot 2>&1 | tail -8; exit ${PIPESTATUS[0]}", "timeoutSec": 1200 },
+    { "name": "build (vite, production hosts baked in)", "run": "pnpm -s vite build 2>&1 | tail -4 && grep -c 'api.revenuedot.app' dist/Purchases.es.js && ! grep -q 'api.revenuecat.com\\|e.revenue.cat' dist/Purchases.es.js", "timeoutSec": 900 }
+  ]
+}

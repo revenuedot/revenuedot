@@ -1,0 +1,31 @@
+{
+  "repo": "purchases-android",
+  "upstream": "https://github.com/RevenueCat/purchases-android",
+  "publishes": [
+    "Maven Central app.revenuedot.purchases:purchases, purchases-ui, purchases-store-amazon, purchases-store-galaxy, purchases-bom, … (same artifact ids, Kotlin packages stay com.revenuecat.purchases.*)"
+  ],
+  "rules": [
+    { "type": "replace", "files": ["**/src/main/**/*.kt", "**/src/main/**/*.java"], "find": "https://api.revenuecat.com", "replace": "{{apiHost}}", "note": "main API, codegen client (/v2), test-only force-failure URL" },
+    { "type": "replace", "files": ["**/src/main/**/*.kt"], "find": "https://api-diagnostics.revenuecat.com", "replace": "{{apiHost}}", "note": "diagnostics" },
+    { "type": "replace", "files": ["**/src/main/**/*.kt"], "find": "https://api-paywalls.revenuecat.com", "replace": "{{apiHost}}", "note": "paywall events" },
+    { "type": "replace", "files": ["**/src/main/**/*.kt"], "find": "https://a.revenue.cat", "replace": "{{apiHost}}", "note": "ad events" },
+    { "type": "replace", "files": ["**/src/main/**/*.kt"], "find": "https://api-production.8-lives-cat.io", "replace": "{{apiHost}}", "note": "fallback host" },
+    { "type": "replace", "files": ["**/src/main/**/*.kt"], "find": "https://api.rc-backup.com", "replace": "{{apiHost}}", "note": "second built-in API source" },
+    { "type": "replace", "files": ["purchases/src/main/kotlin/com/revenuecat/purchases/common/verification/SignatureVerifier.kt"], "regex": true, "find": "private const val DEFAULT_PUBLIC_KEY = \"[A-Za-z0-9+/=]+\"", "replace": "private const val DEFAULT_PUBLIC_KEY = \"{{signingPublicKey}}\"", "note": "Trusted Entitlements root key" },
+
+    { "type": "replace", "files": ["purchases/src/main/kotlin/com/revenuecat/purchases/common/AppConfig.kt"], "find": "    val hasProxyURL: Boolean = proxyURL != null\n", "replace": "    val hasProxyURL: Boolean = proxyURL != null\n\n    // RevenueDot: diagnostics, paywall events and ad events honour proxyURL, like the main API does.\n    val diagnosticsBaseURL: URL = proxyURL ?: diagnosticsURL\n    val paywallEventsBaseURL: URL = proxyURL ?: paywallEventsURL\n    val adEventsBaseURL: URL = proxyURL ?: adEventsURL\n", "done": "val diagnosticsBaseURL: URL", "note": "behaviour patch: events honour proxyURL" },
+    { "type": "replace", "files": ["purchases/src/main/kotlin/com/revenuecat/purchases/PurchasesFactory.kt"], "find": "baseURL = AppConfig.paywallEventsURL,", "replace": "baseURL = appConfig.paywallEventsBaseURL," },
+    { "type": "replace", "files": ["purchases/src/main/kotlin/com/revenuecat/purchases/PurchasesFactory.kt"], "find": "baseURL = AppConfig.adEventsURL,", "replace": "baseURL = appConfig.adEventsBaseURL," },
+    { "type": "replace", "files": ["purchases/src/main/kotlin/com/revenuecat/purchases/common/Backend.kt"], "find": "AppConfig.diagnosticsURL,", "replace": "appConfig.diagnosticsBaseURL," },
+
+    { "type": "include", "group": "gradle-pom", "files": ["gradle.properties"] },
+    { "type": "replace", "files": ["bom/gradle.properties", "codegen/gradle.properties"], "regex": true, "flags": "m", "find": "^POM_NAME=RevenueCat ", "replace": "POM_NAME=RevenueDot ", "done": "POM_NAME=RevenueDot " },
+
+    { "type": "license", "files": ["LICENSE"] },
+    { "type": "banner", "files": ["README.md"], "install": "`implementation(\"app.revenuedot.purchases:purchases:<version>\")` (and `purchases-ui`). Kotlin packages are still `com.revenuecat.purchases.*`, so imports stay as they are." }
+  ],
+  "scanExclude": ["**/src/test/**", "**/src/androidTest/**", "**/src/test*/**", "examples/**", "test-apps/**", "api-tester/**", "**/detekt*/**", "**/*.api"],
+  "checks": [
+    { "name": "gradle", "run": "echo 'SKIPPED: needs JDK 17 and the Android SDK (this machine has Java 8). CI runs ./gradlew :purchases:testDefaultsDebugUnitTest.'" }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "repo": "cordova-plugin-purchases",
+  "upstream": "https://github.com/RevenueCat/cordova-plugin-purchases",
+  "publishes": ["npm @revenuedot/cordova-plugin-purchases (Cordova plugin id and the window.Purchases global unchanged)"],
+  "rules": [
+    { "type": "replace", "files": ["plugin.xml"], "find": "<framework src=\"com.revenuecat.purchases:purchases-hybrid-common:", "replace": "<framework src=\"{{mavenGroup}}:purchases-hybrid-common:" },
+    { "type": "replace", "files": ["plugin.xml"], "find": "<pod name=\"PurchasesHybridCommon\" ", "replace": "<pod name=\"RevenueDotPurchasesHybridCommon\" " },
+    { "type": "replace", "files": ["plugin.xml"], "find": "<description>Purchases Cordova Plugin</description>", "replace": "<description>Purchases Cordova Plugin. {{disclaimer}}</description>" },
+    { "type": "json", "file": "package.json", "set": { "/name": "{{npmScope}}/cordova-plugin-purchases" } },
+    { "type": "include", "group": "npm-metadata", "file": "package.json" },
+
+    { "type": "license", "files": ["LICENSE"] },
+    { "type": "banner", "files": ["README.md"], "install": "`cordova plugin add @revenuedot/cordova-plugin-purchases`. The plugin id (`cordova-plugin-purchases`) and the `Purchases` global are unchanged." }
+  ],
+  "scanExclude": ["examples/**", "e2e-tests/**", "apiTester/**", "tests/**"],
+  "checks": [
+    { "name": "install", "run": "npm install --no-audit --no-fund --ignore-scripts --silent 2>&1 | tail -3", "timeoutSec": 600 },
+    { "name": "build (tsc)", "run": "npx tsc", "timeoutSec": 300 },
+    { "name": "jest", "run": "npx jest --silent 2>&1 | tail -6; exit ${PIPESTATUS[0]}", "timeoutSec": 300 },
+    { "name": "plugin.xml well-formed", "run": "xmllint --noout plugin.xml && echo ok" }
+  ]
+}

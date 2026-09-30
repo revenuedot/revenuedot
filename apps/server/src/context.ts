@@ -10,6 +10,8 @@ export interface Deps {
   kick?: () => void;
   /** HTTP client for outbound calls (webhooks, stores); injectable for tests. */
   fetch?: typeof fetch;
+  /** Base64 Ed25519 seed for response signing; falls back to REVENUEDOT_SIGNING_KEY. "" turns signing off. */
+  signingKey?: string;
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

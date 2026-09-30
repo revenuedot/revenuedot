@@ -1,0 +1,44 @@
+{
+  "repo": "react-native-purchases",
+  "upstream": "https://github.com/RevenueCat/react-native-purchases",
+  "publishes": ["npm @revenuedot/react-native-purchases", "npm @revenuedot/react-native-purchases-ui", "npm @revenuedot/react-native-purchases-store-galaxy"],
+  "rules": [
+    { "type": "replace", "files": ["RNPurchases.podspec", "react-native-purchases-ui/RNPaywalls.podspec"], "find": "spec.dependency   \"PurchasesHybridCommon\", ", "replace": "spec.dependency   \"RevenueDotPurchasesHybridCommon\", " },
+    { "type": "replace", "files": ["react-native-purchases-ui/RNPaywalls.podspec"], "find": "spec.dependency   \"PurchasesHybridCommonUI\", ", "replace": "spec.dependency   \"RevenueDotPurchasesHybridCommonUI\", " },
+    { "type": "replace", "files": ["RNPurchases.podspec", "react-native-purchases-ui/RNPaywalls.podspec"], "regex": true, "flags": "i", "find": "https://github\\.com/revenuecat/react-native-purchases", "replace": "https://github.com/{{org}}/react-native-purchases", "done": "https://github.com/{{org}}/react-native-purchases" },
+    { "type": "replace", "files": ["android/build.gradle", "react-native-purchases-ui/android/build.gradle", "react-native-purchases-store-galaxy/android/build.gradle"], "find": "'com.revenuecat.purchases:purchases-hybrid-common", "replace": "'{{mavenGroup}}:purchases-hybrid-common" },
+
+    { "type": "json", "file": "package.json", "skipIfCurrentMatches": "^npm:", "set": {
+      "/name": "{{npmScope}}/react-native-purchases",
+      "/dependencies/@revenuecat~1purchases-js-hybrid-mappings": "npm:{{npmScope}}/purchases-js-hybrid-mappings@{{current}}",
+      "/dependencies/@revenuecat~1purchases-typescript-internal": "npm:{{npmScope}}/purchases-typescript-internal@{{current}}"
+    } },
+    { "type": "replace", "files": ["package.json"], "find": "\"ui\": \"yarn workspace react-native-purchases-ui\"", "replace": "\"ui\": \"yarn workspace {{npmScope}}/react-native-purchases-ui\"" },
+    { "type": "include", "group": "npm-metadata", "file": "package.json" },
+    { "type": "json", "file": "react-native-purchases-ui/package.json", "skipIfCurrentMatches": "^npm:", "set": {
+      "/name": "{{npmScope}}/react-native-purchases-ui",
+      "/dependencies/@revenuecat~1purchases-typescript-internal": "npm:{{npmScope}}/purchases-typescript-internal@{{current}}"
+    } },
+    { "type": "include", "group": "npm-metadata", "file": "react-native-purchases-ui/package.json" },
+    { "type": "json", "file": "react-native-purchases-store-galaxy/package.json", "skipIfCurrentMatches": "^npm:", "set": {
+      "/name": "{{npmScope}}/react-native-purchases-store-galaxy",
+      "/dependencies/@revenuecat~1purchases-typescript-internal": "npm:{{npmScope}}/purchases-typescript-internal@{{current}}"
+    } },
+    { "type": "include", "group": "npm-metadata", "file": "react-native-purchases-store-galaxy/package.json" },
+
+    { "type": "replace", "files": ["fastlane/Fastfile"], "find": "'\"PurchasesHybridCommon\", \\'{x}\\''", "replace": "'\"RevenueDotPurchasesHybridCommon\", \\'{x}\\''", "note": "keep upstream's version-bump patterns (and their test) pointing at our names" },
+    { "type": "replace", "files": ["fastlane/Fastfile"], "find": "'\"PurchasesHybridCommonUI\", \\'{x}\\''", "replace": "'\"RevenueDotPurchasesHybridCommonUI\", \\'{x}\\''" },
+    { "type": "replace", "files": ["fastlane/Fastfile"], "find": "com.revenuecat.purchases:purchases-hybrid-common", "replace": "{{mavenGroup}}:purchases-hybrid-common" },
+    { "type": "replace", "files": ["fastlane/Fastfile"], "regex": true, "find": "'\"@revenuecat/(purchases-typescript-internal|purchases-js-hybrid-mappings)\": \"\\{x\\}\"'", "replace": "'\"@revenuecat/$1\": \"npm:{{npmScope}}/$1@{x}\"'", "done": "npm:{{npmScope}}/purchases-typescript-internal@{x}" },
+    { "type": "license", "files": ["LICENSE", "react-native-purchases-ui/LICENSE", "react-native-purchases-store-galaxy/LICENSE"], "stubFrom": "LICENSE", "note": "the Galaxy package's LICENSE is a one-word stub upstream; it gets the full notice" },
+    { "type": "banner", "files": ["README.md"], "install": "keep every import with npm aliases: `\"react-native-purchases\": \"npm:@revenuedot/react-native-purchases@<version>\"` and `\"react-native-purchases-ui\": \"npm:@revenuedot/react-native-purchases-ui@<version>\"`. The native side pulls `RevenueDotPurchasesHybridCommon` (CocoaPods) and `app.revenuedot.purchases:purchases-hybrid-common` (Maven)." },
+    { "type": "banner", "files": ["react-native-purchases-ui/README.md", "react-native-purchases-store-galaxy/README.md"], "optional": true, "install": "`\"react-native-purchases-ui\": \"npm:@revenuedot/react-native-purchases-ui@<version>\"` next to the `react-native-purchases` alias." }
+  ],
+  "scanExclude": ["examples/**", "e2e-tests/**", "apitesters/**", "**/__tests__/**", "scripts/docs/**"],
+  "checks": [
+    { "name": "install (aliases resolved to upstream builds until ours are published)", "run": "node $FORKS_DIR/lib/unalias.mjs --resolutions=package.json package.json react-native-purchases-ui/package.json react-native-purchases-store-galaxy/package.json && node -e 'const f=\"package.json\",p=JSON.parse(require(\"fs\").readFileSync(f));p.workspaces=p.workspaces.filter(w=>!/example|e2e/.test(w));require(\"fs\").writeFileSync(f,JSON.stringify(p,null,2))' && YARN_ENABLE_IMMUTABLE_INSTALLS=false corepack yarn install --mode=skip-build 2>&1 | tail -3", "timeoutSec": 1200 },
+    { "name": "typecheck", "run": "corepack yarn tsc --noEmit", "timeoutSec": 600 },
+    { "name": "build + jest", "run": "corepack yarn tsc && corepack yarn jest --silent 2>&1 | tail -6; exit ${PIPESTATUS[0]}", "timeoutSec": 900 },
+    { "name": "podspec parse", "run": "for f in RNPurchases.podspec react-native-purchases-ui/RNPaywalls.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,JSON.stringify(s.dependencies))' || exit 1; done" }
+  ]
+}

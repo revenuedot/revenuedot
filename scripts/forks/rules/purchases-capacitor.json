@@ -1,0 +1,34 @@
+{
+  "repo": "purchases-capacitor",
+  "upstream": "https://github.com/RevenueCat/purchases-capacitor",
+  "publishes": ["npm @revenuedot/purchases-capacitor", "npm @revenuedot/purchases-capacitor-ui (install both through npm aliases so Capacitor's generated pod and SPM names stay the same)"],
+  "rules": [
+    { "type": "replace", "files": ["RevenuecatPurchasesCapacitor.podspec"], "find": "s.dependency 'PurchasesHybridCommon', ", "replace": "s.dependency 'RevenueDotPurchasesHybridCommon', " },
+    { "type": "replace", "files": ["purchases-capacitor-ui/RevenuecatPurchasesCapacitorUI.podspec"], "find": "s.dependency 'PurchasesHybridCommonUI', ", "replace": "s.dependency 'RevenueDotPurchasesHybridCommonUI', " },
+    { "type": "replace", "files": ["Package.swift", "purchases-capacitor-ui/Package.swift"], "regex": true, "find": "\\.package\\(url: \"https://github\\.com/RevenueCat/purchases-hybrid-common\\.git\", exact: \"([0-9][^\"-]*)\"\\)", "replace": ".package(url: \"https://github.com/{{org}}/purchases-hybrid-common.git\", exact: \"$1{{gitTagSuffix}}\")", "done": "https://github.com/{{org}}/purchases-hybrid-common.git" },
+    { "type": "replace", "files": ["android/build.gradle", "purchases-capacitor-ui/android/build.gradle"], "find": "'com.revenuecat.purchases:purchases-hybrid-common", "replace": "'{{mavenGroup}}:purchases-hybrid-common" },
+
+    { "type": "json", "file": "package.json", "skipIfCurrentMatches": "^npm:", "set": {
+      "/name": "{{npmScope}}/purchases-capacitor",
+      "/dependencies/@revenuecat~1purchases-typescript-internal-esm": "npm:{{npmScope}}/purchases-typescript-internal-esm@{{current}}"
+    } },
+    { "type": "include", "group": "npm-metadata", "file": "package.json" },
+    { "type": "json", "file": "purchases-capacitor-ui/package.json", "skipIfCurrentMatches": "^npm:", "set": {
+      "/name": "{{npmScope}}/purchases-capacitor-ui",
+      "/dependencies/@revenuecat~1purchases-typescript-internal-esm": "npm:{{npmScope}}/purchases-typescript-internal-esm@{{current}}"
+    } },
+    { "type": "include", "group": "npm-metadata", "file": "purchases-capacitor-ui/package.json" },
+
+    { "type": "license", "files": ["LICENSE"] },
+    { "type": "copy", "from": "LICENSE", "to": "purchases-capacitor-ui/LICENSE", "note": "the UI package shipped without a notice" },
+    { "type": "banner", "files": ["README.md"], "install": "npm aliases keep every import and Capacitor's generated native names: `\"@revenuecat/purchases-capacitor\": \"npm:@revenuedot/purchases-capacitor@<version>\"` (and `-ui`), then `npx cap sync`." },
+    { "type": "banner", "files": ["purchases-capacitor-ui/README.md"], "optional": true, "install": "`\"@revenuecat/purchases-capacitor-ui\": \"npm:@revenuedot/purchases-capacitor-ui@<version>\"` next to the core alias." }
+  ],
+  "scanExclude": ["example/**", "e2e-tests/**", "apitesters/**", "__tests__/**", "**/ios/Tests/**"],
+  "checks": [
+    { "name": "install (aliases resolved to upstream builds until ours are published)", "run": "node $FORKS_DIR/lib/unalias.mjs package.json && yarn install --ignore-scripts --non-interactive --silent 2>&1 | tail -3", "timeoutSec": 900 },
+    { "name": "typecheck", "run": "npx tsc --noEmit", "timeoutSec": 600 },
+    { "name": "jest", "run": "npx jest --silent 2>&1 | tail -6; exit ${PIPESTATUS[0]}", "timeoutSec": 600 },
+    { "name": "podspec parse", "run": "for f in RevenuecatPurchasesCapacitor.podspec purchases-capacitor-ui/RevenuecatPurchasesCapacitorUI.podspec; do LANG=en_US.UTF-8 pod ipc spec \"$f\" 2>/dev/null | node -e 'const s=JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"));console.log(s.name,JSON.stringify(s.dependencies))' || exit 1; done" }
+  ]
+}
