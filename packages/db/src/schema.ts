@@ -24,7 +24,10 @@ export const apps = pgTable("apps", {
   /** Store credentials (App Store in-app purchase key, Google service account, shared secret). Encrypted at rest in the cloud. */
   credentials: jsonb("credentials").$type<Record<string, unknown>>().notNull().default({}),
   notificationForwardUrl: text("notification_forward_url"),
+  /** Last notification that was processed for a purchase we know (what "Ready" in setup health means). */
   lastNotificationAt: ts("last_notification_at"),
+  /** Google Play: when the daily voided-purchases scan last ran for this app. */
+  voidedPurchasesCheckedAt: ts("voided_purchases_checked_at"),
   createdAt: created(),
 }, (t) => [uniqueIndex("apps_public_key").on(t.publicKey), index("apps_project").on(t.projectId)]);
 
@@ -104,6 +107,11 @@ export const customers = pgTable("customers", {
   lastSeenAppVersion: text("last_seen_app_version"),
   lastSeenPlatform: text("last_seen_platform"),
   lastSeenCountry: text("last_seen_country"),
+  /** SDK headers of the customer's last request: X-Version, X-Platform-Flavor, X-Platform-Version, X-Client-Build-Version. */
+  lastSeenSdkVersion: text("last_seen_sdk_version"),
+  lastSeenSdkFlavor: text("last_seen_sdk_flavor"),
+  lastSeenPlatformVersion: text("last_seen_platform_version"),
+  lastSeenAppBuild: text("last_seen_app_build"),
   originalApplicationVersion: text("original_application_version"),
   originalPurchaseDate: ts("original_purchase_date"),
   /** Offering forced for this customer by the REST API (overrides the current offering). */
@@ -156,6 +164,10 @@ export const subscriptions = pgTable("subscriptions", {
   autoRenewProductId: text("auto_renew_product_id"),
   /** Promotional grants: the entitlement they unlock. */
   entitlementIdentifier: text("entitlement_identifier"),
+  /** Why auto-renew is off when the store says more than "the customer turned it off": PRICE_INCREASE, DEVELOPER_INITIATED, BILLING_ERROR. */
+  cancelReason: text("cancel_reason"),
+  /** Price increase consent: "pending" (consent required, no answer yet), "accepted", or null (none outstanding). */
+  priceIncreaseStatus: text("price_increase_status"),
   /** Set when EXPIRATION was recorded for the current period; cleared on renewal. */
   expiredEventAt: ts("expired_event_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -258,6 +270,27 @@ export const sessions = pgTable("sessions", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   expiresAt: ts("expires_at").notNull(),
 });
+
+/**
+ * Which SDK builds call the SDK endpoints, per app: one row per platform, flavor (native or the hybrid SDK) and version.
+ * Written at most once a minute per row; the dashboard's SDK compatibility panel reads it through setup_health.
+ */
+export const sdkVersions = pgTable("sdk_versions", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  /** "" when the request was not tied to an app. */
+  appId: text("app_id").notNull().default(""),
+  platform: text("platform").notNull(),
+  platformFlavor: text("platform_flavor").notNull().default("native"),
+  platformFlavorVersion: text("platform_flavor_version").notNull().default(""),
+  sdkVersion: text("sdk_version").notNull(),
+  lastPlatformVersion: text("last_platform_version"),
+  lastAppVersion: text("last_app_version"),
+  lastAppBuild: text("last_app_build"),
+  lastBundleId: text("last_bundle_id"),
+  lastAppUserId: text("last_app_user_id"),
+  firstSeenAt: ts("first_seen_at").notNull().defaultNow(),
+  lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ name: "sdk_versions_pk", columns: [t.projectId, t.appId, t.platform, t.platformFlavor, t.platformFlavorVersion, t.sdkVersion] })]);
 
 /** Raw store notifications as received, for replay, forwarding and audit. */
 export const storeNotifications = pgTable("store_notifications", {

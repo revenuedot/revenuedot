@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { diffNonSubscription, diffSubscription, isAnonymous, newId, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { Codes, RCError } from "../errors.js";
-import { findCustomer, isOnlyAnonymous, mergeCustomers, nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
-import type { VerifiedPurchase } from "../stores/types.js";
+import { backdateFirstSeen, findCustomer, isOnlyAnonymous, mergeCustomers, nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
+import type { VerifiedPurchase, VerifiedSubscription } from "../stores/types.js";
 import { recordEvent } from "./events.js";
 
 const { subscriptions, nonSubscriptions, transactions, projects, customers } = schema;
@@ -16,6 +16,8 @@ export interface ApplyContext {
   presentedOfferingId?: string | null;
   /** Receipt posts transfer ownership; store notifications never do. */
   fromDevice: boolean;
+  /** The customer was created for these purchases: its first-seen date moves back to the earliest purchase. */
+  customerCreated?: boolean;
 }
 
 /** USD value of a price; non-USD currencies need an FX source (TODO: daily rates table). */
@@ -30,6 +32,11 @@ export async function applyPurchases(db: DB, customer: CustomerRow, purchases: V
   for (const p of purchases) {
     if (p.kind === "subscription") owner = await applySubscription(db, owner, p, ctx);
     else owner = await applyOneTime(db, owner, p, ctx);
+  }
+  if (ctx.customerCreated && purchases.length) {
+    const earliest = new Date(Math.min(...purchases.map((p) => (p.kind === "subscription" ? p.originalPurchaseDate : p.purchaseDate).getTime())));
+    await backdateFirstSeen(db, owner.id, earliest);
+    [owner] = await db.select().from(customers).where(eq(customers.id, owner.id)) as [CustomerRow];
   }
   return owner;
 }
@@ -87,6 +94,9 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     refundedAt: p.refundedAt ?? null, autoResumeDate: p.autoResumeDate ?? null, storeTransactionId: p.storeTransactionId,
     originalTransactionId: p.originalTransactionId ?? null, priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null,
     priceUsd: p.price ? toUsd(p.price) : null, countryCode: p.countryCode ?? null, autoRenewProductId: p.autoRenewProductId ?? null, updatedAt: ctx.now,
+    // `undefined` means the store did not say; keep what we know. A cancel reason only lives while auto-renew is off.
+    cancelReason: !p.unsubscribeDetectedAt ? null : p.cancelReason === undefined ? existing?.cancelReason ?? null : p.cancelReason,
+    priceIncreaseStatus: p.priceIncreaseStatus === undefined ? existing?.priceIncreaseStatus ?? null : p.priceIncreaseStatus,
     // Access that runs past now reopens the chain for a future EXPIRATION; an EXPIRATION derived below sets it again.
     expiredEventAt: (p.expiresDate === null || p.expiresDate > ctx.now || (p.gracePeriodExpiresDate && p.gracePeriodExpiresDate > ctx.now)) ? null : existing?.expiredEventAt ?? null,
   };
@@ -114,17 +124,19 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   for (const d of diffSubscription(prev, next, ctx.now)) {
     await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: d, subject, now: ctx.now });
     if (d.type === "EXPIRATION") await db.update(subscriptions).set({ expiredEventAt: ctx.now }).where(and(eq(subscriptions.projectId, ctx.projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey)));
-    if (d.type === "INITIAL_PURCHASE" || d.type === "RENEWAL" || d.type === "PRODUCT_CHANGE" || (d.type === "CANCELLATION" && d.isRefund)) {
-      const kind = d.isRefund ? "refund" : d.type === "RENEWAL" ? "renewal" : p.periodType === "trial" ? "trial" : "purchase";
+    const refund = d.type === "CANCELLATION" && d.isRefund;
+    if (d.type === "INITIAL_PURCHASE" || d.type === "RENEWAL" || refund || d.type === "REFUND_REVERSED") {
+      const kind = refund ? "refund" : d.type === "REFUND_REVERSED" ? "refund_reversal" : d.type === "RENEWAL" ? "renewal" : p.periodType === "trial" ? "trial" : "purchase";
       await db.insert(transactions).values({
         id: newId("txn_", 16), projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store,
         storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind, isSandbox: p.isSandbox,
-        purchasedAt: d.isRefund ? p.refundedAt ?? ctx.now : p.purchaseDate, expiresAt: p.expiresDate,
-        revenueUsd: kind === "trial" ? 0 : (d.isRefund ? -1 : 1) * (p.price ? toUsd(p.price) : 0),
+        purchasedAt: refund ? p.refundedAt ?? ctx.now : d.type === "REFUND_REVERSED" ? ctx.now : p.purchaseDate, expiresAt: p.expiresDate,
+        revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (p.price ? toUsd(p.price) : 0),
         priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
       }).onConflictDoNothing();
     }
   }
+  if (p.replacesStoreKey && p.replacesStoreKey !== p.storeKey) await applyReplacement(db, ctx, p);
   const [o] = await db.select().from(customers).where(eq(customers.id, owner.id));
   return o!;
 }
@@ -152,15 +164,61 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
   };
   for (const d of diffNonSubscription(prev, next)) {
     await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: d, subject, now: ctx.now });
+    const kind = d.isRefund ? "refund" : d.type === "REFUND_REVERSED" ? "refund_reversal" : "one_time";
     await db.insert(transactions).values({
       id: newId("txn_", 16), projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store,
-      storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind: d.isRefund ? "refund" : "one_time",
-      isSandbox: p.isSandbox, purchasedAt: p.purchaseDate, revenueUsd: (d.isRefund ? -1 : 1) * (p.price ? toUsd(p.price) : 0),
+      storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind,
+      isSandbox: p.isSandbox, purchasedAt: kind === "refund" ? p.refundedAt ?? ctx.now : kind === "refund_reversal" ? ctx.now : p.purchaseDate,
+      revenueUsd: (d.isRefund ? -1 : 1) * (p.price ? toUsd(p.price) : 0),
       priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
     }).onConflictDoNothing();
   }
   const [o] = await db.select().from(customers).where(eq(customers.id, owner.id));
   return o!;
+}
+
+const planKey = (p: { productIdentifier: string; productPlanIdentifier?: string | null }) =>
+  p.productPlanIdentifier ? `${p.productIdentifier}:${p.productPlanIdentifier}` : p.productIdentifier;
+const minDate = (a: Date, b: Date) => (a < b ? a : b);
+
+/**
+ * An immediate upgrade, downgrade or crossgrade on Google Play issues a new purchase token whose `linkedPurchaseToken`
+ * is the old one. The new token is its own chain (INITIAL_PURCHASE); the old chain ends at the switch with a
+ * PRODUCT_CHANGE event for the old product (no CANCELLATION, no EXPIRATION), on whichever path learns of the new token
+ * first: the device posting it to /v1/receipts, or the store notification. Idempotent.
+ */
+async function applyReplacement(db: DB, ctx: ApplyContext, next: VerifiedSubscription) {
+  const [old] = await db.select().from(subscriptions)
+    .where(and(eq(subscriptions.projectId, ctx.projectId), eq(subscriptions.store, next.store), eq(subscriptions.storeKey, next.replacesStoreKey!))).limit(1);
+  if (!old) return;
+  const oldOriginal = old.originalTransactionId ?? old.storeKey;
+  const [done] = await db.select({ id: schema.events.id }).from(schema.events).where(and(
+    eq(schema.events.projectId, ctx.projectId), eq(schema.events.customerId, old.customerId), eq(schema.events.type, "PRODUCT_CHANGE"),
+    sql`${schema.events.payload}->'event'->>'original_transaction_id' = ${oldOriginal}`,
+    sql`${schema.events.payload}->'event'->>'transaction_id' = ${old.storeTransactionId ?? ""}`,
+  )).limit(1);
+  let expiresDate = old.expiresDate ? minDate(old.expiresDate, next.originalPurchaseDate) : next.originalPurchaseDate;
+  if (next.replacedExpiresDate) expiresDate = minDate(expiresDate, next.replacedExpiresDate);
+  await db.update(subscriptions).set({
+    expiresDate, gracePeriodExpiresDate: null, billingIssuesDetectedAt: null, autoResumeDate: null,
+    autoRenewProductId: next.productIdentifier, expiredEventAt: old.expiredEventAt ?? ctx.now, updatedAt: ctx.now,
+  }).where(eq(subscriptions.id, old.id));
+  if (done || planKey(old) === planKey(next)) return;
+  const [oldOwner] = await db.select().from(customers).where(eq(customers.id, old.customerId));
+  if (!oldOwner) return;
+  const aliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, oldOwner.id));
+  const d = subRowToDomain(old);
+  await recordEvent(db, {
+    projectId: ctx.projectId, appId: old.appId ?? ctx.appId, customer: oldOwner, appUserId: aliases.find((a) => !isAnonymous(a.a))?.a ?? oldOwner.originalAppUserId,
+    // Google's immediate replacement: `product_id` is the old product and there is no `new_product_id` (RevenueCat sends it only for
+    // the App Store, deferred Google Play changes and its own billing).
+    derived: { type: "PRODUCT_CHANGE" }, now: ctx.now,
+    subject: {
+      store: d.store, productId: d.productIdentifier, productPlanId: d.productPlanIdentifier, periodType: d.periodType,
+      purchasedAt: d.purchaseDate, expiresAt: expiresDate, transactionId: d.storeTransactionId ?? null, originalTransactionId: oldOriginal,
+      isSandbox: d.isSandbox, isFamilyShare: d.ownershipType === "FAMILY_SHARED", countryCode: old.countryCode, price: d.price, priceUsd: old.priceUsd,
+    },
+  });
 }
 
 export { findCustomer };
@@ -184,15 +242,16 @@ export async function applyFromStore(db: DB, opts: { projectId: string; appId: s
     ownerId = row?.c ?? null;
   }
   let owner: CustomerRow | undefined;
+  let created = false;
   if (ownerId) [owner] = await db.select().from(customers).where(eq(customers.id, ownerId));
   if (!owner && opts.appUserIdHint) owner = (await findCustomer(db, projectId, opts.appUserIdHint)) ?? undefined;
   if (!owner) {
     if (!opts.createIfUnknown) return false;
     const { getOrCreateCustomer } = await import("../repo/customers.js");
-    owner = (await getOrCreateCustomer(db, projectId, opts.appUserIdHint ?? `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`, now)).customer;
+    ({ customer: owner, created } = await getOrCreateCustomer(db, projectId, opts.appUserIdHint ?? `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`, now));
   }
   const aliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, owner.id));
   const appUserId = aliases.find((a) => !isAnonymous(a.a))?.a ?? owner.originalAppUserId;
-  await applyPurchases(db, owner, [p], { projectId, appId, appUserId, now, fromDevice: false });
+  await applyPurchases(db, owner, [p], { projectId, appId, appUserId, now, fromDevice: false, customerCreated: created });
   return true;
 }

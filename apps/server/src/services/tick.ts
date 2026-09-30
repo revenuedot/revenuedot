@@ -1,16 +1,20 @@
 import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { expirationReasonOf } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { recordEvent } from "./events.js";
 import { deliverDue } from "./webhooks.js";
 import { subRowToDomain } from "../repo/customers.js";
+import { scanDueVoidedPurchases } from "../stores/google/voided.js";
+import type { StoreAdapter } from "../stores/types.js";
 
 const { subscriptions, customers, customerAliases } = schema;
 
 /**
  * The one periodic job (every minute: Workers cron in the cloud, an interval in Node):
- * record EXPIRATION for subscriptions whose access has ended, then send due webhooks.
+ * record EXPIRATION for subscriptions whose access has ended, run the daily Google Play voided-purchases scan for apps
+ * that are due, then send due webhooks. `stores` supplies the Play client (tests inject a fake Google).
  */
-export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch) {
+export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: { stores?: Record<string, StoreAdapter> } = {}) {
   const expired = await db.select().from(subscriptions).where(and(
     isNull(subscriptions.expiredEventAt), isNotNull(subscriptions.expiresDate), lte(subscriptions.expiresDate, now),
     or(isNull(subscriptions.gracePeriodExpiresDate), lte(subscriptions.gracePeriodExpiresDate, now)),
@@ -24,7 +28,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch) {
     if (!s.refundedAt) {
       await recordEvent(db, {
         projectId: s.projectId, appId: s.appId, customer, appUserId,
-        derived: { type: "EXPIRATION", expirationReason: s.autoResumeDate ? "SUBSCRIPTION_PAUSED" : s.billingIssuesDetectedAt ? "BILLING_ERROR" : "UNSUBSCRIBE" },
+        derived: { type: "EXPIRATION", expirationReason: expirationReasonOf(d) },
         subject: {
           store: d.store, productId: d.productIdentifier, productPlanId: d.productPlanIdentifier, periodType: d.periodType,
           purchasedAt: d.purchaseDate, expiresAt: d.expiresDate, transactionId: d.storeTransactionId ?? null,
@@ -36,6 +40,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch) {
     }
     await db.update(subscriptions).set({ expiredEventAt: now }).where(eq(subscriptions.id, s.id));
   }
+  const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
   const sent = await deliverDue(db, fetchImpl, now);
-  return { expired: expired.length, sent };
+  return { expired: expired.length, voided, sent };
 }

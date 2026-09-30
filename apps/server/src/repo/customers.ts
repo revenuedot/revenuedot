@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { isAnonymous, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 
@@ -28,13 +28,31 @@ export async function aliasesOf(db: DB, customerId: string): Promise<string[]> {
   return rows.map((r) => r.a);
 }
 
-export async function touch(db: DB, customerId: string, now: Date, info: { appVersion?: string | null; platform?: string | null; country?: string | null } = {}) {
+/** What the SDK's request headers say about the device, app build and SDK (all optional). */
+export interface SeenInfo {
+  appVersion?: string | null; platform?: string | null; country?: string | null;
+  sdkVersion?: string | null; sdkFlavor?: string | null; platformVersion?: string | null; appBuild?: string | null;
+}
+
+export async function touch(db: DB, customerId: string, now: Date, info: SeenInfo = {}) {
   await db.update(customers).set({
     lastSeen: now,
     ...(info.appVersion ? { lastSeenAppVersion: info.appVersion } : {}),
     ...(info.platform ? { lastSeenPlatform: info.platform } : {}),
     ...(info.country ? { lastSeenCountry: info.country } : {}),
+    ...(info.sdkVersion ? { lastSeenSdkVersion: info.sdkVersion } : {}),
+    ...(info.sdkFlavor ? { lastSeenSdkFlavor: info.sdkFlavor } : {}),
+    ...(info.platformVersion ? { lastSeenPlatformVersion: info.platformVersion } : {}),
+    ...(info.appBuild ? { lastSeenAppBuild: info.appBuild } : {}),
   }).where(eq(customers.id, customerId));
+}
+
+/**
+ * A customer created by a purchase of an older transaction (a restore on a new install, a server-side import, a store
+ * notification for a purchase we had not seen) was first seen when that purchase was made, not when we heard of it.
+ */
+export async function backdateFirstSeen(db: DB, customerId: string, earliest: Date) {
+  await db.update(customers).set({ firstSeen: earliest }).where(and(eq(customers.id, customerId), sql`${customers.firstSeen} > ${earliest.toISOString()}::timestamptz`));
 }
 
 /** Upserts attributes; a newer `updated_at_ms` wins. Empty string or null deletes the value (iOS sends "", Android null). */
@@ -58,7 +76,8 @@ export function subRowToDomain(r: typeof subscriptions.$inferSelect): Subscripti
     gracePeriodExpiresDate: r.gracePeriodExpiresDate, refundedAt: r.refundedAt, autoResumeDate: r.autoResumeDate,
     storeTransactionId: r.storeTransactionId, originalTransactionId: r.originalTransactionId,
     price: r.priceAmount !== null && r.priceCurrency ? { amount: r.priceAmount, currency: r.priceCurrency } : null,
-    entitlementIdentifier: r.entitlementIdentifier,
+    entitlementIdentifier: r.entitlementIdentifier, autoRenewProductId: r.autoRenewProductId,
+    cancelReason: r.cancelReason as Subscription["cancelReason"], priceIncreaseStatus: r.priceIncreaseStatus as Subscription["priceIncreaseStatus"],
   };
 }
 

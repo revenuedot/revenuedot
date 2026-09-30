@@ -35,6 +35,10 @@ export interface AppleRenewalInfo {
   gracePeriodExpiresDate?: number;
   /** 1 customer cancelled, 2 billing error, 3 declined a price increase, 4 product unavailable, 5 other. */
   expirationIntent?: number;
+  /** Present while a price increase is outstanding: 0 the customer has not responded, 1 consented (or no consent needed). */
+  priceIncreaseStatus?: 0 | 1;
+  renewalPrice?: number;
+  currency?: string;
   signedDate?: number;
 }
 
@@ -61,6 +65,10 @@ export interface MapOptions {
   /** Overrides from the notification type when the renewal info is missing or lags. */
   autoRenew?: boolean;
   billingIssue?: boolean;
+  /** PRICE_INCREASE notifications: PENDING / ACCEPTED. */
+  priceIncrease?: "pending" | "accepted";
+  /** EXPIRED/PRICE_INCREASE: the customer declined the increase. */
+  cancelReason?: "PRICE_INCREASE";
 }
 
 const date = (ms?: number | null) => (typeof ms === "number" ? new Date(ms) : null);
@@ -95,6 +103,9 @@ export function fromTransaction(tx: AppleTransaction, o: MapOptions): VerifiedPu
     gracePeriodExpiresDate: billingIssue && grace && (!expiresDate || grace > expiresDate) ? grace : null,
     refundedAt: date(tx.revocationDate), storeTransactionId: tx.transactionId, originalTransactionId: tx.originalTransactionId,
     price, countryCode, autoRenewProductId: r?.autoRenewProductId ?? null,
+    // Without renewal info Apple said nothing about either; the stored values stay.
+    priceIncreaseStatus: o.priceIncrease ?? (r ? (r.priceIncreaseStatus === 0 ? "pending" : r.priceIncreaseStatus === 1 ? "accepted" : null) : undefined),
+    cancelReason: o.cancelReason ?? (r ? (r.expirationIntent === 3 ? "PRICE_INCREASE" : null) : undefined),
   };
   return sub;
 }

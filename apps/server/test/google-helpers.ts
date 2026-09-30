@@ -5,7 +5,7 @@ import { harness, type Harness } from "../../../packages/contract/src/harness.js
 import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
 import { createGoogleStore, type GoogleStore } from "../src/stores/google/index.js";
-import type { ProductPurchase, SubscriptionPurchaseV2 } from "../src/stores/google/api.js";
+import type { ProductPurchase, SubscriptionPurchaseV2, VoidedPurchase } from "../src/stores/google/api.js";
 
 export const PKG = "com.example.scanner";
 export const API = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PKG}`;
@@ -30,6 +30,10 @@ export class FakeGoogle {
   products = new Map<string, ProductPurchase>();
   v1 = new Map<string, { autoResumeTimeMillis?: string }>();
   orders = new Map<string, string>();
+  /** What purchases.voidedpurchases.list returns (filtered by startTime/endTime on voidedTimeMillis). */
+  voided: VoidedPurchase[] = [];
+  /** Order ids refunded through orders.refund, with the revoke flag. */
+  refunds: { orderId: string; revoke: boolean }[] = [];
   calls: Call[] = [];
   tokenRequests: URLSearchParams[] = [];
   forwarded: Call[] = [];
@@ -37,7 +41,7 @@ export class FakeGoogle {
   /** Return a Response to override any call (e.g. to simulate outages). */
   override: ((url: string, method: string) => Response | Promise<Response> | undefined) | null = null;
 
-  constructor(private publicKey: KeyLike) {}
+  constructor(private publicKey: KeyLike, public now: () => Date = () => new Date()) {}
 
   fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -63,7 +67,52 @@ export class FakeGoogle {
     // ["", "purchases", "subscriptionsv2", "tokens", token]
     if (path[1] === "purchases" && path[2] === "subscriptionsv2" && method === "GET") {
       const s = this.subs.get(path[4]!);
-      return s ? json(200, s) : googleError(404, "The purchase token was not found.", "notFound");
+      return s ? json(200, { etag: `etag-${s.latestOrderId}-${s.lineItems?.[0]?.expiryTime}`, ...s }) : googleError(404, "The purchase token was not found.", "notFound");
+    }
+    if (path[1] === "purchases" && path[2] === "subscriptionsv2" && method === "POST") {
+      const [token, action] = path[4]!.split(":");
+      const s = this.subs.get(token!);
+      if (!s) return googleError(404, "The purchase token was not found.", "notFound");
+      const li = s.lineItems![0]!;
+      const req = body ? JSON.parse(body) : {};
+      if (action === "revoke") {
+        if (!req.revocationContext) return googleError(400, "revocationContext is required", "subscriptionInvalidArgument");
+        s.subscriptionState = "SUBSCRIPTION_STATE_EXPIRED";
+        li.expiryTime = this.now().toISOString();
+        return json(200, {});
+      }
+      if (action === "cancel") {
+        if (s.subscriptionState === "SUBSCRIPTION_STATE_EXPIRED") return googleError(400, "The subscription has expired.", "subscriptionExpired");
+        s.subscriptionState = "SUBSCRIPTION_STATE_CANCELED";
+        s.canceledStateContext = { developerInitiatedCancellation: {} };
+        li.autoRenewingPlan = { ...li.autoRenewingPlan, autoRenewEnabled: false };
+        return json(200, {});
+      }
+      if (action === "defer") {
+        const ctx = req.deferralContext ?? {};
+        if (ctx.etag !== `etag-${s.latestOrderId}-${li.expiryTime}`) return googleError(400, "etag mismatch", "subscriptionInvalidArgument");
+        const secs = Number(/^(\d+)s$/.exec(ctx.deferDuration ?? "")?.[1]);
+        if (!secs) return googleError(400, "deferDuration is required", "subscriptionInvalidArgument");
+        li.expiryTime = new Date(new Date(li.expiryTime!).getTime() + secs * 1000).toISOString();
+        return json(200, { itemExpiryTimeDetails: [{ productId: li.productId, expiryTime: li.expiryTime }] });
+      }
+      return googleError(404, "unknown action", "notFound");
+    }
+    if (path[1] === "purchases" && path[2] === "voidedpurchases") {
+      const start = Number(u.searchParams.get("startTime") ?? 0);
+      const end = Number(u.searchParams.get("endTime") ?? Infinity);
+      return json(200, { voidedPurchases: this.voided.filter((v) => Number(v.voidedTimeMillis) >= start && Number(v.voidedTimeMillis) <= end) });
+    }
+    if (path[1] === "orders" && method === "POST") {
+      const [orderId, action] = path[2]!.split(":");
+      if (action !== "refund") return googleError(404, "unknown action", "notFound");
+      const revoke = u.searchParams.get("revoke") === "true";
+      this.refunds.push({ orderId: orderId!, revoke });
+      for (const [, s] of this.subs) {
+        if (s.latestOrderId === orderId && revoke) { s.subscriptionState = "SUBSCRIPTION_STATE_EXPIRED"; s.lineItems![0]!.expiryTime = this.now().toISOString(); }
+      }
+      for (const [, p] of this.products) if (p.orderId === orderId) p.purchaseState = 1;
+      return new Response(null, { status: 204 });
     }
     if (path[1] === "purchases" && path[2] === "subscriptions") {
       const [token, action] = path[5]!.split(":");
@@ -127,7 +176,7 @@ export interface Env {
 /** Contract harness (project, apps, catalog) plus the server wired to a fake Google, with the Play app's credentials set. */
 export async function env(keys: Keys, credentials: Record<string, unknown> = {}): Promise<Env> {
   const h = await harness();
-  const g = new FakeGoogle(keys.publicKey);
+  const g = new FakeGoogle(keys.publicKey, h.now);
   const store = createGoogleStore({ fetch: g.fetch, now: h.now, timeoutMs: 200 });
   const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), play_store: store }, fetch: g.fetch });
   await h.db.update(schema.apps).set({ credentials: { service_account: keys.sa, ...credentials } }).where(eq(schema.apps.id, h.ids.androidApp));

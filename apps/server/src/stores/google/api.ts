@@ -30,11 +30,20 @@ export interface SubscriptionPurchaseV2 {
     replacementCancellation?: Record<string, unknown>;
   };
   externalAccountIdentifiers?: { externalAccountId?: string; obfuscatedExternalAccountId?: string; obfuscatedExternalProfileId?: string };
+  /** Entity tag of the current state; Google requires it for defer. */
+  etag?: string;
   lineItems?: Array<{
     productId: string;
     expiryTime?: string;
     latestSuccessfulOrderId?: string;
-    autoRenewingPlan?: { autoRenewEnabled?: boolean; recurringPrice?: Money };
+    autoRenewingPlan?: {
+      autoRenewEnabled?: boolean;
+      recurringPrice?: Money;
+      /** The last price change since signup. PRICE_INCREASE needs the customer's consent; OPT_OUT_PRICE_INCREASE does not. */
+      priceChangeDetails?: { newPrice?: Money; priceChangeMode?: string; priceChangeState?: string; expectedNewPriceChargeTime?: string };
+      /** A price step-up that needs consent (state PENDING, CONFIRMED or COMPLETED). */
+      priceStepUpConsentDetails?: { state?: string; consentDeadlineTime?: string; newPrice?: Money };
+    };
     prepaidPlan?: { allowExtendAfterTime?: string };
     offerDetails?: { basePlanId?: string; offerId?: string; offerTags?: string[] };
     offerPhase?: { freeTrial?: object; introductoryPrice?: object; basePrice?: object; prorationPeriod?: object };
@@ -70,7 +79,15 @@ export interface VoidedPurchase {
   voidedReason?: number;
   kind?: string;
   voidedQuantity?: number;
+  /** 1 full refund, 2 quantity-based partial refund. */
+  refundType?: number;
 }
+
+/** Whether the app has a service account configured at all (either field name). */
+export const hasServiceAccount = (app: Pick<AppRow, "credentials">) => {
+  const raw = app.credentials?.play_service_account_credentials_json ?? app.credentials?.service_account;
+  return raw !== undefined && raw !== null && raw !== "";
+};
 
 /** Why a Google call failed, which decides the HTTP answer: bad token → 400, our setup → 400/500, Google down → 503. */
 export type GoogleErrorKind = "invalid_token" | "credentials" | "transient";
@@ -222,6 +239,23 @@ export class GooglePlayClient {
   }
   acknowledgeProduct(app: AppRow, productId: string, token: string) {
     return this.call(app, "POST", `/purchases/products/${enc(productId)}/tokens/${enc(token)}:acknowledge`, {});
+  }
+
+  /** subscriptionsv2.revoke with a full refund of the latest order: access ends now. */
+  revokeSubscriptionV2(app: AppRow, token: string) {
+    return this.call(app, "POST", `/purchases/subscriptionsv2/tokens/${enc(token)}:revoke`, { revocationContext: { fullRefund: {} } });
+  }
+  /** subscriptionsv2.cancel: renewal stops, access continues to the end of the paid period. */
+  cancelSubscriptionV2(app: AppRow, token: string) {
+    return this.call(app, "POST", `/purchases/subscriptionsv2/tokens/${enc(token)}:cancel`, { cancellationContext: { cancellationType: "DEVELOPER_REQUESTED_STOP_PAYMENTS" } });
+  }
+  /** subscriptionsv2.defer: moves the next renewal later by `seconds`. Google requires the etag of the state being changed. */
+  deferSubscriptionV2(app: AppRow, token: string, etag: string, seconds: number) {
+    return this.call(app, "POST", `/purchases/subscriptionsv2/tokens/${enc(token)}:defer`, { deferralContext: { etag, deferDuration: `${Math.round(seconds)}s` } });
+  }
+  /** orders.refund: refunds one order (a subscription period or a one-time purchase); `revoke` also ends access. */
+  refundOrder(app: AppRow, orderId: string, revoke = true) {
+    return this.call(app, "POST", `/orders/${enc(orderId)}:refund?revoke=${revoke}`);
   }
 
   /** voidedpurchases.list, following pagination. Google keeps 30 days of voided purchases. */

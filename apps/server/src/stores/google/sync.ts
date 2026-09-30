@@ -1,16 +1,15 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { isAnonymous } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord } from "../../context.js";
 import { productInfo } from "../../repo/catalog.js";
 import { applyFromStore } from "../../services/purchases.js";
-import { recordEvent } from "../../services/events.js";
 import type { VerifiedOneTime, VerifiedSubscription } from "../types.js";
 import { GoogleApiError, type GooglePlayClient, type SubscriptionPurchaseV2 } from "./api.js";
-import { acknowledgeProductIfNeeded, acknowledgeSubscriptionIfNeeded } from "./index.js";
+import { acknowledgeProductIfNeeded, acknowledgeSubscriptionIfNeeded, replacedExpiry } from "./index.js";
 import { mapProduct, mapSubscription, S } from "./map.js";
 
-const { subscriptions, nonSubscriptions, customers, customerAliases, events } = schema;
+const { subscriptions, nonSubscriptions, customerAliases } = schema;
 type SubRow = typeof subscriptions.$inferSelect;
 type NonSubRow = typeof nonSubscriptions.$inferSelect;
 
@@ -21,8 +20,6 @@ export interface SyncResult { status: "processed" | "unknown_purchase" | "ignore
 
 const minDate = (a: Date, b: Date) => (a < b ? a : b);
 const createIfUnknown = (app: AppRecord) => app.credentials?.track_new_purchases === true;
-const planKey = (p: { productIdentifier: string; productPlanIdentifier?: string | null }) =>
-  p.productPlanIdentifier ? `${p.productIdentifier}:${p.productPlanIdentifier}` : p.productIdentifier;
 const rowPrice = (r: { priceAmount: number | null; priceCurrency: string | null }) =>
   r.priceAmount !== null && r.priceCurrency ? { amount: r.priceAmount, currency: r.priceCurrency } : null;
 
@@ -114,10 +111,12 @@ export async function syncSubscription(ctx: SyncCtx, token: string, opts: { refu
     }
   }
 
-  // A purchase that replaced another one belongs to the same customer.
+  // A purchase that replaced another one belongs to the same customer; the old chain ends where Google says it did.
   let hint: string | null = null;
   const linked = sub?.linkedPurchaseToken ? await subRow(db, app.projectId, sub.linkedPurchaseToken) : undefined;
   if (!row && linked) hint = await appUserIdOf(db, linked.customerId);
+  if (linked) p.replacedExpiresDate = await replacedExpiry(client, app, linked.storeKey);
+  else p.replacesStoreKey = null;
 
   // A new order on a token whose access had ended is Google renewing it (recovery from account hold, resume from a
   // pause): RevenueCat reports RENEWAL, not a new purchase. Moving the stored end to now keeps the event a RENEWAL.
@@ -132,52 +131,7 @@ export async function syncSubscription(ctx: SyncCtx, token: string, opts: { refu
   if (sub && !(await acknowledgeSubscriptionIfNeeded(client, app, token, sub))) {
     throw new GoogleApiError("transient", "acknowledging the purchase failed; Pub/Sub will retry");
   }
-  if (applied && linked && sub) await applyReplacement(ctx, p, linked);
   return { status: applied ? "processed" : "unknown_purchase", sandbox: p.isSandbox };
-}
-
-/**
- * An immediate upgrade, downgrade or crossgrade on Google Play issues a new purchase token whose `linkedPurchaseToken`
- * is the old one. The new token is its own chain (INITIAL_PURCHASE); the old chain ends at the switch with a
- * PRODUCT_CHANGE event (no CANCELLATION, no EXPIRATION). Idempotent.
- */
-async function applyReplacement(ctx: SyncCtx, next: VerifiedSubscription, old: SubRow) {
-  const { db, app, client, now } = ctx;
-  const switchedAt = next.originalPurchaseDate;
-  const oldOriginal = old.originalTransactionId ?? old.storeKey;
-  const [done] = await db.select({ id: events.id }).from(events).where(and(
-    eq(events.projectId, app.projectId), eq(events.customerId, old.customerId), eq(events.type, "PRODUCT_CHANGE"),
-    sql`${events.payload}->'event'->>'original_transaction_id' = ${oldOriginal}`,
-    sql`${events.payload}->'event'->>'transaction_id' = ${old.storeTransactionId ?? ""}`,
-  )).limit(1);
-
-  let expiresDate = old.expiresDate ? minDate(old.expiresDate, switchedAt) : switchedAt;
-  try {
-    const s = await client.getSubscriptionV2(app, old.storeKey);
-    const expiry = s.lineItems?.[0]?.expiryTime ? new Date(s.lineItems[0].expiryTime) : null;
-    if (expiry) expiresDate = minDate(expiresDate, expiry);
-  } catch (e) {
-    if (!(e instanceof GoogleApiError && e.kind === "invalid_token")) throw e;
-  }
-  await db.update(subscriptions).set({
-    expiresDate, gracePeriodExpiresDate: null, billingIssuesDetectedAt: null, autoResumeDate: null,
-    autoRenewProductId: next.productIdentifier, expiredEventAt: old.expiredEventAt ?? now, updatedAt: now,
-  }).where(eq(subscriptions.id, old.id));
-  if (done || planKey(old) === planKey(next)) return;
-
-  const [customer] = await db.select().from(customers).where(eq(customers.id, old.customerId));
-  if (!customer) return;
-  const price = rowPrice(old);
-  await recordEvent(db, {
-    projectId: app.projectId, appId: app.id, customer, appUserId: (await appUserIdOf(db, customer.id)) ?? customer.originalAppUserId,
-    derived: { type: "PRODUCT_CHANGE" },
-    subject: {
-      store: "play_store", productId: old.productIdentifier, productPlanId: old.productPlanIdentifier, periodType: old.periodType,
-      purchasedAt: old.purchaseDate, expiresAt: expiresDate, transactionId: old.storeTransactionId, originalTransactionId: oldOriginal,
-      isSandbox: old.isSandbox, isFamilyShare: false, countryCode: old.countryCode, price, priceUsd: old.priceUsd,
-    },
-    now,
-  });
 }
 
 /** One-time product purchased (RTDN oneTimeProductNotification PURCHASED). */

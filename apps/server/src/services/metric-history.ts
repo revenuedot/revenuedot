@@ -65,6 +65,8 @@ export async function metricHistory(db: DB, projectId: string, now: Date, metric
   const products = await db.select().from(schema.products).where(eq(schema.products.projectId, projectId));
   const refundAt = new Map<string, number>();
   for (const x of txns) if (x.kind === "refund") refundAt.set(`${x.store}:${x.storeTransactionId}`, x.purchasedAt.getTime());
+  // A reversed refund gives the period back (the refund row stays in the ledger, the reversal cancels it out).
+  for (const x of txns) if (x.kind === "refund_reversal") refundAt.delete(`${x.store}:${x.storeTransactionId}`);
   const periods = txns.filter((x) => (x.kind === "trial" || x.kind === "purchase" || x.kind === "renewal") && x.store !== "promotional");
   const factor = (x: typeof periods[number]) => {
     const p = products.find((q) => q.storeIdentifier === x.productIdentifier && q.appId === x.appId) ?? products.find((q) => q.storeIdentifier === x.productIdentifier);

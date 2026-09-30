@@ -9,14 +9,15 @@ import { defaultStores } from "./stores/index.js";
 import { tick } from "./services/tick.js";
 
 const { db } = await openDb(process.env.DATABASE_URL ?? "pglite://./.data/dev");
+const stores = defaultStores();
 let running = false;
 const runTick = async () => {
   if (running) return;
   running = true;
-  try { await tick(db, new Date()); } catch (e) { console.error("tick failed", e); } finally { running = false; }
+  try { await tick(db, new Date(), fetch, { stores }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
-const app = createApp({ db, now: () => new Date(), stores: defaultStores(), kick: () => setTimeout(runTick, 250) });
+const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250) });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 if (existsSync(`${dist}/index.html`)) {

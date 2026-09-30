@@ -114,6 +114,12 @@ export function mapSubscription(sub: SubscriptionPurchaseV2, token: string, ctx:
   }
 
   const posted = ctx.posted && (!ctx.posted.productId || ctx.posted.productId === li.productId) ? ctx.posted : null;
+  const priceIncreaseStatus = priceIncreaseOf(li.autoRenewingPlan);
+  // Google's cancellation context says who turned renewal off: the developer, or the system (a declined price increase or a failed charge).
+  const cancelReason = !unsubscribeDetectedAt ? null
+    : cancel?.developerInitiatedCancellation ? "DEVELOPER_INITIATED" as const
+    : cancel?.systemInitiatedCancellation ? (priceIncreaseStatus === "pending" ? "PRICE_INCREASE" as const : "BILLING_ERROR" as const)
+    : null;
   const recurring = moneyToPrice(li.autoRenewingPlan?.recurringPrice);
   let price: Price | null = null;
   if (periodType === "trial") {
@@ -133,7 +139,24 @@ export function mapSubscription(sub: SubscriptionPurchaseV2, token: string, ctx:
     storeTransactionId: orderId, originalTransactionId: baseOrderId(orderId),
     price, countryCode: sub.regionCode ?? null,
     autoRenewProductId: li.deferredItemReplacement?.productId ?? li.productId,
+    cancelReason, priceIncreaseStatus, replacesStoreKey: sub.linkedPurchaseToken ?? null,
   };
+}
+
+/**
+ * Price increase consent from Google's state: a PRICE_INCREASE change (the opt-in kind) that is OUTSTANDING, or a price
+ * step-up that is PENDING, needs consent; CONFIRMED means the customer accepted. Applied, cancelled, decreases and
+ * opt-out increases leave nothing outstanding.
+ */
+export function priceIncreaseOf(plan: NonNullable<NonNullable<SubscriptionPurchaseV2["lineItems"]>[number]["autoRenewingPlan"]> | undefined): "pending" | "accepted" | null {
+  const step = plan?.priceStepUpConsentDetails?.state;
+  if (step === "PENDING") return "pending";
+  if (step === "CONFIRMED") return "accepted";
+  const d = plan?.priceChangeDetails;
+  if (d?.priceChangeMode !== "PRICE_INCREASE") return null;
+  if (d.priceChangeState === "OUTSTANDING") return "pending";
+  if (d.priceChangeState === "CONFIRMED") return "accepted";
+  return null;
 }
 
 /** ProductPurchase → one-time purchase keyed by order id (the token when Google has no order id). */

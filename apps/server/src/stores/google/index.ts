@@ -72,8 +72,22 @@ export async function verifySubscription(client: GooglePlayClient, app: AppRow, 
   if (state === S.PENDING) throw new RCError(503, Codes.STORE_PROBLEM, "The Google Play purchase is still pending payment. Try again later.");
   if (state === S.PENDING_CANCELED) throw new RCError(400, Codes.INVALID_RECEIPT, "The pending Google Play purchase was cancelled.");
   const verified = mapSubscription(sub, token, { catalog, now, posted });
+  // An upgrade or downgrade posted by the device ends the replaced chain now (PRODUCT_CHANGE), not only when the notification comes.
+  if (verified.replacesStoreKey) verified.replacedExpiresDate = await replacedExpiry(client, app, verified.replacesStoreKey);
   await acknowledgeSubscriptionIfNeeded(client, app, token, sub);
   return verified;
+}
+
+/** Where Google says a replaced purchase token's access ended; null when Google no longer knows the token. */
+export async function replacedExpiry(client: GooglePlayClient, app: AppRow, oldToken: string): Promise<Date | null> {
+  try {
+    const s = await client.getSubscriptionV2(app, oldToken);
+    const expiry = s.lineItems?.[0]?.expiryTime;
+    return expiry ? new Date(expiry) : null;
+  } catch (e) {
+    if (e instanceof GoogleApiError && e.kind === "invalid_token") return null;
+    throw e;
+  }
 }
 
 /** Acknowledges an unacknowledged subscription. Failures are logged, not fatal: the SDK acknowledges too. Returns false on failure. */

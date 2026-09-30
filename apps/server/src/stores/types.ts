@@ -23,6 +23,14 @@ export interface VerifiedSubscription {
   price?: Price | null;
   countryCode?: string | null;
   autoRenewProductId?: string | null;
+  /** Why auto-renew is off beyond "the customer turned it off". `undefined` = the store did not say (keep what is stored). */
+  cancelReason?: "PRICE_INCREASE" | "DEVELOPER_INITIATED" | "BILLING_ERROR" | null;
+  /** Price increase consent state. `undefined` = the store did not say (keep what is stored). */
+  priceIncreaseStatus?: "pending" | "accepted" | null;
+  /** Google Play: the purchase token this one replaced (`linkedPurchaseToken` of an upgrade, downgrade or resubscribe). */
+  replacesStoreKey?: string | null;
+  /** When the store says the replaced chain ended (its line item expiry), if known. */
+  replacedExpiresDate?: Date | null;
 }
 
 export interface VerifiedOneTime {

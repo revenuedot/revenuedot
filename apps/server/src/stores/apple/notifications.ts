@@ -1,17 +1,16 @@
 import { Hono, type Context } from "hono";
 import { and, eq } from "drizzle-orm";
-import { isAnonymous, newId, type Store } from "@revenuedot/core";
+import { newId, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord, Deps } from "../../context.js";
 import { RCError } from "../../errors.js";
 import { applyFromStore } from "../../services/purchases.js";
-import { recordEvent } from "../../services/events.js";
-import type { AppRow, VerifiedPurchase } from "../types.js";
+import type { AppRow } from "../types.js";
 import { appleStoreOf, expectedBundleId, verifyRenewalJws, verifyTransactionJws, xcodeRootsOf } from "./index.js";
 import { JwsError, verifyAppleJws } from "./jws.js";
 import { fromTransaction, type AppleTransaction, type MapOptions } from "./map.js";
 
-const { apps, storeNotifications, subscriptions, nonSubscriptions, customers, customerAliases, events } = schema;
+const { apps, storeNotifications, subscriptions, nonSubscriptions } = schema;
 
 const FORWARD_TIMEOUT_MS = 10_000;
 
@@ -35,7 +34,7 @@ const STATE_CHANGES = new Set([
 ]);
 
 /** What the notification type itself tells us, for when the renewal info is missing or lags behind. */
-function overrides(type: string, subtype?: string): Pick<MapOptions, "autoRenew" | "billingIssue"> {
+function overrides(type: string, subtype?: string): Pick<MapOptions, "autoRenew" | "billingIssue" | "priceIncrease" | "cancelReason"> {
   switch (type) {
     case "DID_FAIL_TO_RENEW":
     case "GRACE_PERIOD_EXPIRED": return { billingIssue: true };
@@ -46,7 +45,12 @@ function overrides(type: string, subtype?: string): Pick<MapOptions, "autoRenew"
       return {};
     case "EXPIRED":
       if (subtype === "BILLING_RETRY") return { billingIssue: true };
-      if (subtype === "VOLUNTARY" || subtype === "PRICE_INCREASE") return { autoRenew: false, billingIssue: false };
+      if (subtype === "VOLUNTARY") return { autoRenew: false, billingIssue: false };
+      if (subtype === "PRICE_INCREASE") return { autoRenew: false, billingIssue: false, cancelReason: "PRICE_INCREASE" };
+      return {};
+    case "PRICE_INCREASE":
+      if (subtype === "PENDING") return { priceIncrease: "pending" };
+      if (subtype === "ACCEPTED") return { priceIncrease: "accepted" };
       return {};
     default: return {};
   }
@@ -85,28 +89,6 @@ async function existingFor(db: DB, projectId: string, store: Store, tx: AppleTra
   return row ? { kind: "non_subscription" as const, row } : null;
 }
 
-/** PRICE_INCREASE carries no state change, so its consent events are recorded here (once per transaction and status). */
-async function recordPriceIncrease(db: DB, app: AppRow, p: Extract<VerifiedPurchase, { kind: "subscription" }>, subtype: string | undefined, now: Date) {
-  const type = subtype === "ACCEPTED" ? "PRICE_INCREASE_CONSENT_APPROVED" : subtype === "PENDING" ? "PRICE_INCREASE_CONSENT_REQUIRED" : null;
-  if (!type) return;
-  const [sub] = await db.select().from(subscriptions)
-    .where(and(eq(subscriptions.projectId, app.projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey))).limit(1);
-  const [customer] = sub ? await db.select().from(customers).where(eq(customers.id, sub.customerId)) : [];
-  if (!customer) return;
-  const earlier = await db.select({ payload: events.payload }).from(events).where(and(eq(events.customerId, customer.id), eq(events.type, type)));
-  if (earlier.some((e) => (e.payload as { event?: { transaction_id?: string } }).event?.transaction_id === p.storeTransactionId)) return;
-  const aliases = await db.select({ a: customerAliases.appUserId }).from(customerAliases).where(eq(customerAliases.customerId, customer.id));
-  await recordEvent(db, {
-    projectId: app.projectId, appId: app.id, customer, appUserId: aliases.find((a) => !isAnonymous(a.a))?.a ?? customer.originalAppUserId,
-    derived: { type }, now,
-    subject: {
-      store: p.store, productId: p.productIdentifier, periodType: p.periodType, purchasedAt: p.purchaseDate, expiresAt: p.expiresDate,
-      transactionId: p.storeTransactionId, originalTransactionId: p.originalTransactionId ?? p.storeKey, isSandbox: p.isSandbox,
-      isFamilyShare: p.ownershipType === "FAMILY_SHARED", countryCode: p.countryCode, price: p.price,
-    },
-  });
-}
-
 /**
  * Applies one verified notification. Returns true when it concerns a purchase we know (or just created),
  * which is what moves the app's "last received" time.
@@ -140,7 +122,6 @@ async function processNotification(deps: Deps, app: AppRecord, n: NotificationPa
     projectId: app.projectId, appId: app.id, purchase, now,
     createIfUnknown: app.credentials?.track_new_purchases === true, appUserIdHint: tx.appAccountToken ?? null,
   });
-  if (applied && n.notificationType === "PRICE_INCREASE" && purchase.kind === "subscription") await recordPriceIncrease(deps.db, app, purchase, n.subtype, now);
   return applied;
 }
 

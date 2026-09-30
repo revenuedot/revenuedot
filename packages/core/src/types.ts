@@ -34,6 +34,12 @@ export interface Subscription {
   managementUrl?: string | null;
   /** Promotional grants carry the entitlement they unlock. */
   entitlementIdentifier?: string | null;
+  /** The product the next period renews into; differs from `productIdentifier` while a downgrade or crossgrade is scheduled. */
+  autoRenewProductId?: string | null;
+  /** Why auto-renew is off when it is more than the customer turning it off (price increase declined, developer cancelled). */
+  cancelReason?: "PRICE_INCREASE" | "DEVELOPER_INITIATED" | "BILLING_ERROR" | null;
+  /** An outstanding price increase: consent required and not given yet, or accepted. */
+  priceIncreaseStatus?: "pending" | "accepted" | null;
 }
 
 /** A one-time purchase: consumable, non-consumable or non-renewing subscription. */
