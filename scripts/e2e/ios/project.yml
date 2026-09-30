@@ -1,0 +1,54 @@
+# RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
+# XcodeGen spec for the iOS contract harness: the unmodified RevenueCat iOS SDK (SPM) driven against a RevenueDot server
+# by an XCUITest. `xcodegen generate` writes RDHarness.xcodeproj; `run.ts` does everything (server, seed, test, checks).
+name: RDHarness
+options:
+  bundleIdPrefix: app.revenuedot.harness
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  RevenueCat:
+    url: https://github.com/RevenueCat/purchases-ios-spm.git
+    from: 5.91.0
+targets:
+  RDHarness:
+    type: application
+    platform: iOS
+    sources: [RDHarness]
+    dependencies:
+      - package: RevenueCat
+    info:
+      path: RDHarness/Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: RD Harness
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.revenuedot.harness
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGNING_ALLOWED: NO
+  RDHarnessUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [RDHarnessUITests]
+    dependencies:
+      - target: RDHarness
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.revenuedot.harness.uitests
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        TEST_TARGET_NAME: RDHarness
+schemes:
+  RDHarness:
+    build:
+      targets:
+        RDHarness: all
+        RDHarnessUITests: [test]
+    test:
+      config: Debug
+      targets: [RDHarnessUITests]
