@@ -53,7 +53,8 @@ echo "1/4 Building the dashboard"
 pnpm --filter @revenuedot/dashboard build
 
 echo "2/4 Hyperdrive config \"revenuedot\""
-REVENUEDOT_HYPERDRIVE_ID=$("${CF[@]}" hyperdrive list | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).find(c=>c.name==="revenuedot");console.log(h?h.id:"")})')
+# CI sets REVENUEDOT_HYPERDRIVE_ID (a GitHub variable), so its token needs no Hyperdrive permission.
+[[ -z "${REVENUEDOT_HYPERDRIVE_ID:-}" ]] && REVENUEDOT_HYPERDRIVE_ID=$("${CF[@]}" hyperdrive list | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).find(c=>c.name==="revenuedot");console.log(h?h.id:"")})')
 if [[ -z "$REVENUEDOT_HYPERDRIVE_ID" && -z "$DRY_RUN" ]]; then
   # The connection string goes in a temp file (mode 600), never on the command line.
   body=$(mktemp); trap 'rm -f "$body"' EXIT; chmod 600 "$body"
