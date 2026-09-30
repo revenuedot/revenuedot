@@ -57,8 +57,13 @@ export async function seedProject(base: string, cookie: string, projectId: strin
   ];
   const prod: Record<string, any> = {};
   for (const w of want) {
-    const { price: _p, ...bodyFields } = w;
-    prod[w.store_identifier] = products.items.find((p) => p.app_id === app.id && p.store_identifier === w.store_identifier) ?? await call("POST", `${P}/products`, { ...bodyFields, app_id: app.id });
+    // The catalog price is the Test Store price the SDK shows (and posts back with the purchase).
+    const { price, ...bodyFields } = w;
+    const test_store_price = { amount_micros: Math.round(price * 1_000_000), currency: "USD" };
+    const existing = products.items.find((p) => p.app_id === app.id && p.store_identifier === w.store_identifier);
+    prod[w.store_identifier] = existing
+      ? await call("POST", `${P}/products/${existing.id}`, { test_store_price })
+      : await call("POST", `${P}/products`, { ...bodyFields, app_id: app.id, test_store_price });
   }
 
   const ents = await call<{ items: any[] }>("GET", `${P}/entitlements?limit=100`);

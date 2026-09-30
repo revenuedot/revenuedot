@@ -171,6 +171,9 @@ async function serverState(cookie: string, projectId: string): Promise<Check[]> 
   check("one Test Store subscription, sandbox, auto-renewing", subs.length === 1 && subs[0].store === "test_store" && subs[0].environment === "sandbox" && subs[0].gives_access === true,
     subs.map((s: Record<string, unknown>) => ({ store: s.store, environment: s.environment, status: s.status, product_id: s.product_id })));
   const events = (await call("GET", `${P}/customers/${LOGIN_ID}/events?limit=50`)).items.map((e: { type: string }) => e.type);
+  // The seed gives every product a Test Store price, so the SDK's dialog and the recorded purchase are not $0.00.
+  const gross = subs[0]?.total_revenue_in_usd?.gross ?? 0;
+  check("the purchase recorded a nonzero price (the catalog's Test Store price)", gross > 0, { product_id: subs[0]?.product_id, gross });
   check("INITIAL_PURCHASE recorded (webhook source)", events.includes("INITIAL_PURCHASE"), events);
   const health = await call("GET", `${P}/setup_health`);
   const sdk = (health.sdk_versions ?? []).filter((v: { platform: string }) => /android/i.test(v.platform));
