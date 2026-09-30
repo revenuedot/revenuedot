@@ -1,6 +1,6 @@
 <div align="center">
 
-# revenue●
+# RevenueDot
 
 ### The open-source RevenueCat alternative
 
