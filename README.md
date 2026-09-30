@@ -4,7 +4,7 @@
 
 > Status: pre-alpha. The scope is in [prd/SCOPE.md](prd/SCOPE.md). Nothing is ready to use yet.
 >
-> License: not chosen yet (planned: AGPL-3.0 server, commercial `ee/` folder, MIT SDKs). Until a LICENSE file is added, all rights are reserved.
+> License: AGPL-3.0 for the server and dashboard; the `ee/` folder is under the [RevenueDot Enterprise License](ee/LICENSE); SDKs, CLI, MCP server and agent skills are MIT. Contributions need a [CLA](.github/CLA.md). Website: [revenuedot.app](https://revenuedot.app).
 
 ## What it does
 - Validates App Store and Google Play purchases and keeps entitlements up to date.
