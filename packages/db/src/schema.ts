@@ -256,6 +256,8 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   name: text("name"),
   passwordHash: text("password_hash"),
+  /** RevenueDot Cloud plan for this account. Every account is on "free" until billing plans ship (Tier 2). */
+  plan: text("plan").notNull().default("free"),
   createdAt: created(),
 }, (t) => [uniqueIndex("users_email").on(t.email)]);
 

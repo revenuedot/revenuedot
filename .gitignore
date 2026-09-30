@@ -14,3 +14,4 @@ playwright-report/
 
 # Importer state files (npx revenuedot import)
 revenuedot-import-*.json
+.dev.vars

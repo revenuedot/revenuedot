@@ -12,6 +12,8 @@ export interface Deps {
   fetch?: typeof fetch;
   /** Base64 Ed25519 seed for response signing; falls back to REVENUEDOT_SIGNING_KEY. "" turns signing off. */
   signingKey?: string;
+  /** "cloud" on RevenueDot Cloud (Workers); self-hosted otherwise. Shown to dashboard users with their plan. */
+  edition?: "cloud" | "self-hosted";
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

@@ -5,19 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/entry.node.ts",
-    "start": "tsx src/entry.node.ts"
+    "start": "tsx src/entry.node.ts",
+    "dev:worker": "wrangler dev"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "@revenuedot/core": "workspace:*",
     "@revenuedot/db": "workspace:*",
+    "drizzle-orm": "^0.38.3",
     "hono": "^4.6.14",
     "jose": "^5.9.6",
-    "zod": "^3.24.1",
-    "drizzle-orm": "^0.38.3"
+    "zod": "^3.24.1"
   },
   "exports": {
     ".": "./src/index.ts",
     "./*": "./src/*"
+  },
+  "devDependencies": {
+    "wrangler": "^4.145.0"
   }
 }

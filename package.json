@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "pnpm --filter @revenuedot/server dev",
     "test": "vitest run",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "migrate": "tsx scripts/migrate.ts",
+    "deploy:cloud": "bash scripts/deploy-cloud.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

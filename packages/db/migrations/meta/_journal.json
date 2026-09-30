@@ -15,6 +15,13 @@
       "when": 1790797994681,
       "tag": "0001_store_state_and_sdk_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790800832605,
+      "tag": "0002_account_plan",
+      "breakpoints": true
     }
   ]
 }

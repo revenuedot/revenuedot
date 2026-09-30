@@ -3,7 +3,8 @@ import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 
 const { users, sessions, memberships, projects } = schema;
-const ITER = 210_000;
+// Cloudflare Workers caps WebCrypto PBKDF2 at 100,000 iterations, so the cloud and self-host builds both use that.
+const ITER = 100_000;
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
@@ -17,7 +18,9 @@ export async function hashPassword(password: string, salt = crypto.getRandomValu
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const [alg, iter, salt, hash] = stored.split("$");
   if (alg !== "pbkdf2" || !iter || !salt || !hash) return false;
-  const again = await hashPassword(password, unb64(salt), Number(iter));
+  let again: string;
+  // Hashes made with more iterations than the runtime allows (older self-host builds used 210,000) fail on Workers.
+  try { again = await hashPassword(password, unb64(salt), Number(iter)); } catch { return false; }
   const a = again.split("$")[3]!, b = hash;
   if (a.length !== b.length) return false;
   let diff = 0;

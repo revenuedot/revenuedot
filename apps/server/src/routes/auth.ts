@@ -41,7 +41,12 @@ export function authRoutes(deps: Deps) {
   r.get("/auth/me", async (c) => {
     const u = await sessionUser(deps.db, getCookie(c, SESSION_COOKIE), deps.now());
     if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
-    return c.json({ user: { id: u.id, email: u.email, name: u.name }, projects: await projectsForUser(deps.db, u.id) });
+    return c.json({
+      user: { id: u.id, email: u.email, name: u.name },
+      // Every cloud account is on the free plan until billing plans ship; self-hosted servers have no plan.
+      account: { edition: deps.edition ?? "self-hosted", plan: u.plan },
+      projects: await projectsForUser(deps.db, u.id),
+    });
   });
   return r;
 }

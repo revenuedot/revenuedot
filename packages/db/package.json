@@ -10,5 +10,15 @@
     "drizzle-orm": "^0.38.3",
     "postgres": "^3.4.5"
   },
-  "devDependencies": { "drizzle-kit": "^0.30.1" }
+  "devDependencies": {
+    "drizzle-kit": "^0.30.1"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "workerd": "./src/worker.ts",
+      "default": "./src/index.ts"
+    },
+    "./worker": "./src/worker.ts"
+  }
 }
