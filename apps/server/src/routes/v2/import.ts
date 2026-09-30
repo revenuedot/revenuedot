@@ -401,6 +401,10 @@ async function importSubscription(db: DB, ctx: Ctx, customer: CustomerRow, cu: I
       priceUsd: v.price ? (v.price.currency === "USD" ? v.price.amount : lastUsd(s)) : null,
       countryCode: v.countryCode ?? null, autoRenewProductId: v.autoRenewProductId ?? null,
       entitlementIdentifier: v.entitlement,
+      // Why auto-renew is off, and a pending price increase, as the store adapters record them.
+      cancelReason: !v.unsubscribeDetectedAt ? null : s.auto_renewal_status === "requires_price_increase_consent" ? "PRICE_INCREASE"
+        : v.billingIssuesDetectedAt ? "BILLING_ERROR" : existing?.cancelReason ?? null,
+      priceIncreaseStatus: s.auto_renewal_status === "requires_price_increase_consent" ? "pending" : existing?.priceIncreaseStatus === "accepted" ? "accepted" : null,
     };
     // Access that already ended counts as expired, so the expiration job does not send EXPIRATION for old history.
     const end = accessEndsAt(subRowToDomain({ ...(existing ?? {}), ...values, id: existing?.id ?? "" } as typeof S.$inferSelect));
