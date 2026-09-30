@@ -179,6 +179,24 @@ describe("revenuedot import", () => {
     expect(text).toMatch(/Scanner Pro iOS \(app_store, com\.example\.scannerpro, app id app\w+\): the App Store In-App Purchase key/);
     expect(text).toContain('Purchases.proxyURL = URL(string: "https://rd.example.com")!');
   });
+
+  it("plan gives the proxy line for all nine RevenueCat SDKs, without a trailing slash (purchases-js rejects one)", async () => {
+    e = await setup();
+    const rd = new RevenueDotClient({ url: TARGET, apiKey: e.h.ids.secretKey, http: { fetch: bridge(e.h) } });
+    const text = formatPlan(await buildPlan(rd, { to: "https://rd.example.com/", rcProject: PROJECT }));
+    for (const line of [
+      '- iOS (Swift): Purchases.proxyURL = URL(string: "https://rd.example.com")!',
+      '- Android (Kotlin): Purchases.proxyURL = URL("https://rd.example.com")',
+      '- React Native: await Purchases.setProxyURL("https://rd.example.com")',
+      '- Flutter: await Purchases.setProxyURL("https://rd.example.com");',
+      '- Web (purchases-js): Purchases.configure({ apiKey, appUserId, httpConfig: { proxyURL: "https://rd.example.com" }, flags: { collectAnalyticsEvents: false } })',
+      '- Capacitor: await Purchases.setProxyURL({ url: "https://rd.example.com" });',
+      '- Kotlin Multiplatform: Purchases.proxyURL = "https://rd.example.com"',
+      '- Unity: on the Purchases component, set Proxy URL (under Advanced) to https://rd.example.com',
+      '- Cordova: Purchases.setProxyURL("https://rd.example.com");',
+    ]) expect(text).toContain(line);
+    expect(text).not.toContain("https://rd.example.com/\"");
+  });
 });
 
 describe("the revenuedot command", () => {
