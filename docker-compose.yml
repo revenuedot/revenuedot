@@ -9,6 +9,8 @@ services:
       PORT: "8787"
       # Only the first account (the owner) can sign up unless this is true (see .env.example).
       REVENUEDOT_ALLOW_SIGNUP: ${REVENUEDOT_ALLOW_SIGNUP:-false}
+      # Signs SDK responses for Trusted Entitlements when set; empty leaves signing off (see .env.example).
+      REVENUEDOT_SIGNING_KEY: ${REVENUEDOT_SIGNING_KEY:-}
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped
