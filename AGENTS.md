@@ -24,5 +24,5 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - `DESIGN.md` + `design/tokens.css`: the locked design system (RevenueCat sidebar IA, Superwall tokens, Vercel restraint, gold accent). Every UI uses these tokens; reference screen `prd/dashboard/mockup.html`.
 - Sibling repos and the org map: `../AGENTS.md` (= `company/WORKSPACE.md`, private).
 
-## Development database
-Use the shared cloud dev Postgres, never a local one: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL`, and each task creates its own database on it (`CREATE DATABASE rd_<task>`). Details and setup are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print the URL.
+## Databases
+Use the Railway Postgres, never a local one. Development: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL` (Railway environment `development`); each task creates its own database on it (`CREATE DATABASE rd_<task>`). Production (`~/.config/revenuedot/prod.env`) is only for approved deploys. Details are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print either URL.

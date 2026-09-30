@@ -16,7 +16,7 @@ Every account is on the `free` plan (`users.plan`) until billing plans ship. `/a
 
 ## Local development
 
-No local Postgres. Use the Railway dev Postgres (project RevenueDot) with a database of your own on it.
+No local Postgres. Use the Railway Postgres in the `development` environment (project RevenueDot) with a database of your own on it. The `production` environment is only for RevenueDot Cloud.
 
 ```sh
 source ~/.config/revenuedot/dev.env            # REVENUEDOT_DEV_DATABASE_URL; never print or commit it
