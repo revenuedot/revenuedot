@@ -17,7 +17,7 @@ export interface CustomerInfoJSON {
     subscriptions: Record<string, Record<string, unknown>>;
     non_subscriptions: Record<string, Record<string, unknown>[]>;
     other_purchases: Record<string, { purchase_date: string }>;
-    subscriber_attributes: Record<string, { value: string | null; updated_at_ms: number }>;
+    subscriber_attributes?: Record<string, { value: string | null; updated_at_ms: number }>;
   };
 }
 
@@ -63,7 +63,7 @@ function nonSubJSON(p: NonSubscription): Record<string, unknown> {
  * subscriptions: one entry per product, the latest subscription for that product.
  * non_subscriptions: arrays ordered oldest first (the SDK treats the last element as the latest).
  */
-export function buildCustomerInfo(state: CustomerState, map: EntitlementMap, now: Date = new Date()): CustomerInfoJSON {
+export function buildCustomerInfo(state: CustomerState, map: EntitlementMap, now: Date = new Date(), opts: { includeAttributes?: boolean } = {}): CustomerInfoJSON {
   const subscriptions: Record<string, Record<string, unknown>> = {};
   const latestByProduct = new Map<string, Subscription>();
   for (const s of state.subscriptions) {
@@ -104,7 +104,7 @@ export function buildCustomerInfo(state: CustomerState, map: EntitlementMap, now
       original_application_version: state.originalApplicationVersion ?? null,
       original_purchase_date: rcDate(state.originalPurchaseDate),
       other_purchases: {},
-      subscriber_attributes: attrs,
+      ...(opts.includeAttributes ? { subscriber_attributes: attrs } : {}),
       subscriptions,
     },
   };

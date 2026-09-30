@@ -2,9 +2,11 @@ import { Hono } from "hono";
 import { buildCustomerInfo, isAnonymous } from "@revenuedot/core";
 import { Codes, RCError, errorResponse } from "../errors.js";
 import type { Deps, Vars } from "../context.js";
-import { appByPublicKey, entitlementMap, offeringsJSON, productEntitlementMappingJSON, productInfo } from "../repo/catalog.js";
+import { entitlementMap, offeringsJSON, productEntitlementMappingJSON, productInfo } from "../repo/catalog.js";
 import { findCustomer, getOrCreateCustomer, identify, loadState, setAttributes, touch, aliasesOf } from "../repo/customers.js";
 import { applyPurchases } from "../services/purchases.js";
+import { restV1 } from "./rest-v1.js";
+import { appForPlatform, resolveKey } from "../services/auth.js";
 import type { ReceiptInput } from "../stores/types.js";
 import { schema } from "@revenuedot/db";
 import { eq } from "drizzle-orm";
@@ -21,11 +23,11 @@ export function sdkRoutes(deps: Deps) {
   r.use("*", async (c, next) => {
     const path = c.req.path;
     if (path === "/v1/health" || path.endsWith("/health_report_availability")) return next();
-    const auth = c.req.header("authorization") ?? "";
-    const key = auth.replace(/^Bearer\s+/i, "").trim();
-    const app = key ? await appByPublicKey(deps.db, key) : null;
-    if (!app) throw new RCError(401, Codes.INVALID_API_KEY, "Invalid API Key.");
-    c.set("app", app);
+    const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    const auth = await resolveKey(deps.db, key);
+    if (!auth) throw new RCError(401, Codes.INVALID_API_KEY, "Invalid API Key.");
+    c.set("auth", auth);
+    c.set("app", auth.app ?? (await appForPlatform(deps.db, auth.projectId, c.req.header("x-platform"))) ?? ({ id: null, projectId: auth.projectId, type: "none" } as any));
     c.header("X-RevenueCat-Request-Time", String(deps.now().getTime()));
     await next();
   });
@@ -36,12 +38,12 @@ export function sdkRoutes(deps: Deps) {
     country: c.req.header("x-storefront") ?? null,
   });
 
-  async function customerInfoFor(projectId: string, appUserId: string, now: Date, create = true) {
-    const customer = create ? (await getOrCreateCustomer(deps.db, projectId, appUserId, now)).customer : await findCustomer(deps.db, projectId, appUserId);
-    if (!customer) throw new RCError(404, Codes.NOT_FOUND, "Subscriber not found.");
+  async function customerInfoFor(projectId: string, appUserId: string, now: Date, includeAttributes: boolean) {
+    const { customer, created } = await getOrCreateCustomer(deps.db, projectId, appUserId, now);
     const state = await loadState(deps.db, customer);
-    return { customer, body: buildCustomerInfo(state, await entitlementMap(deps.db, projectId), now) };
+    return { customer, created, body: buildCustomerInfo(state, await entitlementMap(deps.db, projectId), now, { includeAttributes }) };
   }
+  const isSecret = (c: any) => c.get("auth")?.kind === "secret";
 
   const userId = (raw: string) => {
     const id = decodeURIComponent(raw);
@@ -52,9 +54,9 @@ export function sdkRoutes(deps: Deps) {
   // 1. Customer info
   r.get("/v1/subscribers/:id", async (c) => {
     const app = c.get("app"); const now = deps.now();
-    const { customer, body } = await customerInfoFor(app.projectId, userId(c.req.param("id")), now);
+    const { customer, created, body } = await customerInfoFor(app.projectId, userId(c.req.param("id")), now, isSecret(c));
     await touch(deps.db, customer.id, now, reqInfo(c));
-    return c.json(body);
+    return c.json(body, created ? 201 : 200);
   });
 
   // 2. Receipts: purchases, restores, syncs
@@ -73,6 +75,7 @@ export function sdkRoutes(deps: Deps) {
     let { customer } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
     if (b.attributes) await setAttributes(deps.db, customer.id, b.attributes, now);
     const key = c.req.header("authorization")!.replace(/^Bearer\s+/i, "").trim();
+    if (!app.id) throw new RCError(400, Codes.BAD_REQUEST, "X-Platform header is required with a secret key.");
     const adapter = key.startsWith("test_") || app.type === "test_store" ? deps.stores.test_store : deps.stores[storeFor(app.type)];
     if (!adapter) throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, `Receipts for ${app.type} apps are not supported yet.`);
     if (!input.fetchToken && !input.appTransaction) throw new RCError(400, Codes.INVALID_RECEIPT, "fetch_token or app_transaction is required.");
@@ -83,7 +86,7 @@ export function sdkRoutes(deps: Deps) {
     await touch(deps.db, customer.id, now, reqInfo(c));
     deps.kick?.();
     const state = await loadState(deps.db, customer);
-    const body = buildCustomerInfo(state, await entitlementMap(deps.db, app.projectId), now);
+    const body = buildCustomerInfo(state, await entitlementMap(deps.db, app.projectId), now, { includeAttributes: isSecret(c) });
     // Android consumes a purchase only when told to; iOS matches store_transaction_id in non_subscriptions.
     const purchased_products: Record<string, { should_consume: boolean }> = {};
     for (const p of purchases) purchased_products[p.productIdentifier] = { should_consume: p.kind === "non_subscription" && p.isConsumable };
@@ -93,7 +96,16 @@ export function sdkRoutes(deps: Deps) {
   // 3. Offerings (and the fallback path without a user id)
   const offerings = async (c: any) => {
     const app = c.get("app");
-    return c.json(await offeringsJSON(deps.db, app.projectId, app.id));
+    const body = await offeringsJSON(deps.db, app.projectId, app.id);
+    const id = c.req.param("id");
+    if (id) {
+      const cust = await findCustomer(deps.db, app.projectId, decodeURIComponent(id));
+      if (cust?.offeringOverrideId) {
+        const o = await deps.db.select().from(schema.offerings).where(eq(schema.offerings.id, cust.offeringOverrideId));
+        if (o[0]) body.current_offering_id = o[0].lookupKey;
+      }
+    }
+    return c.json(body);
   };
   r.get("/v1/subscribers/:id/offerings", offerings);
   r.get("/v1/offerings", offerings);
@@ -181,6 +193,7 @@ export function sdkRoutes(deps: Deps) {
     return c.json({ product_details });
   });
 
+  restV1(r, deps);
   return r;
 }
 

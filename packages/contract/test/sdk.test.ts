@@ -65,8 +65,9 @@ describe("authentication and errors", () => {
 describe("GET /v1/subscribers/{id}", () => {
   it("creates a new customer with an empty, decodable customer info", async () => {
     const res = await h.fetch("/v1/subscribers/%24RCAnonymousID%3Aabc123");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     const body = CustomerInfoSchema.parse(await res.json());
+    expect((await h.fetch("/v1/subscribers/%24RCAnonymousID%3Aabc123")).status).toBe(200);
     expect(body.subscriber.original_app_user_id).toBe("$RCAnonymousID:abc123");
     expect(body.subscriber.entitlements).toEqual({});
     expect(body.subscriber.subscriptions).toEqual({});
@@ -135,7 +136,9 @@ describe("POST /v1/receipts (Test Store)", () => {
   });
   it("attributes in the receipt body are saved", async () => {
     await testPurchase("user_6", "pro_monthly", new Date(), { attributes: { $email: { value: "a@b.co", updated_at_ms: 1 } } });
-    const body = await (await h.fetch("/v1/subscribers/user_6")).json();
+    const pub = await (await h.fetch("/v1/subscribers/user_6")).json();
+    expect(pub.subscriber.subscriber_attributes).toBeUndefined();
+    const body = await (await h.fetch("/v1/subscribers/user_6", { key: h.ids.secretKey })).json();
     expect(body.subscriber.subscriber_attributes.$email).toEqual({ value: "a@b.co", updated_at_ms: 1 });
   });
 });
@@ -182,10 +185,10 @@ describe("attributes", () => {
   it("saves attributes, newest timestamp wins, empty string deletes", async () => {
     await post("/v1/subscribers/u1/attributes", { attributes: { $displayName: { value: "Kai", updated_at_ms: 10 } } });
     await post("/v1/subscribers/u1/attributes", { attributes: { $displayName: { value: "Old", updated_at_ms: 5 } } });
-    let b = await (await h.fetch("/v1/subscribers/u1")).json();
+    let b = await (await h.fetch("/v1/subscribers/u1", { key: h.ids.secretKey })).json();
     expect(b.subscriber.subscriber_attributes.$displayName.value).toBe("Kai");
     await post("/v1/subscribers/u1/attributes", { attributes: { $displayName: { value: "", updated_at_ms: 20 } } });
-    b = await (await h.fetch("/v1/subscribers/u1")).json();
+    b = await (await h.fetch("/v1/subscribers/u1", { key: h.ids.secretKey })).json();
     expect(b.subscriber.subscriber_attributes.$displayName.value).toBeNull();
   });
   it("an invalid $email returns 7263 with attribute_errors", async () => {

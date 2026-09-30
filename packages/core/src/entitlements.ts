@@ -19,8 +19,10 @@ export function accessEndsAt(s: Subscription): Date | null {
  * the SDK decides `isActive` by comparing `expires_date` with the request date.
  * Choice per entitlement: a lifetime unlock wins; otherwise the purchase whose access ends last.
  */
-export function computeEntitlements(state: CustomerState, map: EntitlementMap): ActiveEntitlement[] {
+export function computeEntitlements(state: CustomerState, catalog: EntitlementMap): ActiveEntitlement[] {
   const out: ActiveEntitlement[] = [];
+  const map: EntitlementMap = { ...catalog };
+  for (const s of state.subscriptions) if (s.store === "promotional" && s.entitlementIdentifier) map[s.entitlementIdentifier] ??= [];
   for (const [identifier, productIds] of Object.entries(map)) {
     const products = new Set(productIds);
     let best: ActiveEntitlement | null = null;
@@ -32,7 +34,8 @@ export function computeEntitlements(state: CustomerState, map: EntitlementMap): 
       return c.purchaseDate > best.purchaseDate;
     };
     for (const s of state.subscriptions) {
-      if (!products.has(s.productIdentifier) && !(s.productPlanIdentifier && products.has(`${s.productIdentifier}:${s.productPlanIdentifier}`))) continue;
+      const promo = s.store === "promotional" && s.entitlementIdentifier === identifier;
+      if (!promo && !products.has(s.productIdentifier) && !(s.productPlanIdentifier && products.has(`${s.productIdentifier}:${s.productPlanIdentifier}`))) continue;
       const c: ActiveEntitlement = {
         identifier, productIdentifier: s.productIdentifier, productPlanIdentifier: s.productPlanIdentifier ?? null,
         purchaseDate: s.purchaseDate, expiresDate: accessEndsAt(s), gracePeriodExpiresDate: s.gracePeriodExpiresDate ?? null,

@@ -1,5 +1,6 @@
 import { openDb, schema, type DB } from "@revenuedot/db";
 import { createApp, defaultStores } from "@revenuedot/server";
+import { createSecretKey } from "@revenuedot/server/services/auth.js";
 
 export interface Harness {
   db: DB;
@@ -7,7 +8,7 @@ export interface Harness {
   setNow: (d: Date) => void;
   now: () => Date;
   close: () => Promise<void>;
-  ids: { project: string; app: string; iosKey: string; testKey: string; androidKey: string; androidApp: string };
+  ids: { project: string; app: string; iosKey: string; testKey: string; androidKey: string; androidApp: string; secretKey: string };
 }
 
 /** Boots the server on an in-memory Postgres with one project, an App Store app, a Play app and a Test Store app. */
@@ -15,7 +16,7 @@ export async function harness(): Promise<Harness> {
   const { db, close } = await openDb("pglite://memory");
   let clock = new Date("2026-09-01T12:00:00Z");
   const app = createApp({ db, now: () => clock, stores: defaultStores() });
-  const ids = { project: "proj1", app: "app_ios", iosKey: "appl_testkey123", testKey: "test_key123", androidKey: "goog_testkey123", androidApp: "app_play" };
+  const ids = { project: "proj1", app: "app_ios", iosKey: "appl_testkey123", testKey: "test_key123", androidKey: "goog_testkey123", androidApp: "app_play", secretKey: "" };
   await db.insert(schema.projects).values({ id: ids.project, name: "Scanner" });
   await db.insert(schema.apps).values([
     { id: ids.app, projectId: ids.project, name: "Scanner iOS", type: "app_store", bundleId: "com.example.scanner", publicKey: ids.iosKey },
@@ -42,6 +43,7 @@ export async function harness(): Promise<Harness> {
   await db.insert(schema.packageProducts).values([
     { packageId: "pkg_m", productId: "p1" }, { packageId: "pkg_a", productId: "p2" }, { packageId: "pkg_m", productId: "p3" }, { packageId: "pkg_m", productId: "p4" },
   ]);
+  ids.secretKey = (await createSecretKey(db, ids.project, "test")).key;
   return {
     db, ids, close,
     setNow: (d) => { clock = d; },

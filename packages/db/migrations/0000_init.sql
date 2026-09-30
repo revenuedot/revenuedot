@@ -49,7 +49,8 @@ CREATE TABLE "customers" (
 	"last_seen_platform" text,
 	"last_seen_country" text,
 	"original_application_version" text,
-	"original_purchase_date" timestamp with time zone
+	"original_purchase_date" timestamp with time zone,
+	"offering_override_id" text
 );
 --> statement-breakpoint
 CREATE TABLE "entitlement_products" (
@@ -199,6 +200,8 @@ CREATE TABLE "subscriptions" (
 	"price_usd" double precision,
 	"country_code" text,
 	"auto_renew_product_id" text,
+	"entitlement_identifier" text,
+	"expired_event_at" timestamp with time zone,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

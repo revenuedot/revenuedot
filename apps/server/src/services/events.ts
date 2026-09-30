@@ -70,17 +70,17 @@ export async function recordEvent(db: DB, opts: {
     id, projectId, customerId: customer.id, type: derived.type, environment: environment.toLowerCase(), appId,
     payload, eventTimestampMs: now.getTime(),
   });
-  await queueDeliveries(db, projectId, id, derived.type, environment.toLowerCase(), appId);
+  await queueDeliveries(db, projectId, id, derived.type, environment.toLowerCase(), appId, now);
   return payload;
 }
 
-export async function queueDeliveries(db: DB, projectId: string, eventId: string, type: EventType | string, environment: string, appId: string | null) {
+export async function queueDeliveries(db: DB, projectId: string, eventId: string, type: EventType | string, environment: string, appId: string | null, now: Date = new Date()) {
   const hooks = await db.select().from(webhooks).where(and(eq(webhooks.projectId, projectId), eq(webhooks.enabled, true)));
   for (const h of hooks) {
     if (h.environment !== "both" && h.environment !== environment) continue;
     if (h.appId && h.appId !== appId) continue;
     if (h.eventTypes && h.eventTypes.length && !h.eventTypes.includes(type)) continue;
-    await db.insert(webhookDeliveries).values({ id: crypto.randomUUID(), webhookId: h.id, eventId }).onConflictDoNothing();
+    await db.insert(webhookDeliveries).values({ id: crypto.randomUUID(), webhookId: h.id, eventId, nextAttemptAt: now, createdAt: now }).onConflictDoNothing();
   }
 }
 

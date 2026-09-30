@@ -106,6 +106,8 @@ export const customers = pgTable("customers", {
   lastSeenCountry: text("last_seen_country"),
   originalApplicationVersion: text("original_application_version"),
   originalPurchaseDate: ts("original_purchase_date"),
+  /** Offering forced for this customer by the REST API (overrides the current offering). */
+  offeringOverrideId: text("offering_override_id"),
 }, (t) => [index("customers_project").on(t.projectId, t.lastSeen)]);
 
 /** Every app user id that points at a customer (the original id is an alias too). */
@@ -152,6 +154,10 @@ export const subscriptions = pgTable("subscriptions", {
   priceUsd: doublePrecision("price_usd"),
   countryCode: text("country_code"),
   autoRenewProductId: text("auto_renew_product_id"),
+  /** Promotional grants: the entitlement they unlock. */
+  entitlementIdentifier: text("entitlement_identifier"),
+  /** Set when EXPIRATION was recorded for the current period; cleared on renewal. */
+  expiredEventAt: ts("expired_event_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("subscriptions_store_key").on(t.projectId, t.store, t.storeKey), index("subscriptions_customer").on(t.customerId)]);
 

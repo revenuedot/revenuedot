@@ -87,6 +87,8 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     refundedAt: p.refundedAt ?? null, autoResumeDate: p.autoResumeDate ?? null, storeTransactionId: p.storeTransactionId,
     originalTransactionId: p.originalTransactionId ?? null, priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null,
     priceUsd: p.price ? toUsd(p.price) : null, countryCode: p.countryCode ?? null, autoRenewProductId: p.autoRenewProductId ?? null, updatedAt: ctx.now,
+    // Access that runs past now reopens the chain for a future EXPIRATION; an EXPIRATION derived below sets it again.
+    expiredEventAt: (p.expiresDate === null || p.expiresDate > ctx.now || (p.gracePeriodExpiresDate && p.gracePeriodExpiresDate > ctx.now)) ? null : existing?.expiredEventAt ?? null,
   };
   if (existing) await db.update(subscriptions).set(values).where(eq(subscriptions.id, existing.id));
   else await db.insert(subscriptions).values({ id: newId("sub_", 16), ...values });
@@ -111,6 +113,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   }
   for (const d of diffSubscription(prev, next, ctx.now)) {
     await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: d, subject, now: ctx.now });
+    if (d.type === "EXPIRATION") await db.update(subscriptions).set({ expiredEventAt: ctx.now }).where(and(eq(subscriptions.projectId, ctx.projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey)));
     if (d.type === "INITIAL_PURCHASE" || d.type === "RENEWAL" || d.type === "PRODUCT_CHANGE" || (d.type === "CANCELLATION" && d.isRefund)) {
       const kind = d.isRefund ? "refund" : d.type === "RENEWAL" ? "renewal" : p.periodType === "trial" ? "trial" : "purchase";
       await db.insert(transactions).values({

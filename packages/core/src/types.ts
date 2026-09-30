@@ -32,6 +32,8 @@ export interface Subscription {
   price?: Price | null;
   displayName?: string | null;
   managementUrl?: string | null;
+  /** Promotional grants carry the entitlement they unlock. */
+  entitlementIdentifier?: string | null;
 }
 
 /** A one-time purchase: consumable, non-consumable or non-renewing subscription. */

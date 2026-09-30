@@ -58,6 +58,7 @@ export function subRowToDomain(r: typeof subscriptions.$inferSelect): Subscripti
     gracePeriodExpiresDate: r.gracePeriodExpiresDate, refundedAt: r.refundedAt, autoResumeDate: r.autoResumeDate,
     storeTransactionId: r.storeTransactionId, originalTransactionId: r.originalTransactionId,
     price: r.priceAmount !== null && r.priceCurrency ? { amount: r.priceAmount, currency: r.priceCurrency } : null,
+    entitlementIdentifier: r.entitlementIdentifier,
   };
 }
 

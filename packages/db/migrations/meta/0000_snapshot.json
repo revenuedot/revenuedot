@@ -1,5 +1,5 @@
 {
-  "id": "47d87b08-06b6-435e-954e-99eb3184c3b0",
+  "id": "718d54ad-c3af-4b12-b521-a6a87da95e94",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -435,6 +435,12 @@
         "original_purchase_date": {
           "name": "original_purchase_date",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "offering_override_id": {
+          "name": "offering_override_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -1762,6 +1768,18 @@
         "auto_renew_product_id": {
           "name": "auto_renew_product_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entitlement_identifier": {
+          "name": "entitlement_identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expired_event_at": {
+          "name": "expired_event_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
