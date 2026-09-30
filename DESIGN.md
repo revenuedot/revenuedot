@@ -3,16 +3,16 @@
 **Locked 2026-09-30.** Every screen, the marketing site, docs and emails follow this file. The tokens live in [`design/tokens.css`](design/tokens.css); the reference screen is [`prd/dashboard/mockup.html`](prd/dashboard/mockup.html) (published preview: https://claude.ai/artifact/HsMddzZAGFNxgLztJDaVaL). If code and this file disagree, fix one of them in the same change.
 
 ## The style in one paragraph
-**RevenueCat's navigation, Superwall's materials, Vercel's restraint.** The information architecture copies RevenueCat's sidebar, because every customer we win already knows where things are. The materials come from Superwall's tokens: warm paper instead of grey, near-black ink, olive hairlines, square corners, Manrope with monospace figures, uppercase tracked labels, and crosshair corner marks on the key grid. Vercel sets the discipline: one accent, hairlines instead of shadows, generous whitespace, nothing decorative. The accent is ours: the gold dot from the logo.
+**RevenueCat's navigation, Superwall's materials, Vercel's restraint.** The information architecture copies RevenueCat's sidebar, because every customer we win already knows where things are. The materials are neutral, like Vercel's: a pure white page, near-black ink, light grey hairlines, square corners, Manrope with monospace figures, uppercase tracked labels, and crosshair corner marks on the key grid. Vercel sets the discipline: one accent, hairlines instead of shadows, generous whitespace, nothing decorative. The accent is ours: the gold dot from the logo.
 
 ## 1. Rules
 1. **Square.** `--radius: 0` for buttons, inputs, cards, tables, tags and menus. Only the live dot and avatars are round.
 2. **Hairlines, not shadows.** Panels are a 1px `--border` on `--panel`. No drop shadows in the app.
-3. **One accent.** Gold `--accent` marks what is live or current: the live dot, the sparkline's last point, the focus ring, the current period. Never a large fill, never body text on paper (use `--accent-ink`).
+3. **One accent.** Gold `--accent` marks what is live or current: the live dot, the sparkline's last point, the focus ring, the current period. Never a large fill, never body text on white (use `--accent-ink`).
 4. **Ink is the primary.** Primary buttons and the selected segment are `--fg` fill with `--bg` text. Secondary buttons are a hairline box.
 5. **Numbers are the product.** Metrics in Manrope 600 with tabular figures; IDs, table amounts, deltas and counts in `--mono`.
 6. **State colours mean state only.** `--up` for growth and healthy, `--down` for decline and failure, `--info` for trials and sandbox.
-7. **Both themes.** Light is paper; dark is the inverse (`#0C0B0A` ground, `#FDFEF6` ink). Every colour comes from a token.
+7. **Both themes.** Light is pure white with neutral greys (no yellow, olive or warm tint); dark is the inverse (`#0A0A0A` ground, `#FAFAFA` ink). Every colour comes from a token.
 
 ## 2. Brand mark
 - **An R whose leg is finished by a gold dot** ("R3"). Geometry, files and rules: [`brand/README.md`](brand/README.md); kit in `brand/kit/`.
@@ -22,16 +22,16 @@
 ## 3. Colour tokens
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg` | `#FDFEF6` | `#0C0B0A` | Page |
-| `--panel` | `#FFFFFF` | `#121110` | Cards, tables, inputs |
-| `--sidebar` | `#F8F9EF` | `#0F0E0D` | Navigation |
-| `--hover` | `#F3F4E8` | `#181715` | Hover |
-| `--active` | `#ECEEDD` | `#211F1D` | Selected nav item |
-| `--fg` | `#0C0B0A` | `#FDFEF6` | Text, primary fill |
-| `--fg-2` | `#5E5852` | `#B5AEA6` | Secondary text |
-| `--fg-3` | `#8B837C` | `#8B837C` | Labels, captions |
-| `--border` | `#E2E4D0` | `#211F1D` | Panel edges, grid dividers |
-| `--border-2` | `#ECEEDD` | `#1A1917` | Row separators |
+| `--bg` | `#FFFFFF` | `#0A0A0A` | Page |
+| `--panel` | `#FFFFFF` | `#111111` | Cards, tables, inputs |
+| `--sidebar` | `#FAFAFA` | `#0D0D0D` | Navigation |
+| `--hover` | `#F5F5F5` | `#171717` | Hover |
+| `--active` | `#EDEDED` | `#1F1F1F` | Selected nav item |
+| `--fg` | `#0A0A0A` | `#FAFAFA` | Text, primary fill |
+| `--fg-2` | `#525252` | `#A3A3A3` | Secondary text |
+| `--fg-3` | `#737373` | `#8A8A8A` | Labels, captions |
+| `--border` | `#E5E5E5` | `#262626` | Panel edges, grid dividers |
+| `--border-2` | `#F0F0F0` | `#1C1C1C` | Row separators |
 | `--accent` | `#F7B500` | `#F7B500` | The gold dot |
 | `--accent-ink` | `#8A5A00` | `#FFD35C` | Gold text |
 | `--up` / `--down` / `--info` | `#5F822B` / `#C2410C` / `#2F6F9F` | `#9BC75A` / `#F0875A` / `#7FB7E0` | State |
@@ -79,7 +79,7 @@ Load: `Manrope:wght@400;500;600;700` and `Geist Mono:wght@400;500`.
 150ms for hover and colour, 200ms for expand and collapse, easing `cubic-bezier(.23, 1, .32, 1)`. The live dot pulses (2s). Nothing else loops. `prefers-reduced-motion` turns motion off.
 
 ## 9. Marketing site and docs
-Same tokens at Superwall's scale: paper background, Manrope display at 64–88px with tight tracking, square black uppercase CTAs, hairline grids with crosshair corners, mono stats (`$11,978.40`, `8,902 notifications today`). Product screenshots are real app captures. Dark sections use the inverse tokens.
+Same tokens at Superwall's scale: white background, Manrope display at 64–88px with tight tracking, square black uppercase CTAs, hairline grids with crosshair corners, mono stats (`$11,978.40`, `8,902 notifications today`). Product screenshots are real app captures. Dark sections use the inverse tokens.
 
 ## 10. Do not
 - Rounded corners, drop shadows, gradients, glass or glow in the app.

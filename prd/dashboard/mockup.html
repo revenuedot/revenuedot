@@ -5,23 +5,23 @@
 <style>
 /* Layout: RevenueCat's sidebar information architecture (grouped, collapsible, setup items pinned to the bottom) + Superwall's tokens (warm paper, near-black ink, olive hairlines, square corners, Manrope + mono figures), composed with Vercel restraint. Accent = RevenueDot gold. */
 :root{
-  --bg:#FDFEF6; --panel:#FFFFFF; --sidebar:#F8F9EF; --fg:#0C0B0A; --fg-2:#5E5852; --fg-3:#8B837C;
-  --border:#E2E4D0; --border-2:#ECEEDD; --hover:#F3F4E8; --active:#ECEEDD;
+  --bg:#FAFAFA; --panel:#FFFFFF; --sidebar:#FAFAFA; --fg:#0A0A0A; --fg-2:#525252; --fg-3:#8A8A8A;
+  --border:#E5E5E5; --border-2:#EDEDED; --hover:#F5F5F5; --active:#EDEDED;
   --accent:#F7B500; --accent-ink:#8A5A00; --accent-wash:rgb(247 181 0/.14);
   --up:#5F822B; --down:#C2410C; --info:#2F6F9F;
-  --spark:#0C0B0A; --spark-fill:rgb(12 11 10/.06);
+  --spark:#0A0A0A; --spark-fill:rgb(10 10 10/.06);
   --font:"Manrope",ui-sans-serif,system-ui,sans-serif; --mono:"Geist Mono",ui-monospace,Menlo,monospace; --ease:cubic-bezier(.23,1,.32,1);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0C0B0A; --panel:#121110; --sidebar:#0F0E0D; --fg:#FDFEF6; --fg-2:#B5AEA6; --fg-3:#8B837C;
-  --border:#211F1D; --border-2:#1A1917; --hover:#181715; --active:#211F1D;
+  --bg:#0A0A0A; --panel:#111111; --sidebar:#0F0E0D; --fg:#FAFAFA; --fg-2:#A3A3A3; --fg-3:#8A8A8A;
+  --border:#262626; --border-2:#1C1C1C; --hover:#181715; --active:#262626;
   --accent-ink:#FFD35C; --accent-wash:rgb(247 181 0/.14); --up:#9BC75A; --down:#F0875A; --info:#7FB7E0;
-  --spark:#FDFEF6; --spark-fill:rgb(253 254 246/.06); color-scheme:dark }}
+  --spark:#FAFAFA; --spark-fill:rgb(250 250 250/.06); color-scheme:dark }}
 :root[data-theme="dark"]{
-  --bg:#0C0B0A; --panel:#121110; --sidebar:#0F0E0D; --fg:#FDFEF6; --fg-2:#B5AEA6; --fg-3:#8B837C;
-  --border:#211F1D; --border-2:#1A1917; --hover:#181715; --active:#211F1D;
+  --bg:#0A0A0A; --panel:#111111; --sidebar:#0F0E0D; --fg:#FAFAFA; --fg-2:#A3A3A3; --fg-3:#8A8A8A;
+  --border:#262626; --border-2:#1C1C1C; --hover:#181715; --active:#262626;
   --accent-ink:#FFD35C; --accent-wash:rgb(247 181 0/.14); --up:#9BC75A; --down:#F0875A; --info:#7FB7E0;
-  --spark:#FDFEF6; --spark-fill:rgb(253 254 246/.06); color-scheme:dark }
+  --spark:#FAFAFA; --spark-fill:rgb(250 250 250/.06); color-scheme:dark }
 
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -142,7 +142,7 @@ th.amt{text-align:right}
 
 <aside class="side" aria-label="Sidebar">
   <div class="brand">
-    <svg width="26" height="26" viewBox="0 0 32 32" aria-label="RevenueDot"><rect width="32" height="32" fill="#0C0B0A"/><g transform="translate(4.4 4) scale(.75)"><path d="M8.5 25.5V6.5h7.2a5.5 5.5 0 010 11H8.5M14.6 17.5l2.2 2.6" fill="none" stroke="#FDFEF6" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="23.6" r="3.2" fill="#F7B500"/></g></svg>
+    <svg width="26" height="26" viewBox="0 0 32 32" aria-label="RevenueDot"><rect width="32" height="32" fill="#0A0A0A"/><g transform="translate(4.4 4) scale(.75)"><path d="M8.5 25.5V6.5h7.2a5.5 5.5 0 010 11H8.5M14.6 17.5l2.2 2.6" fill="none" stroke="#FAFAFA" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="23.6" r="3.2" fill="#F7B500"/></g></svg>
     <button class="proj" type="button"><span class="ic">S</span><b>Scanner</b><svg class="i" viewBox="0 0 16 16" style="width:14px;height:14px;color:var(--fg-3)"><path d="M5 6l3-3 3 3M5 10l3 3 3-3"/></svg></button>
   </div>
   <nav class="nav" id="nav" aria-label="Project">

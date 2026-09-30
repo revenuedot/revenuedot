@@ -60,9 +60,9 @@ export function Icon({ name, className = "i", title }: { name: keyof typeof P | 
 export function Mark({ size = 26 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-label="RevenueDot" role="img">
-      <rect width="32" height="32" fill="#0C0B0A" />
+      <rect width="32" height="32" fill="#0A0A0A" />
       <g transform="translate(4.4 4) scale(.75)">
-        <path d="M8.5 25.5V6.5h7.2a5.5 5.5 0 010 11H8.5M14.6 17.5l2.2 2.6" fill="none" stroke="#FDFEF6" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M8.5 25.5V6.5h7.2a5.5 5.5 0 010 11H8.5M14.6 17.5l2.2 2.6" fill="none" stroke="#FAFAFA" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
         <circle cx="22" cy="23.6" r="3.2" fill="#F7B500" />
       </g>
     </svg>
