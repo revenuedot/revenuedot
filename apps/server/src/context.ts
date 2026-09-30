@@ -14,6 +14,11 @@ export interface Deps {
   signingKey?: string;
   /** "cloud" on RevenueDot Cloud (Workers); self-hosted otherwise. Shown to dashboard users with their plan. */
   edition?: "cloud" | "self-hosted";
+  /**
+   * Who may create an account with POST /auth/signup. "owner_only": only the first account (the self-host default, set by
+   * entry.node.ts unless REVENUEDOT_ALLOW_SIGNUP=true). Unset or "open": anyone. The cloud edition is always open.
+   */
+  signup?: "open" | "owner_only";
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

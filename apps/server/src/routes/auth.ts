@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { schema } from "@revenuedot/db";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import type { Deps } from "../context.js";
@@ -13,7 +15,20 @@ export function authRoutes(deps: Deps) {
   const cookieOpts = (secure: boolean) => ({ httpOnly: true, sameSite: "Lax" as const, secure, path: "/", maxAge: 30 * 86400 });
   const isHttps = (url: string) => url.startsWith("https:");
 
+  // Self-hosted servers default to one owner account; the cloud edition takes sign-ups from anyone.
+  const signupOpen = async () => {
+    if (deps.edition === "cloud" || deps.signup !== "owner_only") return true;
+    const [row] = await deps.db.select({ n: sql<number>`count(*)` }).from(schema.users);
+    return Number(row?.n ?? 0) === 0;
+  };
+
+  // What the sign-in pages need before showing a form. No session required.
+  r.get("/auth/config", async (c) => c.json({ edition: deps.edition ?? "self-hosted", signup: (await signupOpen()) ? "open" : "closed" }));
+
   r.post("/auth/signup", async (c) => {
+    if (!(await signupOpen())) {
+      return c.json({ type: "signup_closed", message: "Sign-up is closed on this server: it has an owner account already. The owner can open it by setting REVENUEDOT_ALLOW_SIGNUP=true." }, 403);
+    }
     const p = Signup.safeParse(await c.req.json().catch(() => ({})));
     if (!p.success) return c.json({ type: "invalid_request", message: p.error.issues[0]?.message ?? "Invalid request." }, 400);
     const res = await signup(deps.db, { email: p.data.email, password: p.data.password, name: p.data.name, projectName: p.data.project_name?.trim() || "My project" });

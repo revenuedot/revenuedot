@@ -17,7 +17,9 @@ const runTick = async () => {
   try { await tick(db, new Date(), fetch, { stores }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
-const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250) });
+// Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
+const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
+const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250), signup });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 if (existsSync(`${dist}/index.html`)) {
