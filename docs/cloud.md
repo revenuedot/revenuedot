@@ -64,16 +64,18 @@ node scripts/smoke-cloud.mjs https://api.revenuedot.app --read-only --app https:
   --public-key gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=
 ```
 
-`scripts/deploy-cloud.sh` reads the production URL from `CLOUD_DATABASE_URL`, or from `REVENUEDOT_PROD_DATABASE_URL` in
-`~/.config/revenuedot/prod.env`. It looks up the Hyperdrive config named `revenuedot` and passes its id to
+Production deploys run from GitHub Actions (`.github/workflows/deploy.yml`) on every push to `main` once CI passes, with
+the `production` environment's secrets. `scripts/deploy-cloud.sh` reads the production URL from `CLOUD_DATABASE_URL`, or,
+for a manual deploy, from 1Password (`op://RevenueDot/Railway production Postgres/url`). Unless `REVENUEDOT_HYPERDRIVE_ID`
+is set (CI sets it), it looks up the Hyperdrive config named `revenuedot` and passes its id to
 `cloudflare.config.ts` as `REVENUEDOT_HYPERDRIVE_ID`. If there is none, it creates one, writing the connection details
 to a mode-600 temp file that it deletes. Deploy from a clean checkout of `main`: the script deploys and migrates whatever
 is in the working tree. Never run the full smoke test against production; `--read-only` makes no writes.
 
 The response-signing root key is the secret `REVENUEDOT_SIGNING_KEY` (public key
 `gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=`). It was uploaded on the first deploy with
-`pnpm deploy:cloud --secrets-file ~/.config/revenuedot/signing-root.key`; later versions keep it. Pass the same flag to
-rotate it.
+`pnpm deploy:cloud --secrets-file <file>`; later versions keep it. The master copy is in 1Password
+(`RevenueDot response-signing root key`). To rotate it, write a new key to a temp file, pass it with the same flag, then delete the file.
 
 The site and the MCP server deploy on their own:
 

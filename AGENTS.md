@@ -25,7 +25,7 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - Sibling repos and the org map: `../AGENTS.md` (= `company/WORKSPACE.md`, private).
 
 ## Databases
-Use the Railway Postgres, never a local one. Development: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL` (Railway environment `development`); each task creates its own database on it (`CREATE DATABASE rd_<task>`). Production (`~/.config/revenuedot/prod.env`) is only for approved deploys. Details are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print either URL.
+Use the Railway Postgres, never a local one. Development: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL` (Railway environment `development`); each task creates its own database on it (`CREATE DATABASE rd_<task>`). Production credentials are never on disk: they live in 1Password (vault `RevenueDot`) and GitHub `production` environment secrets, and CI deploys on every push to `main`. Details are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print either URL.
 
 ## Toolchain
 Node 24 (`.nvmrc`, `engines`); it is the nvm default on Kai's Mac. `cf` needs Node 22.18 or newer. pnpm for the monorepo.
