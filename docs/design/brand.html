@@ -76,6 +76,25 @@ p{margin:0}
 .live-dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--dot);animation:pulse 2s var(--ease) infinite}
 @keyframes pulse{from{opacity:.6;transform:scale(1)}to{opacity:0;transform:scale(2.4)}}
 
+/* Mark options */
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.opt{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:14px;display:grid;gap:10px;align-content:start}
+.opt-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.opt-head b{font:600 14px/20px var(--font)}
+.opt p{font-size:13px;line-height:19px;color:var(--fg-muted)}
+.rec{font:500 11px/16px var(--font);color:var(--dot-ink);background:var(--dot-wash);padding:2px 8px;border-radius:4px}
+.grounds{display:grid;grid-template-columns:1fr;border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.gnd{display:flex;align-items:center;justify-content:center;gap:14px;padding:18px 8px}
+.gnd.l{background:#FFFFFF}.gnd.d{background:#0A0A0A}
+.ic{display:inline-block;position:relative;flex:none;font-style:normal}
+.ic.s72{width:64px;height:64px}.ic.s32{width:32px;height:32px}.ic.s16{width:16px;height:16px}
+.ic.A,.ic.B,.ic.C{border-radius:22.5%}
+.ic.A{background:#F7B500}.ic.B{background:#0A0A0A;box-shadow:inset 0 0 0 1px rgb(255 255 255/.14)}.ic.C{background:#FFFFFF}
+.ic::after{content:"";position:absolute;border-radius:50%;width:30%;height:30%;right:20%;bottom:20%}
+.ic.A::after{background:#0A0A0A}.ic.B::after,.ic.C::after{background:#F7B500}
+.ic.D{border-radius:50%;background:#F7B500}.ic.D::after{display:none}
+.ic.D.s72{width:44px;height:44px}.ic.D.s32{width:22px;height:22px}.ic.D.s16{width:12px;height:12px}
+
 /* Palette */
 .pal{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
 .pal-col{border:1px solid var(--border);border-radius:12px;overflow:hidden}
@@ -115,14 +134,14 @@ p{margin:0}
 
 /* Hero specimen (always dark: brand's marketing look) */
 .hero{position:relative;border-radius:16px;overflow:hidden;background:#0A0A0A;color:#EDEDED;border:1px solid #1F1F1F;padding:clamp(28px,5vw,64px);display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:40px;align-items:center}
-.hero::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgb(255 255 255/.09) 1px,transparent 1.2px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 30% 40%,#000 30%,transparent 80%);mask-image:radial-gradient(ellipse 70% 70% at 30% 40%,#000 30%,transparent 80%);pointer-events:none}
+.hero::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgb(255 255 255/.10) 1px,transparent 1.2px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 70% 70% at 30% 40%,#000 30%,transparent 80%);mask-image:radial-gradient(ellipse 70% 70% at 30% 40%,#000 30%,transparent 80%);pointer-events:none}
 .hero>*{position:relative}
 .hero canvas.field{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.hero.has-field::before{display:none}
 .ticker{display:flex;gap:24px;flex-wrap:wrap;margin-top:28px;font:400 12px/16px var(--font);color:#737373}
 .ticker b{display:block;font:400 28px/34px var(--font);letter-spacing:-.02em;color:#EDEDED;font-variant-numeric:tabular-nums}
 .ticker b.gold{color:#F7B500}
 .hero.lightv{background:#FAFAFA;color:#0A0A0A;border-color:#EAEAEA}
+.hero.lightv::before{background-image:radial-gradient(rgb(10 10 10/.14) 1px,transparent 1.2px)}
 .hero.lightv .kicker{color:#666;border-color:#E5E5E5;background:#fff}
 .hero.lightv h2 em,.hero.lightv p,.hero.lightv .ticker{color:#666}
 .hero.lightv .ticker b{color:#0A0A0A}.hero.lightv .ticker b.gold{color:#8A5A00}
@@ -229,12 +248,21 @@ td .uid{font:400 12px/16px var(--mono);color:var(--fg-muted)}
   </section>
 
   <section class="sec">
-    <div class="sec-head"><span class="eyebrow">Mark</span><h2>A full stop that is also a live light</h2><p>The wordmark ends "revenue" with a gold dot. The app icon places that dot where a full stop sits. In the product the same dot pulses to mean "live".</p></div>
-    <div class="marks">
-      <figure class="mark-card dark" style="margin:0"><div class="logo-lockup"><span class="lk-word">revenue<i></i></span></div><figcaption>Wordmark · dark</figcaption></figure>
-      <figure class="mark-card light" style="margin:0"><div class="logo-lockup"><span class="lk-word">revenue<i></i></span></div><figcaption>Wordmark · light</figcaption></figure>
-      <figure class="mark-card light" style="margin:0"><div class="app-icon" role="img" aria-label="RevenueDot app icon"></div><figcaption>App icon</figcaption></figure>
-      <figure class="mark-card" style="margin:0"><span class="live"><span class="live-dot"></span>Live · last notification 2s ago</span><figcaption style="color:var(--fg-subtle)">Live indicator</figcaption></figure>
+    <div class="sec-head"><span class="eyebrow">Mark · pick one</span><h2>Four icon options, each on light and dark</h2><p>Each is shown as an app icon, at 32px and at 16px (the browser tab). The wordmark stays "revenue" with the gold dot as its full stop: black text on light, white on dark.</p></div>
+    <div class="opts">
+      <div class="opt"><div class="opt-head"><b>A · Gold tile</b><span class="rec">Recommended</span></div><p>Gold square, black full stop. Identical in light and dark, and the brightest icon in any tab bar or dock.</p>
+        <div class="grounds"><div class="gnd l"><i class="ic A s72"></i><i class="ic A s32"></i><i class="ic A s16"></i></div><div class="gnd d"><i class="ic A s72"></i><i class="ic A s32"></i><i class="ic A s16"></i></div></div></div>
+      <div class="opt"><div class="opt-head"><b>B · Black tile</b></div><p>Near-black square, gold full stop. Calm and premium; on dark pages it needs a hairline to separate from the background.</p>
+        <div class="grounds"><div class="gnd l"><i class="ic B s72"></i><i class="ic B s32"></i><i class="ic B s16"></i></div><div class="gnd d"><i class="ic B s72"></i><i class="ic B s32"></i><i class="ic B s16"></i></div></div></div>
+      <div class="opt"><div class="opt-head"><b>C · Theme tile</b></div><p>Black tile on light pages, white tile on dark pages, gold dot on both. Two files to maintain; the favicon swaps with the system theme.</p>
+        <div class="grounds"><div class="gnd l"><i class="ic B s72"></i><i class="ic B s32"></i><i class="ic B s16"></i></div><div class="gnd d"><i class="ic C s72"></i><i class="ic C s32"></i><i class="ic C s16"></i></div></div></div>
+      <div class="opt"><div class="opt-head"><b>D · Bare dot</b></div><p>Just the gold disc, no tile. The purest idea, but it looks like a status light at small sizes and has no shape of its own.</p>
+        <div class="grounds"><div class="gnd l"><i class="ic D s72"></i><i class="ic D s32"></i><i class="ic D s16"></i></div><div class="gnd d"><i class="ic D s72"></i><i class="ic D s32"></i><i class="ic D s16"></i></div></div></div>
+    </div>
+    <div class="marks" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+      <figure class="mark-card light" style="margin:0"><div class="logo-lockup"><i class="ic A s32"></i><span class="lk-word">revenue<i></i></span></div><figcaption>Lockup A · light</figcaption></figure>
+      <figure class="mark-card dark" style="margin:0"><div class="logo-lockup"><i class="ic A s32"></i><span class="lk-word">revenue<i></i></span></div><figcaption>Lockup A · dark</figcaption></figure>
+      <figure class="mark-card" style="margin:0"><span class="live"><span class="live-dot"></span>Live · last notification 2s ago</span><figcaption style="color:var(--fg-subtle)">Live indicator in the product</figcaption></figure>
     </div>
   </section>
 
@@ -295,8 +323,8 @@ td .uid{font:400 12px/16px var(--mono);color:var(--fg-muted)}
   </section>
 
   <section class="sec">
-    <div class="sec-head"><span class="eyebrow">Signature · the revenue field</span><h2>Every purchase lights a dot</h2><p>The brand pattern is alive: a grid of quiet dots where each incoming purchase lights one gold, with a ripple, while the totals tick up. It says "revenue, live" before anyone reads a word. Shown dark (default) and light. Example data.</p></div>
-    <div class="hero has-field" data-field="dark"><canvas class="field" aria-hidden="true"></canvas>
+    <div class="sec-head"><span class="eyebrow">Marketing hero · dark and light</span><h2>The product is the hero</h2><p>A still dot grid, the one line a developer changes, purchases arriving, and the totals ticking up in gold. Example data.</p></div>
+    <div class="hero has-field" data-field="dark">
       <div>
         <span class="kicker"><span class="live-dot"></span>Works with the RevenueCat SDK</span>
         <h2>Keep your app.<br><em>Change one line.</em></h2>
@@ -313,7 +341,7 @@ td .uid{font:400 12px/16px var(--mono);color:var(--fg-muted)}
         <div class="feed" data-feed="dark" aria-live="polite"></div>
       </div>
     </div>
-  <div class="hero has-field lightv" data-field="light" style="margin-top:12px"><canvas class="field" aria-hidden="true"></canvas>
+  <div class="hero has-field lightv" data-field="light" style="margin-top:12px">
       <div>
         <span class="kicker"><span class="live-dot"></span>Works with the RevenueCat SDK</span>
         <h2>Keep your app.<br><em>Change one line.</em></h2>
@@ -436,27 +464,7 @@ td .uid{font:400 12px/16px var(--mono);color:var(--fg-muted)}
   });
   var usd=48213.60, n=1284;
   function fmt(v){return '$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
-  document.querySelectorAll('.hero.has-field').forEach(function(hero){
-    var cv=hero.querySelector('canvas.field'), ctx=cv.getContext('2d'), light=hero.dataset.field==='light';
-    var base=light?'rgba(10,10,10,0.13)':'rgba(255,255,255,0.10)', gold=light?'214,154,0':'247,181,0', gap=22, dots=[], lit=[], W=0, H=0, dpr=Math.min(2,window.devicePixelRatio||1);
-    function size(){var r=hero.getBoundingClientRect(); W=r.width; H=r.height; cv.width=W*dpr; cv.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); dots=[]; for(var y=gap/2;y<H;y+=gap) for(var x=gap/2;x<W;x+=gap) dots.push([x,y]);}
-    function fade(x,y){var dx=(x/W)-.72, dy=(y/H)-.5; return Math.max(0,1-Math.sqrt(dx*dx*1.2+dy*dy*1.6)*1.25);}
-    function draw(t){
-      ctx.clearRect(0,0,W,H);
-      for(var k=0;k<dots.length;k++){var d=dots[k], f=fade(d[0],d[1]); if(f<=0) continue; ctx.fillStyle=base; ctx.globalAlpha=Math.min(1,.25+f); ctx.fillRect(d[0]-.75,d[1]-.75,1.5,1.5);}
-      ctx.globalAlpha=1;
-      lit=lit.filter(function(L){return t-L.t<2600;});
-      lit.forEach(function(L){var p=(t-L.t)/2600, a=1-p;
-        ctx.beginPath(); ctx.arc(L.x,L.y,2+4*Math.min(1,p*4)*(1-p*.5),0,7); ctx.fillStyle='rgba('+gold+','+a+')'; ctx.fill();
-        ctx.beginPath(); ctx.arc(L.x,L.y,4+p*26,0,7); ctx.strokeStyle='rgba('+gold+','+(a*.35)+')'; ctx.lineWidth=1; ctx.stroke();
-      });
-    }
-    function spark(t){ if(!dots.length) return; for(var tries=0;tries<20;tries++){var d=dots[(Math.random()*dots.length)|0]; if(fade(d[0],d[1])>.3 && (W<700 ? d[1]<H*.35 || d[1]>H*.9 : d[0]>W*.5)){lit.push({x:d[0],y:d[1],t:t}); break;}} }
-    size(); new ResizeObserver(size).observe(hero);
-    if(reduce){ var now=performance.now(); for(var q=0;q<14;q++) spark(now-q*120); draw(now+400); return; }
-    var last=0;
-    (function loop(t){ if(t-last>260+Math.random()*420){ spark(t); last=t; if(!light){ usd+=2.99+Math.random()*37; n+=1; } } draw(t); requestAnimationFrame(loop); })(performance.now());
-  });
+  if(!reduce) setInterval(function(){ usd+=2.99+Math.random()*37; n+=1; },900);
   if(!reduce) setInterval(function(){document.querySelectorAll('[data-count="usd"]').forEach(function(e){e.textContent=fmt(usd)}); document.querySelectorAll('[data-count="n"]').forEach(function(e){e.textContent=n.toLocaleString('en-US')});},500);
 })();
 </script>
