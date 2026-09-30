@@ -171,6 +171,28 @@ describe("ownership and transfers", () => {
     expect(transfers).toHaveLength(1);
     expect((transfers[0]!.payload as any).event.transferred_from).toEqual(["alice"]);
   });
+  it("restoring another known user's one-time purchase transfers it and records TRANSFER like a subscription does", async () => {
+    const at = new Date("2026-09-01T11:00:00Z");
+    const subToken = `test_${at.getTime()}_sub_xfer`;
+    const oneToken = `test_${at.getTime()}_life_xfer`;
+    await post("/v1/receipts", { app_user_id: "erin", fetch_token: subToken, product_id: "pro_monthly" }, h.ids.testKey);
+    await post("/v1/receipts", { app_user_id: "erin", fetch_token: oneToken, product_id: "lifetime" }, h.ids.testKey);
+    const transfers = async () => (await h.db.select().from(schema.events).where(eq(schema.events.type, "TRANSFER"))).map((r) => (r.payload as any).event);
+    await post("/v1/receipts", { app_user_id: "frank", fetch_token: subToken, product_id: "pro_monthly", is_restore: true }, h.ids.testKey);
+    const [sub] = await transfers();
+    const res = await post("/v1/receipts", { app_user_id: "frank", fetch_token: oneToken, product_id: "lifetime", is_restore: true }, h.ids.testKey);
+    expect((await res.json()).subscriber.non_subscriptions.lifetime).toHaveLength(1);
+    const erin = await (await h.fetch("/v1/subscribers/erin")).json();
+    expect(erin.subscriber.non_subscriptions).toEqual({});
+    const all = await transfers();
+    expect(all).toHaveLength(2);
+    const one = all.find((e) => e.id !== sub.id);
+    expect(one).toMatchObject({ type: "TRANSFER", transferred_from: ["erin"], transferred_to: ["frank"], store: "TEST_STORE", environment: "SANDBOX" });
+    expect(Object.keys(one).sort()).toEqual(Object.keys(sub).sort());
+    // The restore itself is not a new purchase.
+    const purchases = await h.db.select().from(schema.events).where(eq(schema.events.type, "NON_RENEWING_PURCHASE"));
+    expect(purchases).toHaveLength(1);
+  });
   it("with 'keep' the second user gets 7102 receipt already in use", async () => {
     await h.db.update(schema.projects).set({ transferBehavior: "keep" });
     const token = `test_${Date.now()}_keep`;

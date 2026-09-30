@@ -4,7 +4,7 @@ import { schema, type DB } from "@revenuedot/db";
 import { Codes, RCError } from "../errors.js";
 import { backdateFirstSeen, findCustomer, isOnlyAnonymous, mergeCustomers, nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
 import type { VerifiedPurchase, VerifiedSubscription } from "../stores/types.js";
-import { recordEvent } from "./events.js";
+import { recordEvent, type EventSubject } from "./events.js";
 import { adoptImportedChain } from "./imported-chains.js";
 
 const { subscriptions, nonSubscriptions, transactions, projects, customers } = schema;
@@ -118,12 +118,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     isFamilyShare: p.ownershipType === "FAMILY_SHARED", countryCode: p.countryCode, price: p.price, priceUsd: p.price ? toUsd(p.price) : null,
     presentedOfferingId: ctx.presentedOfferingId,
   };
-  if (transferFrom) {
-    const fromAliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, transferFrom.id));
-    const toAliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, owner.id));
-    await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: { type: "TRANSFER" }, subject, now: ctx.now,
-      extra: { transferred_from: fromAliases.map((r) => r.a), transferred_to: toAliases.map((r) => r.a) } });
-  }
+  if (transferFrom) await recordTransfer(db, ctx, transferFrom, owner, subject);
   for (const d of diffSubscription(prev, next, ctx.now)) {
     await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: d, subject, now: ctx.now });
     if (d.type === "EXPIRATION") await db.update(subscriptions).set({ expiredEventAt: ctx.now }).where(and(eq(subscriptions.projectId, ctx.projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey)));
@@ -144,11 +139,20 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   return o!;
 }
 
+/** TRANSFER: the purchase moved from one customer to another; the event lists both customers' app user ids. */
+async function recordTransfer(db: DB, ctx: ApplyContext, from: CustomerRow, to: CustomerRow, subject: EventSubject) {
+  const fromAliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, from.id));
+  const toAliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, to.id));
+  await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: to, appUserId: ctx.appUserId, derived: { type: "TRANSFER" }, subject, now: ctx.now,
+    extra: { transferred_from: fromAliases.map((r) => r.a), transferred_to: toAliases.map((r) => r.a) } });
+}
+
 async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPurchase, { kind: "non_subscription" }>, ctx: ApplyContext) {
   const [existing] = await db.select().from(nonSubscriptions)
     .where(and(eq(nonSubscriptions.projectId, ctx.projectId), eq(nonSubscriptions.store, p.store), eq(nonSubscriptions.storeTransactionId, p.storeTransactionId))).limit(1);
   let owner = customer;
-  if (existing) ({ owner } = await resolveOwnership(db, customer, existing.customerId, ctx, p.isSandbox));
+  let transferFrom: CustomerRow | undefined;
+  if (existing) ({ owner, transferFrom } = await resolveOwnership(db, customer, existing.customerId, ctx, p.isSandbox));
   const values = {
     projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store, productIdentifier: p.productIdentifier,
     storeTransactionId: p.storeTransactionId, isSandbox: p.isSandbox, isConsumable: p.isConsumable, purchaseDate: p.purchaseDate,
@@ -165,6 +169,7 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
     transactionId: p.storeTransactionId, originalTransactionId: p.storeTransactionId, isSandbox: p.isSandbox, isFamilyShare: false,
     countryCode: p.countryCode, price: p.price, priceUsd: p.price ? toUsd(p.price) : null, presentedOfferingId: ctx.presentedOfferingId,
   };
+  if (transferFrom) await recordTransfer(db, ctx, transferFrom, owner, subject);
   for (const d of diffNonSubscription(prev, next)) {
     await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: d, subject, now: ctx.now });
     const kind = d.isRefund ? "refund" : d.type === "REFUND_REVERSED" ? "refund_reversal" : "one_time";
