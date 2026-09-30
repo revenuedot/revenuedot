@@ -56,7 +56,7 @@
   - `POST /oauth/token`: authorization code with PKCE S256 only; codes are single use and last 10 minutes.
   - **The access token is a secret key** (`sk_...`) created at the code exchange, named `OAuth: <client name>`, limited to the chosen project and an explicit list of scopes (no `api_keys` scope, so it cannot mint keys). It does not expire and there is no refresh token; revoking it is deleting the key on the API keys page.
   - The MCP server publishes `/.well-known/oauth-protected-resource` (RFC 9728) naming the RevenueDot server, and answers `401` with `WWW-Authenticate: Bearer resource_metadata=...` for missing or revoked tokens.
-- **Transport:** Streamable HTTP at `/mcp`, stateless with JSON responses (`../mcp/src/http.ts`), on Node and as a Cloudflare Worker (`../mcp/wrangler.toml`, planned host `https://mcp.revenuedot.app/mcp`); stdio with `npx @revenuedot/mcp` (`REVENUEDOT_URL`, `REVENUEDOT_API_KEY`); `--http` for self-hosters.
+- **Transport:** Streamable HTTP at `/mcp`, stateless with JSON responses (`../mcp/src/http.ts`), on Node and as a Cloudflare Worker (`../mcp/cloudflare.config.ts`, deployed with the `cf` CLI, live at `https://mcp.revenuedot.app/mcp`); stdio with `npx @revenuedot/mcp` (`REVENUEDOT_URL`, `REVENUEDOT_API_KEY`); `--http` for self-hosters.
 - **Shared executors:** `../mcp/src/tools.ts` depends only on zod and the API client and is exported as `@revenuedot/mcp/tools` for the Tier 2 in-app agent.
 - **Skills:** `../agent-skills/skills/<skill>/SKILL.md`, installed with `npx skills add revenuedot/agent-skills`.
 - **Data:** tables `oauth_clients` and `oauth_codes` (migration `0003_oauth`). Access tokens live in `api_keys`.

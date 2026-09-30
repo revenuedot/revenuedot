@@ -39,4 +39,4 @@ Cloudflare Web Analytics (cookieless), on only when `PUBLIC_CF_WEB_ANALYTICS_TOK
 
 ## Commands
 - `pnpm --filter site dev` (4321; search needs a build), `build` (Astro, then Pagefind), `preview` (4322), `check` (links and #anchors, meta, JSON-LD, sitemap, `.md` twins, llms files, the Pagefind index, and every revenuedot.app/docs or /blog URL in the sibling repos; `CHECK_WORKSPACE=0` skips that scan), `shots` (every page at 1440 and 390, light or `--dark`, fails on horizontal scroll), `capture` (dashboard screenshots from the seeded e2e server).
-- Deploy: `pnpm --filter site run deploy` (build, check, `wrangler deploy` to revenuedot.app and www). Needs approval.
+- Deploy: `pnpm --filter site run deploy` (build, check, then `cf deploy --prebuilt` to revenuedot.app and www; config `apps/site/cloudflare.config.ts`). Live at https://revenuedot.app; www redirects to the apex with a zone redirect rule.

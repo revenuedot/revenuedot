@@ -257,6 +257,12 @@ docker compose up -d        # API, dashboard and Postgres
 
 <sub>Planned for the first release. What you run yourself: the server, Postgres, backups and upgrades. RevenueDot Cloud adds failover, point-in-time recovery, global edge caching, monitoring and support.</sub>
 
+## RevenueDot Cloud
+
+RevenueDot Cloud runs this repository on Cloudflare Workers: the API at `https://api.revenuedot.app`, the dashboard at
+`https://app.revenuedot.app` and the hosted MCP server at `https://mcp.revenuedot.app/mcp`. It deploys with the `cf` CLI
+(`pnpm deploy:cloud`); the runbook is [docs/cloud.md](docs/cloud.md).
+
 ## Built for AI agents
 
 - **[MCP server](https://github.com/revenuedot/mcp):** manage offerings, look up customers, grant access and check webhooks from Claude, ChatGPT or Cursor.
