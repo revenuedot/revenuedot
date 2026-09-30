@@ -24,6 +24,7 @@ Goal: an indie or small team on iOS, Android, React Native or Flutter moves off 
 
 | # | Feature | What "done" means |
 |---|---|---|
+| 1.0 | **Foundations** | Monorepo (Hono server, dashboard, `packages/core`), Postgres schema, `DESIGN.md` design tokens, and the **contract test harness**: every upstream SDK fixture plus RevenueCat's OpenAPI shapes run as tests against our server, and a sample app drives the real SDKs on the iOS simulator and an Android emulator |
 | 1.1 | **SDK-compatible API** | All 37 SDK endpoints answer correctly. The core six (customer info, offerings, receipts, identify, config, attributes) are real, and the rest are safe stubs. Passes all upstream fixtures, plus a real purchase in sandbox on the iOS simulator and an Android emulator using the unmodified SDK |
 | 1.2 | **Apple ingestion** | StoreKit 2 signed transactions and StoreKit 1 receipts through the App Store Server API; App Store Server Notifications v2 endpoint with signature checks; sandbox kept apart from production |
 | 1.3 | **Google ingestion** | Play Developer API (subscriptions v2, one-time products); real-time notifications through Pub/Sub push; acknowledgement within Google's 3-day limit; voided purchases |
@@ -39,6 +40,7 @@ Goal: an indie or small team on iOS, Android, React Native or Flutter moves off 
 | 1.13 | **SDK forks, all of them** | An automated fork pipeline (upstream tag → rename script → our signing key → our host → contract tests → publish) for iOS, Android, the shared hybrid layer, React Native (and its paywall UI), Flutter, web, Capacitor, Kotlin Multiplatform, Unity and Cordova. Order: the three core repos first, since every wrapper depends on them, then by downloads. Also fixes the Flutter web proxy bug and the web SDK's key-prefix check |
 | 1.14 | **AI-native basics** | OAuth MCP server with about 12 tools (catalog, customers, grant and revoke entitlements, webhooks, import status); `llms.txt`; a "migrate from RevenueCat" agent skill |
 | 1.15 | **Docs** | Quickstart, migration guide, a compatibility table by SDK version, self-host guide, API reference built from our OpenAPI |
+| 1.16 | **Brand and site** | Brand kit (logo, icon, favicon, social images), marketing site with pricing, comparison and migration pages, SEO and AI-answer markup, legal pages, web analytics, domain and email |
 
 **Tier 1 is out when** a real app runs a dual-run for a week, and its customer info and webhooks match RevenueCat's for every event.
 
@@ -46,7 +48,7 @@ Goal: an indie or small team on iOS, Android, React Native or Flutter moves off 
 Goal: nothing a normal RevenueCat customer uses is missing, and we are clearly better on price, openness and data ownership.
 - **Full v2 REST API** (128 endpoints, except the ones that only serve RevenueCat's own billing), plus the audit log and team roles.
 - **All 21 webhook events**, and the top integrations: Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase and BigQuery, AppsFlyer, Adjust, Meta. Scheduled data exports in CSV or Parquet to S3, R2 or GCS.
-- **Charts:** all 41 named charts, matching RevenueCat's definitions (USD at the purchase-date rate, sandbox excluded), with the SQL published.
+- **Charts:** all 42 built-in charts, matching RevenueCat's definitions (USD at the purchase-date rate, sandbox excluded), with the SQL published.
 - **Paywalls:** serve the paywall JSON the SDKs already render (17 component types), a visual editor, an AI paywall generator and an asset CDN.
 - **Targeting and placements; experiments** (offering A/B tests with statistics).
 - **Customer Center config, virtual currencies, offline entitlements, promotional-offer signing, win-back offers.**
