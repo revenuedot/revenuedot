@@ -14,11 +14,10 @@ Works with the RevenueCat SDK you already ship: change one line, keep your app c
 
 [Website](https://revenuedot.app) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [SDKs](#sdks) · [Compatibility](#compatibility) · [Roadmap](#roadmap) · [FAQ](#faq)
 
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-0C0B0A)](LICENSING.md)
-[![SDKs: MIT](https://img.shields.io/badge/SDKs-MIT-0C0B0A)](#sdks)
-[![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-F7B500)](prd/SCOPE.md)
-[![Works with the RevenueCat SDK](https://img.shields.io/badge/works%20with-RevenueCat%20SDK-0C0B0A)](#compatibility)
-[![Self-host with Docker](https://img.shields.io/badge/self--host-Docker%20%2B%20Postgres-0C0B0A)](#self-host)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-0A0A0A)](LICENSING.md)
+[![SDKs: MIT](https://img.shields.io/badge/SDKs-MIT-0A0A0A)](#sdks)
+[![Works with the RevenueCat SDK](https://img.shields.io/badge/works%20with-RevenueCat%20SDK-0A0A0A)](#compatibility)
+[![Self-host with Docker](https://img.shields.io/badge/self--host-Docker%20%2B%20Postgres-0A0A0A)](#self-host)
 [![GitHub stars](https://img.shields.io/github/stars/revenuedot/revenuedot?style=flat&color=F7B500)](https://github.com/revenuedot/revenuedot/stargazers)
 
 <br>
@@ -33,7 +32,7 @@ Works with the RevenueCat SDK you already ship: change one line, keep your app c
 </div>
 
 > [!IMPORTANT]
-> **RevenueDot is pre-alpha and built in the open.** Nothing here is production-ready yet. Star or watch the repo to follow along; the build plan is in [prd/SCOPE.md](prd/SCOPE.md).
+> **RevenueDot is open-source app monetization infrastructure.** Self-host it free, or use RevenueDot Cloud. The roadmap is in [prd/SCOPE.md](prd/SCOPE.md).
 
 ## In one minute
 

@@ -8,7 +8,7 @@ export const GET: APIRoute = () => {
   const u = (p: string) => new URL(p, SITE.url).href;
   const body = `# RevenueDot
 
-> RevenueDot is an open-source (AGPL-3.0), self-hostable backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Apps switch from RevenueCat by changing one line (the SDK's proxy URL) and keep their purchase code, offerings, API keys and customers. Self-hosting is free with no revenue share; RevenueDot Cloud is free up to $10,000 monthly tracked revenue. RevenueDot is pre-alpha and not affiliated with RevenueCat, Inc.
+> RevenueDot is an open-source (AGPL-3.0), self-hostable backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Apps switch from RevenueCat by changing one line (the SDK's proxy URL) and keep their purchase code, offerings, API keys and customers. Self-hosting is free with no revenue share; RevenueDot Cloud is free up to $10,000 monthly tracked revenue. RevenueDot is not affiliated with RevenueCat, Inc.
 
 Key facts:
 - Implements the API the RevenueCat SDKs call (37 SDK endpoints), REST API v1 and core v2, and the same webhook event names and payloads.

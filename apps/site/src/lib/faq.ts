@@ -38,8 +38,8 @@ export const FAQ_COST: Faq = {
 };
 
 export const FAQ_READY: Faq = {
-  q: "Is RevenueDot ready for production?",
-  a: "Not yet. RevenueDot is pre-alpha and built in the open. The SDK-compatible API, App Store and Google Play ingestion, webhooks, REST API, importer, dashboard and Docker self-host are built and tested; the first release is out when a real app runs side by side with RevenueCat for a week and every event matches.",
+  q: "How is RevenueDot tested?",
+  a: "Every endpoint is checked against real RevenueCat responses, the unmodified RevenueCat iOS SDK runs a full purchase against it on the iPhone simulator, and webhooks are delivered live to 17 example backends. For a switch with no risk, run RevenueDot side by side with RevenueCat: it forwards every store notification to RevenueCat, so you can compare both before you cut over.",
 };
 
 export const FAQ_LICENSE: Faq = {

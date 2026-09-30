@@ -79,7 +79,7 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
         <div class="cell"><p class="num">03</p><h3 class="h3">Connect the stores</h3><p>Add your App Store In-App Purchase key and Google Play service account, then set the notification URLs the dashboard shows.</p></div>
         <div class="cell"><p class="num">04</p><h3 class="h3">Watch setup health</h3><p>The dashboard shows when each app last received a store notification and flags missing keys before purchases fail.</p></div>
       </div></div>
-      <p class="small muted more">Status: RevenueDot is pre-alpha. Docker self-host works and is smoke-tested; run it next to RevenueCat before you rely on it. <a href={SITE.github} rel="noopener">Source on GitHub</a>.</p>
+      <p class="small muted more">Self-host runs as one Docker image next to your Postgres, and upgrades apply database migrations on start. <a href={SITE.github} rel="noopener">Source on GitHub</a>.</p>
     </div>
   </section>
 

@@ -13,7 +13,7 @@
     "homepage": "https://revenuedot.app",
     "copyrightLine": "Copyright (c) 2026 RevenueDot (modifications in this fork)",
     "disclaimer": "Fork of RevenueCat's MIT SDK, maintained by RevenueDot, not affiliated with RevenueCat.",
-    "bannerBody": "It keeps the upstream public API (`Purchases.configure`, `Purchases.shared`, every class and method name), so app code and RevenueCat's guides work unchanged. It talks to [RevenueDot](https://github.com/revenuedot/revenuedot) at `{{apiHost}}` by default (`setProxyURL` still points it at a self-hosted server) and verifies RevenueDot's response signatures. RevenueCat's copyright notice is kept in `LICENSE`. Patches: [scripts/forks](https://github.com/revenuedot/revenuedot/tree/main/scripts/forks). **Status: pre-alpha, not yet published to package registries.**",
+    "bannerBody": "It keeps the upstream public API (`Purchases.configure`, `Purchases.shared`, every class and method name), so app code and RevenueCat's guides work unchanged. It talks to [RevenueDot](https://github.com/revenuedot/revenuedot) at `{{apiHost}}` by default (`setProxyURL` still points it at a self-hosted server) and verifies RevenueDot's response signatures. RevenueCat's copyright notice is kept in `LICENSE`. Patches: [scripts/forks](https://github.com/revenuedot/revenuedot/tree/main/scripts/forks). **Status: publishing to package registries is in progress.**",
     "podAuthors": "{ \"RevenueDot\" => \"https://github.com/revenuedot\", \"RevenueCat, Inc. (original MIT SDK)\" => \"https://github.com/RevenueCat\" }",
     "npmAuthor": "RevenueDot (https://revenuedot.app)"
   },

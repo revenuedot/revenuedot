@@ -47,7 +47,7 @@ export const PLANS: Plan[] = [
       "Webhooks, REST API and the importer",
       "Email and community support",
     ],
-    cta: { label: "Request early access", href: "mailto:hello@revenuedot.app?subject=RevenueDot%20Cloud%20early%20access" },
+    cta: { label: "Talk to us", href: "mailto:hello@revenuedot.app?subject=RevenueDot%20Cloud" },
   },
   {
     id: "cloud-standard",
