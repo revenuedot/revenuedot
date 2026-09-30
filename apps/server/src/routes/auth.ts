@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Deps } from "../context.js";
 import { SESSION_COOKIE, createSession, login, logout, projectsForUser, sessionUser, signup } from "../services/sessions.js";
 
-const Signup = z.object({ email: z.string().email(), password: z.string().min(8), name: z.string().max(100).optional(), project_name: z.string().min(1).max(100).optional() });
+const Signup = z.object({ email: z.string().email("Enter a valid email address."), password: z.string().min(8, "Use at least 8 characters for your password."), name: z.string().max(100).optional(), project_name: z.string().max(100).optional() });
 const Login = z.object({ email: z.string().email(), password: z.string().min(1) });
 
 /** Dashboard sign-in. The session cookie also authorizes /v2 for the user's projects. */
@@ -16,7 +16,7 @@ export function authRoutes(deps: Deps) {
   r.post("/auth/signup", async (c) => {
     const p = Signup.safeParse(await c.req.json().catch(() => ({})));
     if (!p.success) return c.json({ type: "invalid_request", message: p.error.issues[0]?.message ?? "Invalid request." }, 400);
-    const res = await signup(deps.db, { email: p.data.email, password: p.data.password, name: p.data.name, projectName: p.data.project_name ?? "My project" });
+    const res = await signup(deps.db, { email: p.data.email, password: p.data.password, name: p.data.name, projectName: p.data.project_name?.trim() || "My project" });
     if ("error" in res) return c.json({ type: "conflict", message: res.error }, 409);
     setCookie(c, SESSION_COOKIE, await createSession(deps.db, res.userId!, deps.now()), cookieOpts(isHttps(c.req.url)));
     return c.json({ ok: true }, 201);

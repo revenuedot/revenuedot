@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "api", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@revenuedot/server", "dev"], "port": 8787 },
+    { "name": "dashboard", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@revenuedot/dashboard", "dev"], "port": 5178 }
+  ]
+}

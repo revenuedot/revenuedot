@@ -6,6 +6,7 @@ import { migrate as migratePg } from "drizzle-orm/postgres-js/migrator";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import postgres from "postgres";
 import { fileURLToPath } from "node:url";
+import { mkdirSync } from "node:fs";
 import * as schema from "./schema.js";
 
 export { schema };
@@ -26,6 +27,7 @@ export async function openDb(url = process.env.DATABASE_URL ?? "pglite://memory"
     return { db, close: () => sql.end() };
   }
   const path = url.replace(/^pglite:\/\//, "");
+  if (path !== "memory" && path !== "") mkdirSync(path, { recursive: true });
   const client = path === "memory" || path === "" ? new PGlite() : new PGlite(path);
   const db = drizzlePglite(client, { schema }) as unknown as DB;
   await migratePglite(db as never, { migrationsFolder });

@@ -1,0 +1,141 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../lib/api";
+import { Icon, Mark } from "./icons";
+
+export interface Me { user: { id: string; email: string; name: string | null }; projects: { id: string; name: string; role: string }[] }
+export const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false });
+
+type Item = { label: string; to?: string; icon?: string; soon?: boolean; children?: Item[] };
+
+/** RevenueCat's sidebar information architecture, in order. `soon` marks Tier 2/3 areas. */
+const NAV: Item[] = [
+  { label: "Overview", to: "overview", icon: "overview" },
+  { label: "Analytics", icon: "analytics", children: [{ label: "Charts", to: "charts", soon: true }, { label: "Benchmarks", to: "benchmarks", soon: true }] },
+  { label: "Customers", to: "customers", icon: "customers" },
+  { label: "Product catalog", icon: "catalog", children: [
+    { label: "Offerings", to: "product-catalog/offerings" }, { label: "Products", to: "product-catalog/products" },
+    { label: "Entitlements", to: "product-catalog/entitlements" }, { label: "In-app currencies", to: "product-catalog/virtual-currencies", soon: true },
+    { label: "Web discounts", to: "web-discounts", soon: true },
+  ] },
+  { label: "Paywalls", to: "paywalls", icon: "paywalls", soon: true },
+  { label: "Targeting", to: "targeting", icon: "targeting", soon: true },
+  { label: "Experiments", to: "experiments", icon: "experiments", soon: true },
+  { label: "Funnels", to: "funnels", icon: "funnels", soon: true },
+  { label: "Ads", icon: "ads", children: [{ label: "Overview", to: "ads", soon: true }, { label: "Rewards", to: "ads/rewards", soon: true }] },
+  { label: "Lifecycle", icon: "lifecycle", children: [
+    { label: "Customer Center", to: "lifecycle/customer-center", soon: true }, { label: "Support", to: "lifecycle/support", soon: true },
+    { label: "Retention", to: "lifecycle/retention", soon: true }, { label: "Refund control", to: "lifecycle/refund-control", soon: true },
+    { label: "Win-back", to: "lifecycle/winback", soon: true },
+  ] },
+];
+const FOOT: Item[] = [
+  { label: "Apps", to: "apps", icon: "apps" }, { label: "Web", to: "web", icon: "web", soon: true },
+  { label: "API keys", to: "api-keys", icon: "key" }, { label: "Integrations", to: "integrations", icon: "integrations" },
+  { label: "Project settings", to: "settings", icon: "settings" },
+];
+
+function NavItem({ item, base }: { item: Item; base: string }) {
+  const loc = useLocation();
+  const childActive = item.children?.some((c) => c.to && loc.pathname.startsWith(`${base}/${c.to}`));
+  const [open, setOpen] = useState<boolean>(!!childActive || item.label === "Product catalog");
+  useEffect(() => { if (childActive) setOpen(true); }, [childActive]);
+  if (item.children) {
+    return (
+      <>
+        <button className="it" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Icon name={item.icon!} />{item.label}<Icon name="chev" className="i chev" />
+        </button>
+        {open && <div className="sub">{item.children.map((c) => <NavItem key={c.label} item={c} base={base} />)}</div>}
+      </>
+    );
+  }
+  return (
+    <NavLink to={`${base}/${item.to}`} className={({ isActive }) => `it${isActive ? " active" : ""}`} end={item.to === "overview"}>
+      {item.icon && <Icon name={item.icon} />}{item.label}{item.soon && <span className="soon">SOON</span>}
+    </NavLink>
+  );
+}
+
+function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const nav = useNavigate();
+  const qc = useQueryClient();
+  useEffect(() => {
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+  const p = me.projects.find((x) => x.id === current);
+  return (
+    <div ref={ref} style={{ flex: 1, minWidth: 0, position: "relative" }}>
+      <button className="proj" type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} style={{ width: "100%" }}>
+        <span className="ic">{(p?.name ?? "?").slice(0, 1).toUpperCase()}</span><b>{p?.name ?? "Select a project"}</b><Icon name="updown" className="i" />
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          {me.projects.map((x) => <button key={x.id} role="menuitem" type="button" onClick={() => { setOpen(false); nav(`/projects/${x.id}/overview`); }}>{x.name}</button>)}
+          <hr />
+          <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/new"); }}><Icon name="plus" />New project</button>
+          <button role="menuitem" type="button" onClick={async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav("/login"); }}><Icon name="logout" />Sign out</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Shell({ title, crumbs, children, actions }: { title: string; crumbs?: ReactNode; children: ReactNode; actions?: ReactNode }) {
+  const { projectId = "" } = useParams();
+  const me = useMe();
+  const nav = useNavigate();
+  const base = `/projects/${projectId}`;
+  const [q, setQ] = useState("");
+  useEffect(() => { document.title = `${title} · RevenueDot`; }, [title]);
+  useEffect(() => { if (me.isError) nav("/login"); }, [me.isError, nav]);
+  const toggleTheme = () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme === "dark" || (!root.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("rd-theme", root.dataset.theme); } catch { /* ignore */ }
+  };
+  return (
+    <div className="shell">
+      <aside className="side" aria-label="Sidebar">
+        <div className="brand">
+          <Link to={`${base}/overview`} aria-label="RevenueDot home"><Mark /></Link>
+          {me.data && <ProjectSwitcher me={me.data} current={projectId} />}
+        </div>
+        <nav className="nav" aria-label="Project">{NAV.map((i) => <NavItem key={i.label} item={i} base={base} />)}</nav>
+        <div className="nav-foot">{FOOT.map((i) => <NavItem key={i.label} item={i} base={base} />)}</div>
+      </aside>
+      <div className="main">
+        <header className="top">
+          <span className="crumb">{me.data?.projects.find((p) => p.id === projectId)?.name ?? "Project"} <span>/</span> {crumbs ?? <b>{title}</b>}</span>
+          <div className="top-r">
+            <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) nav(`${base}/customers?q=${encodeURIComponent(q.trim())}`); }}>
+              <Icon name="search" /><input aria-label="Search customers" placeholder="Search customers, transactions, IDs" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>⌘K</kbd>
+            </form>
+            <a className="ib" href="https://github.com/revenuedot/revenuedot#readme" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a>
+            <button className="ib" type="button" aria-label="Toggle light and dark" onClick={toggleTheme}><Icon name="moon" /></button>
+            {actions}
+          </div>
+        </header>
+        <div className="scroll">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+export function Copy({ value, label }: { value: string; label?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <span className="copy">
+      <span>{label ?? value}</span>
+      <button type="button" aria-label={`Copy ${value}`} onClick={async () => { try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1200); } catch { /* ignore */ } }}>
+        <Icon name={done ? "check" : "copy"} className="i" />
+      </button>
+    </span>
+  );
+}
