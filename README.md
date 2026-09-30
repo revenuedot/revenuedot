@@ -3,6 +3,8 @@
 **Open-source subscription and in-app purchase backend. Works with the RevenueCat SDK: change one line and keep your app code.**
 
 > Status: pre-alpha. The scope is in [prd/SCOPE.md](prd/SCOPE.md). Nothing is ready to use yet.
+>
+> License: not chosen yet (planned: AGPL-3.0 server, commercial `ee/` folder, MIT SDKs). Until a LICENSE file is added, all rights are reserved.
 
 ## What it does
 - Validates App Store and Google Play purchases and keeps entitlements up to date.
