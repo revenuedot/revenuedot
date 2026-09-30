@@ -112,9 +112,10 @@ One TypeScript codebase runs two ways: in Docker next to your own Postgres, or o
 
 ## Migrate from RevenueCat in three steps
 
-1. **Import.** Run the importer on your own machine with your own RevenueCat export. It brings over products, entitlements, offerings, customers, attributes and purchase history. Your existing public API keys keep working, and current access is imported so nobody loses access on switch day.
+1. **Import.** Run the importer on your own machine with your own RevenueCat secret API key. It brings over products, entitlements, offerings, customers, attributes and purchase history. Your existing public API keys keep working, and current access is imported so nobody loses access on switch day.
    ```bash
-   npx revenuedot import --from revenuecat --export ./revenuecat-export.csv   # planned CLI
+   npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project <RevenueCat project id> \
+     --to https://api.revenuedot.app --to-key <RevenueDot secret key>
    ```
 2. **Run side by side.** Point App Store and Google Play notifications at RevenueDot. It forwards every notification to RevenueCat, so both systems stay accurate while you compare them.
 3. **Switch.** Ship an app update that sets the proxy URL. When most users are on the new version, turn RevenueCat off.

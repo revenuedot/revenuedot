@@ -70,7 +70,7 @@ export async function buildPlan(rd: RevenueDotClient, o: { to: string; rcProject
       `- Android (Kotlin): Purchases.proxyURL = URL("${to}")`,
       `- React Native: await Purchases.setProxyURL("${to}")`,
       `- Flutter: await Purchases.setProxyURL("${to}");`,
-      "Leave entitlement verification off (the default): RevenueDot does not sign responses with RevenueCat's key.",
+      "Do not turn on enforced entitlement verification with the stock SDKs: RevenueDot cannot sign with RevenueCat's key, so checks report FAILED (informational mode, the iOS and Android default, still grants access). Our SDK forks carry RevenueDot's key and verify normally.",
       "On Android, call Purchases.sharedInstance.syncPurchases() once after the update, so any missing Google purchase token arrives.",
     ],
   });
