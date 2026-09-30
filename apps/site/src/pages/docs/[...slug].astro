@@ -1,0 +1,48 @@
+---
+// Every page of revenuedot/docs (docs/**, api/*) at /docs/<path>, section READMEs at /docs/<section>.
+import { getCollection, render } from "astro:content";
+import Docs from "../../layouts/Docs.astro";
+import { docsNav, docSlug, editUrl, lastModified, type DocEntry } from "../../lib/docs";
+import { techArticle } from "../../lib/jsonld";
+
+export async function getStaticPaths() {
+  const entries = await getCollection("docs");
+  return entries.map((entry) => ({ params: { slug: docSlug(entry.id) }, props: { entry } }));
+}
+
+const { entry } = Astro.props as { entry: DocEntry };
+const { Content, headings } = await render(entry);
+const nav = await docsNav();
+const flat = nav.flatMap((s) => s.items.map((i) => ({ ...i, section: s })));
+const i = flat.findIndex((f) => f.id === entry.id);
+const here = flat[i];
+const path = here.href;
+const { title, description } = entry.data;
+const crumbs = [{ name: "Docs", path: "/docs" }];
+if (here.section.href !== path) crumbs.push({ name: here.section.title, path: here.section.href });
+crumbs.push({ name: here.label, path });
+const suffixes = [" | RevenueDot Docs", " | RevenueDot"];
+// Long question titles fall back to the short sidebar label, so every <title> fits in 70 characters.
+const fullTitle = [...suffixes.map((s) => title + s), title, `${here.label} | RevenueDot Docs`].find((t) => t.length <= 70)!;
+const modified = lastModified(`${entry.id}.md`);
+---
+<Docs
+  title={title}
+  fullTitle={fullTitle}
+  description={description}
+  path={path}
+  crumbs={crumbs}
+  nav={nav}
+  currentId={entry.id}
+  headings={headings}
+  prev={flat[i - 1]}
+  next={flat[i + 1]}
+  editUrl={editUrl(entry.id)}
+  editLabel={entry.id.startsWith("api/") ? "Edit the OpenAPI source on GitHub" : "Edit this page on GitHub"}
+  mdUrl={`${path}.md`}
+  modified={modified}
+  section={here.section.title}
+  jsonld={[techArticle({ title, description, path, modified, section: here.section.title })]}
+>
+  <Content />
+</Docs>

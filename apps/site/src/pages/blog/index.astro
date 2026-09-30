@@ -1,0 +1,42 @@
+---
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import { SITE } from "../../site";
+import { blogPosts } from "../../lib/docs";
+
+// Posts are Markdown in the revenuedot/docs repo (blog/), rendered at /blog/<slug>.
+const posts = await blogPosts();
+---
+<Base
+  title="Blog: in-app purchases, subscriptions and RevenueCat"
+  description="The RevenueDot blog: guides on in-app purchase backends, subscription infrastructure, self-hosting and migrating from RevenueCat. Written in the open on GitHub."
+  path="/blog"
+  crumbs={[{ name: "Blog", path: "/blog" }]}
+>
+  <link slot="head" rel="alternate" type="text/markdown" href="/blog.md" title="The blog index as Markdown" />
+  <div class="wrap">
+    <PageHead label="Blog" title="Notes on subscription infrastructure, written in the open" lede="Posts are Markdown in the revenuedot/docs repository on GitHub, next to the documentation they link to.">
+      <div class="btns"><a class="btn secondary" href={SITE.docsBlog} rel="noopener">Posts on GitHub <span class="arrow">↗</span></a></div>
+    </PageHead>
+  </div>
+  <section class="section first tight">
+    <div class="wrap">
+      <div class="list">
+        {posts.map((p) => (
+          <a class="post" href={p.href}>
+            <span class="num">{p.date}</span>
+            <span class="post-body"><span class="h3">{p.title}</span><span class="muted small">{p.description}</span></span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>
+<style>
+  .list { border: 1px solid var(--border); background: var(--panel); }
+  .post { display: grid; grid-template-columns: 120px 1fr; gap: 24px; padding: 24px; border-bottom: 1px solid var(--border-2); text-decoration: none; }
+  .post:last-child { border-bottom: 0; }
+  .post:hover { background: var(--hover); }
+  .post-body { display: grid; gap: 6px; }
+  @media (max-width: 640px) { .post { grid-template-columns: 1fr; gap: 8px; padding: 20px 16px; } }
+</style>

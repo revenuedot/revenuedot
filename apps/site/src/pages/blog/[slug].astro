@@ -1,0 +1,40 @@
+---
+// Every post in revenuedot/docs blog/ at /blog/<slug>.
+import { render } from "astro:content";
+import Docs from "../../layouts/Docs.astro";
+import { blogPosts, lastModified, type BlogPost } from "../../lib/docs";
+import { blogPosting } from "../../lib/jsonld";
+import { DOCS_REPO } from "../../lib/docs-source.mjs";
+
+export async function getStaticPaths() {
+  const posts = await blogPosts();
+  return posts.map((post, i) => ({ params: { slug: post.slug }, props: { post, newer: posts[i - 1], older: posts[i + 1] } }));
+}
+
+const { post, newer, older } = Astro.props as { post: BlogPost; newer?: BlogPost; older?: BlogPost };
+const { Content, headings } = await render(post.entry);
+const { title, description, href: path, date, author } = post;
+const modified = lastModified(`${post.entry.id}.md`);
+const fullTitle = [" | RevenueDot Blog", " | RevenueDot"].map((s) => title + s).find((t) => t.length <= 70) ?? title;
+const item = (p?: BlogPost) => p && { id: p.entry.id, href: p.href, label: p.title, title: p.title, description: p.description };
+---
+<Docs
+  title={title}
+  fullTitle={fullTitle}
+  description={description}
+  path={path}
+  crumbs={[{ name: "Blog", path: "/blog" }, { name: title, path }]}
+  headings={headings}
+  prev={item(newer)}
+  next={item(older)}
+  prevLabel="Newer post"
+  nextLabel="Older post"
+  editUrl={`${DOCS_REPO}/edit/main/${post.entry.id}.md`}
+  editLabel="Edit this post on GitHub"
+  mdUrl={`${path}.md`}
+  published={date || undefined}
+  section="Blog"
+  jsonld={[blogPosting({ title, description, path, published: date || undefined, modified, author })]}
+>
+  <Content />
+</Docs>

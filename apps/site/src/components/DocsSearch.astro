@@ -1,0 +1,91 @@
+---
+// Docs search: a dialog over the Pagefind index that `pnpm build` writes to dist/pagefind (docs, API reference, blog).
+// Opens from any [data-search-open] button, ⌘K / Ctrl+K, or "/".
+---
+<dialog class="search" aria-label="Search the docs">
+  <form method="dialog" class="search-in" role="search">
+    <div class="search-row">
+      <label for="docs-q" class="sr-only">Search the docs</label>
+      <input id="docs-q" type="search" placeholder="Search docs, API reference and blog" autocomplete="off" spellcheck="false" />
+      <button type="submit" class="search-esc" aria-label="Close search"><kbd>Esc</kbd></button>
+    </div>
+    <p class="search-status tiny" role="status" aria-live="polite"></p>
+    <ul class="search-results"></ul>
+  </form>
+</dialog>
+
+<!-- is:inline so Vite leaves the runtime import of /pagefind/pagefind.js alone (bundling wraps it in a preload helper that breaks). -->
+<script is:inline type="module">
+
+  const dialog = document.querySelector("dialog.search");
+  const input = dialog.querySelector("input");
+  const list = dialog.querySelector(".search-results");
+  const status = dialog.querySelector(".search-status");
+  let pf;
+
+  const load = () =>
+    (pf ??= (async () => {
+      try {
+        const mod = await import("/pagefind/pagefind.js");
+        await mod.init();
+        return mod;
+      } catch {
+        return null;
+      }
+    })());
+
+  const clean = (url) => url.replace(/\.html(?=$|#)/, "").replace(/\/index(?=$|#)/, "") || "/";
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  function open() {
+    if (dialog.open) return;
+    dialog.showModal();
+    input.select();
+    load();
+  }
+  document.querySelectorAll("[data-search-open]").forEach((b) => b.addEventListener("click", open));
+  document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    const typing = t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+    if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing)) {
+      e.preventDefault();
+      open();
+    }
+  });
+  dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
+
+  let seq = 0;
+  input.addEventListener("input", async () => {
+    const q = input.value.trim();
+    const n = ++seq;
+    if (!q) { list.innerHTML = ""; status.textContent = ""; return; }
+    const mod = await load();
+    if (!mod) { status.textContent = "Search is available on the built site (pnpm build)."; return; }
+    const res = await mod.debouncedSearch(q, {}, 150);
+    if (!res || n !== seq) return;
+    const top = await Promise.all(res.results.slice(0, 8).map((r) => r.data()));
+    if (n !== seq) return;
+    status.textContent = res.results.length ? `${res.results.length} result${res.results.length === 1 ? "" : "s"}` : `No results for “${q}”`;
+    list.innerHTML = top
+      .map((d) => {
+        const subs = (d.sub_results ?? []).filter((s) => s.url.includes("#") && s.title !== d.meta.title).slice(0, 2);
+        return `<li><a class="sr" href="${esc(clean(d.url))}"><span class="sr-sec label">${esc(d.meta.section ?? "Docs")}</span><span class="sr-t">${esc(d.meta.title ?? d.url)}</span><span class="sr-x">${d.excerpt}</span></a>${subs
+          .map((s) => `<a class="sr sub" href="${esc(clean(s.url))}"><span class="sr-t"># ${esc(s.title)}</span><span class="sr-x">${s.excerpt}</span></a>`)
+          .join("")}</li>`;
+      })
+      .join("");
+  });
+  // Enter in the box opens the first result.
+  dialog.querySelector("form").addEventListener("submit", (e) => {
+    const first = list.querySelector("a");
+    if (first && document.activeElement === input) { e.preventDefault(); location.href = first.href; }
+  });
+  // Up and down arrows move between results.
+  dialog.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = [input, ...list.querySelectorAll("a")];
+    const i = items.indexOf(document.activeElement);
+    const next = items[Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))];
+    if (next) { e.preventDefault(); next.focus(); }
+  });
+</script>

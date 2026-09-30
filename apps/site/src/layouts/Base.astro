@@ -19,10 +19,12 @@ interface Props {
   jsonld?: object[];
   ogType?: "website" | "article";
   noindex?: boolean;
+  /** The whole <title>, when the page builds its own (docs pages with long question titles). */
+  fullTitle?: string;
 }
 const { title, description, path, crumbs, faq, jsonld = [], ogType = "website", noindex = false } = Astro.props;
 const canonical = new URL(path, SITE.url).href;
-const fullTitle = path === "/" ? title : `${title} | RevenueDot`;
+const fullTitle = Astro.props.fullTitle ?? (path === "/" ? title : `${title} | RevenueDot`);
 const ogImage = new URL(SITE.ogImage, SITE.url).href;
 const graph = [organization(), ...(path === "/" ? [website()] : []), ...jsonld];
 if (crumbs?.length) graph.push(breadcrumbList(crumbs));
@@ -66,6 +68,7 @@ const ld = JSON.stringify({ "@context": "https://schema.org", "@graph": graph })
   <meta name="twitter:image" content={ogImage} />
   <meta name="twitter:image:alt" content={SITE.ogImageAlt} />
   <script type="application/ld+json" is:inline set:html={ld} />
+  <slot name="head" />
   {SITE.analyticsToken && (
     <script defer is:inline src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon={JSON.stringify({ token: SITE.analyticsToken })} />
   )}

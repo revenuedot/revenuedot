@@ -1,0 +1,173 @@
+---
+// Three-column docs layout: section nav (a drawer on small screens), the page, and an on-page table of contents.
+// Used by /docs, every docs and API reference page, and blog posts (no nav).
+import Base from "./Base.astro";
+import Breadcrumbs from "../components/Breadcrumbs.astro";
+import DocsSearch from "../components/DocsSearch.astro";
+import "../styles/docs.css";
+import { breadcrumbList } from "../lib/jsonld";
+import type { NavSection, NavItem } from "../lib/docs";
+import type { Crumb } from "../site";
+
+type Heading = { depth: number; slug: string; text: string };
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  fullTitle?: string;
+  crumbs: Crumb[];
+  jsonld?: object[];
+  nav?: NavSection[];
+  currentId?: string;
+  headings?: Heading[];
+  prev?: NavItem;
+  next?: NavItem;
+  prevLabel?: string;
+  nextLabel?: string;
+  editUrl?: string;
+  editLabel?: string;
+  mdUrl?: string;
+  modified?: string;
+  /** Blog posts: the publication date, shown instead of "Last updated". */
+  published?: string;
+  section?: string;
+  ogType?: "website" | "article";
+}
+const { title, description, path, fullTitle, crumbs, jsonld = [], nav, currentId, headings = [], prev, next, prevLabel = "Previous", nextLabel = "Next", editUrl, editLabel = "Edit this page on GitHub", mdUrl, modified, published, section, ogType = "article" } = Astro.props;
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3).map((h) => ({ ...h, text: h.text.replace(/#$/, "").trim() }));
+const openAll = !currentId;
+// Meta description: whole sentences up to 170 characters (the full text stays in the page, JSON-LD and .md twin).
+const metaDescription = (() => {
+  if (description.length <= 170) return description;
+  let out = "";
+  for (const s of description.match(/[^.!?]+[.!?]+(\s|$)/g) ?? []) {
+    if ((out + s).trim().length > 170) break;
+    out += s;
+  }
+  return out.trim().length >= 70 ? out.trim() : description.slice(0, 167).replace(/\s+\S*$/, "") + "…";
+})();
+const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+---
+<Base title={title} description={metaDescription} path={path} fullTitle={fullTitle} ogType={ogType} jsonld={[...jsonld, breadcrumbList(crumbs)]}>
+  {mdUrl && <link slot="head" rel="alternate" type="text/markdown" href={mdUrl} title="This page as Markdown" />}
+  <div class:list={["docs", { "no-nav": !nav }]}>
+    {nav && (
+      <aside class="dnav" id="docs-nav" aria-label="Docs">
+        <div class="dnav-in">
+          <button type="button" class="search-btn" data-search-open aria-label="Search the docs"><span>Search docs</span><kbd>⌘K</kbd></button>
+          <a class="dnav-home" href="/docs" aria-current={path === "/docs" ? "page" : undefined}>Docs home</a>
+          {nav.map((s) => {
+            const here = s.items.some((i) => i.id === currentId);
+            return (
+              <details class="dsec" open={openAll || here}>
+                <summary><span>{s.title}</span></summary>
+                <ul>
+                  {s.items.map((i) => (
+                    <li><a href={i.href} aria-current={i.id === currentId ? "page" : undefined}>{i.label}</a></li>
+                  ))}
+                </ul>
+              </details>
+            );
+          })}
+          <div class="dnav-foot">
+            <a href="/blog">Blog</a>
+            <a href="/llms.txt">llms.txt</a>
+            <a href="https://github.com/revenuedot/docs" rel="noopener">Docs on GitHub</a>
+          </div>
+        </div>
+      </aside>
+    )}
+    <div class="dmain">
+      <div class="dbar">
+        {nav && <button type="button" class="dbar-btn" data-nav-toggle aria-controls="docs-nav" aria-expanded="false">Menu</button>}
+        <button type="button" class="dbar-btn dbar-search" data-search-open aria-label="Search the docs">Search</button>
+      </div>
+      <Breadcrumbs crumbs={crumbs} />
+      <article class="dbody" data-pagefind-body data-pagefind-meta={section ? `section:${section}` : undefined}>
+        <slot />
+      </article>
+      {(editUrl || mdUrl || modified || published) && (
+        <div class="dmeta" data-pagefind-ignore>
+          {editUrl && <a href={editUrl} rel="noopener">{editLabel} <span class="arrow">↗</span></a>}
+          {mdUrl && <a href={mdUrl}>View as Markdown</a>}
+          {published ? <span class="tiny">Published <time datetime={published}>{fmtDate(published)}</time></span>
+            : modified && <span class="tiny">Last updated <time datetime={modified}>{fmtDate(modified)}</time></span>}
+        </div>
+      )}
+      {(prev || next) && (
+        <nav class="pn" aria-label="Previous and next pages" data-pagefind-ignore>
+          {prev ? <a class="pn-l" href={prev.href} rel="prev"><span class="label">{prevLabel}</span><span class="pn-t">{prev.label}</span></a> : <span />}
+          {next ? <a class="pn-r" href={next.href} rel="next"><span class="label">{nextLabel}</span><span class="pn-t">{next.label}</span></a> : <span />}
+        </nav>
+      )}
+      <slot name="after" />
+    </div>
+    <nav class="dtoc" aria-label="On this page">
+      {toc.length > 1 && (
+        <div class="dtoc-in">
+          <p class="label">On this page</p>
+          <ul>
+            {toc.map((h) => <li class={`d${h.depth}`}><a href={`#${h.slug}`}>{h.text}</a></li>)}
+          </ul>
+        </div>
+      )}
+    </nav>
+  </div>
+  <DocsSearch />
+</Base>
+
+<script>
+  // Code copy buttons.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>(".codeblock .copy")) {
+    btn.addEventListener("click", async () => {
+      const code = btn.closest(".codeblock")?.querySelector("pre")?.innerText ?? "";
+      try {
+        await navigator.clipboard.writeText(code.replace(/\n$/, ""));
+        btn.textContent = "Copied";
+      } catch {
+        btn.textContent = "Press ⌘C";
+      }
+      setTimeout(() => (btn.textContent = "Copy"), 1600);
+    });
+  }
+
+  // Mobile nav drawer.
+  const toggle = document.querySelector<HTMLButtonElement>("[data-nav-toggle]");
+  const nav = document.getElementById("docs-nav");
+  if (toggle && nav) {
+    const set = (open: boolean) => {
+      nav.toggleAttribute("data-open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.textContent = open ? "Close" : "Menu";
+      document.documentElement.classList.toggle("nav-lock", open);
+    };
+    toggle.addEventListener("click", () => set(!nav.hasAttribute("data-open")));
+    nav.addEventListener("click", (e) => { if ((e.target as HTMLElement).closest("a")) set(false); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && nav.hasAttribute("data-open")) set(false); });
+    // Keep the current page visible in a long sidebar.
+    const cur = nav.querySelector<HTMLElement>('.dsec [aria-current="page"]');
+    if (cur && nav.scrollHeight > nav.clientHeight) nav.scrollTop = Math.max(0, cur.offsetTop - nav.clientHeight / 2);
+  }
+
+  // On-page TOC: mark the heading currently in view.
+  const links = [...document.querySelectorAll<HTMLAnchorElement>(".dtoc a")];
+  if (links.length) {
+    const byId = new Map(links.map((a) => [decodeURIComponent(a.hash.slice(1)), a]));
+    const heads = [...byId.keys()].map((id) => document.getElementById(id)).filter((h): h is HTMLElement => !!h);
+    let current: HTMLAnchorElement | undefined;
+    const mark = (a?: HTMLAnchorElement) => {
+      if (a === current) return;
+      current?.removeAttribute("aria-current");
+      a?.setAttribute("aria-current", "true");
+      current = a;
+    };
+    let queued = false;
+    const update = () => {
+      queued = false;
+      const top = heads.filter((h) => h.getBoundingClientRect().top < 120).pop() ?? heads[0];
+      if (top) mark(byId.get(top.id));
+    };
+    addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(update); } }, { passive: true });
+    update();
+  }
+</script>

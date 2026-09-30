@@ -62,3 +62,45 @@ export function faqPage(faq: Faq[]) {
     mainEntity: faq.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
   };
 }
+
+type ArticleInput = { title: string; description: string; path: string; modified?: string; published?: string; section?: string };
+
+/** A docs page: TechArticle, published by RevenueDot, with the page as its main entity. */
+export function techArticle(a: ArticleInput) {
+  const url = new URL(a.path, SITE.url).href;
+  return {
+    "@type": "TechArticle",
+    "@id": `${url}#article`,
+    headline: a.title,
+    description: a.description,
+    url,
+    mainEntityOfPage: url,
+    inLanguage: "en",
+    ...(a.section ? { articleSection: a.section } : {}),
+    ...(a.modified ? { dateModified: a.modified } : {}),
+    author: { "@id": ORG_ID },
+    publisher: { "@id": ORG_ID },
+    image: new URL(SITE.ogImage, SITE.url).href,
+    license: "https://creativecommons.org/licenses/by/4.0/",
+    isPartOf: { "@type": "WebSite", "@id": `${SITE.url}/#website`, name: SITE.name, url: SITE.url },
+  };
+}
+
+/** A blog post. */
+export function blogPosting(a: ArticleInput & { author?: string }) {
+  const url = new URL(a.path, SITE.url).href;
+  return {
+    "@type": "BlogPosting",
+    "@id": `${url}#article`,
+    headline: a.title,
+    description: a.description,
+    url,
+    mainEntityOfPage: url,
+    inLanguage: "en",
+    ...(a.published ? { datePublished: a.published } : {}),
+    ...(a.modified || a.published ? { dateModified: a.modified ?? a.published } : {}),
+    author: a.author && a.author !== "RevenueDot team" ? { "@type": "Person", name: a.author } : { "@id": ORG_ID },
+    publisher: { "@id": ORG_ID },
+    image: new URL(SITE.ogImage, SITE.url).href,
+  };
+}

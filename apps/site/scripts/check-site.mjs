@@ -1,7 +1,11 @@
-// Checks the built site (dist/): every internal link and asset resolves, every page has a unique title and
-// description, one h1, a canonical URL, OG and Twitter images, and JSON-LD that parses with the types we expect.
+// Checks the built site (dist/): every internal link and asset resolves (with #anchors on other pages too), every
+// page has a unique title and description, one h1, a canonical URL, OG and Twitter images, and JSON-LD that parses
+// with the types we expect. Docs: every /docs and /blog page has its .md twin, the llms files link only to pages that
+// exist, the Pagefind index is built, and every revenuedot.app/docs or /blog URL written anywhere in the sibling
+// repos of the workspace (examples, docs, SDK forks, this monorepo) resolves or is redirected.
 //   pnpm --filter site build && pnpm --filter site check
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,17 +20,36 @@ const walk = (dir) => readdirSync(dir).flatMap((f) => {
 });
 const files = walk(dist);
 const htmlFiles = files.filter((f) => f.endsWith(".html"));
-const redirects = readFileSync(path.join(dist, "_redirects"), "utf8").split("\n").filter((l) => l && !l.startsWith("#")).map((l) => l.split(/\s+/)[0]);
+const redirectRules = readFileSync(path.join(dist, "_redirects"), "utf8").split("\n").filter((l) => l && !l.startsWith("#")).map((l) => l.split(/\s+/));
+const redirects = redirectRules.map((r) => r[0]);
 
 /** Resolves an internal URL path the way Cloudflare static assets does (drop-trailing-slash, .html). */
 function resolves(p) {
-  const clean = decodeURI(p.split("#")[0].split("?")[0]);
+  // Cloudflare's default html_handling (auto-trailing-slash) sends /docs/ to /docs when docs.html exists.
+  const clean = decodeURI(p.split("#")[0].split("?")[0]).replace(/(.)\/$/, "$1");
   if (clean === "/" ) return existsSync(path.join(dist, "index.html"));
   const f = path.join(dist, clean);
   if (existsSync(f) && statSync(f).isFile()) return true;
   if (existsSync(f + ".html")) return true;
   if (existsSync(path.join(f, "index.html"))) return true;
   return redirects.some((r) => r === clean || (r.endsWith("/*") && clean.startsWith(r.slice(0, -1))));
+}
+
+/** The HTML file behind an internal path, if it is a page. */
+function pageFile(p) {
+  const clean = decodeURI(p.split("#")[0].split("?")[0]).replace(/\/$/, "") || "/";
+  const f = clean === "/" ? path.join(dist, "index.html") : path.join(dist, clean + ".html");
+  return existsSync(f) ? f : null;
+}
+const idCache = new Map();
+/** A link's #fragment exists on the page it points to (pages we do not render, or redirects, are skipped). */
+function anchorOk(p) {
+  const hash = p.split("#")[1];
+  if (!hash) return true;
+  const f = pageFile(p);
+  if (!f) return true;
+  if (!idCache.has(f)) idCache.set(f, new Set([...readFileSync(f, "utf8").matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])));
+  return idCache.get(f).has(decodeURIComponent(hash));
 }
 
 const titles = new Map();
@@ -37,6 +60,11 @@ const expectTypes = {
   "/revenuedot-vs-revenuecat": ["Organization", "FAQPage", "BreadcrumbList"],
   "/migrate-from-revenuecat": ["Organization", "HowTo", "FAQPage", "BreadcrumbList"],
 };
+const typesFor = (route) =>
+  expectTypes[route] ??
+  (route === "/docs" || route.startsWith("/docs/") ? ["Organization", "TechArticle", "BreadcrumbList"]
+    : route.startsWith("/blog/") ? ["Organization", "BlogPosting", "BreadcrumbList"]
+    : route === "/404" ? ["Organization"] : ["Organization", "BreadcrumbList"]);
 let links = 0;
 let ldBlocks = 0;
 
@@ -96,26 +124,33 @@ for (const file of htmlFiles) {
       if (node["@type"] === "Organization" && (!node.name || !node.url || !node.logo)) fail(route, "Organization missing name, url or logo");
     }
   }
-  for (const t of expectTypes[route] ?? (is404 ? ["Organization"] : ["Organization", "BreadcrumbList"])) if (!types.has(t)) fail(route, `missing JSON-LD ${t}`);
+  for (const t of typesFor(route)) if (!types.has(t)) fail(route, `missing JSON-LD ${t}`);
 
-  // Internal links and assets
-  for (const m of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
+  // Internal links and assets (outside inline scripts, whose template strings are not links)
+  const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "");
+  for (const m of markup.matchAll(/(?:href|src)="([^"]+)"/g)) {
     const u = m[1];
     if (/^(https?:|mailto:|data:|#)/.test(u)) {
-      if (u.startsWith(SITE)) { links++; if (!resolves(new URL(u).pathname)) fail(route, `broken absolute link ${u}`); }
+      if (u.startsWith(SITE)) {
+        links++;
+        const { pathname, hash } = new URL(u);
+        if (!resolves(pathname)) fail(route, `broken absolute link ${u}`);
+        else if (!anchorOk(pathname + hash)) fail(route, `missing anchor ${u}`);
+      }
       continue;
     }
     links++;
     const target = u.startsWith("/") ? u : path.posix.join(path.posix.dirname(route), u);
     if (!resolves(target)) fail(route, `broken link ${u}`);
+    else if (!anchorOk(target)) fail(route, `missing anchor ${u}`);
   }
-  for (const m of html.matchAll(/srcset="([^"]+)"/g)) for (const part of m[1].split(",")) {
+  for (const m of markup.matchAll(/srcset="([^"]+)"/g)) for (const part of m[1].split(",")) {
     const u = part.trim().split(/\s+/)[0];
     links++;
     if (!resolves(u)) fail(route, `broken srcset ${u}`);
   }
   // Anchor targets on the same page
-  for (const m of html.matchAll(/href="#([^"]+)"/g)) if (!html.includes(`id="${m[1]}"`)) fail(route, `missing anchor #${m[1]}`);
+  for (const m of markup.matchAll(/href="#([^"]+)"/g)) if (!html.includes(`id="${m[1]}"`)) fail(route, `missing anchor #${m[1]}`);
   if (/Circo/.test(html) && !route.startsWith("/legal") && route !== "/security") fail(route, "operator entity outside legal pages");
 }
 
@@ -132,8 +167,54 @@ if (!robots.includes("Sitemap: https://revenuedot.app/sitemap.xml") || /Disallow
 for (const bot of ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended"]) if (!robots.includes(`User-agent: ${bot}\nAllow: /`)) fail("robots.txt", `${bot} not allowed`);
 const llms = readFileSync(path.join(dist, "llms.txt"), "utf8");
 if (!llms.startsWith("# RevenueDot\n\n> ")) fail("llms.txt", "not in llms.txt format");
-for (const m of llms.matchAll(/\]\((https:\/\/revenuedot\.app[^)]*)\)/g)) if (!resolves(new URL(m[1]).pathname)) fail("llms.txt", `broken link ${m[1]}`);
+if (!llms.includes(`${SITE}/llms-full.txt`)) fail("llms.txt", "does not link llms-full.txt");
 
-console.log(`${htmlFiles.length} pages, ${links} internal links and assets, ${ldBlocks} JSON-LD blocks, ${locs.length} sitemap URLs`);
+// Every revenuedot.app URL in a text file resolves, with its anchor.
+const urlRe = /https:\/\/revenuedot\.app(\/[A-Za-z0-9_.\/#%-]*)?/g;
+const checkUrls = (where, text) => {
+  for (const m of text.matchAll(urlRe)) {
+    const p = (m[1] ?? "/").replace(/[.,;:]+$/, "");
+    if (!resolves(p)) fail(where, `broken link ${SITE}${p}`);
+    else if (!anchorOk(p)) fail(where, `missing anchor ${SITE}${p}`);
+  }
+};
+
+// Markdown twins and llms files
+const textFiles = files.filter((f) => /\.(md|txt)$/.test(f));
+for (const f of textFiles) checkUrls("/" + path.relative(dist, f), readFileSync(f, "utf8"));
+for (const f of htmlFiles) {
+  const r = "/" + path.relative(dist, f).replace(/\\/g, "/").replace(/\.html$/, "");
+  if (!(r === "/docs" || r.startsWith("/docs/") || r === "/blog" || r.startsWith("/blog/"))) continue;
+  const twin = path.join(dist, r + ".md");
+  if (!existsSync(twin)) { fail(r, "no .md twin"); continue; }
+  const md = readFileSync(twin, "utf8");
+  if (!md.startsWith("---\ntitle: ") || !md.includes(`\nurl: ${SITE}${r}\n`)) fail(r + ".md", "missing frontmatter with title and url");
+  if (/\]\((?!https?:|mailto:|#)[^)]+\)/.test(md.replace(/```[\s\S]*?```/g, ""))) fail(r + ".md", "has a relative link");
+}
+for (const f of ["llms-full.txt", "llms/api.txt"]) if (!existsSync(path.join(dist, f))) fail(f, "missing");
+if (!existsSync(path.join(dist, "pagefind/pagefind.js"))) fail("pagefind", "search index not built (pnpm build runs pagefind)");
+for (const [from, to] of redirectRules) if (to?.startsWith("/") && !resolves(to.split("#")[0])) fail("_redirects", `${from} points to missing ${to}`);
+
+// revenuedot.app/docs and /blog URLs used anywhere in the workspace (the sibling repos of this monorepo).
+const workspace = path.resolve(dist, "../../../..");
+const repos = process.env.CHECK_WORKSPACE === "0" ? [] : readdirSync(workspace).filter((d) => !d.startsWith(".") && existsSync(path.join(workspace, d, ".git")));
+let workspaceUrls = 0;
+for (const repo of repos) {
+  let out = "";
+  try {
+    out = execFileSync("git", ["-C", path.join(workspace, repo), "grep", "--untracked", "-I", "-hoE", "https?://revenuedot\\.app/(docs|blog)[A-Za-z0-9_./#%-]*", "--", ".", ":!**/dist/**", ":!**/.cloudflare/**"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  } catch (e) {
+    if (e.status !== 1) fail(repo, `git grep failed: ${e.message}`);
+    continue;
+  }
+  for (const u of new Set(out.split("\n").filter(Boolean))) {
+    const p = u.replace(/^https?:\/\/revenuedot\.app/, "").replace(/[.,;:]+$/, "").replace(/#$/, "");
+    workspaceUrls++;
+    if (!resolves(p)) fail(`workspace ${repo}`, `revenuedot.app${p} does not resolve (add the page or a line in public/_redirects)`);
+    else if (!anchorOk(p)) fail(`workspace ${repo}`, `revenuedot.app${p}: missing anchor`);
+  }
+}
+
+console.log(`${htmlFiles.length} pages, ${links} internal links and assets, ${ldBlocks} JSON-LD blocks, ${locs.length} sitemap URLs, ${textFiles.length} Markdown and llms files, ${workspaceUrls} docs URLs from ${repos.length} workspace repos`);
 if (errors.length) { console.error(errors.map((e) => "  ✗ " + e).join("\n")); process.exit(1); }
 console.log("✓ all checks passed");

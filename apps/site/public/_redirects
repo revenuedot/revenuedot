@@ -1,9 +1,6 @@
-# Deep links from the examples and docs (revenuedot.app/docs/...) land on the closest page until the docs site exists.
-/docs/guides/self-hosting /self-host 302
-/docs/self-hosting /self-host 302
-/docs/migrate /migrate-from-revenuecat 302
-/docs/migrate/* /migrate-from-revenuecat 302
-/docs/* /docs 302
+# Docs URLs used in code, READMEs and API responses that have no page of their own.
+/docs/self-hosting /docs/guides/self-hosting 301
+/docs/mcp /docs/api/extensions#oauth-for-mcp-clients 302
 /compare /revenuedot-vs-revenuecat 301
 /vs/revenuecat /revenuedot-vs-revenuecat 301
 /migrate /migrate-from-revenuecat 301

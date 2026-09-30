@@ -1,0 +1,45 @@
+---
+// /docs: every section of the revenuedot/docs repo with its pages, and the section nav.
+import Docs from "../../layouts/Docs.astro";
+import { docsNav } from "../../lib/docs";
+import { techArticle } from "../../lib/jsonld";
+
+const nav = await docsNav();
+const title = "RevenueDot documentation";
+const description = "RevenueDot docs: quickstart, concepts, SDK guides, App Store and Google Play setup, webhooks, API reference and migrating from RevenueCat.";
+const start = [
+  { href: "/docs/getting-started/quickstart", title: "Quickstart", body: "Run the server, seed a Test Store app and make a first purchase in 5 minutes." },
+  { href: "/docs/getting-started/connect-your-app", title: "Connect your app", body: "Set the proxy URL in the RevenueCat SDK, switch to the fork, or import from RevenueCat." },
+  { href: "/docs/migrate", title: "Migrate from RevenueCat", body: "The importer, a side-by-side run and the cutover checklist." },
+];
+---
+<Docs
+  title={title}
+  fullTitle="Docs: set up, migrate and self-host RevenueDot"
+  description={description}
+  path="/docs"
+  crumbs={[{ name: "Docs", path: "/docs" }]}
+  nav={nav}
+  mdUrl="/docs.md"
+  section="Docs"
+  ogType="website"
+  jsonld={[techArticle({ title, description, path: "/docs" })]}
+>
+  <h1>RevenueDot documentation</h1>
+  <p>RevenueDot is an open-source, self-hostable backend for in-app purchases and subscriptions that works with the RevenueCat SDK. These docs cover running the server, connecting an app, setting up the App Store and Google Play, the API, and moving from RevenueCat.</p>
+  <div class="grid dhome-start"><div class="gi cols-3">
+    {start.map((s) => <a class="cell link" href={s.href}><span class="h3">{s.title}</span><span class="muted small">{s.body}</span></a>)}
+  </div></div>
+  <div class="grid dhome-grid"><div class="gi cols-2">
+    {nav.map((s) => (
+      <section class="cell">
+        <h2 id={s.id}><a href={s.href}>{s.title}</a></h2>
+        <p class="muted small">{s.blurb}</p>
+        <ul>
+          {s.items.filter((i) => i.href !== s.href).map((i) => <li><a href={i.href}>{i.label}</a></li>)}
+        </ul>
+      </section>
+    ))}
+  </div></div>
+  <p class="dhome-foot">Every page is Markdown in the <a href="https://github.com/revenuedot/docs" rel="noopener">revenuedot/docs repository</a>. Add <code>.md</code> to any docs URL for the Markdown, or read <a href="/llms.txt">llms.txt</a> and <a href="/llms-full.txt">llms-full.txt</a> for AI assistants.</p>
+</Docs>
