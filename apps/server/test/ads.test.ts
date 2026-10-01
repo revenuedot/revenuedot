@@ -6,6 +6,7 @@ import { harness, type Harness } from "../../../packages/contract/src/harness.js
 import { clearAdMobKeys } from "../src/services/ads/admob-ssv.js";
 import { fxLookup } from "../src/services/fx.js";
 import { tick } from "../src/services/tick.js";
+import { createSecretKey } from "../src/services/auth.js";
 
 /**
  * Ads (prd/ads/PRD.md): AdMob server-side verification with a generated P-256 key served as Google's verifier keys,
@@ -84,14 +85,14 @@ const json = async (r: Response | Promise<Response>) => (await r).json() as Prom
 /** The SDK's reward verification token (iOS `generateRewardVerificationToken`): sorted keys. */
 const customData = (tx: string, apiKey = h.ids.iosKey) => JSON.stringify({ api_key: apiKey, client_transaction_id: tx, impression_id: "imp-1" });
 
-async function callback(o: { tx: string; user?: string; unit?: string; item?: string; amount?: number; networkTx?: string; signer?: CryptoKey; keyId?: string; tamper?: boolean; custom?: string }) {
+async function callback(o: { tx: string; user?: string; unit?: string; item?: string; amount?: number | string; networkTx?: string; signer?: CryptoKey; keyId?: string; tamper?: boolean; custom?: string; append?: string }) {
   const q = [
     "ad_network=5450213213286189855", `ad_unit=${o.unit ?? "1712485313"}`, `custom_data=${encodeURIComponent(o.custom ?? customData(o.tx))}`,
     `reward_amount=${o.amount ?? 10}`, `reward_item=${o.item ?? "coins"}`, `timestamp=${h.now().getTime()}`, `transaction_id=${o.networkTx ?? `gtx-${o.tx}`}`, `user_id=${encodeURIComponent(o.user ?? "wren")}`,
   ].join("&");
   const sig = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, o.signer ?? keys.privateKey, new TextEncoder().encode(q)));
   const sent = o.tamper ? q.replace("reward_amount=10", "reward_amount=1000") : q;
-  return h.fetch(`/v1/ads/admob/ssv?${sent}&signature=${b64url(p1363ToDer(sig))}&key_id=${o.keyId ?? KEY_ID}`, { key: "" });
+  return h.fetch(`/v1/ads/admob/ssv?${sent}&signature=${b64url(p1363ToDer(sig))}&key_id=${o.keyId ?? KEY_ID}${o.append ?? ""}`, { key: "" });
 }
 const poll = (user: string, tx: string) => json(h.fetch(`/v1/subscribers/${encodeURIComponent(user)}/ads/reward_verifications/${tx}`));
 const balances = async (user: string) => (await json(h.fetch(`/v1/subscribers/${user}/virtual_currencies`))).virtual_currencies;
@@ -100,7 +101,13 @@ async function gems() {
   expect((await v2("/virtual_currencies", { method: "POST", json: { code: "GEMS", name: "Gems" } })).status).toBe(201);
 }
 
+/** The project's AdMob ad unit, as the AdMob connection loads it (callbacks name only the number after the slash). */
+const UNIT = "ca-app-pub-3940256099942544/1712485313";
+const ownUnit = () => h.db.insert(schema.adUnits).values({ projectId: "proj1", network: "admob", adUnitId: UNIT, displayName: "Level end reward", format: "rewarded" });
+
 describe("AdMob server-side verification", () => {
+  beforeEach(async () => { await ownUnit(); });
+
   it("answers Google's Verify URL check, refuses bad signatures and unknown keys, and retries when Google's keys are down", async () => {
     expect((await h.fetch("/v1/ads/admob/ssv", { key: "" })).status).toBe(200);
     expect((await callback({ tx: "T1", tamper: true })).status).toBe(403);
@@ -175,6 +182,60 @@ describe("AdMob server-side verification", () => {
     expect(await json(callback({ tx: "TX-7", custom: customData("TX-7", "appl_unknown") }))).toEqual({ ok: true, recorded: false, reason: "unknown_api_key" });
   });
 
+  it("reads only the signed parameters: an appended or repeated parameter is refused", async () => {
+    await gems();
+    await json(v2("/ads/reward_rules", { method: "POST", json: { name: "Gems", kind: "virtual_currency", currency_code: "GEMS", multiplier: 1 } }));
+    // A captured callback replayed with another transaction id, user or token after key_id.
+    expect((await callback({ tx: "TX-A", append: "&transaction_id=other" })).status).toBe(400);
+    expect((await callback({ tx: "TX-A", append: "&user_id=mallory" })).status).toBe(400);
+    expect((await callback({ tx: "TX-A", append: `&custom_data=${encodeURIComponent(customData("TX-Z"))}` })).status).toBe(400);
+    expect(await h.db.select().from(schema.adRewardVerifications)).toHaveLength(0);
+    expect((await callback({ tx: "TX-A" })).status).toBe(200);
+    expect(await h.db.select().from(schema.virtualCurrencyTransactions)).toHaveLength(1);
+  });
+
+  it("an ad unit that is not the project's grants nothing: another publisher's signed callback cannot mint currency", async () => {
+    await gems();
+    await json(v2("/ads/reward_rules", { method: "POST", json: { name: "Any ad", kind: "virtual_currency", currency_code: "GEMS", amount: 100 } }));
+    // Google signs every publisher's callbacks with the same keys, and the SDK key in custom_data is public.
+    expect(await json(callback({ tx: "TX-M", user: "mallory", unit: "9999999999" }))).toEqual({ ok: true, recorded: true });
+    const [v] = await h.db.select().from(schema.adRewardVerifications);
+    expect(v).toMatchObject({ status: "failed", failureReason: "unknown_ad_unit", customerId: null, rewards: [] });
+    expect(await h.db.select().from(schema.virtualCurrencyTransactions)).toHaveLength(0);
+    expect(await h.db.select().from(schema.customers).where(eq(schema.customers.originalAppUserId, "mallory"))).toHaveLength(0);
+    expect(await poll("mallory", "TX-M")).toMatchObject({ status: "failed", failure_reason: "unknown_ad_unit" });
+    // An ad unit named on a reward rule is the project's too (no AdMob connection needed).
+    await json(v2("/ads/reward_rules", { method: "POST", json: { name: "Second unit", kind: "virtual_currency", currency_code: "GEMS", amount: 1, ad_unit_id: "ca-app-pub-3940256099942544/5224354917" } }));
+    expect((await callback({ tx: "TX-N", unit: "5224354917" })).status).toBe(200);
+    // The first matching rule (any ad unit) grants, now that the unit is the project's.
+    expect(await poll("wren", "TX-N")).toMatchObject({ status: "verified", reward: { code: "GEMS", amount: 100 } });
+  });
+
+  it("another customer's poll learns nothing; a huge reward amount is capped instead of failing every retry", async () => {
+    await gems();
+    await json(v2("/ads/reward_rules", { method: "POST", json: { name: "Gems", kind: "virtual_currency", currency_code: "GEMS", multiplier: 1000 } }));
+    await h.db.update(schema.virtualCurrencies).set({ state: "inactive" }).where(eq(schema.virtualCurrencies.code, "GEMS"));
+    await callback({ tx: "TX-F" });
+    expect(await poll("wren", "TX-F")).toMatchObject({ status: "failed", failure_reason: "grant_failed" });
+    await h.fetch("/v1/subscribers/mallory");
+    expect(await poll("mallory", "TX-F")).toMatchObject({ status: "failed", failure_reason: "user_mismatch" });
+    await h.db.update(schema.virtualCurrencies).set({ state: "active" }).where(eq(schema.virtualCurrencies.code, "GEMS"));
+    expect((await callback({ tx: "TX-H", amount: "99999999999999" })).status).toBe(200);
+    const [v] = await h.db.select().from(schema.adRewardVerifications).where(eq(schema.adRewardVerifications.clientTransactionId, "TX-H"));
+    expect(v).toMatchObject({ status: "verified", rewardAmount: 1_000_000_000, rewards: [{ type: "virtual_currency", code: "GEMS", amount: 1_000_000_000 }] });
+  });
+
+  it("while Google's keys cannot be loaded, callbacks answer 503 and the keys are fetched at most once a minute", async () => {
+    keysDown = true;
+    expect((await callback({ tx: "K1" })).status).toBe(503);
+    expect((await callback({ tx: "K1" })).status).toBe(503);
+    expect(keyFetches).toBe(1);
+    keysDown = false;
+    h.setNow(new Date(h.now().getTime() + 61_000));
+    expect((await callback({ tx: "K1" })).status).toBe(200);
+    expect(keyFetches).toBe(2);
+  });
+
   it("subscriber tokens poll the same verification", async () => {
     await gems();
     await json(v2("/ads/reward_rules", { method: "POST", json: { name: "Gems", kind: "virtual_currency", currency_code: "GEMS", amount: 2 } }));
@@ -213,6 +274,10 @@ describe("reward rules and test rewards", () => {
     expect(failed.items).toHaveLength(0);
     const audit = await h.db.select().from(schema.auditLogs);
     expect(audit.map((x) => x.actionType)).toContain("reward_rule_created");
+    // A test reward grants real currency, so a key that may only edit integrations cannot send one.
+    const narrow = await createSecretKey(h.db, "proj1", "integrations only", ["project_configuration:integrations:read_write"]);
+    const refused = await h.fetch("/v2/projects/proj1/ads/reward_verifications/test", { key: narrow.key, method: "POST", json: { app_user_id: "tester" } });
+    expect(refused.status).toBe(403);
   });
 });
 
@@ -261,27 +326,41 @@ describe("ads overview", () => {
 });
 
 describe("AdMob connection", () => {
-  it("connects with OAuth (state single use), loads ad units in pages, names them in the overview, refreshes and disconnects", async () => {
+  /** Google's redirect: the callback sends the code on to the AdMob page in the fragment. */
+  const fromGoogle = async (q: string) => {
+    const res = await h.fetch(`/v1/ads/admob/oauth/callback?${q}`, { key: "" });
+    expect(res.status).toBe(302);
+    return new URL(res.headers.get("location")!);
+  };
+  const finish = (b: { code: string; state: string; nonce: string }) => v2("/ads/admob/finish", { method: "POST", json: b });
+
+  it("connects with OAuth (state and nonce single use), loads ad units in pages, names them in the overview, refreshes and disconnects", async () => {
     const start = await json(v2("/ads/admob/connect", { method: "POST", json: {} }));
     const url = new URL(start.url);
     expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
     expect(Object.fromEntries(url.searchParams)).toMatchObject({ client_id: "123-abc.apps.googleusercontent.com", redirect_uri: "https://api.example.test/v1/ads/admob/oauth/callback", scope: "https://www.googleapis.com/auth/admob.readonly", access_type: "offline", prompt: "consent", response_type: "code" });
     const state = url.searchParams.get("state")!;
     expect(state.startsWith("proj1.")).toBe(true);
-    const back = await h.fetch(`/v1/ads/admob/oauth/callback?code=4%2Fcode&state=${encodeURIComponent(state)}`, { key: "" });
-    expect(back.status).toBe(302);
-    expect(back.headers.get("location")).toBe("https://app.example.test/projects/proj1/integrations/admob?connected=1");
+    expect(start.nonce).toMatch(/^[0-9a-f]{64}$/);
+    const back = await fromGoogle(`code=4%2Fcode&state=${encodeURIComponent(state)}`);
+    expect(back.origin + back.pathname + back.search).toBe("https://app.example.test/projects/proj1/integrations/admob");
+    const frag = new URLSearchParams(back.hash.slice(1));
+    expect(Object.fromEntries(frag)).toEqual({ admob_code: "4/code", admob_state: state });
+    // The callback itself exchanges nothing: only the browser that started (with its nonce) can finish.
+    expect(google.token).toBe(0);
+    const view = await json(finish({ code: frag.get("admob_code")!, state, nonce: start.nonce }));
     expect(Object.fromEntries(new URLSearchParams(google.lastTokenBody))).toMatchObject({ grant_type: "refresh_token", client_secret: "server-client-secret", refresh_token: "1//refresh-token-value" });
-    const view = await json(v2("/ads/admob"));
     expect(view).toMatchObject({ connected: true, oauth_client: "server", accounts: [{ id: "pub-9876543210", currency: "USD" }], last_sync_error: null, ssv_callback_url: "https://api.example.test/v1/ads/admob/ssv" });
     expect(view.ad_units.map((u: any) => [u.ad_unit_id, u.name, u.format])).toEqual([["ca-app-pub-9876543210/111", "Home banner", "banner"], ["ca-app-pub-9876543210/222", "Level end reward", "rewarded"]]);
     // The refresh token is sealed, never stored or returned in plain text.
     const [row] = await h.db.select().from(schema.integrations).where(eq(schema.integrations.kind, "admob"));
     expect(row!.secrets).toMatch(/^v1:/);
     expect(JSON.stringify(view)).not.toContain("refresh-token-value");
+    expect(JSON.stringify(row!.settings)).not.toContain("pending");
     // The same state cannot be used twice.
-    const again = await h.fetch(`/v1/ads/admob/oauth/callback?code=4%2Fcode&state=${encodeURIComponent(state)}`, { key: "" });
-    expect(decodeURIComponent(again.headers.get("location")!)).toContain("admob_error=This AdMob sign-in link is not valid");
+    const again = await finish({ code: "4/code", state, nonce: start.nonce });
+    expect(again.status).toBe(400);
+    expect((await again.json() as any).message).toContain("This AdMob sign-in link is not valid");
     // Names on the overview.
     await h.fetch("/v1/events", { method: "POST", json: { events: [{ id: "e1", type: "rc_ads_ad_displayed", app_user_id: "wren", timestamp_ms: h.now().getTime() - 1000, ad_unit_id: "ca-app-pub-9876543210/222", network_name: "Google AdMob", ad_format: "rewarded", mediator_name: "AdMob" }] } });
     expect((await json(v2("/ads/overview"))).by_ad_unit[0]).toMatchObject({ key: "ca-app-pub-9876543210/222", name: "Level end reward", unit_format: "rewarded", impressions: 1 });
@@ -295,15 +374,35 @@ describe("AdMob connection", () => {
     expect(await h.db.select().from(schema.adUnits)).toHaveLength(0);
   });
 
+  it("a sign-in link started elsewhere cannot connect: without the starting browser's nonce the code is never exchanged", async () => {
+    // Mallory starts in her project and sends Google's link to a victim, who signs in; the victim's browser has no nonce.
+    const start = await json(v2("/ads/admob/connect", { method: "POST", json: {} }));
+    const state = new URL(start.url).searchParams.get("state")!;
+    const frag = new URLSearchParams((await fromGoogle(`code=victim-code&state=${encodeURIComponent(state)}`)).hash.slice(1));
+    const res = await finish({ code: frag.get("admob_code")!, state, nonce: "" });
+    expect(res.status).toBe(400);
+    expect((await res.json() as any).message).toContain("started in another browser");
+    expect(google.token).toBe(0);
+    // The attempt used the state up, so the right nonce afterwards does not help either.
+    expect((await finish({ code: "victim-code", state, nonce: start.nonce })).status).toBe(400);
+    expect(google.token).toBe(0);
+    expect((await json(v2("/ads/admob"))).connected).toBe(false);
+    // A state for another project is refused on this project's finish.
+    expect((await finish({ code: "x", state: "proj2.abc", nonce: start.nonce })).status).toBe(400);
+  });
+
   it("refuses an expired state and a cancelled sign-in; a project's own client is used when given", async () => {
     const start = await json(v2("/ads/admob/connect", { method: "POST", json: { client_id: "999-own.apps.googleusercontent.com", client_secret: "own-secret" } }));
     const state = new URL(start.url).searchParams.get("state")!;
     expect(new URL(start.url).searchParams.get("client_id")).toBe("999-own.apps.googleusercontent.com");
-    expect(decodeURIComponent((await h.fetch(`/v1/ads/admob/oauth/callback?error=access_denied&state=${state}`, { key: "" })).headers.get("location")!)).toContain("Google sign-in was cancelled.");
+    const cancelled = await fromGoogle(`error=access_denied&state=${state}`);
+    expect(cancelled.hash).toBe("");
+    expect(cancelled.searchParams.get("admob_error")).toBe("Google sign-in was cancelled.");
+    expect((await fromGoogle("code=x&state=..%2Fevil")).toString()).toBe(`https://app.example.test/?admob_error=${encodeURIComponent("This AdMob sign-in link is not valid. Start again from the AdMob page.")}`);
     h.setNow(new Date(h.now().getTime() + 11 * 60_000));
-    expect(decodeURIComponent((await h.fetch(`/v1/ads/admob/oauth/callback?code=x&state=${state}`, { key: "" })).headers.get("location")!)).toContain("longer than 10 minutes");
-    const s2 = new URL((await json(v2("/ads/admob/connect", { method: "POST", json: {} }))).url).searchParams.get("state")!;
-    await h.fetch(`/v1/ads/admob/oauth/callback?code=x&state=${s2}`, { key: "" });
+    expect((await json(finish({ code: "x", state, nonce: start.nonce }))).message).toContain("longer than 10 minutes");
+    const s2 = await json(v2("/ads/admob/connect", { method: "POST", json: {} }));
+    expect((await finish({ code: "x", state: new URL(s2.url).searchParams.get("state")!, nonce: s2.nonce })).status).toBe(200);
     expect(new URLSearchParams(google.lastTokenBody).get("client_secret")).toBe("own-secret");
     expect((await json(v2("/ads/admob"))).oauth_client).toBe("project");
     expect((await json(v2("/ads/admob/connect", { method: "POST", json: { client_id: "not-a-client" } }))).param).toBe("client_id");

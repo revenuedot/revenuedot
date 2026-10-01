@@ -1,18 +1,16 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { parseAdMobCallback, parseRewardCustomData } from "@revenuedot/core/ads";
+import { MAX_REWARD_AMOUNT, parseAdMobCallback, parseRewardCustomData } from "@revenuedot/core/ads";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { KeysUnavailable, verifyAdMobCallback } from "../services/ads/admob-ssv.js";
 import { recordReward } from "../services/ads/rewards.js";
-import { AdMobError, finishAdMobConnect } from "../services/ads/admob.js";
-import { depsSecretKey } from "../services/secrets.js";
 import { publicOrigin } from "./oauth.js";
 
 /**
  * Public ad endpoints (no API key; prd/ads/PRD.md), mounted before the SDK routes:
  *   GET /v1/ads/admob/ssv              AdMob's server-side verification callback (signed by Google)
- *   GET /v1/ads/admob/oauth/callback   Google's OAuth redirect after "Connect AdMob"
+ *   GET /v1/ads/admob/oauth/callback   Google's OAuth redirect after "Connect AdMob" (on to the AdMob page)
  */
 export function adsPublicRoutes(deps: Deps) {
   const r = new Hono();
@@ -41,30 +39,33 @@ export function adsPublicRoutes(deps: Deps) {
     if (!app) return c.json({ ok: true, recorded: false, reason: "unknown_api_key" });
     const ts = Number(p.timestamp);
     const now = deps.now();
-    const amount = Number(p.reward_amount);
+    const amount = p.reward_amount ? Number(p.reward_amount) : NaN;
     await recordReward(db, {
       projectId: app.projectId, app: { id: app.id, type: app.type }, appUserId: p.user_id ?? "", clientTransactionId: custom.clientTransactionId,
       network: "admob", networkTransactionId: (p.transaction_id || `${custom.clientTransactionId}`).slice(0, 200), adUnitId: p.ad_unit?.slice(0, 200) || null,
-      impressionId: custom.impressionId, rewardItem: p.reward_item?.slice(0, 200) || null, rewardAmount: Number.isFinite(amount) ? Math.trunc(amount) : null,
+      impressionId: custom.impressionId, rewardItem: p.reward_item?.slice(0, 200) || null, rewardAmount: Number.isFinite(amount) ? Math.min(MAX_REWARD_AMOUNT, Math.max(0, Math.trunc(amount))) : null,
       occurredAt: Number.isFinite(ts) && ts > 1_420_070_400_000 && ts < now.getTime() + 86_400_000 ? new Date(ts) : now, isSandbox: app.type === "test_store", now,
     }, deps.kick);
     return c.json({ ok: true, recorded: true });
   });
 
-  r.get("/v1/ads/admob/oauth/callback", async (c) => {
+  // Google's redirect lands on the API host, which has no dashboard session: the code goes on to the AdMob page in the
+  // URL fragment (never sent to a server or in a Referer), and the page finishes with the nonce only the browser that
+  // started holds (POST /v2/projects/{id}/ads/admob/finish).
+  r.get("/v1/ads/admob/oauth/callback", (c) => {
     const base = deps.publicUrl ?? publicOrigin(c);
     const state = c.req.query("state") ?? "";
     const projectId = state.split(".")[0] ?? "";
-    const back = (q: string) => c.redirect(projectId && /^[A-Za-z0-9_-]+$/.test(projectId) ? `${base}/projects/${projectId}/integrations/admob?${q}` : `${base}/?${q}`, 302);
+    const page = projectId && /^[A-Za-z0-9_-]{1,100}$/.test(projectId) ? `${base}/projects/${projectId}/integrations/admob` : null;
     const err = c.req.query("error");
-    if (err || !c.req.query("code")) return back(`admob_error=${encodeURIComponent(err === "access_denied" ? "Google sign-in was cancelled." : "Google did not return an authorization code.")}`);
-    try {
-      await finishAdMobConnect({ db, fetch: deps.fetch ?? fetch, now: deps.now, secretKey: await depsSecretKey(deps), googleOAuth: deps.googleOAuth }, { state, code: c.req.query("code")! });
-      return back("connected=1");
-    } catch (e) {
-      if (e instanceof AdMobError) return back(`admob_error=${encodeURIComponent(e.message)}`);
-      throw e;
+    const code = c.req.query("code");
+    if (!page || err || !code) {
+      const message = !page ? "This AdMob sign-in link is not valid. Start again from the AdMob page." : err === "access_denied" ? "Google sign-in was cancelled." : "Google did not return an authorization code.";
+      return c.redirect(`${page ?? `${base}/`}?admob_error=${encodeURIComponent(message)}`, 302);
     }
+    c.header("referrer-policy", "no-referrer");
+    c.header("cache-control", "no-store");
+    return c.redirect(`${page}#${new URLSearchParams({ admob_code: code, admob_state: state })}`, 302);
   });
 
   return r;

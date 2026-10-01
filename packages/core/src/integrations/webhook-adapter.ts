@@ -1,5 +1,5 @@
 import {
-  CONCEPTS, DOCS, conceptOf, json, skip, type BuildInput, type Concept, type IntegrationField, type IntegrationKind, type IntegrationSpec, type PartnerDef, type Plan,
+  CONCEPTS, DOCS, FUNNEL_CLIENT_FIELDS, conceptOf, json, skip, type BuildInput, type Concept, type IntegrationField, type IntegrationKind, type IntegrationSpec, type PartnerDef, type Plan,
 } from "./common.js";
 
 /**
@@ -8,7 +8,8 @@ import {
  * partner reads RevenueCat's webhook body (https://www.revenuecat.com/docs/integrations/webhooks/event-types-and-fields).
  * RevenueDot sends exactly that body, `{"api_version":"1.0","event":{...}}`, with `content-type: application/json` and
  * the optional Authorization value, to the URL saved in the integration (checked with the outbound URL guard on save
- * and before each send). The stored event already is the RevenueCat webhook event, so nothing is mapped or dropped.
+ * and before each send). The stored event already is the RevenueCat webhook event, so nothing is mapped; only a funnel visitor's IP address
+ * and user agent (`client_ip`, `client_user_agent`) are left out.
  *
  * Steps: every lifecycle step webhooks get except experiment enrollments (CONCEPTS minus `experiment_enrollment`).
  * The partners on the adapter take subscription and revenue events for attribution and paywall revenue; none of them
@@ -64,5 +65,8 @@ export async function buildPartnerWebhook(i: BuildInput, opts: PartnerWebhookOpt
   const auth = opts.authKey ? i.secrets[opts.authKey]?.trim() : undefined;
   if (auth) headers.authorization = auth;
   const redact = [...(opts.urlIsSecret ? [url] : []), ...(auth ? [auth] : [])];
-  return { name: String(e.type), requests: [{ method: "POST", url, headers, body: json({ api_version: "1.0", event: e }) }], redact };
+  // A funnel visitor's IP address and user agent are recorded for Meta and Branch only; adapter partners never get them.
+  const event = { ...e };
+  for (const k of FUNNEL_CLIENT_FIELDS) delete event[k];
+  return { name: String(e.type), requests: [{ method: "POST", url, headers, body: json({ api_version: "1.0", event }) }], redact };
 }

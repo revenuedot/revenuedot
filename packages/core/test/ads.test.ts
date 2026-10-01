@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  adTotals, adsOverview, derToP1363, matchRewardRule, parseAdMobCallback, parseRewardCustomData, periodDays, rewardAnswer, ruleCurrencyAmount,
+  adTotals, adUnitMatches, adsOverview, derToP1363, matchRewardRule, parseAdMobCallback, parseRewardCustomData, periodDays, rewardAnswer, ruleCurrencyAmount,
   type AdEventGroup, type RewardRule,
 } from "../src/ads/index.js";
 
@@ -79,6 +79,17 @@ describe("reward rules", () => {
     expect(ruleCurrencyAmount(rule({ amount: 5 }), 10)).toBe(5);
     expect(ruleCurrencyAmount(rule({ amount: null, multiplier: 2.5 }), 10)).toBe(25);
     expect(ruleCurrencyAmount(rule({ amount: null, multiplier: 0.01 }), 10)).toBe(1);
+    // Capped at what the ledger holds.
+    expect(ruleCurrencyAmount(rule({ amount: null, multiplier: 1_000_000 }), 1_000_000_000)).toBe(1_000_000_000);
+    expect(ruleCurrencyAmount(rule({ amount: null, multiplier: 2 }), -5)).toBe(1);
+  });
+  it("matches an ad unit by its full id or the number after the slash, never an empty one", () => {
+    expect(adUnitMatches("ca-app-pub-1/111", "111")).toBe(true);
+    expect(adUnitMatches("111", "ca-app-pub-1/111")).toBe(true);
+    expect(adUnitMatches("ca-app-pub-1/111", "ca-app-pub-1/111")).toBe(true);
+    expect(adUnitMatches("ca-app-pub-1/111", "11")).toBe(false);
+    expect(adUnitMatches("", "")).toBe(false);
+    expect(adUnitMatches(null, "111")).toBe(false);
   });
 });
 
@@ -102,6 +113,11 @@ describe("AdMob callback parsing", () => {
     expect(cb.params).toMatchObject({ ad_unit: "1234567890", reward_amount: "10", reward_item: "coins", transaction_id: "123456789", user_id: "wren", custom_data: custom });
     expect(parseAdMobCallback("")).toBeNull();
     expect(parseAdMobCallback("ad_unit=1&user_id=x")).toBeNull();
+    // Only the signed part is read: nothing may follow key_id, and no parameter may repeat.
+    expect(parseAdMobCallback(`${query}&user_id=mallory`)).toBeNull();
+    expect(parseAdMobCallback(query.replace("&signature=", "&user_id=mallory&signature="))).toBeNull();
+    expect(parseAdMobCallback(query.replace("key_id=3335741209", "key_id=abc"))).toBeNull();
+    expect(parseAdMobCallback(`constructor=1&${query}`)!.params.constructor).toBe("1");
   });
   it("reads the SDK's custom data and nothing else", () => {
     expect(parseRewardCustomData(custom)).toEqual({ apiKey: "appl_testkey123", clientTransactionId: "8A1C0F7E-1111-2222-3333-444455556666", impressionId: "imp-1" });

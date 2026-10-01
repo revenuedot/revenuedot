@@ -1,4 +1,4 @@
-import { and, eq, notInArray } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { guardedFetch, OutboundRefused } from "../outbound.js";
@@ -59,10 +59,12 @@ export async function admobConfigured(d: AdMobDeps, row: Row | null): Promise<"s
 }
 
 /**
- * Starts the OAuth flow: saves the project's own client (when given), stores the SHA-256 of a fresh state with a
- * 10-minute expiry, and returns Google's authorization URL.
+ * Starts the OAuth flow: saves the project's own client (when given), stores the SHA-256 of a fresh state and of a
+ * browser nonce with a 10-minute expiry, and returns Google's authorization URL and the nonce. The dashboard keeps the
+ * nonce in the browser that started; Google's redirect hands the code back to that page, which finishes with the nonce
+ * (`finishAdMobConnect`). So a sign-in link started in someone else's project cannot connect your AdMob account to it.
  */
-export async function startAdMobConnect(d: AdMobDeps, o: { projectId: string; userId: string | null; redirectUri: string; clientId?: string | null; clientSecret?: string | null }): Promise<string> {
+export async function startAdMobConnect(d: AdMobDeps, o: { projectId: string; redirectUri: string; clientId?: string | null; clientSecret?: string | null }): Promise<{ url: string; nonce: string }> {
   let row: Row | null | undefined = await admobRow(d.db, o.projectId);
   const now = d.now();
   if (!row) {
@@ -77,11 +79,13 @@ export async function startAdMobConnect(d: AdMobDeps, o: { projectId: string; us
   }
   [row] = await d.db.update(I).set({ settings, secrets, secretHints: hints, updatedAt: now }).where(eq(I.id, row!.id)).returning();
   const c = await client(d, row!);
-  const state = `${o.projectId}.${crypto.randomUUID().replace(/-/g, "")}`;
-  await d.db.update(I).set({ settings: { ...row!.settings, pending: { state: await sha256(state), until: now.getTime() + STATE_TTL_MS, user: o.userId, redirect_uri: o.redirectUri } } }).where(eq(I.id, row!.id));
+  const random = () => crypto.randomUUID().replace(/-/g, "");
+  const state = `${o.projectId}.${random()}`;
+  const nonce = `${random()}${random()}`;
+  await d.db.update(I).set({ settings: { ...row!.settings, pending: { state: await sha256(state), nonce: await sha256(nonce), until: now.getTime() + STATE_TTL_MS, redirect_uri: o.redirectUri } } }).where(eq(I.id, row!.id));
   const u = new URL(GOOGLE_AUTH_URL);
   u.search = new URLSearchParams({ client_id: c.id, redirect_uri: o.redirectUri, response_type: "code", scope: ADMOB_SCOPE, access_type: "offline", prompt: "consent", include_granted_scopes: "true", state }).toString();
-  return u.toString();
+  return { url: u.toString(), nonce };
 }
 
 async function googleJson(d: AdMobDeps, url: string, init: RequestInit): Promise<any> {
@@ -94,15 +98,24 @@ async function googleJson(d: AdMobDeps, url: string, init: RequestInit): Promise
   return j;
 }
 
-/** Finishes the OAuth flow from Google's redirect. Returns the project id for the redirect back to the dashboard. */
-export async function finishAdMobConnect(d: AdMobDeps, o: { state: string; code: string }): Promise<string> {
-  const projectId = o.state.split(".")[0] ?? "";
-  const row = projectId ? await admobRow(d.db, projectId) : null;
-  const pending = row?.settings.pending as { state?: string; until?: number; redirect_uri?: string } | undefined;
-  if (!row || !pending?.state || pending.state !== await sha256(o.state)) throw new AdMobError("This AdMob sign-in link is not valid. Start again from the AdMob page.", "state");
-  // Single use, whatever happens next.
+/**
+ * Finishes the OAuth flow with the code Google sent back, from the browser that started it: the state must be this
+ * project's pending one and the nonce the one `startAdMobConnect` gave that browser. Single use, whatever happens next.
+ */
+export async function finishAdMobConnect(d: AdMobDeps, o: { projectId: string; state: string; code: string; nonce: string }): Promise<void> {
+  const projectId = o.projectId;
+  const invalid = () => new AdMobError("This AdMob sign-in link is not valid. Start again from the AdMob page.", "state");
+  if (o.state.split(".")[0] !== projectId) throw invalid();
+  const row = await admobRow(d.db, projectId);
+  const pending = row?.settings.pending as { state?: string; nonce?: string; until?: number; redirect_uri?: string } | undefined;
+  const stateHash = await sha256(o.state);
+  if (!row || !pending?.state || pending.state !== stateHash) throw invalid();
+  // Consumed atomically: of two requests with the same state, one gets on.
+  const consumed = await d.db.update(I).set({ settings: sql`${I.settings} - 'pending'` })
+    .where(and(eq(I.id, row.id), sql`${I.settings}->'pending'->>'state' = ${stateHash}`)).returning({ id: I.id });
+  if (!consumed.length) throw invalid();
   const { pending: _, ...rest } = row.settings as Record<string, unknown>;
-  await d.db.update(I).set({ settings: rest }).where(eq(I.id, row.id));
+  if (!pending.nonce || !o.nonce || pending.nonce !== await sha256(o.nonce)) throw new AdMobError("This AdMob sign-in was started in another browser. Start again from the AdMob page.", "state");
   if (!pending.until || pending.until < d.now().getTime()) throw new AdMobError("The AdMob sign-in took longer than 10 minutes. Start again from the AdMob page.", "state");
   const c = await client(d, row);
   const tok = await googleJson(d, GOOGLE_TOKEN_URL, {
@@ -112,8 +125,7 @@ export async function finishAdMobConnect(d: AdMobDeps, o: { state: string; code:
   if (typeof tok?.refresh_token !== "string") throw new AdMobError("Google returned no refresh token. Remove RevenueDot's access in your Google account and connect again.");
   const sealed = await mergeSecrets(row.secrets, { refresh_token: tok.refresh_token }, d.secretKey);
   await d.db.update(I).set({ secrets: sealed.sealed, secretHints: sealed.hints, settings: { ...rest, connected_at: d.now().getTime() }, enabled: true, updatedAt: d.now() }).where(eq(I.id, row.id));
-  await syncAdMob(d, projectId).catch((e) => console.warn(`AdMob: loading ad units for ${projectId} failed`, e));
-  return projectId;
+  await syncAdMob(d, projectId).catch((e) => console.warn(`AdMob: loading ad units for ${projectId} failed: ${e instanceof Error ? e.message : String(e)}`));
 }
 
 async function accessToken(d: AdMobDeps, row: Row): Promise<string> {
@@ -179,7 +191,7 @@ export async function refreshDueAdMob(d: AdMobDeps, limit = 5): Promise<number> 
   const due = rows.filter((r) => r.secretHints.refresh_token && (Number(r.settings.last_sync_at ?? 0) < d.now().getTime() - SYNC_EVERY_MS)).slice(0, limit);
   let n = 0;
   for (const r of due) {
-    try { await syncAdMob(d, r.projectId); n++; } catch (e) { console.warn(`AdMob refresh for ${r.projectId} failed`, e); }
+    try { await syncAdMob(d, r.projectId); n++; } catch (e) { console.warn(`AdMob refresh for ${r.projectId} failed: ${e instanceof Error ? e.message : String(e)}`); }
   }
   return n;
 }

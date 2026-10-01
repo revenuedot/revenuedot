@@ -71,6 +71,7 @@ export function supportAppRoutes(deps: Deps) {
 
   r.post("/v1/support/intercom/:projectId/canvas", async (c) => {
     const projectId = c.req.param("projectId");
+    if (Number(c.req.header("content-length") ?? 0) > MAX_BODY) return c.json({ error: "The request is too large." }, 413);
     const raw = await c.req.text().catch(() => "");
     if (raw.length > MAX_BODY) return c.json({ error: "The request is too large." }, 413);
     const [conn] = await db.select().from(schema.integrations).where(and(eq(schema.integrations.projectId, projectId), eq(schema.integrations.kind, "intercom_inbox"), eq(schema.integrations.enabled, true))).limit(1);

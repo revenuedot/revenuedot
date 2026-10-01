@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../../components/Shell";
@@ -16,7 +16,12 @@ import { FORMAT_LABEL, useAdMob, v2, type AdMobConnection } from "./data";
 
 const GUIDE = "https://revenuedot.app/docs/guides/ads#admob";
 
-function OwnClient({ pid, a, onDone }: { pid: string; a: AdMobConnection; onDone: (url: string) => void }) {
+type Authorization = { url: string; nonce: string };
+/** The nonce of the sign-in this browser started; only this browser can finish it (POST …/ads/admob/finish). */
+const nonceKey = (pid: string) => `revenuedot.admob_nonce.${pid}`;
+const storage = () => { try { return window.sessionStorage; } catch { return null; } };
+
+function OwnClient({ pid, a, onDone }: { pid: string; a: AdMobConnection; onDone: (r: Authorization) => void }) {
   const [id, setId] = useState(a.client_id ?? "");
   const [secret, setSecret] = useState("");
   const [err, setErr] = useState<{ message: string; param?: string } | null>(null);
@@ -25,8 +30,7 @@ function OwnClient({ pid, a, onDone }: { pid: string; a: AdMobConnection; onDone
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      const r = await api<{ url: string }>(`${v2(pid)}/ads/admob/connect`, { method: "POST", json: { client_id: id.trim() || null, client_secret: secret.trim() || null } });
-      onDone(r.url);
+      onDone(await api<Authorization>(`${v2(pid)}/ads/admob/connect`, { method: "POST", json: { client_id: id.trim() || null, client_secret: secret.trim() || null } }));
     } catch (x) { const b = (x as { body?: { param?: string } }).body; setErr({ message: errMsg(x), param: b?.param }); } finally { setBusy(false); }
   }
   return (
@@ -53,13 +57,26 @@ export function AdMobPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const failure = sp.get("admob_error");
+  // Back from Google: the code and state arrive in the fragment; finish with this browser's nonce, once.
+  const finishing = useRef(false);
   useEffect(() => {
-    if (sp.get("connected")) { toast("AdMob is connected. Ad units are loaded."); const n = new URLSearchParams(sp); n.delete("connected"); setSp(n, { replace: true }); }
-  }, [sp, setSp, toast]);
-  const go = (url: string) => { window.location.assign(url); };
+    const h = new URLSearchParams(window.location.hash.slice(1));
+    const code = h.get("admob_code"), state = h.get("admob_state");
+    if (!code || !state || finishing.current) return;
+    finishing.current = true;
+    setSp(new URLSearchParams(window.location.search), { replace: true }); // drops the fragment
+    const nonce = storage()?.getItem(nonceKey(pid)) ?? "";
+    storage()?.removeItem(nonceKey(pid));
+    setBusy("finish");
+    api(`${v2(pid)}/ads/admob/finish`, { method: "POST", json: { code, state, nonce } })
+      .then(async () => { await qc.invalidateQueries({ queryKey: ["admob", pid] }); toast("AdMob is connected. Ad units are loaded."); })
+      .catch((e) => { const n = new URLSearchParams(window.location.search); n.set("admob_error", errMsg(e)); setSp(n, { replace: true }); })
+      .finally(() => setBusy(null));
+  }, [pid, qc, setSp, toast]);
+  const go = (r: Authorization) => { storage()?.setItem(nonceKey(pid), r.nonce); window.location.assign(r.url); };
   const connect = async () => {
     setBusy("connect");
-    try { go((await api<{ url: string }>(`${v2(pid)}/ads/admob/connect`, { method: "POST", json: {} })).url); } catch (e) { toast(errMsg(e)); setBusy(null); }
+    try { go(await api<Authorization>(`${v2(pid)}/ads/admob/connect`, { method: "POST", json: {} })); } catch (e) { toast(errMsg(e)); setBusy(null); }
   };
   const refresh = async () => {
     setBusy("refresh");
@@ -76,6 +93,7 @@ export function AdMobPage() {
           </> : undefined} />
         {failure && <div className="banner err" role="alert" style={{ alignItems: "center" }}><span style={{ flex: 1 }}>{failure}</span><button type="button" className="btn btn-ghost" onClick={() => { const n = new URLSearchParams(sp); n.delete("admob_error"); setSp(n, { replace: true }); }}>Dismiss</button></div>}
         {q.isError && <div className="banner err" role="alert">{errMsg(q.error)}</div>}
+        {busy === "finish" && <div className="banner" role="status">Connecting AdMob…</div>}
         {q.isLoading && <div className="panel pb" aria-busy="true"><span className="sk line" /></div>}
         {a && (
           <>
@@ -127,7 +145,7 @@ export function AdMobPage() {
       {disconnecting && (
         <ConfirmDialog title="Disconnect AdMob?" confirmLabel="Disconnect" danger onClose={() => setDisconnecting(false)}
           onConfirm={async () => { await api(`${v2(pid)}/ads/admob`, { method: "DELETE" }); await qc.invalidateQueries({ queryKey: ["admob", pid] }); toast("AdMob disconnected."); }}>
-          <p>RevenueDot deletes the Google tokens and the loaded ad units. Ad revenue from the SDK and rewarded-ad verification keep working.</p>
+          <p>RevenueDot deletes the Google tokens and the loaded ad units. Ad revenue from the SDK keeps working; rewarded-ad verification then accepts only the ad units named on reward rules.</p>
         </ConfirmDialog>
       )}
     </Shell>

@@ -1,4 +1,4 @@
-import { DOCS, FUNNEL_CONCEPTS, REPORTING, conceptOf, defaultAnalyticsName, funnelAdContext, isFunnelConcept, isSandbox, json, nameFor, revenueUsd, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
+import { DOCS, FUNNEL_CONCEPTS, REPORTING, conceptOf, defaultAnalyticsName, funnelAdContext, isFunnelConcept, isSandbox, json, nameFor, revenueUsd, secretForms, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
 
 /**
  * Google Tag Manager server-side container: events in the GA4 Measurement Protocol format
@@ -75,7 +75,7 @@ export async function buildGoogleTagManager(i: BuildInput): Promise<Plan> {
   return {
     name: eventName,
     requests: [{ method: "POST", url: `${base}/mp/collect?${q.toString()}`, headers: { "content-type": "application/json" }, body: json(body) }],
-    redact: secret ? [secret, encodeURIComponent(secret)] : [],
+    redact: secret ? secretForms(secret) : [],
   };
 }
 

@@ -11,6 +11,9 @@ import { ensureEcbRange, fxLookup, type FxFetch } from "../fx.js";
 const X = schema.sdkEvents;
 const T = schema.transactions;
 
+/** Any ad event the SDKs send (the overview's types and the rewarded-ad ones): whether the app has sent ad events at all. */
+const ANY_AD_EVENT = [...AD_EVENT_TYPES, "rc_ads_ad_reward_sdk_earned", "rc_ads_ad_reward_sdk_granted", "rc_ads_ad_reward_sdk_verified", "rc_ads_ad_reward_sdk_failed_to_verify"];
+
 export type AdsRange = "7d" | "28d" | "90d" | "12m";
 
 async function groups(db: DB, o: { projectId: string; sandbox: boolean; appId: string | null; start: Date; end: Date }): Promise<AdEventGroup[]> {
@@ -36,7 +39,7 @@ export async function loadAdsOverview(db: DB, o: { projectId: string; range: Ads
       .groupBy(sql`1`),
     db.select({ n: sql<number>`count(distinct coalesce(${X.customerId}, ${X.appUserId}))::int` }).from(X)
       .where(and(eq(X.projectId, o.projectId), eq(X.isSandbox, o.sandbox), inArray(X.type, AD_EVENT_TYPES), gte(X.occurredAt, start), lt(X.occurredAt, end), ...(o.appId ? [eq(X.appId, o.appId)] : []))),
-    db.select({ type: X.type, sandbox: X.isSandbox }).from(X).where(and(eq(X.projectId, o.projectId), sql`${X.type} LIKE 'rc_ads_%'`)).limit(1),
+    db.select({ type: X.type }).from(X).where(and(eq(X.projectId, o.projectId), inArray(X.type, ANY_AD_EVENT))).limit(1),
     db.select().from(schema.adUnits).where(eq(schema.adUnits.projectId, o.projectId)),
   ]);
   if ([...current, ...previous].some((g) => g.type === AD_TYPES.revenue && (g.currency ?? "USD").toUpperCase() !== "USD")) {

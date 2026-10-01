@@ -281,6 +281,25 @@ export const FUNNEL_CONCEPTS: Concept[] = ["funnel_viewed", "funnel_step_complet
 export const isFunnelConcept = (c: Concept | null): c is Concept => !!c && FUNNEL_CONCEPTS.includes(c);
 
 /**
+ * The integrations whose funnel events carry the visitor's IP address and browser user agent (Meta's website events and
+ * Branch's web events need them to match the visitor). services/web/funnels.ts records `client_ip` and
+ * `client_user_agent` only while one of these asks for funnel events; every other integration gets neither.
+ */
+export const FUNNEL_CLIENT_KINDS: readonly IntegrationKind[] = ["meta", "branch"];
+
+/** Event fields that hold the funnel visitor's IP address and user agent (personal data, kept for 7 days at most). */
+export const FUNNEL_CLIENT_FIELDS = ["client_ip", "client_user_agent"] as const;
+
+/**
+ * The forms a secret takes in a request: as written, percent-encoded (encodeURIComponent) and form-encoded
+ * (URLSearchParams, which encodes spaces as + and a few more characters), so the delivery log scrubs a secret that a
+ * builder put in a query string or a form body whatever its characters.
+ */
+export function secretForms(s: string): string[] {
+  return [...new Set([s, encodeURIComponent(s), new URLSearchParams({ x: s }).toString().slice(2)])];
+}
+
+/**
  * What an ad network needs from a funnel event to match a web visitor (services/web/funnels.ts records it when an
  * integration asks for funnel events): the browser's IP, user agent and page URL, the ad click ids from the landing URL
  * (fbclid, gclid, gbraid, wbraid, ttclid, msclkid), the utm_* parameters, and the purchase's USD revenue.

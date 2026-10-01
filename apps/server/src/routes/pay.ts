@@ -202,7 +202,7 @@ export function payRoutes(deps: Deps) {
       projectId: f.projectId, funnel: f, sessionId: b.session_id, type, stepId: step?.id ?? null, stepIndex: step ? doc.steps.indexOf(step) : null, stepType: step?.type ?? null,
       appUserId: typeof b.app_user_id === "string" ? b.app_user_id.slice(0, 100) : null, answer: step?.type === "email" ? (answer === "skipped" ? "skipped" : answer ? "provided" : null) : answer,
       query: b.query && typeof b.query === "object" ? b.query : {}, sandbox: app ? sandboxOf(app) : false, now,
-      client: { ip: clientIp((h) => c.req.header(h)), userAgent: c.req.header("user-agent") ?? null, pageUrl: typeof b.page_url === "string" ? b.page_url : null },
+      client: { ip: clientIp((h) => c.req.header(h)), userAgent: c.req.header("user-agent") ?? null, pageUrl: typeof b.page_url === "string" ? b.page_url : null }, optOut: c.req.header("sec-gpc") === "1",
     });
     deps.kick?.();
     return c.body(null, 204);

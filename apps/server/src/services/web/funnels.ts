@@ -1,6 +1,7 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import type { FunnelDoc } from "@revenuedot/core/funnels";
+import { FUNNEL_CLIENT_FIELDS, FUNNEL_CLIENT_KINDS } from "@revenuedot/core/integrations";
 import { queueDeliveries } from "../events.js";
 
 /**
@@ -18,10 +19,44 @@ export type FunnelRow = typeof schema.funnels.$inferSelect;
 const CLICK_IDS = ["fbclid", "gclid", "gbraid", "wbraid", "ttclid", "msclkid"];
 const FUNNEL_TYPES = Object.values(DELIVERED);
 
-/** Whether an enabled integration (not a webhook) of the project has a funnel event type in its filter. */
-async function integrationsWantFunnels(db: DB, projectId: string): Promise<boolean> {
-  const ints = await db.select({ t: schema.integrations.eventTypes }).from(schema.integrations).where(and(eq(schema.integrations.projectId, projectId), eq(schema.integrations.enabled, true)));
-  return ints.some((i) => (i.t ?? []).some((t) => FUNNEL_TYPES.includes(t)));
+/**
+ * Which enabled integrations (not webhooks) of the project have a funnel event type in their filter: `any` for the page
+ * URL and the landing context, `client` when one of them is Meta or Branch, the only ones that use the visitor's IP
+ * address and user agent.
+ */
+async function integrationsWantFunnels(db: DB, projectId: string): Promise<{ any: boolean; client: boolean }> {
+  const ints = await db.select({ t: schema.integrations.eventTypes, kind: schema.integrations.kind }).from(schema.integrations).where(and(eq(schema.integrations.projectId, projectId), eq(schema.integrations.enabled, true)));
+  const want = ints.filter((i) => (i.t ?? []).some((t) => FUNNEL_TYPES.includes(t)));
+  return { any: want.length > 0, client: want.some((i) => (FUNNEL_CLIENT_KINDS as readonly string[]).includes(i.kind)) };
+}
+
+/** How long a funnel visitor's IP address and user agent are kept: Meta takes website events up to 7 days old. */
+export const FUNNEL_CLIENT_RETENTION_MS = 7 * 86_400_000;
+
+/**
+ * Removes the visitor's IP address and user agent from funnel events older than FUNNEL_CLIENT_RETENTION_MS, in
+ * `funnel_events` and in the stored FUNNEL_* webhook events (a replay after that sends the event without them).
+ * The tick runs it once an hour over the week before the cutoff (older rows were purged by earlier runs), project by
+ * project and funnel by funnel so the indexes bound it. Returns how many rows it changed.
+ */
+export async function purgeFunnelClientContext(db: DB, now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - FUNNEL_CLIENT_RETENTION_MS);
+  const from = new Date(cutoff.getTime() - FUNNEL_CLIENT_RETENTION_MS);
+  const keys = sql.raw(`array[${FUNNEL_CLIENT_FIELDS.map((k) => `'${k}'`).join(",")}]::text[]`);
+  const F = schema.funnelEvents, E = schema.events;
+  let n = 0;
+  const funnels = await db.select({ id: schema.funnels.id, projectId: schema.funnels.projectId }).from(schema.funnels);
+  for (const f of funnels) {
+    n += (await db.update(F).set({ properties: sql`${F.properties} - ${keys}` })
+      .where(and(eq(F.funnelId, f.id), gte(F.createdAt, from), lt(F.createdAt, cutoff), sql`jsonb_exists_any(${F.properties}, ${keys})`)).returning({ id: F.id })).length;
+  }
+  // Projects with a funnel, or with Meta or Branch (a project may have deleted its funnels since).
+  const withClients = await db.select({ projectId: schema.integrations.projectId }).from(schema.integrations).where(inArray(schema.integrations.kind, [...FUNNEL_CLIENT_KINDS]));
+  for (const projectId of new Set([...funnels, ...withClients].map((f) => f.projectId))) {
+    n += (await db.update(E).set({ payload: sql`jsonb_set(${E.payload}, '{event}', (${E.payload} -> 'event') - ${keys})` })
+      .where(and(eq(E.projectId, projectId), gte(E.createdAt, from), lt(E.createdAt, cutoff), inArray(E.type, FUNNEL_TYPES), sql`jsonb_exists_any(${E.payload} -> 'event', ${keys})`)).returning({ id: E.id })).length;
+  }
+  return n;
 }
 
 /** Whether any enabled webhook or integration of the project asks for this type (the event row is only written then). */
@@ -38,16 +73,21 @@ export async function recordFunnelEvent(db: DB, o: {
   extra?: Record<string, unknown>;
   /** The visitor's browser (the page's own requests only): ad networks match web events with it (Batch D, prd/integrations/PRD.md). */
   client?: { ip?: string | null; userAgent?: string | null; pageUrl?: string | null };
+  /** The visitor opted out of sharing with ad networks (Global Privacy Control, `Sec-GPC: 1`): no click ids, IP or user agent. */
+  optOut?: boolean;
 }) {
   const utm: Record<string, string> = Object.fromEntries(Object.entries(o.query ?? {}).filter(([k, v]) => /^utm_[a-z_]{1,20}$/.test(k) && typeof v === "string").map(([k, v]) => [k, String(v).slice(0, 200)]));
   // Ad click ids from the landing URL, for Meta (fbclid → fbc), Google (gclid, gbraid, wbraid), TikTok and Microsoft.
-  let clickIds: Record<string, string> = Object.fromEntries(Object.entries(o.query ?? {}).filter(([k, v]) => CLICK_IDS.includes(k) && typeof v === "string" && /^[\w.~-]{1,500}$/.test(v)).map(([k, v]) => [k, String(v)]));
-  // The browser context is kept only when an integration asks for funnel events: no visitor IP is stored otherwise.
-  const forAds = await integrationsWantFunnels(db, o.projectId);
+  let clickIds: Record<string, string> = o.optOut ? {} : Object.fromEntries(Object.entries(o.query ?? {}).filter(([k, v]) => CLICK_IDS.includes(k) && typeof v === "string" && /^[\w.~-]{1,500}$/.test(v)).map(([k, v]) => [k, String(v)]));
+  // The browser context is kept only when an integration asks for funnel events, and the visitor's IP address and user
+  // agent only when that integration is Meta or Branch (they are removed after 7 days: purgeFunnelClientContext).
+  const want = await integrationsWantFunnels(db, o.projectId);
+  const forAds = want.any && !o.optOut;
   let client: Record<string, string> = {};
   if (forAds) {
     const pageUrl = o.client?.pageUrl && /^https?:\/\/[^\s?#]{1,300}$/.test(o.client.pageUrl) ? o.client.pageUrl : null;
-    client = Object.fromEntries(Object.entries({ client_ip: o.client?.ip?.slice(0, 64) ?? null, client_user_agent: o.client?.userAgent?.slice(0, 500) ?? null, page_url: pageUrl })
+    const ip = want.client ? o.client?.ip?.slice(0, 64) ?? null : null, userAgent = want.client ? o.client?.userAgent?.slice(0, 500) ?? null : null;
+    client = Object.fromEntries(Object.entries({ client_ip: ip, client_user_agent: userAgent, page_url: pageUrl })
       .filter((x): x is [string, string] => typeof x[1] === "string" && !!x[1]));
     // Checkouts and purchases are recorded by the server (Stripe's webhook): they inherit the session's landing context.
     if (o.type !== "funnel_viewed") {
@@ -55,7 +95,7 @@ export async function recordFunnelEvent(db: DB, o: {
         .where(and(eq(schema.funnelEvents.funnelId, o.funnel.id), eq(schema.funnelEvents.sessionId, o.sessionId.slice(0, 80)), eq(schema.funnelEvents.type, "funnel_viewed"))).limit(1);
       const lp = (landing?.p ?? {}) as Record<string, unknown>;
       if (!Object.keys(clickIds).length && lp.click_ids && typeof lp.click_ids === "object") clickIds = lp.click_ids as Record<string, string>;
-      for (const k of ["client_ip", "client_user_agent", "page_url"]) if (!client[k] && typeof lp[k] === "string") client[k] = lp[k] as string;
+      for (const k of [...(want.client ? FUNNEL_CLIENT_FIELDS : []), "page_url"]) if (!client[k] && typeof lp[k] === "string") client[k] = lp[k] as string;
       if (!Object.keys(utm).length) for (const [k, v] of Object.entries(lp)) if (/^utm_[a-z_]{1,20}$/.test(k) && typeof v === "string") utm[k] = v;
     }
   }

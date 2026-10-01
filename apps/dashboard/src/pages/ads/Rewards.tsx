@@ -311,7 +311,7 @@ export function RewardsPage() {
         <Panel title="Server-side verification" link={<a className="link" href={GUIDE} target="_blank" rel="noreferrer">Setup guide →</a>}>
           <div className="stack">
             <ol className="steps">
-              <li>In AdMob, open each rewarded ad unit, turn on <b>Server-side verification</b> and paste this callback URL. AdMob signs every callback; RevenueDot checks the signature with Google's published keys.</li>
+              <li>In AdMob, open each rewarded ad unit, turn on <b>Server-side verification</b> and paste this callback URL. AdMob signs every callback; RevenueDot checks the signature with Google's published keys and accepts only your ad units: <Link className="link" to={`/projects/${pid}/integrations/admob`}>connect AdMob</Link>, or name the ad unit on a reward rule.</li>
             </ol>
             {url ? <CopyField value={url} label="AdMob callback URL" /> : <span className="sk line" />}
             <ol className="steps" start={2}>

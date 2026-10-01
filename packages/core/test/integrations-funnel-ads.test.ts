@@ -73,3 +73,28 @@ describe("funnel events to ad networks", () => {
     expect(await buildIntegration("appsflyer", { event: purchase, settings: {}, secrets: { dev_key: "d" }, now })).toEqual({ skip: "Funnel events need the AppsFlyer web app ID and Web S2S token." });
   });
 });
+
+describe("visitor data and secrets in funnel deliveries", () => {
+  it("webhook adapter partners never get the visitor's IP address or user agent", async () => {
+    for (const kind of ["appstack", "superwall", "splitmetrics", "solarengine"] as IntegrationKind[]) {
+      const urlIsSecret = kind !== "appstack";
+      const url = "https://partner.example.com/rc";
+      const p = await buildIntegration(kind, { event: purchase, settings: urlIsSecret ? {} : { webhook_url: url }, secrets: urlIsSecret ? { webhook_url: url } : { authorization: "a" }, now });
+      if ("skip" in p) throw new Error(p.skip);
+      const body = JSON.parse(p.requests[0]!.body);
+      expect(body.event, kind).not.toHaveProperty("client_ip");
+      expect(body.event, kind).not.toHaveProperty("client_user_agent");
+      expect(body.event, kind).toMatchObject({ type: "FUNNEL_PURCHASE", page_url: purchase.page_url, click_ids: purchase.click_ids });
+    }
+    expect(purchase.client_ip).toBe("203.0.113.9");
+  });
+
+  it("scrubs a query-string secret in the form URLSearchParams writes it", async () => {
+    const secret = "gtm secret~!'()*";
+    const p = await buildIntegration("google_tag_manager", { event: purchase, settings: { server_container_url: "https://sgtm.example.com", measurement_id: "G-ABC" }, secrets: { api_secret: secret }, now });
+    if ("skip" in p) throw new Error(p.skip);
+    let url = p.requests[0]!.url;
+    for (const v of p.redact) url = url.split(v).join("[redacted]");
+    expect(url).toBe("https://sgtm.example.com/mp/collect?measurement_id=G-ABC&api_secret=[redacted]");
+  });
+});

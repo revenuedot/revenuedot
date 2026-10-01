@@ -58,4 +58,5 @@ ALTER TABLE "ad_units" ADD CONSTRAINT "ad_units_project_id_projects_id_fk" FOREI
 CREATE INDEX "ad_reward_rules_project" ON "ad_reward_rules" USING btree ("project_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "ad_reward_verifications_client_tx" ON "ad_reward_verifications" USING btree ("project_id","client_transaction_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ad_reward_verifications_network_tx" ON "ad_reward_verifications" USING btree ("network","network_transaction_id");--> statement-breakpoint
-CREATE INDEX "ad_reward_verifications_project" ON "ad_reward_verifications" USING btree ("project_id","created_at");
+CREATE INDEX "ad_reward_verifications_project" ON "ad_reward_verifications" USING btree ("project_id","created_at");--> statement-breakpoint
+CREATE INDEX "sdk_events_project_type_time" ON "sdk_events" USING btree ("project_id","type","occurred_at");

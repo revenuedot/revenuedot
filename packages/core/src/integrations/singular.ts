@@ -1,4 +1,4 @@
-import { DOCS, REPORTING, attr, conceptOf, defaultAnalyticsName, isSandbox, nameFor, platformOf, revenueUsd, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
+import { DOCS, REPORTING, attr, conceptOf, defaultAnalyticsName, isSandbox, nameFor, platformOf, revenueUsd, secretForms, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
 import { isAnonymous } from "../ids.js";
 
 /**
@@ -76,7 +76,7 @@ export async function buildSingular(i: BuildInput): Promise<Plan> {
     requests: [v1
       ? { method: "GET", url: `${SINGULAR_HOST}/v1/evt?${p.toString()}`, headers: {}, body: "" }
       : { method: "POST", url: `${SINGULAR_HOST}/v2/evt`, headers: { "content-type": "application/x-www-form-urlencoded" }, body: p.toString() }],
-    redact: [...new Set([key, encodeURIComponent(key)])],
+    redact: secretForms(key),
   };
 }
 

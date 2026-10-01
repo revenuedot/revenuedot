@@ -1,5 +1,5 @@
 {
-  "id": "1f1c7367-e6f0-446d-b4f1-d2d54720846b",
+  "id": "f8aedc4b-6a36-4bcc-835d-92bbc77080dd",
   "prevId": "20aaf788-eb84-4271-a10c-4287da3cd33a",
   "version": "7",
   "dialect": "postgresql",
@@ -5681,6 +5681,33 @@
           "columns": [
             {
               "expression": "customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sdk_events_project_type_time": {
+          "name": "sdk_events_project_type_time",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

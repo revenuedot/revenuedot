@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { buildIntegration, sendsEvent, type IntegrationKind } from "@revenuedot/core/integrations";
 import { webEnv, type WebEnv } from "../../../packages/contract/src/web-env.js";
+import { FUNNEL_CLIENT_RETENTION_MS, purgeFunnelClientContext } from "../src/services/web/funnels.js";
+import { tick } from "../src/services/tick.js";
 
 /**
  * Funnel events to ad networks (Batch D item 5; prd/integrations/PRD.md "Funnel events to ad networks"): when an
@@ -24,12 +26,12 @@ async function publishedFunnel() {
   return f;
 }
 
-async function visit(f: any, query: Record<string, string>) {
+async function visit(f: any, query: Record<string, string>, headers: Record<string, string> = {}) {
   const html = await (await env.raw(`${f.url}?${new URLSearchParams(query)}`)).text();
   const session = /"session_id":"([0-9a-f]{32})"/.exec(html)![1]!;
   const visitor = /"visitor_id":"(\$RCAnonymousID:[0-9a-f]{32})"/.exec(html)![1]!;
   const send = (json: Record<string, unknown>) => env.raw("http://localhost/pay/api/events", {
-    method: "POST", headers: { "user-agent": UA, "cf-connecting-ip": "203.0.113.9" },
+    method: "POST", headers: { "user-agent": UA, "cf-connecting-ip": "203.0.113.9", ...headers },
     json: { funnel_id: f.id, session_id: session, app_user_id: visitor, query, page_url: f.url, ...json },
   });
   return { session, visitor, send };
@@ -96,9 +98,43 @@ describe("funnel events to ad networks", () => {
     const afBody = "requests" in afPlan ? JSON.parse(afPlan.requests[0]!.body) : null;
     expect(afBody).toMatchObject({ event_name: "rd_funnel_purchase", event_revenue_currency: "USD", user_id: { customer_user_id: v.visitor }, event_value: { funnel_id: f.id, fbclid: "IwAR3abc" } });
 
+    // The visitor's IP address and user agent are removed after 7 days, from funnel_events and the stored events.
+    expect(await purgeFunnelClientContext(env.h.db, new Date(now.getTime() + FUNNEL_CLIENT_RETENTION_MS - 60_000))).toBe(0);
+    const later = new Date(now.getTime() + FUNNEL_CLIENT_RETENTION_MS + 60_000);
+    await tick(env.h.db, later, (async () => new Response("{}")) as typeof fetch, { exports: false, winback: false, consumption: false, admob: false, purgeFunnelClients: true });
+    for (const row of await env.h.db.select().from(schema.funnelEvents)) {
+      expect(row.properties).not.toHaveProperty("client_ip");
+      expect(row.properties).not.toHaveProperty("client_user_agent");
+    }
+    for (const t of ["FUNNEL_VIEWED", "FUNNEL_STEP_COMPLETED", "FUNNEL_PURCHASE"]) {
+      for (const e of await env.events(t)) {
+        expect(e, t).not.toHaveProperty("client_ip");
+        expect(e, t).not.toHaveProperty("client_user_agent");
+        expect(e, t).toMatchObject({ page_url: f.url, click_ids: { fbclid: "IwAR3abc" } });
+      }
+    }
+    expect(await purgeFunnelClientContext(env.h.db, later)).toBe(0);
+
     // Partners that match only by mobile device ids never queue funnel events.
     for (const k of ["adjust", "kochava", "singular", "tenjin", "airbridge"] as IntegrationKind[]) expect(sendsEvent(k, purchase), k).toBe(false);
     for (const k of ["meta", "google_tag_manager", "branch", "appsflyer"] as IntegrationKind[]) expect(sendsEvent(k, purchase), k).toBe(true);
+  });
+
+  it("stores no visitor IP or user agent when only integrations that do not use them ask for funnel events", async () => {
+    env = await webEnv();
+    await env.setupWeb();
+    const seg = await env.api("POST", `${P()}/integrations/partners`, { type: "segment", environment: null, event_types: ["funnel_viewed"], settings: { write_key: "wk" } });
+    expect(seg.status).toBe(201);
+    const f = await publishedFunnel();
+    const v = await visit(f, { fbclid: "IwAR3abc" });
+    await v.send({ type: "funnel_viewed" });
+    const [row] = await env.h.db.select().from(schema.funnelEvents);
+    expect(row!.properties).toMatchObject({ page_url: f.url, click_ids: { fbclid: "IwAR3abc" } });
+    expect(row!.properties).not.toHaveProperty("client_ip");
+    expect(row!.properties).not.toHaveProperty("client_user_agent");
+    const viewed = (await env.events("FUNNEL_VIEWED"))[0]!;
+    expect(viewed).not.toHaveProperty("client_ip");
+    expect(viewed).not.toHaveProperty("client_user_agent");
   });
 
   it("stores no visitor IP when no integration asks for funnel events", async () => {
@@ -112,5 +148,18 @@ describe("funnel events to ad networks", () => {
     expect(row!.properties).toMatchObject({ click_ids: { fbclid: "IwAR3abc" } });
     expect(row!.properties).not.toHaveProperty("client_ip");
     expect((await env.events("FUNNEL_VIEWED"))[0]).not.toHaveProperty("client_user_agent");
+  });
+
+  it("a visitor with Global Privacy Control on shares no click ids, IP or user agent, even with Meta asking", async () => {
+    env = await webEnv();
+    await env.setupWeb();
+    await env.api("POST", `${P()}/integrations/partners`, { type: "meta", environment: null, event_types: ["funnel_viewed"], settings: { dataset_id: "111", access_token: "EAAB_live", sandbox_dataset_id: "222", sandbox_access_token: "EAAB_sbx" } });
+    const f = await publishedFunnel();
+    const v = await visit(f, { fbclid: "IwAR3abc", utm_source: "facebook" }, { "sec-gpc": "1" });
+    expect((await v.send({ type: "funnel_viewed" })).status).toBe(204);
+    const [row] = await env.h.db.select().from(schema.funnelEvents);
+    expect(row!.properties).toEqual({ utm_source: "facebook" });
+    const viewed = (await env.events("FUNNEL_VIEWED"))[0]!;
+    for (const k of ["client_ip", "client_user_agent", "click_ids", "page_url"]) expect(viewed).not.toHaveProperty(k);
   });
 });

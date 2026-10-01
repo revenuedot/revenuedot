@@ -1,5 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
-import { FAILURE_MESSAGES, matchRewardRule, rewardAnswer, ruleCurrencyAmount, type SdkReward } from "@revenuedot/core/ads";
+import { adUnitMatches, FAILURE_MESSAGES, matchRewardRule, rewardAnswer, ruleCurrencyAmount, type SdkReward } from "@revenuedot/core/ads";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { findCustomer, getOrCreateCustomer, type CustomerRow } from "../../repo/customers.js";
@@ -48,6 +48,11 @@ export async function recordReward(db: DB, cb: RewardCallback, kick?: () => void
     if (byClient) return { row: byClient, created: false };
   }
 
+  // Google signs every publisher's callbacks with the same keys, and the SDK key in custom_data ships in the app, so a
+  // signature alone does not prove the ad was this project's: an AdMob callback must name one of the project's ad units.
+  if (!byNetwork && cb.network === "admob" && !(await knownAdUnit(db, cb.projectId, cb.adUnitId))) {
+    return { row: await claim(db, cb, null, "failed", "unknown_ad_unit"), created: true };
+  }
   const appUserId = cb.appUserId.trim().slice(0, 256);
   if (!appUserId) {
     const row = await claim(db, cb, null, "failed", "missing_user");
@@ -75,9 +80,19 @@ export async function recordReward(db: DB, cb: RewardCallback, kick?: () => void
   return { row: done!, created: !byNetwork };
 }
 
+/** Whether an ad unit is the project's: loaded from its AdMob account, or named on one of its reward rules. */
+async function knownAdUnit(db: DB, projectId: string, adUnitId: string | null): Promise<boolean> {
+  if (!adUnitId?.trim()) return false;
+  const [units, rules] = await Promise.all([
+    db.select({ id: schema.adUnits.adUnitId }).from(schema.adUnits).where(and(eq(schema.adUnits.projectId, projectId), eq(schema.adUnits.network, "admob"))),
+    db.select({ id: schema.adRewardRules.adUnitId }).from(schema.adRewardRules).where(eq(schema.adRewardRules.projectId, projectId)),
+  ]);
+  return [...units, ...rules].some((x) => adUnitMatches(x.id, adUnitId));
+}
+
 async function claim(db: DB, cb: RewardCallback, customer: CustomerRow | null, status: string, failure: string | null): Promise<Row> {
   const [row] = await db.insert(V).values({
-    id: newId("adrw_", 16), projectId: cb.projectId, appId: cb.app?.id ?? null, customerId: customer?.id ?? null, appUserId: cb.appUserId.slice(0, 256),
+    id: newId("adrw_", 16), projectId: cb.projectId, appId: cb.app?.id ?? null, customerId: customer?.id ?? null, appUserId: cb.appUserId.trim().slice(0, 256),
     clientTransactionId: cb.clientTransactionId, network: cb.network, networkTransactionId: cb.networkTransactionId, adUnitId: cb.adUnitId, impressionId: cb.impressionId,
     rewardItem: cb.rewardItem, rewardAmount: cb.rewardAmount, status, failureReason: failure, isSandbox: cb.isSandbox, occurredAt: cb.occurredAt, createdAt: cb.now,
   }).onConflictDoNothing().returning();
@@ -141,10 +156,9 @@ async function grant(db: DB, rule: typeof schema.adRewardRules.$inferSelect, row
 export async function pollReward(db: DB, projectId: string, appUserId: string, clientTransactionId: string) {
   const [row] = await db.select().from(V).where(and(eq(V.projectId, projectId), eq(V.clientTransactionId, clientTransactionId))).limit(1);
   if (!row || row.status === "granting") return rewardAnswer(null);
-  if (row.status === "verified" && row.customerId) {
-    const cust = await findCustomer(db, projectId, appUserId);
-    if (!cust || cust.id !== row.customerId) return rewardAnswer({ status: "failed", rewards: [], failureReason: "user_mismatch" });
-  }
+  // Another customer's verification says nothing about it: not its rewards, not why it failed.
+  const owner = row.customerId ? (await findCustomer(db, projectId, appUserId))?.id === row.customerId : row.appUserId === appUserId || !row.appUserId;
+  if (!owner) return rewardAnswer({ status: "failed", rewards: [], failureReason: "user_mismatch" });
   return rewardAnswer({ status: row.status, rewards: row.rewards, failureReason: row.failureReason });
 }
 

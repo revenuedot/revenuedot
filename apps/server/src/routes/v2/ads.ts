@@ -5,7 +5,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { loadAdsOverview, type AdsRange } from "../../services/ads/overview.js";
 import { recordReward, verificationShape } from "../../services/ads/rewards.js";
-import { AdMobError, admobConfigured, admobRow, admobShape, disconnectAdMob, startAdMobConnect, syncAdMob } from "../../services/ads/admob.js";
+import { AdMobError, admobConfigured, admobRow, admobShape, disconnectAdMob, finishAdMobConnect, startAdMobConnect, syncAdMob } from "../../services/ads/admob.js";
 import { depsSecretKey } from "../../services/secrets.js";
 import { AppleAdsError, appleAdsReport, syncAppleAdsNames } from "../../services/ads/apple-ads.js";
 import { periodDays } from "@revenuedot/core/ads";
@@ -23,7 +23,8 @@ import { V2Error, body, listOf, notFound, pageParams, paramError, scope, type V2
  *   GET    /v2/projects/{project_id}/ads/reward_verifications             the rewards ledger (?status=, ?app_user_id=)
  *   POST   /v2/projects/{project_id}/ads/reward_verifications/test        a test reward through the same grant path
  *   GET    /v2/projects/{project_id}/ads/admob                            AdMob connection and loaded ad units
- *   POST   /v2/projects/{project_id}/ads/admob/connect                    Google's authorization URL
+ *   POST   /v2/projects/{project_id}/ads/admob/connect                    Google's authorization URL and the browser's nonce
+ *   POST   /v2/projects/{project_id}/ads/admob/finish                     { code, state, nonce } from Google's redirect
  *   POST   /v2/projects/{project_id}/ads/admob/refresh                    reload ad units now
  *   DELETE /v2/projects/{project_id}/ads/admob                            disconnect
  *   GET    /v2/projects/{project_id}/ads/apple_search_ads/report             customers and revenue by campaign
@@ -52,6 +53,7 @@ const TestIn = z.object({
   reward_item: z.string().trim().max(200).nullable().optional(), reward_amount: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
   client_transaction_id: z.string().trim().min(1).max(128).optional(),
 }).strict();
+const FinishIn = z.object({ code: z.string().min(1).max(2000), state: z.string().min(1).max(300), nonce: z.string().max(200) }).strict();
 const ConnectIn = z.object({ client_id: z.string().trim().max(300).nullable().optional(), client_secret: z.string().trim().max(500).nullable().optional() }).strict();
 
 type RuleRow = typeof schema.adRewardRules.$inferSelect;
@@ -170,7 +172,8 @@ export function adsRoutes(r: V2Router, deps: Deps) {
     return c.json(listOf(c, page.map(verificationShape), rows.length > limit ? page[page.length - 1]!.id : null));
   });
 
-  r.post(`${P}/reward_verifications/test`, scope("project_configuration:integrations:read_write"), async (c) => {
+  // A test reward grants real currency or an entitlement to the customer, like a balance adjustment does.
+  r.post(`${P}/reward_verifications/test`, scope("project_configuration:integrations:read_write", "customer_information:purchases:read_write"), async (c) => {
     const projectId = c.get("projectId");
     const b = await body(c, TestIn);
     let app: { id: string; type: string } | null = null;
@@ -201,20 +204,31 @@ export function adsRoutes(r: V2Router, deps: Deps) {
   r.post(`${P}/admob/connect`, scope("project_configuration:integrations:read_write"), async (c) => {
     const projectId = c.get("projectId");
     const b = await body(c, ConnectIn);
-    const p = c.get("principal");
     if (b.client_id && !/^[\w.-]+\.apps\.googleusercontent\.com$/.test(b.client_id)) throw paramError("client_id: a Google OAuth client ID ends in .apps.googleusercontent.com.", "client_id");
     const existing = await admobRow(db, projectId);
     if (b.client_id && !b.client_secret && !existing?.secretHints.client_secret) throw paramError("client_secret: enter the OAuth client's secret.", "client_secret");
     try {
-      const url = await startAdMobConnect(await admobDeps(), {
-        projectId, userId: p.kind === "user" ? p.userId : null, redirectUri: `${deps.apiUrl ?? publicOrigin(c)}/v1/ads/admob/oauth/callback`,
+      const { url, nonce } = await startAdMobConnect(await admobDeps(), {
+        projectId, redirectUri: `${deps.apiUrl ?? publicOrigin(c)}/v1/ads/admob/oauth/callback`,
         ...(b.client_id !== undefined ? { clientId: b.client_id, clientSecret: b.client_secret ?? null } : {}),
       });
-      return c.json({ object: "admob_authorization", url });
+      return c.json({ object: "admob_authorization", url, nonce });
     } catch (e) {
       if (e instanceof AdMobError) throw new V2Error(e.code === "not_configured" ? 422 : 502, "invalid_request", e.message);
       throw e;
     }
+  });
+
+  r.post(`${P}/admob/finish`, scope("project_configuration:integrations:read_write"), async (c) => {
+    const projectId = c.get("projectId");
+    const b = await body(c, FinishIn);
+    try {
+      await finishAdMobConnect(await admobDeps(), { projectId, state: b.state, code: b.code, nonce: b.nonce });
+    } catch (e) {
+      if (e instanceof AdMobError) throw new V2Error(e.code === "state" ? 400 : e.code === "not_configured" ? 422 : 502, "invalid_request", e.message);
+      throw e;
+    }
+    return c.json(await admobView(projectId, publicOrigin(c)));
   });
 
   r.post(`${P}/admob/refresh`, scope("project_configuration:integrations:read_write"), async (c) => {

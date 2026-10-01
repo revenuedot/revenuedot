@@ -157,21 +157,29 @@ export interface RewardRule {
 export interface RewardInput { appId: string | null; adUnitId: string | null; rewardItem: string | null; rewardAmount: number | null }
 
 /** The first enabled rule (by position) whose app, ad unit and reward item match; an empty rule field matches anything. */
+const norm = (s: string | null | undefined) => (s ?? "").trim();
+
+/** AdMob's callback names the unit "1234567890" while the SDK and the AdMob API say "ca-app-pub-…/1234567890": either form matches. */
+export function adUnitMatches(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = norm(a), y = norm(b);
+  return !!x && !!y && (x === y || x.endsWith(`/${y}`) || y.endsWith(`/${x}`));
+}
+
 export function matchRewardRule<R extends RewardRule>(rules: R[], r: RewardInput): R | null {
-  const norm = (s: string | null | undefined) => (s ?? "").trim();
-  // AdMob's callback names the unit "1234567890" while the SDK sends "ca-app-pub-…/1234567890": either form matches.
-  const unitMatches = (rule: string, got: string) => rule === got || rule.endsWith(`/${got}`) || got.endsWith(`/${rule}`);
   return [...rules].sort((a, b) => a.position - b.position).find((x) =>
     x.enabled
     && (!x.appId || x.appId === r.appId)
-    && (!norm(x.adUnitId) || (!!norm(r.adUnitId) && unitMatches(norm(x.adUnitId), norm(r.adUnitId))))
+    && (!norm(x.adUnitId) || adUnitMatches(x.adUnitId, r.adUnitId))
     && (!norm(x.rewardItem) || norm(x.rewardItem).toLowerCase() === norm(r.rewardItem).toLowerCase())) ?? null;
 }
 
+/** The most one reward grants (and the most a network's reward amount counts for): the ledger's amounts are 32-bit. */
+export const MAX_REWARD_AMOUNT = 1_000_000_000;
+
 /** The currency amount a rule grants: its fixed amount, or the network's amount times the multiplier (rounded, at least 1). */
 export function ruleCurrencyAmount(rule: RewardRule, networkAmount: number | null): number {
-  if (rule.multiplier !== null && rule.multiplier !== undefined) return Math.max(1, Math.round((networkAmount ?? 0) * rule.multiplier));
-  return Math.max(0, rule.amount ?? 0);
+  const n = rule.multiplier !== null && rule.multiplier !== undefined ? Math.max(1, Math.round(Math.max(0, networkAmount ?? 0) * rule.multiplier)) : Math.max(0, rule.amount ?? 0);
+  return Number.isFinite(n) ? Math.min(MAX_REWARD_AMOUNT, n) : MAX_REWARD_AMOUNT;
 }
 
 export type SdkReward = { type: "virtual_currency"; code: string; amount: number } | { type: "entitlement"; identifier: string; expires_at: string };
@@ -191,6 +199,7 @@ export const FAILURE_MESSAGES: Record<string, string> = {
   user_mismatch: "The ad network's user id is not this customer.",
   missing_user: "The ad network's callback has no user id. Pass the app user id to the network's server-side verification options.",
   grant_failed: "The reward rule names an in-app currency or entitlement that no longer exists.",
+  unknown_ad_unit: "The callback's ad unit is not one of this project's. Connect AdMob, or name the ad unit on a reward rule.",
 };
 
 // ---------- AdMob server-side verification ----------
@@ -207,17 +216,27 @@ export interface AdMobCallback {
 
 /**
  * Splits AdMob's SSV query (https://developers.google.com/admob/android/ssv). `signature` and `key_id` are always the
- * last two parameters; everything before `&signature=` is what Google signed, byte for byte as it arrived.
- * Returns null when the query has no signature (Google's "Verify URL" check calls with no parameters).
+ * last two parameters; everything before `&signature=` is what Google signed, byte for byte as it arrived. The
+ * parameters are read from the signed part only, and nothing may follow `key_id`, so an appended `user_id`,
+ * `custom_data` or `transaction_id` cannot override the signed one.
+ * Returns null when the query is not that shape (Google's "Verify URL" check calls with no parameters).
  */
 export function parseAdMobCallback(rawQuery: string): AdMobCallback | null {
   const q = rawQuery.startsWith("?") ? rawQuery.slice(1) : rawQuery;
   const at = q.indexOf("&signature=");
   if (at < 0) return null;
-  const params: Record<string, string> = {};
-  for (const [k, v] of new URLSearchParams(q)) params[k] = v;
-  if (!params.signature || !params.key_id) return null;
-  return { message: q.slice(0, at), signature: params.signature, keyId: params.key_id, params };
+  const tail = /^signature=([A-Za-z0-9_=+/%-]{1,600})&key_id=(\d{1,20})$/.exec(q.slice(at + 1));
+  if (!tail) return null;
+  let signature: string;
+  try { signature = decodeURIComponent(tail[1]!); } catch { return null; }
+  const message = q.slice(0, at);
+  const params: Record<string, string> = Object.create(null);
+  for (const [k, v] of new URLSearchParams(message)) {
+    // A signed query names each parameter once; a repeat is not one Google sent.
+    if (Object.hasOwn(params, k)) return null;
+    params[k] = v;
+  }
+  return { message, signature, keyId: tail[2]!, params };
 }
 
 /** The SDK's `customData`: `{"api_key","client_transaction_id","impression_id"}`; null when it is not that. */

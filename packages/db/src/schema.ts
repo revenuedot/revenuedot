@@ -657,7 +657,9 @@ export const sdkEvents = pgTable("sdk_events", {
   occurredAt: ts("occurred_at").notNull(),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
   receivedAt: ts("received_at").notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.projectId, t.id] }), index("sdk_events_project_time").on(t.projectId, t.occurredAt), index("sdk_events_customer").on(t.customerId)]);
+}, (t) => [primaryKey({ columns: [t.projectId, t.id] }), index("sdk_events_project_time").on(t.projectId, t.occurredAt), index("sdk_events_customer").on(t.customerId),
+  // The Ads Overview reads one project's ad events by type and time (prd/ads/PRD.md).
+  index("sdk_events_project_type_time").on(t.projectId, t.type, t.occurredAt)]);
 
 /** One row per customer per UTC day on which the SDK called us (the Active Customers chart). `day` is YYYY-MM-DD. */
 export const customerActivity = pgTable("customer_activity", {
