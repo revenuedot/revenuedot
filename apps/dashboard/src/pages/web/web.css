@@ -111,9 +111,9 @@ td.amt.down{color:var(--down)}
 .wb-codelist li .mono{flex:1}
 
 /* Domains */
-.wb-slug{flex-wrap:nowrap}
-.wb-slug .input{flex:1;min-width:0}
-.wb-slug>.subtle{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50%}
+.wb-slug{flex-wrap:wrap}
+.wb-slug .input{flex:1 1 200px;min-width:0}
+.wb-slug>.subtle{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .wb-dns{border:1px solid var(--border)}
 
 @media (max-width:1180px){.fb-grid{grid-template-columns:280px minmax(0,1fr)}.fa-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.fa-stats>div:nth-child(3){border-right:0}.fa-stats>div:nth-child(-n+3){border-bottom:1px solid var(--border)}}
@@ -122,8 +122,10 @@ td.amt.down{color:var(--down)}
 @media (max-width:640px){
   .wb-colors,.wb-checks{grid-template-columns:minmax(0,1fr)}
   .fa-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .wb-slug{flex-wrap:wrap}.wb-slug>.subtle{max-width:100%}
   .wb-url{max-width:180px}
   .wb-phone-screen{height:620px}
   .wb-empty{padding:28px 16px 16px}
 }
+/* The builder's name keeps a usable width; the actions wrap under it on narrow screens. */
+.fb .pe-title{min-width:min(100%,320px)}
+.fb .pe-meta{min-width:0}

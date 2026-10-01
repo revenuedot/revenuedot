@@ -42,6 +42,9 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
   /** Screenshot at 1440×900 and, unless `wide`, again at 390px wide. */
   const shot = async (name: string, o: { wide?: boolean; full?: boolean } = {}) => {
     if (!SHOTS) return;
+    // No toast, and the page (or the open dialog) scrolled to the top.
+    await page.locator(".toast").waitFor({ state: "detached", timeout: 5_000 }).catch(() => {});
+    await page.evaluate(() => { for (const el of document.querySelectorAll(".scroll, .dialog")) el.scrollTop = 0; });
     await page.waitForTimeout(250);
     await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: o.full });
     if (o.wide) return;
@@ -120,11 +123,11 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     await d.getByLabel("Deep link scheme").fill("scanner");
     await expect(d.locator(".copyfield code")).toHaveText("scanner://redeem_web_purchase?redemption_token=…");
     await d.getByLabel("App Store URL").fill("https://apps.apple.com/app/id123");
+    await shot("web-config");
     await d.getByLabel("Logo URL").fill("http://insecure.example/logo.png");
     await d.getByRole("button", { name: "Save web config" }).click();
     await expect(d.getByText("must be an https URL", { exact: false })).toBeVisible();
     await d.getByLabel("Logo URL").fill("");
-    await shot("web-config");
     await d.getByRole("button", { name: "Save web config" }).click();
     await toast("Web config saved.");
     const cfg = await ok("GET", `${P}/apps/${stripeId}/web_config`);
@@ -424,5 +427,5 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
   });
 
   // Hosted pages are not the dashboard: count only the dashboard's own errors and script errors anywhere.
-  expect(errors.filter((x) => !/Content Security Policy|status of 4\d\d/.test(x))).toEqual([]);
+  expect(errors.filter((x) => !/status of 4\d\d/.test(x))).toEqual([]);
 });
