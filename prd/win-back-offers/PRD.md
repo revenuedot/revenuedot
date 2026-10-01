@@ -47,7 +47,8 @@ Later
 - `GET /v2/projects/{project_id}/customers/{customer_id}/win_back_offers` (scope `customer_information:subscriptions:read`): one item per App Store subscription chain with `{ object: "win_back_offer_eligibility", subscription_id, product_id, offer_ids, updated_at }`. `offer_ids` is Apple's list, best offer first; empty when Apple says none.
 
 ## Tests that prove it
-- `packages/contract/test/win-back.test.ts`: a lapsed App Store customer comes back with a signed win-back transaction (`offerType` 4) through `POST /v1/receipts`; the customer info shows the subscription active with the right period type, the webhook is `RENEWAL` with `offer_code`, the transaction row and the export carry `win_back`, and the eligibility endpoint returns the offer ids from the renewal info. A streamlined purchase arrives as an App Store notification and reaches the same customer. Google Play offers are classified from `offerPhase` and `offerDetails`.
+- `apps/server/test/win-back.test.ts`: a lapsed App Store customer comes back with a signed win-back transaction (`offerType` 4) through `POST /v1/receipts`; the customer info shows the subscription active with the right period type, the webhook is `RENEWAL` with `offer_code`, the transaction row and the export carry `win_back`, and the eligibility endpoint returns the offer ids from the renewal info. A streamlined purchase arrives as an App Store notification and reaches the same customer. A free win-back period is a TRIAL. Apple's `offerType` 1 to 4 and Google Play's offer phases are classified as above.
+- `packages/contract/test/webhook-payloads.test.ts` keeps `offer_code` in every lifecycle payload (null without an offer).
 
 ## Known gaps
 - No real win-back offer has been redeemed: it needs an approved subscription in App Store Connect and a sandbox device.
