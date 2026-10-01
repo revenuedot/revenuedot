@@ -14,6 +14,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { Checks } from "./lib/check.ts";
 import type { Ctx } from "./lib/context.ts";
+import { fakeAnthropic } from "./lib/fake-anthropic.ts";
 import { BUILD, Capture, PORTS, RdServer, ROOT, createDatabase, dropDatabase, hideUrls, postgres, startSmtpSink, writeJson } from "./lib/stack.ts";
 
 export interface Journey { name: string; title: string; heavy?: boolean; needsDashboard?: boolean; run: (ctx: Ctx) => Promise<void> }
@@ -30,6 +31,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   "ads-rewards": () => import("./ads-rewards.ts"),
   importer: () => import("./importer.ts"),
   "dashboard-ui": () => import("./dashboard-ui.ts"),
+  assistant: () => import("./assistant.ts"),
   ios: () => import("./ios.ts"),
   android: () => import("./android.ts"),
   "self-host": () => import("./self-host.ts"),
@@ -56,6 +58,8 @@ async function main() {
   const smtp = await startSmtpSink(PORTS.smtp);
   const capture = new Capture(PORTS.capture);
   await capture.start();
+  // Model calls (RevenueDot AI, paywall and funnel generators) reach a scripted Messages API on the capture server.
+  capture.handlers.push(fakeAnthropic);
   const server = new RdServer({ databaseUrl, port: PORTS.server, smtpPort: PORTS.smtp, capturePort: PORTS.capture, logDir: runDir });
   const sql = postgres(databaseUrl, { max: 4, onnotice: () => {} });
   const summary: Array<{ journey: string; title: string; passed: number; failed: number; error?: string; ms: number }> = [];

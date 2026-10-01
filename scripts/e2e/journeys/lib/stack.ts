@@ -232,6 +232,8 @@ export class RdServer {
       RD_JOURNEY_ROUTES: JSON.stringify({ "*": `http://127.0.0.1:${this.o.capturePort}` }),
       RD_JOURNEY_ALLOW: OUTBOUND_ALLOW.join(","), RD_JOURNEY_BLOCK: OUTBOUND_BLOCK.join(","), RD_JOURNEY_OUTBOUND_LOG: this.outboundLog,
       DASHBOARD_DIST: join(ROOT, "apps/dashboard/dist"),
+      // A made-up Anthropic key: model calls go to the scripted Messages API (fake-anthropic.ts); no real model is called.
+      ANTHROPIC_API_KEY: "sk-ant-journey-fake-model", OPENAI_API_KEY: "",
       ...this.o.env,
     };
     this.child = spawn(process.execPath, ["--import", tsxLoader, "--import", join(HERE, "outbound-preload.mjs"), join(ROOT, "apps/server/src/entry.node.ts")], {
