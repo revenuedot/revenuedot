@@ -74,7 +74,7 @@ Source (secret key with `project_configuration:projects:read_write`, or an Admin
 Target:
 - `POST /v2/imports/tokens` (session; on Cloud a verified email) → `{ token: "rdi_…", expires_at }`, shown once.
 - `POST /v2/imports` (`Authorization: Bearer rdi_…`) `{ manifest, passphrase?, dry_run?, replace? }` → the import (`id`, `project_id`, `plan`): schema check, conflicts (project id, public keys, slugs, domains), and per table the rows the target has now. `dry_run` writes nothing.
-- `PUT /v2/imports/{import_id}/files/{name}`: one file; its SHA-256 must match the manifest. Tables upsert by primary key, only rows of this project; a file already applied answers `{ applied: false }`.
+- `PUT /v2/imports/{import_id}/files/{name}`: one file; its SHA-256 must match the manifest. Tables upsert by primary key, only rows of this project; a file already applied answers `{ applied: false }`. Sending a new manifest to the same import starts the incoming copy over.
 - `POST /v2/imports/{import_id}/members` with `members.json`.
 - `POST /v2/imports/{import_id}/verify` → per table `rows` and `checksum` recomputed on the target (multi-call: answers `done: false` with a cursor until finished).
 - `POST /v2/imports/{import_id}/finish` → the project goes live on the target and the answer lists the store notification URLs to change.
@@ -96,7 +96,7 @@ npx revenuedot move --from http://old-server:8787 --to https://api.revenuedot.ap
 - Asks for the source secret key and the target import token with hidden input (or `REVENUEDOT_FROM_KEY`, `REVENUEDOT_TO_TOKEN`).
 - Steps: export on the source (driven with `advance`), check on the target (`dry_run` diff: rows per table there now against the archive), copy every file (skipping files the state file says are done), the secrets and members, verify, and print the store notification URLs to change.
 - `--dry-run` stops after the diff and writes nothing on either server.
-- `--finish` (run after a copy, or alone): pause the source, wait 10 seconds, copy again (only changed files are sent), verify, put the target live, forward the source. Any failure before "target live" cancels the pause, so the source keeps serving.
+- `--finish` (run after a copy, or alone): pause the source, wait 10 seconds, copy again (the target's incoming copy starts over, so rows deleted on the source since the first copy do not linger), verify, put the target live, forward the source. A verification failure cancels the pause, so the source keeps serving.
 - `--from-archive <file.tar>` reads an archive downloaded with `npx revenuedot export` instead of a server.
 - Exit codes: 0 done, 1 failed or verification found differences, 2 usage error, 130 cancelled.
 

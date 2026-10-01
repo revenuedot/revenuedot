@@ -110,8 +110,8 @@ export function authRoutes(deps: Deps) {
     if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
     return c.json({
       user: { id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails },
-      // Every cloud account is on the free plan until billing plans ship; self-hosted servers have no plan.
-      account: { edition: deps.edition ?? "self-hosted", plan: u.plan, email_verification_required: needsVerification(deps, u) },
+      // Cloud: the plan and billing status (prd/cloud-billing/PRD.md); self-hosted servers have no plan.
+      account: { edition: deps.edition ?? "self-hosted", plan: u.plan, billing_status: deps.edition === "cloud" ? (await deps.db.select({ s: schema.billingAccounts.status }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)))[0]?.s ?? "none" : null, email_verification_required: needsVerification(deps, u) },
       projects: await projectsForUser(deps.db, u.id),
     });
   });
