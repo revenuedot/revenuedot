@@ -5,6 +5,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { connectPostgres, type DB } from "@revenuedot/db/worker";
 import { createApp } from "./app.js";
+import { API_PATH } from "./api-paths.js";
 import { defaultStores } from "./stores/index.js";
 import { tick } from "./services/tick.js";
 import { cloudflareMailer, logMailer, type SendEmailBinding } from "./mail/index.js";
@@ -30,8 +31,6 @@ export interface Env {
 const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
 const publicUrlFor = (env: Env) => env.REVENUEDOT_PUBLIC_URL || "https://app.revenuedot.app";
 
-/** Paths the API owns. Everything else on app.revenuedot.app is the dashboard. */
-const API_PATH = /^\/(v1|v2|auth|rcbilling|\.well-known)(\/|$)/;
 
 interface RequestScope { db: DB; pending: Promise<unknown>[] }
 const scope = new AsyncLocalStorage<RequestScope>();

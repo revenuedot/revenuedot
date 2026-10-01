@@ -104,6 +104,16 @@ await check("dashboard /login renders the single-page app", async () => {
   return "index.html";
 });
 
+// MCP clients send people to /oauth/authorize on the dashboard host (their session cookie lives there). It must be the
+// consent page, not the dashboard's index.html.
+await check("OAuth consent page is served on the dashboard host, not the single-page app", async () => {
+  const r = await req("GET", "/oauth/authorize?response_type=code", { url: appBase });
+  assert(r.status === 400 && /Cannot connect/.test(r.raw) && !/<script type="module"/i.test(r.raw), `status ${r.status}, body ${r.raw.slice(0, 120)}`);
+  const m = await req("GET", "/.well-known/oauth-authorization-server", { url: appBase });
+  assert(m.status === 200 && m.body?.authorization_endpoint === `${appBase}/oauth/authorize`, `metadata ${m.raw.slice(0, 160)}`);
+  return "consent page";
+});
+
 await check("dashboard deep link falls back to index.html", async () => {
   const r = await req("GET", "/projects/smoke/customers/deep/link", { url: appBase });
   assert(r.status === 200 && /<script type="module"/i.test(r.raw), `status ${r.status}`);
