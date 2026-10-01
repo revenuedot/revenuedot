@@ -89,6 +89,9 @@ describe("renderFunnelPage", () => {
     expect(html).toContain("mailto:help@scanner.example");
     expect(html).toContain("Have a discount code?");
     expect(html).toContain('"funnel_id":"fnl_1"');
+    // The pages' CSP allows no inline style attributes (only the nonce'd <style>).
+    expect(html).not.toMatch(/ style="/);
+    expect(renderMessagePage({ title: "x", body: "y", action: { label: "Go", href: "https://x.example" } })).not.toMatch(/ style="/);
   });
 
   it("escapes every text, refuses unsafe URLs and colours, and keeps the data script closed", () => {

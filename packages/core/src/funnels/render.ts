@@ -113,8 +113,9 @@ body{font:500 16px/1.5 Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",Robot
 .wrap{width:100%;max-width:480px;margin:0 auto;padding:16px 20px 32px;flex:1;display:flex;flex-direction:column}
 .top{display:flex;align-items:center;gap:12px;min-height:40px}
 .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:-.01em}.brand img{height:28px;width:auto;display:block}
-.back{border:0;background:none;color:var(--fg2);font:inherit;font-size:14px;cursor:pointer;padding:8px 0;margin-left:auto}
-.bar{height:3px;background:var(--line);margin:12px 0 28px}.bar i{display:block;height:100%;background:var(--ac);transition:width .25s}
+.back{border:0;background:none;color:var(--fg2);font:inherit;font-size:14px;cursor:pointer;padding:8px 0;margin-left:auto;visibility:hidden}
+.sr{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}.fine.left{text-align:left;margin-top:20px}.cta.gap{margin-top:24px}section.msg{padding-top:40px}
+.bar{height:3px;background:var(--line);margin:12px 0 28px}.bar i{display:block;width:0;height:100%;background:var(--ac);transition:width .25s}
 section{display:none;flex-direction:column;flex:1}section.on{display:flex}
 h1{font-size:28px;line-height:1.18;letter-spacing:-.03em;margin:0 0 10px;font-weight:700}
 .sub{color:var(--fg2);margin:0 0 24px;font-size:16px}
@@ -162,7 +163,7 @@ function stepHtml(s: FunnelStep, i: number, input: RenderInput): string {
     }
     case "email": {
       const value = input.context?.email ? ` value="${esc(input.context.email)}"` : "";
-      return `<section ${attrs}>${head}<label class="sr" for="email-${esc(s.id)}" style="position:absolute;left:-9999px">Email</label><input class="in" id="email-${esc(s.id)}" type="email" autocomplete="email" inputmode="email" placeholder="${esc(s.placeholder || "you@example.com")}"${value} data-email${s.required === false ? "" : " required"}><p class="err" data-err role="alert"></p><button type="button" class="cta" data-continue>${esc(s.button_label || "Continue")}</button></section>`;
+      return `<section ${attrs}>${head}<label class="sr" for="email-${esc(s.id)}">Email</label><input class="in" id="email-${esc(s.id)}" type="email" autocomplete="email" inputmode="email" placeholder="${esc(s.placeholder || "you@example.com")}"${value} data-email${s.required === false ? "" : " required"}><p class="err" data-err role="alert"></p><button type="button" class="cta" data-continue>${esc(s.button_label || "Continue")}</button></section>`;
     }
     case "paywall": {
       const pkgs = input.packages[s.offering ?? ""] ?? [];
@@ -188,7 +189,7 @@ function stepHtml(s: FunnelStep, i: number, input: RenderInput): string {
         actions = `<a class="cta" href="${esc(ok.redeem_url)}" data-redeem>Open the app</a>`;
       }
       const stores = ok && ok.status !== "processing" && (httpsOrNull(ok.app_store_url) || httpsOrNull(ok.play_store_url))
-        ? `<p class="fine" style="text-align:left;margin-top:20px">No app yet? Install it, then come back and tap Open the app.</p><div class="stores">${httpsOrNull(ok.app_store_url) ? `<a class="cta ghost" href="${esc(ok.app_store_url)}">App Store</a>` : ""}${httpsOrNull(ok.play_store_url) ? `<a class="cta ghost" href="${esc(ok.play_store_url)}">Google Play</a>` : ""}</div>` : "";
+        ? `<p class="fine left">No app yet? Install it, then come back and tap Open the app.</p><div class="stores">${httpsOrNull(ok.app_store_url) ? `<a class="cta ghost" href="${esc(ok.app_store_url)}">App Store</a>` : ""}${httpsOrNull(ok.play_store_url) ? `<a class="cta ghost" href="${esc(ok.play_store_url)}">Google Play</a>` : ""}</div>` : "";
       const link = ok?.status === "paid" && ok.redeem_url && s.show_redemption !== false ? `<p class="link">Or open this link on your phone: ${esc(ok.redeem_url)}</p>` : "";
       return `<section ${attrs}>${head}${s.body ? `<p class="body">${esc(s.body)}</p>` : ""}${actions}${stores}${link}</section>`;
     }
@@ -255,7 +256,7 @@ export function renderFunnelPage(input: RenderInput): string {
   const title = input.title ?? look.app_name;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title>` +
     `<style${nonce}>${css(funnel.theme)}</style></head><body>` +
-    `<main class="wrap"><div class="top">${brand}<button type="button" class="back" style="visibility:hidden">Back</button></div><div class="bar" aria-hidden="true"><i style="width:0"></i></div>` +
+    `<main class="wrap"><div class="top">${brand}<button type="button" class="back">Back</button></div><div class="bar" aria-hidden="true"><i></i></div>` +
     (input.notice ? `<p class="note" role="status">${esc(input.notice)}</p>` : "") + sections + `</main>` +
     (legal ? `<footer>${legal}</footer>` : "") +
     `<script type="application/json" id="rd-data">${scriptJson(data)}</script><script${nonce}>${SCRIPT}</script></body></html>`;
@@ -265,7 +266,7 @@ export function renderFunnelPage(input: RenderInput): string {
 export function renderMessagePage(o: { title: string; body: string; look?: PageLook; theme?: FunnelTheme; nonce?: string; action?: { label: string; href: string } | null }): string {
   const nonce = o.nonce ? ` nonce="${esc(o.nonce)}"` : "";
   const theme = o.theme ?? { background: "#FFFFFF", text: "#0A0A0A", accent: "#0A0A0A", button_text: "#FFFFFF", corner_radius: 0 };
-  const action = o.action ? `<a class="cta" style="margin-top:24px" href="${esc(o.action.href)}">${esc(o.action.label)}</a>` : "";
+  const action = o.action ? `<a class="cta gap" href="${esc(o.action.href)}">${esc(o.action.label)}</a>` : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(o.title)}</title><style${nonce}>${css(theme)}</style></head><body>` +
-    `<main class="wrap"><div class="top"><div class="brand">${esc(o.look?.app_name ?? "")}</div></div><section class="on" style="padding-top:40px"><h1>${esc(o.title)}</h1><p class="body">${esc(o.body)}</p>${action}</section></main></body></html>`;
+    `<main class="wrap"><div class="top"><div class="brand">${esc(o.look?.app_name ?? "")}</div></div><section class="on msg"><h1>${esc(o.title)}</h1><p class="body">${esc(o.body)}</p>${action}</section></main></body></html>`;
 }
