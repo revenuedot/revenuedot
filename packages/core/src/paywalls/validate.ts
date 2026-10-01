@@ -590,17 +590,22 @@ export function validatePaywall(doc: unknown, opts: ValidateOptions = {}): Paywa
   if (locs && strings) {
     for (const [loc, table] of Object.entries(locs)) {
       if (loc === locale || !isObj(table)) continue;
-      const missing = [...c.texts].filter((k) => !(k in table));
+      const missing = [...c.texts].filter((k) => !(k in table) || (table[k] === "" && strings[k] !== ""));
       if (missing.length) c.warnings.push({ path: `components_localizations.${loc}`, message: `${missing.length} string${missing.length === 1 ? "" : "s"} not translated; the ${locale} text shows instead.` });
     }
   }
   return { valid: c.errors.length === 0, errors: c.errors, warnings: c.warnings };
 }
 
-/** Copies the default locale's string into every other locale that lacks it, so the SDK never shows an empty text. */
+/**
+ * Copies the default locale's string into every other locale that lacks it, so the SDK never shows an empty text. An
+ * empty translation counts as missing: the editor leaves "" behind when a translation is cleared.
+ */
 export function fillLocales(localizations: Record<string, Record<string, unknown>>, defaultLocale: string) {
   const base = localizations[defaultLocale] ?? {};
   const out: Record<string, Record<string, unknown>> = {};
-  for (const [loc, table] of Object.entries(localizations)) out[loc] = loc === defaultLocale ? table : { ...base, ...table };
+  for (const [loc, table] of Object.entries(localizations)) {
+    out[loc] = loc === defaultLocale ? table : { ...base, ...Object.fromEntries(Object.entries(table).filter(([k, v]) => v !== "" || !(k in base))) };
+  }
   return out;
 }

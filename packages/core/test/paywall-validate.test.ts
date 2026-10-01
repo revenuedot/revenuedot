@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PAYWALL_TEMPLATES, iconName, paywallIconSvg, validatePaywall, type Json } from "../src/index.js";
+import { PAYWALL_TEMPLATES, fillLocales, iconName, paywallIconSvg, validatePaywall, type Json } from "../src/index.js";
 
 // Each case was found by mutating real paywalls and decoding them with the iOS SDK (scripts/e2e/paywall-decode): the SDK
 // fails to decode the whole paywall, so publishing must refuse it.
@@ -75,5 +75,16 @@ describe("icon names", () => {
       expect(paywallIconSvg(n.toLowerCase())).toBeNull();
     }
     expect(iconName("Check.png")).toBe("check");
+  });
+});
+
+describe("translations", () => {
+  it("fall back to the default locale when missing or cleared", () => {
+    const filled = fillLocales({ en_US: { a: "Hello", b: "Bye", c: "" }, de_DE: { a: "", b: "Tschüss", c: "" } }, "en_US");
+    expect(filled.de_DE).toEqual({ a: "Hello", b: "Tschüss", c: "" });
+    const d = base();
+    const key = Object.keys(d.components_localizations.en_US)[0]!;
+    d.components_localizations.de_DE = { [key]: "" };
+    expect(validatePaywall(d).warnings.some((w) => w.path === "components_localizations.de_DE")).toBe(true);
   });
 });
