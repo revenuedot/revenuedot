@@ -30,9 +30,9 @@ const compact = (o: Record<string, unknown>) => Object.fromEntries(Object.entrie
 /** Airship's occurred format: ISO 8601 without a zone (UTC). */
 const occurred = (ms: number) => new Date(ms).toISOString().slice(0, 19);
 
-function channelKey(store: unknown): string {
+function channelKey(store: unknown, sdkPlatform?: string | null): string {
   if (store === "AMAZON") return "amazon_channel";
-  const p = platformOf(store);
+  const p = platformOf(store, sdkPlatform);
   return p === "ios" ? "ios_channel" : p === "android" ? "android_channel" : "channel";
 }
 
@@ -48,7 +48,7 @@ export async function buildAirship(i: BuildInput): Promise<Plan> {
   const channel = attr(e, "$airshipChannelId")?.trim();
   const appUserId = String(e.app_user_id ?? e.original_app_user_id ?? "");
   if (!channel && (!appUserId || isAnonymous(appUserId))) return skip("Anonymous customers need the $airshipChannelId attribute: Airship knows them only by channel, or by a named user that matches the app user id.");
-  const user = channel ? { [channelKey(e.store)]: channel } : { named_user_id: appUserId };
+  const user = channel ? { [channelKey(e.store, i.context?.platform)]: channel } : { named_user_id: appUserId };
   const host = AIRSHIP_HOSTS[(i.settings.region as keyof typeof AIRSHIP_HOSTS) ?? "us"] ?? AIRSHIP_HOSTS.us;
   const headers = { "content-type": "application/json", accept: "application/vnd.urbanairship+json; version=3", authorization: `Bearer ${token}`, "x-ua-appkey": appKey };
   const timeMs = e.event_timestamp_ms ?? i.now.getTime();
@@ -67,7 +67,7 @@ export async function buildAirship(i: BuildInput): Promise<Plan> {
   if (i.settings.set_attributes && status) {
     const attributes = [{ action: "set", key: "rc_subscription_status", value: status, timestamp: occurred(timeMs).replace("T", " ") }];
     requests.push(channel
-      ? { method: "POST", url: `${host}/api/channels/attributes`, headers, body: json({ audience: { [channelKey(e.store)]: channel }, attributes }) }
+      ? { method: "POST", url: `${host}/api/channels/attributes`, headers, body: json({ audience: { [channelKey(e.store, i.context?.platform)]: channel }, attributes }) }
       : { method: "POST", url: `${host}/api/named_users/${encodeURIComponent(appUserId)}/attributes`, headers, body: json({ attributes }) });
   }
   return { name, requests, redact: [token] };

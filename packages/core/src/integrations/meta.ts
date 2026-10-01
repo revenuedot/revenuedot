@@ -34,7 +34,7 @@ export async function buildMeta(i: BuildInput): Promise<Plan> {
   const token = sandbox ? i.secrets.sandbox_access_token : i.secrets.access_token;
   if (!dataset || !token) return skip(sandbox ? "Sandbox events need a sandbox dataset ID and access token." : "No Meta dataset ID and access token are saved.");
   if (isFunnelConcept(c)) return buildMetaWeb(i, c, name, dataset, token);
-  const platform = platformOf(e.store);
+  const platform = platformOf(e.store, i.context?.platform);
   const anon = attr(e, "$fbAnonId");
   const madid = platform === "ios" ? validAdId(attr(e, "$idfa")) : platform === "android" ? validAdId(attr(e, "$gpsAdId")) ?? validAdId(attr(e, "$amazonAdId")) : validAdId(attr(e, "$amazonAdId"));
   if (!anon && !madid) return skip("The customer has no $fbAnonId or advertising id, so Meta cannot match the event.");

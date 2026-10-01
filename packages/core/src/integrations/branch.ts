@@ -44,7 +44,7 @@ export async function buildBranch(i: BuildInput): Promise<Plan> {
   const key = isSandbox(e) ? i.secrets.sandbox_branch_key : i.secrets.branch_key;
   if (!key) return skip(isSandbox(e) ? "Sandbox events need a sandbox Branch key (key_test_…)." : "No Branch key is saved.");
   if (isFunnelConcept(c)) return buildBranchWeb(i, c, key);
-  const platform = platformOf(e.store);
+  const platform = platformOf(e.store, i.context?.platform);
   if (platform !== "ios" && platform !== "android") return skip(`${e.store} purchases are not sent to Branch's app events.`);
   const user: Record<string, unknown> = { os: platform === "ios" ? "iOS" : "Android" };
   if (platform === "ios") {

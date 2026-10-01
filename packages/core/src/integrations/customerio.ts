@@ -54,7 +54,7 @@ export async function buildCustomerio(i: BuildInput): Promise<Plan> {
   const email = attr(e, "$email")?.trim();
   const identify = compact({ email: email || undefined, app_user_id: e.app_user_id, rc_subscription_status: status });
   const data = compact({
-    app_id: e.app_id, app_user_id: e.app_user_id, original_app_user_id: e.original_app_user_id, platform: platformOf(e.store), rc_subscription_status: status,
+    app_id: e.app_id, app_user_id: e.app_user_id, original_app_user_id: e.original_app_user_id, platform: platformOf(e.store, i.context?.platform), rc_subscription_status: status,
     entitlement_ids: e.entitlement_ids, product_id: e.product_id, currency: "USD", revenue: revenueUsd(e, i.settings.reporting),
     price_in_purchased_currency: e.price_in_purchased_currency, purchased_currency: e.currency,
     purchased_at: secs(e.purchased_at_ms), expiration_at: secs(e.expiration_at_ms), transaction_id: e.transaction_id, original_transaction_id: e.original_transaction_id,
