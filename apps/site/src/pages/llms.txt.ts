@@ -5,6 +5,7 @@ import { llmsFile, textResponse } from "../lib/llms";
 import { TOOLS, ALTERNATIVES, CHART_PAGES, COMPARISONS, INTEGRATIONS, LANDINGS, SECTIONS, chartPath, comparePath, integrationPath, landingPath } from "../data";
 import { plain } from "../lib/md";
 import { GLOSSARY } from "../data/glossary";
+import { ERRORS } from "../data/errors";
 
 // llms.txt (https://llmstxt.org): the docs repo's llms.txt, the canonical index of every docs page, with its links
 // pointed at the .md twins on this site, plus a "Website" section (inserted before "Optional") for the marketing pages.
@@ -41,6 +42,10 @@ export const GET: APIRoute = () => {
     "## Integrations",
     "",
     ...INTEGRATIONS.map((i) => `- [${i.title}](${u(integrationPath(i))}): ${plain(i.card)}`),
+    "",
+    "## SDK error codes",
+    "",
+    ...[...ERRORS].sort((a, b) => a.code - b.code).map((e) => `- [${e.swift} (code ${e.code})](${u(`/errors/${e.slug}`)}): ${plain(e.answer)}`),
     "",
     "## Glossary",
     "",

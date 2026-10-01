@@ -76,6 +76,7 @@ export const FOOTER = [
       { href: "/docs", label: "Docs" },
       { href: "/sdks", label: "SDKs" },
       { href: "/stores", label: "Stores" },
+      { href: "/errors", label: "SDK error codes" },
       { href: "/solutions", label: "Solutions" },
       { href: "/blog", label: "Blog" },
       { href: "https://github.com/revenuedot/revenuedot", label: "GitHub" },

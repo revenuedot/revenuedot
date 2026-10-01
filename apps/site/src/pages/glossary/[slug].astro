@@ -56,7 +56,7 @@ const title = termQuestion(term.slug, term.term);
   <CtaBand />
 </Base>
 <style>
-  .def { border: 1px solid var(--border); border-left: 2px solid var(--accent); background: var(--panel); padding: 20px 24px; display: grid; gap: 8px; max-width: 860px; }
+  .def { border: 1px solid var(--border); border-left: 2px solid var(--accent); background: var(--panel); padding: 20px 24px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 860px; overflow-wrap: anywhere; }
   .def :global(p:last-child) { font-size: 18px; line-height: 1.6; color: var(--fg); }
   .def :global(a) { color: var(--fg); }
   .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); gap: 48px; align-items: start; }
