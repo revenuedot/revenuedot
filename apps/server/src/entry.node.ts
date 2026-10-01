@@ -1,9 +1,12 @@
+// First: unset empty *_BASE_URL settings before the AI SDK is loaded (docker compose passes unset ones as "").
+import "./env-defaults.js";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { openDb } from "@revenuedot/db";
 import { createApp } from "./app.js";
+import { withDashboardRoot } from "./node-dashboard.js";
 import { defaultStores } from "./stores/index.js";
 
 import { tick } from "./services/tick.js";
@@ -41,18 +44,20 @@ const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeou
   assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS) });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
-if (existsSync(`${dist}/index.html`)) {
-  const html = readFileSync(`${dist}/index.html`, "utf8");
+const html = existsSync(`${dist}/index.html`) ? readFileSync(`${dist}/index.html`, "utf8") : null;
+if (html) {
   app.use("/*", serveStatic({ root: relative(process.cwd(), dist) || ".", rewriteRequestPath: (p) => p }));
   app.get("*", (c) => (/^\/(v1|v2|auth|rcbilling|share)\//.test(c.req.path) ? c.notFound() : c.html(html)));
 }
+// A browser opening the server's address gets the dashboard; API clients still get the JSON at /.
+const appFetch: typeof app.fetch = html ? withDashboardRoot(app.fetch, html) : app.fetch;
 const port = Number(process.env.PORT ?? 8787);
 // REVENUEDOT_REQUEST_LOG=<file>: one JSON line per request (method, path, status, whether a route answered). The device
 // harnesses read it to check that each SDK call happened once, with the documented status. No bodies or headers.
 const requestLog = process.env.REVENUEDOT_REQUEST_LOG;
-const handler: typeof app.fetch = !requestLog ? app.fetch : async (req, ...rest) => {
+const handler: typeof app.fetch = !requestLog ? appFetch : async (req, ...rest) => {
   const t0 = Date.now();
-  const res = await app.fetch(req, ...rest);
+  const res = await appFetch(req, ...rest);
   const url = new URL(req.url);
   // Hono's own 404 for an unknown path is plain text; every deliberate SDK error is JSON with a code.
   const routed = !(res.status === 404 && !(res.headers.get("content-type") ?? "").includes("json"));

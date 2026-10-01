@@ -5,6 +5,7 @@ import { entitlementMap } from "../repo/catalog.js";
 import { loadState, type CustomerRow } from "../repo/customers.js";
 import { buildContext, loadCustomerData } from "./customer-context.js";
 import { recordRawEvent } from "./events.js";
+import { alpha2 } from "../stores/apple/map.js";
 
 /**
  * Targeting and experiments: which offering a customer gets. Audience rules follow RevenueCat's shape: condition groups
@@ -171,7 +172,8 @@ export async function contextFor(db: DB, customer: CustomerRow | null, headers: 
     sdkFlavor: headers["x-platform-flavor"] ?? null, platformVersion: headers["x-platform-version"] ?? null, storefront: headers["x-storefront"] ?? null,
     locale: headers["x-preferred-locales"]?.split(",")[0]?.trim() ?? null,
   };
-  h.country = h.storefront ?? null;
+  // Country conditions use two-letter codes; the iOS SDK sends the App Store storefront as alpha-3 (USA).
+  h.country = alpha2(h.storefront);
   if (!customer) return { ...emptyContext(), ...Object.fromEntries(Object.entries(h).filter(([, v]) => v !== null)) };
   const data = (await loadCustomerData(db, [customer])).get(customer.id)!;
   return buildContext(data, now, entitlementsActive, h);

@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { env, makeKeys, sub, type Env, type Keys } from "./google-helpers.js";
+import { contextFor } from "../src/services/targeting.js";
 
 const T0 = new Date("2026-09-01T12:00:00Z");
 const MONTH_END = new Date("2026-10-01T12:00:00Z");
@@ -56,6 +57,18 @@ describe("setup health marks an app Ready only after a notification was processe
 describe("SDK versions", () => {
   const sdk = (path: string, headers: Record<string, string>, key = e.h.ids.iosKey) => e.call(path, { key, headers });
   const ios = { "X-Platform": "iOS", "X-Platform-Version": "Version 18.4 (Build 22E240)", "X-Version": "5.91.0", "X-Platform-Flavor": "native", "X-Client-Version": "2.3.0", "X-Client-Build-Version": "412", "X-Client-Bundle-ID": "com.example.scanner" };
+
+  it("stores the App Store storefront (alpha-3) as a two-letter country, like imported customers, so country targeting matches", async () => {
+    e = await env(keys);
+    await sdk("/v1/subscribers/user_store", { ...ios, "X-Storefront": "USA" });
+    await sdk("/v1/subscribers/user_play", { "X-Platform": "android", "X-Version": "9.2.0", "X-Storefront": "DE" }, e.h.ids.androidKey);
+    const country = async (id: string) => (await e.h.db.select().from(schema.customers).where(eq(schema.customers.originalAppUserId, id)))[0]!.lastSeenCountry;
+    expect(await country("user_store")).toBe("US");
+    expect(await country("user_play")).toBe("DE");
+    const v2 = await (await e.call("/v2/projects/proj1/customers/user_store", { key: e.h.ids.secretKey })).json();
+    expect(v2.last_seen_country).toBe("US");
+    expect((await contextFor(e.h.db, null, { "x-storefront": "GBR" }, T0)).country).toBe("GB");
+  });
 
   it("records each SDK build per app from the SDK headers, throttled, and lists them in setup_health with a support level", async () => {
     e = await env(keys);

@@ -22,6 +22,14 @@ describe("self-host configuration", () => {
       expect(compose.includes(`${v}:`) || example.includes(`${v}=`), v).toBe(true);
     }
   });
+
+  it("the image's start command finds pnpm without downloading it (corepack install in the final stage)", () => {
+    const final = read("Dockerfile").split(/^FROM /m).pop()!;
+    expect(final).toMatch(/^CMD \["pnpm",/m);
+    expect(final).toMatch(/^RUN corepack install$/m);
+    expect(final.indexOf("RUN corepack install")).toBeGreaterThan(final.indexOf("COPY --from=build /app /app"));
+    expect(JSON.parse(read("package.json")).packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
+  });
 });
 
 describe("repo documentation", () => {

@@ -14,6 +14,7 @@ import { RevenueCatClient } from "../src/revenuecat.js";
 import { RevenueDotClient } from "../src/revenuedot.js";
 import { loadState } from "../src/state.js";
 import { verifyImport } from "../src/verify.js";
+import { formatReport } from "../src/run.js";
 import { ANON, DAY, PROJECT, T0, TOKENS_CSV } from "./fixtures.js";
 import { RC_KEY, TARGET, bridge, dump, serveHarness, setup, spec, type Env } from "./helpers.js";
 
@@ -54,6 +55,8 @@ describe("revenuedot import", () => {
     expect(r.catalog.entitlements).toMatchObject({ created: 1, matched: 1 });
     expect(r.catalog.offerings).toMatchObject({ created: 1, matched: 1 });
     expect(r.customers).toMatchObject({ pass: 1, complete: true, imported: 14, created: 13, subscriptions: 9, purchases: 2, needsTokenRefresh: 1, pages: 4 });
+    // The customer a device created before the import is counted, not lost from the report.
+    expect(formatReport(r)).toContain("14 customers imported (13 new, 1 already in RevenueDot)");
 
     const db = e.h.db;
     const apps = await db.select().from(schema.apps);
@@ -101,6 +104,7 @@ describe("revenuedot import", () => {
     const before = await dump(e.h.db);
     const again = await e.run();
     expect(again.customers).toMatchObject({ pass: 2, complete: true, imported: 14, created: 0 });
+    expect(formatReport(again)).toContain("14 customers imported (0 new, 14 already in RevenueDot)");
     expect(await dump(e.h.db)).toEqual(before);
     await e.run({ restart: true });
     expect(await dump(e.h.db)).toEqual(before);
@@ -219,7 +223,7 @@ describe("the revenuedot command", () => {
       expect(await main(["import", "--from-revenuecat", ...common, "--state", join(dir, "s.json"), "--google-tokens", csv], io)).toBe(0);
       const report = out.join("\n");
       expect(report).toContain("Import finished");
-      expect(report).toContain("14 customers imported (14 new, 0 merged with existing ones)");
+      expect(report).toContain("14 customers imported (14 new, 0 already in RevenueDot)");
       expect(report).toContain("Store credentials to re-enter in RevenueDot");
       expect(report).toContain("1 Google Play subscriptions need a purchase token");
       expect(err.some((l) => l.startsWith("customers: 14 imported"))).toBe(true);
