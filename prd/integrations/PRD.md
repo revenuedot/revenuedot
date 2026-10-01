@@ -1,6 +1,6 @@
 # Integrations and scheduled data exports (Tier 2)
 
-**Status:** built on branch `tier2-integrations` (2026-10-01). Ten integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust, Meta) receive every event webhooks get, through the same queue, retry schedule, delivery log and replay. Scheduled exports write CSV or Parquet files of transactions, customers, subscriptions and events to Amazon S3, Cloudflare R2 or Google Cloud Storage. Tested with fake partners and fake buckets only; no real partner account has received an event yet.
+**Status:** Tier 2 built on branch `tier2-integrations` (2026-10-01); Batch D (branch `tier3-ads-integrations`, 2026-10-01) adds the other 26 partners of RevenueCat's catalogue, so the catalogue has RevenueCat's 37 entries plus BigQuery (section "Batch D partners" below). Ten integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust, Meta) receive every event webhooks get, through the same queue, retry schedule, delivery log and replay. Scheduled exports write CSV or Parquet files of transactions, customers, subscriptions and events to Amazon S3, Cloudflare R2 or Google Cloud Storage. Tested with fake partners and fake buckets only; no real partner account has received an event yet.
 
 ## Users and jobs
 - **Growth and data teams** keep the dashboards they built on RevenueCat's integrations: the same event names (`rc_initial_purchase_event` ...), the same reserved attributes (`$amplitudeDeviceId`, `$mixpanelDistinctId`, `$appsflyerId` ...), and the same transaction export columns.
@@ -20,7 +20,7 @@ Later
 - Alert emails for failing integrations and exports (webhooks have them; `services/alerts.ts`).
 - AppsFlyer web APIs (Web S2S, PBA), Meta's App Events API, paywall and funnel events, Firebase's Firestore extension (a webhook receiver; works today with our webhooks).
 - Per-column selection for exports, Azure Blob and email destinations, the in-app currency ledger feed, AWS IAM-role (STS) credentials.
-- More integrations from the catalogue page (Braze, Customer.io, OneSignal, Intercom, mParticle, Branch, Singular, Apple Search Ads).
+- (Done in Batch D: the rest of the catalogue, see "Batch D partners".)
 
 ## How it works
 - **Fan-out:** `services/events.ts` `queueDeliveries` (webhooks) now also calls `services/integrations/queue.ts`, which inserts one `integration_deliveries` row per matching integration. `sendsEvent` (core) leaves out event types the partner never receives (Slack gets no EXPIRATION), so the log is not full of noise.
@@ -112,6 +112,48 @@ Lifecycle steps. Integrations name trials apart from paid purchases; we derive t
 - **Settings:** `dataset_id`, `access_token` (secret), `sandbox_dataset_id`, `sandbox_access_token` (secret), `send_without_att`, `test_event_code`, `reporting`. Default environment: production.
 - **Needs:** `$fbAnonId` or an advertising id (`$idfa`, `$gpsAdId`, `$amazonAdId`; all-zero ids do not count), and on iOS `$attConsentStatus` = authorized unless `send_without_att`.
 
+## Batch D partners
+Built on branch `tier3-ads-integrations` (2026-10-01). Each partner is a `PartnerDef` (`packages/core/src/integrations/common.ts`): its catalogue entry, the steps it sends, a pure payload builder, the default event names, a check of 2xx answers that still mean "rejected" (`answerError`) and a save-time check (`validate`). They register in `partners-analytics.ts`, `partners-attribution.ts`, `partners-marketing.ts` and `partners-connections.ts`; the catalogue API, the dashboard form, the fan-out, retries, the delivery log and replay are the Tier 2 machinery unchanged. Fields marked `url` are checked with the outbound guard when saved (https only on Cloud) and again before each send.
+
+**Documented API or webhook adapter.** Where the partner publishes an API for these events, the builder sends exactly that request. Four partners publish none and instead give RevenueCat customers a webhook URL to paste into RevenueCat; for them `webhook-adapter.ts` POSTs RevenueCat's webhook body (`{"api_version":"1.0","event":{…}}`, the stored event unchanged) with an optional Authorization value to the URL the partner gives you. The catalogue card says "Via webhook" and the page says why.
+
+| Partner | Category | How | Endpoint | Identity | Sandbox |
+|---|---|---|---|---|---|
+| mParticle | Analytics | Events API | `POST https://s2s.{pod}.mparticle.com/v2/events`, Basic key:secret | `$mparticleId` as `mpid`; `customer_id` = app user id, `$email`, device ids | `environment: development` |
+| Statsig | Analytics | log_event | `POST https://events.statsigapi.net/v1/log_event`, `statsig-api-key` | `userID` = app user id | `statsigEnvironment.tier: development` |
+| Superwall | Analytics | Webhook adapter | the URL Superwall support gives you | in the body | both, by the environment filter |
+| TelemetryDeck | Analytics | Ingest v2 | `POST https://nom.telemetrydeck.com/v2/` (or `/v2/namespace/{ns}/`) | `$telemetryDeckUserId` (skipped without it) | `isTestMode: true` |
+| Appstack | Attribution | Webhook adapter | the URL and Authorization from Appstack › Integrations › RevenueCat | `$appstackId` in the body | both |
+| Asapty | Attribution | RevenueCat's published Asapty request | `GET https://asapty.com/_api/mmpEvents/?…` | `$appleAdsCampaignId` and the other Apple Ads attributes (skipped without them) | not sent |
+| Branch | Attribution | v2 Events API | `POST https://api2.branch.io/v2/event/standard` (START_TRIAL, SUBSCRIBE, PURCHASE) or `/custom` | `$idfa`/`$idfv` or `$gpsAdId`; `developer_identity` | sandbox `key_test_…` key |
+| Google Tag Manager | Attribution | GA4 Measurement Protocol to your server container | `POST {server_container_url}/mp/collect?measurement_id=…` | `client_id` and `user_id` = app user id | sandbox measurement ID |
+| Kochava | Attribution | Post-install event API | `POST https://control.kochava.com/track/json` | `$kochavaDeviceId` plus `$idfa`/`$idfv` or `$gpsAdId` | test app GUIDs |
+| Airbridge | Attribution | S2S events | `POST https://api.airbridge.io/events/v2/apps/{app}/mobile-app/9360`, Bearer | `externalUserID`; `$airbridgeDeviceId` | sandbox app and token; events older than 24 hours skipped |
+| SplitMetrics Acquire | Attribution | Webhook adapter | the URL SplitMetrics support gives you | in the body | both |
+| Singular | Attribution | S2S (RevenueCat's published Singular request) | v2 `POST https://s2s.singular.net/api/v2/evt` or v1 `GET /api/v1/evt` | `$singularDeviceId` (v2), advertising ids (v1) | sandbox SDK key |
+| SolarEngine | Attribution | Webhook adapter (RevenueCat names the hosts and an MD5 signature, but not the path, platform codes or signing input) | the URL SolarEngine gives you | `$solarEngine*` in the body | production by default |
+| Tenjin | Attribution | S2S | `POST https://track.tenjin.com/v0/purchase` (money) or `/v0/event`, Basic SDK key | `$tenjinId` (skipped without it) | not sent |
+| Airship | Marketing | Custom Events and Attributes | `POST https://go.urbanairship.com/api/custom-events` (EU `go.airship.eu`) | `$airshipChannelId` as the channel, else `named_user_id` | sandbox app key and token |
+| Braze | Marketing | `/users/track` | `POST https://rest.<cluster>.braze.(com\|eu)/users/track`, Bearer | `$brazeAliasName` + `$brazeAliasLabel`, else `external_id` | sandbox API key |
+| CleverTap | Marketing | Upload API | `POST https://{region}.api.clevertap.com/1/upload` | `$clevertapId` as `objectId`, else `identity` | sandbox account |
+| Customer.io | Marketing | Track API v1 | `PUT /api/v1/customers/{id}` then `POST …/events` on track(-eu).customer.io | app user id (or `$customerioId`) | sandbox site |
+| Discord | Marketing | Execute webhook | the channel webhook URL (discord.com/api/webhooks/…) | — | labelled "Sandbox" |
+| Intercom | Marketing | Data events | `POST https://api.intercom.io/events` (EU, AU hosts), `Intercom-Version: 2.11` | `user_id` = app user id, else `$email` | same workspace |
+| Iterable | Marketing | events/track, commerce/trackPurchase, users/update | `https://api.iterable.com/api/…` (EU host) | `$email`, else `$iterableUserId`, else app user id | sandbox API key |
+| OneSignal | Marketing | Update user (tags) | `PATCH https://api.onesignal.com/apps/{app_id}/users/by/{onesignal_id\|external_id}/{id}` | `$onesignalUserId`, else the app user id | same app, tagged |
+
+Steps: the analytics and attribution partners send RevenueCat's lifecycle steps with the `rc_*_event` names (overridable), except where the partner has its own standard names (Branch START_TRIAL/SUBSCRIBE/PURCHASE, Kochava Start Trial/Subscribe/Purchase, Airbridge `airbridge.subscribe` …). Revenue is USD by the "Sales reporting" setting; refunds are negative only where the partner accepts it (mParticle refund action, Statsig, TelemetryDeck, Kochava, Singular), and carry no money elsewhere. The adapter partners get every step except experiment enrollment.
+
+**Connections** (no events, own pages):
+- **Google AdMob** (Ads): OAuth and ad units for the Ads pages, `prd/ads/PRD.md`.
+- **Apple Search Ads** (Attribution): attribution needs no setup, since the SDK's AdServices token is resolved with Apple and stored as `$appleAdsCampaignId` and the other `$appleAds*` attributes. The page reports customers first seen in a period by campaign, with paying customers and production revenue to date (`GET /v2/projects/{id}/ads/apple_search_ads/report`). With an Apple Search Ads API user (organization ID, client ID, team ID, key ID and the P-256 private key; Apple's SEC1 `EC PRIVATE KEY` is accepted) it loads campaign and ad group names from the Campaign Management API v5 (`POST /v2/projects/{id}/ads/apple_search_ads/sync`): an ES256 client secret, `client_credentials` at appleid.apple.com, then `GET /api/v5/campaigns` and each campaign's ad groups with `X-AP-Context: orgId=…`.
+- **Intercom inbox** (Support): Intercom's Canvas Kit calls `POST /v1/support/intercom/{project_id}/canvas`; the body's `X-Body-Signature` (hex HMAC-SHA256 with the Intercom app's client secret) is checked, the contact is found by `external_id` then email, and the answer is the support summary as Canvas Kit components (status, entitlements, plan, renewal, total spent, customer since, refunds, open tickets, an "Open in RevenueDot" button).
+- **Zendesk** (Support): a private ticket sidebar app in `integrations/zendesk-app/` (manifest, iframe, translations, logos). It calls `GET /v2/projects/{id}/support_summaries?email=` with a secret key kept in Zendesk's secure settings (`{{setting.secret_key}}`, `secure: true`), so the key never reaches an agent's browser. "Mark as installed" on the page records it for the catalogue.
+
+**Not built:** funnel events to the ad networks (Batch C's funnels are in PR #8, not merged when Batch D was built). No real partner account has received an event; every test uses fakes.
+
+**Tests:** `packages/core/test/integrations-batch-d-analytics-attribution.test.ts` (51) and `integrations-batch-d-marketing.test.ts` (26): the exact request of every partner for one App Store purchase (method, URL, headers, body compared field by field), names for trials and renewals, refunds, sandbox, identity skips, redaction, answer and save checks; `packages/core/test/integrations.test.ts` checks every catalogue entry; `apps/server/test/ads.test.ts` covers the Intercom canvas signature and the Apple Search Ads client secret, name sync and report; `apps/dashboard/e2e/ads.spec.ts` configures Superwall against a local fake (delivered), Statsig (save check), AdMob, Zendesk and the Intercom inbox in the browser.
+
 ## Scheduled data exports
 - **Destinations:** Amazon S3 (virtual-hosted URL in the bucket's region, or any S3-compatible `endpoint` path-style), Cloudflare R2 (`https://<account id>.r2.cloudflarestorage.com`, region `auto`), Google Cloud Storage (JSON API simple upload, service-account token). S3 and R2 use an access key pair; requests are signed with AWS Signature Version 4 in WebCrypto (`services/exports/sigv4.ts`, checked against AWS's published vectors).
 - **Formats:** CSV, gzip (`.csv.gz`, default) or plain; Parquet (Snappy) through hyparquet-writer, which is pure JavaScript, so Parquet works on Workers too (the Worker build bundles it). CSV times are UTC `YYYY-MM-DD HH:MM:SS`; Parquet uses TIMESTAMP_MILLIS, INT64, DOUBLE, BOOLEAN, STRING and JSON columns.
@@ -141,6 +183,8 @@ All under `/v2/projects/{project_id}`, scopes `project_configuration:integration
 
 ## Known gaps
 - No real partner, bucket or BigQuery dataset has been used yet; every test uses fakes.
+- Superwall, SplitMetrics Acquire and SolarEngine publish no URL for RevenueCat webhooks: customers ask the partner for it. Kochava's strict authentication, Airbridge's token type and Asapty's `source` check are not documented publicly; see the Batch D section.
+- Funnel events do not reach ad networks yet (needs Batch C, PR #8).
 - Store credentials (`apps.credentials`) are not sealed with `services/secrets.ts` yet.
 - Integrations and exports do not send alert emails when they keep failing.
 - AppsFlyer web APIs, Meta's App Events API, paywall and funnel events, column selection, Azure and email destinations, the in-app currency ledger and IAM-role credentials are not built.
