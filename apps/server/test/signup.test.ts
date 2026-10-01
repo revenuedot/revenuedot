@@ -52,3 +52,19 @@ describe("sign-up on a self-hosted server (owner_only, the default of the Node e
     expect((await cloud.call("GET", "/auth/config")).body).toEqual({ edition: "cloud", signup: "open" });
   });
 });
+
+describe("email addresses are cleaned before they are validated and stored", () => {
+  it("trims spaces and lowercases on sign-up, sign-in and forgot-password, and refuses malformed addresses", async () => {
+    const { call, signup, db } = await server({ edition: "cloud" });
+    expect((await signup("  Kai@Example.COM ")).status).toBe(201);
+    const [row] = await db.select().from(schema.users);
+    expect(row!.email).toBe("kai@example.com");
+    expect((await signup("kai@example.com")).status).toBe(409); // same account, whatever the case
+    expect((await call("POST", "/auth/login", { email: " KAI@example.com\t", password: "correct horse battery" })).status).toBe(200);
+    expect((await call("POST", "/auth/password/forgot", { email: " KAI@Example.com " })).status).toBe(200);
+    for (const bad of ["kai", "kai@", "@example.com", "kai@@example.com", "kai example@x.com"]) {
+      const r = await signup(bad);
+      expect(r.status, bad).toBe(400);
+    }
+  });
+});

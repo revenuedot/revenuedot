@@ -6,6 +6,7 @@
 
 export interface Rendered { subject: string; text: string; html: string }
 
+const LOGO_URL = "https://revenuedot.app/brand/revenuedot-lockup-black@2x.png";
 const INK = "#0A0A0A", FG2 = "#525252", FG3 = "#737373", BORDER = "#E5E5E5", GOLD = "#F7B500";
 const FONT = "Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
@@ -36,12 +37,9 @@ function layout(l: Layout): Rendered {
       small("Or paste this link into your browser:") +
       `<p style="margin:0 0 20px;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:18px;word-break:break-all;"><a href="${esc(l.button.url)}" style="color:${INK};">${esc(l.button.url)}</a></p>`
     : "";
-  // The mark: a square ink tile with an R, finished by the gold dot.
-  const mark = `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>` +
-    `<td style="width:26px;height:26px;background:${INK};text-align:center;vertical-align:middle;font-family:${FONT};font-size:15px;font-weight:700;line-height:26px;color:#FFFFFF;">R</td>` +
-    `<td style="padding:0 0 0 3px;vertical-align:bottom;"><div style="width:7px;height:7px;border-radius:50%;background:${GOLD};font-size:0;line-height:0;">&nbsp;</div></td>` +
-    `<td style="padding:0 0 0 10px;font-family:${FONT};font-size:15px;font-weight:600;letter-spacing:-0.02em;color:${INK};">RevenueDot</td>` +
-    `</tr></table>`;
+  // The brand lockup (rounded R with the gold dot, then the wordmark): brand/kit/wordmark, served from the site. Email
+  // clients drop SVG, so it is the 2x PNG shown at 168x24. The alt text stands in while images are blocked.
+  const mark = `<img src="${LOGO_URL}" width="168" height="24" alt="RevenueDot" style="display:block;border:0;outline:none;font-family:${FONT};font-size:15px;font-weight:600;color:${INK};">`;
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(l.subject)}</title></head>` +
     `<body style="margin:0;padding:0;background:#FFFFFF;">` +
     `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(l.preheader)}</div>` +

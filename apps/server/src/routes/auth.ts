@@ -12,8 +12,9 @@ import { acceptInvite, inviteByToken, normEmail } from "../services/members.js";
 import { clientIp, hit } from "../services/rate-limit.js";
 
 const Password = z.string().min(8, "Use at least 8 characters for your password.").max(200, "Use at most 200 characters for your password.");
-const Signup = z.object({ email: z.string().email("Enter a valid email address."), password: Password, name: z.string().max(100).optional(), project_name: z.string().max(100).optional(), invite_token: z.string().max(200).optional() });
-const Login = z.object({ email: z.string().email(), password: z.string().min(1) });
+const Email = z.string().trim().toLowerCase().email("Enter a valid email address.");
+const Signup = z.object({ email: Email, password: Password, name: z.string().max(100).optional(), project_name: z.string().max(100).optional(), invite_token: z.string().max(200).optional() });
+const Login = z.object({ email: Email, password: z.string().min(1) });
 const Forgot = z.object({ email: z.string().max(320) });
 const Token = z.object({ token: z.string().min(1).max(200) });
 const Reset = z.object({ token: z.string().min(1).max(200), password: Password });
