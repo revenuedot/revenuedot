@@ -177,13 +177,20 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
 | **Backend** | RevenueCat-compatible REST API v1 and v2 core, webhooks with the same payloads, signed deliveries, retries and replay | Tier 1 · built and tested |
+| **Integrations** | Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase (GA4), BigQuery, AppsFlyer, Adjust and Meta with RevenueCat's event names and reserved attributes, retries, a delivery log and replay; scheduled CSV or Parquet exports of transactions, customers, subscriptions and events to S3, R2 or Google Cloud Storage ([guide](https://revenuedot.app/docs/guides/integrations)) | Tier 2 · built, tested against fake partners and buckets; no real partner account yet |
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
-| **Growth** | 42 charts, paywalls, experiments, targeting, integrations, virtual currencies, Customer Center | Tier 2 · planned |
+| **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
+| **Growth** | Paywalls, experiments, targeting, virtual currencies, Customer Center | Tier 2 · planned |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
+  <img alt="RevenueDot Charts: MRR Movement by week with new and churned MRR, the grouped chart list, filters and the data table" src="docs/assets/charts-light.png" width="100%">
+</picture>
 
 ## SDKs
 
@@ -353,6 +360,16 @@ Self-hosting is free. RevenueDot Cloud is live with a free plan on every account
 RevenueDot verifies every App Store transaction against Apple's signed JWS and the App Store Server API, and every Google Play purchase with the Play Developer API, on the server. Nothing is trusted from the device alone.
 </details>
 
+<details><summary><b>Does RevenueDot work with Amplitude, Mixpanel, Segment, AppsFlyer or Firebase like RevenueCat does?</b></summary>
+
+Yes. Connect Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust or Meta under Integrations, and each purchase, trial, renewal, cancellation and refund is sent with the event names RevenueCat's integrations use (`rc_initial_purchase_event`, `rc_trial_started_event` ...) and the same reserved attributes (`$amplitudeDeviceId`, `$mixpanelDistinctId`, `$appsflyerId`, `$adjustId`, `$fbAnonId`). Dashboards built on RevenueCat's events keep working. See [the integrations guide](https://revenuedot.app/docs/guides/integrations).
+</details>
+
+<details><summary><b>Can I export my subscription data to S3, BigQuery or my warehouse?</b></summary>
+
+Yes. Scheduled data exports write CSV or Parquet files of transactions, customers, subscriptions and events to Amazon S3, Cloudflare R2 or Google Cloud Storage every day or week, and the transactions file uses the column names of RevenueCat's export. The BigQuery integration streams every event into a table as it happens.
+</details>
+
 <details><summary><b>Which stores are supported?</b></summary>
 
 App Store, Google Play, the Amazon Appstore, and Stripe subscriptions from your own Stripe account. Paddle and Roku come in Tier 3. Amazon and Stripe are tested against mocked store APIs; no real Amazon or Stripe purchase has run yet.
@@ -370,6 +387,11 @@ Yes. Configure the RevenueCat Android SDK for Amazon (`AmazonConfiguration`) wit
 Create a Stripe app in RevenueDot with a restricted key from your own Stripe account, add RevenueDot's webhook URL in Stripe, and have your backend post each subscription or Checkout Session id to `POST /v1/receipts` with the customer's app user id (`X-Platform: stripe`), the same call RevenueCat documents ([RevenueCat: track external Stripe purchases](https://www.revenuecat.com/docs/web/integrations/stripe/track-external-purchases)). The same entitlements then unlock in your apps. Setup: [Stripe guide](https://revenuedot.app/docs/guides/stripe).
 
 ![Stripe webhooks with the live status](docs/assets/stripe-webhooks.png)
+</details>
+
+<details><summary><b>Does RevenueDot have RevenueCat's charts, like MRR, churn and trial conversion?</b></summary>
+
+Yes. All 42 built-in charts are in the dashboard and at `GET /v2/projects/{project_id}/charts/{chart_name}` with RevenueCat's chart names, parameters and response shape. They follow RevenueCat's definitions: sandbox excluded, USD at the purchase-date rate, refunds on the refund date. The [charts guide](https://revenuedot.app/docs/guides/charts) explains every chart and publishes the SQL behind the core ones.
 </details>
 
 <details><summary><b>What license is it under?</b></summary>

@@ -24,7 +24,7 @@ export interface SubscriptionPurchaseV2 {
   testPurchase?: Record<string, unknown>;
   pausedStateContext?: { autoResumeTime?: string };
   canceledStateContext?: {
-    userInitiatedCancellation?: { cancelTime?: string; cancelSurveyResult?: unknown };
+    userInitiatedCancellation?: { cancelTime?: string; cancelSurveyResult?: { reason?: string; reasonUserInput?: string } };
     systemInitiatedCancellation?: Record<string, unknown>;
     developerInitiatedCancellation?: Record<string, unknown>;
     replacementCancellation?: Record<string, unknown>;

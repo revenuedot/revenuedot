@@ -30,3 +30,4 @@ Each PRD is short and has the same sections: users and jobs, essential now and l
 |---|---|---|
 | Stores | Amazon Appstore ingestion | [store-amazon](store-amazon/PRD.md) |
 | Stores | Stripe subscriptions from the customer's own Stripe account | [store-stripe](store-stripe/PRD.md) |
+| Tier 2 | Integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust, Meta) and scheduled data exports | [integrations](integrations/PRD.md) |

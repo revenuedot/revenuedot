@@ -1,6 +1,6 @@
 # SDK-compatible API (scope 1.1, with the 1.0 contract harness)
 
-**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 16 answer with real data and 24 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
+**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 17 answer with real data and 23 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
 
 ## Users and jobs
 - **App developers** change only the SDK's proxy URL and keep their app code, their public API key and their paywalls.
@@ -15,7 +15,7 @@ Essential (Tier 1)
 - Signed responses (Trusted Entitlements) when `REVENUEDOT_SIGNING_KEY` is set.
 
 Later
-- Customer Center configuration, virtual currency balances, paywall remote config, web purchases and their redemption, and ad reward verification. (Amazon Appstore receipts are real since Tier 2: `prd/store-amazon/PRD.md`.)
+- Customer Center configuration, virtual currency balances, paywall remote config, web purchases and their redemption, and ad reward verification. (Amazon Appstore receipts are real since Tier 2: `prd/store-amazon/PRD.md`; SDK events are stored for the charts since Tier 2: `prd/charts/PRD.md`.)
 
 ## Endpoint inventory
 Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingHTTPRequestPath.swift`, `EventsHTTPRequestPath.swift`, `DiagnosticsHTTPRequestPath.swift` and `SourceHealthChecker.swift` in `revenuedot/purchases-ios`; Android `purchases/src/main/kotlin/com/revenuecat/purchases/common/networking/Endpoint.kt` in `revenuedot/purchases-android`; web `src/networking/endpoints.ts` and `src/behavioural-events/events-tracker.ts` in `revenuedot/purchases-js`. All three forks were taken from upstream `main` on 2026-09-30. `purchases-hybrid-common` makes no HTTP calls of its own: it calls the native SDKs. The device harnesses use the published RevenueCat iOS 5.92.0 and Android 10.24.0.
@@ -54,7 +54,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 27 | GET | `/v1/config/{domain}` | iOS, Android | Stub | 204 | Remote config fallback path |
 | 28 | GET | `/rcbilling/v1/subscribers/{app_user_id}/offering_products` | iOS | Stub | 200 `{"offerings":{}}` | Defined in the SDK with no caller |
 | 29 | POST | `/rcbilling/v1/hosted-checkout` | iOS | Stub | 400 · 7000 | Paywall web checkout returns `failed`; no retry |
-| 30 | POST | `/v1/events` | iOS, Android, web | Stub | 200 `{}` | Paywall, customer center and ad events are accepted and not resent |
+| 30 | POST | `/v1/events` | iOS, Android, web | Real | 200 `{}` | Paywall, customer center and ad events are stored for the charts (`sdk_events`, one row per SDK event id); a malformed batch still gets 200 so it is not resent |
 | 31 | POST | `/v1/diagnostics` | iOS, Android | Stub | 200 `{}` | Diagnostics are accepted and not resent |
 | 32 | GET | `/rcbilling/v1/branding` | web | Stub | 200 the app's name, default look | Web Billing (`rcb_` keys) checkout branding |
 | 33 | POST | `/rcbilling/v1/checkout/prepare` | web | Stub | 400 · 7000 | Web Billing purchase fails with an error in the SDK's purchase screen |
@@ -70,7 +70,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 43 | GET, POST | 14 IAM alternates: `/v1/customer`, `/v1/customer/offerings`, `/v1/customer/intro_eligibility`, `/v1/customer/attribution`, `/v1/customer/attributes`, `/v1/customer/adservices_attribution`, `/v1/customer/health_report`, `/v1/customer/customercenter`, `/v1/customer/customercenter/support/create-ticket`, `/v1/customer/virtual_currencies`, `/v1/customer/restore/eligibility`, `/v1/customer/ads/reward_verifications/{client_transaction_id}`, `/rcbilling/v1/customer/offering_products`, `/rcbilling/v1/customer/products` | iOS, Android | Absent | none | Used in place of rows 1, 3, 7, 11, 12, 13, 17-21, 24, 28 and 9 only in IAM mode |
 <!-- inventory:end -->
 
-Counts: rows 1-40 are 40 routed pairs (16 real, 24 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
+Counts: rows 1-40 are 40 routed pairs (17 real, 23 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
 
 ## RevenueCat behaviour we match
 - New customers answer 201 and known customers 200 on `GET /v1/subscribers/{id}` and on `logIn` (fixtures `ios/req-login.json` and `ios/resp-login-real-signed.json`; https://www.revenuecat.com/docs/customers/identifying-customers).

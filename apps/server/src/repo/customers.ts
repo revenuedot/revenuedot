@@ -45,6 +45,18 @@ export async function touch(db: DB, customerId: string, now: Date, info: SeenInf
     ...(info.platformVersion ? { lastSeenPlatformVersion: info.platformVersion } : {}),
     ...(info.appBuild ? { lastSeenAppBuild: info.appBuild } : {}),
   }).where(eq(customers.id, customerId));
+  await recordActivity(db, customerId, now);
+}
+
+/**
+ * Records that the customer used the app on this UTC day (the Active Customers chart). Repeats are no-ops. Chart
+ * bookkeeping never fails the SDK request it rides on (a customer deleted meanwhile, a lost connection).
+ */
+export async function recordActivity(db: DB, customerId: string, now: Date) {
+  const day = now.toISOString().slice(0, 10);
+  try {
+    await db.execute(sql`INSERT INTO customer_activity (project_id, customer_id, day) SELECT project_id, id, ${day} FROM customers WHERE id = ${customerId} ON CONFLICT DO NOTHING`);
+  } catch (e) { console.warn("Recording customer activity failed", e); }
 }
 
 /**
@@ -112,6 +124,8 @@ export async function mergeCustomers(db: DB, fromId: string, intoId: string) {
   await db.update(nonSubscriptions).set({ customerId: intoId }).where(eq(nonSubscriptions.customerId, fromId));
   await db.update(schema.transactions).set({ customerId: intoId }).where(eq(schema.transactions.customerId, fromId));
   await db.update(schema.events).set({ customerId: intoId }).where(eq(schema.events.customerId, fromId));
+  await db.update(schema.sdkEvents).set({ customerId: intoId }).where(eq(schema.sdkEvents.customerId, fromId));
+  await db.execute(sql`INSERT INTO customer_activity (project_id, customer_id, day) SELECT project_id, ${intoId}, day FROM customer_activity WHERE customer_id = ${fromId} ON CONFLICT DO NOTHING`);
   const intoAttrs = await db.select({ key: customerAttributes.key }).from(customerAttributes).where(eq(customerAttributes.customerId, intoId));
   const have = new Set(intoAttrs.map((a) => a.key));
   const fromAttrs = await db.select().from(customerAttributes).where(eq(customerAttributes.customerId, fromId));

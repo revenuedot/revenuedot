@@ -14,10 +14,10 @@ const SINGULAR: Record<string, string> = {
   apps: "app", products: "product", entitlements: "entitlement", offerings: "offering", packages: "package", customers: "customer",
   subscriptions: "subscription", purchases: "purchase", webhooks: "webhook_integration", api_keys: "api_key", virtual_currencies: "virtual_currency",
   invites: "invite", collaborators: "collaborator", paywalls: "paywall", audiences: "audience", discounts: "discount", experiments: "experiment",
-  customer_center_config: "customer_center", test_purchases: "test_purchase",
+  customer_center_config: "customer_center", test_purchases: "test_purchase", partners: "integration", exports: "data_export",
 };
 /** Writes that change nothing worth auditing. */
-const QUIET = new Set(["verify_credentials", "preview", "test"]);
+const QUIET = new Set(["verify_credentials", "preview", "test", "check"]);
 
 interface Parsed { actionType: string; targetType: string; targetId: string | null }
 

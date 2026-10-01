@@ -23,6 +23,9 @@ import { customerExtraRoutes } from "./customer-extras.js";
 import { auditMiddleware, auditRoutes } from "./audit.js";
 import { paywallRoutes } from "./paywalls.js";
 import { targetingRoutes } from "./targeting.js";
+import { chartRoutes } from "./charts.js";
+import { partnerIntegrationRoutes } from "./partner-integrations.js";
+import { dataExportRoutes } from "./data-exports.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -91,6 +94,9 @@ export function v2Routes(deps: Deps) {
   auditRoutes(r, deps);
   paywallRoutes(r, deps);
   targetingRoutes(r, deps);
+  chartRoutes(r, deps);
+  partnerIntegrationRoutes(r, deps);
+  dataExportRoutes(r, deps);
 
   r.all("/v2/*", () => { throw new V2Error(404, "resource_missing", "Resource not found."); });
   return r;

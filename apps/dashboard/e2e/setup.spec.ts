@@ -301,7 +301,7 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
   let secret = "";
   await test.step("webhook: create with an event filter, signing secret shown once", async () => {
     await page.goto(`${base}/integrations`);
-    await expect(page.getByRole("button", { name: /Core tools/ })).toContainText("2");
+    await expect(page.getByRole("button", { name: /Core tools/ })).toContainText("3");
     await page.getByRole("link", { name: /Webhooks/ }).click();
     await expect(page.getByRole("heading", { name: "No webhooks yet" })).toBeVisible();
     await page.getByRole("link", { name: "Add webhook" }).click();

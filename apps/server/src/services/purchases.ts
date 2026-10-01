@@ -103,6 +103,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     // `undefined` means the store did not say; keep what we know. A cancel reason only lives while auto-renew is off.
     cancelReason: !p.unsubscribeDetectedAt ? null : p.cancelReason === undefined ? existing?.cancelReason ?? null : p.cancelReason,
     priceIncreaseStatus: p.priceIncreaseStatus === undefined ? existing?.priceIncreaseStatus ?? null : p.priceIncreaseStatus,
+    cancelSurveyReason: p.cancelSurveyReason === undefined ? existing?.cancelSurveyReason ?? null : p.cancelSurveyReason,
     // Access that runs past now reopens the chain for a future EXPIRATION; an EXPIRATION derived below sets it again.
     presentedOfferingId: existing?.presentedOfferingId ?? ctx.presentedOfferingId ?? null,
     expiredEventAt: (p.expiresDate === null || p.expiresDate > ctx.now || (p.gracePeriodExpiresDate && p.gracePeriodExpiresDate > ctx.now)) ? null : existing?.expiredEventAt ?? null,
@@ -135,7 +136,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind, isSandbox: p.isSandbox,
         purchasedAt: refund ? p.refundedAt ?? ctx.now : d.type === "REFUND_REVERSED" ? ctx.now : p.purchaseDate, expiresAt: p.expiresDate,
         revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (priceUsd ?? 0),
-        priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
+        priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null, createdAt: ctx.now,
       }).onConflictDoNothing();
       if (kind === "purchase" || kind === "renewal" || kind === "trial") {
         await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
@@ -188,7 +189,7 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
       storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind,
       isSandbox: p.isSandbox, purchasedAt: kind === "refund" ? p.refundedAt ?? ctx.now : kind === "refund_reversal" ? ctx.now : p.purchaseDate,
       revenueUsd: (d.isRefund ? -1 : 1) * (priceUsd ?? 0),
-      priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
+      priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null, createdAt: ctx.now,
     }).onConflictDoNothing();
     if (kind === "one_time") {
       await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, trial: false, transactionId: p.storeTransactionId, now: ctx.now });

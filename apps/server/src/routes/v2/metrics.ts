@@ -1,5 +1,5 @@
 import { and, eq, gte, lte } from "drizzle-orm";
-import { accessEndsAt, commission, type Store } from "@revenuedot/core";
+import { accessEndsAt, commission, mrrFactor, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { subRowToDomain } from "../../repo/customers.js";
@@ -8,15 +8,10 @@ import { paramError, round2, scope, type V2Router } from "./common.js";
 const DAY = 86400_000;
 
 /**
- * How many times a period fits in a month (30 days): P1M = 1, P1Y = 1/12, P1W = 4.33, P3D = 10.
- * Weeks use 4.33 per month and days 30 per month, so weekly prices are normalised the way RevenueCat's charts do.
+ * Normalises a price to one month with RevenueCat's MRR table (1 week ×4, 1 day ×30, 1 year ×1/12 …), shared with the
+ * charts so the Overview MRR card equals the MRR chart (packages/core/src/charts/time.ts).
  */
-export function monthlyFactor(iso: string | null | undefined): number | null {
-  const m = iso ? /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?$/.exec(iso) : null;
-  if (!m) return null;
-  const months = Number(m[1] ?? 0) * 12 + Number(m[2] ?? 0) + Number(m[3] ?? 0) / 4.33 + Number(m[4] ?? 0) / 30;
-  return months > 0 ? 1 / months : null;
-}
+export const monthlyFactor = mrrFactor;
 
 export interface OverviewValues {
   active_trials: number; active_subscriptions: number; mrr: number; revenue: number; new_customers: number; active_users: number;

@@ -72,7 +72,8 @@ Load: `Manrope:wght@400;500;600;700` and `Geist Mono:wght@400;500`.
 
 ## 7. Charts
 - Sparklines: 1.25px `--spark` line over `--spark-fill`, last point a 6px `--accent` square.
-- Full charts: hairline grid, mono axis labels in `--fg-3`, history in `--fg`, the current period in `--accent`.
+- Full charts: hairline grid, mono axis labels in `--fg-3`, history in `--fg`, the current period in `--accent`. One y axis only: measures with different units are shown one at a time.
+- Charts with several series (segments, stacked movements) use `--series-1` … `--series-5` in that fixed order, never cycled, and "Other" in `--fg-3`. The five hues passed the dataviz palette validator in both themes (adjacent colour-blind ΔE ≥ 9.2, normal-vision ΔE ≥ 19.7); every multi-series chart has a legend and a table. Marks stay square; stacked segments are separated by a 2px surface gap.
 - Money detail pages may use the MRR waterfall and definition panels ("What MRR is", with the formula as chips), in these tokens.
 
 ## 8. Motion

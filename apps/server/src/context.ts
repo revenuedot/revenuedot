@@ -12,6 +12,11 @@ export interface Deps {
   fetch?: typeof fetch;
   /** Base64 Ed25519 seed for response signing; falls back to REVENUEDOT_SIGNING_KEY. "" turns signing off. */
   signingKey?: string;
+  /**
+   * Base64 of 32 bytes that seals integration and export credentials (services/secrets.ts); falls back to
+   * REVENUEDOT_ENCRYPTION_KEY, then to a key derived from the signing key.
+   */
+  encryptionKey?: string;
   /** "cloud" on RevenueDot Cloud (Workers); self-hosted otherwise. Shown to dashboard users with their plan. */
   edition?: "cloud" | "self-hosted";
   /**

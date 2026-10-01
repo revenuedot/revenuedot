@@ -4,6 +4,7 @@ import { schema, type DB } from "@revenuedot/db";
 import { aliasesOf, type CustomerRow } from "../repo/customers.js";
 import { entitlementMap } from "../repo/catalog.js";
 import { enrollmentsOf } from "./targeting.js";
+import { queueIntegrationDeliveries } from "./integrations/queue.js";
 
 const { events, webhooks, webhookDeliveries, customerAttributes } = schema;
 
@@ -115,9 +116,9 @@ export async function recordEvent(db: DB, opts: {
   const payload = { api_version: "1.0", event };
   await db.insert(events).values({
     id, projectId, customerId: customer.id, type, environment: environment.toLowerCase(), appId,
-    payload, eventTimestampMs: now.getTime(),
+    payload, eventTimestampMs: now.getTime(), createdAt: now,
   });
-  await queueDeliveries(db, projectId, id, type, environment.toLowerCase(), appId, now);
+  await queueDeliveries(db, projectId, id, type, environment.toLowerCase(), appId, now, event);
   return payload;
 }
 
@@ -139,12 +140,16 @@ export async function recordRawEvent(db: DB, opts: {
     ? { event_timestamp_ms: opts.now.getTime(), app_user_id: opts.appUserId, aliases, ...opts.fields, type: opts.type, id }
     : { ...opts.fields, aliases, app_id: opts.appId, app_user_id: opts.appUserId, event_timestamp_ms: opts.now.getTime(), subscriber_attributes, type: opts.type, id };
   const environment = opts.sandbox ? "sandbox" : "production";
-  await db.insert(events).values({ id, projectId: opts.projectId, customerId: opts.customer.id, type: opts.type, environment, appId: opts.appId, payload: { api_version: "1.0", event }, eventTimestampMs: opts.now.getTime() });
-  await queueDeliveries(db, opts.projectId, id, opts.type, environment, opts.appId, opts.now);
+  await db.insert(events).values({ id, projectId: opts.projectId, customerId: opts.customer.id, type: opts.type, environment, appId: opts.appId, payload: { api_version: "1.0", event }, eventTimestampMs: opts.now.getTime(), createdAt: opts.now });
+  await queueDeliveries(db, opts.projectId, id, opts.type, environment, opts.appId, opts.now, event);
   return event;
 }
 
-export async function queueDeliveries(db: DB, projectId: string, eventId: string, type: EventType | string, environment: string, appId: string | null, now: Date = new Date()) {
+/**
+ * Queues the event to every enabled webhook whose filters match, and (when the stored `event` body is passed) to every
+ * enabled third-party integration that sends this event type (services/integrations/queue.ts).
+ */
+export async function queueDeliveries(db: DB, projectId: string, eventId: string, type: EventType | string, environment: string, appId: string | null, now: Date = new Date(), event?: Record<string, unknown>) {
   const hooks = await db.select().from(webhooks).where(and(eq(webhooks.projectId, projectId), eq(webhooks.enabled, true)));
   for (const h of hooks) {
     if (h.environment !== "both" && h.environment !== environment) continue;
@@ -152,6 +157,8 @@ export async function queueDeliveries(db: DB, projectId: string, eventId: string
     if (h.eventTypes && h.eventTypes.length && !h.eventTypes.includes(type)) continue;
     await db.insert(webhookDeliveries).values({ id: crypto.randomUUID(), webhookId: h.id, eventId, nextAttemptAt: now, createdAt: now }).onConflictDoNothing();
   }
+  // Integrations are never allowed to fail the purchase or webhook path that recorded the event.
+  if (event) await queueIntegrationDeliveries(db, { projectId, eventId, type, environment, appId, event, now }).catch((e) => console.error(`integration fan-out for event ${eventId} failed`, e));
 }
 
 export { rcDate };
