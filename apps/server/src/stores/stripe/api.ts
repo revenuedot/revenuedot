@@ -42,6 +42,14 @@ export class StripeApiError extends Error {
   constructor(public kind: "not_found" | "invalid" | "credentials" | "transient", message: string, public status = 0, public code?: string) { super(message); }
 }
 
+/** Rejects with a TimeoutError after `ms`, also for fetch implementations that ignore the abort signal. */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error("timed out"), { name: "TimeoutError" })), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 export interface StripeClientOptions { fetch?: FetchFn; timeoutMs?: number }
 
@@ -75,7 +83,7 @@ export class StripeClient {
     if (typeof account === "string" && /^acct_/.test(account.trim())) headers["stripe-account"] = account.trim();
     let res: Response;
     try {
-      res = await this.fetchImpl(u.toString(), { method: "GET", headers, signal: AbortSignal.timeout(this.timeoutMs) });
+      res = await withTimeout(this.fetchImpl(u.toString(), { method: "GET", headers, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
     } catch (e) {
       const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
       throw new StripeApiError("transient", timedOut ? "Stripe timed out" : `Stripe could not be reached: ${e instanceof Error ? e.message : e}`);

@@ -41,6 +41,14 @@ export class AmazonApiError extends Error {
   constructor(public kind: "invalid_receipt" | "cancelled" | "credentials" | "transient", message: string, public status = 0) { super(message); }
 }
 
+/** Rejects with a TimeoutError after `ms`, also for fetch implementations that ignore the abort signal. */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error("timed out"), { name: "TimeoutError" })), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface AmazonClientOptions { fetch?: FetchFn; timeoutMs?: number }
@@ -69,7 +77,7 @@ export class AmazonRvsClient {
   async verifyIn(env: "production" | "sandbox", secret: string, userId: string, receiptId: string): Promise<AmazonReceipt> {
     let res: Response;
     try {
-      res = await this.fetchImpl(this.url(env, secret, userId, receiptId), { method: "GET", headers: { accept: "application/json" }, signal: AbortSignal.timeout(this.timeoutMs) });
+      res = await withTimeout(this.fetchImpl(this.url(env, secret, userId, receiptId), { method: "GET", headers: { accept: "application/json" }, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
     } catch (e) {
       const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
       throw new AmazonApiError("transient", timedOut ? "Amazon's Receipt Verification Service timed out" : `Amazon's Receipt Verification Service could not be reached: ${e instanceof Error ? e.message : e}`);
