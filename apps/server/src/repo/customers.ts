@@ -130,6 +130,7 @@ async function mergeInto(db: DB, fromId: string, intoId: string) {
   await mergeCurrency(db, fromId, intoId);
   await db.update(schema.supportTickets).set({ customerId: intoId }).where(eq(schema.supportTickets.customerId, fromId));
   await db.update(schema.refundRequests).set({ customerId: intoId }).where(eq(schema.refundRequests.customerId, fromId));
+  await db.update(schema.adRewardVerifications).set({ customerId: intoId }).where(eq(schema.adRewardVerifications.customerId, fromId));
   await db.execute(sql`UPDATE winback_sends SET customer_id = ${intoId} WHERE customer_id = ${fromId}
     AND campaign_id NOT IN (SELECT campaign_id FROM winback_sends WHERE customer_id = ${intoId})`);
   await db.update(customerAliases).set({ customerId: intoId }).where(eq(customerAliases.customerId, fromId));

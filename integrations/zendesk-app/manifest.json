@@ -1,0 +1,15 @@
+{
+  "name": "RevenueDot",
+  "author": { "name": "RevenueDot", "email": "hello@revenuedot.app", "url": "https://revenuedot.app" },
+  "defaultLocale": "en",
+  "private": true,
+  "location": { "support": { "ticket_sidebar": { "url": "assets/iframe.html", "flexible": true } } },
+  "version": "1.0.0",
+  "frameworkVersion": "2.0",
+  "parameters": [
+    { "name": "api_url", "type": "url", "required": true, "default": "https://api.revenuedot.app" },
+    { "name": "project_id", "type": "text", "required": true },
+    { "name": "secret_key", "type": "text", "required": true, "secure": true }
+  ],
+  "domainWhitelist": ["api.revenuedot.app"]
+}

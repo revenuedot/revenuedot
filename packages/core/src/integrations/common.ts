@@ -6,7 +6,71 @@
  */
 
 export type IntegrationKind =
-  | "slack" | "segment" | "amplitude" | "mixpanel" | "posthog" | "firebase" | "bigquery" | "appsflyer" | "adjust" | "meta";
+  | "slack" | "segment" | "amplitude" | "mixpanel" | "posthog" | "firebase" | "bigquery" | "appsflyer" | "adjust" | "meta"
+  // Batch D (prd/integrations/PRD.md, "Batch D partners"): analytics
+  | "mparticle" | "statsig" | "superwall" | "telemetrydeck"
+  // attribution
+  | "apple_search_ads" | "appstack" | "asapty" | "branch" | "google_tag_manager" | "kochava" | "airbridge" | "splitmetrics" | "singular" | "solarengine" | "tenjin"
+  // marketing
+  | "airship" | "braze" | "clevertap" | "customerio" | "discord" | "intercom" | "iterable" | "onesignal"
+  // ads and support: connections that send no events (AdMob loads ad units; the help desk apps read the support summary)
+  | "admob" | "intercom_inbox" | "zendesk";
+
+/**
+ * One field of an integration's settings form. The API validates writes against it and the dashboard draws its forms
+ * from it. `secret` fields are sealed at rest and never returned; `select` fields list their options.
+ */
+export interface IntegrationField {
+  key: string;
+  label: string;
+  type: "text" | "secret" | "select" | "boolean" | "textarea" | "tokens";
+  required?: boolean;
+  options?: { value: string; label: string }[];
+  hint?: string;
+  placeholder?: string;
+  /** Only shown when another select field has this value (`region: custom`). */
+  when?: { key: string; value: string };
+  /** The value is a URL the server will call: checked with the outbound URL guard on save (https only on Cloud). */
+  url?: boolean;
+}
+
+export interface IntegrationSpec {
+  kind: IntegrationKind;
+  name: string;
+  category: "core" | "analytics" | "attribution" | "marketing" | "ads" | "support";
+  text: string;
+  /** Environment default for a new integration ("production", "sandbox" or "both"). */
+  environment: "production" | "both";
+  /** Whether the dashboard offers event name overrides. */
+  eventNames: boolean;
+  fields: IntegrationField[];
+  docs: string;
+  /**
+   * How the partner's API is known: "documented" (built from the partner's public API reference) or "webhook" (the
+   * partner documents no public API for this; RevenueDot posts the RevenueCat-shaped webhook body to the URL the partner
+   * gives you, which is how the partner itself asks RevenueCat customers to connect). Shown on the catalogue card.
+   */
+  api?: "documented" | "webhook";
+  /** Sends no lifecycle events (AdMob, help desk apps): the dashboard shows a dedicated page instead of the event form. */
+  connection?: boolean;
+}
+
+/**
+ * Everything one partner needs: its catalogue entry, the lifecycle steps it sends, the payload builder, and optional
+ * answer and save-time checks. Batch D partners register through these; the first ten are wired by hand in index.ts.
+ */
+export interface PartnerDef {
+  spec: IntegrationSpec;
+  /** Steps sent ("all": every event, like BigQuery). Steps outside the list are never queued. */
+  events: Concept[] | "all";
+  build: (i: BuildInput) => Promise<Plan>;
+  /** The default event name per step, for the dashboard's "Event names" panel (null: the step has no name). */
+  defaultName?: (c: Concept) => string | null;
+  /** A 2xx answer that still means "rejected" (an error inside the body). Return the message, or null when accepted. */
+  answerError?: (body: string, json: any) => string | null;
+  /** Cross-field rule checked on save, on the merged settings and secrets. */
+  validate?: (settings: Record<string, any>, secrets: Record<string, string>) => { param: string; message: string } | null;
+}
 
 /** A stored webhook event: `{ api_version, event }`'s `event`. */
 export type WebhookEvent = Record<string, any>;
@@ -62,7 +126,7 @@ export function defaultAnalyticsName(c: Concept): string {
 }
 
 export interface OutRequest {
-  method: "POST" | "PUT" | "GET" | "HEAD";
+  method: "POST" | "PUT" | "PATCH" | "GET" | "HEAD";
   url: string;
   headers: Record<string, string>;
   body: string;
@@ -201,4 +265,52 @@ export function lifecycleProperties(e: WebhookEvent, reporting: unknown) {
   if (e.offer_code) props.offer_code = e.offer_code;
   if (e.type === "TRANSFER") { props.transferred_from = e.transferred_from ?? []; props.transferred_to = e.transferred_to ?? []; }
   return props;
+}
+
+/** The "Sales reporting" field every revenue-sending integration has. */
+export const REPORTING: IntegrationField = {
+  key: "reporting", label: "Sales reporting", type: "select", options: [{ value: "gross", label: "Gross revenue" }, { value: "proceeds", label: "After store commission and taxes" }],
+  hint: "Revenue is sent in US dollars.",
+};
+/** The integrations guide; each catalogue entry links to its section. */
+export const DOCS = "https://revenuedot.app/docs/guides/integrations";
+
+
+/** RevenueDot web funnel steps (opt-in event types FUNNEL_VIEWED, FUNNEL_STEP_COMPLETED, FUNNEL_PURCHASE). */
+export const FUNNEL_CONCEPTS: Concept[] = ["funnel_viewed", "funnel_step_completed", "funnel_purchase"];
+export const isFunnelConcept = (c: Concept | null): c is Concept => !!c && FUNNEL_CONCEPTS.includes(c);
+
+/**
+ * The integrations whose funnel events carry the visitor's IP address and browser user agent (Meta's website events and
+ * Branch's web events need them to match the visitor). services/web/funnels.ts records `client_ip` and
+ * `client_user_agent` only while one of these asks for funnel events; every other integration gets neither.
+ */
+export const FUNNEL_CLIENT_KINDS: readonly IntegrationKind[] = ["meta", "branch"];
+
+/** Event fields that hold the funnel visitor's IP address and user agent (personal data, kept for 7 days at most). */
+export const FUNNEL_CLIENT_FIELDS = ["client_ip", "client_user_agent"] as const;
+
+/**
+ * The forms a secret takes in a request: as written, percent-encoded (encodeURIComponent) and form-encoded
+ * (URLSearchParams, which encodes spaces as + and a few more characters), so the delivery log scrubs a secret that a
+ * builder put in a query string or a form body whatever its characters.
+ */
+export function secretForms(s: string): string[] {
+  return [...new Set([s, encodeURIComponent(s), new URLSearchParams({ x: s }).toString().slice(2)])];
+}
+
+/**
+ * What an ad network needs from a funnel event to match a web visitor (services/web/funnels.ts records it when an
+ * integration asks for funnel events): the browser's IP, user agent and page URL, the ad click ids from the landing URL
+ * (fbclid, gclid, gbraid, wbraid, ttclid, msclkid), the utm_* parameters, and the purchase's USD revenue.
+ */
+export function funnelAdContext(e: WebhookEvent) {
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const clickIds = (e.click_ids && typeof e.click_ids === "object" ? e.click_ids : {}) as Record<string, string>;
+  const utm = Object.fromEntries(Object.entries(e).filter(([k, v]) => /^utm_[a-z_]+$/.test(k) && typeof v === "string")) as Record<string, string>;
+  return {
+    ip: s(e.client_ip), userAgent: s(e.client_user_agent), pageUrl: s(e.page_url), clickIds, utm,
+    revenue: typeof e.revenue_usd === "number" && e.revenue_usd > 0 ? round(e.revenue_usd) : 0,
+    emailStep: e.step_type === "email",
+  };
 }

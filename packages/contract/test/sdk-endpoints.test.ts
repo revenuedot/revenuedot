@@ -196,13 +196,18 @@ describe("stubs the SDK handles as a normal result", () => {
     expect(body).toMatchObject({ purchase_type: "LINK_OUT", token_source: "APPLE_SDK", is_sandbox: true });
   });
 
-  it("reward verification: failed, with the keys of the failed fixtures", async () => {
+  it("reward verification: pending until the ad network's callback, then verified in the fixtures' shape (prd/ads/PRD.md)", async () => {
     const res = await get("/v1/subscribers/user/ads/reward_verifications/AABBCCDD-1111-2222-3333-444455556666");
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(Object.keys(fx("ios/resp-reward-verification-failed.json")).sort());
-    expect(body.status).toBe("failed");
-    expect(typeof body.failure_reason).toBe("string");
+    expect(await res.json()).toEqual(fx("android/reward_verification_pending.json"));
+    // A test reward runs the server-side grant path; the poll then has the keys of the verified fixtures.
+    await h.fetch("/v2/projects/proj1/virtual_currencies", { key: h.ids.secretKey, method: "POST", json: { code: "coins", name: "Coins" } });
+    await h.fetch("/v2/projects/proj1/ads/reward_rules", { key: h.ids.secretKey, method: "POST", json: { name: "Coins", kind: "virtual_currency", currency_code: "coins", amount: 10 } });
+    await h.fetch("/v2/projects/proj1/ads/reward_verifications/test", { key: h.ids.secretKey, method: "POST", json: { app_user_id: "user", client_transaction_id: "AABBCCDD-1111-2222-3333-444455556666" } });
+    const verified = await (await get("/v1/subscribers/user/ads/reward_verifications/AABBCCDD-1111-2222-3333-444455556666")).json() as Record<string, unknown>;
+    const fixture = fx("android/reward_verification_verified_with_more_rewards.json") as Record<string, unknown>;
+    expect(Object.keys(verified).sort()).toEqual(Object.keys(fixture).sort());
+    expect(verified).toEqual({ status: "verified", reward: fx("ios/resp-reward-verification-verified.json").reward, more_rewards: [] });
   });
 
   it("Amazon receipt details: 7662 for a key that is not an Amazon app's", async () => {

@@ -33,7 +33,7 @@ const sandbox: WebhookEvent = { ...purchase, environment: "SANDBOX" };
 const android: WebhookEvent = { ...purchase, store: "PLAY_STORE", subscriber_attributes: { ...at("$gpsAdId", "38400000-8cf0-11bd-b23e-10b96e40000d"), ...at("$adjustId", "adid_android"), ...at("$appsflyerId", "af_android") } };
 
 const now = new Date("2026-09-21T14:13:21Z");
-const CONFIG: Record<IntegrationKind, { settings: Record<string, any>; secrets: Record<string, string> }> = {
+const CONFIG: Partial<Record<IntegrationKind, { settings: Record<string, any>; secrets: Record<string, string> }>> = {
   slack: { settings: {}, secrets: { webhook_url: "https://hooks.slack.com/services/T000/B000/XXXX" } },
   segment: { settings: { region: "us" }, secrets: { write_key: "wk_live_123" } },
   amplitude: { settings: { region: "eu" }, secrets: { api_key: "amp_key", sandbox_api_key: "amp_sandbox" } },
@@ -47,7 +47,7 @@ const CONFIG: Record<IntegrationKind, { settings: Record<string, any>; secrets: 
 };
 
 async function plan(kind: IntegrationKind, event: WebhookEvent, over: { settings?: Record<string, any>; secrets?: Record<string, string>; eventNames?: Record<string, string> } = {}): Promise<Plan> {
-  const c = CONFIG[kind];
+  const c = CONFIG[kind] ?? { settings: {}, secrets: {} };
   return buildIntegration(kind, {
     event, settings: { ...c.settings, ...over.settings }, secrets: { ...c.secrets, ...over.secrets }, eventNames: over.eventNames, now,
     context: { projectId: "proj1", dashboardUrl: "https://app.revenuedot.app", bundleId: "com.example.scanner", appVersion: "3.4.1", platformVersion: "18.5", locale: "en_US", accessToken: "ya29.token" },
@@ -379,6 +379,8 @@ describe("partner answers", () => {
   });
   it("every catalogue entry has a builder and documented fields", async () => {
     for (const s of INTEGRATIONS) {
+      // Connections (AdMob, the help desk apps) send no events and have their own guides; Zendesk has no settings at all.
+      if (s.connection) { expect(s.docs).toMatch(/^https:\/\/revenuedot\.app\/docs\/guides\/(ads|support-integrations|integrations)#/); continue; }
       expect(s.fields.length).toBeGreaterThan(0);
       expect(s.docs).toMatch(/^https:\/\/revenuedot\.app\/docs\/guides\/integrations#/);
       const p = await plan(s.kind, purchase);

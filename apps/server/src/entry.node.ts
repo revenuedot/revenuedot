@@ -14,6 +14,7 @@ const { db } = await openDb(process.env.DATABASE_URL ?? "pglite://./.data/dev");
 const stores = defaultStores();
 // Email: SMTP when REVENUEDOT_SMTP_URL is set, else every email (links included) is printed to this log.
 const publicUrl = process.env.REVENUEDOT_PUBLIC_URL?.trim() || undefined;
+const googleOAuth = { clientId: process.env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID?.trim() || undefined, clientSecret: process.env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET?.trim() || undefined };
 let mailer: Mailer = logMailer();
 if (process.env.REVENUEDOT_SMTP_URL?.trim()) {
   const { smtpMailer } = await import("./mail/smtp.js");
@@ -23,14 +24,14 @@ let running = false;
 const runTick = async () => {
   if (running) return;
   running = true;
-  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
+  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
 const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250), signup, mailer, publicUrl, encryptionKey: process.env.REVENUEDOT_ENCRYPTION_KEY?.trim() || undefined,
   // "Generate with AI" on paywalls: OPENAI_API_KEY or ANTHROPIC_API_KEY (REVENUEDOT_AI_MODEL to pick the model); off without either.
-  ai: modelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined,
+  ai: modelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
   // Hosted web pages (purchase links, funnels): REVENUEDOT_PAY_URL, else <this server>/pay; custom domains CNAME to the pay host.
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).

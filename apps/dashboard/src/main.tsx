@@ -31,8 +31,6 @@ const SOON: [string, string, string][] = [
   ["paywalls", "Paywalls", "Design paywalls once and change them without an app release."],
   ["targeting", "Targeting", "Show different offerings to different customers."],
   ["experiments", "Experiments", "A/B test prices and offerings."],
-  ["ads", "Ads", "Ad revenue next to subscription revenue."],
-  ["ads/rewards", "Rewards", "Rewarded ads that grant currency or access."],
   ["lifecycle/customer-center", "Customer Center", "Self-service subscription management inside your app."],
 ];
 

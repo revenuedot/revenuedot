@@ -178,7 +178,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
 | **Backend** | RevenueCat-compatible REST API v1, and every one of the 128 REST API v2 operations (126 doing the real work, discounts included; the 2 invoice operations exist only for RevenueCat's own Web Billing and answer on purpose); restore a purchase by its Google Play or App Store order id; create products in App Store Connect and Google Play; subscriber access tokens for the SDK endpoints; webhooks with the same payloads for 19 of the 21 event types ([why not the other 2](https://revenuedot.app/docs/guides/webhooks)), signed deliveries, retries and replay | Tier 1 core, Tier 2 rest · built and tested; store operations tested against fake stores |
 | **Offers and outages** | Promotional-offer signing with your In-App Purchase key; Apple win-back offers recorded on every purchase, sent as `offer_code` and exported, with Apple's eligibility list per customer ([guide](https://revenuedot.app/docs/guides/win-back-offers)); offline entitlements keyed the way each SDK looks them up, so paying customers keep access while the server is down ([guide](https://revenuedot.app/docs/guides/offline-entitlements)) | Tier 2 · built and tested; no real win-back offer redeemed yet |
-| **Integrations** | Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase (GA4), BigQuery, AppsFlyer, Adjust and Meta with RevenueCat's event names and reserved attributes, retries, a delivery log and replay; scheduled CSV or Parquet exports of transactions, customers, subscriptions and events to S3, R2 or Google Cloud Storage ([guide](https://revenuedot.app/docs/guides/integrations)) | Tier 2 · built, tested against fake partners and buckets; no real partner account yet |
+| **Integrations** | All 37 of RevenueCat's catalogue plus BigQuery: Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, mParticle, Statsig, Superwall, TelemetryDeck; AppsFlyer, Adjust, Meta Ads, Apple Search Ads (campaign report), Branch, Kochava, Singular, Tenjin, Airbridge, Asapty, Appstack, SplitMetrics Acquire, SolarEngine, Google Tag Manager (server container); Braze, Customer.io, CleverTap, Airship, Iterable, OneSignal, Intercom, Discord; Google AdMob; Intercom inbox and Zendesk sidebar apps. RevenueCat's event names and reserved attributes, retries, a delivery log and replay; partners without an event API of their own get RevenueCat's webhook body. Scheduled CSV or Parquet exports to S3, R2 or Google Cloud Storage ([guide](https://revenuedot.app/docs/guides/integrations)) | Tier 2/3 · built, tested against fake partners and buckets; no real partner account yet |
+| **Ads** | Ad revenue from the SDK's ad events in US dollars next to subscription revenue: impressions, eCPM, clicks, by network, format, placement and ad unit; rewarded ads verified on the server with AdMob's signed callback, and rules that grant in-app currency or a day of access; AdMob ad unit names over OAuth ([guide](https://revenuedot.app/docs/guides/ads)) | Tier 3 · built, tested with a generated signing key and a fake Google; no real AdMob callback yet |
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
@@ -207,6 +208,11 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
   <img alt="RevenueDot Charts: MRR Movement by week with new and churned MRR, the grouped chart list, filters and the data table" src="docs/assets/charts-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ads/ads-overview-dark.png">
+  <img alt="RevenueDot Ads Overview: ad revenue, impressions, eCPM, clicks, ad share of revenue and subscription revenue for the last 28 days, with daily ad revenue" src="docs/assets/ads/ads-overview.png" width="100%">
 </picture>
 
 <picture>
@@ -336,7 +342,7 @@ revenuedot/
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
 - **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
-- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account.
+- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -345,6 +351,21 @@ Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/S
 <details><summary><b>Is RevenueDot an open-source alternative to RevenueCat?</b></summary>
 
 Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call, so it can replace RevenueCat without changing your app's purchase code.
+</details>
+
+<details><summary><b>Does RevenueDot track ad revenue from AdMob, AppLovin MAX and ironSource?</b></summary>
+
+Yes. The RevenueCat SDK's ad tracking (iOS and Android) sends impression-level ad revenue with the network, format, placement and ad unit to `POST /v1/events`; RevenueDot converts it to US dollars at each day's rate and shows ad revenue, impressions and eCPM next to subscription revenue on the Ads page and in the ad charts. See the [ads guide](https://revenuedot.app/docs/guides/ads).
+</details>
+
+<details><summary><b>How do I verify AdMob rewarded ads on the server?</b></summary>
+
+Paste RevenueDot's callback URL (`https://api.revenuedot.app/v1/ads/admob/ssv` on Cloud) into the rewarded ad unit's server-side verification settings in AdMob, and pass the SDK's reward verification token to the ad. RevenueDot checks Google's ECDSA signature with [Google's published keys](https://developers.google.com/admob/android/ssv), grants the reward your rules name (in-app currency or temporary access), and the SDK's `pollRewardVerification` returns it.
+</details>
+
+<details><summary><b>Which RevenueCat integrations does RevenueDot support?</b></summary>
+
+All 37 in [RevenueCat's catalogue](https://www.revenuecat.com/docs/integrations/third-party-integrations/amplitude), with the same event names and reserved attributes, plus BigQuery. Four partners (Superwall, Appstack, SplitMetrics Acquire, SolarEngine) publish no event API and receive RevenueCat's webhook body at the URL they give you, the way they connect to RevenueCat.
 </details>
 
 <details><summary><b>Can I sell my app's subscriptions on the web with RevenueDot?</b></summary>

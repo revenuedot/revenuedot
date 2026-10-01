@@ -30,6 +30,7 @@ import { offeringByKey, webPackages } from "../services/web/catalog.js";
 import { stripeAppsOf } from "../services/web/config.js";
 import { createTicket, type TicketInput } from "../services/support.js";
 import { clientIp } from "../services/rate-limit.js";
+import { pollReward } from "../services/ads/rewards.js";
 
 const TICKET_BODY_BYTES = 32_000;
 
@@ -428,10 +429,10 @@ export function sdkRoutes(deps: Deps) {
   // 21. Restore eligibility (StoreKit 2)
   r.post("/v1/subscribers/:id/restore/eligibility", (c) => c.json({ is_purchase_allowed_by_restore_behavior: true }));
 
-  // 22. Ad reward verification. There is no server-side ad verification, so the answer is final ("failed"), which stops
-  // the SDK's polling after one request.
-  r.get("/v1/subscribers/:id/ads/reward_verifications/:tx", (c) =>
-    c.json({ status: "failed", reward: null, failure_reason: "not_supported", message: "Server-side reward verification is not available on RevenueDot." }));
+  // 22. Ad reward verification (prd/ads/PRD.md): "pending" until the ad network's server-side callback is recorded
+  // (GET /v1/ads/admob/ssv), then "verified" with the rewards the project's rules granted, or "failed".
+  r.get("/v1/subscribers/:id/ads/reward_verifications/:tx", async (c) =>
+    c.json(await pollReward(deps.db, c.get("app").projectId, safeDecode(c.req.param("id")), safeDecode(c.req.param("tx")).slice(0, 128))));
 
   // 24. Amazon receipt details (Android, Amazon builds): RVS's receipt as Amazon returned it. The SDK reads `termSku` and
   // posts it as the product id. A key that is not an Amazon app's answers 7662 (the purchase stays unconsumed).

@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId, webhookStore, type Store } from "@revenuedot/core";
-import { CONCEPTS, INTEGRATIONS, integrationSpec, type IntegrationField, type IntegrationKind, type IntegrationSpec } from "@revenuedot/core/integrations";
+import { CONCEPTS, INTEGRATIONS, integrationSpec, partnerDef, type IntegrationField, type IntegrationKind, type IntegrationSpec } from "@revenuedot/core/integrations";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer } from "../../repo/customers.js";
@@ -122,8 +122,18 @@ function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>,
   if (spec.kind === "firebase" && !(settings.ios_firebase_app_id && secrets.ios_api_secret) && !(settings.android_firebase_app_id && secrets.android_api_secret)) {
     throw paramError("settings: set a Firebase app ID and its API secret for iOS, Android or both.", "settings");
   }
-  if (spec.kind === "appsflyer" && !settings.ios_app_id && !settings.android_app_id) throw paramError("settings: set the AppsFlyer app ID for iOS, Android or both.", "settings");
+  if (spec.kind === "appsflyer" && !settings.ios_app_id && !settings.android_app_id && !settings.web_app_id) throw paramError("settings: set the AppsFlyer app ID for iOS, Android, the web, or several.", "settings");
   if (spec.kind === "adjust" && !settings.ios_app_token && !settings.android_app_token) throw paramError("settings: set the Adjust app token for iOS, Android or both.", "settings");
+  // Fields the server will call (a Discord webhook, a Tag Manager server container, a partner's webhook URL).
+  for (const f of spec.fields) {
+    if (!f.url) continue;
+    const v = f.type === "secret" ? secrets[f.key] : settings[f.key];
+    if (typeof v !== "string" || !v) continue;
+    const problem = outboundUrlProblem(v, strictUrls) ?? (strictUrls && !/^https:/i.test(v) ? "must be an https URL" : null);
+    if (problem) throw paramError(`settings.${f.key}: ${problem}.`, `settings.${f.key}`);
+  }
+  const bad = partnerDef(spec.kind)?.validate?.(settings, secrets);
+  if (bad) throw paramError(`${bad.param}: ${bad.message}`, bad.param);
 }
 
 export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
@@ -143,7 +153,7 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
   const types = (t: readonly string[] | undefined) => (t === undefined ? undefined : t.length ? t.map((x) => x.toUpperCase()) : null);
 
   r.get("/v2/projects/:project_id/integrations/catalog", scope("project_configuration:integrations:read"), (c) =>
-    c.json(listOf(c, INTEGRATIONS.map((s) => ({ object: "integration_type" as const, type: s.kind, name: s.name, category: s.category, description: s.text, default_environment: s.environment === "both" ? null : s.environment, event_names: s.eventNames, fields: s.fields, docs_url: s.docs })), null)));
+    c.json(listOf(c, INTEGRATIONS.map((s) => ({ object: "integration_type" as const, type: s.kind, name: s.name, category: s.category, description: s.text, default_environment: s.environment === "both" ? null : s.environment, event_names: s.eventNames, fields: s.fields, docs_url: s.docs, api: s.api ?? "documented", connection: !!s.connection })), null)));
 
   r.get(P, scope("project_configuration:integrations:read"), async (c) => {
     const rows = await db.select().from(schema.integrations).where(eq(schema.integrations.projectId, c.get("projectId")));

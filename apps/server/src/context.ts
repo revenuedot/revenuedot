@@ -44,6 +44,11 @@ export interface Deps {
    */
   apiUrl?: string;
   /**
+   * The Google Cloud OAuth client for "Connect AdMob" (REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID and _SECRET). Unset: each
+   * project can enter its own client on the AdMob page (services/ads/admob.ts).
+   */
+  googleOAuth?: { clientId?: string; clientSecret?: string };
+  /**
    * Where hosted web pages live (prd/web-billing/PRD.md §7): REVENUEDOT_PAY_URL, such as https://pay.revenuedot.app (pages at
    * the root of that host) or https://api.example.com/pay. Unset: `<request origin>/pay`.
    */

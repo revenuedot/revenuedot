@@ -31,6 +31,9 @@ export interface Env {
   REVENUEDOT_ENCRYPTION_KEY?: string;
   /** Workers AI, for "Generate with AI" on paywalls. No key needed. */
   AI?: WorkersAi;
+  /** Optional secrets: the Google Cloud OAuth client for "Connect AdMob" (prd/ads/PRD.md). Unset: projects enter their own. */
+  REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID?: string;
+  REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET?: string;
   /** Where hosted web pages live (prd/web-billing/PRD.md §7). Default https://api.revenuedot.app/pay until pay.revenuedot.app is routed here. */
   REVENUEDOT_PAY_URL?: string;
   /** The host custom domains CNAME to (the Cloudflare for SaaS fallback origin, docs/cloud.md). */
@@ -39,6 +42,7 @@ export interface Env {
 
 const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
 const publicUrlFor = (env: Env) => env.REVENUEDOT_PUBLIC_URL || "https://app.revenuedot.app";
+const googleOAuthFor = (env: Env) => ({ clientId: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID || undefined, clientSecret: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET || undefined });
 
 
 interface RequestScope { db: DB; pending: Promise<unknown>[] }
@@ -72,6 +76,7 @@ const appFor = (env: Env) => (app ??= createApp({
   ai: env.AI ? workersAiModel(env.AI) : undefined,
   // Apps reach the API host; paywall images and icons are served from it.
   apiUrl: "https://api.revenuedot.app",
+  googleOAuth: googleOAuthFor(env),
   payUrl: env.REVENUEDOT_PAY_URL || "https://api.revenuedot.app/pay",
   customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
   // Send new webhook deliveries after the response, on the request's own connection.
@@ -86,9 +91,9 @@ async function runTick(env: Env, db: DB, why: string) {
     // Data exports (file uploads) run on the cron only, never in a tick kicked by a request.
     const r = await tick(db, new Date(), fetch, {
       stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron", winback: why === "cron", consumption: why === "cron",
-      encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true,
+      encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true, googleOAuth: googleOAuthFor(env), admob: why === "cron",
     });
-    if (r.expired || r.voided || r.consumption || r.winback || r.sent || r.integrations || r.exports || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
+    if (r.expired || r.voided || r.consumption || r.winback || r.sent || r.integrations || r.exports || r.credentialsChecked || r.admob || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
     return r;
   } catch (e) {
     console.error(`tick (${why}) failed`, e);

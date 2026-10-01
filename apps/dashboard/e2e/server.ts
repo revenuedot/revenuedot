@@ -212,6 +212,7 @@ for (const [user, country, o] of people) {
   }
 }
 await seedLifecycle();
+await seedAds();
 ready = true;
 console.log(`E2E server ready on ${base} (project ${projectId})`);
 
@@ -273,4 +274,53 @@ async function seedLifecycle() {
     { id: "tkt_e2eclosed0000001", projectId, appId: ios.id, customerId: customerIds.hana_ios!, appUserId: "hana_ios", customerEmail: "hana@example.com",
       description: "How do I restore my purchase on a new iPad?", status: "closed", emailedTo: null, createdAt: ago(4), closedAt: ago(3) },
   ]);
+}
+
+/**
+ * 4. Ads demo data (prd/ads/PRD.md): 40 days of SDK ad events from the App Store app (AdMob mediation with AdMob,
+ * AppLovin and Unity Ads; banner, interstitial and rewarded; USD and EUR revenue), AdMob ad unit names, an in-app
+ * currency with a reward rule, and verified rewards in the ledger. Events are written straight to `sdk_events`, the
+ * rows POST /v1/events stores, because the SDK would send thousands of them.
+ */
+async function seedAds() {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const units = [
+    { id: "ca-app-pub-3940256099942544/2934735716", name: "Home banner", format: "banner", placement: "home", ecpm: 0.6 },
+    { id: "ca-app-pub-3940256099942544/4411468910", name: "Scan finished interstitial", format: "interstitial", placement: "scan_finished", ecpm: 7.5 },
+    { id: "ca-app-pub-3940256099942544/1712485313", name: "Extra scans reward", format: "rewarded", placement: "out_of_scans", ecpm: 14 },
+  ];
+  const networks = [["Google AdMob", 0.55, "USD"], ["AppLovin", 0.3, "USD"], ["Unity Ads", 0.15, "EUR"]] as const;
+  const users = ["wjqx8kd2rn1", "m8f6gmi3", "ne45gd13", "sofia_ios", "hana_ios", ...Array.from({ length: 25 }, (_, i) => `$RCAnonymousID:ads${String(i).padStart(4, "0")}`)];
+  const rows: (typeof schema.sdkEvents.$inferInsert)[] = [];
+  let n = 0;
+  const event = (type: string, at: number, u: (typeof units)[number], net: (typeof networks)[number], extra: Record<string, unknown> = {}) => {
+    const id = `ad-e2e-${String(n++).padStart(7, "0")}`;
+    const user = users[Math.floor(rnd() * users.length)]!;
+    rows.push({ projectId, id, appId: ios.id, customerId: customerIds[user] ?? null, appUserId: user, type, isSandbox: false, occurredAt: new Date(at), receivedAt: new Date(at),
+      payload: { id, version: 1, type, app_user_id: user, app_session_id: "s", timestamp_ms: at, capture_method: "adapter", network_name: net[0], mediator_name: "AdMob", ad_format: u.format, placement: u.placement, ad_unit_id: u.id, impression_id: id, ...extra } });
+  };
+  for (let d = 39; d >= 0; d--) {
+    const day = Date.now() - d * DAY;
+    const volume = Math.round(18 + 10 * Math.sin(d / 4) + (39 - d) * 0.6);
+    for (let k = 0; k < volume; k++) {
+      const u = units[rnd() < 0.5 ? 0 : rnd() < 0.6 ? 1 : 2]!;
+      const r = rnd();
+      const net = r < networks[0][1] ? networks[0] : r < networks[0][1] + networks[1][1] ? networks[1] : networks[2];
+      const at = day - Math.floor(rnd() * 20 * 3600_000);
+      if (at > Date.now()) continue;
+      event("rc_ads_ad_loaded", at - 2000, u, net);
+      event("rc_ads_ad_displayed", at, u, net);
+      const micros = Math.round(((u.ecpm * (0.6 + rnd() * 0.8)) / 1000) * 1e6 * (net[2] === "EUR" ? 0.92 : 1));
+      event("rc_ads_ad_revenue", at + 50, u, net, { revenue_micros: micros, currency: net[2], precision: net[0] === "Google AdMob" ? "exact" : "estimated" });
+      if (rnd() < 0.03) event("rc_ads_ad_opened", at + 4000, u, net);
+      if (rnd() < 0.08) event("rc_ads_ad_failed_to_load", at - 5000, u, net, { mediator_error_code: 3 });
+    }
+  }
+  for (let i = 0; i < rows.length; i += 500) await db.insert(schema.sdkEvents).values(rows.slice(i, i + 500)).onConflictDoNothing();
+  for (const u of units) await db.insert(schema.adUnits).values({ projectId, network: "admob", adUnitId: u.id, accountId: "pub-3940256099942544", networkAppId: "ca-app-pub-3940256099942544~1458002511", displayName: u.name, format: u.format }).onConflictDoNothing();
+  await call("POST", `${P}/virtual_currencies`, { code: "SCANS", name: "Extra scans", description: "Scans beyond the free limit" });
+  await call("POST", `${P}/ads/reward_rules`, { name: "Extra scans for a rewarded ad", kind: "virtual_currency", currency_code: "SCANS", amount: 5, ad_unit_id: units[2]!.id });
+  await call("POST", `${P}/ads/reward_rules`, { name: "A day of Pro for the weekend ad", kind: "entitlement", entitlement_id: "pro", duration_minutes: 1440, reward_item: "pro_day", enabled: false });
+  for (const user of ["sofia_ios", "hana_ios", "m8f6gmi3"]) await call("POST", `${P}/ads/reward_verifications/test`, { app_user_id: user, ad_unit_id: units[2]!.id, reward_item: "scans", reward_amount: 5 });
 }

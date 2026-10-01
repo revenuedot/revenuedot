@@ -20,6 +20,9 @@ services:
       REVENUEDOT_CUSTOM_DOMAIN_TARGET: ${REVENUEDOT_CUSTOM_DOMAIN_TARGET:-}
       # Seals integration and data export credentials at rest (see .env.example).
       REVENUEDOT_ENCRYPTION_KEY: ${REVENUEDOT_ENCRYPTION_KEY:-}
+      # Google OAuth client for "Connect AdMob"; unset lets each project enter its own (see .env.example).
+      REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID:-}
+      REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET:-}
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped

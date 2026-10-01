@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  RevenueDot ticket sidebar app for Zendesk (prd/integrations/PRD.md, "Support apps").
+  Looks the ticket requester up by email with GET /v2/projects/{project_id}/support_summaries?email=…
+  The secret key is a secure setting: Zendesk's proxy inserts it, so it never reaches the agent's browser.
+  Guide: https://revenuedot.app/docs/guides/support-integrations#zendesk
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root{--fg:#0A0A0A;--fg-3:#737373;--border:#E5E5E5;--up:#5F822B;--down:#C2410C;--info:#2F6F9F}
+    body{margin:0;font:13px/20px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:#fff}
+    main{padding:8px 2px}
+    h2{font-size:14px;margin:0 0 8px;font-weight:600}
+    dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0 0 10px}
+    dt{color:var(--fg-3)} dd{margin:0;word-break:break-word}
+    .tag{display:inline-block;border:1px solid currentColor;font-size:10.5px;line-height:16px;padding:0 5px;text-transform:uppercase;letter-spacing:.04em}
+    .up{color:var(--up)} .down{color:var(--down)} .info{color:var(--info)} .muted{color:var(--fg-3)}
+    a{color:var(--fg)} hr{border:0;border-top:1px solid var(--border);margin:10px 0}
+  </style>
+</head>
+<body>
+  <main id="app"><p class="muted">Loading…</p></main>
+  <script src="https://static.zdassets.com/zendesk_app_framework_sdk/2.0/zaf_sdk.min.js"></script>
+  <script>
+    (function () {
+      var client = ZAFClient.init();
+      var el = document.getElementById("app");
+      var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+      var day = function (ms) { return ms ? new Date(ms).toISOString().slice(0, 10) : "—"; };
+      var tone = { active: "up", trial: "info", grace_period: "down", expired: "muted", cancelled: "down" };
+      function render(items, email) {
+        if (!items.length) { el.innerHTML = '<p class="muted">No RevenueDot customer with ' + esc(email) + ".</p>"; return; }
+        el.innerHTML = items.map(function (s) {
+          var sub = s.subscriptions.filter(function (x) { return x.active; })[0] || s.subscriptions[0];
+          var rows = [["Status", '<span class="tag ' + (tone[s.status] || "muted") + '">' + esc(s.status) + "</span>"], ["Entitlements", esc(s.active_entitlements.join(", ") || "None")]];
+          if (sub) rows.push(["Plan", esc(sub.product_id)], ["Store", esc(sub.store)], [sub.auto_renew ? "Renews" : "Expires", day(sub.expires_at)]);
+          rows.push(["Total spent", "$" + s.total_spent_in_usd.toFixed(2)], ["Customer since", day(s.first_seen_at)], ["App user ID", esc(s.app_user_id)]);
+          if (s.refund_requests.length) rows.push(["Refund requests", String(s.refund_requests.length)]);
+          if (s.open_tickets.length) rows.push(["Open tickets", String(s.open_tickets.length)]);
+          return "<h2>" + esc(s.display_name || s.app_user_id) + "</h2><dl>" + rows.map(function (r) { return "<dt>" + r[0] + "</dt><dd>" + r[1] + "</dd>"; }).join("") +
+            '</dl><a href="' + esc(s.dashboard_url) + '" target="_blank" rel="noreferrer">Open in RevenueDot</a>';
+        }).join("<hr>");
+        client.invoke("resize", { width: "100%", height: Math.min(600, document.body.scrollHeight + 16) + "px" });
+      }
+      Promise.all([client.metadata(), client.get("ticket.requester.email")]).then(function (r) {
+        var settings = r[0].settings, email = r[1]["ticket.requester.email"];
+        if (!email) { el.innerHTML = '<p class="muted">The requester has no email address.</p>'; return; }
+        var base = String(settings.api_url || "https://api.revenuedot.app").replace(/\/+$/, "");
+        return client.request({
+          url: base + "/v2/projects/" + encodeURIComponent(settings.project_id) + "/support_summaries?email=" + encodeURIComponent(email),
+          headers: { Authorization: "Bearer {{setting.secret_key}}" }, secure: true, type: "GET", dataType: "json", cors: false,
+        }).then(function (body) { render(body.items || [], email); });
+      }).catch(function (e) {
+        el.innerHTML = '<p class="down">RevenueDot could not be reached' + (e && e.status ? " (HTTP " + e.status + ")" : "") + ". Check the API URL, project ID and secret key in the app settings.</p>";
+      });
+    })();
+  </script>
+</body>
+</html>

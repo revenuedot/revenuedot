@@ -37,6 +37,7 @@ import { retentionRoutes } from "./retention.js";
 import { supportRoutes } from "./support.js";
 import { winbackRoutes } from "./winback.js";
 import { customerListRoutes } from "./customer-lists.js";
+import { adsRoutes } from "./ads.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -96,6 +97,7 @@ export function v2Routes(deps: Deps) {
   supportRoutes(r, deps);
   winbackRoutes(r, deps);
   customerListRoutes(r, deps);
+  adsRoutes(r, deps);
   productRoutes(r, deps);
   entitlementRoutes(r, deps);
   offeringRoutes(r, deps);

@@ -27,6 +27,10 @@ import { PaywallEditor } from "./pages/paywalls/Editor";
 import { GalleryPage } from "./pages/paywalls/Gallery";
 import { ExperimentDetail, ExperimentsPage, TargetingPage } from "./pages/targeting/Targeting";
 import { ChartsPage } from "./pages/charts/Charts";
+import { AdsOverviewPage } from "./pages/ads/AdsOverview";
+import { RewardsPage } from "./pages/ads/Rewards";
+import { AdMobPage } from "./pages/ads/AdMobPage";
+import { ZendeskPage } from "./pages/setup/SupportApps";
 import { WebPage } from "./pages/web/Web";
 import { FunnelsPage } from "./pages/web/Funnels";
 import { FunnelBuilderPage } from "./pages/web/FunnelBuilder";
@@ -58,6 +62,8 @@ export const routes = [
   <Route key="paywalls" path="/projects/:projectId/paywalls" element={<PaywallsPage />} />,
   <Route key="paywall-templates" path="/projects/:projectId/paywalls/templates" element={<GalleryPage />} />,
   <Route key="paywall" path="/projects/:projectId/paywalls/:paywallId" element={<PaywallEditor />} />,
+  <Route key="ads" path="/projects/:projectId/ads" element={<AdsOverviewPage />} />,
+  <Route key="ads-rewards" path="/projects/:projectId/ads/rewards" element={<RewardsPage />} />,
   <Route key="targeting" path="/projects/:projectId/targeting" element={<TargetingPage />} />,
   <Route key="experiments" path="/projects/:projectId/experiments" element={<ExperimentsPage />} />,
   <Route key="experiment" path="/projects/:projectId/experiments/:experimentId" element={<ExperimentDetail />} />,
@@ -77,6 +83,8 @@ export const routes = [
   <Route key="exports" path="/projects/:projectId/integrations/exports" element={<ExportsList />} />,
   <Route key="export-new" path="/projects/:projectId/integrations/exports/new" element={<ExportNew />} />,
   <Route key="export" path="/projects/:projectId/integrations/exports/:exportId" element={<ExportDetail />} />,
+  <Route key="integration-admob" path="/projects/:projectId/integrations/admob" element={<AdMobPage />} />,
+  <Route key="integration-zendesk" path="/projects/:projectId/integrations/zendesk" element={<ZendeskPage />} />,
   <Route key="integration" path="/projects/:projectId/integrations/:type" element={<PartnerIntegrationPage />} />,
   <Route key="settings" path="/projects/:projectId/settings" element={<ProjectSettingsPage />} />,
   <Route key="settings-tab" path="/projects/:projectId/settings/:tab" element={<ProjectSettingsPage />} />,
