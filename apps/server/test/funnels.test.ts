@@ -53,10 +53,11 @@ describe("funnels", () => {
     expect(html).toContain('"utm_source":"tiktok"');
     expect(html).toMatch(/data-pkg="\$rc_annual" aria-checked="true"/);
     const session = /"session_id":"([0-9a-f]{32})"/.exec(html)![1]!;
+    const visitor = /"visitor_id":"(\$RCAnonymousID:[0-9a-f]{32})"/.exec(html)![1]!;
 
     // The page's events; junk is ignored with 204.
-    const base = { funnel_id: f.id, session_id: session, query: { utm_source: "tiktok" } };
-    for (const [type, step, answer] of [["funnel_viewed"], ["step_viewed", "goal"], ["step_completed", "goal", "Sleep better"], ["step_viewed", "plan"], ["step_completed", "plan"], ["step_viewed", "email"], ["step_completed", "email", "provided"], ["step_viewed", "paywall"]] as [string, string?, string?][]) {
+    const base = { funnel_id: f.id, session_id: session, app_user_id: visitor, query: { utm_source: "tiktok" } };
+    for (const [type, step, answer] of [["funnel_viewed"], ["step_viewed", "goal"], ["step_completed", "goal", "Sleep better"], ["step_viewed", "plan"], ["step_completed", "plan"], ["step_viewed", "email"], ["step_completed", "email", "skipped"], ["step_viewed", "paywall"]] as [string, string?, string?][]) {
       expect((await event({ ...base, type, step_id: step, answer })).status).toBe(204);
     }
     expect((await event({ ...base, type: "purchase" })).status).toBe(204);
@@ -64,14 +65,14 @@ describe("funnels", () => {
     expect((await event({ funnel_id: "fnl_nope", session_id: session, type: "funnel_viewed" })).status).toBe(204);
     const rows = await env.h.db.select().from(schema.funnelEvents);
     expect(rows).toHaveLength(8);
-    expect(rows.find((r) => r.type === "step_completed" && r.stepId === "email")!.properties).toMatchObject({ answer: "provided" });
+    expect(rows.find((r) => r.type === "step_completed" && r.stepId === "email")!.properties).toMatchObject({ answer: "skipped" });
 
     // A second visitor leaves after the first question.
     await event({ funnel_id: f.id, session_id: "second0000000000", type: "funnel_viewed" });
     await event({ funnel_id: f.id, session_id: "second0000000000", type: "step_viewed", step_id: "goal" });
 
     // Checkout from the paywall with the answers: they become attributes once the purchase completes.
-    const start = await env.raw("http://localhost/pay/api/checkout", { method: "POST", json: { project: "scanner", slug: "focus-quiz", package: "$rc_annual", email: "quiz@example.com", session, answers: { goal: "Sleep better", email: "provided" } } });
+    const start = await env.raw("http://localhost/pay/api/checkout", { method: "POST", json: { project: "scanner", slug: "focus-quiz", package: "$rc_annual", email: "quiz@example.com", session, visitor_id: visitor, answers: { goal: "Sleep better", email: "provided" } } });
     expect(start.status).toBe(200);
     const { url } = await start.json() as { url: string };
     const s = env.stripe.complete(new URL(url).pathname.split("/").pop()!);
@@ -80,6 +81,8 @@ describe("funnels", () => {
     expect(success).toContain("You are in");
     expect(success).toMatch(/\/pay\/r\/rdrt_/);
     const anon = s.metadata.app_user_id as string;
+    // The visitor's events and purchase share one anonymous id, and the purchase is still redeemable.
+    expect(anon).toBe(visitor);
     const [cust] = await env.h.db.select().from(schema.customerAliases).where(eq(schema.customerAliases.appUserId, anon));
     const attrs = await env.h.db.select().from(schema.customerAttributes).where(eq(schema.customerAttributes.customerId, cust!.customerId));
     expect(Object.fromEntries(attrs.map((a) => [a.key, a.value]))).toMatchObject({ goal: "Sleep better", $email: "quiz@example.com" });
@@ -100,7 +103,7 @@ describe("funnels", () => {
     const purchase = evs.find((e) => e.type === "FUNNEL_PURCHASE")!;
     expect(purchase).toMatchObject({ funnel_id: f.id, funnel_name: "Focus quiz", session_id: session, app_user_id: anon, store: "STRIPE", environment: "SANDBOX" });
     const step = evs.find((e) => e.type === "FUNNEL_STEP_COMPLETED" && e.step_id === "goal")!;
-    expect(step).toMatchObject({ step_type: "question", step_index: 0, answer: "Sleep better", utm_source: "tiktok" });
+    expect(step).toMatchObject({ step_type: "question", step_index: 0, answer: "Sleep better", utm_source: "tiktok", app_user_id: visitor });
     const deliveries = await env.h.db.select({ w: schema.webhookDeliveries.webhookId, e: schema.events.type }).from(schema.webhookDeliveries).innerJoin(schema.events, eq(schema.events.id, schema.webhookDeliveries.eventId));
     const toAll = deliveries.filter((d) => d.w !== wanted.body.id).map((d) => d.e);
     expect(toAll.some((t) => t.startsWith("FUNNEL_"))).toBe(false);

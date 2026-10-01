@@ -287,6 +287,9 @@ describe("domains", () => {
     expect(page.status).toBe(200);
     const html = await page.text();
     expect(html).toContain('"checkout":"https://pay.scanner.example/api/checkout"');
+    // Behind a TLS proxy the request arrives as http; links keep the visitor's https.
+    const proxied = await env.raw(`http://pay.scanner.example/${l.slug}`, { headers: { "x-forwarded-proto": "https" } });
+    expect(await proxied.text()).toContain('"checkout":"https://pay.scanner.example/api/checkout"');
     const start = await env.raw("https://pay.scanner.example/api/checkout", { method: "POST", json: { project: "scanner", slug: l.slug, package: "$rc_annual" } });
     expect(start.status).toBe(200);
     expect(env.stripe.writes("/v1/checkout/sessions")[0]!.params.success_url).toMatch(/^https:\/\/pay\.scanner\.example\/spring-sale\/success\?co=/);

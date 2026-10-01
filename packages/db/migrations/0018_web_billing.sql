@@ -94,6 +94,7 @@ CREATE TABLE "web_checkouts" (
 	"redemption_seed" text,
 	"redemption_generation" integer DEFAULT 0 NOT NULL,
 	"redemption_token_hash" text,
+	"previous_token_hashes" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"redemption_expires_at" timestamp with time zone,
 	"redemption_sent_at" timestamp with time zone,
 	"redeemed_at" timestamp with time zone,

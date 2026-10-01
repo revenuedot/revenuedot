@@ -39,7 +39,9 @@ export function createApp(input: Deps) {
     const target = new URL(c.req.url);
     target.pathname = rewritten;
     const req = new Request(target, c.req.raw);
-    const origin = `${url.protocol}//${host}`;
+    // Behind a TLS proxy the request URL is http; the page's links must use the scheme the visitor used.
+    const proto = (c.req.header("x-forwarded-proto") ?? url.protocol.replace(":", "")).split(",")[0]!.trim();
+    const origin = `${proto === "https" || proto === "http" ? proto : "https"}://${host}`;
     PAY_CTX.set(req, projectSlug ? { base: origin, projectBase: origin, projectSlug } : { base: deps.payUrl!.replace(/\/+$/, "") });
     return pay.fetch(req);
   });

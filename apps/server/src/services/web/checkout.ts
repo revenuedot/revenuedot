@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { ANON_PREFIX, buildCustomerInfo, isAnonymous, newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord, Deps } from "../../context.js";
@@ -40,6 +40,8 @@ export interface StartInput {
   packageKey: string;
   source: { type: "purchase_link" | "funnel" | "sdk"; id: string | null; discountId?: string | null };
   appUserId?: string | null;
+  /** The page's anonymous visitor id (`$RCAnonymousID:…`), used when no app user id is given. */
+  visitorId?: string | null;
   email?: string | null;
   code?: string | null;
   funnelSessionId?: string | null;
@@ -59,7 +61,8 @@ export async function startCheckout(deps: Deps, o: StartInput): Promise<{ checko
   let appUserId = o.appUserId?.trim() || null;
   if (appUserId && appUserId.length > 100) throw new CheckoutError(400, "app_user_id is too long.");
   const anonymous = !appUserId;
-  appUserId ??= newAnonymousId();
+  // A funnel visitor's anonymous id from the page, so their events and their purchase share one id.
+  appUserId ??= o.visitorId && /^\$RCAnonymousID:[0-9a-f]{32}$/.test(o.visitorId) ? o.visitorId : newAnonymousId();
   const email = o.email?.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email.trim()) ? o.email.trim().slice(0, 254) : null;
   let applied;
   try {
@@ -138,6 +141,7 @@ async function issueToken(db: DB, row: CheckoutRow, hours: number, now: Date): P
   const token = await tokenFor(seed, generation);
   const [saved] = await db.update(schema.webCheckouts).set({
     redemptionSeed: seed, redemptionGeneration: generation, redemptionTokenHash: await sha256Hex(token), redemptionExpiresAt: new Date(now.getTime() + hours * 3_600_000),
+    previousTokenHashes: row.redemptionTokenHash ? [...(row.previousTokenHashes ?? []), row.redemptionTokenHash].slice(-20) : row.previousTokenHashes ?? [],
   }).where(eq(schema.webCheckouts.id, row.id)).returning();
   return { token, row: saved! };
 }
@@ -256,14 +260,21 @@ export async function redeemWebPurchase(deps: Deps, app: { id: string | null; pr
   const now = deps.now();
   const invalid = () => new RCError(400, Codes.INVALID_WEB_REDEMPTION_TOKEN, "Invalid redemption token.");
   if (!/^rdrt_[A-Za-z0-9_-]{20,100}$/.test(o.token)) throw invalid();
-  const [row] = await db.select().from(schema.webCheckouts).where(and(eq(schema.webCheckouts.projectId, app.projectId), eq(schema.webCheckouts.redemptionTokenHash, await sha256Hex(o.token)))).limit(1);
+  const hash = await sha256Hex(o.token);
+  let [row] = await db.select().from(schema.webCheckouts).where(and(eq(schema.webCheckouts.projectId, app.projectId), eq(schema.webCheckouts.redemptionTokenHash, hash))).limit(1);
+  let replaced = false;
+  if (!row) {
+    // A link that a newer one replaced: still "expired" (with a new email, rate-limited), never "invalid".
+    [row] = await db.select().from(schema.webCheckouts).where(and(eq(schema.webCheckouts.projectId, app.projectId), sql`${schema.webCheckouts.previousTokenHashes} @> ${JSON.stringify([hash])}::jsonb`)).limit(1);
+    replaced = !!row;
+  }
   if (!row || row.status !== "completed" || !row.anonymous) throw invalid();
   const target = await findCustomer(db, app.projectId, o.appUserId);
   if (row.redeemedAt) {
     if (target && target.id === row.redeemedCustomerId) return target;
     throw new RCError(400, 7852, "The purchase has already been redeemed.");
   }
-  if (!row.redemptionExpiresAt || row.redemptionExpiresAt <= now) {
+  if (replaced || !row.redemptionExpiresAt || row.redemptionExpiresAt <= now) {
     const [webApp] = await db.select().from(schema.apps).where(eq(schema.apps.id, row.appId)).limit(1);
     if (webApp && row.email && (!row.redemptionSentAt || now.getTime() - row.redemptionSentAt.getTime() > 3_600_000)) {
       const { config } = await webConfigOf(db, webApp);

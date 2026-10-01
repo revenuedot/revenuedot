@@ -115,9 +115,12 @@ describe("redemption links", () => {
     expect(env.mail.sent).toHaveLength(2);
     const fresh = /\/pay\/r\/(rdrt_[A-Za-z0-9_-]+)/.exec(env.mail.sent[1]!.text)![1]!;
     expect(fresh).not.toBe(token);
-    // Asking again within the hour sends nothing more.
-    await redeem("late_user", token);
+    // The replaced link still answers "expired" (never "invalid"); asking again within the hour sends nothing more.
+    const again = await redeem("late_user", token);
+    expect(await again.json()).toMatchObject({ code: 7853 });
     expect(env.mail.sent).toHaveLength(2);
+    // Its page still finds the purchase.
+    expect((await env.raw(`http://localhost/pay/r/${token}`)).status).toBe(200);
     const ok = await redeem("late_user", fresh);
     expect(ok.status).toBe(200);
     expect(((await ok.json()) as any).subscriber.entitlements.pro).toBeDefined();

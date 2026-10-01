@@ -50,7 +50,7 @@ export interface RenderInput {
   urls?: { checkout?: string; events?: string; discount?: string };
   context?: {
     project?: string; slug?: string; funnel_id?: string | null; link_id?: string | null; session_id?: string;
-    app_user_id?: string | null; email?: string | null; code?: string | null; canceled?: boolean; query?: Record<string, string>;
+    app_user_id?: string | null; visitor_id?: string | null; email?: string | null; code?: string | null; canceled?: boolean; query?: Record<string, string>;
   };
   success?: PageSuccess | null;
   /** A note shown above the page (an expired link). */
@@ -200,7 +200,7 @@ const SCRIPT = `(function(){
 var D=JSON.parse(document.getElementById("rd-data").textContent);var steps=[].slice.call(document.querySelectorAll("section[data-step]"));
 var cur=0,hist=[],answers={},email=D.ctx.email||"",sent={};
 function idx(id){for(var i=0;i<steps.length;i++)if(steps[i].getAttribute("data-step")===id)return i;return -1}
-function send(type,extra){if(D.mode!=="live"||!D.urls.events)return;var b=JSON.stringify(Object.assign({type:type,funnel_id:D.ctx.funnel_id,link_id:D.ctx.link_id,session_id:D.ctx.session_id,app_user_id:D.ctx.app_user_id,query:D.ctx.query},extra||{}));
+function send(type,extra){if(D.mode!=="live"||!D.urls.events)return;var b=JSON.stringify(Object.assign({type:type,funnel_id:D.ctx.funnel_id,link_id:D.ctx.link_id,session_id:D.ctx.session_id,app_user_id:D.ctx.app_user_id||D.ctx.visitor_id,query:D.ctx.query},extra||{}));
 try{if(navigator.sendBeacon&&navigator.sendBeacon(D.urls.events,new Blob([b],{type:"application/json"})))return}catch(e){}try{fetch(D.urls.events,{method:"POST",headers:{"content-type":"application/json"},body:b,keepalive:true})}catch(e){}}
 function stepInfo(i){var s=steps[i];return{step_id:s.getAttribute("data-step"),step_type:s.getAttribute("data-type"),step_index:i}}
 function show(i,push){if(i<0||i>=steps.length)return;if(push)hist.push(cur);steps[cur].classList.remove("on");cur=i;steps[i].classList.add("on");
@@ -226,7 +226,7 @@ var btn=s.querySelector("[data-checkout]");btn.addEventListener("click",function
 if(D.mode!=="live"){var si=steps.length-1;send("step_completed",stepInfo(i));show(si,true);return}
 btn.disabled=true;er2.textContent="";send("step_completed",Object.assign(stepInfo(i),{answer:p}));
 var v=code&&code.value.trim()?code.value.trim():null;
-fetch(D.urls.checkout,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({project:D.ctx.project,slug:D.ctx.slug,package:p,code:v,email:email||null,app_user_id:D.ctx.app_user_id,session:D.ctx.session_id,answers:answers,query:D.ctx.query})})
+fetch(D.urls.checkout,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({project:D.ctx.project,slug:D.ctx.slug,package:p,code:v,email:email||null,app_user_id:D.ctx.app_user_id,visitor_id:D.ctx.visitor_id,session:D.ctx.session_id,answers:answers,query:D.ctx.query})})
 .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})}).then(function(x){if(x.ok&&x.j.url){location.href=x.j.url}else{btn.disabled=false;er2.textContent=x.j.message||"Checkout could not start. Try again."}})
 .catch(function(){btn.disabled=false;er2.textContent="Checkout could not start. Check your connection and try again."})})}
 else{var cc=s.querySelector("[data-continue]");if(cc)cc.addEventListener("click",function(){next(i,null)})}
@@ -251,7 +251,7 @@ export function renderFunnelPage(input: RenderInput): string {
   ].filter(Boolean).join("");
   const data = {
     mode: input.mode, start: input.startStepId ?? null, urls: input.urls ?? {}, success: input.success ?? null,
-    ctx: { project: input.context?.project ?? null, slug: input.context?.slug ?? null, funnel_id: input.context?.funnel_id ?? null, link_id: input.context?.link_id ?? null, session_id: input.context?.session_id ?? null, app_user_id: input.context?.app_user_id ?? null, email: input.context?.email ?? null, query: input.context?.query ?? {} },
+    ctx: { project: input.context?.project ?? null, slug: input.context?.slug ?? null, funnel_id: input.context?.funnel_id ?? null, link_id: input.context?.link_id ?? null, session_id: input.context?.session_id ?? null, app_user_id: input.context?.app_user_id ?? null, visitor_id: input.context?.visitor_id ?? null, email: input.context?.email ?? null, query: input.context?.query ?? {} },
   };
   const title = input.title ?? look.app_name;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title>` +

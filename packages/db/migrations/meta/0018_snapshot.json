@@ -1,5 +1,5 @@
 {
-  "id": "d665c817-8bab-46ff-b4a7-5bdff400b02b",
+  "id": "62b97a4e-1a6b-408e-a07a-a7b03d738756",
   "prevId": "1edd0ade-bad7-4bfa-8fed-5653a0c4ab66",
   "version": "7",
   "dialect": "postgresql",
@@ -6324,6 +6324,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "previous_token_hashes": {
+          "name": "previous_token_hashes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "redemption_expires_at": {
           "name": "redemption_expires_at",

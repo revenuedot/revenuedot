@@ -888,6 +888,8 @@ export const webCheckouts = pgTable("web_checkouts", {
   redemptionSeed: text("redemption_seed"),
   redemptionGeneration: integer("redemption_generation").notNull().default(0),
   redemptionTokenHash: text("redemption_token_hash"),
+  /** Hashes of tokens this one replaced (expired links), so an old link still answers "expired" instead of "invalid". */
+  previousTokenHashes: jsonb("previous_token_hashes").$type<string[]>().notNull().default([]),
   redemptionExpiresAt: ts("redemption_expires_at"),
   redemptionSentAt: ts("redemption_sent_at"),
   redeemedAt: ts("redeemed_at"),

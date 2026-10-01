@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { DEFAULT_THEME, purchaseLinkFunnel, renderFunnelPage, renderMessagePage, type FunnelDoc, type PagePackage, type PaywallStep } from "@revenuedot/core/funnels";
 import type { AppRecord, Deps } from "../context.js";
@@ -107,7 +107,8 @@ export function payRoutes(deps: Deps) {
   // Redemption link page: opens the app with the deep link; store buttons when the app is not installed.
   r.get("/r/:token", async (c) => {
     const token = c.req.param("token");
-    const [row] = /^rdrt_[A-Za-z0-9_-]{20,100}$/.test(token) ? await db.select().from(schema.webCheckouts).where(eq(schema.webCheckouts.redemptionTokenHash, await sha256Hex(token))).limit(1) : [];
+    const h = /^rdrt_[A-Za-z0-9_-]{20,100}$/.test(token) ? await sha256Hex(token) : null;
+    const [row] = h ? await db.select().from(schema.webCheckouts).where(or(eq(schema.webCheckouts.redemptionTokenHash, h), sql`${schema.webCheckouts.previousTokenHashes} @> ${JSON.stringify([h])}::jsonb`)).limit(1) : [];
     const app = row ? await appFor(row.projectId, row.appId) : null;
     if (!row || !app) return message(c, 404, "This link is not valid", "Check that you opened the whole link from your email. If it still does not work, contact the app's support.");
     const { config } = await webConfigOf(db, app);
@@ -146,7 +147,7 @@ export function payRoutes(deps: Deps) {
     const pageUrl = `${projectBase(c, p.projectSlug)}/${p.slug}`;
     try {
       const out = await startCheckout(deps, {
-        app: p.app, offering, packageKey: b.package, appUserId: typeof b.app_user_id === "string" ? b.app_user_id : null, email: typeof b.email === "string" ? b.email : null,
+        app: p.app, offering, packageKey: b.package, appUserId: typeof b.app_user_id === "string" ? b.app_user_id : null, visitorId: typeof b.visitor_id === "string" ? b.visitor_id : null, email: typeof b.email === "string" ? b.email : null,
         code: typeof b.code === "string" ? b.code.slice(0, 64) : null, source: { type: p.kind === "link" ? "purchase_link" : "funnel", id: p.kind === "link" ? p.link.id : p.funnel.id, discountId: p.kind === "link" ? p.link.discountId : pay?.discount_id ?? null },
         funnelSessionId: p.kind === "funnel" && typeof b.session === "string" ? b.session.slice(0, 80) : null, attributes, pageUrl,
       });
@@ -196,7 +197,7 @@ export function payRoutes(deps: Deps) {
     const app = await appFor(f.projectId, f.appId);
     await recordFunnelEvent(db, {
       projectId: f.projectId, funnel: f, sessionId: b.session_id, type, stepId: step?.id ?? null, stepIndex: step ? doc.steps.indexOf(step) : null, stepType: step?.type ?? null,
-      appUserId: typeof b.app_user_id === "string" ? b.app_user_id.slice(0, 100) : null, answer: step?.type === "email" ? (answer ? "provided" : null) : answer,
+      appUserId: typeof b.app_user_id === "string" ? b.app_user_id.slice(0, 100) : null, answer: step?.type === "email" ? (answer === "skipped" ? "skipped" : answer ? "provided" : null) : answer,
       query: b.query && typeof b.query === "object" ? b.query : {}, sandbox: app ? sandboxOf(app) : false, now,
     });
     deps.kick?.();
@@ -269,7 +270,7 @@ export function payRoutes(deps: Deps) {
       urls: { checkout: `${base}/api/checkout`, events: `${base}/api/events`, discount: `${base}/api/discount` },
       context: {
         project: p.projectSlug, slug: p.slug, funnel_id: p.kind === "funnel" ? p.funnel.id : null, link_id: p.kind === "link" ? p.link.id : null,
-        session_id: crypto.randomUUID().replace(/-/g, ""), app_user_id: q.app_user_id?.slice(0, 100) || null, email: q.email?.slice(0, 254) || null,
+        session_id: crypto.randomUUID().replace(/-/g, ""), app_user_id: q.app_user_id?.slice(0, 100) || null, visitor_id: `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`, email: q.email?.slice(0, 254) || null,
         code: q.code?.slice(0, 64) || null, canceled: q.canceled === "1", query: queryOf(c),
       },
     }), n);
