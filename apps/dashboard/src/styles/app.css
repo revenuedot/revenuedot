@@ -114,8 +114,8 @@ td.id{font:400 12px/16px var(--mono);color:var(--fg-2)}
 .dot{width:8px;height:8px;display:inline-block;flex:none}
 .dot.ok{background:var(--up)}.dot.bad{background:var(--down)}.dot.idle{background:var(--fg-3)}
 .live{display:inline-block;width:7px;height:7px;background:var(--accent);border-radius:50%;position:relative;vertical-align:1px}
-.live::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--accent);animation:ai-pulse 2s var(--ease) infinite}
-@keyframes pulse{from{opacity:.6;transform:scale(1)}to{opacity:0;transform:scale(2.4)}}
+.live::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--accent);animation:live-ring 2s var(--ease) infinite}
+@keyframes live-ring{from{opacity:.6;transform:scale(1)}to{opacity:0;transform:scale(2.4)}}
 
 /* Metric grid (crosshair corners) */
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--border);background:var(--panel);position:relative}
@@ -789,6 +789,10 @@ tr.sel td{background:var(--active)}
 .ai-approval .lab{font:600 11px/16px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)}
 .ai-approval .q{font:600 15px/22px var(--font)}
 .ai-approval .ai-sub{display:block;margin-top:2px;font-size:12.5px;color:var(--fg-3)}
+.ai-args{margin:6px 0 2px;display:flex;flex-direction:column;gap:2px;font:500 12px/18px var(--mono)}
+.ai-args>div{display:grid;grid-template-columns:minmax(110px,max-content) 1fr;gap:12px}
+.ai-args dt{color:var(--fg-3)}
+.ai-args dd{margin:0;color:var(--fg);overflow-wrap:anywhere}
 .ai-approval .done{margin:0;display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg-2)}
 .ai-approval button{height:32px!important;padding:0 14px!important;font:600 12px/16px var(--font)!important;letter-spacing:var(--tracking-label)!important;text-transform:uppercase}
 .ai-image img{max-width:320px;max-height:240px;border:1px solid var(--border)}

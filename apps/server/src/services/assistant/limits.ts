@@ -49,29 +49,48 @@ export async function usageToday(db: DB, userId: string, projectId: string, now:
 
 /**
  * Checks the caps and, when a turn may run, counts it. Returns the sentence the chat shows when it may not.
- * The per-minute limit counts every attempt; the daily caps are checked against what has been used.
+ * The per-minute limit counts every attempt. The daily turn caps are taken atomically: the turn is added to the person's,
+ * the project's and the server's rows in one statement, and taken back when any row went over its cap, so concurrent
+ * turns on any number of isolates cannot pass a cap together. Token caps are checked against what has been used, and a
+ * running turn stops after the step that used them up (`addUsage` returns true).
  */
 export async function startTurn(db: DB, caps: AssistantCaps, userId: string, projectId: string, now: Date): Promise<string | null> {
   if (!(await hit(db, `ai-turn:${userId}`, caps.userPerMinute, 60_000, now))) return `You can ask ${caps.userPerMinute} questions a minute. Wait a moment and try again.`;
   const u = await usageToday(db, userId, projectId, now);
-  if (u.user.turns >= caps.userTurnsPerDay) return `You have used today's ${caps.userTurnsPerDay} questions. The limit resets at midnight UTC.`;
   if (u.user.tokens >= caps.userTokensPerDay) return "You have used today's RevenueDot AI allowance. It resets at midnight UTC.";
-  if (u.project.turns >= caps.projectTurnsPerDay || u.project.tokens >= caps.projectTokensPerDay) return "This project has used today's RevenueDot AI allowance. It resets at midnight UTC.";
-  if (u.server.turns >= caps.serverTurnsPerDay || u.server.tokens >= caps.serverTokensPerDay) return "RevenueDot AI is busy today. Try again tomorrow.";
-  await addUsage(db, userId, projectId, now, { turns: 1 });
-  return null;
+  if (u.project.tokens >= caps.projectTokensPerDay) return "This project has used today's RevenueDot AI allowance. It resets at midnight UTC.";
+  if (u.server.tokens >= caps.serverTokensPerDay) return "RevenueDot AI is busy today. Try again tomorrow.";
+  const k = keys(userId, projectId);
+  const rows = await bump(db, [k.user, k.project, k.server], dayOf(now), { turns: 1 });
+  const turns = (key: string) => rows.find((r) => r.key === key)?.turns ?? 0;
+  const refused = turns(k.user) > caps.userTurnsPerDay ? `You have used today's ${caps.userTurnsPerDay} questions. The limit resets at midnight UTC.`
+    : turns(k.project) > caps.projectTurnsPerDay ? "This project has used today's RevenueDot AI allowance. It resets at midnight UTC."
+    : turns(k.server) > caps.serverTurnsPerDay ? "RevenueDot AI is busy today. Try again tomorrow." : null;
+  if (refused) await bump(db, [k.user, k.project, k.server], dayOf(now), { turns: -1 });
+  return refused;
 }
 
-/** Adds turns and tokens to today's rows for the person, the project and the server. */
-export async function addUsage(db: DB, userId: string, projectId: string, now: Date, d: { turns?: number; inputTokens?: number; outputTokens?: number }) {
-  const k = keys(userId, projectId);
+/** Adds to today's rows for the given keys in one statement and returns the rows after the change. */
+async function bump(db: DB, keyList: string[], day: string, d: { turns?: number; inputTokens?: number; outputTokens?: number }) {
   const U = schema.aiUsage;
-  const day = dayOf(now);
-  const turns = d.turns ?? 0, inp = Math.max(0, Math.round(d.inputTokens ?? 0)), out = Math.max(0, Math.round(d.outputTokens ?? 0));
-  if (!turns && !inp && !out) return;
-  await db.insert(U).values([k.user, k.project, k.server].map((key) => ({ key, day, turns, inputTokens: inp, outputTokens: out })))
+  return db.insert(U).values(keyList.map((key) => ({ key, day, turns: d.turns ?? 0, inputTokens: d.inputTokens ?? 0, outputTokens: d.outputTokens ?? 0 })))
     .onConflictDoUpdate({
       target: [U.key, U.day],
       set: { turns: sql`${U.turns} + excluded.turns`, inputTokens: sql`${U.inputTokens} + excluded.input_tokens`, outputTokens: sql`${U.outputTokens} + excluded.output_tokens` },
-    });
+    })
+    .returning({ key: U.key, turns: U.turns, inputTokens: U.inputTokens, outputTokens: U.outputTokens });
+}
+
+/**
+ * Adds turns and tokens to today's rows for the person, the project and the server. With `caps`, returns whether a
+ * daily token cap is now used up (the running turn then stops after this step).
+ */
+export async function addUsage(db: DB, userId: string, projectId: string, now: Date, d: { turns?: number; inputTokens?: number; outputTokens?: number }, caps?: AssistantCaps): Promise<boolean> {
+  const k = keys(userId, projectId);
+  const turns = d.turns ?? 0, inp = Math.max(0, Math.round(d.inputTokens ?? 0)), out = Math.max(0, Math.round(d.outputTokens ?? 0));
+  if (!turns && !inp && !out) return false;
+  const rows = await bump(db, [k.user, k.project, k.server], dayOf(now), { turns, inputTokens: inp, outputTokens: out });
+  if (!caps) return false;
+  const tokens = (key: string) => { const r = rows.find((x) => x.key === key); return (r?.inputTokens ?? 0) + (r?.outputTokens ?? 0); };
+  return tokens(k.user) >= caps.userTokensPerDay || tokens(k.project) >= caps.projectTokensPerDay || tokens(k.server) >= caps.serverTokensPerDay;
 }

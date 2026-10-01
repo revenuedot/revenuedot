@@ -53,6 +53,15 @@ CREATE TABLE "ai_streams" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "ai_tool_runs" (
+	"conversation_id" text NOT NULL,
+	"tool_call_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"tool_name" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "ai_tool_runs_conversation_id_tool_call_id_pk" PRIMARY KEY("conversation_id","tool_call_id")
+);
+--> statement-breakpoint
 CREATE TABLE "ai_usage" (
 	"key" text NOT NULL,
 	"day" text NOT NULL,
@@ -72,8 +81,10 @@ ALTER TABLE "ai_messages" ADD CONSTRAINT "ai_messages_conversation_id_ai_convers
 ALTER TABLE "ai_share_cards" ADD CONSTRAINT "ai_share_cards_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ai_stream_chunks" ADD CONSTRAINT "ai_stream_chunks_stream_id_ai_streams_id_fk" FOREIGN KEY ("stream_id") REFERENCES "public"."ai_streams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ai_streams" ADD CONSTRAINT "ai_streams_conversation_id_ai_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."ai_conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ai_tool_runs" ADD CONSTRAINT "ai_tool_runs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ai_conversations_owner" ON "ai_conversations" USING btree ("project_id","user_id","updated_at");--> statement-breakpoint
 CREATE INDEX "ai_files_project" ON "ai_files" USING btree ("project_id","created_at");--> statement-breakpoint
 CREATE INDEX "ai_messages_order" ON "ai_messages" USING btree ("conversation_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "ai_share_cards_kind" ON "ai_share_cards" USING btree ("project_id","kind");--> statement-breakpoint
-CREATE INDEX "ai_streams_conversation" ON "ai_streams" USING btree ("conversation_id","created_at");
+CREATE INDEX "ai_streams_conversation" ON "ai_streams" USING btree ("conversation_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "ai_streams_one_running" ON "ai_streams" USING btree ("conversation_id") WHERE "ai_streams"."status" = 'streaming';

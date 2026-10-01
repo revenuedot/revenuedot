@@ -29,6 +29,9 @@ export function parseWrite(method: string, path: string): Parsed | null {
   const rest = seg.slice(3);
   if (!seg[2]) return null;
   if (!rest.length) return method === "POST" ? { actionType: "project_updated", targetType: "project", targetId: seg[2] } : null; // deleting the project deletes its log too (a row for it would break the foreign key)
+  // RevenueDot AI: the setting is project configuration; chats, files and the first-sale card change nothing in the
+  // project (the assistant's own writes go through the API's routes and are audited there).
+  if (rest[0] === "ai") return rest[1] === "settings" && method === "POST" ? { actionType: "ai_settings_updated", targetType: "project", targetId: seg[2] } : null;
   let i = 0;
   if (rest[0] === "integrations") i = 1;
   const coll = rest[i]!;

@@ -1111,7 +1111,11 @@ export const aiStreams = pgTable("ai_streams", {
   error: text("error"),
   createdAt: created(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [index("ai_streams_conversation").on(t.conversationId, t.createdAt)]);
+}, (t) => [
+  index("ai_streams_conversation").on(t.conversationId, t.createdAt),
+  // One answer at a time per conversation: a second chat request while one streams fails on insert (the lock).
+  uniqueIndex("ai_streams_one_running").on(t.conversationId).where(sql`${t.status} = 'streaming'`),
+]);
 
 export const aiStreamChunks = pgTable("ai_stream_chunks", {
   streamId: text("stream_id").notNull().references(() => aiStreams.id, { onDelete: "cascade" }),
@@ -1130,6 +1134,18 @@ export const aiFiles = pgTable("ai_files", {
   dataBase64: text("data_base64").notNull(),
   createdAt: created(),
 }, (t) => [index("ai_files_project").on(t.projectId, t.createdAt)]);
+
+/**
+ * Write tools RevenueDot AI has run, one row per approved tool call. Inserted before the write, so an approval runs at most
+ * once: a replayed, resent or concurrently submitted approval of the same call is refused.
+ */
+export const aiToolRuns = pgTable("ai_tool_runs", {
+  conversationId: text("conversation_id").notNull(),
+  toolCallId: text("tool_call_id").notNull(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  toolName: text("tool_name").notNull(),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.conversationId, t.toolCallId] })]);
 
 /** Tokens the model used per key ("user:<id>", "project:<id>", "server") and UTC day, for the daily cost caps. */
 export const aiUsage = pgTable("ai_usage", {

@@ -70,6 +70,9 @@ cd apps/dashboard && node e2e/do-smoke.mjs http://localhost:5409
 The smoke test asks a question, reloads (the transcript comes back from the Durable Object), approves a grant, checks
 the audit log, checks that another user and a signed-out browser cannot open the conversation's socket, and deletes it.
 `REVENUEDOT_ASSISTANT_FAKE` is read only when set in the shell that runs `cf dev`; never set it for a deploy.
+Approval cards are signed with `REVENUEDOT_ENCRYPTION_KEY` (else `REVENUEDOT_SIGNING_KEY`). The Durable Object keeps
+the transcript the browser sends, so without either key it offers no write tools: put `REVENUEDOT_SIGNING_KEY` in
+`.dev.vars` (above) before the smoke test. Production has the signing key.
 
 ## Deploy
 

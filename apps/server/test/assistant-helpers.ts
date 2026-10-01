@@ -6,9 +6,13 @@ import { accountServer } from "./account-helpers.js";
 import { fakeAssistantModel, type FakeScript } from "../src/services/assistant/fake-model.js";
 import type { AssistantCaps } from "../src/services/assistant/limits.js";
 
-export async function assistantServer(o: { script?: FakeScript; delayMs?: number; caps?: Partial<AssistantCaps>; noModel?: boolean } = {}) {
+/** A base64 32-byte key, as REVENUEDOT_ENCRYPTION_KEY would be; it also signs RevenueDot AI's approval requests. */
+export const TEST_ENCRYPTION_KEY = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, i) => i + 1)));
+
+export async function assistantServer(o: { script?: FakeScript; delayMs?: number; caps?: Partial<AssistantCaps>; noModel?: boolean; encryptionKey?: string | null } = {}) {
   const model = fakeAssistantModel(o.script, { delayMs: o.delayMs });
   const s = await accountServer({
+    encryptionKey: o.encryptionKey === null ? undefined : o.encryptionKey ?? TEST_ENCRYPTION_KEY,
     assistant: o.noModel ? undefined : model,
     assistantRuntime: "sse",
     ...(o.caps ? { assistantCaps: { ...(await import("../src/services/assistant/limits.js")).DEFAULT_CAPS, ...o.caps } } : {}),

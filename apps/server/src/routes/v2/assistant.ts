@@ -8,12 +8,13 @@ import { assistantScope, AI_ACCESS } from "../../services/assistant/access.js";
 import { loadAssistantContext, runAssistantTurn, titleFrom, toolNamesFor, type AssistantContext } from "../../services/assistant/agent.js";
 import { DEFAULT_CAPS, usageToday } from "../../services/assistant/limits.js";
 import {
-  activeStream, appendChunks, conversationShape, createConversation, deleteConversation, findConversation, finishStream, lastStream, listConversations,
+  activeStream, appendChunks, conversationShape, createConversation, deleteConversation, dropStream, findConversation, finishStream, lastStream, listConversations,
   loadMessages, readChunks, saveMessages, startStream, streamStatus, touchConversation,
 } from "../../services/assistant/store.js";
 import { firstSaleCard } from "../../services/assistant/first-sale.js";
 import { allows, body, notFound, paramError, V2Error, type V2Context, type V2Router } from "./common.js";
 import { publicOrigin } from "./setup.js";
+import { hit } from "../../services/rate-limit.js";
 
 /**
  * RevenueDot AI (prd/ai-assistant/PRD.md §6):
@@ -40,6 +41,30 @@ const A = "/v2/projects/:project_id/ai";
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const MAX_IMAGE = 5 * 1024 * 1024;
 const MAX_STOREKIT = 1024 * 1024;
+const MAX_FILES_PER_MESSAGE = 4;
+/** Stored chunks per answer (after merging text deltas); an answer longer than this ends with an error. */
+const MAX_STREAM_CHUNKS = 20_000;
+/** Uploads per person per hour (images are kept in Postgres). */
+const UPLOADS_PER_HOUR = 60;
+
+/** Leading bytes of each image type we accept, so a file is what its content type says. */
+const MAGIC: Record<string, (b: Uint8Array) => boolean> = {
+  "image/png": (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+  "image/jpeg": (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  "image/gif": (b) => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38,
+  "image/webp": (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+};
+
+/** Merges consecutive text deltas of the same part into one chunk, so a stored answer is one row per flush, not per token. */
+export function coalesce(chunks: UIMessageChunk[]): UIMessageChunk[] {
+  const out: UIMessageChunk[] = [];
+  for (const ch of chunks) {
+    const prev = out[out.length - 1];
+    if (ch.type === "text-delta" && prev?.type === "text-delta" && prev.id === ch.id) out[out.length - 1] = { ...prev, delta: prev.delta + ch.delta };
+    else out.push(ch);
+  }
+  return out;
+}
 
 /** Answers being written in this process, so Stop can cancel the model call (Node; Workers use the Durable Object). */
 const running = new Map<string, AbortController>();
@@ -197,42 +222,56 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
     const ctx = await context(c, conv.id);
     const b = await body(c, ChatBody);
     const now = deps.now();
-    if (await activeStream(db, conv.id, now)) throw new V2Error(423, "resource_locked_error", "An answer is still being written. Wait for it or press Stop.");
-    let messages = await loadMessages(db, conv.id);
-    let title: string | undefined;
-
-    if (b.trigger === "regenerate-message") {
-      while (messages.length && messages[messages.length - 1]!.role === "assistant") messages = messages.slice(0, -1);
-      if (!messages.length) throw paramError("There is nothing to regenerate.");
-    } else if (b.message?.role === "user") {
-      if (messages.some((m) => m.id === b.message!.id)) throw paramError("This message was already sent.", "message.id");
-      const parts: UIMessage["parts"] = [];
-      for (const raw of b.message.parts) {
-        const ok = IncomingPart.safeParse(raw);
-        if (!ok.success) continue;
-        const part = ok.data;
-        if (part.type === "file" && !new RegExp(`^/v2/projects/${c.get("projectId")}/ai/files/aif[A-Za-z0-9]+$`).test(part.url)) throw paramError("Attach files with POST /ai/files first.", "message.parts");
-        parts.push(part.type === "text" ? { type: "text", text: part.text } : { type: "file", url: part.url, mediaType: part.mediaType, filename: part.filename });
-      }
-      if (!parts.some((p) => (p.type === "text" && p.text.trim()) || p.type === "file")) throw paramError("The message is empty.", "message.parts");
-      const mentions = b.message.metadata?.mentions;
-      messages.push({ id: b.message.id, role: "user", parts, ...(mentions?.length ? { metadata: { mentions } } : {}) });
-      if (!messages.some((m, i) => m.role === "user" && i < messages.length - 1) && conv.title === "New conversation") {
-        title = titleFrom(parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join(" ") || "Attachment");
-      }
-    } else if (b.message?.role === "assistant") {
-      // Approve or deny: take only the decisions, from the message the browser sent back.
-      const stored = messages[messages.length - 1];
-      if (!stored || stored.role !== "assistant" || stored.id !== b.message.id) throw paramError("Only the last answer's approvals can be answered.", "message.id");
-      if (!applyApprovals(stored, b.message as { parts: Record<string, unknown>[] })) throw paramError("Nothing is waiting for approval in this answer.", "message");
-    } else throw paramError("Send a message.", "message");
-
-    const abort = new AbortController();
-    const turn = await runAssistantTurn(ctx, messages, { abortSignal: abort.signal });
-    if ("refused" in turn) return refusalResponse(turn.refused);
-    await saveMessages(db, conv.id, messages, now);
-    await touchConversation(db, conv.id, now, title);
+    // One answer at a time: the stream row is the lock (a unique index allows one "streaming" row per conversation), taken
+    // before the transcript is read, so two tabs approving the same change cannot both run it.
+    await activeStream(db, conv.id, now);
     const streamId = await startStream(db, conv.id, now);
+    if (!streamId) throw new V2Error(423, "resource_locked_error", "An answer is still being written. Wait for it or press Stop.");
+    const release = () => dropStream(db, streamId).catch(() => {});
+
+    let messages: UIMessage[];
+    let title: string | undefined;
+    let turn: Awaited<ReturnType<typeof runAssistantTurn>>;
+    const abort = new AbortController();
+    try {
+      messages = await loadMessages(db, conv.id);
+      if (b.trigger === "regenerate-message") {
+        while (messages.length && messages[messages.length - 1]!.role === "assistant") messages = messages.slice(0, -1);
+        if (!messages.length) throw paramError("There is nothing to regenerate.");
+      } else if (b.message?.role === "user") {
+        if (messages.some((m) => m.id === b.message!.id)) throw paramError("This message was already sent.", "message.id");
+        const parts: UIMessage["parts"] = [];
+        const fileUrl = new RegExp(`^/v2/projects/${c.get("projectId")}/ai/files/aif[A-Za-z0-9]+$`);
+        for (const raw of b.message.parts) {
+          const ok = IncomingPart.safeParse(raw);
+          if (!ok.success) continue;
+          const part = ok.data;
+          if (part.type === "file" && !fileUrl.test(part.url)) throw paramError("Attach files with POST /ai/files first.", "message.parts");
+          parts.push(part.type === "text" ? { type: "text", text: part.text } : { type: "file", url: part.url, mediaType: part.mediaType, filename: part.filename });
+        }
+        if (parts.filter((p) => p.type === "file").length > MAX_FILES_PER_MESSAGE) throw paramError(`Attach at most ${MAX_FILES_PER_MESSAGE} files to one message.`, "message.parts");
+        if (!parts.some((p) => (p.type === "text" && p.text.trim()) || p.type === "file")) throw paramError("The message is empty.", "message.parts");
+        const mentions = b.message.metadata?.mentions;
+        messages.push({ id: b.message.id, role: "user", parts, ...(mentions?.length ? { metadata: { mentions } } : {}) });
+        if (!messages.some((m, i) => m.role === "user" && i < messages.length - 1) && conv.title === "New conversation") {
+          title = titleFrom(parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join(" ") || "Attachment");
+        }
+      } else if (b.message?.role === "assistant") {
+        // Approve or deny: take only the decisions, from the message the browser sent back.
+        const stored = messages[messages.length - 1];
+        if (!stored || stored.role !== "assistant" || stored.id !== b.message.id) throw paramError("Only the last answer's approvals can be answered.", "message.id");
+        if (!applyApprovals(stored, b.message as { parts: Record<string, unknown>[] })) throw paramError("Nothing is waiting for approval in this answer.", "message");
+      } else throw paramError("Send a message.", "message");
+
+      turn = await runAssistantTurn(ctx, messages, { abortSignal: abort.signal });
+      if ("refused" in turn) { await release(); return refusalResponse(turn.refused); }
+      await saveMessages(db, conv.id, messages, now);
+      await touchConversation(db, conv.id, now, title);
+    } catch (e) {
+      abort.abort();
+      await release();
+      throw e;
+    }
     running.set(conv.id, abort);
 
     let saved: () => void = () => {};
@@ -253,24 +292,39 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
     const [toClient, toStore] = ui.tee();
 
     // Every chunk is written to Postgres as it streams, so a reload or another tab resumes mid-answer. This branch keeps
-    // reading after the browser goes away, so the answer always finishes and is saved.
+    // reading after the browser goes away, so the answer always finishes and is saved. Text deltas are merged per write
+    // (one row per flush, not per token), and at most MAX_STREAM_CHUNKS rows are kept per answer. A Stop pressed on another
+    // server process marks the stream stopped; this process sees it within a second and stops the model.
     const persist = (async () => {
       const reader = toStore.getReader();
-      let seq = 0, buf: UIMessageChunk[] = [], last = Date.now();
-      const flush = async () => { if (!buf.length) return; const batch = buf; buf = []; await appendChunks(db, streamId, seq, batch, deps.now()); seq += batch.length; };
+      let seq = 0, buf: UIMessageChunk[] = [], last = Date.now(), checked = Date.now();
+      const flush = async () => {
+        if (!buf.length) return;
+        const batch = coalesce(buf);
+        buf = [];
+        if (seq + batch.length > MAX_STREAM_CHUNKS) throw new Error("This answer is too long to keep. Ask a narrower question.");
+        await appendChunks(db, streamId, seq, batch, deps.now());
+        seq += batch.length;
+      };
       try {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
           buf.push(value);
-          if (buf.length >= 16 || Date.now() - last > 150) { await flush(); last = Date.now(); }
+          if (buf.length >= 64 || Date.now() - last > 150) { await flush(); last = Date.now(); }
+          if (Date.now() - checked > 1000) {
+            checked = Date.now();
+            if ((await streamStatus(db, streamId)) === "stopped") abort.abort();
+          }
         }
         await flush();
         await Promise.race([savedP, sleep(10_000)]);
         await finishStream(db, streamId, "done", deps.now());
       } catch (e) {
+        abort.abort();
         await flush().catch(() => {});
         await finishStream(db, streamId, "error", deps.now(), e instanceof Error ? e.message : String(e)).catch(() => {});
+        await reader.cancel().catch(() => {});
       } finally {
         if (running.get(conv.id) === abort) running.delete(conv.id);
       }
@@ -284,21 +338,30 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
     if (conv.runtime !== "postgres") return c.body(null, 204);
     const s = await activeStream(db, conv.id, deps.now());
     if (!s) return c.body(null, 204);
-    let seq = -1;
+    let seq = -1, cancelled = false;
     const started = Date.now();
     const stream = new ReadableStream<UIMessageChunk>({
+      // A reader that went away stops the polling at once (not after the 10-minute limit).
+      cancel() { cancelled = true; },
       async pull(controller) {
         for (;;) {
+          if (cancelled) return;
           const rows = await readChunks(db, s.id, seq);
           if (rows.length) { for (const row of rows) controller.enqueue(row.chunk); seq = rows[rows.length - 1]!.seq; return; }
           const status = await streamStatus(db, s.id);
           if (status !== "streaming" || Date.now() - started > 10 * 60_000) {
-            const rest = await readChunks(db, s.id, seq);
-            for (const row of rest) controller.enqueue(row.chunk);
+            // Everything written before the end, in pages (readChunks returns at most 500 rows at a time).
+            for (;;) {
+              const rest = await readChunks(db, s.id, seq);
+              for (const row of rest) controller.enqueue(row.chunk);
+              if (!rest.length) break;
+              seq = rest[rest.length - 1]!.seq;
+            }
             controller.close();
             return;
           }
-          if (!(await activeStream(db, conv.id, deps.now()))) { controller.close(); return; }
+          // Marks a stream that stopped moving (the writer died) interrupted; the next pass then drains it and closes.
+          await activeStream(db, conv.id, deps.now());
           await sleep(200);
         }
       },
@@ -318,8 +381,12 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
   r.post(`${A}/files`, async (c) => {
     const p = user(c);
     model();
-    const name = (c.req.query("name") ?? "attachment").slice(0, 200);
+    const name = (c.req.query("name") ?? "attachment").replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 200) || "attachment";
     const declared = (c.req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    const max = isStoreKitName(name) ? MAX_STOREKIT : MAX_IMAGE;
+    // Refuse a body we would not keep before reading it.
+    if (Number(c.req.header("content-length") ?? 0) > max) throw paramError(isStoreKitName(name) ? "A .storekit file can be at most 1 MB." : "An image can be at most 5 MB.", "body");
+    if (!(await hit(db, `ai-upload:${p.userId}`, UPLOADS_PER_HOUR, 3600_000, deps.now()))) throw new V2Error(429, "rate_limit_error", `You can attach ${UPLOADS_PER_HOUR} files an hour. Try again later.`);
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (!bytes.length) throw paramError("The file is empty.", "body");
     let mediaType: string;
@@ -330,6 +397,7 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
       mediaType = "application/x-storekit+json";
     } else if (IMAGE_TYPES.includes(declared)) {
       if (bytes.length > MAX_IMAGE) throw paramError("An image can be at most 5 MB.", "body");
+      if (!MAGIC[declared]!(bytes)) throw paramError(`This file is not a ${declared.slice(6).toUpperCase()} image.`, "body");
       mediaType = declared;
     } else throw paramError("Attach a PNG, JPEG, WebP or GIF image, or a .storekit file.", "content-type");
     const id = newId("aif", 16);
@@ -339,13 +407,16 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
   });
 
   r.get(`${A}/files/:file_id`, async (c) => {
+    // Members of the project, and the assistant reading an attached .storekit file for them; not secret API keys.
+    if (c.get("principal").kind !== "user") throw new V2Error(403, "authorization_error", "RevenueDot AI files belong to the project's members. Secret API keys cannot read them.");
     const [f] = await db.select().from(schema.aiFiles).where(and(eq(schema.aiFiles.projectId, c.get("projectId")), eq(schema.aiFiles.id, c.req.param("file_id")))).limit(1);
     if (!f) throw notFound("File");
     const format = c.req.query("format");
     if (format === "text" || format === "storekit") {
       if (f.mediaType.startsWith("image/")) throw paramError("This file is an image.", "format");
       const text = new TextDecoder().decode(unb64(f.dataBase64));
-      return c.json(format === "text" ? { object: "ai_file_text", id: f.id, name: f.name, text } : { object: "ai_file_storekit", id: f.id, name: f.name, storekit: parseStoreKitConfig(text) });
+      if (format === "text") return c.json({ object: "ai_file_text", id: f.id, name: f.name, text });
+      try { return c.json({ object: "ai_file_storekit", id: f.id, name: f.name, storekit: parseStoreKitConfig(text) }); } catch (e) { if (e instanceof StoreKitParseError) throw paramError(e.message, "format"); throw e; }
     }
     return new Response(unb64(f.dataBase64), {
       headers: {
@@ -358,6 +429,7 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
 
   r.post(`${A}/storekit`, async (c) => {
     user(c);
+    if (Number(c.req.header("content-length") ?? 0) > MAX_STOREKIT) throw paramError("A .storekit file can be at most 1 MB.", "body");
     const text = await c.req.text();
     if (text.length > MAX_STOREKIT) throw paramError("A .storekit file can be at most 1 MB.", "body");
     try { return c.json({ object: "storekit_config", ...parseStoreKitConfig(text) }); } catch (e) { if (e instanceof StoreKitParseError) throw paramError(e.message, "body"); throw e; }
@@ -400,7 +472,8 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
   });
 
   r.post(`${A}/first_sale/dismiss`, async (c) => {
-    user(c);
+    const p = user(c);
+    if (p.role === "viewer") throw new V2Error(403, "authorization_error", "Your role in this project (viewer) does not allow this. Ask a project admin.");
     await db.update(schema.projects).set({ firstSaleDismissedAt: deps.now() }).where(eq(schema.projects.id, c.get("projectId")));
     return c.json({ object: "first_sale", dismissed: true });
   });

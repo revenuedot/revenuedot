@@ -62,14 +62,25 @@ export function AskBar({ pid }: { pid: string }) {
 
 interface FirstSale { id: string; project_name: string; product: string; store: string; amount: number | null; currency: string | null; revenue_usd: number; purchased_at: number; share_url: string; image_url: string; dismissed: boolean }
 
+/** The price paid in the store's currency; a currency code Intl does not know falls back to the USD revenue. */
+function priceOf(card: FirstSale) {
+  if (card.amount !== null && card.currency) {
+    try { return new Intl.NumberFormat("en-US", { style: "currency", currency: card.currency }).format(card.amount); } catch { /* unknown code */ }
+  }
+  return `$${card.revenue_usd.toFixed(2)}`;
+}
+
 /** The first-sale card (prd/ai-assistant/PRD.md §4): shown on the Overview until dismissed, with a public share link. */
 export function FirstSaleCard({ pid }: { pid: string }) {
   const q = useQuery({ queryKey: ["first-sale", pid], queryFn: () => api<{ card: FirstSale | null }>(`${aiBase(pid)}/first_sale`).then((r) => r.card), enabled: !!pid });
   const qc = useQueryClient();
+  const status = useAiStatus(pid);
   const [copied, setCopied] = useState(false);
   const card = q.data;
   if (!card || card.dismissed) return null;
-  const price = card.amount !== null && card.currency ? new Intl.NumberFormat("en-US", { style: "currency", currency: card.currency }).format(card.amount) : `$${card.revenue_usd.toFixed(2)}`;
+  const price = priceOf(card);
+  // Hiding the card hides it for the whole project, so viewers (who cannot change the project) do not get the button.
+  const canDismiss = status.data ? status.data.role !== "viewer" : false;
   const share = async () => {
     const data = { title: `${card.project_name} made its first sale`, url: card.share_url };
     try {
@@ -86,7 +97,7 @@ export function FirstSaleCard({ pid }: { pid: string }) {
       </div>
       <a className="btn btn-line" href={card.share_url} target="_blank" rel="noreferrer">View card</a>
       <button type="button" className="btn" onClick={share}>{copied ? "Link copied" : "Share"}</button>
-      <button type="button" className="ib" aria-label="Dismiss" onClick={async () => { await api(`${aiBase(pid)}/first_sale/dismiss`, { method: "POST" }); await qc.invalidateQueries({ queryKey: ["first-sale", pid] }); }}><Icon name="close" /></button>
+      {canDismiss && <button type="button" className="ib" aria-label="Dismiss" onClick={async () => { await api(`${aiBase(pid)}/first_sale/dismiss`, { method: "POST" }).catch(() => {}); await qc.invalidateQueries({ queryKey: ["first-sale", pid] }); }}><Icon name="close" /></button>}
     </div>
   );
 }

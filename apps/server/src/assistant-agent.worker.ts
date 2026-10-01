@@ -21,10 +21,14 @@ const PATH = /^\/agents\/assistant-agent\/(aic[A-Za-z0-9]+)(?:\/.*)?$/;
 
 const json = (status: number, message: string) => new Response(JSON.stringify({ object: "error", type: status === 401 ? "authentication_error" : "resource_missing", message }), { status, headers: { "content-type": "application/json" } });
 
+function hostOf(origin: string) {
+  try { return new URL(origin).host; } catch { return null; }
+}
+
 function cookie(req: Request, name: string) {
   for (const part of (req.headers.get("cookie") ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === name) return decodeURIComponent(v.join("="));
+    if (k === name) { try { return decodeURIComponent(v.join("=")); } catch { return undefined; } }
   }
   return undefined;
 }
@@ -38,8 +42,10 @@ export async function routeAssistantAgent(req: Request, env: Env, db: DB): Promi
   const url = new URL(req.url);
   const m = PATH.exec(url.pathname);
   if (!m || !env.AssistantAgent) return json(404, "Not found.");
+  // Browsers always send Origin on a WebSocket handshake; it must be this host ("null" and malformed origins are refused).
   const origin = req.headers.get("origin");
-  if (origin && new URL(origin).host !== url.host) return json(404, "Not found.");
+  if (origin !== null && hostOf(origin) !== url.host) return json(404, "Not found.");
+  if (req.headers.get("sec-fetch-site") === "cross-site" || req.headers.get("sec-fetch-site") === "same-site") return json(404, "Not found.");
   const user = await sessionUser(db, cookie(req, SESSION_COOKIE), new Date());
   if (!user) return json(401, "Sign in to use RevenueDot AI.");
   const [conv] = await db.select({ projectId: schema.aiConversations.projectId }).from(schema.aiConversations)
@@ -93,7 +99,8 @@ export class AssistantAgent extends AIChatAgent<Env> {
     if (!deps.assistant) return refusalResponse("RevenueDot AI has no model on this server.");
     const ctx = await loadAssistantContext(withDispatch, deps.assistant, owner.userId, owner.projectId, this.name);
     if (!ctx) return refusalResponse("You are no longer a member of this project.");
-    const turn = await runAssistantTurn(ctx, this.messages, { abortSignal: options?.abortSignal });
+    // The transcript here is what the browser sent; only signed approvals are trusted, and each runs once (agent.ts).
+    const turn = await runAssistantTurn(ctx, this.messages, { abortSignal: options?.abortSignal, clientTranscript: true });
     if ("refused" in turn) return refusalResponse(turn.refused);
     const users = this.messages.filter((x) => x.role === "user");
     const first = users.length === 1 && !options?.continuation ? users[0]!.parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join(" ") : "";

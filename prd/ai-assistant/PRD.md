@@ -41,9 +41,12 @@ Tools are defined in the MCP server's format (`name`, `title`, `description`, zo
 **Scoping**, decided per turn on the server:
 - The project's AI setting (`projects.ai_access`): `read_write` (default; write tools ask first), `read_only` (write tools are not offered), `disabled` (no assistant for anyone in the project).
 - The collaborator's role: a Viewer gets read tools only; a Developer and an Admin get every tool their role allows in the API (`allows()` in `routes/v2/common.ts`). A tool whose scopes the role lacks is not offered, and the API refuses it anyway.
-- **Confirmation:** every write tool has `needsApproval: true`. The turn stops with the tool part in `approval-requested`; the UI shows a card that says what will change ("Grant Pro to wjqx8kd2rn1 until Nov 8, 2026") with Approve and Deny. Approvals are signed (`experimental_toolApprovalSecret`), and on self-host the server only takes the approval decision from the client, never message content.
+- **Confirmation:** every write tool has `needsApproval: true`. The turn stops with the tool part in `approval-requested`; the UI shows a card that says what will change ("Grant Pro to wjqx8kd2rn1 until Nov 8, 2026") and every argument the write will run with, with Approve and Deny. Approval requests are signed with an HMAC over the approval id, tool call id, tool name and input (`experimental_toolApprovalSecret`, keyed from `REVENUEDOT_ENCRYPTION_KEY` or the signing key), so a browser cannot forge an approval or change the input after approving. On self-host the server only takes the approval decision from the client, never message content. On Cloud the Durable Object stores what the browser sends, so without a key to sign with the write tools are not offered there.
+- **Each approval runs once:** before a write runs, its tool call is claimed in `ai_tool_runs` (conversation, tool call id). A replayed, resent or concurrently submitted approval of the same call finds the row and is refused. On self-host one answer streams at a time per conversation (a unique index on the running stream is the lock), so two tabs approving the same card run it once.
+- **Prompt injection:** customer attributes, product names and files reach the model as data. Approval is the guard for writes. Answers render markdown without raw HTML and without images (an image URL could carry data out without a click); links are dashboard paths or https URLs.
 - **No secrets:** tool results pass through a redactor that replaces any key named like a secret, password, private key, credentials, token or signing key with `[hidden]`; the assistant has no tool that creates keys, webhooks with secrets or store credentials.
-- **Audit:** writes go through the v2 audit middleware with actor type `assistant`, actor = the user's id, and `additional_data.actor_display = "assistant on behalf of <email>"`, plus the conversation id. The Audit logs tab shows "RevenueDot AI on behalf of kai@…".
+- **Audit:** writes go through the v2 audit middleware with actor type `assistant`, actor = the user's id, and `additional_data.actor_display = "assistant on behalf of <email>"`, plus the conversation id. The Audit logs tab shows "RevenueDot AI on behalf of kai@…". A change to the AI setting is logged as `ai_settings_updated`; chats, uploads and conversations are not project changes and are not logged.
+- **Requests:** writes with the session cookie must come from the dashboard's own origin (`Sec-Fetch-Site` same-origin), so a page on a sibling host cannot drive a chat or approve a card. The Durable Object socket checks the same, plus the Origin.
 
 ### 3. UI (ai-elements on the design tokens)
 - `/projects/:id/ai` and `/projects/:id/ai/:conversationId`, linked as **RevenueDot AI** in the sidebar under Overview.
@@ -58,11 +61,12 @@ Tools are defined in the MCP server's format (`name`, `title`, `description`, zo
 ### 4. Tier 3 extras
 - **Composer mentions:** typing `@` opens a list of customers (search), offerings and charts; picking one inserts `@label` and attaches `{ type, id }` to the message metadata. The server loads each mention's context (customer summary, offering with packages, chart summary) into the model's view of that message, not into the saved transcript.
 - **`.storekit` viewer and import:** a StoreKit configuration file (Xcode's JSON, `"identifier"`, `"products"`, `"subscriptionGroups"`, `"nonRenewingSubscriptions"`) is parsed by `parseStoreKitConfig` in `packages/core` (types, durations, prices, intro offers, localizations, group names). The chat shows a card with the products; "Import into catalog" asks the assistant to run `import-storekit-products`, which creates the missing products on a chosen App Store app (skipping ones that exist) after approval.
-- **First-sale card:** when a project's first production purchase arrives (the tick checks projects without a card), RevenueDot saves a card (`ai_share_cards`: product, price, store, country, time, project name) with an unguessable token. The Overview shows it once with Share and Dismiss. `GET /share/first-sale/<token>` is a public page with Open Graph tags; `GET /share/first-sale/<token>.svg` is the 1200×630 image. Nothing personal is shown (no app user id).
+- **First-sale card:** when a project's first production purchase arrives (the tick checks projects without a card), RevenueDot saves a card (`ai_share_cards`: product, price, store, country, time, project name) with an unguessable token (18 random bytes). The tick starts from projects without a card and probes each one's recent transactions by index. The Overview shows it once with Share and Dismiss. `GET /share/first-sale/<token>` is a public page with Open Graph tags; `GET /share/first-sale/<token>.svg` is the 1200×630 image. Nothing personal is shown (no app user id).
 
 ### 5. Rate limits and cost caps (Postgres)
 - Per person: 20 turns a minute, 200 turns and 2,000,000 tokens a day. Per project: 600 turns and 6,000,000 tokens a day. Per server: 20,000 turns and 200,000,000 tokens a day. Override with `REVENUEDOT_ASSISTANT_CAPS` (JSON).
-- Turns use the `rate_limits` table (`hit()`, as the paywall generator does); tokens are summed from the model's usage per step into `ai_usage` (key, UTC day). A refused turn answers with an error the chat shows ("You have used today's 200 questions"); no model call is made.
+- Turns per minute use the `rate_limits` table (`hit()`, as the paywall generator does). Daily turns are taken atomically: one statement adds the turn to the person's, the project's and the server's `ai_usage` rows and the turn is taken back when any row went over its cap, so concurrent turns on any number of isolates cannot pass a cap together. Tokens are added from the model's usage per step; a turn stops after the step that used up a token cap. A refused turn answers with an error the chat shows ("You have used today's 200 questions"); no model call is made.
+- The model reads the last 60 messages of a conversation and screenshots from the last 3 user messages; a `.storekit` summary lists at most 200 products. Uploads: 60 an hour per person, the image's bytes must match its type.
 - One turn runs at most 8 model steps; tool results are cut to 12,000 characters.
 
 ### 6. API (all session or secret-key authenticated, under `/v2/projects/{project_id}`)
@@ -76,20 +80,21 @@ Tools are defined in the MCP server's format (`name`, `title`, `description`, zo
 | `POST /ai/conversations/{id}/chat` | Send `{ message, trigger }`; answers a UI message stream (SSE) |
 | `GET /ai/conversations/{id}/stream` | Resume the running answer; 204 when nothing runs |
 | `POST /ai/conversations/{id}/stop` | Stop the running answer |
-| `POST /ai/files` / `GET /ai/files/{id}` | Upload an image or `.storekit` file (raw body, `?name=`) / read it back |
+| `POST /ai/files` / `GET /ai/files/{id}` | Upload an image or `.storekit` file (raw body, `?name=`) / read it back (members only, not secret keys) |
 | `POST /ai/storekit` | Parse a `.storekit` file and return its products |
 | `GET /ai/mentions?q=` | Customers, offerings and charts for `@` mentions |
-| `GET /ai/first_sale` / `POST /ai/first_sale/dismiss` | The first-sale card, if any / hide it on the Overview |
+| `GET /ai/first_sale` / `POST /ai/first_sale/dismiss` | The first-sale card, if any / hide it on the Overview (admins and developers) |
 | `GET /agents/assistant-agent/{conversation_id}` | Cloud only: the conversation's Durable Object (WebSocket), after the same session and ownership checks |
 
 ### 7. Data (migration 0020)
-`projects.ai_access`, `ai_conversations`, `ai_messages`, `ai_streams`, `ai_stream_chunks`, `ai_files`, `ai_usage`, `ai_share_cards`, `projects.first_sale_dismissed_at`.
+`projects.ai_access`, `ai_conversations`, `ai_messages`, `ai_streams` (with `ai_streams_one_running`, a unique index on the conversation while an answer streams), `ai_stream_chunks` (text deltas merged per write, at most 20,000 rows an answer, pruned a day after the answer ends), `ai_files`, `ai_tool_runs`, `ai_usage`, `ai_share_cards`, `projects.first_sale_dismissed_at`.
 
 ## Tests
 - `apps/server/test/assistant-tools.test.ts`: scoping by role and AI setting, confirmation required for every write tool, audit entries with the assistant actor, secrets redacted.
 - `apps/server/test/assistant-agent.test.ts`: the agent loop with a scripted fake model: a read tool call → result → answer; a write tool call → approval card → approve → the write runs and is audited; deny → nothing changes; caps refuse a turn.
 - `apps/server/test/assistant-stream.test.ts`: SSE streaming, resume from stored chunks mid-answer, stale streams marked interrupted, conversations CRUD and ownership.
-- `packages/core/test/storekit.test.ts`: the parser against real-format `.storekit` fixtures (subscriptions with intro offers, consumables, non-consumables, non-renewing).
+- `apps/server/test/assistant-security.test.ts`: an approval runs once (two tabs at once, a replayed signed approval in a browser-held transcript), an edited input fails the signature, no write tools without a signing key on the Durable Object path, the audit log keeps chats out, cross-site cookie writes are refused, model ids cannot leave their route, upload checks, caps under concurrency, token caps stop a turn, the model's message window.
+- `packages/core/test/storekit.test.ts`: the parser against real-format `.storekit` fixtures (subscriptions with intro offers, consumables, non-consumables, non-renewing), names like `constructor` in the file, and the limits (500 products, 50 warnings, 300 characters a string).
 - `apps/dashboard/e2e/do-smoke.mjs`: the Durable Object runtime under `cf dev` with the fake model.
 - `apps/dashboard/e2e/assistant.spec.ts` (fake model, `E2E_PORT=5408`, one worker): open `/ai`, ask, see a tool card, approve a write, see the result; the Overview bar; the settings tab; screenshots at 1440×900 light and dark.
 

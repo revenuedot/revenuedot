@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { defaultRehypePlugins } from "streamdown";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getToolName, isToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai";
@@ -31,6 +32,21 @@ function useInternalLinks() {
     if (href.startsWith("/projects/")) { e.preventDefault(); nav(href); }
   };
 }
+
+/**
+ * Answers are model output, and the model reads customer attributes, product names and other data anyone can write. So
+ * markdown is rendered without raw HTML, an image never loads (a URL could carry data out without a click), and a link
+ * is either a dashboard path or an https URL shown as written.
+ */
+const SAFE_REHYPE = [defaultRehypePlugins.sanitize!];
+const SAFE_COMPONENTS = {
+  img: ({ alt }: { alt?: string }) => <span className="subtle">{alt ? `[image: ${alt}]` : "[image]"}</span>,
+  a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+    if (href && /^\/(?!\/)/.test(href)) return <a href={href}>{children}</a>;
+    if (href && /^https:\/\//i.test(href)) return <a href={href} target="_blank" rel="noopener noreferrer nofollow" title={href}>{children}</a>;
+    return <span>{children}</span>;
+  },
+};
 
 /** The empty state: greeting by name and time of day, what the assistant does, the composer and example questions. */
 export function Welcome({ status, pid, onSubmit }: { status: AiStatus; pid: string; onSubmit: (m: ComposerSubmit) => unknown }) {
@@ -95,7 +111,7 @@ function ChatMessage({ m, pid, chat, storekit, canWrite }: { m: UIMessage; pid: 
     <Message from={m.role} data-role={m.role}>
       <MessageContent>
         {m.parts.map((p, i) => {
-          if (p.type === "text") return m.role === "user" ? <p key={i} className="ai-user-text">{p.text}</p> : <MessageResponse key={i} linkSafety={{ enabled: false }}>{p.text}</MessageResponse>;
+          if (p.type === "text") return m.role === "user" ? <p key={i} className="ai-user-text">{p.text}</p> : <MessageResponse key={i} linkSafety={{ enabled: false }} rehypePlugins={SAFE_REHYPE} components={SAFE_COMPONENTS as never}>{p.text}</MessageResponse>;
           if (p.type === "file") return isStoreKitPart(p) ? <StoreKitCard key={i} pid={pid} part={p} preloaded={storekit[p.url]} chat={chat} canWrite={canWrite} /> : <ImagePart key={i} part={p} />;
           if (isToolUIPart(p)) return <ToolPart key={p.toolCallId} part={p as ToolUIPart} chat={chat} />;
           return null;
@@ -132,6 +148,7 @@ function ToolPart({ part, chat }: { part: ToolUIPart; chat: ChatLike }) {
           <span className="lab">{toolTitle(name)}</span>
           <span className="q">{describeWrite(name, input)}?</span>
           <ConfirmationRequest>
+            <ApprovalArgs input={input} />
             <span className="ai-sub">Nothing changes until you approve. The change is recorded in the audit log as RevenueDot AI on your behalf.</span>
           </ConfirmationRequest>
         </ConfirmationTitle>
@@ -144,6 +161,17 @@ function ToolPart({ part, chat }: { part: ToolUIPart; chat: ChatLike }) {
       </Confirmation>
       {(part.state === "output-available" || part.state === "output-error") && card}
     </div>
+  );
+}
+
+/** Every argument the write will run with, exactly as the server holds it (the summary above can leave some out). */
+function ApprovalArgs({ input }: { input: Record<string, unknown> }) {
+  const rows = Object.entries(input).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  if (!rows.length) return null;
+  return (
+    <dl className="ai-args" data-testid="approval-args">
+      {rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{typeof v === "string" ? v : JSON.stringify(v)}</dd></div>)}
+    </dl>
   );
 }
 

@@ -73,16 +73,35 @@ export function instructionsFor(ctx: AssistantContext, now: Date): string {
   ].join("\n");
 }
 
-/** The AI SDK tool set for this person: allowed tools only; writes need approval; results compacted and secret-free. */
-export function buildToolSet(ctx: AssistantContext, client: RevenueDotClient = inProcessClient(dispatchOf(ctx.deps), ctx.actor)): ToolSet {
+/**
+ * Claims one approved tool call before its write runs. The row is the proof the approval was used: a replayed, resent
+ * or concurrently submitted approval of the same call finds it and is refused, so an approval runs at most once.
+ */
+export async function claimToolRun(ctx: AssistantContext, toolCallId: string, toolName: string): Promise<boolean> {
+  const r = await ctx.deps.db.insert(schema.aiToolRuns)
+    .values({ conversationId: ctx.actor.conversationId, toolCallId, projectId: ctx.project.id, toolName, createdAt: ctx.deps.now() })
+    .onConflictDoNothing().returning({ id: schema.aiToolRuns.toolCallId });
+  return r.length > 0;
+}
+
+/**
+ * The AI SDK tool set for this person: allowed tools only; writes need approval and run once per approval; results
+ * compacted and secret-free. `writes: false` leaves the write tools out (no way to verify an approval).
+ */
+export function buildToolSet(ctx: AssistantContext, client: RevenueDotClient = inProcessClient(dispatchOf(ctx.deps), ctx.actor), o: { writes?: boolean } = {}): ToolSet {
   const out: ToolSet = {};
   for (const def of allowedTools(ALL_TOOLS, ctx.scope)) {
+    const write = isWriteTool(def);
+    if (write && o.writes === false) continue;
     out[def.name] = tool({
       title: def.title,
       description: def.description,
       inputSchema: z.object(def.inputSchema),
-      needsApproval: isWriteTool(def),
-      execute: async (args: Record<string, unknown>) => {
+      needsApproval: write,
+      execute: async (args: Record<string, unknown>, opts?: { toolCallId?: string }) => {
+        if (write && !(opts?.toolCallId && await claimToolRun(ctx, opts.toolCallId, def.name))) {
+          throw new Error("This change was already approved and run once. Ask again to make it again.");
+        }
         try {
           return compactResult(await def.run(client, args as never));
         } catch (e) {
@@ -110,17 +129,24 @@ const FILE_URL = /^\/v2\/projects\/([^/]+)\/ai\/files\/([A-Za-z0-9_]+)$/;
  */
 export async function toModelMessages(ctx: AssistantContext, messages: UIMessage[], toolSet: ToolSet, client: RevenueDotClient = inProcessClient(dispatchOf(ctx.deps), ctx.actor)): Promise<ModelMessage[]> {
   const prepared: UIMessage[] = [];
-  for (const m of messages) {
+  const recent = modelWindow(messages);
+  // Screenshots are sent for the last few user messages only (each can be 5 MB); older ones are named, not resent.
+  const userIdx = recent.map((m, i) => (m.role === "user" ? i : -1)).filter((i) => i >= 0);
+  const imagesFrom = userIdx.length > IMAGE_MESSAGES ? userIdx[userIdx.length - IMAGE_MESSAGES]! : 0;
+  for (const [i, m] of recent.entries()) {
     if (m.role !== "user") { prepared.push(m); continue; }
     const parts: UIMessage["parts"] = [];
     for (const part of m.parts) {
-      if (part.type !== "file") { parts.push(part); continue; }
+      if (part.type === "text") { if (typeof part.text === "string") parts.push({ type: "text", text: part.text }); continue; }
+      if (part.type !== "file") continue;
+      if (typeof part.url !== "string") continue;
       const match = FILE_URL.exec(part.url);
       if (!match || match[1] !== ctx.project.id) { parts.push({ type: "text", text: `[An attachment that could not be read: ${part.filename ?? "file"}]` }); continue; }
       const [f] = await ctx.deps.db.select().from(schema.aiFiles).where(and(eq(schema.aiFiles.projectId, ctx.project.id), eq(schema.aiFiles.id, match[2]!))).limit(1);
       if (!f) { parts.push({ type: "text", text: `[The attachment ${part.filename ?? ""} was deleted.]` }); continue; }
       if (f.mediaType.startsWith("image/")) {
-        if (ctx.model.vision) parts.push({ type: "file", mediaType: f.mediaType, filename: f.name, url: `data:${f.mediaType};base64,${f.dataBase64}` });
+        if (i < imagesFrom) parts.push({ type: "text", text: `[An earlier screenshot (${f.name}) is not shown again.]` });
+        else if (ctx.model.vision) parts.push({ type: "file", mediaType: f.mediaType, filename: f.name, url: `data:${f.mediaType};base64,${f.dataBase64}` });
         else parts.push({ type: "text", text: `[The user attached a screenshot (${f.name}); this model cannot read images.]` });
         continue;
       }
@@ -133,12 +159,28 @@ export async function toModelMessages(ctx: AssistantContext, messages: UIMessage
   return convertToModelMessages(prepared, { tools: toolSet, ignoreIncompleteToolCalls: true });
 }
 
+/** How many of the latest messages the model sees, and in how many of the latest user messages it sees screenshots. */
+export const MODEL_MESSAGES = 60;
+const IMAGE_MESSAGES = 3;
+
+/**
+ * The part of the transcript the model reads: user and assistant messages only (a Durable Object stores what the
+ * browser sends, so other roles are dropped), the last MODEL_MESSAGES of them, starting at a user message.
+ */
+export function modelWindow(messages: UIMessage[]): UIMessage[] {
+  const kept = messages.filter((m) => m && (m.role === "user" || m.role === "assistant") && Array.isArray(m.parts));
+  if (kept.length <= MODEL_MESSAGES) return kept;
+  let start = kept.length - MODEL_MESSAGES;
+  while (start < kept.length - 1 && kept[start]!.role !== "user") start++;
+  return kept.slice(start);
+}
+
 function storeKitSummary(id: string, name: string, b64: string): string {
   const text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   try {
     const c = parseStoreKitConfig(text);
-    const rows = c.products.map((p) => ({ product_id: p.productId, type: p.type, name: p.displayName ?? p.referenceName, price: p.price, duration: p.duration, group: p.group, intro_offer: p.introOffer }));
-    return `[Attached StoreKit configuration file "${name}" (file_id ${id}, storefront ${c.storefront ?? "unknown"}). Products:\n${JSON.stringify(rows)}${c.warnings.length ? `\nWarnings: ${c.warnings.join(" ")}` : ""}\nTo import them into the catalog, call import-storekit-products with this file_id and an App Store app id.]`;
+    const rows = c.products.slice(0, 200).map((p) => ({ product_id: p.productId, type: p.type, name: p.displayName ?? p.referenceName, price: p.price, duration: p.duration, group: p.group, intro_offer: p.introOffer }));
+    return `[Attached StoreKit configuration file "${name}" (file_id ${id}, storefront ${c.storefront ?? "unknown"}). Products${c.products.length > rows.length ? ` (the first ${rows.length} of ${c.products.length})` : ""}:\n${JSON.stringify(rows)}${c.warnings.length ? `\nWarnings: ${c.warnings.join(" ")}` : ""}\nTo import them into the catalog, call import-storekit-products with this file_id and an App Store app id.]`;
   } catch (e) {
     return `[The user attached "${name}", which could not be read as a StoreKit configuration: ${e instanceof Error ? e.message : String(e)}]`;
   }
@@ -165,12 +207,24 @@ async function mentionContext(client: RevenueDotClient, mentions: NonNullable<Me
 
 export interface TurnOptions {
   abortSignal?: AbortSignal;
+  /**
+   * The transcript comes from the browser (the Durable Object stores what the client sends). Approvals are then only
+   * trusted with a signature, so without an approval secret the write tools are not offered.
+   */
+  clientTranscript?: boolean;
   /** Called once per finished model step with its token usage (after it is added to the caps). */
   onUsage?: (u: { inputTokens: number; outputTokens: number }) => void;
 }
 
-/** Secret that signs approval requests, so a client cannot forge an approval (AI SDK `experimental_toolApprovalSecret`). */
-const approvalSecret = (deps: Deps) => deps.encryptionKey || deps.signingKey || undefined;
+/**
+ * Secret that signs approval requests (AI SDK `experimental_toolApprovalSecret`), so a client cannot forge an approval or
+ * change a tool's input after it was approved. Derived from the server's key with its own label, so the HMAC key is not
+ * the encryption or signing key itself.
+ */
+export const approvalSecret = (deps: Deps) => {
+  const k = deps.encryptionKey || deps.signingKey;
+  return k ? `revenuedot-ai-tool-approval:${k}` : undefined;
+};
 
 /**
  * Runs one turn. Returns `{ refused }` without calling the model when a cap or the project's AI setting says no.
@@ -183,20 +237,23 @@ export async function runAssistantTurn(ctx: AssistantContext, messages: UIMessag
   const refused = await startTurn(db, ctx.caps, ctx.actor.userId, ctx.project.id, now);
   if (refused) return { refused };
   const client = inProcessClient(dispatchOf(ctx.deps), ctx.actor);
-  const toolSet = buildToolSet(ctx, client);
+  const secret = approvalSecret(ctx.deps);
+  const toolSet = buildToolSet(ctx, client, { writes: !!secret || !opts.clientTranscript });
   const modelMessages = await toModelMessages(ctx, messages, toolSet, client);
+  // A turn stops early (after the step that crossed it) once a daily token cap is used up.
+  let overCap = false;
   const result = streamText({
     model: ctx.model.languageModel,
     instructions: instructionsFor(ctx, now),
     messages: modelMessages,
     tools: toolSet,
-    stopWhen: isStepCount(8),
+    stopWhen: [isStepCount(8), () => overCap],
     maxOutputTokens: 8192,
     abortSignal: opts.abortSignal,
-    experimental_toolApprovalSecret: approvalSecret(ctx.deps),
+    experimental_toolApprovalSecret: secret,
     onStepEnd: async (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
       const u = { inputTokens: step.usage?.inputTokens ?? 0, outputTokens: step.usage?.outputTokens ?? 0 };
-      try { await addUsage(db, ctx.actor.userId, ctx.project.id, ctx.deps.now(), u); } catch (e) { console.error("assistant usage", e); }
+      try { overCap = await addUsage(db, ctx.actor.userId, ctx.project.id, ctx.deps.now(), u, ctx.caps); } catch (e) { console.error("assistant usage", e); }
       opts.onUsage?.(u);
     },
   } as never) as unknown as StreamTextResult<ToolSet, any, any>;

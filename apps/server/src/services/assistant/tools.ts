@@ -397,8 +397,14 @@ export const tools: ToolDefinition[] = [
       const base = await P(c);
       const file = await c.request<{ text: string }>("GET", `${base}/ai/files/${enc(a.file_id)}`, { query: { format: "text" } });
       const parsed = parseStoreKitConfig(file.text);
-      const existing = await c.request<{ items: { store_identifier: string }[] }>("GET", `${base}/products`, { query: { app_id: a.app_id, limit: 100 } });
-      const have = new Set(existing.items.map((p) => p.store_identifier));
+      const have = new Set<string>();
+      let after: string | undefined;
+      for (let page = 0; page < 50; page++) {
+        const existing = await c.request<{ items: { id: string; store_identifier: string }[]; next_page: string | null }>("GET", `${base}/products`, { query: { app_id: a.app_id, limit: 100, starting_after: after } });
+        for (const p of existing.items) have.add(p.store_identifier);
+        if (!existing.next_page || !existing.items.length) break;
+        after = existing.items[existing.items.length - 1]!.id;
+      }
       const want = a.product_ids?.length ? parsed.products.filter((p) => a.product_ids!.includes(p.productId)) : parsed.products;
       const created: string[] = [], skipped: string[] = [];
       for (const p of want) {
@@ -464,22 +470,33 @@ export const tools: ToolDefinition[] = [
 
 export const toolsByName = new Map(tools.map((t) => [t.name, t]));
 
-const SECRET_KEY = /(secret|password|private[_-]?key|credential|token|api[_-]?key|signing|authorization|shared[_-]?key|service[_-]?account)/i;
+const SECRET_KEY = /(secret|password|passwd|private[_-]?key|credential|token|api[_-]?key|signing|authorization|shared[_-]?key|service[_-]?account|cookie|session)/i;
+/** Keys that only say whether a secret is set, or show its last characters (`{ configured, hint }`): kept. */
+const SAFE_KEY = /^(configured|hint|is_set|has_[a-z_]+|[a-z_]+_(configured|set))$/i;
+/** Values that are secrets whatever their key: API keys and tokens with well-known prefixes, PEM keys, JWTs, Slack hooks, URL passwords. */
+const SECRET_VALUE = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /\b(sk|rk)_(live|test)_[A-Za-z0-9]{8,}/, /\bsk_[A-Za-z0-9_-]{16,}/, /\bwhsec_[A-Za-z0-9]{16,}/, /\brdat_[A-Za-z0-9_-]{16,}/,
+  /\bsk-(ant-|proj-)?[A-Za-z0-9_-]{20,}/, /\bxox[abposr]-[A-Za-z0-9-]{10,}/, /\bgh[pousr]_[A-Za-z0-9]{20,}/, /\bAKIA[0-9A-Z]{16}\b/, /\bAIza[0-9A-Za-z_-]{30,}/,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/, /hooks\.slack\.com\/services\/[A-Za-z0-9/]+/, /:\/\/[^/\s:@]+:[^/\s@]+@/,
+];
+const HIDDEN = "[hidden]";
 
 /**
- * Removes secret values from a tool result before the model sees it: any key that names a secret keeps only whether
- * it is set. `configured`, `hint` and `prefix` style values are kept, since they carry no secret.
+ * Removes secret values from a tool result before the model sees it. Under a key that names a secret, every value is
+ * hidden except booleans, null and `{ configured, hint }` style keys; anywhere else, a string that looks like a secret
+ * (an API key, a private key, a token in a URL) is hidden too.
  */
-export function redactSecrets(v: unknown, depth = 0): unknown {
+export function redactSecrets(v: unknown, depth = 0, inSecret = false): unknown {
   if (depth > 12) return "[too deep]";
-  if (Array.isArray(v)) return v.map((x) => redactSecrets(x, depth + 1));
+  if (Array.isArray(v)) return v.map((x) => redactSecrets(x, depth + 1, inSecret));
+  if (typeof v === "string") return inSecret ? (v === "" ? v : HIDDEN) : SECRET_VALUE.some((r) => r.test(v)) ? HIDDEN : v;
+  if (typeof v === "number" || typeof v === "bigint") return inSecret ? HIDDEN : v;
   if (!v || typeof v !== "object") return v;
   const out: Record<string, unknown> = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
-    if (SECRET_KEY.test(k) && !/(configured|_set|has_)/i.test(k)) {
-      if (x && typeof x === "object" && !Array.isArray(x)) out[k] = redactSecrets(x, depth + 1);
-      else out[k] = x === null || x === undefined || x === "" ? x : typeof x === "boolean" ? x : "[hidden]";
-    } else out[k] = redactSecrets(x, depth + 1);
+    if (SAFE_KEY.test(k)) out[k] = typeof x === "boolean" || x === null ? x : redactSecrets(x, depth + 1, false);
+    else out[k] = redactSecrets(x, depth + 1, inSecret || SECRET_KEY.test(k));
   }
   return out;
 }

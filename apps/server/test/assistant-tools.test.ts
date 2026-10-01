@@ -105,6 +105,15 @@ describe("results the model sees", () => {
     expect(redactSecrets({ name: "Slack", webhook_secret: "whsec_123", credentials: { private_key: "-----BEGIN", configured: true }, api_key_configured: true, token: "", nested: [{ password: "x" }] }))
       .toEqual({ name: "Slack", webhook_secret: "[hidden]", credentials: { private_key: "[hidden]", configured: true }, api_key_configured: true, token: "", nested: [{ password: "[hidden]" }] });
   });
+  it("hides everything under a secret key, and secret-looking values under any key", () => {
+    expect(redactSecrets({ credentials: { key_id: "ABC", value: "pem", n: 4, list: ["a"], hint: "…abcd" }, secrets: { webhook_url: { configured: true, hint: "…x9" } } }))
+      .toEqual({ credentials: { key_id: "[hidden]", value: "[hidden]", n: "[hidden]", list: ["[hidden]"], hint: "…abcd" }, secrets: { webhook_url: { configured: true, hint: "…x9" } } });
+    const out = redactSecrets({
+      url: "https://user:pa55@example.com/hook", note: "key sk_live_abcdefghijklmnop", pem: "-----BEGIN PRIVATE KEY-----\nMII", slack: "https://hooks.slack.com/services/T0/B0/xyz",
+      attributes: { $email: "a@b.co", plain: "https://example.com/ok" },
+    });
+    expect(out).toEqual({ url: "[hidden]", note: "[hidden]", pem: "[hidden]", slack: "[hidden]", attributes: { $email: "a@b.co", plain: "https://example.com/ok" } });
+  });
   it("cuts long lists to fit and says how many were left out", () => {
     const big = { object: "list", items: Array.from({ length: 500 }, (_, i) => ({ id: `cust_${i}`, note: "x".repeat(50) })) };
     const c = compactResult(big, 12_000) as { items: unknown[] };

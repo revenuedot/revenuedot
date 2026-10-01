@@ -30,9 +30,14 @@ const token = () => {
 /** Creates cards for projects with a recent first sale. At most `limit` projects per call. Returns how many cards were made. */
 export async function ensureFirstSaleCards(db: DB, now: Date, limit = 20): Promise<number> {
   const since = new Date(now.getTime() - FRESH_DAYS * 86400_000);
-  const due = await db.selectDistinct({ projectId: T.projectId }).from(T)
-    .where(and(eq(T.isSandbox, false), inArray(T.kind, PAID), gt(T.revenueUsd, 0), gt(T.purchasedAt, since),
-      sql`not exists (select 1 from ${Card} where ${Card.projectId} = ${T.projectId} and ${Card.kind} = 'first_sale')`))
+  // Runs every minute: start from the projects without a card (few, once every selling project has one) and probe each
+  // one's recent paid transactions through the (project_id, purchased_at) index, never scanning all transactions.
+  const Pr = schema.projects;
+  const due = await db.select({ projectId: Pr.id }).from(Pr)
+    .where(and(
+      sql`not exists (select 1 from ${Card} where ${Card.projectId} = ${Pr.id} and ${Card.kind} = 'first_sale')`,
+      sql`exists (select 1 from ${T} where ${T.projectId} = ${Pr.id} and ${T.purchasedAt} > ${since.toISOString()}::timestamptz and ${T.isSandbox} = false and ${inArray(T.kind, PAID)} and ${T.revenueUsd} > 0)`,
+    ))
     .limit(limit);
   let made = 0;
   for (const { projectId } of due) {

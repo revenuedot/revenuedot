@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseStoreKitConfig, StoreKitParseError } from "../src/storekit.js";
+import { parseStoreKitConfig, STOREKIT_MAX_PRODUCTS, StoreKitParseError } from "../src/storekit.js";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/storekit/${name}`, import.meta.url), "utf8");
 
@@ -61,5 +61,20 @@ describe("parseStoreKitConfig", () => {
       "products[2]: skipped an entry that is not an object.",
       "s: no valid recurringSubscriptionPeriod.",
     ]);
+  });
+  it("never reads Object.prototype for a type or offer mode named in the file", () => {
+    const c = parseStoreKitConfig(JSON.stringify({
+      products: [{ productID: "a", type: "constructor" }, { productID: "b", type: "Consumable", introductoryOffer: { paymentMode: "__proto__" } }],
+    }));
+    expect(c.products.map((p) => [p.productId, p.type, p.introOffer])).toEqual([["b", "consumable", null]]);
+    expect(c.warnings).toEqual(["a: unknown type \"constructor\", skipped."]);
+  });
+
+  it("keeps at most 500 products and 50 warnings, and says what it left out", () => {
+    const c = parseStoreKitConfig(JSON.stringify({ products: [...Array.from({ length: 700 }, (_, i) => ({ productID: `p${i}`, type: "Consumable", referenceName: "x".repeat(5000) })), ...Array.from({ length: 80 }, () => 1)] }));
+    expect(c.products).toHaveLength(STOREKIT_MAX_PRODUCTS);
+    expect(c.products[0]!.referenceName.length).toBe(300);
+    expect(c.warnings).toHaveLength(52);
+    expect(c.warnings.slice(-2)).toEqual(["30 more warnings are not listed.", "Only the first 500 products are read; 200 more are left out."]);
   });
 });

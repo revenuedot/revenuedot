@@ -59,10 +59,16 @@ export async function saveMessages(db: DB, conversationId: string, messages: UIM
   await db.delete(M).where(and(eq(M.conversationId, conversationId), gte(M.position, messages.length)));
 }
 
-export async function startStream(db: DB, conversationId: string, now: Date) {
+/** Starts an answer. Null when one is already streaming in this conversation (the unique index `ai_streams_one_running`). */
+export async function startStream(db: DB, conversationId: string, now: Date): Promise<string | null> {
   const id = newId("ais", 16);
-  await db.insert(S).values({ id, conversationId, status: "streaming", createdAt: now, updatedAt: now });
-  return id;
+  const r = await db.insert(S).values({ id, conversationId, status: "streaming", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: S.id });
+  return r[0]?.id ?? null;
+}
+
+/** Removes a stream that never started (the request was refused before the model ran). */
+export async function dropStream(db: DB, streamId: string) {
+  await db.delete(S).where(eq(S.id, streamId));
 }
 
 export async function appendChunks(db: DB, streamId: string, fromSeq: number, chunks: UIMessageChunk[], now: Date) {

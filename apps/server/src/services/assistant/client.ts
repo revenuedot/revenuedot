@@ -36,10 +36,14 @@ export interface RevenueDotClient {
 export function inProcessClient(dispatch: (req: Request) => Promise<Response>, actor: AssistantActor): RevenueDotClient {
   const baseUrl = "http://localhost";
   async function request<T>(method: string, path: string, o: { query?: Query; body?: unknown } = {}): Promise<T> {
-    if (!path.startsWith(`/v2/projects/${encodeURIComponent(actor.projectId)}/`) && path !== `/v2/projects/${encodeURIComponent(actor.projectId)}`) {
+    const root = `/v2/projects/${encodeURIComponent(actor.projectId)}`;
+    // Ids from the model go into the path; a "." or ".." segment would move the request to another route, so the path is
+    // checked as written and again after the URL parser resolved it.
+    const url = new URL(baseUrl + path);
+    const inProject = (x: string) => x === root || x.startsWith(`${root}/`);
+    if (!inProject(path) || !inProject(url.pathname) || url.pathname !== path.split("?")[0] || /\/\.{1,2}(\/|$)/.test(path) || /%2e/i.test(path)) {
       throw new RevenueDotApiError(403, "authorization_error", "RevenueDot AI can only use the project this conversation belongs to.");
     }
-    const url = new URL(baseUrl + path);
     for (const [k, v] of Object.entries(o.query ?? {})) {
       if (v === undefined || v === null) continue;
       if (Array.isArray(v)) for (const x of v) url.searchParams.append(k, x);

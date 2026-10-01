@@ -1,5 +1,5 @@
 {
-  "id": "143732aa-a9a7-435f-acd1-c005287fa7ac",
+  "id": "29ef3437-0da3-4e4c-9c95-13de51a1f686",
   "prevId": "20aaf788-eb84-4271-a10c-4287da3cd33a",
   "version": "7",
   "dialect": "postgresql",
@@ -521,6 +521,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "ai_streams_one_running": {
+          "name": "ai_streams_one_running",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ai_streams\".\"status\" = 'streaming'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -539,6 +555,72 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ai_tool_runs": {
+      "name": "ai_tool_runs",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tool_call_id": {
+          "name": "tool_call_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tool_name": {
+          "name": "tool_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ai_tool_runs_project_id_projects_id_fk": {
+          "name": "ai_tool_runs_project_id_projects_id_fk",
+          "tableFrom": "ai_tool_runs",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "ai_tool_runs_conversation_id_tool_call_id_pk": {
+          "name": "ai_tool_runs_conversation_id_tool_call_id_pk",
+          "columns": [
+            "conversation_id",
+            "tool_call_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

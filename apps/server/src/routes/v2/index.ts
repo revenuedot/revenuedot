@@ -70,6 +70,12 @@ export function v2Routes(deps: Deps) {
       await deps.db.update(schema.apiKeys).set({ lastUsedAt: now })
         .where(and(eq(schema.apiKeys.id, auth.keyId!), or(isNull(schema.apiKeys.lastUsedAt), lt(schema.apiKeys.lastUsedAt, new Date(now.getTime() - 60_000)))));
     } else {
+      // The session cookie is SameSite=Lax, which still rides along on requests from sibling hosts (api. and pay. pages are
+      // same-site with app.). A write with the cookie must come from the dashboard's own origin.
+      const site = c.req.header("sec-fetch-site");
+      if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method) && (site === "cross-site" || site === "same-site")) {
+        throw new V2Error(403, "authorization_error", "Dashboard requests must come from the dashboard.");
+      }
       const user = await sessionUser(deps.db, getCookie(c, SESSION_COOKIE), deps.now());
       if (!user) throw new V2Error(401, "authentication_error", "Missing API key. Send Authorization: Bearer <secret key>.");
       c.set("principal", { kind: "user", userId: user.id });

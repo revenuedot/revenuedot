@@ -51,9 +51,15 @@ export interface StoreKitConfig {
 export class StoreKitParseError extends Error {}
 
 const PERIOD = /^P(\d+)([DWMY])$/;
+/** Limits for files from anywhere: products kept, warnings listed, characters per string. */
+export const STOREKIT_MAX_PRODUCTS = 500;
+const MAX_WARNINGS = 50;
+const MAX_STR = 300;
 type J = Record<string, unknown>;
 const isObj = (v: unknown): v is J => !!v && typeof v === "object" && !Array.isArray(v);
-const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, MAX_STR) : null);
+/** Own keys only, so "constructor" or "__proto__" in a file never reads Object.prototype. */
+const lookup = <T>(table: Record<string, T>, key: string | null): T | undefined => (key !== null && Object.hasOwn(table, key) ? table[key] : undefined);
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const num = (v: unknown) => {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -74,38 +80,41 @@ export function parseStoreKitConfig(text: string): StoreKitConfig {
     throw new StoreKitParseError("This is not a StoreKit configuration file: it has no products, subscriptionGroups or nonRenewingSubscriptions.");
   }
   const warnings: string[] = [];
+  let unlisted = 0, overLimit = 0;
+  const warn = (w: string) => { if (warnings.length < MAX_WARNINGS) warnings.push(w); else unlisted++; };
   const products: StoreKitProduct[] = [];
   const seen = new Set<string>();
   const settings = isObj(root.settings) ? root.settings : {};
 
   const read = (p: unknown, where: string, group: { id: string | null; name: string } | null): StoreKitProduct | null => {
-    if (!isObj(p)) { warnings.push(`${where}: skipped an entry that is not an object.`); return null; }
+    if (!isObj(p)) { warn(`${where}: skipped an entry that is not an object.`); return null; }
     const productId = str(p.productID);
-    if (!productId) { warnings.push(`${where}: skipped a product with no productID.`); return null; }
-    if (seen.has(productId)) { warnings.push(`${productId} appears twice; the second one is skipped.`); return null; }
+    if (!productId) { warn(`${where}: skipped a product with no productID.`); return null; }
+    if (seen.has(productId)) { warn(`${productId} appears twice; the second one is skipped.`); return null; }
+    if (products.length >= STOREKIT_MAX_PRODUCTS) { overLimit++; return null; }
     const rawType = str(p.type);
-    const type = (rawType && TYPES[rawType]) ?? (group ? "subscription" : null);
-    if (!type) { warnings.push(`${productId}: unknown type "${rawType ?? ""}", skipped.`); return null; }
+    const type = lookup(TYPES, rawType) ?? (group ? "subscription" : null);
+    if (!type) { warn(`${productId}: unknown type "${rawType ?? ""}", skipped.`); return null; }
     seen.add(productId);
     const locs = arr(p.localizations).filter(isObj);
     const first = locs.find((l) => str(l.locale) === str(settings._locale)) ?? locs[0];
     const duration = type === "subscription" ? str(p.recurringSubscriptionPeriod) : null;
-    if (type === "subscription" && (!duration || !PERIOD.test(duration))) warnings.push(`${productId}: no valid recurringSubscriptionPeriod.`);
+    if (type === "subscription" && (!duration || !PERIOD.test(duration))) warn(`${productId}: no valid recurringSubscriptionPeriod.`);
     const intro = isObj(p.introductoryOffer) ? p.introductoryOffer : null;
-    const mode = intro ? MODES[str(intro.paymentMode) ?? ""] : undefined;
+    const mode = intro ? lookup(MODES, str(intro.paymentMode)) : undefined;
     return {
       productId, referenceName: str(p.referenceName) ?? productId, type, price: num(p.displayPrice), duration: duration && PERIOD.test(duration) ? duration : null,
       group: group?.name ?? null, groupLevel: group ? num(p.groupNumber) : null, familyShareable: p.familyShareable === true,
       displayName: first ? str(first.displayName) : null, description: first ? str(first.description) : null,
-      locales: locs.map((l) => str(l.locale)).filter((x): x is string => !!x),
-      introOffer: intro && mode ? { mode, period: str(intro.subscriptionPeriod), periods: num(intro.numberOfPeriods) ?? 1, price: mode === "free_trial" ? 0 : num(intro.displayPrice) } : null,
+      locales: locs.map((l) => str(l.locale)).filter((x): x is string => !!x).slice(0, 100),
+      introOffer: intro && mode ? { mode, period: str(intro.subscriptionPeriod)?.match(PERIOD)?.[0] ?? null, periods: num(intro.numberOfPeriods) ?? 1, price: mode === "free_trial" ? 0 : num(intro.displayPrice) } : null,
       promotionalOffers: arr(p.adHocOffers).length, offerCodes: arr(p.codeOffers).length,
     };
   };
 
   for (const [i, p] of arr(root.products).entries()) { const x = read(p, `products[${i}]`, null); if (x) products.push(x); }
   const groups: StoreKitConfig["groups"] = [];
-  for (const [i, g] of arr(root.subscriptionGroups).entries()) {
+  for (const [i, g] of arr(root.subscriptionGroups).slice(0, STOREKIT_MAX_PRODUCTS).entries()) {
     if (!isObj(g)) continue;
     const group = { id: str(g.id), name: str(g.name) ?? `Group ${i + 1}` };
     const ids: string[] = [];
@@ -117,5 +126,7 @@ export function parseStoreKitConfig(text: string): StoreKitConfig {
   }
   for (const [i, p] of arr(root.nonRenewingSubscriptions).entries()) { const x = read(p, `nonRenewingSubscriptions[${i}]`, null); if (x) products.push({ ...x, type: "non_renewing_subscription" }); }
   const version = isObj(root.version) ? num(root.version.major) : null;
+  if (unlisted) warnings.push(`${unlisted} more warnings are not listed.`);
+  if (overLimit) warnings.push(`Only the first ${STOREKIT_MAX_PRODUCTS} products are read; ${overLimit} more are left out.`);
   return { formatVersion: version, storefront: str(settings._storefront), locale: str(settings._locale), products, groups, warnings };
 }
