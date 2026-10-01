@@ -56,7 +56,7 @@ function NavItem({ item, base }: { item: Item; base: string }) {
     );
   }
   return (
-    <NavLink to={`${base}/${item.to}`} className={({ isActive }) => `it${isActive ? " active" : ""}`} end={item.to === "overview"}>
+    <NavLink to={`${base}/${item.to}`} className={({ isActive }) => `it${isActive ? " active" : ""}`} end={item.to === "overview" || item.to === "ads"}>
       {item.icon && <Icon name={item.icon} />}{item.label}{item.soon && <span className="soon">SOON</span>}
     </NavLink>
   );

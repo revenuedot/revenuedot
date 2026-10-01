@@ -725,5 +725,6 @@ tr.sel td{background:var(--active)}
 .rule-list .pos{width:22px;height:22px;border:1px solid var(--border);display:grid;place-items:center;font-size:11px;color:var(--fg-3);flex:none}
 .rule-list .rule-main{flex:1;min-width:0;display:flex;flex-direction:column}
 .rule-list .rule-main b{font:600 14px/20px var(--font)}
+.rule-list .rule-main .sub{font-size:12px;line-height:18px;color:var(--fg-3);overflow-wrap:anywhere}
 .head h1 .tag{vertical-align:middle;margin-left:6px;position:relative;top:-3px}
 @media (max-width:640px){.rule-list li{flex-wrap:wrap}.rule-list .rule-main{flex-basis:calc(100% - 40px)}}

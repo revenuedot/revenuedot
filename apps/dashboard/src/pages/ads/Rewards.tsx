@@ -232,7 +232,7 @@ function Rules({ pid }: { pid: string }) {
               <span className="pos mono">{i + 1}</span>
               <div className="rule-main">
                 <b>{r.name}</b>
-                <span className="cellsub">Grants {ruleGrantText(r)}{[appName(r.app_id), r.ad_unit_id && `ad unit ${r.ad_unit_id}`, r.reward_item && `reward item "${r.reward_item}"`].filter(Boolean).length ? ` · when ${[appName(r.app_id), r.ad_unit_id && `ad unit ${r.ad_unit_id}`, r.reward_item && `reward item "${r.reward_item}"`].filter(Boolean).join(", ")}` : " · every rewarded ad"}</span>
+                <span className="sub">Grants {ruleGrantText(r)}{[appName(r.app_id), r.ad_unit_id && `ad unit ${r.ad_unit_id}`, r.reward_item && `reward item "${r.reward_item}"`].filter(Boolean).length ? ` · when ${[appName(r.app_id), r.ad_unit_id && `ad unit ${r.ad_unit_id}`, r.reward_item && `reward item "${r.reward_item}"`].filter(Boolean).join(", ")}` : " · every rewarded ad"}</span>
               </div>
               <Switch label={r.enabled ? "On" : "Off"} checked={r.enabled} onChange={(v) => void toggle(r, v)} />
               <button type="button" className="ib" aria-label={`Move ${r.name} up`} disabled={i === 0} onClick={() => move(i, i - 1)}><Icon name="up" /></button>

@@ -21,7 +21,7 @@ const PERIODS = [
   { value: "90d", label: "90D", words: "90 days" }, { value: "12m", label: "12M", words: "12 months" },
 ] as const;
 type Period = (typeof PERIODS)[number]["value"];
-type Measure = "revenue" | "impressions" | "ecpm";
+type Measure = "ad_revenue" | "impressions" | "ecpm" | "both";
 type Dim = "network" | "format" | "placement" | "ad_unit" | "mediator";
 const GUIDE = "https://revenuedot.app/docs/guides/ads";
 
@@ -87,20 +87,21 @@ function Cards({ o, words, pid }: { o: Overview; words: string; pid: string }) {
 }
 
 function Trend({ o }: { o: Overview }) {
-  const [measure, setMeasure] = useState<Measure>("revenue");
+  const [measure, setMeasure] = useState<Measure>("ad_revenue");
   const periods = useMemo(() => o.series.map((s, i) => {
     const d = new Date(`${s.date}T00:00:00Z`);
     return { start: d.getTime(), label: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }), long: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }), incomplete: i === o.series.length - 1 };
   }), [o.series]);
-  const series: Series[] = measure === "revenue"
+  const series: Series[] = measure === "both"
     ? [{ key: "ad", label: "Ad revenue", values: o.series.map((x) => x.ad_revenue) }, { key: "sub", label: "Subscription revenue", values: o.series.map((x) => x.subscription_revenue) }]
-    : measure === "impressions" ? [{ key: "imp", label: "Impressions", values: o.series.map((x) => x.impressions) }]
-      : [{ key: "ecpm", label: "eCPM", values: o.series.map((x) => x.ecpm) }];
+    : measure === "ad_revenue" ? [{ key: "ad", label: "Ad revenue", values: o.series.map((x) => x.ad_revenue) }]
+      : measure === "impressions" ? [{ key: "imp", label: "Impressions", values: o.series.map((x) => x.impressions) }]
+        : [{ key: "ecpm", label: "eCPM", values: o.series.map((x) => x.ecpm) }];
   const money = measure !== "impressions";
   return (
-    <Panel title="Daily" link={<Segmented label="Measure" value={measure} onChange={setMeasure} options={[{ value: "revenue", label: "Revenue" }, { value: "impressions", label: "Impressions" }, { value: "ecpm", label: "eCPM" }]} />}>
+    <Panel title="Daily" link={<Segmented label="Measure" value={measure} onChange={setMeasure} options={[{ value: "ad_revenue", label: "Ad revenue" }, { value: "impressions", label: "Impressions" }, { value: "ecpm", label: "eCPM" }, { value: "both", label: "With subscriptions" }]} />}>
       <Legend series={series} />
-      <Plot periods={periods} series={series} kind={measure === "impressions" ? "bar" : "line"} integer={!money}
+      <Plot periods={periods} series={series} kind={measure === "both" || measure === "ecpm" ? "line" : "bar"} integer={!money}
         format={(v) => (v === null ? "—" : money ? usd(v) : fmt.int(v))}
         formatTick={(v) => { const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`; return money ? `$${s}` : s; }}
         ariaLabel={`${series.map((s) => s.label).join(" and ")} by day. The values are in the tables below.`} />
@@ -162,7 +163,7 @@ export function AdsOverviewPage() {
         <div className="head">
           <div>
             <h1>Ads <Tag tone="info">Beta</Tag></h1>
-            <p>Revenue from the ads in your app across every ad network, in US dollars next to subscription revenue{onboarding ? "." : ` · last ${period.words} compared with the ${period.words} before.`}</p>
+            <p>{onboarding ? "Revenue from the ads in your app across every ad network, in US dollars next to subscription revenue." : `${appId ? apps.data?.find((a) => a.id === appId)?.name ?? "One app" : "All apps"} · USD · last ${period.words} compared with the ${period.words} before`}</p>
           </div>
           <div className="actions">
             {!onboarding && <Segmented label="Period" value={period.value as Period} options={PERIODS.map((p) => ({ value: p.value, label: p.label }))} onChange={(v) => set("period", v === "28d" ? null : v)} />}

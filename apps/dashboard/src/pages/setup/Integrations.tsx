@@ -36,7 +36,12 @@ export function Integrations() {
   const exports = useExports(pid);
   const types = useIntegrationTypes(pid);
   const CATALOG: Integration[] = [...BUILT_IN, ...(types.data ?? []).map((t) => ({ id: t.type, name: t.name, cat: (CATS.some((c) => c.id === t.category) ? t.category : "core") as Cat, text: t.description, to: t.type, via: t.api === "webhook" ? "webhook" as const : undefined }))]
-    .sort((a, b) => (a.cat === b.cat ? (BUILT_IN.includes(a) ? -1 : BUILT_IN.includes(b) ? 1 : a.name.localeCompare(b.name)) : 0));
+    .sort((a, b) => {
+      if (a.cat !== b.cat) return 0;
+      const ra = BUILT_IN.indexOf(a), rb = BUILT_IN.indexOf(b);
+      if (ra >= 0 || rb >= 0) return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
+      return a.name.localeCompare(b.name);
+    });
   const [cat, setCat] = useState<"all" | "active" | Cat>("all");
   const [q, setQ] = useState("");
   const activeCount = (i: Integration) => i.id === "webhooks" ? hooks.data?.length ?? 0 : i.id === "exports" ? exports.data?.length ?? 0 : partners.data?.filter((p) => p.type === i.id).length ?? 0;
