@@ -175,7 +175,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Amazon Appstore** | Receipts checked with Amazon's Receipt Verification Service, the SDK's Amazon receipt route, Real-time Notifications through Amazon SNS with signature checks, grace periods, tier changes, one-time refunds, Live App Testing and App Tester as sandbox | Tier 2 · built, tested against a mocked Amazon and a test SNS certificate; no real Amazon purchase yet. [Guide](https://revenuedot.app/docs/guides/amazon-appstore) |
 | **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
-| **Backend** | RevenueCat-compatible REST API v1 and v2 core, webhooks with the same payloads, signed deliveries, retries and replay | Tier 1 · built and tested |
+| **Backend** | RevenueCat-compatible REST API v1, and every one of the 128 REST API v2 operations (116 doing the real work; the 12 discount and invoice operations exist only for RevenueCat's own Web Billing and answer on purpose); restore a purchase by its Google Play or App Store order id; create products in App Store Connect and Google Play; subscriber access tokens for the SDK endpoints; webhooks with the same payloads for 18 of the 21 event types ([why not the other 3](https://revenuedot.app/docs/guides/webhooks)), signed deliveries, retries and replay | Tier 1 core, Tier 2 rest · built and tested; store operations tested against fake stores |
+| **Offers and outages** | Promotional-offer signing with your In-App Purchase key; Apple win-back offers recorded on every purchase, sent as `offer_code` and exported, with Apple's eligibility list per customer ([guide](https://revenuedot.app/docs/guides/win-back-offers)); offline entitlements keyed the way each SDK looks them up, so paying customers keep access while the server is down ([guide](https://revenuedot.app/docs/guides/offline-entitlements)) | Tier 2 · built and tested; no real win-back offer redeemed yet |
 | **Integrations** | Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase (GA4), BigQuery, AppsFlyer, Adjust and Meta with RevenueCat's event names and reserved attributes, retries, a delivery log and replay; scheduled CSV or Parquet exports of transactions, customers, subscriptions and events to S3, R2 or Google Cloud Storage ([guide](https://revenuedot.app/docs/guides/integrations)) | Tier 2 · built, tested against fake partners and buckets; no real partner account yet |
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
@@ -227,7 +228,7 @@ RevenueDot is tested against the RevenueCat SDKs' own test fixtures (94 request 
 | `GET /v1/product_entitlement_mapping` | Offline entitlements |
 | `POST /v1/config/app` · `POST /v1/events` · `POST /v1/diagnostics` | Configuration and SDK events |
 
-The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 40 of them: 12 answer with real data and 28 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The other 18 belong to an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
+The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 55 of them: 26 answer with real data and 29 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The 15 subscriber-token paths (`/v1/customer/*`) take an access token from the v2 `authenticate` operation. The other 3 are the identity-provider login calls (`/auth/*`) of an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
 
 </details>
 
@@ -342,6 +343,16 @@ One line: set the SDK's proxy URL to `https://api.revenuedot.app` for RevenueDot
 <details><summary><b>How do Google Play purchases migrate if RevenueCat doesn't export purchase tokens?</b></summary>
 
 The importer looks up each purchase token from the order IDs in your export through Google's Orders API, using your own service account. Renewal notifications and a one-time `syncPurchases()` in the app fill any gaps.
+</details>
+
+<details><summary><b>Do Apple win-back offers work with RevenueDot?</b></summary>
+
+Yes, with no app changes. The RevenueCat SDK checks eligibility and applies the offer with StoreKit on the device; win-back offers need no server signature. RevenueDot records the offer on the purchase, sends its id as `offer_code` in the `RENEWAL` webhook, exports it, and stores Apple's list of offers each lapsed customer may redeem. Purchases made in the App Store without opening the app arrive through App Store Server Notifications. See [Win-back offers](https://revenuedot.app/docs/guides/win-back-offers).
+</details>
+
+<details><summary><b>What happens to my customers' access if the server goes down?</b></summary>
+
+Paying customers keep it. The RevenueCat SDKs cache a product-to-entitlement mapping and, when the server answers 5xx, grant entitlements on the device from the store's own purchase record. RevenueDot serves that mapping per app and keys it the way each SDK looks products up. See [Offline entitlements](https://revenuedot.app/docs/guides/offline-entitlements).
 </details>
 
 <details><summary><b>Does it support StoreKit 2, Expo and current Google Play Billing?</b></summary>

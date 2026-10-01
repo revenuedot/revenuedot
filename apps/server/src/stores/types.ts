@@ -1,4 +1,4 @@
-import type { OwnershipType, PeriodType, Price, Store } from "@revenuedot/core";
+import type { OfferType, OwnershipType, PeriodType, Price, Store } from "@revenuedot/core";
 
 /** A purchase proven by a store (or by the Test Store), normalised for storage. */
 export interface VerifiedSubscription {
@@ -37,6 +37,11 @@ export interface VerifiedSubscription {
   replacedOrderIds?: string[] | null;
   /** Other store transaction ids of this chain that the store proved (Apple receipt history), for matching imported chains. */
   chainTransactionIds?: string[] | null;
+  /** The offer this period was bought with (null: none) and the store's offer id. */
+  offerType?: OfferType | null;
+  offerId?: string | null;
+  /** App Store: win-back offers Apple says the customer may redeem, from the renewal info. `undefined` = not read now (keep). */
+  eligibleWinBackOfferIds?: string[] | null;
 }
 
 export interface VerifiedOneTime {

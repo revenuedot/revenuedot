@@ -244,11 +244,14 @@ describe("offerings and mapping", () => {
     await h.fetch("/v2/projects/proj1/products/p2/actions/unarchive", { method: "POST", key: h.ids.secretKey, json: {} });
     expect(OfferingsSchema.parse(await (await h.fetch("/v1/subscribers/x/offerings")).json()).offerings[0]!.packages).toHaveLength(2);
   });
-  it("product entitlement mapping includes both the bare Play id and id:plan", async () => {
-    const m = ProductEntitlementMappingSchema.parse(await (await h.fetch("/v1/product_entitlement_mapping")).json()).product_entitlement_mapping;
-    expect(m["pro_monthly"]!.entitlements).toEqual(["pro"]);
+  it("product entitlement mapping includes both the bare Play id and id:plan, for the calling app only", async () => {
+    const ios = ProductEntitlementMappingSchema.parse(await (await h.fetch("/v1/product_entitlement_mapping")).json()).product_entitlement_mapping;
+    expect(ios["pro_monthly"]!.entitlements).toEqual(["pro"]);
+    expect(ios["pro"]).toBeUndefined();
+    const m = ProductEntitlementMappingSchema.parse(await (await h.fetch("/v1/product_entitlement_mapping", { key: h.ids.androidKey })).json()).product_entitlement_mapping;
     expect(m["pro"]).toEqual({ product_identifier: "pro", base_plan_id: "monthly", entitlements: ["pro"] });
     expect(m["pro:monthly"]).toBeDefined();
+    expect(m["pro_monthly"]).toBeUndefined();
   });
 });
 

@@ -266,6 +266,13 @@ export function appleApiFor(stores: Record<string, StoreAdapter>, app: AppRow, f
   return new AppStoreServerApi(creds, fetchFn, isAppleStore(s) ? s.now : now);
 }
 
+/** The HTTP client and clock for Apple calls: the adapter's (tests inject one), else `fallbackFetch`. */
+export function appleHttpFor(stores: Record<string, StoreAdapter>, fallbackFetch?: typeof fetch, now: () => Date = () => new Date()): { fetchFn: FetchFn; now: () => Date } {
+  const s = stores.app_store;
+  const fetchFn: FetchFn = isAppleStore(s) && (s.customFetch || !fallbackFetch) ? s.fetchFn : fallbackFetch ? (u, i) => fallbackFetch(u, i) : appleStore.fetchFn;
+  return { fetchFn, now: isAppleStore(s) ? s.now : now };
+}
+
 /**
  * Re-reads one subscription chain from the App Store Server API (Get All Subscription Statuses) and returns its latest
  * state, ready for `applyFromStore`. Used after a store action (extend) so the response already shows the new state.
@@ -280,6 +287,35 @@ export async function readAppleSubscription(api: AppStoreServerApi, app: AppRow,
       const renewal = last.signedRenewalInfo ? await verifyRenewalJws(last.signedRenewalInfo, opts) : null;
       return fromTransaction(tx, { store: appleStoreOf(app), renewal, detectedAt: now, billingIssue: last.status === 3 || last.status === 4 ? true : undefined });
     }
+  }
+  return null;
+}
+
+/**
+ * The purchases on an App Store order, found with Look Up Order ID (production first, then the sandbox), with their full
+ * state from the App Store Server API like a receipt post. Only the order's own subscription chains and one-time
+ * purchases are returned. null when Apple does not know the order. Needs the app's In-App Purchase key.
+ */
+export async function purchasesForAppleOrder(app: AppRow, orderId: string, o: { fetchFn: FetchFn; now: () => Date }): Promise<VerifiedPurchase[] | null> {
+  const creds = appleCredentials(app);
+  if (!creds) throw new RCError(500, Codes.INVALID_APPLE_SUBSCRIPTION_KEY, "Looking up an App Store order needs the app's In-App Purchase key.");
+  const ctx: Ctx = { store: appleStoreOf(app), bundleId: expectedBundleId(app), creds, allowUnsignedReceipts: false, xcodeRoots: xcodeRootsOf(app), fetchFn: o.fetchFn, now: o.now };
+  const api = new AppStoreServerApi(creds, o.fetchFn, o.now);
+  for (const env of ["production", "sandbox"] as const) {
+    let body: { status?: number; signedTransactions?: string[] } | null;
+    try {
+      body = await api.lookupOrder(env, orderId);
+    } catch (e) {
+      if (e instanceof AppleApiClientError) continue;
+      throw e;
+    }
+    if (!body || body.status !== 0 || !body.signedTransactions?.length) continue;
+    const txs: AppleTransaction[] = [];
+    for (const s of body.signedTransactions) txs.push(await verifyTx(ctx, s, "apple"));
+    const chains = new Set(txs.map((t) => t.originalTransactionId));
+    const ids = new Set(txs.map((t) => t.transactionId));
+    const all = await fromServerApi(ctx, txs[0]!.transactionId, env, txs);
+    return all.filter((p) => (p.kind === "subscription" ? chains.has(p.storeKey) : ids.has(p.storeTransactionId)));
   }
   return null;
 }

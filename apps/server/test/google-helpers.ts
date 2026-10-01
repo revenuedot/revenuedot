@@ -30,6 +30,12 @@ export class FakeGoogle {
   products = new Map<string, ProductPurchase>();
   v1 = new Map<string, { autoResumeTimeMillis?: string }>();
   orders = new Map<string, string>();
+  /** orders.batchGet line items per order id (productId, subscriptionDetails or oneTimePurchaseDetails). */
+  orderLines = new Map<string, unknown[]>();
+  /** Subscriptions created through monetization.subscriptions.create, by product id. */
+  created = new Map<string, Record<string, unknown>>();
+  /** The app's default language, answered by edits.details.get. */
+  defaultLanguage = "en-US";
   /** What purchases.voidedpurchases.list returns (filtered by startTime/endTime on voidedTimeMillis). */
   voided: VoidedPurchase[] = [];
   /** Order ids refunded through orders.refund, with the revoke flag. */
@@ -134,7 +140,18 @@ export class FakeGoogle {
     }
     if (path[1] === "orders:batchGet") {
       const ids = u.searchParams.getAll("orderIds");
-      return json(200, { orders: ids.filter((id) => this.orders.has(id)).map((orderId) => ({ orderId, purchaseToken: this.orders.get(orderId), state: "PROCESSED" })) });
+      return json(200, { orders: ids.filter((id) => this.orders.has(id)).map((orderId) => ({ orderId, purchaseToken: this.orders.get(orderId), state: "PROCESSED", ...(this.orderLines.has(orderId) ? { lineItems: this.orderLines.get(orderId) } : {}) })) });
+    }
+    if (path[1] === "edits" && method === "POST" && path.length === 2) return json(200, { id: "edit-1", expiryTimeSeconds: "1900000000" });
+    if (path[1] === "edits" && path[2] === "edit-1" && path[3] === "details" && method === "GET") return json(200, { defaultLanguage: this.defaultLanguage, contactEmail: "dev@example.com" });
+    if (path[1] === "edits" && path[2] === "edit-1" && method === "DELETE") return new Response(null, { status: 204 });
+    if (path[1] === "subscriptions" && method === "POST" && path.length === 2) {
+      const productId = u.searchParams.get("productId")!;
+      if (this.created.has(productId)) return googleError(409, `Subscription ${productId} already exists.`, "alreadyExists");
+      const req = JSON.parse(body || "{}");
+      if (req.productId !== productId || !req.listings?.length) return googleError(400, "productId and listings are required", "invalid");
+      this.created.set(productId, req);
+      return json(200, { packageName: PKG, productId, listings: req.listings, basePlans: [] });
     }
     return googleError(404, "unknown endpoint", "notFound");
   }) as typeof fetch;

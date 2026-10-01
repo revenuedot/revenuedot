@@ -47,15 +47,22 @@ const body = (r: Row): unknown => {
     "/v1/events": "ios/req-post-paywall-events.json",
     "/v1/subscribers/identify": "ios/req-login.json",
   };
-  if (f[r.path]) return fx(f[r.path]!).request.body;
+  // A subscriber-token path sends the body of the /v1/subscribers/{app_user_id} path it stands for.
+  const path = r.path.startsWith("/v1/customer/customercenter/") ? r.path.replace("/v1/customer/", "/v1/") : r.path.replace(/^\/v1\/customer\//, "/v1/subscribers/{app_user_id}/");
+  if (f[path]) return fx(f[path]!).request.body;
   if (r.path === "/v1/receipts") return { app_user_id: "$RCAnonymousID:inventory", fetch_token: `test_${Date.now()}_inventory`, product_id: "pro_monthly", is_restore: false };
   if (r.path.endsWith("/alias")) return { new_app_user_id: "inventory_alias" };
+  if (r.path === "/v1/customer/virtual_currencies/spend") return { adjustments: { GEMS: 1 }, reference: null };
   return r.method === "GET" ? undefined : {};
 };
 
-/** Test Store keys for the Test Store paths, the Play key for Android-only rows, the App Store key otherwise. */
+/** The subscriber-token rows (IAM mode) name no app user id: they take an access token from the v2 `authenticate` operation. */
+const isIam = (r: Row) => /^\/(rcbilling\/)?v1\/customer(\/|$)/.test(r.path);
+let token = "";
+
+/** Test Store keys for the Test Store paths, the Play key for Android-only rows, a subscriber token for IAM rows, the App Store key otherwise. */
 const keyFor = (h: Harness, r: Row) =>
-  r.path === "/v1/receipts" ? h.ids.testKey : r.sdks === "Android" ? h.ids.androidKey : h.ids.iosKey;
+  isIam(r) ? token : r.path === "/v1/receipts" ? h.ids.testKey : r.sdks === "Android" ? h.ids.androidKey : h.ids.iosKey;
 
 /** Every status the row documents, with the RevenueCat error code written after it ("400 · 7234"). */
 const expected = (r: Row) => {
@@ -65,7 +72,11 @@ const expected = (r: Row) => {
 };
 
 let h: Harness;
-beforeAll(async () => { h = await harness(); });
+beforeAll(async () => {
+  h = await harness();
+  const res = await h.fetch(`/v2/projects/${h.ids.project}/apps/${h.ids.app}/authenticate`, { method: "POST", key: h.ids.secretKey, json: { app_user_id: "$RCAnonymousID:inventory" } });
+  token = (await res.json() as { access_token: string }).access_token;
+});
 afterAll(async () => { await h.close(); });
 
 describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
@@ -73,8 +84,8 @@ describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
     expect(rows.map((r) => r.n)).toEqual(rows.map((_, i) => i + 1));
     const real = rows.filter((r) => r.handling === "Real").length, stub = rows.filter((r) => r.handling === "Stub").length;
     const absent = rows.filter((r) => r.handling === "Absent").reduce((n, r) => n + (/^(\d+) IAM/.exec(r.path) ? Number(/^(\d+)/.exec(r.path)![1]) : r.path.split(",").length), 0);
-    expect({ real, stub, absent }).toEqual({ real: 17, stub: 23, absent: 18 });
-    expect(PRD).toContain(`40 of the 58 method-and-path pairs have a route: 17 answer with real data and 23 are safe stubs. The other 18`);
+    expect({ real, stub, absent }).toEqual({ real: 26, stub: 29, absent: 3 });
+    expect(PRD).toContain(`55 of the 58 method-and-path pairs have a route: 26 answer with real data and 29 are safe stubs. The other 3`);
   });
 
   for (const r of routed) {
@@ -102,9 +113,9 @@ describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
     });
   }
 
-  it("absent rows have no route (the IAM paths), and /auth/login is the dashboard's sign-in", async () => {
-    for (const path of ["/v1/customer", "/v1/customer/offerings", "/v1/customer/virtual_currencies/spend", "/rcbilling/v1/customer/products", "/auth/token", "/auth/revoke"]) {
-      const res = await h.fetch(path, { method: path.includes("spend") || path.startsWith("/auth") ? "POST" : "GET", headers: IOS_HEADERS, json: path.startsWith("/auth") || path.includes("spend") ? {} : undefined });
+  it("absent rows have no route (the IAM identity-provider login), and /auth/login is the dashboard's sign-in", async () => {
+    for (const path of ["/auth/token", "/auth/revoke"]) {
+      const res = await h.fetch(path, { method: "POST", headers: IOS_HEADERS, json: {} });
       expect(res.status, path).toBe(404);
       expect(await res.text()).not.toMatch(/"code"/);
     }

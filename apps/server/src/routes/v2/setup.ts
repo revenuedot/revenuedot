@@ -234,7 +234,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
   };
   const appleFailure = (e: unknown) => {
     if (e instanceof AppleApiClientError) return new V2Error(422, "store_error", `The App Store rejected the request: ${e.message}`);
-    if (e instanceof RCError) return new V2Error(e.status >= 500 ? 503 : 422, "store_error", e.message, undefined, e.status >= 500);
+    // Apple down is still 422 store_error, retryable: RevenueCat's 503 is server_error alone.
+    if (e instanceof RCError) return new V2Error(422, "store_error", e.message, undefined, e.status >= 500);
     return e;
   };
   r.post(`${P}/apps/:app_id/actions/mass_extend`, scope("customer_information:subscriptions:read_write"), async (c) => {

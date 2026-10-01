@@ -108,6 +108,11 @@ export class AppStoreServerApi {
     return this.get<StatusesResponse>(env, `/inApps/v1/subscriptions/${encodeURIComponent(transactionId)}`);
   }
 
+  /** Look Up Order ID: the signed transactions on an App Store order (the id on the customer's receipt email). Status 0 valid, 1 invalid. */
+  lookupOrder(env: AppleEnv, orderId: string) {
+    return this.get<{ status?: number; signedTransactions?: string[] }>(env, `/inApps/v1/lookup/${encodeURIComponent(orderId)}`);
+  }
+
   /** Extend a Subscription Renewal Date: up to 90 days, twice a year per customer. */
   extendRenewalDate(env: AppleEnv, originalTransactionId: string, body: { extendByDays: number; extendReasonCode: number; requestIdentifier: string }) {
     return this.send<{ effectiveDate?: number; originalTransactionId?: string; success?: boolean; webOrderLineItemId?: string }>(env, "PUT", `/inApps/v1/subscriptions/extend/${encodeURIComponent(originalTransactionId)}`, body);
