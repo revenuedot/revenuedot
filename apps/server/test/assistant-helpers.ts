@@ -39,7 +39,9 @@ export async function assistantServer(o: { script?: FakeScript; delayMs?: number
   const newConversation = async (browser = admin.browser) => (await browser.call("POST", `${P}/ai/conversations`, {})).body.id as string;
   /** Waits for background work (the persist branch of a stream) to finish. */
   const settle = s.settle;
-  return { ...s, model, admin, pid, P, appId: app.body.id as string, productId: product.body.id as string, entitlementId: ent.body.id as string, member, chat, newConversation, settle };
+  /** The app's own fetch with the deps routes see (createApp sets `dispatch` on its copy of the deps). */
+  const dispatch = (req: Request) => Promise.resolve(s.app.fetch(req));
+  return { ...s, deps: { ...s.deps, dispatch }, model, admin, pid, P, appId: app.body.id as string, productId: product.body.id as string, entitlementId: ent.body.id as string, member, chat, newConversation, settle };
 }
 
 export function parseSse(text: string): UIMessageChunk[] {

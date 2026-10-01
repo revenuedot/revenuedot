@@ -191,6 +191,7 @@ export async function runAssistantTurn(ctx: AssistantContext, messages: UIMessag
     messages: modelMessages,
     tools: toolSet,
     stopWhen: isStepCount(8),
+    maxOutputTokens: 8192,
     abortSignal: opts.abortSignal,
     experimental_toolApprovalSecret: approvalSecret(ctx.deps),
     onStepEnd: async (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
