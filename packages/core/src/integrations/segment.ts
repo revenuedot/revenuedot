@@ -1,4 +1,4 @@
-import { basicAuth, conceptOf, defaultAnalyticsName, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
+import { basicAuth, conceptOf, funnelProperties, defaultAnalyticsName, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
 import { isAnonymous } from "../ids.js";
 
 /**
@@ -13,6 +13,7 @@ export const SEGMENT_HOSTS = { us: "https://api.segment.io", eu: "https://events
 export const SEGMENT_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "refund_reversed", "test",
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
 ];
 
 const secs = (ms: unknown) => (typeof ms === "number" ? Math.floor(ms / 1000) : null);
@@ -43,6 +44,7 @@ export async function buildSegment(i: BuildInput): Promise<Plan> {
   if (e.new_product_id) properties.new_product_id = e.new_product_id;
   if (e.auto_resume_at_ms !== undefined) properties.auto_resumes_at = secs(e.auto_resume_at_ms);
   if (e.is_trial_conversion !== undefined) properties.is_trial_conversion = e.is_trial_conversion;
+  Object.assign(properties, funnelProperties(e));
   const status = subscriptionStatusOf(e);
   const traits: Record<string, unknown> = { last_seen_app_user_id: appUserId, aliases: e.aliases ?? [] };
   if (status) traits.rc_subscription_status = status;

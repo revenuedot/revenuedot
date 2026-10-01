@@ -1,11 +1,17 @@
 /**
  * Fake Amazon RVS and Stripe API for the e2e server, so "Check credentials", receipts and webhooks run through the real
  * server code without ever reaching Amazon or Stripe. Only these test values are accepted.
+ * Web billing (web.spec.ts) uses its own key, FAKE_STRIPE_KEY: those calls go to `webStripe`, a stateful in-memory Stripe
+ * account (products, prices, Checkout Sessions, coupons, promotion codes) shared with the contract tests.
  */
 import { createAmazonStore } from "@revenuedot/server/stores/amazon/index.js";
 import { createStripeStore } from "@revenuedot/server/stores/stripe/index.js";
 
 import { E2E_AMAZON_SECRET, E2E_STRIPE_KEY, E2E_STRIPE_SUB } from "./store-values.ts";
+import { FAKE_STRIPE_KEY, FakeStripeAccount } from "../../../packages/contract/src/fake-stripe.ts";
+
+/** The web billing Stripe account (FAKE_STRIPE_KEY). server.ts points its checkout URL at its own fake Checkout page. */
+export const webStripe = new FakeStripeAccount();
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -36,7 +42,10 @@ function amazonFetch(url: string): Response {
 
 export const fakeStoreFetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  if (url.startsWith("https://api.stripe.com/")) return stripeFetch(url, init);
+  if (url.startsWith("https://api.stripe.com/")) {
+    if (new Headers(init.headers).get("authorization") === `Bearer ${FAKE_STRIPE_KEY}`) return webStripe.fetch(url, init);
+    return stripeFetch(url, init);
+  }
   if (url.startsWith("https://appstore-sdk.amazon.com/")) return amazonFetch(url);
   throw new Error(`The e2e store fakes do not serve ${url}`);
 }) as typeof fetch;

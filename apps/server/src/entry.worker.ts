@@ -31,6 +31,10 @@ export interface Env {
   REVENUEDOT_ENCRYPTION_KEY?: string;
   /** Workers AI, for "Generate with AI" on paywalls. No key needed. */
   AI?: WorkersAi;
+  /** Where hosted web pages live (prd/web-billing/PRD.md §7). Default https://api.revenuedot.app/pay until pay.revenuedot.app is routed here. */
+  REVENUEDOT_PAY_URL?: string;
+  /** The host custom domains CNAME to (the Cloudflare for SaaS fallback origin, docs/cloud.md). */
+  REVENUEDOT_CUSTOM_DOMAIN_TARGET?: string;
 }
 
 const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
@@ -68,6 +72,8 @@ const appFor = (env: Env) => (app ??= createApp({
   ai: env.AI ? workersAiModel(env.AI) : undefined,
   // Apps reach the API host; paywall images and icons are served from it.
   apiUrl: "https://api.revenuedot.app",
+  payUrl: env.REVENUEDOT_PAY_URL || "https://api.revenuedot.app/pay",
+  customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
   // Send new webhook deliveries after the response, on the request's own connection.
   kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(env, s.db, "kick")); },
   // Password reset emails and the like go out after the response, on the request's own connection.
@@ -92,8 +98,10 @@ async function runTick(env: Env, db: DB, why: string) {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
-    // api.revenuedot.app is all API; elsewhere (app.revenuedot.app, localhost) only the API paths are, the rest is the dashboard.
-    if (!url.hostname.startsWith("api.") && !API_PATH.test(url.pathname)) return env.ASSETS.fetch(req);
+    // api.revenuedot.app is all API; on the dashboard host (app.revenuedot.app, localhost) only the API paths are, the rest is
+    // the dashboard. Any other host routed here (the pay host, custom domains for hosted pages) is served by the app.
+    const dashboardHost = url.hostname.startsWith("app.") || url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (dashboardHost && !API_PATH.test(url.pathname)) return env.ASSETS.fetch(req);
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
     const s: RequestScope = { db: conn.db, pending: [] };
     try {

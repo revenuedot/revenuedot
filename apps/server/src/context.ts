@@ -43,6 +43,13 @@ export interface Deps {
    * a paywall edited on the dashboard host still loads its images from the API host. Unset: the request's origin.
    */
   apiUrl?: string;
+  /**
+   * Where hosted web pages live (prd/web-billing/PRD.md §7): REVENUEDOT_PAY_URL, such as https://pay.revenuedot.app (pages at
+   * the root of that host) or https://api.example.com/pay. Unset: `<request origin>/pay`.
+   */
+  payUrl?: string;
+  /** The host custom domains must CNAME to (REVENUEDOT_CUSTOM_DOMAIN_TARGET). Unset: the pay host. */
+  customDomainTarget?: string;
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

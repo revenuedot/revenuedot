@@ -1,6 +1,6 @@
 # REST API (scope 1.8)
 
-**Status:** The v1 secret-key endpoints and API v2 are live. RevenueCat's v2 spec has 128 operations and every one has a route: 116 do the real work, and the 12 that exist only for RevenueCat Billing (discounts and invoices) answer with deliberate, schema-valid RevenueCat responses that say why (branch `tier2-v2-events`, 2026-10-01). It uses RevenueCat's shapes, pagination and errors, and adds dashboard extensions. Store actions reach Google and Apple, but only mocked stores have been tested.
+**Status:** The v1 secret-key endpoints and API v2 are live. RevenueCat's v2 spec has 128 operations and every one has a route: 126 do the real work, and the 2 invoice operations, which exist only for RevenueCat Billing, answer with deliberate, schema-valid RevenueCat responses that say why. The 10 discount operations became real with web billing (branch `tier3-web-billing`, `prd/web-billing/PRD.md` §6). It uses RevenueCat's shapes, pagination and errors, and adds dashboard extensions. Store actions reach Google and Apple, but only mocked stores have been tested.
 
 ## Users and jobs
 - **Backend developers** point existing RevenueCat server code at a new base URL and keep their secret-key calls.
@@ -17,7 +17,7 @@ Tier 2 (this change, the last 15 operations)
 - `POST .../customers/{customer_id}/actions/restore_purchase_by_order_id`: finds a store purchase by its order id and gives it to the customer.
 - `POST .../products/{product_id}/create_in_store`: creates the product in App Store Connect (RevenueCat's operation) and, as an extension, a subscription in Google Play.
 - `POST .../apps/{app_id}/authenticate`: a short-lived subscriber access token, accepted by the SDK endpoints (`prd/sdk-api/PRD.md`, IAM rows).
-- Discounts (10 operations) and invoices (2): excluded by the scope rule, answered on purpose (below).
+- Discounts (10 operations): real since web billing, as Stripe coupons and promotion codes in the developer's own Stripe account (`prd/web-billing/PRD.md` §6). Invoices (2): excluded by the scope rule, answered on purpose (below).
 
 Later
 - Nothing left in RevenueCat's v2 spec. RevenueCat Billing itself (a billing engine with invoices, tax and discount codes) is not planned; Stripe Billing on the customer's own account is the web path (`prd/store-stripe/PRD.md`, PR #3).
@@ -43,7 +43,7 @@ Later
 
 **Authenticate a subscriber** (`iam:authorization:issue_token`). Body `{ app_user_id }` (1 to 100 characters, the SDK's limit). Answers 200 `{ object: "authentication", access_token, expires_at }`. The token starts with `rdat_`, lives one hour, is stored only as a SHA-256 hash (`subscriber_tokens`, migration 0015), is bound to the app and the app user id, and cannot be refreshed. 404 for an app outside the project. RevenueCat does not publish the lifetime; one hour is ours.
 
-**Discounts and invoices (12 operations) are excluded.** RevenueCat's spec says each discount operation acts on "RevenueCat Billing discounts", and invoices are issued by RevenueCat Billing (its data model: `Customer ──< Invoice` "RevenueCat Billing"). That is the billing engine RevenueCat runs for web checkout, which RevenueDot does not have; the scope rule leaves them out. They are routed anyway, so a client never sees an unknown-route 404, and every answer is valid against RevenueCat's schema for that operation:
+**Invoices (2 operations) are excluded.** Invoices are issued by RevenueCat Billing (its data model: `Customer ──< Invoice` "RevenueCat Billing"); RevenueDot's web checkout runs on the developer's Stripe, where Stripe issues them. They are routed anyway, so a client never sees an unknown-route 404, and every answer is valid against RevenueCat's schema for that operation. (Discounts were excluded the same way until web billing made them real; the rules below are kept for invoices.)
 - Writes (`POST` and `DELETE /discounts`, `PATCH`, `actions/enable`, `actions/disable`, `POST` and `DELETE` discount codes): 422 `unprocessable_entity_error`, not retryable, with the message "Discounts are part of RevenueCat Billing (Web Billing), which RevenueDot does not have." 422 is the documented answer for a valid request the server cannot carry out.
 - Reads: `GET /discounts` and `GET .../customers/{id}/invoices` return an empty list, which is true. `GET /discounts/{id}`, `GET /discounts/{id}/discount_codes` and `GET .../invoices/{id}/file` answer 404 `resource_missing` with the same explanation in the message. RevenueCat declares no 422 for these reads, so a 422 there would break the contract.
 - Permissions are checked first (`project_configuration:discounts:*`, `customer_information:invoices:read`), so a key without them still gets 403.
@@ -56,7 +56,7 @@ v1, secret key only (`apps/server/src/routes/rest-v1.ts`, on top of the SDK rout
 v2, under `/v2/projects/{project_id}` (`apps/server/src/routes/v2/`):
 - `GET`, `POST /v2/projects`. Apps: list, create, get, update, delete, and `public_api_keys`. Products: list, create, get, update, delete, archive and unarchive. Entitlements: list, create, get, update, delete, archive and unarchive, `products`, and attach or detach products. Offerings: list, create, get, update, delete, archive and unarchive, and `packages`. Packages: get, update, delete, `products`, and attach or detach products.
 - Customers: list and search, create, get, delete, `aliases`, `attributes` (get and set), `active_entitlements`, `subscriptions`, `purchases`, `events`, `invoices` (always empty), and the actions `grant_entitlement`, `revoke_granted_entitlement`, `assign_offering` and `restore_purchase_by_order_id`.
-- Products: `create_in_store`. Apps: `authenticate`. Discounts and discount codes (excluded, see above).
+- Products: `create_in_store`. Apps: `authenticate`. Discounts and discount codes (real, `prd/web-billing/PRD.md` §6).
 - Subscriptions: lookup by `store_subscription_identifier`, get, `entitlements` and `transactions`, the actions `cancel`, `refund` and `extend`, and `transactions/{id}/actions/refund`. Purchases: lookup by `store_purchase_identifier`, get, `entitlements` and `actions/refund`.
 - `integrations/webhooks` (CRUD), `GET metrics/overview` and `GET collaborators`.
 - RevenueDot extensions: `GET .../customers/{id}/win_back_offers` (`prd/win-back-offers/PRD.md`), `GET`, `POST` and `DELETE /v2/projects/{id}`, `transactions`, `events`, webhook `deliveries` and `retry`, `setup_health`, `api_keys`, `test_purchases`, `metrics/history`, `customer_summaries`, app `store_settings`, `verify_credentials`, `mass_extend` and `mass_extensions/{id}`, webhook `test`, and `import/*` (`prd/migration/PRD.md`).

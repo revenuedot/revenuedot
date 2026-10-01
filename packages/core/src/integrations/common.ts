@@ -19,12 +19,14 @@ export type WebhookEvent = Record<string, any>;
 export type Concept =
   | "initial_purchase" | "trial_started" | "trial_converted" | "trial_cancelled" | "renewal" | "cancellation" | "uncancellation"
   | "non_subscription_purchase" | "subscription_paused" | "expiration" | "billing_issue" | "product_change" | "transfer"
-  | "purchase_redeemed" | "experiment_enrollment" | "refund_reversed" | "test";
+  | "purchase_redeemed" | "experiment_enrollment" | "refund_reversed" | "test"
+  | "funnel_viewed" | "funnel_step_completed" | "funnel_purchase";
 
 export const CONCEPTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "transfer",
   "purchase_redeemed", "experiment_enrollment", "refund_reversed", "test",
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
 ];
 
 export function conceptOf(e: WebhookEvent): Concept | null {
@@ -44,6 +46,9 @@ export function conceptOf(e: WebhookEvent): Concept | null {
     case "EXPERIMENT_ENROLLMENT": return "experiment_enrollment";
     case "REFUND_REVERSED": return "refund_reversed";
     case "TEST": return "test";
+    case "FUNNEL_VIEWED": return "funnel_viewed";
+    case "FUNNEL_STEP_COMPLETED": return "funnel_step_completed";
+    case "FUNNEL_PURCHASE": return "funnel_purchase";
     default: return null;
   }
 }
@@ -51,6 +56,7 @@ export function conceptOf(e: WebhookEvent): Concept | null {
 /** The analytics tools' default event names (`rc_<step>_event`), the same names RevenueCat's integrations use. */
 export function defaultAnalyticsName(c: Concept): string {
   if (c === "purchase_redeemed") return "rc_purchase_redeemed";
+  if (c === "funnel_viewed" || c === "funnel_step_completed" || c === "funnel_purchase") return `rd_${c}`;
   if (c === "non_subscription_purchase") return "rc_non_subscription_purchase_event";
   return `rc_${c}_event`;
 }
@@ -166,6 +172,15 @@ export const platformOf = (store: unknown): "ios" | "android" | "web" | "other" 
   store === "APP_STORE" || store === "MAC_APP_STORE" ? "ios" : store === "PLAY_STORE" ? "android" : store === "STRIPE" || store === "RC_BILLING" || store === "PADDLE" ? "web" : "other";
 
 export const json = (o: unknown) => JSON.stringify(o);
+
+/** RevenueDot funnel events (prd/web-billing/PRD.md §5): the funnel, step, answer and utm_* fields, for the analytics tools. */
+export function funnelProperties(e: WebhookEvent): Record<string, unknown> {
+  if (typeof e.type !== "string" || !e.type.startsWith("FUNNEL_")) return {};
+  const out: Record<string, unknown> = {};
+  for (const k of ["funnel_id", "funnel_name", "funnel_slug", "session_id", "step_id", "step_type", "step_index", "answer", "product_id", "package"]) if (e[k] !== undefined) out[k] = e[k];
+  for (const [k, v] of Object.entries(e)) if (/^utm_/.test(k)) out[k] = v;
+  return out;
+}
 
 /** Common event properties the analytics tools receive, with ISO dates (Amplitude, PostHog). */
 export function lifecycleProperties(e: WebhookEvent, reporting: unknown) {

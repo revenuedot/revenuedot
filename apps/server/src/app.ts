@@ -10,11 +10,43 @@ import { oauthRoutes } from "./routes/oauth.js";
 import { v2Routes } from "./routes/v2/index.js";
 import { withCredentialHealth } from "./services/credential-health.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
+import { PAY_CTX, payRoutes } from "./routes/pay.js";
+import { projectForHost } from "./services/web/domains.js";
 
 export function createApp(input: Deps) {
   // Receipt checks that the store answers with a credentials error mark the app failing (the credentials alert).
   const deps: Deps = { ...input, stores: withCredentialHealth(input.stores, input.db, input.now) };
   const app = new Hono();
+  const pay = payRoutes(deps);
+  // Hosted web pages on the pay host (REVENUEDOT_PAY_URL without a path) and on verified custom domains are served by the
+  // pay routes at the root of that host (prd/web-billing/PRD.md §7). Everything else on those hosts is not found.
+  const payUrl = deps.payUrl ? new URL(deps.payUrl) : null;
+  const payHost = payUrl && (payUrl.pathname === "/" || payUrl.pathname === "") ? payUrl.host.toLowerCase() : null;
+  const known = new Set([deps.publicUrl, deps.apiUrl].filter(Boolean).map((u) => { try { return new URL(u!).host.toLowerCase(); } catch { return ""; } }));
+  app.use("*", async (c, next) => {
+    const url = new URL(c.req.url);
+    const host = (c.req.header("x-forwarded-host") ?? url.host).toLowerCase();
+    const path = url.pathname;
+    let rewritten: string | null = null;
+    let projectSlug: string | null = null;
+    if (payHost && host === payHost) rewritten = path;
+    else if (!known.has(host) && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host) && /^[a-z0-9.-]+(:\d+)?$/.test(host)) {
+      // A verified custom domain serves the project's hosted pages and nothing else: never the API, sign-in or OAuth, whose
+      // cookies and pages must not live on a domain a customer controls.
+      projectSlug = await projectForHost(deps.db, host.replace(/:\d+$/, ""), deps.now().getTime());
+      if (projectSlug) rewritten = /^\/(api|r)\//.test(path) ? path : `/${projectSlug}${path}`;
+    }
+    if (rewritten === null) return next();
+    // The pay routes run on their own (no /pay prefix) with the request's link bases in PAY_CTX.
+    const target = new URL(c.req.url);
+    target.pathname = rewritten;
+    const req = new Request(target, c.req.raw);
+    // Behind a TLS proxy the request URL is http; the page's links must use the scheme the visitor used.
+    const proto = (c.req.header("x-forwarded-proto") ?? url.protocol.replace(":", "")).split(",")[0]!.trim();
+    const origin = `${proto === "https" || proto === "http" ? proto : "https"}://${host}`;
+    PAY_CTX.set(req, projectSlug ? { base: origin, projectBase: origin, projectSlug } : { base: deps.payUrl!.replace(/\/+$/, "") });
+    return pay.fetch(req);
+  });
   // SDK and REST calls come from anywhere; dashboard calls are same-origin with a cookie.
   const sdkCors = cors({ origin: "*", allowHeaders: ["*"], exposeHeaders: ["X-RevenueCat-Request-Time", "X-RevenueCat-ETag", "X-Signature"] });
   app.use("/v1/*", sdkCors);
@@ -35,6 +67,7 @@ export function createApp(input: Deps) {
   // REST API v2 (secret key or dashboard session); mounted before the SDK routes.
   app.route("/", assetRoutes(deps));
   app.route("/", v2Routes(deps));
+  app.route("/pay", pay);
   app.route("/", sdkRoutes(deps));
   return app;
 }
