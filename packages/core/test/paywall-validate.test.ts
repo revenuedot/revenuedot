@@ -88,3 +88,18 @@ describe("translations", () => {
     expect(validatePaywall(d).warnings.some((w) => w.path === "components_localizations.de_DE")).toBe(true);
   });
 });
+
+describe("deep trees", () => {
+  it("refuses stacks or fallbacks nested past the limit without overflowing the call stack", () => {
+    const d = base();
+    const root = d.components_config.base.stack;
+    let s = root;
+    for (let i = 0; i < 5000; i++) { const child = { ...clone({ ...root, components: [] }), id: `s${i}` }; s.components = [child]; s = child; }
+    expect(validatePaywall(d).errors.some((e) => /nested more than 40 deep/.test(e.message))).toBe(true);
+    const f = base();
+    let u: Json = { type: "text", text_lid: "x" };
+    for (let i = 0; i < 5000; i++) u = { type: "future_thing", fallback: u };
+    first(f.components_config, "stack").components.push(u);
+    expect(validatePaywall(f).errors.some((e) => /nested more than 40 deep/.test(e.message))).toBe(true);
+  });
+});

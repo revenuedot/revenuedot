@@ -35,6 +35,7 @@ class Ctx {
   packages: { id: string; selected: boolean; path: string; group: string }[] = [];
   purchaseButtons = 0;
   comp: string | undefined;
+  depth = 0;
   constructor(readonly strings: Record<string, unknown> | null) {}
   err(path: string, message: string) { this.errors.push({ path, message, ...(this.comp ? { component_id: this.comp } : {}) }); }
   warn(path: string, message: string) { this.warnings.push({ path, message, ...(this.comp ? { component_id: this.comp } : {}) }); }
@@ -296,8 +297,19 @@ function icon(c: Ctx, o: Json, path: string) {
   }
   overrides(c, o.overrides, `${path}.overrides`, partialIcon(c));
 }
+/** Stacks nested deeper than this are refused: the SDKs decode and lay out recursively, and a deep tree exhausts the stack. */
+export const MAX_STACK_DEPTH = 40;
+
+function nested(c: Ctx, path: string, run: () => void) {
+  if (c.depth >= MAX_STACK_DEPTH) return c.err(path, `Components are nested more than ${MAX_STACK_DEPTH} deep.`);
+  c.depth++;
+  try { run(); } finally { c.depth--; }
+}
 function stack(c: Ctx, o: unknown, path: string, group = path) {
   if (!isObj(o)) return c.err(path, "A stack is required here.");
+  nested(c, path, () => stackBody(c, o, path, group));
+}
+function stackBody(c: Ctx, o: Json, path: string, group: string) {
   const prev = c.comp; c.comp = isStr(o.id) ? o.id : prev;
   base(c, o, path, "stack");
   if (!Array.isArray(o.components)) c.err(`${path}.components`, "components must be a list.");
@@ -509,7 +521,7 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
       // SDKs show `fallback` instead where they cannot run this web view: another protocol version, watchOS and tvOS.
       const hasFallback = isObj(x.fallback);
       if (isInt(x.protocol_version) && x.protocol_version !== 1 && !hasFallback) c.err(`${path}.protocol_version`, "The SDKs support web view protocol_version 1; another version needs a fallback component.");
-      if (hasFallback) component(c, x.fallback, `${path}.fallback`, group);
+      if (hasFallback) nested(c, `${path}.fallback`, () => component(c, x.fallback, `${path}.fallback`, group));
       else c.warn(`${path}.fallback`, "Without a fallback component, the paywall fails to load on watchOS, tvOS and SDKs without web views.");
       if (c.req(x, "url", path) && (!isStr(x.url) || !/^https:\/\/[^/\s{}]+/.test(x.url))) c.err(`${path}.url`, "A web view needs a resolved https URL.");
       if (c.req(x, "size", path)) size(c, x.size, `${path}.size`);
@@ -517,7 +529,10 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
       break;
     }
     default:
-      if (isObj(x.fallback)) { c.warn(`${path}.type`, `Unknown component type ${JSON.stringify(t)}; the SDK shows its fallback.`); component(c, x.fallback, `${path}.fallback`, group); }
+      if (isObj(x.fallback)) {
+        c.warn(`${path}.type`, `Unknown component type ${JSON.stringify(t)}; the SDK shows its fallback.`);
+        nested(c, `${path}.fallback`, () => component(c, x.fallback, `${path}.fallback`, group));
+      }
       else c.err(`${path}.type`, `Unknown component type ${JSON.stringify(t)}. Use one of: ${COMPONENT_TYPES.join(", ")}.`);
   }
   c.comp = prev;
@@ -605,7 +620,8 @@ export function fillLocales(localizations: Record<string, Record<string, unknown
   const base = localizations[defaultLocale] ?? {};
   const out: Record<string, Record<string, unknown>> = {};
   for (const [loc, table] of Object.entries(localizations)) {
-    out[loc] = loc === defaultLocale ? table : { ...base, ...Object.fromEntries(Object.entries(table).filter(([k, v]) => v !== "" || !(k in base))) };
+    const own = isObj(table) ? Object.entries(table).filter(([k, v]) => v !== "" || !(k in base)) : [];
+    out[loc] = loc === defaultLocale ? table : { ...base, ...Object.fromEntries(own) };
   }
   return out;
 }
