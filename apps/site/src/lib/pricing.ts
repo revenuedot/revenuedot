@@ -14,7 +14,7 @@ export const CLOUD_FREE_UP_TO = 10_000; // USD monthly tracked revenue
 export const CLOUD_RATE = 0.005; // 0.5% of tracked revenue above the free amount
 export const CLOUD_CAP = 999; // USD a month
 export const RC_FREE_UP_TO = 2_500; // RevenueCat: free up to $2,500 monthly tracked revenue
-export const RC_RATE = 0.01; // then 1% of tracked revenue above that (https://www.revenuecat.com/pricing)
+export const RC_RATE = 0.01; // then 1% of all tracked revenue, not only the part above $2,500 (https://www.revenuecat.com/pricing)
 
 export const PLANS: Plan[] = [
   {
@@ -88,9 +88,10 @@ export function cloudBill(mtr: number): number {
   return Math.min(CLOUD_CAP, Math.max(0, mtr - CLOUD_FREE_UP_TO) * CLOUD_RATE);
 }
 
-/** RevenueCat's published price for a month of tracked revenue (USD): 1% of tracked revenue above $2,500. */
+/** RevenueCat's published price for a month of tracked revenue (USD): once tracked revenue reaches $2,500, 1% of all of it
+ * (pricing page FAQ: "For $2.5K, we'll charge you $25"; staff reply https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618). */
 export function revenueCatBill(mtr: number): number {
-  return Math.max(0, mtr - RC_FREE_UP_TO) * RC_RATE;
+  return mtr >= RC_FREE_UP_TO ? mtr * RC_RATE : 0;
 }
 
 export const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;

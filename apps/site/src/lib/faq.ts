@@ -14,7 +14,7 @@ export const FAQ_SELF_HOST: Faq = {
 
 export const FAQ_PRICE_ALT: Faq = {
   q: "What is a cheaper alternative to RevenueCat's pricing?",
-  a: "RevenueCat charges 1% of tracked revenue above $2,500 a month, which is $475 a month for an app making $50,000 a month. RevenueDot Cloud is free up to $10,000 a month; the planned paid plan is 0.5% above that, capped at $999 a month. Self-hosted RevenueDot has no revenue share: you pay only for your own servers.",
+  a: "Once an app reaches $2,500 a month in tracked revenue, RevenueCat charges 1% of all of it, which is $500 a month for an app making $50,000 a month. RevenueDot Cloud is free up to $10,000 a month; the planned paid plan is 0.5% above that, capped at $999 a month. Self-hosted RevenueDot has no revenue share: you pay only for your own servers.",
 };
 
 export const FAQ_CHANGE_APP: Faq = {
@@ -39,7 +39,7 @@ export const FAQ_COST: Faq = {
 
 export const FAQ_READY: Faq = {
   q: "How is RevenueDot tested?",
-  a: "Every endpoint is checked against real RevenueCat responses, the unmodified RevenueCat iOS SDK runs a full purchase against it on the iPhone simulator, and webhooks are delivered live to 17 example backends. For a switch with no risk, run RevenueDot side by side with RevenueCat: it forwards every store notification to RevenueCat, so you can compare both before you cut over.",
+  a: "Every endpoint is checked against real RevenueCat responses, the unmodified RevenueCat iOS SDK runs a full purchase against it on the iPhone simulator, and webhooks are delivered live to 23 example backends. For a switch with no risk, run RevenueDot side by side with RevenueCat: it forwards every store notification to RevenueCat, so you can compare both before you cut over.",
 };
 
 export const FAQ_LICENSE: Faq = {
@@ -54,7 +54,7 @@ export const FAQ_AFFILIATED: Faq = {
 
 export const FAQ_STORES: Faq = {
   q: "Which stores and SDK features are supported?",
-  a: "App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications) first. Because RevenueDot serves the API the RevenueCat SDKs call, Expo, StoreKit 2 and current Google Play Billing work through the SDKs you already use. Amazon and Stripe come next.",
+  a: "The App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2), Google Play (Play Developer API, real-time notifications), the Amazon Appstore, Stripe and a Test Store. Because RevenueDot serves the API the RevenueCat SDKs call, Expo, StoreKit 2 and current Google Play Billing work through the SDKs you already use. Web checkout with Stripe, purchase links and web funnels are built in.",
 };
 
 export const FAQ_DATA: Faq = {

@@ -1,0 +1,12 @@
+---
+import Hub from "../../templates/Hub.astro";
+import { GLOSSARY } from "../../data/glossary";
+const cats = ["Billing", "Offers and trials", "Store notifications", "Metrics", "Paywalls and growth", "Platform"];
+const groups = cats.map((c) => ({ title: c, cards: GLOSSARY.filter((t) => t.category === c).sort((a, b) => a.term.localeCompare(b.term)).map((t) => ({ href: `/glossary/${t.slug}`, title: t.term, text: t.short })) })).filter((g) => g.cards.length);
+---
+<Hub path="/glossary" name="Glossary" label="Glossary" cols={3}
+  title="Subscription app glossary: App Store and Google Play terms, explained"
+  metaTitle="Subscription app glossary: in-app purchase terms"
+  description={`${GLOSSARY.length} subscription and in-app purchase terms in plain English: grace periods, offers, store notifications, entitlements, churn and LTV, with official sources.`}
+  answer={`Plain-English definitions of **${GLOSSARY.length} terms** subscription app developers meet on the App Store and Google Play: billing states, offers and trials, store notifications, metrics and paywalls. Each one links Apple's or Google's own documentation.`}
+  groups={groups} />

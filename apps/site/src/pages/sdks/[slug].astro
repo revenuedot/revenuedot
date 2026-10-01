@@ -1,0 +1,10 @@
+---
+import LandingPage from "../../templates/LandingPage.astro";
+import { LANDINGS } from "../../data";
+import type { Landing } from "../../data/types";
+export function getStaticPaths() {
+  return LANDINGS.filter((l) => l.section === "sdks").map((page) => ({ params: { slug: page.slug }, props: { page } }));
+}
+const { page } = Astro.props as { page: Landing };
+---
+<LandingPage page={page} />

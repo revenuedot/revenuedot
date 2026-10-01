@@ -25,7 +25,7 @@ function relOf(ctx) {
 const docsPlugin = {
   name: "revenuedot-docs",
   element: {
-    filter: ["a", "table", "pre", "h2", "h3", "h4"],
+    filter: ["a", "img", "table", "pre", "h2", "h3", "h4"],
     visit(node, ctx) {
       const rel = relOf(ctx);
       if (!rel) return;
@@ -40,6 +40,17 @@ const docsPlugin = {
         if (video && img?.length === 1 && img[0].tagName === "img") return streamPlayer(video, ["doc-video"]);
         const next = rewriteHref(rel, href);
         if (next && next !== href) ctx.setProperty(node, "href", next);
+        return;
+      }
+      if (tag === "img") {
+        // Blog images live in the docs repo's blog/assets and are served from /blog/assets on the site.
+        const src = node.properties?.src;
+        if (typeof src === "string") {
+          const next = rewriteHref(rel, src);
+          if (next && next.startsWith("/")) ctx.setProperty(node, "src", next);
+        }
+        ctx.setProperty(node, "loading", "lazy");
+        ctx.setProperty(node, "decoding", "async");
         return;
       }
       if (tag === "table") return el("div", { className: ["table-wrap"], tabIndex: 0, role: "region", ariaLabel: "Table" }, [node]);

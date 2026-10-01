@@ -1,0 +1,107 @@
+---
+// One page per RevenueCat SDK error code (src/data/errors.ts). Same codes whether the SDK talks to RevenueCat or RevenueDot.
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import Faq from "../../components/Faq.astro";
+import Related from "../../components/Related.astro";
+import CtaBand from "../../components/CtaBand.astro";
+import Md from "../../components/Md.astro";
+import Code from "../../components/Code.astro";
+import { ERRORS } from "../../data/errors";
+import type { ErrorPage } from "../../data/types";
+import { plain } from "../../lib/md";
+import { ogFor } from "../../lib/og";
+import { howTo, techArticle } from "../../lib/jsonld";
+import { SITE } from "../../site";
+export function getStaticPaths() {
+  return ERRORS.map((e) => ({ params: { slug: e.slug }, props: { e } }));
+}
+const { e } = Astro.props as { e: ErrorPage };
+const path = `/errors/${e.slug}`;
+const faq = e.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+const title = `${e.swift} (error code ${e.code}): ${e.name}`;
+const hasAndroid = e.android && e.android !== "n/a";
+// <wbr> break hints before each capital, so long identifiers wrap at word boundaries without changing their text.
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const wb = (t: string) => esc(t).replace(/([a-z0-9])([A-Z])/g, "$1<wbr>$2").replace(/_/g, "_<wbr>");
+const snippet = `// Swift
+do {
+  let result = try await Purchases.shared.purchase(package: package)
+} catch let error as ErrorCode where error == .${e.swift} {
+  // handle ${e.name.toLowerCase()}
+}${hasAndroid ? `
+
+// Kotlin
+if (error.code == PurchasesErrorCode.${e.android}) { /* ... */ }` : ""}`;
+---
+<Base title={e.metaTitle} description={e.metaDescription} path={path} image={ogFor(path)} imageAlt={title}
+  crumbs={[{ name: "SDK errors", path: "/errors" }, { name: e.swift, path }]} faq={faq}
+  jsonld={[techArticle({ title, description: e.metaDescription, path, section: "SDK error codes" }), howTo(`How to fix ${e.swift}`, plain(e.answer), e.fixes.map((s) => ({ name: s.name, text: plain(s.text) })), path)]}>
+  <div class="wrap">
+    <PageHead label={`SDK error · code ${e.code}`} title={title} titleHtml={wb(title)}>
+      <div class="def"><p class="label">What it means</p><Md text={e.answer} /></div>
+    </PageHead>
+  </div>
+  <section class="section first tight">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-4">
+        <div class="cell"><p class="label">Code</p><p class="mono">{e.code}</p></div>
+        <div class="cell"><p class="label">iOS (Swift)</p><p class="mono" set:html={"ErrorCode." + wb(e.swift)} /></div>
+        <div class="cell span2"><p class="label">Android (Kotlin)</p>{hasAndroid ? <p class="mono" set:html={"PurchasesErrorCode." + wb(e.android)} /> : <p>No matching code in the Android SDK; see the causes below.</p>}</div>
+      </div></div>
+    </div>
+  </section>
+  <section class="section" id="causes">
+    <div class="wrap two">
+      <div class="head"><p class="label">Causes</p><h2 class="h2 sm" set:html={"Why the SDK returns " + wb(e.swift)} /></div>
+      <div class="prose">
+        <ul>{e.causes.map((c) => <Md as="li" text={c} />)}</ul>
+        {e.backend && e.backend.length > 0 && (
+          <div class="table-wrap"><table><thead><tr><th scope="col">Backend code</th><th scope="col">Meaning</th></tr></thead>
+            <tbody>{e.backend.map((b) => <tr><th scope="row" class="num-cell">{b.code}</th><td><Md as="span" text={b.meaning} /></td></tr>)}</tbody></table></div>
+        )}
+      </div>
+    </div>
+  </section>
+  <section class="section" id="fix">
+    <div class="wrap two">
+      <div class="head"><p class="label">Fix</p><h2 class="h2 sm" set:html={"How to fix " + wb(e.swift)} /></div>
+      <div>
+        <ol class="steps">{e.fixes.map((s, i) => <li><span class="num">{String(i + 1).padStart(2, "0")}</span><div><h3 class="h3">{s.name}</h3><Md text={s.text} /></div></li>)}</ol>
+      </div>
+    </div>
+  </section>
+  <section class="section" id="handle">
+    <div class="wrap two">
+      <div class="head"><p class="label">In your app</p><h2 class="h2 sm">How to handle it in code</h2></div>
+      <div class="prose">
+        <ul>{e.handling.map((h) => <Md as="li" text={h} />)}</ul>
+        <Code title="Match the error" label={hasAndroid ? "Swift · Kotlin" : "Swift"} code={snippet} />
+        {e.revenuedot && <p class="rd"><strong>On RevenueDot:</strong> <Md as="span" text={e.revenuedot} /></p>}
+      </div>
+    </div>
+  </section>
+  <section class="section" id="faq"><div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm" set:html={wb(e.swift) + ": questions people ask"} /></div><Faq items={faq} open={0} /></div></section>
+  <Related items={e.related} />
+  <CtaBand title="Keep the RevenueCat SDK. Change the backend." body="RevenueDot answers the same SDK calls with the same error codes. Start free on RevenueDot Cloud, free up to $10,000 a month in tracked revenue." />
+</Base>
+<style>
+  .def { border: 1px solid var(--border); border-left: 2px solid var(--accent); background: var(--panel); padding: 20px 24px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 860px; overflow-wrap: anywhere; }
+  .def :global(p:last-child) { font-size: 18px; line-height: 1.6; color: var(--fg); }
+  .def :global(a), .prose :global(a), .steps :global(a) { color: var(--fg); }
+  .mono { font-family: var(--mono); color: var(--fg) !important; overflow-wrap: break-word; }
+  .span2 { grid-column: span 2; }
+  .two { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .two > * { min-width: 0; }
+  .two .head { margin-bottom: 0; }
+  .prose :global(ul) { margin-bottom: 20px; }
+  .rd { margin-top: 20px; padding: 16px 20px; border: 1px solid var(--border); background: var(--sidebar); color: var(--fg-2); font-size: 15px; }
+  .rd strong { color: var(--fg); }
+  .steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); background: var(--panel); }
+  .steps li { display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--border-2); }
+  .steps li:last-child { border-bottom: 0; }
+  .steps .h3 { font-size: 16px; margin-bottom: 4px; }
+  .steps :global(p) { color: var(--fg-2); font-size: 15px; line-height: 1.6; }
+  .h2.sm { font-size: clamp(26px, 3vw, 36px); }
+  @media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); gap: 20px; } .span2 { grid-column: auto; } }
+</style>

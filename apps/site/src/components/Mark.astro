@@ -1,0 +1,8 @@
+---
+// The RevenueDot mark (R with the gold dot), from the brand kit, on a light tile.
+import raw from "../../../../brand/kit/mark/revenuedot-mark-black.svg?raw";
+interface Props { size?: number }
+const { size = 28 } = Astro.props;
+const svg = raw.replace(/ width="\d+" height="\d+"/, "").replace("<svg ", `<svg role="img" aria-label="RevenueDot" width="${size}" height="${size}" `);
+---
+<Fragment set:html={svg} />

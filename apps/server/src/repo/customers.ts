@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { isAnonymous, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
+import { accessOf } from "./access.js";
 
 const { customers, customerAliases, customerAttributes, subscriptions, nonSubscriptions } = schema;
 export type CustomerRow = typeof customers.$inferSelect;
@@ -104,17 +105,18 @@ export function nonSubRowToDomain(r: typeof nonSubscriptions.$inferSelect): NonS
 }
 
 export async function loadState(db: DB, customer: CustomerRow): Promise<CustomerState> {
-  const [subs, ones, attrs] = await Promise.all([
+  const [subs, ones, attrs, access] = await Promise.all([
     db.select().from(subscriptions).where(eq(subscriptions.customerId, customer.id)),
     db.select().from(nonSubscriptions).where(eq(nonSubscriptions.customerId, customer.id)),
     db.select().from(customerAttributes).where(eq(customerAttributes.customerId, customer.id)),
+    accessOf(db, customer),
   ]);
   const attributes: CustomerState["attributes"] = {};
   for (const a of attrs) attributes[a.key] = { value: a.value, updatedAtMs: a.updatedAtMs };
   return {
     originalAppUserId: customer.originalAppUserId, firstSeen: customer.firstSeen, lastSeen: customer.lastSeen,
     originalApplicationVersion: customer.originalApplicationVersion, originalPurchaseDate: customer.originalPurchaseDate,
-    subscriptions: subs.map(subRowToDomain), nonSubscriptions: ones.map(nonSubRowToDomain), attributes,
+    subscriptions: subs.map(subRowToDomain), nonSubscriptions: ones.map(nonSubRowToDomain), attributes, access,
   };
 }
 

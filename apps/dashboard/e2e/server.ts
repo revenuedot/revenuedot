@@ -52,10 +52,13 @@ let clock: Date | null = null;
 const now = () => clock ?? new Date();
 // Webhook deliveries and expirations run like the Node entry point, once seeding is done (setup.spec.ts checks deliveries).
 let ticking = false;
+// A fixed sealing key, for the API and the background tick alike: integration secrets are encrypted with it (deliveries
+// unseal them in the tick), and Auth (prd/auth) derives its token key from it.
+const SEALING_KEY = "ZTJlLWlkZW50aXR5LWtleS1mb3ItdGVzdHMtb25seSE=";
 const runTick = async () => {
   if (!ready || ticking) return;
   ticking = true;
-  try { await tick(db, now(), localFetch, { mailer: mail }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
+  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
 };
 setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
@@ -91,7 +94,7 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
 // RevenueDot AI answers from a scripted fake model (services/assistant/fake-model.ts): "how is revenue doing" calls
 // get-metrics, "grant pro to <user>" asks for approval, then grants. Conversations stream over SSE from the database.
 const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantModel(undefined, { delayMs: 15 });
-const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse" });
+const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY });
 
 let ready = false;
 const web = new Hono();
@@ -124,7 +127,7 @@ web.post("/__stripe/checkout/:id", async (c) => {
 });
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share|verified|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
   // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
   if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);

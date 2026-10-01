@@ -2,6 +2,7 @@ import { fontConfig, paywallLocales, publishedByOffering, sdkPaywallComponents, 
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { EntitlementMap } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
+import { brandColors, projectBrand } from "../services/brand.js";
 
 const { entitlements, entitlementProducts, products, offerings, packages, packageProducts, apps } = schema;
 
@@ -71,7 +72,7 @@ export async function offeringsJSON(db: DB, projectId: string, appId: string, op
       }),
     })),
     placements: { fallback_offering_id: current?.lookupKey ?? null, offering_ids_by_placement: {} },
-    ui_config: uiConfig(await fontConfig(db, projectId, assetBase), paywallLocales(pw.values())),
+    ui_config: uiConfig(await fontConfig(db, projectId, assetBase), paywallLocales(pw.values()), brandColors(await projectBrand(db, projectId))),
   };
 }
 

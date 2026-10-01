@@ -14,6 +14,8 @@ export interface CustomerSummary {
   id: string; original_app_user_id: string; aliases: string[]; total_revenue_in_usd: number; sandbox_revenue_in_usd: number;
   country: string | null; platform: string | null; stores: string[];
   offering_override: { id: string; lookup_key: string; display_name: string } | null;
+  /** On the project's block list (through any alias): no entitlements anywhere. */
+  blocked?: boolean;
   active_entitlements: { entitlement_id: string; lookup_key: string; display_name: string; expires_at: number | null; source: "purchase" | "promotional"; product_identifier: string | null }[];
   granted_entitlements: { entitlement_id: string; lookup_key: string; display_name: string; granted_at: number; expires_at: number | null }[];
   subscriptions: { id: string; product_identifier: string; product_display_name: string | null; duration: string | null; period_type: string; price: { amount: number; currency: string } | null; price_in_usd: number | null; will_renew_product_identifier: string | null }[];

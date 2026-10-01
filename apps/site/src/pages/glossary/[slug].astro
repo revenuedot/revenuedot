@@ -1,0 +1,69 @@
+---
+// One page per subscription term (src/data/glossary.ts), with DefinedTerm markup.
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import Faq from "../../components/Faq.astro";
+import Related from "../../components/Related.astro";
+import CtaBand from "../../components/CtaBand.astro";
+import Md from "../../components/Md.astro";
+import { GLOSSARY, type Term } from "../../data/glossary";
+import { plain } from "../../lib/md";
+import { ogFor } from "../../lib/og";
+import { SITE } from "../../site";
+import { termQuestion } from "../../lib/glossary-title";
+export function getStaticPaths() {
+  return GLOSSARY.map((term) => ({ params: { slug: term.slug }, props: { term } }));
+}
+const { term } = Astro.props as { term: Term };
+const path = `/glossary/${term.slug}`;
+const faq = term.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+const url = new URL(path, SITE.url).href;
+const defined = {
+  "@type": "DefinedTerm",
+  "@id": `${url}#term`,
+  name: term.term,
+  description: plain(term.answer),
+  url,
+  inDefinedTermSet: { "@type": "DefinedTermSet", "@id": `${SITE.url}/glossary#set`, name: "Subscription app glossary", url: `${SITE.url}/glossary` },
+};
+const title = termQuestion(term.slug, term.term);
+---
+<Base title={`${term.term}: definition`} fullTitle={`${term.term}: what it means for subscription apps | RevenueDot`.length <= 70 ? `${term.term}: what it means for subscription apps | RevenueDot` : `${term.term} | RevenueDot glossary`}
+  description={term.short} path={path} image={ogFor(path)} imageAlt={term.term}
+  crumbs={[{ name: "Glossary", path: "/glossary" }, { name: term.term, path }]} faq={faq} jsonld={[defined]}>
+  <div class="wrap">
+    <PageHead label={`Glossary · ${term.category}`} title={title}>
+      <div class="def"><p class="label">{term.term}</p><Md text={term.answer} /></div>
+    </PageHead>
+  </div>
+  <section class="section first tight">
+    <div class="wrap two">
+      <div class="prose">
+        {term.body.map((p) => <Md text={p} />)}
+        {term.example && <><h2>Example</h2><Md text={term.example} /></>}
+        <p class="tiny">Sources: {term.sources.map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel="noopener">{s.label}</a></>)}</p>
+      </div>
+      <aside class="side">
+        <p class="label">Run it on RevenueDot</p>
+        <p class="small muted">An open-source backend for in-app purchases that works with the RevenueCat SDK. Free on Cloud up to $10,000 a month in tracked revenue.</p>
+        <a class="btn sm" href={SITE.signup}>Start free on Cloud</a>
+        <a class="small" href="/glossary">All terms <span class="arrow">→</span></a>
+      </aside>
+    </div>
+  </section>
+  {faq.length > 0 && <section class="section" id="faq"><div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">{term.term}: questions people ask</h2></div><Faq items={faq} open={0} /></div></section>}
+  <Related items={term.related} />
+  <CtaBand />
+</Base>
+<style>
+  .def { border: 1px solid var(--border); border-left: 2px solid var(--accent); background: var(--panel); padding: 20px 24px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 860px; overflow-wrap: anywhere; }
+  .def :global(p:last-child) { font-size: 18px; line-height: 1.6; color: var(--fg); }
+  .def :global(a) { color: var(--fg); }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 280px); gap: 48px; align-items: start; }
+  .two > * { min-width: 0; }
+  .prose :global(a) { color: var(--fg); }
+  .side { position: sticky; top: 96px; border: 1px solid var(--border); background: var(--sidebar); padding: 22px; display: grid; gap: 12px; justify-items: start; }
+  .side a.small { color: var(--fg); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  @media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); } .side { position: static; } }
+</style>

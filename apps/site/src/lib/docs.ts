@@ -147,7 +147,7 @@ export function lastModified(rel: string): string | undefined {
 }
 
 export type BlogEntry = CollectionEntry<"blog">;
-export type BlogPost = { entry: BlogEntry; slug: string; href: string; title: string; description: string; date: string; author?: string };
+export type BlogPost = { entry: BlogEntry; slug: string; href: string; title: string; description: string; date: string; author?: string; image?: string };
 
 /** Published blog posts, newest first. blog/README.md is the index text, not a post. */
 export async function blogPosts(): Promise<BlogPost[]> {
@@ -156,7 +156,7 @@ export async function blogPosts(): Promise<BlogPost[]> {
     .map((entry) => {
       const slug = entry.id.slice("blog/".length);
       const date = entry.data.date ? entry.data.date.toISOString().slice(0, 10) : lastModified(`${entry.id}.md`) ?? "";
-      return { entry, slug, href: `/blog/${slug}`, title: entry.data.title, description: entry.data.description, date, author: entry.data.author };
+      return { entry, slug, href: `/blog/${slug}`, title: entry.data.title, description: entry.data.description, date, author: entry.data.author, image: entry.data.image };
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
 }

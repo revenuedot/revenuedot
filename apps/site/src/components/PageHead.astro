@@ -1,10 +1,10 @@
 ---
-interface Props { label?: string; title: string; lede?: string }
-const { label, title, lede } = Astro.props;
+interface Props { label?: string; title: string; lede?: string; /** The title as HTML with <wbr> break hints; its text must equal `title`. */ titleHtml?: string }
+const { label, title, lede, titleHtml } = Astro.props;
 ---
 <header class="page-head">
   {label && <p class="label">{label}</p>}
-  <h1>{title}</h1>
+  {titleHtml ? <h1 set:html={titleHtml} /> : <h1>{title}</h1>}
   {lede && <p class="lede">{lede}</p>}
   <slot />
 </header>

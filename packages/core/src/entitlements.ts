@@ -21,6 +21,9 @@ export function accessEndsAt(s: Subscription): Date | null {
  */
 export function computeEntitlements(state: CustomerState, catalog: EntitlementMap): ActiveEntitlement[] {
   const out: ActiveEntitlement[] = [];
+  // A blocked customer has no paid features anywhere; a customer outside sandbox testing access gets nothing from sandbox purchases.
+  if (state.access?.blocked) return out;
+  const counts = (p: { isSandbox?: boolean }) => state.access?.sandbox !== false || !p.isSandbox;
   const map: EntitlementMap = { ...catalog };
   for (const s of state.subscriptions) if (s.store === "promotional" && s.entitlementIdentifier) map[s.entitlementIdentifier] ??= [];
   for (const [identifier, productIds] of Object.entries(map)) {
@@ -34,6 +37,7 @@ export function computeEntitlements(state: CustomerState, catalog: EntitlementMa
       return c.purchaseDate > best.purchaseDate;
     };
     for (const s of state.subscriptions) {
+      if (!counts(s)) continue;
       const promo = s.store === "promotional" && s.entitlementIdentifier === identifier;
       if (!promo && !products.has(s.productIdentifier) && !(s.productPlanIdentifier && products.has(`${s.productIdentifier}:${s.productPlanIdentifier}`))) continue;
       const c: ActiveEntitlement = {
@@ -43,7 +47,7 @@ export function computeEntitlements(state: CustomerState, catalog: EntitlementMa
       if (better(c)) best = c;
     }
     for (const p of state.nonSubscriptions) {
-      if (!products.has(p.productIdentifier) || p.isConsumable) continue;
+      if (!products.has(p.productIdentifier) || p.isConsumable || !counts(p)) continue;
       const c: ActiveEntitlement = {
         identifier, productIdentifier: p.productIdentifier, purchaseDate: p.purchaseDate,
         expiresDate: p.refundedAt ?? null,

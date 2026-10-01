@@ -35,6 +35,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   assistant: () => import("./assistant.ts"),
   ios: () => import("./ios.ts"),
   android: () => import("./android.ts"),
+  "settings-auth": () => import("./settings-auth.ts"),
   "self-host": () => import("./self-host.ts"),
 };
 
@@ -95,6 +96,7 @@ async function main() {
   writeJson(join(runDir, "summary.json"), summary);
   // The latest result of each journey, committed with the coverage matrix.
   const latestFile = join(ROOT, "prd/validation/journey-results.json");
+  mkdirSync(join(ROOT, "prd/validation"), { recursive: true });
   const latest = existsSync(latestFile) ? JSON.parse(readFileSync(latestFile, "utf8")) : {};
   for (const s of summary) latest[s.journey] = { title: s.title, date: new Date().toISOString().slice(0, 10), run: stamp, passed: s.passed, failed: s.failed, ...(s.error ? { error: s.error.split("\n")[0] } : {}) };
   writeFileSync(latestFile, JSON.stringify(latest, null, 2) + "\n");

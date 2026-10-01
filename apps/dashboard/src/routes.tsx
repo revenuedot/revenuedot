@@ -35,6 +35,7 @@ import { WebPage } from "./pages/web/Web";
 import { FunnelsPage } from "./pages/web/Funnels";
 import { FunnelBuilderPage } from "./pages/web/FunnelBuilder";
 import { WebDiscountsPage } from "./pages/web/WebDiscounts";
+import { AuthPage as AppAuthPage } from "./pages/auth/AuthPage";
 import { lazy, Suspense } from "react";
 
 // RevenueDot AI pulls in the AI SDK, the Agents client and Streamdown; it loads only when opened.
@@ -78,6 +79,7 @@ export const routes = [
   <Route key="funnels" path="/projects/:projectId/funnels" element={<FunnelsPage />} />,
   <Route key="funnel" path="/projects/:projectId/funnels/:funnelId" element={<FunnelBuilderPage />} />,
   <Route key="web-discounts" path="/projects/:projectId/web-discounts" element={<WebDiscountsPage />} />,
+  <Route key="auth" path="/projects/:projectId/auth" element={<AppAuthPage />} />,
   <Route key="project-new" path="/projects/new" element={<NewProject />} />,
   <Route key="apps" path="/projects/:projectId/apps" element={<Apps />} />,
   <Route key="app" path="/projects/:projectId/apps/:appId" element={<AppConfig />} />,

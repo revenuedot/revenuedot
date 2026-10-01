@@ -72,7 +72,11 @@ export interface Delivery {
 export interface SecretKey { object: "api_key"; id: string; name: string; prefix: string; permissions: string[]; created_at: number; last_used_at: number | null; key?: string }
 
 export type TransferBehavior = "transfer" | "transfer_if_no_active" | "keep" | "share";
-export interface ProjectSettings { object: "project"; id: string; name: string; created_at: number; transfer_behavior: TransferBehavior; sandbox_transfer_behavior: TransferBehavior | null }
+export type SandboxAccess = "anybody" | "allowlist" | "nobody";
+export interface ProjectSettings {
+  object: "project"; id: string; name: string; created_at: number; transfer_behavior: TransferBehavior; sandbox_transfer_behavior: TransferBehavior | null;
+  sandbox_testing_access: SandboxAccess; sandbox_testers: string[]; owner: { id: string; email: string; name: string | null } | null;
+}
 
 export interface Collaborator { object: "collaborator"; id: string; name: string | null; email: string; role: string; accepted_at: number | null; has_mfa: boolean }
 

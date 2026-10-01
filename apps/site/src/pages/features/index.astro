@@ -1,0 +1,10 @@
+---
+import Hub from "../../templates/Hub.astro";
+import { LANDINGS, landingPath } from "../../data";
+import { platformLogo } from "../../lib/platform-logos";
+const cards = LANDINGS.filter((l) => l.section === "features").map((l) => ({ href: landingPath(l), title: l.name, text: l.card, logo: platformLogo(l.slug) }));
+---
+<Hub path="/features" name="Features" label="Features" title={"Everything RevenueDot does for subscription apps"} metaTitle={"Features: in-app purchase backend, paywalls, web checkout"}
+  description={"Receipts, entitlements, paywalls, experiments, web checkout, charts, win-back and 36 integrations. Open source, and it works with the RevenueCat SDK you ship."}
+  answer={"RevenueDot is an open-source backend for in-app purchases and subscriptions. It validates App Store, Google Play, Amazon and Stripe purchases, keeps entitlements current, and adds paywalls, A/B tests, web checkout, 43 charts and lifecycle tools on top. Your app keeps the RevenueCat SDK and changes one line."}
+  groups={[{ title: "All features", cards }]} />

@@ -62,7 +62,7 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
       <div class="head">
         <p class="label">Compare your bill</p>
         <h2 class="h2">What you would pay each month</h2>
-        <p class="lede">RevenueCat charges {Math.round(RC_RATE * 100)}% of tracked revenue above {usd(RC_FREE_UP_TO)} a month. RevenueDot Cloud Standard will charge {CLOUD_RATE * 100}% above {usd(CLOUD_FREE_UP_TO)}, capped at {usd(CLOUD_CAP)}. Self-hosting costs your servers.</p>
+        <p class="lede">Once tracked revenue reaches {usd(RC_FREE_UP_TO)} a month, RevenueCat charges {Math.round(RC_RATE * 100)}% of all of it. RevenueDot Cloud Standard will charge {CLOUD_RATE * 100}% above {usd(CLOUD_FREE_UP_TO)}, capped at {usd(CLOUD_CAP)}. Self-hosting costs your servers.</p>
       </div>
       <div class="grid calc"><div class="gi cols-3">
         <div class="cell span">
@@ -112,7 +112,7 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
   const update = () => {
     const m = Number(input.value);
     document.getElementById("mtr-out").textContent = f(m);
-    document.getElementById("rc").textContent = f(Math.max(0, m - RC_FREE_UP_TO) * RC_RATE);
+    document.getElementById("rc").textContent = f(m >= RC_FREE_UP_TO ? m * RC_RATE : 0);
     document.getElementById("cloud").textContent = f(Math.min(CLOUD_CAP, Math.max(0, m - CLOUD_FREE_UP_TO) * CLOUD_RATE));
   };
   input.addEventListener("input", update);

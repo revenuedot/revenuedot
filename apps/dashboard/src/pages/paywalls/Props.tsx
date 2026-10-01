@@ -4,12 +4,30 @@
  * view), the "when selected" and "intro offer" overrides, and light and dark colours. Every change goes through
  * `edit(id, mutate)`, which the editor turns into one undo step.
  */
-import { cloneElement, isValidElement, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { cloneElement, createContext, isValidElement, useContext, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { PAYWALL_ICONS, PAYWALL_ICON_NAMES, TYPE_LABEL, copyWithNewIds, imageUrls, freshId, type Json, type PaywallDoc } from "@revenuedot/core";
 import { Icon } from "../../components/icons";
 import { errMsg } from "../catalog/lib";
 import { IconGlyph } from "./render";
 import { uploadImage, useMedia, type MediaAsset } from "./lib";
+import { useToast } from "../../components/ui";
+import { cssColor, fontStyleName, gradientCss, uploadFont, type ColorPreset, type Font, type GradientPreset } from "../settings/lib";
+import { useQueryClient } from "@tanstack/react-query";
+import "../settings/settings.css";
+
+/** The project's Brand presets and fonts (Project settings › Brand), shown in every colour and font picker. */
+export const BrandCtx = createContext<{ pid: string; colors: ColorPreset[]; gradients: GradientPreset[]; fonts: Font[] }>({ pid: "", colors: [], gradients: [], fonts: [] });
+const hexInfo = (v: string) => ({ type: "hex", value: v.length === 7 ? `${v}ff` : v });
+export function Presets({ onPick }: { onPick: (c: ColorPreset) => void }) {
+  const { colors, pid } = useContext(BrandCtx);
+  if (!colors.length) return null;
+  return (
+    <span className="pf-presets" role="group" aria-label="Brand colours">
+      {colors.map((c) => <button key={c.key} type="button" className="pf-preset" title={`${c.name} (${c.light.slice(0, 7).toUpperCase()})`} aria-label={`Use brand colour ${c.name}`} style={{ background: cssColor(c.light) }} onClick={() => onPick(c)} />)}
+      <a className="pf-preset-link" href={`/projects/${pid}/settings/brand`} target="_blank" rel="noreferrer" aria-label="Manage brand colours">Brand</a>
+    </span>
+  );
+}
 
 export interface PropsApi {
   pid: string;
@@ -62,6 +80,7 @@ function ColorField({ scheme, onChange, label, allowNone }: { scheme: Json | nul
         ) : <button type="button" className="linkbtn" onClick={() => set("dark", toHex6(light))}>+ Dark</button>}
         {allowNone && <button type="button" className="ib pf-x" aria-label={`Remove ${label.toLowerCase()}`} onClick={() => onChange(null)}><Icon name="trash" /></button>}
       </>}
+      {(scheme || !allowNone) && !gradient && <Presets onPick={(c) => onChange({ light: hexInfo(c.light), ...(c.dark ? { dark: hexInfo(c.dark) } : {}) })} />}
     </div>
   );
 }
@@ -159,8 +178,13 @@ function StackSections({ s, api, title = "Layout", selectedState }: { s: Json; a
 }
 function GradientField({ value, onChange }: { value: Json; onChange: (g: Json) => void }) {
   const pts: Json[] = value.points ?? [];
+  const { gradients } = useContext(BrandCtx);
   return (
     <>
+      {!!gradients.length && <Row label="Presets"><span className="pf-presets" role="group" aria-label="Brand gradients">
+        {gradients.map((g) => <button key={g.key} type="button" className="pf-preset wide" title={g.name} aria-label={`Use brand gradient ${g.name}`} style={{ background: gradientCss(g) }}
+          onClick={() => onChange(g.type === "linear" ? { type: "linear", degrees: g.degrees ?? 180, points: g.points } : { type: "radial", points: g.points })} />)}
+      </span></Row>}
       <Row label="Angle"><Num label="Gradient angle" value={value.degrees ?? 180} min={0} max={360} onChange={(d) => onChange({ ...value, degrees: Math.round(d) })} /></Row>
       {pts.map((p, i) => (
         <Row key={i} label={i === 0 ? "From" : "To"}><span className="pf-pair">
@@ -239,6 +263,41 @@ function IconPicker({ value, onPick }: { value: string; onPick: (n: string) => v
   );
 }
 
+/** Uploaded fonts by their `ui_config.app.fonts` key, the system font, or any other font name. */
+function FontPicker({ value, onChange }: { value: string | undefined; onChange: (v: string | null) => void }) {
+  const { fonts, pid } = useContext(BrandCtx);
+  const qc = useQueryClient();
+  const toast = useToast();
+  // "Other font name…" shows for a name that is no uploaded font (worked out on every render, so fonts that load late or an
+  // undo are shown right), or while the user chose it explicitly.
+  const [otherChosen, setCustom] = useState(false);
+  const custom = otherChosen || (!!value && !fonts.some((f) => f.font_key === value));
+  const [busy, setBusy] = useState(false);
+  const file = useRef<HTMLInputElement>(null);
+  const upload = async (f: File | undefined) => {
+    if (!f) return;
+    setBusy(true);
+    try { const font = await uploadFont(pid, f); await qc.invalidateQueries({ queryKey: ["fonts", pid] }); setCustom(false); onChange(font.font_key); }
+    catch (err) { toast(errMsg(err)); } finally { setBusy(false); if (file.current) file.current.value = ""; }
+  };
+  return (
+    <span className="pf-stackcol">
+      <select className="select" aria-label="Font" value={custom ? "__custom" : value ?? ""} onChange={(ev) => {
+        const v = ev.target.value;
+        if (v === "__custom") { setCustom(true); return; }
+        setCustom(false); onChange(v || null);
+      }}>
+        <option value="">System font</option>
+        {fonts.map((f) => <option key={f.id} value={f.font_key}>{f.family_name} {fontStyleName(f)}</option>)}
+        <option value="__custom">Other font name…</option>
+      </select>
+      {custom && <input className="input" aria-label="Font name" placeholder="Such as Avenir Next" value={value ?? ""} onChange={(ev) => onChange(ev.target.value || null)} />}
+      <button type="button" className="linkbtn" disabled={busy} onClick={() => file.current?.click()}>{busy ? "Uploading…" : "+ Upload font"}</button>
+      <input ref={file} type="file" hidden accept=".ttf,.otf" aria-label="Font file" onChange={(ev) => void upload(ev.target.files?.[0])} />
+    </span>
+  );
+}
+
 function TextSections({ t, api }: { t: Json; api: PropsApi }) {
   const e = (fn: (x: Json) => void, merge?: string) => api.edit(t.id, fn, merge);
   const def = api.doc.components_localizations[api.doc.default_locale] ?? {};
@@ -266,7 +325,7 @@ function TextSections({ t, api }: { t: Json; api: PropsApi }) {
         <Row label="Alignment"><Seg label="Text alignment" value={t.horizontal_alignment} options={[["leading", "Left"], ["center", "Center"], ["trailing", "Right"]]} onChange={(v) => e((x) => { x.horizontal_alignment = v; })} /></Row>
         <Row label="Colour"><ColorField label="Text colour" scheme={t.color} onChange={(c) => c && e((x) => { x.color = c; })} /></Row>
         <Row label="Background"><ColorField allowNone label="Text background" scheme={t.background_color} onChange={(c) => e((x) => { if (c) x.background_color = c; else delete x.background_color; })} /></Row>
-        <Row label="Font name" hint="A font uploaded to the project, or a system font name."><input className="input" value={t.font_name ?? ""} onChange={(ev) => e((x) => { if (ev.target.value) x.font_name = ev.target.value; else delete x.font_name; }, `fn${t.id}`)} /></Row>
+        <Row label="Font" hint="Fonts uploaded under Project settings › Brand, or a system font name."><FontPicker value={t.font_name} onChange={(v) => e((x) => { if (v) x.font_name = v; else delete x.font_name; }, `fn${t.id}`)} /></Row>
       </Section>
       <Section title="Layout">
         <Row label="Size"><SizeField size={t.size} onChange={(v) => e((x) => { x.size = v; })} /></Row>

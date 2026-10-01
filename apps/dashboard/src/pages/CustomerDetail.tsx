@@ -334,6 +334,7 @@ export function CustomerDetail() {
             </div>
             <div className="meta">
               {isAnonymous(id) && <span className="soon" style={{ marginLeft: 0 }} title="Anonymous ID created by the SDK before log in">ANONYMOUS</span>}
+              {s?.blocked && <Tag tone="down">Blocked</Tag>}
               {country && <span><span className="flag" aria-hidden>{flag(country)}</span>{country}</span>}
               {platform && <span>{platform}{c?.last_seen_app_version ? ` · app ${c.last_seen_app_version}` : ""}</span>}
               {c && <span>Customer since {fmt.date(c.first_seen_at)}</span>}
@@ -358,6 +359,7 @@ export function CustomerDetail() {
           <div className="col">
             <Panel title="Entitlements" link={<button type="button" className="linkbtn" onClick={() => setDialog({ kind: "grant" })}>Grant →</button>} flush>
               {d.summary.isError ? <Failed error={d.summary.error} retry={() => d.summary.refetch()} /> : !s ? <Loading lines={2} />
+                : s.blocked ? <div className="pnote" role="status">This customer is blocked, so no purchase or grant gives access. <Link to={`/projects/${pid}/settings/blocked-customers`}>Blocked customers →</Link></div>
                 : !s.active_entitlements.length && !grants.length ? <div className="pnote">No active entitlements. A purchase of an attached product unlocks one, or you can grant access.</div>
                 : (
                   <>

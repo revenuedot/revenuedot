@@ -1,0 +1,10 @@
+---
+import Hub from "../../templates/Hub.astro";
+import { LANDINGS, landingPath } from "../../data";
+import { platformLogo } from "../../lib/platform-logos";
+const cards = LANDINGS.filter((l) => l.section === "solutions").map((l) => ({ href: landingPath(l), title: l.name, text: l.card, logo: platformLogo(l.slug) }));
+---
+<Hub path="/solutions" name="Solutions" label="Solutions" title={"Solutions for subscription app teams"} metaTitle={"Solutions: indie apps, studios, self-hosting, web-to-app"}
+  description={"How indie developers, app studios and teams with data rules use RevenueDot: cut the RevenueCat bill, self-host, sell on the web and keep data in their region."}
+  answer={"RevenueDot fits teams that want to keep the RevenueCat SDK but not the bill or the lock-in: indie developers who want to stay free longer, studios running many apps, teams that must host data in their own region, and apps selling subscriptions on the web."}
+  groups={[{ title: "All solutions", cards }]} />

@@ -14,16 +14,41 @@ import overviewLight from "../assets/screens/overview-light.png";
 import overviewDark from "../assets/screens/overview-dark.png";
 import customer from "../assets/screens/customer-light.png";
 import offerings from "../assets/screens/offerings-light.png";
+import { INTEGRATIONS, integrationPath, CHART_PAGES } from "../data";
+import { logo } from "../lib/logos";
+import { ogFor } from "../lib/og";
 
 const faq = [FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED];
 const quick = SDKS.filter((s) => ["ios", "android", "react-native", "flutter"].includes(s.id));
 const tiers = [10_000, 50_000, 250_000, 1_000_000];
+const partners = INTEGRATIONS.filter((i) => !["webhooks", "data-exports"].includes(i.kind));
+const wall = ["amplitude", "mixpanel", "posthog", "segment", "firebase", "bigquery", "appsflyer", "adjust", "branch", "meta-ads", "braze", "onesignal", "slack", "intercom", "zendesk", "google-admob"]
+  .map((s) => partners.find((p) => p.slug === s)).filter((p) => !!p);
+const resources = [
+  { href: "/tools/revenuecat-fee-calculator", label: "Free tool", title: "RevenueCat fee calculator", text: "See RevenueCat's fee at your revenue next to Adapty, Qonversion, Superwall and RevenueDot." },
+  { href: "/blog/paywall-best-practices-2026", label: "Guide", title: "Paywall best practices for 2026", text: "Hard paywalls, trial timelines, annual first and exit offers, with the data behind each." },
+  { href: "/blog/subscription-app-metrics", label: "Guide", title: "Subscription metrics that matter", text: "MRR, churn, trial conversion and LTV, defined, with a chart for each." },
+  { href: "/errors", label: "Reference", title: "RevenueCat SDK error codes", text: "Every SDK error with its causes and fixes, for iOS, Android, React Native and Flutter." },
+  { href: "/glossary", label: "Reference", title: "Subscription app glossary", text: "Grace periods, offer codes, store notifications and more, in plain English." },
+  { href: "/blog/storekit-2-vs-revenuecat", label: "Guide", title: "Do you still need RevenueCat with StoreKit 2?", text: "What StoreKit 2 does on the device and what still needs a server." },
+];
+const features = [
+  { href: "/features/paywalls", title: "Paywalls", text: "Ten templates, a visual editor and an AI generator. Rendered natively by the RevenueCat SDK." },
+  { href: "/features/experiments", title: "Targeting and A/B tests", text: "Audiences, placements and offering experiments with revenue and chance to win." },
+  { href: "/features/web-billing", title: "Web checkout", text: "Sell subscriptions on the web with your Stripe account and unlock them in the app." },
+  { href: "/charts", title: `${CHART_PAGES.length} charts`, text: "MRR, churn, trial conversion, LTV, cohorts and refunds, with the same API as RevenueCat's." },
+  { href: "/features/refund-control", title: "Refund Control", text: "Answer Apple's refund requests with consumption data, automatically, within the deadline." },
+  { href: "/features/win-back", title: "Win-back", text: "Email campaigns and App Store win-back offers that bring churned subscribers back." },
+  { href: "/features/customer-center", title: "Customer Center", text: "Cancel and refund flows with retention offers, inside your app." },
+  { href: "/stores", title: "Four stores", text: "App Store, Google Play, Amazon Appstore and Stripe, plus a Test Store." },
+];
 ---
 <Base
   title="RevenueDot: the open-source RevenueCat alternative"
   description="Open-source in-app purchase backend that works with the RevenueCat SDK. Start free on RevenueDot Cloud or self-host it. Change one line, keep your app code."
   path="/"
   faq={faq}
+  image={ogFor("/")}
   jsonld={[softwareApplication()]}
 >
   <section class="hero">
@@ -49,7 +74,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
   <section class="section tight" aria-label="RevenueDot in numbers">
     <div class="wrap">
       <div class="grid"><div class="gi cols-4">
-        <div class="cell"><p class="label">SDK endpoints</p><p class="stat">37</p><p>Every endpoint the RevenueCat SDKs call, answered in the same shape.</p></div>
+        <div class="cell"><p class="label">SDK endpoints</p><p class="stat">55</p><p>Of the 58 calls the RevenueCat SDKs make, answered in the same shape.</p></div>
         <div class="cell"><p class="label">SDKs supported</p><p class="stat">10</p><p>iOS, Android, React Native, Flutter, web and five more, stock or forked.</p></div>
         <div class="cell"><p class="label">Free on Cloud</p><p class="stat">$10K</p><p>a month in tracked revenue, then capped at {usd(CLOUD_CAP)} (coming). Self-hosting costs only your servers.</p></div>
         <div class="cell"><p class="label">Lines of app code to change</p><p class="stat">1</p><p>The SDK's proxy URL. Purchases, offerings and entitlements stay as they are.</p></div>
@@ -89,6 +114,44 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
         <div class="cell"><h3 class="h3">A safe migration</h3><p>Import everything, run both systems side by side with forwarded store notifications, then switch when the numbers match.</p></div>
         <div class="cell"><h3 class="h3">Open source</h3><p>Read, audit and change the code that decides who has access to your app. AGPL-3.0 server, MIT SDKs.</p></div>
         <div class="cell"><h3 class="h3">Built for AI agents</h3><p>An MCP server, agent skills and llms.txt let Claude, ChatGPT, Codex and Cursor set it up and run it for you.</p></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Everything in one backend</p>
+        <h2 class="h2">Paywalls, experiments, web checkout and charts, included</h2>
+        <p class="lede">The tools subscription apps pay extra for elsewhere come with every RevenueDot plan, including the free one. <a href="/features">See every feature <span class="arrow">→</span></a></p>
+      </div>
+      <div class="grid"><div class="gi cols-4">
+        {features.map((f) => <a class="cell card" href={f.href}><h3 class="h3">{f.title}</h3><p>{f.text}</p><span class="arrow go">→</span></a>)}
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="integrations">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Integrations</p>
+        <h2 class="h2">Every event, in the tools you already use</h2>
+        <p class="lede">{partners.length} integrations get RevenueCat's event names and attributes, so existing dashboards keep working. <a href="/integrations">All integrations <span class="arrow">→</span></a></p>
+      </div>
+      <div class="wall">
+        {wall.map((p) => <a href={integrationPath(p)} class="logo-tile" title={p.name}><img src={logo(p.logo)} alt={p.name} width="52" height="52" loading="lazy" decoding="async" /><span>{p.name}</span></a>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="resources">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Guides and free tools</p>
+        <h2 class="h2">Answers for subscription app developers</h2>
+      </div>
+      <div class="grid"><div class="gi cols-3">
+        {resources.map((r) => <a class="cell card" href={r.href}><p class="label">{r.label}</p><h3 class="h3">{r.title}</h3><p>{r.text}</p><span class="arrow go">→</span></a>)}
       </div></div>
     </div>
   </section>
@@ -149,7 +212,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
           </tbody>
         </table>
       </div>
-      <p class="tiny caption">Source: <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>. RevenueDot Cloud paid pricing is planned and not yet available. <a href="/pricing">See pricing</a>.</p>
+      <p class="tiny caption">Source: <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>. RevenueDot Cloud paid pricing is planned and not yet available. <a href="/pricing">See pricing</a> · <a href="/tools/revenuecat-fee-calculator">Calculate your own bill</a>.</p>
     </div>
   </section>
 
@@ -176,6 +239,15 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
   .hero-shot { margin-top: 56px; margin-bottom: 96px; }
   .sdk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
   .more { margin-top: 20px; }
+  .lede a { color: var(--fg); }
+  .card { text-decoration: none; transition: background var(--fast) var(--ease); }
+  .card:hover { background: var(--hover); }
+  .go { color: var(--fg-3); }
+  .wall { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); border: 1px solid var(--border); background: var(--panel); }
+  .logo-tile { display: grid; justify-items: center; gap: 10px; padding: 22px 8px; border-right: 1px solid var(--border-2); border-bottom: 1px solid var(--border-2); text-decoration: none; font-size: 12px; font-weight: 600; color: var(--fg-2); transition: background var(--fast) var(--ease); }
+  .logo-tile:hover { background: var(--hover); color: var(--fg); }
+  .logo-tile img { width: 52px; height: 52px; padding: 8px; object-fit: contain; background: #FFFFFF; border: 1px solid var(--border); }
+  @media (max-width: 900px) { .wall { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
   .pair-item { display: grid; gap: 16px; align-content: start; }
   @media (max-width: 900px) { .pair, .sdk-grid { grid-template-columns: 1fr; } }

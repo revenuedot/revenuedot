@@ -1,0 +1,34 @@
+---
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import CtaBand from "../../components/CtaBand.astro";
+import Md from "../../components/Md.astro";
+import { ERRORS } from "../../data/errors";
+import { itemList, webPage } from "../../lib/jsonld";
+import { ogFor } from "../../lib/og";
+const path = "/errors";
+const title = "RevenueCat SDK error codes, explained";
+const description = `All ${ERRORS.length} RevenueCat SDK error codes (PurchasesErrorCode) with causes, fixes and how to handle each in Swift, Kotlin, React Native and Flutter.`;
+const sorted = [...ERRORS].sort((a, b) => a.code - b.code);
+---
+<Base title="RevenueCat SDK error codes: causes and fixes" description={description} path={path} image={ogFor(path)} imageAlt={title}
+  crumbs={[{ name: "SDK errors", path }]} jsonld={[webPage({ title, description, path }), itemList(title, sorted.map((e) => ({ name: e.swift, path: `/errors/${e.slug}` })))]}>
+  <div class="wrap">
+    <PageHead label="SDK errors" title={title}>
+      <Md class="lede" text={`Every error the RevenueCat SDKs return, by code, with what causes it and how to fix it. The codes are the same whether the SDK talks to RevenueCat or to **RevenueDot**, because RevenueDot answers the same API.`} />
+    </PageHead>
+  </div>
+  <section class="section first tight">
+    <div class="wrap">
+      <div class="table-wrap"><table>
+        <thead><tr><th scope="col">Code</th><th scope="col">iOS</th><th scope="col">Android</th><th scope="col">What it means</th></tr></thead>
+        <tbody>{sorted.map((e) => <tr><th scope="row" class="num-cell">{e.code}</th><td><a href={`/errors/${e.slug}`} class="mono">{e.swift}</a></td><td class="mono small">{e.android === "n/a" ? "—" : e.android}</td><td>{e.name}</td></tr>)}</tbody>
+      </table></div>
+    </div>
+  </section>
+  <CtaBand />
+</Base>
+<style>
+  .mono { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+  a.mono { color: var(--fg); }
+</style>

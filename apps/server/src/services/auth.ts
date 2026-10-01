@@ -19,6 +19,11 @@ export interface KeyAuth {
 }
 
 export const SUBSCRIBER_TOKEN_PREFIX = "rdat_";
+/**
+ * Subscriber tokens: `rdat_…` from the v2 `authenticate` operation, or the JWT access tokens of Auth sign-in (prd/auth),
+ * which the SDK decodes for `rc.app_user_id`. Both are looked up by hash only; a JWT's claims are never trusted.
+ */
+export const isSubscriberToken = (key: string) => key.startsWith(SUBSCRIBER_TOKEN_PREFIX) || /^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(key);
 /** Lifetime of a subscriber access token. RevenueCat calls its tokens short-lived without a number; one hour is ours. */
 export const SUBSCRIBER_TOKEN_TTL_MS = 60 * 60 * 1000;
 
@@ -41,7 +46,7 @@ export async function revokeSubscriberTokens(db: DB, projectId: string, appUserI
 /** Resolves an API key: public app keys (appl_, goog_, test_, rcb_ ...), secret keys (sk_...) or subscriber tokens (rdat_...). */
 export async function resolveKey(db: DB, key: string, now: Date = new Date()): Promise<KeyAuth | null> {
   if (!key) return null;
-  if (key.startsWith(SUBSCRIBER_TOKEN_PREFIX)) {
+  if (isSubscriberToken(key)) {
     const [row] = await db.select({ t: schema.subscriberTokens, app: schema.apps }).from(schema.subscriberTokens)
       .innerJoin(schema.apps, eq(schema.apps.id, schema.subscriberTokens.appId))
       .where(eq(schema.subscriberTokens.hash, await sha256Hex(key))).limit(1);

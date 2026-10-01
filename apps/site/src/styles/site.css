@@ -12,8 +12,8 @@ a:hover { text-decoration-color: var(--fg); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 ::selection { background: var(--accent-wash); }
 code, kbd, pre, .mono { font-family: var(--mono); font-weight: 400; letter-spacing: 0; }
-:not(pre) > code { font-size: .88em; padding: 1px 5px; border: 1px solid var(--border); background: var(--panel); }
-h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: var(--tracking-title); line-height: 1.15; }
+:not(pre) > code { font-size: .88em; padding: 1px 5px; border: 1px solid var(--border); background: var(--panel); overflow-wrap: anywhere; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: var(--tracking-title); line-height: 1.15; overflow-wrap: break-word; }
 p { margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .skip { position: absolute; left: 16px; top: -48px; z-index: 50; background: var(--fg); color: var(--bg); padding: 8px 12px; font-size: 13px; }
@@ -73,13 +73,13 @@ p { margin: 0; }
 .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.cell { padding: 28px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); display: grid; gap: 10px; align-content: start; min-width: 0; }
+.cell { padding: 28px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; min-width: 0; }
 .cell .h3 { font-size: 17px; }
 .cell p { color: var(--fg-2); font-size: 15px; line-height: 1.55; }
 .stat, .cell .stat { color: var(--fg); font: 600 clamp(30px, 3.4vw, 40px)/1.1 var(--font); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; }
 .num, .cell .num { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--fg-3); }
 @media (max-width: 900px) { .cols-3, .cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .cols-2, .cols-3, .cols-4 { grid-template-columns: 1fr; } .cell { padding: 22px 20px; } }
+@media (max-width: 640px) { .cols-2, .cols-3, .cols-4 { grid-template-columns: minmax(0, 1fr); } .cell { padding: 22px 20px; } }
 
 /* Code */
 .code { border: 1px solid var(--border); background: var(--panel); min-width: 0; }
@@ -114,11 +114,11 @@ td.num-cell { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
 .faq { border: 1px solid var(--border); background: var(--panel); }
 .faq details { border-bottom: 1px solid var(--border-2); }
 .faq details:last-child { border-bottom: 0; }
-.faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 16px; padding: 20px 24px; font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+.faq summary { overflow-wrap: anywhere; list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 16px; padding: 20px 24px; font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
 .faq summary::-webkit-details-marker { display: none; }
 .faq summary::after { content: "+"; font-family: var(--mono); color: var(--fg-3); flex: none; }
 .faq details[open] summary::after { content: "−"; }
-.faq .answer { padding: 0 24px 22px; color: var(--fg-2); max-width: 760px; }
+.faq .answer { overflow-wrap: anywhere; padding: 0 24px 22px; color: var(--fg-2); max-width: 760px; }
 @media (max-width: 640px) { .faq summary { padding: 16px; font-size: 15px; } .faq .answer { padding: 0 16px 18px; } }
 
 /* Prose (legal, docs hub, changelog) */
@@ -131,10 +131,10 @@ td.num-cell { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
 .prose strong { color: var(--fg); font-weight: 600; }
 .prose a { color: var(--fg); text-decoration-color: var(--fg-3); }
 .prose .table-wrap { margin: 0 0 16px; }
-.page-head { padding: 40px 0 48px; display: grid; gap: 16px; }
+.page-head { padding: 40px 0 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; overflow-wrap: break-word; }
 .page-head h1 { font-size: clamp(38px, 5.6vw, 64px); line-height: 1.05; letter-spacing: -0.045em; max-width: 900px; }
 @media (max-width: 640px) { .page-head { padding: 28px 0 32px; } }
-.crumbs { padding-top: 40px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-3); }
+.crumbs { padding-top: 40px; display: flex; flex-wrap: wrap; overflow-wrap: anywhere; min-width: 0; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-3); }
 .crumbs a { text-decoration: none; }
 .crumbs a:hover { color: var(--fg); }
 

@@ -9,6 +9,7 @@ import Footer from "../components/Footer.astro";
 import Breadcrumbs from "../components/Breadcrumbs.astro";
 import { SITE, type Crumb, type Faq } from "../site";
 import { organization, website, breadcrumbList, faqPage } from "../lib/jsonld";
+import { ogFor } from "../lib/og";
 
 interface Props {
   title: string;
@@ -21,11 +22,18 @@ interface Props {
   noindex?: boolean;
   /** The whole <title>, when the page builds its own (docs pages with long question titles). */
   fullTitle?: string;
+  /** This page's social card, a 1200x630 PNG under /og (scripts/og.mjs). Defaults to the site card. */
+  image?: string;
+  imageAlt?: string;
 }
 const { title, description, path, crumbs, faq, jsonld = [], ogType = "website", noindex = false } = Astro.props;
 const canonical = new URL(path, SITE.url).href;
 const fullTitle = Astro.props.fullTitle ?? (path === "/" ? title : `${title} | RevenueDot`);
-const ogImage = new URL(SITE.ogImage, SITE.url).href;
+// A page without its own card gets /og/<path>.png when scripts/og.mjs made one, else the site card.
+const image = Astro.props.image ?? ogFor(path);
+const ogImage = new URL(image ?? SITE.ogImage, SITE.url).href;
+const ogAlt = Astro.props.imageAlt ?? (image ? fullTitle : SITE.ogImageAlt);
+const [ogW, ogH] = image ? [1200, 630] : [1280, 640];
 const graph = [organization(), ...(path === "/" ? [website()] : []), ...jsonld];
 if (crumbs?.length) graph.push(breadcrumbList(crumbs));
 if (faq?.length) graph.push(faqPage(faq));
@@ -59,14 +67,14 @@ const ld = JSON.stringify({ "@context": "https://schema.org", "@graph": graph })
   <meta property="og:description" content={description} />
   <meta property="og:url" content={canonical} />
   <meta property="og:image" content={ogImage} />
-  <meta property="og:image:width" content="1280" />
-  <meta property="og:image:height" content="640" />
-  <meta property="og:image:alt" content={SITE.ogImageAlt} />
+  <meta property="og:image:width" content={String(ogW)} />
+  <meta property="og:image:height" content={String(ogH)} />
+  <meta property="og:image:alt" content={ogAlt} />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={fullTitle} />
   <meta name="twitter:description" content={description} />
   <meta name="twitter:image" content={ogImage} />
-  <meta name="twitter:image:alt" content={SITE.ogImageAlt} />
+  <meta name="twitter:image:alt" content={ogAlt} />
   <script type="application/ld+json" is:inline set:html={ld} />
   <slot name="head" />
   {SITE.analyticsToken && (

@@ -1,0 +1,111 @@
+---
+// RevenueDot vs a vendor, or vendor vs vendor with RevenueDot as the third column (src/data/compare.ts).
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import Blocks from "../../components/Blocks.astro";
+import Faq from "../../components/Faq.astro";
+import Related from "../../components/Related.astro";
+import CtaBand from "../../components/CtaBand.astro";
+import Md from "../../components/Md.astro";
+import { COMPARISONS, comparePath } from "../../data";
+import type { ComparePage } from "../../data/types";
+import { md, plain } from "../../lib/md";
+import { ogFor } from "../../lib/og";
+import { webPage } from "../../lib/jsonld";
+import { SITE } from "../../site";
+export function getStaticPaths() {
+  return COMPARISONS.map((page) => ({ params: { slug: page.slug }, props: { page } }));
+}
+const { page } = Astro.props as { page: ComparePage };
+const path = comparePath(page);
+const image = ogFor(path);
+const faq = page.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+const crumb = page.columns.slice(0, page.kind === "vs" ? 2 : 2).join(" vs ");
+const rdCol = page.columns.indexOf("RevenueDot");
+---
+<Base title={page.metaTitle} description={page.metaDescription} path={path} image={image} imageAlt={page.title}
+  crumbs={[{ name: "Compare", path: "/compare" }, { name: crumb, path }]} faq={faq}
+  jsonld={[webPage({ title: page.title, description: page.metaDescription, path, image, about: crumb, modified: undefined })]}>
+  <div class="wrap">
+    <PageHead label="Comparison" title={page.title}>
+      <div class="tldr"><p class="label">The short answer</p><Md text={page.answer} /></div>
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
+      </div>
+    </PageHead>
+  </div>
+
+  <section class="section tight first">
+    <div class="wrap">
+      <div class="grid"><div class={`gi cols-${page.choose.length}`}>
+        {page.choose.map((c) => (
+          <div class={`cell${c.name === "RevenueDot" ? " us" : ""}`}><p class="label">Choose {c.name} if</p><ul class="ticks">{c.reasons.map((r) => <Md as="li" text={r} />)}</ul></div>
+        ))}
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="table">
+    <div class="wrap">
+      <div class="head"><p class="label">Side by side</p><h2 class="h2 sm">{page.columns.join(" vs ")}: feature by feature</h2></div>
+      <div class="table-wrap">
+        <table class="cmp">
+          <thead><tr><th scope="col">Topic</th>{page.columns.map((c, i) => <th scope="col" class={i === rdCol ? "rd" : ""}>{c}</th>)}<th scope="col">Sources</th></tr></thead>
+          <tbody>
+            {page.rows.map((r) => (
+              <tr>
+                <th scope="row">{r.topic}</th>
+                {r.cells.map((c, i) => <td class={i === rdCol ? "rd" : ""} set:html={md(c)} />)}
+                <td class="src">{r.sources.map((s, i) => <>{i > 0 && <br />}<a href={s.url} rel="noopener">{s.label}</a></>)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny caption">Facts about other companies come from their public pages, checked {page.checked}. Tell us about anything out of date at <a href={`mailto:${SITE.email.hello}`}>{SITE.email.hello}</a>.</p>
+    </div>
+  </section>
+
+  {page.price && (
+    <section class="section" id="price">
+      <div class="wrap">
+        <div class="head"><p class="label">Price</p><h2 class="h2 sm">What each costs per month</h2><Md class="lede" text={page.price.intro} /></div>
+        <div class="table-wrap"><table>
+          <thead><tr>{page.price.head.map((h) => <th scope="col">{h}</th>)}</tr></thead>
+          <tbody>{page.price.rows.map((r) => <tr>{r.map((c, i) => i === 0 ? <th scope="row" class="num-cell">{c}</th> : <td class="num-cell">{c}</td>)}</tr>)}</tbody>
+        </table></div>
+        <p class="tiny caption">Sources: {page.price.sources.map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel="noopener">{s.label}</a></>)}. RevenueDot Cloud paid pricing is planned and not yet available.</p>
+      </div>
+    </section>
+  )}
+
+  <Blocks blocks={page.blocks} />
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2 sm">{crumb}: questions people ask</h2></div>
+      <Faq items={faq} open={0} />
+      <p class="tiny caption">RevenueDot is not affiliated with, endorsed by or sponsored by any company named on this page. Names are trademarks of their owners, used only to compare products.</p>
+    </div>
+  </section>
+  <Related items={page.related} />
+  <CtaBand />
+</Base>
+<style>
+  .tldr { border: 1px solid var(--border); border-left: 2px solid var(--accent); background: var(--panel); padding: 20px 24px; display: grid; gap: 8px; max-width: 860px; }
+  .tldr :global(p:last-child) { font-size: 17px; line-height: 1.6; color: var(--fg); }
+  .tldr :global(a) { color: var(--fg); }
+  .us { background: var(--sidebar); }
+  .ticks { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .ticks :global(li) { position: relative; padding-left: 20px; color: var(--fg-2); font-size: 15px; line-height: 1.55; }
+  .ticks :global(li)::before { content: ""; position: absolute; left: 2px; top: .6em; width: 7px; height: 7px; background: var(--fg-3); }
+  .us .ticks :global(li)::before { background: var(--accent); }
+  .cmp td.rd, .cmp th.rd { background: var(--sidebar); }
+  .cmp td { color: var(--fg-2); min-width: 180px; }
+  .cmp td.rd { color: var(--fg); }
+  .cmp :global(a) { color: inherit; }
+  .src { min-width: 120px !important; font-size: 12px; }
+  .src a { color: var(--fg-3) !important; white-space: nowrap; }
+  .caption a { color: var(--fg-2); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+</style>

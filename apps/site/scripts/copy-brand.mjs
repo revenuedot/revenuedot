@@ -1,5 +1,5 @@
 // Copies favicons and the social card from brand/kit into public/ so the brand kit stays the single source.
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,3 +18,12 @@ const files = {
 };
 for (const [from, to] of Object.entries(files)) copyFileSync(path.join(kit, from), path.join(pub, to));
 console.log(`copied ${Object.keys(files).length} brand files into public/`);
+
+// Blog images live next to the posts in the docs repo (blog/assets/<post>/...) and are served from /blog/assets.
+const docs = path.resolve(here, "..", process.env.DOCS_DIR ?? "../../../docs");
+const blogAssets = path.join(docs, "blog/assets");
+rmSync(path.join(pub, "blog"), { recursive: true, force: true });
+if (existsSync(blogAssets)) {
+  cpSync(blogAssets, path.join(pub, "blog/assets"), { recursive: true });
+  console.log("copied blog/assets into public/blog/assets");
+}

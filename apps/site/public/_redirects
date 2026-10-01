@@ -1,8 +1,14 @@
 # Docs URLs used in code, READMEs and API responses that have no page of their own.
 /docs/self-hosting /docs/guides/self-hosting 301
 /docs/mcp /docs/api/extensions#oauth-for-mcp-clients 302
-/compare /revenuedot-vs-revenuecat 301
-/vs/revenuecat /revenuedot-vs-revenuecat 301
+/revenuedot-vs-revenuecat /compare/revenuedot-vs-revenuecat 301
+/vs/revenuecat /compare/revenuedot-vs-revenuecat 301
+/vs/adapty /compare/revenuedot-vs-adapty 301
+/vs/superwall /compare/revenuedot-vs-superwall 301
+/vs/qonversion /compare/revenuedot-vs-qonversion 301
+/alternatives /revenuecat-alternatives 301
+/integration /integrations 301
+/feature /features 301
 /migrate /migrate-from-revenuecat 301
 /legal /legal/terms 301
 /terms /legal/terms 301

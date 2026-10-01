@@ -19,6 +19,8 @@ export interface Package { object: "package"; id: string; lookup_key: string; di
 export interface Offering {
   object: "offering"; id: string; lookup_key: string; display_name: string; is_current: boolean; created_at: number; state: "active" | "inactive";
   metadata: Record<string, unknown> | null; packages?: List<Package>;
+  /** The offering's paywall (API v2 `paywall_id`), when it has one. */
+  paywall_id?: string | null;
 }
 
 /** Reads every page of a v2 list (100 per page). */
