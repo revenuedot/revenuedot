@@ -6,7 +6,7 @@
  * countdown variables are filled with sample prices. Used by the gallery thumbnails and the editor, so both show exactly
  * the JSON that is published.
  */
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Component as ReactComponent, createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { PAYWALL_ICONS, type Json, type PaywallDoc } from "@revenuedot/core";
 
 export interface PreviewState { dark: boolean; locale: string; intro: boolean }
@@ -101,7 +101,8 @@ function fill(text: string, c: Ctx): string {
       const map: Record<string, string> = { count_days_with_zero: two(d), count_days_without_zero: String(d), count_hours_with_zero: two(h), count_hours_without_zero: String(h), count_minutes_with_zero: two(m), count_minutes_without_zero: String(m), count_seconds_with_zero: two(s), count_seconds_without_zero: String(s) };
       v = map[key];
     } else v = product(c.pkg ?? c.selectedPkg)[key];
-    if (v === undefined) return all;
+    // Own keys only: `{{ constructor }}` must stay as typed, not print Object's source.
+    if (typeof v !== "string") return all;
     return fn === "uppercase" ? v.toUpperCase() : fn === "lowercase" ? v.toLowerCase() : fn === "capitalize" ? v.replace(/^./, (x) => x.toUpperCase()) : v;
   });
 }
@@ -200,6 +201,7 @@ function Pickable({ c, style, children, className, tag = "div", onPress }: { c: 
 
 function Stack({ c: raw, dir }: { c: Json; dir: Dir }) {
   const ctx = useC();
+  if (!raw || typeof raw !== "object") return null;
   const c = resolve(raw, ctx);
   if (c.visible === false) return null;
   const d: Json = c.dimension ?? { type: "vertical", alignment: "center", distribution: "start" };
@@ -213,12 +215,12 @@ function Stack({ c: raw, dir }: { c: Json; dir: Dir }) {
   };
   return (
     <Pickable c={c} style={style}>
-      {(c.components ?? []).map((k: Json, i: number) => d.type === "zlayer" ? (
+      {(Array.isArray(c.components) ? c.components : []).map((k: Json, i: number) => d.type === "zlayer" ? (
         // Overlay: every child in the same grid cell; children that fill stretch the cell.
-        <div key={k.id ?? i} style={{ gridArea: "1 / 1", display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%", justifySelf: (k.size ?? k.stack?.size)?.width?.type === "fill" ? "stretch" : undefined, alignSelf: (k.size ?? k.stack?.size)?.height?.type === "fill" ? "stretch" : undefined }}>
+        <div key={k?.id ?? i} style={{ gridArea: "1 / 1", display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%", justifySelf: (k?.size ?? k?.stack?.size)?.width?.type === "fill" ? "stretch" : undefined, alignSelf: (k?.size ?? k?.stack?.size)?.height?.type === "fill" ? "stretch" : undefined }}>
           <Component c={k} dir="vertical" />
         </div>
-      ) : <Component key={k.id ?? i} c={k} dir={d.type} />)}
+      ) : <Component key={k?.id ?? i} c={k} dir={d.type} />)}
       {c.badge && <Badge b={c.badge} />}
     </Pickable>
   );
@@ -421,7 +423,7 @@ function Carousel({ c: raw, dir }: { c: Json; dir: Dir }) {
       {pc?.position === "top" && dots}
       <div ref={ref} style={{ overflow: "hidden", padding: `0 ${peek}px` }}>
         <div style={{ display: "flex", gap, transform: `translateX(calc(${-page} * (100% + ${gap}px)))`, transition: "transform 300ms cubic-bezier(.23,1,.32,1)", alignItems: c.page_alignment === "top" ? "flex-start" : c.page_alignment === "bottom" ? "flex-end" : "center" }}>
-          {pages.map((p, i) => <div key={p.id ?? i} style={{ flex: "0 0 100%", minWidth: 0, display: "flex", flexDirection: "column" }}><Stack c={p} dir="vertical" /></div>)}
+          {pages.map((p, i) => <div key={p?.id ?? i} style={{ flex: "0 0 100%", minWidth: 0, display: "flex", flexDirection: "column" }}><Stack c={p} dir="vertical" /></div>)}
         </div>
       </div>
       {pc?.position !== "top" && dots}
@@ -515,8 +517,29 @@ export interface PhoneProps {
   live?: boolean;
 }
 
+/**
+ * Shows `fallback` instead of unmounting the page when rendering malformed paywall JSON throws (React removes the whole
+ * tree on an uncaught render error). Tries again whenever `reset` changes, so an undo or a fixed JSON brings it back.
+ */
+export class Guard extends ReactComponent<{ reset: unknown; fallback: (e: Error) => ReactNode; children: ReactNode }, { error: Error | null; reset: unknown }> {
+  state = { error: null as Error | null, reset: this.props.reset };
+  static getDerivedStateFromProps(p: { reset: unknown }, s: { reset: unknown }) { return p.reset !== s.reset ? { error: null, reset: p.reset } : null; }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() { return this.state.error ? this.props.fallback(this.state.error) : this.props.children; }
+}
+
 /** A phone frame (390 × 844 points) rendering the paywall: scrolling body, sticky footer, safe areas. */
-export function Phone({ doc, state = {}, width = 320, focus, onPick, selectedPkg, onSelectPkg, label = "Paywall preview", live = true }: PhoneProps) {
+export function Phone(p: PhoneProps) {
+  const width = p.width ?? 320;
+  return (
+    <Guard reset={p.doc} fallback={(e) => (
+      <figure className="pwr-phone" aria-label={p.label ?? "Paywall preview"} style={{ width: width + 16, margin: 0 }}>
+        <div className="pwr-ph" role="alert" style={{ width: width + 16, height: (844 * width) / 390 + 16 }}>The preview cannot show this JSON: {e.message}</div>
+      </figure>
+    )}><PhoneView {...p} /></Guard>
+  );
+}
+function PhoneView({ doc, state = {}, width = 320, focus, onPick, selectedPkg, onSelectPkg, label = "Paywall preview", live = true }: PhoneProps) {
   const W = 390, H = 844, scale = width / W;
   const [ownPkg, setOwnPkg] = useState<string | null>(null);
   const [tabs, setTabs] = useState<Record<string, string>>({});

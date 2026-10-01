@@ -5,7 +5,7 @@
  * `edit(id, mutate)`, which the editor turns into one undo step.
  */
 import { cloneElement, isValidElement, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { PAYWALL_ICONS, PAYWALL_ICON_NAMES, TYPE_LABEL, imageUrls, freshId, type Json, type PaywallDoc } from "@revenuedot/core";
+import { PAYWALL_ICONS, PAYWALL_ICON_NAMES, TYPE_LABEL, copyWithNewIds, imageUrls, freshId, type Json, type PaywallDoc } from "@revenuedot/core";
 import { Icon } from "../../components/icons";
 import { errMsg } from "../catalog/lib";
 import { IconGlyph } from "./render";
@@ -277,7 +277,8 @@ function TextSections({ t, api }: { t: Json; api: PropsApi }) {
   );
 }
 
-function urlString(api: PropsApi, key: string | undefined) { return key ? String(api.doc.components_localizations[api.doc.default_locale]?.[key] ?? "") : ""; }
+/** The URL in the previewed locale (where the field writes), falling back to the default locale's. */
+function urlString(api: PropsApi, key: string | undefined) { return key ? String(api.doc.components_localizations[api.locale]?.[key] ?? api.doc.components_localizations[api.doc.default_locale]?.[key] ?? "") : ""; }
 
 /** The panel for the selected component. */
 export function Props({ c, api, inPackage }: { c: Json; api: PropsApi; inPackage: boolean }) {
@@ -338,7 +339,20 @@ export function Props({ c, api, inPackage }: { c: Json; api: PropsApi; inPackage
             <Sel label="Package" value={c.package_id} options={[...api.packages.map((p) => [p.id, `${p.label} (${p.id})`] as const), ...(api.packages.some((p) => p.id === c.package_id) ? [] : [[c.package_id, `${c.package_id} (not in the offering)`] as const])]} onChange={(v) => e((x) => { x.package_id = v; })} />
           </Row>
           <Row label="Selected"><label className="check"><input type="checkbox" checked={!!c.is_selected_by_default} onChange={(ev) => api.edit(c.id, (x, doc) => {
-            if (ev.target.checked) { const walk = (y: unknown): void => { if (Array.isArray(y)) return y.forEach(walk); if (y && typeof y === "object") { const o = y as Json; if (o.type === "package") o.is_selected_by_default = false; Object.values(o).forEach(walk); } }; walk(doc.components_config); }
+            if (ev.target.checked) {
+              // Each tab opens on its own default package: unselect only the packages in this one's tab (or outside tabs).
+              const all: [Json, unknown][] = [];
+              const walk = (y: unknown, group: unknown): void => {
+                if (Array.isArray(y)) return y.forEach((z) => walk(z, group));
+                if (!y || typeof y !== "object") return;
+                const o = y as Json;
+                if (o.type === "package") all.push([o, group]);
+                for (const [k, v] of Object.entries(o)) { if (o.type === "tabs" && k === "tabs" && Array.isArray(v)) v.forEach((t) => walk(t, t)); else walk(v, group); }
+              };
+              walk(doc.components_config, null);
+              const mine = all.find(([o]) => o === x)?.[1];
+              for (const [o, g] of all) if (g === mine) o.is_selected_by_default = false;
+            }
             x.is_selected_by_default = ev.target.checked;
           })} />Selected when the paywall opens</label></Row>
         </Section>
@@ -449,12 +463,11 @@ export function Props({ c, api, inPackage }: { c: Json; api: PropsApi; inPackage
           <button type="button" className="btn btn-line pf-sm" onClick={() => api.edit(c.id, (x, doc) => {
             const id = freshId(doc, "x");
             const k = freshId(null, "l"); doc.components_localizations[doc.default_locale]![k] = `Tab ${x.tabs.length + 1}`;
-            const copy = JSON.parse(JSON.stringify(x.tabs[x.tabs.length - 1].stack)) as Json;
-            const reid = (y: unknown) => { if (Array.isArray(y)) return y.forEach(reid); if (y && typeof y === "object") { const o = y as Json; if (typeof o.type === "string" && typeof o.id === "string") o.id = freshId(doc, o.id); Object.values(o).forEach(reid); } };
-            reid(copy);
+            // New string keys too, or editing the new tab's texts would change the copied tab's.
+            const copy = copyWithNewIds(doc, x.tabs[x.tabs.length - 1].stack);
             x.tabs.push({ id, name: `Tab ${x.tabs.length + 1}`, stack: copy });
             if (x.control.type === "buttons" && x.control.stack.components[0]) {
-              const b = JSON.parse(JSON.stringify(x.control.stack.components[0])) as Json; reid(b); b.tab_id = id;
+              const b = copyWithNewIds(doc, x.control.stack.components[0]); b.tab_id = id;
               const t0 = (s: Json): Json | null => { for (const q of s.components ?? []) { if (q.type === "text") return q; const r = t0(q); if (r) return r; } return null; };
               const tx = t0(b.stack); if (tx) tx.text_lid = k;
               x.control.stack.components.push(b);
@@ -477,12 +490,8 @@ export function Props({ c, api, inPackage }: { c: Json; api: PropsApi; inPackage
     case "carousel": body = (
       <Section title="Carousel">
         <Row label="Pages"><span className="pf-pair"><b>{c.pages?.length ?? 0}</b>
-          <button type="button" className="btn btn-line pf-sm" onClick={() => api.edit(c.id, (x, doc) => {
-            const copy = JSON.parse(JSON.stringify(x.pages[x.pages.length - 1])) as Json;
-            const reid = (y: unknown) => { if (Array.isArray(y)) return y.forEach(reid); if (y && typeof y === "object") { const o = y as Json; if (typeof o.type === "string" && typeof o.id === "string") o.id = freshId(doc, o.id); for (const [k, v] of Object.entries(o)) { if (k === "text_lid" && typeof v === "string") { const nk = freshId(null, "l"); for (const t of Object.values(doc.components_localizations)) if (v in t) t[nk] = t[v]!; o[k] = nk; } else reid(v); } } };
-            reid(copy); x.pages.push(copy);
-          })}><Icon name="plus" />Add page</button>
-          <button type="button" className="btn btn-line pf-sm" disabled={(c.pages?.length ?? 0) < 2} onClick={() => e((x) => { x.pages.pop(); x.initial_page_index = Math.min(x.initial_page_index, x.pages.length - 1); })}>Remove last</button>
+          <button type="button" className="btn btn-line pf-sm" onClick={() => api.edit(c.id, (x, doc) => { x.pages.push(copyWithNewIds(doc, x.pages[x.pages.length - 1])); })}><Icon name="plus" />Add page</button>
+          <button type="button" className="btn btn-line pf-sm" disabled={(c.pages?.length ?? 0) < 2} onClick={() => e((x) => { x.pages.pop(); x.initial_page_index = Math.min(x.initial_page_index ?? 0, x.pages.length - 1); })}>Remove last</button>
         </span></Row>
         <Row label="Peek"><Num label="Page peek" value={c.page_peek ?? 0} min={0} max={80} onChange={(v) => e((x) => { x.page_peek = Math.round(v); }, `pk${c.id}`)} /></Row>
         <Row label="Spacing"><Num label="Page spacing" value={c.page_spacing ?? 0} min={0} onChange={(v) => e((x) => { x.page_spacing = Math.round(v); }, `ps${c.id}`)} /></Row>
@@ -505,7 +514,7 @@ export function Props({ c, api, inPackage }: { c: Json; api: PropsApi; inPackage
           <Row label="Counts from"><Seg label="Counts from" value={c.count_from} options={[["days", "Days"], ["hours", "Hours"], ["minutes", "Minutes"]]} onChange={(v) => e((x) => { x.count_from = v; })} /></Row>
           <p className="subtle pf-note">Texts inside can use {"{{ count_days_with_zero }}"}, {"{{ count_hours_with_zero }}"}, {"{{ count_minutes_with_zero }}"} and {"{{ count_seconds_with_zero }}"}.</p>
           <Row label="After it ends">{c.end_stack ? <button type="button" className="linkbtn" onClick={() => e((x) => { delete x.end_stack; })}>Remove the “ended” content</button>
-            : <button type="button" className="btn btn-line pf-sm" onClick={() => api.edit(c.id, (x, doc) => { const copy = JSON.parse(JSON.stringify(x.countdown_stack)); const reid = (y: unknown) => { if (Array.isArray(y)) return y.forEach(reid); if (y && typeof y === "object") { const o = y as Json; if (typeof o.type === "string" && typeof o.id === "string") o.id = freshId(doc, o.id); Object.values(o).forEach(reid); } }; reid(copy); x.end_stack = copy; })}>Add “ended” content</button>}</Row>
+            : <button type="button" className="btn btn-line pf-sm" onClick={() => api.edit(c.id, (x, doc) => { x.end_stack = copyWithNewIds(doc, x.countdown_stack); })}>Add “ended” content</button>}</Row>
         </Section>
       );
       break;

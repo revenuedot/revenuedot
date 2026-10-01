@@ -55,9 +55,12 @@ export async function uploadImage(pid: string, file: File): Promise<MediaAsset> 
 export function docOf(p: Paywall): PaywallDoc | null {
   const v = p.components?.draft ?? p.components?.published;
   if (!v?.components_config) return null;
+  const locale = v.default_locale ?? "en_US";
+  const strings = (v.components_localizations ?? {}) as PaywallDoc["components_localizations"];
   return {
     components_config: v.components_config as PaywallDoc["components_config"],
-    components_localizations: (v.components_localizations ?? {}) as PaywallDoc["components_localizations"],
-    default_locale: v.default_locale ?? "en_US",
+    // The editor writes new strings into the default locale's table, so it always has one.
+    components_localizations: locale in strings ? strings : { ...strings, [locale]: {} },
+    default_locale: locale,
   };
 }

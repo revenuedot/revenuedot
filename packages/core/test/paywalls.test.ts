@@ -276,4 +276,77 @@ describe("editor operations", () => {
     // The root cannot move.
     expect(applyOp(rm.doc, { kind: "remove", id: rm.doc.components_config.base.stack.id })).toBeNull();
   });
+  it("duplicates with new string keys (texts and URLs) and leaves the original as the only default package", async () => {
+    const { applyOp, copyWithNewIds, locate } = await import("../src/index.js");
+    const doc = start();
+    const plans = doc.components_config.base.stack.components.find((c: Json) => c.name === "Plans")!;
+    const def = plans.components.find((c: Json) => c.type === "package" && c.is_selected_by_default)!;
+    const d = applyOp(doc, { kind: "duplicate", id: def.id })!;
+    const copy = locate(d.doc, d.select!)!.component;
+    expect(copy.is_selected_by_default).toBe(false);
+    expect(locate(d.doc, def.id)!.component.is_selected_by_default).toBe(true);
+    expect(validatePaywall(d.doc).warnings.filter((w) => /selected by default/.test(w.message))).toEqual([]);
+    const loc = doc.components_localizations.en_US!;
+    loc.u1 = "https://example.com/terms";
+    const btn = { id: "b1", type: "button", action: { type: "navigate_to", destination: "terms", url: { url_lid: "u1", method: "in_app_browser" } }, stack: { id: "s1", type: "stack", components: [{ id: "t1", type: "text", text_lid: "u1" }] } };
+    const c = copyWithNewIds(doc, btn);
+    expect(c.id).not.toBe("b1");
+    expect(c.action.url.url_lid).not.toBe("u1");
+    expect(c.stack.components[0].text_lid).toBe(c.action.url.url_lid);
+    expect(loc[c.action.url.url_lid]).toBe("https://example.com/terms");
+    expect(btn.action.url.url_lid).toBe("u1");
+  });
+  it("never throws on malformed trees: lists that are not lists, null children, tabs without stacks, strings that are objects", async () => {
+    const { applyOp, childGroups, componentLabel, locate } = await import("../src/index.js");
+    const doc = start();
+    const root = doc.components_config.base.stack;
+    root.components.push(null, 5, { id: "bad", type: "stack", components: 7 }, { id: "btn", type: "button" },
+      { id: "tb", type: "tabs", tabs: [null, { id: "x1" }, { id: "x2", stack: { id: "ts", type: "stack", components: [null] } }], control: null },
+      { id: "img", type: "text", text_lid: "obj" }, { id: "pk", type: "package", package_id: { a: 1 } });
+    doc.components_localizations.en_US!.obj = { light: "x" } as never;
+    expect(childGroups({ id: "bad", type: "stack", components: 7 })).toEqual([]);
+    expect(childGroups(null as never)).toEqual([]);
+    expect(childGroups({ type: "tabs", tabs: [null, { id: "x1" }] })).toEqual([]);
+    expect(locate(doc, "ts")!.parent!.id).toBe("tb");
+    expect(locate(doc, "nope")).toBeNull();
+    expect(locate(doc, undefined as never)).toBeNull();
+    for (const c of root.components) expect(typeof componentLabel(c, doc.components_localizations.en_US!)).toBe("string");
+    expect(componentLabel(null as never, {})).toBe("");
+    expect(applyOp(doc, { kind: "insert", component: { id: "n1", type: "text", text_lid: "x" }, targetId: "bad", position: "inside" })!.select).toBe("n1");
+    expect(applyOp(doc, { kind: "insert", component: { id: "n2", type: "text", text_lid: "x" }, targetId: "btn", position: "inside" })!.select).toBe("n2");
+    expect(locate(applyOp(doc, { kind: "into", id: "img" })!.doc, "img")!.parentStack!.id).toBe("ts");
+    expect(applyOp(doc, { kind: "into", id: "pk" })).toBeNull();
+    expect(applyOp(doc, { kind: "moveTo", id: "img", targetId: "ts", position: "inside" })!.select).toBe("img");
+    expect(applyOp(doc, { kind: "duplicate", id: "tb" })).not.toBeNull();
+  });
+  it("edits inside a sticky footer that has no type (as the SDK decodes it)", async () => {
+    const { applyOp, locate } = await import("../src/index.js");
+    const doc = start();
+    const f = doc.components_config.base.sticky_footer!;
+    delete f.type;
+    const first = f.stack.components[0];
+    expect(locate(doc, first.id)!.list).toBe(f.stack.components);
+    const r = applyOp(doc, { kind: "insert", component: { id: "n1", type: "text", text_lid: "x" }, targetId: f.id, position: "inside" })!;
+    expect(locate(r.doc, "n1")!.parentStack!.id).toBe(f.stack.id);
+    expect(applyOp(r.doc, { kind: "out", id: "n1" })).toBeNull();
+  });
+  it("tells which documents the editor cannot open, without recursing", async () => {
+    const { docShapeError, MAX_PAYWALL_DEPTH } = await import("../src/index.js");
+    const ok = start();
+    expect(docShapeError(ok)).toBeNull();
+    const bad = (f: (d: Json) => void) => { const d = clone(ok) as Json; f(d); return docShapeError(d); };
+    expect(docShapeError(null)).toMatch(/object/);
+    expect(docShapeError([])).toMatch(/object/);
+    expect(bad((d) => { delete d.components_config; })).toMatch(/base/);
+    expect(bad((d) => { d.components_config.base = 3; })).toMatch(/base/);
+    expect(bad((d) => { d.components_config.base.stack = null; })).toMatch(/stack/);
+    expect(bad((d) => { d.components_config.base.stack.components = {}; })).toMatch(/components list/);
+    expect(bad((d) => { d.components_config.base.sticky_footer = "x"; })).toMatch(/sticky_footer/);
+    expect(bad((d) => { d.components_config.base.sticky_footer = null; })).toBeNull();
+    expect(bad((d) => { d.components_localizations = null; })).toMatch(/components_localizations/);
+    expect(bad((d) => { d.components_localizations.fr_FR = "x"; })).toMatch(/components_localizations/);
+    expect(bad((d) => { d.default_locale = 7; })).toMatch(/default_locale/);
+    // Deeper than any call stack: refused without overflowing.
+    expect(bad((d) => { let s = d.components_config.base.stack; for (let i = 0; i < 100_000; i++) { const n = { id: `s${i}`, type: "stack", components: [] }; s.components.push(n); s = n; } })).toMatch(String(MAX_PAYWALL_DEPTH));
+  });
 });

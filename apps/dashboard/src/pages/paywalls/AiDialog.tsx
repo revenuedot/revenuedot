@@ -6,13 +6,23 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PaywallDoc } from "@revenuedot/core";
-import { api } from "../../lib/api";
+import { ApiError, api } from "../../lib/api";
 import { Dialog, Field, useToast } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2, type Offering } from "../catalog/lib";
 import { Phone } from "./render";
 import { OfferingField } from "./Paywalls";
 import type { Generation, Paywall } from "./lib";
+
+/** The server explains its own 429 and 502 answers; a gateway's HTML error page or a dropped connection gets a plain sentence. */
+const aiError = (e: unknown) => {
+  if (e instanceof ApiError && (typeof e.body !== "object" || e.body === null)) {
+    if (e.status === 429) return "Too many generations right now. Wait a minute and try again.";
+    if (e.status >= 500) return "The AI service did not answer. Try again in a moment.";
+  }
+  if (e instanceof TypeError) return "The request did not reach the server. Check your connection and try again.";
+  return errMsg(e);
+};
 
 const EXAMPLES = [
   "A calm sleep and meditation app. Explain the 7-day free trial, yearly plan first.",
@@ -41,7 +51,7 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
     try {
       const g = await api<Generation>(`${v2(pid)}/paywalls/generate`, { method: "POST", json: { prompt: prompt.trim(), ...(app.trim() ? { app_name: app.trim() } : {}), ...(colors.length ? { brand_colors: colors } : {}), ...(offering ? { offering_id: offering } : {}) } });
       setOut(g);
-    } catch (e) { setErr(errMsg(e)); }
+    } catch (e) { setErr(aiError(e)); }
     setBusy(null);
   };
   const doc = out ? { components_config: out.components_config, components_localizations: out.components_localizations, default_locale: out.default_locale } as PaywallDoc : null;

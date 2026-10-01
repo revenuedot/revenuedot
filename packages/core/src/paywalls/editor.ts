@@ -8,23 +8,32 @@ import { FILL, FIT, PILL, ZERO, colorBg, fixed, imageUrls, pad, rounded, scheme,
 /** A list of children inside a component: the stack whose `components` hold them, and a label when it is not the only one. */
 export interface ChildGroup { label: string | null; stack: Json; role: "content" | "tab" | "page" | "control" | "counting" | "ended" }
 
+const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.isArray(v);
+/** A stack whose children can be listed; malformed ones (no components list) count as leaves so callers never crash on them. */
+const isStack = (v: unknown): v is Json => isObj(v) && Array.isArray(v.components);
+
 /** Containers and where their children live. Leaves return []. */
 export function childGroups(c: Json): ChildGroup[] {
-  switch (c?.type) {
-    case "stack": return [{ label: null, stack: c, role: "content" }];
-    case "button": case "package": case "purchase_button": case "sticky_footer": case "tab_control_button": case "footer":
-      return c.stack ? [{ label: null, stack: c.stack, role: "content" }] : [];
-    case "tabs": return [
-      ...(Array.isArray(c.tabs) ? c.tabs.map((t: Json) => ({ label: `Tab · ${t.name ?? t.id}`, stack: t.stack, role: "tab" as const })) : []),
-      ...(c.control?.stack ? [{ label: "Tab control", stack: c.control.stack, role: "control" as const }] : []),
-    ];
-    case "carousel": return Array.isArray(c.pages) ? c.pages.map((p: Json, i: number) => ({ label: `Page ${i + 1}`, stack: p, role: "page" as const })) : [];
-    case "countdown": return [
-      ...(c.countdown_stack ? [{ label: "While counting", stack: c.countdown_stack, role: "counting" as const }] : []),
-      ...(c.end_stack ? [{ label: "After it ends", stack: c.end_stack, role: "ended" as const }] : []),
-    ];
-    default: return [];
-  }
+  if (!isObj(c)) return [];
+  const groups: (ChildGroup | null)[] = (() => {
+    switch (c.type) {
+      case "stack": return [{ label: null, stack: c, role: "content" as const }];
+      // No type: the base's sticky footer as the SDK decodes it (only `stack` is required there).
+      case "button": case "package": case "purchase_button": case "sticky_footer": case "tab_control_button": case "footer": case undefined:
+        return [{ label: null, stack: c.stack, role: "content" as const }];
+      case "tabs": return [
+        ...(Array.isArray(c.tabs) ? c.tabs.map((t: Json) => (isObj(t) ? { label: `Tab · ${t.name ?? t.id}`, stack: t.stack, role: "tab" as const } : null)) : []),
+        { label: "Tab control", stack: c.control?.stack, role: "control" as const },
+      ];
+      case "carousel": return Array.isArray(c.pages) ? c.pages.map((p: Json, i: number) => ({ label: `Page ${i + 1}`, stack: p, role: "page" as const })) : [];
+      case "countdown": return [
+        { label: "While counting", stack: c.countdown_stack, role: "counting" as const },
+        { label: "After it ends", stack: c.end_stack, role: "ended" as const },
+      ];
+      default: return [];
+    }
+  })();
+  return groups.filter((g): g is ChildGroup => !!g && isStack(g.stack));
 }
 
 export interface Located { component: Json; list: Json[] | null; index: number; parent: Json | null; parentStack: Json | null }
@@ -37,11 +46,12 @@ export function roots(doc: PaywallDoc): Json[] {
 
 /** Finds a component by id anywhere in the paywall, with the list it sits in. */
 export function locate(doc: PaywallDoc, id: string): Located | null {
+  if (typeof id !== "string") return null;
   const visit = (c: Json, list: Json[] | null, index: number, parent: Json | null, parentStack: Json | null): Located | null => {
     if (c?.id === id) return { component: c, list, index, parent, parentStack };
     for (const g of childGroups(c)) {
       if (g.stack !== c && g.stack?.id === id) return { component: g.stack, list: null, index: -1, parent: c, parentStack: null };
-      const kids: Json[] = g.stack?.components ?? [];
+      const kids: Json[] = g.stack.components;
       for (let i = 0; i < kids.length; i++) { const r = visit(kids[i]!, kids, i, c, g.stack); if (r) return r; }
     }
     return null;
@@ -58,8 +68,11 @@ export function freshId(doc: PaywallDoc | null, prefix = "c") {
   }
 }
 
-/** Gives every component in `c` (and its overrides' text keys) new ids and new string keys, copying the strings in every locale. */
-function reId(doc: PaywallDoc, c: Json): Json {
+/**
+ * A copy of `c` for the same paywall: every component gets a new id and every text and URL key a new key with the
+ * strings copied in every locale (`doc` is mutated), so editing the copy's text never changes the original's.
+ */
+export function copyWithNewIds(doc: PaywallDoc, c: Json): Json {
   const copy = JSON.parse(JSON.stringify(c)) as Json;
   const keyMap = new Map<string, string>();
   const walk = (x: unknown) => {
@@ -117,7 +130,14 @@ export function applyOp(src: PaywallDoc, op: Op): { doc: PaywallDoc; select: str
   const { list, index, component } = at;
   switch (op.kind) {
     case "remove": list.splice(index, 1); return { doc, select: list[Math.min(index, list.length - 1)]?.id ?? at.parentStack?.id ?? at.parent?.id ?? null };
-    case "duplicate": { const copy = reId(doc, component); list.splice(index + 1, 0, copy); return { doc, select: copy.id }; }
+    case "duplicate": {
+      const copy = copyWithNewIds(doc, component);
+      // The original stays the default package; two defaults in one list are a validation warning.
+      const unselect = (x: unknown): void => { if (Array.isArray(x)) return x.forEach(unselect); if (isObj(x)) { if (x.type === "package" && x.is_selected_by_default) x.is_selected_by_default = false; Object.values(x).forEach(unselect); } };
+      unselect(copy);
+      list.splice(index + 1, 0, copy);
+      return { doc, select: copy.id };
+    }
     case "move": {
       const to = index + op.delta;
       if (to < 0 || to >= list.length) return null;
@@ -132,7 +152,7 @@ export function applyOp(src: PaywallDoc, op: Op): { doc: PaywallDoc; select: str
       return { doc, select: component.id };
     }
     case "out": {
-      if (!at.parent) return null;
+      if (typeof at.parent?.id !== "string") return null;
       const up = locate(doc, at.parent.id);
       if (!up?.list) return null;
       list.splice(index, 1); up.list.splice(up.index + 1, 0, component);
@@ -141,7 +161,7 @@ export function applyOp(src: PaywallDoc, op: Op): { doc: PaywallDoc; select: str
     case "moveTo": {
       if (op.targetId === op.id) return null;
       // Never into itself or its own children.
-      const inside = (c: Json): boolean => c.id === op.targetId || childGroups(c).some((g) => g.stack.id === op.targetId || g.stack.components.some(inside));
+      const inside = (c: Json): boolean => c?.id === op.targetId || childGroups(c).some((g) => g.stack.id === op.targetId || g.stack.components.some(inside));
       if (inside(component)) return null;
       list.splice(index, 1);
       const t = locate(doc, op.targetId);
@@ -257,26 +277,54 @@ export function newComponent(type: AddableType, ctx: NewComponentContext): Json 
 
 /** A short label for a component in the tree: its text, package, icon or name. */
 export function componentLabel(c: Json, strings: Record<string, unknown>): string {
+  if (!isObj(c)) return "";
   if (typeof c.name === "string" && c.name) return c.name;
+  // Strings can also hold image sources, and pasted JSON can put anything anywhere: a label is always a string.
+  const s = (v: unknown) => (typeof v === "string" ? v : "");
   const firstText = (x: Json): string | null => {
     if (x?.type === "text" && typeof strings[x.text_lid] === "string") return strings[x.text_lid] as string;
-    for (const g of childGroups(x)) for (const k of g.stack.components ?? []) { const t = firstText(k); if (t) return t; }
+    for (const g of childGroups(x)) for (const k of g.stack.components) { const t = firstText(k); if (t) return t; }
     return null;
   };
   switch (c.type) {
-    case "text": return (strings[c.text_lid] as string | undefined) ?? "Text";
-    case "package": return c.package_id;
-    case "icon": return c.icon_name;
+    case "text": return typeof strings[c.text_lid] === "string" ? (strings[c.text_lid] as string) : "Text";
+    case "package": return s(c.package_id);
+    case "icon": return s(c.icon_name);
     case "image": return "Image";
-    case "timeline": return `${c.items?.length ?? 0} steps`;
-    case "tabs": return (c.tabs ?? []).map((t: Json) => t.name ?? t.id).join(" · ");
-    case "carousel": return `${c.pages?.length ?? 0} pages`;
-    case "countdown": return `until ${String(c.style?.date ?? "").slice(0, 10)}`;
-    case "video": case "web_view": return c.url || c.source?.light?.url || "no URL";
+    case "timeline": return `${Array.isArray(c.items) ? c.items.length : 0} steps`;
+    case "tabs": return (Array.isArray(c.tabs) ? c.tabs : []).filter(isObj).map((t: Json) => s(t.name) || s(t.id)).join(" · ");
+    case "carousel": return `${Array.isArray(c.pages) ? c.pages.length : 0} pages`;
+    case "countdown": return `until ${s(c.style?.date).slice(0, 10)}`;
+    case "video": case "web_view": return s(c.url) || s(c.source?.light?.url) || "no URL";
     case "button": return firstText(c) ?? (c.action?.type === "restore_purchases" ? "Restore" : "Button");
     case "purchase_button": return firstText(c) ?? "Purchase";
     default: return firstText(c) ?? "";
   }
+}
+
+/** Deeper nesting (objects and arrays) is refused: real paywalls stay far below it, and the editor and preview recurse. */
+export const MAX_PAYWALL_DEPTH = 200;
+
+/**
+ * Why the editor cannot open `x`, or null: the base, its stack, the strings or the default locale have the wrong shape,
+ * or the components nest deeper than MAX_PAYWALL_DEPTH. The validator reports everything else.
+ */
+export function docShapeError(x: unknown): string | null {
+  if (!isObj(x)) return "The JSON must be an object with components_config, components_localizations and default_locale.";
+  const base = isObj(x.components_config) ? x.components_config.base : undefined;
+  if (!isObj(base)) return "components_config.base must be an object with a stack and a background.";
+  if (!isStack(base.stack)) return "components_config.base.stack must be a stack with a components list.";
+  if (base.sticky_footer !== undefined && base.sticky_footer !== null && !isObj(base.sticky_footer)) return "components_config.base.sticky_footer must be an object with a stack, or null.";
+  if (!isObj(x.components_localizations) || !Object.values(x.components_localizations).every(isObj)) return "components_localizations must map each locale to an object of strings.";
+  if (typeof x.default_locale !== "string" || !x.default_locale) return "default_locale must be a locale such as en_US.";
+  // Iterative, so a very deep document cannot overflow the stack here.
+  const todo: [unknown, number][] = [[x.components_config, 1]];
+  while (todo.length) {
+    const [v, depth] = todo.pop()!;
+    if (depth > MAX_PAYWALL_DEPTH) return `The components nest more than ${MAX_PAYWALL_DEPTH} levels deep.`;
+    for (const k of Object.values(v as object)) if (k && typeof k === "object") todo.push([k, depth + 1]);
+  }
+  return null;
 }
 
 export const TYPE_LABEL: Record<string, string> = {

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ADDABLE_TYPES, PAYWALL_LOCALES, TYPE_LABEL, applyOp, childGroups, componentLabel, locate, newComponent, roots, validatePaywall,
+  ADDABLE_TYPES, PAYWALL_LOCALES, TYPE_LABEL, applyOp, childGroups, componentLabel, docShapeError, locate, newComponent, roots, validatePaywall,
   type AddableType, type Json, type Op, type PaywallDoc, type PaywallIssue,
 } from "@revenuedot/core";
 import { api, type List } from "../../lib/api";
@@ -17,7 +17,7 @@ import { Shell } from "../../components/Shell";
 import { ConfirmDialog, Dialog, Field, Menu, Switch, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2 } from "../catalog/lib";
-import { Phone, stringsFor } from "./render";
+import { Guard, Phone, stringsFor } from "./render";
 import { Props, type PropsApi } from "./Props";
 import { AiDialog } from "./AiDialog";
 import { DropButton } from "./Paywalls";
@@ -27,9 +27,14 @@ type View = "design" | "localizations" | "json";
 interface History { past: PaywallDoc[]; future: PaywallDoc[]; mergeKey: string | null; mergeAt: number }
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
+/** Keyed by the paywall, so opening another one (Duplicate navigates to the copy) starts from its own document and history. */
 export function PaywallEditor() {
-  const pid = useProjectId();
   const { paywallId = "" } = useParams();
+  return <Editor key={paywallId} paywallId={paywallId} />;
+}
+
+function Editor({ paywallId }: { paywallId: string }) {
+  const pid = useProjectId();
   const nav = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
@@ -41,6 +46,8 @@ export function PaywallEditor() {
   const [name, setName] = useState("");
   const [rev, setRev] = useState(0);
   const [dirty, setDirty] = useState(false);
+  // Counts edits, so a save that finishes after more typing does not mark those edits saved.
+  const edits = useRef(0);
   const hist = useRef<History>({ past: [], future: [], mergeKey: null, mergeAt: 0 });
   const [, force] = useState(0);
   const [sel, setSel] = useState<string | null>(null);
@@ -64,14 +71,18 @@ export function PaywallEditor() {
   useEffect(() => {
     if (!pw.data || doc) return;
     const d = docOf(pw.data);
-    if (d) { setDoc(d); setLocale(d.default_locale); setSel(d.components_config.base.stack?.id ?? null); }
+    if (d) { setDoc(d); setLocale(d.default_locale); setSel(d.components_config?.base?.stack?.id ?? null); }
     setName(pw.data.name ?? ""); setRev(pw.data.revision);
   }, [pw.data, doc]);
 
   const offering = offs.data?.find((o) => o.id === pw.data?.offering_id) ?? null;
   const packages = packageIds(offering);
   const iconBase = tpl.data?.icon_base_url ?? `${location.origin}/assets/icons`;
-  const validation = useMemo(() => (doc ? validatePaywall(doc, { packages: packages.length ? packages.map((p) => p.id) : undefined }) : null), [doc, JSON.stringify(packages)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A document the designer cannot show (wrong shape, too deep) opens in the JSON tab only.
+  const broken = useMemo(() => (doc ? docShapeError(doc) : null), [doc]);
+  const validation = useMemo(() => (doc && !broken ? validatePaywall(doc, { packages: packages.length ? packages.map((p) => p.id) : undefined }) : null), [doc, broken, JSON.stringify(packages)]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Applied JSON, an AI draft, a restored version or a removed language can drop the previewed locale; editing it would create a partial one.
+  useEffect(() => { if (doc && !broken && !doc.components_localizations[locale]) setLocale(doc.default_locale); }, [doc, broken, locale]);
 
   /** One undo step; `merge` coalesces quick successive edits of the same field (typing). */
   const commit = useCallback((next: PaywallDoc, merge?: string, select?: string | null) => {
@@ -83,12 +94,12 @@ export function PaywallEditor() {
       h.future = []; h.mergeKey = merge ?? null; h.mergeAt = now;
       return next;
     });
-    setDirty(true);
+    setDirty(true); edits.current++;
     if (select !== undefined) setSel(select);
     force((x) => x + 1);
   }, []);
-  const undo = useCallback(() => { const h = hist.current; if (!h.past.length || !doc) return; h.future.push(doc); setDoc(h.past.pop()!); h.mergeKey = null; setDirty(true); force((x) => x + 1); }, [doc]);
-  const redo = useCallback(() => { const h = hist.current; if (!h.future.length || !doc) return; h.past.push(doc); setDoc(h.future.pop()!); h.mergeKey = null; setDirty(true); force((x) => x + 1); }, [doc]);
+  const undo = useCallback(() => { const h = hist.current; if (!h.past.length || !doc) return; h.future.push(doc); setDoc(h.past.pop()!); h.mergeKey = null; setDirty(true); edits.current++; force((x) => x + 1); }, [doc]);
+  const redo = useCallback(() => { const h = hist.current; if (!h.future.length || !doc) return; h.past.push(doc); setDoc(h.future.pop()!); h.mergeKey = null; setDirty(true); edits.current++; force((x) => x + 1); }, [doc]);
   const op = useCallback((o: Op) => { if (!doc) return; const r = applyOp(doc, o); if (r) commit(r.doc, undefined, r.select); }, [doc, commit]);
 
   const propsApi: PropsApi | null = doc ? {
@@ -129,9 +140,10 @@ export function PaywallEditor() {
   const save = async (): Promise<boolean> => {
     if (!doc || !pw.data) return false;
     setErr(null);
+    const at = edits.current;
     try {
       const r = await api<Paywall>(`${v2(pid)}/paywalls/${paywallId}`, { method: "PATCH", json: { revision: rev, components_config: doc.components_config, components_localizations: doc.components_localizations, default_locale: doc.default_locale, name: name.trim() || null } });
-      setRev(r.revision); setDirty(false);
+      setRev(r.revision); if (edits.current === at) setDirty(false);
       await qc.invalidateQueries({ queryKey: ["paywalls", pid] });
       return true;
     } catch (e) { setErr(errMsg(e)); return false; }
@@ -157,16 +169,20 @@ export function PaywallEditor() {
   });
 
   const p = pw.data;
-  const strings = doc ? stringsFor(doc, locale) : {};
-  const selected = doc && sel ? locate(doc, sel) : null;
-  const inPackage = !!(doc && sel && (() => { let found = false; const walk = (c: Json, inside: boolean): void => { if (c.id === sel) found = found || inside; for (const g of childGroups(c)) { if (g.stack.id === sel && (inside || c.type === "package" || c.type === "tab_control_button")) found = true; for (const k of g.stack.components ?? []) walk(k, inside || c.type === "package" || c.type === "tab_control_button"); } }; roots(doc).forEach((r) => walk(r, false)); return found; })());
-  const locales = doc ? Object.keys(doc.components_localizations) : [];
+  const strings = doc && !broken ? stringsFor(doc, locale) : {};
+  const selected = doc && !broken && sel ? locate(doc, sel) : null;
+  const inPackage = !!(doc && !broken && sel && (() => { let found = false; const walk = (c: Json, inside: boolean): void => { if (!c || typeof c !== "object") return; if (c.id === sel) found = found || inside; for (const g of childGroups(c)) { if (g.stack.id === sel && (inside || c.type === "package" || c.type === "tab_control_button")) found = true; for (const k of g.stack.components ?? []) walk(k, inside || c.type === "package" || c.type === "tab_control_button"); } }; roots(doc).forEach((r) => walk(r, false)); return found; })());
+  const locales = doc && !broken ? Object.keys(doc.components_localizations) : [];
   const problems = validation ? [...validation.errors.map((x) => ({ ...x, level: "error" as const })), ...validation.warnings.map((x) => ({ ...x, level: "warning" as const }))] : [];
   const free = (offs.data ?? []).filter((o) => o.id === p?.offering_id);
 
   const menu: (MenuItem | "-")[] = [
     { label: "Save a version…", icon: "archive", onSelect: () => setVersionsOpen(true) },
-    { label: "Duplicate", icon: "copy", onSelect: async () => { const d = await api<Paywall>(`${v2(pid)}/paywalls/${paywallId}/actions/duplicate`, { method: "POST", json: {} }); toast("Duplicated"); nav(`/projects/${pid}/paywalls/${d.id}`); } },
+    // The copy is made from the saved draft, so unsaved edits are saved first.
+    { label: "Duplicate", icon: "copy", onSelect: () => run("duplicate", async () => {
+      if (dirty && !(await save())) return;
+      try { const d = await api<Paywall>(`${v2(pid)}/paywalls/${paywallId}/actions/duplicate`, { method: "POST", json: {} }); toast("Duplicated"); nav(`/projects/${pid}/paywalls/${d.id}`); } catch (e) { setErr(errMsg(e)); }
+    }) },
     ...(p?.published_at ? [{ label: "Unpublish", icon: "archive", onSelect: () => setConfirm("unpublish") } as MenuItem] : []),
     "-", { label: "Delete", icon: "trash", danger: true, onSelect: () => setConfirm("delete") },
   ];
@@ -176,7 +192,7 @@ export function PaywallEditor() {
       <div className="pe">
         <div className="pe-head">
           <div className="pe-title">
-            <input className="pe-name" aria-label="Paywall name" value={name} placeholder="Untitled paywall" onChange={(e) => { setName(e.target.value); setDirty(true); }} />
+            <input className="pe-name" aria-label="Paywall name" value={name} placeholder="Untitled paywall" onChange={(e) => { setName(e.target.value); setDirty(true); edits.current++; }} />
             <div className="pe-meta">
               {p && (() => { const [t, tone] = status(p); return <Tag tone={dirty ? "gold" : tone}>{dirty ? "Unsaved changes" : t}</Tag>; })()}
               {offering ? <span className="subtle">Offering <code>{offering.lookup_key}</code> · {packages.length} package{packages.length === 1 ? "" : "s"}</span>
@@ -206,16 +222,19 @@ export function PaywallEditor() {
               <Icon name={validation && !validation.valid ? "warn" : "check"} />{problems.length ? `${problems.length} problem${problems.length === 1 ? "" : "s"}` : "No problems"}
             </button>
           </div>} />
+        {broken && <div className="banner err" role="alert">The designer cannot show this paywall: {broken} Fix the JSON below, or press Repair.</div>}
         {problemsOpen && <Problems items={problems} onGo={(id) => { setSel(id); setView("design"); }} onClose={() => setProblemsOpen(false)} />}
         {pw.isError ? <div className="banner err" role="alert">The paywall could not be loaded: {errMsg(pw.error)}</div>
           : !doc || !propsApi ? <div className="panel pb subtle">{pw.data && !docOf(pw.data) ? "This paywall has no components." : "Loading…"}</div>
-          : view === "design" ? (
+          : view === "design" && !broken ? (
             <div className="pe-grid">
               <section className="panel pe-tree" aria-label="Layers">
                 <div className="pe-ph"><span className="label">Layers</span>
                   <DropButton label="Add" className="btn btn-line pe-add" items={ADDABLE_TYPES.map((t) => ({ label: TYPE_LABEL[t]!, onSelect: () => add(t), disabled: t === "sticky_footer" && !!doc.components_config.base.sticky_footer }))} />
                 </div>
-                <Tree doc={doc} strings={strings} sel={sel} onSel={setSel} op={op} />
+                <Guard reset={doc} fallback={(e) => <p className="subtle pf-note" role="alert">The layers cannot be shown: {e.message} Undo, or fix it in the JSON tab.</p>}>
+                  <Tree doc={doc} strings={strings} sel={sel} onSel={setSel} op={op} />
+                </Guard>
               </section>
               <section className="pe-stage" aria-label="Preview">
                 <div className="pe-pkgs" role="group" aria-label="Preview package">
@@ -230,14 +249,17 @@ export function PaywallEditor() {
                 <p className="subtle pe-cap">Sample prices. Devices show the store's local price.</p>
               </section>
               <section className="panel pe-props" aria-label="Properties">
-                {selected ? <Props key={selected.component.id} c={selected.component} api={propsApi} inPackage={inPackage} />
-                  : <Background doc={doc} api={propsApi} commit={commit} />}
+                <Guard reset={doc} fallback={(e) => <p className="subtle pf-note" role="alert">These properties cannot be shown: {e.message} Undo, or fix it in the JSON tab.</p>}>
+                  {selected ? <Props key={selected.component.id} c={selected.component} api={propsApi} inPackage={inPackage} />
+                    : <Background doc={doc} api={propsApi} commit={commit} />}
+                </Guard>
               </section>
             </div>
-          ) : view === "localizations" ? <Localizations doc={doc} commit={commit} />
-          : <JsonView pid={pid} doc={doc} offeringId={p?.offering_id ?? null} commit={commit} />}
+          ) : <Guard reset={doc} fallback={(e) => <div className="banner err" role="alert">This view cannot show the paywall: {e.message}</div>}>
+            {view === "localizations" && !broken ? <Localizations doc={doc} commit={commit} /> : <JsonView pid={pid} doc={doc} offeringId={p?.offering_id ?? null} commit={commit} />}
+          </Guard>}
       </div>
-      {aiOpen && <AiDialog pid={pid} offerings={free} fixedOffering={offering} onClose={() => setAiOpen(false)} onApply={(d, n) => { commit(d, undefined, d.components_config.base.stack.id); if (n && !name) setName(n); toast("AI draft applied. Undo brings back the previous one."); }} />}
+      {aiOpen && <AiDialog pid={pid} offerings={free} fixedOffering={offering} onClose={() => setAiOpen(false)} onApply={(d, n) => { commit(d, undefined, d.components_config?.base?.stack?.id ?? null); if (n && !name) setName(n); toast("AI draft applied. Undo brings back the previous one."); }} />}
       {versionsOpen && <Versions pid={pid} paywallId={paywallId} onClose={() => setVersionsOpen(false)} beforeSave={async () => (dirty ? save() : true)}
         onRestored={async () => { const r = await pw.refetch(); const d = r.data ? docOf(r.data) : null; if (d) { commit(d); setRev(r.data!.revision); setDirty(false); } toast("Version restored into the draft"); }} />}
       {confirm === "delete" && <ConfirmDialog title="Delete this paywall?" confirmLabel="Delete paywall" danger onClose={() => setConfirm(null)} onConfirm={async () => {
@@ -293,6 +315,7 @@ interface Row { id: string; depth: number; c: Json; label: string; type: string;
 function flatten(doc: PaywallDoc, strings: Record<string, unknown>): Row[] {
   const out: Row[] = [];
   const visit = (c: Json, depth: number, movable: boolean) => {
+    if (!c || typeof c !== "object") return;
     out.push({ id: c.id, depth, c, label: componentLabel(c, strings), type: c.type, movable, container: childGroups(c).length > 0 });
     for (const g of childGroups(c)) {
       if (g.label && g.stack.id !== c.id) {
@@ -436,10 +459,16 @@ function JsonView({ pid, doc, offeringId, commit }: { pid: string; doc: PaywallD
   const [msg, setMsg] = useState<{ tone: "err" | "ok"; text: string; fixes?: string[] } | null>(null);
   useEffect(() => { setText(JSON.stringify(doc, null, 2)); }, [doc]);
   const parse = (): PaywallDoc | null => {
-    try { const x = JSON.parse(text); if (!x?.components_config) throw new Error("The JSON needs components_config, components_localizations and default_locale."); return { components_config: x.components_config, components_localizations: x.components_localizations ?? {}, default_locale: x.default_locale ?? "en_US" }; }
+    try { const x = JSON.parse(text); if (!x || typeof x !== "object" || !x.components_config) throw new Error("The JSON needs components_config, components_localizations and default_locale."); return { components_config: x.components_config, components_localizations: x.components_localizations ?? {}, default_locale: x.default_locale ?? "en_US" }; }
     catch (e) { setMsg({ tone: "err", text: errMsg(e) }); return null; }
   };
-  const apply = () => { const d = parse(); if (d) { commit(d); setMsg({ tone: "ok", text: "Applied. Undo brings back the previous version." }); } };
+  const apply = () => {
+    const d = parse(); if (!d) return;
+    const bad = docShapeError(d);
+    if (bad) { setMsg({ tone: "err", text: `Not applied: ${bad} Fix it, or press Repair.` }); return; }
+    if (!(d.default_locale in d.components_localizations)) d.components_localizations = { ...d.components_localizations, [d.default_locale]: {} };
+    commit(d); setMsg({ tone: "ok", text: "Applied. Undo brings back the previous version." });
+  };
   const repair = async () => {
     const d = parse(); if (!d) return;
     try {
