@@ -8,6 +8,7 @@
     "build": "node scripts/copy-brand.mjs && astro build && pagefind --site dist --output-subdir pagefind",
     "preview": "astro preview --port 4322",
     "check": "node scripts/check-site.mjs",
+    "indexnow": "node scripts/indexnow.mjs",
     "deploy": "node scripts/deploy.mjs",
     "shots": "node scripts/shoot-site.mjs",
     "capture": "node scripts/capture-screens.mjs"
