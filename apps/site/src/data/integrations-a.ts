@@ -565,7 +565,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     ],
     partner: [
       { label: "Meta Ads", url: "https://www.facebook.com/business/ads" },
-      { label: "Meta Conversions API for app events", url: "https://developers.facebook.com/docs/marketing-api/conversions-api/app-events" },
+      { label: "Meta Conversions API for app events", url: "https://developers.facebook.com/docs/marketing-api/conversions-api" },
       RC_ATTRIBUTION,
     ],
     docs: [{ href: `${GUIDE}#meta`, label: "Meta setup in the integrations guide" }, { href: `${GUIDE}#funnel-events-to-ad-networks`, label: "Funnel events to ad networks" }],

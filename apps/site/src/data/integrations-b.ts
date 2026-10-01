@@ -713,7 +713,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
     ],
     partner: [
       { label: "Apple Search Ads", url: "https://searchads.apple.com" },
-      { label: "Apple: Apple Search Ads API", url: "https://developer.apple.com/documentation/apple_search_ads" },
+      { label: "Apple Ads API", url: "https://developer.apple.com/documentation/apple_ads" },
       { label: "Apple: AdServices framework", url: "https://developer.apple.com/documentation/adservices" },
     ],
     docs: [
