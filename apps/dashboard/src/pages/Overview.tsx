@@ -5,7 +5,6 @@
  *
  * GAPS versus RevenueCat's Overview (company/docs/research/contact-sheets/revenuecat/frames/01-overview.jpg):
  * - Project filter chips ("All projects" plus one chip per project): later tier; the project switcher sits in the sidebar.
- * - "Ask about revenue" AI bar: shown, labelled coming soon (RevenueDot AI is Tier 2).
  * - Info tooltips that define each card: the definitions are in the card's title attribute instead.
  * - Only the card's label links to its chart; RevenueCat opens the chart from anywhere on the card.
  * - Active customers has no sparkline: only each customer's latest visit is stored, so there is no daily history.
@@ -13,6 +12,7 @@
  * - Currency is USD only (the API refuses other currencies rather than mislabel them).
  */
 import { useEffect, useMemo, useState } from "react";
+import { AskBar, FirstSaleCard } from "./ai/OverviewBits";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../components/Shell";
@@ -482,9 +482,8 @@ export function Overview() {
 
         {!firstRun && (
           <>
-            <div className="ask" aria-label="Ask about revenue: coming soon">
-              <Icon name="spark" /><span className="q">Ask about revenue, churn or a customer. "Why did trial conversion drop this week?"</span><span className="soon">COMING SOON</span>
-            </div>
+            <FirstSaleCard pid={pid} />
+            <AskBar pid={pid} />
             {onlySandbox && (
               <div className="banner" role="status" style={{ alignItems: "center" }}>
                 <span style={{ flex: 1 }}>No production purchases yet. Your test purchases are sandbox data.</span>
