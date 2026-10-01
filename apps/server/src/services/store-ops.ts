@@ -110,23 +110,24 @@ async function createInAppStore(deps: Deps, app: App, product: typeof schema.pro
   const creds = connectCredentials(app);
   if (!creds) throw new StoreOpError("credentials", "Creating products in App Store Connect needs the app's App Store Connect API key: app_store_connect_api_key (.p8), app_store_connect_api_key_id and app_store_connect_api_key_issuer.");
   if (!app.bundleId) throw new StoreOpError("credentials", "The app has no bundle id.");
+  const subscription = product.type === "subscription";
+  if (subscription && (!info?.duration || !(info.subscription_group_name || info.subscription_group_id))) {
+    throw new StoreOpError("unsupported", "A subscription needs store_information with duration and subscription_group_name.", "store_information");
+  }
+  const iapType = IAP_TYPES[product.type];
+  if (!subscription && !iapType) throw new StoreOpError("unsupported", `App Store Connect has no in-app purchase type for a ${product.type} product.`);
   const { fetchFn, now } = appleHttpFor(deps.stores, deps.fetch, deps.now);
   const api = new AppStoreConnectApi(creds, fetchFn, now);
   const ascName = name.slice(0, 64);
   try {
     const ascApp = await api.appByBundleId(app.bundleId);
     if (!ascApp) throw new StoreOpError("invalid", `App Store Connect has no app with bundle id ${app.bundleId} for this API key.`);
-    if (product.type === "subscription") {
-      if (!info?.duration || !(info.subscription_group_name || info.subscription_group_id)) {
-        throw new StoreOpError("unsupported", "A subscription needs store_information with duration and subscription_group_name.", "store_information");
-      }
-      const groupId = info.subscription_group_id || (await api.subscriptionGroup(ascApp.id, info.subscription_group_name!));
-      const r = await api.createSubscription(groupId, { name: ascName, productId, subscriptionPeriod: info.duration });
+    if (subscription) {
+      const groupId = info!.subscription_group_id || (await api.subscriptionGroup(ascApp.id, info!.subscription_group_name!));
+      const r = await api.createSubscription(groupId, { name: ascName, productId, subscriptionPeriod: info!.duration! });
       return { object: "store_product", id: r.data.id, name: (r.data.attributes?.name as string | undefined) ?? ascName, product_identifier: (r.data.attributes?.productId as string | undefined) ?? productId };
     }
-    const type = IAP_TYPES[product.type];
-    if (!type) throw new StoreOpError("unsupported", `App Store Connect has no in-app purchase type for a ${product.type} product.`);
-    const r = await api.createInAppPurchase(ascApp.id, { name: ascName, productId, inAppPurchaseType: type });
+    const r = await api.createInAppPurchase(ascApp.id, { name: ascName, productId, inAppPurchaseType: iapType! });
     return { object: "store_product", id: r.data.id, name: (r.data.attributes?.name as string | undefined) ?? ascName, product_identifier: (r.data.attributes?.productId as string | undefined) ?? productId };
   } catch (e) {
     if (e instanceof ConnectError) throw new StoreOpError(e.kind === "invalid" ? "invalid" : e.kind, e.message);
