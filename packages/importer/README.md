@@ -15,26 +15,31 @@ It runs on your machine, reads RevenueCat through its REST API v2, and writes to
 3. **A RevenueDot server**: RevenueDot Cloud (`https://api.revenuedot.app`, sign up at https://app.revenuedot.app) or your own (for example `docker compose up`, then `http://localhost:8787`), and **a RevenueDot secret key** for the project you are importing into (Dashboard > API keys).
 4. Node.js 18.17 or newer.
 
-You can pass the keys as environment variables instead of flags, so they stay out of your shell history: `REVENUECAT_API_KEY`, `REVENUEDOT_API_KEY`, `REVENUEDOT_URL`.
+**You do not put the keys in a command.** The CLI asks for each secret key it needs when you run it in a terminal, and hides what you type or paste, so the keys never land in your shell history:
+
+```text
+RevenueCat secret API key (v2, sk_...):
+RevenueDot secret API key for the target project:
+```
+
+For CI or piped input, where nothing can be typed, set `REVENUECAT_API_KEY` and `REVENUEDOT_API_KEY` from your secret store instead. `--rc-key` and `--to-key` still work, but a key passed on the command line stays in your shell history.
 
 The CLI is published on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot), so `npx revenuedot` runs the latest release. To run it from a clone of [revenuedot/revenuedot](https://github.com/revenuedot/revenuedot) instead, run `pnpm install` and replace `npx revenuedot` with `pnpm --filter revenuedot cli`; pnpm runs it in `packages/importer`, so give file flags such as `--google-tokens` absolute paths.
 
 ## Step 1: dry run
 
 ```sh
-npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project proj... \
-  --to http://localhost:8787 --to-key sk_... --dry-run
+npx revenuedot import --from-revenuecat --rc-project proj... --to http://localhost:8787 --dry-run
 ```
 
-This reads everything and prints what it would create. It writes nothing.
+It asks for both keys, then reads everything and prints what it would create. It writes nothing.
 
 ## Step 2: import
 
 Run the same command without `--dry-run`:
 
 ```sh
-npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project proj... \
-  --to http://localhost:8787 --to-key sk_...
+npx revenuedot import --from-revenuecat --rc-project proj... --to http://localhost:8787
 ```
 
 Progress shows on one line. At the end you get a report: what was created, what already existed, how many customers, subscriptions and purchases came over, and a list of problems.
@@ -61,8 +66,7 @@ Both matter: they are how RevenueDot recognises the imported subscription when t
 ## Step 4: verify
 
 ```sh
-npx revenuedot import verify --rc-key sk_... --rc-project proj... \
-  --to http://localhost:8787 --to-key sk_...
+npx revenuedot import verify --rc-project proj... --to http://localhost:8787
 ```
 
 For every customer it compares the active entitlements, their expiry dates and the number of subscriptions that give access. It prints the totals and every difference, and exits with code 1 when there is one. Purchases made since the import show up as differences: run the import again, then verify again.
@@ -70,8 +74,10 @@ For every customer it compares the active entitlements, their expiry dates and t
 ## Step 5: cut over
 
 ```sh
-npx revenuedot import plan --to http://localhost:8787 --to-key sk_... --rc-project proj...
+npx revenuedot import plan --to http://localhost:8787 --rc-project proj...
 ```
+
+It asks only for the RevenueDot key.
 
 This prints the cutover steps for your project, with your app ids and URLs filled in:
 
@@ -115,10 +121,8 @@ Until a subscription has its token it is marked `needs_token_refresh`. The custo
 
 | Flag | Meaning |
 |---|---|
-| `--rc-key` | RevenueCat secret key, v2 (or `REVENUECAT_API_KEY`) |
 | `--rc-project` | RevenueCat project id |
 | `--to` | RevenueDot server URL (or `REVENUEDOT_URL`) |
-| `--to-key` | RevenueDot secret key (or `REVENUEDOT_API_KEY`) |
 | `--to-project` | RevenueDot project id, when the key can see several |
 | `--state <file>` | Where to keep progress (default `./revenuedot-import-<project>.json`) |
 | `--dry-run` | Read and report only |
@@ -130,7 +134,9 @@ Until a subscription has its token it is marked `needs_token_refresh`. The custo
 | `--emit-events` | Record lifecycle events and send webhooks for imported purchases (off by default) |
 | `--json` | Machine-readable report |
 
-Exit codes: 0 success, 1 failure (or differences, for `verify`), 2 wrong usage.
+Keys: the CLI asks for any missing key in a terminal. Without a terminal, set `REVENUECAT_API_KEY` (RevenueCat secret key, v2) and `REVENUEDOT_API_KEY` (RevenueDot secret key of the target project). The flags `--rc-key` and `--to-key` also work, but leave the key in your shell history.
+
+Exit codes: 0 success, 1 failure (or differences, for `verify`), 2 wrong usage (such as a missing key without a terminal), 130 cancelled with Ctrl+C at a key prompt.
 
 ## Import from another system
 

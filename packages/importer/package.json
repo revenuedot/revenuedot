@@ -1,6 +1,6 @@
 {
   "name": "revenuedot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "RevenueDot CLI: move a project from RevenueCat to RevenueDot (catalog, customers, subscriptions, purchases) and verify the result.",
   "license": "MIT",
   "type": "module",

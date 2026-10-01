@@ -15,13 +15,15 @@ export async function buildPlan(rd: RevenueDotClient, o: { to: string; rcProject
   const to = o.to.replace(/\/+$/, "");
   const apple = apps.filter((a) => a.type === "app_store" || a.type === "mac_app_store");
   const google = apps.filter((a) => a.type === "play_store");
-  const importCmd = `npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project ${o.rcProject ?? "<RevenueCat project id>"} --to ${to} --to-key <RevenueDot secret key>`;
+  const rcProject = o.rcProject ?? "<RevenueCat project id>";
+  // No keys in printed commands: the CLI asks for them, so they never land in shell history.
+  const importCmd = `npx revenuedot import --from-revenuecat --rc-project ${rcProject} --to ${to}`;
   const steps: PlanStep[] = [];
 
   steps.push({
     title: "Import the catalog and customers",
     lines: [
-      status && status.customers > 0 ? `Done: ${status.customers} customers and ${status.subscriptions} subscriptions are in RevenueDot project ${project.id}.` : `Run: ${importCmd}`,
+      status && status.customers > 0 ? `Done: ${status.customers} customers and ${status.subscriptions} subscriptions are in RevenueDot project ${project.id}.` : `Run: ${importCmd} (it asks for both secret keys)`,
       "Re-running the same command is safe: it updates what changed and creates nothing twice.",
     ],
   });
@@ -84,7 +86,7 @@ export async function buildPlan(rd: RevenueDotClient, o: { to: string; rcProject
     title: "Keep RevenueDot current while old app versions still call RevenueCat",
     lines: [
       `Re-run the import daily until old versions fade out: ${importCmd}`,
-      `Check the result: npx revenuedot import verify --rc-key sk_... --rc-project ${o.rcProject ?? "<RevenueCat project id>"} --to ${to} --to-key <RevenueDot secret key>`,
+      `Check the result: npx revenuedot import verify --rc-project ${rcProject} --to ${to}`,
     ],
   });
 
