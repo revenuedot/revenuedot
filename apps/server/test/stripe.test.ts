@@ -19,8 +19,8 @@ const info = async (user: string) => CustomerInfoSchema.parse(await (await e.cal
 const txns = () => e.h.db.select().from(schema.transactions).where(eq(schema.transactions.store, "stripe"));
 
 /** An active monthly subscription bought at T0 and posted by the developer's backend. */
-async function bought(over: Parameters<typeof subscription>[0] | Record<string, never> = {}) {
-  e.st.put(subscription({ invoice: "in_1First", ...over }), invoice({ id: "in_1First", sub: SUB, start: T0, end: at(30) }));
+async function bought(over: Partial<Parameters<typeof subscription>[0]> = {}) {
+  e.st.put(subscription({ ...over, invoice: over.invoice ?? "in_1First" }), invoice({ id: "in_1First", sub: SUB, start: T0, end: at(30) }));
   const res = await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB });
   expect(res.status).toBe(200);
   return res;

@@ -292,7 +292,7 @@ export function sdkRoutes(deps: Deps) {
   // 24. Amazon receipt details (Android, Amazon builds): RVS's receipt as Amazon returned it. The SDK reads `termSku` and
   // posts it as the product id. A key that is not an Amazon app's answers 7662 (the purchase stays unconsumed).
   // The SDK encodes the store user id but not the receipt id, which can contain "/".
-  r.get("/v1/receipts/amazon/*", async (c) => {
+  const amazonReceipt = async (c: any) => {
     const app = c.get("app");
     if (app.type !== "amazon") throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, "This API key does not belong to an Amazon Appstore app.");
     const rest = new URL(c.req.url).pathname.replace(/^\/v1\/receipts\/amazon\//, "");
@@ -302,7 +302,9 @@ export function sdkRoutes(deps: Deps) {
     if (!storeUserId || !receiptId) throw new RCError(400, Codes.INVALID_RECEIPT, "Expected /v1/receipts/amazon/{store_user_id}/{receipt_id}.");
     const { client } = amazonClientFor(deps.stores, deps.fetch);
     return c.json(await amazonReceiptData(client, app, storeUserId, receiptId));
-  });
+  };
+  r.get("/v1/receipts/amazon/:storeUserId/:receiptId", amazonReceipt);
+  r.get("/v1/receipts/amazon/*", amazonReceipt);
 
   // 23. Remote config: POST is above (RC Container with workflows and ui_config). The GET form is the SDK's JSON fallback
   // host, never used with a proxy URL: "no configuration".

@@ -27,7 +27,7 @@ export const PRICE_LIFETIME = { id: "price_1Lifetime", object: "price", active: 
 export function invoice(o: { id: string; sub: string; start: Date; end: Date; reason?: string; status?: string; amount?: number; nextAttempt?: Date | null; basil?: boolean; currency?: string }): StripeInvoice & Record<string, unknown> {
   const paid = (o.status ?? "paid") === "paid";
   const amount = o.amount ?? 999;
-  return {
+  const out: Record<string, unknown> = {
     id: o.id, object: "invoice", account_country: "US", amount_due: amount, amount_paid: paid ? amount : 0, amount_remaining: paid ? 0 : amount, attempt_count: paid ? 1 : 2,
     billing_reason: o.reason ?? "subscription_create", collection_method: "charge_automatically", currency: o.currency ?? "usd", customer: "cus_TestCustomer1",
     customer_address: { city: null, country: "US", line1: null, line2: null, postal_code: "94107", state: null }, livemode: false,
@@ -36,6 +36,7 @@ export function invoice(o: { id: string; sub: string; start: Date; end: Date; re
     ...(o.basil ? { parent: { type: "subscription_details", subscription_details: { subscription: o.sub, metadata: {} } } } : { subscription: o.sub, paid }),
     status_transitions: { paid_at: paid ? s(o.start) : null, finalized_at: s(o.start) },
   };
+  return out as unknown as StripeInvoice & Record<string, unknown>;
 }
 
 /** A subscription like Stripe's; `basil` moves the period to the item (API 2025-03-31 and later). */
@@ -56,7 +57,7 @@ export function subscription(o: {
     latest_invoice: o.invoice, livemode: o.livemode ?? false, metadata: o.metadata ?? { app_user_id: "web_user_1" }, pause_collection: o.pause ?? null,
     start_date: s(start), status: o.status ?? "active", trial_end: o.trialEnd ? s(o.trialEnd) : null, trial_start: o.trialEnd ? s(start) : null,
     ...(o.basil ? {} : period),
-  } as StripeSubscription & Record<string, unknown>;
+  } as unknown as StripeSubscription & Record<string, unknown>;
 }
 
 interface Call { url: string; method: string; auth: string | null; account: string | null; body: string; headers: Headers }
@@ -133,7 +134,7 @@ export function checkoutSession(o: { id: string; mode: "payment" | "subscription
     mode: o.mode, payment_intent: o.mode === "payment" ? (o.pi === undefined ? "pi_1TestPayment" : o.pi) : null, payment_status: o.paymentStatus ?? "paid", status: o.status ?? "complete",
     subscription: o.sub ?? null, url: null,
     line_items: { object: "list", has_more: false, data: items.map((i, n) => ({ id: `li_${n}`, object: "item", amount_subtotal: i.amount, amount_total: i.amount, currency: i.currency ?? "usd", description: "item", price: i.price as never, quantity: i.quantity ?? 1 })) },
-  } as StripeCheckoutSession & Record<string, unknown>;
+  } as unknown as StripeCheckoutSession & Record<string, unknown>;
 }
 
 export function charge(o: { id?: string; amount: number; refunded?: number; invoice?: string | null; pi?: string; refundAt?: Date; currency?: string }): StripeCharge & Record<string, unknown> {
@@ -143,7 +144,7 @@ export function charge(o: { id?: string; amount: number; refunded?: number; invo
     customer: "cus_TestCustomer1", livemode: false, paid: true, payment_intent: o.pi ?? "pi_1TestPayment", refunded: refunded >= o.amount, status: "succeeded",
     ...(o.invoice !== undefined ? { invoice: o.invoice } : {}),
     refunds: { object: "list", data: [{ id: "re_1Test", object: "refund", amount: refunded, created: s(o.refundAt ?? T0), status: "succeeded" }], has_more: false },
-  } as StripeCharge & Record<string, unknown>;
+  } as unknown as StripeCharge & Record<string, unknown>;
 }
 
 let eventSeq = 0;
