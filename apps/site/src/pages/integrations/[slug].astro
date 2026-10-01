@@ -1,0 +1,110 @@
+---
+// One page per integration (src/data/integrations-*.ts). Facts come from packages/core/src/integrations.
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import Shot from "../../components/Shot.astro";
+import Blocks from "../../components/Blocks.astro";
+import Faq from "../../components/Faq.astro";
+import Related from "../../components/Related.astro";
+import CtaBand from "../../components/CtaBand.astro";
+import Md from "../../components/Md.astro";
+import Mark from "../../components/Mark.astro";
+import { INTEGRATIONS, INTEGRATION_CATEGORIES, integrationPath } from "../../data";
+import type { IntegrationPage } from "../../data/types";
+import { logo } from "../../lib/logos";
+import { hasShot, shot } from "../../lib/shots";
+import { plain } from "../../lib/md";
+import { ogFor } from "../../lib/og";
+import { howTo, webPage } from "../../lib/jsonld";
+import { SITE } from "../../site";
+export function getStaticPaths() {
+  return INTEGRATIONS.map((page) => ({ params: { slug: page.slug }, props: { page } }));
+}
+const { page } = Astro.props as { page: IntegrationPage };
+const path = integrationPath(page);
+const image = ogFor(path);
+const faq = page.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+const capture = `screens/integrations/${page.slug}.png`;
+const setupName = `How to connect ${page.name} to RevenueDot`;
+const jsonld = [
+  webPage({ title: page.title, description: page.metaDescription, path, image, about: page.name }),
+  howTo(setupName, plain(page.answer), page.setup.map((s) => ({ name: s.name, text: plain(s.text) })), path),
+];
+---
+<Base title={page.metaTitle} description={page.metaDescription} path={path} image={image} imageAlt={page.title}
+  crumbs={[{ name: "Integrations", path: "/integrations" }, { name: page.name, path }]} faq={faq} jsonld={jsonld}>
+  <div class="wrap">
+    <div class="pair" aria-hidden="true">
+      <span class="tile"><Mark size={30} /></span>
+      <span class="wire"><span class="pulse"></span></span>
+      <span class="tile"><img src={logo(page.logo)} alt="" width="32" height="32" /></span>
+    </div>
+    <PageHead label={`Integration · ${INTEGRATION_CATEGORIES[page.category] ?? page.category}`} title={page.title}>
+      <Md class="lede answer" text={page.answer} />
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        {page.docs[0] && <a class="btn secondary" href={page.docs[0].href}>Setup guide <span class="arrow">→</span></a>}
+      </div>
+    </PageHead>
+  </div>
+
+  <section class="section tight first">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-2">
+        <div class="cell"><p class="label">What teams do with it</p><ul class="ticks">{page.uses.map((u) => <Md as="li" text={u} />)}</ul></div>
+        <div class="cell"><p class="label">What RevenueDot sends</p><ul class="ticks">{page.sends.map((u) => <Md as="li" text={u} />)}</ul></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="setup">
+    <div class="wrap">
+      <div class="head"><p class="label">Setup</p><h2 class="h2 sm">{setupName}</h2></div>
+      <div class="setup">
+        <ol class="steps">
+          {page.setup.map((s, i) => <li><span class="num">{String(i + 1).padStart(2, "0")}</span><div><h3 class="h3">{s.name}</h3><Md text={s.text} /></div></li>)}
+        </ol>
+        {hasShot(capture) && <Shot light={shot(capture)} alt={`The ${page.name} integration page in the RevenueDot dashboard, with its settings form`} caption="Captured from the RevenueDot dashboard with demo data." sizes="(max-width: 900px) 100vw, 640px" />}
+      </div>
+    </div>
+  </section>
+
+  {page.blocks && <Blocks blocks={page.blocks} />}
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2 sm">{page.name} and RevenueDot</h2></div>
+      <Faq items={faq} open={0} />
+      <p class="tiny caption">Sources: {page.partner.map((p, i) => <>{i > 0 && " · "}<a href={p.url} rel="noopener">{p.label}</a></>)}. {page.name} is a trademark of its owner, used to describe compatibility. RevenueDot is not affiliated with or endorsed by it.</p>
+    </div>
+  </section>
+  <Related items={page.related} docs={page.docs} />
+  <CtaBand title={`Send ${page.name} every subscription event.`} body="Start free on RevenueDot Cloud, free up to $10,000 a month in tracked revenue. Integrations are included on every plan." />
+</Base>
+<style>
+  .pair { display: flex; align-items: center; gap: 0; padding-top: 32px; }
+  .tile { display: grid; place-items: center; width: 64px; height: 64px; border: 1px solid var(--border); background: #FFFFFF; color: #0A0A0A; }
+  .tile img { width: 32px; height: 32px; object-fit: contain; }
+  .wire { position: relative; width: 72px; height: 1px; background: var(--border); }
+  .pulse { position: absolute; top: -3px; left: 0; width: 7px; height: 7px; background: var(--accent); }
+  @media (prefers-reduced-motion: no-preference) { .pulse { animation: travel 2.4s var(--ease) infinite; } @keyframes travel { from { left: 0; } to { left: calc(100% - 7px); } } }
+  .answer { max-width: 760px; }
+  .answer :global(a) { color: var(--fg); }
+  .page-head { padding-top: 24px; }
+  .ticks { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .ticks :global(li) { position: relative; padding-left: 20px; color: var(--fg-2); font-size: 15px; line-height: 1.6; }
+  .ticks :global(li)::before { content: ""; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; background: var(--accent); }
+  .ticks :global(a) { color: var(--fg); }
+  .setup { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  .setup:has(> :only-child) { grid-template-columns: minmax(0, 760px); }
+  .steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); background: var(--panel); }
+  .steps li { display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--border-2); }
+  .steps li:last-child { border-bottom: 0; }
+  .steps .h3 { font-size: 16px; margin-bottom: 4px; }
+  .steps :global(p) { color: var(--fg-2); font-size: 15px; line-height: 1.6; }
+  .steps :global(a) { color: var(--fg); }
+  .caption a { color: var(--fg-2); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  @media (max-width: 900px) { .setup { grid-template-columns: minmax(0, 1fr); } }
+  .setup > * { min-width: 0; }
+</style>

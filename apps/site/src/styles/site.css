@@ -12,7 +12,7 @@ a:hover { text-decoration-color: var(--fg); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 ::selection { background: var(--accent-wash); }
 code, kbd, pre, .mono { font-family: var(--mono); font-weight: 400; letter-spacing: 0; }
-:not(pre) > code { font-size: .88em; padding: 1px 5px; border: 1px solid var(--border); background: var(--panel); }
+:not(pre) > code { font-size: .88em; padding: 1px 5px; border: 1px solid var(--border); background: var(--panel); overflow-wrap: anywhere; }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: var(--tracking-title); line-height: 1.15; }
 p { margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -131,7 +131,7 @@ td.num-cell { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
 .prose strong { color: var(--fg); font-weight: 600; }
 .prose a { color: var(--fg); text-decoration-color: var(--fg-3); }
 .prose .table-wrap { margin: 0 0 16px; }
-.page-head { padding: 40px 0 48px; display: grid; gap: 16px; }
+.page-head { padding: 40px 0 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; overflow-wrap: break-word; }
 .page-head h1 { font-size: clamp(38px, 5.6vw, 64px); line-height: 1.05; letter-spacing: -0.045em; max-width: 900px; }
 @media (max-width: 640px) { .page-head { padding: 28px 0 32px; } }
 .crumbs { padding-top: 40px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-3); }

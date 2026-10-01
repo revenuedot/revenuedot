@@ -1,0 +1,28 @@
+---
+// A short silent product clip recorded from the real dashboard (public/clips, made by recording the seeded demo app).
+// Plays muted in a loop while on screen, pauses off screen; with reduced motion it shows the poster and controls.
+interface Props { name: string; alt: string; caption?: string }
+const { name, alt, caption } = Astro.props;
+---
+<figure class="clip">
+  <div class="shot">
+    <video data-clip muted loop playsinline preload="none" poster={`/clips/${name}.webp`} width="1280" height="800" aria-label={alt}>
+      <source src={`/clips/${name}.mp4`} type="video/mp4" />
+    </video>
+  </div>
+  {caption && <figcaption class="caption tiny">{caption}</figcaption>}
+</figure>
+<script is:inline>
+  (() => {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.querySelectorAll("video[data-clip]:not([data-ready])").forEach((v) => {
+      v.dataset.ready = "1";
+      if (reduce || !("IntersectionObserver" in window)) { v.controls = true; return; }
+      new IntersectionObserver(([e]) => { if (e.isIntersecting) { v.preload = "auto"; v.play().catch(() => {}); } else v.pause(); }, { threshold: 0.35 }).observe(v);
+    });
+  })();
+</script>
+<style>
+  .clip { margin: 0; }
+  video { display: block; width: 100%; height: auto; background: #FFFFFF; }
+</style>

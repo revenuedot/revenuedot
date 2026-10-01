@@ -8,14 +8,14 @@ import { blogPosts } from "../../lib/docs";
 const posts = await blogPosts();
 ---
 <Base
-  title="Blog: in-app purchases, subscriptions and RevenueCat"
-  description="The RevenueDot blog: guides on in-app purchase backends, RevenueDot Cloud, self-hosting and migrating from RevenueCat. Written in the open on GitHub."
+  title="Blog: paywalls, subscriptions and in-app purchases"
+  description="Guides for subscription app developers: paywalls that convert, SDK tutorials, App Store and Google Play server setup, refunds, web checkout and RevenueCat pricing."
   path="/blog"
   crumbs={[{ name: "Blog", path: "/blog" }]}
 >
   <link slot="head" rel="alternate" type="text/markdown" href="/blog.md" title="The blog index as Markdown" />
   <div class="wrap">
-    <PageHead label="Blog" title="Notes on subscription infrastructure, written in the open" lede="Posts are Markdown in the revenuedot/docs repository on GitHub, next to the documentation they link to.">
+    <PageHead label="Blog" title="Guides for subscription app developers" lede="Paywalls that convert, step-by-step SDK tutorials, App Store and Google Play server setup, refunds and web checkout, with a source for every number. Posts are Markdown in the revenuedot/docs repository on GitHub.">
       <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud</a><a class="btn secondary" href={SITE.docsBlog} rel="noopener">Posts on GitHub <span class="arrow">↗</span></a></div>
     </PageHead>
   </div>
@@ -24,8 +24,8 @@ const posts = await blogPosts();
       <div class="list">
         {posts.map((p) => (
           <a class="post" href={p.href}>
-            <span class="num">{p.date}</span>
-            <span class="post-body"><span class="h3">{p.title}</span><span class="muted small">{p.description}</span></span>
+            {p.image ? <img class="thumb" src={p.image} alt="" width="1600" height="900" loading="lazy" decoding="async" /> : <span class="thumb blank"><span class="num">{p.date}</span></span>}
+            <span class="post-body"><span class="num">{p.date}</span><span class="h3">{p.title}</span><span class="muted small">{p.description}</span></span>
           </a>
         ))}
       </div>
@@ -34,9 +34,11 @@ const posts = await blogPosts();
 </Base>
 <style>
   .list { border: 1px solid var(--border); background: var(--panel); }
-  .post { display: grid; grid-template-columns: 120px 1fr; gap: 24px; padding: 24px; border-bottom: 1px solid var(--border-2); text-decoration: none; }
+  .post { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: start; padding: 24px; border-bottom: 1px solid var(--border-2); text-decoration: none; }
   .post:last-child { border-bottom: 0; }
   .post:hover { background: var(--hover); }
   .post-body { display: grid; gap: 6px; }
-  @media (max-width: 640px) { .post { grid-template-columns: 1fr; gap: 8px; padding: 20px 16px; } }
+  .thumb { display: grid; place-items: center; width: 100%; height: auto; aspect-ratio: 16 / 9; border: 1px solid var(--border); background: #FFFFFF; }
+  .thumb.blank { background: var(--sidebar); }
+  @media (max-width: 640px) { .post { grid-template-columns: 1fr; gap: 12px; padding: 20px 16px; } }
 </style>

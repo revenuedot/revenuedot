@@ -1,0 +1,7 @@
+---
+// One string of the inline markdown subset (src/lib/md.ts), as a paragraph or inline.
+import { md } from "../lib/md";
+interface Props { text: string; as?: "p" | "span" | "li"; class?: string }
+const { text, as: Tag = "p", class: cls } = Astro.props;
+---
+<Tag class={cls} set:html={md(text)} />

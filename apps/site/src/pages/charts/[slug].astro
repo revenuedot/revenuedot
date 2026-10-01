@@ -1,0 +1,128 @@
+---
+// One page per subscription chart (src/data/charts-*.ts), joined with the chart catalog in packages/core.
+import Base from "../../layouts/Base.astro";
+import PageHead from "../../components/PageHead.astro";
+import Shot from "../../components/Shot.astro";
+import Faq from "../../components/Faq.astro";
+import Related from "../../components/Related.astro";
+import CtaBand from "../../components/CtaBand.astro";
+import Md from "../../components/Md.astro";
+import Code from "../../components/Code.astro";
+import ChartSketch from "../../components/ChartSketch.astro";
+import { CHART_PAGES, GROUPS, chartPath, type ChartFull } from "../../data";
+import { DIM_LABEL } from "../../../../../packages/core/src/charts/catalog";
+import { hasShot, shot } from "../../lib/shots";
+import { md, plain } from "../../lib/md";
+import { ogFor } from "../../lib/og";
+import { techArticle } from "../../lib/jsonld";
+import { SITE } from "../../site";
+export function getStaticPaths() {
+  return CHART_PAGES.map((page) => ({ params: { slug: page.slug }, props: { page } }));
+}
+const { page } = Astro.props as { page: ChartFull };
+const d = page.def;
+const path = chartPath(page);
+const image = ogFor(path);
+const faq = page.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+const group = GROUPS.find((g) => g.id === d.group)?.display_name ?? d.group;
+const capture = `screens/charts/${page.slug}.png`;
+const unit = (u: string) => (u === "$" ? "USD" : u === "%" ? "Percent" : "Count");
+const api = `curl "https://api.revenuedot.app/v2/projects/$PROJECT_ID/charts/${d.name}?resolution=${d.defaultResolution}" \\
+  -H "Authorization: Bearer $SECRET_KEY"   # sk_... with charts_metrics:charts:read`;
+const shape = d.shape === "stock" ? "A snapshot at the end of each period" : d.shape === "flow" ? "What happened during each period" : d.shape === "cohort_table" ? "Cohorts by age, in a table" : "A series by cohort date; recent cohorts are still maturing";
+---
+<Base title={page.metaTitle} description={page.metaDescription} path={path} image={image} imageAlt={page.title}
+  crumbs={[{ name: "Charts", path: "/charts" }, { name: d.display_name, path }]} faq={faq}
+  jsonld={[techArticle({ title: page.title, description: page.metaDescription, path, section: "Subscription metrics" })]}>
+  <div class="wrap">
+    <PageHead label={`Chart · ${group}`} title={page.title}>
+      <Md class="lede answer" text={page.answer} />
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn secondary" href="/charts">All {CHART_PAGES.length} charts <span class="arrow">→</span></a>
+      </div>
+    </PageHead>
+  </div>
+  <section class="section tight first">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-4">
+        {page.formula && <div class="cell span2"><p class="label">Formula</p><p class="formula" set:html={md(page.formula)} /></div>}
+        <div class="cell"><p class="label">Shape</p><p>{shape}</p></div>
+        <div class="cell"><p class="label">API name</p><p class="mono">{d.name}</p></div>
+        <div class={`cell${page.formula ? " span2" : ""}`}><p class="label">Measures</p><p>{d.measures.filter((m) => m.chartable).map((m) => `${m.display_name} (${unit(m.unit)})`).join(", ") || "—"}</p></div>
+        <div class={`cell${page.formula ? " span2" : ""}`}><p class="label">Filter and segment by</p><p>{d.dims.length ? d.dims.map((x) => DIM_LABEL[x].display_name).join(", ") : "No dimensions"}</p></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      {hasShot(capture)
+        ? <Shot light={shot(capture)} alt={`The ${d.display_name} chart in the RevenueDot dashboard, with demo data, its chart rail, plot and table`} caption="Captured from the RevenueDot dashboard with demo data." />
+        : <ChartSketch def={d} />}
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="wrap two">
+      <div class="head"><p class="label">Definition</p><h2 class="h2 sm">How RevenueDot calculates {d.display_name}</h2></div>
+      <div class="prose">{page.how.map((p) => <Md text={p} />)}</div>
+    </div>
+  </section>
+
+  {page.example && (
+    <section class="section" id="example">
+      <div class="wrap two">
+        <div class="head"><p class="label">Worked example</p><h2 class="h2 sm">{d.display_name}, step by step</h2></div>
+        <div class="prose">
+          <Md text={page.example.intro} />
+          <div class="table-wrap"><table>
+            <thead><tr>{page.example.head.map((h) => <th scope="col">{h}</th>)}</tr></thead>
+            <tbody>{page.example.rows.map((r) => <tr>{r.map((c, i) => i === 0 ? <th scope="row" set:html={md(c)} /> : <td class="num-cell" set:html={md(c)} />)}</tr>)}</tbody>
+          </table></div>
+          <Md text={page.example.result} />
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="section" id="why">
+    <div class="wrap two">
+      <div class="head"><p class="label">Why it matters</p><h2 class="h2 sm">What {d.display_name} tells you</h2></div>
+      <div class="prose">
+        {page.why.map((p) => <Md text={p} />)}
+        <h3>How to read it</h3>
+        <ul>{page.tips.map((t) => <Md as="li" text={t} />)}</ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="api">
+    <div class="wrap two">
+      <div class="head"><p class="label">API</p><h2 class="h2 sm">Get {d.display_name} from the Charts API</h2><p class="lede">Same path and response shape as RevenueCat's Charts API, so existing scripts keep working.</p></div>
+      <div><Code title="Request" label="shell" code={api} /><p class="small muted more">Reference: <a href="/docs/guides/charts">Charts guide</a> · <a href="/docs/api/rest-v2">REST API v2</a></p></div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">{d.display_name}: questions people ask</h2></div><Faq items={faq} open={0} /></div>
+  </section>
+  <Related items={page.related} docs={[{ href: "/docs/guides/charts", label: "Charts guide" }]} title="Related charts" />
+  <CtaBand title={`See your ${d.display_name} in minutes.`} body="Connect your app to RevenueDot Cloud, free up to $10,000 a month in tracked revenue, and all 43 charts fill from your store history after import." />
+</Base>
+<style>
+  .answer { max-width: 760px; }
+  .answer :global(a) { color: var(--fg); }
+  .span2 { grid-column: span 2; }
+  .formula { color: var(--fg) !important; font-size: 17px !important; font-weight: 600; }
+  .mono { font-family: var(--mono); color: var(--fg) !important; }
+  .two { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .two > * { min-width: 0; }
+  .two .head { margin-bottom: 0; position: sticky; top: 96px; }
+  .prose :global(p) { margin-bottom: 16px; }
+  .prose :global(a) { color: var(--fg); }
+  .more { margin-top: 12px; }
+  .more a { color: var(--fg); }
+  .h2.sm { font-size: clamp(26px, 3vw, 36px); }
+  @media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); gap: 24px; } .two .head { position: static; } .span2 { grid-column: auto; } }
+</style>

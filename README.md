@@ -61,7 +61,7 @@ Works with the RevenueCat SDK you already ship: change one line, keep your app c
 
 | | What changes |
 |---|---|
-| **No revenue share when you self-host** | RevenueCat charges 1% of tracked revenue above $2,500 a month ([pricing](https://www.revenuecat.com/pricing)). At $50,000 a month that is $475 a month; at $500,000 a month it is $4,975 a month. Self-hosted RevenueDot costs your server bill. |
+| **No revenue share when you self-host** | Once tracked revenue reaches $2,500 a month, RevenueCat charges 1% of all of it ([pricing](https://www.revenuecat.com/pricing), [staff answer](https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618)). At $50,000 a month that is $500 a month; at $500,000 a month it is $5,000 a month. Self-hosted RevenueDot costs your server bill. |
 | **Your data, your cloud, your region** | Purchases, customers and receipts live in your own Postgres, in the region your customers and your lawyers need. |
 | **Same API, no rewrite** | The same SDK calls, the same customer info, the same webhook payloads. Your app and your backend handlers keep working. |
 | **A safe migration** | Import your catalog, customers and history in one command, run both systems side by side, then switch when you're sure. |

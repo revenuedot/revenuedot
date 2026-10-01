@@ -46,6 +46,7 @@ export function fileUrl(rel, { md = false, dir = docsDir() } = {}) {
   const page = pagePath(r);
   if (page) return md ? `${page}.md` : page;
   if (r === "api/openapi.yaml") return "/docs/api/openapi.yaml";
+  if (/^blog\/assets\/[A-Za-z0-9_./-]+$/.test(r)) return `/${r}`;
   if (r === "llms.txt" || r === "llms-full.txt" || /^llms\/[a-z0-9-]+\.txt$/.test(r)) return `/${r}`;
   if (!/\.[a-z0-9]+$/i.test(r) && existsSync(path.join(dir, r, "README.md"))) return fileUrl(`${r}/README.md`, { md, dir });
   const isDir = !/\.[a-z0-9]+$/i.test(r);

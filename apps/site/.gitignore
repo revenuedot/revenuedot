@@ -9,3 +9,6 @@ public/favicon-*.png
 public/apple-touch-icon.png
 public/android-chrome-*.png
 public/og.png
+# Copied from the docs repo's blog/assets by scripts/copy-brand.mjs
+public/blog/
+node_modules
