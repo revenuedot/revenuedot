@@ -1,6 +1,6 @@
 {
-  "id": "1edd0ade-bad7-4bfa-8fed-5653a0c4ab66",
-  "prevId": "afd4799e-1a0c-42df-8de2-867eced6ddbc",
+  "id": "afd4799e-1a0c-42df-8de2-867eced6ddbc",
+  "prevId": "b1ba75ee-d23a-410d-82ea-245c28ec76ba",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3797,100 +3797,6 @@
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.saved_charts": {
-      "name": "saved_charts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "chart_name": {
-          "name": "chart_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "view": {
-          "name": "view",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "saved_charts_project": {
-          "name": "saved_charts_project",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "saved_charts_project_id_projects_id_fk": {
-          "name": "saved_charts_project_id_projects_id_fk",
-          "tableFrom": "saved_charts",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

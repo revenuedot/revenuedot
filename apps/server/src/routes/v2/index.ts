@@ -27,6 +27,9 @@ import { chartRoutes } from "./charts.js";
 import { savedChartRoutes } from "./saved-charts.js";
 import { partnerIntegrationRoutes } from "./partner-integrations.js";
 import { dataExportRoutes } from "./data-exports.js";
+import { storeOpRoutes } from "./store-ops.js";
+import { subscriberAuthRoutes } from "./subscriber-auth.js";
+import { billingExcludedRoutes } from "./billing-excluded.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -44,7 +47,7 @@ export function v2Routes(deps: Deps) {
     const header = c.req.header("authorization");
     if (header !== undefined && header.trim() !== "") {
       const key = header.replace(/^Bearer\s+/i, "").trim();
-      const auth = await resolveKey(deps.db, key);
+      const auth = await resolveKey(deps.db, key, deps.now());
       if (!auth) throw new V2Error(401, "authentication_error", "Invalid API key.");
       if (auth.kind !== "secret") throw new V2Error(403, "authorization_error", "API v2 requires a secret API key (sk_...). Public app keys only work with the SDK endpoints.");
       c.set("principal", { kind: "key", projectId: auth.projectId, keyId: auth.keyId!, permissions: auth.permissions ?? [] });
@@ -99,6 +102,9 @@ export function v2Routes(deps: Deps) {
   savedChartRoutes(r, deps);
   partnerIntegrationRoutes(r, deps);
   dataExportRoutes(r, deps);
+  storeOpRoutes(r, deps);
+  subscriberAuthRoutes(r, deps);
+  billingExcludedRoutes(r, deps);
 
   r.all("/v2/*", () => { throw new V2Error(404, "resource_missing", "Resource not found."); });
   return r;

@@ -70,18 +70,45 @@ export async function offeringsJSON(db: DB, projectId: string, appId: string, op
   };
 }
 
-/** `GET /v1/product_entitlement_mapping`: keyed by product id and, for Play, also by product:basePlan (Android looks up the bare id). */
-export async function productEntitlementMappingJSON(db: DB, projectId: string) {
-  const map = await entitlementMap(db, projectId);
-  const out: Record<string, { product_identifier: string; base_plan_id?: string; entitlements: string[] }> = {};
-  for (const [ent, prods] of Object.entries(map)) {
-    for (const storeId of prods) {
-      const [productId, basePlan] = storeId.split(":");
-      for (const key of basePlan ? [storeId, productId!] : [storeId]) {
-        out[key] ??= { product_identifier: productId!, ...(basePlan ? { base_plan_id: basePlan } : {}), entitlements: [] };
-        if (!out[key]!.entitlements.includes(ent)) out[key]!.entitlements.push(ent);
-      }
+/** App Store products: iOS files an up-front billing plan under the bare product id (`BillingPlanType.compoundProductIDPlanComponent`). */
+const APPLE_STORES = new Set(["app_store", "mac_app_store"]);
+const UP_FRONT = "upFront";
+
+type MappingEntry = { product_identifier: string; base_plan_id?: string; entitlements: string[] };
+
+/**
+ * `GET /v1/product_entitlement_mapping`, the table the SDKs use for offline entitlements (prd/offline-entitlements/PRD.md).
+ * With an app (public keys), only that app's products; without one (a secret key), the whole project.
+ * - App Store: key `product`, or `product:plan` for a billing plan other than up-front, which is how iOS re-keys entries
+ *   (`ProductEntitlementMapping.swift`). No bare duplicate: iOS ignores the key and would file it under the plan.
+ * - Google Play and other stores: `sub:plan` with that plan's entitlements, plus the bare `sub` that Android looks up
+ *   (`PurchasedProductsFetcher.kt`) with the union of all its plans' entitlements and the first plan as `base_plan_id`.
+ * Only active entitlements; archived products keep mapping; consumables never unlock an entitlement, so they are left out.
+ */
+export async function productEntitlementMappingJSON(db: DB, projectId: string, appId?: string | null) {
+  const rows = await db
+    .select({ ent: entitlements.lookupKey, storeId: products.storeIdentifier, type: products.type, appType: apps.type, created: products.createdAt, productId: products.id })
+    .from(entitlementProducts)
+    .innerJoin(entitlements, eq(entitlements.id, entitlementProducts.entitlementId))
+    .innerJoin(products, eq(products.id, entitlementProducts.productId))
+    .innerJoin(apps, eq(apps.id, products.appId))
+    .where(and(eq(entitlements.projectId, projectId), eq(entitlements.state, "active"), ...(appId ? [eq(products.appId, appId)] : [])))
+    .orderBy(asc(products.createdAt), asc(products.id), asc(entitlements.createdAt), asc(entitlements.lookupKey));
+  const out: Record<string, MappingEntry> = {};
+  const add = (key: string, entry: Omit<MappingEntry, "entitlements">, ent: string) => {
+    const e = (out[key] ??= { ...entry, entitlements: [] });
+    if (!e.entitlements.includes(ent)) e.entitlements.push(ent);
+  };
+  for (const r of rows) {
+    if (r.type === "consumable") continue;
+    const [productId, plan] = r.storeId.split(":") as [string, string | undefined];
+    const entry = { product_identifier: productId, ...(plan ? { base_plan_id: plan } : {}) };
+    if (APPLE_STORES.has(r.appType)) {
+      add(plan && plan !== UP_FRONT ? `${productId}:${plan}` : productId, entry, r.ent);
+      continue;
     }
+    add(r.storeId, entry, r.ent);
+    if (plan) add(productId, entry, r.ent);
   }
   return { product_entitlement_mapping: out };
 }

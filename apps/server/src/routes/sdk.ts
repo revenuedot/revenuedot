@@ -1,15 +1,16 @@
 import { Hono } from "hono";
-import { buildCustomerInfo, isAnonymous } from "@revenuedot/core";
+import { buildCustomerInfo, isAnonymous, newId } from "@revenuedot/core";
 import { Codes, RCError, errorResponse } from "../errors.js";
 import type { Deps, Vars } from "../context.js";
 import { entitlementMap, offeringsJSON, productEntitlementMappingJSON, productInfo } from "../repo/catalog.js";
 import { findCustomer, getOrCreateCustomer, identify, loadState, setAttributes, touch, aliasesOf } from "../repo/customers.js";
 import { applyPurchases } from "../services/purchases.js";
+import { recordSubscriberAlias } from "../services/events.js";
 import { restV1 } from "./rest-v1.js";
 import { appForPlatform, resolveKey } from "../services/auth.js";
 import type { ReceiptInput } from "../stores/types.js";
 import { schema } from "@revenuedot/db";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
 import { attributionDataToAttributes, inBackground, resolveAdServicesToken, resolveDeviceAttributes, setAttributionOnce } from "../services/attribution.js";
 import { appleCredentials } from "../stores/apple/api.js";
@@ -41,8 +42,9 @@ export function sdkRoutes(deps: Deps) {
     c.header("X-RevenueCat-Request-Time", String(deps.now().getTime()));
     if (path === "/v1/health" || path === "/v1/health/connectivity" || path.endsWith("/health_report_availability")) return next();
     const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-    const auth = await resolveKey(deps.db, key);
+    const auth = await resolveKey(deps.db, key, deps.now());
     if (!auth) throw new RCError(401, Codes.INVALID_API_KEY, "Invalid API Key.");
+    if (auth.subscriber) await pinSubscriber(c, auth.subscriber);
     c.set("auth", auth);
     c.set("app", auth.app ?? (await appForPlatform(deps.db, auth.projectId, c.req.header("x-platform"))) ?? ({ id: null, projectId: auth.projectId, type: "none" } as any));
     // Which SDK builds call us (setup_health.sdk_versions). Server calls with a secret key are not SDKs.
@@ -55,6 +57,104 @@ export function sdkRoutes(deps: Deps) {
   };
   r.use("/v1/*", sdkAuth);
   r.use("/rcbilling/*", sdkAuth);
+
+  /**
+   * A subscriber token (`rdat_`) speaks for one app user id: an expired token, or a path or body naming another app user
+   * id, is the SDK's "invalid auth token" (7224). The `/v1/customer/*` paths name no user and are served below.
+   * Ids are compared the way the routes read them: a path segment is decoded twice (Hono, then `userId`), a body id once.
+   */
+  const USERLESS_POSTS = new Set(["/v1/subscribers/identify", "/v1/subscribers/redeem_purchase", "/v1/customercenter/support/create-ticket"]);
+  const BODY_USER_POSTS = new Set(["/v1/receipts", "/v1/subscribers/identify", "/v1/subscribers/redeem_purchase", "/v1/offers"]);
+  async function pinSubscriber(c: any, sub: { appUserId: string; expired: boolean }) {
+    const refuse = (m: string) => new RCError(401, Codes.INVALID_AUTH_TOKEN, m);
+    if (sub.expired) throw refuse("The access token has expired. Ask your server for a new one.");
+    const other = () => refuse("The access token belongs to another app user id.");
+    const path: string = c.req.path;
+    const post = c.req.method === "POST";
+    const m = /^\/(?:rcbilling\/)?v1\/(?:subscribers|customercenter)\/([^/]+)/.exec(path);
+    if (m && !(post && USERLESS_POSTS.has(path)) && safeDecode(safeDecode(m[1]!)) !== sub.appUserId) throw other();
+    const alias = /^\/v1\/subscribers\/[^/]+\/alias$/.test(path);
+    if (post && (BODY_USER_POSTS.has(path) || alias)) {
+      const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+      // identify and alias would merge, or answer for, the customer named by new_app_user_id.
+      for (const k of ["app_user_id", "new_app_user_id"]) if (b?.[k] !== undefined && safeDecode(String(b[k])) !== sub.appUserId) throw other();
+    }
+  }
+
+  /** The SDKs' subscriber-token paths (IAM mode) and the route that serves each, for the token's app user id. */
+  const IAM_PATHS: [RegExp, (user: string, m: RegExpExecArray) => string][] = [
+    [/^\/v1\/customer$/, (u) => `/v1/subscribers/${u}`],
+    [/^\/v1\/customer\/customercenter$/, (u) => `/v1/customercenter/${u}`],
+    [/^\/v1\/customer\/customercenter\/support\/create-ticket$/, () => "/v1/customercenter/support/create-ticket"],
+    [/^\/v1\/customer\/(offerings|intro_eligibility|attribution|attributes|adservices_attribution|health_report|virtual_currencies|restore\/eligibility|ads\/reward_verifications\/[^/]+)$/, (u, m) => `/v1/subscribers/${u}/${m[1]}`],
+    [/^\/rcbilling\/v1\/customer\/(offering_products|products)$/, (u, m) => `/rcbilling/v1/subscribers/${u}/${m[1]}`],
+  ];
+  const subscriberOf = (c: any): string => {
+    const sub = c.get("auth")?.subscriber as { appUserId: string } | undefined;
+    if (!sub) throw new RCError(401, Codes.INVALID_AUTH_TOKEN, "This path needs a subscriber access token (from POST /v2/projects/{project_id}/apps/{app_id}/authenticate), not an app API key.");
+    return sub.appUserId;
+  };
+
+  // IAM 41. Spend in-app currency as the subscriber: all adjustments or none, never below zero, once per Idempotency-Key.
+  r.post("/v1/customer/virtual_currencies/spend", async (c) => {
+    const appUserId = subscriberOf(c);
+    const app = c.get("app"); const now = deps.now();
+    const b = await c.req.json().catch(() => null) as { adjustments?: unknown; reference?: unknown } | null;
+    const adj = b?.adjustments;
+    if (!adj || typeof adj !== "object" || Array.isArray(adj) || !Object.keys(adj).length || Object.values(adj).some((v) => !Number.isInteger(v) || (v as number) <= 0 || (v as number) > 2_147_483_647)) {
+      throw new RCError(400, Codes.BAD_REQUEST_PARAMS, "adjustments must map currency codes to positive whole amounts to spend.");
+    }
+    const amounts = Object.entries(adj as Record<string, number>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const { customer } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
+    const key = c.req.header("idempotency-key");
+    const sourceKey = key ? `sdk:${key.slice(0, 200)}` : null;
+    const have = new Map((await balancesOf(deps.db, app.projectId, customer.id, { includeEmpty: true })).map((x) => [x.code, x.balance]));
+    for (const [code] of amounts) if (!have.has(code)) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, `There is no in-app currency with code ${code}.`);
+    const reference = typeof b!.reference === "string" ? b!.reference.slice(0, 255) : null;
+    // One transaction: every currency is spent or none. A conditional decrement keeps concurrent spends from taking a
+    // balance below zero; the ledger's unique source key makes a retry with the same Idempotency-Key spend nothing again.
+    await deps.db.transaction(async (tx) => {
+      for (const [code, amount] of amounts) {
+        const entry = await tx.insert(schema.virtualCurrencyTransactions).values({
+          id: newId("vct_", 16), projectId: app.projectId, customerId: customer.id, code, amount: -amount, source: "sdk", sourceKey, reference, createdAt: now,
+        }).onConflictDoNothing().returning({ id: schema.virtualCurrencyTransactions.id });
+        if (!entry.length) continue;
+        const spent = await tx.update(schema.virtualCurrencyBalances).set({ balance: sql`${schema.virtualCurrencyBalances.balance} - ${amount}` })
+          .where(and(eq(schema.virtualCurrencyBalances.customerId, customer.id), eq(schema.virtualCurrencyBalances.code, code), gte(schema.virtualCurrencyBalances.balance, amount)))
+          .returning({ balance: schema.virtualCurrencyBalances.balance });
+        if (!spent.length) throw new RCError(422, Codes.BAD_REQUEST, `Balance of ${code} is ${have.get(code)}; spending ${amount} would take it below zero.`);
+      }
+    });
+    const out: Record<string, { balance: number; name: string; code: string; description: string | null }> = {};
+    for (const x of await balancesOf(deps.db, app.projectId, customer.id, { includeEmpty: true })) out[x.code] = { balance: x.balance, name: x.name, code: x.code, description: x.description };
+    return c.json({ virtual_currencies: out });
+  });
+
+  // IAM 42-55. Served by the matching /v1/subscribers/{app_user_id} route, for the token's app user id.
+  const iam = async (c: any) => {
+    const appUserId = subscriberOf(c);
+    const url = new URL(c.req.url);
+    const hit = IAM_PATHS.map(([re, to]) => [re.exec(url.pathname), to] as const).find(([m]) => m);
+    if (!hit) throw new RCError(404, Codes.NOT_FOUND, "Unknown subscriber path.");
+    url.pathname = hit[1](encodeURIComponent(appUserId), hit[0]!);
+    const method = c.req.method;
+    const body = method === "GET" || method === "HEAD" ? undefined : await c.req.arrayBuffer();
+    return r.fetch(new Request(url, { method, headers: c.req.raw.headers, body }));
+  };
+  r.get("/v1/customer", iam);
+  r.get("/v1/customer/offerings", iam);
+  r.post("/v1/customer/intro_eligibility", iam);
+  r.post("/v1/customer/attribution", iam);
+  r.post("/v1/customer/attributes", iam);
+  r.post("/v1/customer/adservices_attribution", iam);
+  r.get("/v1/customer/health_report", iam);
+  r.get("/v1/customer/customercenter", iam);
+  r.post("/v1/customer/customercenter/support/create-ticket", iam);
+  r.get("/v1/customer/virtual_currencies", iam);
+  r.post("/v1/customer/restore/eligibility", iam);
+  r.get("/v1/customer/ads/reward_verifications/:client_transaction_id", iam);
+  r.get("/rcbilling/v1/customer/offering_products", iam);
+  r.get("/rcbilling/v1/customer/products", iam);
 
   const reqInfo = (c: { req: { header: (k: string) => string | undefined } }) => {
     const s = sdkHeaders(c.req);
@@ -171,13 +271,21 @@ export function sdkRoutes(deps: Deps) {
   r.get("/v1/subscribers/:id/offerings", offerings);
   r.get("/v1/offerings", offerings);
 
+  /** SUBSCRIBER_ALIAS for a logIn or alias call that gave an existing customer a new app user id. */
+  const aliasEvent = async (c: any, customerId: string, appUserId: string, now: Date) => {
+    const app = c.get("app");
+    await recordSubscriberAlias(deps.db, { projectId: app.projectId, appId: app.id ?? null, customerId, appUserId, sandbox: c.req.header("x-is-sandbox") === "true", now });
+    deps.kick?.();
+  };
+
   // 4. logIn. 201 when the user is new, 200 when it existed.
   r.post("/v1/subscribers/identify", async (c) => {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
     const oldId = userId(String(b.app_user_id ?? ""));
     const newAppUserId = userId(String(b.new_app_user_id ?? ""));
-    const { customer, created } = await identify(deps.db, app.projectId, oldId, newAppUserId, now);
+    const { customer, created, aliased } = await identify(deps.db, app.projectId, oldId, newAppUserId, now);
+    if (aliased) await aliasEvent(c, customer.id, newAppUserId, now);
     await touch(deps.db, customer.id, now, reqInfo(c));
     const state = await loadState(deps.db, customer);
     return c.json(buildCustomerInfo(state, await entitlementMap(deps.db, app.projectId), now), created ? 201 : 200);
@@ -187,7 +295,9 @@ export function sdkRoutes(deps: Deps) {
   r.post("/v1/subscribers/:id/alias", async (c) => {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
-    await identify(deps.db, app.projectId, userId(c.req.param("id")), userId(String(b.new_app_user_id ?? "")), now);
+    const newAppUserId = userId(String(b.new_app_user_id ?? ""));
+    const { customer, aliased } = await identify(deps.db, app.projectId, userId(c.req.param("id")), newAppUserId, now);
+    if (aliased) await aliasEvent(c, customer.id, newAppUserId, now);
     return c.json({});
   });
 
@@ -258,7 +368,7 @@ export function sdkRoutes(deps: Deps) {
   r.get("/v1/subscribers/:id/health_report", (c) => c.json({ status: "passed", project_id: c.get("app")?.projectId ?? null, app_id: c.get("app")?.id ?? null, checks: [] }));
 
   // 14. Product → entitlement mapping (offline entitlements)
-  r.get("/v1/product_entitlement_mapping", async (c) => c.json(await productEntitlementMappingJSON(deps.db, c.get("app").projectId)));
+  r.get("/v1/product_entitlement_mapping", async (c) => c.json(await productEntitlementMappingJSON(deps.db, c.get("app").projectId, c.get("app").id ?? null)));
 
   // 15-16. Customer Center (Tier 2): no config yet, so the SDK hides the UI.
   r.get("/v1/customercenter/:id", async (c) => c.json({ customer_center: await customerCenterFor(deps.db, c.get("app").projectId) }));
@@ -325,6 +435,12 @@ export function sdkRoutes(deps: Deps) {
         const text = await c.req.text();
         let body: unknown = null;
         if (text.length <= MAX_BODY_BYTES) { try { body = JSON.parse(text); } catch { /* skipped */ } }
+        // A subscriber token records events for its own app user id only.
+        const sub = c.get("auth").subscriber;
+        if (sub && body && typeof body === "object" && Array.isArray((body as { events?: unknown }).events)) {
+          const b = body as { events: Array<{ app_user_id?: unknown } | null> };
+          b.events = b.events.filter((ev) => ev?.app_user_id === sub.appUserId);
+        }
         await storeSdkEvents(deps.db, { projectId: c.get("auth").projectId, app: c.get("app")?.id ? c.get("app") : null, body, now: deps.now(), sandboxHeader: c.req.header("x-is-sandbox") === "true" });
       }
     } catch (e) { console.warn("Storing SDK events failed", e); }
