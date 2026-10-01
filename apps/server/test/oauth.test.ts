@@ -93,7 +93,13 @@ describe("OAuth for MCP clients", () => {
     // Without a session the page asks the user to sign in with their dashboard account.
     const anon = await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`);
     expect(anon.status).toBe(200);
-    expect(await anon.text()).toContain("Sign in to connect Claude");
+    const anonHtml = await anon.text();
+    expect(anonHtml).toContain("Sign in to connect Claude");
+    // A signed-out person can also create an account on the same page; both reload this URL, which then shows the consent screen.
+    expect(anonHtml).toContain('id="signup"');
+    expect(anonHtml).toContain('"/auth/signup"');
+    expect(anonHtml).toContain("location.reload()");
+    expect(anonHtml).toContain("/legal/terms");
 
     const alice = await env.signup("alice@example.com");
     const other = await env.signup("bob@example.com", "Bob's app");
@@ -138,6 +144,27 @@ describe("OAuth for MCP clients", () => {
     expect(k.permissions).toEqual(OAUTH_SCOPES["project:write"]);
     expect((await env.call("DELETE", `/v2/projects/${alice.projectId}/api_keys/${k.id}`, { cookie: alice.cookie })).status).toBe(200);
     expect((await env.call("GET", "/v2/projects", { headers: auth })).status).toBe(401);
+  });
+
+  it("sign-up from the consent page leads straight back to the consent screen with the same request", async () => {
+    const env = await setup();
+    const { client_id } = await (await env.register()).json() as { client_id: string };
+    const { challenge } = await pkce();
+    const query = { response_type: "code", client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", state: "keep-me" };
+    const url = `/oauth/authorize?${new URLSearchParams(query)}`;
+    expect(await (await env.call("GET", url)).text()).toContain('id="signup"');
+    // What the page's script does: POST /auth/signup with the form values, then reload the same URL with the new session.
+    const created = await env.call("POST", "/auth/signup", { json: { email: "newperson@example.com", password: "a long enough password", project_name: "My project" } });
+    expect(created.status).toBe(201);
+    const cookie = created.headers.get("set-cookie")!.split(";")[0]!;
+    const page = await env.call("GET", url, { cookie });
+    const html = await page.text();
+    expect(html).toContain("Connect Claude to RevenueDot");
+    expect(html).toContain('value="keep-me"');
+    expect(html).toContain("newperson@example.com");
+    // And a wrong password on sign-in answers a message the page shows.
+    const bad = await env.call("POST", "/auth/login", { json: { email: "newperson@example.com", password: "wrong password" } });
+    expect(bad.status).toBe(401);
   });
 
   it("read-only consent gives a key that cannot write; deny redirects with access_denied", async () => {

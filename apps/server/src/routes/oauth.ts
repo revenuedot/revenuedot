@@ -329,25 +329,53 @@ export function oauthRoutes(deps: Deps) {
   return r;
 }
 
+/**
+ * What a signed-out person sees at /oauth/authorize: sign in, or create an account where sign-up is open (checked with
+ * /auth/config, so self-hosted servers that closed sign-up show only the sign-in form). Either one reloads this same URL,
+ * which now has a session, so they land on the consent screen for the app that sent them.
+ */
 function signInForm(clientName: string) {
   return `
-    <p>Sign in with your RevenueDot account to connect ${esc(clientName)}.</p>
+    <p>Sign in or create a RevenueDot account to connect ${esc(clientName)}.</p>
+    <div class="tabs" role="tablist"><button type="button" id="tab-signin" class="tab on" role="tab">Sign in</button><button type="button" id="tab-signup" class="tab" role="tab" hidden>Create account</button></div>
     <form id="signin">
       <label>Email<input name="email" type="email" autocomplete="email" required></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-      <p id="err" class="err" hidden></p>
+      <p class="muted"><a href="/forgot-password" target="_blank" rel="noopener">Forgot your password?</a></p>
+      <p id="err-signin" class="err" hidden></p>
       <div class="row"><button type="submit">Sign in</button></div>
     </form>
+    <form id="signup" hidden>
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <p class="muted">At least 8 characters. We email you a link to confirm the address. By creating an account you agree to the <a href="https://revenuedot.app/legal/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://revenuedot.app/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>
+      <p id="err-signup" class="err" hidden></p>
+      <div class="row"><button type="submit">Create account</button></div>
+    </form>
     <script>
-      document.getElementById("signin").addEventListener("submit", async (e) => {
+      const show = (which) => {
+        for (const id of ["signin", "signup"]) {
+          document.getElementById(id).hidden = id !== which;
+          document.getElementById("tab-" + id).classList.toggle("on", id === which);
+        }
+      };
+      document.getElementById("tab-signin").onclick = () => show("signin");
+      document.getElementById("tab-signup").onclick = () => show("signup");
+      fetch("/auth/config").then((r) => r.json()).then((c) => { if (c.signup === "open") document.getElementById("tab-signup").hidden = false; }).catch(() => {});
+      const submit = (id, path, body) => document.getElementById(id).addEventListener("submit", async (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
-        const res = await fetch("/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: f.get("email"), password: f.get("password") }) });
+        const btn = e.target.querySelector("button[type=submit]");
+        btn.disabled = true;
+        const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body(f)) });
         if (res.ok) return location.reload();
-        const err = document.getElementById("err");
-        err.textContent = (await res.json().catch(() => ({}))).message || "Sign-in failed.";
+        btn.disabled = false;
+        const err = document.getElementById("err-" + id);
+        err.textContent = (await res.json().catch(() => ({}))).message || "That did not work. Try again.";
         err.hidden = false;
       });
+      submit("signin", "/auth/login", (f) => ({ email: f.get("email"), password: f.get("password") }));
+      submit("signup", "/auth/signup", (f) => ({ email: f.get("email"), password: f.get("password"), project_name: "My project" }));
     </script>`;
 }
 
@@ -364,5 +392,6 @@ input[type=email],input[type=password],select{display:block;width:100%;margin-to
 fieldset{border:0;padding:0;margin:14px 0 0}legend{font-weight:500;padding:0}.muted{color:var(--muted);font-size:13px}.err{color:var(--err)}
 .row{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}button{font:inherit;padding:9px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer}
 button.secondary{background:transparent;color:var(--fg);border-color:var(--line)}
+.tabs{display:flex;gap:6px;margin:12px 0 0}.tab{background:transparent;color:var(--muted);border:1px solid var(--line);padding:6px 12px}.tab.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}[hidden]{display:none!important}a{color:inherit}
 </style></head><body><main><h1>${esc(title)}</h1>${body}</main></body></html>`;
 }
