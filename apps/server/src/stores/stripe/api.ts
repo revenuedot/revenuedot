@@ -11,7 +11,7 @@ import { guardedFetch, OutboundRefused } from "../../services/outbound.js";
 export const STRIPE_API = "https://api.stripe.com";
 
 export type Expandable<T> = string | T | null;
-export interface StripePrice { id: string; product: Expandable<{ id: string }>; unit_amount?: number | null; currency?: string; recurring?: { interval?: string; interval_count?: number } | null; type?: string }
+export interface StripePrice { id: string; product: Expandable<{ id: string }>; unit_amount?: number | null; currency?: string; currency_options?: Record<string, { unit_amount?: number | null }> | null; recurring?: { interval?: string; interval_count?: number } | null; type?: string }
 export interface StripeSubscriptionItem { id?: string; price: StripePrice; quantity?: number | null; current_period_start?: number; current_period_end?: number }
 export interface StripeInvoice {
   id: string; object?: "invoice"; status?: string | null; paid?: boolean; amount_paid?: number; amount_due?: number; total?: number; currency?: string;
@@ -96,6 +96,13 @@ export class StripeClient {
     if (res.ok && body) return body as T;
     const err = body?.error ?? {};
     const message = typeof err.message === "string" ? err.message : `Stripe answered ${res.status}`;
+    // "No such subscription: 'sub_…'; a similar object exists in live mode, but a test mode key was used to make this
+    // request." The purchase exists, the key is the wrong one: a credentials problem the developer must fix, not a bad receipt.
+    const otherMode = res.status === 404 ? /a similar object exists in (live|test) mode/i.exec(message) : null;
+    if (otherMode) {
+      const has = otherMode[1]!.toLowerCase();
+      throw new StripeApiError("credentials", `This purchase is in ${has} mode, but the app's Stripe key is a ${has === "live" ? "test" : "live"} mode key. Use a ${has} mode key for this app. Stripe said: ${message}`, 404, err.code);
+    }
     if (res.status === 404) throw new StripeApiError("not_found", message, 404, err.code);
     if (res.status === 401 || res.status === 403) throw new StripeApiError("credentials", message, res.status, err.code);
     if (res.status === 400 || res.status === 402) throw new StripeApiError("invalid", message, res.status, err.code);
@@ -103,7 +110,7 @@ export class StripeClient {
   }
 
   subscription(app: Pick<AppRow, "credentials">, id: string) {
-    return this.get<StripeSubscription>(app, `/v1/subscriptions/${encodeURIComponent(id)}`, { "expand[]": ["latest_invoice"] });
+    return this.get<StripeSubscription>(app, `/v1/subscriptions/${encodeURIComponent(id)}`, { "expand[]": ["latest_invoice", "items.data.price.currency_options"] });
   }
   checkoutSession(app: Pick<AppRow, "credentials">, id: string) {
     return this.get<StripeCheckoutSession>(app, `/v1/checkout/sessions/${encodeURIComponent(id)}`, { "expand[]": ["line_items"] });

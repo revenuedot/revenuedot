@@ -103,6 +103,10 @@ export class FakeStripe {
       if (!sub) return stripeError(404, "invalid_request_error", `No such subscription: '${parts[2]}'`, "resource_missing");
       const out = { ...sub } as Record<string, unknown>;
       if (expand.includes("latest_invoice") && typeof sub.latest_invoice === "string") out.latest_invoice = this.invoices.get(sub.latest_invoice) ?? sub.latest_invoice;
+      // A price's currency_options are only included when expanded (https://docs.stripe.com/api/prices/object#price_object-currency_options).
+      if (!expand.includes("items.data.price.currency_options")) {
+        out.items = { ...sub.items, data: sub.items.data.map((i) => { const { currency_options: _, ...price } = i.price as unknown as Record<string, unknown>; return { ...i, price }; }) };
+      }
       return json(200, out);
     }
     if (parts[1] === "checkout" && parts[2] === "sessions") {

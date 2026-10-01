@@ -71,14 +71,16 @@ export async function syncAmazonNotification(ctx: SyncCtx, n: AmazonNotification
     if (row) {
       p.price = rowPrice(row) ?? p.price;
       p.purchaseDate = row.purchaseDate;
-      if (row.refundedAt && p.refundedAt) p.refundedAt = row.refundedAt;
+      // A refund stays a refund: a later notification for the same receipt (out of order, or before RVS shows the
+      // cancel date) never undoes it. The first time it was seen wins.
+      p.refundedAt = row.refundedAt ?? p.refundedAt;
     }
     const applied = await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: track });
     return { status: applied ? "processed" : "unknown_purchase", sandbox: p.isSandbox };
   }
 
   const row = await subRowOf(db, app.projectId, "amazon", receiptId);
-  let v = row ? mergeSnapshot(p, row) : p;
+  let v = row ? mergeSnapshot(p, row, now) : p;
   let hint: string | null = null;
   // An immediate tier change: Amazon issues a new receipt and names the one it cancelled. The old chain ends now with
   // PRODUCT_CHANGE, and the new receipt belongs to the same customer.

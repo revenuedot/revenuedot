@@ -52,16 +52,22 @@ export function nonSubRowToVerified(row: NonSubRow): VerifiedOneTime {
 
 /**
  * A store snapshot re-read for a notification, merged with the stored chain so re-reading the same state records no new
- * events: the same period keeps its start, type and price; a renewal without a price costs what the last period cost;
- * the first time a billing issue or cancellation was seen wins.
+ * events: the same period keeps its start, type and price (a stored zero for a paid period is a placeholder the paid
+ * amount replaces); an access end already in the past stays where it was (a paused or cancelled chain whose end is
+ * derived from "now" would otherwise move forward on every read, a false SUBSCRIPTION_EXTENDED); a renewal without a
+ * price costs what the last period cost; the first time a billing issue or cancellation was seen wins.
  */
-export function mergeSnapshot(next: VerifiedSubscription, row: SubRow): VerifiedSubscription {
+export function mergeSnapshot(next: VerifiedSubscription, row: SubRow, now: Date): VerifiedSubscription {
   const out = { ...next };
   const stored = rowPrice(row);
   if (row.storeTransactionId === next.storeTransactionId) {
     out.purchaseDate = row.purchaseDate;
     out.periodType = row.periodType as VerifiedSubscription["periodType"];
-    out.price = stored ?? next.price;
+    const placeholder = stored?.amount === 0 && !!next.price && next.price.amount > 0 && row.periodType !== "trial" && next.periodType !== "trial";
+    out.price = placeholder ? next.price : stored ?? next.price;
+    if (row.expiresDate && next.expiresDate && row.expiresDate <= now && next.expiresDate > row.expiresDate && next.expiresDate <= now) {
+      out.expiresDate = row.expiresDate;
+    }
     if (row.refundedAt && !next.refundedAt) {
       // A refunded period stays refunded, and its access stays ended, however often the store state is re-read.
       out.refundedAt = row.refundedAt;
@@ -83,13 +89,13 @@ const MERGED_ON_RECEIPT = new Set<string>(["amazon", "stripe"]);
  * re-post after a refund would clear the refund (a false REFUND_REVERSED), and every post would move the first time a
  * billing issue or cancellation was seen. Other stores are returned unchanged.
  */
-export async function mergeStoredState<T extends VerifiedOneTime | VerifiedSubscription>(db: DB, projectId: string, purchases: T[]): Promise<T[]> {
+export async function mergeStoredState<T extends VerifiedOneTime | VerifiedSubscription>(db: DB, projectId: string, purchases: T[], now: Date): Promise<T[]> {
   const out: T[] = [];
   for (const p of purchases) {
     if (!MERGED_ON_RECEIPT.has(p.store)) { out.push(p); continue; }
     if (p.kind === "subscription") {
       const row = await subRowOf(db, projectId, p.store, p.storeKey);
-      out.push((row ? mergeSnapshot(p, row) : p) as T);
+      out.push((row ? mergeSnapshot(p, row, now) : p) as T);
     } else {
       const row = await nonSubRowOf(db, projectId, p.store, p.storeTransactionId);
       out.push((row ? { ...p, refundedAt: p.refundedAt ?? row.refundedAt, price: p.price ?? rowPrice(row) } : p) as T);

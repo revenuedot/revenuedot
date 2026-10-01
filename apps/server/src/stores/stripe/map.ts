@@ -39,6 +39,18 @@ function periodOf(sub: StripeSubscription) {
   return { start: sec(item?.current_period_start ?? sub.current_period_start), end: sec(item?.current_period_end ?? sub.current_period_end) };
 }
 
+/**
+ * The list price of a subscription item in the subscription's currency: the price's `currency_options` entry for that
+ * currency (multi-currency prices), else the price's own amount labelled with the price's own currency.
+ */
+function unitPriceOf(price: StripePrice, quantity: number, subscriptionCurrency: string): Price | null {
+  const option = price.currency_options?.[subscriptionCurrency.toLowerCase()]?.unit_amount;
+  if (typeof option === "number") return { amount: fromMinor(option * quantity, subscriptionCurrency), currency: subscriptionCurrency.toUpperCase() };
+  if (typeof price.unit_amount !== "number") return null;
+  const own = (price.currency ?? subscriptionCurrency).toUpperCase();
+  return { amount: fromMinor(price.unit_amount * quantity, own), currency: own };
+}
+
 export type RegisterOn = "invoice_paid" | "invoice_created";
 
 /** Thrown when a subscription must not be registered yet (its first invoice is unpaid and the app counts paid invoices only). */
@@ -68,9 +80,9 @@ export function mapSubscription(sub: StripeSubscription, ctx: { catalog: Catalog
   const start = pStart ?? origin;
   const end = pEnd ?? start;
   const inv = sub.latest_invoice && typeof sub.latest_invoice === "object" ? sub.latest_invoice : null;
-  const currency = (inv?.currency ?? item.price.currency ?? sub.currency ?? "usd").toUpperCase();
+  const currency = (inv?.currency ?? sub.currency ?? item.price.currency ?? "usd").toUpperCase();
   const country = inv?.customer_address?.country ?? null;
-  const unitPrice = typeof item.price.unit_amount === "number" ? { amount: fromMinor(item.price.unit_amount * (item.quantity ?? 1), currency), currency } : null;
+  const unitPrice = unitPriceOf(item.price, item.quantity ?? 1, currency);
 
   const openCounts = ctx.registerOn === "invoice_created";
   if (sub.status === "incomplete" && !openCounts) throw new StripeNotYetPaid("The subscription's first invoice is not paid yet.");
@@ -81,7 +93,9 @@ export function mapSubscription(sub: StripeSubscription, ctx: { catalog: Catalog
   let purchaseDate = start;
   let expiresDate = trial ? sec(sub.trial_end) ?? end : end;
   let storeTransactionId = inv?.id ?? stored?.storeTransactionId ?? sub.id;
-  let price: Price | null = trial ? { amount: 0, currency } : inv && paid && !proration && typeof inv.amount_paid === "number" ? { amount: fromMinor(inv.amount_paid, currency), currency } : unitPrice;
+  // A paid invoice costs what was paid; an open one that counts (register_on invoice_created) what is due.
+  const invoiceAmount = !inv ? null : invoicePaid(inv) ? inv.amount_paid : inv.amount_due ?? inv.total;
+  let price: Price | null = trial ? { amount: 0, currency } : inv && paid && !proration && typeof invoiceAmount === "number" ? { amount: fromMinor(invoiceAmount, currency), currency } : unitPrice;
   let billingIssuesDetectedAt: Date | null = null;
   let gracePeriodExpiresDate: Date | null = null;
   let unsubscribeDetectedAt: Date | null = null;
