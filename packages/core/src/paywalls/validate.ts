@@ -111,6 +111,26 @@ function shape(c: Ctx, v: unknown, path: string, kinds = ["rectangle", "pill"]) 
   if (v === undefined || v === null) return;
   if (!isObj(v) || !kinds.includes(v.type)) c.warn(path, `Unknown shape; the SDK uses a plain rectangle. Use ${kinds.join(" or ")}.`);
 }
+/** Image and video masks: unlike other shapes, the SDK fails to decode one that is not an object. */
+function maskShape(c: Ctx, v: unknown, path: string) {
+  if (v !== undefined && v !== null && !isObj(v)) return c.err(path, "mask_shape is an object with a type (rectangle, circle, concave or convex).");
+  shape(c, v, path, ["rectangle", "circle", "concave", "convex"]);
+}
+/** An optional list (decodeIfPresent of an array): anything but a list fails to decode. */
+function optList(c: Ctx, o: Json, k: string, path: string) {
+  if (o[k] !== undefined && o[k] !== null && !Array.isArray(o[k])) c.err(`${path}.${k}`, `${k} must be a list.`);
+}
+function transition(c: Ctx, v: unknown, path: string) {
+  if (v === undefined || v === null) return;
+  if (!isObj(v)) return c.err(path, "transition is an object with type and displacement_strategy.");
+  c.req(v, "type", path);
+  if (c.req(v, "displacement_strategy", path) && !["greedy", "lazy"].includes(v.displacement_strategy)) c.err(`${path}.displacement_strategy`, "displacement_strategy must be greedy or lazy.");
+  if (v.animation !== undefined && v.animation !== null) {
+    const a = v.animation, p = `${path}.animation`;
+    if (!isObj(a)) c.err(p, "animation is an object with type, ms_delay and ms_duration.");
+    else { c.req(a, "type", p); num(c, a, "ms_delay", p, true, true); num(c, a, "ms_duration", p, true, true); }
+  }
+}
 function imageUrls(c: Ctx, v: unknown, path: string) {
   if (!isObj(v)) return c.err(path, "Image sources are an object with width, height, original, heic and heic_low_res.");
   num(c, v, "width", path, true, true); num(c, v, "height", path, true, true);
@@ -252,7 +272,7 @@ function image(c: Ctx, o: Json, path: string) {
   if (c.req(o, "size", path)) size(c, o.size, `${path}.size`);
   str(c, o, "fit_mode", path);
   str(c, o, "override_source_lid", path, false);
-  shape(c, o.mask_shape, `${path}.mask_shape`, ["rectangle", "circle", "concave", "convex"]);
+  maskShape(c, o.mask_shape, `${path}.mask_shape`);
   if (o.color_overlay !== undefined && o.color_overlay !== null) scheme(c, o.color_overlay, `${path}.color_overlay`);
   optPadding(c, o, "padding", path); optPadding(c, o, "margin", path);
   border(c, o.border, `${path}.border`); shadow(c, o.shadow, `${path}.shadow`);
@@ -299,6 +319,7 @@ function action(c: Ctx, a: unknown, path: string) {
   if (!["restore_purchases", "navigate_back", "navigate_to", "workflow", "close_workflow"].includes(a.type)) c.warn(`${path}.type`, `Unknown action ${a.type}; the button does nothing.`);
   if (a.type !== "navigate_to") return;
   if (!c.req(a, "destination", path)) return;
+  if (!isStr(a.destination)) return c.err(`${path}.destination`, "destination must be a string.");
   if (["terms", "privacy_policy", "url", "web_paywall_link"].includes(a.destination)) {
     if (!c.req(a, "url", path)) return;
     if (!isObj(a.url)) return c.err(`${path}.url`, "url is an object with url_lid and method.");
@@ -325,6 +346,7 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
       base(c, x, path, "button");
       action(c, x.action, `${path}.action`);
       if (c.req(x, "stack", path)) stack(c, x.stack, `${path}.stack`, group);
+      transition(c, x.transition, `${path}.transition`); optList(c, x, "state_updates", path);
       overrides(c, x.overrides, `${path}.overrides`, partialVisible(c));
       break;
     case "package":
@@ -334,6 +356,7 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
         else c.packages.push({ id: x.package_id, selected: x.is_selected_by_default === true, path, group });
       }
       bool(c, x, "is_selected_by_default", path);
+      str(c, x, "apple_promo_offer_product_code", path, false); bool(c, x, "haptic_feedback_enabled", path, false);
       if (c.req(x, "stack", path)) stack(c, x.stack, `${path}.stack`, group);
       overrides(c, x.overrides, `${path}.overrides`, partialVisible(c));
       break;
@@ -343,7 +366,10 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
       if (c.req(x, "stack", path)) stack(c, x.stack, `${path}.stack`, group);
       if (x.method !== undefined && x.method !== null) {
         if (!isObj(x.method) || !isStr(x.method.type)) c.err(`${path}.method`, "method is an object with a type.");
-        else if (x.method.type === "custom_web_checkout") {
+        else if (["web_checkout", "web_product_selection", "custom_web_checkout"].includes(x.method.type)) {
+          bool(c, x.method, "auto_dismiss", `${path}.method`, false); str(c, x.method, "open_method", `${path}.method`, false);
+        }
+        if (isObj(x.method) && x.method.type === "custom_web_checkout") {
           if (!isObj(x.method.custom_url)) c.err(`${path}.method.custom_url`, "custom_url is required for custom_web_checkout.");
           else if (c.req(x.method.custom_url, "url_lid", `${path}.method.custom_url`)) urlKey(c, x.method.custom_url.url_lid, `${path}.method.custom_url.url_lid`);
         }
@@ -391,9 +417,11 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
         const p = `${path}.tabs[${i}]`;
         if (!isObj(tab)) return c.err(p, "A tab is an object with id and stack.");
         str(c, tab, "id", p); if (isStr(tab.id)) ids.add(tab.id);
+        str(c, tab, "name", p, false);
         // Packages in different tabs are separate selections.
         if (c.req(tab, "stack", p)) stack(c, tab.stack, `${p}.stack`, `${p}`);
       });
+      str(c, x, "default_tab_id", path, false); optList(c, x, "state_updates", path);
       if (isStr(x.default_tab_id) && !ids.has(x.default_tab_id)) c.warn(`${path}.default_tab_id`, `No tab has the id ${x.default_tab_id}.`);
       const walkButtons = (s: unknown) => {
         if (Array.isArray(s)) return s.forEach(walkButtons);
@@ -408,12 +436,13 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
     case "tab_control": base(c, x, path, "tab_control"); break;
     case "tab_control_button":
       base(c, x, path, "tab_control_button");
-      str(c, x, "tab_id", path);
+      str(c, x, "tab_id", path); bool(c, x, "haptic_feedback_enabled", path, false);
       if (c.req(x, "stack", path)) stack(c, x.stack, `${path}.stack`, group);
       break;
     case "tab_control_toggle":
       base(c, x, path, "tab_control_toggle");
       for (const k of ["thumb_color_on", "thumb_color_off", "track_color_on", "track_color_off"]) if (c.req(x, k, path)) scheme(c, x[k], `${path}.${k}`);
+      bool(c, x, "haptic_feedback_enabled", path, false);
       break;
     case "carousel":
       base(c, x, path, "carousel");
@@ -424,7 +453,7 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
       else x.pages.forEach((p: unknown, i: number) => stack(c, p, `${path}.pages[${i}]`, group));
       str(c, x, "page_alignment", path);
       for (const k of ["page_spacing", "page_peek", "initial_page_index"]) num(c, x, k, path, true, true);
-      bool(c, x, "loop", path);
+      bool(c, x, "loop", path); optList(c, x, "state_updates", path);
       if (x.auto_advance !== undefined && x.auto_advance !== null) {
         const a = x.auto_advance, p = `${path}.auto_advance`;
         if (!isObj(a)) c.err(p, "auto_advance is an object with ms_time_per_page and ms_transition_time.");
@@ -456,6 +485,9 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
       if (c.req(x, "size", path)) size(c, x.size, `${path}.size`);
       str(c, x, "fit_mode", path);
       optPadding(c, x, "padding", path); optPadding(c, x, "margin", path);
+      maskShape(c, x.mask_shape, `${path}.mask_shape`);
+      if (x.color_overlay !== undefined && x.color_overlay !== null) scheme(c, x.color_overlay, `${path}.color_overlay`);
+      border(c, x.border, `${path}.border`); shadow(c, x.shadow, `${path}.shadow`);
       overrides(c, x.overrides, `${path}.overrides`, partialVisible(c));
       break;
     case "countdown":
@@ -468,14 +500,22 @@ function component(c: Ctx, x: unknown, path: string, group: string) {
       if (c.req(x, "countdown_stack", path)) stack(c, x.countdown_stack, `${path}.countdown_stack`, group);
       if (x.end_stack !== undefined && x.end_stack !== null) stack(c, x.end_stack, `${path}.end_stack`, group);
       if (x.fallback !== undefined && x.fallback !== null) stack(c, x.fallback, `${path}.fallback`, group);
+      overrides(c, x.overrides, `${path}.overrides`, partialVisible(c));
       break;
-    case "web_view":
+    case "web_view": {
       base(c, x, path, "web_view");
       if (!isStr(x.id) || !x.id.trim()) c.err(`${path}.id`, "A web view needs an id.");
       num(c, x, "protocol_version", path, true, true);
+      // SDKs show `fallback` instead where they cannot run this web view: another protocol version, watchOS and tvOS.
+      const hasFallback = isObj(x.fallback);
+      if (isInt(x.protocol_version) && x.protocol_version !== 1 && !hasFallback) c.err(`${path}.protocol_version`, "The SDKs support web view protocol_version 1; another version needs a fallback component.");
+      if (hasFallback) component(c, x.fallback, `${path}.fallback`, group);
+      else c.warn(`${path}.fallback`, "Without a fallback component, the paywall fails to load on watchOS, tvOS and SDKs without web views.");
       if (c.req(x, "url", path) && (!isStr(x.url) || !/^https:\/\/[^/\s{}]+/.test(x.url))) c.err(`${path}.url`, "A web view needs a resolved https URL.");
       if (c.req(x, "size", path)) size(c, x.size, `${path}.size`);
+      overrides(c, x.overrides, `${path}.overrides`, partialVisible(c));
       break;
+    }
     default:
       if (isObj(x.fallback)) { c.warn(`${path}.type`, `Unknown component type ${JSON.stringify(t)}; the SDK shows its fallback.`); component(c, x.fallback, `${path}.fallback`, group); }
       else c.err(`${path}.type`, `Unknown component type ${JSON.stringify(t)}. Use one of: ${COMPONENT_TYPES.join(", ")}.`);
@@ -493,9 +533,28 @@ export function validatePaywall(doc: unknown, opts: ValidateOptions = {}): Paywa
   const locale = isStr(d.default_locale) ? d.default_locale : "en_US";
   const strings = locs && isObj(locs[locale]) ? (locs[locale] as Record<string, unknown>) : null;
   const c = new Ctx(strings);
+  if (d.default_locale !== undefined && !isStr(d.default_locale)) c.err("default_locale", "default_locale must be a locale id such as en_US.");
   if (!locs) c.err("components_localizations", "components_localizations is required: { \"en_US\": { \"key\": \"text\" } }.");
-  else if (!strings) c.err(`components_localizations.${locale}`, `The default locale ${locale} has no strings.`);
-  else for (const [k, v] of Object.entries(strings)) if (!isStr(v) && !isObj(v)) c.err(`components_localizations.${locale}.${k}`, "A localized value is a string or image sources.");
+  else {
+    if (!strings) c.err(`components_localizations.${locale}`, `The default locale ${locale} has no strings.`);
+    // The SDK decodes every locale: one bad value anywhere fails the whole paywall.
+    for (const [loc, table] of Object.entries(locs)) {
+      if (!isObj(table)) { c.err(`components_localizations.${loc}`, "A locale's strings are an object of key to text."); continue; }
+      for (const [k, v] of Object.entries(table)) {
+        if (isStr(v)) continue;
+        if (isObj(v)) themeImage(c, v, `components_localizations.${loc}.${k}`);
+        else c.err(`components_localizations.${loc}.${k}`, "A localized value is a string or image sources.");
+      }
+    }
+  }
+  if (d.exit_offers !== undefined && d.exit_offers !== null) {
+    const e = d.exit_offers;
+    if (!isObj(e)) c.err("exit_offers", "exit_offers is an object with dismiss.");
+    else if (e.dismiss !== undefined && e.dismiss !== null) {
+      if (!isObj(e.dismiss)) c.err("exit_offers.dismiss", "exit_offers.dismiss is an object with offering_id.");
+      else str(c, e.dismiss, "offering_id", "exit_offers.dismiss");
+    }
+  }
   const cfg = d.components_config;
   if (!isObj(cfg) || !isObj(cfg.base)) {
     c.err("components_config.base", "components_config.base is required.");
