@@ -19,6 +19,7 @@ import { Shell } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { Dialog, Field, Segmented, Sparkline, Switch, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
+import { apiOrigin } from "./setup/data";
 import { flag, money, relative, shortId, storeLabel, TX_TAG, type App, type Entitlement, type Offering, type Product, type Transaction } from "../lib/customers";
 
 type MetricId = "active_trials" | "active_subscriptions" | "mrr" | "revenue" | "new_customers" | "active_users";
@@ -251,7 +252,7 @@ function SdkSnippet({ pid, apps }: { pid: string; apps: App[] }) {
   const app = apps.find((a) => a.type === (lang === "kotlin" ? "play_store" : "app_store")) ?? apps.find((a) => a.type !== "test_store") ?? apps[0];
   const key = useQuery({ queryKey: ["pubkey", pid, app?.id], enabled: !!app, queryFn: () => api<List<{ key: string }>>(`/v2/projects/${pid}/apps/${app!.id}/public_api_keys`) });
   const k = key.data?.items[0]?.key ?? "your_public_api_key";
-  const url = window.location.origin;
+  const url = apiOrigin();
   const s = SNIPPETS.find((x) => x.value === lang)!;
   return (
     <div className="code">

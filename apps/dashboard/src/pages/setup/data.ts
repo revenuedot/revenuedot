@@ -116,6 +116,8 @@ export const useProducts = (pid: string, appId?: string) => useQuery({
 });
 
 /** The server this dashboard talks to: what the SDK's proxy URL and the stores' notification URLs point at. */
-export const apiOrigin = () => window.location.origin;
+/** The server URL apps point at. On RevenueDot Cloud the dashboard host also answers the API, but the public API host is
+ *  api.revenuedot.app (what the docs say), so show that. Self-hosted servers serve both from one origin. */
+export const apiOrigin = () => (window.location.hostname === "app.revenuedot.app" ? "https://api.revenuedot.app" : window.location.origin);
 
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong. Try again.");
