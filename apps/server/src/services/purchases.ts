@@ -4,7 +4,7 @@ import { schema, type DB } from "@revenuedot/db";
 import { Codes, RCError } from "../errors.js";
 import { backdateFirstSeen, findCustomer, isOnlyAnonymous, mergeCustomers, nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
 import type { VerifiedPurchase, VerifiedSubscription } from "../stores/types.js";
-import { recordEvent, type EventSubject } from "./events.js";
+import { recordEvent, recordSubscriberAlias, type EventSubject } from "./events.js";
 import { grantForPurchase } from "./virtual-currencies.js";
 import { adoptImportedChain } from "./imported-chains.js";
 import { usdValue, type FxFetch } from "./fx.js";
@@ -50,14 +50,18 @@ async function resolveOwnership(db: DB, current: CustomerRow, existingOwnerId: s
   }
   const [prevOwner] = await db.select().from(customers).where(eq(customers.id, existingOwnerId));
   if (!prevOwner) return { owner: current };
+  // Every merge gives the surviving customer new app user ids: SUBSCRIBER_ALIAS (delivered only where asked for).
+  const aliased = (customerId: string) => recordSubscriberAlias(db, { projectId: ctx.projectId, appId: ctx.appId, customerId, appUserId: ctx.appUserId, sandbox, now: ctx.now });
   // An anonymous owner is always merged into the customer posting the receipt.
   if (await isOnlyAnonymous(db, prevOwner.id)) {
     await mergeCustomers(db, prevOwner.id, current.id);
+    await aliased(current.id);
     return { owner: current };
   }
   if (isAnonymous(ctx.appUserId) && (await isOnlyAnonymous(db, current.id))) {
     // The poster is anonymous and the receipt belongs to a known user: RevenueCat aliases the anonymous id into the owner.
     await mergeCustomers(db, current.id, prevOwner.id);
+    await aliased(prevOwner.id);
     const [o] = await db.select().from(customers).where(eq(customers.id, prevOwner.id));
     return { owner: o! };
   }
@@ -68,6 +72,7 @@ async function resolveOwnership(db: DB, current: CustomerRow, existingOwnerId: s
   }
   if (behavior === "share") {
     await mergeCustomers(db, current.id, prevOwner.id);
+    await aliased(prevOwner.id);
     const [o] = await db.select().from(customers).where(eq(customers.id, prevOwner.id));
     return { owner: o! };
   }
@@ -107,6 +112,10 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     // Access that runs past now reopens the chain for a future EXPIRATION; an EXPIRATION derived below sets it again.
     presentedOfferingId: existing?.presentedOfferingId ?? ctx.presentedOfferingId ?? null,
     expiredEventAt: (p.expiresDate === null || p.expiresDate > ctx.now || (p.gracePeriodExpiresDate && p.gracePeriodExpiresDate > ctx.now)) ? null : existing?.expiredEventAt ?? null,
+    // Each store read states the current period's offer; a source that knows nothing of offers (Test Store, imports) keeps the stored one.
+    offerType: p.offerType === undefined ? existing?.offerType ?? null : p.offerType,
+    offerId: p.offerId === undefined ? existing?.offerId ?? null : p.offerId,
+    ...(p.eligibleWinBackOfferIds === undefined ? {} : { eligibleWinBackOfferIds: p.eligibleWinBackOfferIds, winBackOffersAt: ctx.now }),
   };
   if (existing) await db.update(subscriptions).set(values).where(eq(subscriptions.id, existing.id));
   else await db.insert(subscriptions).values({ id: newId("sub_", 16), ...values });
@@ -123,6 +132,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     isFamilyShare: p.ownershipType === "FAMILY_SHARED", countryCode: p.countryCode, price: p.price, priceUsd,
     // Store notifications carry no offering: renewals and cancellations report the one saved with the purchase.
     presentedOfferingId: ctx.presentedOfferingId ?? values.presentedOfferingId,
+    offerId: values.offerId,
   };
   if (transferFrom) await recordTransfer(db, ctx, transferFrom, owner, subject);
   for (const d of diffSubscription(prev, next, ctx.now)) {
@@ -137,6 +147,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         purchasedAt: refund ? p.refundedAt ?? ctx.now : d.type === "REFUND_REVERSED" ? ctx.now : p.purchaseDate, expiresAt: p.expiresDate,
         revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (priceUsd ?? 0),
         priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null, createdAt: ctx.now,
+        offerType: values.offerType, offerId: values.offerId,
       }).onConflictDoNothing();
       if (kind === "purchase" || kind === "renewal" || kind === "trial") {
         await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });

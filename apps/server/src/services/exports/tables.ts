@@ -238,7 +238,7 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
       reserved_subscriber_attributes: JSON.stringify(i?.reserved ?? {}), custom_subscriber_attributes: JSON.stringify(i?.custom ?? {}),
       platform: i?.c.lastSeenPlatform ?? null,
       updated_at: maxDate(t.createdAt, refunds.has(key) ? refunds.get(key) : null, reversals.get(key), current ? s?.updatedAt : null),
-      offer: null, offer_type: null, first_seen_time: i?.c.firstSeen ?? null, auto_resume_time: current ? s?.autoResumeDate ?? null : null, app_id: t.appId,
+      offer: t.offerId ?? null, offer_type: t.offerType ?? null, first_seen_time: i?.c.firstSeen ?? null, auto_resume_time: current ? s?.autoResumeDate ?? null : null, app_id: t.appId,
     };
   });
   return { rows: out, next: nextCursor(page, (r) => r.t.id) };

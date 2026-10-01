@@ -144,21 +144,22 @@ export async function isOnlyAnonymous(db: DB, customerId: string): Promise<boole
  * - the new id is new and the old id is anonymous: the new id becomes an alias of the anonymous customer (201).
  * - otherwise a fresh customer is created for the new id (201).
  */
-export async function identify(db: DB, projectId: string, oldId: string, newAppUserId: string, now: Date): Promise<{ customer: CustomerRow; created: boolean }> {
+export async function identify(db: DB, projectId: string, oldId: string, newAppUserId: string, now: Date): Promise<{ customer: CustomerRow; created: boolean; aliased: boolean }> {
   const target = await findCustomer(db, projectId, newAppUserId);
   const old = await findCustomer(db, projectId, oldId);
   if (target) {
+    let aliased = false;
     if (old && old.id !== target.id && isAnonymous(oldId) && (await isOnlyAnonymous(db, old.id))) {
       const targetAliases = await aliasesOf(db, target.id);
-      if (!targetAliases.some(isAnonymous)) await mergeCustomers(db, old.id, target.id);
+      if (!targetAliases.some(isAnonymous)) { await mergeCustomers(db, old.id, target.id); aliased = true; }
     }
-    return { customer: (await findCustomer(db, projectId, newAppUserId))!, created: false };
+    return { customer: (await findCustomer(db, projectId, newAppUserId))!, created: false, aliased };
   }
   if (old && isAnonymous(oldId) && (await isOnlyAnonymous(db, old.id))) {
     await db.insert(customerAliases).values({ projectId, appUserId: newAppUserId, customerId: old.id }).onConflictDoNothing();
-    return { customer: (await findCustomer(db, projectId, newAppUserId))!, created: true };
+    return { customer: (await findCustomer(db, projectId, newAppUserId))!, created: true, aliased: true };
   }
-  return getOrCreateCustomer(db, projectId, newAppUserId, now);
+  return { ...(await getOrCreateCustomer(db, projectId, newAppUserId, now)), aliased: false };
 }
 
 export async function customersByIds(db: DB, ids: string[]) {

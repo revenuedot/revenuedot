@@ -5,6 +5,7 @@ import type { Deps, Vars } from "../context.js";
 import { entitlementMap, offeringsJSON, productEntitlementMappingJSON, productInfo } from "../repo/catalog.js";
 import { findCustomer, getOrCreateCustomer, identify, loadState, setAttributes, touch, aliasesOf } from "../repo/customers.js";
 import { applyPurchases } from "../services/purchases.js";
+import { recordSubscriberAlias } from "../services/events.js";
 import { restV1 } from "./rest-v1.js";
 import { appForPlatform, resolveKey } from "../services/auth.js";
 import type { ReceiptInput } from "../stores/types.js";
@@ -159,13 +160,21 @@ export function sdkRoutes(deps: Deps) {
   r.get("/v1/subscribers/:id/offerings", offerings);
   r.get("/v1/offerings", offerings);
 
+  /** SUBSCRIBER_ALIAS for a logIn or alias call that gave an existing customer a new app user id. */
+  const aliasEvent = async (c: any, customerId: string, appUserId: string, now: Date) => {
+    const app = c.get("app");
+    await recordSubscriberAlias(deps.db, { projectId: app.projectId, appId: app.id ?? null, customerId, appUserId, sandbox: c.req.header("x-is-sandbox") === "true", now });
+    deps.kick?.();
+  };
+
   // 4. logIn. 201 when the user is new, 200 when it existed.
   r.post("/v1/subscribers/identify", async (c) => {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
     const oldId = userId(String(b.app_user_id ?? ""));
     const newAppUserId = userId(String(b.new_app_user_id ?? ""));
-    const { customer, created } = await identify(deps.db, app.projectId, oldId, newAppUserId, now);
+    const { customer, created, aliased } = await identify(deps.db, app.projectId, oldId, newAppUserId, now);
+    if (aliased) await aliasEvent(c, customer.id, newAppUserId, now);
     await touch(deps.db, customer.id, now, reqInfo(c));
     const state = await loadState(deps.db, customer);
     return c.json(buildCustomerInfo(state, await entitlementMap(deps.db, app.projectId), now), created ? 201 : 200);
@@ -175,7 +184,9 @@ export function sdkRoutes(deps: Deps) {
   r.post("/v1/subscribers/:id/alias", async (c) => {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
-    await identify(deps.db, app.projectId, userId(c.req.param("id")), userId(String(b.new_app_user_id ?? "")), now);
+    const newId = userId(String(b.new_app_user_id ?? ""));
+    const { customer, aliased } = await identify(deps.db, app.projectId, userId(c.req.param("id")), newId, now);
+    if (aliased) await aliasEvent(c, customer.id, newId, now);
     return c.json({});
   });
 
@@ -246,7 +257,7 @@ export function sdkRoutes(deps: Deps) {
   r.get("/v1/subscribers/:id/health_report", (c) => c.json({ status: "passed", project_id: c.get("app")?.projectId ?? null, app_id: c.get("app")?.id ?? null, checks: [] }));
 
   // 14. Product → entitlement mapping (offline entitlements)
-  r.get("/v1/product_entitlement_mapping", async (c) => c.json(await productEntitlementMappingJSON(deps.db, c.get("app").projectId)));
+  r.get("/v1/product_entitlement_mapping", async (c) => c.json(await productEntitlementMappingJSON(deps.db, c.get("app").projectId, c.get("app").id ?? null)));
 
   // 15-16. Customer Center (Tier 2): no config yet, so the SDK hides the UI.
   r.get("/v1/customercenter/:id", async (c) => c.json({ customer_center: await customerCenterFor(deps.db, c.get("app").projectId) }));

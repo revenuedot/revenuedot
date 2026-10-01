@@ -1,4 +1,4 @@
-import type { PeriodType, Store } from "@revenuedot/core";
+import type { OfferType, PeriodType, Store } from "@revenuedot/core";
 import type { VerifiedPurchase, VerifiedSubscription } from "../types.js";
 
 /** JWSTransactionDecodedPayload (the fields we use). Dates are epoch milliseconds, prices milliunits. */
@@ -17,6 +17,8 @@ export interface AppleTransaction {
   revocationReason?: number;
   isUpgraded?: boolean;
   offerType?: number;
+  /** The promotional offer, offer code or win-back offer identifier (none for introductory offers). */
+  offerIdentifier?: string;
   offerDiscountType?: "FREE_TRIAL" | "PAY_AS_YOU_GO" | "PAY_UP_FRONT" | string;
   environment: "Production" | "Sandbox" | "Xcode" | "LocalTesting" | string;
   storefront?: string;
@@ -40,6 +42,8 @@ export interface AppleRenewalInfo {
   renewalPrice?: number;
   currency?: string;
   signedDate?: number;
+  /** Win-back offers the customer may redeem now, best first (App Store Server API 1.12+, iOS 18 offers). */
+  eligibleWinBackOfferIds?: string[];
 }
 
 export const AUTO_RENEWABLE = "Auto-Renewable Subscription";
@@ -53,6 +57,13 @@ export function periodTypeOf(tx: Pick<AppleTransaction, "offerType" | "offerDisc
   const free = tx.offerDiscountType === "FREE_TRIAL" || tx.price === 0;
   if (free) return "trial";
   return tx.offerType === 1 || tx.offerType === 3 ? "intro" : "normal";
+}
+
+/** Apple `offerType`: 1 introductory (free_trial when free), 2 promotional, 3 offer code, 4 win-back (https://developer.apple.com/documentation/appstoreserverapi/offertype). */
+export function offerOf(tx: Pick<AppleTransaction, "offerType" | "offerIdentifier" | "offerDiscountType" | "price">): { offerType: OfferType | null; offerId: string | null } {
+  const type: OfferType | null = tx.offerType === 1 ? (tx.offerDiscountType === "FREE_TRIAL" || tx.price === 0 ? "free_trial" : "introductory")
+    : tx.offerType === 2 ? "promotional" : tx.offerType === 3 ? "offer_code" : tx.offerType === 4 ? "win_back" : null;
+  return { offerType: type, offerId: type ? tx.offerIdentifier ?? null : null };
 }
 
 export interface MapOptions {
@@ -106,6 +117,8 @@ export function fromTransaction(tx: AppleTransaction, o: MapOptions): VerifiedPu
     // Without renewal info Apple said nothing about either; the stored values stay.
     priceIncreaseStatus: o.priceIncrease ?? (r ? (r.priceIncreaseStatus === 0 ? "pending" : r.priceIncreaseStatus === 1 ? "accepted" : null) : undefined),
     cancelReason: o.cancelReason ?? (r ? (r.expirationIntent === 3 ? "PRICE_INCREASE" : null) : undefined),
+    ...offerOf(tx),
+    eligibleWinBackOfferIds: r ? (Array.isArray(r.eligibleWinBackOfferIds) ? r.eligibleWinBackOfferIds.filter((x) => typeof x === "string") : []) : undefined,
   };
   return sub;
 }

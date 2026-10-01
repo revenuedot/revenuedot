@@ -1,4 +1,4 @@
-import type { PeriodType, Price } from "@revenuedot/core";
+import type { OfferType, PeriodType, Price } from "@revenuedot/core";
 import { addDuration } from "../test-store.js";
 import type { VerifiedOneTime, VerifiedSubscription } from "../types.js";
 import type { Money, ProductPurchase, SubscriptionPurchaseV2 } from "./api.js";
@@ -49,6 +49,23 @@ function periodTypeOf(sub: SubscriptionPurchaseV2, orderId: string): PeriodType 
   const tags = (li.offerDetails.offerTags ?? []).join(" ").toLowerCase();
   if (/intro|discount/.test(tags)) return "intro";
   return "trial";
+}
+
+/**
+ * The offer of the current period. A free-trial or introductory-price phase names itself; without `offerPhase` the first
+ * order follows the period type and a renewal order is `unspecified` (RevenueCat's "Google offers not on the first period").
+ * A period at the base price has no offer.
+ */
+export function offerOf(sub: SubscriptionPurchaseV2, orderId: string): { offerType: OfferType | null; offerId: string | null } {
+  const li = lineItemOf(sub);
+  const offerId = li?.offerDetails?.offerId;
+  if (!offerId) return { offerType: null, offerId: null };
+  const ph = li!.offerPhase;
+  let offerType: OfferType | null;
+  if (ph) offerType = ph.freeTrial ? "free_trial" : ph.introductoryPrice ? "introductory" : ph.basePrice ? null : "unspecified";
+  else if (isRenewalOrder(orderId)) offerType = "unspecified";
+  else offerType = periodTypeOf(sub, orderId) === "trial" ? "free_trial" : "introductory";
+  return { offerType, offerId: offerType ? offerId : null };
 }
 
 /**
@@ -141,6 +158,7 @@ export function mapSubscription(sub: SubscriptionPurchaseV2, token: string, ctx:
     autoRenewProductId: li.deferredItemReplacement?.productId ?? li.productId,
     cancelReason, priceIncreaseStatus, replacesStoreKey: sub.linkedPurchaseToken ?? null,
     cancelSurveyReason: cancel?.userInitiatedCancellation?.cancelSurveyResult?.reason ?? (unsubscribeDetectedAt ? undefined : null),
+    ...offerOf(sub, orderId),
   };
 }
 

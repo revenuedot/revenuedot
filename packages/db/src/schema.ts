@@ -50,6 +50,19 @@ export const apiKeys = pgTable("api_keys", {
   createdAt: created(),
 }, (t) => [uniqueIndex("api_keys_hash").on(t.hash)]);
 
+/**
+ * Subscriber access tokens from `POST /v2/projects/{id}/apps/{id}/authenticate`: short-lived, bound to one app and one app
+ * user id, stored only as a SHA-256 hash. The SDK endpoints accept them in place of the app's public key.
+ */
+export const subscriberTokens = pgTable("subscriber_tokens", {
+  hash: text("hash").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  appUserId: text("app_user_id").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  createdAt: created(),
+}, (t) => [index("subscriber_tokens_expiry").on(t.expiresAt)]);
+
 export const products = pgTable("products", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
@@ -183,6 +196,14 @@ export const subscriptions = pgTable("subscriptions", {
   presentedOfferingId: text("presented_offering_id"),
   /** Google Play: the customer's answer to the cancel survey (`cancelSurveyResult.reason`), for the cancel reasons chart. */
   cancelSurveyReason: text("cancel_survey_reason"),
+  /** Offer of the current period: free_trial, introductory, promotional, offer_code, win_back or unspecified (null: none). */
+  offerType: text("offer_type"),
+  /** The store's offer id (Apple offerIdentifier, Google offerId). */
+  offerId: text("offer_id"),
+  /** App Store: the win-back offers Apple says this customer may redeem (renewal info `eligibleWinBackOfferIds`), best first. */
+  eligibleWinBackOfferIds: jsonb("eligible_win_back_offer_ids").$type<string[]>(),
+  /** When `eligibleWinBackOfferIds` was last read from Apple. */
+  winBackOffersAt: ts("win_back_offers_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("subscriptions_store_key").on(t.projectId, t.store, t.storeKey), index("subscriptions_customer").on(t.customerId), index("subscriptions_project_updated").on(t.projectId, t.updatedAt, t.id)]);
 
@@ -223,6 +244,9 @@ export const transactions = pgTable("transactions", {
   priceAmount: doublePrecision("price_amount"),
   priceCurrency: text("price_currency"),
   countryCode: text("country_code"),
+  /** Offer used for this transaction (see subscriptions.offerType) and the store's offer id. */
+  offerType: text("offer_type"),
+  offerId: text("offer_id"),
   /** When RevenueDot recorded the row (incremental data exports read this; rows from before migration 0013 carry its run time). */
   createdAt: created(),
 }, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id)]);

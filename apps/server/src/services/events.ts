@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { commission, rcDate, webhookStore, type DerivedEvent, type EventType, type Store } from "@revenuedot/core";
+import { OPT_IN_EVENT_TYPES, commission, rcDate, webhookStore, type DerivedEvent, type EventType, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { aliasesOf, type CustomerRow } from "../repo/customers.js";
 import { entitlementMap } from "../repo/catalog.js";
@@ -25,6 +25,8 @@ export interface EventSubject {
   price?: { amount: number; currency: string } | null;
   priceUsd?: number | null;
   presentedOfferingId?: string | null;
+  /** The store offer id of this period (Apple offerIdentifier, Google offerId): webhooks send it as `offer_code`. */
+  offerId?: string | null;
 }
 
 /** Events whose `price` is the money that moved: purchases, renewals, refunds (negative) and refund reversals. Every other event reports 0. */
@@ -95,7 +97,7 @@ export async function recordEvent(db: DB, opts: {
       country_code: subject.countryCode ?? null, currency: subject.price?.currency ?? null,
       price: money(usd), price_in_purchased_currency: money(local),
       subscriber_attributes, store: webhookStore(subject.store), takehome_percentage: 1 - comm,
-      tax_percentage: 0, commission_percentage: comm, offer_code: null,
+      tax_percentage: 0, commission_percentage: comm, offer_code: subject.offerId ?? null,
     };
     if (type === "BILLING_ISSUE") event.grace_period_expiration_at_ms = subject.gracePeriodExpiresAt ? subject.gracePeriodExpiresAt.getTime() : null;
     if (type === "SUBSCRIPTION_PAUSED") event.auto_resume_at_ms = subject.autoResumeAt ? subject.autoResumeAt.getTime() : null;
@@ -155,10 +157,27 @@ export async function queueDeliveries(db: DB, projectId: string, eventId: string
     if (h.environment !== "both" && h.environment !== environment) continue;
     if (h.appId && h.appId !== appId) continue;
     if (h.eventTypes && h.eventTypes.length && !h.eventTypes.includes(type)) continue;
+    if (OPT_IN_EVENT_TYPES.has(type) && !(h.eventTypes ?? []).includes(type)) continue;
     await db.insert(webhookDeliveries).values({ id: crypto.randomUUID(), webhookId: h.id, eventId, nextAttemptAt: now, createdAt: now }).onConflictDoNothing();
   }
   // Integrations are never allowed to fail the purchase or webhook path that recorded the event.
   if (event) await queueIntegrationDeliveries(db, { projectId, eventId, type, environment, appId, event, now }).catch((e) => console.error(`integration fan-out for event ${eventId} failed`, e));
+}
+
+/**
+ * SUBSCRIBER_ALIAS: a new app user id joined an existing customer (logIn onto an anonymous customer, a merge, the Android
+ * alias call). RevenueCat's "Subscriber alias" event carries the common and subscriber identity fields
+ * (company research raw/pages/integrations_webhooks_event-types-and-fields.md). `appUserId` is the id the app uses now.
+ * Recorded in the customer's history; delivered only where the event filter asks for it (OPT_IN_EVENT_TYPES).
+ */
+export async function recordSubscriberAlias(db: DB, o: { projectId: string; appId: string | null; customerId: string; appUserId: string; sandbox: boolean; now: Date }) {
+  const [customer] = await db.select().from(schema.customers).where(eq(schema.customers.id, o.customerId)).limit(1);
+  if (!customer) return null;
+  const enrolled = await enrollmentsOf(db, customer.id);
+  return recordRawEvent(db, {
+    projectId: o.projectId, appId: o.appId, customer, appUserId: o.appUserId, type: "SUBSCRIBER_ALIAS", sandbox: o.sandbox, now: o.now,
+    fields: { original_app_user_id: customer.originalAppUserId, ...(enrolled.length ? { experiments: enrolled } : {}) },
+  });
 }
 
 export { rcDate };

@@ -15,6 +15,15 @@ export const EVENT_TYPES: EventType[] = [
   "PRICE_INCREASE_CONSENT_REQUIRED", "PRICE_INCREASE_CONSENT_APPROVED",
 ];
 
+/**
+ * Types delivered only to webhooks and integrations whose event filter names them. SUBSCRIBER_ALIAS is deprecated by
+ * RevenueCat and "new projects don't receive this webhook", so an endpoint without a filter never gets it.
+ */
+export const OPT_IN_EVENT_TYPES: ReadonlySet<string> = new Set(["SUBSCRIBER_ALIAS"]);
+
+/** Types RevenueDot never produces, because it never has the fact behind them (prd/webhooks/PRD.md). They stay valid filters. */
+export const NEVER_SENT_EVENT_TYPES: ReadonlySet<string> = new Set(["TEMPORARY_ENTITLEMENT_GRANT", "INVOICE_ISSUANCE", "PURCHASE_REDEEMED"]);
+
 export type CancelReason = "UNSUBSCRIBE" | "BILLING_ERROR" | "DEVELOPER_INITIATED" | "PRICE_INCREASE" | "CUSTOMER_SUPPORT" | "UNKNOWN";
 
 export interface DerivedEvent {

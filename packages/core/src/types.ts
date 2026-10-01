@@ -10,6 +10,12 @@ export type Environment = "production" | "sandbox";
 export interface Price { amount: number; currency: string }
 
 /** One subscription as the server knows it: the latest state of one store subscription chain. */
+/**
+ * The kind of store offer a period was bought with, named after RevenueCat's charts "Offer type" values.
+ * `unspecified` is a Google Play offer on a later period, where Google does not say which phase applies.
+ */
+export type OfferType = "free_trial" | "introductory" | "promotional" | "offer_code" | "win_back" | "unspecified";
+
 export interface Subscription {
   productIdentifier: string;
   /** Google base plan id, when the product is `subscriptionId:basePlanId`. */

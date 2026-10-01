@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { OPT_IN_EVENT_TYPES } from "@revenuedot/core";
 import { sendsEvent, type IntegrationKind } from "@revenuedot/core/integrations";
 import { schema, type DB } from "@revenuedot/db";
 
@@ -23,5 +24,6 @@ export function matches(i: Row, o: { type: string; environment: string; appId: s
   if (i.environment !== "both" && i.environment !== o.environment) return false;
   if (i.appId && i.appId !== o.appId) return false;
   if (i.eventTypes && i.eventTypes.length && !i.eventTypes.includes(o.type)) return false;
+  if (OPT_IN_EVENT_TYPES.has(o.type) && !(i.eventTypes ?? []).includes(o.type)) return false;
   return sendsEvent(i.kind as IntegrationKind, o.event);
 }
