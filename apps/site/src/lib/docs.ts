@@ -52,6 +52,8 @@ const LABELS: Record<string, string> = {
   "docs/guides/upgrades": "Upgrades",
   "docs/guides/backups": "Backups",
   "docs/guides/going-to-production": "Going to production",
+  "docs/guides/win-back-offers": "Win-back offers",
+  "docs/guides/offline-entitlements": "Offline entitlements",
   "docs/migrate/README": "Overview",
   "docs/migrate/importer": "Importer",
   "docs/migrate/dual-run": "Side-by-side run",
