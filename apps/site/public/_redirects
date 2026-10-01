@@ -14,3 +14,5 @@
 /signin https://app.revenuedot.app/login 302
 /sign-in https://app.revenuedot.app/login 302
 /app https://app.revenuedot.app/login 302
+# The OpenAI plugin review form links the demo here.
+/review/revenuedot-chatgpt-demo.mp4 /videos/revenuedot-chatgpt-demo.mp4 301

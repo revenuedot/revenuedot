@@ -92,6 +92,22 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
     </div>
   </section>
 
+  <section class="section" id="chat">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">In ChatGPT and Claude</p>
+        <h2 class="h2">Run your subscriptions by asking in chat</h2>
+        <p class="lede">Connect RevenueDot to ChatGPT or Claude, then check revenue, find a customer, grant access or fix a webhook in plain words. It asks before changing anything, never moves money without your approval, and never takes your store keys.</p>
+      </div>
+      <div class="shot video">
+        <video controls preload="none" playsinline width="1920" height="1080" poster="/videos/revenuedot-chatgpt-demo.webp" aria-label="87-second demo: RevenueDot running a subscription app from ChatGPT">
+          <source src="/videos/revenuedot-chatgpt-demo.mp4" type="video/mp4" />
+        </video>
+      </div>
+      <p class="small more"><a href="/docs/guides/connect-ai-assistants">Connect ChatGPT, Claude or Cursor</a> <span class="muted">in about a minute with one URL.</span></p>
+    </div>
+  </section>
+
   <section class="section" id="product">
     <div class="wrap">
       <div class="head">
@@ -161,6 +177,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
   .hero-shot { margin-top: 56px; margin-bottom: 96px; }
   .sdk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
   .more { margin-top: 20px; }
+  .video video { display: block; width: 100%; height: auto; background: #000; }
   .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
   .pair-item { display: grid; gap: 16px; align-content: start; }
   @media (max-width: 900px) { .pair, .sdk-grid { grid-template-columns: 1fr; } }
