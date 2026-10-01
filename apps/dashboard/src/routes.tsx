@@ -35,10 +35,17 @@ import { WebPage } from "./pages/web/Web";
 import { FunnelsPage } from "./pages/web/Funnels";
 import { FunnelBuilderPage } from "./pages/web/FunnelBuilder";
 import { WebDiscountsPage } from "./pages/web/WebDiscounts";
+import { lazy, Suspense } from "react";
+
+// RevenueDot AI pulls in the AI SDK, the Agents client and Streamdown; it loads only when opened.
+const AssistantPage = lazy(() => import("./pages/ai/Assistant").then((m) => ({ default: m.AssistantPage })));
+const Assistant = () => <Suspense fallback={null}><AssistantPage /></Suspense>;
 
 /** Project routes. URL paths mirror RevenueCat's dashboard so bookmarks and muscle memory carry over. */
 export const routes = [
   <Route key="overview" path="/projects/:projectId/overview" element={<Overview />} />,
+  <Route key="ai" path="/projects/:projectId/ai" element={<Assistant />} />,
+  <Route key="ai-conversation" path="/projects/:projectId/ai/:conversationId" element={<Assistant />} />,
   <Route key="charts" path="/projects/:projectId/charts" element={<ChartsPage />} />,
   <Route key="chart" path="/projects/:projectId/charts/:chartName" element={<ChartsPage />} />,
   <Route key="customers" path="/projects/:projectId/customers" element={<Customers />} />,

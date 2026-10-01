@@ -1,0 +1,55 @@
+/* Tailwind for the ai-elements and shadcn components (src/components/ai-elements, src/components/ui), themed with the
+   RevenueDot tokens (design/tokens.css, DESIGN.md): square corners, hairlines, no shadows, one gold accent.
+   Tailwind's preflight is not loaded, so the rest of the dashboard keeps app.css exactly as it was; a small reset below
+   applies only inside `.rd-ai`. Imported from index.css in the `utilities` layer stack above app.css. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+/* Streamdown (the markdown renderer in MessageResponse) ships its own utility classes. */
+@source "../../node_modules/streamdown/dist";
+
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) { @slot; }
+  @media (prefers-color-scheme: dark) { &:where(:root:not([data-theme="light"]) *) { @slot; } }
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--panel);
+  --color-popover-foreground: var(--fg);
+  --color-primary: var(--fg);
+  --color-primary-foreground: var(--bg);
+  --color-secondary: var(--hover);
+  --color-secondary-foreground: var(--fg);
+  --color-muted: var(--hover);
+  --color-muted-foreground: var(--fg-3);
+  --color-accent: var(--hover);
+  --color-accent-foreground: var(--fg);
+  --color-destructive: var(--down);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --color-gold: var(--accent);
+  --color-gold-ink: var(--accent-ink);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-info: var(--info);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+  --radius-xs: 0; --radius-sm: 0; --radius-md: 0; --radius-lg: 0; --radius-xl: 0; --radius-2xl: 0; --radius-3xl: 0;
+  --shadow-2xs: none; --shadow-xs: none; --shadow-sm: none; --shadow-md: none; --shadow-lg: none; --shadow-xl: none;
+}
+
+@layer base {
+  .rd-ai *, .rd-ai ::before, .rd-ai ::after { border: 0 solid var(--border); }
+  .rd-ai p, .rd-ai h1, .rd-ai h2, .rd-ai h3, .rd-ai h4, .rd-ai ul, .rd-ai ol, .rd-ai pre, .rd-ai blockquote { margin: 0; }
+  .rd-ai textarea { resize: none; background: transparent; }
+  .rd-ai textarea:focus, .rd-ai input:focus { outline: none; }
+  .rd-ai img, .rd-ai svg { display: block; vertical-align: middle; }
+  .rd-ai svg.inline { display: inline-block; }
+  [data-slot="dropdown-menu-content"], [data-slot="hover-card-content"], [data-slot="tooltip-content"], [data-slot="select-content"], [data-slot="dialog-content"] { border: 1px solid var(--border); }
+}

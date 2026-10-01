@@ -190,6 +190,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Growth** | Experiments, targeting, virtual currencies, Customer Center | Tier 2 · built and tested |
 | **Lifecycle** | **Refund Control**: ordered policies answer Apple's refund requests with [consumption information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) inside the 12-hour window, Google refunds and chargebacks recorded, refund rate and amounts. **Retention**: cancel and refund offers in the in-app Customer Center, and Apple's [Retention Messaging API](https://developer.apple.com/documentation/retentionmessaging) on Apple's cancel screen. **Win-back campaigns**: email churned subscribers an offer, with click tracking, one-click unsubscribe and reactivations. **Support**: Customer Center tickets by email and a help desk summary for Intercom or Zendesk ([guides](https://revenuedot.app/docs/guides/refund-control)) | Tier 2/3 · built, tested against a mocked App Store and an in-memory mailer; Apple's Retention Messaging API needs Apple's approval |
 | **Customers** | Customer lists (all, active, sandbox, non-subscription, expired), saved audiences, filters from the audience builder, summary cards, CSV export ([guide](https://revenuedot.app/docs/guides/customer-lists)) | Tier 1/2 · built and tested |
+| **RevenueDot AI** | An assistant in the dashboard that answers from your own metrics, 43 charts, customers, catalog, experiments and webhook health, and makes small changes (grant access, create products, set the current offering, pause experiments, replay webhooks) only after you approve each one, audited as "RevenueDot AI on behalf of" you. A full-page chat with history, screenshots, `@` mentions and a `.storekit` importer; an Ask bar on the Overview; a read and write / read only / off setting per project; a shareable first-sale card. Its tools have the MCP server's names ([guide](https://revenuedot.app/docs/guides/revenuedot-ai)) | Tier 2 · built, tested with a scripted model; Cloud (Workers AI, Durable Objects) and self-host (your Anthropic or OpenAI key) |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
 
 <picture>
@@ -208,6 +209,11 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
   <img alt="RevenueDot Charts: MRR Movement by week with new and churned MRR, the grouped chart list, filters and the data table" src="docs/assets/charts-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ai/ai-conversation-dark.png">
+  <img alt="RevenueDot AI: the chat history rail, a question about revenue answered with the Revenue metrics tool card, and an approval card asking to grant Pro to a customer for 7 days with Deny and Approve" src="docs/assets/ai/ai-conversation-light.png" width="100%">
 </picture>
 
 <picture>
@@ -316,6 +322,7 @@ Every push to `main` deploys from GitHub Actions (`.github/workflows/deploy.yml`
 
 - **[MCP server](https://github.com/revenuedot/mcp):** manage offerings, look up customers, grant access and check webhooks from Claude, ChatGPT or Cursor. Hosted at `https://mcp.revenuedot.app/mcp`.
 - **[Agent skills](https://github.com/revenuedot/agent-skills):** `migrate-from-revenuecat`, `add-subscriptions` and `self-host`, for Claude Code, Codex and Cursor.
+- **[RevenueDot AI](https://revenuedot.app/docs/guides/revenuedot-ai):** the assistant inside the dashboard. It answers from your data and changes things only after you approve; on Cloud each conversation is a Cloudflare Durable Object, on self-host it runs on your Anthropic or OpenAI key.
 - **Docs for machines:** [`llms.txt`](https://revenuedot.app/llms.txt) and Markdown docs, so assistants answer RevenueDot questions correctly.
 
 ## Repository map
@@ -351,6 +358,11 @@ Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/S
 <details><summary><b>Is RevenueDot an open-source alternative to RevenueCat?</b></summary>
 
 Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call, so it can replace RevenueCat without changing your app's purchase code.
+</details>
+
+<details><summary><b>Does RevenueDot have an AI assistant like RevenueCat's Rico?</b></summary>
+
+Yes. RevenueCat's dashboard has Rico, an AI advisor that answers questions about your subscription data ([RevenueCat docs](https://www.revenuecat.com/docs/tools/rico)). RevenueDot AI does the same from the dashboard's sparkle button or the Overview's Ask bar, reads any of the 43 charts, customers, the catalog, experiments and webhook health, and can grant access, create products, set the current offering, pause experiments or replay webhooks after you approve each change. Admins choose read and write, read only, or off per project. Self-hosted, it uses your own Anthropic or OpenAI key and keeps conversations in your Postgres. Guide: [RevenueDot AI](https://revenuedot.app/docs/guides/revenuedot-ai).
 </details>
 
 <details><summary><b>Does RevenueDot track ad revenue from AdMob, AppLovin MAX and ironSource?</b></summary>

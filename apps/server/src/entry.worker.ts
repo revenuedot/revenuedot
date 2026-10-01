@@ -6,44 +6,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { connectPostgres, type DB } from "@revenuedot/db/worker";
 import { createApp } from "./app.js";
 import { API_PATH } from "./api-paths.js";
-import { defaultStores } from "./stores/index.js";
 import { tick } from "./services/tick.js";
-import { cloudflareMailer, logMailer, type SendEmailBinding } from "./mail/index.js";
-import { workersAiModel, type WorkersAi } from "./services/paywall-ai.js";
-
-// Minimal Workers types, so the shared tsconfig (DOM lib) needs no @cloudflare/workers-types.
-interface Hyperdrive { connectionString: string }
-interface Fetcher { fetch(req: Request): Promise<Response> }
-interface ExecutionContext { waitUntil(p: Promise<unknown>): void; passThroughOnException(): void; props: unknown }
-interface ScheduledController { scheduledTime: number; cron: string }
-
-export interface Env {
-  HYPERDRIVE: Hyperdrive;
-  /** The built dashboard (apps/dashboard/dist), served with single-page-app fallback. */
-  ASSETS: Fetcher;
-  /** Secret. Base64 Ed25519 seed for response signing (Trusted Entitlements). Unset turns signing off. */
-  REVENUEDOT_SIGNING_KEY?: string;
-  /** Cloudflare Email Sending (`send_email` binding), sender no-reply@mail.revenuedot.app. Unset: emails go to the log. */
-  EMAIL?: SendEmailBinding;
-  /** Dashboard origin for links in emails; defaults to https://app.revenuedot.app. */
-  REVENUEDOT_PUBLIC_URL?: string;
-  /** Optional secret: base64 of 32 bytes that seals integration and export credentials. Unset: derived from the signing key. */
-  REVENUEDOT_ENCRYPTION_KEY?: string;
-  /** Workers AI, for "Generate with AI" on paywalls. No key needed. */
-  AI?: WorkersAi;
-  /** Optional secrets: the Google Cloud OAuth client for "Connect AdMob" (prd/ads/PRD.md). Unset: projects enter their own. */
-  REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID?: string;
-  REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET?: string;
-  /** Where hosted web pages live (prd/web-billing/PRD.md §7). Default https://api.revenuedot.app/pay until pay.revenuedot.app is routed here. */
-  REVENUEDOT_PAY_URL?: string;
-  /** The host custom domains CNAME to (the Cloudflare for SaaS fallback origin, docs/cloud.md). */
-  REVENUEDOT_CUSTOM_DOMAIN_TARGET?: string;
-}
-
-const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
-const publicUrlFor = (env: Env) => env.REVENUEDOT_PUBLIC_URL || "https://app.revenuedot.app";
-const googleOAuthFor = (env: Env) => ({ clientId: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID || undefined, clientSecret: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET || undefined });
-
+import { routeAssistantAgent } from "./assistant-agent.worker.js";
+import { baseDeps, googleOAuthFor, mailerFor, publicUrlFor, stores, type Env, type ExecutionContext, type ScheduledController } from "./worker-deps.js";
+export { AssistantAgent } from "./assistant-agent.worker.js";
+export type { Env } from "./worker-deps.js";
 
 interface RequestScope { db: DB; pending: Promise<unknown>[] }
 const scope = new AsyncLocalStorage<RequestScope>();
@@ -62,23 +29,10 @@ const db = new Proxy({} as DB, {
   },
 });
 
-const stores = defaultStores();
 let app: ReturnType<typeof createApp> | undefined;
 const appFor = (env: Env) => (app ??= createApp({
+  ...baseDeps(env),
   db,
-  now: () => new Date(),
-  stores,
-  edition: "cloud",
-  signingKey: env.REVENUEDOT_SIGNING_KEY ?? "",
-  encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY,
-  mailer: mailerFor(env),
-  publicUrl: publicUrlFor(env),
-  ai: env.AI ? workersAiModel(env.AI) : undefined,
-  // Apps reach the API host; paywall images and icons are served from it.
-  apiUrl: "https://api.revenuedot.app",
-  googleOAuth: googleOAuthFor(env),
-  payUrl: env.REVENUEDOT_PAY_URL || "https://api.revenuedot.app/pay",
-  customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
   // Send new webhook deliveries after the response, on the request's own connection.
   kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(env, s.db, "kick")); },
   // Password reset emails and the like go out after the response, on the request's own connection.
@@ -107,6 +61,11 @@ export default {
     // the dashboard. Any other host routed here (the pay host, custom domains for hosted pages) is served by the app.
     const dashboardHost = url.hostname.startsWith("app.") || url.hostname === "localhost" || url.hostname === "127.0.0.1";
     if (dashboardHost && !API_PATH.test(url.pathname)) return env.ASSETS.fetch(req);
+    // RevenueDot AI conversations: the session and ownership are checked here, then the Durable Object takes the socket.
+    if (url.pathname.startsWith("/agents/")) {
+      const conn = connectPostgres(env.HYPERDRIVE.connectionString);
+      try { return await routeAssistantAgent(req, env, conn.db); } finally { ctx.waitUntil(conn.close()); }
+    }
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
     const s: RequestScope = { db: conn.db, pending: [] };
     try {
