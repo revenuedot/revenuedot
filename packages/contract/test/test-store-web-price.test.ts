@@ -36,4 +36,28 @@ describe("Test Store receipts without a price (purchases-js)", () => {
     const rows = await h.db.select().from(schema.transactions);
     expect(rows.map((r) => [r.productIdentifier, r.priceAmount]).sort()).toEqual([["lifetime", null], ["pro_monthly", 4.99]]);
   });
+
+  it("POST /v2/projects/{id}/test_purchases without a price uses the catalog price for every step (found by the lifecycle journey)", async () => {
+    await h.db.update(schema.products).set({ testStorePriceMicros: 9_990_000, testStorePriceCurrency: "USD" }).where(eq(schema.products.id, "p4"));
+    const r = await h.fetch(`/v2/projects/${h.ids.project}/test_purchases`, { method: "POST", key: h.ids.secretKey, json: { app_user_id: "refunded", product_id: "pro_monthly", scenario: "refund", offset_days: 2 } });
+    expect(r.status).toBe(201);
+    const evs = (await h.db.select().from(schema.events)).map((e) => (e.payload as any).event).sort((a, b) => a.event_timestamp_ms - b.event_timestamp_ms);
+    expect(evs.map((e) => [e.type, e.price])).toEqual([["INITIAL_PURCHASE", 9.99], ["CANCELLATION", -9.99]]);
+    const rows = await h.db.select().from(schema.transactions);
+    expect(rows.map((t) => [t.kind, t.revenueUsd]).sort()).toEqual([["purchase", 9.99], ["refund", -9.99]]);
+  });
+});
+
+describe("events of the same instant keep their order (found by the lifecycle journey on real Postgres)", () => {
+  it("each later event of a customer at the same instant gets a later created_at, so lists and the API order them as recorded", async () => {
+    const run = async (user: string, scenario: string) => (await h.fetch(`/v2/projects/${h.ids.project}/test_purchases`, { method: "POST", key: h.ids.secretKey, json: { app_user_id: user, product_id: "pro_monthly", scenario } })).json() as Promise<any>;
+    expect((await run("expirer", "expire")).event_types).toEqual(["INITIAL_PURCHASE", "CANCELLATION", "EXPIRATION"]);
+    expect((await run("lapser", "billing_issue")).event_types).toEqual(["INITIAL_PURCHASE", "BILLING_ISSUE", "CANCELLATION"]);
+    const rows = await h.db.select().from(schema.events);
+    const byInstant = new Map<string, typeof rows>();
+    for (const r of rows) byInstant.set(`${r.customerId}:${r.eventTimestampMs}`, [...(byInstant.get(`${r.customerId}:${r.eventTimestampMs}`) ?? []), r]);
+    const ties = [...byInstant.values()].filter((g) => g.length > 1);
+    expect(ties.length).toBeGreaterThanOrEqual(2);
+    for (const g of ties) expect(new Set(g.map((r) => r.createdAt.getTime())).size).toBe(g.length);
+  });
 });
