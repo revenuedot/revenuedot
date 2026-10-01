@@ -5,7 +5,7 @@
 import { openDb } from "@revenuedot/db";
 import { createRequire } from "node:module";
 // Loaded with require: vitest's globalSetup resolves bare imports from the repo root, where postgres is not installed.
-const postgres = createRequire(import.meta.url)("postgres") as typeof import("postgres").default;
+const postgres = createRequire(import.meta.url)("postgres") as typeof import("postgres");
 import { databaseUrl } from "./test-db.js";
 
 export async function setup() {

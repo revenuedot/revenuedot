@@ -21,7 +21,7 @@ export const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(HERE, "../../../..");
 export const BUILD = join(HERE, "../build");
 const req = createRequire(join(ROOT, "packages/db/package.json"));
-export const postgres = req("postgres") as typeof import("postgres").default;
+export const postgres = req("postgres") as typeof import("postgres");
 const serverReq = createRequire(join(ROOT, "apps/server/package.json"));
 
 export const PORT_BASE = Number(process.env.JOURNEY_PORT_BASE ?? 5600);
@@ -204,7 +204,15 @@ export class Capture {
 // ---------- The RevenueDot server ----------
 export interface ServerOpts { databaseUrl: string; port: number; smtpPort: number; capturePort: number; logDir: string; env?: Record<string, string> }
 
-export const OUTBOUND_BLOCK = ["apple.com", "itunes.apple.com", "storekit.itunes.apple.com", "api.storekit.itunes.apple.com", "androidpublisher.googleapis.com", "playdeveloperreporting.googleapis.com", "pubsub.googleapis.com", "appstoreconnect.apple.com"];
+/**
+ * Store hosts answered by fakes on the capture server instead of being blocked (the stores journey's Play Developer API:
+ * subscriptionsv2, products, acknowledge, voided purchases). Like every host not allowed, they are routed to the capture
+ * server, so nothing ever reaches Google; a call no journey fakes gets the capture server's generic answer.
+ */
+export const OUTBOUND_FAKED = ["androidpublisher.googleapis.com"];
+/** Never called, not even a fake: Apple (the real server trusts only Apple's root certificate) and Google Play's other APIs. */
+export const OUTBOUND_BLOCK = ["apple.com", "itunes.apple.com", "storekit.itunes.apple.com", "api.storekit.itunes.apple.com", "androidpublisher.googleapis.com", "playdeveloperreporting.googleapis.com", "pubsub.googleapis.com", "appstoreconnect.apple.com"]
+  .filter((h) => !OUTBOUND_FAKED.includes(h));
 /** Public endpoints the server may call for real: exchange rates, Google's Measurement Protocol validation server. */
 export const OUTBOUND_ALLOW = ["cdn.jsdelivr.net", "latest.currency-api.pages.dev", "data-api.ecb.europa.eu", "www.google-analytics.com", "region1.google-analytics.com"];
 
