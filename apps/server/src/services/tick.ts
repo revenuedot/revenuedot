@@ -3,6 +3,9 @@ import { expirationReasonOf } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { recordEvent } from "./events.js";
 import { deliverDue } from "./webhooks.js";
+import { deliverDueIntegrations } from "./integrations/deliver.js";
+import { processExportRuns, queueDueExports } from "./exports/run.js";
+import { depsSecretKey } from "./secrets.js";
 import { runAlerts } from "./alerts.js";
 import { recheckDueCredentials } from "./credential-health.js";
 import type { Mailer } from "../mail/index.js";
@@ -15,7 +18,8 @@ const { subscriptions, customers, customerAliases } = schema;
 /**
  * The one periodic job (every minute: Workers cron in the cloud, an interval in Node):
  * record EXPIRATION for subscriptions whose access has ended, run the daily Google Play voided-purchases scan for apps
- * that are due, send due webhooks, re-check store credentials that are due, then open, remind and resolve alert emails.
+ * that are due, send due webhooks and integration deliveries, queue and run due data exports, re-check store credentials
+ * that are due, then open, remind and resolve alert emails.
  * `stores` supplies the Play client (tests inject a fake Google).
  */
 export interface TickOptions {
@@ -26,15 +30,27 @@ export interface TickOptions {
   publicUrl?: string;
   /** Ask Apple and Google whether stored credentials still work (failing apps hourly, others daily). The entry points turn it on; tests leave it off. */
   checkCredentials?: boolean;
+  /** Keys that unseal integration and export credentials (services/secrets.ts); unset falls back to the environment. */
+  encryptionKey?: string;
+  signingKey?: string;
+  /** Data exports run here unless false (the Worker skips them on request-kicked ticks). */
+  exports?: boolean;
 }
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
   const expired = await recordDueExpirations(db, now);
   const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
   const sent = await deliverDue(db, fetchImpl, now);
+  const secretKey = await depsSecretKey(opts);
+  const integrations = await deliverDueIntegrations(db, { fetch: fetchImpl, now, secretKey, publicUrl: opts.publicUrl });
+  let exports = 0;
+  if (opts.exports !== false) {
+    await queueDueExports(db, now);
+    exports = await processExportRuns(db, { fetch: fetchImpl, now, secretKey });
+  }
   const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {} }, now) : 0;
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
-  return { expired, voided, sent, credentialsChecked, alerts };
+  return { expired, voided, sent, integrations, exports, credentialsChecked, alerts };
 }
 
 /** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */

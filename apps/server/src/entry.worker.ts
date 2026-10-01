@@ -26,6 +26,8 @@ export interface Env {
   EMAIL?: SendEmailBinding;
   /** Dashboard origin for links in emails; defaults to https://app.revenuedot.app. */
   REVENUEDOT_PUBLIC_URL?: string;
+  /** Optional secret: base64 of 32 bytes that seals integration and export credentials. Unset: derived from the signing key. */
+  REVENUEDOT_ENCRYPTION_KEY?: string;
 }
 
 const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
@@ -57,6 +59,7 @@ const appFor = (env: Env) => (app ??= createApp({
   stores,
   edition: "cloud",
   signingKey: env.REVENUEDOT_SIGNING_KEY ?? "",
+  encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY,
   mailer: mailerFor(env),
   publicUrl: publicUrlFor(env),
   // Send new webhook deliveries after the response, on the request's own connection.
@@ -68,8 +71,12 @@ const appFor = (env: Env) => (app ??= createApp({
 async function runTick(env: Env, db: DB, why: string) {
   try {
     // Credential re-checks call Apple and Google; only the cron does them, not the ticks kicked by requests.
-    const r = await tick(db, new Date(), fetch, { stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron" });
-    if (r.expired || r.voided || r.sent || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
+    // Data exports (file uploads) run on the cron only, never in a tick kicked by a request.
+    const r = await tick(db, new Date(), fetch, {
+      stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron",
+      encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY,
+    });
+    if (r.expired || r.voided || r.sent || r.integrations || r.exports || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
     return r;
   } catch (e) {
     console.error(`tick (${why}) failed`, e);
@@ -94,7 +101,7 @@ export default {
     }
   },
 
-  /** Cron Trigger, every minute: expirations, the daily Google voided-purchases scan, webhook deliveries. */
+  /** Cron Trigger, every minute: expirations, the daily Google voided-purchases scan, webhook and integration deliveries, data exports. */
   async scheduled(_c: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
     ctx.waitUntil((async () => {

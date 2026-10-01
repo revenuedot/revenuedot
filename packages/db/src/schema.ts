@@ -221,6 +221,8 @@ export const transactions = pgTable("transactions", {
   priceAmount: doublePrecision("price_amount"),
   priceCurrency: text("price_currency"),
   countryCode: text("country_code"),
+  /** When RevenueDot recorded the row (incremental data exports read this; rows from before migration 0013 carry its run time). */
+  createdAt: created(),
 }, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt)]);
 
 /** Customer lifecycle events; the source for webhooks and the customer history timeline. */
@@ -590,3 +592,104 @@ export const configBlobs = pgTable("config_blobs", {
   data: text("data").notNull(),
   createdAt: created(),
 });
+
+/**
+ * Third-party integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase/GA4, BigQuery, AppsFlyer, Adjust, Meta).
+ * Every event that webhooks get is also queued to each enabled integration whose filters match (services/events.ts).
+ * `settings` holds the non-secret fields; `secrets` the API keys and tokens, sealed with AES-GCM (services/secrets.ts);
+ * `secretHints` the last characters of each secret, for the dashboard. `eventNames` overrides the default event names.
+ */
+export const integrations = pgTable("integrations", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  environment: text("environment").notNull().default("production"),
+  appId: text("app_id"),
+  eventTypes: jsonb("event_types").$type<string[] | null>(),
+  settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+  secrets: text("secrets"),
+  secretHints: jsonb("secret_hints").$type<Record<string, string>>().notNull().default({}),
+  eventNames: jsonb("event_names").$type<Record<string, string>>().notNull().default({}),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  lastError: text("last_error"),
+  lastDeliveredAt: ts("last_delivered_at"),
+  createdAt: created(),
+  updatedAt: ts("updated_at"),
+}, (t) => [index("integrations_project").on(t.projectId)]);
+
+/** One event queued to one integration: the same retry schedule as webhooks. `skipped` = nothing to send (no device id, unmapped event). */
+export const integrationDeliveries = pgTable("integration_deliveries", {
+  id: text("id").primaryKey(),
+  integrationId: text("integration_id").notNull().references(() => integrations.id, { onDelete: "cascade" }),
+  eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: ts("next_attempt_at").notNull().defaultNow(),
+  /** The partner's event name (e.g. rc_initial_purchase_event) or Slack's message title. */
+  sentAs: text("sent_as"),
+  /** Method and URL of the last request, without credentials. */
+  request: text("request"),
+  /** The last request body with credentials scrubbed (first 4,000 characters), for the delivery log. */
+  requestBody: text("request_body"),
+  responseStatus: integer("response_status"),
+  responseMs: integer("response_ms"),
+  /** The first 1,000 characters of the partner's answer to the last attempt. */
+  responseBody: text("response_body"),
+  lastError: text("last_error"),
+  createdAt: created(),
+}, (t) => [index("integration_deliveries_due").on(t.status, t.nextAttemptAt), uniqueIndex("integration_deliveries_unique").on(t.integrationId, t.eventId), index("integration_deliveries_log").on(t.integrationId, t.createdAt)]);
+
+/**
+ * Scheduled data exports: CSV or Parquet files of customers, subscriptions, transactions and events, written to S3, R2
+ * (S3-compatible) or Google Cloud Storage on a daily or weekly schedule. `cursor` holds each table's high-water mark for
+ * incremental runs. `secrets` is sealed like integration secrets.
+ */
+export const exportJobs = pgTable("export_jobs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  destination: text("destination").notNull(),
+  destinationConfig: jsonb("destination_config").$type<Record<string, unknown>>().notNull().default({}),
+  secrets: text("secrets"),
+  secretHints: jsonb("secret_hints").$type<Record<string, string>>().notNull().default({}),
+  format: text("format").notNull().default("csv"),
+  compression: text("compression").notNull().default("gzip"),
+  schedule: text("schedule").notNull().default("daily"),
+  hourUtc: integer("hour_utc").notNull().default(3),
+  weekday: integer("weekday"),
+  mode: text("mode").notNull().default("incremental"),
+  tables: jsonb("tables").$type<string[]>().notNull(),
+  environment: text("environment").notNull().default("both"),
+  cursor: jsonb("cursor").$type<Record<string, number>>().notNull().default({}),
+  nextRunAt: ts("next_run_at"),
+  lastRunAt: ts("last_run_at"),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  lastError: text("last_error"),
+  createdAt: created(),
+  updatedAt: ts("updated_at"),
+}, (t) => [index("export_jobs_project").on(t.projectId), index("export_jobs_due").on(t.enabled, t.nextRunAt)]);
+
+export interface ExportFile { table: string; key: string; rows: number; bytes: number }
+
+export const exportRuns = pgTable("export_runs", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull().references(() => exportJobs.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("queued"),
+  trigger: text("trigger").notNull(),
+  mode: text("mode").notNull(),
+  /** Rows changed after windowStart and up to windowEnd (incremental); windowStart is null for a full export. */
+  windowStart: ts("window_start"),
+  windowEnd: ts("window_end").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: ts("next_attempt_at").notNull().defaultNow(),
+  files: jsonb("files").$type<ExportFile[]>().notNull().default([]),
+  rows: integer("rows").notNull().default(0),
+  bytes: integer("bytes").notNull().default(0),
+  error: text("error"),
+  startedAt: ts("started_at"),
+  finishedAt: ts("finished_at"),
+  createdAt: created(),
+}, (t) => [index("export_runs_job").on(t.jobId, t.createdAt), index("export_runs_due").on(t.status, t.nextAttemptAt)]);
