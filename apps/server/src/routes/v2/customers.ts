@@ -31,7 +31,8 @@ function v2ActionError(e: unknown): unknown {
     case "unsupported": return new V2Error(422, "unprocessable_entity_error", e.message);
     case "invalid": return new V2Error(400, "parameter_error", e.message);
     case "rejected": return new V2Error(422, "store_error", e.message);
-    default: return new V2Error(503, "store_error", e.message, undefined, true);
+    // RevenueCat's spec has store_error only on 422 (retryable when the store is down); its 503 is server_error alone.
+    default: return new V2Error(422, "store_error", e.message, undefined, true);
   }
 }
 const act = async (run: () => Promise<void>) => { try { await run(); } catch (e) { throw v2ActionError(e); } };

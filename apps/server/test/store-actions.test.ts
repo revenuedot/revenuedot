@@ -153,6 +153,25 @@ describe("store actions on Google Play purchases", () => {
     expect(googleCalls("tok_pro_1:revoke")).toHaveLength(1);
   });
 
+  it("v2 cancel, extend and refunds answer 422 store_error (retryable) while Google is down, as RevenueCat's spec allows", async () => {
+    await subscribed();
+    const [row] = await e.h.db.select().from(schema.subscriptions).where(eq(schema.subscriptions.storeKey, "tok_pro_1"));
+    const path = `/v2/projects/proj1/subscriptions/${row!.id}`;
+    e.g.override = (url) => (/:(cancel|defer|revoke)|orders\/.*:refund/.test(url) ? new Response("down", { status: 503 }) : undefined);
+    const cases: [string, string, unknown][] = [
+      [`${path}/actions/cancel`, `${P}/subscriptions/{subscription_id}/actions/cancel`, {}],
+      [`${path}/actions/extend`, `${P}/subscriptions/{subscription_id}/actions/extend`, { extend_by_days: 3 }],
+      [`${path}/actions/refund`, `${P}/subscriptions/{subscription_id}/actions/refund`, {}],
+      [`${path}/transactions/${ORDER}/actions/refund`, `${P}/subscriptions/{subscription_id}/transactions/{transaction_id}/actions/refund`, {}],
+    ];
+    for (const [url, tmpl, json] of cases) {
+      const res = await post(url, json);
+      const body = await res.json();
+      expect([url, res.status, body.type, body.retryable]).toEqual([url, 422, "store_error", true]);
+      checkV2("POST", tmpl, 422, body);
+    }
+  });
+
   it("v2 purchase refund refunds a Play one-time purchase; other stores answer 422", async () => {
     e = await env(keys);
     e.g.products.set("lifetime_unlock|tok_life", { purchaseTimeMillis: String(T0.getTime()), purchaseState: 0, orderId: "GPA.L1", acknowledgementState: 1 });
@@ -186,7 +205,9 @@ describe("store actions on App Store subscriptions", () => {
     const data = { production: { transactions: [await signJws(first, pki)], statuses: { data: [] as any[] } } };
     const base = mockAppleApi(data);
     const extends_: { path: string; body: any }[] = [];
+    let down = false;
     const fetchFn: FetchFn = async (url, init) => {
+      if (down) return new Response("down", { status: 503 });
       const u = new URL(url);
       if (u.pathname.startsWith("/inApps/v1/subscriptions/extend")) {
         const body = JSON.parse(String(init?.body ?? "{}"));
@@ -204,7 +225,7 @@ describe("store actions on App Store subscriptions", () => {
     await h.newEvents();
     const { key } = await createSecretKey(h.db, "proj1", "test");
     const call = (path: string, json: unknown) => h!.request(path, { method: "POST", headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify(json) });
-    return { call, extends_, key };
+    return { call, extends_, key, setDown: (v: boolean) => { down = v; } };
   }
 
   it("v1 extend calls Apple's Extend a Subscription Renewal Date and records SUBSCRIPTION_EXTENDED", async () => {
@@ -253,5 +274,19 @@ describe("store actions on App Store subscriptions", () => {
     res = await req(`/mass_extensions/${created.id}?product_id=pro_monthly`);
     expect(await res.json()).toMatchObject({ id: created.id, complete: true, succeeded_count: 12, failed_count: 1 });
     expect((await req("/actions/mass_extend", { method: "POST", body: JSON.stringify({ product_id: "pro_monthly", extend_by_days: 91, extend_reason_code: "other" }) })).status).toBe(400);
+  });
+
+  it("v2 extend and mass extension answer 422 store_error (retryable) while Apple is down", async () => {
+    const { key, setDown } = await harness();
+    const [row] = await h!.db.select().from(schema.subscriptions);
+    setDown(true);
+    const auth = { Authorization: `Bearer ${key}`, "content-type": "application/json" };
+    let res = await h!.request(`/v2/projects/proj1/subscriptions/${row!.id}/actions/extend`, { method: "POST", headers: auth, body: JSON.stringify({ extend_by_days: 5, extend_reason_code: "service_issue_or_outage" }) });
+    let body = await res.json();
+    expect([res.status, body.type, body.retryable]).toEqual([422, "store_error", true]);
+    checkV2("POST", `${P}/subscriptions/{subscription_id}/actions/extend`, 422, body);
+    res = await h!.request("/v2/projects/proj1/apps/app_ios/actions/mass_extend", { method: "POST", headers: auth, body: JSON.stringify({ product_id: "pro_monthly", extend_by_days: 3, extend_reason_code: "other" }) });
+    body = await res.json();
+    expect([res.status, body.type, body.retryable]).toEqual([422, "store_error", true]);
   });
 });
