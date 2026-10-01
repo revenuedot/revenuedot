@@ -104,10 +104,9 @@ RVS answers and what the SDK sees:
 - Dashboard: Add app → Amazon Appstore; the app page holds the package name, the Shared Key with "Check credentials", the RTN URL with its live status, and the forwarding URL.
 
 ## Tests that prove it
-- `apps/server/test/amazon.test.ts`: RVS client URLs and the sandbox fallback; receipts for subscriptions (trial, intro, renewal, cancel, grace, deferred and immediate changes), consumables and entitlements; every RVS error code and its SDK answer; the receipt-data route; SNS signatures (SHA-1 and SHA-256, a tampered message, a foreign certificate host, a pinned topic) with a test certificate generated in the test; subscription confirmation; each notification type end to end with entitlements, transactions and webhook events; redelivery and forwarding.
-- `apps/server/test/setup-endpoints.test.ts`: credential checks against a mocked RVS.
-- `packages/contract/test/sdk-inventory.test.ts`: the receipt-data row (#25) is Real.
-- `apps/dashboard/e2e/stores.spec.ts`: the Amazon setup page.
+- `apps/server/test/amazon.test.ts` (25 tests, fake RVS in `amazon-helpers.ts`): RVS URLs and the cloud-sandbox fallback; term names; the receipt-data route (a receipt id with `/`, `=` and `:`; 7103, 7662, 503 and 500 answers); receipts for subscriptions, trials, intro offers, consumables, entitlements, Live App Testing and App Tester; every RVS error code and its SDK answer, with a rejected key marking the app's credentials failing; SNS signatures (SignatureVersion 1 and 2, a tampered message, a foreign or plain-HTTP certificate host, an expired certificate) with an RSA certificate generated in the test; a pinned topic; subscription confirmation; renewal, trial conversion, auto-renew off and on, expiration, grace and out of grace, deferred and immediate tier changes, one-time refunds by notification and by RVS 410, unknown receipts with and without tracking, another package, outages and retry, redelivery, forwarding, and the expiration worker; app creation with the shared key and `verify_credentials`.
+- `packages/contract/test/sdk-inventory.test.ts`: the receipt-data row (#25) is Real; `sdk-endpoints.test.ts`: a non-Amazon key gets 7662.
+- `apps/dashboard/e2e/stores.spec.ts`: Add app → Amazon Appstore, the shared key with a live check against the e2e server's in-process RVS fake, the SNS topic field, the notification URL and status, the SDK snippet.
 
 ## Known gaps
 - No real Amazon purchase has run end to end; it needs an Amazon developer account, a Live App Testing build and the shared key.

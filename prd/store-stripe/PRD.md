@@ -116,9 +116,9 @@ Live and test mode: a key's mode decides the environment. Objects with `livemode
 - Dashboard: Add app → Stripe; the app page holds the restricted key with "Check credentials", the webhook URL with the events to select and its live status, the signing secret, how app user ids are found, and when purchases count.
 
 ## Tests that prove it
-- `apps/server/test/stripe.test.ts`: the signature scheme (Stripe's documented `t=…,v1=…` HMAC, several `v1` values, tolerance, tampering); receipts for subscriptions and Checkout Sessions (both modes), every error class and its status; each subscription state in the table above through webhooks, with entitlements, transactions and webhook events checked; unknown purchases with each app user id source; redelivery and forwarding; API version 2025-03-31 period fields.
-- `apps/server/test/setup-endpoints.test.ts`: credential checks against a mocked Stripe.
-- `apps/dashboard/e2e/stores.spec.ts`: the Stripe setup page.
+- `apps/server/test/stripe.test.ts` (22 tests, fake Stripe API in `stripe-helpers.ts` with objects in Stripe's documented shapes): the signature scheme checked against an independent HMAC, several `v1` values, tolerance and tampering; receipts for subscriptions and Checkout Sessions in both modes (a zero-decimal currency included), price ids over product ids, secret keys, `Stripe-Account`; every error class and its status (a rejected key marks the app's credentials failing); `register_on`; webhooks refused without a secret or with a bad signature; renewal, redelivery, trial conversion, cancel and uncancel, deletion, past due with grace and recovery, unpaid, pause, product change with proration, refund then renewal, one-time refund through the PaymentIntent, API 2025-03-31 shapes, unknown purchases with each app user id source, outages and retry, forwarding with the signature; app creation and `verify_credentials` (401, 403 naming the permission, outages).
+- `packages/core/test/events.test.ts`: a renewal after a refunded period is RENEWAL, a refund taken back in the same period REFUND_REVERSED.
+- `apps/dashboard/e2e/stores.spec.ts`: Add app → Stripe, the restricted key and signing secret with validation and a live check against the e2e server's in-process Stripe fake, the purchase rules, a subscription posted to `/v1/receipts` and a Stripe-signed webhook that turns the open page green, no secret in any API answer, phone width.
 
 ## Known gaps
 - No real Stripe account has been used; every call is checked against mocks built from Stripe's documented shapes.

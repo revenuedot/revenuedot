@@ -80,6 +80,8 @@ flowchart LR
   subgraph Stores["Stores"]
     AS["App Store<br/>Server Notifications v2"]
     GP["Google Play<br/>Real-time notifications"]
+    AZ["Amazon Appstore<br/>Real-time Notifications"]
+    ST["Stripe<br/>webhooks"]
   end
   Apps -- "RevenueCat or RevenueDot SDK<br/>(proxyURL)" --> API["RevenueDot API<br/>Hono · TypeScript"]
   Stores -- "server notifications" --> API
@@ -171,6 +173,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | Area | What you get | Status |
 |---|---|---|
 | **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
+| **Amazon Appstore** | Receipts checked with Amazon's Receipt Verification Service, the SDK's Amazon receipt route, Real-time Notifications through Amazon SNS with signature checks, grace periods, tier changes, one-time refunds, Live App Testing and App Tester as sandbox | Tier 2 · built, tested against a mocked Amazon and a test SNS certificate; no real Amazon purchase yet. [Guide](https://revenuedot.app/docs/guides/amazon-appstore) |
+| **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
 | **Backend** | RevenueCat-compatible REST API v1 and v2 core, webhooks with the same payloads, signed deliveries, retries and replay | Tier 1 · built and tested |
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
@@ -302,7 +306,7 @@ revenuedot/
 ## Roadmap
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
-- **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe, in-app AI agent.
+- **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
 - **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, web checkout, revenue recovery.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
@@ -351,7 +355,21 @@ RevenueDot verifies every App Store transaction against Apple's signed JWS and t
 
 <details><summary><b>Which stores are supported?</b></summary>
 
-App Store and Google Play first. Amazon and Stripe web subscriptions in Tier 2; Paddle and Roku in Tier 3.
+App Store, Google Play, the Amazon Appstore, and Stripe subscriptions from your own Stripe account. Paddle and Roku come in Tier 3. Amazon and Stripe are tested against mocked store APIs; no real Amazon or Stripe purchase has run yet.
+</details>
+
+<details><summary><b>Can I use Amazon Appstore in-app purchases with a RevenueCat-compatible server?</b></summary>
+
+Yes. Configure the RevenueCat Android SDK for Amazon (`AmazonConfiguration`) with an Amazon app's `amzn_` key and set the proxy URL. RevenueDot checks each receipt with Amazon's Receipt Verification Service using your shared key, and takes Amazon's Real-time Notifications through SNS with the signature checked. Setup: [Amazon Appstore guide](https://revenuedot.app/docs/guides/amazon-appstore).
+
+![Amazon shared key with a live check](docs/assets/amazon-setup.png)
+</details>
+
+<details><summary><b>How do I unlock app features for customers who subscribed through Stripe on my website?</b></summary>
+
+Create a Stripe app in RevenueDot with a restricted key from your own Stripe account, add RevenueDot's webhook URL in Stripe, and have your backend post each subscription or Checkout Session id to `POST /v1/receipts` with the customer's app user id (`X-Platform: stripe`), the same call RevenueCat documents ([RevenueCat: track external Stripe purchases](https://www.revenuecat.com/docs/web/integrations/stripe/track-external-purchases)). The same entitlements then unlock in your apps. Setup: [Stripe guide](https://revenuedot.app/docs/guides/stripe).
+
+![Stripe webhooks with the live status](docs/assets/stripe-webhooks.png)
 </details>
 
 <details><summary><b>What license is it under?</b></summary>
