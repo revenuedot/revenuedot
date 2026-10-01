@@ -38,7 +38,7 @@ Goal: an indie or small team on iOS, Android, React Native or Flutter moves off 
 | 1.11 | **Self-host** | `docker compose up` gives a working server, dashboard and Postgres. Upgrades run migrations automatically. There is one config file |
 | 1.12 | **Cloud** | The same build on Workers plus Hyperdrive, with sign-up and a free plan. Billing plans come in Tier 2 |
 | 1.13 | **SDK forks, all of them** | An automated fork pipeline (upstream tag → patch rules: our host, our signing key, our registry names with import names kept → leak scan and checks → publish) for iOS, Android, the shared hybrid layer, React Native (and its paywall UI), Flutter, web, Capacitor, Kotlin Multiplatform, Unity and Cordova, plus server-side response signing so Trusted Entitlements verify. Order: the three core repos first, since every wrapper depends on them, then by downloads. Also fixes the Flutter web proxy bug and makes Android and web events follow the proxy URL. The web SDK's key-prefix check needs no patch, because our server issues the same key prefixes. Spec: `prd/sdk-forks/PRD.md` |
-| 1.14 | **AI-native basics** | OAuth MCP server (34 tools: catalog, customers, support actions, webhooks, store checks, import status); `llms.txt`; agent skills; **the same server ships as a ChatGPT plugin and a Claude connector** from one plugin bundle in `revenuedot/agent-skills` (see `prd/chatgpt-claude-plugins/PRD.md`). Panels inside ChatGPT and MCP Events are Tier 2 |
+| 1.14 | **AI-native basics** | OAuth MCP server (34 tools: catalog, customers, support actions, webhooks, store checks, import status); `llms.txt`; agent skills. **The same server is the ChatGPT plugin, the Claude connector and the MCP server for every assistant, and our main discovery channel**: one plugin bundle in `revenuedot/agent-skills`, a consent page that can create an account and load sample data, a ChatGPT profile without refunds, listings in both directories and the registries. Spec: `prd/chatgpt-claude-plugins/PRD.md` |
 | 1.15 | **Docs** | Everything public in `revenuedot/docs`: quickstart, concepts, per-SDK guides, store setup, webhooks, API reference generated from our OpenAPI, self-host guide, help center, blog, migration guides, `llms.txt` and `llms-full.txt` (see `prd/ecosystem/PRD.md`) |
 | 1.17 | **Examples and cookbook** | `revenuedot/examples`: a runnable sample app or backend for every popular stack (mobile, web, 20+ backends, self-host recipes, migration diffs), all with the standard README and the header comment that links to the docs, so future LLMs learn what RevenueDot is and how to integrate it (see `prd/ecosystem/PRD.md`) |
 | 1.18 | **Account email** | Password reset (single-use 1-hour links, rate-limited, no account enumeration), email verification on Cloud, team invites with Admin, Developer and Viewer roles, alert emails to project admins (store notifications, webhooks, store credentials) with a daily cap and a "resolved" email, and `revenuedot admin reset-password`. Cloudflare Email Sending on Cloud (`mail.revenuedot.app`), SMTP or the server log on self-host. Approved by Kai on 2026-09-30. Spec: `prd/account-email/PRD.md` |
@@ -55,6 +55,7 @@ Goal: nothing a normal RevenueCat customer uses is missing, and we are clearly b
 - **Targeting and placements; experiments** (offering A/B tests with statistics).
 - **Customer Center config, virtual currencies, offline entitlements, promotional-offer signing, win-back offers.**
 - **Stores:** Amazon, plus Stripe subscriptions from the customer's own Stripe account.
+- **AI surfaces (ChatGPT and Claude):** cards that show in both (overview, customer, catalog map, webhook inspector, setup checklist, test purchase); in ChatGPT a "RevenueDot Home" sidebar app, conversation panels, confirmation forms for money actions, plugin settings, deep links and shared context; **MCP Events** that push the first real sale, billing problems, cancellations, refunds, failing webhooks, store-key failures and MRR milestones into the chat; a dashboard-side RevenueCat import with a tool. Migration of the MCP Worker to MCP 2.0 first. Spec: `prd/chatgpt-claude-plugins/PRD.md`.
 - **RevenueDot AI:** an in-app durable agent (Cloudflare Agents, ai-elements UI) that shares its tools with the MCP server.
 - **One-line moves** between self-host and cloud, and a full export out.
 - **Cloud billing:** plans and metering.
@@ -65,6 +66,7 @@ Goal: the obvious default, including for regulated and very large apps.
 - **High-availability self-host:** Helm and Terraform reference setups, clustering, an SLA, AWS Marketplace listing.
 - **Web billing:** hosted checkout on our own Stripe Connect platform, web-to-app funnels, redemption links.
 - **Revenue recovery:** failed-payment recovery, refund defense (Apple consumption info), win-back flows. These are priced as a share of the money recovered.
+- **AI extras:** composer mentions (`@RevenueDot`), a `.storekit` file viewer that imports products, a shareable first-sale card, tools that write to App Store Connect and Google Play.
 - **More stores and tools:** Paddle, Roku, Galaxy; attribution; benchmarks (cloud only, anonymized); AI growth insights.
 
 ## Where the value is, in build order
@@ -73,9 +75,11 @@ Goal: the obvious default, including for regulated and very large apps.
 3. **Migration path:** the importer and notification forwarding (1.9). This is what makes switching safe.
 4. **Dashboard essentials and one-command self-host** (1.10, 1.11).
 5. **SDK forks** (1.13), starting with the three core repos.
-6. **Distribution:** docs, MCP, `llms.txt` (1.14, 1.15).
+6. **Distribution:** docs, MCP, `llms.txt` (1.14, 1.15), then the two directory listings and the registries, then the AI surfaces and events that bring owners back (Tier 2).
 
 ## Known limits and risks
+- **Directory rules.** OpenAI bans plugins that sell subscriptions, link to checkout, move money or collect credentials, and bans pricing and comparisons in listing copy. So the plugin has no upgrade links, ChatGPT gets no refund tool, and RevenueCat is named only in docs, skills and the Claude listing.
+- **MCP 2.0.** Confirmation forms and MCP Events need protocol `2026-07-28`; our server is on the 2025 protocol until the Tier 2 migration.
 - **Proxy mode.** Signature checks read as failed until the developer turns them off, or switches to our fork. Android still sends paywall and ad events to RevenueCat.
 - **Transaction timing.** A 4xx from us on a receipt tells the SDK to finish the transaction for good, so any temporary failure must return 5xx.
 - **Google Play migrations.** RevenueCat does not export purchase tokens; we recover them from order IDs through Google's Orders API. Still to test: how far back `orders.batchget` returns old orders, and its batch size limit.
