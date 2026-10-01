@@ -22,7 +22,7 @@ Essential (Tier 1)
 Later
 - Setting the notification URL through Apple's API, and asking Apple for a test notification.
 - Refund request answers, Retention Messaging, StoreKit offer signing key, Small Business Program dates.
-- Amazon, Mac App Store, Stripe, Paddle, Roku and Web Billing apps in the dashboard (the API already creates them).
+- Mac App Store, Paddle, Roku and Web Billing apps in the dashboard (the API already creates them). Amazon Appstore and Stripe are in the dashboard since Tier 2 (`prd/store-amazon/PRD.md`, `prd/store-stripe/PRD.md`).
 - Inviting collaborators and changing roles; editing a secret key's name or permissions; legacy v1 secret keys.
 
 ## RevenueCat behaviour we match

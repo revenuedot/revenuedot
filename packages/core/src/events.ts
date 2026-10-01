@@ -93,7 +93,8 @@ export function diffSubscription(prev: Subscription | null, next: Subscription, 
   }
   const renewedNow = out.some((e) => e.type === "RENEWAL");
   if (!prev.refundedAt && next.refundedAt) out.push({ type: "CANCELLATION", cancelReason: "CUSTOMER_SUPPORT", isRefund: true });
-  else if (prev.refundedAt && !next.refundedAt) out.push({ type: "REFUND_REVERSED" });
+  // A new period after a refunded one is a renewal (Stripe keeps billing a subscription whose last invoice was refunded), not a reversal.
+  else if (prev.refundedAt && !next.refundedAt && !newPeriod) out.push({ type: "REFUND_REVERSED" });
   if (!prev.billingIssuesDetectedAt && next.billingIssuesDetectedAt) out.push({ type: "BILLING_ISSUE" });
   if (!prev.unsubscribeDetectedAt && next.unsubscribeDetectedAt && !next.refundedAt) {
     out.push({ type: "CANCELLATION", cancelReason: cancelReasonOf(next) });

@@ -48,7 +48,7 @@ export function setAppleRootsForTesting(pems: string[] | null) {
   chainCache.clear();
 }
 
-interface Cert {
+export interface Cert {
   raw: Uint8Array;
   tbs: Uint8Array;
   sigAlg: string;
@@ -63,7 +63,8 @@ interface Cert {
   extensions: Set<string>;
 }
 
-function parseCert(der: Uint8Array): Cert {
+/** Parses one DER X.509 certificate (any key type; `curve` is set only for EC keys). Also used for Amazon SNS signing certificates. */
+export function parseCert(der: Uint8Array): Cert {
   const cert = parseAsn1(der);
   const tbs = child(cert, 0);
   const i = tbs.children[0]?.cls === 2 && tbs.children[0].tag === 0 ? 1 : 0;

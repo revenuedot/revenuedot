@@ -80,6 +80,8 @@ flowchart LR
   subgraph Stores["Stores"]
     AS["App Store<br/>Server Notifications v2"]
     GP["Google Play<br/>Real-time notifications"]
+    AZ["Amazon Appstore<br/>Real-time Notifications"]
+    ST["Stripe<br/>webhooks"]
   end
   Apps -- "RevenueCat or RevenueDot SDK<br/>(proxyURL)" --> API["RevenueDot API<br/>Hono · TypeScript"]
   Stores -- "server notifications" --> API
@@ -113,10 +115,9 @@ One TypeScript codebase runs two ways: in Docker next to your own Postgres, or o
 
 1. **Import.** Run the importer on your own machine with your own RevenueCat secret API key. It brings over products, entitlements, offerings, customers, attributes and purchase history. Your existing public API keys keep working, and current access is imported so nobody loses access on switch day.
    ```bash
-   npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project <RevenueCat project id> \
-     --to https://api.revenuedot.app --to-key <RevenueDot secret key>
+   npx revenuedot import --from-revenuecat --rc-project <RevenueCat project id> --to https://api.revenuedot.app
    ```
-   The CLI is on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) ([guide](https://revenuedot.app/docs/migrate/importer)).
+   It asks for your RevenueCat and RevenueDot secret keys and hides what you type, so they stay out of your shell history. The CLI is on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) ([guide](https://revenuedot.app/docs/migrate/importer)).
 2. **Run side by side.** Point App Store and Google Play notifications at RevenueDot. It forwards every notification to RevenueCat, so both systems stay accurate while you compare them.
 3. **Switch.** Ship an app update that sets the proxy URL. When most users are on the new version, turn RevenueCat off.
 
@@ -171,6 +172,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | Area | What you get | Status |
 |---|---|---|
 | **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
+| **Amazon Appstore** | Receipts checked with Amazon's Receipt Verification Service, the SDK's Amazon receipt route, Real-time Notifications through Amazon SNS with signature checks, grace periods, tier changes, one-time refunds, Live App Testing and App Tester as sandbox | Tier 2 · built, tested against a mocked Amazon and a test SNS certificate; no real Amazon purchase yet. [Guide](https://revenuedot.app/docs/guides/amazon-appstore) |
+| **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
 | **Backend** | RevenueCat-compatible REST API v1, and every one of the 128 REST API v2 operations (116 doing the real work; the 12 discount and invoice operations exist only for RevenueCat's own Web Billing and answer on purpose); restore a purchase by its Google Play or App Store order id; create products in App Store Connect and Google Play; subscriber access tokens for the SDK endpoints; webhooks with the same payloads for 18 of the 21 event types ([why not the other 3](https://revenuedot.app/docs/guides/webhooks)), signed deliveries, retries and replay | Tier 1 core, Tier 2 rest · built and tested; store operations tested against fake stores |
 | **Offers and outages** | Promotional-offer signing with your In-App Purchase key; Apple win-back offers recorded on every purchase, sent as `offer_code` and exported, with Apple's eligibility list per customer ([guide](https://revenuedot.app/docs/guides/win-back-offers)); offline entitlements keyed the way each SDK looks them up, so paying customers keep access while the server is down ([guide](https://revenuedot.app/docs/guides/offline-entitlements)) | Tier 2 · built and tested; no real win-back offer redeemed yet |
@@ -225,7 +228,7 @@ RevenueDot is tested against the RevenueCat SDKs' own test fixtures (94 request 
 | `GET /v1/product_entitlement_mapping` | Offline entitlements |
 | `POST /v1/config/app` · `POST /v1/events` · `POST /v1/diagnostics` | Configuration and SDK events |
 
-The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 40 of them: 12 answer with real data and 28 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The other 18 belong to an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
+The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 55 of them: 26 answer with real data and 29 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The 15 subscriber-token paths (`/v1/customer/*`) take an access token from the v2 `authenticate` operation. The other 3 are the identity-provider login calls (`/auth/*`) of an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
 
 </details>
 
@@ -310,7 +313,7 @@ revenuedot/
 ## Roadmap
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
-- **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe, in-app AI agent.
+- **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
 - **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, web checkout, revenue recovery.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
@@ -379,7 +382,21 @@ Yes. Scheduled data exports write CSV or Parquet files of transactions, customer
 
 <details><summary><b>Which stores are supported?</b></summary>
 
-App Store and Google Play first. Amazon and Stripe web subscriptions in Tier 2; Paddle and Roku in Tier 3.
+App Store, Google Play, the Amazon Appstore, and Stripe subscriptions from your own Stripe account. Paddle and Roku come in Tier 3. Amazon and Stripe are tested against mocked store APIs; no real Amazon or Stripe purchase has run yet.
+</details>
+
+<details><summary><b>Can I use Amazon Appstore in-app purchases with a RevenueCat-compatible server?</b></summary>
+
+Yes. Configure the RevenueCat Android SDK for Amazon (`AmazonConfiguration`) with an Amazon app's `amzn_` key and set the proxy URL. RevenueDot checks each receipt with Amazon's Receipt Verification Service using your shared key, and takes Amazon's Real-time Notifications through SNS with the signature checked. Setup: [Amazon Appstore guide](https://revenuedot.app/docs/guides/amazon-appstore).
+
+![Amazon shared key with a live check](docs/assets/amazon-setup.png)
+</details>
+
+<details><summary><b>How do I unlock app features for customers who subscribed through Stripe on my website?</b></summary>
+
+Create a Stripe app in RevenueDot with a restricted key from your own Stripe account, add RevenueDot's webhook URL in Stripe, and have your backend post each subscription or Checkout Session id to `POST /v1/receipts` with the customer's app user id (`X-Platform: stripe`), the same call RevenueCat documents ([RevenueCat: track external Stripe purchases](https://www.revenuecat.com/docs/web/integrations/stripe/track-external-purchases)). The same entitlements then unlock in your apps. Setup: [Stripe guide](https://revenuedot.app/docs/guides/stripe).
+
+![Stripe webhooks with the live status](docs/assets/stripe-webhooks.png)
 </details>
 
 <details><summary><b>Does RevenueDot have RevenueCat's charts, like MRR, churn and trial conversion?</b></summary>

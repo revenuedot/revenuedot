@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { main } from "../src/cli.js";
+import { PromptCancelled } from "../src/prompt.js";
 import { buildPlan, formatPlan } from "../src/plan.js";
 import { RevenueCatClient } from "../src/revenuecat.js";
 import { RevenueDotClient } from "../src/revenuedot.js";
@@ -196,6 +197,10 @@ describe("revenuedot import", () => {
       '- Cordova: Purchases.setProxyURL("https://rd.example.com");',
     ]) expect(text).toContain(line);
     expect(text).not.toContain("https://rd.example.com/\"");
+    // Printed commands carry no keys: the CLI asks for them, so they stay out of shell history.
+    expect(text).toContain(`Run: npx revenuedot import --from-revenuecat --rc-project ${PROJECT} --to https://rd.example.com (it asks for both secret keys)`);
+    expect(text).toContain(`npx revenuedot import verify --rc-project ${PROJECT} --to https://rd.example.com`);
+    expect(text).not.toMatch(/--rc-key|--to-key/);
   });
 });
 
@@ -231,6 +236,89 @@ describe("the revenuedot command", () => {
       expect(await main(["import", ...common.slice(2), "--rc-key", "appl_public"], io)).toBe(2);
       expect(await main(["import", "--dry-run", ...common, "--json"], io)).toBe(0);
       expect(JSON.parse(out[out.length - 1]!)).toMatchObject({ dryRun: true, customers: { imported: 14 } });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("asks for missing keys on a terminal with hidden input, and never prints them", async () => {
+    e = await setup();
+    const server = await serveHarness(e.h);
+    const dir = mkdtempSync(join(tmpdir(), "rd-cli-"));
+    const rdKey = e.h.ids.secretKey;
+    const RC_Q = "RevenueCat secret API key (v2, sk_...): ";
+    const RD_Q = "RevenueDot secret API key for the target project: ";
+    const out: string[] = [];
+    const err: string[] = [];
+    const asked: string[] = [];
+    let answers: (string | Error)[] = [];
+    const prompt = async (q: string, o: { hidden: boolean }) => {
+      asked.push(q);
+      expect(o.hidden).toBe(true);
+      const a = answers.shift();
+      if (a === undefined || a instanceof Error) throw a ?? new Error("unexpected prompt");
+      return a;
+    };
+    const tty = { out: (s: string) => out.push(s), err: (s: string) => err.push(s), env: {}, prompt };
+    const base = ["--rc-project", PROJECT, "--rc-url", e.rc.url, "--to", server.url];
+    const dryRun = ["import", "--from-revenuecat", ...base, "--state", join(dir, "s.json"), "--dry-run"];
+    const reset = (next: (string | Error)[]) => { asked.length = 0; answers = next; };
+    try {
+      // Both keys missing on a terminal: asked for in order, then the import runs.
+      reset([RC_KEY, rdKey]);
+      expect(await main(dryRun, tty)).toBe(0);
+      expect(asked).toEqual([RC_Q, RD_Q]);
+      expect(out.join("\n")).toContain("Dry run: nothing was written to RevenueDot.");
+
+      // plan needs only the RevenueDot key.
+      reset([rdKey]);
+      expect(await main(["import", "plan", "--to", server.url], tty)).toBe(0);
+      expect(asked).toEqual([RD_Q]);
+
+      // A flag or an environment variable skips the prompt.
+      reset([]);
+      // (verify runs and finds differences: the dry run above wrote nothing.)
+      expect(await main(["import", "verify", "--rc-key", RC_KEY, ...base], { ...tty, env: { REVENUEDOT_API_KEY: rdKey } })).toBe(1);
+      expect(out.join("\n")).toContain("Differences found");
+      expect(await main(["import", "plan", "--to", server.url, "--to-key", rdKey], tty)).toBe(0);
+      expect(await main(["import", "plan", "--to", server.url], { ...tty, env: { REVENUEDOT_API_KEY: rdKey } })).toBe(0);
+      expect(asked).toEqual([]);
+
+      // A public SDK key or an empty answer is refused and asked again; three bad answers end with a usage error.
+      reset(["appl_public", "", RC_KEY, rdKey]);
+      err.length = 0;
+      expect(await main(dryRun, tty)).toBe(0);
+      expect(asked).toEqual([RC_Q, RC_Q, RC_Q, RD_Q]);
+      expect(err).toContain("The key must be a RevenueCat secret key (sk_...) or OAuth token (atk_...), not a public SDK key.");
+      expect(err).toContain("No key entered.");
+      reset(["", "goog_public", ""]);
+      expect(await main(dryRun, tty)).toBe(2);
+      expect(asked).toEqual([RC_Q, RC_Q, RC_Q]);
+
+      // Ctrl+C at a prompt exits with 130 and asks nothing more.
+      reset([new PromptCancelled()]);
+      expect(await main(dryRun, tty)).toBe(130);
+      expect(asked).toEqual([RC_Q]);
+
+      // Other missing flags are reported before any key is asked for.
+      reset([]);
+      err.length = 0;
+      expect(await main(["import", "--rc-project", PROJECT], tty)).toBe(2);
+      expect(asked).toEqual([]);
+      expect(err[0]).toMatch(/^Missing --to\.\n/);
+
+      // Without a terminal: the old usage error naming the flags, plus where to type them instead.
+      err.length = 0;
+      expect(await main(["import", ...base], { out: tty.out, err: tty.err, env: {} })).toBe(2);
+      expect(err[0]).toMatch(/^Missing --rc-key, --to-key\.\nOr run it in a terminal: the CLI then asks for each missing key and hides what you type\.\n/);
+      err.length = 0;
+      expect(await main(["import", "plan", "--to", server.url], { out: tty.out, err: tty.err, env: {} })).toBe(2);
+      expect(err[0]).toMatch(/^Missing --to-key\.\nOr run it in a terminal/);
+
+      // Nothing printed, on stdout or stderr, contains either key.
+      const printed = [...out, ...err].join("\n");
+      expect(printed).not.toContain(RC_KEY);
+      expect(printed).not.toContain(rdKey);
     } finally {
       await server.close();
     }

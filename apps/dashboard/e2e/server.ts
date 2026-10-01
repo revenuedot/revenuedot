@@ -22,6 +22,7 @@ import { tick } from "@revenuedot/server/services/tick.js";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
+import { fakeStores } from "./store-fakes.ts";
 
 const PORT = Number(process.env.PORT ?? 5199);
 const DIST = new URL("../dist", import.meta.url).pathname;
@@ -40,7 +41,8 @@ const runTick = async () => {
 setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
 const mail = memoryMailer();
-const api = createApp({ db, now, stores: defaultStores(), mailer: mail, kick: () => { setTimeout(runTick, 100); } });
+// Amazon and Stripe answer from in-process fakes (store-fakes.ts): the e2e run never calls them.
+const api = createApp({ db, now, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); } });
 
 let ready = false;
 const web = new Hono();

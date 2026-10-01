@@ -1,6 +1,6 @@
 {
-  "id": "9e383251-0d00-4122-8ea1-28b44b9374bd",
-  "prevId": "78d81f70-c056-4acc-a5c1-0238e78457f8",
+  "id": "afd4799e-1a0c-42df-8de2-867eced6ddbc",
+  "prevId": "b1ba75ee-d23a-410d-82ea-245c28ec76ba",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -270,6 +270,19 @@
         },
         "credentials": {
           "name": "credentials",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "secrets": {
+          "name": "secrets",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secret_hints": {
+          "name": "secret_hints",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,

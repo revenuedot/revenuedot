@@ -103,6 +103,13 @@
     {
       "idx": 14,
       "version": "7",
+      "when": 1790847535502,
+      "tag": "0014_app_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
       "when": 1790850000000,
       "tag": "0015_offers_subscriber_tokens",
       "breakpoints": true

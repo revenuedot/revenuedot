@@ -11,20 +11,21 @@ import { RevenueDotClient } from "./revenuedot.js";
 import { formatReport, runImport } from "./run.js";
 import { verifyImport, type VerifyReport } from "./verify.js";
 import { generatePassword, resetPassword, type Query } from "./admin.js";
+import { PromptCancelled, terminalPrompt, type Prompt } from "./prompt.js";
 
 const HELP = `revenuedot: move a project from RevenueCat to RevenueDot.
 
 Usage
-  npx revenuedot import --from-revenuecat --rc-key sk_... --rc-project proj... --to https://your-server --to-key sk_...
-  npx revenuedot import verify --rc-key sk_... --rc-project proj... --to https://your-server --to-key sk_...
-  npx revenuedot import plan --to https://your-server --to-key sk_... [--rc-project proj...]
+  npx revenuedot import --from-revenuecat --rc-project proj... --to https://your-server
+  npx revenuedot import verify --rc-project proj... --to https://your-server
+  npx revenuedot import plan --to https://your-server [--rc-project proj...]
   npx revenuedot admin reset-password <email> [--password <new password>]   (self-host; needs DATABASE_URL)
 
+  The CLI asks for the secret keys it needs and hides what you type or paste.
+
 Options
-  --rc-key <key>          RevenueCat secret API key, v2, read-only is enough (or REVENUECAT_API_KEY)
   --rc-project <id>       RevenueCat project id (proj...), shown in the RevenueCat dashboard URL
   --to <url>              Your RevenueDot server, e.g. http://localhost:8787 (or REVENUEDOT_URL)
-  --to-key <key>          RevenueDot secret API key for the target project (or REVENUEDOT_API_KEY)
   --to-project <id>       RevenueDot project id (default: the key's project)
   --state <file>          State file for resuming (default: ./revenuedot-import-<rc project>.json)
   --dry-run               Read everything and report what would change; write nothing
@@ -39,12 +40,41 @@ Options
   --database-url <url>    admin: the server's Postgres (or DATABASE_URL), e.g. postgres://revenuedot:...@localhost:5432/revenuedot
   -h, --help              Show this help
 
+Keys
+  In a terminal, the CLI asks for each missing key. Without one (CI, piped input), set:
+  REVENUECAT_API_KEY      RevenueCat secret API key, v2, read-only is enough (sk_...)
+  REVENUEDOT_API_KEY      RevenueDot secret API key for the target project
+  --rc-key and --to-key also work, but a key on the command line stays in your shell history.
+
 Docs: https://revenuedot.app/docs/migrate`;
 
-export interface CliIO { out: (s: string) => void; err: (s: string) => void; env: Record<string, string | undefined>; http?: HttpOptions; targetHttp?: HttpOptions; isTTY?: boolean; /** admin commands: SQL runner (tests); default: postgres at DATABASE_URL. */ query?: Query }
+export interface CliIO {
+  out: (s: string) => void; err: (s: string) => void; env: Record<string, string | undefined>; http?: HttpOptions; targetHttp?: HttpOptions; isTTY?: boolean;
+  /** admin commands: SQL runner (tests); default: postgres at DATABASE_URL. */ query?: Query;
+  /** Asks for a missing key. Set only when stdin and stderr are terminals; without it a missing key is a usage error. */ prompt?: Prompt;
+}
 
-/** Runs the CLI; returns the exit code (0 ok, 1 failed or differences found, 2 usage error). */
-export async function main(argv: string[], io: CliIO = { out: (s) => process.stdout.write(`${s}\n`), err: (s) => process.stderr.write(`${s}\n`), env: process.env, isTTY: process.stderr.isTTY }): Promise<number> {
+const defaultIO = (): CliIO => ({
+  out: (s) => process.stdout.write(`${s}\n`), err: (s) => process.stderr.write(`${s}\n`), env: process.env, isTTY: process.stderr.isTTY,
+  prompt: process.stdin.isTTY && process.stderr.isTTY ? terminalPrompt() : undefined,
+});
+
+const RC_KEY_ERROR = "must be a RevenueCat secret key (sk_...) or OAuth token (atk_...), not a public SDK key.";
+const rcKeyOk = (k: string) => k.startsWith("sk_") || k.startsWith("atk_");
+
+/** Asks until a usable key comes back (3 tries). Returns undefined when every try was empty or wrong. Never echoes the key. */
+async function askKey(prompt: Prompt, question: string, io: CliIO, check?: (k: string) => string | null): Promise<string | undefined> {
+  for (let i = 0; i < 3; i++) {
+    const k = await prompt(question, { hidden: true });
+    const problem = !k ? "No key entered." : check?.(k) ?? null;
+    if (!problem) return k;
+    io.err(problem);
+  }
+  return undefined;
+}
+
+/** Runs the CLI; returns the exit code (0 ok, 1 failed or differences found, 2 usage error, 130 cancelled at a prompt). */
+export async function main(argv: string[], io: CliIO = defaultIO()): Promise<number> {
   let parsed;
   try {
     parsed = parseArgs({
@@ -67,14 +97,34 @@ export async function main(argv: string[], io: CliIO = { out: (s) => process.std
   if (cmd === "admin") return admin(sub, positionals.slice(2), v, io);
   if (cmd !== "import" || (sub && sub !== "verify" && sub !== "plan")) { io.err(`Unknown command: ${positionals.join(" ")}\n\n${HELP}`); return 2; }
 
-  const rcKey = v["rc-key"] ?? io.env.REVENUECAT_API_KEY;
+  let rcKey = v["rc-key"] ?? io.env.REVENUECAT_API_KEY;
   const rcProject = v["rc-project"] ?? io.env.REVENUECAT_PROJECT_ID;
   const to = v.to ?? io.env.REVENUEDOT_URL;
-  const toKey = v["to-key"] ?? io.env.REVENUEDOT_API_KEY;
+  let toKey = v["to-key"] ?? io.env.REVENUEDOT_API_KEY;
   const need = (pairs: [string, unknown][]) => pairs.filter(([, x]) => !x).map(([n]) => n);
   const missing = need(sub === "plan" ? [["--to", to], ["--to-key", toKey]] : [["--rc-key", rcKey], ["--rc-project", rcProject], ["--to", to], ["--to-key", toKey]]);
-  if (missing.length) { io.err(`Missing ${missing.join(", ")}.\n\n${HELP}`); return 2; }
-  if (rcKey && !rcKey.startsWith("sk_") && !rcKey.startsWith("atk_")) { io.err("--rc-key must be a RevenueCat secret key (sk_...) or OAuth token (atk_...), not a public SDK key."); return 2; }
+  const isKey = (n: string) => n === "--rc-key" || n === "--to-key";
+  // Keys are asked for on a terminal; everything else (and keys without a terminal) is a usage error, reported before any prompt.
+  const blocking = io.prompt ? missing.filter((n) => !isKey(n)) : missing;
+  if (blocking.length) {
+    const hint = !io.prompt && blocking.some(isKey) ? "\nOr run it in a terminal: the CLI then asks for each missing key and hides what you type." : "";
+    io.err(`Missing ${blocking.join(", ")}.${hint}\n\n${HELP}`);
+    return 2;
+  }
+  if (rcKey && !rcKeyOk(rcKey)) { io.err(`--rc-key ${RC_KEY_ERROR}`); return 2; }
+  try {
+    if (missing.includes("--rc-key")) {
+      rcKey = await askKey(io.prompt!, "RevenueCat secret API key (v2, sk_...): ", io, (k) => rcKeyOk(k) ? null : `The key ${RC_KEY_ERROR}`);
+      if (!rcKey) return 2;
+    }
+    if (missing.includes("--to-key")) {
+      toKey = await askKey(io.prompt!, "RevenueDot secret API key for the target project: ", io);
+      if (!toKey) return 2;
+    }
+  } catch (e) {
+    if (e instanceof PromptCancelled) return 130;
+    throw e;
+  }
   const int = (name: string, x: string | undefined) => {
     if (x === undefined) return undefined;
     const n = Number(x);

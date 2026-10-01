@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { diffNonSubscription, diffSubscription, isAnonymous, newId, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { Codes, RCError } from "../errors.js";
@@ -119,6 +119,14 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   };
   if (existing) await db.update(subscriptions).set(values).where(eq(subscriptions.id, existing.id));
   else await db.insert(subscriptions).values({ id: newId("sub_", 16), ...values });
+  if (existing && existing.storeTransactionId === p.storeTransactionId && existing.priceAmount === 0 && (p.price?.amount ?? 0) > 0
+    && existing.periodType !== "trial" && p.periodType !== "trial") {
+    // The period was first recorded at a placeholder price of 0 (a Stripe invoice counted while still open); its revenue
+    // is what was finally paid.
+    await db.update(transactions).set({ revenueUsd: priceUsd ?? 0, priceAmount: p.price!.amount, priceCurrency: p.price!.currency })
+      .where(and(eq(transactions.projectId, ctx.projectId), eq(transactions.store, p.store), eq(transactions.storeTransactionId, p.storeTransactionId),
+        inArray(transactions.kind, ["purchase", "renewal"]), eq(transactions.revenueUsd, 0)));
+  }
   const next = subRowToDomain({ ...(existing ?? ({} as typeof subscriptions.$inferSelect)), ...values, id: existing?.id ?? "" } as typeof subscriptions.$inferSelect);
 
   await db.update(customers).set({

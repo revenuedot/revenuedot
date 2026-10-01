@@ -13,7 +13,7 @@ import { customerSummary } from "../../services/customer-summary.js";
 import { sdkVersionsOf } from "../../services/sdk-versions.js";
 import { notificationHealth } from "./notification-health.js";
 import { V2Error, allows, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
-import { appleKeyConfigured, customerShape, googleKeyConfigured, loadCatalog, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
+import { customerShape, loadCatalog, notificationStoreOf, storeCredentialsConfigured, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
 
 /**
  * RevenueDot extensions to API v2. These paths are NOT in RevenueCat's API; they serve our dashboard and use the
@@ -181,9 +181,8 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId));
     const appItems = [];
     for (const a of apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) {
-      const store = a.type === "app_store" || a.type === "mac_app_store" ? "apple" : a.type === "play_store" ? "google" : null;
-      const cr = a.credentials ?? {};
-      const credentials = a.type === "test_store" ? true : store === "apple" ? appleKeyConfigured(cr) : store === "google" ? googleKeyConfigured(cr) : Object.keys(cr).length > 0;
+      const store = notificationStoreOf(a.type);
+      const credentials = storeCredentialsConfigured(a);
       appItems.push({
         id: a.id, name: a.name, type: a.type,
         notification_url: store ? `${origin}/v1/notifications/${store}/${a.id}` : null,

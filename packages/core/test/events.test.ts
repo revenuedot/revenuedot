@@ -21,3 +21,17 @@ describe("diffSubscription RENEWAL", () => {
     expect(diffSubscription(prev, next, new Date(+base + 8 * day))).toEqual([{ type: "RENEWAL", isTrialConversion: false }]);
   });
 });
+
+describe("diffSubscription refunds", () => {
+  it("a refund taken back in the same period is REFUND_REVERSED", () => {
+    const prev = sub({ periodType: "normal", refundedAt: new Date(+base + day) });
+    const next = sub({ periodType: "normal" });
+    expect(diffSubscription(prev, next, new Date(+base + 2 * day))).toEqual([{ type: "REFUND_REVERSED" }]);
+  });
+
+  it("a new paid period after a refunded one is a RENEWAL, not a reversal (Stripe keeps billing)", () => {
+    const prev = sub({ periodType: "normal", refundedAt: new Date(+base + day), expiresDate: new Date(+base + day) });
+    const next = sub({ periodType: "normal", purchaseDate: new Date(+base + 7 * day), expiresDate: new Date(+base + 14 * day), storeTransactionId: "t2" });
+    expect(diffSubscription(prev, next, new Date(+base + 8 * day))).toEqual([{ type: "RENEWAL", isTrialConversion: false }]);
+  });
+});

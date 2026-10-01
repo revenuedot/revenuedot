@@ -1,0 +1,46 @@
+# Publishes an Android SDK fork to Maven Central under app.revenuedot (prd/sdk-forks/PRD.md, release job) through the
+# Central Portal with the vanniktech plugin the forks already use. Uses the `production` environment's Central Portal
+# user token and signing key (public key on keyserver.ubuntu.com).
+name: Release Maven
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Fork repository (revenuedot/<repo>)
+        required: true
+        type: choice
+        options: [purchases-android, purchases-hybrid-common]
+      tag:
+        description: Git tag to publish, e.g. 10.23.3-revenuedot
+        required: true
+      directory:
+        description: Gradle project directory inside the repo ("." for the root)
+        required: false
+        default: "."
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: revenuedot/${{ inputs.repo }}
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Publish and release
+        working-directory: ${{ inputs.directory }}
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSWORD }}
+          TAG: ${{ inputs.tag }}
+        # The release version is the tag without its -revenuedot suffix.
+        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache -PVERSION_NAME="${TAG%-revenuedot}"

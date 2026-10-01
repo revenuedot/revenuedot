@@ -28,6 +28,8 @@ Each PRD is short and has the same sections: users and jobs, essential now and l
 ## Tier 2
 | Scope | Feature | PRD |
 |---|---|---|
+| Stores | Amazon Appstore ingestion | [store-amazon](store-amazon/PRD.md) |
+| Stores | Stripe subscriptions from the customer's own Stripe account | [store-stripe](store-stripe/PRD.md) |
 | Tier 2 | Integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust, Meta) and scheduled data exports | [integrations](integrations/PRD.md) |
 | Tier 2 | Win-back offers (App Store, Google Play offers) | [win-back-offers](win-back-offers/PRD.md) |
 | Tier 2 | Offline entitlements (product mapping per store) | [offline-entitlements](offline-entitlements/PRD.md) |
