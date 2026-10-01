@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { getOrCreateCustomer } from "@revenuedot/server/repo/customers.js";
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
 import type { VerifiedSubscription } from "@revenuedot/server/stores/types.js";
 import { harness, type Harness } from "../src/harness.js";
 import { WebhookEventSchema } from "../src/sdk-schemas.js";
-import { v2 } from "./v2-helpers.js";
+import { NEVER_SENT_EVENT_TYPES } from "@revenuedot/core";
+import { buy, v2 } from "./v2-helpers.js";
 
 /**
  * Every webhook event type we send, compared key by key with RevenueCat's sample payloads (fixtures/webhooks) and its
@@ -15,7 +16,7 @@ import { v2 } from "./v2-helpers.js";
  * integers for every `*_ms` field. Keys we cannot have yet are listed in UNSUPPORTED.
  */
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../fixtures/webhooks/${name}.json`, import.meta.url), "utf8")).event as Record<string, unknown>;
-/** experiments: no experiments yet. metadata: RevenueCat Billing only. (renewal_number is sent on REFUND_REVERSED, where RevenueCat's sample has it.) */
+/** experiments: only for customers in an offering experiment (v2-targeting.test.ts). metadata: RevenueCat Billing only. (renewal_number is sent on REFUND_REVERSED, where RevenueCat's sample has it.) */
 const UNSUPPORTED = new Set(["experiments", "metadata"]);
 const FIXTURES: [string, string, (e: Record<string, any>) => boolean][] = [
   ["INITIAL_PURCHASE", "initial_purchase", (e) => e.period_type === "NORMAL"],
@@ -75,6 +76,7 @@ async function everyEvent() {
   await apply({ expiresDate: new Date(now.getTime() + 30 * DAY), autoRenewProductId: "premium", refundedAt: now });
   await apply({ expiresDate: new Date(now.getTime() + 30 * DAY), autoRenewProductId: "premium", refundedAt: null });
   await apply({ expiresDate: new Date(now.getTime() + 30 * DAY), autoRenewProductId: "premium", priceIncreaseStatus: "pending" });
+  await apply({ expiresDate: new Date(now.getTime() + 30 * DAY), autoRenewProductId: "premium", priceIncreaseStatus: "accepted" });
 
   // A receipt already owned by another identified user moves to the poster (the default transfer behaviour).
   const token = `test_${now.getTime()}_${crypto.randomUUID()}`;
@@ -119,11 +121,83 @@ describe("webhook payloads match RevenueCat's samples field by field", () => {
       expect("expiration_reason" in e, e.type).toBe(e.type === "EXPIRATION");
     }
     // Price-increase consent: identity plus the documented price-consent fields, no lifecycle group.
-    const consent = events.find((e) => e.type === "PRICE_INCREASE_CONSENT_REQUIRED")!;
-    expect(Object.keys(consent).sort()).toEqual(["aliases", "app_id", "app_user_id", "country_code", "currency", "environment", "event_timestamp_ms", "id",
-      "original_app_user_id", "original_transaction_id", "product_id", "store", "subscriber_attributes", "transaction_id", "type"]);
+    for (const type of ["PRICE_INCREASE_CONSENT_REQUIRED", "PRICE_INCREASE_CONSENT_APPROVED"]) {
+      const consent = events.find((e) => e.type === type);
+      expect(consent, `no ${type}`).toBeDefined();
+      expect(Object.keys(consent!).sort()).toEqual(["aliases", "app_id", "app_user_id", "country_code", "currency", "environment", "event_timestamp_ms", "id",
+        "original_app_user_id", "original_transaction_id", "product_id", "store", "subscriber_attributes", "transaction_id", "type"]);
+    }
+    // The three types RevenueDot never has the facts for are never produced (prd/webhooks/PRD.md).
+    expect(events.filter((e) => NEVER_SENT_EVENT_TYPES.has(e.type))).toEqual([]);
     // TRANSFER names both sides.
     expect(events.find((e) => e.type === "TRANSFER")).toMatchObject({ transferred_from: ["first_owner"], transferred_to: ["second_owner"], store: "TEST_STORE", environment: "SANDBOX" });
+  });
+
+  it("events with their own field sets match their samples: VIRTUAL_CURRENCY_TRANSACTION, EXPERIMENT_ENROLLMENT, and TEST has the purchase shape", async () => {
+    const call = v2(h);
+    await call("POST", "/v2/projects/{project_id}/virtual_currencies", {}, { json: { code: "CRD", name: "Credits", description: "The main currency unit", product_grants: [{ product_ids: ["p6"], amount: 100 }] } });
+    await buy(h, "gamer", "coins_100", h.now());
+    const promo = await call("POST", "/v2/projects/{project_id}/offerings", {}, { json: { lookup_key: "promo", display_name: "Promo" } });
+    const exp = await call("POST", "/v2/projects/{project_id}/experiments", {}, { ext: true, json: { name: "Promo test", offering_a: "ofr_default", offering_b: promo.body.id } });
+    await call("POST", "/v2/projects/{project_id}/experiments/{experiment_id}/actions/start", { experiment_id: exp.body.id }, { ext: true });
+    await h.fetch("/v1/subscribers/enrolled");
+    await h.fetch("/v1/subscribers/enrolled/offerings");
+    const hook = await call("POST", "/v2/projects/{project_id}/integrations/webhooks", {}, { json: { name: "Test", url: "https://hooks.example.com/t" } });
+    await call("POST", "/v2/projects/{project_id}/integrations/webhooks/{webhook_integration_id}/test", { webhook_integration_id: hook.body.id }, { ext: true });
+
+    const rows = await h.db.select().from(schema.events);
+    const of = (type: string) => rows.map((r) => (r.payload as { event: Record<string, any> }).event).find((e) => e.type === type);
+    for (const [type, name] of [["VIRTUAL_CURRENCY_TRANSACTION", "in-app_currency_transaction"], ["EXPERIMENT_ENROLLMENT", "experiment_enrollment"], ["TEST", "initial_purchase"]] as const) {
+      const ours = of(type);
+      expect(ours, `no ${type}`).toBeDefined();
+      // `experiments` and `metadata` are "sometimes" keys (enrolled customers, RevenueCat Billing) that a TEST event has no reason to carry.
+      expect(Object.keys(ours!).sort(), `${type} keys`).toEqual(Object.keys(fx(name)).filter((k) => type !== "TEST" || !UNSUPPORTED.has(k)).sort());
+      for (const [k, v] of Object.entries(ours!)) if (k.endsWith("_ms")) expect(Number.isInteger(v) && (v as number) > 1e12, `${type}.${k} is epoch ms`).toBe(true);
+    }
+  });
+
+  it("SUBSCRIBER_ALIAS: sent when an app user id joins an existing customer, with RevenueCat's identity fields, only to endpoints that ask for it", async () => {
+    const call = v2(h);
+    const all = await call("POST", "/v2/projects/{project_id}/integrations/webhooks", {}, { json: { name: "Everything", url: "https://hooks.example.com/all" } });
+    const legacy = await call("POST", "/v2/projects/{project_id}/integrations/webhooks", {}, { json: { name: "Legacy", url: "https://hooks.example.com/alias", event_types: ["subscriber_alias", "initial_purchase"] } });
+    const anon = "$RCAnonymousID:0123456789abcdef0123456789abcdef";
+    await h.fetch(`/v1/subscribers/${encodeURIComponent(anon)}/attributes`, { method: "POST", json: { attributes: { $email: { value: "a@example.com", updated_at_ms: h.now().getTime() } } } });
+    // logIn of a new id on an anonymous customer: the customer gains an app user id.
+    expect((await h.fetch("/v1/subscribers/identify", { method: "POST", json: { app_user_id: anon, new_app_user_id: "known_user" } })).status).toBe(201);
+    // logIn to an existing user (no anonymous id yet) from a fresh anonymous id: the anonymous customer merges into it.
+    await h.fetch("/v1/subscribers/existing_user");
+    const anon2 = "$RCAnonymousID:fedcba9876543210fedcba9876543210";
+    await h.fetch(`/v1/subscribers/${encodeURIComponent(anon2)}`);
+    expect((await h.fetch("/v1/subscribers/identify", { method: "POST", json: { app_user_id: anon2, new_app_user_id: "existing_user" } })).status).toBe(200);
+    // Android's alias call (Block Store recovery) follows the logIn rules.
+    const anon4 = "$RCAnonymousID:44444444444444444444444444444444";
+    await h.fetch(`/v1/subscribers/${encodeURIComponent(anon4)}`, { key: h.ids.androidKey });
+    await h.fetch(`/v1/subscribers/${encodeURIComponent(anon4)}/alias`, { method: "POST", key: h.ids.androidKey, json: { new_app_user_id: "recovered_user" } });
+    // Signing in again changes nothing and sends nothing.
+    await h.fetch("/v1/subscribers/identify", { method: "POST", json: { app_user_id: "known_user", new_app_user_id: "known_user" } });
+    // A receipt from an anonymous id that is already owned by a known user aliases the anonymous id into the owner.
+    const token = `test_${h.now().getTime()}_alias`;
+    await h.fetch("/v1/receipts", { method: "POST", key: h.ids.testKey, json: { app_user_id: "owner", fetch_token: token, product_id: "pro_monthly", price: 9.99, currency: "USD" } });
+    const anon3 = "$RCAnonymousID:00000000000000000000000000000003";
+    await h.fetch("/v1/receipts", { method: "POST", key: h.ids.testKey, json: { app_user_id: anon3, fetch_token: token, product_id: "pro_monthly", price: 9.99, currency: "USD" } });
+
+    const rows = await h.db.select().from(schema.events).where(eq(schema.events.type, "SUBSCRIBER_ALIAS")).orderBy(asc(schema.events.eventTimestampMs), asc(schema.events.createdAt));
+    const events = rows.map((r) => (r.payload as { event: Record<string, any> }).event);
+    expect(events.map((e) => [e.app_user_id, [...e.aliases].sort(), e.app_id])).toEqual([
+      ["known_user", [anon, "known_user"].sort(), h.ids.app],
+      ["existing_user", [anon2, "existing_user"].sort(), h.ids.app],
+      ["recovered_user", [anon4, "recovered_user"].sort(), h.ids.androidApp],
+      [anon3, [anon3, "owner"].sort(), "app_test"],
+    ]);
+    // Common fields plus subscriber identity (RevenueCat's "Subscriber alias" field set); no lifecycle fields.
+    expect(Object.keys(events[0]!).sort()).toEqual(["aliases", "app_id", "app_user_id", "event_timestamp_ms", "id", "original_app_user_id", "subscriber_attributes", "type"]);
+    expect(events[0]).toMatchObject({ type: "SUBSCRIBER_ALIAS", app_id: h.ids.app, original_app_user_id: anon, subscriber_attributes: { $email: { value: "a@example.com" } } });
+    expect(Number.isInteger(events[0]!.event_timestamp_ms)).toBe(true);
+    // Delivered to the webhook whose filter names it, never to the one without a filter.
+    const deliveries = await h.db.select().from(schema.webhookDeliveries);
+    const ids = new Set(rows.map((r) => r.id));
+    expect(deliveries.filter((d) => ids.has(d.eventId)).map((d) => d.webhookId)).toEqual([legacy.body.id, legacy.body.id, legacy.body.id, legacy.body.id]);
+    expect(deliveries.some((d) => d.webhookId === all.body.id && ids.has(d.eventId))).toBe(false);
   });
 
   it("promotional grants leave app_id out, as RevenueCat does for the PROMOTIONAL store", async () => {
