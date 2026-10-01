@@ -23,9 +23,11 @@ jobs:
       server: ${{ steps.f.outputs.server }}
       site: ${{ steps.f.outputs.site }}
     steps:
+      # Full history: a push can carry several commits, and the diff must cover all of them (with depth 2 only the last
+      # commit was seen, so a dashboard change followed by a site-only commit never deployed the server).
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - id: f
         run: |
           if [ "${{ github.event_name }}" != "push" ]; then
