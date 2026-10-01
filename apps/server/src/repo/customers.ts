@@ -72,10 +72,12 @@ export async function setAttributes(db: DB, customerId: string, attrs: Record<st
   for (const [key, raw] of Object.entries(attrs ?? {})) {
     const value = raw?.value === null || raw?.value === undefined || raw.value === "" ? null : String(raw.value);
     const updatedAtMs = Number(raw?.updated_at_ms ?? now.getTime());
-    const [cur] = await db.select().from(customerAttributes).where(and(eq(customerAttributes.customerId, customerId), eq(customerAttributes.key, key))).limit(1);
-    if (cur && cur.updatedAtMs > updatedAtMs) continue;
-    if (cur) await db.update(customerAttributes).set({ value, updatedAtMs }).where(and(eq(customerAttributes.customerId, customerId), eq(customerAttributes.key, key)));
-    else await db.insert(customerAttributes).values({ customerId, key, value, updatedAtMs });
+    // One upsert, newest timestamp wins: a read-then-insert let two concurrent writes of a new key (the SDK's attribute
+    // sync next to a receipt carrying attributes) collide on the primary key on Postgres and answer 500.
+    await db.insert(customerAttributes).values({ customerId, key, value, updatedAtMs }).onConflictDoUpdate({
+      target: [customerAttributes.customerId, customerAttributes.key], set: { value, updatedAtMs },
+      setWhere: sql`${customerAttributes.updatedAtMs} <= ${updatedAtMs}`,
+    });
   }
 }
 

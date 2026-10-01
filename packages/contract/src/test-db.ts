@@ -6,7 +6,8 @@
 // file its own module graph) clones it once with CREATE DATABASE … TEMPLATE, and every later open in the same file
 // empties all tables with one TRUNCATE instead of creating another database. Teardown drops every database of the run.
 // The URL is never printed.
-import { openDb, type DB } from "@revenuedot/db";
+import { openDb, schema, type DB } from "@revenuedot/db";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { createRequire } from "node:module";
 // Loaded with require: vitest's globalSetup resolves bare imports from the repo root, where postgres is not installed.
 const postgres = createRequire(import.meta.url)("postgres") as typeof import("postgres");
@@ -76,5 +77,8 @@ export async function openTestDb(): Promise<TestDb> {
   shared ??= createFileDatabase();
   const s = await shared;
   if (!first && s.tables.length) await reset(s);
-  return { db: s.db, close: async () => {}, query: s.query, real: true };
+  // A new drizzle instance per open over the same connections: caches keyed by the db object (the SDK-version write
+  // throttle) start empty, as they do with a fresh PGlite.
+  const db = drizzle((s.db as unknown as { $client: import("postgres").Sql }).$client, { schema }) as unknown as DB;
+  return { db, close: async () => {}, query: s.query, real: true };
 }
