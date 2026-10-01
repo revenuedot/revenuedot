@@ -216,7 +216,7 @@ export function Customers() {
               <div className="panel" aria-busy="true"><div className="pb" style={{ display: "grid", gap: 18 }}>{Array.from({ length: 6 }, (_, i) => <span key={i} className="sk line" style={{ width: `${95 - i * 7}%` }} />)}</div></div>
             ) : (
               <>
-                <div aria-busy={res.isFetching} style={{ opacity: res.isPlaceholderData ? 0.6 : 1, transition: "opacity var(--fast) var(--ease)" }}>
+                <div aria-busy={res.isFetching} style={{ opacity: res.isPlaceholderData ? 0.6 : 1, transition: "opacity var(--fast) var(--ease)", pointerEvents: res.isPlaceholderData ? "none" : undefined }}>
                   <DataTable columns={cols} rows={res.data.items} rowKey={(r) => r.customer_uuid} onRowClick={(r) => nav(to(r))}
                     empty={q ? (
                       exact.data ? (

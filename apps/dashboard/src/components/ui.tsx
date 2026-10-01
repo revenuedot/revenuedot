@@ -90,7 +90,13 @@ const ToastCtx = createContext<(msg: string) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [msg, setMsg] = useState<string | null>(null);
-  const show = useCallback((m: string) => { setMsg(m); setTimeout(() => setMsg(null), 2600); }, []);
+  // One timer: an earlier toast's timer must not hide a newer toast early.
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = useCallback((m: string) => {
+    setMsg(m);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { setMsg(null); timer.current = null; }, 2600);
+  }, []);
   return <ToastCtx.Provider value={show}>{children}{msg && <div className="toast" role="status">{msg}</div>}</ToastCtx.Provider>;
 }
 

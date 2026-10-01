@@ -30,6 +30,13 @@ const DIST = new URL("../dist", import.meta.url).pathname;
 const DAY = 86400_000;
 
 const { db } = await openDb("pglite://memory");
+// The run never reaches Apple, Google or any other outside host: only this machine (fake partners, buckets) answers.
+// A credential a spec saves (a made-up Google service account) then fails like an outage instead of calling Google.
+const localFetch: typeof fetch = async (input, init) => {
+  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+  if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return fetch(input, init);
+  return new Response(JSON.stringify({ error: `The e2e server does not call ${url.host}.` }), { status: 503, headers: { "content-type": "application/json" } });
+};
 let clock: Date | null = null;
 const now = () => clock ?? new Date();
 // Webhook deliveries and expirations run like the Node entry point, once seeding is done (setup.spec.ts checks deliveries).
@@ -37,7 +44,7 @@ let ticking = false;
 const runTick = async () => {
   if (!ready || ticking) return;
   ticking = true;
-  try { await tick(db, now(), fetch, { mailer: mail }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
+  try { await tick(db, now(), localFetch, { mailer: mail }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
 };
 setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
@@ -59,7 +66,7 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
     footer: [{ type: "cta", text: "Start free trial" }, { type: "button", action: "restore" }],
   }) + "\n```";
 });
-const api = createApp({ db, now, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi });
+const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi });
 
 let ready = false;
 const web = new Hono();

@@ -143,6 +143,9 @@ test("customers: list, pagination, exact search and the top-bar search", async (
   await page.getByLabel("Search customers").first().fill("pbg6xs2d");
   await page.getByLabel("Search customers").first().press("Enter");
   await expect(page).toHaveURL(/customers\?q=pbg6xs2d/);
+  // The previous list stays on screen (dimmed, not clickable) until the search answers.
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("pbg6xs2d");
   await rows.first().click();
   await expect(page).toHaveURL(/customers\/pbg6xs2d$/);
 });
