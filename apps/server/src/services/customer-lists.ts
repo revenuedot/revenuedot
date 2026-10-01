@@ -13,7 +13,7 @@ export type BuiltInList = (typeof BUILT_IN_LISTS)[number];
 
 const prodSubs = (i: LoadedContext) => i.data.subs.filter((s) => s.store !== "promotional" && !s.isSandbox);
 
-/** Built-in lists: production purchases decide Active and Expired; Sandbox is anyone with a sandbox purchase. */
+/** Built-in lists: production subscriptions decide Active and Expired; Sandbox is anyone with a sandbox purchase. */
 export function inBuiltIn(list: BuiltInList, i: LoadedContext, now: Date): boolean {
   switch (list) {
     case "all": return true;
@@ -22,7 +22,8 @@ export function inBuiltIn(list: BuiltInList, i: LoadedContext, now: Date): boole
     case "non_subscription": return i.data.ones.some((o) => !o.isSandbox);
     case "expired": {
       const subs = prodSubs(i);
-      return (subs.length > 0 || i.data.ones.some((o) => !o.isSandbox)) && !subs.some((s) => subActive(s, now));
+      // Subscribers whose every subscription has ended (one-time buyers are in Non-subscription).
+      return subs.length > 0 && !subs.some((s) => subActive(s, now));
     }
   }
 }
@@ -85,8 +86,9 @@ export async function queryCustomerList(db: DB, projectId: string, q: ListQuery,
     summary: {
       object: "customer_list_summary" as const,
       customers: rows.length,
-      trialing_subscribers: rows.filter((r) => r.subscription_status === "trialing").length,
-      paid_subscribers: rows.filter((r) => ["active", "grace_period", "billing_issue"].includes(r.subscription_status)).length,
+      // The cards count production subscriptions only, like charts; sandbox testers are in the Sandbox list.
+      trialing_subscribers: matched.filter((i) => prodSubs(i).some((x) => subActive(x, now) && x.periodType === "trial")).length,
+      paid_subscribers: matched.filter((i) => prodSubs(i).some((x) => subActive(x, now) && x.periodType !== "trial")).length,
       total_revenue_in_usd: Math.round(rows.reduce((x, r) => x + r.spent_in_usd, 0) * 100) / 100,
       is_approximate: truncated,
     },
