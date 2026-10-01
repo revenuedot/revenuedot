@@ -173,12 +173,13 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
 | **Backend** | RevenueCat-compatible REST API v1 and v2 core, webhooks with the same payloads, signed deliveries, retries and replay | Tier 1 · built and tested |
+| **Integrations** | Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase (GA4), BigQuery, AppsFlyer, Adjust and Meta with RevenueCat's event names and reserved attributes, retries, a delivery log and replay; scheduled CSV or Parquet exports of transactions, customers, subscriptions and events to S3, R2 or Google Cloud Storage ([guide](https://revenuedot.app/docs/guides/integrations)) | Tier 2 · built, tested against fake partners and buckets; no real partner account yet |
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
-| **Growth** | 42 charts, paywalls, experiments, targeting, integrations, virtual currencies, Customer Center | Tier 2 · planned |
+| **Growth** | 42 charts, paywalls, experiments, targeting, virtual currencies, Customer Center | Tier 2 · planned |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
 
 ## SDKs
@@ -347,6 +348,16 @@ Self-hosting is free. RevenueDot Cloud is live with a free plan on every account
 <details><summary><b>Is it safe to validate purchases on my own server?</b></summary>
 
 RevenueDot verifies every App Store transaction against Apple's signed JWS and the App Store Server API, and every Google Play purchase with the Play Developer API, on the server. Nothing is trusted from the device alone.
+</details>
+
+<details><summary><b>Does RevenueDot work with Amplitude, Mixpanel, Segment, AppsFlyer or Firebase like RevenueCat does?</b></summary>
+
+Yes. Connect Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust or Meta under Integrations, and each purchase, trial, renewal, cancellation and refund is sent with the event names RevenueCat's integrations use (`rc_initial_purchase_event`, `rc_trial_started_event` ...) and the same reserved attributes (`$amplitudeDeviceId`, `$mixpanelDistinctId`, `$appsflyerId`, `$adjustId`, `$fbAnonId`). Dashboards built on RevenueCat's events keep working. See [the integrations guide](https://revenuedot.app/docs/guides/integrations).
+</details>
+
+<details><summary><b>Can I export my subscription data to S3, BigQuery or my warehouse?</b></summary>
+
+Yes. Scheduled data exports write CSV or Parquet files of transactions, customers, subscriptions and events to Amazon S3, Cloudflare R2 or Google Cloud Storage every day or week, and the transactions file uses the column names of RevenueCat's export. The BigQuery integration streams every event into a table as it happens.
 </details>
 
 <details><summary><b>Which stores are supported?</b></summary>
