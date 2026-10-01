@@ -224,6 +224,22 @@ describe("CONSUMPTION_REQUEST", () => {
   });
 });
 
+describe("a refund of an older period", () => {
+  it("approves that transaction's request without rolling the subscription back", async () => {
+    await setup();
+    const renewal = transaction({ transactionId: "2000000102", originalTransactionId: "2000000101", purchaseDate: T0 + 20 * DAY, originalPurchaseDate: T0 - 10 * DAY, expiresDate: T0 + 50 * DAY });
+    h!.setNow(T0 + 21 * DAY);
+    await h!.notify(await notificationBody(pki, "DID_RENEW", undefined, renewal, renewalInfo({ originalTransactionId: "2000000101" })));
+    await h!.notify(await consumptionNotification(T0 + 21 * DAY));
+    const older = transaction({ ...purchase(), revocationDate: T0 + 22 * DAY, revocationReason: 0 });
+    h!.setNow(T0 + 22 * DAY);
+    await h!.notify(await notificationBody(pki, "REFUND", undefined, older, renewalInfo({ originalTransactionId: "2000000101" })));
+    expect((await requests())[0]).toMatchObject({ transactionId: "2000000101", outcome: "approved" });
+    const [sub] = await h!.db.select().from(schema.subscriptions);
+    expect(sub).toMatchObject({ storeTransactionId: "2000000102", refundedAt: null });
+  });
+});
+
 describe("refunds from other stores", () => {
   it("a Google Play refund or chargeback is recorded approved, with the policy that applies and nothing to answer", async () => {
     await setup();

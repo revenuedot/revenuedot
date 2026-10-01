@@ -307,6 +307,12 @@ export async function noteRefund(db: DB, o: { projectId: string; appId: string |
   }).onConflictDoNothing();
 }
 
+/** Apple REFUND for a transaction with a refund request: approved (whether or not the refund changes the customer's access). */
+export async function noteAppleRefund(db: DB, projectId: string, store: string, transactionId: string, at: Date) {
+  const rr = schema.refundRequests;
+  await db.update(rr).set({ outcome: "approved", outcomeAt: at }).where(and(eq(rr.projectId, projectId), eq(rr.store, store), eq(rr.transactionId, transactionId), eq(rr.outcome, "pending")));
+}
+
 /** Apple REFUND_DECLINED: the request is declined (recorded even if the CONSUMPTION_REQUEST never reached us). */
 export async function noteRefundDeclined(deps: RefundDeps, app: AppRecord, tx: AppleTransaction, at: Date) {
   const { db } = deps;

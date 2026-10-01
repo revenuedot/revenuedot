@@ -38,6 +38,8 @@ export interface TickOptions {
   signingKey?: string;
   /** Data exports run here unless false (the Worker skips them on request-kicked ticks). */
   exports?: boolean;
+  /** Win-back campaigns send here unless false (the Worker sends them from the cron only, like exports). */
+  winback?: boolean;
   /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
   strictUrls?: boolean;
 }
@@ -63,7 +65,9 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
   // Win-back campaigns that are due today (each runs once a day at its UTC hour).
   let winback = 0;
-  try { winback = await runDueCampaigns({ db, mailer: opts.mailer, now: () => now }, opts.publicUrl); } catch (e) { console.error("tick: win-back campaigns failed", e); }
+  if (opts.winback !== false) {
+    try { winback = await runDueCampaigns({ db, mailer: opts.mailer, now: () => now }, opts.publicUrl); } catch (e) { console.error("tick: win-back campaigns failed", e); }
+  }
   let exports = 0;
   if (opts.exports !== false && secretKey.ok) {
     try {
