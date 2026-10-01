@@ -28,6 +28,11 @@ export async function productInfo(db: DB, appId: string) {
   return {
     productType: (id: string) => byId.get(id)?.type ?? byId.get(id.split(":")[0]!)?.type ?? null,
     productDuration: (id: string) => byId.get(id)?.duration ?? null,
+    /** The Test Store price set in the catalog (the SDKs show it; purchases-js posts Test Store receipts without a price). */
+    productPrice: (id: string) => {
+      const p = byId.get(id);
+      return p && p.testStorePriceMicros !== null && p.testStorePriceCurrency ? { amount: p.testStorePriceMicros / 1_000_000, currency: p.testStorePriceCurrency } : null;
+    },
   };
 }
 
