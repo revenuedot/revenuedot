@@ -1,4 +1,8 @@
-import { conceptOf, defaultAnalyticsName, type BuildInput, type Concept, type IntegrationKind, type Plan, type WebhookEvent } from "./common.js";
+import { DOCS, REPORTING, conceptOf, defaultAnalyticsName, type BuildInput, type Concept, type IntegrationField, type IntegrationKind, type IntegrationSpec, type PartnerDef, type Plan, type WebhookEvent } from "./common.js";
+import { ANALYTICS_PARTNERS } from "./partners-analytics.js";
+import { ATTRIBUTION_PARTNERS } from "./partners-attribution.js";
+import { MARKETING_PARTNERS } from "./partners-marketing.js";
+import { CONNECTION_PARTNERS } from "./partners-connections.js";
 import { buildSlack, SLACK_EVENTS } from "./slack.js";
 import { buildSegment, SEGMENT_EVENTS } from "./segment.js";
 import { buildAmplitude, AMPLITUDE_EVENTS } from "./amplitude.js";
@@ -19,37 +23,6 @@ export { appsflyerTime } from "./appsflyer.js";
  * The integration catalogue: what each integration needs. The API validates writes against it and the dashboard draws
  * its forms from it. `secret` fields are sealed at rest and never returned; `select` fields list their options.
  */
-export interface IntegrationField {
-  key: string;
-  label: string;
-  type: "text" | "secret" | "select" | "boolean" | "textarea" | "tokens";
-  required?: boolean;
-  options?: { value: string; label: string }[];
-  hint?: string;
-  placeholder?: string;
-  /** Only shown when another select field has this value (`region: custom`). */
-  when?: { key: string; value: string };
-}
-
-export interface IntegrationSpec {
-  kind: IntegrationKind;
-  name: string;
-  category: "core" | "analytics" | "attribution" | "marketing";
-  text: string;
-  /** Environment default for a new integration ("production", "sandbox" or "both"). */
-  environment: "production" | "both";
-  /** Whether the dashboard offers event name overrides. */
-  eventNames: boolean;
-  fields: IntegrationField[];
-  docs: string;
-}
-
-const REPORTING: IntegrationField = {
-  key: "reporting", label: "Sales reporting", type: "select", options: [{ value: "gross", label: "Gross revenue" }, { value: "proceeds", label: "After store commission and taxes" }],
-  hint: "Revenue is sent in US dollars.",
-};
-const DOCS = "https://revenuedot.app/docs/guides/integrations";
-
 export const INTEGRATIONS: IntegrationSpec[] = [
   { kind: "slack", name: "Slack", category: "marketing", text: "Post new purchases, trials, cancellations, refunds and billing issues to a channel.", environment: "production", eventNames: false, docs: `${DOCS}#slack`,
     fields: [
@@ -124,10 +97,17 @@ export const INTEGRATIONS: IntegrationSpec[] = [
     ] },
 ];
 
+/** Batch D partners, each with its spec, steps, builder and checks (common.ts `PartnerDef`). */
+export const PARTNERS: PartnerDef[] = [...ANALYTICS_PARTNERS, ...ATTRIBUTION_PARTNERS, ...MARKETING_PARTNERS, ...CONNECTION_PARTNERS];
+const PARTNER = new Map<IntegrationKind, PartnerDef>(PARTNERS.map((p) => [p.spec.kind, p]));
+export const partnerDef = (k: string) => PARTNER.get(k as IntegrationKind);
+INTEGRATIONS.push(...PARTNERS.map((p) => p.spec));
+
 export const INTEGRATION_KINDS = INTEGRATIONS.map((s) => s.kind);
 
 /** The lifecycle steps each integration sends (BigQuery takes every event). Events outside the list are not queued. */
 export const INTEGRATION_EVENTS: Record<IntegrationKind, Concept[] | "all"> = {
+  ...(Object.fromEntries(PARTNERS.map((p) => [p.spec.kind, p.events])) as Record<IntegrationKind, Concept[] | "all">),
   slack: SLACK_EVENTS, segment: SEGMENT_EVENTS, amplitude: AMPLITUDE_EVENTS, mixpanel: MIXPANEL_EVENTS, posthog: POSTHOG_EVENTS,
   firebase: Object.keys(FIREBASE_NAMES) as Concept[], bigquery: "all", appsflyer: APPSFLYER_EVENTS, adjust: ADJUST_STEPS, meta: Object.keys(META_NAMES) as Concept[],
 };
@@ -144,6 +124,7 @@ export const integrationSpec = (k: string) => INTEGRATIONS.find((s) => s.kind ==
 export { ADJUST_STEPS };
 
 const BUILDERS: Record<IntegrationKind, (i: BuildInput) => Promise<Plan>> = {
+  ...(Object.fromEntries(PARTNERS.map((p) => [p.spec.kind, p.build])) as Record<IntegrationKind, (i: BuildInput) => Promise<Plan>>),
   slack: buildSlack, segment: buildSegment, amplitude: buildAmplitude, mixpanel: buildMixpanel, posthog: buildPostHog,
   firebase: buildFirebase, bigquery: buildBigQuery, appsflyer: buildAppsFlyer, adjust: buildAdjust, meta: buildMeta,
 };
@@ -167,6 +148,8 @@ export function responseError(kind: IntegrationKind, status: number, body: strin
   if (kind === "bigquery" && j?.insertErrors?.length) return `BigQuery rejected the row: ${JSON.stringify(j.insertErrors[0]?.errors ?? j.insertErrors[0]).slice(0, 300)}`;
   if (kind === "adjust" && j?.error) return `Adjust rejected the event: ${j.error}`;
   if (kind === "slack" && body && body.trim() !== "ok") return `Slack answered: ${body.slice(0, 200)}`;
+  const def = PARTNER.get(kind);
+  if (def?.answerError) return def.answerError(body, j);
   return null;
 }
 
@@ -183,6 +166,8 @@ export const STEP_LABELS: Record<Concept, string> = {
 
 /** The name an integration sends for a step when no override is set (null: the integration has no event names). */
 export function defaultEventName(kind: IntegrationKind, c: Concept): string | null {
+  const def = PARTNER.get(kind);
+  if (def) return def.defaultName ? def.defaultName(c) : null;
   if (kind === "meta") return META_NAMES[c] ?? null;
   if (kind === "firebase") return FIREBASE_NAMES[c] ?? null;
   if (kind === "slack" || kind === "bigquery" || kind === "adjust") return null;

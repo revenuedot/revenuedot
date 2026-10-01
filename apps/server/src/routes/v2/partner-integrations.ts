@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId, webhookStore, type Store } from "@revenuedot/core";
-import { CONCEPTS, INTEGRATIONS, integrationSpec, type IntegrationField, type IntegrationKind, type IntegrationSpec } from "@revenuedot/core/integrations";
+import { CONCEPTS, INTEGRATIONS, integrationSpec, partnerDef, type IntegrationField, type IntegrationKind, type IntegrationSpec } from "@revenuedot/core/integrations";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer } from "../../repo/customers.js";
@@ -124,6 +124,16 @@ function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>,
   }
   if (spec.kind === "appsflyer" && !settings.ios_app_id && !settings.android_app_id) throw paramError("settings: set the AppsFlyer app ID for iOS, Android or both.", "settings");
   if (spec.kind === "adjust" && !settings.ios_app_token && !settings.android_app_token) throw paramError("settings: set the Adjust app token for iOS, Android or both.", "settings");
+  // Fields the server will call (a Discord webhook, a Tag Manager server container, a partner's webhook URL).
+  for (const f of spec.fields) {
+    if (!f.url) continue;
+    const v = f.type === "secret" ? secrets[f.key] : settings[f.key];
+    if (typeof v !== "string" || !v) continue;
+    const problem = outboundUrlProblem(v, strictUrls) ?? (strictUrls && !/^https:/i.test(v) ? "must be an https URL" : null);
+    if (problem) throw paramError(`settings.${f.key}: ${problem}.`, `settings.${f.key}`);
+  }
+  const bad = partnerDef(spec.kind)?.validate?.(settings, secrets);
+  if (bad) throw paramError(`${bad.param}: ${bad.message}`, bad.param);
 }
 
 export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
