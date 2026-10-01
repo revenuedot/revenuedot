@@ -68,7 +68,7 @@ export function retentionRoutes(r: V2Router, deps: Deps) {
   });
 
   // ---------- Apple Retention Messaging ----------
-  const A = `${P}/apps/:app_id/retention_messaging`;
+  const A = "/v2/projects/:project_id/apps/:app_id/retention_messaging";
   const appleApp = async (projectId: string, appId: string) => {
     const [a] = await db.select().from(schema.apps).where(and(eq(schema.apps.projectId, projectId), eq(schema.apps.id, appId))).limit(1);
     if (!a) throw notFound("App");

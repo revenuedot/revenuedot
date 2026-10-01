@@ -373,7 +373,8 @@ export function sdkRoutes(deps: Deps) {
 
   // 15-16. Customer Center (Tier 2): no config yet, so the SDK hides the UI.
   r.get("/v1/customercenter/:id", async (c) => c.json({ customer_center: await customerCenterFor(deps.db, c.get("app").projectId) }));
-  // Customer Center tickets: stored, emailed to the support address, listed under Lifecycle > Support (services/support.ts).
+  // Customer Center tickets (body: app_user_id, customer_email, issue_description): stored, emailed to the support address,
+  // listed under Lifecycle > Support (services/support.ts).
   r.post("/v1/customercenter/support/create-ticket", async (c) => {
     const app = c.get("app");
     const b = await c.req.json().catch(() => ({})) as TicketInput;
