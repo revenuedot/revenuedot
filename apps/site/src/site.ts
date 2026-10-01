@@ -51,6 +51,7 @@ export const FOOTER = [
       { href: "/features/web-billing", label: "Web checkout" },
       { href: "/charts", label: "Subscription charts" },
       { href: "/integrations", label: "Integrations" },
+      { href: "/tools", label: "Free tools" },
       { href: "/pricing", label: "Pricing" },
       { href: "/changelog", label: "Changelog" },
     ],

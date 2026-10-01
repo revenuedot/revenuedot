@@ -48,6 +48,12 @@ export const chartByName = (name: string) => CHART_PAGES.find((c) => c.name === 
 export const COMPARISONS: ComparePage[] = COMPARE;
 export const comparePath = (c: ComparePage) => `/compare/${c.slug}`;
 
+export const TOOLS = [
+  { path: "/tools/revenuecat-fee-calculator", title: "RevenueCat fee calculator", card: "RevenueCat's fee at your revenue, next to Adapty, Qonversion, Superwall and RevenueDot." },
+  { path: "/tools/app-store-fee-calculator", title: "App Store and Google Play fee calculator", card: "What you keep from a subscription after Apple's or Google's commission and your backend's fee." },
+  { path: "/tools/subscription-revenue-calculator", title: "Subscription revenue calculator", card: "Project MRR, ARR and LTV over 12 months from installs, trial and paid conversion, price and churn." },
+];
+
 /** Title, card text and label for every page that related links can point to. */
 type Entry = { title: string; card: string; label: string };
 const STATIC: Record<string, Entry> = {
@@ -60,7 +66,9 @@ const STATIC: Record<string, Entry> = {
   "/charts": { title: "Subscription charts", card: "All 43 subscription charts, from MRR to trial conversion, defined and explained.", label: "Hub" },
   "/compare": { title: "Comparisons", card: "RevenueDot next to RevenueCat, Adapty, Superwall, Qonversion and Apphud.", label: "Hub" },
   "/features": { title: "Features", card: "Everything RevenueDot does, from receipts to paywalls and web checkout.", label: "Hub" },
+  "/tools": { title: "Free tools", card: "Free calculators for RevenueCat fees, store commission and subscription revenue.", label: "Hub" },
 };
+for (const t of TOOLS) STATIC[t.path] = { title: t.title, card: t.card, label: "Free tool" };
 
 export function entry(path: string): Entry | undefined {
   if (STATIC[path]) return STATIC[path];

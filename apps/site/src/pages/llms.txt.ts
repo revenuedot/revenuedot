@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { SITE } from "../site";
 import { PLANS } from "../lib/pricing";
 import { llmsFile, textResponse } from "../lib/llms";
-import { ALTERNATIVES, CHART_PAGES, COMPARISONS, INTEGRATIONS, LANDINGS, SECTIONS, chartPath, comparePath, integrationPath, landingPath } from "../data";
+import { TOOLS, ALTERNATIVES, CHART_PAGES, COMPARISONS, INTEGRATIONS, LANDINGS, SECTIONS, chartPath, comparePath, integrationPath, landingPath } from "../data";
 import { plain } from "../lib/md";
 
 // llms.txt (https://llmstxt.org): the docs repo's llms.txt, the canonical index of every docs page, with its links
@@ -22,6 +22,10 @@ export const GET: APIRoute = () => {
     `- [Changelog](${u("/changelog")}): what shipped`,
     `- [Security](${u("/security")}): report vulnerabilities to ${SITE.email.security}`,
     `- [Licensing and trademarks](${u("/legal/licensing")})`,
+    "",
+    "## Free tools",
+    "",
+    ...TOOLS.map((t) => `- [${t.title}](${u(t.path)}): ${t.card}`),
     "",
     "## Comparisons",
     "",
