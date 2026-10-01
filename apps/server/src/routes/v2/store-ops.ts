@@ -24,7 +24,8 @@ function v2StoreError(e: unknown): unknown {
     case "conflict": return new V2Error(409, "resource_already_exists", e.message, e.param);
     case "credentials": case "unsupported": return new V2Error(422, "unprocessable_entity_error", e.message, e.param);
     case "invalid": return new V2Error(422, "store_error", e.message, e.param);
-    default: return new V2Error(503, "store_error", e.message, e.param, true);
+    // RevenueCat's spec has store_error only on 422 (retryable when the store is down); 503 is server_error alone.
+    default: return new V2Error(422, "store_error", e.message, e.param, true);
   }
 }
 
