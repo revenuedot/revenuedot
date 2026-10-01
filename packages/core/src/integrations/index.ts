@@ -179,6 +179,7 @@ export const STEP_LABELS: Record<Concept, string> = {
   renewal: "Renewal", cancellation: "Cancellation or refund", uncancellation: "Uncancellation", non_subscription_purchase: "One-time purchase",
   subscription_paused: "Subscription paused", expiration: "Expiration", billing_issue: "Billing issue", product_change: "Product change",
   transfer: "Transfer", purchase_redeemed: "Web purchase redeemed", experiment_enrollment: "Experiment enrollment", refund_reversed: "Refund reversed", test: "Test event",
+  funnel_viewed: "Funnel viewed", funnel_step_completed: "Funnel step completed", funnel_purchase: "Funnel purchase",
 };
 
 /** The name an integration sends for a step when no override is set (null: the integration has no event names). */

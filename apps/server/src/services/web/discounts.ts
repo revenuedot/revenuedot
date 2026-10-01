@@ -7,6 +7,7 @@ import { withStoreSecrets } from "../store-secrets.js";
 import { stripeClientFor } from "../../stores/stripe/index.js";
 import { stripeKeyOf, StripeApiError } from "../../stores/stripe/api.js";
 import { stripeAppsOf } from "./config.js";
+import { sha256Hex } from "../auth.js";
 
 /**
  * Web discounts (prd/web-billing/PRD.md §6): RevenueCat's v2 `discount` objects, created as a Stripe coupon in every Stripe
@@ -73,7 +74,8 @@ export async function couponParams(db: DB, d: DiscountRow, appId: string): Promi
   const p: Record<string, unknown> = { name: d.customerFacingName.slice(0, 40), metadata: { revenuedot_discount: d.id, revenuedot_identifier: d.identifier } };
   if (d.type === "percentage") p.percent_off = d.percentage;
   else {
-    const entries = Object.entries(d.fixedAmounts ?? {});
+    // USD first when present (Postgres keeps jsonb keys in its own order), then alphabetical: a stable primary currency.
+    const entries = Object.entries(d.fixedAmounts ?? {}).sort(([a], [b]) => (a === "USD" ? -1 : b === "USD" ? 1 : a.localeCompare(b)));
     const [first, ...rest] = entries;
     if (first) {
       p.amount_off = majorToMinor(first[1], first[0]);
@@ -118,7 +120,10 @@ export async function syncCoupons(deps: Deps, d: DiscountRow, opts: { recreate?:
       if (map[app.id] && opts.recreate) {
         await client.del(app, `/v1/coupons/${encodeURIComponent(map[app.id]!.coupon)}`).catch((e) => { if (!(e instanceof StripeApiError && e.kind === "not_found")) throw e; });
       }
-      const c = await client.post<{ id: string }>(app, "/v1/coupons", await couponParams(deps.db, d, app.id), `rd-coupon-${d.id}-${app.id}-${d.updatedAt.getTime()}`);
+      const params = await couponParams(deps.db, d, app.id);
+      // A retried create returns the same coupon; a changed discount (or a re-creation) gets a new one.
+      const key = `rd-coupon-${d.id}-${app.id}-${(await sha256Hex(JSON.stringify(params) + (opts.recreate ? `:${map[app.id]?.coupon ?? ""}` : ""))).slice(0, 16)}`;
+      const c = await client.post<{ id: string }>(app, "/v1/coupons", params, key);
       map[app.id] = { coupon: c.id };
     }
   } catch (e) { throw syncError(e); }

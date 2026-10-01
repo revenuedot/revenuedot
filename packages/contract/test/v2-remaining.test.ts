@@ -29,33 +29,14 @@ const tokenFor = async (appUserId: string, app = h.ids.app) => {
 const sdk = (path: string, key: string, init: { method?: string; json?: unknown; headers?: Record<string, string> } = {}) =>
   h.fetch(path, { key, method: init.method ?? "GET", json: init.json, headers: init.headers });
 
-describe("discounts and invoices (RevenueCat Billing only) answer on purpose", () => {
-  it("writes answer 422, lists are empty, single reads are a 404 that says why; all valid against RevenueCat's schema", async () => {
-    const id = { discount_id: "discnt_abc" };
-    const writes: [string, string, Record<string, string>, unknown?][] = [
-      ["POST", D, {}, { identifier: "black_friday", customer_facing_name: "Black Friday", type: "percentage", percentage: 20, duration_mode: "one_time", eligibility: "everyone" }],
-      ["PATCH", DI, id, { customer_facing_name: "BF" }],
-      ["DELETE", DI, id],
-      ["POST", `${DI}/actions/enable`, id],
-      ["POST", `${DI}/actions/disable`, id],
-      ["POST", `${DI}/discount_codes`, id, { codes: ["SAVE20"] }],
-      ["DELETE", `${DI}/discount_codes/{discount_code}`, { ...id, discount_code: "SAVE20" }],
-    ];
-    for (const [method, path, params, json] of writes) {
-      const r = await call(method, path, params, { json });
-      expect(r.status, `${method} ${path}`).toBe(422);
-      expect(r.body).toMatchObject({ object: "error", type: "unprocessable_entity_error", retryable: false });
-      expect(r.body.message).toMatch(/RevenueCat Billing/);
-    }
-    const list = await call("GET", D);
-    expect(list).toMatchObject({ status: 200, body: { object: "list", items: [], next_page: null } });
+describe("invoices (RevenueCat Billing only) answer on purpose; discounts are real (v2-discounts.test.ts)", () => {
+  it("invoice lists are empty and a single file is a 404 that says why; an unknown discount is a 404 on discount_id; all valid against RevenueCat's schema", async () => {
     for (const path of [DI, `${DI}/discount_codes`]) {
-      const r = await call("GET", path, id);
+      const r = await call("GET", path, { discount_id: "discnt_abc" });
       expect(r.status).toBe(404);
       expect(r.body).toMatchObject({ type: "resource_missing", param: "discount_id" });
-      expect(r.body.message).toMatch(/RevenueCat Billing/);
     }
-
+    expect(await call("GET", D)).toMatchObject({ status: 200, body: { object: "list", items: [], next_page: null } });
     await buy(h, "payer", "pro_monthly", h.now());
     const inv = await call("GET", INV, { customer_id: "payer" });
     expect(inv).toMatchObject({ status: 200, body: { object: "list", items: [], next_page: null } });
