@@ -25,6 +25,7 @@ const [FEATURES, STORES, SDK_PAGES, SOLUTIONS, IA, IB, CA, CB, COMPARE, ALT_PAGE
   load("charts-a.ts", "CHARTS_A"), load("charts-b.ts", "CHARTS_B"), load("compare.ts", "COMPARE"), load("compare.ts", "ALTERNATIVE_PAGE"), load("alternatives.ts", "ALTERNATIVES"),
 ]);
 const GLOSSARY = (await import(pathToFileURL(path.join(D, "glossary.ts")).href)).GLOSSARY;
+const ERRORS = (await import(pathToFileURL(path.join(D, "errors.ts")).href)).ERRORS;
 const { termQuestion } = await import(pathToFileURL(path.join(site, "src/lib/glossary-title.ts")).href);
 const { CHARTS: CATALOG, GROUPS } = await import(pathToFileURL(path.join(repo, "packages/core/src/charts/catalog.ts")).href);
 
@@ -187,6 +188,10 @@ for (const t of GLOSSARY) {
   add(`/glossary/${t.slug}`, page(`${chrome(`Glossary · ${t.category}`, termQuestion(t.slug, t.term))}<div class="vis" data-og-safe><div style="display:grid;gap:18px;justify-items:center"><p class="cap">Defined from official docs</p><div style="display:flex;gap:16px">${(logos.length ? logos : [logoFile("app-store.svg")]).map((u) => `<div class="tile"><img src="${u}"></div>`).join("")}</div></div></div>`));
 }
 add("/glossary", page(`${chrome("Glossary", `${GLOSSARY.length} subscription app terms, explained`)}<div class="vis" data-og-safe><div style="display:flex;gap:16px"><div class="tile"><img src="${logoFile("apple.svg")}"></div><div class="tile"><img src="${logoFile("google-play.svg")}"></div></div></div>`));
+
+// SDK error codes
+for (const e of ERRORS) add(`/errors/${e.slug}`, page(`${chrome(`SDK error · code ${e.code}`, e.name)}<div class="vis" data-og-safe><div style="display:grid;gap:14px;width:440px"><p class="cap">RevenueCat SDK</p><div class="cols"><div><span>iOS</span><b style="font-size:19px;white-space:normal;overflow-wrap:anywhere;text-align:right;max-width:300px">${esc(e.swift)}</b></div><div><span>Code</span><b>${e.code}</b></div></div></div></div>`));
+add("/errors", page(`${chrome("SDK errors", "RevenueCat SDK error codes, explained")}<div class="vis" data-og-safe><div class="cols">${[7, 2, 37, 23].map((c) => ERRORS.find((x) => x.code === c)).filter(Boolean).map((e) => `<div><span style="font-family:'Geist Mono';font-size:20px">${esc(e.swift)}</span><b>${e.code}</b></div>`).join("")}</div></div>`));
 
 // Free tools
 if (rcRow) add("/tools/revenuecat-fee-calculator", page(`${chrome("Free tool", "RevenueCat fee calculator")}${billVis(COMPARE[0].price.head, rcRow)}`));
