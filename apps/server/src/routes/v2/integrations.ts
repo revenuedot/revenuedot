@@ -13,6 +13,8 @@ export const WEBHOOK_EVENT_TYPES = [
 /** The dashboard also filters on the other RevenueCat event types (TEST, experiment, redemption, alias, price consent). */
 export const ALL_WEBHOOK_EVENT_TYPES = [
   ...WEBHOOK_EVENT_TYPES, "test", "experiment_enrollment", "purchase_redeemed", "subscriber_alias", "price_increase_consent_required", "price_increase_consent_approved",
+  // RevenueDot funnel events (prd/web-billing/PRD.md §5): opt-in, sent only where the filter names them.
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
 ] as const;
 
 const url = z.string().url().refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL").refine((u) => u.length <= 2048, "is too long");

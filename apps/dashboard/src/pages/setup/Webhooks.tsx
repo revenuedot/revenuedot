@@ -38,6 +38,9 @@ export const EVENT_TYPES: [string, string][] = [
   ["price_increase_consent_required", "A price increase needs the customer's consent."],
   ["price_increase_consent_approved", "The customer accepts a price increase."],
   ["test", "Sent by the Send test event button (always delivered)."],
+  ["funnel_viewed", "A visitor opens a web funnel (RevenueDot; only when selected)."],
+  ["funnel_step_completed", "A visitor completes a funnel step (RevenueDot; only when selected)."],
+  ["funnel_purchase", "A visitor buys through a web funnel (RevenueDot; only when selected)."],
 ];
 
 const label = (t: string) => t.toUpperCase();

@@ -19,10 +19,13 @@ export const EVENT_TYPES: EventType[] = [
  * Types delivered only to webhooks and integrations whose event filter names them. SUBSCRIBER_ALIAS is deprecated by
  * RevenueCat and "new projects don't receive this webhook", so an endpoint without a filter never gets it.
  */
-export const OPT_IN_EVENT_TYPES: ReadonlySet<string> = new Set(["SUBSCRIBER_ALIAS"]);
+export const OPT_IN_EVENT_TYPES: ReadonlySet<string> = new Set(["SUBSCRIBER_ALIAS", "FUNNEL_VIEWED", "FUNNEL_STEP_COMPLETED", "FUNNEL_PURCHASE"]);
+
+/** RevenueDot's own web funnel events (prd/web-billing/PRD.md §5); RevenueCat has no webhook types for them. Opt-in. */
+export const FUNNEL_WEBHOOK_TYPES = ["FUNNEL_VIEWED", "FUNNEL_STEP_COMPLETED", "FUNNEL_PURCHASE"] as const;
 
 /** Types RevenueDot never produces, because it never has the fact behind them (prd/webhooks/PRD.md). They stay valid filters. */
-export const NEVER_SENT_EVENT_TYPES: ReadonlySet<string> = new Set(["TEMPORARY_ENTITLEMENT_GRANT", "INVOICE_ISSUANCE", "PURCHASE_REDEEMED"]);
+export const NEVER_SENT_EVENT_TYPES: ReadonlySet<string> = new Set(["TEMPORARY_ENTITLEMENT_GRANT", "INVOICE_ISSUANCE"]);
 
 export type CancelReason = "UNSUBSCRIBE" | "BILLING_ERROR" | "DEVELOPER_INITIATED" | "PRICE_INCREASE" | "CUSTOMER_SUPPORT" | "UNKNOWN";
 
