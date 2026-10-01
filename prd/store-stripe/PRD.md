@@ -20,7 +20,7 @@ Later (Tier 3, with RevenueDot's own Stripe platform)
 - A periodic re-check of active subscriptions without webhooks.
 
 ## Credentials
-Stored in `apps.credentials` like the other stores' credentials; secrets are never returned by the API.
+`stripe_secret_key` and `stripe_webhook_secret` are sealed with AES-256-GCM in `apps.secrets` (`apps/server/src/services/store-secrets.ts`, the same key as integration secrets); the other fields stay in `apps.credentials`. Secrets are never returned by the API: `store_settings` shows whether each is set, and the key's mode and last four characters (kept in `apps.secret_hints`). Stripe API calls go through the outbound guard (`guardedFetch`) and never follow a redirect (one is a 503).
 
 | Field | What it is |
 |---|---|
@@ -56,7 +56,7 @@ Live and test mode: a key's mode decides the environment. Objects with `livemode
 | First invoice not paid yet under `register_on: invoice_paid` | 503 · 7101 |
 
 ## Webhooks
-- Signature: `Stripe-Signature: t=<unix>,v1=<hex>[,v1=…]`. We compute HMAC-SHA256 with the signing secret over `"<t>.<raw body>"`, compare in constant time against every `v1`, and refuse a timestamp more than 5 minutes from the server clock. Missing secret, missing header or a mismatch is 400 (Stripe retries; RevenueCat also answers 400 for a wrong secret).
+- Signature: `Stripe-Signature: t=<unix>,v1=<hex>[,v1=…]`. We compute HMAC-SHA256 with the signing secret over `"<t>.<raw body>"`, compare in constant time against every `v1`, and refuse a timestamp more than 5 minutes from the server clock. Missing secret, missing header or a mismatch is 400 (Stripe retries; RevenueCat also answers 400 for a wrong secret). The signature is checked before the event is stored under its id or forwarded; a refused body is stored with the reason under an id of its own.
 - Events handled; each re-reads the subscription from Stripe so out-of-order delivery cannot roll state back:
 
 | Event | What happens |

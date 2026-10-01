@@ -19,13 +19,13 @@ Later
 - Amazon tiered subscriptions with add-ons (`baseReceipts`).
 
 ## Credentials
-Stored in `apps.credentials` like the other stores' credentials (no secret is ever returned by the API; `store_settings` says only whether it is set).
+`shared_secret` is sealed with AES-256-GCM in `apps.secrets` (`apps/server/src/services/store-secrets.ts`, the same key as integration secrets: `REVENUEDOT_ENCRYPTION_KEY`, else derived from `REVENUEDOT_SIGNING_KEY`); the other fields stay in `apps.credentials`. No secret is ever returned by the API; `store_settings` says only whether it is set. A key saved in `apps.credentials` before sealing still works and is moved on the app's next save.
 
 | Field | What it is | Where the developer finds it |
 |---|---|---|
 | `package_name` | The app's package name (stored in `apps.bundle_id`) | Amazon Appstore Console, app details |
 | `shared_secret` | The Amazon developer "Shared Key", which RVS needs on every call | Developer Console → Settings → Identity → Shared Key |
-| `sns_topic_arn` | Optional. When set, notifications from any other SNS topic are refused | The `TopicArn` of the first notification |
+| `sns_topic_arn` | The SNS topic messages must come from; others are refused. Left empty, it is set to the topic of the first verified message (Amazon's subscription confirmation) | The `TopicArn` of the first notification |
 | `track_new_purchases` | Optional. Record purchases first seen in a notification (on an anonymous customer) | Dashboard switch |
 | `notification_forward_url` | Optional. Every SNS message is copied there unchanged (dual run) | Dashboard field |
 
@@ -51,11 +51,13 @@ RVS answers and what the SDK sees:
 
 ## Notifications (Amazon Real-time Notifications)
 - Endpoint: `POST /v1/notifications/amazon/{app_id}`. Amazon delivers RTN through Amazon SNS as JSON (`Content-Type: text/plain`).
-- Every message's SNS signature is checked: `SigningCertURL` must be `https://sns.<region>.amazonaws.com/…pem`, the certificate is fetched (and cached) and the canonical string of the message is verified with RSA PKCS#1 v1.5 and SHA-1 (`SignatureVersion` 1) or SHA-256 (`SignatureVersion` 2). A bad signature, a foreign certificate host or another `TopicArn` than the pinned one is 400 and nothing else happens.
-- `SubscriptionConfirmation` is confirmed by fetching its `SubscribeURL` (only on an SNS host). That is what turns Amazon's endpoint label to "Verified", and it counts as the app's first received notification.
+- Every message's SNS signature is checked: `SigningCertURL` must be `https://sns.<region>.amazonaws.com/…pem` where `<region>` is an AWS region name (a looser pattern also matches hosts such as `sns.s3.amazonaws.com`, an S3 bucket anyone could own), the certificate is fetched (and cached) and the canonical string of the message is verified with RSA PKCS#1 v1.5 and SHA-1 (`SignatureVersion` 1) or SHA-256 (`SignatureVersion` 2). Any AWS account can sign SNS messages, so the message must also come from the app's topic: the pinned `sns_topic_arn`, or the topic of the first verified message, which is then pinned. A bad signature, a foreign certificate host or another topic is 400, stored with the reason under an id of its own (never the message's), never forwarded, and nothing else happens.
+- `SubscriptionConfirmation` is confirmed by fetching its `SubscribeURL` (only on an SNS host). RVS, the certificate and `SubscribeURL` are fetched through the outbound guard (`services/outbound.ts` `guardedFetch`) and redirects are never followed. That is what turns Amazon's endpoint label to "Verified", and it counts as the app's first received notification.
 - `Notification`: the `Message` is Amazon's JSON (`appPackageName`, `notificationType`, `appUserId`, `receiptId`, `relatedReceipts`, `timestamp`, `betaProductTransaction`). A package name other than the app's is stored and ignored. The receipt is re-read from RVS with `appUserId`, and the result is applied as a store update (never a transfer).
 - Unknown receipts answer 200 and are ignored unless `track_new_purchases` is on.
-- Every message is stored raw in `store_notifications` (id `amz_{app}_{MessageId}`, so SNS redeliveries are processed once) and forwarded to `notification_forward_url` when set.
+- Every verified message is stored raw in `store_notifications` (id `amz_{app}_{MessageId}`, so SNS redeliveries are processed once) and forwarded to `notification_forward_url` when set.
+- `SUBSCRIPTION_MODIFIED_IMMEDIATE` ends the chain named in `relatedReceipts.cancelledReceiptId` only when it belongs to the same customer as the new receipt.
+- A receipt posted again keeps what notifications recorded (a refund, the first billing issue or cancellation seen).
 - Temporary failures (RVS down, our own errors) answer 500 so SNS retries; permanent ones (bad receipt) answer 200 with the error stored.
 
 ## Mapping to the core engine
