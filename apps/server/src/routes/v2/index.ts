@@ -23,6 +23,7 @@ import { customerExtraRoutes } from "./customer-extras.js";
 import { auditMiddleware, auditRoutes } from "./audit.js";
 import { paywallRoutes } from "./paywalls.js";
 import { targetingRoutes } from "./targeting.js";
+import { chartRoutes } from "./charts.js";
 import { partnerIntegrationRoutes } from "./partner-integrations.js";
 import { dataExportRoutes } from "./data-exports.js";
 
@@ -93,6 +94,7 @@ export function v2Routes(deps: Deps) {
   auditRoutes(r, deps);
   paywallRoutes(r, deps);
   targetingRoutes(r, deps);
+  chartRoutes(r, deps);
   partnerIntegrationRoutes(r, deps);
   dataExportRoutes(r, deps);
 

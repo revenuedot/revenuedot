@@ -140,6 +140,7 @@ export function mapSubscription(sub: SubscriptionPurchaseV2, token: string, ctx:
     price, countryCode: sub.regionCode ?? null,
     autoRenewProductId: li.deferredItemReplacement?.productId ?? li.productId,
     cancelReason, priceIncreaseStatus, replacesStoreKey: sub.linkedPurchaseToken ?? null,
+    cancelSurveyReason: cancel?.userInitiatedCancellation?.cancelSurveyResult?.reason ?? (unsubscribeDetectedAt ? undefined : null),
   };
 }
 

@@ -179,8 +179,14 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
-| **Growth** | 42 charts, paywalls, experiments, targeting, virtual currencies, Customer Center | Tier 2 · planned |
+| **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
+| **Growth** | Paywalls, experiments, targeting, virtual currencies, Customer Center | Tier 2 · planned |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
+  <img alt="RevenueDot Charts: MRR Movement by week with new and churned MRR, the grouped chart list, filters and the data table" src="docs/assets/charts-light.png" width="100%">
+</picture>
 
 ## SDKs
 
@@ -363,6 +369,11 @@ Yes. Scheduled data exports write CSV or Parquet files of transactions, customer
 <details><summary><b>Which stores are supported?</b></summary>
 
 App Store and Google Play first. Amazon and Stripe web subscriptions in Tier 2; Paddle and Roku in Tier 3.
+</details>
+
+<details><summary><b>Does RevenueDot have RevenueCat's charts, like MRR, churn and trial conversion?</b></summary>
+
+Yes. All 42 built-in charts are in the dashboard and at `GET /v2/projects/{project_id}/charts/{chart_name}` with RevenueCat's chart names, parameters and response shape. They follow RevenueCat's definitions: sandbox excluded, USD at the purchase-date rate, refunds on the refund date. The [charts guide](https://revenuedot.app/docs/guides/charts) explains every chart and publishes the SQL behind the core ones.
 </details>
 
 <details><summary><b>What license is it under?</b></summary>

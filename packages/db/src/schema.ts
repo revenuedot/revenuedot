@@ -181,6 +181,8 @@ export const subscriptions = pgTable("subscriptions", {
   expiredEventAt: ts("expired_event_at"),
   /** Offering identifier the SDK sent with the purchase (presented_offering_identifier); the first one seen stays. */
   presentedOfferingId: text("presented_offering_id"),
+  /** Google Play: the customer's answer to the cancel survey (`cancelSurveyResult.reason`), for the cancel reasons chart. */
+  cancelSurveyReason: text("cancel_survey_reason"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("subscriptions_store_key").on(t.projectId, t.store, t.storeKey), index("subscriptions_customer").on(t.customerId)]);
 
@@ -592,6 +594,30 @@ export const configBlobs = pgTable("config_blobs", {
   data: text("data").notNull(),
   createdAt: created(),
 });
+
+/**
+ * Paywall, Customer Center and ad events the SDKs post to /v1/events, for the paywall, ad and survey charts.
+ * `id` is the SDK's event id, so a resent batch is stored once. `customerId` is resolved from `appUserId` when known.
+ */
+export const sdkEvents = pgTable("sdk_events", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  id: text("id").notNull(),
+  appId: text("app_id"),
+  customerId: text("customer_id").references(() => customers.id, { onDelete: "cascade" }),
+  appUserId: text("app_user_id"),
+  type: text("type").notNull(),
+  isSandbox: boolean("is_sandbox").notNull().default(false),
+  occurredAt: ts("occurred_at").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  receivedAt: ts("received_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.id] }), index("sdk_events_project_time").on(t.projectId, t.occurredAt), index("sdk_events_customer").on(t.customerId)]);
+
+/** One row per customer per UTC day on which the SDK called us (the Active Customers chart). `day` is YYYY-MM-DD. */
+export const customerActivity = pgTable("customer_activity", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  day: text("day").notNull(),
+}, (t) => [primaryKey({ columns: [t.customerId, t.day] }), index("customer_activity_project_day").on(t.projectId, t.day)]);
 
 /**
  * Third-party integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase/GA4, BigQuery, AppsFlyer, Adjust, Meta).

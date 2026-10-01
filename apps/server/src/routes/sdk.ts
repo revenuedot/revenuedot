@@ -19,6 +19,7 @@ import { publicOrigin } from "./oauth.js";
 import { buildRemoteConfig } from "../services/remote-config.js";
 import { activeEntitlementKeys, contextFor, resolveOfferings } from "../services/targeting.js";
 import { balancesOf } from "../services/virtual-currencies.js";
+import { storeSdkEvents } from "../services/sdk-events.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
 
@@ -294,7 +295,14 @@ export function sdkRoutes(deps: Deps) {
   r.get("/v1/config/:domain", (c) => c.body(null, 204));
 
   // 31-32. Events and diagnostics: accepted (a 404 would make the SDK resend forever).
-  r.post("/v1/events", (c) => c.json({}));
+  // Paywall, Customer Center and ad events are kept for the charts (services/sdk-events.ts); a bad batch is still a 200.
+  r.post("/v1/events", async (c) => {
+    try {
+      const body = await c.req.json().catch(() => null);
+      await storeSdkEvents(deps.db, { projectId: c.get("auth").projectId, app: c.get("app")?.id ? c.get("app") : null, body, now: deps.now() });
+    } catch (e) { console.warn("Storing SDK events failed", e); }
+    return c.json({});
+  });
   r.post("/v1/diagnostics", (c) => c.json({}));
 
   // 25. Test Store products (rcbilling): details from the catalog.

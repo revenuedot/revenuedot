@@ -20,10 +20,13 @@ import { VirtualCurrenciesPage } from "./pages/catalog/VirtualCurrencies";
 import { CustomerCenterPage } from "./pages/lifecycle/CustomerCenter";
 import { PaywallEditor, PaywallsPage } from "./pages/paywalls/Paywalls";
 import { ExperimentDetail, ExperimentsPage, TargetingPage } from "./pages/targeting/Targeting";
+import { ChartsPage } from "./pages/charts/Charts";
 
 /** Project routes. URL paths mirror RevenueCat's dashboard so bookmarks and muscle memory carry over. */
 export const routes = [
   <Route key="overview" path="/projects/:projectId/overview" element={<Overview />} />,
+  <Route key="charts" path="/projects/:projectId/charts" element={<ChartsPage />} />,
+  <Route key="chart" path="/projects/:projectId/charts/:chartName" element={<ChartsPage />} />,
   <Route key="customers" path="/projects/:projectId/customers" element={<Customers />} />,
   <Route key="customer" path="/projects/:projectId/customers/:appUserId" element={<CustomerDetail />} />,
   <Route key="catalog-offerings" path="/projects/:projectId/product-catalog/offerings" element={<OfferingsPage />} />,
