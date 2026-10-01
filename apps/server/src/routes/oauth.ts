@@ -119,7 +119,9 @@ export async function fetchClientDoc(url: string, doFetch: typeof fetch): Promis
   if (!clientDocUrlOk(url)) return { error: "The client_id URL is not a public https address." };
   let doc: unknown;
   try {
-    const res = await doFetch(url, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(5000) });
+    // "manual" rather than "error": Workers do not accept redirect: "error". A redirect is refused below.
+    const res = await doFetch(url, { headers: { accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(5000) });
+    if (res.status >= 300 && res.status < 400) return { error: "The client metadata document redirected; it must be served at its own URL." };
     if (!res.ok) return { error: `The client metadata document answered ${res.status}.` };
     if (!(res.headers.get("content-type") ?? "").includes("json")) return { error: "The client metadata document is not JSON." };
     doc = JSON.parse(await readCapped(res, CLIENT_DOC_MAX_BYTES));
@@ -133,7 +135,11 @@ export async function fetchClientDoc(url: string, doFetch: typeof fetch): Promis
   if (!Array.isArray(uris) || !uris.length || uris.length > 10 || !uris.every((u) => typeof u === "string" && u.length <= 2048 && redirectUriOk(u))) {
     return { error: "redirect_uris in the metadata document must be 1 to 10 allowed URLs." };
   }
-  if (d.token_endpoint_auth_method !== undefined && d.token_endpoint_auth_method !== "none") return { error: "Only public clients (token_endpoint_auth_method none) are supported." };
+  // We only run public clients (PKCE, no secret). ChatGPT's document prefers private_key_jwt but lists none as supported,
+  // and we publish only none, so it uses none. A client that can only authenticate with a key or secret is refused.
+  const method = d.token_endpoint_auth_method;
+  const alsoNone = Array.isArray(d.token_endpoint_auth_methods_supported) && d.token_endpoint_auth_methods_supported.includes("none");
+  if (method !== undefined && method !== "none" && !alsoNone) return { error: "Only public clients (token_endpoint_auth_method none) are supported." };
   if (Array.isArray(d.grant_types) && !d.grant_types.includes("authorization_code")) return { error: "grant_types must include authorization_code." };
   const name = typeof d.client_name === "string" && d.client_name.trim() ? d.client_name.trim().slice(0, 100) : new URL(url).hostname;
   return { name, redirectUris: uris as string[] };

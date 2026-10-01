@@ -294,6 +294,13 @@ describe("OAuth for MCP clients", () => {
       expect(calls).toHaveLength(2);
     });
 
+    it("accepts ChatGPT's real document: private_key_jwt preferred, none supported, refresh_token listed", async () => {
+      const real = { client_id: CLIENT, client_uri: "https://chatgpt.example.com/", redirect_uris: ["https://chatgpt.example.com/connector/oauth/cb"], token_endpoint_auth_method: "private_key_jwt", token_endpoint_auth_methods_supported: ["none", "private_key_jwt"], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], client_name: "ChatGPT", jwks_uri: "https://chatgpt.example.com/oauth/jwks.json" };
+      const env = await setup(fetcher(real).f);
+      const alice = await env.signup("alice@example.com");
+      expect((await authorize(env, alice.cookie)).status).toBe(200);
+    });
+
     it("keeps working from the saved copy when the document is unreachable later", async () => {
       let ok = true;
       const f = (async () => (ok ? new Response(JSON.stringify(doc()), { headers: { "content-type": "application/json" } }) : new Response("no", { status: 500 }))) as unknown as typeof fetch;
@@ -310,6 +317,8 @@ describe("OAuth for MCP clients", () => {
       ["a redirect the document does not list", doc(), { redirect: "https://evil.example.com/cb" }],
       ["a plain http redirect", doc({ redirect_uris: ["http://chatgpt.example.com/cb"] }), {}],
       ["a client that wants a secret", doc({ token_endpoint_auth_method: "client_secret_basic" }), {}],
+      ["a client that can only use a key", doc({ token_endpoint_auth_method: "private_key_jwt", token_endpoint_auth_methods_supported: ["private_key_jwt"] }), {}],
+      ["a redirect", doc(), { status: 302 }],
       ["no redirect_uris", doc({ redirect_uris: [] }), {}],
       ["HTML instead of JSON", "<html></html>", { type: "text/html" }],
       ["a document over 10 KB", doc({ client_name: "x".repeat(11_000) }), {}],
