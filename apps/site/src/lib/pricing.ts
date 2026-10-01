@@ -18,6 +18,22 @@ export const RC_RATE = 0.01; // then 1% of tracked revenue above that (https://w
 
 export const PLANS: Plan[] = [
   {
+    id: "cloud-free",
+    name: "Cloud Free",
+    price: "$0",
+    priceNote: "up to $10K monthly tracked revenue",
+    summary: "RevenueDot Cloud, hosted by us, free while your app tracks up to $10,000 a month.",
+    available: true,
+    features: [
+      "Hosted API and dashboard, nothing to run",
+      "Up to $10,000 monthly tracked revenue",
+      "Same code and API as self-host, so you can move either way",
+      "Webhooks, REST API and the importer",
+      "Email and community support",
+    ],
+    cta: { label: "Start free", href: "https://app.revenuedot.app/signup" },
+  },
+  {
     id: "self-host",
     name: "Self-host",
     price: "$0",
@@ -32,22 +48,6 @@ export const PLANS: Plan[] = [
       "Community support on GitHub",
     ],
     cta: { label: "Self-host free", href: "/self-host" },
-  },
-  {
-    id: "cloud-free",
-    name: "Cloud Free",
-    price: "$0",
-    priceNote: "up to $10K monthly tracked revenue",
-    summary: "RevenueDot Cloud, hosted by us, free while your app tracks up to $10,000 a month.",
-    available: true,
-    features: [
-      "Hosted API and dashboard, nothing to run",
-      "Up to $10,000 monthly tracked revenue",
-      "Same code and API as self-host, so you can move either way",
-      "Webhooks, REST API and the importer",
-      "Email and community support",
-    ],
-    cta: { label: "Talk to us", href: "mailto:hello@revenuedot.app?subject=RevenueDot%20Cloud" },
   },
   {
     id: "cloud-standard",

@@ -4,7 +4,7 @@ export const SITE = {
   url: "https://revenuedot.app",
   tagline: "The open-source RevenueCat alternative",
   description:
-    "RevenueDot is an open-source, self-hostable backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Change one line, keep your app code, and pay nothing to self-host.",
+    "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Start free on RevenueDot Cloud or self-host it. Change one line and keep your app code.",
   github: "https://github.com/revenuedot/revenuedot",
   org: "https://github.com/revenuedot",
   docs: "https://github.com/revenuedot/docs",
@@ -13,6 +13,10 @@ export const SITE = {
   mcp: "https://github.com/revenuedot/mcp",
   skills: "https://github.com/revenuedot/agent-skills",
   apiHost: "https://api.revenuedot.app",
+  // RevenueDot Cloud: where people sign up and sign in. Every page's main call to action points here.
+  app: "https://app.revenuedot.app",
+  signup: "https://app.revenuedot.app/signup",
+  login: "https://app.revenuedot.app/login",
   email: {
     hello: "hello@revenuedot.app",
     security: "security@revenuedot.app",
@@ -39,6 +43,8 @@ export const FOOTER = [
   {
     title: "Product",
     links: [
+      { href: "https://app.revenuedot.app/signup", label: "Start free on Cloud" },
+      { href: "https://app.revenuedot.app/login", label: "Sign in" },
       { href: "/pricing", label: "Pricing" },
       { href: "/migrate-from-revenuecat", label: "Migrate from RevenueCat" },
       { href: "/self-host", label: "Self-host" },

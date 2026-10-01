@@ -46,7 +46,7 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
             <p class="tiny">{p.priceNote}</p>
             <p class="summary">{p.summary}</p>
             <ul>{p.features.map((f) => <li>{f}</li>)}</ul>
-            <a class={`btn ${p.id === "self-host" ? "" : "secondary"}`} href={p.cta.href} rel={p.cta.href.startsWith("http") ? "noopener" : undefined}>{p.cta.label}</a>
+            <a class={`btn ${p.id === "cloud-free" ? "" : "secondary"}`} href={p.cta.href} rel={p.cta.href.startsWith("http") ? "noopener" : undefined}>{p.cta.label}</a>
           </div>
         ))}
       </div></div>
