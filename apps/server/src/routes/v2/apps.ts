@@ -5,6 +5,8 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { body, listOf, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
 import { appShape } from "./shapes.js";
+import { depsSecretKey } from "../../services/secrets.js";
+import { sealStoreSecrets, storeSecretFields, takeStoreSecrets } from "../../services/store-secrets.js";
 
 const APP_TYPES = ["amazon", "app_store", "mac_app_store", "play_store", "stripe", "rc_billing", "roku", "paddle", "test_store"] as const;
 
@@ -57,7 +59,7 @@ function checkStoreFields(type: string, rest: Record<string, unknown>) {
   if (type === "amazon") {
     text("shared_secret");
     const arn = text("sns_topic_arn", 256);
-    if (arn && !/^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w-]+$/.test(arn)) bad("sns_topic_arn", "must be an SNS topic ARN such as arn:aws:sns:us-east-1:123456789012:topic.");
+    if (arn && !/^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w.-]+$/.test(arn)) bad("sns_topic_arn", "must be an SNS topic ARN such as arn:aws:sns:us-east-1:123456789012:topic.");
     bool("track_new_purchases");
   }
   if (type === "stripe") {
@@ -110,11 +112,17 @@ export function appRoutes(r: V2Router, deps: Deps) {
     const { id: bundleId, rest } = splitDetails(b.type, d);
     const fwd = forwardUrl(rest);
     checkStoreFields(b.type, rest);
+    // Amazon and Stripe secrets are sealed in apps.secrets, never stored in credentials (services/store-secrets.ts).
+    const secretUpdate = takeStoreSecrets(b.type, rest);
     for (const [k, v] of Object.entries(rest)) if (v === null) delete rest[k];
     if (ID_FIELD[b.type] && !bundleId) throw paramError(`${b.type}.${ID_FIELD[b.type]} is required for ${b.type} apps.`, `${b.type}.${ID_FIELD[b.type]}`);
+    const sealed = storeSecretFields(b.type).length
+      ? await sealStoreSecrets({ type: b.type, credentials: rest, secrets: null }, secretUpdate, await depsSecretKey(deps))
+      : { secrets: null, secretHints: {}, credentials: rest };
     const [row] = await db.insert(schema.apps).values({
       id: newId("app", 8), projectId: c.get("projectId"), name: b.name, type: b.type, bundleId: bundleId ?? null,
-      publicKey: `${KEY_PREFIX[b.type]}${randomKey()}`, credentials: rest, notificationForwardUrl: fwd ?? null, createdAt: deps.now(),
+      publicKey: `${KEY_PREFIX[b.type]}${randomKey()}`, credentials: sealed.credentials, secrets: sealed.secrets, secretHints: sealed.secretHints,
+      notificationForwardUrl: fwd ?? null, createdAt: deps.now(),
     }).returning();
     return c.json(appShape(row!), 201);
   });
@@ -129,12 +137,20 @@ export function appRoutes(r: V2Router, deps: Deps) {
     // RevenueDot extension: `notification_forward_url` (store notifications are copied there, e.g. to RevenueCat during a dual run).
     const fwd = forwardUrl(rest);
     checkStoreFields(a.type, rest);
+    const secretUpdate = takeStoreSecrets(a.type, rest);
     // null clears a credential; other values replace it.
-    const credentials: Record<string, unknown> = { ...a.credentials };
+    let credentials: Record<string, unknown> = { ...a.credentials };
     for (const [k, v] of Object.entries(rest)) { if (v === null) delete credentials[k]; else credentials[k] = v; }
+    // Amazon and Stripe secrets are (re)sealed when one changes or one is still plain in credentials from before sealing.
+    let sealed: { secrets: string | null; secretHints: Record<string, string> } | null = null;
+    if (Object.keys(secretUpdate).length || storeSecretFields(a.type).some((f) => f in credentials)) {
+      const s = await sealStoreSecrets({ type: a.type, credentials, secrets: a.secrets }, secretUpdate, await depsSecretKey(deps));
+      credentials = s.credentials;
+      sealed = { secrets: s.secrets, secretHints: s.secretHints };
+    }
     // New credentials (or package name) are checked with the store on the next tick; a failing alert resolves only once the store accepts them.
-    const recheck = bundleId || Object.keys(rest).length ? { credentialsCheckedAt: null } : {};
-    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials, ...recheck })
+    const recheck = bundleId || Object.keys(rest).length || Object.keys(secretUpdate).length ? { credentialsCheckedAt: null } : {};
+    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials, ...(sealed ?? {}), ...recheck })
       .where(and(eq(schema.apps.projectId, a.projectId), eq(schema.apps.id, a.id))).returning();
     return c.json(appShape(row!));
   });

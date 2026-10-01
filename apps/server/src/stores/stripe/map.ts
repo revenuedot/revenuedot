@@ -9,7 +9,12 @@ export interface StoredPeriod { storeTransactionId: string | null; purchaseDate:
 
 /** Currencies Stripe counts in whole units (https://docs.stripe.com/currencies#zero-decimal). */
 const ZERO_DECIMAL = new Set(["bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"]);
-export const fromMinor = (amount: number, currency: string) => (ZERO_DECIMAL.has(currency.toLowerCase()) ? amount : Math.round(amount) / 100);
+/** Currencies Stripe counts in thousandths (https://docs.stripe.com/currencies#three-decimal). */
+const THREE_DECIMAL = new Set(["bhd", "jod", "kwd", "omr", "tnd"]);
+export const fromMinor = (amount: number, currency: string) => {
+  const c = currency.toLowerCase();
+  return ZERO_DECIMAL.has(c) ? amount : THREE_DECIMAL.has(c) ? Math.round(amount) / 1000 : Math.round(amount) / 100;
+};
 
 const sec = (s: number | null | undefined) => (typeof s === "number" && Number.isFinite(s) ? new Date(s * 1000) : null);
 const minDate = (a: Date, b: Date) => (a < b ? a : b);

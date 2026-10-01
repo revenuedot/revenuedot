@@ -4,6 +4,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { Codes, RCError } from "../../errors.js";
 import { recordCredentialFailure } from "../../services/credential-health.js";
+import { withStoreSecrets } from "../../services/store-secrets.js";
 import { forwardStoreNotification } from "../forward.js";
 import { StripeApiError, type StripeEvent } from "./api.js";
 import { stripeClientFor } from "./index.js";
@@ -21,45 +22,52 @@ export function stripeNotificationRoutes(deps: Deps) {
   const r = new Hono();
   r.post("/:appId", async (c) => {
     const now = deps.now();
-    const [app] = await deps.db.select().from(apps).where(eq(apps.id, c.req.param("appId"))).limit(1);
-    if (!app || app.type !== "stripe") return c.json({ code: Codes.NOT_FOUND, message: "No Stripe app with this id." }, 404);
+    const [row] = await deps.db.select().from(apps).where(eq(apps.id, c.req.param("appId"))).limit(1);
+    if (!row || row.type !== "stripe") return c.json({ code: Codes.NOT_FOUND, message: "No Stripe app with this id." }, 404);
+    let app: typeof row;
+    try { app = await withStoreSecrets(deps, row); } catch (e) {
+      console.error(`Stripe event for ${row.id}: ${e instanceof Error ? e.message : e}`);
+      return c.json({ code: Codes.STORE_PROBLEM, message: "The app's Stripe credentials could not be opened; Stripe will retry." }, 500);
+    }
     const { client } = stripeClientFor(deps.stores, deps.fetch);
     const creds = (app.credentials ?? {}) as Record<string, unknown>;
     const raw = await c.req.text();
     let event: StripeEvent | null = null;
     try { const j = JSON.parse(raw); if (j && typeof j === "object" && typeof j.id === "string" && typeof j.type === "string") event = j; } catch { /* below */ }
-
-    const id = `stripe_${app.id}_${event?.id ?? crypto.randomUUID()}`;
     const objectId = typeof event?.data?.object?.id === "string" ? event.data.object.id : null;
+    const signature = c.req.header("stripe-signature");
+    // A body that fails the checks is kept (the app's notification status shows why) under an id of its own, so an
+    // unsigned body can never take a real event's id, and it is never forwarded.
+    const reject = async (error: string, message: string) => {
+      await deps.db.insert(storeNotifications).values({
+        id: `stripe_${app.id}_rejected_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "stripe", type: event?.type ?? null, subtype: objectId, body: raw.slice(0, 64_000), receivedAt: now, error,
+      });
+      return c.json({ code: Codes.BAD_REQUEST, message }, 400);
+    };
+
+    const secret = typeof creds.stripe_webhook_secret === "string" ? creds.stripe_webhook_secret.trim() : "";
+    if (!secret) return reject("rejected: no webhook signing secret is saved for this app", "Add the webhook signing secret (whsec_…) in the app's settings.");
+    try {
+      // Over the raw body, before anything is parsed into state.
+      await verifyStripeSignature(raw, signature, secret, now);
+    } catch (e) {
+      const message = e instanceof StripeSignatureError ? e.message : String(e);
+      return reject(`rejected: ${message}`, message);
+    }
+    if (!event) return reject("The body is not a Stripe event.", "The body is not a Stripe event.");
+
+    const id = `stripe_${app.id}_${event.id}`;
     const inserted = await deps.db.insert(storeNotifications).values({
-      id, projectId: app.projectId, appId: app.id, store: "stripe", type: event?.type ?? null, subtype: objectId, body: raw, receivedAt: now,
+      id, projectId: app.projectId, appId: app.id, store: "stripe", type: event.type, subtype: objectId, body: raw, receivedAt: now,
     }).onConflictDoNothing().returning({ id: storeNotifications.id });
     if (!inserted.length) {
       const [prev] = await deps.db.select({ processedAt: storeNotifications.processedAt }).from(storeNotifications).where(eq(storeNotifications.id, id));
       if (prev?.processedAt) return c.json({ status: "duplicate" });
     }
-    const signature = c.req.header("stripe-signature");
     if (inserted.length && app.notificationForwardUrl) {
-      forwardStoreNotification(c, { db: deps.db, fetchFn: deps.fetch ?? client.fetchImpl, url: app.notificationForwardUrl, notificationId: id, raw, headers: signature ? { "stripe-signature": signature } : {} });
+      forwardStoreNotification(c, { db: deps.db, fetchFn: deps.fetch ?? client.fetchImpl, url: app.notificationForwardUrl, notificationId: id, raw, strict: deps.edition === "cloud", headers: signature ? { "stripe-signature": signature } : {} });
     }
     const finish = (set: Partial<typeof storeNotifications.$inferInsert>) => deps.db.update(storeNotifications).set(set).where(eq(storeNotifications.id, id));
-
-    const secret = typeof creds.stripe_webhook_secret === "string" ? creds.stripe_webhook_secret.trim() : "";
-    if (!secret) {
-      await finish({ error: "rejected: no webhook signing secret is saved for this app" });
-      return c.json({ code: Codes.BAD_REQUEST, message: "Add the webhook signing secret (whsec_…) in the app's settings." }, 400);
-    }
-    try {
-      await verifyStripeSignature(raw, signature, secret, now);
-    } catch (e) {
-      const message = e instanceof StripeSignatureError ? e.message : String(e);
-      await finish({ error: `rejected: ${message}` });
-      return c.json({ code: Codes.BAD_REQUEST, message }, 400);
-    }
-    if (!event) {
-      await finish({ processedAt: now, error: "The body is not a Stripe event." });
-      return c.json({ code: Codes.BAD_REQUEST, message: "The body is not a Stripe event." }, 400);
-    }
 
     const eventTime = new Date((event.created ?? now.getTime() / 1000) * 1000);
     try {

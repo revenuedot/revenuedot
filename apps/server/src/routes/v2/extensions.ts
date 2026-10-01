@@ -182,7 +182,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const appItems = [];
     for (const a of apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) {
       const store = notificationStoreOf(a.type);
-      const credentials = storeCredentialsConfigured(a.type, a.credentials ?? {});
+      const credentials = storeCredentialsConfigured(a);
       appItems.push({
         id: a.id, name: a.name, type: a.type,
         notification_url: store ? `${origin}/v1/notifications/${store}/${a.id}` : null,

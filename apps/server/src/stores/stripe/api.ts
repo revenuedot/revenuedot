@@ -1,5 +1,6 @@
 import { Codes, RCError } from "../../errors.js";
 import type { AppRow } from "../types.js";
+import { guardedFetch, OutboundRefused } from "../../services/outbound.js";
 
 /**
  * A small Stripe API client for the developer's own account (restricted key). Only reads: subscriptions, Checkout
@@ -83,10 +84,11 @@ export class StripeClient {
     if (typeof account === "string" && /^acct_/.test(account.trim())) headers["stripe-account"] = account.trim();
     let res: Response;
     try {
-      res = await withTimeout(this.fetchImpl(u.toString(), { method: "GET", headers, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
+      // Through the outbound guard, never following a redirect: the request carries the API key.
+      res = await withTimeout(guardedFetch(this.fetchImpl, u.toString(), { method: "GET", headers, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
     } catch (e) {
       const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-      throw new StripeApiError("transient", timedOut ? "Stripe timed out" : `Stripe could not be reached: ${e instanceof Error ? e.message : e}`);
+      throw new StripeApiError("transient", timedOut ? "Stripe timed out" : e instanceof OutboundRefused ? `The Stripe request was refused: ${e.message}` : "Stripe could not be reached");
     }
     const text = await res.text().catch(() => "");
     let body: any = null;

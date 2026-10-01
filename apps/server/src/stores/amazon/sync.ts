@@ -85,7 +85,8 @@ export async function syncAmazonNotification(ctx: SyncCtx, n: AmazonNotification
   const replaced = type === "SUBSCRIPTION_MODIFIED_IMMEDIATE" ? n.relatedReceipts?.cancelledReceiptId ?? null : null;
   if (replaced && replaced !== receiptId) {
     const old = await subRowOf(db, app.projectId, "amazon", replaced);
-    if (old) {
+    // Only a chain of the same customer is ended: the cancelled receipt id comes from the notification, not from RVS.
+    if (old && (!row || row.customerId === old.customerId)) {
       v = { ...v, replacesStoreKey: replaced, replacedExpiresDate: at };
       if (!row) hint = await appUserIdOf(db, old.customerId);
     }

@@ -12,6 +12,7 @@ import { amazonKeyConfigured, appleKeyConfigured, googleKeyConfigured, notificat
 import { notificationHealth } from "./notification-health.js";
 import { apiRole } from "../../services/members.js";
 import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
+import { storeSecretHintOf, storeSecretSet, stripeKeyHintOf, withStoreSecrets } from "../../services/store-secrets.js";
 
 /**
  * Project setup endpoints for the dashboard (apps, project settings, webhook tests).
@@ -67,12 +68,6 @@ export function publicOrigin(c: V2Context) {
 }
 
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
-/** What the dashboard may show about a Stripe key: its mode and last four characters, never the key. */
-const stripeKeyHint = (k: unknown) => {
-  const key = typeof k === "string" ? k.trim() : "";
-  if (!key) return { configured: false, mode: null, kind: null, last4: null };
-  return { configured: true, mode: /_test_/.test(key) ? "test" : "live", kind: key.startsWith("rk_") ? "restricted" : key.startsWith("sk_") ? "secret" : "other", last4: key.slice(-4) };
-};
 
 export function setupRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -160,9 +155,10 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         shared_secret: { configured: !!s(cr.shared_secret) },
         play_service_account: { configured: googleKeyConfigured(cr), client_email: clientEmail },
         xcode_certificate: { configured: !!s(cr.xcode_certificate) },
-        amazon_shared_secret: { configured: amazonKeyConfigured(cr) },
-        stripe_secret_key: stripeKeyHint(cr.stripe_secret_key),
-        stripe_webhook_secret: { configured: typeof cr.stripe_webhook_secret === "string" && !!cr.stripe_webhook_secret.trim() },
+        // Amazon and Stripe secrets are sealed; only whether they are set (and a Stripe key's mode and last four) comes back.
+        amazon_shared_secret: { configured: amazonKeyConfigured(a) },
+        stripe_secret_key: stripeKeyHintOf(storeSecretHintOf(a, "stripe_secret_key")),
+        stripe_webhook_secret: { configured: storeSecretSet(a, "stripe_webhook_secret") },
       },
       // Amazon: the SNS topic notifications must come from (optional).
       sns_topic_arn: a.type === "amazon" ? s(cr.sns_topic_arn) : null,
@@ -170,17 +166,20 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       stripe: a.type === "stripe" ? {
         stripe_account_id: s(cr.stripe_account_id), app_user_id_source: s(cr.app_user_id_source) ?? "metadata",
         app_user_id_metadata_key: s(cr.app_user_id_metadata_key) ?? "app_user_id", register_on: cr.register_on === "invoice_created" ? "invoice_created" : "invoice_paid",
-        configured: stripeKeyConfigured(cr),
+        configured: stripeKeyConfigured(a),
       } : null,
     });
   });
 
   r.post(`${P}/apps/:app_id/actions/verify_credentials`, scope("project_configuration:apps:read"), async (c) => {
-    const a = await findApp(c);
+    const row = await findApp(c);
     const b = await body(c, Verify);
     const checkedAt = deps.now().getTime();
     const out = (status: "valid" | "invalid" | "unreachable", message: string, extra: Record<string, unknown> = {}) =>
-      c.json({ object: "credentials_check", app_id: a.id, store: a.type, status, valid: status === "valid", message, checked_at: checkedAt, ...extra });
+      c.json({ object: "credentials_check", app_id: row.id, store: row.type, status, valid: status === "valid", message, checked_at: checkedAt, ...extra });
+    // Sealed Amazon and Stripe secrets are opened in memory for the check only.
+    let a: typeof row;
+    try { a = await withStoreSecrets(deps, row); } catch (e) { return out("invalid", e instanceof Error ? e.message : String(e)); }
     // Values in the body are checked before they are saved; anything missing falls back to what is stored.
     const merged = (over: Record<string, unknown> | undefined) => {
       const cr: Record<string, unknown> = { ...(a.credentials ?? {}) };

@@ -7,6 +7,9 @@ import { termDuration } from "../src/stores/amazon/map.js";
 import { clearSnsCertCache, stringToSign } from "../src/stores/amazon/sns.js";
 import { flushStoreForwards } from "../src/stores/forward.js";
 import { tick } from "../src/services/tick.js";
+import { secretKeyFrom, unseal } from "../src/services/secrets.js";
+import { sealStoreSecrets } from "../src/services/store-secrets.js";
+import { TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 import { AMZ_USER, at, CERT_URL, env, makeSnsKeys, PKG, receipt, SECRET, snsMessage, T0, TOPIC, type Env, type SnsKeys } from "./amazon-helpers.js";
 
 let keys: SnsKeys;
@@ -58,7 +61,7 @@ describe("GET /v1/receipts/amazon/{store_user_id}/{receipt_id}", () => {
     res = await e.call(`/v1/receipts/amazon/${AMZ_USER}/${RID}`, { key: e.key });
     expect([res.status, (await res.json()).code]).toEqual([503, 7101]);
     e.a.override = null;
-    await e.h.db.update(schema.apps).set({ credentials: {} }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({});
     res = await e.call(`/v1/receipts/amazon/${AMZ_USER}/${RID}`, { key: e.key });
     const b = await res.json();
     expect([res.status, b.code]).toEqual([500, 7101]);
@@ -144,7 +147,7 @@ describe("POST /v1/receipts with an Amazon receipt", () => {
     expect((await res.json()).message).toMatch(/timed out/);
     e.a.override = null;
 
-    await e.h.db.update(schema.apps).set({ credentials: { shared_secret: "wrong" } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ shared_secret: "wrong" });
     res = await buy();
     const b = await res.json();
     expect([res.status, b.code]).toEqual([500, 7101]);
@@ -211,7 +214,7 @@ describe("Amazon Real-time Notifications through SNS", () => {
   });
 
   it("a pinned SNS topic refuses messages from any other topic", async () => {
-    await e.h.db.update(schema.apps).set({ credentials: { shared_secret: SECRET, sns_topic_arn: TOPIC } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ shared_secret: SECRET, sns_topic_arn: TOPIC });
     const other = await snsMessage(keys, { topic: "arn:aws:sns:us-east-1:999999999999:someone-else", message: { notificationType: "SUBSCRIPTION_RENEWED", receiptId: RID } });
     expect((await e.sns(other)).status).toBe(400);
     expect((await e.sns(await snsMessage(keys, { message: { appPackageName: PKG, notificationType: "SUBSCRIPTION_RENEWED", receiptId: RID, appUserId: AMZ_USER } }))).status).toBe(200);
@@ -324,7 +327,7 @@ describe("Amazon Real-time Notifications through SNS", () => {
     let res = await e.rtn({ notificationType: "SUBSCRIPTION_PURCHASED", receiptId: "r-new" });
     expect(await res.json()).toEqual({ status: "unknown_purchase" });
     expect(await e.events()).toHaveLength(0);
-    await e.h.db.update(schema.apps).set({ credentials: { shared_secret: SECRET, track_new_purchases: true } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ shared_secret: SECRET, track_new_purchases: true });
     res = await e.rtn({ notificationType: "SUBSCRIPTION_PURCHASED", receiptId: "r-new" });
     expect(await res.json()).toEqual({ status: "processed" });
     const [ev] = await e.events("INITIAL_PURCHASE");
@@ -377,8 +380,20 @@ describe("Amazon app setup (v2)", () => {
     const app = await res.json();
     expect(app).toMatchObject({ type: "amazon", amazon: { package_name: "com.example.fire" } });
     expect(JSON.stringify(app)).not.toContain("s3cr3t-key");
+    // The shared key is sealed (AES-GCM under the server's key), never stored in credentials.
     const [row] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, app.id));
-    expect(row).toMatchObject({ credentials: { shared_secret: "s3cr3t-key" }, notificationForwardUrl: "https://hooks.example.com/amz" });
+    expect(row).toMatchObject({ credentials: {}, secretHints: { shared_secret: "set" }, notificationForwardUrl: "https://hooks.example.com/amz" });
+    expect(row!.secrets).toMatch(/^v1:/);
+    expect(row!.secrets).not.toContain("s3cr3t-key");
+    expect(await unseal(row!.secrets, await secretKeyFrom(TEST_ENCRYPTION_KEY))).toEqual({ shared_secret: "s3cr3t-key" });
+    const settings = await (await v2("GET", `${P()}/apps/${app.id}/store_settings`)).json();
+    expect(settings.credentials.amazon_shared_secret).toEqual({ configured: true });
+    expect(JSON.stringify(settings)).not.toContain("s3cr3t-key");
+    // Clearing it (null) unsets it.
+    res = await v2("POST", `${P()}/apps/${app.id}`, { amazon: { shared_secret: null } });
+    expect(res.status).toBe(200);
+    const [cleared] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, app.id));
+    expect([cleared!.secrets, cleared!.secretHints]).toEqual([null, {}]);
     res = await v2("POST", `${P()}/apps/${app.id}`, { amazon: { sns_topic_arn: "not-an-arn" } });
     expect(res.status).toBe(400);
     expect((await res.json()).param).toBe("amazon.sns_topic_arn");
@@ -398,11 +413,114 @@ describe("Amazon app setup (v2)", () => {
     expect(r.status).toBe("unreachable");
     // A check of the stored key updates the app's credential health.
     e.a.override = null;
-    await e.h.db.update(schema.apps).set({ credentials: { shared_secret: "wrong" } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ shared_secret: "wrong" });
     await v2("POST", `${P()}/apps/${e.appId}/actions/verify_credentials`, {});
     const [row] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, e.appId));
     expect(row!.credentialsStatus).toBe("failing");
     const health = await (await v2("GET", `${P()}/setup_health`)).json();
     expect(health.apps.find((x: { id: string }) => x.id === e.appId)).toMatchObject({ credentials_configured: true, notification_url: `http://localhost/v1/notifications/amazon/${e.appId}` });
+  });
+});
+
+describe("Amazon trust boundaries", () => {
+  const settings = async () => (await e.call(`/v2/projects/${e.h.ids.project}/apps/${e.appId}/store_settings`, { key: e.h.ids.secretKey })).json();
+
+  it("certificate and SubscribeURL hosts must be SNS in an AWS region: an S3 bucket named sns is not SNS", async () => {
+    const bucket = "https://sns.s3.amazonaws.com/SimpleNotificationService-test.pem";
+    let res = await e.sns(await snsMessage(keys, { certUrl: bucket, message: { notificationType: "SUBSCRIPTION_RENEWED", receiptId: RID } }));
+    expect(res.status).toBe(400);
+    expect(e.a.calls.some((c) => c.url.startsWith("https://sns.s3."))).toBe(false);
+    const m = await snsMessage(keys, { type: "SubscriptionConfirmation", message: "confirm" });
+    m.SubscribeURL = "https://sns.s3.amazonaws.com/?Action=ConfirmSubscription&Token=x";
+    const resigned = await snsMessage(keys, { type: "SubscriptionConfirmation", message: "confirm" });
+    Object.assign(resigned, { SubscribeURL: m.SubscribeURL });
+    // Re-sign with the changed SubscribeURL so only the host check can refuse it.
+    resigned.Signature = Buffer.from(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", keys.sha1, new TextEncoder().encode(stringToSign(resigned)))).toString("base64");
+    res = await e.sns(resigned);
+    expect(res.status).toBe(400);
+    expect(e.a.confirmations).toEqual([]);
+  });
+
+  it("the first verified message pins its topic; another AWS account's signed messages are then refused", async () => {
+    expect((await settings()).sns_topic_arn).toBeNull();
+    expect((await e.sns(await snsMessage(keys, { type: "SubscriptionConfirmation", message: "confirm" }))).status).toBe(200);
+    expect((await settings()).sns_topic_arn).toBe(TOPIC);
+    await purchased();
+    e.a.put(receipt({ receiptId: "r-coins", productId: "coins.100", productType: "CONSUMABLE", termSku: null, term: null, renewalDate: null, autoRenewing: false }));
+    const attacker = "arn:aws:sns:us-east-1:999999999999:attacker";
+    const res = await e.sns(await snsMessage(keys, { topic: attacker, message: { appPackageName: PKG, notificationType: "CONSUMABLE_CANCELLED", appUserId: AMZ_USER, receiptId: "r-coins" } }));
+    expect(res.status).toBe(400);
+    expect(await e.events("CANCELLATION")).toHaveLength(0);
+    expect((await settings()).sns_topic_arn).toBe(TOPIC);
+    async function purchased() { e.a.put(receipt()); expect((await buy()).status).toBe(200); }
+  });
+
+  it("an unsigned body never takes a real message's id and is never forwarded", async () => {
+    await e.h.db.update(schema.apps).set({ notificationForwardUrl: "https://hooks.example.com/amazon" }).where(eq(schema.apps.id, e.appId));
+    const real = await snsMessage(keys, { type: "SubscriptionConfirmation", message: "confirm", messageId: "m-1" });
+    const forged = { ...real, Message: "forged" };
+    expect((await e.sns(forged)).status).toBe(400);
+    expect(await (await e.sns(real)).json()).toEqual({ status: "confirmed" });
+    await flushStoreForwards();
+    expect(e.a.forwarded.map((f) => JSON.parse(f.body).Message)).toEqual(["confirm"]);
+  });
+
+  it("redirects are never followed: RVS (5xx, retried), the certificate (refused) and SubscribeURL (5xx, retried)", async () => {
+    const elsewhere = (status = 302) => new Response(null, { status, headers: { location: "https://attacker.example.com/" } });
+    e.a.put(receipt());
+    e.a.override = (url) => (url.includes("verifyReceiptId") ? elsewhere() : undefined);
+    let res = await buy();
+    expect([res.status, (await res.json()).code]).toEqual([503, 7101]);
+    e.a.override = (url) => (url === CERT_URL ? elsewhere(301) : undefined);
+    res = await e.sns(await snsMessage(keys, { type: "SubscriptionConfirmation", message: "confirm" }));
+    expect(res.status).toBe(400);
+    e.a.override = (url) => (url.includes("Action=ConfirmSubscription") ? elsewhere(307) : undefined);
+    res = await e.sns(await snsMessage(keys, { type: "SubscriptionConfirmation", message: "confirm" }));
+    expect(res.status).toBe(503);
+    expect(e.a.calls.some((c) => c.url.startsWith("https://attacker.example.com"))).toBe(false);
+    // Every Amazon request (RVS, certificate, SubscribeURL) is made with redirect: "manual".
+    expect(e.a.calls.length).toBeGreaterThanOrEqual(3);
+    for (const c of e.a.calls) expect([c.url.split("?")[0], c.redirect]).toEqual([c.url.split("?")[0], "manual"]);
+  });
+
+  it("an immediate tier change never ends another customer's chain", async () => {
+    e.a.put(receipt());
+    expect((await buy({}, "victim")).status).toBe(200);
+    e.a.put(receipt({ receiptId: "r-other", termSku: "pro.annual", term: "1 Year", renewalDate: at(365).getTime() }));
+    expect((await buy({ fetch_token: "r-other", product_ids: ["pro.annual"] }, "someone")).status).toBe(200);
+    await e.rtn({ notificationType: "SUBSCRIPTION_MODIFIED_IMMEDIATE", receiptId: "r-other", relatedReceipts: { cancelledReceiptId: RID } });
+    expect((await info("victim")).subscriber.entitlements.pro!.expires_date).toBe("2026-10-01T12:00:00Z");
+    expect(await e.events("PRODUCT_CHANGE")).toHaveLength(0);
+  });
+
+  it("a receipt posted again after a refund keeps the refund (no REFUND_REVERSED)", async () => {
+    e.a.put(receipt({ receiptId: "r-coins", productId: "coins.100", productType: "CONSUMABLE", termSku: null, term: null, renewalDate: null, autoRenewing: false }));
+    const post = () => e.receipt({ app_user_id: "buyer", fetch_token: "r-coins", product_ids: ["coins.100"], price: 0.99, currency: "USD" });
+    await post();
+    e.h.setNow(at(1));
+    await e.rtn({ notificationType: "CONSUMABLE_CANCELLED", receiptId: "r-coins" });
+    expect((await post()).status).toBe(200);
+    expect(await e.events("REFUND_REVERSED")).toHaveLength(0);
+    expect((await txns()).map((t) => t.kind)).toEqual(["one_time", "refund"]);
+  });
+
+  it("secrets sealed under another key are a 5xx (never 4xx), and plain secrets saved before sealing still work and move on save", async () => {
+    e.a.put(receipt());
+    const other = await sealStoreSecrets({ type: "amazon", credentials: {}, secrets: null }, { shared_secret: SECRET }, await secretKeyFrom(Buffer.alloc(32, 9).toString("base64")));
+    await e.h.db.update(schema.apps).set({ secrets: other.secrets }).where(eq(schema.apps.id, e.appId));
+    let res = await buy();
+    expect([res.status, (await res.json()).code]).toEqual([500, 7101]);
+    expect((await e.rtn({ notificationType: "SUBSCRIPTION_RENEWED", receiptId: RID })).status).toBe(500);
+
+    await e.h.db.update(schema.apps).set({ secrets: null, secretHints: {}, credentials: { shared_secret: SECRET } }).where(eq(schema.apps.id, e.appId));
+    res = await buy();
+    expect(res.status).toBe(200);
+    expect((await settings()).credentials.amazon_shared_secret).toEqual({ configured: true });
+    res = await e.call(`/v2/projects/${e.h.ids.project}/apps/${e.appId}`, { method: "POST", key: e.h.ids.secretKey, json: { amazon: { sns_topic_arn: TOPIC } } });
+    expect(res.status).toBe(200);
+    const [row] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, e.appId));
+    expect(row!.credentials).toEqual({ sns_topic_arn: TOPIC });
+    expect(await unseal(row!.secrets, await secretKeyFrom(TEST_ENCRYPTION_KEY))).toEqual({ shared_secret: SECRET });
+    expect((await buy()).status).toBe(200);
   });
 });

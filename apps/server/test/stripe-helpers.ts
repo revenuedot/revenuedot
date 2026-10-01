@@ -6,6 +6,7 @@
 import { schema } from "@revenuedot/db";
 import { harness, type Harness } from "../../../packages/contract/src/harness.js";
 import { createApp } from "../src/app.js";
+import { sealedColumns, setAppCredentials, TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 import { defaultStores } from "../src/stores/index.js";
 import { createStripeStore, type StripeStore } from "../src/stores/stripe/index.js";
 import type { StripeCharge, StripeCheckoutSession, StripeInvoice, StripeSubscription } from "../src/stores/stripe/api.js";
@@ -60,7 +61,7 @@ export function subscription(o: {
   } as unknown as StripeSubscription & Record<string, unknown>;
 }
 
-interface Call { url: string; method: string; auth: string | null; account: string | null; body: string; headers: Headers }
+interface Call { url: string; method: string; auth: string | null; account: string | null; body: string; headers: Headers; redirect?: RequestRedirect }
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const stripeError = (status: number, type: string, message: string, code?: string) => json(status, { error: { type, message, ...(code ? { code } : {}) } });
 
@@ -85,7 +86,7 @@ export class FakeStripe {
   fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const headers = new Headers(init.headers);
-    const call = { url, method: (init.method ?? "GET").toUpperCase(), auth: headers.get("authorization"), account: headers.get("stripe-account"), body: typeof init.body === "string" ? init.body : "", headers };
+    const call = { url, method: (init.method ?? "GET").toUpperCase(), auth: headers.get("authorization"), account: headers.get("stripe-account"), body: typeof init.body === "string" ? init.body : "", headers, redirect: init.redirect };
     this.calls.push(call);
     const o = await this.override?.(url);
     if (o) return o;
@@ -155,6 +156,8 @@ export interface Env {
   receipt: (body: Record<string, unknown>, key?: string) => Promise<Response>;
   webhook: (type: string, object: unknown, o?: { id?: string; secret?: string; signature?: string | null; tamper?: boolean; apiVersion?: string; created?: Date }) => Promise<Response>;
   events: (type?: string) => Promise<Array<Record<string, any>>>;
+  /** Replaces the app's credentials; Amazon and Stripe secrets among them are sealed like the API seals them. */
+  setCredentials: (all: Record<string, unknown>) => Promise<void>;
 }
 
 /** The contract harness plus a Stripe app (test-mode key and signing secret saved) and its catalog, wired to a fake Stripe. */
@@ -162,9 +165,9 @@ export async function env(credentials: Record<string, unknown> = {}): Promise<En
   const h = await harness();
   const st = new FakeStripe();
   const store = createStripeStore({ fetch: st.fetch, now: h.now, timeoutMs: 200 });
-  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), stripe: store }, fetch: st.fetch });
+  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), stripe: store }, fetch: st.fetch, encryptionKey: TEST_ENCRYPTION_KEY });
   const appId = "app_stripe", key = "strp_testkey123";
-  await h.db.insert(schema.apps).values({ id: appId, projectId: h.ids.project, name: "Scanner Web", type: "stripe", publicKey: key, credentials: { stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, ...credentials } });
+  await h.db.insert(schema.apps).values({ id: appId, projectId: h.ids.project, name: "Scanner Web", type: "stripe", publicKey: key, ...(await sealedColumns("stripe", { stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, ...credentials })) });
   const prods = [
     { id: "st_m", storeIdentifier: "prod_ProMonthly", type: "subscription", duration: "P1M" },
     { id: "st_y", storeIdentifier: "price_1PyAnnual", type: "subscription", duration: "P1Y" },
@@ -190,6 +193,7 @@ export async function env(credentials: Record<string, unknown> = {}): Promise<En
       const sig = o.signature !== undefined ? o.signature : await signStripePayload(o.secret ?? WHSEC, raw, s(h.now()));
       return call(`/v1/notifications/stripe/${appId}`, { method: "POST", headers: { "content-type": "application/json; charset=utf-8", ...(sig ? { "stripe-signature": sig } : {}) }, body: o.tamper ? raw.replace('"livemode":false', '"livemode":true') : raw });
     },
+    setCredentials: (all) => setAppCredentials(h.db, appId, "stripe", all),
     events: async (type) => {
       const rows = await h.db.select().from(schema.events);
       return rows.map((r) => (r.payload as { event: Record<string, any> }).event).filter((ev) => !type || ev.type === type);

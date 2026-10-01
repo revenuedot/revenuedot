@@ -67,3 +67,20 @@ export function outboundUrlProblem(raw: string, strict: boolean): string | null 
   }
   return null;
 }
+
+/** A store or SNS request the guard refused, or a redirect it would not follow. The message never contains the URL. */
+export class OutboundRefused extends Error {}
+
+/**
+ * Fetch for the store APIs RevenueDot calls itself (Amazon RVS, Amazon SNS, Stripe): the URL must pass the strict
+ * guard (public https) and redirects are never followed, so a store answer cannot send the request (and the key in it)
+ * anywhere else. A 3xx answer throws OutboundRefused.
+ */
+export async function guardedFetch(fetchFn: (url: string, init?: RequestInit) => Promise<Response>, url: string, init: RequestInit = {}): Promise<Response> {
+  const problem = outboundUrlProblem(url, true);
+  if (problem) throw new OutboundRefused(`The request URL ${problem}.`);
+  // "manual" rather than "error": Workers do not accept redirect: "error".
+  const res = await fetchFn(url, { ...init, redirect: "manual" });
+  if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) throw new OutboundRefused(`The server answered with a redirect (${res.status}), which is not followed.`);
+  return res;
+}

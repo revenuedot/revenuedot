@@ -2,6 +2,7 @@
 import { schema } from "@revenuedot/db";
 import { harness, type Harness } from "../../../packages/contract/src/harness.js";
 import { createApp } from "../src/app.js";
+import { sealedColumns, setAppCredentials, TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 import { defaultStores } from "../src/stores/index.js";
 import { createAmazonStore, type AmazonStore } from "../src/stores/amazon/index.js";
 import type { AmazonReceipt } from "../src/stores/amazon/api.js";
@@ -70,7 +71,7 @@ export function receipt(over: Partial<AmazonReceipt> = {}): AmazonReceipt {
   };
 }
 
-interface Call { url: string; method: string; body: string; headers: Headers }
+interface Call { url: string; method: string; body: string; headers: Headers; redirect?: RequestRedirect }
 
 /** A fake Amazon: RVS (production and cloud sandbox), the SNS certificate and subscription confirmation, and a forward target. */
 export class FakeAmazon {
@@ -91,7 +92,7 @@ export class FakeAmazon {
 
   fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const call = { url, method: (init.method ?? "GET").toUpperCase(), body: typeof init.body === "string" ? init.body : "", headers: new Headers(init.headers) };
+    const call = { url, method: (init.method ?? "GET").toUpperCase(), body: typeof init.body === "string" ? init.body : "", headers: new Headers(init.headers), redirect: init.redirect };
     this.calls.push(call);
     const o = await this.override?.(url);
     if (o) return o;
@@ -119,6 +120,8 @@ export interface Env {
   sns: (m: SnsMessage) => Promise<Response>;
   rtn: (n: Record<string, unknown>, o?: { messageId?: string; version?: "1" | "2" }) => Promise<Response>;
   events: (type?: string) => Promise<Array<Record<string, any>>>;
+  /** Replaces the app's credentials; Amazon and Stripe secrets among them are sealed like the API seals them. */
+  setCredentials: (all: Record<string, unknown>) => Promise<void>;
 }
 
 /** The contract harness plus an Amazon app (shared key set) and its catalog, with the server wired to a fake Amazon. */
@@ -126,9 +129,9 @@ export async function env(keys: SnsKeys, credentials: Record<string, unknown> = 
   const h = await harness();
   const a = new FakeAmazon(keys);
   const store = createAmazonStore({ fetch: a.fetch, now: h.now, timeoutMs: 200 });
-  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), amazon: store }, fetch: a.fetch });
+  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), amazon: store }, fetch: a.fetch, encryptionKey: TEST_ENCRYPTION_KEY });
   const appId = "app_amazon", key = "amzn_testkey123";
-  await h.db.insert(schema.apps).values({ id: appId, projectId: h.ids.project, name: "Scanner Fire", type: "amazon", bundleId: PKG, publicKey: key, credentials: { shared_secret: SECRET, ...credentials } });
+  await h.db.insert(schema.apps).values({ id: appId, projectId: h.ids.project, name: "Scanner Fire", type: "amazon", bundleId: PKG, publicKey: key, ...(await sealedColumns("amazon", { shared_secret: SECRET, ...credentials })) });
   const prods = [
     { id: "az_m", storeIdentifier: "pro.monthly", type: "subscription", duration: "P1M" },
     { id: "az_y", storeIdentifier: "pro.annual", type: "subscription", duration: "P1Y" },
@@ -152,6 +155,7 @@ export async function env(keys: SnsKeys, credentials: Record<string, unknown> = 
       messageId: o.messageId, version: o.version,
       message: { appPackageName: PKG, appUserId: AMZ_USER, relatedReceipts: {}, timestamp: h.now().getTime(), betaProductTransaction: false, ...n },
     })),
+    setCredentials: (all) => setAppCredentials(h.db, appId, "amazon", all),
     events: async (type) => {
       const rows = await h.db.select().from(schema.events);
       return rows.map((r) => (r.payload as { event: Record<string, any> }).event).filter((ev) => !type || ev.type === type);

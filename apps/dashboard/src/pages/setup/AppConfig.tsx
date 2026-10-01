@@ -19,7 +19,7 @@ import { SdkSetup } from "./sdk";
  * App Store Connect API key + vendor number, server notification URL with live "last received", forwarding URL,
  * "track new purchases", collapsed extras, public key, REST identifier, delete. Google Play: package name, service
  * account JSON with a live check, Pub/Sub push endpoint and steps. Amazon Appstore: package name, shared key with a live
- * RVS check, the Real-time Notifications URL (SNS) with its live status, an optional pinned SNS topic. Stripe: restricted
+ * RVS check, the Real-time Notifications URL (SNS) with its live status, the pinned SNS topic (set from the first verified message). Stripe: restricted
  * key with a live check, webhook URL with the events to select and the signing secret, how app user ids are found, when
  * a subscription counts, and server snippets for POST /v1/receipts. Test Store: nothing to configure, a test purchase.
  *
@@ -108,7 +108,7 @@ function validate(type: App["type"], d: Draft, s: StoreSettings, origin: string)
   }
   if (type === "amazon") {
     if (d.amazonSecret && /\s/.test(d.amazonSecret.trim())) e.amazonSecret = "The shared key has no spaces. Copy it again from Settings → Identity.";
-    if (d.snsTopic.trim() && !/^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w-]+$/.test(d.snsTopic.trim())) e.snsTopic = "An SNS topic ARN looks like arn:aws:sns:us-east-1:123456789012:topic-name.";
+    if (d.snsTopic.trim() && !/^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w.-]+$/.test(d.snsTopic.trim())) e.snsTopic = "An SNS topic ARN looks like arn:aws:sns:us-east-1:123456789012:topic-name.";
   }
   if (type === "stripe") {
     const k = d.stripeKey.trim();
@@ -584,7 +584,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
             <li>Expand <b>Add an Endpoint</b>, paste the URL above and click <b>Submit</b>.</li>
             <li>RevenueDot confirms the subscription by itself. Amazon shows <b>Verified</b> within seconds, and the status above turns green.</li>
           </ol>
-          <Field label="SNS topic ARN" htmlFor="f-snsTopic" error={errors.snsTopic} hint="Optional. Once set, messages from any other SNS topic are refused. Copy the TopicArn of the first notification from the log.">
+          <Field label="SNS topic ARN" htmlFor="f-snsTopic" error={errors.snsTopic} hint="Messages from any other SNS topic are refused. Left empty, it is set to the topic of the first verified message (Amazon's subscription confirmation).">
             <input id="f-snsTopic" className="input mono" spellCheck={false} placeholder="arn:aws:sns:us-east-1:123456789012:…" value={d.snsTopic} aria-invalid={!!errors.snsTopic} onChange={(e) => set({ snsTopic: e.target.value })} />
           </Field>
           <ForwardField d={d} set={set} errors={errors} s={s} store="Amazon" />

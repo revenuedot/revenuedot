@@ -1,5 +1,6 @@
 import { base64ToBytes } from "../apple/asn1.js";
 import { parseCert, pemToDer } from "../apple/jws.js";
+import { guardedFetch, OutboundRefused } from "../../services/outbound.js";
 
 /**
  * Amazon SNS message signatures (how Amazon delivers Appstore Real-time Notifications).
@@ -27,11 +28,16 @@ export class SnsError extends Error {
   constructor(message: string, public transient = false) { super(message); }
 }
 
-/** SNS hosts: sns.<region>.amazonaws.com, and sns.<region>.amazonaws.com.cn in China. */
+/**
+ * SNS hosts: sns.<region>.amazonaws.com, and sns.<region>.amazonaws.com.cn in China. The label must be an AWS region
+ * (us-east-1, eu-central-1, us-gov-west-1, cn-north-1 ...): a looser pattern also matches other AWS hosts where anyone
+ * can serve files, such as an S3 bucket named "sns" (sns.s3.amazonaws.com), and so a certificate of the sender's choice.
+ */
+const SNS_HOST = /^sns\.[a-z]{2}(-gov|-iso[a-z]?)?-[a-z]+-\d{1,2}\.amazonaws\.com(\.cn)?$/;
 export const isSnsHost = (u: string) => {
   try {
     const url = new URL(u);
-    return url.protocol === "https:" && /^sns\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$/.test(url.hostname) && !url.port;
+    return url.protocol === "https:" && SNS_HOST.test(url.hostname) && !url.port && !url.username && !url.password;
   } catch { return false; }
 };
 
@@ -59,7 +65,8 @@ async function certificate(url: string, fetchFn: FetchFn) {
   const hit = certCache.get(url);
   if (hit && Date.now() - hit.at < 24 * 3600_000) return hit;
   let res: Response;
-  try { res = await fetchFn(url, { signal: AbortSignal.timeout(10_000) }); } catch (e) {
+  try { res = await guardedFetch(fetchFn, url, { signal: AbortSignal.timeout(10_000) }); } catch (e) {
+    if (e instanceof OutboundRefused) throw new SnsError(`The SNS signing certificate could not be fetched: ${e.message}`);
     throw new SnsError(`The SNS signing certificate could not be fetched: ${e instanceof Error ? e.message : e}`, true);
   }
   if (!res.ok) throw new SnsError(`The SNS signing certificate answered ${res.status}`, res.status >= 500);

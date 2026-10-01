@@ -1,9 +1,11 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { Codes, RCError } from "../../errors.js";
 import { recordCredentialFailure } from "../../services/credential-health.js";
+import { guardedFetch } from "../../services/outbound.js";
+import { withStoreSecrets } from "../../services/store-secrets.js";
 import { forwardStoreNotification } from "../forward.js";
 import { AmazonApiError } from "./api.js";
 import { amazonClientFor } from "./index.js";
@@ -22,8 +24,13 @@ export function amazonNotificationRoutes(deps: Deps) {
   const r = new Hono();
   r.post("/:appId", async (c) => {
     const now = deps.now();
-    const [app] = await deps.db.select().from(apps).where(eq(apps.id, c.req.param("appId"))).limit(1);
-    if (!app || app.type !== "amazon") return c.json({ code: Codes.NOT_FOUND, message: "No Amazon Appstore app with this id." }, 404);
+    const [row] = await deps.db.select().from(apps).where(eq(apps.id, c.req.param("appId"))).limit(1);
+    if (!row || row.type !== "amazon") return c.json({ code: Codes.NOT_FOUND, message: "No Amazon Appstore app with this id." }, 404);
+    let app: typeof row;
+    try { app = await withStoreSecrets(deps, row); } catch (e) {
+      console.error(`Amazon notification for ${row.id}: ${e instanceof Error ? e.message : e}`);
+      return c.json({ code: Codes.STORE_PROBLEM, message: "The app's Amazon credentials could not be opened; SNS will retry." }, 500);
+    }
     const { client } = amazonClientFor(deps.stores, deps.fetch);
     const fetchFn = deps.fetch ?? client.fetchImpl;
     const creds = (app.credentials ?? {}) as Record<string, unknown>;
@@ -35,35 +42,49 @@ export function amazonNotificationRoutes(deps: Deps) {
     let n: AmazonNotification | null = null;
     if (m.Type === "Notification") { try { n = JSON.parse(m.Message); } catch { n = null; } }
     const type = m.Type === "Notification" ? (n?.notificationType ?? "UNKNOWN") : m.Type === "SubscriptionConfirmation" ? "SUBSCRIPTION_CONFIRMATION" : m.Type === "UnsubscribeConfirmation" ? "UNSUBSCRIBE_CONFIRMATION" : m.Type;
+    const subtype = n?.receiptId ? String(n.receiptId).slice(0, 120) : null;
+    // A message that fails the checks is kept (the app's notification status shows why) under an id of its own, so an
+    // unsigned body can never take a real message's id, and it is never forwarded.
+    const reject = async (status: 400 | 503, error: string, message: string) => {
+      await deps.db.insert(storeNotifications).values({
+        id: `amz_${app.id}_rejected_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "amazon", type, subtype, body: raw.slice(0, 64_000), receivedAt: now, error,
+      });
+      return c.json({ code: status === 503 ? Codes.STORE_PROBLEM : Codes.BAD_REQUEST, message }, status);
+    };
+
+    try {
+      await verifySns(m, fetchFn, now);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (e instanceof SnsError && e.transient) return reject(503, msg, "Could not load the SNS signing certificate; SNS will retry.");
+      return reject(400, `rejected: ${msg}`, msg);
+    }
+    // Any AWS account can sign SNS messages, so the signature alone does not say the message is Amazon's. Messages must
+    // come from the app's topic: the one set in its settings, else the topic of the first verified message (kept).
+    let pinned = typeof creds.sns_topic_arn === "string" && creds.sns_topic_arn.trim() ? creds.sns_topic_arn.trim() : null;
+    if (!pinned && (m.Type === "SubscriptionConfirmation" || m.Type === "Notification") && /^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w.-]+$/.test(m.TopicArn ?? "")) {
+      const set = await deps.db.update(apps).set({ credentials: sql`${apps.credentials} || ${JSON.stringify({ sns_topic_arn: m.TopicArn })}::jsonb` })
+        .where(and(eq(apps.id, app.id), sql`coalesce(${apps.credentials}->>'sns_topic_arn', '') = ''`)).returning({ id: apps.id });
+      if (set.length) pinned = m.TopicArn;
+      else {
+        const [cur] = await deps.db.select({ cr: apps.credentials }).from(apps).where(eq(apps.id, app.id));
+        pinned = typeof cur?.cr?.sns_topic_arn === "string" ? cur.cr.sns_topic_arn : null;
+      }
+    }
+    if (!pinned || m.TopicArn !== pinned) return reject(400, `rejected: topic ${m.TopicArn} is not the app's SNS topic`, "This SNS topic is not the one configured for the app.");
+
     const id = `amz_${app.id}_${m.MessageId}`;
     const inserted = await deps.db.insert(storeNotifications).values({
-      id, projectId: app.projectId, appId: app.id, store: "amazon", type, subtype: n?.receiptId ? n.receiptId.slice(0, 120) : null, body: raw, receivedAt: now,
+      id, projectId: app.projectId, appId: app.id, store: "amazon", type, subtype, body: raw, receivedAt: now,
     }).onConflictDoNothing().returning({ id: storeNotifications.id });
     if (!inserted.length) {
       const [prev] = await deps.db.select({ processedAt: storeNotifications.processedAt }).from(storeNotifications).where(eq(storeNotifications.id, id));
       if (prev?.processedAt) return c.json({ status: "duplicate" });
     }
     if (inserted.length && app.notificationForwardUrl) {
-      forwardStoreNotification(c, { db: deps.db, fetchFn, url: app.notificationForwardUrl, notificationId: id, raw, headers: { "content-type": "text/plain; charset=UTF-8", "x-amz-sns-message-type": m.Type } });
+      forwardStoreNotification(c, { db: deps.db, fetchFn, url: app.notificationForwardUrl, notificationId: id, raw, strict: deps.edition === "cloud", headers: { "content-type": "text/plain; charset=UTF-8", "x-amz-sns-message-type": m.Type } });
     }
     const finish = (set: Partial<typeof storeNotifications.$inferInsert>) => deps.db.update(storeNotifications).set(set).where(eq(storeNotifications.id, id));
-
-    try {
-      await verifySns(m, fetchFn, now);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof SnsError && e.transient) {
-        await finish({ error: msg });
-        return c.json({ code: Codes.STORE_PROBLEM, message: "Could not load the SNS signing certificate; SNS will retry." }, 503);
-      }
-      await finish({ error: `rejected: ${msg}` });
-      return c.json({ code: Codes.BAD_REQUEST, message: msg }, 400);
-    }
-    const pinned = typeof creds.sns_topic_arn === "string" && creds.sns_topic_arn.trim() ? creds.sns_topic_arn.trim() : null;
-    if (pinned && m.TopicArn !== pinned) {
-      await finish({ error: `rejected: topic ${m.TopicArn} is not the app's SNS topic` });
-      return c.json({ code: Codes.BAD_REQUEST, message: "This SNS topic is not the one configured for the app." }, 400);
-    }
 
     if (m.Type === "SubscriptionConfirmation") {
       if (!m.SubscribeURL || !isSnsHost(m.SubscribeURL)) {
@@ -71,7 +92,8 @@ export function amazonNotificationRoutes(deps: Deps) {
         return c.json({ code: Codes.BAD_REQUEST, message: "SubscribeURL is not an Amazon SNS URL." }, 400);
       }
       try {
-        const res = await fetchFn(m.SubscribeURL, { method: "GET", signal: AbortSignal.timeout(10_000) });
+        // An SNS host only (checked above), through the outbound guard, never following a redirect.
+        const res = await guardedFetch(fetchFn, m.SubscribeURL, { method: "GET", signal: AbortSignal.timeout(10_000) });
         if (!res.ok) throw new Error(`SNS answered ${res.status}`);
       } catch (e) {
         await finish({ error: `confirming the SNS subscription failed: ${e instanceof Error ? e.message : e}` });

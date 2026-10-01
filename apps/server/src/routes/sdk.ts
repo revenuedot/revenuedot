@@ -20,7 +20,8 @@ import { buildRemoteConfig } from "../services/remote-config.js";
 import { activeEntitlementKeys, contextFor, resolveOfferings } from "../services/targeting.js";
 import { balancesOf } from "../services/virtual-currencies.js";
 import { amazonClientFor, amazonReceiptData } from "../stores/amazon/index.js";
-import { rowPrice, subRowOf } from "../stores/rows.js";
+import { mergeStoredState, rowPrice, subRowOf } from "../stores/rows.js";
+import { withStoreSecrets } from "../services/store-secrets.js";
 import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
@@ -109,12 +110,16 @@ export function sdkRoutes(deps: Deps) {
     const adapter = key.startsWith("test_") || app.type === "test_store" ? deps.stores.test_store : deps.stores[storeFor(app.type)];
     if (!adapter) throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, `Receipts for ${app.type} apps are not supported yet.`);
     if (!input.fetchToken && !input.appTransaction) throw new RCError(400, Codes.INVALID_RECEIPT, "fetch_token or app_transaction is required.");
-    const purchases = input.fetchToken ? await adapter.verify(app, input, await productInfo(deps.db, app.id), {
+    // Amazon and Stripe keys are sealed; the adapter gets them in memory only.
+    const storeApp = await withStoreSecrets(deps, app);
+    const verified = input.fetchToken ? await adapter.verify(storeApp, input, await productInfo(deps.db, app.id), {
       storedPeriod: async (store, storeKey) => {
         const row = await subRowOf(deps.db, app.projectId, store, storeKey);
         return row ? { storeTransactionId: row.storeTransactionId, purchaseDate: row.purchaseDate, price: rowPrice(row) } : null;
       },
     }) : [];
+    // A re-posted Amazon or Stripe purchase keeps what notifications recorded (a refund, the first billing issue), like a re-read in a notification.
+    const purchases = await mergeStoredState(deps.db, app.projectId, verified);
     customer = await applyPurchases(deps.db, customer, purchases, {
       projectId: app.projectId, appId: app.id, appUserId, now, presentedOfferingId: b.presented_offering_identifier ?? null, fromDevice: true, fetch: deps.fetch,
       // A customer this receipt creates (a restore on a new install, a server-side post) was first seen at its earliest purchase.
@@ -302,7 +307,7 @@ export function sdkRoutes(deps: Deps) {
     const receiptId = slash > 0 ? safeDecode(rest.slice(slash + 1)) : "";
     if (!storeUserId || !receiptId) throw new RCError(400, Codes.INVALID_RECEIPT, "Expected /v1/receipts/amazon/{store_user_id}/{receipt_id}.");
     const { client } = amazonClientFor(deps.stores, deps.fetch);
-    return c.json(await amazonReceiptData(client, app, storeUserId, receiptId));
+    return c.json(await amazonReceiptData(client, await withStoreSecrets(deps, app), storeUserId, receiptId));
   };
   r.get("/v1/receipts/amazon/:storeUserId/:receiptId", amazonReceipt);
   r.get("/v1/receipts/amazon/*", amazonReceipt);

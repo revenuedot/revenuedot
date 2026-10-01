@@ -54,7 +54,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
       console.error("tick: integration deliveries failed", e);
     }
   }
-  const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {} }, now) : 0;
+  const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {}, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }, now) : 0;
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
   let exports = 0;
   if (opts.exports !== false && secretKey.ok) {

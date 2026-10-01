@@ -4,8 +4,11 @@ import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { CustomerInfoSchema, ErrorSchema } from "../../../packages/contract/src/sdk-schemas.js";
 import { tick } from "../src/services/tick.js";
+import { secretKeyFrom, unseal } from "../src/services/secrets.js";
+import { TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 import { flushStoreForwards } from "../src/stores/forward.js";
 import { signStripePayload, stripeSignature, verifyStripeSignature } from "../src/stores/stripe/signature.js";
+import { fromMinor } from "../src/stores/stripe/map.js";
 import {
   at, charge, checkoutSession, env, invoice, KEY, PRICE_ANNUAL, PRICE_COINS, PRICE_LIFETIME, s, subscription, T0, WHSEC, type Env,
 } from "./stripe-helpers.js";
@@ -79,7 +82,7 @@ describe("POST /v1/receipts with X-Platform: stripe", () => {
   });
 
   it("a catalog product with the price id wins over the product id; a secret key with X-Platform stripe works; Stripe-Account is sent for Connect", async () => {
-    await e.h.db.update(schema.apps).set({ credentials: { stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, stripe_account_id: "acct_1Connected" } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, stripe_account_id: "acct_1Connected" });
     e.st.put(subscription({ invoice: "in_A", price: PRICE_ANNUAL, periodEnd: at(365) }), invoice({ id: "in_A", sub: SUB, start: T0, end: at(365), amount: 7999 }));
     const res = await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB }, e.h.ids.secretKey);
     expect(res.status).toBe(200);
@@ -128,12 +131,12 @@ describe("POST /v1/receipts with X-Platform: stripe", () => {
     expect(await code({ fetch_token: SUB })).toEqual([500, 7101]);
     const [app] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, e.appId));
     expect(app!.credentialsStatus).toBe("failing");
-    await e.h.db.update(schema.apps).set({ credentials: {} }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({});
     expect(await code({ fetch_token: SUB })).toEqual([500, 7101]);
   });
 
   it("with register_on invoice_created, a subscription whose first invoice is still open counts", async () => {
-    await e.h.db.update(schema.apps).set({ credentials: { stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, register_on: "invoice_created" } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, register_on: "invoice_created" });
     e.st.put(subscription({ invoice: "in_open", status: "incomplete" }), invoice({ id: "in_open", sub: SUB, start: T0, end: at(30), status: "open" }));
     const res = await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB });
     expect(res.status).toBe(200);
@@ -165,7 +168,7 @@ describe("Stripe webhooks", () => {
     settings = await (await e.call(`/v2/projects/${e.h.ids.project}/apps/${e.appId}/store_settings`, { key: e.h.ids.secretKey })).json();
     expect(settings.notification_status).toBe("ready");
 
-    await e.h.db.update(schema.apps).set({ credentials: { stripe_secret_key: KEY } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ stripe_secret_key: KEY });
     res = await e.webhook("customer.subscription.updated", e.st.subs.get(SUB));
     expect([res.status, (await res.json()).message]).toEqual([400, "Add the webhook signing secret (whsec_…) in the app's settings."]);
   });
@@ -315,17 +318,17 @@ describe("Stripe webhooks", () => {
     e.st.sessions.set("cs_new", checkoutSession({ id: "cs_new", mode: "subscription", sub: SUB, metadata: { uid: "from_session" } }));
     let res = await e.webhook("checkout.session.completed", e.st.sessions.get("cs_new"));
     expect(await res.json()).toEqual({ status: "unknown_purchase" });
-    await e.h.db.update(schema.apps).set({ credentials: { stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, track_new_purchases: true, app_user_id_metadata_key: "uid" } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, track_new_purchases: true, app_user_id_metadata_key: "uid" });
     res = await e.webhook("checkout.session.completed", e.st.sessions.get("cs_new"));
     expect(await res.json()).toEqual({ status: "processed" });
     expect((await e.events("INITIAL_PURCHASE"))[0]!.app_user_id).toBe("from_session");
 
-    await e.h.db.update(schema.apps).set({ credentials: { stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, track_new_purchases: true, app_user_id_source: "customer_id" } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, track_new_purchases: true, app_user_id_source: "customer_id" });
     e.st.put(subscription({ id: "sub_2", invoice: "in_x" }), invoice({ id: "in_x", sub: "sub_2", start: T0, end: at(30) }));
     await e.webhook("customer.subscription.created", e.st.subs.get("sub_2"));
     expect((await e.events("INITIAL_PURCHASE"))[1]!.app_user_id).toBe("cus_TestCustomer1");
 
-    await e.h.db.update(schema.apps).set({ credentials: { stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, track_new_purchases: true, app_user_id_source: "anonymous" } }).where(eq(schema.apps.id, e.appId));
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, track_new_purchases: true, app_user_id_source: "anonymous" });
     e.st.put(subscription({ id: "sub_3", invoice: "in_y" }), invoice({ id: "in_y", sub: "sub_3", start: T0, end: at(30) }));
     await e.webhook("customer.subscription.created", e.st.subs.get("sub_3"));
     expect((await e.events("INITIAL_PURCHASE"))[2]!.app_user_id).toMatch(/^\$RCAnonymousID:/);
@@ -371,6 +374,22 @@ describe("Stripe app setup (v2)", () => {
     const keys = await (await v2("GET", `${P()}/apps/${app.id}/public_api_keys`)).json();
     expect(keys.items[0].key).toMatch(/^strp_/);
     expect(JSON.stringify(app)).not.toContain(KEY);
+    // The key and the signing secret are sealed; the API shows only that they are set, and the key's mode and last four.
+    const [row] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, app.id));
+    expect(row!.credentials).toEqual({ stripe_account_id: "acct_1X", register_on: "invoice_created", app_user_id_source: "customer_id" });
+    expect(row!.secretHints).toEqual({ stripe_secret_key: `rk_test_…${KEY.slice(-4)}`, stripe_webhook_secret: "set" });
+    expect(row!.secrets).toMatch(/^v1:/);
+    expect(row!.secrets).not.toContain(KEY.slice(8));
+    expect(await unseal(row!.secrets, await secretKeyFrom(TEST_ENCRYPTION_KEY))).toEqual({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC });
+    const settings = await (await v2("GET", `${P()}/apps/${app.id}/store_settings`)).json();
+    expect(settings.credentials).toMatchObject({ stripe_secret_key: { configured: true, mode: "test", kind: "restricted", last4: KEY.slice(-4) }, stripe_webhook_secret: { configured: true } });
+    expect(JSON.stringify(settings)).not.toContain(KEY);
+    expect(JSON.stringify(settings)).not.toContain(WHSEC);
+    // Replacing one secret keeps the other.
+    res = await v2("POST", `${P()}/apps/${app.id}`, { stripe: { stripe_webhook_secret: "whsec_rolled" } });
+    expect(res.status).toBe(200);
+    const [rolled] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, app.id));
+    expect(await unseal(rolled!.secrets, await secretKeyFrom(TEST_ENCRYPTION_KEY))).toEqual({ stripe_secret_key: KEY, stripe_webhook_secret: "whsec_rolled" });
     res = await v2("POST", `${P()}/apps/${app.id}`, { stripe: { register_on: "sometimes" } });
     expect((await res.json()).param).toBe("stripe.register_on");
   });
@@ -389,5 +408,53 @@ describe("Stripe app setup (v2)", () => {
     e.st.override = () => new Response("", { status: 502 });
     r = await (await v2("POST", `${P()}/apps/${e.appId}/actions/verify_credentials`, {})).json();
     expect(r.status).toBe("unreachable");
+  });
+});
+
+describe("Stripe trust boundaries", () => {
+  it("Stripe API requests never follow a redirect; one is a 5xx so the backend retries", async () => {
+    e.st.put(subscription({ invoice: "in_1First" }), invoice({ id: "in_1First", sub: SUB, start: T0, end: at(30) }));
+    e.st.override = (url) => (url.startsWith("https://api.stripe.com/") ? new Response(null, { status: 302, headers: { location: "https://attacker.example.com/" } }) : undefined);
+    const res = await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB });
+    expect([res.status, (await res.json()).code]).toEqual([503, 7101]);
+    e.st.override = null;
+    expect((await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB })).status).toBe(200);
+    expect(e.st.apiCalls().length).toBeGreaterThan(1);
+    for (const c of e.st.apiCalls()) expect(c.redirect).toBe("manual");
+  });
+
+  it("a subscription posted again after a refund keeps the refund (no REFUND_REVERSED, no revenue back)", async () => {
+    await bought();
+    e.h.setNow(at(2));
+    await e.webhook("charge.refunded", charge({ amount: 999, invoice: "in_1First", refundAt: at(2) }));
+    expect((await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB })).status).toBe(200);
+    expect(await e.events("REFUND_REVERSED")).toHaveLength(0);
+    expect((await txns()).map((t) => t.kind)).toEqual(["purchase", "refund"]);
+    expect((await info("web_user_1")).subscriber.entitlements.pro!.expires_date).toBe("2026-09-03T12:00:00Z");
+  });
+
+  it("a one-time Checkout purchase posted again after a refund stays refunded", async () => {
+    e.st.sessions.set("cs_life", checkoutSession({ id: "cs_life", mode: "payment", pi: "pi_1Life", items: [{ price: PRICE_LIFETIME, amount: 4999 }] }));
+    await e.receipt({ app_user_id: "web_user_1", fetch_token: "cs_life" });
+    e.h.setNow(at(1));
+    await e.webhook("charge.refunded", charge({ amount: 4999, pi: "pi_1Life", invoice: null, refundAt: at(1) }));
+    await e.receipt({ app_user_id: "web_user_1", fetch_token: "cs_life" });
+    expect(await e.events("REFUND_REVERSED")).toHaveLength(0);
+  });
+
+  it("a body with a bad signature never takes a real event's id and is never forwarded", async () => {
+    await e.h.db.update(schema.apps).set({ notificationForwardUrl: "https://hooks.example.com/stripe" }).where(eq(schema.apps.id, e.appId));
+    await bought();
+    e.h.setNow(at(30));
+    renew({ from: at(30), to: at(60), invoiceId: "in_2" });
+    expect((await e.webhook("invoice.paid", e.st.invoices.get("in_2"), { id: "evt_real", secret: "whsec_forged" })).status).toBe(400);
+    expect(await (await e.webhook("invoice.paid", e.st.invoices.get("in_2"), { id: "evt_real" })).json()).toEqual({ status: "processed" });
+    await flushStoreForwards();
+    expect(e.st.forwarded).toHaveLength(1);
+    expect(await e.events("RENEWAL")).toHaveLength(1);
+  });
+
+  it("three-decimal currencies are thousandths (KWD 1.500 is 1500), zero-decimal ones whole units", () => {
+    expect([fromMinor(1500, "kwd"), fromMinor(1200, "JPY"), fromMinor(999, "usd")]).toEqual([1.5, 1200, 9.99]);
   });
 });

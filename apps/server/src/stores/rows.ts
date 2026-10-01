@@ -74,3 +74,26 @@ export function mergeSnapshot(next: VerifiedSubscription, row: SubRow): Verified
   if (row.unsubscribeDetectedAt && next.unsubscribeDetectedAt) out.unsubscribeDetectedAt = row.unsubscribeDetectedAt;
   return out;
 }
+
+/** Stores whose receipt re-posts are merged with the stored chain (their receipts carry no refund or first-seen history). */
+const MERGED_ON_RECEIPT = new Set<string>(["amazon", "stripe"]);
+
+/**
+ * Receipt posts for Amazon and Stripe: a purchase posted again keeps what notifications recorded. Without this a
+ * re-post after a refund would clear the refund (a false REFUND_REVERSED), and every post would move the first time a
+ * billing issue or cancellation was seen. Other stores are returned unchanged.
+ */
+export async function mergeStoredState<T extends VerifiedOneTime | VerifiedSubscription>(db: DB, projectId: string, purchases: T[]): Promise<T[]> {
+  const out: T[] = [];
+  for (const p of purchases) {
+    if (!MERGED_ON_RECEIPT.has(p.store)) { out.push(p); continue; }
+    if (p.kind === "subscription") {
+      const row = await subRowOf(db, projectId, p.store, p.storeKey);
+      out.push((row ? mergeSnapshot(p, row) : p) as T);
+    } else {
+      const row = await nonSubRowOf(db, projectId, p.store, p.storeTransactionId);
+      out.push((row ? { ...p, refundedAt: p.refundedAt ?? row.refundedAt, price: p.price ?? rowPrice(row) } : p) as T);
+    }
+  }
+  return out;
+}

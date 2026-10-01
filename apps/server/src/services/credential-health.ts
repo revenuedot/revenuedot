@@ -10,6 +10,7 @@ import { amazonClientFor } from "../stores/amazon/index.js";
 import { isTestKey, StripeApiError, stripeKeyOf } from "../stores/stripe/api.js";
 import { stripeClientFor } from "../stores/stripe/index.js";
 import type { AppRow, StoreAdapter } from "../stores/types.js";
+import { withStoreSecrets } from "./store-secrets.js";
 
 /**
  * Whether Apple and Google accept an app's store credentials (`apps.credentials_status`), for the "store credentials
@@ -20,7 +21,7 @@ import type { AppRow, StoreAdapter } from "../stores/types.js";
 export type CheckStatus = "valid" | "invalid" | "unreachable";
 export interface CredentialCheck { status: CheckStatus; message: string; extra: Record<string, unknown> }
 
-type CheckDeps = Pick<Deps, "fetch" | "now" | "stores">;
+type CheckDeps = Pick<Deps, "fetch" | "now" | "stores"> & Partial<Pick<Deps, "encryptionKey" | "signingKey">>;
 
 const STORE_TYPES = ["app_store", "mac_app_store", "play_store", "amazon", "stripe"];
 
@@ -184,8 +185,14 @@ export async function recheckDueCredentials(deps: CheckDeps & { db: DB }, now: D
     lte(A.credentialsCheckedAt, new Date(now.getTime() - 24 * HOUR)),
   ))).limit(limit * 3);
   let checked = 0;
-  for (const app of due) {
+  for (const row of due) {
     if (checked >= limit) break;
+    let app = row;
+    try { app = await withStoreSecrets(deps, row); } catch (e) {
+      // Sealed Amazon or Stripe secrets this server cannot open: the app must enter them again.
+      await recordCredentialCheck(deps.db, row.id, { status: "invalid", message: e instanceof Error ? e.message : String(e) }, now);
+      continue;
+    }
     const configured = app.type === "play_store" ? hasServiceAccount(app) : app.type === "amazon" ? !!sharedSecretOf(app) : app.type === "stripe" ? !!stripeKeyOf(app) : hasAppleKey(app.credentials ?? {});
     if (!configured) {
       // Nothing to check: no status, and try again in a day (the check time also keeps the query small).

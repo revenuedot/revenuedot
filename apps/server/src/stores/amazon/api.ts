@@ -1,5 +1,6 @@
 import { Codes, RCError } from "../../errors.js";
 import type { AppRow } from "../types.js";
+import { guardedFetch, OutboundRefused } from "../../services/outbound.js";
 
 /**
  * Amazon Appstore Receipt Verification Service (RVS) v1.0.
@@ -77,10 +78,13 @@ export class AmazonRvsClient {
   async verifyIn(env: "production" | "sandbox", secret: string, userId: string, receiptId: string): Promise<AmazonReceipt> {
     let res: Response;
     try {
-      res = await withTimeout(this.fetchImpl(this.url(env, secret, userId, receiptId), { method: "GET", headers: { accept: "application/json" }, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
+      // Through the outbound guard, never following a redirect: the URL carries the shared key.
+      res = await withTimeout(guardedFetch(this.fetchImpl, this.url(env, secret, userId, receiptId), { method: "GET", headers: { accept: "application/json" }, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
     } catch (e) {
       const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-      throw new AmazonApiError("transient", timedOut ? "Amazon's Receipt Verification Service timed out" : `Amazon's Receipt Verification Service could not be reached: ${e instanceof Error ? e.message : e}`);
+      // Never the error's text as is: a fetch error can quote the URL, which holds the shared key.
+      const why = timedOut ? "timed out" : e instanceof OutboundRefused ? `was refused: ${e.message}` : "could not be reached";
+      throw new AmazonApiError("transient", `Amazon's Receipt Verification Service ${why}`);
     }
     const text = await res.text().catch(() => "");
     if (res.status === 200) {
