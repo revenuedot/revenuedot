@@ -106,6 +106,28 @@ Cloudflare Vite plugin.
   `Strict-Transport-Security: max-age=31536000; includeSubDomains`. Change zone settings with
   `cf zones settings edit <setting> -z revenuedot.app`.
 
+## Hosted web pages and custom domains (manual steps, need Kai's approval)
+
+Purchase links, funnels and redemption links (`prd/web-billing/PRD.md`) are served by the `revenuedot` Worker. Until the
+steps below are done, Cloud serves them at `https://api.revenuedot.app/pay/<project>/<page>` (the default `payUrl` in
+`entry.worker.ts`), which works today without any account change.
+
+1. **`pay.revenuedot.app`** (nicer links): add `pay.revenuedot.app` to `domains` in `apps/server/cloudflare.config.ts`
+   (`cf deploy` then creates the proxied DNS record and the certificate) and set the Worker variable
+   `REVENUEDOT_PAY_URL=https://pay.revenuedot.app`. The Worker already serves any host other than `app.` at the root
+   (`entry.worker.ts`), and `app.ts` serves the pay host's paths without the `/pay` prefix. Existing links on
+   `api.revenuedot.app/pay/…` keep working.
+2. **Customers' custom domains** (Cloudflare for SaaS, on the `revenuedot.app` zone):
+   - Enable Cloudflare for SaaS on the zone and create a fallback origin, for example `domains.revenuedot.app`
+     (a proxied DNS record; the Worker route `*/*` on the zone's custom hostnames, or a route for the fallback host,
+     sends the traffic to the `revenuedot` Worker).
+   - Set `REVENUEDOT_CUSTOM_DOMAIN_TARGET=domains.revenuedot.app`, so the dashboard tells customers to CNAME there.
+   - For each customer domain that the dashboard shows as verified (CNAME and TXT checked by the server), add a custom
+     hostname: SSL/TLS → Custom Hostnames → Add, the customer's hostname, HTTP DCV. The certificate is issued once the
+     CNAME resolves. Automating this needs an API token with "SSL and Certificates: Edit" on the zone, which is an
+     account change; until then it is done by hand.
+   - Self-hosted servers need none of this: the custom domain points at the server, which answers the verified host.
+
 ## Workers differences from self-host
 
 - Password hashing uses 100,000 PBKDF2 iterations (the Workers WebCrypto cap) on both builds. Hashes made with more
