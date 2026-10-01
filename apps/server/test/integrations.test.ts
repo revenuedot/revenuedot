@@ -66,7 +66,9 @@ describe("integration API", () => {
   it("seals secrets, returns only hints, validates settings", async () => {
     const call = api();
     const cat = await call("GET", "/integrations/catalog");
-    expect(cat.body.items.map((x: any) => x.type)).toEqual(["slack", "segment", "amplitude", "mixpanel", "posthog", "firebase", "bigquery", "appsflyer", "adjust", "meta"]);
+    // The Tier 2 ten first, then the Batch D partners and connections: RevenueCat's 37 minus webhooks and exports, plus BigQuery.
+    expect(cat.body.items.slice(0, 10).map((x: any) => x.type)).toEqual(["slack", "segment", "amplitude", "mixpanel", "posthog", "firebase", "bigquery", "appsflyer", "adjust", "meta"]);
+    expect(cat.body.items).toHaveLength(36);
     const res = await call("POST", "/integrations/partners", { type: "amplitude", settings: { api_key: "amp_live_secret_1234", region: "eu" }, event_names: { initial_purchase: "Subscribed" } });
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
