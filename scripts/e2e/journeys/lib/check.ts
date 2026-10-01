@@ -7,7 +7,7 @@ export interface CheckResult { name: string; ok: boolean; detail?: unknown; at: 
 
 const scrub = (v: unknown): unknown => {
   // Never write a database URL or a full secret into results or logs.
-  const s = JSON.stringify(v ?? null, (_k, x) => (typeof x === "string" ? x.replace(/postgres(ql)?:\/\/\S+/g, "postgres://…").replace(/\b(sk|rk|whsec|rdat|rdrt)_[A-Za-z0-9_]{12,}/g, (m) => `${m.slice(0, 8)}…`) : x));
+  const s = JSON.stringify(v ?? null, (_k, x) => (typeof x === "string" ? x.replace(/postgres(ql)?:\/\/\S+/g, "postgres://…").replace(/\b(sk|rk|whsec|rdat|rdrt|rdrf)_[A-Za-z0-9_]{12,}/g, (m) => `${m.slice(0, 8)}…`).replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g, "eyJ…(token)") : x));
   return s === undefined ? null : JSON.parse(s);
 };
 

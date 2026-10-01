@@ -244,6 +244,11 @@ describe("Auth sign-in (POST /auth/login)", () => {
     // Both access tokens work while the session lives.
     expect((await getAs(first.access_token, "/v1/customer")).status).toBe(200);
     expect((await getAs(second.access_token, "/v1/customer")).status).toBe(200);
+    // The rotated-away token presented with another app's key is just invalid: it cannot end this app's session.
+    const foreign = await refreshWith(first.refresh_token, h.ids.androidKey);
+    expect(foreign.status).toBe(401);
+    expect(await foreign.json()).toMatchObject({ message: expect.stringMatching(/not valid/) });
+    expect((await getAs(second.access_token, "/v1/customer")).status).toBe(200);
     // Replaying the rotated-away token (a thief, or the app after a thief) ends the session for everyone.
     const reused = await refreshWith(first.refresh_token);
     expect(reused.status).toBe(401);

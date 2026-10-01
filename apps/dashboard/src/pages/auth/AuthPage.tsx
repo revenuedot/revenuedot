@@ -38,7 +38,7 @@ function ProviderDialog({ pid, initial, onClose }: { pid: string; initial: Provi
   const [prefix, setPrefix] = useState(initial?.app_user_id_prefix ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ param?: string; message: string } | null>(null);
-  const err = (p: string) => (error?.param === p ? error.message : null);
+  const err = (p: string) => (error?.param?.split(".")[0] === p ? error.message : null);
   const save = async () => {
     setBusy(true); setError(null);
     const json = {

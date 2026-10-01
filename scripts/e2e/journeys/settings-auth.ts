@@ -409,7 +409,7 @@ const journey: Journey = {
     c.check("another project cannot take the slug (409)", squat.status === 409, squat.body);
     c.eq("another project's slug check says it is taken", (await other.v2("GET", "/verified_metrics/slug_availability?slug=scanner-pro")).available, false);
     const saved = await dev.v2("POST", "/verified_metrics", { display_name: "Scanner Pro" });
-    c.check("saving a published page keeps it published and the page shows the new name at once", saved.status === "published" && (await (await fetch(`${ctx.base}/verified/scanner-pro`)).text()).includes("<h1>Scanner Pro</h1>"));
+    c.check("saving a published page keeps it published and the next request shows the new name", saved.status === "published" && (await (await fetch(`${ctx.base}/verified/scanner-pro`)).text()).includes("<h1>Scanner Pro</h1>"));
     const unpub = await dev.v2("POST", "/verified_metrics/actions/unpublish", {});
     c.eq("unpublished: status inactive", unpub.status, "inactive");
     const gone = await Promise.all(["", "/metrics.json", "/og.png", "/icon"].map((p) => fetch(`${ctx.base}/verified/scanner-pro${p}`).then((r) => [r.status, r.headers.get("cache-control")])));

@@ -78,7 +78,10 @@ export interface SignedIn { tokens: Tokens; appUserId: string; created: boolean 
 
 const randomHex = (n: number) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, "0")).join("");
 
-async function issue(deps: Deps, o: { app: AppRecord; appUserId: string; method: string; providerId: string | null; sessionId: string; refresh: string; issuer: string; scope: string }): Promise<Tokens> {
+type IssueInput = { app: AppRecord; appUserId: string; method: string; providerId: string | null; sessionId: string; refresh: string; issuer: string; scope: string };
+
+/** Signs the access and ID tokens and returns them with the access token's `subscriber_tokens` row; stores nothing. */
+async function mint(deps: Deps, o: IssueInput): Promise<{ tokens: Tokens; row: typeof schema.subscriberTokens.$inferInsert }> {
   const signer = identitySigner(deps);
   if (!signer) throw new AuthUnavailable("Auth needs REVENUEDOT_SIGNING_KEY or REVENUEDOT_ENCRYPTION_KEY on this server to sign tokens.");
   const { key, kid } = await signer.catch(() => { throw new AuthUnavailable("The server's REVENUEDOT_SIGNING_KEY or REVENUEDOT_ENCRYPTION_KEY is not valid base64, so Auth cannot sign tokens."); });
@@ -88,11 +91,16 @@ async function issue(deps: Deps, o: { app: AppRecord; appUserId: string; method:
   const claims = { iss: o.issuer, sub: o.appUserId, aud: o.app.id, "rc.app_user_id": o.appUserId, amr: [o.method], iat, exp };
   const access = await signEdDsa({ typ: "at+jwt", kid }, { ...claims, client_id: o.app.id, scope: o.scope, jti: b64url(crypto.getRandomValues(new Uint8Array(24))) }, key);
   const id = await signEdDsa({ typ: "JWT", kid }, { ...claims, auth_time: iat, ...(o.providerId ? { idp: o.providerId } : {}) }, key);
-  await deps.db.insert(schema.subscriberTokens).values({
-    hash: await sha256Hex(access), projectId: o.app.projectId, appId: o.app.id, appUserId: o.appUserId, sessionId: o.sessionId,
-    expiresAt: new Date(now.getTime() + SUBSCRIBER_TOKEN_TTL_MS), createdAt: now,
-  });
-  return { access_token: access, refresh_token: o.refresh, id_token: id, scope: o.scope, expires_in: SUBSCRIBER_TOKEN_TTL_MS / 1000, token_type: "Bearer" };
+  return {
+    tokens: { access_token: access, refresh_token: o.refresh, id_token: id, scope: o.scope, expires_in: SUBSCRIBER_TOKEN_TTL_MS / 1000, token_type: "Bearer" },
+    row: { hash: await sha256Hex(access), projectId: o.app.projectId, appId: o.app.id, appUserId: o.appUserId, sessionId: o.sessionId, expiresAt: new Date(now.getTime() + SUBSCRIBER_TOKEN_TTL_MS), createdAt: now },
+  };
+}
+
+async function issue(deps: Deps, o: IssueInput): Promise<Tokens> {
+  const { tokens, row } = await mint(deps, o);
+  await deps.db.insert(schema.subscriberTokens).values(row);
+  return tokens;
 }
 
 /** POST /auth/login */
@@ -162,9 +170,11 @@ export async function refresh(deps: Deps, o: { app: AppRecord; refreshToken: str
   if (!s) {
     // Reuse detection (OAuth 2.0 Security BCP §4.14): a refresh token that was already rotated away is a replay, by a thief
     // or by the app after a thief. Either way the session ends, so a stolen token stops working for both.
+    // Another app's key presenting it is just an invalid token: it cannot end a session it does not own.
     const [replayed] = await db.select({ id: S.id, appId: S.appId }).from(S).where(eq(S.previousRefreshHash, hash)).limit(1);
-    if (replayed && replayed.appId === o.app.id) await endSession(db, replayed.id, now);
-    throw new TokenInvalid(replayed ? "The refresh token was already used. The session has ended; sign in again." : "The refresh token is not valid. Sign in again.");
+    const ended = replayed?.appId === o.app.id;
+    if (ended) await endSession(db, replayed!.id, now);
+    throw new TokenInvalid(ended ? "The refresh token was already used. The session has ended; sign in again." : "The refresh token is not valid. Sign in again.");
   }
   if (s.appId !== o.app.id || s.revokedAt || s.expiresAt <= now) throw new TokenInvalid("The refresh token is not valid. Sign in again.");
   // A session lives only while Auth, its sign-in method and its provider are still turned on.
@@ -177,11 +187,17 @@ export async function refresh(deps: Deps, o: { app: AppRecord; refreshToken: str
     if (!p?.enabled) throw new AuthRefused("The identity provider of this session is turned off. Sign in again.");
   }
   const next = `${REFRESH_PREFIX}${randomHex(32)}`;
-  // Only one concurrent refresh wins the rotation; the other is refused like a reused token.
-  const rotated = await db.update(S).set({ refreshHash: await sha256Hex(next), previousRefreshHash: s.refreshHash, lastUsedAt: now, expiresAt: new Date(now.getTime() + REFRESH_TTL_MS) })
-    .where(and(eq(S.id, s.id), eq(S.refreshHash, s.refreshHash), isNull(S.revokedAt))).returning({ id: S.id });
-  if (!rotated.length) throw new TokenInvalid("The refresh token was already used. Sign in again.");
-  const tokens = await issue(deps, { app: o.app, appUserId: s.appUserId, method: s.method, providerId: s.providerId, sessionId: s.id, refresh: next, issuer: o.issuer, scope: o.scope || "openid offline_access" });
+  // The tokens are signed before anything changes, and the rotation and the new access token commit together: a refresh
+  // that fails leaves the presented token current, so the app's retry is not mistaken for a replay.
+  const { tokens, row } = await mint(deps, { app: o.app, appUserId: s.appUserId, method: s.method, providerId: s.providerId, sessionId: s.id, refresh: next, issuer: o.issuer, scope: o.scope || "openid offline_access" });
+  const nextHash = await sha256Hex(next);
+  await db.transaction(async (tx) => {
+    // Only one concurrent refresh wins the rotation; the other is refused like a reused token.
+    const rotated = await tx.update(S).set({ refreshHash: nextHash, previousRefreshHash: s.refreshHash, lastUsedAt: now, expiresAt: new Date(now.getTime() + REFRESH_TTL_MS) })
+      .where(and(eq(S.id, s.id), eq(S.refreshHash, s.refreshHash), isNull(S.revokedAt))).returning({ id: S.id });
+    if (!rotated.length) throw new TokenInvalid("The refresh token was already used. Sign in again.");
+    await tx.insert(schema.subscriberTokens).values(row);
+  });
   return { tokens, appUserId: s.appUserId, created: false };
 }
 
