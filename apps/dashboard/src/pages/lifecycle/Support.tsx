@@ -174,12 +174,13 @@ function Tickets() {
             <DataTable rowKey={(t) => t.id} rows={rows} onRowClick={(t) => pick(t)}
               empty={<EmptyState title={status === "closed" ? "No closed tickets" : status === "open" ? "No open tickets" : "No tickets yet"} text="Turn on ticket creation in the Customer Center tab. Tickets customers send appear here and are emailed to your support address." />}
               columns={[
+                // With a ticket open beside the table, the panel has the address and the Close button.
                 { key: "d", header: "Date", render: (t) => <span className="subtle" title={fmt.dateTime(t.created_at)}>{relative(t.created_at)}</span> },
                 { key: "e", header: "Customer", render: (t) => <span>{t.customer_email}<span className="cellsub">{custLink(t)}</span></span> },
                 { key: "m", header: "Message", className: "wrap", render: (t) => <span className="excerpt">{t.description}</span> },
-                { key: "to", header: "Emailed to", render: (t) => t.emailed_to ? <span className="muted">{t.emailed_to}{!t.emailed && <span className="cellsub down">Not delivered</span>}</span> : <span className="subtle" title="No support email was set">—</span> },
+                ...(sel ? [] : [{ key: "to", header: "Emailed to", render: (t: SupportTicket) => t.emailed_to ? <span className="muted">{t.emailed_to}{!t.emailed && <span className="cellsub down">Not delivered</span>}</span> : <span className="subtle" title="No support email was set">—</span> }]),
                 { key: "s", header: "Status", render: (t) => <Tag tone={t.status === "open" ? "info" : "muted"}>{t.status === "open" ? "Open" : "Closed"}</Tag> },
-                { key: "a", header: "", align: "right", render: (t) => <button type="button" className="btn btn-line" aria-label={`${t.status === "open" ? "Close" : "Reopen"} ticket from ${t.customer_email}`} onClick={(e) => { e.stopPropagation(); void setTicket(t, t.status === "open" ? "closed" : "open"); }}>{t.status === "open" ? "Close" : "Reopen"}</button> },
+                ...(sel ? [] : [{ key: "a", header: "", align: "right" as const, render: (t) => <button type="button" className="btn btn-line" aria-label={`${t.status === "open" ? "Close" : "Reopen"} ticket from ${t.customer_email}`} onClick={(e) => { e.stopPropagation(); void setTicket(t, t.status === "open" ? "closed" : "open"); }}>{t.status === "open" ? "Close" : "Reopen"}</button> }]),
               ]} />
             {q.hasNextPage && <div className="hrow" style={{ marginTop: 12 }}><button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Show older tickets"}</button></div>}
             {one.isError && selectedId && <div className="banner err" role="alert" style={{ marginTop: 12 }}>Ticket {selectedId} could not be loaded: {errMsg(one.error)}</div>}

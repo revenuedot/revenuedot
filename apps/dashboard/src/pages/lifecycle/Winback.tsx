@@ -234,7 +234,7 @@ export function WinbackEditor() {
                 </Panel>
                 <Panel title="Schedule">
                   <div className="stack tight">
-                    <Field label="Send every day at" htmlFor="wb-hour" hint="Active campaigns email new matches once a day, at most 500 per run.">
+                    <Field label="Send every day at" htmlFor="wb-hour" hint="Active campaigns email new matches once a day, at most 500 a day.">
                       <select id="wb-hour" className="select" style={{ maxWidth: 200 }} value={form.send_hour_utc} onChange={(e) => setForm({ ...form, send_hour_utc: Number(e.target.value) })}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00 UTC</option>)}</select>
                     </Field>
                     <Check checked={form.track_opens} onChange={(v) => setForm({ ...form, track_opens: v })} label="Track opens" hint="Adds a 1×1 image. Many mail apps block or preload images, so open counts are rough. Clicks are always counted." />
@@ -271,7 +271,7 @@ export function WinbackEditor() {
                     {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
                     <span className="btn btn-dark">{form.email.button_label || "Button"}</span>
                   </div>
-                  <div className="mf">You get this email because you subscribed to {form.email.sender_name?.trim() || projectName}. Unsubscribe</div>
+                  <div className="mf">You received this because you subscribed to {form.email.sender_name?.trim() || projectName}. Unsubscribe</div>
                 </div>
               </div>
             </form>
