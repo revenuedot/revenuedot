@@ -10,7 +10,8 @@
  * REST API, then drives the built SDK bundle in jsdom:
  *   configure (proxyURL → local server) → getCustomerInfo → getOfferings → purchase (Test Store modal, "valid purchase")
  *   → entitlement active → getCustomerInfo again, and checks the server state and a signed response.
- * Env: PURCHASES_JS_DIR (default ../purchases-js), REVENUEDOT_SIGNING_KEY (default: a fresh key).
+ * Env: PURCHASES_JS_DIR (default ../purchases-js), REVENUEDOT_SIGNING_KEY (default: a fresh key), FORKS_E2E_PORT (the server;
+ * the recording proxy uses the next port; default: free ports), FORKS_E2E_DATABASE_URL (default: in-memory PGlite).
  */
 import { spawn } from "node:child_process";
 import { createPublicKey, generateKeyPairSync, verify as edVerify, randomBytes } from "node:crypto";
@@ -62,16 +63,16 @@ async function main() {
   ok(bundle.includes("Secure checkout by RevenueDot") || !bundle.includes("Secure checkout by RevenueCat"), "checkout title no longer says RevenueCat");
 
   // 1. The real server, as its own process.
-  const port = await freePort();
+  const port = process.env.FORKS_E2E_PORT ? Number(process.env.FORKS_E2E_PORT) : await freePort();
   const base = `http://127.0.0.1:${port}`;
   const signing = seedFromEnvOrFresh();
-  const server = spawn("pnpm", ["--filter", "@revenuedot/server", "start"], { cwd: FLAGSHIP, env: { ...process.env, PORT: String(port), DATABASE_URL: "pglite://memory", REVENUEDOT_SIGNING_KEY: signing.seed, DASHBOARD_DIST: "/nonexistent" }, stdio: ["ignore", "pipe", "pipe"] });
+  const server = spawn("pnpm", ["--filter", "@revenuedot/server", "start"], { cwd: FLAGSHIP, env: { ...process.env, PORT: String(port), DATABASE_URL: process.env.FORKS_E2E_DATABASE_URL || "pglite://memory", REVENUEDOT_SIGNING_KEY: signing.seed, DASHBOARD_DIST: "/nonexistent" }, stdio: ["ignore", "pipe", "pipe"] });
   let serverLog = "";
   server.stdout.on("data", (d) => { serverLog += d; }); server.stderr.on("data", (d) => { serverLog += d; });
   const stop = () => { try { server.kill("SIGTERM"); } catch { /* already gone */ } };
   process.on("exit", stop);
   for (let i = 0; i < 120; i++) { try { if ((await fetch(`${base}/v1/health`)).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 250)); }
-  ok((await fetch(`${base}/v1/health`).catch(() => null))?.ok, `server up on ${base} (pnpm --filter @revenuedot/server start, in-memory PGlite)`);
+  ok((await fetch(`${base}/v1/health`).catch(() => null))?.ok, `server up on ${base} (pnpm --filter @revenuedot/server start, ${process.env.FORKS_E2E_DATABASE_URL ? "Postgres" : "in-memory PGlite"})`);
 
   // 2. Project, Test Store app, product, entitlement, offering through the API.
   const cookie = await session(base, `forks-e2e-${Date.now()}@revenuedot.test`, "e2e-password-1", "Fork E2E");
@@ -113,7 +114,7 @@ async function main() {
     rs.writeHead(up.status, Object.fromEntries([...up.headers].filter(([k]) => !["content-encoding", "content-length", "transfer-encoding"].includes(k))));
     rs.end(out);
   });
-  const proxyPort = await freePort();
+  const proxyPort = process.env.FORKS_E2E_PORT ? port + 1 : await freePort();
   await new Promise<void>((r) => proxy.listen(proxyPort, "127.0.0.1", () => r()));
   const proxyURL = `http://127.0.0.1:${proxyPort}`;
 
