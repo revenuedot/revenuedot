@@ -28,6 +28,16 @@ const docsPlugin = {
       if (tag === "a") {
         const href = node.properties?.href;
         if (typeof href !== "string") return;
+        // [![poster](x.webp)](x.mp4) stays a thumbnail link on GitHub and plays in place on the site.
+        const img = node.children?.filter((c) => c.type === "element");
+        if (/\.mp4$/.test(href) && img?.length === 1 && img[0].tagName === "img") {
+          const { src, alt } = img[0].properties ?? {};
+          return el("span", { className: ["shot", "doc-video"] }, [
+            el("video", { controls: true, preload: "none", playsInline: true, poster: src, ariaLabel: alt, width: 1920, height: 1080 }, [
+              el("source", { src: href, type: "video/mp4" }),
+            ]),
+          ]);
+        }
         const next = rewriteHref(rel, href);
         if (next && next !== href) ctx.setProperty(node, "href", next);
         return;

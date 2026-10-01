@@ -91,6 +91,8 @@ p { margin: 0; }
 /* Screenshot frame */
 .shot { position: relative; border: 1px solid var(--border); background: var(--panel); }
 .shot img { width: 100%; height: auto; }
+.shot video { display: block; width: 100%; height: auto; background: #000; }
+.doc-video { display: block; margin: 8px 0; }
 .shot::before, .shot::after { content: ""; position: absolute; width: 9px; height: 9px; border: 1px solid var(--fg); pointer-events: none; z-index: 1; }
 .shot::before { top: -5px; left: -5px; border-right: 0; border-bottom: 0; }
 .shot::after { bottom: -5px; right: -5px; border-left: 0; border-top: 0; }
