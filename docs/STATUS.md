@@ -45,7 +45,7 @@ RevenueCat's v2 spec has 128 operations; the server now serves 89 of them (was 7
 ## Known gaps (next up)
 - Importer: refunded subscriptions import as expired (RevenueCat's v2 subscription has no refund field); paywalls, targeting, experiments and virtual currencies are not imported. An Apple chain imported under a guessed original id is re-keyed when store traffic proves the real one; without the In-App Purchase key, a store notification for a renewal the export never saw cannot be matched until the device posts a receipt.
 - Store actions are tested against mocked Google and Apple APIs only. The request bodies for `subscriptionsv2.revoke` (`fullRefund`), `cancel` (`DEVELOPER_REQUESTED_STOP_PAYMENTS`) and `defer` (`deferDuration` with the etag) follow Google's reference and need one real sandbox run with store credentials.
-- Webhooks do not send `renewal_number` or `experiments` yet (RevenueCat marks both "Sometimes"); there are no experiments.
+- Webhooks send `renewal_number` on REFUND_REVERSED only (where RevenueCat's sample has it) and no `experiments` yet (there are no experiments).
 - Google `CANCELLATION` with `PRICE_INCREASE` is inferred: a system cancellation while `priceChangeDetails` is still `OUTSTANDING` (or a price step-up is `PENDING`). RevenueCat does not document its Google rule.
 - `GET /v2/projects/{id}/subscriptions/{id}/transactions` finds App Store transactions of a chain by customer, product and start date, because revenue rows do not store the chain; Google Play orders match exactly by base order id.
 - Test Store prices are one price per product; RevenueCat's multi-currency `…/products/{id}/test_store_prices` and `…/prices` endpoints are not implemented.
@@ -53,6 +53,6 @@ RevenueCat's v2 spec has 128 operations; the server now serves 89 of them (was 7
 - The SDK compatibility panel says whether contract tests cover an SDK's major version; it does not score per-feature coverage like RevenueCat's panel.
 - SDK endpoints without real data yet: remote config (204), web purchases and their redemption, Web Billing checkout, Amazon Appstore receipts and ad reward verification. The SDKs' internal token-login (IAM) paths have no routes.
 - The iOS SDK sends no AdServices token from a simulator, and a promotional-offer request needs a real StoreKit subscription, so both are tested only in the contract tests (stubbed Apple API; signatures checked with the key's public half).
-- Six event types are never emitted, though webhooks accept them as filters: TEMPORARY_ENTITLEMENT_GRANT, INVOICE_ISSUANCE, PURCHASE_REDEEMED, VIRTUAL_CURRENCY_TRANSACTION, EXPERIMENT_ENROLLMENT and SUBSCRIBER_ALIAS.
+- Five event types are never emitted, though webhooks accept them as filters: TEMPORARY_ENTITLEMENT_GRANT, INVOICE_ISSUANCE, PURCHASE_REDEEMED, EXPERIMENT_ENROLLMENT and SUBSCRIBER_ALIAS. VIRTUAL_CURRENCY_TRANSACTION is sent for purchase grants.
 - OpenAPI schema checks skip when RevenueCat's spec is not on disk (public CI), so they run only on machines with the research copy.
 - Apple consumption information (Refund Control) is not sent; RevenueCat does not require it.

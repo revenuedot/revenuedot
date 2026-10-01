@@ -138,7 +138,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
       }).onConflictDoNothing();
       if (kind === "purchase" || kind === "renewal" || kind === "trial") {
-        await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
+        await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
       }
     }
   }
@@ -191,7 +191,7 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
       priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
     }).onConflictDoNothing();
     if (kind === "one_time") {
-      await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, productIdentifier: p.productIdentifier, trial: false, transactionId: p.storeTransactionId, now: ctx.now });
+      await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, trial: false, transactionId: p.storeTransactionId, now: ctx.now });
     }
   }
   const [o] = await db.select().from(customers).where(eq(customers.id, owner.id));

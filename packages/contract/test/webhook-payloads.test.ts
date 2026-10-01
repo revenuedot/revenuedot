@@ -15,8 +15,8 @@ import { v2 } from "./v2-helpers.js";
  * integers for every `*_ms` field. Keys we cannot have yet are listed in UNSUPPORTED.
  */
 const fx = (name: string) => JSON.parse(readFileSync(new URL(`../fixtures/webhooks/${name}.json`, import.meta.url), "utf8")).event as Record<string, unknown>;
-/** experiments: no experiments yet. renewal_number: not tracked yet (RevenueCat marks it "Sometimes"). metadata: RevenueCat Billing only. */
-const UNSUPPORTED = new Set(["experiments", "renewal_number", "metadata"]);
+/** experiments: no experiments yet. metadata: RevenueCat Billing only. (renewal_number is sent on REFUND_REVERSED, where RevenueCat's sample has it.) */
+const UNSUPPORTED = new Set(["experiments", "metadata"]);
 const FIXTURES: [string, string, (e: Record<string, any>) => boolean][] = [
   ["INITIAL_PURCHASE", "initial_purchase", (e) => e.period_type === "NORMAL"],
   ["INITIAL_PURCHASE", "trial_started", (e) => e.period_type === "TRIAL"],

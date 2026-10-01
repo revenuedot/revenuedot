@@ -88,6 +88,19 @@ describe("in-app currencies", () => {
     expect(none.virtual_currencies).toEqual({});
   });
 
+  it("sends VIRTUAL_CURRENCY_TRANSACTION for purchase grants in RevenueCat's shape, and none for API adjustments", async () => {
+    await call("POST", VC, {}, { json: { code: "CRD", name: "Credits", description: "The main currency unit", product_grants: [{ product_ids: ["p6"], amount: 100 }] } });
+    await buy(h, "buyer", "coins_100", at);
+    await call("POST", `${BAL}/transactions`, { customer_id: "buyer" }, { json: { adjustments: { CRD: 5 } } });
+    const evs = await h.db.select().from(schema.events).where(eq(schema.events.type, "VIRTUAL_CURRENCY_TRANSACTION"));
+    expect(evs).toHaveLength(1);
+    const e = (evs[0]!.payload as any).event;
+    expect(Object.keys(e).sort()).toEqual(["adjustments", "aliases", "app_id", "app_user_id", "event_timestamp_ms", "id", "product_display_name", "product_id", "purchase_environment", "source", "store", "subscriber_attributes", "transaction_id", "type", "virtual_currency_transaction_id"]);
+    expect(e).toMatchObject({ type: "VIRTUAL_CURRENCY_TRANSACTION", source: "in_app_purchase", product_id: "coins_100", app_user_id: "buyer", purchase_environment: "SANDBOX",
+      adjustments: [{ amount: 100, currency: { code: "CRD", name: "Credits", description: "The main currency unit" } }] });
+    expect(e.virtual_currency_transaction_id).toMatch(/^vatx/);
+  });
+
   it("an archived currency stops granting but keeps a non-zero balance visible", async () => {
     await call("POST", VC, {}, { json: { code: "GLD", name: "Gold", product_grants: [{ product_ids: ["p6"], amount: 100 }] } });
     await buy(h, "buyer", "coins_100", at);
