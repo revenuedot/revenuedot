@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
-import { fontConfig, uiConfig } from "./paywalls.js";
+import { fontConfig, paywallLocales, servedLocalizations, uiConfig } from "./paywalls.js";
 
 /**
  * Remote configuration for the SDKs (`POST /v1/config/app`). RevenueCat SDKs from iOS 5.83 on load paywalls only from
@@ -58,7 +58,7 @@ export function workflowFor(p: typeof schema.paywalls.$inferSelect, offeringKey:
     screens: {
       screen_1: {
         template_name: "components", revision: v.revision, asset_base_url: assetBaseUrl, offering_identifier: offeringKey, default_locale: v.default_locale ?? "en_US",
-        components_config: v.components_config, components_localizations: v.components_localizations ?? {},
+        components_config: v.components_config, components_localizations: servedLocalizations(v),
         automatically_scale_font_size: v.automatically_scale_font_size, zero_decimal_place_countries: { apple: ["TWN", "KAZ", "MEX", "PHL", "THA"], google: ["TW", "KZ", "MX", "PH", "TH"] },
         ...(v.exit_offers ? { exit_offers: v.exit_offers } : {}), ...(v.state_declarations ? { state_declarations: v.state_declarations } : {}),
       },
@@ -74,13 +74,13 @@ export interface Built { body: Uint8Array | null; manifest: string }
  */
 export async function buildRemoteConfig(db: DB, projectId: string, origin: string, known: string | null, prefetched: string[]): Promise<Built> {
   const assetBase = `${origin}/assets/${projectId}`;
-  const ui = uiConfig(await fontConfig(db, projectId, assetBase));
+  const pws = await db.select().from(schema.paywalls).where(eq(schema.paywalls.projectId, projectId));
+  const ui = uiConfig(await fontConfig(db, projectId, assetBase), paywallLocales(pws));
   const blobs = new Map<string, Uint8Array>();
   const addBlob = async (value: unknown) => { const bytes = enc.encode(JSON.stringify(value)); const ref = await blobRef(bytes); blobs.set(ref, bytes); return ref; };
   const uiItems: Record<string, { blob_ref: string; prefetch: boolean }> = {};
   for (const k of ["app", "localizations", "variable_config", "custom_variables"] as const) uiItems[k] = { blob_ref: await addBlob(ui[k]), prefetch: true };
 
-  const pws = await db.select().from(schema.paywalls).where(eq(schema.paywalls.projectId, projectId));
   const offs = await db.select({ id: schema.offerings.id, key: schema.offerings.lookupKey }).from(schema.offerings).where(and(eq(schema.offerings.projectId, projectId), eq(schema.offerings.state, "active")));
   const workflows: Record<string, Record<string, unknown>> = {};
   for (const p of pws.sort((a, b) => a.id.localeCompare(b.id))) {

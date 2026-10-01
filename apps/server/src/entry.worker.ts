@@ -9,6 +9,7 @@ import { API_PATH } from "./api-paths.js";
 import { defaultStores } from "./stores/index.js";
 import { tick } from "./services/tick.js";
 import { cloudflareMailer, logMailer, type SendEmailBinding } from "./mail/index.js";
+import { workersAiModel, type WorkersAi } from "./services/paywall-ai.js";
 
 // Minimal Workers types, so the shared tsconfig (DOM lib) needs no @cloudflare/workers-types.
 interface Hyperdrive { connectionString: string }
@@ -28,6 +29,8 @@ export interface Env {
   REVENUEDOT_PUBLIC_URL?: string;
   /** Optional secret: base64 of 32 bytes that seals integration and export credentials. Unset: derived from the signing key. */
   REVENUEDOT_ENCRYPTION_KEY?: string;
+  /** Workers AI, for "Generate with AI" on paywalls. No key needed. */
+  AI?: WorkersAi;
 }
 
 const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
@@ -62,6 +65,9 @@ const appFor = (env: Env) => (app ??= createApp({
   encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY,
   mailer: mailerFor(env),
   publicUrl: publicUrlFor(env),
+  ai: env.AI ? workersAiModel(env.AI) : undefined,
+  // Apps reach the API host; paywall images and icons are served from it.
+  apiUrl: "https://api.revenuedot.app",
   // Send new webhook deliveries after the response, on the request's own connection.
   kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(env, s.db, "kick")); },
   // Password reset emails and the like go out after the response, on the request's own connection.

@@ -16,7 +16,7 @@ const sdkOfferings = async () => (await (await h.fetch("/v1/subscribers/anyone/o
 const hero = {
   base: {
     background: { type: "color", value: { light: { type: "hex", value: "#112233ff" } } },
-    stack: { id: "root", type: "stack", components: [{ id: "t1", type: "text", text_lid: "headline", color: { light: { type: "hex", value: "#ffffffff" } } }], dimension: { type: "vertical", alignment: "center", distribution: "center" }, size: { width: { type: "fill" }, height: { type: "fill" } }, spacing: 16, margin: {}, padding: {} },
+    stack: { id: "root", type: "stack", components: [{ id: "t1", type: "text", text_lid: "headline", color: { light: { type: "hex", value: "#ffffffff" } }, font_weight: "bold", font_size: 28, horizontal_alignment: "center", size: { width: { type: "fill" }, height: { type: "fit" } }, padding: {}, margin: {} }], dimension: { type: "vertical", alignment: "center", distribution: "center" }, size: { width: { type: "fill" }, height: { type: "fill" } }, spacing: 16, margin: {}, padding: {} },
   },
 };
 

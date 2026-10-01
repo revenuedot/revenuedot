@@ -5,3 +5,4 @@ export * from "./repair.js";
 export * from "./gallery.js";
 export * from "./ai.js";
 export * from "./locales.js";
+export * from "./editor.js";

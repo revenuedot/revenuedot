@@ -36,6 +36,8 @@ export default defineConfig({
       // Cloudflare Email Sending: password resets, verification, invites and alerts (prd/account-email/PRD.md). The
       // sending domain mail.revenuedot.app is onboarded on the Circo account; the binding may only send as no-reply@.
       // `cf dev` simulates it (emails are logged) unless REVENUEDOT_EMAIL_REMOTE=1, which sends real email.
+      // Workers AI for "Generate with AI" on paywalls (prd/paywalls/PRD.md §3). No API key; billed to the Circo account.
+      AI: bindings.ai(),
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
     },
   },

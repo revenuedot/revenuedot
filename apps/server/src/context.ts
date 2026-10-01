@@ -33,6 +33,16 @@ export interface Deps {
    * reset uses it so the answer takes the same time whether or not the account exists. Tests pass one they can await.
    */
   defer?: (task: () => Promise<unknown>) => void;
+  /**
+   * The language model for "Generate with AI" on paywalls (services/paywall-ai.ts): Workers AI on Cloud, OpenAI or
+   * Anthropic on self-host when a key is set. Unset: the generator is off.
+   */
+  ai?: import("./services/paywall-ai.js").PaywallModel;
+  /**
+   * The origin apps talk to (REVENUEDOT_API_URL; Cloud: https://api.revenuedot.app). Paywall asset and icon URLs use it, so
+   * a paywall edited on the dashboard host still loads its images from the API host. Unset: the request's origin.
+   */
+  apiUrl?: string;
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

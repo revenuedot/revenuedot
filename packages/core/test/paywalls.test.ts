@@ -218,3 +218,62 @@ describe("localizations and icons", () => {
     expect(paywallIconSvg("nope")).toBeNull();
   });
 });
+
+describe("editor operations", () => {
+  const ICON = "https://api.example.com/assets/icons";
+  const start = () => blankPaywall({ iconBaseUrl: ICON });
+  const ids = (doc: ReturnType<typeof blankPaywall>) => doc.components_config.base.stack.components.map((c: Json) => c.type);
+  it("adds every addable type, and the result stays valid once URLs are set", async () => {
+    const { ADDABLE_TYPES, applyOp, newComponent } = await import("../src/index.js");
+    let doc = start();
+    doc.components_config.base.sticky_footer = null as never;
+    delete (doc.components_config.base as Json).sticky_footer;
+    for (const t of ADDABLE_TYPES) {
+      const c = newComponent(t, { doc, iconBaseUrl: ICON, packages: ["$rc_annual", "$rc_monthly", "$rc_weekly"] });
+      if (t === "video") c.source.light.url = "https://example.com/v.mp4";
+      if (t === "web_view") c.url = "https://example.com/embed";
+      const r = applyOp(doc, { kind: "insert", component: c, targetId: null, position: "after" });
+      expect(r, t).not.toBeNull();
+      doc = r!.doc;
+    }
+    expect(validatePaywall(doc).errors).toEqual([]);
+    expect(doc.components_config.base.sticky_footer?.type).toBe("sticky_footer");
+    const kinds = new Set<string>(); forEachComponent(doc.components_config, (c) => kinds.add(c.type));
+    for (const t of ["text", "image", "icon", "stack", "button", "package", "purchase_button", "sticky_footer", "timeline", "tabs", "tab_control", "tab_control_button", "carousel", "video", "countdown", "web_view"]) expect(kinds.has(t), t).toBe(true);
+  });
+  it("moves, nests, un-nests, duplicates (with new ids and copied strings) and removes", async () => {
+    const { applyOp, locate, newComponent, componentLabel } = await import("../src/index.js");
+    let doc = start();
+    const before = ids(doc);
+    const first = doc.components_config.base.stack.components[1]!; // the title text
+    let r = applyOp(doc, { kind: "move", id: first.id, delta: 1 })!;
+    expect(ids(r.doc)).toEqual([before[0], before[2], before[1]]);
+    expect(applyOp(r.doc, { kind: "move", id: first.id, delta: 5 })).toBeNull();
+    doc = r.doc;
+    // Into the stack above (the plan list), then out again.
+    r = applyOp(doc, { kind: "into", id: first.id })!;
+    expect(locate(r.doc, first.id)!.parentStack!.name).toBe("Plans");
+    r = applyOp(r.doc, { kind: "out", id: first.id })!;
+    expect(locate(r.doc, first.id)!.list).toBe(r.doc.components_config.base.stack.components);
+    // Duplicate.
+    const d = applyOp(r.doc, { kind: "duplicate", id: first.id })!;
+    const copy = locate(d.doc, d.select!)!.component;
+    expect(copy.id).not.toBe(first.id);
+    expect(copy.text_lid).not.toBe(first.text_lid);
+    expect(d.doc.components_localizations.en_US![copy.text_lid]).toBe(d.doc.components_localizations.en_US![first.text_lid]);
+    expect(componentLabel(copy, d.doc.components_localizations.en_US!)).toBe("Your headline");
+    // Insert inside a container, drag before another, remove.
+    const txt = newComponent("text", { doc: d.doc, iconBaseUrl: ICON, packages: [] });
+    const plans = d.doc.components_config.base.stack.components.find((c: Json) => c.name === "Plans")!;
+    const ins = applyOp(d.doc, { kind: "insert", component: txt, targetId: plans.id, position: "inside" })!;
+    expect(locate(ins.doc, txt.id)!.parentStack!.id).toBe(plans.id);
+    const mv = applyOp(ins.doc, { kind: "moveTo", id: txt.id, targetId: first.id, position: "before" })!;
+    expect(locate(mv.doc, txt.id)!.index).toBe(locate(mv.doc, first.id)!.index - 1);
+    expect(applyOp(mv.doc, { kind: "moveTo", id: plans.id, targetId: plans.components?.[0]?.id ?? plans.id, position: "inside" })).toBeNull();
+    const rm = applyOp(mv.doc, { kind: "remove", id: txt.id })!;
+    expect(locate(rm.doc, txt.id)).toBeNull();
+    expect(validatePaywall(rm.doc).errors).toEqual([]);
+    // The root cannot move.
+    expect(applyOp(rm.doc, { kind: "remove", id: rm.doc.components_config.base.stack.id })).toBeNull();
+  });
+});
