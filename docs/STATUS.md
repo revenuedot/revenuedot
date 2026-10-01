@@ -28,7 +28,7 @@
 | 1.16 Brand and site | live | https://revenuedot.app (www.revenuedot.app redirects there with a 301): `apps/site` (Astro, static) with home, pricing, compare, migrate, self-host, docs with search, blog, changelog, legal, security; SEO/JSON-LD/llms.txt; Lighthouse 100/96+/100/100. Deployed with the `cf` CLI (`pnpm --filter site run deploy`) from CI: `deploy.yml` here for site changes, `deploy-site.yml` in revenuedot/docs for docs changes. Mail at hello@, security@ and legal@revenuedot.app works. Spec: `prd/site/PRD.md` |
 
 ## Tier 2 progress
-RevenueCat's v2 spec has 128 operations; the server now serves 91 of them (was 73). Left: discounts (10, Web Billing), invoices (2), paywalls (12) and paywall assets (4), audiences (6), charts (3), `restore_purchase_by_order_id`, app `authenticate` (IAM), `create_in_store`.
+RevenueCat's v2 spec has 128 operations; the server now serves 89 of them (was 73). Left: discounts (10, Web Billing), invoices (2), paywalls (12) and paywall assets (4), audiences (6), charts (2), `restore_purchase_by_order_id`, app `authenticate` (IAM), `create_in_store`.
 | Feature | State | Notes |
 |---|---|---|
 | In-app currencies | done · tested | 10 v2 endpoints, product grants credit a balance once per store transaction (purchases, renewals, trial starts, one-time), SDK balances at `/v1/subscribers/{id}/virtual_currencies`. `packages/contract/test/v2-extras.test.ts` |
