@@ -90,3 +90,6 @@ jobs:
           for u in / /docs /pricing /sitemap.xml /llms.txt; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://revenuedot.app$u"); echo "$u $code"; [ "$code" = 200 ]
           done
+      - name: Tell search engines (IndexNow)
+        continue-on-error: true
+        run: node apps/site/scripts/indexnow.mjs
