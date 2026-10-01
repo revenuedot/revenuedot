@@ -76,6 +76,12 @@ export function customerExtraRoutes(r: V2Router, deps: Deps) {
     return c.json({ object: "customer_center_config", customer_center: await customerCenterFor(db, projectId) });
   });
 
+  // RevenueDot extension: the stored overrides and the configuration they produce (what the dashboard editor shows).
+  r.get(`${P}/customer_center_config`, scope("project_configuration:projects:read"), async (c) => {
+    const [row] = await db.select({ cc: schema.projects.customerCenter }).from(schema.projects).where(eq(schema.projects.id, c.get("projectId"))).limit(1);
+    return c.json({ object: "customer_center_config", customer_center: await customerCenterFor(db, c.get("projectId")), overrides: row?.cc ?? null });
+  });
+
   // RevenueDot extension: change the stored Customer Center configuration (merged over the default).
   r.post(`${P}/customer_center_config`, scope("project_configuration:projects:read_write"), async (c) => {
     const b = await body(c, z.object({ customer_center: z.record(z.unknown()).nullable() }).strict());

@@ -14,6 +14,8 @@ import { ApiKeys } from "./pages/setup/ApiKeys";
 import { Integrations } from "./pages/setup/Integrations";
 import { WebhookDetail, WebhookEdit, WebhookList, WebhookNew } from "./pages/setup/Webhooks";
 import { ProjectSettingsPage } from "./pages/setup/ProjectSettings";
+import { VirtualCurrenciesPage } from "./pages/catalog/VirtualCurrencies";
+import { CustomerCenterPage } from "./pages/lifecycle/CustomerCenter";
 
 /** Project routes. URL paths mirror RevenueCat's dashboard so bookmarks and muscle memory carry over. */
 export const routes = [
@@ -28,6 +30,8 @@ export const routes = [
   <Route key="catalog-product" path="/projects/:projectId/product-catalog/products/:productId" element={<ProductDetail />} />,
   <Route key="catalog-entitlements" path="/projects/:projectId/product-catalog/entitlements" element={<EntitlementsPage />} />,
   <Route key="catalog-entitlement" path="/projects/:projectId/product-catalog/entitlements/:entitlementId" element={<EntitlementDetail />} />,
+  <Route key="catalog-currencies" path="/projects/:projectId/product-catalog/virtual-currencies" element={<VirtualCurrenciesPage />} />,
+  <Route key="customer-center" path="/projects/:projectId/lifecycle/customer-center" element={<CustomerCenterPage />} />,
   <Route key="project-new" path="/projects/new" element={<NewProject />} />,
   <Route key="apps" path="/projects/:projectId/apps" element={<Apps />} />,
   <Route key="app" path="/projects/:projectId/apps/:appId" element={<AppConfig />} />,

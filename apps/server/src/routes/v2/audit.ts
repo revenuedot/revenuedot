@@ -27,7 +27,7 @@ export function parseWrite(method: string, path: string): Parsed | null {
   if (seg[0] !== "v2" || seg[1] !== "projects") return null;
   const rest = seg.slice(3);
   if (!seg[2]) return null;
-  if (!rest.length) return method === "POST" ? { actionType: "project_updated", targetType: "project", targetId: seg[2] } : method === "DELETE" ? { actionType: "project_deleted", targetType: "project", targetId: seg[2] } : null;
+  if (!rest.length) return method === "POST" ? { actionType: "project_updated", targetType: "project", targetId: seg[2] } : null; // deleting the project deletes its log too (a row for it would break the foreign key)
   let i = 0;
   if (rest[0] === "integrations") i = 1;
   const coll = rest[i]!;

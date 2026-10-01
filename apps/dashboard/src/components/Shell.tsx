@@ -20,7 +20,7 @@ const NAV: Item[] = [
   { label: "Customers", to: "customers", icon: "customers" },
   { label: "Product catalog", icon: "catalog", children: [
     { label: "Offerings", to: "product-catalog/offerings" }, { label: "Products", to: "product-catalog/products" },
-    { label: "Entitlements", to: "product-catalog/entitlements" }, { label: "In-app currencies", to: "product-catalog/virtual-currencies", soon: true },
+    { label: "Entitlements", to: "product-catalog/entitlements" }, { label: "In-app currencies", to: "product-catalog/virtual-currencies" },
     { label: "Web discounts", to: "web-discounts", soon: true },
   ] },
   { label: "Paywalls", to: "paywalls", icon: "paywalls", soon: true },
@@ -29,7 +29,7 @@ const NAV: Item[] = [
   { label: "Funnels", to: "funnels", icon: "funnels", soon: true },
   { label: "Ads", icon: "ads", children: [{ label: "Overview", to: "ads", soon: true }, { label: "Rewards", to: "ads/rewards", soon: true }] },
   { label: "Lifecycle", icon: "lifecycle", children: [
-    { label: "Customer Center", to: "lifecycle/customer-center", soon: true }, { label: "Support", to: "lifecycle/support", soon: true },
+    { label: "Customer Center", to: "lifecycle/customer-center" }, { label: "Support", to: "lifecycle/support", soon: true },
     { label: "Retention", to: "lifecycle/retention", soon: true }, { label: "Refund control", to: "lifecycle/refund-control", soon: true },
     { label: "Win-back", to: "lifecycle/winback", soon: true },
   ] },

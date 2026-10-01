@@ -154,6 +154,12 @@ describe("customer center", () => {
     expect(merged.support).toMatchObject({ email: "help@scanner.app", display_purchase_history_link: true });
     expect(merged.screens.MANAGEMENT).toMatchObject({ title: "Your plan", type: "MANAGEMENT" });
     expect(merged.screens.MANAGEMENT.paths).toHaveLength(3);
+
+    const read = await call("GET", "/v2/projects/{project_id}/customer_center_config", {}, { ext: true });
+    expect(read.body.overrides).toMatchObject({ support: { email: "help@scanner.app" } });
+    expect(read.body.customer_center.support.display_purchase_history_link).toBe(true);
+    await call("POST", "/v2/projects/{project_id}/customer_center_config", {}, { ext: true, json: { customer_center: null } });
+    expect((await call("GET", "/v2/projects/{project_id}/customer_center_config", {}, { ext: true })).body.overrides).toBeNull();
   });
 });
 

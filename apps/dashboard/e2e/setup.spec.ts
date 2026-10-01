@@ -418,7 +418,7 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await page.getByRole("tab", { name: "Collaborators" }).click();
     await expect(page.getByRole("row", { name: new RegExp(`setup-${stamp}@revenuedot.test`) })).toContainText("Admin");
     await page.getByRole("tab", { name: /Audit logs/ }).click();
-    await expect(page.getByRole("heading", { name: "Audit logs comes in a later release" })).toBeVisible();
+    await expect(page.getByText(/No changes recorded|Dashboard user/).first()).toBeVisible();
   });
 
   await test.step("delete an app, then the project, each after confirmation", async () => {
