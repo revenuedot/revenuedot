@@ -32,7 +32,9 @@ function trailingToolResults(prompt: Prompt): { toolName: string; output: unknow
 const money = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : String(v));
 
 /** The default script: enough intelligence for the demo flows, nothing more. */
-export const defaultScript: FakeScript = ({ tools, lastUserText: text, lastToolResults }) => {
+export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, lastToolResults }) => {
+  const sys = prompt.find((m) => m.role === "system");
+  const base = /\/projects\/[A-Za-z0-9_]+/.exec(typeof sys?.content === "string" ? sys.content : "")?.[0] ?? "";
   if (lastToolResults.length) {
     const r = lastToolResults[0]!;
     const out = r.output as Record<string, any>;
@@ -40,7 +42,7 @@ export const defaultScript: FakeScript = ({ tools, lastUserText: text, lastToolR
     if (typeof out === "string" || out?.error) return { text: `That did not work: ${typeof out === "string" ? out : out.error}` };
     if (r.toolName === "get-metrics" && Array.isArray(out?.metrics)) {
       const by = Object.fromEntries(out.metrics.map((m: { id: string; value: number }) => [m.id, m.value]));
-      return { text: `**MRR is ${money(by.mrr)}** with ${by.active_subscriptions ?? 0} active subscriptions and ${by.active_trials ?? 0} trials. Revenue in the last 28 days was ${money(by.revenue)}.\n\n- New customers (28 days): ${by.new_customers ?? 0}\n- Active customers (28 days): ${by.active_users ?? 0}\n\nSee the [MRR chart](charts/mrr) for the trend.` };
+      return { text: `**MRR is ${money(by.mrr)}** with ${by.active_subscriptions ?? 0} active subscriptions and ${by.active_trials ?? 0} trials. Revenue in the last 28 days was ${money(by.revenue)}.\n\n- New customers (28 days): ${by.new_customers ?? 0}\n- Active customers (28 days): ${by.active_users ?? 0}\n\nSee the [MRR chart](${base}/charts/mrr) for the trend.` };
     }
     if (r.toolName === "grant-customer-entitlement") return { text: `Done. The customer has the entitlement until ${out?.entitlements?.active?.[0]?.expires_at ? new Date(out.entitlements.active[0].expires_at).toDateString() : "the date you chose"}.` };
     if (r.toolName === "get-project-health") return { text: `Setup health: ${out?.apps?.length ?? 0} apps checked, webhooks delivered ${out?.webhooks?.delivered_percent_24h ?? "n/a"}% in the last 24 hours.` };

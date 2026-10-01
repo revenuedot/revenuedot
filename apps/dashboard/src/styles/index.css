@@ -1,0 +1,5 @@
+/* Layer order: app.css (the dashboard, unchanged) under Tailwind's utilities, so the ai-elements components' utility
+   classes win over app.css element rules (button, input) where both apply, and nowhere else. */
+@layer app, theme, base, components, utilities;
+@import "./app.css" layer(app);
+@import "./ai.css";

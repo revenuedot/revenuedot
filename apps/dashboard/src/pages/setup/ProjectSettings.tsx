@@ -7,12 +7,14 @@ import { ConfirmDialog, CopyButton, Dialog, Field, Menu, PageHead, Switch, Tabs,
 import { api, fmt, type List } from "../../lib/api";
 import { AuditLogs } from "./AuditLogs";
 import { DomainsTab } from "../web/Domains";
+import { AiFeaturesTab } from "../ai/AiFeaturesTab";
 import { base, errMsg, type Collaborator, type ProjectSettings as Project, type TransferBehavior } from "./data";
 
 /**
  * Project settings (/projects/:projectId/settings/:tab): General (name, project ID, transfer behaviour for purchases
  * seen on several app user IDs with an optional sandbox behaviour, sandbox testing access, delete), Collaborators, and
- * Audit logs (who changed what, with a date filter), Domains (where purchase links and funnels live, pages/web/Domains.tsx), and AI features as a later-tier tab.
+ * Audit logs (who changed what, with a date filter), Domains (where purchase links and funnels live, pages/web/Domains.tsx), and AI features
+ * (what RevenueDot AI may do here, pages/ai/AiFeaturesTab.tsx).
  * Collaborators: members with roles (admin, developer, viewer), invites by email with resend and revoke (prd/account-email).
  * GAPS vs RevenueCat (frame 28): the Operations, Growth and Support roles, transfer of project ownership,
  * limiting sandbox testing access to allowed testers, and the Brand, Blocked customers and Verified Metrics tabs.
@@ -28,7 +30,7 @@ const BEHAVIORS: { value: TransferBehavior; label: string; text: string }[] = [
 type Tab = "general" | "collaborators" | "audit-logs" | "domains" | "ai";
 const TABS: { value: Tab; label: string; badge?: string }[] = [
   { value: "general", label: "General" }, { value: "collaborators", label: "Collaborators" },
-  { value: "audit-logs", label: "Audit logs" }, { value: "domains", label: "Domains" }, { value: "ai", label: "AI features", badge: "SOON" },
+  { value: "audit-logs", label: "Audit logs" }, { value: "domains", label: "Domains" }, { value: "ai", label: "AI features" },
 ];
 
 function BehaviorSelect({ id, value, onChange }: { id: string; value: TransferBehavior; onChange: (v: TransferBehavior) => void }) {
@@ -325,10 +327,6 @@ function Collaborators({ pid }: { pid: string }) {
   );
 }
 
-const SOON_TEXT: Record<string, [string, string]> = {
-  ai: ["AI features", "Ask questions about your revenue and customers in plain language."],
-};
-
 export function ProjectSettingsPage() {
   const pid = useProjectId();
   const nav = useNavigate();
@@ -351,7 +349,7 @@ export function ProjectSettingsPage() {
           {t === "collaborators" && <Collaborators pid={pid} />}
           {t === "audit-logs" && <AuditLogs pid={pid} />}
           {t === "domains" && <DomainsTab pid={pid} />}
-          {SOON_TEXT[t] && <div className="empty"><h3>{SOON_TEXT[t]![0]} comes in a later release</h3><p>{SOON_TEXT[t]![1]}</p></div>}
+          {t === "ai" && <AiFeaturesTab pid={pid} />}
         </div>
       </div>
     </Shell>

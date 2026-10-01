@@ -19,13 +19,17 @@ import {
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 
-import { CodeBlock } from "./code-block";
+
+/** JSON shown in tool cards (RevenueDot: a plain mono block instead of the Shiki code block, to keep the bundle small). */
+const JsonBlock = ({ code }: { code: string }) => (
+  <pre className="max-h-72 overflow-auto p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-fg-2">{code}</pre>
+);
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-4 w-full rounded-md border", className)}
+    className={cn("group not-prose w-full border bg-card", className)}
     {...props}
   />
 );
@@ -55,17 +59,17 @@ const statusLabels: Record<ToolPart["state"], string> = {
 };
 
 const statusIcons: Record<ToolPart["state"], ReactNode> = {
-  "approval-requested": <ClockIcon className="size-4 text-yellow-600" />,
-  "approval-responded": <CheckCircleIcon className="size-4 text-blue-600" />,
-  "input-available": <ClockIcon className="size-4 animate-pulse" />,
-  "input-streaming": <CircleIcon className="size-4" />,
-  "output-available": <CheckCircleIcon className="size-4 text-green-600" />,
-  "output-denied": <XCircleIcon className="size-4 text-orange-600" />,
-  "output-error": <XCircleIcon className="size-4 text-red-600" />,
+  "approval-requested": <ClockIcon className="size-3.5 text-gold-ink" />,
+  "approval-responded": <CheckCircleIcon className="size-3.5 text-info" />,
+  "input-available": <ClockIcon className="size-3.5 animate-pulse" />,
+  "input-streaming": <CircleIcon className="size-3.5" />,
+  "output-available": <CheckCircleIcon className="size-3.5 text-up" />,
+  "output-denied": <XCircleIcon className="size-3.5 text-fg-3" />,
+  "output-error": <XCircleIcon className="size-3.5 text-down" />,
 };
 
 export const getStatusBadge = (status: ToolPart["state"]) => (
-  <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+  <Badge className="gap-1.5 border border-current bg-transparent px-1.5 py-0 font-mono text-[10.5px] uppercase tracking-wide text-fg-3" variant="secondary">
     {statusIcons[status]}
     {statusLabels[status]}
   </Badge>
@@ -122,7 +126,7 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
       Parameters
     </h4>
     <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      <JsonBlock code={JSON.stringify(input, null, 2)} />
     </div>
   </div>
 );
@@ -146,10 +150,10 @@ export const ToolOutput = ({
 
   if (typeof output === "object" && !isValidElement(output)) {
     Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+      <JsonBlock code={JSON.stringify(output, null, 2)} />
     );
   } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
+    Output = <JsonBlock code={output} />;
   }
 
   return (

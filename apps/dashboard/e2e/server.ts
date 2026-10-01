@@ -27,6 +27,7 @@ import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { fakeStores, webStripe } from "./store-fakes.ts";
 import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
+import { fakeAssistantModel } from "@revenuedot/server/services/assistant/fake-model.js";
 
 const PORT = Number(process.env.PORT ?? 5199);
 const DIST = new URL("../dist", import.meta.url).pathname;
@@ -87,7 +88,10 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
     footer: [{ type: "cta", text: "Start free trial" }, { type: "button", action: "restore" }],
   }) + "\n```";
 });
-const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi });
+// RevenueDot AI answers from a scripted fake model (services/assistant/fake-model.ts): "how is revenue doing" calls
+// get-metrics, "grant pro to <user>" asks for approval, then grants. Conversations stream over SSE from the database.
+const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantModel(undefined, { delayMs: 15 });
+const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse" });
 
 let ready = false;
 const web = new Hono();
@@ -120,7 +124,7 @@ web.post("/__stripe/checkout/:id", async (c) => {
 });
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling|blobs|pay)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
   // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
   if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);

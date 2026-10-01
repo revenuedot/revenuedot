@@ -147,6 +147,7 @@ export function Shell({ title, crumbs, children, actions }: { title: string; cru
             <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) nav(`${base}/customers?q=${encodeURIComponent(q.trim())}`); }}>
               <Icon name="search" /><input aria-label="Search customers" placeholder="Search customers, transactions, IDs" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>⌘K</kbd>
             </form>
+            <NavLink className={({ isActive }) => `ib ai-top${isActive ? " on" : ""}`} to={`${base}/ai`} aria-label="RevenueDot AI" title="RevenueDot AI"><Icon name="spark" /></NavLink>
             <a className="ib" href="https://github.com/revenuedot/revenuedot#readme" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a>
             <button className="ib" type="button" aria-label="Toggle light and dark" onClick={toggleTheme}><Icon name="moon" /></button>
             {actions}

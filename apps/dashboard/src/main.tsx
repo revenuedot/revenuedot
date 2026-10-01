@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import "./styles/app.css";
+import "./styles/index.css";
 import { AuthPage } from "./pages/Auth";
 import { AccountPage, ForgotPasswordPage, InvitePage, ResetPasswordPage, VerifyEmailPage } from "./pages/AccountPages";
 import { Soon } from "./pages/Soon";
