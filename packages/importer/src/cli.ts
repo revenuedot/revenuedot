@@ -1,5 +1,5 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
-// This file: the `revenuedot` command line (import, import verify, import plan).
+// This file: the `revenuedot` command line (import, import verify, import plan, move, export).
 // Docs: https://revenuedot.app/docs/migrate
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -12,10 +12,15 @@ import { formatReport, runImport } from "./run.js";
 import { verifyImport, type VerifyReport } from "./verify.js";
 import { generatePassword, resetPassword, type Query } from "./admin.js";
 import { PromptCancelled, terminalPrompt, type Prompt } from "./prompt.js";
+import { exportCommand, moveCommand } from "./move/command.js";
 
-const HELP = `revenuedot: move a project from RevenueCat to RevenueDot.
+const HELP = `revenuedot: move a project from RevenueCat to RevenueDot, between RevenueDot servers, or export it.
 
 Usage
+  npx revenuedot move --from http://old-server:8787 --to https://api.revenuedot.app [--dry-run]
+  npx revenuedot move --from http://old-server:8787 --to https://api.revenuedot.app --finish
+  npx revenuedot move --from-archive revenuedot-proj.tar --to https://api.revenuedot.app
+  npx revenuedot export --from https://api.revenuedot.app [--out file.tar] [--include-secrets]
   npx revenuedot import --from-revenuecat --rc-project proj... --to https://your-server
   npx revenuedot import verify --rc-project proj... --to https://your-server
   npx revenuedot import plan --to https://your-server [--rc-project proj...]
@@ -40,6 +45,18 @@ Options
   --database-url <url>    admin: the server's Postgres (or DATABASE_URL), e.g. postgres://revenuedot:...@localhost:5432/revenuedot
   -h, --help              Show this help
 
+Moves between RevenueDot servers (Cloud and self-host)
+  --from <url>            The server the project is on now (or REVENUEDOT_FROM_URL)
+  --to <url>              The server it moves to
+  --from-archive <file>   An archive from npx revenuedot export instead of --from
+  --dry-run               Export and show what would change on the target (rows per table); write nothing
+  --finish                Switch: pause writes on --from, copy again, verify, go live on --to, forward --from there
+  --replace               Replace a moved-away copy of the project that is still on --to
+  --out <file>            export: where to save the .tar
+  --include-secrets       export: include store keys and webhook secrets, encrypted with a passphrase you type
+  Keys: REVENUEDOT_FROM_KEY (a secret key of the project on --from) and REVENUEDOT_TO_TOKEN (an import token from
+  --to: Receive a project). In a terminal the CLI asks for both and hides what you type.
+
 Keys
   In a terminal, the CLI asks for each missing key. Without one (CI, piped input), set:
   REVENUECAT_API_KEY      RevenueCat secret API key, v2, read-only is enough (sk_...)
@@ -51,6 +68,7 @@ Docs: https://revenuedot.app/docs/migrate`;
 export interface CliIO {
   out: (s: string) => void; err: (s: string) => void; env: Record<string, string | undefined>; http?: HttpOptions; targetHttp?: HttpOptions; isTTY?: boolean;
   /** admin commands: SQL runner (tests); default: postgres at DATABASE_URL. */ query?: Query;
+  /** move: no real waiting, and archive files from memory (tests). */ sleep?: (ms: number) => Promise<void>; readFile?: (path: string) => Uint8Array;
   /** Asks for a missing key. Set only when stdin and stderr are terminals; without it a missing key is a usage error. */ prompt?: Prompt;
 }
 
@@ -85,6 +103,8 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
         "dry-run": { type: "boolean" }, restart: { type: "boolean" }, concurrency: { type: "string" }, limit: { type: "string" },
         "page-size": { type: "string" }, "google-tokens": { type: "string" }, "no-public-keys": { type: "boolean" }, "emit-events": { type: "boolean" },
         json: { type: "boolean" }, help: { type: "boolean", short: "h" }, password: { type: "string" }, "database-url": { type: "string" },
+        from: { type: "string" }, "from-key": { type: "string" }, "from-archive": { type: "string" }, "to-token": { type: "string" },
+        finish: { type: "boolean" }, replace: { type: "boolean" }, out: { type: "string" }, "include-secrets": { type: "boolean" },
       },
     });
   } catch (e) {
@@ -95,6 +115,15 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
   const [cmd, sub] = positionals;
   if (v.help || !cmd) { io.out(HELP); return cmd || v.help ? 0 : 2; }
   if (cmd === "admin") return admin(sub, positionals.slice(2), v, io);
+  if (cmd === "move" || cmd === "export") {
+    const mio = { out: io.out, err: io.err, env: io.env, prompt: io.prompt, http: io.targetHttp ?? io.http, isTTY: io.isTTY, sleep: io.sleep, readFile: io.readFile };
+    try {
+      return cmd === "move" ? await moveCommand(v, mio) : await exportCommand(v, mio);
+    } catch (e) {
+      if (e instanceof PromptCancelled) return 130;
+      throw e;
+    }
+  }
   if (cmd !== "import" || (sub && sub !== "verify" && sub !== "plan")) { io.err(`Unknown command: ${positionals.join(" ")}\n\n${HELP}`); return 2; }
 
   let rcKey = v["rc-key"] ?? io.env.REVENUECAT_API_KEY;

@@ -44,7 +44,7 @@ beforeEach(async () => {
   await seedEverything(src.db, k1, { userId: "usr_owner" });
   dst = await openDb("pglite://memory");
   await dst.db.insert(schema.users).values([{ id: "usr_target", email: "mover@example.com" }, { id: "usr_owner_t", email: "owner@example.com" }]);
-  srcApp = createApp({ db: src.db, now: src.now, stores: defaultStores(), encryptionKey: K1, fetch: net, apiUrl: "http://source.test" });
+  srcApp = createApp({ db: src.db, now: src.now, stores: defaultStores(), encryptionKey: K1, fetch: net, apiUrl: "http://source.test", moveDrainSeconds: 0 });
   dstApp = createApp({ db: dst.db, now: src.now, stores: defaultStores(), encryptionKey: K2, fetch: net, apiUrl: "http://target.test" });
 });
 afterEach(async () => { await src.close(); await dst.close(); });
@@ -266,4 +266,35 @@ describe("move states", () => {
     await dst.db.insert(schema.projects).values({ id: "proj1", name: "Someone else's" });
     await expect(move(PASS)).rejects.toThrow(/already exists/);
   });
+
+  it("the dashboard's move: this server runs the copy, the dry run, verification and the finish itself", async () => {
+    const token = (await createImportToken(dst.db, "usr_target", src.now())).token;
+    const H = { authorization: `Bearer ${src.ids.secretKey}`, "content-type": "application/json" };
+    const call = async (path: string, body?: unknown) => (await srcApp.fetch(new Request(`http://source.test/v2/projects/proj1${path}`, { method: body === undefined ? "GET" : "POST", headers: H, body: body === undefined ? undefined : JSON.stringify(body) }))).json() as Promise<Record<string, any>>;
+    const until = async (want: string[]) => {
+      let m = await call("/move/actions/advance", {});
+      for (let i = 0; i < 200 && !want.includes(m.status); i++) m = await call("/move/actions/advance", {});
+      return m;
+    };
+    const bad = await srcApp.fetch(new Request("http://source.test/v2/projects/proj1/move", { method: "POST", headers: H, body: JSON.stringify({ to_url: "http://source.test", to_token: token }) }));
+    expect(bad.status).toBe(400);
+    let m = await call("/move", { to_url: "http://target.test", to_token: token, dry_run: true });
+    m = await until(["ready", "failed"]);
+    expect(m).toMatchObject({ status: "ready", dry_run: true });
+    expect(m.plan.tables.find((t: { name: string }) => t.name === "customers")).toEqual({ name: "customers", archive_rows: 2, target_rows: 0 });
+    expect(await dst.db.select().from(schema.projects)).toEqual([]);
+    m = await call("/move", { to_url: "http://target.test", to_token: token });
+    m = await until(["copied", "failed"]);
+    expect(m.status, m.error).toBe("copied");
+    expect(m.verify.every((t: { match: boolean }) => t.match)).toBe(true);
+    m = await call("/move/finish", {});
+    m = await until(["finished", "failed"]);
+    expect(m.status, m.error).toBe("finished");
+    expect(m.report.notification_urls.length).toBeGreaterThan(0);
+    const state = await call("/move");
+    expect(state).toMatchObject({ state: "forwarded", moved_to_url: "http://target.test" });
+    const [p] = await dst.db.select().from(schema.projects);
+    expect(p!.moveState).toBeNull();
+  });
 });
+

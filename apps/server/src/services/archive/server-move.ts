@@ -79,7 +79,7 @@ export async function advanceServerMove(deps: Deps, id: string, budgetMs = 8_000
     const result = await runMove({
       source: localSource(deps, rt, claimed.projectId, s.source),
       target: new HttpTarget(claimed.targetUrl, secrets.token!, { fetch: deps.fetch ?? fetch, maxRetries: 1, sleep: async () => {} }),
-      passphrase: secrets.passphrase!, now: () => Date.now(), save, replace: true,
+      passphrase: secrets.passphrase!, now: () => Date.now(), save, replace: true, drainSeconds: deps.moveDrainSeconds ?? 10,
     }, s, Date.now() + budgetMs);
     const status = result === "done" ? (s.mode === "finish" ? "finished" : s.dryRun ? "ready" : "copied") : "running";
     const [row] = await deps.db.update(M).set({ status, state: s as unknown as Record<string, unknown>, error: null, leaseUntil: null, updatedAt: deps.now() }).where(eq(M.id, id)).returning();
