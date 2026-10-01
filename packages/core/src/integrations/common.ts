@@ -83,12 +83,14 @@ export type WebhookEvent = Record<string, any>;
 export type Concept =
   | "initial_purchase" | "trial_started" | "trial_converted" | "trial_cancelled" | "renewal" | "cancellation" | "uncancellation"
   | "non_subscription_purchase" | "subscription_paused" | "expiration" | "billing_issue" | "product_change" | "transfer"
-  | "purchase_redeemed" | "experiment_enrollment" | "refund_reversed" | "test";
+  | "purchase_redeemed" | "experiment_enrollment" | "refund_reversed" | "test"
+  | "funnel_viewed" | "funnel_step_completed" | "funnel_purchase";
 
 export const CONCEPTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "transfer",
   "purchase_redeemed", "experiment_enrollment", "refund_reversed", "test",
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
 ];
 
 export function conceptOf(e: WebhookEvent): Concept | null {
@@ -108,6 +110,9 @@ export function conceptOf(e: WebhookEvent): Concept | null {
     case "EXPERIMENT_ENROLLMENT": return "experiment_enrollment";
     case "REFUND_REVERSED": return "refund_reversed";
     case "TEST": return "test";
+    case "FUNNEL_VIEWED": return "funnel_viewed";
+    case "FUNNEL_STEP_COMPLETED": return "funnel_step_completed";
+    case "FUNNEL_PURCHASE": return "funnel_purchase";
     default: return null;
   }
 }
@@ -115,6 +120,7 @@ export function conceptOf(e: WebhookEvent): Concept | null {
 /** The analytics tools' default event names (`rc_<step>_event`), the same names RevenueCat's integrations use. */
 export function defaultAnalyticsName(c: Concept): string {
   if (c === "purchase_redeemed") return "rc_purchase_redeemed";
+  if (c === "funnel_viewed" || c === "funnel_step_completed" || c === "funnel_purchase") return `rd_${c}`;
   if (c === "non_subscription_purchase") return "rc_non_subscription_purchase_event";
   return `rc_${c}_event`;
 }
@@ -231,6 +237,15 @@ export const platformOf = (store: unknown): "ios" | "android" | "web" | "other" 
 
 export const json = (o: unknown) => JSON.stringify(o);
 
+/** RevenueDot funnel events (prd/web-billing/PRD.md §5): the funnel, step, answer and utm_* fields, for the analytics tools. */
+export function funnelProperties(e: WebhookEvent): Record<string, unknown> {
+  if (typeof e.type !== "string" || !e.type.startsWith("FUNNEL_")) return {};
+  const out: Record<string, unknown> = {};
+  for (const k of ["funnel_id", "funnel_name", "funnel_slug", "session_id", "step_id", "step_type", "step_index", "answer", "product_id", "package"]) if (e[k] !== undefined) out[k] = e[k];
+  for (const [k, v] of Object.entries(e)) if (/^utm_/.test(k)) out[k] = v;
+  return out;
+}
+
 /** Common event properties the analytics tools receive, with ISO dates (Amplitude, PostHog). */
 export function lifecycleProperties(e: WebhookEvent, reporting: unknown) {
   const props: Record<string, unknown> = {
@@ -260,3 +275,23 @@ export const REPORTING: IntegrationField = {
 /** The integrations guide; each catalogue entry links to its section. */
 export const DOCS = "https://revenuedot.app/docs/guides/integrations";
 
+
+/** RevenueDot web funnel steps (opt-in event types FUNNEL_VIEWED, FUNNEL_STEP_COMPLETED, FUNNEL_PURCHASE). */
+export const FUNNEL_CONCEPTS: Concept[] = ["funnel_viewed", "funnel_step_completed", "funnel_purchase"];
+export const isFunnelConcept = (c: Concept | null): c is Concept => !!c && FUNNEL_CONCEPTS.includes(c);
+
+/**
+ * What an ad network needs from a funnel event to match a web visitor (services/web/funnels.ts records it when an
+ * integration asks for funnel events): the browser's IP, user agent and page URL, the ad click ids from the landing URL
+ * (fbclid, gclid, gbraid, wbraid, ttclid, msclkid), the utm_* parameters, and the purchase's USD revenue.
+ */
+export function funnelAdContext(e: WebhookEvent) {
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const clickIds = (e.click_ids && typeof e.click_ids === "object" ? e.click_ids : {}) as Record<string, string>;
+  const utm = Object.fromEntries(Object.entries(e).filter(([k, v]) => /^utm_[a-z_]+$/.test(k) && typeof v === "string")) as Record<string, string>;
+  return {
+    ip: s(e.client_ip), userAgent: s(e.client_user_agent), pageUrl: s(e.page_url), clickIds, utm,
+    revenue: typeof e.revenue_usd === "number" && e.revenue_usd > 0 ? round(e.revenue_usd) : 0,
+    emailStep: e.step_type === "email",
+  };
+}

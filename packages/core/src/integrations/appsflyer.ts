@@ -1,4 +1,4 @@
-import { attr, conceptOf, defaultAnalyticsName, isSandbox, json, nameFor, platformOf, revenueUsd, skip, type BuildInput, type Concept, type Plan } from "./common.js";
+import { FUNNEL_CONCEPTS, attr, conceptOf, defaultAnalyticsName, funnelAdContext, isFunnelConcept, isSandbox, json, nameFor, platformOf, revenueUsd, skip, type BuildInput, type Concept, type Plan } from "./common.js";
 
 /**
  * AppsFlyer: server-to-server in-app events (https://dev.appsflyer.com/hc/reference/s2s-events-api3-post).
@@ -11,8 +11,11 @@ import { attr, conceptOf, defaultAnalyticsName, isSandbox, json, nameFor, platfo
 
 export const APPSFLYER_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation",
-  "non_subscription_purchase", "expiration", "billing_issue", "product_change", "refund_reversed", "test",
+  "non_subscription_purchase", "expiration", "billing_issue", "product_change", "refund_reversed", "test", ...FUNNEL_CONCEPTS,
 ];
+
+/** AppsFlyer's Web S2S API (the request RevenueCat publishes for its own web events: https://www.revenuecat.com/docs/integrations/attribution/reference/appsflyer). */
+export const APPSFLYER_WEB_S2S = "https://events.appsflyer.com/v2.0/s2s/inapps/app/web";
 
 const pad = (n: number, w = 2) => String(n).padStart(w, "0");
 /** AppsFlyer's eventTime: "yyyy-MM-dd HH:mm:ss.SSS" in UTC. */
@@ -25,6 +28,7 @@ export async function buildAppsFlyer(i: BuildInput): Promise<Plan> {
   const e = i.event;
   const c = conceptOf(e);
   if (!c || !APPSFLYER_EVENTS.includes(c)) return skip(`${e.type} events are not sent to AppsFlyer.`);
+  if (isFunnelConcept(c)) return buildAppsFlyerWeb(i, c);
   const key = isSandbox(e) ? i.secrets.sandbox_dev_key : i.secrets.dev_key;
   if (!key) return skip(isSandbox(e) ? "Sandbox events need a sandbox developer key." : "No AppsFlyer developer key is saved.");
   const platform = platformOf(e.store);
@@ -57,5 +61,30 @@ export async function buildAppsFlyer(i: BuildInput): Promise<Plan> {
     name,
     requests: [{ method: "POST", url: `${host}/inappevent/${encodeURIComponent(appId)}`, headers: { "content-type": "application/json", authentication: key }, body: json(body) }],
     redact: [key],
+  };
+}
+
+/**
+ * Web funnel events (opt-in) through AppsFlyer's Web S2S API: `POST https://events.appsflyer.com/v2.0/s2s/inapps/app/web/{web app id}`
+ * with `Authorization: Bearer <Web S2S token>`; the visitor is `user_id.customer_user_id` (the anonymous app user id the
+ * purchase is made under, which your AppsFlyer web SDK should set as its customer user id). Names are rd_funnel_*; the
+ * purchase carries `event_revenue` in USD; `event_value` has the funnel, step, utm_* and ad click ids.
+ * Settings: `web_app_id`; secret: `web_s2s_token`. Sandbox funnel events are not sent (AppsFlyer has no web sandbox).
+ */
+async function buildAppsFlyerWeb(i: BuildInput, c: Concept): Promise<Plan> {
+  const e = i.event;
+  if (isSandbox(e)) return skip("Sandbox funnel events are not sent to AppsFlyer, which has no web sandbox.");
+  const app = typeof i.settings.web_app_id === "string" ? i.settings.web_app_id.trim() : "";
+  const token = i.secrets.web_s2s_token;
+  if (!app || !token) return skip("Funnel events need the AppsFlyer web app ID and Web S2S token.");
+  const ctx = funnelAdContext(e);
+  const name = nameFor(c, defaultAnalyticsName, i.eventNames)!;
+  const value: Record<string, unknown> = { event_id: e.id, funnel_id: e.funnel_id ?? null, funnel_name: e.funnel_name ?? null, step_id: e.step_id ?? null, step_type: e.step_type ?? null, product_id: e.product_id ?? null, ...ctx.utm, ...ctx.clickIds };
+  const body: Record<string, unknown> = { event_name: name, event_value: value, user_id: { customer_user_id: String(e.app_user_id ?? "") } };
+  if (c === "funnel_purchase" && ctx.revenue > 0) Object.assign(body, { event_revenue: ctx.revenue, event_revenue_currency: "USD" });
+  return {
+    name,
+    requests: [{ method: "POST", url: `${APPSFLYER_WEB_S2S}/${encodeURIComponent(app)}`, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: json(body) }],
+    redact: [token],
   };
 }

@@ -1,4 +1,4 @@
-import { attr, conceptOf, isSandbox, json, nameFor, platformOf, revenueUsd, sha256Hex, skip, type BuildInput, type Concept, type Plan } from "./common.js";
+import { attr, conceptOf, funnelAdContext, isFunnelConcept, isSandbox, json, nameFor, platformOf, revenueUsd, sha256Hex, skip, type BuildInput, type Concept, type Plan } from "./common.js";
 
 /**
  * Meta: app events through the Conversions API (https://developers.facebook.com/docs/marketing-api/conversions-api/app-events).
@@ -15,6 +15,8 @@ export const META_GRAPH = "https://graph.facebook.com/v21.0";
 export const META_NAMES: Partial<Record<Concept, string>> = {
   trial_started: "StartTrial", initial_purchase: "Subscribe", trial_converted: "Subscribe", renewal: "Subscribe",
   non_subscription_purchase: "fb_mobile_purchase", test: "Subscribe",
+  // Web funnels (opt-in): website events. A funnel's email step completes as Lead (see buildMetaWeb).
+  funnel_viewed: "ViewContent", funnel_step_completed: "FunnelStepCompleted", funnel_purchase: "Purchase",
 };
 
 const ZERO_ID = /^[0-]+$/;
@@ -31,6 +33,7 @@ export async function buildMeta(i: BuildInput): Promise<Plan> {
   const dataset = sandbox ? i.settings.sandbox_dataset_id : i.settings.dataset_id;
   const token = sandbox ? i.secrets.sandbox_access_token : i.secrets.access_token;
   if (!dataset || !token) return skip(sandbox ? "Sandbox events need a sandbox dataset ID and access token." : "No Meta dataset ID and access token are saved.");
+  if (isFunnelConcept(c)) return buildMetaWeb(i, c, name, dataset, token);
   const platform = platformOf(e.store);
   const anon = attr(e, "$fbAnonId");
   const madid = platform === "ios" ? validAdId(attr(e, "$idfa")) : platform === "android" ? validAdId(attr(e, "$gpsAdId")) ?? validAdId(attr(e, "$amazonAdId")) : validAdId(attr(e, "$amazonAdId"));
@@ -58,4 +61,30 @@ export async function buildMeta(i: BuildInput): Promise<Plan> {
   const body: Record<string, unknown> = { data: [event], access_token: token, partner_agent: "revenuedot" };
   if (i.settings.test_event_code) body.test_event_code = i.settings.test_event_code;
   return { name, requests: [{ method: "POST", url: `${META_GRAPH}/${encodeURIComponent(dataset)}/events`, headers: { "content-type": "application/json" }, body: json(body) }], redact: [token] };
+}
+
+/**
+ * Web funnel events as website events (https://developers.facebook.com/docs/marketing-api/conversions-api/parameters):
+ * `action_source: website` with `event_source_url` and the visitor's `client_user_agent` (both required for website
+ * events), `client_ip_address`, `fbc` built from the landing URL's fbclid (`fb.1.<ms>.<fbclid>`), and `external_id`
+ * (SHA-256 of the visitor's anonymous app user id, the same id the purchase is made under). The purchase carries its USD
+ * value. Web purchases also arrive as INITIAL_PURCHASE from the Stripe store, which Meta's app events skip (no device id),
+ * so a funnel purchase is counted once.
+ */
+async function buildMetaWeb(i: BuildInput, c: Concept, name: string, dataset: string, token: string): Promise<Plan> {
+  const e = i.event;
+  const ctx = funnelAdContext(e);
+  if (!ctx.userAgent || !ctx.pageUrl) return skip("Meta website events need the visitor's browser user agent and page URL; RevenueDot records them for funnel visits that start after an integration asks for funnel events.");
+  const finalName = c === "funnel_step_completed" && ctx.emailStep && !i.eventNames?.[c] ? "Lead" : name;
+  const at = e.event_timestamp_ms ?? i.now.getTime();
+  const user_data: Record<string, unknown> = { external_id: [await sha256Hex(String(e.app_user_id ?? ""))], client_user_agent: ctx.userAgent };
+  if (ctx.ip) user_data.client_ip_address = ctx.ip;
+  if (ctx.clickIds.fbclid) user_data.fbc = `fb.1.${at}.${ctx.clickIds.fbclid}`;
+  const custom_data: Record<string, unknown> = { content_name: e.funnel_name ?? undefined, content_category: "funnel", funnel_id: e.funnel_id ?? undefined };
+  if (c === "funnel_step_completed") Object.assign(custom_data, { step_id: e.step_id ?? undefined, step_type: e.step_type ?? undefined });
+  if (c === "funnel_purchase") Object.assign(custom_data, { currency: "USD", value: ctx.revenue, content_type: "product", content_ids: e.product_id ? [e.product_id] : undefined });
+  const event = { event_name: finalName, event_time: Math.floor(at / 1000), event_id: String(e.id), action_source: "website", event_source_url: ctx.pageUrl, user_data, custom_data };
+  const body: Record<string, unknown> = { data: [event], access_token: token, partner_agent: "revenuedot" };
+  if (i.settings.test_event_code) body.test_event_code = i.settings.test_event_code;
+  return { name: finalName, requests: [{ method: "POST", url: `${META_GRAPH}/${encodeURIComponent(dataset)}/events`, headers: { "content-type": "application/json" }, body: json(body) }], redact: [token] };
 }

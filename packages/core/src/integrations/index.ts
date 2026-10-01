@@ -77,7 +77,9 @@ export const INTEGRATIONS: IntegrationSpec[] = [
       { key: "sandbox_dev_key", label: "Sandbox developer key", type: "secret", hint: "Without it sandbox events are not sent." },
       { key: "s2s_token", label: "The key is an S2S token", type: "boolean" },
       { key: "ios_app_id", label: "iOS app ID", type: "text", placeholder: "id123456789" },
-      { key: "android_app_id", label: "Android app ID", type: "text", placeholder: "com.example.app" }, REPORTING,
+      { key: "android_app_id", label: "Android app ID", type: "text", placeholder: "com.example.app" },
+      { key: "web_app_id", label: "Web app ID", type: "text", hint: "Optional, for web funnel events (FUNNEL_* in the event filter): the AppsFlyer web app (brand bundle) ID." },
+      { key: "web_s2s_token", label: "Web S2S token", type: "secret", hint: "Optional, with the web app ID: the token for AppsFlyer's Web S2S API." }, REPORTING,
     ] },
   { kind: "adjust", name: "Adjust", category: "attribution", text: "Report purchases and renewals to Adjust with event tokens you choose.", environment: "both", eventNames: false, docs: `${DOCS}#adjust`,
     fields: [
@@ -162,6 +164,7 @@ export const STEP_LABELS: Record<Concept, string> = {
   renewal: "Renewal", cancellation: "Cancellation or refund", uncancellation: "Uncancellation", non_subscription_purchase: "One-time purchase",
   subscription_paused: "Subscription paused", expiration: "Expiration", billing_issue: "Billing issue", product_change: "Product change",
   transfer: "Transfer", purchase_redeemed: "Web purchase redeemed", experiment_enrollment: "Experiment enrollment", refund_reversed: "Refund reversed", test: "Test event",
+  funnel_viewed: "Funnel viewed", funnel_step_completed: "Funnel step completed", funnel_purchase: "Funnel purchase",
 };
 
 /** The name an integration sends for a step when no override is set (null: the integration has no event names). */

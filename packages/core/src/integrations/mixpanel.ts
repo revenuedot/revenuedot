@@ -1,4 +1,4 @@
-import { attr, basicAuth, type OutRequest, conceptOf, defaultAnalyticsName, isSandbox, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
+import { attr, basicAuth, type OutRequest, conceptOf, funnelProperties, defaultAnalyticsName, isSandbox, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
 
 /**
  * Mixpanel: the event through the Ingestion API, then a profile update with `rc_subscription_status` and, for money,
@@ -14,6 +14,7 @@ export const MIXPANEL_HOSTS = { us: "https://api.mixpanel.com", eu: "https://api
 export const MIXPANEL_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "refund_reversed", "test",
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
 ];
 
 /** Mixpanel's $insert_id allows 36 alphanumeric characters or dashes. */
@@ -43,6 +44,7 @@ export async function buildMixpanel(i: BuildInput): Promise<Plan> {
   if (e.expiration_reason) properties.expiration_reason = e.expiration_reason;
   if (e.new_product_id) properties.new_product_id = e.new_product_id;
   if (e.is_trial_conversion !== undefined) properties.is_trial_conversion = e.is_trial_conversion;
+  Object.assign(properties, funnelProperties(e));
   const track: OutRequest = secret
     ? { method: "POST" as const, url: `${host}/import?strict=1`, headers: { "content-type": "application/json", authorization: basicAuth(secret) }, body: json([{ event: name, properties }]) }
     : { method: "POST" as const, url: `${host}/track?verbose=1`, headers: { "content-type": "application/json" }, body: json([{ event: name, properties }]) };

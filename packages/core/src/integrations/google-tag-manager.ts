@@ -1,4 +1,4 @@
-import { DOCS, REPORTING, conceptOf, defaultAnalyticsName, isSandbox, json, nameFor, revenueUsd, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
+import { DOCS, FUNNEL_CONCEPTS, REPORTING, conceptOf, defaultAnalyticsName, funnelAdContext, isFunnelConcept, isSandbox, json, nameFor, revenueUsd, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
 
 /**
  * Google Tag Manager server-side container: events in the GA4 Measurement Protocol format
@@ -19,12 +19,13 @@ import { DOCS, REPORTING, conceptOf, defaultAnalyticsName, isSandbox, json, name
 export const GTM_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "transfer",
-  "purchase_redeemed", "refund_reversed", "test",
+  "purchase_redeemed", "refund_reversed", "test", ...FUNNEL_CONCEPTS,
 ];
 
 const MONEY: Concept[] = ["initial_purchase", "trial_converted", "renewal", "non_subscription_purchase"];
 
-export const gtmName = (c: Concept): string | null => (!GTM_EVENTS.includes(c) ? null : MONEY.includes(c) ? "purchase" : defaultAnalyticsName(c));
+/** Funnel steps (opt-in) use GA4's web events: page_view, generate_lead (email steps) or rd_funnel_step_completed, purchase. */
+export const gtmName = (c: Concept): string | null => (!GTM_EVENTS.includes(c) ? null : MONEY.includes(c) || c === "funnel_purchase" ? "purchase" : c === "funnel_viewed" ? "page_view" : defaultAnalyticsName(c));
 
 const micros = (ms: number) => ms * 1000;
 
@@ -53,14 +54,26 @@ export async function buildGoogleTagManager(i: BuildInput): Promise<Plan> {
       items: [{ item_id: e.product_id, item_name: e.product_id, affiliation: e.store, price: revenue, quantity: 1 }],
     });
   }
+  let eventName = name;
+  if (isFunnelConcept(c)) {
+    // The landing page with its utm_* and gclid, so GA4 attributes the session the way it does for a browser hit.
+    const ctx = funnelAdContext(e);
+    const q = new URLSearchParams({ ...ctx.utm, ...Object.fromEntries(["gclid", "gbraid", "wbraid"].filter((k) => ctx.clickIds[k]).map((k) => [k, ctx.clickIds[k]!])) }).toString();
+    if (ctx.pageUrl) params.page_location = q ? `${ctx.pageUrl}?${q}` : ctx.pageUrl;
+    Object.assign(params, { funnel_id: e.funnel_id ?? undefined, funnel_name: e.funnel_name ?? undefined, step_id: e.step_id ?? undefined, step_type: e.step_type ?? undefined });
+    if (c === "funnel_step_completed" && ctx.emailStep && !i.eventNames?.[c]) eventName = "generate_lead";
+    if (c === "funnel_purchase" && ctx.revenue > 0) {
+      Object.assign(params, { currency: "USD", value: ctx.revenue, transaction_id: String(e.id), items: [{ item_id: e.product_id ?? "web", item_name: e.product_id ?? "web", affiliation: "STRIPE", price: ctx.revenue, quantity: 1 }] });
+    }
+  }
   if (e.cancel_reason) params.cancel_reason = e.cancel_reason;
   if (e.expiration_reason) params.expiration_reason = e.expiration_reason;
   if (e.new_product_id) params.new_product_id = e.new_product_id;
-  const body = { client_id: appUserId, user_id: appUserId, timestamp_micros: micros(e.event_timestamp_ms ?? i.now.getTime()), events: [{ name, params }] };
+  const body = { client_id: appUserId, user_id: appUserId, timestamp_micros: micros(e.event_timestamp_ms ?? i.now.getTime()), events: [{ name: eventName, params }] };
   const q = new URLSearchParams({ measurement_id: measurementId });
   if (secret) q.set("api_secret", secret);
   return {
-    name,
+    name: eventName,
     requests: [{ method: "POST", url: `${base}/mp/collect?${q.toString()}`, headers: { "content-type": "application/json" }, body: json(body) }],
     redact: secret ? [secret, encodeURIComponent(secret)] : [],
   };

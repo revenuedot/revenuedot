@@ -1,4 +1,4 @@
-import { DOCS, REPORTING, attr, conceptOf, defaultAnalyticsName, isSandbox, json, nameFor, platformOf, revenueUsd, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
+import { DOCS, FUNNEL_CONCEPTS, REPORTING, attr, conceptOf, defaultAnalyticsName, funnelAdContext, isFunnelConcept, isSandbox, json, nameFor, platformOf, revenueUsd, skip, type BuildInput, type Concept, type PartnerDef, type Plan } from "./common.js";
 
 /**
  * Branch: app events through the v2 Events API (https://help.branch.io/apidocs/events-api), `POST
@@ -25,14 +25,15 @@ export const BRANCH_STANDARD = new Set([
 
 export const BRANCH_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
-  "non_subscription_purchase", "expiration", "product_change", "test",
+  "non_subscription_purchase", "expiration", "product_change", "test", ...FUNNEL_CONCEPTS,
 ];
 
 export function branchName(c: Concept): string | null {
   if (!BRANCH_EVENTS.includes(c)) return null;
   if (c === "trial_started") return "START_TRIAL";
   if (c === "initial_purchase" || c === "trial_converted" || c === "renewal") return "SUBSCRIBE";
-  if (c === "non_subscription_purchase") return "PURCHASE";
+  if (c === "non_subscription_purchase" || c === "funnel_purchase") return "PURCHASE";
+  if (c === "funnel_viewed") return "VIEW_ITEM";
   return defaultAnalyticsName(c);
 }
 
@@ -42,6 +43,7 @@ export async function buildBranch(i: BuildInput): Promise<Plan> {
   if (!c || !BRANCH_EVENTS.includes(c)) return skip(`${e.type} events are not sent to Branch.`);
   const key = isSandbox(e) ? i.secrets.sandbox_branch_key : i.secrets.branch_key;
   if (!key) return skip(isSandbox(e) ? "Sandbox events need a sandbox Branch key (key_test_…)." : "No Branch key is saved.");
+  if (isFunnelConcept(c)) return buildBranchWeb(i, c, key);
   const platform = platformOf(e.store);
   if (platform !== "ios" && platform !== "android") return skip(`${e.store} purchases are not sent to Branch's app events.`);
   const user: Record<string, unknown> = { os: platform === "ios" ? "iOS" : "Android" };
@@ -86,6 +88,29 @@ export async function buildBranch(i: BuildInput): Promise<Plan> {
     requests: [{ method: "POST", url: `${BRANCH_API}/${standard ? "standard" : "custom"}`, headers: { "content-type": "application/json", accept: "application/json" }, body: json(body) }],
     redact: [key],
   };
+}
+
+/**
+ * Web funnel events (opt-in) as Branch web events: `developer_identity` (the visitor's anonymous app user id, which the
+ * purchase is made under) plus the browser's `user_agent`, `ip` and `http_origin`, as Branch asks for web events sent
+ * from a server (https://help.branch.io/apidocs/events-api). Email steps complete as COMPLETE_REGISTRATION.
+ */
+async function buildBranchWeb(i: BuildInput, c: Concept, key: string): Promise<Plan> {
+  const e = i.event;
+  const ctx = funnelAdContext(e);
+  const name = c === "funnel_step_completed" && ctx.emailStep && !i.eventNames?.[c] ? "COMPLETE_REGISTRATION" : nameFor(c, branchName, i.eventNames)!;
+  const user: Record<string, unknown> = { developer_identity: String(e.app_user_id ?? "") };
+  if (ctx.userAgent) user.user_agent = ctx.userAgent;
+  if (ctx.ip) user.ip = ctx.ip;
+  if (ctx.pageUrl) user.http_origin = ctx.pageUrl;
+  const custom: Record<string, string> = {};
+  for (const [k, v] of Object.entries({ event_id: e.id, event_type: e.type, funnel_id: e.funnel_id, funnel_name: e.funnel_name, step_id: e.step_id, step_type: e.step_type, product_id: e.product_id, ...ctx.utm, ...ctx.clickIds })) {
+    if (v !== null && v !== undefined && v !== "") custom[k] = String(v);
+  }
+  const body: Record<string, unknown> = { name, branch_key: key, user_data: user, custom_data: custom };
+  if (c === "funnel_purchase" && ctx.revenue > 0) body.event_data = { transaction_id: String(e.id), currency: "USD", revenue: ctx.revenue, description: e.product_id ?? undefined };
+  const standard = BRANCH_STANDARD.has(name);
+  return { name, requests: [{ method: "POST", url: `${BRANCH_API}/${standard ? "standard" : "custom"}`, headers: { "content-type": "application/json", accept: "application/json" }, body: json(body) }], redact: [key] };
 }
 
 export const BRANCH: PartnerDef = {

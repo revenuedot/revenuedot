@@ -74,18 +74,36 @@ export class StripeClient {
   }
 
   /** GET with the app's key. `query` values that are arrays repeat (expand[]=a&expand[]=b). */
-  async get<T>(app: Pick<AppRow, "credentials">, path: string, query: Record<string, string | string[]> = {}): Promise<T> {
+  get<T>(app: Pick<AppRow, "credentials">, path: string, query: Record<string, string | string[]> = {}): Promise<T> {
+    return this.request<T>(app, "GET", path, query);
+  }
+
+  /**
+   * POST (form-encoded, Stripe's format: `a[b][0][c]=v`) or DELETE with the app's key. Web billing creates products,
+   * prices, Checkout Sessions, coupons and promotion codes this way (prd/web-billing/PRD.md). `idempotencyKey` makes a
+   * retried create return the first object.
+   */
+  post<T>(app: Pick<AppRow, "credentials">, path: string, params: Record<string, unknown> = {}, idempotencyKey?: string): Promise<T> {
+    return this.request<T>(app, "POST", path, {}, stripeForm(params), idempotencyKey);
+  }
+  del<T>(app: Pick<AppRow, "credentials">, path: string): Promise<T> {
+    return this.request<T>(app, "DELETE", path);
+  }
+
+  async request<T>(app: Pick<AppRow, "credentials">, method: "GET" | "POST" | "DELETE", path: string, query: Record<string, string | string[]> = {}, form?: string, idempotencyKey?: string): Promise<T> {
     const key = stripeKeyOf(app);
     if (!key) throw new RCError(500, Codes.STORE_PROBLEM, "This Stripe app has no API key yet. Add a restricted key in the app's settings.");
     const u = new URL(`${STRIPE_API}${path}`);
     for (const [k, v] of Object.entries(query)) for (const x of Array.isArray(v) ? v : [v]) u.searchParams.append(k, x);
     const headers: Record<string, string> = { authorization: `Bearer ${key}`, accept: "application/json" };
+    if (form !== undefined) headers["content-type"] = "application/x-www-form-urlencoded";
+    if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
     const account = (app.credentials ?? {}).stripe_account_id;
     if (typeof account === "string" && /^acct_/.test(account.trim())) headers["stripe-account"] = account.trim();
     let res: Response;
     try {
       // Through the outbound guard, never following a redirect: the request carries the API key.
-      res = await withTimeout(guardedFetch(this.fetchImpl, u.toString(), { method: "GET", headers, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
+      res = await withTimeout(guardedFetch(this.fetchImpl, u.toString(), { method, headers, body: form, signal: AbortSignal.timeout(this.timeoutMs) }), this.timeoutMs);
     } catch (e) {
       const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
       throw new StripeApiError("transient", timedOut ? "Stripe timed out" : e instanceof OutboundRefused ? `The Stripe request was refused: ${e.message}` : "Stripe could not be reached");
@@ -128,6 +146,23 @@ export class StripeClient {
       throw e;
     }
   }
+}
+
+/**
+ * Stripe's form encoding: nested objects and arrays become bracketed keys (`metadata[app_user_id]`,
+ * `line_items[0][price]`); null and undefined are left out; booleans are "true"/"false".
+ * https://docs.stripe.com/api/request-body-encoding (application/x-www-form-urlencoded)
+ */
+export function stripeForm(params: Record<string, unknown>): string {
+  const out = new URLSearchParams();
+  const walk = (prefix: string, v: unknown) => {
+    if (v === undefined || v === null) return;
+    if (Array.isArray(v)) { v.forEach((x, i) => walk(`${prefix}[${i}]`, x)); return; }
+    if (typeof v === "object") { for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(prefix ? `${prefix}[${k}]` : k, x); return; }
+    out.append(prefix, String(v));
+  };
+  walk("", params);
+  return out.toString();
 }
 
 /** Stripe failures as the receipt endpoint must answer them: never 4xx for anything that can succeed later. */

@@ -24,6 +24,10 @@ import { amazonClientFor, amazonReceiptData } from "../stores/amazon/index.js";
 import { mergeStoredState, rowPrice, subRowOf } from "../stores/rows.js";
 import { withStoreSecrets } from "../services/store-secrets.js";
 import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
+import { CheckoutError, redeemWebPurchase, startCheckout } from "../services/web/checkout.js";
+import { domainOf, mailPayBase, payBaseOf } from "../services/web/domains.js";
+import { offeringByKey, webPackages } from "../services/web/catalog.js";
+import { stripeAppsOf } from "../services/web/config.js";
 import { createTicket, type TicketInput } from "../services/support.js";
 import { clientIp } from "../services/rate-limit.js";
 import { pollReward } from "../services/ads/rewards.js";
@@ -401,10 +405,17 @@ export function sdkRoutes(deps: Deps) {
     return c.json({ virtual_currencies: out });
   });
 
-  // 19. Web purchase redemption. RevenueDot sells nothing on the web, so no token is valid: 7849 is the SDK's
-  // `invalidToken` result, which apps show as "this link is not valid".
-  r.post("/v1/subscribers/redeem_purchase", () => {
-    throw new RCError(400, Codes.INVALID_WEB_REDEMPTION_TOKEN, "This redemption link is not valid: RevenueDot has no web purchases to redeem.");
+  // 19. Web purchase redemption (prd/web-billing/PRD.md §4): the redemption link's token attaches an anonymous web purchase
+  // to this app user. 7849 invalid token, 7852 redeemed by someone else, 7853 expired (a new link is emailed).
+  r.post("/v1/subscribers/redeem_purchase", async (c) => {
+    const app = c.get("app"); const now = deps.now();
+    const b = await c.req.json().catch(() => ({})) as Record<string, any>;
+    const appUserId = userId(String(b.app_user_id ?? ""));
+    const token = typeof b.redemption_token === "string" ? b.redemption_token.trim() : "";
+    const owner = await redeemWebPurchase(deps, app, { appUserId, token, platform: c.req.header("x-platform") ?? null, payBase: mailPayBase(deps, publicOrigin(c)) });
+    await touch(deps.db, owner.id, now, reqInfo(c));
+    const { body } = await customerInfoFor(app.projectId, appUserId, now, isSecret(c));
+    return c.json(body);
   });
 
   // 20. External purchase tokens (iOS, Apple's external purchase and link-out flows). The token is acknowledged with an
@@ -493,11 +504,33 @@ export function sdkRoutes(deps: Deps) {
   // 26. Web offering products (iOS; defined, no caller in the SDK): no web offerings.
   r.get("/rcbilling/v1/subscribers/:id/offering_products", (c) => c.json({ offerings: {} }));
 
-  // Web Billing checkout (iOS hosted checkout; purchases-js with an rcb_ key). RevenueDot takes no payments, so a checkout
-  // cannot start: iOS returns `.failed` from the checkout, purchases-js shows its purchase error.
-  const noCheckout = () => { throw new RCError(400, Codes.INVALID_PLATFORM, "Web checkout is not available on RevenueDot."); };
+  // iOS paywall web checkout (prd/web-billing/PRD.md §2): a Stripe Checkout for the package's web product, bought for this
+  // app user id. The SDK shows checkout_url and closes it when the browser reaches success_url or cancel_url (origin and path).
+  r.post("/rcbilling/v1/hosted-checkout", async (c) => {
+    const app = c.get("app");
+    const b = await c.req.json().catch(() => ({})) as Record<string, any>;
+    const appUserId = userId(String(b.app_user_id ?? ""));
+    const offering = await offeringByKey(deps.db, app.projectId, typeof b.presented_offering_identifier === "string" ? b.presented_offering_identifier : null);
+    if (!offering || typeof b.package_id !== "string") throw new RCError(400, Codes.INVALID_PLATFORM, "Web checkout needs the package and its offering.");
+    let stripe = null;
+    for (const s of await stripeAppsOf(deps.db, app.projectId)) {
+      if ((await webPackages(deps.db, app.projectId, s.id, offering.id)).some((p) => p.key === b.package_id)) { stripe = s; break; }
+    }
+    if (!stripe) throw new RCError(400, Codes.INVALID_PLATFORM, "This package has no web product, so it cannot be bought on the web.");
+    const d = await domainOf(deps.db, app.projectId, deps.now());
+    const root = `${payBaseOf(deps.payUrl, publicOrigin(c))}/${d.slug}/_`;
+    try {
+      const out = await startCheckout(deps, { app: stripe, offering, packageKey: b.package_id, appUserId, source: { type: "sdk", id: null }, pageUrl: root, cancelUrl: `${root}/cancel` });
+      return c.json({ operation_session_id: out.checkout.id, checkout_url: out.url, success_url: `${root}/success`, cancel_url: `${root}/cancel` });
+    } catch (e) {
+      if (e instanceof CheckoutError) throw new RCError(e.status === 503 ? 503 : 400, e.status === 503 ? Codes.STORE_PROBLEM : Codes.INVALID_PLATFORM, e.message);
+      throw e;
+    }
+  });
+  // purchases-js Web Billing (rcb_ keys, Stripe Elements inside the SDK) is not available: RevenueDot's checkout is a hosted
+  // page. The SDK shows its purchase error.
+  const noCheckout = () => { throw new RCError(400, Codes.INVALID_PLATFORM, "Web Billing checkout inside the SDK is not available on RevenueDot. Use a purchase link or the hosted checkout."); };
   const noSession = () => { throw new RCError(400, Codes.INVALID_OPERATION_SESSION, "There is no such checkout session."); };
-  r.post("/rcbilling/v1/hosted-checkout", noCheckout);
   r.post("/rcbilling/v1/purchase", noCheckout);
   r.post("/rcbilling/v1/checkout/prepare", noCheckout);
   r.post("/rcbilling/v1/checkout/start", noCheckout);

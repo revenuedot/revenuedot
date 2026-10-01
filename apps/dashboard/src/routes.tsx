@@ -31,6 +31,10 @@ import { AdsOverviewPage } from "./pages/ads/AdsOverview";
 import { RewardsPage } from "./pages/ads/Rewards";
 import { AdMobPage } from "./pages/ads/AdMobPage";
 import { ZendeskPage } from "./pages/setup/SupportApps";
+import { WebPage } from "./pages/web/Web";
+import { FunnelsPage } from "./pages/web/Funnels";
+import { FunnelBuilderPage } from "./pages/web/FunnelBuilder";
+import { WebDiscountsPage } from "./pages/web/WebDiscounts";
 
 /** Project routes. URL paths mirror RevenueCat's dashboard so bookmarks and muscle memory carry over. */
 export const routes = [
@@ -63,6 +67,10 @@ export const routes = [
   <Route key="targeting" path="/projects/:projectId/targeting" element={<TargetingPage />} />,
   <Route key="experiments" path="/projects/:projectId/experiments" element={<ExperimentsPage />} />,
   <Route key="experiment" path="/projects/:projectId/experiments/:experimentId" element={<ExperimentDetail />} />,
+  <Route key="web" path="/projects/:projectId/web" element={<WebPage />} />,
+  <Route key="funnels" path="/projects/:projectId/funnels" element={<FunnelsPage />} />,
+  <Route key="funnel" path="/projects/:projectId/funnels/:funnelId" element={<FunnelBuilderPage />} />,
+  <Route key="web-discounts" path="/projects/:projectId/web-discounts" element={<WebDiscountsPage />} />,
   <Route key="project-new" path="/projects/new" element={<NewProject />} />,
   <Route key="apps" path="/projects/:projectId/apps" element={<Apps />} />,
   <Route key="app" path="/projects/:projectId/apps/:appId" element={<AppConfig />} />,

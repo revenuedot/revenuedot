@@ -19,13 +19,16 @@ export interface HarnessOptions {
   ai?: import("@revenuedot/server/services/paywall-ai.js").PaywallModel; apiUrl?: string;
   /** Sealing key for integration secrets, and the Google OAuth client for "Connect AdMob". */
   encryptionKey?: string; googleOAuth?: { clientId?: string; clientSecret?: string };
+  /** A real Postgres (an empty database) instead of the in-memory one, for tests of concurrency. */
+  databaseUrl?: string;
 }
 
 /** Boots the server on an in-memory Postgres with one project, an App Store app, a Play app and a Test Store app. */
 export async function harness(opts: HarnessOptions = {}): Promise<Harness> {
-  const { db, close } = await openDb("pglite://memory");
+  const { databaseUrl, ...appOpts } = opts;
+  const { db, close } = await openDb(databaseUrl ?? "pglite://memory");
   let clock = new Date("2026-09-01T12:00:00Z");
-  const app = createApp({ db, now: () => clock, stores: defaultStores(), ...opts });
+  const app = createApp({ db, now: () => clock, stores: defaultStores(), ...appOpts });
   const ids = { project: "proj1", app: "app_ios", iosKey: "appl_testkey123", testKey: "test_key123", androidKey: "goog_testkey123", androidApp: "app_play", secretKey: "" };
   await db.insert(schema.projects).values({ id: ids.project, name: "Scanner" });
   await db.insert(schema.apps).values([

@@ -122,7 +122,7 @@ function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>,
   if (spec.kind === "firebase" && !(settings.ios_firebase_app_id && secrets.ios_api_secret) && !(settings.android_firebase_app_id && secrets.android_api_secret)) {
     throw paramError("settings: set a Firebase app ID and its API secret for iOS, Android or both.", "settings");
   }
-  if (spec.kind === "appsflyer" && !settings.ios_app_id && !settings.android_app_id) throw paramError("settings: set the AppsFlyer app ID for iOS, Android or both.", "settings");
+  if (spec.kind === "appsflyer" && !settings.ios_app_id && !settings.android_app_id && !settings.web_app_id) throw paramError("settings: set the AppsFlyer app ID for iOS, Android, the web, or several.", "settings");
   if (spec.kind === "adjust" && !settings.ios_app_token && !settings.android_app_token) throw paramError("settings: set the Adjust app token for iOS, Android or both.", "settings");
   // Fields the server will call (a Discord webhook, a Tag Manager server container, a partner's webhook URL).
   for (const f of spec.fields) {

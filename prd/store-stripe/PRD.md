@@ -15,7 +15,7 @@ Essential (Tier 2)
 - Answer 5xx for every temporary failure on `POST /v1/receipts` (Stripe down, rate limited, an unpaid first invoice), 4xx only for what will never succeed.
 
 Later (Tier 3, with RevenueDot's own Stripe platform)
-- Stripe Connect OAuth ("Connect with Stripe" button) instead of pasting a restricted key; hosted checkout and Web Billing.
+- Stripe Connect OAuth ("Connect with Stripe" button) instead of pasting a restricted key. (Hosted checkout, purchase links, funnels, redemption links and web discounts are built on this Stripe app: `prd/web-billing/PRD.md`. They need the key to have write access to Products, Prices, Checkout Sessions, Coupons and Promotion Codes.)
 - Subscription schedules (a downgrade scheduled for the next period through a schedule), metered and tiered prices, multi-item subscriptions.
 - A periodic re-check of active subscriptions without webhooks.
 
@@ -63,7 +63,7 @@ Live and test mode: a key's mode decides the environment. Objects with `livemode
 |---|---|
 | `customer.subscription.created`, `.updated`, `.deleted`, `.paused`, `.resumed`, `.trial_will_end` | Sync the subscription |
 | `invoice.updated`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed` | Sync the invoice's subscription |
-| `checkout.session.completed` | Subscription mode: sync it with the session's metadata as the app user id hint. Payment mode: record the one-time purchase |
+| `checkout.session.completed` | Subscription mode: sync it with the session's metadata as the app user id hint. Payment mode: record the one-time purchase. A session from RevenueDot's hosted checkout (`metadata.rd_checkout`) completes that web checkout instead, tracked whatever `track_new_purchases` says (`prd/web-billing/PRD.md` §2) |
 | `charge.refunded` | A full refund of the latest subscription invoice marks that period refunded; a full refund of a one-time purchase marks it refunded |
 | anything else | 200, stored and ignored (RevenueCat answers 400 and Stripe ends up disabling the endpoint; we do not) |
 

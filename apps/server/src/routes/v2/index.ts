@@ -30,6 +30,8 @@ import { dataExportRoutes } from "./data-exports.js";
 import { storeOpRoutes } from "./store-ops.js";
 import { subscriberAuthRoutes } from "./subscriber-auth.js";
 import { billingExcludedRoutes } from "./billing-excluded.js";
+import { discountRoutes } from "./discounts.js";
+import { webRoutes } from "./web.js";
 import { refundControlRoutes } from "./refund-control.js";
 import { retentionRoutes } from "./retention.js";
 import { supportRoutes } from "./support.js";
@@ -117,6 +119,8 @@ export function v2Routes(deps: Deps) {
   dataExportRoutes(r, deps);
   storeOpRoutes(r, deps);
   subscriberAuthRoutes(r, deps);
+  discountRoutes(r, deps);
+  webRoutes(r, deps);
   billingExcludedRoutes(r, deps);
 
   r.all("/v2/*", () => { throw new V2Error(404, "resource_missing", "Resource not found."); });

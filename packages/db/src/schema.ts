@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { bigint, boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const ts = (n: string) => timestamp(n, { withTimezone: true, mode: "date" });
@@ -897,6 +898,180 @@ export const emailSuppressions = pgTable("email_suppressions", {
   reason: text("reason").notNull().default("unsubscribed"),
   createdAt: created(),
 }, (t) => [primaryKey({ columns: [t.projectId, t.email] })]);
+
+/* ---- Web billing, purchase links, funnels, web discounts, domains (prd/web-billing/PRD.md, migration 0018) ---- */
+
+/** Checkout look and redemption settings of one Stripe web provider (an app of type `stripe`). */
+export const webConfigs = pgTable("web_configs", {
+  appId: text("app_id").primaryKey().references(() => apps.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("web_configs_project").on(t.projectId)]);
+
+/** A product sold on the web: the RevenueDot product and the Stripe product and price it was created with (or linked to). */
+export const webProducts = pgTable("web_products", {
+  productId: text("product_id").primaryKey().references(() => products.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  stripeProductId: text("stripe_product_id").notNull(),
+  stripePriceId: text("stripe_price_id").notNull(),
+  /** Price in the currency's minor unit (cents; yen for zero-decimal currencies). */
+  amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+  currency: text("currency").notNull(),
+  /** day, week, month, year; null for one-time products. */
+  interval: text("interval"),
+  intervalCount: integer("interval_count"),
+  trialDays: integer("trial_days"),
+  createdAt: created(),
+}, (t) => [index("web_products_project").on(t.projectId), uniqueIndex("web_products_price").on(t.appId, t.stripePriceId)]);
+
+/** The project's web address: a slug on RevenueDot's pay host, and an optional custom domain proven by DNS. */
+export const webDomains = pgTable("web_domains", {
+  projectId: text("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  slug: text("slug").notNull(),
+  customDomain: text("custom_domain"),
+  verificationToken: text("verification_token").notNull(),
+  /** none, pending, verified, failed. */
+  status: text("status").notNull().default("none"),
+  verifiedAt: ts("verified_at"),
+  checkedAt: ts("checked_at"),
+  error: text("error"),
+  createdAt: created(),
+}, (t) => [
+  uniqueIndex("web_domains_slug").on(t.slug),
+  // Only a verified domain is exclusive: a project that adds a domain it cannot prove never blocks the one that can.
+  uniqueIndex("web_domains_custom").on(t.customDomain).where(sql`${t.status} = 'verified'`),
+]);
+
+/** A checkout link for one offering. `slug` shares the project's namespace with funnels. */
+export const purchaseLinks = pgTable("purchase_links", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  offeringId: text("offering_id").notNull().references(() => offerings.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  /** Applied without a code. */
+  discountId: text("discount_id"),
+  expiresAt: ts("expires_at"),
+  disabledAt: ts("disabled_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("purchase_links_slug").on(t.projectId, t.slug)]);
+
+/** A no-code web-to-app funnel. `draft` is what the builder edits; `published` is what visitors see. */
+export const funnels = pgTable("funnels", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id").references(() => apps.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  draft: jsonb("draft").$type<Record<string, unknown>>().notNull(),
+  published: jsonb("published").$type<Record<string, unknown> | null>(),
+  publishedAt: ts("published_at"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("funnels_slug").on(t.projectId, t.slug)]);
+
+/** What visitors did in a funnel: funnel_viewed, step_viewed, step_completed, checkout_started, purchase. */
+export const funnelEvents = pgTable("funnel_events", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  funnelId: text("funnel_id").notNull().references(() => funnels.id, { onDelete: "cascade" }),
+  sessionId: text("session_id").notNull(),
+  type: text("type").notNull(),
+  stepId: text("step_id"),
+  stepIndex: integer("step_index"),
+  appUserId: text("app_user_id"),
+  properties: jsonb("properties").$type<Record<string, unknown>>().notNull().default({}),
+  revenueUsd: doublePrecision("revenue_usd"),
+  createdAt: created(),
+}, (t) => [index("funnel_events_funnel").on(t.funnelId, t.createdAt)]);
+
+/**
+ * One hosted checkout: the Stripe Checkout Session RevenueDot created, the purchase once paid, and the redemption token
+ * that lets an anonymous web buyer attach the purchase to their app user id (only its SHA-256 is stored).
+ */
+export const webCheckouts = pgTable("web_checkouts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  /** purchase_link, funnel or sdk (the iOS paywall's hosted checkout). */
+  sourceType: text("source_type").notNull(),
+  sourceId: text("source_id"),
+  offeringId: text("offering_id"),
+  packageId: text("package_id"),
+  productId: text("product_id"),
+  appUserId: text("app_user_id").notNull(),
+  /** The buyer had no app user id: the purchase is redeemed in the app with a redemption link. */
+  anonymous: boolean("anonymous").notNull().default(false),
+  email: text("email"),
+  discountId: text("discount_id"),
+  discountCode: text("discount_code"),
+  funnelSessionId: text("funnel_session_id"),
+  stripeSessionId: text("stripe_session_id"),
+  /** created, completed, expired. */
+  status: text("status").notNull().default("created"),
+  completedAt: ts("completed_at"),
+  isSandbox: boolean("is_sandbox").notNull().default(false),
+  amountUsd: doublePrecision("amount_usd"),
+  /** Customer attributes to set when the purchase completes: funnel answers, `$email`. */
+  attributes: jsonb("attributes").$type<Record<string, string>>().notNull().default({}),
+  /**
+   * Redemption token = "rdrt_" + base64url(SHA-256(seed + "." + generation)). The success page and the email can show the
+   * same token; an expired one is replaced by bumping the generation. Only the token's hash is looked up.
+   */
+  redemptionSeed: text("redemption_seed"),
+  redemptionGeneration: integer("redemption_generation").notNull().default(0),
+  redemptionTokenHash: text("redemption_token_hash"),
+  /** Hashes of tokens this one replaced (expired links), so an old link still answers "expired" instead of "invalid". */
+  previousTokenHashes: jsonb("previous_token_hashes").$type<string[]>().notNull().default([]),
+  redemptionExpiresAt: ts("redemption_expires_at"),
+  redemptionSentAt: ts("redemption_sent_at"),
+  redeemedAt: ts("redeemed_at"),
+  redeemedCustomerId: text("redeemed_customer_id"),
+  redeemedAppUserId: text("redeemed_app_user_id"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("web_checkouts_session").on(t.stripeSessionId), uniqueIndex("web_checkouts_token").on(t.redemptionTokenHash), index("web_checkouts_project").on(t.projectId, t.createdAt)]);
+
+/** A web discount (RevenueCat's v2 `discount`), created as a Stripe coupon in every Stripe app of the project. */
+export const discounts = pgTable("discounts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  identifier: text("identifier").notNull(),
+  customerFacingName: text("customer_facing_name").notNull(),
+  /** percentage or fixed_amount. */
+  type: text("type").notNull(),
+  percentage: integer("percentage"),
+  /** Amounts by currency (major units), for fixed_amount. */
+  fixedAmounts: jsonb("fixed_amounts").$type<Record<string, number> | null>(),
+  /** one_time, time_window, forever. */
+  durationMode: text("duration_mode").notNull(),
+  timeWindow: text("time_window"),
+  eligibility: text("eligibility").notNull().default("everyone"),
+  productIdentifiers: jsonb("product_identifiers").$type<string[] | null>(),
+  maxRedemptions: integer("max_redemptions"),
+  expiresAt: ts("expires_at"),
+  disabledAt: ts("disabled_at"),
+  timesRedeemed: integer("times_redeemed").notNull().default(0),
+  /** Stripe ids per Stripe app: { [appId]: { coupon: "…" } }. */
+  stripe: jsonb("stripe").$type<Record<string, { coupon: string }>>().notNull().default({}),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("discounts_identifier").on(t.projectId, t.identifier)]);
+
+/** A code customers type at checkout. `codeKey` is the upper-cased code, unique in the project. */
+export const discountCodes = pgTable("discount_codes", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  codeKey: text("code_key").notNull(),
+  code: text("code").notNull(),
+  discountId: text("discount_id").notNull().references(() => discounts.id, { onDelete: "cascade" }),
+  timesRedeemed: integer("times_redeemed").notNull().default(0),
+  /** Stripe promotion code ids per Stripe app: { [appId]: "promo_…" }. */
+  stripe: jsonb("stripe").$type<Record<string, string>>().notNull().default({}),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.codeKey] }), index("discount_codes_discount").on(t.discountId)]);
 
 /**
  * Ad reward rules (prd/ads/PRD.md): what a verified rewarded ad grants. Ordered by `position`; the first enabled rule

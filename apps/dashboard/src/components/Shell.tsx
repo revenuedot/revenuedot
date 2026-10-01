@@ -21,12 +21,12 @@ const NAV: Item[] = [
   { label: "Product catalog", icon: "catalog", children: [
     { label: "Offerings", to: "product-catalog/offerings" }, { label: "Products", to: "product-catalog/products" },
     { label: "Entitlements", to: "product-catalog/entitlements" }, { label: "In-app currencies", to: "product-catalog/virtual-currencies" },
-    { label: "Web discounts", to: "web-discounts", soon: true },
+    { label: "Web discounts", to: "web-discounts" },
   ] },
   { label: "Paywalls", to: "paywalls", icon: "paywalls" },
   { label: "Targeting", to: "targeting", icon: "targeting" },
   { label: "Experiments", to: "experiments", icon: "experiments" },
-  { label: "Funnels", to: "funnels", icon: "funnels", soon: true },
+  { label: "Funnels", to: "funnels", icon: "funnels" },
   { label: "Ads", icon: "ads", children: [{ label: "Overview", to: "ads" }, { label: "Rewards", to: "ads/rewards" }] },
   { label: "Lifecycle", icon: "lifecycle", children: [
     { label: "Customer Center", to: "lifecycle/customer-center" }, { label: "Support", to: "lifecycle/support" },
@@ -35,7 +35,7 @@ const NAV: Item[] = [
   ] },
 ];
 const FOOT: Item[] = [
-  { label: "Apps", to: "apps", icon: "apps" }, { label: "Web", to: "web", icon: "web", soon: true },
+  { label: "Apps", to: "apps", icon: "apps" }, { label: "Web", to: "web", icon: "web" },
   { label: "API keys", to: "api-keys", icon: "key" }, { label: "Integrations", to: "integrations", icon: "integrations" },
   { label: "Project settings", to: "settings", icon: "settings" },
 ];

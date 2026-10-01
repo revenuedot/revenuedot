@@ -174,8 +174,9 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
 | **Amazon Appstore** | Receipts checked with Amazon's Receipt Verification Service, the SDK's Amazon receipt route, Real-time Notifications through Amazon SNS with signature checks, grace periods, tier changes, one-time refunds, Live App Testing and App Tester as sandbox | Tier 2 · built, tested against a mocked Amazon and a test SNS certificate; no real Amazon purchase yet. [Guide](https://revenuedot.app/docs/guides/amazon-appstore) |
 | **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
+| **Web billing** | Sell your app's subscriptions on the web through your own Stripe account: the Web page's four-step checklist, web products created in Stripe, a hosted checkout, purchase links per offering, redemption links that unlock web purchases in the app (`redeemWebPurchase`, PURCHASE_REDEEMED), no-code web-to-app funnels with a builder, live preview, Build with AI and analytics, web discount codes as Stripe coupons, and your own domain ([guide](https://revenuedot.app/docs/guides/web-billing)) | Tier 3 · built, tested against an in-memory Stripe; no real Stripe account yet |
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
-| **Backend** | RevenueCat-compatible REST API v1, and every one of the 128 REST API v2 operations (116 doing the real work; the 12 discount and invoice operations exist only for RevenueCat's own Web Billing and answer on purpose); restore a purchase by its Google Play or App Store order id; create products in App Store Connect and Google Play; subscriber access tokens for the SDK endpoints; webhooks with the same payloads for 18 of the 21 event types ([why not the other 3](https://revenuedot.app/docs/guides/webhooks)), signed deliveries, retries and replay | Tier 1 core, Tier 2 rest · built and tested; store operations tested against fake stores |
+| **Backend** | RevenueCat-compatible REST API v1, and every one of the 128 REST API v2 operations (126 doing the real work, discounts included; the 2 invoice operations exist only for RevenueCat's own Web Billing and answer on purpose); restore a purchase by its Google Play or App Store order id; create products in App Store Connect and Google Play; subscriber access tokens for the SDK endpoints; webhooks with the same payloads for 19 of the 21 event types ([why not the other 2](https://revenuedot.app/docs/guides/webhooks)), signed deliveries, retries and replay | Tier 1 core, Tier 2 rest · built and tested; store operations tested against fake stores |
 | **Offers and outages** | Promotional-offer signing with your In-App Purchase key; Apple win-back offers recorded on every purchase, sent as `offer_code` and exported, with Apple's eligibility list per customer ([guide](https://revenuedot.app/docs/guides/win-back-offers)); offline entitlements keyed the way each SDK looks them up, so paying customers keep access while the server is down ([guide](https://revenuedot.app/docs/guides/offline-entitlements)) | Tier 2 · built and tested; no real win-back offer redeemed yet |
 | **Integrations** | All 37 of RevenueCat's catalogue plus BigQuery: Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, mParticle, Statsig, Superwall, TelemetryDeck; AppsFlyer, Adjust, Meta Ads, Apple Search Ads (campaign report), Branch, Kochava, Singular, Tenjin, Airbridge, Asapty, Appstack, SplitMetrics Acquire, SolarEngine, Google Tag Manager (server container); Braze, Customer.io, CleverTap, Airship, Iterable, OneSignal, Intercom, Discord; Google AdMob; Intercom inbox and Zendesk sidebar apps. RevenueCat's event names and reserved attributes, retries, a delivery log and replay; partners without an event API of their own get RevenueCat's webhook body. Scheduled CSV or Parquet exports to S3, R2 or Google Cloud Storage ([guide](https://revenuedot.app/docs/guides/integrations)) | Tier 2/3 · built, tested against fake partners and buckets; no real partner account yet |
 | **Ads** | Ad revenue from the SDK's ad events in US dollars next to subscription revenue: impressions, eCPM, clicks, by network, format, placement and ad unit; rewarded ads verified on the server with AdMob's signed callback, and rules that grant in-app currency or a day of access; AdMob ad unit names over OAuth ([guide](https://revenuedot.app/docs/guides/ads)) | Tier 3 · built, tested with a generated signing key and a fake Google; no real AdMob callback yet |
@@ -197,6 +198,12 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 </picture>
 
 <p><img alt="Two RevenueDot paywalls rendered by the unmodified RevenueCat iOS SDK's PaywallView on the iOS simulator: the Annual first template, and a paywall built in the editor with a countdown, a carousel, tabs and a timeline" src="docs/assets/paywalls-ios.png" width="420"></p>
+
+<p><img alt="RevenueDot Web page: the Stripe web provider, the pay address and the four-step checklist (connect Stripe, web config, web products, offering) all done" src="docs/assets/web/web.png" width="100%"></p>
+
+<p><img alt="RevenueDot funnel builder: the steps list, a live phone preview of the first quiz question and the step's properties" src="docs/assets/web/funnel-builder.png" width="100%"></p>
+
+<p><img alt="A hosted purchase link page on a phone" src="docs/assets/web/pay-link-390.png" width="260"> <img alt="The hosted success page with the Open the app redemption button" src="docs/assets/web/pay-success-390.png" width="260"></p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
@@ -249,7 +256,7 @@ RevenueDot is tested against the RevenueCat SDKs' own test fixtures (94 request 
 | `GET /v1/product_entitlement_mapping` | Offline entitlements |
 | `POST /v1/config/app` · `POST /v1/events` · `POST /v1/diagnostics` | Configuration and SDK events |
 
-The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 55 of them: 28 answer with real data and 27 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The 15 subscriber-token paths (`/v1/customer/*`) take an access token from the v2 `authenticate` operation. The other 3 are the identity-provider login calls (`/auth/*`) of an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
+The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 55 of them: 30 answer with real data (web purchase redemption and the iOS hosted checkout included) and 25 with safe fixed answers that the SDK treats as a normal result. The 15 subscriber-token paths (`/v1/customer/*`) take an access token from the v2 `authenticate` operation. The other 3 are the identity-provider login calls (`/auth/*`) of an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
 
 </details>
 
@@ -335,7 +342,7 @@ revenuedot/
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
 - **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
-- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, web checkout, the rest of revenue recovery (refund defense and win-back emails are built). Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
+- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -359,6 +366,21 @@ Paste RevenueDot's callback URL (`https://api.revenuedot.app/v1/ads/admob/ssv` o
 <details><summary><b>Which RevenueCat integrations does RevenueDot support?</b></summary>
 
 All 37 in [RevenueCat's catalogue](https://www.revenuecat.com/docs/integrations/third-party-integrations/amplitude), with the same event names and reserved attributes, plus BigQuery. Four partners (Superwall, Appstack, SplitMetrics Acquire, SolarEngine) publish no event API and receive RevenueCat's webhook body at the URL they give you, the way they connect to RevenueCat.
+</details>
+
+<details><summary><b>Can I sell my app's subscriptions on the web with RevenueDot?</b></summary>
+
+Yes. Connect your own Stripe account on the Web page, create web products (RevenueDot creates them in Stripe), put them in an offering, and share a purchase link or publish a funnel. RevenueDot hosts the checkout page, records the purchase and gives the buyer a redemption link. Payments go straight to your Stripe account; RevenueDot takes no cut. Guide: [Sell on the web](https://revenuedot.app/docs/guides/web-billing).
+</details>
+
+<details><summary><b>How does a web purchase unlock the mobile app?</b></summary>
+
+When the buyer was not signed in, the success page and an email give them a redemption link (`<your scheme>://redeem_web_purchase?redemption_token=…`). The RevenueCat SDK in your app parses it and calls `redeemWebPurchase`; RevenueDot attaches the purchase to the app's user and sends the PURCHASE_REDEEMED webhook. A purchase link opened with `?app_user_id=` skips this step. Guide: [Redemption links](https://revenuedot.app/docs/guides/redemption-links).
+</details>
+
+<details><summary><b>Does RevenueDot have web-to-app funnels like RevenueCat?</b></summary>
+
+Yes. Funnels are no-code, multi-step web pages (quiz questions, information, email capture, the paywall and a success step) that you build in the dashboard with a live preview, or start with Build with AI, then publish to a URL on RevenueDot's domain or yours. Views, step drop-off, checkouts and purchases show in the funnel's analytics, and the events can go to your webhooks and analytics tools. Guide: [Funnels](https://revenuedot.app/docs/guides/funnels).
 </details>
 
 <details><summary><b>Can I self-host RevenueCat?</b></summary>
