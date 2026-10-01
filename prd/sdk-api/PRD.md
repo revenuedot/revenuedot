@@ -54,7 +54,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 27 | GET | `/v1/config/{domain}` | iOS, Android | Stub | 204 | Remote config fallback path |
 | 28 | GET | `/rcbilling/v1/subscribers/{app_user_id}/offering_products` | iOS | Stub | 200 `{"offerings":{}}` | Defined in the SDK with no caller |
 | 29 | POST | `/rcbilling/v1/hosted-checkout` | iOS | Stub | 400 · 7000 | Paywall web checkout returns `failed`; no retry |
-| 30 | POST | `/v1/events` | iOS, Android, web | Stub | 200 `{}` | Paywall, customer center and ad events are accepted and not resent |
+| 30 | POST | `/v1/events` | iOS, Android, web | Stub | 200 `{}` | Paywall, customer center and ad events are stored for the charts (`sdk_events`, one row per SDK event id); a malformed batch still gets 200 so it is not resent |
 | 31 | POST | `/v1/diagnostics` | iOS, Android | Stub | 200 `{}` | Diagnostics are accepted and not resent |
 | 32 | GET | `/rcbilling/v1/branding` | web | Stub | 200 the app's name, default look | Web Billing (`rcb_` keys) checkout branding |
 | 33 | POST | `/rcbilling/v1/checkout/prepare` | web | Stub | 400 · 7000 | Web Billing purchase fails with an error in the SDK's purchase screen |

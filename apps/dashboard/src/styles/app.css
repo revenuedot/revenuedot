@@ -429,7 +429,7 @@ td .hrow{flex-wrap:nowrap}
 .crail nav{padding:8px 8px 16px}
 .crail-g{display:flex;flex-direction:column;gap:1px;margin-top:10px}
 .crail-g .label{padding:0 10px 4px}
-.crail-i{height:30px;display:flex;align-items:center;padding:0 10px;font-size:13px;color:var(--fg-2);transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
+.crail-i{min-height:30px;display:flex;align-items:center;padding:5px 10px;font-size:13px;line-height:18px;color:var(--fg-2);transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
 .crail-i:hover{background:var(--hover);color:var(--fg)}
 .crail-i.on{background:var(--active);color:var(--fg);font-weight:600;box-shadow:inset 2px 0 0 var(--fg)}
 .cpage{flex:1;min-width:0;margin:0}
