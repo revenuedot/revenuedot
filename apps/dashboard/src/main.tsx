@@ -27,11 +27,6 @@ function Home() {
 
 const SOON: [string, string, string][] = [
   ["benchmarks", "Benchmarks", "How your conversion and retention compare with apps like yours."],
-  ["product-catalog/virtual-currencies", "In-app currencies", "Coins and credits that customers earn and spend."],
-  ["paywalls", "Paywalls", "Design paywalls once and change them without an app release."],
-  ["targeting", "Targeting", "Show different offerings to different customers."],
-  ["experiments", "Experiments", "A/B test prices and offerings."],
-  ["lifecycle/customer-center", "Customer Center", "Self-service subscription management inside your app."],
 ];
 
 createRoot(document.getElementById("root")!).render(

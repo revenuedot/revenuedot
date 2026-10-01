@@ -7,15 +7,18 @@ import { ConfirmDialog, CopyButton, Dialog, Field, Menu, PageHead, Switch, Tabs,
 import { api, fmt, type List } from "../../lib/api";
 import { AuditLogs } from "./AuditLogs";
 import { DomainsTab } from "../web/Domains";
-import { base, errMsg, type Collaborator, type ProjectSettings as Project, type TransferBehavior } from "./data";
+import { base, errMsg, type Collaborator, type ProjectSettings as Project, type SandboxAccess, type TransferBehavior } from "./data";
+import { BrandTab } from "../settings/Brand";
+import { BlockedCustomersTab } from "../settings/BlockedCustomers";
+import { VerifiedMetricsTab } from "../settings/VerifiedMetrics";
 
 /**
- * Project settings (/projects/:projectId/settings/:tab): General (name, project ID, transfer behaviour for purchases
- * seen on several app user IDs with an optional sandbox behaviour, sandbox testing access, delete), Collaborators, and
- * Audit logs (who changed what, with a date filter), Domains (where purchase links and funnels live, pages/web/Domains.tsx), and AI features as a later-tier tab.
- * Collaborators: members with roles (admin, developer, viewer), invites by email with resend and revoke (prd/account-email).
- * GAPS vs RevenueCat (frame 28): the Operations, Growth and Support roles, transfer of project ownership,
- * limiting sandbox testing access to allowed testers, and the Brand, Blocked customers and Verified Metrics tabs.
+ * Project settings (/projects/:projectId/settings/:tab), tabs in RevenueCat's order (frame 28, prd/project-settings):
+ * General (name, project ID, transfer behaviour with an optional sandbox behaviour, sandbox testing access enforced on the
+ * server, transfer ownership to an admin, delete), AI features (batch E), Brand (colour, gradient and font presets for
+ * the paywall editor), Audit logs, Blocked customers, Collaborators (roles, invites; prd/account-email), Verified Metrics
+ * (the public page) and Domains (pages/web/Domains.tsx).
+ * GAPS vs RevenueCat: the Operations, Growth and Support roles.
  */
 
 const BEHAVIORS: { value: TransferBehavior; label: string; text: string }[] = [
@@ -25,10 +28,16 @@ const BEHAVIORS: { value: TransferBehavior; label: string; text: string }[] = [
   { value: "share", label: "Share between App User IDs (legacy)", text: "Both app user IDs are merged into one customer and share access. Only for apps that relied on this older behaviour." },
 ];
 
-type Tab = "general" | "collaborators" | "audit-logs" | "domains" | "ai";
+type Tab = "general" | "ai" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains";
 const TABS: { value: Tab; label: string; badge?: string }[] = [
-  { value: "general", label: "General" }, { value: "collaborators", label: "Collaborators" },
-  { value: "audit-logs", label: "Audit logs" }, { value: "domains", label: "Domains" }, { value: "ai", label: "AI features", badge: "SOON" },
+  { value: "general", label: "General" }, { value: "ai", label: "AI features", badge: "SOON" }, { value: "brand", label: "Brand" },
+  { value: "audit-logs", label: "Audit logs" }, { value: "blocked-customers", label: "Blocked customers" }, { value: "collaborators", label: "Collaborators" },
+  { value: "verified-metrics", label: "Verified Metrics" }, { value: "domains", label: "Domains" },
+];
+const ACCESS: { value: SandboxAccess; label: string; text: string }[] = [
+  { value: "anybody", label: "Anybody", text: "Every sandbox and Test Store purchase unlocks entitlements and in-app currency. The default." },
+  { value: "allowlist", label: "Allowlisted app user IDs", text: "Only the app user IDs below get anything from sandbox purchases. Purchases by anyone else are recorded but unlock nothing." },
+  { value: "nobody", label: "Nobody", text: "Sandbox purchases are recorded and sent to webhooks but never unlock entitlements or in-app currency." },
 ];
 
 function BehaviorSelect({ id, value, onChange }: { id: string; value: TransferBehavior; onChange: (v: TransferBehavior) => void }) {
@@ -74,6 +83,53 @@ function DeleteProject({ p, onClose }: { p: Project; onClose: () => void }) {
   );
 }
 
+function TransferOwnership({ p, onClose }: { p: Project; onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const me = useMe();
+  const people = useQuery({ queryKey: ["collaborators", p.id], queryFn: async () => (await api<List<Collaborator>>(`${base(p.id)}/collaborators`)).items });
+  const admins = (people.data ?? []).filter((c) => c.role === "admin" && c.id !== me.data?.user.id);
+  const [to, setTo] = useState("");
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const target = admins.find((a) => a.id === to);
+  const ok = !!target && typed.trim() === p.name;
+  const go = async () => {
+    setBusy(true); setError(null);
+    try {
+      const r = await api<Project & { email_sent?: boolean }>(`${base(p.id)}/actions/transfer_ownership`, { method: "POST", json: { user_id: to } });
+      qc.setQueryData(["project", p.id], r);
+      toast(r.email_sent === false ? `${target!.name ?? target!.email} now owns ${p.name}. The emails could not be sent.` : `${target!.name ?? target!.email} now owns ${p.name}. We emailed you both.`);
+      onClose();
+    } catch (e) { setError(errMsg(e)); setBusy(false); }
+  };
+  return (
+    <Dialog title="Transfer project ownership" onClose={busy ? () => {} : onClose} footer={<>
+      <button type="button" className="btn btn-line" disabled={busy} onClick={onClose}>Cancel</button>
+      <button type="button" className="btn btn-dark" disabled={!ok || busy} onClick={go}>{busy ? "Transferring…" : "Transfer ownership"}</button>
+    </>}>
+      <div className="stack">
+        <p className="section-sub">The new owner must already be an Admin collaborator. You stay an admin, but only the new owner can transfer the project again.</p>
+        {people.isLoading ? <div className="subtle">Loading collaborators…</div> : !admins.length ? (
+          <div className="banner warn" role="status">No other collaborator is an Admin. Invite someone or change a role on the Collaborators tab first.</div>
+        ) : (
+          <Field label="New owner" htmlFor="new-owner">
+            <select id="new-owner" className="select" value={to} onChange={(e) => setTo(e.target.value)}>
+              <option value="">Choose an admin…</option>
+              {admins.map((a) => <option key={a.id} value={a.id}>{a.name ? `${a.name} (${a.email})` : a.email}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label={`Type ${p.name} to confirm`} htmlFor="transfer-confirm">
+          <input id="transfer-confirm" className="input" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </Field>
+        {error && <div className="banner err" role="alert">{error}</div>}
+      </div>
+    </Dialog>
+  );
+}
+
 function General({ p }: { p: Project }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -81,12 +137,23 @@ function General({ p }: { p: Project }) {
   const [behavior, setBehavior] = useState<TransferBehavior>(p.transfer_behavior);
   const [sandboxOn, setSandboxOn] = useState(p.sandbox_transfer_behavior !== null);
   const [sandbox, setSandbox] = useState<TransferBehavior>(p.sandbox_transfer_behavior ?? p.transfer_behavior);
+  const [access, setAccess] = useState<SandboxAccess>(p.sandbox_testing_access);
+  const [testers, setTesters] = useState(p.sandbox_testers.join("\n"));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [transferring, setTransferring] = useState(false);
   const sandboxValue = sandboxOn ? sandbox : null;
-  const dirty = name.trim() !== p.name || behavior !== p.transfer_behavior || sandboxValue !== p.sandbox_transfer_behavior;
-  const reset = () => { setName(p.name); setBehavior(p.transfer_behavior); setSandboxOn(p.sandbox_transfer_behavior !== null); setSandbox(p.sandbox_transfer_behavior ?? p.transfer_behavior); setError(null); };
+  const testerList = [...new Set(testers.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean))];
+  const dirty = name.trim() !== p.name || behavior !== p.transfer_behavior || sandboxValue !== p.sandbox_transfer_behavior
+    || access !== p.sandbox_testing_access || testerList.join("\n") !== p.sandbox_testers.join("\n");
+  const reset = () => {
+    setName(p.name); setBehavior(p.transfer_behavior); setSandboxOn(p.sandbox_transfer_behavior !== null); setSandbox(p.sandbox_transfer_behavior ?? p.transfer_behavior);
+    setAccess(p.sandbox_testing_access); setTesters(p.sandbox_testers.join("\n")); setError(null);
+  };
+  const me = useMe();
+  const myRole = me.data?.projects.find((x) => x.id === p.id)?.role;
+  const isOwner = !!me.data && (p.owner ? p.owner.id === me.data.user.id : myRole === "admin");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => reset(), [p]);
 
@@ -94,7 +161,8 @@ function General({ p }: { p: Project }) {
     if (!name.trim()) { setError("The project needs a name."); document.getElementById("project-name")?.focus(); return; }
     setSaving(true);
     try {
-      const r = await api<Project>(base(p.id), { method: "POST", json: { name: name.trim(), transfer_behavior: behavior, sandbox_transfer_behavior: sandboxValue } });
+      if (access === "allowlist" && testerList.some((t) => t.length > 100)) { toast("App user IDs are at most 100 characters."); setSaving(false); return; }
+      const r = await api<Project>(base(p.id), { method: "POST", json: { name: name.trim(), transfer_behavior: behavior, sandbox_transfer_behavior: sandboxValue, sandbox_testing_access: access, sandbox_testers: testerList } });
       qc.setQueryData(["project", p.id], r);
       await qc.invalidateQueries({ queryKey: ["me"] });
       toast("Project settings saved.");
@@ -132,12 +200,27 @@ function General({ p }: { p: Project }) {
       </section>
 
       <section className="panel">
-        <div className="ph"><b>Sandbox testing access</b><Tag tone="muted">Later release</Tag></div>
+        <div className="ph"><b>Sandbox testing access</b></div>
         <div className="pb stack">
-          <p className="section-sub">Who can unlock entitlements and in-app currency with sandbox purchases.</p>
-          <Field label="Allow testing entitlements for" htmlFor="sandbox-access" hint="Everyone can test today. Limiting sandbox access to allowed testers comes in a later release.">
-            <select id="sandbox-access" className="select" disabled value="anybody"><option value="anybody">Anybody</option></select>
+          <p className="section-sub">Who can receive entitlements and in-app currency from sandbox purchases, including Test Store purchases. Production purchases are never affected.</p>
+          <Field label="Allow testing entitlements and in-app currency for" htmlFor="sandbox-access" hint={ACCESS.find((a) => a.value === access)!.text}>
+            <select id="sandbox-access" className="select" value={access} onChange={(e) => setAccess(e.target.value as SandboxAccess)}>
+              {ACCESS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
           </Field>
+          {access === "allowlist" && (
+            <Field label="Allowlisted app user IDs" htmlFor="sandbox-testers" hint={`One per line, up to 500. Any alias of a customer counts. ${testerList.length} listed.`}>
+              <textarea id="sandbox-testers" className="textarea" rows={5} spellCheck={false} placeholder={"qa_tester_1\n$RCAnonymousID:…"} value={testers} onChange={(e) => setTesters(e.target.value)} />
+            </Field>
+          )}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="ph"><b>Transfer project ownership</b></div>
+        <div className="pb hrow between">
+          <p className="section-sub">Hand the project to a collaborator with the Admin role. {p.owner ? <>The owner is <b>{p.owner.name ?? p.owner.email}</b>.</> : "The project has no owner on record, so any admin can transfer it."} You stay an admin.</p>
+          <button type="button" className="btn btn-line" disabled={!isOwner} title={isOwner ? undefined : "Only the project owner can transfer ownership"} onClick={() => setTransferring(true)}>Transfer ownership</button>
         </div>
       </section>
 
@@ -159,6 +242,7 @@ function General({ p }: { p: Project }) {
         </div>
       )}
       {deleting && <DeleteProject p={p} onClose={() => setDeleting(false)} />}
+      {transferring && <TransferOwnership p={p} onClose={() => setTransferring(false)} />}
     </div>
   );
 }
@@ -351,6 +435,9 @@ export function ProjectSettingsPage() {
           {t === "collaborators" && <Collaborators pid={pid} />}
           {t === "audit-logs" && <AuditLogs pid={pid} />}
           {t === "domains" && <DomainsTab pid={pid} />}
+          {t === "brand" && <BrandTab pid={pid} />}
+          {t === "blocked-customers" && <BlockedCustomersTab pid={pid} />}
+          {t === "verified-metrics" && <VerifiedMetricsTab pid={pid} />}
           {SOON_TEXT[t] && <div className="empty"><h3>{SOON_TEXT[t]![0]} comes in a later release</h3><p>{SOON_TEXT[t]![1]}</p></div>}
         </div>
       </div>

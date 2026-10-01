@@ -17,8 +17,9 @@ import { Shell } from "../../components/Shell";
 import { ConfirmDialog, Dialog, Field, Menu, Switch, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2 } from "../catalog/lib";
-import { Guard, Phone, stringsFor } from "./render";
-import { Props, type PropsApi } from "./Props";
+import { Guard, Phone, setColorAliases, stringsFor } from "./render";
+import { BrandCtx, Presets, Props, type PropsApi } from "./Props";
+import { useBrand, useFonts } from "../settings/lib";
 import { AiDialog } from "./AiDialog";
 import { DropButton } from "./Paywalls";
 import { docOf, packageIds, status, useAi, useOfferingsWithPackages, useTemplates, type Paywall } from "./lib";
@@ -78,6 +79,18 @@ function Editor({ paywallId }: { paywallId: string }) {
   const offering = offs.data?.find((o) => o.id === pw.data?.offering_id) ?? null;
   const packages = packageIds(offering);
   const iconBase = tpl.data?.icon_base_url ?? `${location.origin}/assets/icons`;
+  // Brand presets for the pickers, named colours for the preview, and the uploaded fonts as @font-face rules.
+  const brand = useBrand(pid);
+  const fonts = useFonts(pid);
+  const brandValue = useMemo(() => ({ pid, colors: brand.data?.color_presets ?? [], gradients: brand.data?.gradient_presets ?? [], fonts: fonts.data ?? [] }), [pid, brand.data, fonts.data]);
+  useEffect(() => {
+    const a: Record<string, { light: Record<string, unknown>; dark: Record<string, unknown> }> = {};
+    for (const c of brandValue.colors) a[c.key] = { light: { type: "hex", value: c.light }, dark: { type: "hex", value: c.dark ?? c.light } };
+    for (const g of brandValue.gradients) { const info = (points: typeof g.points) => ({ type: g.type, degrees: g.degrees, points }); a[g.key] = { light: info(g.points), dark: info(g.dark_points ?? g.points) }; }
+    setColorAliases(a);
+    force((x) => x + 1);
+  }, [brandValue]);
+  const fontFaces = brandValue.fonts.map((f) => `@font-face{font-family:"${f.font_key}";src:url("${f.url}");font-display:swap}`).join("\n");
   // A document the designer cannot show (wrong shape, too deep) opens in the JSON tab only.
   const broken = useMemo(() => (doc ? docShapeError(doc) : null), [doc]);
   const validation = useMemo(() => (doc && !broken ? validatePaywall(doc, { packages: packages.length ? packages.map((p) => p.id) : undefined }) : null), [doc, broken, JSON.stringify(packages)]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -249,10 +262,13 @@ function Editor({ paywallId }: { paywallId: string }) {
                 <p className="subtle pe-cap">Sample prices. Devices show the store's local price.</p>
               </section>
               <section className="panel pe-props" aria-label="Properties">
-                <Guard reset={doc} fallback={(e) => <p className="subtle pf-note" role="alert">These properties cannot be shown: {e.message} Undo, or fix it in the JSON tab.</p>}>
-                  {selected ? <Props key={selected.component.id} c={selected.component} api={propsApi} inPackage={inPackage} />
-                    : <Background doc={doc} api={propsApi} commit={commit} />}
-                </Guard>
+                {fontFaces && <style>{fontFaces}</style>}
+                <BrandCtx.Provider value={brandValue}>
+                  <Guard reset={doc} fallback={(e) => <p className="subtle pf-note" role="alert">These properties cannot be shown: {e.message} Undo, or fix it in the JSON tab.</p>}>
+                    {selected ? <Props key={selected.component.id} c={selected.component} api={propsApi} inPackage={inPackage} />
+                      : <Background doc={doc} api={propsApi} commit={commit} />}
+                  </Guard>
+                </BrandCtx.Provider>
               </section>
             </div>
           ) : <Guard reset={doc} fallback={(e) => <div className="banner err" role="alert">This view cannot show the paywall: {e.message}</div>}>
@@ -284,6 +300,7 @@ function Background({ doc, api: p, commit }: { doc: PaywallDoc; api: PropsApi; c
       <details className="pf-sec" open><summary>Background</summary><div className="pf-body">
         <div className="pf-row"><label htmlFor="pw-bg">Light</label><div className="pf-ctl"><input id="pw-bg" type="color" value={v} onChange={(e) => set(e.target.value, dv)} /></div></div>
         <div className="pf-row"><label htmlFor="pw-bg-d">Dark</label><div className="pf-ctl"><input id="pw-bg-d" type="color" value={dv ?? "#0a0a0a"} onChange={(e) => set(v, e.target.value)} /></div></div>
+        <Presets onPick={(c) => set(c.light.slice(0, 7), c.dark ? c.dark.slice(0, 7) : null)} />
       </div></details>
       <p className="subtle pf-note">Select a layer or click the preview to edit a component. {p.packages.length} package{p.packages.length === 1 ? "" : "s"} in the offering.</p>
     </div>

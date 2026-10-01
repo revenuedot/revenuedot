@@ -34,7 +34,7 @@ const ProviderIn = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   firebase_project_id: z.string().trim().min(1).max(100).regex(/^[a-z0-9-]+$/, "must be a Firebase project ID such as my-app-1a2b3").optional(),
   issuer: z.string().trim().max(500).optional(),
-  audiences: z.array(z.string().trim().min(1).max(500)).min(1).max(10).optional(),
+  audiences: z.array(z.string().trim().min(1).max(500)).max(10).optional(),
   jwks_url: z.string().trim().max(1000).nullable().optional(),
   app_user_id_claim: Claim.optional(),
   app_user_id_prefix: z.string().max(40).regex(/^[^\s]*$/, "must not contain spaces").optional(),
@@ -84,7 +84,7 @@ export function authRoutes(r: V2Router, deps: Deps) {
     const issuer = (b.issuer ?? cur?.issuer ?? "").trim();
     if (!issuer) throw paramError("issuer is required for an OpenID Connect provider.", "issuer");
     urlCheck(issuer, "issuer");
-    const audiences = b.audiences ?? cur?.audiences;
+    const audiences = b.audiences?.length ? b.audiences : b.audiences ? [] : cur?.audiences;
     if (!audiences?.length) throw paramError("audiences needs at least one client ID your app's tokens are issued to.", "audiences");
     const jwks = b.jwks_url !== undefined ? (b.jwks_url || null) : cur?.jwksUrl ?? null;
     if (jwks) urlCheck(jwks, "jwks_url");

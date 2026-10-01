@@ -87,7 +87,8 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
     footer: [{ type: "cta", text: "Start free trial" }, { type: "button", action: "restore" }],
   }) + "\n```";
 });
-const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi });
+// A fixed sealing key: integration secrets are encrypted, and Auth (prd/auth) derives its token key from it.
+const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, encryptionKey: "ZTJlLWlkZW50aXR5LWtleS1mb3ItdGVzdHMtb25seSE=" });
 
 let ready = false;
 const web = new Hono();
@@ -120,7 +121,7 @@ web.post("/__stripe/checkout/:id", async (c) => {
 });
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling|blobs|pay)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|verified|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
   // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
   if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);
