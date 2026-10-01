@@ -5,6 +5,7 @@ import { entitlementMap } from "../../repo/catalog.js";
 import { loadState, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
 import { embeddedList, ms, round2 } from "./common.js";
 import { storeSecretSet } from "../../services/store-secrets.js";
+import { hasServiceAccount } from "../../stores/google/api.js";
 
 /** Serializers from our rows to RevenueCat API v2 objects. */
 
@@ -29,7 +30,8 @@ export function projectShape(p: typeof schema.projects.$inferSelect) {
  */
 const has = (cr: Record<string, unknown>, ...keys: string[]) => keys.every((k) => typeof cr[k] === "string" && (cr[k] as string).length > 0);
 export const appleKeyConfigured = (cr: Record<string, unknown>) => has(cr, "subscription_private_key", "subscription_key_id", "subscription_key_issuer");
-export const googleKeyConfigured = (cr: Record<string, unknown>) => has(cr, "play_service_account_credentials_json");
+/** A Play service account under either field the Play adapter reads (RevenueCat's name, or `service_account`, as JSON text or an object). */
+export const googleKeyConfigured = (cr: Record<string, unknown>) => hasServiceAccount({ credentials: cr });
 /** Amazon and Stripe secrets are sealed in apps.secrets; their hints say whether they are set (services/store-secrets.ts). */
 export const amazonKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "shared_secret");
 export const stripeKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "stripe_secret_key");

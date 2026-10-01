@@ -645,6 +645,18 @@ const journey: Journey = {
       }
       const runsList = await dev.v2("GET", `/integrations/exports/${csvJob.body.id}/runs`);
       c.check("run history lists the run with rows and bytes", runsList.items.length === 1 && runsList.items[0].rows > 0 && runsList.items[0].bytes > 0, runsList.items);
+
+      c.begin("G. list and delete");
+      const exportsList = await dev.v2("GET", "/integrations/exports");
+      c.check("GET exports lists the destinations made", [csvJob.body.id, badJob.body.id].every((id) => exportsList.items.some((x: any) => x.id === id)), exportsList.items.map((x: any) => x.id));
+      await dev.v2("DELETE", `/integrations/exports/${badJob.body.id}`);
+      c.check("a deleted export destination is gone", !(await dev.v2("GET", "/integrations/exports")).items.some((x: any) => x.id === badJob.body.id));
+      const partners = await dev.v2("GET", "/integrations/partners?limit=100");
+      const victim = partners.items.find((x: any) => x.type === "discord");
+      await dev.v2("DELETE", `/integrations/partners/${victim.id}`);
+      c.eq("a deleted partner integration answers 404", (await dev.v2r("GET", `/integrations/partners/${victim.id}`)).status, 404);
+      const leftover = await ctx.sql`SELECT count(*)::int AS n FROM integration_deliveries WHERE integration_id = ${victim.id}`;
+      c.eq("its delivery log went with it", leftover[0]!.n, 0);
     } finally {
       const at = ctx.capture.handlers.indexOf(handler);
       if (at >= 0) ctx.capture.handlers.splice(at, 1);

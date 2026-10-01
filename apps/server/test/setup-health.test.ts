@@ -54,6 +54,27 @@ describe("setup health marks an app Ready only after a notification was processe
   });
 });
 
+describe("Google Play credentials count as configured under every field the Play adapter reads", () => {
+  it("service_account (object or JSON text) and play_service_account_credentials_json are configured everywhere: setup health, the app, store settings", async () => {
+    e = await env(keys);
+    const app = async () => (await (await e.call("/v2/projects/proj1/apps/app_play", { key: e.h.ids.secretKey })).json()).play_store;
+    const set = (credentials: Record<string, unknown>) => e.h.db.update(schema.apps).set({ credentials }).where(eq(schema.apps.id, "app_play"));
+    // google-helpers saves the service account as an object under `service_account`, which the adapter verifies purchases with.
+    e.g.subs.set("tok_pro_1", sub({ start: T0, expiry: MONTH_END, order: "GPA.1" }));
+    expect((await e.receipt({ app_user_id: "u", fetch_token: "tok_pro_1", product_ids: ["pro"], platform_product_ids: [{ product_id: "pro", base_plan_id: "monthly" }] })).status).toBe(200);
+    for (const credentials of [{ service_account: keys.sa }, { service_account: JSON.stringify(keys.sa) }, { play_service_account_credentials_json: JSON.stringify(keys.sa) }]) {
+      await set(credentials);
+      expect((await playApp()).credentials_configured).toBe(true);
+      expect((await app()).play_service_account_credentials_configured).toBe(true);
+      expect((await settings()).credentials.play_service_account).toEqual({ configured: true, client_email: keys.sa.client_email });
+    }
+    await set({});
+    expect((await playApp()).credentials_configured).toBe(false);
+    expect((await app()).play_service_account_credentials_configured).toBe(false);
+    expect((await settings()).credentials.play_service_account).toEqual({ configured: false, client_email: null });
+  });
+});
+
 describe("SDK versions", () => {
   const sdk = (path: string, headers: Record<string, string>, key = e.h.ids.iosKey) => e.call(path, { key, headers });
   const ios = { "X-Platform": "iOS", "X-Platform-Version": "Version 18.4 (Build 22E240)", "X-Version": "5.91.0", "X-Platform-Flavor": "native", "X-Client-Version": "2.3.0", "X-Client-Build-Version": "412", "X-Client-Bundle-ID": "com.example.scanner" };
