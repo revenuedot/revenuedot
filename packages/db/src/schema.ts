@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { bigint, boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const ts = (n: string) => timestamp(n, { withTimezone: true, mode: "date" });
@@ -806,7 +807,11 @@ export const webDomains = pgTable("web_domains", {
   checkedAt: ts("checked_at"),
   error: text("error"),
   createdAt: created(),
-}, (t) => [uniqueIndex("web_domains_slug").on(t.slug), uniqueIndex("web_domains_custom").on(t.customDomain)]);
+}, (t) => [
+  uniqueIndex("web_domains_slug").on(t.slug),
+  // Only a verified domain is exclusive: a project that adds a domain it cannot prove never blocks the one that can.
+  uniqueIndex("web_domains_custom").on(t.customDomain).where(sql`${t.status} = 'verified'`),
+]);
 
 /** A checkout link for one offering. `slug` shares the project's namespace with funnels. */
 export const purchaseLinks = pgTable("purchase_links", {

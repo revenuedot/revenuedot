@@ -9,12 +9,14 @@ import { DEFAULT_THEME, type FunnelTheme, type PageLook } from "@revenuedot/core
  */
 
 const https = z.string().trim().max(2048).regex(/^https:\/\/[^\s"'<>]+$/, "must be an https URL");
+/** Schemes a browser handles itself: a redemption deep link must open the app. */
+const BROWSER_SCHEMES = new Set(["http", "https", "javascript", "data", "vbscript", "file", "blob", "about", "ftp", "ws", "wss", "mailto", "tel", "sms", "intent"]);
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "must be a colour like #0A0A0A");
 
 export const ThemeIn = z.object({ background: hex, text: hex, accent: hex, button_text: hex, corner_radius: z.number().int().min(0).max(24) });
 
 export const WebConfigIn = z.object({
-  app_name: z.string().trim().min(1).max(80).optional(),
+  app_name: z.string().trim().min(1).max(80).regex(/^[^\u0000-\u001f\u007f]+$/, "must be one line of text").optional(),
   logo_url: https.nullable().optional(),
   theme: ThemeIn.optional(),
   terms_url: https.nullable().optional(),
@@ -25,7 +27,8 @@ export const WebConfigIn = z.object({
   success_title: z.string().trim().min(1).max(120).nullable().optional(),
   success_body: z.string().trim().max(600).nullable().optional(),
   cancel_url: https.nullable().optional(),
-  app_scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]{1,39}$/, "must be a URL scheme such as myapp (lower case letters, digits, + . -)").optional(),
+  app_scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]{1,39}$/, "must be a URL scheme such as myapp (lower case letters, digits, + . -)")
+    .refine((v) => !BROWSER_SCHEMES.has(v), "must be your app's own scheme, not a browser scheme such as https or javascript").optional(),
   app_store_url: https.nullable().optional(),
   play_store_url: https.nullable().optional(),
   redemption_link_hours: z.number().int().min(1).max(720).optional(),

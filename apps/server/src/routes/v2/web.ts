@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import {
@@ -457,6 +457,12 @@ export function webRoutes(r: V2Router, deps: Deps) {
     };
   }
 
+  async function verifiedElsewhere(domain: string, projectId: string) {
+    const [other] = await db.select({ p: schema.webDomains.projectId }).from(schema.webDomains)
+      .where(and(eq(schema.webDomains.customDomain, domain), eq(schema.webDomains.status, "verified"), ne(schema.webDomains.projectId, projectId))).limit(1);
+    return !!other;
+  }
+
   r.get(`${P}/web_domain`, appsRead, async (c) => c.json(domainShape(c, await domainOf(db, c.get("projectId"), deps.now()))));
   r.put(`${P}/web_domain`, appsWrite, async (c) => {
     const projectId = c.get("projectId");
@@ -471,8 +477,8 @@ export function webRoutes(r: V2Router, deps: Deps) {
       if (b.custom_domain) {
         const knownHosts = [payBase(c), deps.publicUrl, deps.apiUrl].filter(Boolean).map((u) => { try { return new URL(u!).hostname; } catch { return ""; } });
         if (knownHosts.includes(b.custom_domain) || /(^|\.)revenuedot\.app$/.test(b.custom_domain)) throw paramError("Use a domain you own, such as pay.yourapp.com.", "custom_domain");
-        const [other] = await db.select({ p: schema.webDomains.projectId }).from(schema.webDomains).where(eq(schema.webDomains.customDomain, b.custom_domain)).limit(1);
-        if (other && other.p !== projectId) throw conflict("This domain is used by another project.", "custom_domain");
+        // Only a verified claim blocks: anyone can type a domain, only its owner can add the TXT record.
+        if (await verifiedElsewhere(b.custom_domain, projectId)) throw conflict("This domain is used by another project.", "custom_domain");
       }
       forgetHost(d.customDomain);
       Object.assign(set, { customDomain: b.custom_domain, status: b.custom_domain ? "pending" : "none", verifiedAt: null, checkedAt: null, error: null, verificationToken: newId("", 24) });
@@ -487,8 +493,17 @@ export function webRoutes(r: V2Router, deps: Deps) {
     const now = deps.now();
     if (!(await hit(db, `web-domain-verify:${projectId}`, 6, 60_000, now))) throw new V2Error(429, "rate_limit_error", "Wait a minute before checking again.", undefined, true);
     const v = await verifyDomain(deps.fetch ?? fetch, d, cnameTarget(deps.customDomainTarget, payBase(c)));
-    const [row] = await db.update(schema.webDomains).set({ status: v.ok ? "verified" : "failed", verifiedAt: v.ok ? d.verifiedAt ?? now : null, checkedAt: now, error: v.error })
-      .where(eq(schema.webDomains.projectId, projectId)).returning();
+    const taken = v.ok && (await verifiedElsewhere(d.customDomain, projectId));
+    const ok = v.ok && !taken;
+    const set = { status: ok ? "verified" : "failed", verifiedAt: ok ? d.verifiedAt ?? now : null, checkedAt: now, error: taken ? "This domain is verified by another project." : v.error };
+    let row;
+    try {
+      [row] = await db.update(schema.webDomains).set(set).where(eq(schema.webDomains.projectId, projectId)).returning();
+    } catch (e) {
+      // Another project verified the same domain at the same moment (the unique index on verified domains).
+      if (!ok) throw e;
+      [row] = await db.update(schema.webDomains).set({ ...set, status: "failed", verifiedAt: null, error: "This domain is verified by another project." }).where(eq(schema.webDomains.projectId, projectId)).returning();
+    }
     forgetHost(d.customDomain);
     return c.json({ ...domainShape(c, row!), found: { cname: v.cname, txt: v.txt } });
   });

@@ -11,7 +11,6 @@ import { withCredentialHealth } from "./services/credential-health.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 import { PAY_CTX, payRoutes } from "./routes/pay.js";
 import { projectForHost } from "./services/web/domains.js";
-import { API_PATH } from "./api-paths.js";
 
 export function createApp(input: Deps) {
   // Receipt checks that the store answers with a credentials error mark the app failing (the credentials alert).
@@ -30,7 +29,9 @@ export function createApp(input: Deps) {
     let rewritten: string | null = null;
     let projectSlug: string | null = null;
     if (payHost && host === payHost) rewritten = path;
-    else if (!known.has(host) && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host) && !API_PATH.test(path) && !path.startsWith("/pay/") && !path.startsWith("/assets/") && /^[a-z0-9.-]+(:\d+)?$/.test(host)) {
+    else if (!known.has(host) && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host) && /^[a-z0-9.-]+(:\d+)?$/.test(host)) {
+      // A verified custom domain serves the project's hosted pages and nothing else: never the API, sign-in or OAuth, whose
+      // cookies and pages must not live on a domain a customer controls.
       projectSlug = await projectForHost(deps.db, host.replace(/:\d+$/, ""), deps.now().getTime());
       if (projectSlug) rewritten = /^\/(api|r)\//.test(path) ? path : `/${projectSlug}${path}`;
     }

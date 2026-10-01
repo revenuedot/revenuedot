@@ -35,8 +35,8 @@ export interface WebEnv {
   setupWeb: () => Promise<{ monthly: string; annual: string; lifetime: string; offeringId: string; projectSlug: string }>;
 }
 
-export async function webEnv(opts: { ai?: PaywallModel; payUrl?: string; customDomainTarget?: string; credentials?: Record<string, unknown> } = {}): Promise<WebEnv> {
-  const base = await harness();
+export async function webEnv(opts: { ai?: PaywallModel; payUrl?: string; publicUrl?: string; customDomainTarget?: string; credentials?: Record<string, unknown>; databaseUrl?: string } = {}): Promise<WebEnv> {
+  const base = await harness({ databaseUrl: opts.databaseUrl });
   const stripe = new FakeStripeAccount();
   stripe.clock = base.now;
   const mail = memoryMailer();
@@ -55,7 +55,7 @@ export async function webEnv(opts: { ai?: PaywallModel; payUrl?: string; customD
   }) as typeof fetch;
   const app = createApp({
     db: base.db, now: base.now, stores: { ...defaultStores(), stripe: createStripeStore({ fetch: stripe.fetch, now: base.now, timeoutMs: 1000 }) },
-    fetch: fetchFn, encryptionKey: ENCRYPTION_KEY, mailer: mail, ai: opts.ai, payUrl: opts.payUrl, customDomainTarget: opts.customDomainTarget,
+    fetch: fetchFn, encryptionKey: ENCRYPTION_KEY, mailer: mail, ai: opts.ai, payUrl: opts.payUrl, publicUrl: opts.publicUrl, customDomainTarget: opts.customDomainTarget,
   });
   const rest = { stripe_secret_key: FAKE_STRIPE_KEY, stripe_webhook_secret: WEB_WHSEC, ...(opts.credentials ?? {}) };
   const update = takeStoreSecrets("stripe", rest);

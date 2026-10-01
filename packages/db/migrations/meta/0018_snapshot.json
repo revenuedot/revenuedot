@@ -1,5 +1,5 @@
 {
-  "id": "62b97a4e-1a6b-408e-a07a-a7b03d738756",
+  "id": "1f93275e-00b1-4716-b3fb-487328a98595",
   "prevId": "1edd0ade-bad7-4bfa-8fed-5653a0c4ab66",
   "version": "7",
   "dialect": "postgresql",
@@ -6634,6 +6634,7 @@
             }
           ],
           "isUnique": true,
+          "where": "\"web_domains\".\"status\" = 'verified'",
           "concurrently": false,
           "method": "btree",
           "with": {}

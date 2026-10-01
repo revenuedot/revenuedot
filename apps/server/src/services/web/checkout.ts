@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { ANON_PREFIX, buildCustomerInfo, isAnonymous, newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord, Deps } from "../../context.js";
@@ -17,7 +17,7 @@ import { StripeApiError, type StripeCheckoutSession } from "../../stores/stripe/
 import { StripeNotYetPaid } from "../../stores/stripe/map.js";
 import { webConfigOf } from "./config.js";
 import { webPackages, type WebPackage } from "./catalog.js";
-import { countRedemption, DiscountRefused, discountForCheckout } from "./discounts.js";
+import { CAPPED_CHECKOUT_MINUTES, countRedemption, DiscountRefused, discountForCheckout, pendingUses, USED_UP } from "./discounts.js";
 import { recordFunnelEvent } from "./funnels.js";
 
 /**
@@ -61,8 +61,11 @@ export async function startCheckout(deps: Deps, o: StartInput): Promise<{ checko
   let appUserId = o.appUserId?.trim() || null;
   if (appUserId && appUserId.length > 100) throw new CheckoutError(400, "app_user_id is too long.");
   const anonymous = !appUserId;
-  // A funnel visitor's anonymous id from the page, so their events and their purchase share one id.
-  appUserId ??= o.visitorId && /^\$RCAnonymousID:[0-9a-f]{32}$/.test(o.visitorId) ? o.visitorId : newAnonymousId();
+  // A funnel visitor's anonymous id from the page, so their events and their purchase share one id. The page sends it, so
+  // it is used only while no customer has it: an id that is already someone's (an app's anonymous user, a buyer who has
+  // redeemed) would put the purchase on that customer, and redeeming it would move all of theirs.
+  const visitor = !appUserId && o.visitorId && /^\$RCAnonymousID:[0-9a-f]{32}$/.test(o.visitorId) && !(await findCustomer(db, o.app.projectId, o.visitorId)) ? o.visitorId : null;
+  appUserId ??= visitor ?? newAnonymousId();
   const email = o.email?.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email.trim()) ? o.email.trim().slice(0, 254) : null;
   let applied;
   try {
@@ -73,10 +76,19 @@ export async function startCheckout(deps: Deps, o: StartInput): Promise<{ checko
   }
   const id = newId("wco_", 16);
   const attributes = { ...(o.attributes ?? {}), ...(email ? { $email: email } : {}) };
-  const [row] = await db.insert(schema.webCheckouts).values({
+  const values = {
     id, projectId: o.app.projectId, appId: o.app.id, sourceType: o.source.type, sourceId: o.source.id, offeringId: o.offering.id, packageId: pkg.packageId, productId: pkg.product.id,
     appUserId, anonymous, email, discountId: applied?.discount.id ?? null, discountCode: applied?.code?.codeKey ?? null, funnelSessionId: o.funnelSessionId ?? null, attributes, createdAt: now,
-  }).returning();
+  };
+  const capped = applied?.discount.maxRedemptions ?? null;
+  // A capped discount: the check and the checkout row that holds one use are one step, with the discount row locked, so
+  // checkouts started at the same moment cannot all take the last use.
+  const [row] = capped === null ? await db.insert(schema.webCheckouts).values(values).returning() : await db.transaction(async (tx) => {
+    const t = tx as unknown as DB;
+    const [d] = await t.select({ used: schema.discounts.timesRedeemed }).from(schema.discounts).where(eq(schema.discounts.id, applied!.discount.id)).for("update");
+    if (!d || d.used + (await pendingUses(t, applied!.discount.id, now)) >= capped) throw new CheckoutError(400, USED_UP);
+    return t.insert(schema.webCheckouts).values(values).returning();
+  });
   const storeApp = await withStoreSecrets(deps, o.app);
   const { config } = await webConfigOf(db, o.app);
   const { client } = stripeClientFor(deps.stores, deps.fetch);
@@ -93,6 +105,8 @@ export async function startCheckout(deps: Deps, o: StartInput): Promise<{ checko
     customer_email: email ?? undefined,
     discounts: applied ? [applied.stripe] : undefined,
   };
+  // The session must end before the hold on a capped discount's use does (discounts.ts).
+  if (capped !== null) params.expires_at = Math.floor(now.getTime() / 1000) + CAPPED_CHECKOUT_MINUTES * 60;
   if (pkg.web.interval) params.subscription_data = { metadata, ...(pkg.web.trialDays ? { trial_period_days: pkg.web.trialDays } : {}) };
   else params.payment_intent_data = { metadata };
   let session: StripeCheckoutSession & { url?: string };
@@ -134,16 +148,22 @@ export function obfuscateEmail(email: string): string {
   return `${name[0] ?? ""}***@${[hidden, ...parts.slice(1)].join(".")}`;
 }
 
-/** Issues the next generation of the checkout's redemption token (a new one replaces an expired one). */
-async function issueToken(db: DB, row: CheckoutRow, hours: number, now: Date): Promise<{ token: string; row: CheckoutRow }> {
+/**
+ * Issues the next generation of the checkout's redemption token (a new one replaces an expired one). Only one of several
+ * calls that start from the same generation writes; the others answer the token it wrote (`issued` false), so the success
+ * page, the webhook and the email always agree on one token.
+ */
+async function issueToken(db: DB, row: CheckoutRow, hours: number, now: Date): Promise<{ token: string; row: CheckoutRow; issued: boolean }> {
   const seed = row.redemptionSeed ?? randomSeed();
   const generation = row.redemptionGeneration + 1;
   const token = await tokenFor(seed, generation);
   const [saved] = await db.update(schema.webCheckouts).set({
     redemptionSeed: seed, redemptionGeneration: generation, redemptionTokenHash: await sha256Hex(token), redemptionExpiresAt: new Date(now.getTime() + hours * 3_600_000),
     previousTokenHashes: row.redemptionTokenHash ? [...(row.previousTokenHashes ?? []), row.redemptionTokenHash].slice(-20) : row.previousTokenHashes ?? [],
-  }).where(eq(schema.webCheckouts.id, row.id)).returning();
-  return { token, row: saved! };
+  }).where(and(eq(schema.webCheckouts.id, row.id), eq(schema.webCheckouts.redemptionGeneration, row.redemptionGeneration))).returning();
+  if (saved) return { token, row: saved, issued: true };
+  const [cur] = await db.select().from(schema.webCheckouts).where(eq(schema.webCheckouts.id, row.id)).limit(1);
+  return { token: await tokenFor(cur!.redemptionSeed!, cur!.redemptionGeneration), row: cur!, issued: false };
 }
 
 /** The token the success page shows: the current one, or a new one when it expired before redemption. */
@@ -158,7 +178,7 @@ export const deepLinkFor = (scheme: string, token: string) => `${scheme}://redee
 export const redeemUrlFor = (payBase: string, token: string) => `${payBase}/r/${encodeURIComponent(token)}`;
 
 function redemptionEmail(o: { appName: string; url: string; expiresInHours: number }) {
-  const subject = `Your ${o.appName} purchase is ready`;
+  const subject = `Your ${o.appName.replace(/[\u0000-\u001f\u007f]+/g, " ")} purchase is ready`;
   const text = [`Thanks for your purchase.`, "", `Open this link on the phone where ${o.appName} is installed to unlock it:`, o.url, "", `The link works for ${o.expiresInHours} hours. If it expires, open it anyway and we will send a new one.`].join("\n");
   const html = `<!doctype html><html><body style="margin:0;padding:32px 16px;background:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0A0A0A">` +
     `<div style="max-width:480px;margin:0 auto"><h1 style="font-size:22px;line-height:30px;margin:0 0 16px">${esc(subject)}</h1>` +
@@ -168,6 +188,7 @@ function redemptionEmail(o: { appName: string; url: string; expiresInHours: numb
   return { subject, text, html };
 }
 
+/** Emails the redemption link. `payBase` must come from configuration (mailPayBase), never from the request's host. */
 async function sendRedemption(deps: Deps, row: CheckoutRow, token: string, payBase: string) {
   if (!row.email) return false;
   const [app] = await deps.db.select().from(schema.apps).where(eq(schema.apps.id, row.appId)).limit(1);
@@ -184,13 +205,16 @@ export interface Completion { status: "completed" | "processing" | "expired"; ro
 
 /**
  * Records a paid checkout, once, from the success page or the `checkout.session.completed` webhook (whichever comes first).
- * Reads the session from Stripe and posts it through the Stripe store path for the checkout's app user id.
+ * Reads the session from Stripe and posts it through the Stripe store path for the checkout's app user id. `ref.projectId`
+ * and `ref.appId` scope the lookup to the page or the webhook's Stripe app. `mailBase` is where the redemption email's link
+ * points (mailPayBase).
  */
-export async function completeWebCheckout(deps: Deps, ref: { checkoutId?: string; sessionId?: string }, payBase: string | null): Promise<Completion | null> {
+export async function completeWebCheckout(deps: Deps, ref: { checkoutId?: string; sessionId?: string; projectId?: string; appId?: string }, mailBase: string | null): Promise<Completion | null> {
   const { db } = deps;
   const now = deps.now();
   const [row] = await db.select().from(schema.webCheckouts).where(ref.checkoutId ? eq(schema.webCheckouts.id, ref.checkoutId) : eq(schema.webCheckouts.stripeSessionId, ref.sessionId!)).limit(1);
   if (!row || !row.stripeSessionId || (ref.sessionId && row.stripeSessionId !== ref.sessionId)) return null;
+  if ((ref.projectId && row.projectId !== ref.projectId) || (ref.appId && row.appId !== ref.appId)) return null;
   const [app] = await db.select().from(schema.apps).where(eq(schema.apps.id, row.appId)).limit(1);
   if (!app) return null;
   const { config } = await webConfigOf(db, app);
@@ -206,7 +230,7 @@ export async function completeWebCheckout(deps: Deps, ref: { checkoutId?: string
   } catch (e) {
     if (e instanceof StripeNotYetPaid) return { status: "processing", row, token: null };
     if (e instanceof StripeApiError && e.kind === "invalid" && /expired/i.test(e.message)) {
-      const [x] = await db.update(schema.webCheckouts).set({ status: "expired" }).where(eq(schema.webCheckouts.id, row.id)).returning();
+      const [x] = await db.update(schema.webCheckouts).set({ status: "expired" }).where(and(eq(schema.webCheckouts.id, row.id), ne(schema.webCheckouts.status, "completed"))).returning();
       return { status: "expired", row: x ?? row, token: null };
     }
     throw e;
@@ -218,12 +242,25 @@ export async function completeWebCheckout(deps: Deps, ref: { checkoutId?: string
   const session = await client.checkoutSession(storeApp, row.stripeSessionId).catch(() => null) as (StripeCheckoutSession & { customer_details?: { email?: string | null } | null }) | null;
   const email = row.email ?? session?.customer_details?.email ?? null;
   if (email && !attrs.$email) attrs.$email = email;
+  if (!row.anonymous && !created && Object.keys(attrs).length) {
+    // The buyer named an app user id that already exists (`?app_user_id=`): anyone can, so the checkout fills in what the
+    // customer lacks and never overwrites what they have (their email, earlier answers).
+    const have = await db.select({ key: schema.customerAttributes.key }).from(schema.customerAttributes)
+      .where(and(eq(schema.customerAttributes.customerId, customer.id), inArray(schema.customerAttributes.key, Object.keys(attrs))));
+    for (const h of have) delete attrs[h.key];
+  }
   if (Object.keys(attrs).length) await setAttributes(db, customer.id, Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, { value: v }])), now);
   const owner = await applyPurchases(db, customer, purchases, { projectId: app.projectId, appId: app.id, appUserId: row.appUserId, now, presentedOfferingId: offering?.key ?? null, fromDevice: false, customerCreated: created, fetch: deps.fetch });
   deps.kick?.();
-  // Only the call that flips the row does the one-time work.
-  const [won] = await db.update(schema.webCheckouts).set({ status: "completed", completedAt: now, email, isSandbox: purchases.some((p) => p.isSandbox) })
-    .where(and(eq(schema.webCheckouts.id, row.id), ne(schema.webCheckouts.status, "completed"))).returning();
+  // Only the call that flips the row does the one-time work. The discount use is counted in the same step, so the use the
+  // checkout held (pendingUses) never looks free in between. An anonymous checkout gets its redemption seed here too.
+  const won = await db.transaction(async (tx) => {
+    const t = tx as unknown as DB;
+    const [w] = await t.update(schema.webCheckouts).set({ status: "completed", completedAt: now, email, isSandbox: purchases.some((p) => p.isSandbox), ...(row.anonymous ? { redemptionSeed: row.redemptionSeed ?? randomSeed() } : {}) })
+      .where(and(eq(schema.webCheckouts.id, row.id), ne(schema.webCheckouts.status, "completed"))).returning();
+    if (w?.discountId) await countRedemption(t, app.projectId, w.discountId, w.discountCode);
+    return w;
+  });
   if (!won) {
     const [cur] = await db.select().from(schema.webCheckouts).where(eq(schema.webCheckouts.id, row.id));
     return { status: "completed", row: cur!, token: await currentToken(deps, cur!, config.redemption_link_hours) };
@@ -231,16 +268,15 @@ export async function completeWebCheckout(deps: Deps, ref: { checkoutId?: string
   let done = won;
   const first = purchases[0];
   if (first) {
-    const tx = first.kind === "subscription" ? first.storeTransactionId : first.storeTransactionId;
-    const [t] = await db.select({ usd: schema.transactions.revenueUsd }).from(schema.transactions).where(and(eq(schema.transactions.projectId, app.projectId), eq(schema.transactions.store, "stripe"), eq(schema.transactions.storeTransactionId, tx))).limit(1);
+    const [t] = await db.select({ usd: schema.transactions.revenueUsd }).from(schema.transactions).where(and(eq(schema.transactions.projectId, app.projectId), eq(schema.transactions.store, "stripe"), eq(schema.transactions.storeTransactionId, first.storeTransactionId))).limit(1);
     if (t) [done] = await db.update(schema.webCheckouts).set({ amountUsd: t.usd }).where(eq(schema.webCheckouts.id, row.id)).returning() as [CheckoutRow];
   }
-  if (done.discountId) await countRedemption(db, app.projectId, done.discountId, done.discountCode);
   let token: string | null = null;
   if (done.anonymous) {
     const issued = await issueToken(db, done, config.redemption_link_hours, now);
     token = issued.token; done = issued.row;
-    if (payBase) await sendRedemption(deps, done, token, payBase);
+    // The flip's winner sends the one email, with the token whichever call wrote it.
+    if (mailBase) await sendRedemption(deps, done, token, mailBase);
   }
   if (done.sourceType === "funnel" && done.sourceId && done.funnelSessionId) {
     const [f] = await db.select().from(schema.funnels).where(eq(schema.funnels.id, done.sourceId)).limit(1);
@@ -270,34 +306,67 @@ export async function redeemWebPurchase(deps: Deps, app: { id: string | null; pr
   }
   if (!row || row.status !== "completed" || !row.anonymous) throw invalid();
   const target = await findCustomer(db, app.projectId, o.appUserId);
-  if (row.redeemedAt) {
-    if (target && target.id === row.redeemedCustomerId) return target;
-    throw new RCError(400, 7852, "The purchase has already been redeemed.");
-  }
+  if (row.redeemedAt) return alreadyRedeemed(db, row, o.appUserId, target);
   if (replaced || !row.redemptionExpiresAt || row.redemptionExpiresAt <= now) {
     const [webApp] = await db.select().from(schema.apps).where(eq(schema.apps.id, row.appId)).limit(1);
     if (webApp && row.email && (!row.redemptionSentAt || now.getTime() - row.redemptionSentAt.getTime() > 3_600_000)) {
       const { config } = await webConfigOf(db, webApp);
       const issued = await issueToken(db, row, config.redemption_link_hours, now);
-      await sendRedemption(deps, issued.row, issued.token, o.payBase);
+      // Two expired redeems at once send one email.
+      if (issued.issued) await sendRedemption(deps, issued.row, issued.token, o.payBase);
     }
     throw new RCError(400, 7853, "The link has expired.", row.email ? { purchase_redemption_error_info: { obfuscated_email: obfuscateEmail(row.email) } } : {});
   }
-  const web = await findCustomer(db, app.projectId, row.appUserId);
-  let owner;
-  if (!web) owner = target ?? (await getOrCreateCustomer(db, app.projectId, o.appUserId, now)).customer;
-  else if (target && target.id !== web.id) { await mergeCustomers(db, web.id, target.id); owner = target; }
-  else if (target) owner = target;
-  else {
-    await db.insert(schema.customerAliases).values({ projectId: app.projectId, appUserId: o.appUserId, customerId: web.id }).onConflictDoNothing();
-    owner = web;
+  // Claim the purchase before moving anything: of two redeems at once (two app users, or one user's retries) exactly one
+  // moves it and sends PURCHASE_REDEEMED; the other answers 7852 or, for the same app user id, the same customer.
+  const [claim] = await db.update(schema.webCheckouts).set({ redeemedAt: now, redeemedAppUserId: o.appUserId })
+    .where(and(eq(schema.webCheckouts.id, row.id), isNull(schema.webCheckouts.redeemedAt))).returning();
+  if (!claim) {
+    const [cur] = await db.select().from(schema.webCheckouts).where(eq(schema.webCheckouts.id, row.id)).limit(1);
+    return alreadyRedeemed(db, cur!, o.appUserId, target);
   }
-  // Two redeems at once: only one sets redeemed_at.
-  const [won] = await db.update(schema.webCheckouts).set({ redeemedAt: now, redeemedCustomerId: owner.id, redeemedAppUserId: o.appUserId })
-    .where(and(eq(schema.webCheckouts.id, row.id), eq(schema.webCheckouts.status, "completed"))).returning();
-  if (won && !row.redeemedAt) await purchaseRedeemedEvent(db, { row, appUserId: o.appUserId, customerId: owner.id, platform: o.platform, now });
+  let owner: typeof schema.customers.$inferSelect;
+  try {
+    const web = await findCustomer(db, app.projectId, row.appUserId);
+    if (!web) owner = target ?? (await getOrCreateCustomer(db, app.projectId, o.appUserId, now)).customer;
+    else if (target && target.id !== web.id) { await mergeCustomers(db, web.id, target.id); owner = target; }
+    else if (target) owner = target;
+    else {
+      const added = await db.insert(schema.customerAliases).values({ projectId: app.projectId, appUserId: o.appUserId, customerId: web.id }).onConflictDoNothing().returning();
+      // The app user id was created meanwhile (the app's own request): move the purchase into it instead.
+      const raced = added.length ? null : await findCustomer(db, app.projectId, o.appUserId);
+      if (raced && raced.id !== web.id) await mergeCustomers(db, web.id, raced.id);
+      owner = raced ?? web;
+    }
+    await db.update(schema.webCheckouts).set({ redeemedCustomerId: owner.id }).where(eq(schema.webCheckouts.id, row.id));
+  } catch (e) {
+    // Nothing was redeemed: free the claim so the buyer can try again.
+    await db.update(schema.webCheckouts).set({ redeemedAt: null, redeemedAppUserId: null, redeemedCustomerId: null })
+      .where(and(eq(schema.webCheckouts.id, row.id), eq(schema.webCheckouts.redeemedAppUserId, o.appUserId), isNull(schema.webCheckouts.redeemedCustomerId)));
+    throw e;
+  }
+  await purchaseRedeemedEvent(db, { row, appUserId: o.appUserId, customerId: owner.id, platform: o.platform, now });
   deps.kick?.();
   return owner;
+}
+
+/**
+ * A purchase that is redeemed (or being redeemed): the same app user id, or the customer it went to, gets that customer
+ * (the SDK retries); anyone else gets 7852. A redeem still moving the purchase is waited for, briefly.
+ */
+async function alreadyRedeemed(db: DB, row: CheckoutRow, appUserId: string, target: typeof schema.customers.$inferSelect | null) {
+  let cur = row;
+  for (let i = 0; i < 30 && cur.redeemedAt && !cur.redeemedCustomerId && cur.redeemedAppUserId === appUserId; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    [cur] = await db.select().from(schema.webCheckouts).where(eq(schema.webCheckouts.id, row.id)).limit(1) as [CheckoutRow];
+  }
+  const mine = cur.redeemedAppUserId === appUserId || (!!target && target.id === cur.redeemedCustomerId);
+  if (mine && cur.redeemedCustomerId) {
+    const owner = (await findCustomer(db, row.projectId, appUserId)) ?? target;
+    if (owner) return owner;
+  }
+  if (mine) throw new RCError(503, Codes.STORE_PROBLEM, "The purchase is being redeemed. Try again in a moment.");
+  throw new RCError(400, 7852, "The purchase has already been redeemed.");
 }
 
 /** PURCHASE_REDEEMED with the fields of RevenueCat's sample (fixtures/webhooks/purchase_redeemed.json), plus app_user_id. */
@@ -313,7 +382,7 @@ async function purchaseRedeemedEvent(db: DB, o: { row: CheckoutRow; appUserId: s
   const event = {
     app_id: o.row.appId, event_timestamp_ms: o.now.getTime(), id, store: "STRIPE", environment,
     redeemed_from: [o.row.appUserId], redeemed_by: [o.appUserId], redemption_outcome: "alias",
-    redemption_platform: platform === "ios" || platform === "android" || platform === "web" ? platform : platform || null,
+    redemption_platform: platform || null,
     product_id: pid, entitlement_ids: entitlementIds.length ? entitlementIds : null,
     workflow_id: o.row.sourceType === "funnel" ? o.row.sourceId : null, workflow_step_id: null, trace_id: o.row.id,
     app_user_id: o.appUserId, type: "PURCHASE_REDEEMED",

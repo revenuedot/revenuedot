@@ -25,7 +25,7 @@ import { mergeStoredState, rowPrice, subRowOf } from "../stores/rows.js";
 import { withStoreSecrets } from "../services/store-secrets.js";
 import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
 import { CheckoutError, redeemWebPurchase, startCheckout } from "../services/web/checkout.js";
-import { domainOf, payBaseOf } from "../services/web/domains.js";
+import { domainOf, mailPayBase, payBaseOf } from "../services/web/domains.js";
 import { offeringByKey, webPackages } from "../services/web/catalog.js";
 import { stripeAppsOf } from "../services/web/config.js";
 
@@ -394,7 +394,7 @@ export function sdkRoutes(deps: Deps) {
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
     const appUserId = userId(String(b.app_user_id ?? ""));
     const token = typeof b.redemption_token === "string" ? b.redemption_token.trim() : "";
-    const owner = await redeemWebPurchase(deps, app, { appUserId, token, platform: c.req.header("x-platform") ?? null, payBase: payBaseOf(deps.payUrl, publicOrigin(c)) });
+    const owner = await redeemWebPurchase(deps, app, { appUserId, token, platform: c.req.header("x-platform") ?? null, payBase: mailPayBase(deps, publicOrigin(c)) });
     await touch(deps.db, owner.id, now, reqInfo(c));
     const { body } = await customerInfoFor(app.projectId, appUserId, now, isSecret(c));
     return c.json(body);

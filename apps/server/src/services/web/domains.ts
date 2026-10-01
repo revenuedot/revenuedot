@@ -44,6 +44,17 @@ export function payBaseOf(payUrl: string | undefined, origin: string): string {
   return (payUrl?.trim() || `${origin}/pay`).replace(/\/+$/, "");
 }
 
+/**
+ * The pay base for links in emails (redemption links): configured URLs only (REVENUEDOT_PAY_URL, else REVENUEDOT_PUBLIC_URL),
+ * never the request's Host or X-Forwarded-Host, which a caller chooses. The request origin is the last resort, for a server
+ * with neither set (as password reset emails do).
+ */
+export function mailPayBase(deps: { payUrl?: string; publicUrl?: string }, requestOrigin: string): string {
+  if (deps.payUrl?.trim()) return payBaseOf(deps.payUrl, requestOrigin);
+  if (deps.publicUrl?.trim()) return `${deps.publicUrl.trim().replace(/\/+$/, "")}/pay`;
+  return payBaseOf(undefined, requestOrigin);
+}
+
 /** The base under which one project's pages live (custom domain first, when verified). */
 export function projectBase(payBase: string, d: Pick<DomainRow, "slug" | "customDomain" | "status">): string {
   if (d.customDomain && d.status === "verified") return `https://${d.customDomain}`;

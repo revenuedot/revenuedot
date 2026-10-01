@@ -286,15 +286,19 @@ describe("domains", () => {
     const page = await env.raw(`https://pay.scanner.example/${l.slug}`);
     expect(page.status).toBe(200);
     const html = await page.text();
-    expect(html).toContain('"checkout":"https://pay.scanner.example/api/checkout"');
+    // The page calls its own origin (CSP connect-src 'self').
+    expect(html).toContain('"checkout":"/api/checkout"');
     // Behind a TLS proxy the request arrives as http; links keep the visitor's https.
-    const proxied = await env.raw(`http://pay.scanner.example/${l.slug}`, { headers: { "x-forwarded-proto": "https" } });
-    expect(await proxied.text()).toContain('"checkout":"https://pay.scanner.example/api/checkout"');
-    const start = await env.raw("https://pay.scanner.example/api/checkout", { method: "POST", json: { project: "scanner", slug: l.slug, package: "$rc_annual" } });
+    const start = await env.raw("http://pay.scanner.example/api/checkout", { method: "POST", headers: { "x-forwarded-proto": "https" }, json: { project: "scanner", slug: l.slug, package: "$rc_annual" } });
     expect(start.status).toBe(200);
     expect(env.stripe.writes("/v1/checkout/sessions")[0]!.params.success_url).toMatch(/^https:\/\/pay\.scanner\.example\/spring-sale\/success\?co=/);
-    // API paths on that host are still the API; a domain of another project is refused.
-    expect((await env.raw("https://pay.scanner.example/v1/health")).status).toBe(200);
+    // The domain serves the hosted pages only: never the API, sign-in or OAuth, whose pages and cookies stay on RevenueDot's hosts.
+    for (const path of ["/v1/health", "/v1/subscribers/x", "/auth/session", "/oauth/authorize", "/v2/projects", "/pay/scanner/spring-sale", "/assets/x"]) {
+      const res = await env.raw(`https://pay.scanner.example${path}`);
+      expect(res.status, path).toBe(404);
+      expect(res.headers.get("set-cookie"), path).toBeNull();
+    }
+    // A domain of another project is refused.
     expect((await env.api("PUT", `${P()}/web_domain`, { custom_domain: "api.revenuedot.app" })).status).toBe(400);
     expect((await env.api("PUT", `${P()}/web_domain`, { slug: "api" })).status).toBe(400);
   });
@@ -306,7 +310,9 @@ describe("domains", () => {
     expect(l.url).toBe("https://pay.example.dev/scanner/spring-sale");
     const page = await env.raw(l.url);
     expect(page.status).toBe(200);
-    expect(await page.text()).toContain('"checkout":"https://pay.example.dev/api/checkout"');
+    expect(await page.text()).toContain('"checkout":"/api/checkout"');
+    // On the API host's /pay path the page calls /pay/api on that same host.
+    expect(await (await env.raw("http://localhost/pay/scanner/spring-sale")).text()).toContain('"checkout":"/pay/api/checkout"');
     const start = await env.raw("https://pay.example.dev/api/checkout", { method: "POST", json: { project: "scanner", slug: "spring-sale", package: "$rc_monthly" } });
     expect(start.status).toBe(200);
     const { url } = await start.json() as { url: string };

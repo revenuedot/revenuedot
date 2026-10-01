@@ -11,7 +11,7 @@ import { stripeClientFor } from "./index.js";
 import { StripeSignatureError, verifyStripeSignature } from "./signature.js";
 import { handleStripeEvent } from "./sync.js";
 import { completeWebCheckout } from "../../services/web/checkout.js";
-import { payBaseOf } from "../../services/web/domains.js";
+import { mailPayBase } from "../../services/web/domains.js";
 import { publicOrigin } from "../../routes/oauth.js";
 
 const { apps, storeNotifications } = schema;
@@ -77,7 +77,8 @@ export function stripeNotificationRoutes(deps: Deps) {
       // A session from RevenueDot's hosted checkout completes its web checkout (purchase, discount, redemption link).
       const meta = event.data?.object?.metadata as Record<string, unknown> | undefined;
       if ((event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && objectId && typeof meta?.rd_checkout === "string") {
-        const done = await completeWebCheckout(deps, { sessionId: objectId }, payBaseOf(deps.payUrl, publicOrigin(c)));
+        // Only a checkout of this Stripe app: the signature proves the event came from this app's account, no other.
+        const done = await completeWebCheckout(deps, { sessionId: objectId, appId: app.id }, mailPayBase(deps, publicOrigin(c)));
         if (done) {
           await finish({ processedAt: now, error: null, environment: event.livemode === false ? "sandbox" : "production" });
           if (done.status === "completed") await deps.db.update(apps).set({ lastNotificationAt: now }).where(eq(apps.id, app.id));

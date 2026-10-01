@@ -165,6 +165,6 @@ CREATE UNIQUE INDEX "web_checkouts_token" ON "web_checkouts" USING btree ("redem
 CREATE INDEX "web_checkouts_project" ON "web_checkouts" USING btree ("project_id","created_at");--> statement-breakpoint
 CREATE INDEX "web_configs_project" ON "web_configs" USING btree ("project_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "web_domains_slug" ON "web_domains" USING btree ("slug");--> statement-breakpoint
-CREATE UNIQUE INDEX "web_domains_custom" ON "web_domains" USING btree ("custom_domain");--> statement-breakpoint
+CREATE UNIQUE INDEX "web_domains_custom" ON "web_domains" USING btree ("custom_domain") WHERE "web_domains"."status" = 'verified';--> statement-breakpoint
 CREATE INDEX "web_products_project" ON "web_products" USING btree ("project_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "web_products_price" ON "web_products" USING btree ("app_id","stripe_price_id");

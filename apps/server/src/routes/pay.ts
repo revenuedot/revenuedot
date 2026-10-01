@@ -10,7 +10,7 @@ import { lookOf, stripeAppsOf, webConfigOf, type WebConfig } from "../services/w
 import { offeringByKey, webPackages } from "../services/web/catalog.js";
 import { CheckoutError, completeWebCheckout, deepLinkFor, redeemUrlFor, startCheckout, tokenFor } from "../services/web/checkout.js";
 import { DiscountRefused, discountForCheckout } from "../services/web/discounts.js";
-import { payBaseOf } from "../services/web/domains.js";
+import { mailPayBase, payBaseOf } from "../services/web/domains.js";
 import { FUNNEL_EVENT_TYPES, recordFunnelEvent } from "../services/web/funnels.js";
 import { sha256Hex } from "../services/auth.js";
 
@@ -31,7 +31,7 @@ type Page =
 
 const nonce = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
 const csp = (n: string) => `default-src 'none'; img-src https: data:; style-src 'nonce-${n}'; script-src 'nonce-${n}'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
-const headersFor = (n: string) => ({ "content-security-policy": csp(n), "cache-control": "no-store", "referrer-policy": "strict-origin-when-cross-origin", "x-content-type-options": "nosniff" });
+const headersFor = (n: string) => ({ "content-security-policy": csp(n), "cache-control": "no-store", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" });
 
 const queryOf = (c: Context) => {
   const q: Record<string, string> = {};
@@ -136,11 +136,14 @@ export function payRoutes(deps: Deps) {
     if (!offering || typeof b.package !== "string") return c.json({ message: "Pick a plan." }, 400);
     // Funnel answers with an attribute name become customer attributes when the purchase completes.
     const attributes: Record<string, string> = {};
+    // Only the question's own option labels are kept: the page sends the answers, so free text never becomes an attribute.
     if (p.kind === "funnel" && b.answers && typeof b.answers === "object") {
       for (const s of doc.steps) {
         if (s.type !== "question" || !s.attribute) continue;
         const a = b.answers[s.id];
-        const v = Array.isArray(a) ? a.filter((x) => typeof x === "string").join(", ") : typeof a === "string" ? a : null;
+        const labels = new Set(s.options.map((x) => x.label));
+        const picked = (Array.isArray(a) ? (s.multiple ? a : a.slice(0, 1)) : [a]).filter((x): x is string => typeof x === "string" && labels.has(x));
+        const v = [...new Set(picked)].join(", ");
         if (v) attributes[s.attribute] = v.slice(0, 500);
       }
     }
@@ -212,7 +215,7 @@ export function payRoutes(deps: Deps) {
     const [row] = await db.select().from(schema.webCheckouts).where(and(eq(schema.webCheckouts.id, co), eq(schema.webCheckouts.projectId, d.projectId))).limit(1);
     const app = row ? await appFor(d.projectId, row.appId) : null;
     const config = app ? (await webConfigOf(db, app)).config : undefined;
-    const done = row ? await completeWebCheckout(deps, { checkoutId: co, sessionId }, ctxOf(c).base).catch((e) => { console.error("web checkout completion", e); return null; }) : null;
+    const done = row ? await completeWebCheckout(deps, { checkoutId: co, sessionId, projectId: d.projectId }, mailPayBase(deps, publicOrigin(c))).catch((e) => { console.error("web checkout completion", e); return null; }) : null;
     if (!done) return message(c, 404, "Checkout not found", "We could not find this checkout.", config);
     if (done.status === "processing") return message(c, 202, "Payment processing", "Your payment is processing. You can return to the app; your purchase unlocks as soon as it is confirmed.", config);
     return message(c, 200, "Purchase complete", "Return to the app to start using your purchase.", config);
@@ -228,10 +231,9 @@ export function payRoutes(deps: Deps) {
     const base = ctxOf(c).base;
     let done;
     try {
-      done = await completeWebCheckout(deps, { checkoutId: co, sessionId }, base);
+      done = await completeWebCheckout(deps, { checkoutId: co, sessionId, projectId: p.projectId }, mailPayBase(deps, publicOrigin(c)));
     } catch (e) {
       console.error("web checkout completion", e);
-      done = null;
       const n = nonce();
       const doc = await docOf(p, config);
       return html(c, renderFunnelPage({ funnel: doc, look: lookOf(config), packages: {}, mode: "live", nonce: n, startStepId: doc.steps[doc.steps.length - 1]!.id, success: { status: "processing" } }), n);
@@ -262,12 +264,13 @@ export function payRoutes(deps: Deps) {
     const { config } = await webConfigOf(db, p.app);
     if (linkClosed(p, now)) return message(c, 410, "This link has expired", "Ask for a new link, or open the app to buy there.", config);
     const doc = await docOf(p, config);
-    const base = ctxOf(c).base;
+    // The page calls its own origin (CSP connect-src 'self'): /api on the pay host and custom domains, /pay/api elsewhere.
+    const api = PAY_CTX.has(c.req.raw) ? "/api" : "/pay/api";
     const n = nonce();
     const q = c.req.query();
     return html(c, renderFunnelPage({
       funnel: doc, look: lookOf(config), packages: await packagesOf(p, doc), mode: "live", nonce: n, title: p.kind === "funnel" ? config.app_name : `${config.app_name}: ${doc.steps[0]!.title}`,
-      urls: { checkout: `${base}/api/checkout`, events: `${base}/api/events`, discount: `${base}/api/discount` },
+      urls: { checkout: `${api}/checkout`, events: `${api}/events`, discount: `${api}/discount` },
       context: {
         project: p.projectSlug, slug: p.slug, funnel_id: p.kind === "funnel" ? p.funnel.id : null, link_id: p.kind === "link" ? p.link.id : null,
         session_id: crypto.randomUUID().replace(/-/g, ""), app_user_id: q.app_user_id?.slice(0, 100) || null, visitor_id: `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`, email: q.email?.slice(0, 254) || null,

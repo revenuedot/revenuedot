@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { formatMoney, majorToMinor } from "@revenuedot/core/funnels";
 import type { Deps } from "../../context.js";
@@ -86,7 +86,8 @@ export async function couponParams(db: DB, d: DiscountRow, appId: string): Promi
   if (d.durationMode === "forever") p.duration = "forever";
   else if (d.durationMode === "time_window") { p.duration = "repeating"; p.duration_in_months = monthsOf(d.timeWindow); }
   else p.duration = "once";
-  if (d.maxRedemptions) p.max_redemptions = d.maxRedemptions;
+  // A re-created coupon starts Stripe's count at 0: it may be redeemed only the uses that are left.
+  if (d.maxRedemptions) p.max_redemptions = Math.max(1, d.maxRedemptions - d.timesRedeemed);
   if (d.expiresAt) p.redeem_by = Math.floor(d.expiresAt.getTime() / 1000);
   const products = await stripeProductsFor(db, d, appId);
   if (products?.length) p.applies_to = { products };
@@ -202,7 +203,7 @@ export async function discountForCheckout(db: DB, o: {
   if (!d) throw new DiscountRefused("This code is not valid.");
   if (d.disabledAt) throw new DiscountRefused("This code is no longer active.");
   if (d.expiresAt && d.expiresAt <= o.now) throw new DiscountRefused("This code has expired.");
-  if (d.maxRedemptions && d.timesRedeemed >= d.maxRedemptions) throw new DiscountRefused("This code has been used the maximum number of times.");
+  if (d.maxRedemptions && d.timesRedeemed + (await pendingUses(db, d.id, o.now)) >= d.maxRedemptions) throw new DiscountRefused(USED_UP);
   const ids = d.productIdentifiers ?? [];
   if (ids.length && !ids.includes(o.product.storeIdentifier) && !ids.includes(o.product.id)) throw new DiscountRefused("This code does not apply to this plan.");
   if (d.type === "fixed_amount" && (d.fixedAmounts ?? {})[o.currency.toUpperCase()] === undefined) throw new DiscountRefused(`This code does not apply to payments in ${o.currency.toUpperCase()}.`);
@@ -237,6 +238,21 @@ export async function discountForCheckout(db: DB, o: {
 }
 
 export class DiscountRefused extends Error {}
+export const USED_UP = "This code has been used the maximum number of times.";
+
+/**
+ * How long an unpaid checkout holds one use of a capped discount. Checkouts with a capped discount expire on Stripe after
+ * CAPPED_CHECKOUT_MINUTES (Stripe's minimum is 30), so the hold outlives every session that could still be paid.
+ */
+export const CAPPED_CHECKOUT_MINUTES = 31;
+const HOLD_MS = (CAPPED_CHECKOUT_MINUTES + 2) * 60_000;
+
+/** Checkouts started with the discount that may still be paid: each holds one use, so a cap cannot be overrun. */
+export async function pendingUses(db: DB, discountId: string, now: Date): Promise<number> {
+  const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.webCheckouts)
+    .where(and(eq(schema.webCheckouts.discountId, discountId), eq(schema.webCheckouts.status, "created"), gt(schema.webCheckouts.createdAt, new Date(now.getTime() - HOLD_MS))));
+  return n;
+}
 
 /** Counts one use of the discount (and its code) once a checkout that used it is paid. */
 export async function countRedemption(db: DB, projectId: string, discountId: string, codeKey: string | null) {
