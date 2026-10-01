@@ -1,4 +1,4 @@
-import { conceptOf, type BuildInput, type Concept, type IntegrationKind, type Plan, type WebhookEvent } from "./common.js";
+import { conceptOf, defaultAnalyticsName, type BuildInput, type Concept, type IntegrationKind, type Plan, type WebhookEvent } from "./common.js";
 import { buildSlack, SLACK_EVENTS } from "./slack.js";
 import { buildSegment, SEGMENT_EVENTS } from "./segment.js";
 import { buildAmplitude, AMPLITUDE_EVENTS } from "./amplitude.js";
@@ -171,3 +171,19 @@ export function responseError(kind: IntegrationKind, status: number, body: strin
 
 /** HTTP statuses worth retrying: timeouts, rate limits and server errors. Any other 4xx fails at once (fix the settings, then replay). */
 export const retryableStatus = (status: number | null) => status === null || status === 408 || status === 425 || status === 429 || status >= 500;
+
+/** Plain names for the lifecycle steps (dashboard labels). */
+export const STEP_LABELS: Record<Concept, string> = {
+  initial_purchase: "Initial purchase", trial_started: "Trial started", trial_converted: "Trial converted", trial_cancelled: "Trial cancelled",
+  renewal: "Renewal", cancellation: "Cancellation or refund", uncancellation: "Uncancellation", non_subscription_purchase: "One-time purchase",
+  subscription_paused: "Subscription paused", expiration: "Expiration", billing_issue: "Billing issue", product_change: "Product change",
+  transfer: "Transfer", purchase_redeemed: "Web purchase redeemed", experiment_enrollment: "Experiment enrollment", test: "Test event",
+};
+
+/** The name an integration sends for a step when no override is set (null: the integration has no event names). */
+export function defaultEventName(kind: IntegrationKind, c: Concept): string | null {
+  if (kind === "meta") return META_NAMES[c] ?? null;
+  if (kind === "firebase") return FIREBASE_NAMES[c] ?? null;
+  if (kind === "slack" || kind === "bigquery" || kind === "adjust") return null;
+  return defaultAnalyticsName(c);
+}

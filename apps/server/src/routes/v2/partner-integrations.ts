@@ -100,7 +100,8 @@ function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>,
     const has = f.type === "secret" ? !!secrets[f.key] : settings[f.key] !== undefined && settings[f.key] !== null && settings[f.key] !== "";
     if (!has) throw paramError(`settings.${f.key}: ${f.label} is required for ${spec.name}.`, `settings.${f.key}`);
   }
-  if (spec.kind === "slack" && secrets.webhook_url && !/^https:\/\//i.test(secrets.webhook_url)) throw paramError("settings.webhook_url: must be an https URL.", "settings.webhook_url");
+  // Slack only issues https URLs; plain http is allowed for a local test receiver.
+  if (spec.kind === "slack" && secrets.webhook_url && !/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/)/i.test(secrets.webhook_url)) throw paramError("settings.webhook_url: must be an https URL.", "settings.webhook_url");
   if (spec.kind === "posthog" && settings.region === "custom" && !/^https?:\/\/[^/]+/i.test(String(settings.host ?? ""))) throw paramError("settings.host: enter your PostHog URL, such as https://posthog.example.com.", "settings.host");
   if (spec.kind === "bigquery" && secrets.service_account_json) {
     let j: Record<string, unknown> | null = null;
