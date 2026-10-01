@@ -1,34 +1,28 @@
 import { Hono, type Context } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { publicPage, type PublicMetric, type PublicPage } from "../services/verified.js";
 import { Raster, encodePng, hex } from "../services/og-png.js";
 import { sha256Hex } from "../services/auth.js";
+import { b64decode } from "../services/paywalls.js";
 
 /**
  * Public Verified Metrics pages (prd/project-settings §4), on the API host:
  *   GET /verified/{slug}               the page (HTML, no scripts)
  *   GET /verified/{slug}/metrics.json  the same numbers as JSON
  *   GET /verified/{slug}/og.png        the 1200×630 link preview
+ *   GET /verified/{slug}/icon          the project icon, when the page shows it
  * Only published pages answer. Responses are public for 5 minutes in browsers and 15 at the edge; the Worker also keeps a
- * copy in the edge cache keyed by path, so a busy page does not recompute the overview. Saving or unpublishing purges it.
+ * copy in the edge cache keyed by the page's version, so a busy page does not recompute the overview and a saved or
+ * unpublished page is never served from an old copy.
  */
 
 const CACHE = "public, max-age=300, s-maxage=900";
-const PATHS = (slug: string) => [`/verified/${slug}`, `/verified/${slug}/metrics.json`, `/verified/${slug}/og.png`];
 
-interface EdgeCache { match(req: Request): Promise<Response | undefined>; put(req: Request, res: Response): Promise<void>; delete(req: Request): Promise<boolean> }
+interface EdgeCache { match(req: Request): Promise<Response | undefined>; put(req: Request, res: Response): Promise<void> }
 const edgeCache = (): EdgeCache | null => (globalThis as unknown as { caches?: { default?: EdgeCache } }).caches?.default ?? null;
 const waitUntil = (c: Context, p: Promise<unknown>) => { try { (c as unknown as { executionCtx: { waitUntil(p: Promise<unknown>): void } }).executionCtx.waitUntil(p); } catch { /* Node */ } };
-
-/** Drops cached copies of a page after its settings change (Workers only). */
-export async function purgeVerified(c: Context, deps: Deps, slugs: string[]) {
-  const cache = edgeCache();
-  if (!cache) return;
-  const origins = new Set([new URL(c.req.url).origin, ...(deps.apiUrl ? [new URL(deps.apiUrl).origin] : [])]);
-  await Promise.all([...origins].flatMap((o) => slugs.flatMap((s) => PATHS(s).map((p) => cache.delete(new Request(`${o}${p}`)).catch(() => false)))));
-}
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
@@ -127,28 +121,32 @@ export function verifiedRoutes(deps: Deps) {
 
   const load = async (slug: string) => {
     const [row] = await deps.db.select().from(schema.verifiedPages).where(eq(schema.verifiedPages.slug, slug.toLowerCase())).limit(1);
-    if (!row || row.status !== "published") return null;
-    const origin = deps.apiUrl ?? null;
-    return { row, origin };
+    return row && row.status === "published" ? row : null;
   };
   const notFound = (c: Context) => c.json({ object: "error", type: "resource_missing", message: "This verified metrics page does not exist or is not published." }, 404, { "cache-control": "no-store" });
+  const originOf = (c: Context) => {
+    if (deps.apiUrl) return deps.apiUrl.replace(/\/+$/, "");
+    const fwd = c.req.header("x-forwarded-host");
+    return fwd ? `${c.req.header("x-forwarded-proto") ?? "https"}://${fwd}` : new URL(c.req.url).origin;
+  };
 
-  /** Serves from the edge cache when possible; computes, tags with an ETag and stores otherwise. */
+  /**
+   * Serves from the edge cache when possible; computes, tags with an ETag and stores otherwise. The page row is read first
+   * (one indexed lookup): an unpublished page answers 404 at once in every data centre, and the cache key carries the
+   * row's version, so a saved change is never served stale from a copy another data centre kept.
+   */
   const serve = async (c: Context, kind: "html" | "json" | "png") => {
-    const slug = c.req.param("slug")!;
-    const url = new URL(c.req.url);
+    const row = await load(c.req.param("slug")!);
+    if (!row) return notFound(c);
     const cache = edgeCache();
-    const key = cache ? new Request(`${url.origin}${url.pathname}`, { method: "GET" }) : null;
+    const origin = originOf(c);
+    const key = cache ? new Request(`${new URL(c.req.url).origin}/verified/${row.slug}/${kind}?v=${row.updatedAt.getTime()}`, { method: "GET" }) : null;
     if (cache && key && !c.req.header("if-none-match")) {
       const hit = await cache.match(key).catch(() => undefined);
       if (hit) return hit;
     }
-    const found = await load(slug);
-    if (!found) return notFound(c);
-    const fwd = c.req.header("x-forwarded-host");
-    const origin = found.origin ?? (fwd ? `${c.req.header("x-forwarded-proto") ?? "https"}://${fwd}` : url.origin);
-    const page = await publicPage(deps.db, found.row, deps.now(), `${origin}/assets`);
-    const pageUrl = `${origin}/verified/${found.row.slug}`;
+    const page = await publicPage(deps.db, row, deps.now(), `${origin}/verified/${row.slug}/icon`);
+    const pageUrl = `${origin}/verified/${row.slug}`;
     let bytes: Uint8Array | string, type: string;
     if (kind === "json") { bytes = JSON.stringify({ object: "verified_metrics_page", url: pageUrl, ...page }); type = "application/json; charset=utf-8"; }
     else if (kind === "png") { bytes = await ogImage(page); type = "image/png"; }
@@ -166,6 +164,19 @@ export function verifiedRoutes(deps: Deps) {
     return res;
   };
 
+  // The project icon, by slug: the page never shows the asset's project-scoped URL (which names the project id).
+  r.get("/verified/:slug/icon", async (c) => {
+    const row = await load(c.req.param("slug"));
+    if (!row?.showIcon || !row.iconAssetId) return notFound(c);
+    const [a] = await deps.db.select({ id: schema.mediaAssets.id, contentType: schema.mediaAssets.contentType, data: schema.mediaAssets.dataBase64 }).from(schema.mediaAssets)
+      .where(and(eq(schema.mediaAssets.projectId, row.projectId), eq(schema.mediaAssets.id, row.iconAssetId), eq(schema.mediaAssets.kind, "image"))).limit(1);
+    if (!a) return notFound(c);
+    const etag = `"${a.id}"`;
+    const headers = { "content-type": a.contentType, "cache-control": CACHE, etag, "x-content-type-options": "nosniff", "access-control-allow-origin": "*", "content-security-policy": "default-src 'none'; sandbox" };
+    const inm = c.req.header("if-none-match");
+    if (inm && inm.split(",").map((x) => x.trim().replace(/^W\//, "")).includes(etag)) return new Response(null, { status: 304, headers });
+    return new Response(c.req.method === "HEAD" ? null : b64decode(a.data), { headers });
+  });
   r.get("/verified/:slug", (c) => serve(c, "html"));
   r.get("/verified/:slug/metrics.json", (c) => serve(c, "json"));
   r.get("/verified/:slug/og.png", (c) => serve(c, "png"));

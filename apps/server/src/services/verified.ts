@@ -20,7 +20,11 @@ export const METRIC_LABELS: Record<HistoryMetric, { name: string; unit: "$" | "#
 export const DEFAULT_METRICS: { id: HistoryMetric; visible: boolean }[] = (["mrr", "revenue", "active_subscriptions", "active_trials", "new_customers", "active_users"] as const)
   .map((id) => ({ id, visible: true }));
 
-const RESERVED = new Set(["admin", "api", "app", "assets", "auth", "dashboard", "docs", "help", "login", "new", "revenuedot", "settings", "signup", "static", "support", "verified", "www"]);
+/** Words a page could use to pass itself off as RevenueDot's own (or another product's official) page. */
+const RESERVED = new Set([
+  "about", "account", "admin", "api", "app", "assets", "auth", "billing", "blog", "dashboard", "docs", "help", "login", "new", "official", "pricing",
+  "privacy", "revenuecat", "revenuedot", "security", "settings", "signup", "static", "status", "support", "terms", "verified", "www",
+]);
 
 /** Why a slug cannot be used (format only), or null. */
 export function slugProblem(slug: string): string | null {
@@ -56,8 +60,8 @@ export interface PublicPage {
   icon_url: string | null; store_links: { app_store: string | null; play_store: string | null };
 }
 
-/** The numbers a published page shows: production only, visible metrics in the chosen order. */
-export async function publicPage(db: DB, page: VerifiedRow, now: Date, assetBase: string): Promise<PublicPage> {
+/** The numbers a published page shows: production only, visible metrics in the chosen order. `iconUrl` serves the icon. */
+export async function publicPage(db: DB, page: VerifiedRow, now: Date, iconUrl: string): Promise<PublicPage> {
   const visible = page.metrics.filter((m) => m.visible && m.id in METRIC_LABELS) as { id: HistoryMetric; visible: boolean }[];
   const [values, histories] = await Promise.all([
     overviewValues(db, page.projectId, now, "production"),
@@ -65,9 +69,10 @@ export async function publicPage(db: DB, page: VerifiedRow, now: Date, assetBase
   ]);
   let icon: string | null = null;
   if (page.showIcon && page.iconAssetId) {
-    const [a] = await db.select({ objectName: schema.mediaAssets.objectName }).from(schema.mediaAssets)
+    const [a] = await db.select({ id: schema.mediaAssets.id }).from(schema.mediaAssets)
       .where(and(eq(schema.mediaAssets.projectId, page.projectId), eq(schema.mediaAssets.id, page.iconAssetId), eq(schema.mediaAssets.kind, "image"))).limit(1);
-    if (a) icon = `${assetBase}/${page.projectId}/${a.objectName}`;
+    // The asset id versions the URL, so a new icon is not hidden behind a cached old one.
+    if (a) icon = `${iconUrl}?v=${a.id}`;
   }
   return {
     slug: page.slug, display_name: page.displayName, chart_type: page.chartType, computed_at: now.getTime(), icon_url: icon,

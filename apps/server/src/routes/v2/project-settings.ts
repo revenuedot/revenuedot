@@ -4,7 +4,6 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { BrandIn, brandOf } from "../../services/brand.js";
 import { DEFAULT_METRICS, VerifiedIn, slugProblem, slugify, type VerifiedRow } from "../../services/verified.js";
-import { purgeVerified } from "../verified.js";
 import { V2Error, body, listOf, notFound, pageParams, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { publicOrigin } from "./setup.js";
 
@@ -185,8 +184,6 @@ export function projectSettingsRoutes(r: V2Router, deps: Deps) {
       if (/verified_pages_slug|unique/i.test(String((e as { cause?: unknown })?.cause ?? e))) throw new V2Error(409, "resource_already_exists", "Another project uses this slug. Pick another one.", "slug");
       throw e;
     }
-    // The old and new public URLs must not serve stale copies.
-    await purgeVerified(c, deps, [cur?.slug, row.slug].filter((x): x is string => !!x));
     return row;
   };
 
