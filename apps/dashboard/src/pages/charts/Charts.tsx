@@ -3,18 +3,21 @@
  * reusable chart page. Data: GET /v2/projects/{id}/charts/{chart} and …/options (RevenueCat's shape). The state lives in
  * the URL (range, resolution, segment, filters, selectors, sandbox), so a chart view is a link you can share.
  *
+ * Saved charts (a named view: chart, range, resolution, segment, filters, selectors, sandbox, compare) are listed on top
+ * of the rail; "Compare" draws the window of the same length just before the current one as a dashed line.
+ *
  * GAPS versus RevenueCat's chart page (company/docs/research/contact-sheets/revenuecat/frames/03-chart-mrr.jpg):
- * - No saved charts, compare-to-previous-period, annotations or chart-type switch (line ↔ bar) yet.
+ * - No annotations or chart-type switch (line ↔ bar) yet.
  * - The "Customers" tab under the chart (the customers behind a number) is not built.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CHARTS, GROUPS, chartDef, type ChartDef } from "@revenuedot/core";
 import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
-import { Segmented, Switch, Tag, useProjectId } from "../../components/ui";
-import { api } from "../../lib/api";
+import { Dialog, Field, Segmented, Switch, Tag, useProjectId, useToast } from "../../components/ui";
+import { api, type List } from "../../lib/api";
 import { Legend, Plot, seriesColor, type Series } from "./plot";
 
 interface Measure { id: string; display_name: string; description: string; unit: "$" | "#" | "%"; decimal_precision: number; chartable: boolean; tabulable: boolean }
@@ -29,6 +32,16 @@ interface Options {
   segments: { id: string; display_name: string }[];
   filters: { id: string; display_name: string; options: { id: string; display_name: string }[] }[];
   user_selectors: Record<string, { default: string; display_name: string; options: { id: string; display_name: string }[] }> | null;
+}
+
+interface SavedChart { id: string; name: string; chart_name: string; view: Record<string, string | boolean>; created_at: number }
+const useSaved = (pid: string) => useQuery({ queryKey: ["saved-charts", pid], enabled: !!pid, queryFn: () => api<List<SavedChart>>(`/v2/projects/${pid}/saved_charts?limit=200`) });
+/** The URL of a saved chart: its view becomes the page's query parameters. */
+function savedHref(pid: string, s: SavedChart) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(s.view)) { if (k === "compare") { if (v) q.set("cmp", "1"); } else if (typeof v === "string" && v) q.set(k, v); }
+  q.set("saved", s.id);
+  return `/projects/${pid}/charts/${s.chart_name}?${q}`;
 }
 
 const DAY = 86_400_000;
@@ -92,13 +105,29 @@ function downloadCsv(name: string, rows: (string | number | null)[][]) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-function ChartRail({ pid, current }: { pid: string; current: string }) {
+function ChartRail({ pid, current, savedId }: { pid: string; current: string; savedId: string | null }) {
   const [q, setQ] = useState("");
+  const saved = useSaved(pid);
+  const qc = useQueryClient();
+  const toast = useToast();
   const match = (c: ChartDef) => !q.trim() || c.display_name.toLowerCase().includes(q.trim().toLowerCase());
+  const mine = (saved.data?.items ?? []).filter((s) => !q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
+  const remove = async (s: SavedChart) => { await api(`/v2/projects/${pid}/saved_charts/${s.id}`, { method: "DELETE" }); await qc.invalidateQueries({ queryKey: ["saved-charts", pid] }); toast(`Removed “${s.name}”`); };
   return (
     <aside className="crail" aria-label="Charts">
       <div className="crail-s"><Icon name="search" /><input aria-label="Search charts" placeholder="Search charts" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <nav>
+        {mine.length > 0 && (
+          <div className="crail-g" aria-label="Saved charts">
+            <div className="label">Saved</div>
+            {mine.map((s) => (
+              <span key={s.id} className={`crail-i crail-sv${s.id === savedId ? " on" : ""}`}>
+                <Link to={savedHref(pid, s)} aria-current={s.id === savedId ? "page" : undefined}>{s.name}</Link>
+                <button type="button" className="ib" aria-label={`Remove saved chart ${s.name}`} onClick={() => remove(s)}><Icon name="close" /></button>
+              </span>
+            ))}
+          </div>
+        )}
         {GROUPS.map((g) => {
           const list = CHARTS.filter((c) => c.group === g.id && c.inRail && match(c));
           if (!list.length) return null;
@@ -106,7 +135,7 @@ function ChartRail({ pid, current }: { pid: string; current: string }) {
             <div key={g.id} className="crail-g">
               <div className="label">{g.display_name}</div>
               {list.map((c) => (
-                <Link key={c.name} to={`/projects/${pid}/charts/${c.name}`} className={`crail-i${c.name === current ? " on" : ""}`} aria-current={c.name === current ? "page" : undefined}>{c.display_name}</Link>
+                <Link key={c.name} to={`/projects/${pid}/charts/${c.name}`} className={`crail-i${c.name === current && !savedId ? " on" : ""}`} aria-current={c.name === current && !savedId ? "page" : undefined}>{c.display_name}</Link>
               ))}
             </div>
           );
@@ -169,6 +198,8 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   const filters = parseJson<{ name: string; values: string[] }[]>(sp.get("filters"), [], isFilters);
   const selectors = parseJson<Record<string, string>>(sp.get("sel"), {}, isSelectors);
   const env = sp.get("env") === "sandbox" ? "sandbox" : "production";
+  const compare = sp.get("cmp") === "1" && !cohortTable;
+  const savedId = sp.get("saved");
   const set = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(sp);
     for (const [k, v] of Object.entries(patch)) { if (v === null || v === "") next.delete(k); else next.set(k, v); }
@@ -181,19 +212,37 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   if (filters.length) query.set("filters", JSON.stringify(filters));
   if (Object.keys(selectors).length) query.set("selectors", JSON.stringify(selectors));
   const data = useQuery({ queryKey: ["chart", pid, def.name, query.toString()], queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${query}`), placeholderData: keepPreviousData });
-  useEffect(() => { document.title = `${def.display_name} · Charts · RevenueDot`; }, [def.display_name]);
+  // Compare: the window of the same length that ends the day before this one starts, at the same resolution.
+  const span = Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`);
+  const prevQuery = new URLSearchParams(query);
+  prevQuery.set("end_date", iso(Date.parse(`${start}T00:00:00Z`) - DAY));
+  prevQuery.set("start_date", iso(Date.parse(`${start}T00:00:00Z`) - DAY - span));
+  const prev = useQuery({ queryKey: ["chart", pid, def.name, prevQuery.toString()], enabled: compare, queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${prevQuery}`) });
+  const saved = useSaved(pid);
+  const savedNow = saved.data?.items.find((x) => x.id === savedId) ?? null;
+  const [saving, setSaving] = useState(false);
+  const view = () => {
+    const v: Record<string, string | boolean> = {};
+    for (const k of ["range", "start", "end", "res", "segment", "filters", "sel"]) { const x = sp.get(k); if (x) v[k] = x; }
+    if (env === "sandbox") v.env = "sandbox";
+    if (compare) v.compare = true;
+    return v;
+  };
+  useEffect(() => { document.title = `${savedNow?.name ?? def.display_name} · Charts · RevenueDot`; }, [def.display_name, savedNow?.name]);
 
   const body = data.data;
   const currency = body?.yaxis_currency ?? "USD";
   return (
     <Shell title={def.display_name} crumbs={<><Link to={`/projects/${pid}/charts`}>Charts</Link> <span className="crumb-sep">/</span> <b>{def.display_name}</b></>}>
       <div className="charts">
-        <ChartRail pid={pid} current={def.name} />
+        <ChartRail pid={pid} current={def.name} savedId={savedId} />
         <div className="page cpage">
           <div className="head">
-            <div><h1>{def.display_name}</h1><p>{def.description}</p></div>
+            <div><h1>{savedNow ? savedNow.name : def.display_name}</h1><p>{savedNow ? <><Tag>Saved</Tag> {def.display_name}. </> : null}{def.description}</p></div>
             <div className="actions">
+              {!cohortTable && <Switch checked={compare} onChange={(v) => set({ cmp: v ? "1" : null })} label="Compare to previous period" />}
               <Switch checked={env === "sandbox"} onChange={(v) => set({ env: v ? "sandbox" : null })} label="Sandbox data" />
+              <button type="button" className="btn btn-line" onClick={() => setSaving(true)}><Icon name="plus" />Save</button>
               <button type="button" className="btn btn-line" disabled={!body} onClick={() => body && downloadCsv(`${def.name}-${start}-${end}`, csvRows(body))}><Icon name="docs" />CSV</button>
             </div>
           </div>
@@ -239,18 +288,19 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
           ) : body.periods ? (
             <CohortTable body={body} />
           ) : (
-            <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching} />
+            <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching || (compare && prev.isFetching)} prev={compare ? prev.data ?? null : null} />
           )}
           {def.name === "app_store_save_outcomes" && <p className="fn">RevenueDot does not use Apple's Retention Messaging API yet, so this chart stays at zero.</p>}
           <p className="fn"><a className="ul" href={`https://revenuedot.app/docs/guides/charts#${def.name}`} target="_blank" rel="noreferrer">How {def.display_name} is calculated →</a></p>
         </div>
       </div>
+      {saving && <SaveChartDialog pid={pid} chart={def} initial={savedNow?.name ?? def.display_name} existing={savedNow} view={view()} onClose={() => setSaving(false)} onSaved={(s) => setSp(new URLSearchParams(savedHref(pid, s).split("?")[1]), { replace: true })} />}
     </Shell>
   );
 }
 
 /** Time series: picks what to plot (one unit at a time, never two y axes), then the plot, legend and table. */
-function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: ChartData; currency: string; fetching: boolean }) {
+function SeriesChart({ def, body, currency, fetching, prev }: { def: ChartDef; body: ChartData; currency: string; fetching: boolean; prev?: ChartData | null }) {
   const [picked, setPicked] = useState<number | null>(null);
   const starts = useMemo(() => [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b), [body]);
   const incomplete = useMemo(() => { const inc = new Set(body.values.filter((v) => v.incomplete).map((v) => v.cohort)); return starts.map((s) => inc.has(s)); }, [body, starts]);
@@ -280,6 +330,29 @@ function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: C
     : body.measures.map((m, j) => ({ key: `m${j}`, label: m.display_name, color: series.length > 1 ? (() => { const k = series.findIndex((s) => s.key === `m${j}`); return k >= 0 ? seriesColor(k, series[k]!) : undefined; })() : undefined, values: at(undefined, j), format: fmt(m) }));
   const total = body.summary?.total ?? {};
   const avg = body.summary?.average ?? {};
+  // The previous period of the plotted measure, by position (segmented charts compare their total).
+  const prevStarts = prev ? [...new Set(prev.values.map((v) => v.cohort))].sort((a, b) => a - b) : [];
+  const prevLookup = prev ? valueIndex(prev) : null;
+  const prevAt = (measure: number) => {
+    if (!prev || !prevLookup) return null;
+    const totalSeg = prev.segments ? prev.segments.findIndex((x) => x.is_total) : -1;
+    return starts.map((_, i) => {
+      const c = prevStarts[i];
+      if (c === undefined) return null;
+      if (!prev.segments) return prevLookup(c, { measure })?.value ?? null;
+      if (totalSeg >= 0) return prevLookup(c, { segment: totalSeg, measure })?.value ?? null;
+      const vals = prev.segments.map((_, si) => prevLookup(c, { segment: si, measure })?.value).filter((x): x is number => typeof x === "number");
+      return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+    });
+  };
+  const compareValues = prev ? prevAt(sel) : null;
+  const prevStat = (m: Measure, kind: "latest" | "total" | "average") => {
+    if (!prev) return null;
+    const j = prev.measures.findIndex((x) => x.id === m.id);
+    if (j < 0) return null;
+    if (kind === "latest") return [...(prevAt(j) ?? [])].reverse().find((x) => x !== null) ?? null;
+    return (kind === "total" ? prev.summary?.total : prev.summary?.average)?.[m.display_name] ?? null;
+  };
   return (
     <section className={`panel cpanel${fetching ? " busy" : ""}`} aria-label={`${def.display_name} chart`}>
       {oneAtATime && (
@@ -292,11 +365,19 @@ function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: C
           const latest = def.shape === "stock" ? [...at(undefined, j)].reverse().find((x) => x !== null) ?? null : null;
           const kind = def.shape === "stock" ? "latest" : m.display_name in total && m.unit !== "%" ? "total" : "average";
           const v = kind === "latest" ? latest : kind === "total" ? total[m.display_name] ?? null : avg[m.display_name] ?? null;
-          return <div key={m.id}><span className="label">{m.display_name} · {kind}</span><b>{fmt(m)(v)}</b></div>;
+          const pv = prevStat(m, kind);
+          const delta = prev && v !== null && pv !== null && pv !== 0 ? ((v - pv) / Math.abs(pv)) * 100 : null;
+          return (
+            <div key={m.id}><span className="label">{m.display_name} · {kind}</span><b>{fmt(m)(v)}</b>
+              {prev && <span className="cdelta" data-testid="compare-delta"><span className={delta === null ? "subtle" : delta >= 0 ? "up" : "down"}>{delta === null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`}</span> vs {fmt(m)(pv)}</span>}
+            </div>
+          );
         })}
       </div>
       <Legend series={series} />
+      {compareValues && <ul className="legend" aria-label="Comparison"><li><i style={{ background: "transparent", border: "1px dashed var(--fg-3)" }} />Previous period · {body.measures[sel]?.display_name}</li></ul>}
       <Plot periods={periods} series={series} kind={kind} integer={unit === "#" && series.every((x) => x.values.every((v) => v === null || Number.isInteger(v)))} format={plotFmt} formatTick={tickFormatter(unit, currency)}
+        compare={compareValues ? { label: "Previous period", values: compareValues } : null}
         ariaLabel={`${def.display_name}: ${series.map((s) => s.label).join(", ")} by ${body.resolution}. Values are in the table below.`} />
       <div className="tbl ctable">
         <table className="compact">
@@ -308,11 +389,48 @@ function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: C
                 {r.values.map((v, i) => <td key={i} className={`amt${periods[i]?.incomplete ? " inc" : ""}`}>{r.format(v)}</td>)}
               </tr>
             ))}
+            {compareValues && (
+              <tr className="cprev">
+                <th scope="row">Previous period</th>
+                {compareValues.map((v, i) => <td key={i} className="amt subtle">{plotFmt(v)}</td>)}
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
       {periods.some((p) => p.incomplete) && <div className="pfoot"><span>* Incomplete period: the data can still change.</span></div>}
     </section>
+  );
+}
+
+function SaveChartDialog({ pid, chart, initial, existing, view, onClose, onSaved }: { pid: string; chart: ChartDef; initial: string; existing: SavedChart | null; view: Record<string, string | boolean>; onClose: () => void; onSaved: (s: SavedChart) => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [name, setName] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const go = async (update: boolean) => {
+    if (!name.trim()) { setErr("Name the chart."); return; }
+    setBusy(true); setErr(null);
+    try {
+      const s = update && existing
+        ? await api<SavedChart>(`/v2/projects/${pid}/saved_charts/${existing.id}`, { method: "PATCH", json: { name: name.trim(), view } })
+        : await api<SavedChart>(`/v2/projects/${pid}/saved_charts`, { method: "POST", json: { name: name.trim(), chart_name: chart.name, view } });
+      await qc.invalidateQueries({ queryKey: ["saved-charts", pid] });
+      toast(update ? "Saved chart updated" : "Chart saved"); onSaved(s); onClose();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setBusy(false); }
+  };
+  return (
+    <Dialog title={existing ? "Save chart" : "Save this chart"} onClose={onClose} footer={<>
+      <button type="button" className="btn btn-line" onClick={onClose}>Cancel</button>
+      {existing && <button type="button" className="btn btn-line" disabled={busy} onClick={() => go(false)}>Save as new</button>}
+      <button type="button" className="btn btn-dark" disabled={busy} onClick={() => go(!!existing)}>{busy ? "Saving…" : existing ? "Update" : "Save"}</button>
+    </>}>
+      <Field label="Name" htmlFor="sc-name" hint={`${chart.display_name}, with the current range, resolution, segment, filters${view.compare ? " and comparison" : ""}.`}>
+        <input id="sc-name" className="input" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void go(!!existing); }} />
+      </Field>
+      {err && <div className="banner err" role="alert">{err}</div>}
+    </Dialog>
   );
 }
 

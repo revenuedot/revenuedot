@@ -122,10 +122,11 @@ class Kit {
       dir: o.horizontal ? "horizontal" : "vertical", spacing: o.horizontal ? 10 : 12, name: "Plans", size: sz(FILL, FIT), padding: o.horizontal ? pad(8, 0, 0) : pad(6, 0, 0),
     });
   }
-  cta(o: { label?: string; trial?: string; method?: "in_app_checkout" | "web_checkout" } = {}) {
+  cta(o: { label?: string; method?: "in_app_checkout" | "web_checkout" } = {}) {
     const t = this.t, b = this.b;
     const label = o.label ?? "Continue";
-    const text = o.trial === undefined ? b.textIntro(label, "Start free trial", { size: 17, weight: "semibold", color: t.onAccent }) : b.text(label, { size: 17, weight: "semibold", color: t.onAccent });
+    // The default label switches to the trial wording when the selected package has a free trial; a custom label stays.
+    const text = o.label === undefined ? b.textIntro(label, "Start free trial", { size: 17, weight: "semibold", color: t.onAccent }) : b.text(label, { size: 17, weight: "semibold", color: t.onAccent });
     return b.purchase(b.stack([text], { padding: pad(16, 16), bg: t.accent, shape: PILL, size: sz(FILL, FIT) }), o.method ?? "in_app_checkout");
   }
   /** "No commitment", the disclosure line, and Restore · Terms · Privacy. */
@@ -166,7 +167,7 @@ export const PAYWALL_TEMPLATES: GalleryTemplate[] = [
         { icon: "unlock", title: "Today", description: `Get full access to ${k.app} and everything in it.` },
         { icon: "bell", title: "Before it ends", description: "We remind you that your trial is ending." },
         { icon: "star", title: "After {{ product.offer_period_with_unit }}", description: "You are charged {{ product.price_per_period }}. Cancel anytime before." },
-      ], { baseUrl: k.icons, color: k.t.fg, muted: k.t.muted, accent: k.t.accent, iconColor: k.t.onAccent });
+      ], { baseUrl: k.icons, color: k.t.fg, muted: k.t.muted, accent: k.t.accent, iconColor: k.t.onAccent, line: k.t.line });
       return k.done(k.main([k.topBar(), k.title("How your free trial works"), tl, k.plansList(2)]), k.footer());
     },
   },

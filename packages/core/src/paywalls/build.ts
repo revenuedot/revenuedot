@@ -146,7 +146,7 @@ export class DocBuilder {
   footer(stack: Json): Json {
     return { id: this.id("f"), type: "sticky_footer", stack };
   }
-  timeline(items: { icon: string; title: string; description?: string }[], o: { baseUrl: string; color: string; muted: string; accent: string; iconBg?: string; iconColor?: string }): Json {
+  timeline(items: { icon: string; title: string; description?: string }[], o: { baseUrl: string; color: string; muted: string; accent: string; iconBg?: string; iconColor?: string; line?: string }): Json {
     return {
       id: this.id("l"), type: "timeline", icon_alignment: "title", item_spacing: 18, text_spacing: 4, column_gutter: 14,
       size: sz(FILL, FIT), padding: ZERO, margin: ZERO,
@@ -154,7 +154,7 @@ export class DocBuilder {
         title: this.text(it.title, { size: 16, weight: "semibold", align: "leading", color: o.color }),
         ...(it.description ? { description: this.text(it.description, { size: 14, align: "leading", color: o.muted }) } : {}),
         icon: this.icon(o.baseUrl, it.icon, { size: 16, color: o.iconColor ?? "#ffffff", bg: o.iconBg ?? o.accent, padding: pad(6) }),
-        connector: { width: 6, color: scheme(o.iconBg ?? o.accent), margin: pad(2, 0) },
+        connector: { width: 2, color: scheme(o.line ?? o.iconBg ?? o.accent), margin: pad(4, 0) },
       })),
     };
   }

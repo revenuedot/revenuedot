@@ -18,6 +18,8 @@ export interface PlotProps {
   ariaLabel: string;
   /** Counts: whole-number ticks only. */
   integer?: boolean;
+  /** The same measure for the period before, by position: drawn as a dashed grey line under the current values. */
+  compare?: { label: string; values: (number | null)[] } | null;
 }
 
 export const seriesColor = (i: number, s: Series) => (s.other ? "var(--fg-3)" : `var(--series-${(i % 5) + 1})`);
@@ -48,7 +50,7 @@ function useWidth() {
   return [ref, w] as const;
 }
 
-export function Plot({ periods, series, kind, format, formatTick, ariaLabel, integer }: PlotProps) {
+export function Plot({ periods, series, kind, format, formatTick, ariaLabel, integer, compare }: PlotProps) {
   const [ref, W] = useWidth();
   const H = 300, L = 64, R = 16, T = 14, B = 30;
   const pw = W - L - R, ph = H - T - B;
@@ -65,11 +67,13 @@ export function Plot({ periods, series, kind, format, formatTick, ariaLabel, int
         for (const s of series) { const v = s.values[i] ?? 0; if (v >= 0) pos += v; else neg += v; }
         hi = Math.max(hi, pos); lo = Math.min(lo, neg);
       } else for (const s of series) { const v = s.values[i]; if (v !== null && v !== undefined) { hi = Math.max(hi, v); lo = Math.min(lo, v); } }
+      const cv = compare?.values[i];
+      if (cv !== null && cv !== undefined) { hi = Math.max(hi, cv); lo = Math.min(lo, cv); }
     }
     const t = niceTicks(lo, hi, 4, integer);
     const a = t[0]!, b = t[t.length - 1]!;
     return { ticks: t, y: (v: number) => T + ph - ((v - a) / ((b - a) || 1)) * ph };
-  }, [series, n, stacked, ph, integer]);
+  }, [series, n, stacked, ph, integer, compare]);
 
   const band = pw / Math.max(1, n);
   const cx = (i: number) => L + band * i + band / 2;
@@ -141,6 +145,16 @@ export function Plot({ periods, series, kind, format, formatTick, ariaLabel, int
     });
   }
 
+  // The previous period, under everything else.
+  if (compare) {
+    let d = "", prev = false;
+    compare.values.slice(0, n).forEach((v, i) => {
+      if (v === null || v === undefined) { prev = false; return; }
+      d += `${prev ? "L" : "M"}${cx(i).toFixed(1)} ${y(v).toFixed(1)}`; prev = true;
+    });
+    if (d) marks.unshift(<path key="cmp" d={d} fill="none" stroke="var(--fg-3)" strokeWidth={1.5} strokeDasharray="5 4" data-testid="compare-line" />);
+  }
+
   const tip = hover !== null ? periods[hover] : null;
   const tipLeft = hover !== null ? cx(hover) : 0;
   return (
@@ -166,6 +180,7 @@ export function Plot({ periods, series, kind, format, formatTick, ariaLabel, int
               <b>{format(s.values[hover!] ?? null)}</b><span>{s.label}</span>
             </div>
           ))}
+          {compare && <div className="tip-r"><i style={{ background: "transparent", border: "1px dashed var(--fg-3)" }} /><b>{format(compare.values[hover!] ?? null)}</b><span>{compare.label}</span></div>}
         </div>
       )}
     </div>
