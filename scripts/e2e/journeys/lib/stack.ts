@@ -5,7 +5,8 @@
 //   - a capture server: answers the server's outbound calls (see outbound-preload.mjs), hosts the fake Stripe account and
 //     its Checkout page, records webhook and partner requests, and serves the web SDK test page
 //   - the real Node entry (apps/server/src/entry.node.ts) with the built dashboard, started as its own process
-// Ports: JOURNEY_PORT_BASE (default 5600) + 0 server, +1 SMTP, +2 capture, +3 example backend, +4/+5 MinIO, +6 self-host.
+// Ports: JOURNEY_PORT_BASE (default 5600) + 0 server, +1 SMTP, +2 capture, +3 example backend, +4/+5 MinIO, +6 self-host
+// (JOURNEY_SELFHOST_PORT overrides).
 // Docs: prd/validation/COVERAGE.md
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -24,7 +25,7 @@ export const postgres = req("postgres") as typeof import("postgres").default;
 const serverReq = createRequire(join(ROOT, "apps/server/package.json"));
 
 export const PORT_BASE = Number(process.env.JOURNEY_PORT_BASE ?? 5600);
-export const PORTS = { server: PORT_BASE, smtp: PORT_BASE + 1, capture: PORT_BASE + 2, backend: PORT_BASE + 3, minio: PORT_BASE + 4, minioConsole: PORT_BASE + 5, selfhost: PORT_BASE + 6 };
+export const PORTS = { server: PORT_BASE, smtp: PORT_BASE + 1, capture: PORT_BASE + 2, backend: PORT_BASE + 3, minio: PORT_BASE + 4, minioConsole: PORT_BASE + 5, selfhost: Number(process.env.JOURNEY_SELFHOST_PORT ?? PORT_BASE + 6) };
 
 /** The development Postgres server (Railway), from the environment or ~/.config/revenuedot/dev.env. Never printed. */
 export function devAdminUrl(): string {

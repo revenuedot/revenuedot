@@ -7,7 +7,10 @@
 //                       listed and not allowed.
 //   RD_JOURNEY_ALLOW    comma-separated hosts that may be called for real (public, read-only or validation endpoints).
 //   RD_JOURNEY_BLOCK    comma-separated host suffixes that are never called (Apple, Google Play): 503 instead.
-//   RD_JOURNEY_OUTBOUND_LOG  file: one JSON line per outbound call (method, host, path, routed to, status). No headers or bodies.
+//   RD_JOURNEY_OUTBOUND_LOG  file: one JSON line per outbound call (method, host, path, routed to, status); no headers,
+//                       and bodies only for Google Analytics validation hits (which carry no secret).
+// Google Analytics: Measurement Protocol hits (`/mp/collect`) go to Google's validation server (`/debug/mp/collect`), which
+// checks the payload and records nothing; its validation messages are written to the outbound log as `validation`.
 // Only globalThis.fetch is wrapped; local addresses pass through untouched.
 import { appendFileSync } from "node:fs";
 
@@ -31,6 +34,21 @@ globalThis.fetch = async function journeyFetch(input, init) {
   if (block.some((b) => host === b || host.endsWith(`.${b}`))) {
     record({ method, host, path: url.pathname, routed: "blocked", status: 503 });
     return new Response(JSON.stringify({ error: `journey run: ${host} is never called` }), { status: 503, headers: { "content-type": "application/json" } });
+  }
+  if (allow.has(host) && /(^|\.)google-analytics\.com$/.test(host) && url.pathname === "/mp/collect") {
+    const debugUrl = new URL(url.href);
+    debugUrl.pathname = "/debug/mp/collect";
+    let body = init?.body;
+    if (body === undefined && req) body = await req.text();
+    const res = await realFetch(debugUrl, { method, headers: init?.headers ?? req?.headers, body });
+    const text = await res.text();
+    let validation = null;
+    try { validation = JSON.parse(text); } catch { validation = text.slice(0, 500); }
+    // Which stream: Firebase app streams send firebase_app_id, web streams measurement_id (ids only, never the api_secret).
+    const stream = url.searchParams.get("firebase_app_id") ?? url.searchParams.get("measurement_id");
+    record({ method, host, path: url.pathname, routed: "real-debug", status: res.status, stream, validation, body: typeof body === "string" ? body.slice(0, 4000) : null });
+    // The delivery code sees the answer the real /mp/collect gives (204, empty).
+    return new Response(null, { status: res.ok ? 204 : res.status });
   }
   if (allow.has(host)) {
     const res = await realFetch(input, init);
