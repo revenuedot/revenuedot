@@ -19,7 +19,7 @@ import { publicOrigin } from "./oauth.js";
 import { buildRemoteConfig } from "../services/remote-config.js";
 import { activeEntitlementKeys, contextFor, resolveOfferings } from "../services/targeting.js";
 import { balancesOf } from "../services/virtual-currencies.js";
-import { storeSdkEvents } from "../services/sdk-events.js";
+import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
 
@@ -298,8 +298,13 @@ export function sdkRoutes(deps: Deps) {
   // Paywall, Customer Center and ad events are kept for the charts (services/sdk-events.ts); a bad batch is still a 200.
   r.post("/v1/events", async (c) => {
     try {
-      const body = await c.req.json().catch(() => null);
-      await storeSdkEvents(deps.db, { projectId: c.get("auth").projectId, app: c.get("app")?.id ? c.get("app") : null, body, now: deps.now() });
+      // An oversized batch is dropped unread: the endpoint takes a public key.
+      if (Number(c.req.header("content-length") ?? 0) <= MAX_BODY_BYTES) {
+        const text = await c.req.text();
+        let body: unknown = null;
+        if (text.length <= MAX_BODY_BYTES) { try { body = JSON.parse(text); } catch { /* skipped */ } }
+        await storeSdkEvents(deps.db, { projectId: c.get("auth").projectId, app: c.get("app")?.id ? c.get("app") : null, body, now: deps.now(), sandboxHeader: c.req.header("x-is-sandbox") === "true" });
+      }
     } catch (e) { console.warn("Storing SDK events failed", e); }
     return c.json({});
   });

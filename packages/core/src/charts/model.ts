@@ -65,7 +65,6 @@ export interface ChartSdkEvent {
   appId: string | null;
   type: string;
   at: number;
-  sessionId?: string | null;
   paywallId?: string | null;
   surveyOptionId?: string | null;
   revenueUsd?: number | null;
@@ -80,6 +79,8 @@ export interface ChartRefundEvent {
   store: string;
   customerId: string | null;
   usd: number | null;
+  /** When the refunded transaction was bought: its money converts at that date's rate. */
+  purchasedAt: number | null;
 }
 
 export interface ChartInput {

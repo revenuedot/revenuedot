@@ -161,6 +161,9 @@ export async function usdValue(db: DB, price: { amount: number; currency: string
   return null;
 }
 
+/** Per isolate and HTTP client: ranges ensureEcbRange asked the ECB for recently. */
+const rangeAttempts = new WeakMap<FxFetch, Map<string, number>>();
+
 /**
  * Makes sure the ECB rates for [from, to] are cached, with one request for the whole range when the cache has gaps
  * (charts in a display currency other than USD need a rate for every day). Failures are ignored: callers fall back to
@@ -171,10 +174,17 @@ export async function ensureEcbRange(db: DB, from: Date, to: Date, fetchFn: FxFe
   if (!f) return;
   const start = day(from), end = day(to.getTime() > Date.now() ? new Date() : to);
   if (start > end) return;
+  // A range the ECB cannot fill (weekends, holidays, a source that is down) is not asked again on every chart request.
+  let attempts = rangeAttempts.get(f);
+  if (!attempts) rangeAttempts.set(f, (attempts = new Map()));
+  const key = `${start}:${end}`;
+  const last = attempts.get(key);
+  if (last !== undefined && Date.now() - last < RETRY_MS) return;
   const F = schema.fxRates;
   const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(F).where(and(eq(F.source, "ecb"), gte(F.date, start), lte(F.date, end)));
   // About 250 ECB publication days a year: fetch when fewer than 90% of them are cached.
   if (n >= Math.floor((gapDays(start, end) + 1) * (250 / 365) * 0.9)) return;
+  attempts.set(key, Date.now());
   const res = await get(f, `${ECB}?startPeriod=${start}&endPeriod=${end}&format=csvdata&detail=dataonly`, "text/csv");
   if (!res?.ok) return;
   try { await save(db, "ecb", parseEcbCsv(await res.text())); } catch { /* fall back to what is cached */ }

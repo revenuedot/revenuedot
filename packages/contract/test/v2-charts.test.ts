@@ -257,6 +257,43 @@ describe("SDK events and activity behind the charts", () => {
     const days = await h.db.select().from(schema.customerActivity);
     expect(days.filter((x) => x.day === "2026-08-15")).toHaveLength(1);
   });
+
+  it("caps what a public key can store, and marks iOS sandbox builds' events as sandbox", async () => {
+    const at = h.now().getTime() - 60_000;
+    const post = (body: unknown, headers: Record<string, string> = {}) => h.fetch("/v1/events", { method: "POST", json: body, headers });
+    // X-Is-Sandbox (iOS sandbox and TestFlight builds) keeps the events out of production charts.
+    const sb = await post({ events: [{ id: "probe_sandbox", type: "probe", app_user_id: "u_a", timestamp: at }] }, { "x-is-sandbox": "true" });
+    expect(sb.status).toBe(200);
+    expect(await sb.json()).toEqual({});
+    // A NUL character (rejected by Postgres) and a 100 kB string do not lose the batch; the payload is capped.
+    await post({ events: [{ id: "probe_nul", type: "pro\u0000be", app_user_id: "u_a\u0000", timestamp: at, note: "a\u0000b" }, { id: "probe_big", type: "probe", timestamp: at, blob: "x".repeat(100_000) }] });
+    // A body over the limit is answered 200 and dropped unread.
+    const huge = await post({ events: [{ id: "probe_huge", type: "probe", timestamp: at, blob: "x".repeat(600_000) }] });
+    expect(huge.status).toBe(200);
+    const rows = await h.db.select().from(schema.sdkEvents);
+    const byId = (id: string) => rows.find((r) => r.id === id);
+    expect(byId("probe_sandbox")).toMatchObject({ isSandbox: true, customerId: expect.any(String) });
+    expect(byId("probe_nul")).toMatchObject({ type: "probe", appUserId: "u_a", isSandbox: false, payload: expect.objectContaining({ note: "ab" }) });
+    expect(byId("probe_nul")!.customerId).toBe(byId("probe_sandbox")!.customerId);
+    expect(JSON.stringify(byId("probe_big")!.payload).length).toBeLessThanOrEqual(8_000);
+    expect(byId("probe_huge")).toBeUndefined();
+  });
+
+  it("segments a chart whose measures follow the data: every value points at the total's measure with the same id", async () => {
+    // An Android answer with an option the iOS app never saw: the iOS segment has one measure fewer than the total.
+    await h.fetch("/v1/events", { method: "POST", key: h.ids.androidKey, json: { events: [{ id: "probe_android_survey", type: "customer_center_survey_option_chosen", app_user_id: "u_p", timestamp: d("2026-08-20T09:00:00Z").getTime(), survey_option_id: "missing_features" }] } });
+    const r = await get("customer_center_survey_responses", `${MONTHS}&segment=app`);
+    expect(r.status).toBe(200);
+    expect(r.body.measures.map((m: any) => m.display_name)).toEqual(["Responses", "too_expensive", "missing_features", "other"]);
+    expect(r.body.segments.map((s: any) => s.display_name)).toEqual(["Scanner iOS", "Scanner Android", "Total"]);
+    const total = r.body.segments.findIndex((s: any) => s.is_total);
+    const sum = new Map<string, number>();
+    for (const v of r.body.values) {
+      expect(r.body.measures[v.measure]).toBeDefined();
+      if (v.segment !== total) sum.set(`${v.cohort}|${v.measure}`, (sum.get(`${v.cohort}|${v.measure}`) ?? 0) + (v.value ?? 0));
+    }
+    for (const v of r.body.values.filter((x: any) => x.segment === total)) expect(sum.get(`${v.cohort}|${v.measure}`) ?? 0).toBe(v.value);
+  });
 });
 
 describe("schema coverage", () => {

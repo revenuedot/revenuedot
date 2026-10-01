@@ -48,10 +48,15 @@ export async function touch(db: DB, customerId: string, now: Date, info: SeenInf
   await recordActivity(db, customerId, now);
 }
 
-/** Records that the customer used the app on this UTC day (the Active Customers chart). Repeats are no-ops. */
+/**
+ * Records that the customer used the app on this UTC day (the Active Customers chart). Repeats are no-ops. Chart
+ * bookkeeping never fails the SDK request it rides on (a customer deleted meanwhile, a lost connection).
+ */
 export async function recordActivity(db: DB, customerId: string, now: Date) {
   const day = now.toISOString().slice(0, 10);
-  await db.execute(sql`INSERT INTO customer_activity (project_id, customer_id, day) SELECT project_id, id, ${day} FROM customers WHERE id = ${customerId} ON CONFLICT DO NOTHING`);
+  try {
+    await db.execute(sql`INSERT INTO customer_activity (project_id, customer_id, day) SELECT project_id, id, ${day} FROM customers WHERE id = ${customerId} ON CONFLICT DO NOTHING`);
+  } catch (e) { console.warn("Recording customer activity failed", e); }
 }
 
 /**

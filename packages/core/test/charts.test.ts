@@ -190,3 +190,24 @@ describe("charts on a hand-built ledger", () => {
     expect(out.periods[1]!.display_name).toBe("Period 0");
   });
 });
+
+describe("chart computation at scale", () => {
+  it("reads per-customer and per-period slices, not the whole project per customer or per day", () => {
+    // 20,000 customers with a trial (half convert), 20,000 paywall impressions and purchase starts, 365 daily periods.
+    const txs: ChartTx[] = [];
+    const sdkEvents: ChartInput["sdkEvents"] = [];
+    for (let i = 0; i < 20_000; i++) {
+      const start = T("2026-01-01") + (i % 170) * DAY;
+      txs.push(tx(`c${i}`, "monthly", "trial", new Date(start).toISOString(), new Date(start + 7 * DAY).toISOString(), 0));
+      if (i % 2) txs.push(tx(`c${i}`, "monthly", "renewal", new Date(start + 7 * DAY).toISOString(), new Date(start + 37 * DAY).toISOString(), 10));
+      sdkEvents.push({ customerId: `c${i}`, appId: "ios", type: "paywall_impression", at: start - 1000, paywallId: "pw" }, { customerId: `c${i}`, appId: "ios", type: "paywall_purchase_initiated", at: start - 500, paywallId: "pw" });
+    }
+    const inp = input(txs, { sdkEvents });
+    const daily = req({ resolution: "day", rangeStart: T("2026-01-01"), rangeEnd: T("2027-01-01") });
+    const started = Date.now();
+    for (const name of ["trial_conversion", "trial_cancellation", "paywall_conversion", "paywall_abandonment", "paywall_encounter", "revenue", "trials_movement", "customers_new"]) runChart(chartDef(name)!, inp, daily);
+    runChart(chartDef("cohort_explorer")!, inp, req({ rangeStart: T("2026-01-01"), rangeEnd: T("2026-07-01"), selectors: { cohort_measure: "retained_subscriptions" } }));
+    expect(Date.now() - started).toBeLessThan(15_000);
+    expect(series("trial_conversion", inp, req()).at("2026-02-01", 2)).toBe(series("trials_new", inp, req()).at("2026-02-01")! / 2);
+  }, 60_000);
+});
