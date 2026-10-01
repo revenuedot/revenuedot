@@ -178,6 +178,12 @@ for (const [p, label, title, s] of [
   ["/changelog", "Changelog", "What shipped in RevenueDot", "charts-light.png"],
 ]) add(p, page(`${chrome(label, title)}<div class="crop"><img src="${shotFile(s)}"></div>`));
 
+// Free tools
+if (rcRow) add("/tools/revenuecat-fee-calculator", page(`${chrome("Free tool", "RevenueCat fee calculator")}${billVis(COMPARE[0].price.head, rcRow)}`));
+add("/tools/app-store-fee-calculator", page(`${chrome("Free tool", "App Store and Google Play fee calculator")}<div class="vis" data-og-safe><div><p class="cap">Of a $9.99 subscription</p><div class="cols"><div><span>Apple, first year</span><b>30%</b></div><div><span>Apple, after a year</span><b>15%</b></div><div><span>Small Business Program</span><b>15%</b></div><div><span>Google Play subscriptions</span><b>15%</b></div></div></div></div>`));
+add("/tools/subscription-revenue-calculator", page(`${chrome("Free tool", "Subscription revenue calculator: MRR, ARR, LTV")}<div class="vis" data-og-safe><div><p class="cap">MRR, month 1 to 12</p>${chartSvg({ ...mrr, name: "mrr-growth", display_type: "bar", group: "revenue" })}</div></div>`));
+add("/tools", page(`${chrome("Free tools", "Free calculators for subscription apps")}${rcRow ? billVis(COMPARE[0].price.head, rcRow) : ""}`));
+
 // Blog posts: the post's own cover, letterboxed into the card.
 const blogDir = path.resolve(site, process.env.DOCS_DIR ?? "../../../docs", "blog");
 for (const f of readdirSync(blogDir).filter((f) => f.endsWith(".md") && f !== "README.md")) {

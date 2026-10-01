@@ -1,0 +1,59 @@
+---
+// Subscription revenue calculator: installs, trial and paid conversion, price and churn to MRR, ARR and LTV over 12 months.
+import ToolPage from "../../templates/ToolPage.astro";
+const faq = [
+  { q: "How do I estimate MRR for a new subscription app?", a: "Multiply new paying subscribers per month (installs × install-to-trial rate × trial-to-paid rate) by the monthly price, then carry the base forward each month after removing churned subscribers. The calculator does this for 12 months. See [how MRR is calculated](/charts/mrr)." },
+  { q: "How is LTV calculated here?", a: "Lifetime value is the monthly price divided by the monthly churn rate: a $10 plan with 10% monthly churn has an expected lifetime of 10 months and an LTV of $100 before store fees. It is a simple steady-state estimate; realized LTV from real cohorts is more reliable once you have data ([realized LTV per paying customer](/charts/ltv-per-paying-customer))." },
+  { q: "What trial conversion rate should I assume?", a: "Use your own data when you have it. RevenueCat's 2025 report found that trials of 17 to 32 days converted to paid at a higher rate than trials under 4 days, and that most trials start on install day ([RevenueCat 2025](https://revenuecat.com/state-of-subscription-apps-2025)). Start with a conservative rate and measure it on the [trial conversion rate chart](/charts/trial-conversion-rate)." },
+  { q: "Does this include Apple's and Google's commission?", a: "The MRR and ARR here are what customers pay. The proceeds line takes off a 15% store commission (Small Business Program or Google Play subscriptions). Use the [App Store fee calculator](/tools/app-store-fee-calculator) for other rates." },
+];
+---
+<ToolPage path="/tools/subscription-revenue-calculator" name="Subscription revenue calculator"
+  title="Subscription revenue calculator: MRR, ARR and LTV for your app"
+  metaTitle="Subscription app revenue calculator: MRR, ARR, LTV"
+  description="Estimate a subscription app's MRR, ARR and LTV over 12 months from installs, trial and paid conversion, price and monthly churn. Free, no sign-up."
+  answer="Subscription revenue grows by **new paying subscribers each month** (installs × trial rate × trial-to-paid rate) and shrinks by **churn**. Enter your numbers to project **MRR**, **ARR** and **LTV** over 12 months, then track the real figures on RevenueDot's charts."
+  faq={faq} related={["/charts/mrr", "/charts/churn-rate", "/charts/trial-conversion-rate", "/charts/ltv-per-paying-customer", "/tools/app-store-fee-calculator", "/blog/hard-paywall-vs-freemium"]}>
+  <div class="tool" id="rev-tool">
+    <div class="inputs">
+      <label>New installs per month<input type="number" id="installs" min="0" step="100" value="10000" /></label>
+      <label>Install to trial (%)<input type="number" id="trial" min="0" max="100" step="0.5" value="8" /><span class="hint">Share of installs that start a free trial.</span></label>
+      <label>Trial to paid (%)<input type="number" id="paid" min="0" max="100" step="1" value="35" /></label>
+      <label>Monthly price (USD)<input type="number" id="price" min="0" step="0.5" value="9.99" /><span class="hint">For annual plans, use the annual price divided by 12.</span></label>
+      <label>Monthly churn (%)<input type="number" id="churn" min="0.1" max="100" step="0.5" value="8" /></label>
+    </div>
+    <div class="out" aria-live="polite">
+      <div class="grid"><div class="gi cols-3">
+        <div class="cell"><p class="label">MRR in month 12</p><p class="stat" id="o-mrr">—</p></div>
+        <div class="cell"><p class="label">ARR run rate</p><p class="stat" id="o-arr">—</p></div>
+        <div class="cell"><p class="label">LTV per subscriber</p><p class="stat" id="o-ltv">—</p></div>
+      </div></div>
+      <svg id="chart" viewBox="0 0 600 220" role="img" aria-label="MRR by month for 12 months"></svg>
+      <p class="small muted" id="o-sub"></p>
+      <div class="go-cta"><a class="btn sm" href="https://app.revenuedot.app/signup">Track your real MRR free</a><a class="btn secondary sm" href="/charts">All 43 charts <span class="arrow">→</span></a></div>
+    </div>
+  </div>
+</ToolPage>
+<script is:inline>
+  (() => {
+    const $ = (id) => document.getElementById(id);
+    if (!$("rev-tool")) return;
+    const fmt = (n) => "$" + Math.round(n).toLocaleString("en-US");
+    const render = () => {
+      const v = (id) => Math.max(0, Number($(id).value) || 0);
+      const newPaid = v("installs") * v("trial") / 100 * v("paid") / 100, price = v("price"), churn = Math.max(0.001, v("churn") / 100);
+      const subs = []; let base = 0;
+      for (let m = 0; m < 12; m++) { base = base * (1 - churn) + newPaid; subs.push(base); }
+      const mrr = subs.map((s) => s * price), last = mrr[11];
+      $("o-mrr").textContent = fmt(last); $("o-arr").textContent = fmt(last * 12); $("o-ltv").textContent = fmt(price / churn);
+      $("o-sub").textContent = `${Math.round(newPaid).toLocaleString("en-US")} new paying subscribers a month, ${Math.round(subs[11]).toLocaleString("en-US")} paying in month 12. After a 15% store commission you keep about ${fmt(last * 0.85)} a month. Long-run ceiling: ${fmt(newPaid / churn * price)} MRR.`;
+      const max = Math.max(...mrr, 1), w = 600, h = 220, bw = w / 12 - 8;
+      $("chart").innerHTML = mrr.map((x, i) => { const bh = (x / max) * (h - 30); return `<rect x="${i * (w / 12) + 4}" y="${h - 20 - bh}" width="${bw}" height="${bh}" fill="${i === 11 ? "var(--accent)" : "var(--fg)"}"/><text x="${i * (w / 12) + 4 + bw / 2}" y="${h - 4}" text-anchor="middle" font-size="11" fill="var(--fg-3)" font-family="var(--mono)">M${i + 1}</text>`; }).join("");
+    };
+    ["installs", "trial", "paid", "price", "churn"].forEach((id) => $(id).addEventListener("input", render));
+    render();
+  })();
+</script>
+<style>
+  #chart { width: 100%; height: auto; display: block; }
+</style>

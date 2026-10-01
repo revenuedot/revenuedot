@@ -1,0 +1,77 @@
+---
+// RevenueCat fee calculator: what RevenueCat and the alternatives charge for a month of tracked revenue.
+import ToolPage from "../../templates/ToolPage.astro";
+import { VENDORS, cost } from "../../lib/vendor-pricing";
+import { usd } from "../../lib/pricing";
+const start = 50_000;
+const levels = [5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 1_000_000];
+const rc = VENDORS.find((v) => v.id === "revenuecat")!;
+const faq = [
+  { q: "How much does RevenueCat cost?", a: "RevenueCat is free while monthly tracked revenue is under $2,500. From $2,500 a month it charges 1% of all tracked revenue, not only the part above $2,500: $25 at $2,500, $500 at $50,000 and $10,000 at $1,000,000. Tracked revenue is measured before Apple's and Google's commission, per [RevenueCat's pricing page](https://www.revenuecat.com/pricing)." },
+  { q: "Does RevenueCat charge on revenue before or after the App Store cut?", a: "Before. Monthly tracked revenue is the gross amount customers pay, before the 15% or 30% store commission and taxes, so RevenueCat's 1% is about 1.2% of what you receive after a 15% commission." },
+  { q: "What is the cheapest RevenueCat alternative?", a: "Self-hosted RevenueDot costs nothing beyond your own server, and it works with the RevenueCat SDK you already ship. RevenueDot Cloud is free up to $10,000 a month in tracked revenue; its planned paid plan is 0.5% above that, capped at $999 a month. Among hosted vendors, Qonversion charges 0.8% above $7,000 and Adapty 1% above $5,000." },
+  { q: "How much would I save by switching from RevenueCat?", a: "Enter your monthly tracked revenue above. At $50,000 a month RevenueCat costs $500 a month, or $6,000 a year. RevenueDot Cloud's planned price at that level is $200 a month, and self-hosting costs only your server." },
+  { q: "Where do these prices come from?", a: "Each vendor's public pricing page, checked in October 2026. The links are under the calculator. Vendors change prices, so check the page before you decide." },
+];
+---
+<ToolPage path="/tools/revenuecat-fee-calculator" name="RevenueCat fee calculator"
+  title="RevenueCat fee calculator: what you pay, and what you could pay"
+  metaTitle="RevenueCat fee calculator (2026 pricing)"
+  description="Enter your monthly revenue and see RevenueCat's fee next to Adapty, Qonversion, Superwall and RevenueDot, monthly and yearly, with each vendor's pricing source."
+  answer="RevenueCat charges **1% of all monthly tracked revenue** once it reaches $2,500, measured before the store's cut. Enter your monthly revenue to see that fee next to Adapty, Qonversion, Superwall and RevenueDot, per month and per year."
+  faq={faq} related={["/compare/revenuedot-vs-revenuecat", "/revenuecat-alternatives", "/blog/revenuecat-pricing-explained", "/pricing", "/migrate-from-revenuecat", "/tools/app-store-fee-calculator"]}>
+  <div class="tool" id="fee-tool" data-vendors={JSON.stringify(VENDORS.map((v) => ({ id: v.id, ...v.calc, from: Number.isFinite(v.calc.from) ? v.calc.from : -1 })))}>
+    <div class="inputs">
+      <label>Monthly tracked revenue (USD)
+        <input type="number" id="mtr" min="0" step="500" value={start} inputmode="numeric" />
+        <input type="range" id="mtr-range" min="0" max="1000000" step="1000" value={start} aria-label="Monthly tracked revenue" />
+        <span class="hint">Gross revenue from all stores, before Apple's and Google's commission.</span>
+      </label>
+      <label>Show cost per
+        <select id="period"><option value="1">Month</option><option value="12">Year</option></select>
+      </label>
+    </div>
+    <div class="out" aria-live="polite">
+      <div><p class="label">RevenueCat would charge</p><p class="big" id="rc-out">{usd(cost(rc, start))}</p><p class="small muted" id="rc-save">With RevenueDot Cloud you would pay {usd(cost(VENDORS[4], start))} (planned) and nothing when you self-host.</p></div>
+      <div class="go-cta"><a class="btn sm" href="https://app.revenuedot.app/signup">Start free on Cloud</a><a class="btn secondary sm" href="/migrate-from-revenuecat">Move off RevenueCat <span class="arrow">→</span></a></div>
+      <div class="rows" id="rows">
+        {VENDORS.map((v) => {
+          const c = cost(v, start), max = Math.max(...VENDORS.map((x) => cost(x, start)), 1);
+          return <div class={`row${v.id.startsWith("rd") ? " us" : ""}`} data-id={v.id}><span class="name">{v.name}<small>{v.rule}</small></span><span class="bar" style={`width:${(c / max) * 100}%`}></span><span class="amt">{usd(c)}</span></div>;
+        })}
+      </div>
+      <p class="tiny">Sources, checked October 2026: {VENDORS.flatMap((v) => v.sources).filter((s, i, a) => a.findIndex((x) => x.url === s.url) === i).map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel={s.url.startsWith("http") ? "noopener" : undefined}>{s.label}</a></>)}. Superwall's figure is an upper bound: it bills only paywall revenue. RevenueDot Cloud's paid plan is planned.</p>
+    </div>
+  </div>
+  <section class="section" id="table" slot="after">
+    <div class="wrap">
+      <div class="head"><p class="label">At a glance</p><h2 class="h2 sm">Monthly fee at common revenue levels</h2></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th scope="col">Monthly tracked revenue</th>{VENDORS.map((v) => <th scope="col">{v.name}</th>)}</tr></thead>
+        <tbody>{levels.map((m) => <tr><th scope="row" class="num-cell">{usd(m)}</th>{VENDORS.map((v) => <td class="num-cell">{usd(cost(v, m))}</td>)}</tr>)}</tbody>
+      </table></div>
+      <p class="tiny caption">Computed from the rules above. Add-ons, taxes and enterprise discounts are not included.</p>
+    </div>
+  </section>
+</ToolPage>
+<script is:inline>
+  (() => {
+    const root = document.getElementById("fee-tool");
+    if (!root) return;
+    const vendors = JSON.parse(root.dataset.vendors).map((v) => ({ ...v, f: (m) => { if (v.from < 0 || m < v.from) return 0; const fee = (v.basis === "all" ? m : m - v.from) * v.rate; return v.cap == null ? fee : Math.min(v.cap, fee); } }));
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => "$" + Math.round(n).toLocaleString("en-US");
+    const render = () => {
+      const m = Math.max(0, Number($("mtr").value) || 0), k = Number($("period").value);
+      const costs = vendors.map((v) => v.f(m) * k), max = Math.max(...costs, 1);
+      vendors.forEach((v, i) => { const row = root.querySelector(`[data-id="${v.id}"]`); row.querySelector(".bar").style.width = (costs[i] / max) * 100 + "%"; row.querySelector(".amt").textContent = fmt(costs[i]); });
+      const rc = costs[vendors.findIndex((v) => v.id === "revenuecat")], cloud = costs[vendors.findIndex((v) => v.id === "rdcloud")];
+      $("rc-out").textContent = fmt(rc) + (k === 12 ? " a year" : " a month");
+      $("rc-save").textContent = rc > 0 ? `RevenueDot Cloud: ${fmt(cloud)} (planned), so you keep ${fmt(rc - cloud)}. Self-hosted RevenueDot: $0 plus your server.` : "Under $2,500 a month, RevenueCat is free. RevenueDot Cloud is free up to $10,000 a month.";
+    };
+    $("mtr").addEventListener("input", () => { $("mtr-range").value = $("mtr").value; render(); });
+    $("mtr-range").addEventListener("input", () => { $("mtr").value = $("mtr-range").value; render(); });
+    $("period").addEventListener("change", render);
+    render();
+  })();
+</script>

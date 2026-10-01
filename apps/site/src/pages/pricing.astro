@@ -112,7 +112,7 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
   const update = () => {
     const m = Number(input.value);
     document.getElementById("mtr-out").textContent = f(m);
-    document.getElementById("rc").textContent = f(Math.max(0, m - RC_FREE_UP_TO) * RC_RATE);
+    document.getElementById("rc").textContent = f(m >= RC_FREE_UP_TO ? m * RC_RATE : 0);
     document.getElementById("cloud").textContent = f(Math.min(CLOUD_CAP, Math.max(0, m - CLOUD_FREE_UP_TO) * CLOUD_RATE));
   };
   input.addEventListener("input", update);
