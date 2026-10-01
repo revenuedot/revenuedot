@@ -131,8 +131,8 @@ export const apiOrigin = () => (window.location.hostname === "app.revenuedot.app
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong. Try again.");
 
 /** Third-party integrations and data exports (RevenueDot extensions under /integrations/partners and /integrations/exports). */
-export interface IntegrationField { key: string; label: string; type: "text" | "secret" | "select" | "boolean" | "textarea" | "tokens"; required?: boolean; options?: { value: string; label: string }[]; hint?: string; placeholder?: string; when?: { key: string; value: string } }
-export interface IntegrationType { object: "integration_type"; type: string; name: string; category: string; description: string; default_environment: "production" | "sandbox" | null; event_names: boolean; fields: IntegrationField[]; docs_url: string }
+export interface IntegrationField { key: string; label: string; type: "text" | "secret" | "select" | "boolean" | "textarea" | "tokens"; required?: boolean; options?: { value: string; label: string }[]; hint?: string; placeholder?: string; when?: { key: string; value: string }; url?: boolean }
+export interface IntegrationType { object: "integration_type"; type: string; name: string; category: string; description: string; default_environment: "production" | "sandbox" | null; event_names: boolean; fields: IntegrationField[]; docs_url: string; api?: "documented" | "webhook"; connection?: boolean }
 export interface Integration {
   object: "integration"; id: string; type: string; name: string; enabled: boolean; environment: "production" | "sandbox" | null; app_id: string | null;
   event_types: string[]; settings: Record<string, unknown>; secrets: Record<string, { configured: boolean; hint: string | null }>; event_names: Record<string, string>;

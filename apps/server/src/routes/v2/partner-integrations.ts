@@ -153,7 +153,7 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
   const types = (t: readonly string[] | undefined) => (t === undefined ? undefined : t.length ? t.map((x) => x.toUpperCase()) : null);
 
   r.get("/v2/projects/:project_id/integrations/catalog", scope("project_configuration:integrations:read"), (c) =>
-    c.json(listOf(c, INTEGRATIONS.map((s) => ({ object: "integration_type" as const, type: s.kind, name: s.name, category: s.category, description: s.text, default_environment: s.environment === "both" ? null : s.environment, event_names: s.eventNames, fields: s.fields, docs_url: s.docs })), null)));
+    c.json(listOf(c, INTEGRATIONS.map((s) => ({ object: "integration_type" as const, type: s.kind, name: s.name, category: s.category, description: s.text, default_environment: s.environment === "both" ? null : s.environment, event_names: s.eventNames, fields: s.fields, docs_url: s.docs, api: s.api ?? "documented", connection: !!s.connection })), null)));
 
   r.get(P, scope("project_configuration:integrations:read"), async (c) => {
     const rows = await db.select().from(schema.integrations).where(eq(schema.integrations.projectId, c.get("projectId")));

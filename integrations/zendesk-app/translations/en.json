@@ -1,0 +1,13 @@
+{
+  "app": {
+    "name": "RevenueDot",
+    "short_description": "The requester's subscriptions, entitlements, refunds and open tickets from RevenueDot.",
+    "long_description": "Shows the ticket requester's subscription status, active entitlements, plan, renewal date, total spent, refund requests and open Customer Center tickets from RevenueDot, looked up by the requester's email.",
+    "installation_instructions": "Enter your RevenueDot API URL (https://api.revenuedot.app on RevenueDot Cloud), your project ID, and a secret API key with the customer_information:customers:read permission. A self-hosted server must also be added to domainWhitelist in manifest.json. Guide: https://revenuedot.app/docs/guides/support-integrations#zendesk",
+    "parameters": {
+      "api_url": { "label": "RevenueDot API URL", "helpText": "https://api.revenuedot.app, or your self-hosted server." },
+      "project_id": { "label": "Project ID", "helpText": "Project settings in the RevenueDot dashboard." },
+      "secret_key": { "label": "Secret API key", "helpText": "A secret key (sk_…) with customer_information:customers:read. Stored by Zendesk as a secure setting; the browser never sees it." }
+    }
+  }
+}

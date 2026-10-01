@@ -333,3 +333,57 @@ describe("Intercom inbox app", () => {
     expect(i!.lastDeliveredAt).not.toBeNull();
   });
 });
+
+describe("Apple Search Ads", () => {
+  it("signs the client secret with Apple's SEC1 key, loads campaign names and reports customers and revenue by campaign", async () => {
+    const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]) as CryptoKeyPair;
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    // PKCS #8 → SEC1, the format `openssl ecparam -genkey` writes and Apple's guide uses.
+    const at = pkcs8.findIndex((b, i) => b === 0x04 && pkcs8[i + 1]! + i + 2 === pkcs8.length);
+    const sec1 = pkcs8.slice(at + 2);
+    const pem = `-----BEGIN EC PRIVATE KEY-----\n${b64(sec1)}\n-----END EC PRIVATE KEY-----`;
+    const { appleAdsClientSecret } = await import("../src/services/ads/apple-ads.js");
+    const jwt = await appleAdsClientSecret({ clientId: "SEARCHADS.client", teamId: "SEARCHADS.team", keyId: "kid-1", privateKeyPem: pem, nowMs: h.now().getTime() });
+    const [hd, pl, sg] = jwt.split(".");
+    const dec = (s: string) => JSON.parse(atob(s.replace(/-/g, "+").replace(/_/g, "/")));
+    expect(dec(hd!)).toEqual({ alg: "ES256", kid: "kid-1" });
+    expect(dec(pl!)).toMatchObject({ sub: "SEARCHADS.client", iss: "SEARCHADS.team", aud: "https://appleid.apple.com" });
+    const raw = Uint8Array.from(atob(sg!.replace(/-/g, "+").replace(/_/g, "/") + "==".slice(0, (4 - (sg!.length % 4)) % 4)), (c) => c.charCodeAt(0));
+    expect(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pair.publicKey, raw, new TextEncoder().encode(`${hd}.${pl}`))).toBe(true);
+
+    // Two customers from campaign 542370539 (one paying), one from 999.
+    for (const [user, campaign] of [["a1", "542370539"], ["a2", "542370539"], ["a3", "999"]] as const) {
+      await h.fetch(`/v1/subscribers/${user}`);
+      await v2(`/customers/${user}/attributes`, { method: "POST", json: { attributes: [{ name: "$appleAdsCampaignId", value: campaign }] } });
+    }
+    const [a1] = await h.db.select().from(schema.customers).where(eq(schema.customers.originalAppUserId, "a1"));
+    await h.db.insert(schema.transactions).values({ id: "tx_asa", projectId: "proj1", customerId: a1!.id, appId: "app_ios", store: "app_store", storeTransactionId: "300001", productIdentifier: "pro_annual", kind: "purchase", purchasedAt: h.now(), revenueUsd: 39.99 });
+    const created = await v2("/integrations/partners", { method: "POST", json: { type: "apple_search_ads", settings: { org_id: "40669820", client_id: "SEARCHADS.client", team_id: "SEARCHADS.team", key_id: "kid-1", private_key: pem } } });
+    expect(created.status).toBe(201);
+    const appleFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://appleid.apple.com/auth/oauth2/token?")) {
+        expect(new URL(url).searchParams.get("scope")).toBe("searchadsorg");
+        return Response.json({ access_token: "asa-token", token_type: "Bearer", expires_in: 3600 });
+      }
+      expect(new Headers(init?.headers).get("x-ap-context")).toBe("orgId=40669820");
+      if (url === "https://api.searchads.apple.com/api/v5/campaigns?limit=1000&offset=0") return Response.json({ data: [{ id: 542370539, name: "Brand US" }], pagination: { totalResults: 1 } });
+      if (url.startsWith("https://api.searchads.apple.com/api/v5/campaigns/542370539/adgroups")) return Response.json({ data: [{ id: 542317095, name: "Exact match" }] });
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+    // The service with a fake Apple (the harness's own fetch knows no Apple endpoints; see the API call below).
+    const { syncAppleAdsNames } = await import("../src/services/ads/apple-ads.js");
+    const { secretKeyFrom } = await import("../src/services/secrets.js");
+    expect(await syncAppleAdsNames({ db: h.db, fetch: appleFetch, now: h.now, secretKey: await secretKeyFrom(b64(new Uint8Array(32).fill(7)), null) }, "proj1")).toBe(1);
+    const report = await json(v2("/ads/apple_search_ads/report?range=28d"));
+    expect(report).toMatchObject({ object: "apple_search_ads_report", names_loaded: 1, last_sync_error: null });
+    expect(report.campaigns).toEqual([
+      { campaign_id: "542370539", name: "Brand US", customers: 2, paying_customers: 1, revenue: 39.99, revenue_per_customer: 20 },
+      { campaign_id: "999", name: null, customers: 1, paying_customers: 0, revenue: 0, revenue_per_customer: 0 },
+    ]);
+    // Through the API the real fetch is the harness's fake, which knows no Apple: the error is recorded and returned.
+    const failed = await v2("/ads/apple_search_ads/sync", { method: "POST" });
+    expect(failed.status).toBe(422);
+    expect((await json(v2("/ads/apple_search_ads/report"))).last_sync_error).toMatch(/HTTP 404/);
+  });
+});

@@ -7,6 +7,8 @@ import { loadAdsOverview, type AdsRange } from "../../services/ads/overview.js";
 import { recordReward, verificationShape } from "../../services/ads/rewards.js";
 import { AdMobError, admobConfigured, admobRow, admobShape, disconnectAdMob, startAdMobConnect, syncAdMob } from "../../services/ads/admob.js";
 import { depsSecretKey } from "../../services/secrets.js";
+import { AppleAdsError, appleAdsReport, syncAppleAdsNames } from "../../services/ads/apple-ads.js";
+import { periodDays } from "@revenuedot/core/ads";
 import { publicOrigin } from "../oauth.js";
 import { V2Error, body, listOf, notFound, pageParams, paramError, scope, type V2Router } from "./common.js";
 
@@ -24,6 +26,8 @@ import { V2Error, body, listOf, notFound, pageParams, paramError, scope, type V2
  *   POST   /v2/projects/{project_id}/ads/admob/connect                    Google's authorization URL
  *   POST   /v2/projects/{project_id}/ads/admob/refresh                    reload ad units now
  *   DELETE /v2/projects/{project_id}/ads/admob                            disconnect
+ *   GET    /v2/projects/{project_id}/ads/apple_search_ads/report             customers and revenue by campaign
+ *   POST   /v2/projects/{project_id}/ads/apple_search_ads/sync               load campaign names from Apple
  */
 
 const RANGES = ["7d", "28d", "90d", "12m"] as const;
@@ -225,5 +229,29 @@ export function adsRoutes(r: V2Router, deps: Deps) {
   r.delete(`${P}/admob`, scope("project_configuration:integrations:read_write"), async (c) => {
     await disconnectAdMob(db, c.get("projectId"));
     return c.json(await admobView(c.get("projectId"), publicOrigin(c)));
+  });
+
+  r.get(`${P}/apple_search_ads/report`, scope("charts_metrics:overview:read"), async (c) => {
+    const range = (c.req.query("range") ?? "90d") as AdsRange;
+    if (!RANGES.includes(range)) throw paramError(`range must be one of ${RANGES.join(", ")}.`, "range");
+    const projectId = c.get("projectId");
+    const { start, end } = periodDays(range, deps.now());
+    const [conn] = await db.select().from(schema.integrations).where(and(eq(schema.integrations.projectId, projectId), eq(schema.integrations.kind, "apple_search_ads"))).limit(1);
+    const s = (conn?.settings ?? {}) as Record<string, any>;
+    return c.json({
+      object: "apple_search_ads_report", range, start_date: start.toISOString().slice(0, 10), currency: "USD",
+      campaigns: await appleAdsReport(db, projectId, start, end),
+      names_loaded: Object.keys(s.names?.campaigns ?? {}).length, last_sync_at: s.last_sync_at ?? null, last_sync_error: s.last_sync_error ?? null,
+    });
+  });
+
+  r.post(`${P}/apple_search_ads/sync`, scope("project_configuration:integrations:read_write"), async (c) => {
+    try {
+      const n = await syncAppleAdsNames({ db, fetch: deps.fetch ?? fetch, now: deps.now, secretKey: await depsSecretKey(deps) }, c.get("projectId"));
+      return c.json({ object: "apple_search_ads_sync", campaigns: n });
+    } catch (e) {
+      if (e instanceof AppleAdsError) throw new V2Error(422, "invalid_request", e.message);
+      throw e;
+    }
   });
 }

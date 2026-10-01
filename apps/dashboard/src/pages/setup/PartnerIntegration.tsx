@@ -7,6 +7,7 @@ import { Icon } from "../../components/icons";
 import { Check, CodeBlock, ConfirmDialog, Dialog, Disclosure, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Switch, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
 import { base, errMsg, useApps, useIntegrations, useIntegrationTypes, type Integration, type IntegrationDelivery, type IntegrationType } from "./data";
+import { IntercomInboxPanel } from "./SupportApps";
 
 /**
  * One partner integration (/projects/:projectId/integrations/:type): Slack, Segment, Amplitude, Mixpanel, PostHog,
@@ -122,7 +123,7 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
           })}
         </div>
       </section>
-      <section className="panel">
+      {!spec.connection && <section className="panel">
         <div className="ph"><b>Which events</b></div>
         <div className="pb stack">
           <div className="field">
@@ -148,7 +149,7 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
             </Disclosure>
           )}
         </div>
-      </section>
+      </section>}
       {error && !fieldErr(error.param?.replace(/^settings\./, "").split(".")[0] ?? "") && <div className="banner err" role="alert">{error.message}</div>}
       <div className="hrow"><button type="submit" className="btn btn-dark" disabled={busy}>{busy ? "Saving…" : current ? "Save changes" : `Connect ${spec.name}`}</button></div>
     </form>
@@ -283,7 +284,7 @@ export function PartnerIntegrationPage() {
         {spec && list.data && (
           <>
             <PageHead title={spec.name} sub={spec.description} actions={current ? <>
-              <button type="button" className="btn btn-dark" disabled={!current.enabled} title={current.enabled ? undefined : "Turn the integration on to send a test event"} onClick={() => setTesting(true)}><Icon name="send" />Send test event</button>
+              {!spec.connection && <button type="button" className="btn btn-dark" disabled={!current.enabled} title={current.enabled ? undefined : "Turn the integration on to send a test event"} onClick={() => setTesting(true)}><Icon name="send" />Send test event</button>}
               <Menu label="More actions" items={[{ label: `Disconnect ${spec.name}`, icon: "trash", danger: true, onSelect: () => setDeleting(true) }]} />
             </> : undefined} />
             {current && (
@@ -296,8 +297,10 @@ export function PartnerIntegrationPage() {
                 ]} />
               </>
             )}
-            <IntegrationForm key={current?.id ?? "new"} pid={pid} spec={spec} current={current} onSaved={() => toast(current ? "Saved." : `${spec.name} is connected. Send a test event to check it.`)} />
-            {current && <Deliveries pid={pid} integration={current} />}
+            {spec.api === "webhook" && <div className="banner" role="status">{spec.name} publishes no event API of its own. RevenueDot posts RevenueCat's webhook body to the URL {spec.name} gives you, which is how {spec.name} connects to RevenueCat too.</div>}
+            {spec.type === "intercom_inbox" && <IntercomInboxPanel pid={pid} />}
+            <IntegrationForm key={current?.id ?? "new"} pid={pid} spec={spec} current={current} onSaved={() => toast(current ? "Saved." : spec.connection ? `${spec.name} is connected.` : `${spec.name} is connected. Send a test event to check it.`)} />
+            {current && !spec.connection && <Deliveries pid={pid} integration={current} />}
           </>
         )}
       </div>

@@ -33,8 +33,6 @@ const SOON: [string, string, string][] = [
   ["targeting", "Targeting", "Show different offerings to different customers."],
   ["experiments", "Experiments", "A/B test prices and offerings."],
   ["funnels", "Funnels", "Web-to-app funnels and purchase links."],
-  ["ads", "Ads", "Ad revenue next to subscription revenue."],
-  ["ads/rewards", "Rewards", "Rewarded ads that grant currency or access."],
   ["lifecycle/customer-center", "Customer Center", "Self-service subscription management inside your app."],
   ["web", "Web", "Sell subscriptions on the web with Stripe."],
 ];

@@ -8,6 +8,9 @@ import { skip, type PartnerDef } from "./common.js";
  * - Intercom inbox app: Intercom's Canvas Kit calls `POST /v1/support/intercom/{project_id}/canvas`, signed with the
  *   Intercom app's client secret (`X-Body-Signature`, HMAC-SHA256 of the body), and gets the contact's subscription
  *   summary as Canvas Kit components (apps/server/src/routes/support-apps.ts).
+ * - Apple Search Ads: attribution needs no setup (the AdServices token is resolved with Apple and stored as
+ *   `$appleAdsCampaignId` …). The optional API user credentials load campaign and ad group names for the campaign
+ *   report (apps/server/src/services/ads/apple-ads.ts).
  * - Zendesk ticket sidebar app: a Zendesk app (manifest in `integrations/zendesk-app/`) that calls
  *   `GET /v2/projects/{project_id}/support_summaries?email=` with a secret key stored as a secure app setting.
  */
@@ -22,6 +25,20 @@ export const CONNECTION_PARTNERS: PartnerDef[] = [
       fields: [
         { key: "client_id", label: "Google OAuth client ID", type: "text", placeholder: "1234-abc.apps.googleusercontent.com", hint: "Only when the server has no Google OAuth client. Create a Web application client in Google Cloud with the redirect URI shown on this page." },
         { key: "client_secret", label: "Google OAuth client secret", type: "secret" },
+      ],
+    },
+    events: [], build: none,
+  },
+  {
+    spec: {
+      kind: "apple_search_ads", name: "Apple Search Ads", category: "attribution", text: "Match purchases to Apple Search Ads campaigns: attribution from the AdServices token, campaign names and revenue by campaign.",
+      environment: "both", eventNames: false, docs: "https://revenuedot.app/docs/guides/integrations#apple-search-ads", api: "documented", connection: true,
+      fields: [
+        { key: "org_id", label: "Organization ID", type: "text", placeholder: "1234567", hint: "Optional: only for campaign names. Apple Search Ads › Account settings." },
+        { key: "client_id", label: "Client ID", type: "text", placeholder: "SEARCHADS.…", hint: "From the API user's API tab after you upload the public key." },
+        { key: "team_id", label: "Team ID", type: "text", placeholder: "SEARCHADS.…" },
+        { key: "key_id", label: "Key ID", type: "text" },
+        { key: "private_key", label: "Private key (PEM)", type: "secret", hint: "The P-256 key you generated (private-key.pem). Sealed at rest." },
       ],
     },
     events: [], build: none,
