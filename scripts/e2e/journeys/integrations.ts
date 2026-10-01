@@ -355,7 +355,7 @@ const journey: Journey = {
       const seen = await sdk.call("GET", `/v1/subscribers/${buyer}`, undefined, iosHeaders);
       const setAttrs = await sdk.attributes(buyer, ids);
       c.check("the app sets the partner ids as customer attributes (POST /v1/subscribers/{id}/attributes)", (seen.status === 200 || seen.status === 201) && setAttrs.status === 200, { seen: seen.status, attrs: setAttrs.status, body: setAttrs.body });
-      const stored = Object.fromEntries((await sql`SELECT a.key, a.value FROM customer_attributes a JOIN customer_aliases al ON al.customer_id = a.customer_id WHERE al.app_user_id = ${buyer}`).map((r: any) => [r.key, r.value]));
+      const stored = Object.fromEntries((await sql`SELECT a.key, a.value FROM customer_attributes a JOIN customer_aliases al ON al.customer_id = a.customer_id WHERE al.project_id = ${dev.projectId} AND al.app_user_id = ${buyer}`).map((r: any) => [r.key, r.value]));
       const notStored = Object.entries(ids).filter(([k, v]) => stored[k] !== v).map(([k]) => k);
       c.check("every attribute is stored on the customer", notStored.length === 0, { notStored, stored });
       let capFrom = ctx.capture.requests.length, outFrom = ctx.server.outbound().length;
@@ -619,10 +619,10 @@ const journey: Journey = {
       c.eq("transactions CSV header = RevenueCat's transaction export columns (plus app_id)", tx[0], RC_TRANSACTION_COLUMNS);
       const col = (rows: string[][], name: string) => rows[0]!.indexOf(name);
       const rowOf = (rows: string[][], user: string) => { const r = rows.find((x) => x[col(rows, "rc_original_app_user_id")] === user); return r ? Object.fromEntries(rows[0]!.map((h, k) => [h, r[k]])) : null; };
-      const [txA] = await sql`SELECT store, store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.original_app_user_id = ${buyer}`;
+      const [txA] = await sql`SELECT store, store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.project_id = ${dev.projectId} AND cu.original_app_user_id = ${buyer}`;
       const ra = rowOf(tx, buyer);
       c.has("the Test Store purchase row: product, store, sandbox, $9.99 USD, the transaction id, entitlement", ra, { product_identifier: "pro_monthly", store: txA?.store, is_sandbox: "true", price_in_usd: "9.99", purchase_price_in_usd: "9.99", purchased_currency: "USD", store_transaction_id: txA?.store_transaction_id, is_auto_renewable: "true", entitlement_identifiers: '["pro"]', product_duration: "P1M", app_id: cat.app.id });
-      const [txB] = await sql`SELECT store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.original_app_user_id = ${buyerB}`;
+      const [txB] = await sql`SELECT store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.project_id = ${dev.projectId} AND cu.original_app_user_id = ${buyerB}`;
       const rb = rowOf(tx, buyerB);
       c.has("the Amazon purchase row: production, $4.99, the transaction id", rb, { product_identifier: "journey.pro.monthly", store: "amazon", is_sandbox: "false", price_in_usd: "4.99", store_transaction_id: txB?.store_transaction_id, app_id: amazonApp.id });
       c.check("the Amazon transaction id is the receipt id plus the period start", String(txB?.store_transaction_id).startsWith(`${receiptId}.`), txB);
