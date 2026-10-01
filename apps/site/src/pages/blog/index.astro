@@ -9,14 +9,14 @@ const posts = await blogPosts();
 ---
 <Base
   title="Blog: in-app purchases, subscriptions and RevenueCat"
-  description="The RevenueDot blog: guides on in-app purchase backends, subscription infrastructure, self-hosting and migrating from RevenueCat. Written in the open on GitHub."
+  description="The RevenueDot blog: guides on in-app purchase backends, RevenueDot Cloud, self-hosting and migrating from RevenueCat. Written in the open on GitHub."
   path="/blog"
   crumbs={[{ name: "Blog", path: "/blog" }]}
 >
   <link slot="head" rel="alternate" type="text/markdown" href="/blog.md" title="The blog index as Markdown" />
   <div class="wrap">
     <PageHead label="Blog" title="Notes on subscription infrastructure, written in the open" lede="Posts are Markdown in the revenuedot/docs repository on GitHub, next to the documentation they link to.">
-      <div class="btns"><a class="btn secondary" href={SITE.docsBlog} rel="noopener">Posts on GitHub <span class="arrow">↗</span></a></div>
+      <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud</a><a class="btn secondary" href={SITE.docsBlog} rel="noopener">Posts on GitHub <span class="arrow">↗</span></a></div>
     </PageHead>
   </div>
   <section class="section first tight">

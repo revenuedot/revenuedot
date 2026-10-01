@@ -63,7 +63,7 @@ export const PLANS: Plan[] = [
       "For apps up to $1M monthly tracked revenue",
       "Email support",
     ],
-    cta: { label: "Watch on GitHub", href: "https://github.com/revenuedot/revenuedot" },
+    cta: { label: "Start on Cloud Free", href: "https://app.revenuedot.app/signup" },
   },
   {
     id: "enterprise",

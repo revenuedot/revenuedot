@@ -4,7 +4,7 @@ import type { Faq } from "../site";
 
 export const FAQ_ALTERNATIVE: Faq = {
   q: "Is there an open-source RevenueCat alternative?",
-  a: "Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call. You keep the RevenueCat SDK in your app, point it at RevenueDot with one line (the SDK's proxy URL), and keep your purchase code, offerings and customers.",
+  a: "Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call. You keep the RevenueCat SDK in your app, point it at RevenueDot with one line (the SDK's proxy URL), and keep your purchase code, offerings and customers. Start free on RevenueDot Cloud, free up to $10,000 a month in tracked revenue, or self-host it.",
 };
 
 export const FAQ_SELF_HOST: Faq = {
@@ -14,12 +14,12 @@ export const FAQ_SELF_HOST: Faq = {
 
 export const FAQ_PRICE_ALT: Faq = {
   q: "What is a cheaper alternative to RevenueCat's pricing?",
-  a: "RevenueCat charges 1% of tracked revenue above $2,500 a month, which is $475 a month for an app making $50,000 a month. Self-hosted RevenueDot has no revenue share: you pay only for your own servers. RevenueDot Cloud is free up to $10,000 a month; the planned paid plan is 0.5% above that, capped at $999 a month.",
+  a: "RevenueCat charges 1% of tracked revenue above $2,500 a month, which is $475 a month for an app making $50,000 a month. RevenueDot Cloud is free up to $10,000 a month; the planned paid plan is 0.5% above that, capped at $999 a month. Self-hosted RevenueDot has no revenue share: you pay only for your own servers.",
 };
 
 export const FAQ_CHANGE_APP: Faq = {
   q: "Do I have to change my app to switch?",
-  a: "One line. Set the SDK's proxy URL to your RevenueDot server before configure. Offerings, purchases, restores, entitlements and customer info work as before. With the stock SDK you also turn off its response-signature check, or you use a RevenueDot SDK fork, which verifies RevenueDot's signatures.",
+  a: "One line. Set the SDK's proxy URL to https://api.revenuedot.app (or your own server) before configure. Offerings, purchases, restores, entitlements and customer info work as before. With the stock SDK you also turn off its response-signature check, or you use a RevenueDot SDK fork, which verifies RevenueDot's signatures.",
 };
 
 export const FAQ_NO_LOSS: Faq = {
@@ -34,7 +34,7 @@ export const FAQ_GOOGLE: Faq = {
 
 export const FAQ_COST: Faq = {
   q: "How much does RevenueDot cost?",
-  a: "Self-hosting is free forever under AGPL-3.0, with no limits. RevenueDot Cloud has a free plan up to $10,000 of monthly tracked revenue. Cloud Standard (0.5% of tracked revenue above $10,000, capped at $999 a month) and Enterprise (from $50,000 a year) are coming.",
+  a: "RevenueDot Cloud has a free plan up to $10,000 of monthly tracked revenue. Self-hosting is free forever under AGPL-3.0, with no limits. Cloud Standard (0.5% of tracked revenue above $10,000, capped at $999 a month) and Enterprise (from $50,000 a year) are coming.",
 };
 
 export const FAQ_READY: Faq = {
@@ -59,5 +59,5 @@ export const FAQ_STORES: Faq = {
 
 export const FAQ_DATA: Faq = {
   q: "Where does my purchase data live?",
-  a: "When you self-host, every purchase, customer and receipt lives in your own Postgres database, in the cloud and region you choose, and nothing is sent to RevenueDot. In RevenueDot Cloud it runs on Cloudflare's network; EU and US data regions are part of Enterprise.",
+  a: "In RevenueDot Cloud it runs on Cloudflare's network; EU and US data regions are part of Enterprise. When you self-host, every purchase, customer and receipt lives in your own Postgres database, in the cloud and region you choose, and nothing is sent to RevenueDot.",
 };

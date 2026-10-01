@@ -4,7 +4,7 @@ import PageHead from "../components/PageHead.astro";
 import Faq from "../components/Faq.astro";
 import CtaBand from "../components/CtaBand.astro";
 import { FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_AFFILIATED, FAQ_CHANGE_APP, FAQ_READY, FAQ_NO_LOSS } from "../lib/faq";
-import { revenueCatBill, cloudBill, usd } from "../lib/pricing";
+import { revenueCatBill, cloudBill, usd, CLOUD_CAP, CLOUD_RATE, CLOUD_FREE_UP_TO } from "../lib/pricing";
 import { SITE } from "../site";
 
 const RC_PRICING = "https://www.revenuecat.com/pricing";
@@ -21,10 +21,10 @@ const LABEL: Record<string, string> = {
 type Row = { topic: string; rd: string; rc: string; src?: string };
 const rows: Row[] = [
   { topic: "Server source code", rd: "Open source, AGPL-3.0", rc: "Closed source", src: RC_HOME },
-  { topic: "Where it runs", rd: "Your servers (Docker and Postgres) or RevenueDot Cloud", rc: "RevenueCat's cloud only", src: RC_HOME },
+  { topic: "Where it runs", rd: "RevenueDot Cloud, or your own servers (Docker and Postgres)", rc: "RevenueCat's cloud only", src: RC_HOME },
   { topic: "Client SDKs", rd: "Works with RevenueCat's SDKs; MIT forks of all ten", rc: "Its own SDKs, MIT licensed", src: RC_SDK_LICENSE },
-  { topic: "Price", rd: "Self-host free with no revenue share; cloud free to $10K a month, paid plans coming", rc: "Free to $2,500 monthly tracked revenue, then 1% of tracked revenue above that", src: RC_PRICING },
-  { topic: "Purchase data", rd: "In your own Postgres when self-hosted, queryable with SQL", rc: "In RevenueCat's cloud; exports and integrations", src: RC_DOCS },
+  { topic: "Price", rd: `Cloud free to $10K a month, then ${CLOUD_RATE * 100}% capped at ${usd(CLOUD_CAP)} (coming); self-host free with no revenue share`, rc: "Free to $2,500 monthly tracked revenue, then 1% of tracked revenue above that", src: RC_PRICING },
+  { topic: "Purchase data", rd: "On RevenueDot Cloud, or in your own Postgres when self-hosted, queryable with SQL", rc: "In RevenueCat's cloud; exports and integrations", src: RC_DOCS },
   { topic: "Maturity", rd: "Newer, open source, and self-hostable", rc: "Mature and widely used; its homepage says 147,000+ apps", src: RC_HOME },
   { topic: "Stores", rd: "App Store and Google Play; Amazon and Stripe next", rc: "App Store, Google Play, Amazon, Stripe, web billing and more", src: RC_DOCS },
   { topic: "Webhooks and REST API", rd: "Same payloads and endpoints (v1, core v2)", rc: "Webhooks and REST API v1 and v2", src: RC_DOCS },
@@ -38,22 +38,28 @@ const levels = [10_000, 50_000, 250_000, 1_000_000];
 const faq = [FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_AFFILIATED];
 ---
 <Base
-  title="RevenueDot vs RevenueCat: open source and self-hosted"
-  description="A fair, sourced comparison of RevenueDot and RevenueCat: license, self-hosting, price, data location, features and maturity. Same SDK, one line to switch."
+  title="RevenueDot vs RevenueCat"
+  fullTitle="RevenueDot vs RevenueCat: open source, free on Cloud to $10K"
+  description="A fair, sourced comparison of RevenueDot and RevenueCat: license, Cloud and self-hosting, price, data location, features and maturity. Same SDK, one line to switch."
   path="/revenuedot-vs-revenuecat"
   crumbs={[{ name: "RevenueDot vs RevenueCat", path: "/revenuedot-vs-revenuecat" }]}
   faq={faq}
 >
   <div class="wrap">
-    <PageHead label="Comparison" title="RevenueDot vs RevenueCat" lede="RevenueDot is an open-source server that the RevenueCat SDKs already talk to. RevenueCat is the mature, hosted product. Here is how they differ, with a source for every claim about RevenueCat." />
+    <PageHead label="Comparison" title="RevenueDot vs RevenueCat" lede="RevenueDot is an open-source backend the RevenueCat SDKs already talk to. Start free on RevenueDot Cloud or run it yourself. RevenueCat is the mature, hosted product. Here is how they differ, with a source for every claim about RevenueCat.">
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
+      </div>
+    </PageHead>
   </div>
 
   <section class="section first tight">
     <div class="wrap">
       <div class="grid"><div class="gi cols-2">
         <div class="cell"><p class="label">Choose RevenueDot if</p><ul class="list">
-          <li>You want no share of revenue going to your purchase backend.</li>
-          <li>Your purchase data must stay in your own database, cloud or region.</li>
+          <li>You want a hosted backend that is free up to {usd(CLOUD_FREE_UP_TO)} a month in tracked revenue, with the planned paid plan capped at {usd(CLOUD_CAP)}.</li>
+          <li>You want the choice to self-host, with no revenue share and your purchase data in your own database and region.</li>
           <li>You want to read and change the code that grants access.</li>
           <li>You are happy to adopt a young, open project and help shape it.</li>
         </ul></div>
@@ -89,7 +95,7 @@ const faq = [FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_
       <div class="head">
         <p class="label">Price</p>
         <h2 class="h2">The monthly bill at four sizes</h2>
-        <p class="lede">RevenueCat's rate is 1% of tracked revenue above $2,500 a month. Self-hosted RevenueDot has no rate at all; RevenueDot Cloud's planned rate is 0.5% above $10,000, capped at $999.</p>
+        <p class="lede">RevenueCat's rate is 1% of tracked revenue above $2,500 a month. RevenueDot Cloud is free up to {usd(CLOUD_FREE_UP_TO)}, and its planned rate is {CLOUD_RATE * 100}% above that, capped at {usd(CLOUD_CAP)}. Self-hosted RevenueDot has no rate at all.</p>
       </div>
       <div class="table-wrap">
         <table>

@@ -116,6 +116,8 @@ kbd { font: 500 11px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--bo
 .pn a { display: grid; gap: 6px; padding: 16px 20px; border: 1px solid var(--border); background: var(--panel); text-decoration: none; transition: border-color var(--fast) var(--ease); }
 .pn a:hover { border-color: var(--fg-3); }
 .pn-r { text-align: right; }
+.dcloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-top: 32px; padding: 16px 20px; border: 1px solid var(--border); border-left: 2px solid var(--accent); background: var(--panel); }
+.dcloud p { margin: 0; }
 .pn-t { font-weight: 600; color: var(--fg); }
 
 /* Search dialog */

@@ -6,7 +6,7 @@ import Faq from "../components/Faq.astro";
 import CtaBand from "../components/CtaBand.astro";
 import { SDKS } from "../lib/sdks";
 import { softwareApplication } from "../lib/jsonld";
-import { cloudBill, revenueCatBill, usd } from "../lib/pricing";
+import { cloudBill, revenueCatBill, usd, CLOUD_CAP, CLOUD_FREE_UP_TO } from "../lib/pricing";
 import { FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED } from "../lib/faq";
 import { SITE } from "../site";
 import overviewLight from "../assets/screens/overview-light.png";
@@ -50,7 +50,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
       <div class="grid"><div class="gi cols-4">
         <div class="cell"><p class="label">SDK endpoints</p><p class="stat">37</p><p>Every endpoint the RevenueCat SDKs call, answered in the same shape.</p></div>
         <div class="cell"><p class="label">SDKs supported</p><p class="stat">10</p><p>iOS, Android, React Native, Flutter, web and five more, stock or forked.</p></div>
-        <div class="cell"><p class="label">Revenue share, self-hosted</p><p class="stat">0%</p><p>You pay for your own servers. Nothing scales with your revenue.</p></div>
+        <div class="cell"><p class="label">Free on Cloud</p><p class="stat">$10K</p><p>a month in tracked revenue, then capped at {usd(CLOUD_CAP)} (coming). Self-hosting costs only your servers.</p></div>
         <div class="cell"><p class="label">Lines of app code to change</p><p class="stat">1</p><p>The SDK's proxy URL. Purchases, offerings and entitlements stay as they are.</p></div>
       </div></div>
     </div>
@@ -82,8 +82,8 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
         <h2 class="h2">Your purchases, your servers, your bill</h2>
       </div>
       <div class="grid"><div class="gi cols-3">
-        <div class="cell"><h3 class="h3">No revenue share when you self-host</h3><p>RevenueCat charges 1% of tracked revenue above $2,500 a month. Self-hosted RevenueDot costs your server bill.</p></div>
-        <div class="cell"><h3 class="h3">Your data, your region</h3><p>Purchases, customers and receipts live in your own Postgres, in the region your customers and your lawyers need.</p></div>
+        <div class="cell"><h3 class="h3">Free until you make $10K a month</h3><p>RevenueDot Cloud costs nothing up to {usd(CLOUD_FREE_UP_TO)} a month in tracked revenue, and the planned paid plan is capped at {usd(CLOUD_CAP)}. Self-hosting costs only your servers.</p></div>
+        <div class="cell"><h3 class="h3">Your data, your region</h3><p>Self-host, and purchases, customers and receipts live in your own Postgres, in the region your customers and your lawyers need.</p></div>
         <div class="cell"><h3 class="h3">Same API, no rewrite</h3><p>The same SDK calls, customer info and webhook payloads, checked against RevenueCat's own SDK test fixtures.</p></div>
         <div class="cell"><h3 class="h3">A safe migration</h3><p>Import everything, run both systems side by side with forwarded store notifications, then switch when the numbers match.</p></div>
         <div class="cell"><h3 class="h3">Open source</h3><p>Read, audit and change the code that decides who has access to your app. AGPL-3.0 server, MIT SDKs.</p></div>
@@ -121,14 +121,14 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueCat</th><th scope="col">RevenueDot self-hosted</th><th scope="col">RevenueDot Cloud</th></tr></thead>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueCat</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueDot self-hosted</th></tr></thead>
           <tbody>
             {tiers.map((t) => (
               <tr>
                 <th scope="row" class="num-cell">{usd(t)}</th>
                 <td class="num-cell">{usd(revenueCatBill(t))}</td>
-                <td class="num-cell">$0 + your servers</td>
                 <td class="num-cell">{usd(cloudBill(t))}{cloudBill(t) > 0 ? " (coming)" : ""}</td>
+                <td class="num-cell">$0 + your servers</td>
               </tr>
             ))}
           </tbody>

@@ -25,7 +25,9 @@ const faq = [
   faq={faq}
 >
   <div class="wrap">
-    <PageHead label="Self-host" title="Run your own purchase backend in three commands" lede="One Docker image serves the RevenueCat-compatible API and the dashboard, next to your own Postgres. Free forever under AGPL-3.0, with no limits and no share of your revenue." />
+    <PageHead label="Self-host" title="Run your own purchase backend in three commands" lede="One Docker image serves the RevenueCat-compatible API and the dashboard, next to your own Postgres. Free forever under AGPL-3.0, with no limits and no share of your revenue.">
+      <p class="small muted">Rather not run servers? <a href={SITE.signup}>Start free on Cloud</a>.</p>
+    </PageHead>
   </div>
 
   <section class="section first tight">
@@ -90,7 +92,7 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
     </div>
   </section>
 
-  <CtaBand title="Moving from RevenueCat?" body="Self-host RevenueDot, import your project with one command, and run both side by side until the numbers match." />
+  <CtaBand title="Moving from RevenueCat?" body="Run it yourself with the steps above, or skip the servers: start free on RevenueDot Cloud and import your RevenueCat project with one command." />
 </Base>
 <style>
   .two { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: start; }

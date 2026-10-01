@@ -22,15 +22,18 @@ const faq = [
 const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
 ---
 <Base
-  title="Pricing: free to self-host, cloud free up to $10K a month"
-  description="Self-host RevenueDot free forever with no revenue share. RevenueDot Cloud is free up to $10,000 monthly tracked revenue; paid plans cap at $999 a month."
+  title="Pricing"
+  fullTitle="Pricing: RevenueDot Cloud free up to $10K a month, self-host free"
+  description="RevenueDot Cloud is free up to $10,000 monthly tracked revenue, and paid plans cap at $999 a month. Self-host RevenueDot free forever with no revenue share."
   path="/pricing"
   crumbs={[{ name: "Pricing", path: "/pricing" }]}
   faq={faq}
   jsonld={[softwareApplication()]}
 >
   <div class="wrap">
-    <PageHead label="Pricing" title="Free to self-host. Cloud free up to $10K a month." lede="Self-hosted RevenueDot takes no share of your revenue, at any size. RevenueDot Cloud is free while your app tracks up to $10,000 a month; paid cloud plans are coming, and their bill is capped." />
+    <PageHead label="Pricing" title="Free on Cloud up to $10K a month. Free forever to self-host." lede={`RevenueDot Cloud is free while your app tracks up to ${usd(CLOUD_FREE_UP_TO)} a month, and paid plans are capped at ${usd(CLOUD_CAP)}. Self-hosting takes no share of your revenue.`}>
+      <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud</a></div>
+    </PageHead>
   </div>
 
   <section class="section first plans-section" aria-label="Plans">

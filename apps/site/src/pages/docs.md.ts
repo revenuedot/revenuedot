@@ -15,7 +15,7 @@ export const GET: APIRoute = async () => {
     "",
     "# RevenueDot documentation",
     "",
-    "RevenueDot is an open-source, self-hostable backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Each link below is the page's Markdown.",
+    "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Start free on RevenueDot Cloud (https://app.revenuedot.app/signup), or self-host it with Docker and Postgres. Each link below is the page's Markdown.",
     "",
   ];
   for (const s of nav) {

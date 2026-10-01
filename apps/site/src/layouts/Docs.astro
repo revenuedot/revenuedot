@@ -7,7 +7,8 @@ import DocsSearch from "../components/DocsSearch.astro";
 import "../styles/docs.css";
 import { breadcrumbList } from "../lib/jsonld";
 import type { NavSection, NavItem } from "../lib/docs";
-import type { Crumb } from "../site";
+import { SITE, type Crumb } from "../site";
+import { CLOUD_FREE_UP_TO, usd } from "../lib/pricing";
 
 type Heading = { depth: number; slug: string; text: string };
 interface Props {
@@ -100,6 +101,10 @@ const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en
           {next ? <a class="pn-r" href={next.href} rel="next"><span class="label">{nextLabel}</span><span class="pn-t">{next.label}</span></a> : <span />}
         </nav>
       )}
+      <aside class="dcloud" aria-label="RevenueDot Cloud" data-pagefind-ignore>
+        <p class="small"><strong>Run this on RevenueDot Cloud.</strong> <span class="muted">Free up to {usd(CLOUD_FREE_UP_TO)} a month in tracked revenue.</span></p>
+        <a class="btn sm" href={SITE.signup}>Start free</a>
+      </aside>
       <slot name="after" />
     </div>
     <nav class="dtoc" aria-label="On this page">

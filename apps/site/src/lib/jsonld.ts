@@ -32,7 +32,7 @@ export function softwareApplication() {
     url: SITE.url,
     description: SITE.description,
     applicationCategory: "DeveloperApplication",
-    operatingSystem: "Linux, macOS, Windows (Docker); iOS, Android and web clients",
+    operatingSystem: "Web (RevenueDot Cloud); self-host with Docker",
     license: "https://www.gnu.org/licenses/agpl-3.0.html",
     isAccessibleForFree: true,
     publisher: { "@id": ORG_ID },
@@ -43,7 +43,7 @@ export function softwareApplication() {
       price: "0",
       priceCurrency: "USD",
       description: p.summary,
-      url: `${SITE.url}/pricing`,
+      url: p.id === "cloud-free" ? SITE.signup : `${SITE.url}/pricing`,
     })),
   };
 }

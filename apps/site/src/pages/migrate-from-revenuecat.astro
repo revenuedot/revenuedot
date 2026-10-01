@@ -37,7 +37,12 @@ const faq = [
   }]}
 >
   <div class="wrap">
-    <PageHead label="Migration guide" title="Migrate from RevenueCat without losing a subscriber" lede="Import your project, run both systems side by side with forwarded store notifications, then ship one line. Your app code, offerings, API keys and customers stay the same." />
+    <PageHead label="Migration guide" title="Migrate from RevenueCat without losing a subscriber" lede="Import your project, run both systems side by side with forwarded store notifications, then ship one line. Your app code, offerings, API keys and customers stay the same.">
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn secondary" href="#import">How the importer works <span class="arrow">↓</span></a>
+      </div>
+    </PageHead>
   </div>
 
   <section class="section first tight">
@@ -55,6 +60,7 @@ const faq = [
       <div class="copy">
         <p class="label">Step 1</p>
         <h2 class="h2">Import your RevenueCat project</h2>
+        <p class="muted">First, create a free <a href={SITE.signup}>RevenueDot Cloud account</a> and copy a secret key from API keys. Self-hosting? Use your own server's URL and key instead.</p>
         <p class="muted">The importer runs on your own machine with your own RevenueCat secret key (read-only is enough). It reads RevenueCat's REST API v2 and writes to your RevenueDot server:</p>
         <ul class="list">
           <li>Apps and their public SDK keys, so shipped builds keep working</li>
@@ -149,7 +155,7 @@ https://api.revenuedot.app/v1/notifications/google/<app id>
     </div>
   </section>
 
-  <CtaBand title="Try the migration on a copy first." body="Run the importer with --dry-run against a self-hosted RevenueDot on your laptop. Nothing changes in RevenueCat or in your app." />
+  <CtaBand title="Try the migration on a copy first." body="Create a free Cloud account, then run the importer with --dry-run. Nothing changes in RevenueCat or in your app." />
 </Base>
 <style>
   .step { text-decoration: none; transition: background var(--fast) var(--ease); }

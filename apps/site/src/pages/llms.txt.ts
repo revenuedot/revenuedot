@@ -10,6 +10,7 @@ export const GET: APIRoute = () => {
   const site = [
     "## Website",
     "",
+    `- [Sign up for RevenueDot Cloud](${SITE.signup}): free up to $10,000 monthly tracked revenue`,
     `- [Home](${u("/")}): what RevenueDot is and how switching from RevenueCat works`,
     `- [Pricing](${u("/pricing")}): ${PLANS.map((p) => `${p.name} ${p.price} ${p.priceNote}${p.available ? "" : " (coming)"}`).join("; ")}`,
     `- [Migrate from RevenueCat](${u("/migrate-from-revenuecat")}): importer, side-by-side run, the proxy line for every SDK`,
