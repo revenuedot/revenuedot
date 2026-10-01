@@ -1,3 +1,4 @@
+import { assetRoutes } from "./routes/assets.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Deps } from "./context.js";
@@ -29,6 +30,7 @@ export function createApp(input: Deps) {
   // OAuth 2.1 for MCP clients: the access token is a project-scoped secret key.
   app.route("/", oauthRoutes(deps));
   // REST API v2 (secret key or dashboard session); mounted before the SDK routes.
+  app.route("/", assetRoutes(deps));
   app.route("/", v2Routes(deps));
   app.route("/", sdkRoutes(deps));
   return app;

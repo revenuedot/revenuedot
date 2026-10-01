@@ -1,3 +1,4 @@
+import { fontConfig, publishedByOffering, sdkPaywallComponents, uiConfig } from "../services/paywalls.js";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { EntitlementMap } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
@@ -37,7 +38,7 @@ export async function productInfo(db: DB, appId: string) {
  * reactivate "any archived products referenced by this offering's packages", raw/openapi/openapi-v2-offering.dump.txt).
  * Archived products still unlock entitlements for customers who bought them (the entitlement mapping keeps them).
  */
-export async function offeringsJSON(db: DB, projectId: string, appId: string) {
+export async function offeringsJSON(db: DB, projectId: string, appId: string, opts: { assetBaseUrl?: string } = {}) {
   const offs = await db.select().from(offerings).where(and(eq(offerings.projectId, projectId), eq(offerings.state, "active"))).orderBy(asc(offerings.createdAt));
   const ids = offs.map((o) => o.id);
   const pkgs = ids.length ? await db.select().from(packages).where(inArray(packages.offeringId, ids)).orderBy(asc(packages.position), asc(packages.createdAt)) : [];
@@ -48,12 +49,15 @@ export async function offeringsJSON(db: DB, projectId: string, appId: string) {
         .where(and(inArray(packageProducts.packageId, pkgIds), eq(products.state, "active")))
     : [];
   const current = offs.find((o) => o.isCurrent) ?? null;
+  const pw = await publishedByOffering(db, projectId);
+  const assetBase = opts.assetBaseUrl ?? "";
   return {
     current_offering_id: current?.lookupKey ?? null,
     offerings: offs.map((o) => ({
       description: o.displayName,
       identifier: o.lookupKey,
       metadata: o.metadata ?? null,
+      ...(pw.get(o.id) ? { has_paywall_components: true, paywall_components: sdkPaywallComponents(pw.get(o.id)!, assetBase) } : { has_paywall_components: false }),
       packages: pkgs.filter((p) => p.offeringId === o.id).flatMap((p) => {
         const prod = pp.find((x) => x.packageId === p.id && x.appId === appId);
         if (!prod) return [];
@@ -61,6 +65,8 @@ export async function offeringsJSON(db: DB, projectId: string, appId: string) {
         return [{ identifier: p.lookupKey, platform_product_identifier: productId!, ...(basePlan ? { platform_product_plan_identifier: basePlan } : {}) }];
       }),
     })),
+    placements: { fallback_offering_id: current?.lookupKey ?? null, offering_ids_by_placement: {} },
+    ui_config: uiConfig(await fontConfig(db, projectId, assetBase)),
   };
 }
 

@@ -98,10 +98,10 @@ export function packageShape(pk: PackageRow, projectId: string, exp?: PackageExp
   };
 }
 
-export function offeringShape(o: OfferingRow, pkgs?: { rows: PackageRow[]; products?: Map<string, PackageExpansion> }) {
+export function offeringShape(o: OfferingRow, pkgs?: { rows: PackageRow[]; products?: Map<string, PackageExpansion> }, paywallId: string | null = null) {
   return {
     object: "offering" as const, id: o.id, lookup_key: o.lookupKey, display_name: o.displayName, is_current: o.isCurrent,
-    created_at: o.createdAt.getTime(), project_id: o.projectId, state: o.state, paywall_id: null, metadata: o.metadata ?? null,
+    created_at: o.createdAt.getTime(), project_id: o.projectId, state: o.state, paywall_id: paywallId, metadata: o.metadata ?? null,
     ...(pkgs ? { packages: embeddedList(`${base(o.projectId)}/offerings/${o.id}/packages`, pkgs.rows.map((p) => packageShape(p, o.projectId, pkgs.products?.get(p.id)))) } : {}),
   };
 }

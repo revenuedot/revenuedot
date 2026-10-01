@@ -15,6 +15,7 @@ import { attributionDataToAttributes, inBackground, resolveAdServicesToken, reso
 import { appleCredentials } from "../stores/apple/api.js";
 import { appAccountTokenFor, signOffer } from "../services/promo-offers.js";
 import { customerCenterFor } from "../services/customer-center.js";
+import { publicOrigin } from "./oauth.js";
 import { balancesOf } from "../services/virtual-currencies.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
@@ -122,7 +123,7 @@ export function sdkRoutes(deps: Deps) {
   // 3. Offerings (and the fallback path without a user id)
   const offerings = async (c: any) => {
     const app = c.get("app");
-    const body = await offeringsJSON(deps.db, app.projectId, app.id);
+    const body = await offeringsJSON(deps.db, app.projectId, app.id, { assetBaseUrl: `${publicOrigin(c)}/assets/${app.projectId}` });
     const id = c.req.param("id");
     if (id) {
       const cust = await findCustomer(deps.db, app.projectId, decodeURIComponent(id));

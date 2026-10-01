@@ -37,13 +37,21 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
     return row;
   };
 
+  /** The paywall attached to each offering, by offering id. */
+  const paywallIds = async (offeringIds: string[]) => {
+    const rows = offeringIds.length ? await db.select({ id: schema.paywalls.id, o: schema.paywalls.offeringId }).from(schema.paywalls).where(inArray(schema.paywalls.offeringId, offeringIds)) : [];
+    return new Map(rows.map((x) => [x.o!, x.id]));
+  };
+  const shapeOne = async (o: typeof schema.offerings.$inferSelect) => offeringShape(o, undefined, (await paywallIds([o.id])).get(o.id) ?? null);
+
   /** Offering with packages expanded (`package`) and their products (`package.product`). */
   const shapeOfferings = async (rows: (typeof schema.offerings.$inferSelect)[], exp: Set<string>, prefix: string) => {
-    if (!exp.has(`${prefix}package`) && !exp.has(`${prefix}package.product`)) return new Map(rows.map((o) => [o.id, offeringShape(o)]));
+    const pw = await paywallIds(rows.map((o) => o.id));
+    if (!exp.has(`${prefix}package`) && !exp.has(`${prefix}package.product`)) return new Map(rows.map((o) => [o.id, offeringShape(o, undefined, pw.get(o.id) ?? null)]));
     const pkgs = rows.length ? await db.select().from(schema.packages).where(inArray(schema.packages.offeringId, rows.map((o) => o.id))) : [];
     pkgs.sort((a, b) => a.position - b.position || a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
     const prods = exp.has(`${prefix}package.product`) ? await packageProducts(db, pkgs.map((p) => p.id)) : undefined;
-    return new Map(rows.map((o) => [o.id, offeringShape(o, { rows: pkgs.filter((p) => p.offeringId === o.id), products: prods })]));
+    return new Map(rows.map((o) => [o.id, offeringShape(o, { rows: pkgs.filter((p) => p.offeringId === o.id), products: prods }, pw.get(o.id) ?? null)]));
   };
 
   r.get(O, scope("project_configuration:offerings:read"), async (c) => {
@@ -62,7 +70,7 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
     const [row] = await db.insert(schema.offerings).values({
       id: newId("ofrng", 10), projectId, lookupKey: b.lookup_key, displayName: b.display_name, metadata: b.metadata ?? null, isCurrent: !any, createdAt: deps.now(),
     }).returning();
-    return c.json(offeringShape(row!), 201);
+    return c.json(await shapeOne(row!), 201);
   });
 
   r.get(`${O}/:offering_id`, scope("project_configuration:offerings:read"), async (c) => {
@@ -83,7 +91,7 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
       ...(b.is_current !== undefined ? { isCurrent: b.is_current } : {}),
       ...(b.metadata !== undefined ? { metadata: b.metadata } : {}),
     }).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.id, o.id))).returning();
-    return c.json(offeringShape(row!));
+    return c.json(await shapeOne(row!));
   });
 
   // Deletes the offering and its packages (FK cascade).
@@ -98,7 +106,7 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
     const o = await findOffering(c.get("projectId"), c.req.param("offering_id"));
     if (o.isCurrent) throw new V2Error(422, "unprocessable_entity_error", "The current offering cannot be archived. Make another offering current first.");
     const [row] = await db.update(schema.offerings).set({ state: "inactive" }).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.id, o.id))).returning();
-    return c.json(offeringShape(row!));
+    return c.json(await shapeOne(row!));
   });
 
   r.post(`${O}/:offering_id/actions/unarchive`, scope("project_configuration:offerings:read_write"), async (c) => {
@@ -111,7 +119,7 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
       if (ids.length) await db.update(schema.products).set({ state: "active" }).where(and(eq(schema.products.projectId, o.projectId), inArray(schema.products.id, ids)));
     }
     const [row] = await db.update(schema.offerings).set({ state: "active" }).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.id, o.id))).returning();
-    return c.json(offeringShape(row!));
+    return c.json(await shapeOne(row!));
   });
 
   // Packages

@@ -470,3 +470,60 @@ export const auditLogs = pgTable("audit_logs", {
   additionalData: jsonb("additional_data").$type<Record<string, unknown>>().notNull().default({}),
   occurredAt: ts("occurred_at").notNull().defaultNow(),
 }, (t) => [index("audit_logs_project_time").on(t.projectId, t.occurredAt)]);
+
+/**
+ * Paywalls (paywall components, "Paywalls V2"). A paywall belongs to at most one offering. `draft` and `published` each hold one
+ * version of the content: { components_config, components_localizations, default_locale, state_declarations, exit_offers,
+ * play_store_product_change_mode, revision }. `revision` bumps on every draft write and rejects stale writes.
+ */
+export interface PaywallContent {
+  components_config: Record<string, unknown> | null;
+  components_localizations: Record<string, Record<string, unknown>>;
+  default_locale: string | null;
+  automatically_scale_font_size: boolean;
+  exit_offers: Record<string, unknown> | null;
+  state_declarations: Record<string, unknown> | null;
+  play_store_product_change_mode: Record<string, unknown> | null;
+  revision: number;
+}
+
+export const paywalls = pgTable("paywalls", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name"),
+  offeringId: text("offering_id").references(() => offerings.id, { onDelete: "set null" }),
+  automaticallyScaleFontSize: boolean("automatically_scale_font_size").notNull().default(true),
+  revision: integer("revision").notNull().default(1),
+  draft: jsonb("draft").$type<PaywallContent | null>(),
+  published: jsonb("published").$type<PaywallContent | null>(),
+  publishedAt: ts("published_at"),
+  createdAt: created(),
+}, (t) => [index("paywalls_project").on(t.projectId), uniqueIndex("paywalls_offering").on(t.offeringId)]);
+
+/** A named snapshot of a paywall's draft. */
+export const paywallVersions = pgTable("paywall_versions", {
+  id: text("id").primaryKey(),
+  paywallId: text("paywall_id").notNull().references(() => paywalls.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  revision: integer("revision").notNull(),
+  content: jsonb("content").$type<PaywallContent>().notNull(),
+  createdAt: created(),
+});
+
+/** Images and fonts uploaded for paywalls, served publicly at /assets/{project}/{object_name}. Bytes are kept as base64 text. */
+export const mediaAssets = pgTable("media_assets", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  objectName: text("object_name").notNull(),
+  originalName: text("original_name").notNull(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  altText: text("alt_text"),
+  /** Fonts: { name (PostScript), family_name, style, weight, hash (MD5 hex) }. */
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+  dataBase64: text("data_base64").notNull(),
+  createdAt: created(),
+}, (t) => [index("media_assets_project").on(t.projectId), uniqueIndex("media_assets_object").on(t.projectId, t.objectName)]);

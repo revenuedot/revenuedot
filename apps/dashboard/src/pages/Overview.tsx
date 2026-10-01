@@ -233,37 +233,83 @@ function SetupHealthPanel({ pid }: { pid: string }) {
 
 interface SetupState { apps: App[]; products: Product[]; entitlements: (Entitlement & { products?: { items: unknown[] } })[]; offerings: Offering[]; hasCustomer: boolean; hasPurchase: boolean }
 
-const SNIPPETS: { value: string; label: string; code: (url: string, key: string) => React.ReactNode }[] = [
-  { value: "swift", label: "Swift", code: (u, k) => <><b>Purchases.proxyURL = URL(string: "{u}")!</b>{"\n"}Purchases.configure(withAPIKey: "{k}")</> },
-  { value: "kotlin", label: "Kotlin", code: (u, k) => <><b>Purchases.proxyURL = URL("{u}")</b>{"\n"}Purchases.configure(PurchasesConfiguration.Builder(context, "{k}").build())</> },
-  { value: "rn", label: "React Native", code: (u, k) => <><b>await Purchases.setProxyURL("{u}");</b>{"\n"}Purchases.configure({"{"} apiKey: "{k}" {"}"});</> },
-  { value: "flutter", label: "Flutter", code: (u, k) => <><b>await Purchases.setProxyURL("{u}");</b>{"\n"}await Purchases.configure(PurchasesConfiguration("{k}"));</> },
-];
-const snippetText = (lang: string, u: string, k: string) => ({
-  swift: `Purchases.proxyURL = URL(string: "${u}")!\nPurchases.configure(withAPIKey: "${k}")`,
-  kotlin: `Purchases.proxyURL = URL("${u}")\nPurchases.configure(PurchasesConfiguration.Builder(context, "${k}").build())`,
-  rn: `await Purchases.setProxyURL("${u}");\nPurchases.configure({ apiKey: "${k}" });`,
-  flutter: `await Purchases.setProxyURL("${u}");\nawait Purchases.configure(PurchasesConfiguration("${k}"));`,
-}[lang] ?? "");
+type Lang = "swift" | "kotlin" | "rn" | "flutter";
+type Mode = "fresh" | "moving";
+const LANGS: { value: Lang; label: string }[] = [{ value: "swift", label: "Swift" }, { value: "kotlin", label: "Kotlin" }, { value: "rn", label: "React Native" }, { value: "flutter", label: "Flutter" }];
 
-function SdkSnippet({ pid, apps }: { pid: string; apps: App[] }) {
-  const [lang, setLang] = useState("swift");
+/**
+ * Setup code per platform. `install` adds the open-source RevenueCat SDK (MIT), which RevenueDot answers; `configure`
+ * points it at this server. Apps that already ship the RevenueCat SDK only need `configure`'s first line and the new key.
+ */
+const SETUP: Record<Lang, { install: string; installHint: string; configure: (u: string, k: string) => string; use: string }> = {
+  swift: {
+    install: "https://github.com/RevenueCat/purchases-ios-spm.git", installHint: "Xcode: File > Add Package Dependencies, paste this URL, add the RevenueCat library.",
+    configure: (u, k) => `import RevenueCat\n\n// In your App's init or application(_:didFinishLaunchingWithOptions:)\nPurchases.proxyURL = URL(string: "${u}")!\nPurchases.configure(withAPIKey: "${k}")`,
+    use: `let offerings = try await Purchases.shared.offerings()\nlet result = try await Purchases.shared.purchase(package: offerings.current!.availablePackages[0])\nlet isPro = result.customerInfo.entitlements["pro"]?.isActive == true`,
+  },
+  kotlin: {
+    install: `implementation("com.revenuecat.purchases:purchases:10.24.0")`, installHint: "Add it to your app module's build.gradle.kts dependencies.",
+    configure: (u, k) => `// In Application.onCreate()\nPurchases.proxyURL = URL("${u}")\nPurchases.configure(PurchasesConfiguration.Builder(this, "${k}").build())`,
+    use: `val offerings = Purchases.sharedInstance.awaitOfferings()\nval result = Purchases.sharedInstance.awaitPurchase(PurchaseParams.Builder(activity, offerings.current!!.availablePackages[0]).build())\nval isPro = result.customerInfo.entitlements["pro"]?.isActive == true`,
+  },
+  rn: {
+    install: "npm install react-native-purchases", installHint: "Then run pod install in ios/.",
+    configure: (u, k) => `import Purchases from "react-native-purchases";\n\nawait Purchases.setProxyURL("${u}");\nPurchases.configure({ apiKey: "${k}" });`,
+    use: `const offerings = await Purchases.getOfferings();\nconst { customerInfo } = await Purchases.purchasePackage(offerings.current.availablePackages[0]);\nconst isPro = customerInfo.entitlements.active["pro"] !== undefined;`,
+  },
+  flutter: {
+    install: "flutter pub add purchases_flutter", installHint: "Run it in your Flutter project.",
+    configure: (u, k) => `import 'package:purchases_flutter/purchases_flutter.dart';\n\nawait Purchases.setProxyURL("${u}");\nawait Purchases.configure(PurchasesConfiguration("${k}"));`,
+    use: `final offerings = await Purchases.getOfferings();\nfinal info = await Purchases.purchasePackage(offerings.current!.availablePackages.first);\nfinal isPro = info.entitlements.active.containsKey("pro");`,
+  },
+};
+
+function CodeCard({ label, code, hint }: { label: string; code: string; hint: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
+  return (
+    <div className="code" style={{ marginTop: 10 }}>
+      <pre aria-label={label}>{code}</pre>
+      <div className="cb">
+        <span>{hint}</span>
+        <button type="button" className="btn btn-ghost" aria-label={`Copy ${label}`} onClick={async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { /* clipboard blocked */ } }}>
+          <Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SdkSnippet({ pid, apps, mode, setMode }: { pid: string; apps: App[]; mode: Mode; setMode: (m: Mode) => void }) {
+  const [lang, setLang] = useState<Lang>("swift");
   const app = apps.find((a) => a.type === (lang === "kotlin" ? "play_store" : "app_store")) ?? apps.find((a) => a.type !== "test_store") ?? apps[0];
   const key = useQuery({ queryKey: ["pubkey", pid, app?.id], enabled: !!app, queryFn: () => api<List<{ key: string }>>(`/v2/projects/${pid}/apps/${app!.id}/public_api_keys`) });
   const k = key.data?.items[0]?.key ?? "your_public_api_key";
   const url = apiOrigin();
-  const s = SNIPPETS.find((x) => x.value === lang)!;
+  const s = SETUP[lang];
+  const keyHint = app ? <>Key of <b style={{ color: "var(--fg-2)" }}>{app.name}</b>. Set the proxy URL before configure.</> : "Add an app to get its public API key. Set the proxy URL before configure.";
+  const label = LANGS.find((x) => x.value === lang)!.label;
   return (
-    <div className="code">
-      <Segmented label="SDK" value={lang} options={SNIPPETS.map(({ value, label }) => ({ value, label }))} onChange={setLang} />
-      <pre aria-label={`${s.label} setup code`}>{s.code(url, k)}</pre>
-      <div className="cb">
-        <span>{app ? <>Key of <b style={{ color: "var(--fg-2)" }}>{app.name}</b>. Set the proxy URL before configure.</> : "Add an app to get its public API key. Set the proxy URL before configure."}</span>
-        <button type="button" className="btn btn-ghost" onClick={async () => { try { await navigator.clipboard.writeText(snippetText(lang, url, k)); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch { /* clipboard blocked */ } }}>
-          <Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy"}
-        </button>
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Segmented label="Your app" value={mode} options={[{ value: "fresh", label: "New to in-app purchases" }, { value: "moving", label: "Already on RevenueCat" }]} onChange={setMode} />
+        <Segmented label="SDK" value={lang} options={LANGS} onChange={setLang} />
       </div>
+      {mode === "fresh" ? (
+        <>
+          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}><b>1. Add the SDK.</b> RevenueDot works with the open-source RevenueCat SDK (MIT), so you install that package.</p>
+          <CodeCard label={`${label} install`} code={s.install} hint={s.installHint} />
+          <p className="muted" style={{ margin: "14px 0 0", fontSize: 13 }}><b>2. Configure it at launch</b>, pointed at RevenueDot.</p>
+          <CodeCard label={`${label} setup code`} code={s.configure(url, k)} hint={keyHint} />
+          <p className="muted" style={{ margin: "14px 0 0", fontSize: 13 }}><b>3. Show the offering, buy, and check access.</b></p>
+          <CodeCard label={`${label} purchase code`} code={s.use} hint={<>Full guide: <a className="ul" href={`https://revenuedot.app/docs/sdks/${lang === "kotlin" ? "android" : lang === "swift" ? "ios" : lang === "rn" ? "react-native" : "flutter"}`} target="_blank" rel="noreferrer">{label} SDK</a></>} />
+        </>
+      ) : (
+        <>
+          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}>Keep your code. Add one line before configure and use this project's key instead of the RevenueCat one (or keep your old key with the importer).</p>
+          <CodeCard label={`${label} setup code`} code={s.configure(url, k).split("\n").filter((l) => /proxy|ProxyURL|configure/i.test(l)).join("\n")} hint={keyHint} />
+          <p className="muted" style={{ margin: "10px 0 0", fontSize: 13 }}>Moving customers and subscriptions too? <a className="ul" href="https://revenuedot.app/docs/migrate" target="_blank" rel="noreferrer">Migrate from RevenueCat</a>.</p>
+        </>
+      )}
     </div>
   );
 }
@@ -319,6 +365,7 @@ function TestPurchaseDialog({ pid, apps, products, onClose, onDone }: { pid: str
 
 function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupState; onHide?: () => void; firstRun: boolean }) {
   const [buying, setBuying] = useState(false);
+  const [mode, setMode] = useState<Mode>("fresh");
   const qc = useQueryClient();
   const nav = useNavigate();
   const base = `/projects/${pid}`;
@@ -336,9 +383,11 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
     { key: "offering", title: "Create an offering", done: s.offerings.some((o) => o.is_current),
       text: "An offering is the set of packages your paywall shows. Mark one as current and change it later without an app release.",
       action: <Link className="btn btn-line" to={`${base}/product-catalog/offerings`}>{s.offerings.length ? "View offerings" : "Add an offering"}</Link> },
-    { key: "sdk", title: "Install the SDK with one line", done: s.hasCustomer,
-      text: "Keep the RevenueCat SDK you already use and point it at RevenueDot. Customers appear here after the app's first call.",
-      body: <SdkSnippet pid={pid} apps={s.apps} /> },
+    { key: "sdk", title: mode === "fresh" ? "Add the SDK to your app" : "Point your SDK at RevenueDot", done: s.hasCustomer,
+      text: mode === "fresh"
+        ? "Install the SDK, configure it with this project's key, and show your offering. Customers appear here after the app's first call."
+        : "Keep the RevenueCat SDK you already ship and change one line. Customers appear here after the app's first call.",
+      body: <SdkSnippet pid={pid} apps={s.apps} mode={mode} setMode={setMode} /> },
     { key: "purchase", title: "Send a test purchase", done: s.hasPurchase,
       text: "Buy a product through the Test Store to see a customer, an entitlement and the events a real purchase creates.",
       action: <button type="button" className="btn btn-dark" onClick={() => setBuying(true)}>Make a test purchase</button> },

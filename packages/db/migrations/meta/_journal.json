@@ -57,6 +57,13 @@
       "when": 1790826669677,
       "tag": "0007_virtual_currencies_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790829775617,
+      "tag": "0008_paywalls_assets",
+      "breakpoints": true
     }
   ]
 }
