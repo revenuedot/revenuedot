@@ -156,6 +156,20 @@ describe("store credentials failing", () => {
     expect((await s.db.select().from(schema.apps).where(eq(schema.apps.id, ios.id)))[0]).toMatchObject({ credentialsStatus: "failing" });
   });
 
+  it("an app that has never shipped (401 from production, accepted by the sandbox) has working credentials", async () => {
+    const seen: string[] = [];
+    const neverShipped = (async (url: string) => {
+      const host = new URL(url).host;
+      seen.push(host.includes("sandbox") ? "sandbox" : "production");
+      return host.includes("sandbox") ? new Response(JSON.stringify({ errorCode: 4040010, errorMessage: "Transaction id not found." }), { status: 404 }) : new Response("{}", { status: 401 });
+    }) as unknown as typeof fetch;
+    const { browser, P, ios } = await project({ fetch: neverShipped });
+    const creds = { subscription_private_key: p8, subscription_key_id: "ABC123DEFG", subscription_key_issuer: "69a6de94-014f-47e3-e053-5b8c7c11a4d1" };
+    const r = await browser.call("POST", `${P}/apps/${ios.id}/actions/verify_credentials`, { app_store: creds });
+    expect(r.body.status).toBe("valid");
+    expect(seen).toEqual(["production", "sandbox"]);
+  });
+
   it("the daily check covers every app with credentials and skips apps without", async () => {
     const { browser, P, ios, s } = await project();
     const apple = mockAppleApi({ failWith: 401 });

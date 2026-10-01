@@ -28,9 +28,20 @@ export async function checkStoreCredentials(deps: CheckDeps, app: AppRow): Promi
     }
     if (!creds) return out("invalid", "No in-app purchase key yet. Add the .p8 file, the key ID and the issuer ID.");
     const api = new AppStoreServerApi(creds, deps.fetch ?? ((u, i) => fetch(u, i)), deps.now);
+    // Any transaction id works: Apple answers 404 or 400 when the key is accepted and 401 when it is not. An app that has
+    // never shipped has no production presence, so Apple answers 401 from production for a perfectly good key. The
+    // sandbox knows the app from the first build on, so a 401 from production is only final if the sandbox says 401 too.
+    const probe = async (env: "production" | "sandbox") => {
+      try { await api.get(env, "/inApps/v1/transactions/0"); return true; } catch (e) {
+        if (e instanceof AppleApiClientError) return true;
+        throw e;
+      }
+    };
     try {
-      // Any transaction id works: Apple answers 404 or 400 when the key is accepted and 401 when it is not.
-      await api.get("production", "/inApps/v1/transactions/0");
+      try { await probe("production"); } catch (e) {
+        if (e instanceof RCError && e.status === 500 && !/not a valid \.p8/.test(e.message)) await probe("sandbox");
+        else throw e;
+      }
       return out("valid", "Apple accepted the in-app purchase key.", { key_id: creds.keyId });
     } catch (e) {
       if (e instanceof AppleApiClientError) return out("valid", "Apple accepted the in-app purchase key.", { key_id: creds.keyId });
