@@ -184,7 +184,9 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
-| **Growth** | Paywalls, experiments, targeting, virtual currencies, Customer Center | Tier 2 · planned |
+| **Lifecycle** | **Refund Control**: ordered policies answer Apple's refund requests with [consumption information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) inside the 12-hour window, Google refunds and chargebacks recorded, refund rate and amounts. **Retention**: cancel and refund offers in the in-app Customer Center, and Apple's [Retention Messaging API](https://developer.apple.com/documentation/retentionmessaging) on Apple's cancel screen. **Win-back campaigns**: email churned subscribers an offer, with click tracking, one-click unsubscribe and reactivations. **Support**: Customer Center tickets by email and a help desk summary for Intercom or Zendesk ([guides](https://revenuedot.app/docs/guides/refund-control)) | Tier 2/3 · built, tested against a mocked App Store and an in-memory mailer; Apple's Retention Messaging API needs Apple's approval |
+| **Customers** | Customer lists (all, active, sandbox, non-subscription, expired), saved audiences, filters from the audience builder, summary cards, CSV export ([guide](https://revenuedot.app/docs/guides/customer-lists)) | Tier 1/2 · built and tested |
+| **Growth** | Paywalls, experiments, targeting, virtual currencies, Customer Center configuration | Tier 2 · built |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
 
 <picture>
@@ -314,7 +316,7 @@ revenuedot/
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
 - **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
-- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, web checkout, revenue recovery.
+- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, web checkout, the rest of revenue recovery (refund defense and win-back emails are built).
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -358,6 +360,21 @@ Paying customers keep it. The RevenueCat SDKs cache a product-to-entitlement map
 <details><summary><b>Does it support StoreKit 2, Expo and current Google Play Billing?</b></summary>
 
 RevenueDot serves the same API the RevenueCat SDKs call, so it supports what they support: StoreKit 1 and 2, Expo through `react-native-purchases`, and current Google Play Billing versions.
+</details>
+
+<details><summary><b>Can I fight App Store refund abuse with a RevenueCat-compatible server?</b></summary>
+
+Yes. When a customer asks Apple for a refund, Apple sends a `CONSUMPTION_REQUEST` and waits up to 12 hours for consumption information. RevenueDot's Refund Control answers it for you with Apple's [Send Consumption Information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) endpoint: account age, spend, refunds, whether the purchase was used, and your refund preference from ordered policies (for example "prefer no refund for customers who renewed in the last 24 hours"). See the [Refund Control guide](https://revenuedot.app/docs/guides/refund-control).
+</details>
+
+<details><summary><b>How do I win back churned subscribers?</b></summary>
+
+Three ways, all built: Apple's [win-back offers](https://revenuedot.app/docs/guides/win-back-offers) work with the RevenueCat SDK unchanged; a Customer Center offer catches customers as they cancel ([retention offers](https://revenuedot.app/docs/guides/retention)); and win-back campaigns email lapsed subscribers a link back to the store, once each, with clicks, unsubscribes and reactivations counted ([win-back campaigns](https://revenuedot.app/docs/guides/win-back-campaigns)).
+</details>
+
+<details><summary><b>Where do Customer Center support requests go?</b></summary>
+
+To your support email, with the customer's subscription details and Reply-To set to the customer, and to **Lifecycle > Support > Tickets** in the dashboard. Help desks such as Intercom and Zendesk can show the customer's subscriptions from the support summary endpoint ([guide](https://revenuedot.app/docs/guides/support-integrations)).
 </details>
 
 <details><summary><b>How much does RevenueDot cost?</b></summary>
