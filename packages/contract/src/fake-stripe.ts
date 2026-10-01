@@ -235,6 +235,7 @@ export class FakeStripeAccount {
     s.customer = customer;
     s.customer_details = { email: o.email ?? s.customer_email ?? "buyer@example.com", address: { country: o.country ?? "US" }, name: null };
     s.amount_total = amount;
+    item.amount_total = amount;
     const promo = s.discounts?.[0]?.promotion_code;
     if (promo) { const pc = this.promotionCodes.get(promo); if (pc) { pc.times_redeemed++; pc.coupon.times_redeemed++; } }
     if (s.mode === "subscription") {

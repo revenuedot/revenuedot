@@ -29,12 +29,13 @@ export function createApp(input: Deps) {
     const path = url.pathname;
     let rewritten: string | null = null;
     let projectSlug: string | null = null;
-    if (payHost && host === payHost) rewritten = `/pay${path === "/" ? "" : path}`;
+    if (payHost && host === payHost) rewritten = path;
     else if (!known.has(host) && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host) && !API_PATH.test(path) && !path.startsWith("/pay/") && !path.startsWith("/assets/") && /^[a-z0-9.-]+(:\d+)?$/.test(host)) {
       projectSlug = await projectForHost(deps.db, host.replace(/:\d+$/, ""), deps.now().getTime());
-      if (projectSlug) rewritten = /^\/(api|r)\//.test(path) ? `/pay${path}` : `/pay/${projectSlug}${path === "/" ? "/" : path}`;
+      if (projectSlug) rewritten = /^\/(api|r)\//.test(path) ? path : `/${projectSlug}${path}`;
     }
     if (rewritten === null) return next();
+    // The pay routes run on their own (no /pay prefix) with the request's link bases in PAY_CTX.
     const target = new URL(c.req.url);
     target.pathname = rewritten;
     const req = new Request(target, c.req.raw);
