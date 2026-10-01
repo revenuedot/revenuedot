@@ -162,6 +162,16 @@ const journey: Journey = {
         return got.includes("FUNNEL_PURCHASE") ? got : null;
       }, { timeoutMs: 45_000, everyMs: 1000 });
       c.check("opt-in webhook got FUNNEL_VIEWED, FUNNEL_STEP_COMPLETED, FUNNEL_PURCHASE, PURCHASE_REDEEMED and INITIAL_PURCHASE", ["FUNNEL_VIEWED", "FUNNEL_STEP_COMPLETED", "FUNNEL_PURCHASE", "PURCHASE_REDEEMED", "INITIAL_PURCHASE"].every((t) => funnelEvents?.includes(t)), funnelEvents);
+      c.begin("cancel page, funnel and link clean-up");
+      const cancelUrl = session?.cancel_url as string | undefined;
+      const cancelPage = cancelUrl ? await fetch(cancelUrl) : null;
+      c.check("the checkout's cancel URL is this server's /pay/<project>/_/cancel page and answers", cancelUrl?.startsWith(`${ctx.base}/pay/`) && cancelPage?.ok, { cancelUrl, status: cancelPage?.status });
+      c.eq("GET the funnel reads it back published", (await dev.v2("GET", `/funnels/${funnel.id}`)).status, "published");
+      await dev.v2("DELETE", `/funnels/${funnel.id}`);
+      c.eq("a deleted funnel is gone from the API", (await dev.v2r("GET", `/funnels/${funnel.id}`)).status, 404);
+      c.eq("and its public page answers 404", (await fetch(funnel.url)).status, 404);
+      await dev.v2("DELETE", `/purchase_links/${link.id}`);
+      c.eq("a deleted purchase link's page answers 404", (await fetch(link.url)).status, 404);
       c.check("no page errors on the hosted pages", errors.length === 0, errors);
     } finally {
       await browser.close();

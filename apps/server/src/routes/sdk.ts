@@ -395,7 +395,7 @@ export function sdkRoutes(deps: Deps) {
     // A subscriber token speaks for its own app user id only.
     const sub = c.get("auth")?.subscriber as { appUserId: string } | undefined;
     if (sub) b.app_user_id = sub.appUserId;
-    return c.json(await createTicket(deps, { id: app.id ?? null, projectId: app.projectId, name: app.name ?? null }, b, publicOrigin(c), clientIp((n) => c.req.header(n))));
+    return c.json(await createTicket(deps, { id: app.id ?? null, projectId: app.projectId, name: app.name ?? null }, b, publicOrigin(c), clientIp((n) => c.req.header(n), c.env)));
   });
 
   // 17-18. Virtual currencies (Tier 2): empty balances.

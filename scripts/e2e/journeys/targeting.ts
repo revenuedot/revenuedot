@@ -46,6 +46,9 @@ const journey: Journey = {
     c.check("gold customer: current offering promo, placements and targeting in the SDK response", g.current_offering_id === "promo" && g.placements?.offering_ids_by_placement?.onboarding_end === "onboarding" && g.targeting?.rule_id === rule.id, { current: g.current_offering_id, placements: g.placements, targeting: g.targeting });
     const s = await offeringsFor(silver);
     c.check("silver customer: the project's current offering, no targeting", s.current_offering_id === "default" && !s.targeting, { current: s.current_offering_id, targeting: s.targeting });
+    const rules = await dev.v2("GET", "/targeting_rules");
+    const one = await dev.v2("GET", `/targeting_rules/${rule.id}`);
+    c.check("the rule is listed and readable with its audience, offering and placements", rules.items.some((r: any) => r.id === rule.id) && one.id === rule.id && one.audience_id === aud.id && one.offering_id === promo.id, one);
     await dev.v2("POST", `/targeting_rules/${rule.id}`, { state: "inactive" });
     c.eq("an inactive rule stops applying", (await offeringsFor(gold)).current_offering_id, "default");
     await dev.v2("POST", `/targeting_rules/${rule.id}`, { state: "active" });
@@ -58,6 +61,8 @@ const journey: Journey = {
     c.begin("experiment with two offerings");
     const exp = await dev.v2("POST", "/experiments", { name: "Default vs variant B", offering_a: cat.offering.id, offering_b: variantB.id });
     c.has("experiment created as a draft at 100%", exp, { status: "draft", enrollment_percent: 100 });
+    const exps = await dev.v2("GET", "/experiments");
+    c.check("the experiment is listed", exps.items.some((e: any) => e.id === exp.id), exps.items.map((e: any) => e.id));
     const started = await dev.v2("POST", `/experiments/${exp.id}/actions/start`);
     c.eq("experiment started", started.status, "running");
     const seen: Record<string, string> = {};
@@ -106,6 +111,7 @@ const journey: Journey = {
     c.eq("enrolled customers keep their variant while paused", (await offeringsFor(buyers.b[0]!)).current_offering_id, "variant_b");
     const stopped = await dev.v2("POST", `/experiments/${exp.id}/actions/stop`);
     c.eq("experiment stopped", stopped.status, "stopped");
+    c.eq("GET the experiment reads it back stopped", (await dev.v2("GET", `/experiments/${exp.id}`)).status, "stopped");
   },
 };
 export default journey;

@@ -21,7 +21,14 @@ export async function hit(db: DB, key: string, limit: number, windowMs: number, 
   return (row?.count ?? 1) <= limit;
 }
 
-/** The caller's IP as the edge reports it (Cloudflare, a reverse proxy), or "unknown". */
-export function clientIp(header: (name: string) => string | undefined): string {
-  return header("cf-connecting-ip") ?? header("x-forwarded-for")?.split(",")[0]?.trim() ?? header("x-real-ip") ?? "unknown";
+/**
+ * The caller's IP as the edge reports it (Cloudflare, a reverse proxy), else the connection's own address (the Node server
+ * with no proxy in front: `env` is @hono/node-server's `{ incoming }`), else "unknown". Without the socket fallback every
+ * caller of a self-hosted server shared one "unknown" bucket, so per-IP limits throttled all callers together.
+ */
+export function clientIp(header: (name: string) => string | undefined, env?: unknown): string {
+  const edge = header("cf-connecting-ip") ?? header("x-forwarded-for")?.split(",")[0]?.trim() ?? header("x-real-ip");
+  if (edge) return edge;
+  const socket = (env as { incoming?: { socket?: { remoteAddress?: string } } } | null | undefined)?.incoming?.socket;
+  return socket?.remoteAddress?.replace(/^::ffff:/, "") || "unknown";
 }
