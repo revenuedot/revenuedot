@@ -71,8 +71,10 @@ final class HarnessUITests: XCTestCase {
         for _ in 0..<5 where !app.buttons["paywallButton"].isHittable { app.swipeUp() }
         app.buttons["paywallButton"].tap()
         XCTAssertTrue(app.staticTexts["Unlock everything"].waitForExistence(timeout: 30), "paywall headline")
-        XCTAssertTrue(app.staticTexts["Unlimited scans"].exists, "paywall feature")
-        XCTAssertTrue(app.buttons["Start my plan"].exists || app.staticTexts["Start my plan"].exists, "purchase button")
+        // Features render with a check mark ("✓  Unlimited scans"); the purchase button shows its text.
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Unlimited scans")).firstMatch.exists, "paywall feature")
+        XCTAssertTrue(app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "Start my plan")).firstMatch.exists, "purchase button")
+        XCTAssertTrue(app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "Restore purchases")).firstMatch.exists, "restore button")
         shot("ios-5-paywall")
     }
 }

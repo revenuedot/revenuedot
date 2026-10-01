@@ -253,9 +253,14 @@ describe("offerings and mapping", () => {
 });
 
 describe("endpoints the SDK calls on its own", () => {
-  it("remote config answers 204 so getOfferings is not blocked", async () => {
+  it("remote config answers an RC Container, then 204 while the SDK's manifest is current, so getOfferings is never blocked", async () => {
     const res = await h.fetch("/v1/config/app", { method: "POST", json: {} });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/x-rc-format");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const size = new DataView(bytes.buffer, 8 + 24, 4).getUint32(0, true);
+    const config = JSON.parse(new TextDecoder().decode(bytes.slice(40, 40 + size)));
+    expect((await h.fetch("/v1/config/app", { method: "POST", json: { manifest: config.manifest } })).status).toBe(204);
   });
   it("events and diagnostics are accepted", async () => {
     expect((await h.fetch("/v1/events", { method: "POST", json: { events: [] } })).status).toBe(200);

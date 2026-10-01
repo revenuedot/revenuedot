@@ -167,7 +167,7 @@ const EXPECTED: Expectation[] = [
   { method: "GET", template: "/v1/subscribers/{app_user_id}/virtual_currencies", count: 1, statuses: [200], why: "getVirtualCurrencies" },
   { method: "POST", template: "/v1/subscribers/redeem_purchase", count: 1, statuses: [400], why: "redeemWebPurchase, 7849 InvalidToken" },
   { method: "GET", template: "/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}", count: 1, statuses: [200], why: "pollRewardVerification stops at failed" },
-  { method: "POST", template: "/v1/config/app", min: 1, statuses: [204], why: "remote config" },
+  { method: "POST", template: "/v1/config/app", min: 1, statuses: [200, 204], why: "remote config: RC Container with the published paywall as a workflow, 204 when unchanged" },
 ];
 
 async function serverState(cookie: string, projectId: string): Promise<Check[]> {

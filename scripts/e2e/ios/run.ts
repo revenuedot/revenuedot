@@ -126,8 +126,8 @@ const EXPECTED: Expectation[] = [
   { method: "GET", template: "/v1/subscribers/{app_user_id}/virtual_currencies", count: 1, statuses: [200], why: "virtualCurrencies()" },
   { method: "POST", template: "/v1/subscribers/redeem_purchase", count: 1, statuses: [400], why: "redeemWebPurchase, 7849 invalidToken" },
   { method: "GET", template: "/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}", count: 1, statuses: [200], why: "pollRewardVerification stops at failed" },
-  { method: "GET", template: "/v1/customercenter/{app_user_id}", count: 1, statuses: [404], why: "Customer Center not configured, 7259" },
-  { method: "POST", template: "/v1/config/app", min: 1, statuses: [204], why: "remote config" },
+  { method: "GET", template: "/v1/customercenter/{app_user_id}", count: 1, statuses: [200], why: "Customer Center configuration (default)" },
+  { method: "POST", template: "/v1/config/app", min: 1, statuses: [200, 204], why: "remote config: RC Container with the published paywall as a workflow, 204 when unchanged" },
   { method: "GET", template: "/v1/subscribers/{app_user_id}/health_report_availability", min: 1, statuses: [200], why: "debug build health report switch" },
 ];
 

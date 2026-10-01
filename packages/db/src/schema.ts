@@ -529,3 +529,64 @@ export const mediaAssets = pgTable("media_assets", {
   dataBase64: text("data_base64").notNull(),
   createdAt: created(),
 }, (t) => [index("media_assets_project").on(t.projectId), uniqueIndex("media_assets_object").on(t.projectId, t.objectName)]);
+
+/** A saved set of conditions on customers (RevenueCat's audience rules: groups OR-ed, conditions in a group AND-ed). */
+export const audiences = pgTable("audiences", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  rules: jsonb("rules").$type<{ groups: { conditions: { field: string; operator: string; value?: string; currency?: string }[] }[] }>().notNull(),
+  createdAt: created(),
+  updatedAt: ts("updated_at"),
+});
+
+/**
+ * Targeting: rules evaluated in `position` order when the SDK fetches offerings. The first live rule whose audience matches
+ * the customer decides the current offering and the offering per placement. No match: the project's current offering.
+ */
+export const targetingRules = pgTable("targeting_rules", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** Null targets every customer. */
+  audienceId: text("audience_id").references(() => audiences.id, { onDelete: "restrict" }),
+  offeringId: text("offering_id").notNull().references(() => offerings.id, { onDelete: "cascade" }),
+  /** Placement identifier → offering id (null shows no paywall for that placement). */
+  placements: jsonb("placements").$type<Record<string, string | null>>().notNull().default({}),
+  position: integer("position").notNull(),
+  state: text("state").notNull().default("inactive"),
+  startsAt: ts("starts_at"),
+  endsAt: ts("ends_at"),
+  revision: integer("revision").notNull().default(1),
+  createdAt: created(),
+}, (t) => [index("targeting_rules_project").on(t.projectId, t.position)]);
+
+/** Offering A/B tests. Enrolled customers get variant a's or b's offering as their current offering. */
+export const experiments = pgTable("experiments", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("draft"),
+  audienceId: text("audience_id").references(() => audiences.id, { onDelete: "restrict" }),
+  /** Share of eligible new customers enrolled, 1 to 100. */
+  enrollmentPercent: integer("enrollment_percent").notNull().default(100),
+  offeringA: text("offering_a").notNull().references(() => offerings.id, { onDelete: "cascade" }),
+  offeringB: text("offering_b").notNull().references(() => offerings.id, { onDelete: "cascade" }),
+  startedAt: ts("started_at"),
+  stoppedAt: ts("stopped_at"),
+  createdAt: created(),
+}, (t) => [index("experiments_project").on(t.projectId)]);
+
+export const experimentEnrollments = pgTable("experiment_enrollments", {
+  experimentId: text("experiment_id").notNull().references(() => experiments.id, { onDelete: "cascade" }),
+  customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  variant: text("variant").notNull(),
+  enrolledAt: ts("enrolled_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.experimentId, t.customerId] }), index("experiment_enrollments_customer").on(t.customerId)]);
+
+/** Content-addressed blobs served to the SDKs' remote configuration (workflows, ui_config). `ref` = base64url(SHA-256(bytes)[0..24]). */
+export const configBlobs = pgTable("config_blobs", {
+  ref: text("ref").primaryKey(),
+  data: text("data").notNull(),
+  createdAt: created(),
+});

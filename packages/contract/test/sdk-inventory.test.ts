@@ -73,8 +73,8 @@ describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
     expect(rows.map((r) => r.n)).toEqual(rows.map((_, i) => i + 1));
     const real = rows.filter((r) => r.handling === "Real").length, stub = rows.filter((r) => r.handling === "Stub").length;
     const absent = rows.filter((r) => r.handling === "Absent").reduce((n, r) => n + (/^(\d+) IAM/.exec(r.path) ? Number(/^(\d+)/.exec(r.path)![1]) : r.path.split(",").length), 0);
-    expect({ real, stub, absent }).toEqual({ real: 14, stub: 26, absent: 18 });
-    expect(PRD).toContain(`40 of the 58 method-and-path pairs have a route: 14 answer with real data and 26 are safe stubs. The other 18`);
+    expect({ real, stub, absent }).toEqual({ real: 15, stub: 25, absent: 18 });
+    expect(PRD).toContain(`40 of the 58 method-and-path pairs have a route: 15 answer with real data and 25 are safe stubs. The other 18`);
   });
 
   for (const r of routed) {
@@ -90,7 +90,9 @@ describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
       expect([...want.keys()], `status ${res.status} is not documented for #${r.n}`).toContain(res.status);
       expect(res.headers.get("x-revenuecat-request-time"), "X-RevenueCat-Request-Time").toMatch(/^\d+$/);
       if (res.status === 204) return;
-      expect(res.headers.get("content-type")).toMatch(/^application\/json/);
+      // Remote config answers the binary RC Container; every other row answers JSON.
+      expect(res.headers.get("content-type")).toMatch(r.path === "/v1/config/{domain}" ? /^application\/x-rc-format/ : /^application\/json/);
+      if (r.path === "/v1/config/{domain}") return; // binary; parsed in remote-config.test.ts
       const json = await res.json() as Record<string, unknown>;
       if (res.status >= 400) {
         // A 404 here is a deliberate RevenueCat error with a code, never a missing route.

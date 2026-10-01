@@ -16,6 +16,8 @@ import { appleCredentials } from "../stores/apple/api.js";
 import { appAccountTokenFor, signOffer } from "../services/promo-offers.js";
 import { customerCenterFor } from "../services/customer-center.js";
 import { publicOrigin } from "./oauth.js";
+import { buildRemoteConfig } from "../services/remote-config.js";
+import { activeEntitlementKeys, contextFor, resolveOfferings } from "../services/targeting.js";
 import { balancesOf } from "../services/virtual-currencies.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
@@ -123,17 +125,36 @@ export function sdkRoutes(deps: Deps) {
   // 3. Offerings (and the fallback path without a user id)
   const offerings = async (c: any) => {
     const app = c.get("app");
-    const body = await offeringsJSON(deps.db, app.projectId, app.id, { assetBaseUrl: `${publicOrigin(c)}/assets/${app.projectId}` });
+    const body = await offeringsJSON(deps.db, app.projectId, app.id, { assetBaseUrl: `${publicOrigin(c)}/assets/${app.projectId}` }) as Awaited<ReturnType<typeof offeringsJSON>> & { targeting?: { revision: number; rule_id: string } };
     const id = c.req.param("id");
-    if (id) {
-      const cust = await findCustomer(deps.db, app.projectId, decodeURIComponent(id));
-      if (cust?.offeringOverrideId) {
-        const o = await deps.db.select().from(schema.offerings).where(eq(schema.offerings.id, cust.offeringOverrideId));
-        if (o[0]) body.current_offering_id = o[0].lookupKey;
-      }
+    const cust = id ? await findCustomer(deps.db, app.projectId, decodeURIComponent(id)) : null;
+    const offs = await deps.db.select({ id: schema.offerings.id, key: schema.offerings.lookupKey, current: schema.offerings.isCurrent }).from(schema.offerings).where(eq(schema.offerings.projectId, app.projectId));
+    const keyOf = (oid: string | null) => offs.find((o) => o.id === oid)?.key ?? null;
+    if (cust?.offeringOverrideId) {
+      // An offering override set through the API wins over targeting and experiments, as in RevenueCat.
+      body.current_offering_id = keyOf(cust.offeringOverrideId) ?? body.current_offering_id;
+      return c.json(body);
     }
+    const now = deps.now();
+    const headers = Object.fromEntries(["x-platform", "x-client-version", "x-version", "x-platform-flavor", "x-platform-version", "x-storefront", "x-preferred-locales"].map((h) => [h, c.req.header(h)]));
+    const ctx = await contextFor(deps.db, cust, headers, now, cust ? await activeEntitlementKeys(deps.db, cust, now) : []);
+    const r = await resolveOfferings(deps.db, app.projectId, cust, ctx, now, offs.find((o) => o.current)?.id ?? null);
+    body.current_offering_id = keyOf(r.currentOfferingId) ?? body.current_offering_id;
+    body.placements = {
+      fallback_offering_id: body.current_offering_id,
+      offering_ids_by_placement: Object.fromEntries(Object.entries(r.placements).map(([p, oid]) => [p, oid ? keyOf(oid) : null])),
+    };
+    if (r.rule) body.targeting = { revision: r.rule.revision, rule_id: r.rule.id };
     return c.json(body);
   };
+  // Remote configuration (paywalls as workflows, ui_config). RC Container body; 204 when the SDK's manifest is current.
+  r.post("/v1/config/:domain", async (c) => {
+    const app = c.get("app");
+    const b = (await c.req.json().catch(() => ({}))) as { manifest?: string; prefetched_blobs?: string[] };
+    const built = await buildRemoteConfig(deps.db, app.projectId, publicOrigin(c), typeof b.manifest === "string" ? b.manifest : null, Array.isArray(b.prefetched_blobs) ? b.prefetched_blobs.filter((x) => typeof x === "string") : []);
+    if (!built.body) return c.body(null, 204);
+    return new Response(built.body as unknown as BodyInit, { headers: { "content-type": "application/x-rc-format", "cache-control": "no-store", "x-revenuecat-request-time": String(deps.now().getTime()) } });
+  });
   r.get("/v1/subscribers/:id/offerings", offerings);
   r.get("/v1/offerings", offerings);
 
@@ -268,8 +289,8 @@ export function sdkRoutes(deps: Deps) {
   // The SDK does not encode the receipt id, which can contain "/".
   r.get("/v1/receipts/amazon/*", noAmazon);
 
-  // 23. Remote config: 204 "unchanged/no config" until Paywalls v2 lands. getOfferings waits on this call.
-  r.post("/v1/config/:domain", (c) => c.body(null, 204));
+  // 23. Remote config: POST is above (RC Container with workflows and ui_config). The GET form is the SDK's JSON fallback
+  // host, never used with a proxy URL: "no configuration".
   r.get("/v1/config/:domain", (c) => c.body(null, 204));
 
   // 31-32. Events and diagnostics: accepted (a 404 would make the SDK resend forever).

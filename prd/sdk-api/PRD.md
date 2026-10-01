@@ -1,6 +1,6 @@
 # SDK-compatible API (scope 1.1, with the 1.0 contract harness)
 
-**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 14 answer with real data and 26 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
+**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 15 answer with real data and 25 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
 
 ## Users and jobs
 - **App developers** change only the SDK's proxy URL and keep their app code, their public API key and their paywalls.
@@ -50,7 +50,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 23 | POST | `/v1/external_purchase_tokens` | iOS | Stub | 200 `{"id":…}` | Apple external-purchase token registered; the web checkout it leads to (row 29) fails |
 | 24 | GET | `/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}` | iOS, Android | Stub | 200 `status: failed` | `pollRewardVerification` stops after one request and returns failed |
 | 25 | GET | `/v1/receipts/amazon/{store_user_id}/{receipt_id}` | Android | Stub | 400 · 7662 | Amazon purchase fails with an error and stays unconsumed, like a receipt post for an Amazon app |
-| 26 | POST | `/v1/config/{domain}` | iOS, Android | Stub | 204 | Remote config: no change, so `getOfferings` is not blocked |
+| 26 | POST | `/v1/config/{domain}` | iOS, Android | Real | 200 RC Container (`application/x-rc-format`), 204 when the sent manifest is current | Remote config: published paywalls as workflows (one per offering) and `ui_config`, with every blob inline; how iOS 5.83+ and current Android load paywalls |
 | 27 | GET | `/v1/config/{domain}` | iOS, Android | Stub | 204 | Remote config fallback path |
 | 28 | GET | `/rcbilling/v1/subscribers/{app_user_id}/offering_products` | iOS | Stub | 200 `{"offerings":{}}` | Defined in the SDK with no caller |
 | 29 | POST | `/rcbilling/v1/hosted-checkout` | iOS | Stub | 400 · 7000 | Paywall web checkout returns `failed`; no retry |
@@ -70,7 +70,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 43 | GET, POST | 14 IAM alternates: `/v1/customer`, `/v1/customer/offerings`, `/v1/customer/intro_eligibility`, `/v1/customer/attribution`, `/v1/customer/attributes`, `/v1/customer/adservices_attribution`, `/v1/customer/health_report`, `/v1/customer/customercenter`, `/v1/customer/customercenter/support/create-ticket`, `/v1/customer/virtual_currencies`, `/v1/customer/restore/eligibility`, `/v1/customer/ads/reward_verifications/{client_transaction_id}`, `/rcbilling/v1/customer/offering_products`, `/rcbilling/v1/customer/products` | iOS, Android | Absent | none | Used in place of rows 1, 3, 7, 11, 12, 13, 17-21, 24, 28 and 9 only in IAM mode |
 <!-- inventory:end -->
 
-Counts: rows 1-40 are 40 routed pairs (14 real, 26 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
+Counts: rows 1-40 are 40 routed pairs (15 real, 25 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
 
 ## RevenueCat behaviour we match
 - New customers answer 201 and known customers 200 on `GET /v1/subscribers/{id}` and on `logIn` (fixtures `ios/req-login.json` and `ios/resp-login-real-signed.json`; https://www.revenuecat.com/docs/customers/identifying-customers).

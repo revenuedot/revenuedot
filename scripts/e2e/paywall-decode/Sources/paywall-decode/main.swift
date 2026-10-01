@@ -5,6 +5,10 @@ import Foundation
 
 // Decodes a paywall_components JSON file the way the SDK does and prints the first error with its path.
 let data = try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
+if CommandLine.arguments.count > 2 && CommandLine.arguments[2] == "workflow" {
+  do { let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase; let w = try d.decode(PublishedWorkflow.self, from: data); print("WORKFLOW OK", w.id, w.screens.keys.sorted(), w.steps.keys.sorted()) } catch { print("WORKFLOW ERROR", error) }
+  exit(0)
+}
 if CommandLine.arguments.count > 2 {
   let d = JSONDecoder(); d.keyDecodingStrategy = .convertFromSnakeCase
   do { let u = try d.decode(UIConfig.self, from: data); print("UI OK", u.app.fonts.keys.sorted(), u.localizations.keys.sorted()) } catch { print("UI ERROR", error) }

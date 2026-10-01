@@ -24,8 +24,8 @@ const NAV: Item[] = [
     { label: "Web discounts", to: "web-discounts", soon: true },
   ] },
   { label: "Paywalls", to: "paywalls", icon: "paywalls" },
-  { label: "Targeting", to: "targeting", icon: "targeting", soon: true },
-  { label: "Experiments", to: "experiments", icon: "experiments", soon: true },
+  { label: "Targeting", to: "targeting", icon: "targeting" },
+  { label: "Experiments", to: "experiments", icon: "experiments" },
   { label: "Funnels", to: "funnels", icon: "funnels", soon: true },
   { label: "Ads", icon: "ads", children: [{ label: "Overview", to: "ads", soon: true }, { label: "Rewards", to: "ads/rewards", soon: true }] },
   { label: "Lifecycle", icon: "lifecycle", children: [

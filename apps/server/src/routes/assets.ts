@@ -19,5 +19,11 @@ export function assetRoutes(deps: Deps) {
       headers: { "content-type": a.contentType, "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*", "x-content-type-options": "nosniff", etag: `"${a.id}"` },
     });
   });
+  // Remote-config blobs by content ref. Public: the SDK downloads them without credentials; a ref is a SHA-256 of the bytes.
+  r.get("/blobs/:ref", async (c) => {
+    const [b] = await deps.db.select().from(schema.configBlobs).where(eq(schema.configBlobs.ref, c.req.param("ref"))).limit(1);
+    if (!b) return c.json({ object: "error", type: "resource_missing", message: "Blob not found." }, 404);
+    return new Response(b.data, { headers: { "content-type": "application/json", "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*" } });
+  });
   return r;
 }

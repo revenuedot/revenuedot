@@ -3,6 +3,7 @@ import { commission, rcDate, webhookStore, type DerivedEvent, type EventType, ty
 import { schema, type DB } from "@revenuedot/db";
 import { aliasesOf, type CustomerRow } from "../repo/customers.js";
 import { entitlementMap } from "../repo/catalog.js";
+import { enrollmentsOf } from "./targeting.js";
 
 const { events, webhooks, webhookDeliveries, customerAttributes } = schema;
 
@@ -98,6 +99,8 @@ export async function recordEvent(db: DB, opts: {
     if (type === "BILLING_ISSUE") event.grace_period_expiration_at_ms = subject.gracePeriodExpiresAt ? subject.gracePeriodExpiresAt.getTime() : null;
     if (type === "SUBSCRIPTION_PAUSED") event.auto_resume_at_ms = subject.autoResumeAt ? subject.autoResumeAt.getTime() : null;
     if (type === "RENEWAL") event.is_trial_conversion = derived.isTrialConversion ?? false;
+    const enrolled = await enrollmentsOf(db, customer.id);
+    if (enrolled.length) event.experiments = enrolled;
     if (type === "REFUND_REVERSED") {
       // RevenueCat's sample carries the number of renewals the subscription had gone through; its RENEWAL sample does not.
       const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.transactions).where(and(
@@ -124,15 +127,17 @@ export async function recordEvent(db: DB, opts: {
  */
 export async function recordRawEvent(db: DB, opts: {
   projectId: string; appId: string | null; customer: CustomerRow; appUserId: string; type: string; sandbox: boolean; fields: Record<string, unknown>; now: Date;
+  /** "experiment": EXPERIMENT_ENROLLMENT carries no app_id and no subscriber_attributes in RevenueCat's sample. */
+  shape?: "default" | "experiment";
 }) {
   const attrs = await db.select().from(customerAttributes).where(eq(customerAttributes.customerId, opts.customer.id));
   const subscriber_attributes: Record<string, { value: string | null; updated_at_ms: number }> = {};
   for (const a of attrs) subscriber_attributes[a.key] = { value: a.value, updated_at_ms: a.updatedAtMs };
   const id = crypto.randomUUID().toUpperCase();
-  const event = {
-    ...opts.fields, aliases: await aliasesOf(db, opts.customer.id), app_id: opts.appId, app_user_id: opts.appUserId,
-    event_timestamp_ms: opts.now.getTime(), subscriber_attributes, type: opts.type, id,
-  };
+  const aliases = await aliasesOf(db, opts.customer.id);
+  const event = opts.shape === "experiment"
+    ? { event_timestamp_ms: opts.now.getTime(), app_user_id: opts.appUserId, aliases, ...opts.fields, type: opts.type, id }
+    : { ...opts.fields, aliases, app_id: opts.appId, app_user_id: opts.appUserId, event_timestamp_ms: opts.now.getTime(), subscriber_attributes, type: opts.type, id };
   const environment = opts.sandbox ? "sandbox" : "production";
   await db.insert(events).values({ id, projectId: opts.projectId, customerId: opts.customer.id, type: opts.type, environment, appId: opts.appId, payload: { api_version: "1.0", event }, eventTimestampMs: opts.now.getTime() });
   await queueDeliveries(db, opts.projectId, id, opts.type, environment, opts.appId, opts.now);

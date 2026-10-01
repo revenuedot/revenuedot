@@ -71,6 +71,20 @@
       "when": 1790830996852,
       "tag": "0009_paywall_template",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790831636572,
+      "tag": "0010_targeting_experiments",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790831957668,
+      "tag": "0011_config_blobs",
+      "breakpoints": true
     }
   ]
 }
