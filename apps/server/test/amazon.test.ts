@@ -524,3 +524,42 @@ describe("Amazon trust boundaries", () => {
     expect((await buy()).status).toBe(200);
   });
 });
+
+describe("Amazon state that must not move on later reads", () => {
+  it("grace without a renewal date: a later notification keeps the access end (no SUBSCRIPTION_EXTENDED)", async () => {
+    e.a.put(receipt({ renewalDate: null }));
+    expect((await buy()).status).toBe(200);
+    e.h.setNow(at(1));
+    e.a.update(RID, { gracePeriodEndDate: at(5).getTime() });
+    await e.rtn({ notificationType: "SUBSCRIPTION_IN_GRACE_PERIOD", receiptId: RID });
+    expect(await e.events("BILLING_ISSUE")).toHaveLength(1);
+    e.h.setNow(at(2));
+    await e.rtn({ notificationType: "SUBSCRIPTION_IN_GRACE_PERIOD", receiptId: RID });
+    e.h.setNow(at(3));
+    expect((await buy()).status).toBe(200);
+    expect(await e.events("SUBSCRIPTION_EXTENDED")).toHaveLength(0);
+    expect((await info("fire_user")).subscriber.subscriptions["pro.monthly"]).toMatchObject({ expires_date: "2026-09-02T12:00:00Z", grace_period_expires_date: "2026-09-06T12:00:00Z" });
+  });
+
+  it("a subscription without a renewal date or term ends when first seen and stays there", async () => {
+    e.a.put(receipt({ renewalDate: null, term: null, termSku: "pro.legacy", productId: "pro.legacy.parent" }));
+    expect((await buy({ product_ids: ["pro.legacy"] })).status).toBe(200);
+    e.h.setNow(at(1));
+    await e.rtn({ notificationType: "SUBSCRIPTION_RENEWED", receiptId: RID });
+    e.h.setNow(at(2));
+    expect((await buy({ product_ids: ["pro.legacy"] })).status).toBe(200);
+    expect(await e.events("SUBSCRIPTION_EXTENDED")).toHaveLength(0);
+    expect((await info("fire_user")).subscriber.subscriptions["pro.legacy"]!.expires_date).toBe("2026-09-01T12:00:00Z");
+  });
+
+  it("a refund learned from CONSUMABLE_CANCELLED survives a delayed CONSUMABLE_PURCHASED (no REFUND_REVERSED)", async () => {
+    e.a.put(receipt({ receiptId: "r-coins", productId: "coins.100", productType: "CONSUMABLE", termSku: null, term: null, renewalDate: null, autoRenewing: false }));
+    await e.receipt({ app_user_id: "buyer", fetch_token: "r-coins", product_ids: ["coins.100"], price: 0.99, currency: "USD" });
+    e.h.setNow(at(1));
+    await e.rtn({ notificationType: "CONSUMABLE_CANCELLED", receiptId: "r-coins" });
+    e.h.setNow(at(2));
+    expect(await (await e.rtn({ notificationType: "CONSUMABLE_PURCHASED", receiptId: "r-coins" })).json()).toEqual({ status: "processed" });
+    expect(await e.events("REFUND_REVERSED")).toHaveLength(0);
+    expect((await txns()).map((t) => [t.kind, t.revenueUsd])).toEqual([["one_time", 0.99], ["refund", -0.99]]);
+  });
+});

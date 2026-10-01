@@ -10,7 +10,7 @@ import { flushStoreForwards } from "../src/stores/forward.js";
 import { signStripePayload, stripeSignature, verifyStripeSignature } from "../src/stores/stripe/signature.js";
 import { fromMinor } from "../src/stores/stripe/map.js";
 import {
-  at, charge, checkoutSession, env, invoice, KEY, PRICE_ANNUAL, PRICE_COINS, PRICE_LIFETIME, s, subscription, T0, WHSEC, type Env,
+  at, charge, checkoutSession, env, invoice, KEY, PRICE_ANNUAL, PRICE_COINS, PRICE_LIFETIME, PRICE_MONTHLY, s, subscription, T0, WHSEC, type Env,
 } from "./stripe-helpers.js";
 
 let e: Env;
@@ -73,7 +73,7 @@ describe("POST /v1/receipts with X-Platform: stripe", () => {
     expect(ev).toMatchObject({ store: "STRIPE", product_id: "prod_ProMonthly", price: 9.99, currency: "USD", environment: "SANDBOX", transaction_id: "in_1First",
       original_transaction_id: SUB, country_code: "US", app_user_id: "web_user_1", entitlement_ids: ["pro"], commission_percentage: 0 });
     const call = e.st.apiCalls()[0]!;
-    expect(call.url).toBe(`https://api.stripe.com/v1/subscriptions/${SUB}?expand%5B%5D=latest_invoice`);
+    expect(call.url).toBe(`https://api.stripe.com/v1/subscriptions/${SUB}?expand%5B%5D=latest_invoice&expand%5B%5D=items.data.price.currency_options`);
     expect(call.auth).toBe(`Bearer ${KEY}`);
     expect((await txns())[0]).toMatchObject({ kind: "purchase", revenueUsd: 9.99 });
     // Posting it again changes nothing.
@@ -456,5 +456,101 @@ describe("Stripe trust boundaries", () => {
 
   it("three-decimal currencies are thousandths (KWD 1.500 is 1500), zero-decimal ones whole units", () => {
     expect([fromMinor(1500, "kwd"), fromMinor(1200, "JPY"), fromMinor(999, "usd")]).toEqual([1.5, 1200, 9.99]);
+  });
+});
+
+describe("Stripe edge cases", () => {
+  const sub = async () => (await e.h.db.select().from(schema.subscriptions).where(eq(schema.subscriptions.storeKey, SUB)))[0]!;
+
+  it("with register_on invoice_created, a period first seen with an open invoice costs what is due, and paying it adds nothing", async () => {
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, register_on: "invoice_created" });
+    e.st.put(subscription({ invoice: "in_open", status: "incomplete" }), invoice({ id: "in_open", sub: SUB, start: T0, end: at(30), status: "open" }));
+    expect((await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB })).status).toBe(200);
+    expect((await e.events("INITIAL_PURCHASE"))[0]).toMatchObject({ price: 9.99, transaction_id: "in_open" });
+    e.h.setNow(at(1));
+    e.st.put(subscription({ invoice: "in_open" }), invoice({ id: "in_open", sub: SUB, start: T0, end: at(30) }));
+    expect(await (await e.webhook("invoice.paid", e.st.invoices.get("in_open"))).json()).toEqual({ status: "processed" });
+    expect(await e.events("RENEWAL")).toHaveLength(0);
+    expect((await txns()).map((t) => [t.kind, t.revenueUsd])).toEqual([["purchase", 9.99]]);
+    expect((await sub()).priceAmount).toBe(9.99);
+  });
+
+  it("a period stored at a placeholder price of 0 takes the paid amount, and its purchase revenue is corrected", async () => {
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, register_on: "invoice_created" });
+    e.st.put(subscription({ invoice: "in_open", status: "incomplete" }), invoice({ id: "in_open", sub: SUB, start: T0, end: at(30), status: "open" }));
+    await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB });
+    // What an earlier version stored: amount_paid (0) of the open invoice.
+    await e.h.db.update(schema.subscriptions).set({ priceAmount: 0, priceUsd: 0 }).where(eq(schema.subscriptions.storeKey, SUB));
+    await e.h.db.update(schema.transactions).set({ revenueUsd: 0, priceAmount: 0 }).where(eq(schema.transactions.store, "stripe"));
+    e.h.setNow(at(1));
+    e.st.put(subscription({ invoice: "in_open" }), invoice({ id: "in_open", sub: SUB, start: T0, end: at(30) }));
+    await e.webhook("invoice.paid", e.st.invoices.get("in_open"));
+    expect((await sub()).priceAmount).toBe(9.99);
+    expect((await txns()).map((t) => [t.kind, t.revenueUsd, t.priceAmount])).toEqual([["purchase", 9.99, 9.99]]);
+    expect(await e.events("RENEWAL")).toHaveLength(0);
+  });
+
+  it("a paused subscription read again later keeps its access end (no SUBSCRIPTION_EXTENDED)", async () => {
+    await bought();
+    e.h.setNow(at(3));
+    e.st.subs.set(SUB, subscription({ invoice: "in_1First", status: "paused" }));
+    await e.webhook("customer.subscription.paused", e.st.subs.get(SUB));
+    expect((await info("web_user_1")).subscriber.subscriptions.prod_ProMonthly!.expires_date).toBe("2026-09-04T12:00:00Z");
+    e.h.setNow(at(4));
+    await e.webhook("customer.subscription.updated", e.st.subs.get(SUB));
+    e.h.setNow(at(5));
+    expect((await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB })).status).toBe(200);
+    expect(await e.events("SUBSCRIPTION_EXTENDED")).toHaveLength(0);
+    expect((await info("web_user_1")).subscriber.subscriptions.prod_ProMonthly!.expires_date).toBe("2026-09-04T12:00:00Z");
+  });
+
+  it("a canceled subscription without ended_at or canceled_at keeps its access end on later reads", async () => {
+    await bought();
+    e.h.setNow(at(3));
+    e.st.subs.set(SUB, subscription({ invoice: "in_1First", status: "canceled" }));
+    await e.webhook("customer.subscription.deleted", e.st.subs.get(SUB));
+    e.h.setNow(at(4));
+    await e.webhook("customer.subscription.updated", e.st.subs.get(SUB));
+    expect(await e.events("SUBSCRIPTION_EXTENDED")).toHaveLength(0);
+    expect((await info("web_user_1")).subscriber.subscriptions.prod_ProMonthly!.expires_date).toBe("2026-09-04T12:00:00Z");
+  });
+
+  it("a key in the wrong mode is a credentials problem: 500 7101 so the backend retries, and the app's credentials are failing", async () => {
+    e.st.override = (url) => (url.startsWith(`https://api.stripe.com/v1/subscriptions/sub_live`)
+      ? new Response(JSON.stringify({ error: { type: "invalid_request_error", code: "resource_missing", message: "No such subscription: 'sub_live'; a similar object exists in live mode, but a test mode key was used to make this request." } }), { status: 404 })
+      : undefined);
+    const res = await e.receipt({ app_user_id: "web_user_1", fetch_token: "sub_live" });
+    expect([res.status, ErrorSchema.parse(await res.json()).code]).toEqual([500, 7101]);
+    const [app] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, e.appId));
+    expect(app!.credentialsStatus).toBe("failing");
+    expect(app!.credentialsError).toMatch(/in live mode, but the app's Stripe key is a test mode key/);
+    expect((await e.webhook("customer.subscription.updated", { id: "sub_live", object: "subscription" })).status).toBe(500);
+    // A plain "no such subscription" is still a bad receipt.
+    const missing = await e.receipt({ app_user_id: "web_user_1", fetch_token: "sub_missing" });
+    expect([missing.status, ErrorSchema.parse(await missing.json()).code]).toEqual([400, 7103]);
+  });
+
+  it("the list price is in the subscription's currency: its currency_options entry, else labelled with the price's own currency", async () => {
+    const multi = { ...PRICE_MONTHLY, currency_options: { usd: { unit_amount: 999 }, eur: { unit_amount: 899 } } };
+    // No invoice to read (latest_invoice is not found), so the price comes from the subscription item.
+    e.st.put({ ...subscription({ invoice: "in_gone", price: multi }), currency: "eur" });
+    await e.receipt({ app_user_id: "web_user_1", fetch_token: SUB });
+    expect((await e.events("INITIAL_PURCHASE"))[0]).toMatchObject({ price_in_purchased_currency: 8.99, currency: "EUR" });
+    e.st.put({ ...subscription({ id: "sub_2", invoice: "in_gone", price: PRICE_MONTHLY }), currency: "eur" });
+    await e.receipt({ app_user_id: "web_user_2", fetch_token: "sub_2" });
+    expect((await e.events("INITIAL_PURCHASE"))[1]).toMatchObject({ price_in_purchased_currency: 9.99, currency: "USD" });
+  });
+
+  it("verify_credentials checks a new key in the body when the stored secrets cannot be opened", async () => {
+    await e.h.db.update(schema.apps).set({ secrets: "v1:not-openable" }).where(eq(schema.apps.id, e.appId));
+    const verify = (json: unknown) => e.call(`/v2/projects/${e.h.ids.project}/apps/${e.appId}/actions/verify_credentials`, { method: "POST", key: e.h.ids.secretKey, json });
+    let r = await (await verify({})).json();
+    expect(r).toMatchObject({ status: "invalid" });
+    expect(r.message).toMatch(/could not be opened/);
+    r = await (await verify({ stripe: { stripe_secret_key: KEY } })).json();
+    expect(r).toMatchObject({ status: "valid", mode: "test" });
+    r = await (await verify({ stripe: { stripe_secret_key: "rk_test_wrong" } })).json();
+    expect(r).toMatchObject({ status: "invalid" });
+    expect(r.message).toMatch(/rejected the key/);
   });
 });

@@ -119,7 +119,7 @@ export function sdkRoutes(deps: Deps) {
       },
     }) : [];
     // A re-posted Amazon or Stripe purchase keeps what notifications recorded (a refund, the first billing issue), like a re-read in a notification.
-    const purchases = await mergeStoredState(deps.db, app.projectId, verified);
+    const purchases = await mergeStoredState(deps.db, app.projectId, verified, now);
     customer = await applyPurchases(deps.db, customer, purchases, {
       projectId: app.projectId, appId: app.id, appUserId, now, presentedOfferingId: b.presented_offering_identifier ?? null, fromDevice: true, fetch: deps.fetch,
       // A customer this receipt creates (a restore on a new install, a server-side post) was first seen at its earliest purchase.

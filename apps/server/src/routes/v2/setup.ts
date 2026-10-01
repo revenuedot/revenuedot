@@ -177,9 +177,11 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const checkedAt = deps.now().getTime();
     const out = (status: "valid" | "invalid" | "unreachable", message: string, extra: Record<string, unknown> = {}) =>
       c.json({ object: "credentials_check", app_id: row.id, store: row.type, status, valid: status === "valid", message, checked_at: checkedAt, ...extra });
-    // Sealed Amazon and Stripe secrets are opened in memory for the check only.
-    let a: typeof row;
-    try { a = await withStoreSecrets(deps, row); } catch (e) { return out("invalid", e instanceof Error ? e.message : String(e)); }
+    // Sealed Amazon and Stripe secrets are opened in memory for the check only. Secrets this server cannot open still let
+    // a new key in the body be checked (the way to replace them); without one the stored key is reported unusable.
+    let a: typeof row = row;
+    let unopened: string | null = null;
+    try { a = await withStoreSecrets(deps, row); } catch (e) { unopened = e instanceof Error ? e.message : String(e); }
     // Values in the body are checked before they are saved; anything missing falls back to what is stored.
     const merged = (over: Record<string, unknown> | undefined) => {
       const cr: Record<string, unknown> = { ...(a.credentials ?? {}) };
@@ -212,6 +214,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     } else {
       throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");
     }
+    const newSecret = a.type === "amazon" ? s(b.amazon?.shared_secret) : a.type === "stripe" ? s(b.stripe?.stripe_secret_key) : null;
+    if (unopened && !newSecret) return out("invalid", unopened);
     const r = await checkStoreCredentials(deps, app);
     // A check of what is stored also updates the app's credential health (and the alert it drives).
     if (!overrides) await recordCredentialCheck(db, a.id, r, deps.now());

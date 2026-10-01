@@ -41,7 +41,7 @@ export async function syncSubscription(ctx: SyncCtx, subId: string, opts: { meta
     if (e instanceof StripeNotYetPaid) return { status: "ignored", sandbox: !sub.livemode };
     throw e;
   }
-  if (row) p = mergeSnapshot(p, row);
+  if (row) p = mergeSnapshot(p, row, now);
   if (opts.refund && opts.refund.invoiceId === p.storeTransactionId) {
     p.refundedAt = row?.refundedAt ?? opts.refund.at;
     if (p.expiresDate) p.expiresDate = minDate(p.expiresDate, p.refundedAt);
