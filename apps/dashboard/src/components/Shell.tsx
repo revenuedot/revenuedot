@@ -109,11 +109,16 @@ export function Shell({ title, crumbs, children, actions }: { title: string; cru
   const { projectId = "" } = useParams();
   const me = useMe();
   const nav = useNavigate();
+  const loc = useLocation();
   const base = `/projects/${projectId}`;
   const [q, setQ] = useState("");
+  // Below 900px the sidebar is a sheet opened from the top bar; it closes whenever the page changes.
+  const [menu, setMenu] = useState(false);
+  useEffect(() => { setMenu(false); }, [loc.pathname]);
   const projectName = me.data?.projects.find((p) => p.id === projectId)?.name ?? "Project";
   useEffect(() => { document.title = `${title} · RevenueDot`; }, [title]);
-  useEffect(() => { if (me.isError) nav("/login"); }, [me.isError, nav]);
+  // Signed out: sign in, then come back to this exact page.
+  useEffect(() => { if (me.isError) nav(`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`, { replace: true }); }, [me.isError, nav, loc.pathname, loc.search]);
   const toggleTheme = () => {
     const root = document.documentElement;
     const dark = root.dataset.theme === "dark" || (!root.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
@@ -122,7 +127,8 @@ export function Shell({ title, crumbs, children, actions }: { title: string; cru
   };
   return (
     <div className="shell">
-      <aside className="side" aria-label="Sidebar">
+      {menu && <button type="button" className="side-scrim" aria-label="Close menu" onClick={() => setMenu(false)} />}
+      <aside className={`side${menu ? " open" : ""}`} aria-label="Sidebar" id="sidebar">
         <div className="brand">
           <Link to={`${base}/overview`} aria-label="RevenueDot home"><Mark /></Link>
           {me.data && <ProjectSwitcher me={me.data} current={projectId} />}
@@ -133,6 +139,7 @@ export function Shell({ title, crumbs, children, actions }: { title: string; cru
       <div className="main">
         <header className="top">
           <style>{CRUMB_CSS}</style>
+          <button type="button" className="ib menu-btn" aria-label="Menu" aria-controls="sidebar" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="menu" /></button>
           <nav className="crumb" aria-label="Breadcrumb">
             <span className="crumb-project" title={projectName}>{projectName}</span> <span className="crumb-sep">/</span> {crumbs ?? <b>{title}</b>}
           </nav>

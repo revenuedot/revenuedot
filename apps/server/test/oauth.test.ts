@@ -100,6 +100,9 @@ describe("OAuth for MCP clients", () => {
     expect(anonHtml).toContain('"/auth/signup"');
     expect(anonHtml).toContain("location.reload()");
     expect(anonHtml).toContain("/legal/terms");
+    expect(anonHtml).toContain('aria-selected="true"');
+    expect(anonHtml).toContain("/forgot-password");
+    expect(anonHtml).toContain('aria-label="RevenueDot"');
 
     const alice = await env.signup("alice@example.com");
     const other = await env.signup("bob@example.com", "Bob's app");
@@ -175,6 +178,8 @@ describe("OAuth for MCP clients", () => {
     const query = { response_type: "code", client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", state: "s1", scope: "project:read" };
     const html = await (await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`, { cookie: alice.cookie })).text();
     expect(html).toMatch(/value="project:read" checked/);
+    // Money actions need read and change, so the box starts disabled when read only is asked for.
+    expect(html).toMatch(/name="support" value="1" id="support" disabled/);
 
     const code = new URL((await consent(env, alice.cookie, query, { access: "project:read" })).headers.get("location")!).searchParams.get("code")!;
     const t = await (await env.call("POST", "/oauth/token", { json: { grant_type: "authorization_code", code, code_verifier: verifier } })).json() as { access_token: string; scope: string };
@@ -256,7 +261,7 @@ describe("OAuth for MCP clients", () => {
     const query = { response_type: "code", client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", scope: "project:write project:support" };
     const html = await (await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`, { cookie: alice.cookie })).text();
     expect(html).toContain("Money actions");
-    expect(html).toMatch(/name="support" value="1" checked/);
+    expect(html).toMatch(/name="support" value="1" id="support" checked/);
     const tokenFor = async (choice: Record<string, string>, form: Record<string, string> = {}) => {
       const page = await (await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`, { cookie: alice.cookie })).text();
       const fields = Object.fromEntries([...page.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [m[1]!, m[2]!]));

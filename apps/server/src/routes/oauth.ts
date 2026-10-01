@@ -240,9 +240,11 @@ export function oauthRoutes(deps: Deps) {
     if (a.error) return c.redirect(back(req.redirectUri, { error: "invalid_request", error_description: a.error, state: req.state, iss: publicOrigin(c) }));
     const sid = getCookie(c, SESSION_COOKIE);
     const user = await sessionUser(db, sid, deps.now());
-    if (!user) return c.html(page(`Sign in to connect ${req.client.name}`, signInForm(req.client.name)));
+    // Account pages (forgot password, new project) live on the dashboard host, which is not always this host.
+    const dash = (deps.publicUrl ?? publicOrigin(c)).replace(/\/+$/, "");
+    if (!user) return c.html(page(`Sign in to connect ${req.client.name}`, signInForm(req.client.name, dash)));
     const projects = await projectsForUser(db, user.id);
-    if (!projects.length) return c.html(page("No project yet", "<p>Create a project in the RevenueDot dashboard first, then connect again.</p>"));
+    if (!projects.length) return c.html(page("No project yet", `<p>Create a project in the RevenueDot dashboard first, then come back to ${esc(req.client.name)} and connect again.</p><div class="row"><a class="btn" href="${esc(dash)}/projects/new" target="_blank" rel="noopener">Create a project</a></div>`));
     const q = c.req.query();
     const hidden = ["client_id", "redirect_uri", "state", "scope", "resource", "code_challenge", "code_challenge_method", "response_type"]
       .filter((k) => q[k] !== undefined).map((k) => `<input type="hidden" name="${k}" value="${esc(q[k]!)}">`).join("");
@@ -259,11 +261,18 @@ export function oauthRoutes(deps: Deps) {
           <label class="opt"><input type="radio" name="access" value="project:read"${req.level === "project:read" ? " checked" : ""}> Read only</label>
         </fieldset>
         <fieldset><legend>Money actions</legend>
-          <label class="opt"><input type="checkbox" name="support" value="1"${req.support ? " checked" : ""}> Also allow cancelling, refunding and extending subscriptions, and Test Store purchases (needs "Read and change")</label>
+          <label class="opt"><input type="checkbox" name="support" value="1" id="support"${req.support ? " checked" : ""}${req.level === "project:read" ? " disabled" : ""}> Also allow cancelling, refunding and extending subscriptions, and Test Store purchases (needs "Read and change")</label>
         </fieldset>
         <p class="muted">You will return to ${esc(redirectHost)}. Revoke access any time under API keys in the dashboard.</p>
         <div class="row"><button name="decision" value="deny" class="secondary">Cancel</button><button name="decision" value="allow">Allow access</button></div>
-      </form>`;
+      </form>
+      <script>
+        // Money actions need "Read and change"; the checkbox follows the access choice (the server enforces it too).
+        const box = document.getElementById("support");
+        const sync = () => { const ro = document.querySelector('input[name=access][value="project:read"]').checked; box.disabled = ro; if (ro) box.checked = false; };
+        for (const r of document.querySelectorAll("input[name=access]")) r.addEventListener("change", sync);
+        sync();
+      </script>`;
     return c.html(page(`Connect ${req.client.name} to RevenueDot`, body));
   });
 
@@ -334,44 +343,61 @@ export function oauthRoutes(deps: Deps) {
  * /auth/config, so self-hosted servers that closed sign-up show only the sign-in form). Either one reloads this same URL,
  * which now has a session, so they land on the consent screen for the app that sent them.
  */
-function signInForm(clientName: string) {
+function signInForm(clientName: string, dash: string) {
   return `
     <p>Sign in or create a RevenueDot account to connect ${esc(clientName)}.</p>
-    <div class="tabs" role="tablist"><button type="button" id="tab-signin" class="tab on" role="tab">Sign in</button><button type="button" id="tab-signup" class="tab" role="tab" hidden>Create account</button></div>
-    <form id="signin">
+    <div class="tabs" role="tablist" aria-label="Account">
+      <button type="button" id="tab-signin" class="tab on" role="tab" aria-selected="true" aria-controls="signin">Sign in</button>
+      <button type="button" id="tab-signup" class="tab" role="tab" aria-selected="false" aria-controls="signup" hidden>Create account</button>
+    </div>
+    <form id="signin" role="tabpanel" aria-labelledby="tab-signin">
       <label>Email<input name="email" type="email" autocomplete="email" required></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-      <p class="muted"><a href="/forgot-password" target="_blank" rel="noopener">Forgot your password?</a></p>
-      <p id="err-signin" class="err" hidden></p>
+      <p class="muted"><a id="forgot" href="${esc(dash)}/forgot-password" target="_blank" rel="noopener">Forgot your password?</a> It opens in a new tab; come back to this tab when you are done.</p>
+      <p id="err-signin" class="err" role="alert" hidden></p>
       <div class="row"><button type="submit">Sign in</button></div>
     </form>
-    <form id="signup" hidden>
+    <form id="signup" role="tabpanel" aria-labelledby="tab-signup" hidden>
       <label>Email<input name="email" type="email" autocomplete="email" required></label>
       <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
-      <p class="muted">At least 8 characters. We email you a link to confirm the address. By creating an account you agree to the <a href="https://revenuedot.app/legal/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://revenuedot.app/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>
-      <p id="err-signup" class="err" hidden></p>
+      <p class="muted">At least 8 characters. We create a project called "My project" (rename it any time) and email you a link to confirm the address. By creating an account you agree to the <a href="https://revenuedot.app/legal/terms" target="_blank" rel="noopener">Terms</a> and <a href="https://revenuedot.app/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>
+      <p id="err-signup" class="err" role="alert" hidden></p>
       <div class="row"><button type="submit">Create account</button></div>
     </form>
     <script>
       const show = (which) => {
         for (const id of ["signin", "signup"]) {
           document.getElementById(id).hidden = id !== which;
-          document.getElementById("tab-" + id).classList.toggle("on", id === which);
+          const tab = document.getElementById("tab-" + id);
+          tab.classList.toggle("on", id === which);
+          tab.setAttribute("aria-selected", String(id === which));
         }
       };
       document.getElementById("tab-signin").onclick = () => show("signin");
       document.getElementById("tab-signup").onclick = () => show("signup");
       fetch("/auth/config").then((r) => r.json()).then((c) => { if (c.signup === "open") document.getElementById("tab-signup").hidden = false; }).catch(() => {});
+      // The reset page gets the typed email, and this tab picks the new session up when the person comes back to it.
+      const forgot = document.getElementById("forgot");
+      forgot.addEventListener("click", () => {
+        const email = document.querySelector("#signin input[name=email]").value.trim();
+        forgot.href = ${JSON.stringify(`${dash}/forgot-password`).replace(/</g, "\\u003c")} + (email ? "?email=" + encodeURIComponent(email) : "");
+      });
+      window.addEventListener("focus", () => { fetch("/auth/me").then((r) => { if (r.ok) location.reload(); }).catch(() => {}); });
       const submit = (id, path, body) => document.getElementById(id).addEventListener("submit", async (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
         const btn = e.target.querySelector("button[type=submit]");
-        btn.disabled = true;
-        const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body(f)) });
-        if (res.ok) return location.reload();
-        btn.disabled = false;
         const err = document.getElementById("err-" + id);
-        err.textContent = (await res.json().catch(() => ({}))).message || "That did not work. Try again.";
+        btn.disabled = true;
+        err.hidden = true;
+        try {
+          const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body(f)) });
+          if (res.ok) return location.reload();
+          err.textContent = (await res.json().catch(() => ({}))).message || "That did not work. Try again.";
+        } catch {
+          err.textContent = "Could not reach RevenueDot. Check your connection and try again.";
+        }
+        btn.disabled = false;
         err.hidden = false;
       });
       submit("signin", "/auth/login", (f) => ({ email: f.get("email"), password: f.get("password") }));
@@ -379,19 +405,24 @@ function signInForm(clientName: string) {
     </script>`;
 }
 
+/** The RevenueDot mark, the same as the dashboard's. */
+const MARK = `<svg class="mark" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="RevenueDot"><rect width="32" height="32" fill="#0A0A0A"/><g transform="translate(4.4 4) scale(.75)"><path d="M8.5 25.5V6.5h7.2a5.5 5.5 0 010 11H8.5M14.6 17.5l2.2 2.6" fill="none" stroke="#FAFAFA" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="23.6" r="3.2" fill="#F7B500"/></g></svg>`;
+
 function page(title: string, body: string) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><meta name="referrer" content="no-referrer">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap">
 <style>
 :root{--bg:#f7f7f8;--card:#fff;--fg:#111;--muted:#666;--line:#e3e3e6;--accent:#111;--accent-fg:#fff;--err:#b42318}
 @media (prefers-color-scheme:dark){:root{--bg:#0e0e10;--card:#18181b;--fg:#f2f2f3;--muted:#a0a0a8;--line:#2c2c31;--accent:#f2f2f3;--accent-fg:#111;--err:#f97066}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 Manrope,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px}
 main{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;max-width:440px;width:100%}
-h1{font-size:19px;margin:0 0 12px}label{display:block;margin:14px 0 4px;font-weight:500}label.opt{font-weight:400;display:flex;gap:8px;align-items:flex-start;margin:8px 0}
-input[type=email],input[type=password],select{display:block;width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+h1{font-size:19px;margin:0 0 12px}.mark{display:block;margin:0 0 16px}a.btn{display:inline-block;text-decoration:none;padding:9px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg)}label{display:block;margin:14px 0 4px;font-weight:500}label.opt{font-weight:400;display:flex;gap:8px;align-items:flex-start;margin:8px 0}
+input:disabled+*,label:has(input:disabled){opacity:.55}input[type=email],input[type=password],select{display:block;width:100%;margin-top:6px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
 fieldset{border:0;padding:0;margin:14px 0 0}legend{font-weight:500;padding:0}.muted{color:var(--muted);font-size:13px}.err{color:var(--err)}
 .row{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}button{font:inherit;padding:9px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer}
 button.secondary{background:transparent;color:var(--fg);border-color:var(--line)}
 .tabs{display:flex;gap:6px;margin:12px 0 0}.tab{background:transparent;color:var(--muted);border:1px solid var(--line);padding:6px 12px}.tab.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}[hidden]{display:none!important}a{color:inherit}
-</style></head><body><main><h1>${esc(title)}</h1>${body}</main></body></html>`;
+</style></head><body><main>${MARK}<h1>${esc(title)}</h1>${body}</main></body></html>`;
 }

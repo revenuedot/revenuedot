@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import type { Me } from "../components/Shell";
+import { useMe, type Me } from "../components/Shell";
 import { Mark } from "../components/icons";
 
 export function AuthPage({ mode }: { mode: "login" | "signup" }) {
@@ -19,6 +19,11 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   // Self-hosted servers take only their owner's account unless REVENUEDOT_ALLOW_SIGNUP=true.
   const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ edition: string; signup: "open" | "closed" }>("/auth/config"), retry: false });
   const closed = config.data?.signup === "closed";
+  const cloud = config.data?.edition === "cloud";
+  const me = useMe();
+  useEffect(() => { document.title = `${signup ? "Create your account" : "Sign in"} · RevenueDot`; }, [signup]);
+  // Keeps the destination when people switch between sign in, sign up and forgot password.
+  const withNext = (path: string) => (next ? `${path}${path.includes("?") ? "&" : "?"}next=${encodeURIComponent(next)}` : path);
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null); setBusy(true);
@@ -30,6 +35,8 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally { setBusy(false); }
   }
+  // Already signed in: go where they were headed instead of showing the form again.
+  if (me.data) return <Navigate to={next ?? (me.data.projects[0] ? `/projects/${me.data.projects[0].id}/overview` : "/projects/new")} replace />;
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
   if (signup && closed) {
     return (
@@ -41,7 +48,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
             <p>This RevenueDot server already has its owner account, and it only lets the owner in.</p>
           </div>
           <p className="section-sub">Ask the owner for access. To let anyone who can reach this page create an account, the owner sets <code className="mono">REVENUEDOT_ALLOW_SIGNUP=true</code> in the server's <code className="mono">.env</code> and restarts it.</p>
-          <Link className="btn btn-dark btn-lg" to="/login">Sign in</Link>
+          <Link className="btn btn-dark btn-lg" to={withNext("/login")}>Sign in</Link>
         </section>
       </main>
     );
@@ -52,15 +59,16 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
         <Mark size={36} />
         <div>
           <h1>{signup ? "Create your account" : "Sign in to RevenueDot"}</h1>
-          <p>{signup ? "Subscriptions and in-app purchases for your apps. Free to self-host." : "Welcome back."}</p>
+          <p>{signup ? (cloud ? "Subscriptions and in-app purchases for your apps. Free up to $10,000 a month in tracked revenue." : "Subscriptions and in-app purchases for your apps.") : "Welcome back."}</p>
         </div>
         {signup && <div className="field"><label htmlFor="name">Your name</label><input id="name" className="input" autoComplete="name" value={form.name} onChange={set("name")} /></div>}
         <div className="field"><label htmlFor="email">Work email</label><input id="email" className="input" type="email" autoComplete="email" required value={form.email} onChange={set("email")} /></div>
-        <div className="field"><div className="label-row"><label htmlFor="password">Password</label>{!signup && <Link to={`/forgot-password${form.email ? `?email=${encodeURIComponent(form.email)}` : ""}`} className="label-link">Forgot password?</Link>}</div><input id="password" className="input" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={8} value={form.password} onChange={set("password")} />{signup && <span className="hint">At least 8 characters.</span>}</div>
+        <div className="field"><div className="label-row"><label htmlFor="password">Password</label>{!signup && <Link to={withNext(`/forgot-password${form.email ? `?email=${encodeURIComponent(form.email)}` : ""}`)} className="label-link">Forgot password?</Link>}</div><input id="password" className="input" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={8} value={form.password} onChange={set("password")} />{signup && <span className="hint">At least 8 characters.</span>}</div>
         {signup && <div className="field"><label htmlFor="project">First project</label><input id="project" className="input" placeholder="e.g. Scanner" value={form.project_name} onChange={set("project_name")} /><span className="hint">A project holds your apps, products and customers.</span></div>}
         {error && <div className="banner err" role="alert">{error}</div>}
+        {signup && cloud && <p className="hint">We email you a link to confirm the address. By creating an account you agree to the <a href="https://revenuedot.app/legal/terms" target="_blank" rel="noopener" style={{ textDecoration: "underline" }}>Terms</a> and <a href="https://revenuedot.app/legal/privacy" target="_blank" rel="noopener" style={{ textDecoration: "underline" }}>Privacy Policy</a>.</p>}
         <button className="btn btn-dark btn-lg" type="submit" disabled={busy}>{busy ? "Please wait…" : signup ? "Create account" : "Sign in"}</button>
-        <p>{signup ? <>Already have an account? <Link to="/login" style={{ textDecoration: "underline" }}>Sign in</Link></> : closed ? "Sign-up is closed on this server." : <>New to RevenueDot? <Link to="/signup" style={{ textDecoration: "underline" }}>Create an account</Link></>}</p>
+        <p>{signup ? <>Already have an account? <Link to={withNext("/login")} style={{ textDecoration: "underline" }}>Sign in</Link></> : closed ? "Sign-up is closed on this server." : <>New to RevenueDot? <Link to={withNext("/signup")} style={{ textDecoration: "underline" }}>Create an account</Link></>}</p>
       </form>
     </main>
   );

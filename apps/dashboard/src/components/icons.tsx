@@ -27,6 +27,7 @@ const P: Record<string, ReactNode> = {
   plus: <path d="M8 3v10M3 8h10" />,
   copy: <><rect x="5" y="5" width="8.5" height="8.5" /><path d="M3 10.5V2.5h8" /></>,
   close: <path d="M4 4l8 8M12 4l-8 8" />,
+  menu: <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />,
   trash: <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 9h6l.5-9" />,
   logout: <path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H6.5" />,
   arrow: <path d="M3 8h10M9 4l4 4-4 4" />,
