@@ -29,6 +29,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   "lifecycle-tools": () => import("./lifecycle-tools.ts"),
   integrations: () => import("./integrations.ts"),
   "ads-rewards": () => import("./ads-rewards.ts"),
+  stores: () => import("./stores.ts"),
   importer: () => import("./importer.ts"),
   "dashboard-ui": () => import("./dashboard-ui.ts"),
   assistant: () => import("./assistant.ts"),

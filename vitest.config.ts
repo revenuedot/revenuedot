@@ -9,5 +9,7 @@ export default defineConfig({
     testTimeout: realPg ? 180_000 : 30_000,
     hookTimeout: realPg ? 180_000 : 10_000,
     globalSetup: ["./packages/contract/src/pg-global-setup.ts"],
+    // REVENUEDOT_TEST_REQUEST_LOG=<file> records the routes each test calls (route coverage report).
+    setupFiles: ["./packages/contract/src/request-log-setup.ts"],
   },
 });

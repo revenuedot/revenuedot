@@ -12,6 +12,7 @@ import type { Journey } from "./run.ts";
 import { until } from "./lib/check.ts";
 import { type Ctx, eventsOf, sdkClient, signUp, standardCatalog } from "./lib/context.ts";
 import { ROOT } from "./lib/stack.ts";
+import { CHARTS } from "../../../packages/core/src/charts/catalog.ts";
 
 const fixture = (name: string) => JSON.parse(readFileSync(join(ROOT, `packages/contract/fixtures/webhooks/${name}.json`), "utf8")).event as Record<string, unknown>;
 /** As packages/contract/test/webhook-payloads.test.ts: keys RevenueCat sends that RevenueDot cannot have (Billing metadata) or only for experiments. */
@@ -132,6 +133,18 @@ const journey: Journey = {
     const m = (id: string) => overview.metrics.find((x: any) => x.id === id)?.value;
     c.eq("overview (sandbox): active trials = 1 (trialer)", m("active_trials"), 1);
     c.eq("overview (sandbox): active subscriptions = buyer, converter, renewer, canceller, grace", m("active_subscriptions"), 5);
+
+    c.begin(`every chart (${CHARTS.length}) answers on this project's data`);
+    const broken: unknown[] = [];
+    for (const def of CHARTS) {
+      const r = await dev.v2r("GET", `/charts/${def.name}?environment=sandbox&resolution=month&start_date=${start}&end_date=${end}`);
+      const o = await dev.v2r("GET", `/charts/${def.name}/options`);
+      // Cohort tables (retention, cohort and prediction explorers) describe their columns as `periods`, the rest as `measures`.
+      const columns = def.shape === "cohort_table" ? r.body?.periods : r.body?.measures;
+      const okShape = r.status === 200 && r.body?.object === "chart_data" && Array.isArray(columns) && columns.length > 0 && Array.isArray(r.body?.values) && r.body.values.every((v: any) => typeof (def.shape === "cohort_table" ? v.period : v.measure) === "number" && (v.value === null || Number.isFinite(Number(v.value))));
+      if (!okShape || o.status !== 200) broken.push({ chart: def.name, shape: def.shape, status: r.status, options: o.status, keys: Object.keys(r.body ?? {}), columns: Array.isArray(columns) ? columns.length : columns, bad: (r.body?.values ?? []).find((v: any) => !(typeof (def.shape === "cohort_table" ? v.period : v.measure) === "number" && (v.value === null || Number.isFinite(Number(v.value))))) });
+    }
+    c.check("every chart and its options answer 200 with columns and numeric values", broken.length === 0, broken);
   },
 };
 export default journey;
