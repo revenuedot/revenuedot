@@ -46,7 +46,8 @@ async function main() {
   const loaded = await Promise.all((names.length ? names : Object.keys(JOURNEYS)).map(async (n) => (await JOURNEYS[n]!()).default));
   const selected = loaded.filter((j) => names.length || all || !j.heavy);
 
-  const stamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  // Unique per run: parallel runs on other port ranges may start in the same second.
+  const stamp = `${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}${PORTS.server}`;
   const runDir = join(BUILD, stamp);
   mkdirSync(runDir, { recursive: true });
   if (selected.some((j) => j.needsDashboard) && !existsSync(join(ROOT, "apps/dashboard/dist/index.html"))) {
