@@ -150,7 +150,9 @@ describe("members and roles", () => {
     const promoted = await browser.call("POST", `${P}/collaborators/${dev.userId}`, { role: "admin" });
     expect(promoted.body).toMatchObject({ object: "collaborator", id: dev.userId, role: "admin", email: "dev@example.com" });
     expect((await dev.browser.call("POST", `${P}/api_keys`, { name: "now allowed" })).status).toBe(201);
-    // Two admins: the owner can step down, then the last admin cannot.
+    // Two admins: the owner stays an admin until they hand the project over, then can step down; the last admin cannot.
+    expect((await browser.call("POST", `${P}/collaborators/${userId}`, { role: "viewer" })).status).toBe(422);
+    expect((await browser.call("POST", `${P}/actions/transfer_ownership`, { user_id: dev.userId })).status).toBe(200);
     expect((await browser.call("POST", `${P}/collaborators/${userId}`, { role: "viewer" })).status).toBe(200);
     const last = await dev.browser.call("POST", `${P}/collaborators/${dev.userId}`, { role: "developer" });
     expect(last.status).toBe(400);
