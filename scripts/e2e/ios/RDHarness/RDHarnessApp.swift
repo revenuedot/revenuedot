@@ -29,6 +29,8 @@ struct RDHarnessApp: App {
 final class Harness: ObservableObject {
     @Published var appUserID = Purchases.shared.appUserID
     @Published var packages: [Package] = []
+    /// The "editor" offering, whose paywall was built with the dashboard editor's operations (run.ts).
+    @Published var editorOffering: Offering?
     @Published var entitlement = "pro: unknown"
     @Published var status = "configured"
     @Published var extras = ""
@@ -50,6 +52,7 @@ final class Harness: ObservableObject {
         await step("offerings") {
             let o = try await Purchases.shared.offerings()
             packages = o.current?.availablePackages ?? []
+            editorOffering = o.all["editor"]
             if packages.isEmpty { throw NSError(domain: "harness", code: 1, userInfo: [NSLocalizedDescriptionKey: "no current offering"]) }
         }
     }
@@ -114,6 +117,7 @@ struct HarnessView: View {
     @StateObject private var h = Harness()
     @State private var loginID = ProcessInfo.processInfo.environment["RD_LOGIN_ID"] ?? "harness_user"
     @State private var showPaywall = false
+    @State private var showEditorPaywall = false
 
     var body: some View {
         // Status and results stay above the list, so the UI test can read them while the list is scrolled.
@@ -141,9 +145,14 @@ struct HarnessView: View {
                 Button("other calls") { Task { await h.others() } }.accessibilityIdentifier("othersButton")
                 // RevenueCatUI renders the current offering's paywall components from RevenueDot (Paywalls V2).
                 Button("show paywall") { showPaywall = true }.accessibilityIdentifier("paywallButton")
+                // The second offering's paywall: built with the editor (timeline, tabs, carousel, countdown, icons, image).
+                Button("show editor paywall") { showEditorPaywall = true }.accessibilityIdentifier("editorPaywallButton")
             }
         }
         }
         .sheet(isPresented: $showPaywall) { PaywallView(displayCloseButton: true) }
+        .sheet(isPresented: $showEditorPaywall) {
+            if let o = h.editorOffering { PaywallView(offering: o, displayCloseButton: true) } else { Text("no editor offering").accessibilityIdentifier("noEditorOffering") }
+        }
     }
 }

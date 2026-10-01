@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { schema, type DB, type PaywallContent } from "@revenuedot/db";
+import { fillLocales, uiLocalizations } from "@revenuedot/core";
 
 /** Paywall content, the default `ui_config` the SDKs expect next to paywall components, and what an offering sends to the SDK. */
 
@@ -18,26 +19,29 @@ export const newContent = (over: Partial<PaywallContent> = {}): PaywallContent =
   exit_offers: null, state_declarations: null, play_store_product_change_mode: null, revision: 1, ...over,
 });
 
-const plural = (unit: string, one: string, other: string, short?: string) => ({
-  [`num_${unit}_zero`]: one, [`num_${unit}_one`]: one, [`num_${unit}_two`]: other, [`num_${unit}_few`]: other, [`num_${unit}_many`]: other, [`num_${unit}_other`]: other, ...(short ? { [`num_${unit}s_short`]: short } : {}),
-});
-
-/** The strings the SDKs use for period and price variables, in the shape a hosted RevenueCat server sends. */
-const EN_US = {
-  annual: "annual", annual_short: "yr", annually: "annually", daily: "daily", day: "day", day_short: "day", free_price: "free", month: "month", month_short: "mo", monthly: "monthly",
-  ...plural("day", "%d day", "%d days", "%dd"), ...plural("month", "%d month", "%d months", "%dmo"), ...plural("week", "%d week", "%d weeks", "%dwk"), ...plural("year", "%d year", "%d years", "%dyr"),
-  percent: "%d%%", week: "week", week_short: "wk", weekly: "weekly", year: "year", year_short: "yr", yearly: "yearly",
-};
-
-/** Top-level `ui_config` of the offerings response. `fonts` maps a font key to the uploaded font, per platform. */
-export function uiConfig(fonts: Record<string, unknown> = {}) {
+/**
+ * Top-level `ui_config` of the offerings response. `fonts` maps a font key to the uploaded font, per platform;
+ * `locales` are the locales the project's published paywalls use, which get the SDK's period and price words
+ * (packages/core/src/paywalls/locales.ts) in their language.
+ */
+export function uiConfig(fonts: Record<string, unknown> = {}, locales: Iterable<string> = []) {
   return {
     app: { colors: {}, fonts },
     custom_variables: {},
-    localizations: { en_US: EN_US },
+    localizations: uiLocalizations(locales),
     variable_config: { function_compatibility_map: {}, variable_compatibility_map: {} },
   };
 }
+
+/** The locales of published paywalls. */
+export const paywallLocales = (rows: Iterable<PaywallRow>) => {
+  const out = new Set<string>();
+  for (const r of rows) for (const l of Object.keys(r.published?.components_localizations ?? {})) out.add(l);
+  return out;
+};
+
+/** A published version's strings with every locale completed from the default locale (the SDK shows "" for a missing key). */
+export const servedLocalizations = (v: PaywallContent) => fillLocales(v.components_localizations ?? {}, v.default_locale ?? "en_US");
 
 /** `paywall_components` for one offering of the SDK offerings response: the published version only. */
 export function sdkPaywallComponents(p: PaywallRow, assetBaseUrl: string) {
@@ -47,7 +51,7 @@ export function sdkPaywallComponents(p: PaywallRow, assetBaseUrl: string) {
     id: p.id, template_name: "components", asset_base_url: assetBaseUrl, revision: v.revision,
     // Storefronts where prices show without decimals ("$60" not "$60.00"), keyed by store as the SDKs decode it.
     zero_decimal_place_countries: { apple: ["TWN", "KAZ", "MEX", "PHL", "THA"], google: ["TW", "KZ", "MX", "PH", "TH"] },
-    components_config: v.components_config, components_localizations: v.components_localizations ?? {}, default_locale: v.default_locale ?? "en_US",
+    components_config: v.components_config, components_localizations: servedLocalizations(v), default_locale: v.default_locale ?? "en_US",
     ...(v.exit_offers ? { exit_offers: v.exit_offers } : {}), automatically_scale_font_size: v.automatically_scale_font_size,
     ...(v.state_declarations ? { state_declarations: v.state_declarations } : {}),
   };
@@ -96,6 +100,21 @@ export function imageSize(b: Uint8Array): { width: number | null; height: number
     if (kind === "VP8L") { const bits = dv.getUint32(21, true); return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 }; }
   }
   return none;
+}
+
+/**
+ * Whether the bytes are an image of the declared type, by their magic bytes. AVIF, HEIC and HEIF share the ISO media
+ * container (`ftyp` box), whose brands vary by encoder, so any of them matches any of the three.
+ */
+export function imageMatches(b: Uint8Array, contentType: string): boolean {
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
+  switch (contentType) {
+    case "image/png": return b.length > 8 && b[0] === 0x89 && ascii(1, 4) === "PNG";
+    case "image/jpeg": return b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    case "image/webp": return b.length > 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
+    case "image/avif": case "image/heic": case "image/heif": return b.length > 12 && ascii(4, 8) === "ftyp";
+    default: return false;
+  }
 }
 
 /** PostScript name, family, style and weight of a TrueType or OpenType font, read from its `name` and `OS/2` tables. */

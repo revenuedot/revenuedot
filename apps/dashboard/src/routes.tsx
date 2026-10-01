@@ -18,7 +18,9 @@ import { PartnerIntegrationPage } from "./pages/setup/PartnerIntegration";
 import { ProjectSettingsPage } from "./pages/setup/ProjectSettings";
 import { VirtualCurrenciesPage } from "./pages/catalog/VirtualCurrencies";
 import { CustomerCenterPage } from "./pages/lifecycle/CustomerCenter";
-import { PaywallEditor, PaywallsPage } from "./pages/paywalls/Paywalls";
+import { PaywallsPage } from "./pages/paywalls/Paywalls";
+import { PaywallEditor } from "./pages/paywalls/Editor";
+import { GalleryPage } from "./pages/paywalls/Gallery";
 import { ExperimentDetail, ExperimentsPage, TargetingPage } from "./pages/targeting/Targeting";
 import { ChartsPage } from "./pages/charts/Charts";
 
@@ -40,6 +42,7 @@ export const routes = [
   <Route key="catalog-currencies" path="/projects/:projectId/product-catalog/virtual-currencies" element={<VirtualCurrenciesPage />} />,
   <Route key="customer-center" path="/projects/:projectId/lifecycle/customer-center" element={<CustomerCenterPage />} />,
   <Route key="paywalls" path="/projects/:projectId/paywalls" element={<PaywallsPage />} />,
+  <Route key="paywall-templates" path="/projects/:projectId/paywalls/templates" element={<GalleryPage />} />,
   <Route key="paywall" path="/projects/:projectId/paywalls/:paywallId" element={<PaywallEditor />} />,
   <Route key="targeting" path="/projects/:projectId/targeting" element={<TargetingPage />} />,
   <Route key="experiments" path="/projects/:projectId/experiments" element={<ExperimentsPage />} />,

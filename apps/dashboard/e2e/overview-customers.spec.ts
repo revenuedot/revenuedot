@@ -94,7 +94,8 @@ test("overview: live cards match the API, periods and sandbox switch, transactio
   // Setup health: live App Store notification time and the missing key, which links to the app.
   const health = page.getByRole("region", { name: "Setup health" });
   await expect(health).toContainText("App Store notifications");
-  await expect(health).toContainText(/Last received \d+s ago/);
+  // Seeded when the e2e server started; earlier specs can take over a minute.
+  await expect(health).toContainText(/Last received (\d+s|\d+ min) ago/);
   await expect(health).toContainText("Scanner iOS: In-app purchase key missing");
   await expect(health.getByRole("link", { name: "Fix →" })).toHaveAttribute("href", new RegExp(`/projects/${pid}/apps/`));
 

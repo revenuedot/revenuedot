@@ -564,6 +564,18 @@ export const mediaAssets = pgTable("media_assets", {
   createdAt: created(),
 }, (t) => [index("media_assets_project").on(t.projectId), uniqueIndex("media_assets_object").on(t.projectId, t.objectName)]);
 
+/** A chart view saved from the Charts page: the chart and its range, resolution, segment, filters, selectors, environment and compare switch. */
+export const savedCharts = pgTable("saved_charts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  chartName: text("chart_name").notNull(),
+  view: jsonb("view").$type<Record<string, unknown>>().notNull().default({}),
+  createdBy: text("created_by"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("saved_charts_project").on(t.projectId)]);
+
 /** A saved set of conditions on customers (RevenueCat's audience rules: groups OR-ed, conditions in a group AND-ed). */
 export const audiences = pgTable("audiences", {
   id: text("id").primaryKey(),
