@@ -4,10 +4,10 @@
 // caps hold under concurrency, and the model sees a bounded transcript.
 import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import type { UIMessage, UIMessageChunk } from "ai";
+import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai";
 import { schema } from "@revenuedot/db";
 import { assistantServer, textOf, userMessage } from "./assistant-helpers.js";
-import { buildToolSet, loadAssistantContext, MODEL_MESSAGES, modelWindow, runAssistantTurn } from "../src/services/assistant/agent.js";
+import { attachApprovalSignatures, buildToolSet, captureApprovalSignatures, loadAssistantContext, MODEL_MESSAGES, modelWindow, runAssistantTurn, type IssuedApproval } from "../src/services/assistant/agent.js";
 import { inProcessClient, RevenueDotApiError } from "../src/services/assistant/client.js";
 import { DEFAULT_CAPS, startTurn, usageToday } from "../src/services/assistant/limits.js";
 import { toolsByName } from "../src/services/assistant/tools.js";
@@ -107,6 +107,42 @@ describe("an approval runs once", () => {
     await set["grant-customer-entitlement"]!.execute(args, { toolCallId: "call_1", messages: [] });
     await expect(set["grant-customer-entitlement"]!.execute(args, { toolCallId: "call_1", messages: [] })).rejects.toThrow(/already approved/);
     await expect(set["grant-customer-entitlement"]!.execute(args, { messages: [] })).rejects.toThrow(/already approved/);
+    expect(await grants(s)).toBe(1);
+  });
+});
+
+describe("Durable Object approvals", () => {
+  it("the stored answer has no signature; the one the server recorded is put back, and only for the approval it issued", async () => {
+    const s = await assistantServer();
+    const cid = await s.newConversation();
+    const ctx = (await loadAssistantContext(s.deps, s.model, s.admin.userId, s.pid, cid))!;
+    const user = { id: "u1", role: "user", parts: [{ type: "text", text: "grant pro to do_user" }] } as UIMessage;
+    const first = await runAssistantTurn(ctx, [user], { clientTranscript: true });
+    if ("refused" in first) throw new Error(first.refused);
+    const issued = new Map<string, IssuedApproval>();
+    const ui = captureApprovalSignatures(first.result.toUIMessageStream() as ReadableStream<UIMessageChunk>, async (id, a) => { issued.set(id, a); });
+    let answer: UIMessage | undefined;
+    for await (const m of readUIMessageStream({ stream: ui })) answer = m;
+    expect(issued.size).toBe(1);
+    // As agents 0.24 stores it: the approval keeps only its id. Then the user approves.
+    const stored = { ...answer!, parts: answer!.parts.map((p) => {
+      const t = p as { approval?: { id: string } };
+      return t.approval ? { ...p, state: "approval-responded", approval: { id: t.approval.id, approved: true } } : p;
+    }) } as UIMessage;
+    const run = async (messages: UIMessage[]) => {
+      const turn = await runAssistantTurn(ctx, messages, { clientTranscript: true });
+      if ("refused" in turn) throw new Error(turn.refused);
+      return drain(turn.result.toUIMessageStream({ onError: (e: unknown) => (e instanceof Error ? e.message : String(e)) } as never) as ReadableStream<UIMessageChunk>);
+    };
+    // Without the signature the approval is refused.
+    expect((await run([user, stored])).find((c) => c.type === "error")).toMatchObject({ errorText: expect.stringMatching(/missing signature/) });
+    // A recorded signature for another approval id is not used.
+    const wrong = await attachApprovalSignatures([user, stored], async (id) => ({ ...issued.get(id)!, approvalId: "other" }));
+    expect((await run(wrong)).find((c) => c.type === "error")).toBeTruthy();
+    expect(await grants(s)).toBe(0);
+    // With the server's record the write runs, once.
+    const signed = await attachApprovalSignatures([user, stored], async (id) => issued.get(id));
+    expect((await run(signed)).some((c) => c.type === "tool-output-available")).toBe(true);
     expect(await grants(s)).toBe(1);
   });
 });

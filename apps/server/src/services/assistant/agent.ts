@@ -1,4 +1,4 @@
-import { convertToModelMessages, isStepCount, streamText, tool, type ModelMessage, type StreamTextResult, type ToolSet, type UIMessage } from "ai";
+import { convertToModelMessages, isStepCount, streamText, tool, type ModelMessage, type StreamTextResult, type ToolSet, type UIMessage, type UIMessageChunk } from "ai";
 import { z } from "zod/v4";
 import { and, eq } from "drizzle-orm";
 import { parseStoreKitConfig, StoreKitParseError } from "@revenuedot/core";
@@ -267,4 +267,44 @@ export const toolNamesFor = (s: AssistantScope) => allowedTools(ALL_TOOLS, s).ma
 export function titleFrom(text: string): string {
   const one = text.replace(/\s+/g, " ").trim();
   return one.length > 60 ? `${one.slice(0, 57).trimEnd()}…` : one || "New conversation";
+}
+
+/** What the server keeps of an approval request it issued: the approval id and the AI SDK's HMAC signature. */
+export interface IssuedApproval { approvalId: string; signature: string }
+
+/**
+ * Passes a UI message stream through, handing every signed approval request to `save` first. The Durable Object builds
+ * its stored copy of an answer itself and keeps no signature (agents 0.24), so the server records them here.
+ */
+export function captureApprovalSignatures(stream: ReadableStream<UIMessageChunk>, save: (toolCallId: string, a: IssuedApproval) => Promise<void>): ReadableStream<UIMessageChunk> {
+  return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+    async transform(chunk, c) {
+      const ch = chunk as { type: string; toolCallId?: string; approvalId?: string; signature?: string };
+      if (ch.type === "tool-approval-request" && ch.toolCallId && ch.approvalId && ch.signature) await save(ch.toolCallId, { approvalId: ch.approvalId, signature: ch.signature });
+      c.enqueue(chunk);
+    },
+  }));
+}
+
+/**
+ * Puts the server's recorded signature back on approval parts that lack one (the Durable Object's stored copy), when
+ * the approval id is the one the server issued for that tool call. The signature still covers the tool's input, so a
+ * changed input fails verification.
+ */
+export async function attachApprovalSignatures(messages: UIMessage[], load: (toolCallId: string) => Promise<IssuedApproval | undefined>): Promise<UIMessage[]> {
+  const out: UIMessage[] = [];
+  for (const m of messages) {
+    if (m?.role !== "assistant" || !Array.isArray(m.parts)) { out.push(m); continue; }
+    const parts = [];
+    for (const p of m.parts) {
+      const t = p as { toolCallId?: unknown; approval?: { id?: unknown; signature?: unknown } };
+      if (typeof t.toolCallId === "string" && t.approval && typeof t.approval === "object" && typeof t.approval.id === "string" && t.approval.signature == null) {
+        const issued = await load(t.toolCallId);
+        if (issued && issued.approvalId === t.approval.id) { parts.push({ ...p, approval: { ...t.approval, signature: issued.signature } } as typeof p); continue; }
+      }
+      parts.push(p);
+    }
+    out.push({ ...m, parts });
+  }
+  return out;
 }

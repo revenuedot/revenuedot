@@ -8,7 +8,8 @@ import { routeAgentRequest } from "agents";
 import { and, eq } from "drizzle-orm";
 import { connectPostgres, schema, type DB } from "@revenuedot/db/worker";
 import { createApp } from "./app.js";
-import { loadAssistantContext, runAssistantTurn, titleFrom } from "./services/assistant/agent.js";
+import { createUIMessageStreamResponse, type UIMessageChunk } from "ai";
+import { attachApprovalSignatures, captureApprovalSignatures, loadAssistantContext, runAssistantTurn, titleFrom, type IssuedApproval } from "./services/assistant/agent.js";
 import { touchConversation } from "./services/assistant/store.js";
 import { refusalResponse } from "./routes/v2/assistant.js";
 import { SESSION_COOKIE, sessionUser } from "./services/sessions.js";
@@ -97,15 +98,23 @@ export class AssistantAgent extends AIChatAgent<Env> {
     const app = createApp(deps);
     const withDispatch = { ...deps, dispatch: (req: Request) => Promise.resolve(app.fetch(req)) };
     if (!deps.assistant) return refusalResponse("RevenueDot AI has no model on this server.");
+    // A deleted conversation (its row gone, the object not yet wiped) answers nothing more.
+    const [row] = await conn.db.select({ id: schema.aiConversations.id }).from(schema.aiConversations)
+      .where(and(eq(schema.aiConversations.id, this.name), eq(schema.aiConversations.userId, owner.userId), eq(schema.aiConversations.projectId, owner.projectId))).limit(1);
+    if (!row) return refusalResponse("This conversation was deleted.");
     const ctx = await loadAssistantContext(withDispatch, deps.assistant, owner.userId, owner.projectId, this.name);
     if (!ctx) return refusalResponse("You are no longer a member of this project.");
     // The transcript here is what the browser sent; only signed approvals are trusted, and each runs once (agent.ts).
-    const turn = await runAssistantTurn(ctx, this.messages, { abortSignal: options?.abortSignal, clientTranscript: true });
+    // This object's stored copy of an answer has no approval signatures, so the ones this server issued are put back.
+    const storage = this.ctx.storage;
+    const messages = await attachApprovalSignatures(this.messages, (id) => storage.get<IssuedApproval>(`approval:${id}`));
+    const turn = await runAssistantTurn(ctx, messages, { abortSignal: options?.abortSignal, clientTranscript: true });
     if ("refused" in turn) return refusalResponse(turn.refused);
     const users = this.messages.filter((x) => x.role === "user");
     const first = users.length === 1 && !options?.continuation ? users[0]!.parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join(" ") : "";
     await this.touch(first ? titleFrom(first) : undefined);
-    return turn.result.toUIMessageStreamResponse({ sendReasoning: false, onError: (e: unknown) => (e instanceof Error ? e.message : String(e)) } as never);
+    const ui = turn.result.toUIMessageStream({ sendReasoning: false, onError: (e: unknown) => (e instanceof Error ? e.message : String(e)) } as never) as ReadableStream<UIMessageChunk>;
+    return createUIMessageStreamResponse({ stream: captureApprovalSignatures(ui, (id, a) => storage.put(`approval:${id}`, a)) });
   }
 
   /** After every turn (completed, failed or stopped): bump the conversation in the history rail, then close Postgres. */
