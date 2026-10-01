@@ -24,7 +24,7 @@ describe("diffSubscription RENEWAL", () => {
 
 describe("diffSubscription refunds", () => {
   it("a refund taken back in the same period is REFUND_REVERSED", () => {
-    const prev = sub({ periodType: "normal", refundedAt: new Date(+base + day), expiresDate: new Date(+base + day) });
+    const prev = sub({ periodType: "normal", refundedAt: new Date(+base + day) });
     const next = sub({ periodType: "normal" });
     expect(diffSubscription(prev, next, new Date(+base + 2 * day))).toEqual([{ type: "REFUND_REVERSED" }]);
   });
