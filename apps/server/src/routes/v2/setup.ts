@@ -8,7 +8,7 @@ import { AppleApiClientError } from "../../stores/apple/api.js";
 import { appleApiFor } from "../../stores/apple/index.js";
 import { serviceAccountOf } from "../../stores/google/api.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
-import { appleKeyConfigured, googleKeyConfigured, projectShape } from "./shapes.js";
+import { amazonKeyConfigured, appleKeyConfigured, googleKeyConfigured, notificationStoreOf, projectShape, stripeKeyConfigured } from "./shapes.js";
 import { notificationHealth } from "./notification-health.js";
 import { apiRole } from "../../services/members.js";
 import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
@@ -20,7 +20,7 @@ import { checkStoreCredentials, recordCredentialCheck } from "../../services/cre
  *   DELETE /v2/projects/{project_id}                                             delete the project and everything in it (extension; admins, dashboard only)
  *   GET    /v2/projects/{project_id}/collaborators                               RevenueCat's collaborator list
  *   GET    /v2/projects/{project_id}/apps/{app_id}/store_settings                non-secret store setup state (extension)
- *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/verify_credentials    ask Apple or Google whether the credentials work (extension)
+ *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/verify_credentials    ask Apple, Google, Amazon or Stripe whether the credentials work (extension)
  *   POST   /v2/projects/{project_id}/integrations/webhooks/{id}/test             queue a TEST event to one webhook (extension)
  *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/mass_extend           App Store: extend every active subscriber of a product (extension)
  *   GET    /v2/projects/{project_id}/apps/{app_id}/mass_extensions/{request_id}  status of a mass extension (?product_id=&environment=) (extension)
@@ -39,6 +39,8 @@ const Verify = z.object({
   app_store: z.object({ bundle_id: str, subscription_private_key: str, subscription_key_id: str, subscription_key_issuer: str }).optional(),
   mac_app_store: z.object({ bundle_id: str, subscription_private_key: str, subscription_key_id: str, subscription_key_issuer: str }).optional(),
   play_store: z.object({ package_name: str, play_service_account_credentials_json: z.union([z.string().max(20_000), z.record(z.unknown())]).nullable().optional() }).optional(),
+  amazon: z.object({ package_name: str, shared_secret: str }).optional(),
+  stripe: z.object({ stripe_secret_key: str, stripe_account_id: str }).optional(),
 });
 
 const Reason = z.enum(["undeclared", "customer_satisfaction", "other", "service_issue_or_outage"]);
@@ -65,7 +67,12 @@ export function publicOrigin(c: V2Context) {
 }
 
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
-const storeOf = (type: string) => (type === "app_store" || type === "mac_app_store" ? "apple" : type === "play_store" ? "google" : null);
+/** What the dashboard may show about a Stripe key: its mode and last four characters, never the key. */
+const stripeKeyHint = (k: unknown) => {
+  const key = typeof k === "string" ? k.trim() : "";
+  if (!key) return { configured: false, mode: null, kind: null, last4: null };
+  return { configured: true, mode: /_test_/.test(key) ? "test" : "live", kind: key.startsWith("rk_") ? "restricted" : key.startsWith("sk_") ? "secret" : "other", last4: key.slice(-4) };
+};
 
 export function setupRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -123,7 +130,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
   r.get(`${P}/apps/:app_id/store_settings`, scope("project_configuration:apps:read"), async (c) => {
     const a = await findApp(c);
     const cr = a.credentials ?? {};
-    const store = storeOf(a.type);
+    const store = notificationStoreOf(a.type);
     const [last] = await db.select().from(schema.storeNotifications)
       .where(and(eq(schema.storeNotifications.appId, a.id), isNotNull(schema.storeNotifications.forwardStatus)))
       .orderBy(desc(schema.storeNotifications.receivedAt)).limit(1);
@@ -153,7 +160,18 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         shared_secret: { configured: !!s(cr.shared_secret) },
         play_service_account: { configured: googleKeyConfigured(cr), client_email: clientEmail },
         xcode_certificate: { configured: !!s(cr.xcode_certificate) },
+        amazon_shared_secret: { configured: amazonKeyConfigured(cr) },
+        stripe_secret_key: stripeKeyHint(cr.stripe_secret_key),
+        stripe_webhook_secret: { configured: typeof cr.stripe_webhook_secret === "string" && !!cr.stripe_webhook_secret.trim() },
       },
+      // Amazon: the SNS topic notifications must come from (optional).
+      sns_topic_arn: a.type === "amazon" ? s(cr.sns_topic_arn) : null,
+      // Stripe: how purchases first seen in a webhook find their customer, and when a subscription counts.
+      stripe: a.type === "stripe" ? {
+        stripe_account_id: s(cr.stripe_account_id), app_user_id_source: s(cr.app_user_id_source) ?? "metadata",
+        app_user_id_metadata_key: s(cr.app_user_id_metadata_key) ?? "app_user_id", register_on: cr.register_on === "invoice_created" ? "invoice_created" : "invoice_paid",
+        configured: stripeKeyConfigured(cr),
+      } : null,
     });
   });
 
@@ -184,6 +202,14 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         ...a, bundleId: s(over?.package_name) ?? a.bundleId,
         credentials: merged({ play_service_account_credentials_json: json && typeof json === "object" ? JSON.stringify(json) : json }),
       };
+    } else if (a.type === "amazon") {
+      const over = b.amazon;
+      overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
+      app = { ...a, bundleId: s(over?.package_name) ?? a.bundleId, credentials: merged({ shared_secret: over?.shared_secret }) };
+    } else if (a.type === "stripe") {
+      const over = b.stripe;
+      overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
+      app = { ...a, credentials: merged(over) };
     } else {
       throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");
     }

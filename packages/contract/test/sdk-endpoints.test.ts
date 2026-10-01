@@ -205,7 +205,7 @@ describe("stubs the SDK handles as a normal result", () => {
     expect(typeof body.failure_reason).toBe("string");
   });
 
-  it("Amazon receipt details: 7662, like a receipt post for an Amazon app", async () => {
+  it("Amazon receipt details: 7662 for a key that is not an Amazon app's", async () => {
     const res = await h.fetch("/v1/receipts/amazon/amzn1.account.x/hQ8uPyAd/wptg=:3:24", { key: h.ids.androidKey });
     expect(res.status).toBe(400);
     expect(ErrorSchema.parse(await res.json()).code).toBe(7662);

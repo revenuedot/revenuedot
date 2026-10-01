@@ -29,7 +29,24 @@ export function projectShape(p: typeof schema.projects.$inferSelect) {
 const has = (cr: Record<string, unknown>, ...keys: string[]) => keys.every((k) => typeof cr[k] === "string" && (cr[k] as string).length > 0);
 export const appleKeyConfigured = (cr: Record<string, unknown>) => has(cr, "subscription_private_key", "subscription_key_id", "subscription_key_issuer");
 export const googleKeyConfigured = (cr: Record<string, unknown>) => has(cr, "play_service_account_credentials_json");
+export const amazonKeyConfigured = (cr: Record<string, unknown>) => has(cr, "shared_secret");
+export const stripeKeyConfigured = (cr: Record<string, unknown>) => has(cr, "stripe_secret_key");
 const str = (v: unknown) => (typeof v === "string" ? v : null);
+
+/** The store segment of an app's notification URL (`/v1/notifications/{store}/{app_id}`), or null when it has none. */
+export const notificationStoreOf = (type: string) =>
+  type === "app_store" || type === "mac_app_store" ? "apple" : type === "play_store" ? "google" : type === "amazon" ? "amazon" : type === "stripe" ? "stripe" : null;
+
+/** Whether the credentials RevenueDot needs to check purchases are saved. */
+export function storeCredentialsConfigured(type: string, cr: Record<string, unknown>): boolean {
+  switch (notificationStoreOf(type)) {
+    case "apple": return appleKeyConfigured(cr);
+    case "google": return googleKeyConfigured(cr);
+    case "amazon": return amazonKeyConfigured(cr);
+    case "stripe": return stripeKeyConfigured(cr);
+    default: return type === "test_store" || Object.keys(cr).length > 0;
+  }
+}
 
 export function appShape(a: AppRow) {
   const cr = a.credentials ?? {};

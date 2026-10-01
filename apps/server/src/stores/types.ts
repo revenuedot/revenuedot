@@ -70,7 +70,12 @@ export interface ReceiptInput {
   storeUserId: string | null;
 }
 
+/** What a store adapter may look up about chains already stored (Stripe keeps an unpaid renewal's paid period). */
+export interface VerifyExtra {
+  storedPeriod?: (store: Store, storeKey: string) => Promise<{ storeTransactionId: string | null; purchaseDate: Date; price: Price | null } | null>;
+}
+
 export interface StoreAdapter {
   /** Verifies what the device posted and returns every purchase it proves. Throws RCError on invalid receipts. */
-  verify(app: AppRow, input: ReceiptInput, catalog: { productType: (storeId: string) => string | null; productDuration: (storeId: string) => string | null }): Promise<VerifiedPurchase[]>;
+  verify(app: AppRow, input: ReceiptInput, catalog: { productType: (storeId: string) => string | null; productDuration: (storeId: string) => string | null }, extra?: VerifyExtra): Promise<VerifiedPurchase[]>;
 }
