@@ -83,6 +83,23 @@ const journey: Journey = {
     const al2 = await sdk.alias(anonD, known);
     c.check("alias of an anonymous id to an existing id without anonymous ids merges, and its 50 gold moves", al2.status === 200 && (await customerIdOf(anonD)) === (await customerIdOf(known)) && (await balances(known)) === 50, { balance: await balances(known) });
 
+    c.begin("subscriber-token mode (the SDKs' /v1/customer paths) and concurrent spends");
+    const tokenRes = await dev.v2("POST", `/apps/${cat.app.id}/authenticate`, { app_user_id: player });
+    c.check("v2 authenticate issues a one-hour rdat_ token", /^rdat_[0-9a-f]{64}$/.test(tokenRes.access_token) && Math.abs(tokenRes.expires_at - Date.now() - 3600_000) < 60_000, { object: tokenRes.object });
+    const tok = tokenRes.access_token as string;
+    const withToken = (method: string, path: string, json?: unknown, headers: Record<string, string> = {}) => sdk.call(method, path, json, { authorization: `Bearer ${tok}`, ...headers });
+    const viaToken = await withToken("GET", "/v1/customer");
+    const viaId = await sdk.customerInfo(player);
+    c.check("GET /v1/customer with the token answers the player's customer info", viaToken.status === 200 && viaToken.body.subscriber.original_app_user_id === viaId.body.subscriber.original_app_user_id && JSON.stringify(viaToken.body.subscriber.entitlements) === JSON.stringify(viaId.body.subscriber.entitlements), viaToken.status);
+    c.eq("the app key is refused on /v1/customer (7224)", (await sdk.call("GET", "/v1/customer")).body.code, 7224);
+    const spends = await Promise.all(Array.from({ length: 6 }, (_, i) => withToken("POST", "/v1/customer/virtual_currencies/spend", { adjustments: { GLD: 40 }, reference: `level_${i}` })));
+    c.eq("six spends of 40 at once against 200 gold: five succeed, one is refused (422), never below zero", spends.map((r) => r.status).sort(), [200, 200, 200, 200, 200, 422]);
+    c.eq("balance is 0 after the concurrent spends", await balances(player), 0);
+    const spentRows = await ctx.sql`SELECT count(*)::int AS n FROM virtual_currency_transactions WHERE customer_id = ${(await customerIdOf(player))!} AND source = 'sdk'`;
+    c.eq("five spend rows in the ledger", spentRows[0]!.n, 5);
+    const idem = await Promise.all([1, 2].map(() => withToken("POST", "/v1/customer/virtual_currencies/spend", { adjustments: { GLD: 1 } }, { "Idempotency-Key": `idem-${ctx.stamp}` })));
+    c.check("a spend with no balance left is refused either way (Idempotency-Key reused)", idem.every((r) => r.status === 422), idem.map((r) => r.status));
+
     // Restore: user Y restores (same store receipt) a purchase that user X made.
     const restoreCase = async (behavior: string, opts: { expiredOwner?: boolean } = {}) => {
       c.begin(`restore under ${behavior}${opts.expiredOwner ? " (owner's subscription expired)" : ""}`);
