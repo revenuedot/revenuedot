@@ -25,6 +25,12 @@ export const apps = pgTable("apps", {
   publicKey: text("public_key").notNull(),
   /** Store credentials (App Store in-app purchase key, Google service account, shared secret). Encrypted at rest in the cloud. */
   credentials: jsonb("credentials").$type<Record<string, unknown>>().notNull().default({}),
+  /**
+   * Amazon and Stripe secrets (shared key, restricted key, webhook signing secret), sealed with AES-GCM like integration
+   * secrets (services/secrets.ts); `secretHints` is what the dashboard may show (set, and a Stripe key's mode and last four).
+   */
+  secrets: text("secrets"),
+  secretHints: jsonb("secret_hints").$type<Record<string, string>>().notNull().default({}),
   notificationForwardUrl: text("notification_forward_url"),
   /** Last notification that was processed for a purchase we know (what "Ready" in setup health means). */
   lastNotificationAt: ts("last_notification_at"),

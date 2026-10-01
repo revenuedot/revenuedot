@@ -5,6 +5,8 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { body, listOf, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
 import { appShape } from "./shapes.js";
+import { depsSecretKey } from "../../services/secrets.js";
+import { sealStoreSecrets, storeSecretFields, takeStoreSecrets } from "../../services/store-secrets.js";
 
 const APP_TYPES = ["amazon", "app_store", "mac_app_store", "play_store", "stripe", "rc_billing", "roku", "paddle", "test_store"] as const;
 
@@ -40,6 +42,44 @@ function splitDetails(type: string, d: Record<string, unknown> | null | undefine
   return { id, rest: out };
 }
 
+/**
+ * Checks the Amazon and Stripe credential fields before they are stored (a pasted publishable key or a webhook secret in
+ * the key field fails here, not on the first purchase). null clears a field and is always allowed.
+ */
+function checkStoreFields(type: string, rest: Record<string, unknown>) {
+  const bad = (field: string, msg: string) => { throw paramError(`${type}.${field} ${msg}`, `${type}.${field}`); };
+  const val = (k: string) => (rest[k] === undefined || rest[k] === null ? null : rest[k]);
+  const text = (k: string, max = 500) => {
+    const v = val(k);
+    if (v === null) return null;
+    if (typeof v !== "string" || !v.trim() || v.length > max) bad(k, "must be a non-empty string.");
+    return (v as string).trim();
+  };
+  const bool = (k: string) => { const v = val(k); if (v !== null && typeof v !== "boolean") bad(k, "must be true or false."); };
+  if (type === "amazon") {
+    text("shared_secret");
+    const arn = text("sns_topic_arn", 256);
+    if (arn && !/^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w.-]+$/.test(arn)) bad("sns_topic_arn", "must be an SNS topic ARN such as arn:aws:sns:us-east-1:123456789012:topic.");
+    bool("track_new_purchases");
+  }
+  if (type === "stripe") {
+    const key = text("stripe_secret_key");
+    if (key && /^pk_/.test(key)) bad("stripe_secret_key", "is a publishable key (pk_…). Use a restricted key (rk_…) or a secret key (sk_…).");
+    if (key && !/^(rk|sk)_(live|test)_[A-Za-z0-9]+$/.test(key)) bad("stripe_secret_key", "must be a Stripe restricted key (rk_live_… or rk_test_…) or secret key (sk_…).");
+    const whsec = text("stripe_webhook_secret");
+    if (whsec && !/^whsec_[A-Za-z0-9+/=]+$/.test(whsec)) bad("stripe_webhook_secret", "must be the endpoint's signing secret (whsec_…).");
+    const acct = text("stripe_account_id", 100);
+    if (acct && !/^acct_[A-Za-z0-9]+$/.test(acct)) bad("stripe_account_id", "must be a Stripe account id (acct_…).");
+    const src = val("app_user_id_source");
+    if (src !== null && !["metadata", "customer_id", "anonymous"].includes(String(src))) bad("app_user_id_source", "must be metadata, customer_id or anonymous.");
+    const mk = text("app_user_id_metadata_key", 40);
+    if (mk && !/^[\w.-]+$/.test(mk)) bad("app_user_id_metadata_key", "must be a Stripe metadata key (letters, digits, _ . -; at most 40).");
+    const reg = val("register_on");
+    if (reg !== null && reg !== "invoice_paid" && reg !== "invoice_created") bad("register_on", "must be invoice_paid or invoice_created.");
+    bool("track_new_purchases");
+  }
+}
+
 /** Takes `notification_forward_url` out of the details: undefined = unchanged, null or "" = off, else an http(s) URL. */
 function forwardUrl(rest: Record<string, unknown>): string | null | undefined {
   if (!("notification_forward_url" in rest)) return undefined;
@@ -70,10 +110,19 @@ export function appRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, AppCreate);
     const d = b[b.type as keyof typeof b] as Record<string, unknown> | null | undefined;
     const { id: bundleId, rest } = splitDetails(b.type, d);
+    const fwd = forwardUrl(rest);
+    checkStoreFields(b.type, rest);
+    // Amazon and Stripe secrets are sealed in apps.secrets, never stored in credentials (services/store-secrets.ts).
+    const secretUpdate = takeStoreSecrets(b.type, rest);
+    for (const [k, v] of Object.entries(rest)) if (v === null) delete rest[k];
     if (ID_FIELD[b.type] && !bundleId) throw paramError(`${b.type}.${ID_FIELD[b.type]} is required for ${b.type} apps.`, `${b.type}.${ID_FIELD[b.type]}`);
+    const sealed = storeSecretFields(b.type).length
+      ? await sealStoreSecrets({ type: b.type, credentials: rest, secrets: null }, secretUpdate, await depsSecretKey(deps))
+      : { secrets: null, secretHints: {}, credentials: rest };
     const [row] = await db.insert(schema.apps).values({
       id: newId("app", 8), projectId: c.get("projectId"), name: b.name, type: b.type, bundleId: bundleId ?? null,
-      publicKey: `${KEY_PREFIX[b.type]}${randomKey()}`, credentials: rest, createdAt: deps.now(),
+      publicKey: `${KEY_PREFIX[b.type]}${randomKey()}`, credentials: sealed.credentials, secrets: sealed.secrets, secretHints: sealed.secretHints,
+      notificationForwardUrl: fwd ?? null, createdAt: deps.now(),
     }).returning();
     return c.json(appShape(row!), 201);
   });
@@ -87,12 +136,21 @@ export function appRoutes(r: V2Router, deps: Deps) {
     const { id: bundleId, rest } = splitDetails(a.type, b[a.type as keyof typeof b] as Record<string, unknown> | undefined);
     // RevenueDot extension: `notification_forward_url` (store notifications are copied there, e.g. to RevenueCat during a dual run).
     const fwd = forwardUrl(rest);
+    checkStoreFields(a.type, rest);
+    const secretUpdate = takeStoreSecrets(a.type, rest);
     // null clears a credential; other values replace it.
-    const credentials: Record<string, unknown> = { ...a.credentials };
+    let credentials: Record<string, unknown> = { ...a.credentials };
     for (const [k, v] of Object.entries(rest)) { if (v === null) delete credentials[k]; else credentials[k] = v; }
+    // Amazon and Stripe secrets are (re)sealed when one changes or one is still plain in credentials from before sealing.
+    let sealed: { secrets: string | null; secretHints: Record<string, string> } | null = null;
+    if (Object.keys(secretUpdate).length || storeSecretFields(a.type).some((f) => f in credentials)) {
+      const s = await sealStoreSecrets({ type: a.type, credentials, secrets: a.secrets }, secretUpdate, await depsSecretKey(deps));
+      credentials = s.credentials;
+      sealed = { secrets: s.secrets, secretHints: s.secretHints };
+    }
     // New credentials (or package name) are checked with the store on the next tick; a failing alert resolves only once the store accepts them.
-    const recheck = bundleId || Object.keys(rest).length ? { credentialsCheckedAt: null } : {};
-    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials, ...recheck })
+    const recheck = bundleId || Object.keys(rest).length || Object.keys(secretUpdate).length ? { credentialsCheckedAt: null } : {};
+    const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials, ...(sealed ?? {}), ...recheck })
       .where(and(eq(schema.apps.projectId, a.projectId), eq(schema.apps.id, a.id))).returning();
     return c.json(appShape(row!));
   });

@@ -73,8 +73,8 @@ describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
     expect(rows.map((r) => r.n)).toEqual(rows.map((_, i) => i + 1));
     const real = rows.filter((r) => r.handling === "Real").length, stub = rows.filter((r) => r.handling === "Stub").length;
     const absent = rows.filter((r) => r.handling === "Absent").reduce((n, r) => n + (/^(\d+) IAM/.exec(r.path) ? Number(/^(\d+)/.exec(r.path)![1]) : r.path.split(",").length), 0);
-    expect({ real, stub, absent }).toEqual({ real: 15, stub: 25, absent: 18 });
-    expect(PRD).toContain(`40 of the 58 method-and-path pairs have a route: 15 answer with real data and 25 are safe stubs. The other 18`);
+    expect({ real, stub, absent }).toEqual({ real: 17, stub: 23, absent: 18 });
+    expect(PRD).toContain(`40 of the 58 method-and-path pairs have a route: 17 answer with real data and 23 are safe stubs. The other 18`);
   });
 
   for (const r of routed) {

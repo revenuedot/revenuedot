@@ -14,8 +14,8 @@ import { STORES, base, errMsg, storeId, useApps, usePublicKey, useSetupHealth, t
  * GAPS vs RevenueCat (frame 22):
  * - RevenueCat's panel scores "feature coverage" (40/46); ours says whether the SDK's major version is covered by the
  *   contract tests and lists what differs in proxy mode.
- * - Amazon, Mac App Store, Stripe, Paddle, Roku and Web Billing apps: the API creates them, the dashboard offers
- *   only App Store, Google Play and Test Store for now (they show as "Soon" in Add app).
+ * - Mac App Store, Paddle, Roku and Web Billing apps: the API creates them, the dashboard offers App Store, Google Play,
+ *   Amazon Appstore, Stripe and Test Store for now (the others show as "Soon" in Add app).
  */
 
 export function StoreCell({ app }: { app: Pick<App, "name" | "type"> }) {
@@ -36,7 +36,7 @@ export function setupState(app: App, h: SetupHealth["apps"][number] | undefined)
   if (!h) return { tone: "idle", text: "Checking…" };
   // An active failure first: every notification that fails is a purchase update this server missed.
   if (h.notification_status === "failing") return { tone: "bad", text: "Notifications failing", detail: h.last_notification_error?.message };
-  if (!h.credentials_configured) return { tone: "bad", text: app.type === "play_store" ? "Add service account" : "Add in-app purchase key" };
+  if (!h.credentials_configured) return { tone: "bad", text: app.type === "play_store" ? "Add service account" : app.type === "amazon" ? "Add shared key" : app.type === "stripe" ? "Add Stripe API key" : "Add in-app purchase key" };
   if (h.notification_url && !h.last_notification_at) return { tone: "idle", text: "Waiting for store notifications" };
   return { tone: "ok", text: "Ready" };
 }
@@ -160,8 +160,8 @@ const CHOICES: { type: AppType; label: string; text: string; soon?: boolean }[] 
   { type: "app_store", label: "App Store", text: "iPhone, iPad, Mac, Apple TV and Vision Pro apps." },
   { type: "play_store", label: "Google Play", text: "Android apps sold through Google Play." },
   { type: "test_store", label: "Test Store", text: "Try purchases without any store. Nothing is charged." },
-  { type: "amazon", label: "Amazon Appstore", text: "Fire tablets and Fire TV.", soon: true },
-  { type: "stripe", label: "Stripe", text: "Subscriptions sold on your website.", soon: true },
+  { type: "amazon", label: "Amazon Appstore", text: "Fire tablets and Fire TV." },
+  { type: "stripe", label: "Stripe", text: "Subscriptions sold with your own Stripe account." },
   { type: "roku", label: "Roku", text: "Roku Pay channels.", soon: true },
 ];
 
@@ -185,7 +185,7 @@ export function AddAppDialog({ pid, onClose, initial }: { pid: string; onClose: 
     const errs: typeof errors = {};
     if (!n) errs.name = "Give the app a name, for example Scanner iOS.";
     if (s.idField === "bundle_id" && !BUNDLE.test(i)) errs.id = i ? "A bundle ID looks like com.company.app." : "Enter the bundle ID from Xcode.";
-    if (s.idField === "package_name" && !PACKAGE.test(i)) errs.id = i ? "A package name looks like com.company.app (letters, digits and underscores)." : "Enter the package name from Play Console.";
+    if (s.idField === "package_name" && !PACKAGE.test(i)) errs.id = i ? "A package name looks like com.company.app (letters, digits and underscores)." : type === "amazon" ? "Enter the package name from the Amazon Appstore Console." : "Enter the package name from Play Console.";
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setBusy(true);
@@ -213,16 +213,17 @@ export function AddAppDialog({ pid, onClose, initial }: { pid: string; onClose: 
           ))}
         </div>
         <Field label="App name" htmlFor="app-name" hint="Only you see this name. It helps tell your iOS and Android apps apart." error={errors.name}>
-          <input id="app-name" className="input" maxLength={255} value={name} placeholder={type === "play_store" ? "Scanner Android" : type === "test_store" ? "Test Store" : "Scanner iOS"}
+          <input id="app-name" className="input" maxLength={255} value={name} placeholder={type === "play_store" ? "Scanner Android" : type === "amazon" ? "Scanner Fire" : type === "stripe" ? "Scanner Web" : type === "test_store" ? "Test Store" : "Scanner iOS"}
             aria-invalid={!!errors.name} onChange={(e) => { setName(e.target.value); setErrors((x) => ({ ...x, name: undefined })); }} />
         </Field>
         {s.idField && (
           <Field label={s.idLabel!} htmlFor="app-store-id" error={errors.id}
-            hint={s.idField === "bundle_id" ? "In Xcode: your target → General → Bundle Identifier." : "In Play Console: the id under your app's name, like com.company.app."}>
+            hint={s.idField === "bundle_id" ? "In Xcode: your target → General → Bundle Identifier." : type === "amazon" ? "In the Amazon Appstore Console: your app's package name, like com.company.app." : "In Play Console: the id under your app's name, like com.company.app."}>
             <input id="app-store-id" className="input mono" value={id} placeholder="com.company.app" autoCapitalize="off" spellCheck={false}
               aria-invalid={!!errors.id} onChange={(e) => { setId(e.target.value); setErrors((x) => ({ ...x, id: undefined })); }} />
           </Field>
         )}
+        {type === "stripe" && <p className="section-sub">Connect your own Stripe account with a restricted API key on the next page. Your backend posts each subscription or Checkout Session, and Stripe's webhooks keep it current.</p>}
         {type === "test_store" && <p className="section-sub">A Test Store app needs no store account. Use its key in a debug build to buy your products for free and see them here as sandbox purchases.</p>}
         {errors.form && <div className="banner err" role="alert">{errors.form}</div>}
       </form>

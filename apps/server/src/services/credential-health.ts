@@ -5,7 +5,12 @@ import { Codes, RCError } from "../errors.js";
 import { AppStoreServerApi, AppleApiClientError, appleCredentials } from "../stores/apple/api.js";
 import { GoogleApiError, hasServiceAccount, serviceAccountOf } from "../stores/google/api.js";
 import { googleClientFor } from "../stores/google/index.js";
+import { AmazonApiError, sharedSecretOf } from "../stores/amazon/api.js";
+import { amazonClientFor } from "../stores/amazon/index.js";
+import { isTestKey, StripeApiError, stripeKeyOf } from "../stores/stripe/api.js";
+import { stripeClientFor } from "../stores/stripe/index.js";
 import type { AppRow, StoreAdapter } from "../stores/types.js";
+import { withStoreSecrets } from "./store-secrets.js";
 
 /**
  * Whether Apple and Google accept an app's store credentials (`apps.credentials_status`), for the "store credentials
@@ -16,7 +21,9 @@ import type { AppRow, StoreAdapter } from "../stores/types.js";
 export type CheckStatus = "valid" | "invalid" | "unreachable";
 export interface CredentialCheck { status: CheckStatus; message: string; extra: Record<string, unknown> }
 
-type CheckDeps = Pick<Deps, "fetch" | "now" | "stores">;
+type CheckDeps = Pick<Deps, "fetch" | "now" | "stores"> & Partial<Pick<Deps, "encryptionKey" | "signingKey">>;
+
+const STORE_TYPES = ["app_store", "mac_app_store", "play_store", "amazon", "stripe"];
 
 /** Asks Apple or Google whether the credentials work, with one harmless request. */
 export async function checkStoreCredentials(deps: CheckDeps, app: AppRow): Promise<CredentialCheck> {
@@ -80,6 +87,44 @@ export async function checkStoreCredentials(deps: CheckDeps, app: AppRow): Promi
       return out("unreachable", "Google could not be reached. Try again in a minute.", { client_email: email });
     }
   }
+  if (app.type === "amazon") {
+    const secret = sharedSecretOf(app);
+    if (!secret) return out("invalid", "No shared key yet. Copy it from the Amazon Developer Console → Settings → Identity → Shared Key.");
+    const { client } = amazonClientFor(deps.stores, deps.fetch);
+    // A made-up user and receipt: RVS answers 496 for a wrong shared key, and 400, 410 or 497 when the key is right.
+    try {
+      await client.verifyIn("production", secret, "revenuedot-credentials-check", "revenuedot-credentials-check");
+      return out("valid", "Amazon accepted the shared key.");
+    } catch (e) {
+      if (e instanceof AmazonApiError) {
+        if (e.kind === "invalid_receipt" || e.kind === "cancelled") return out("valid", "Amazon accepted the shared key.");
+        if (e.kind === "credentials") return out("invalid", "Amazon rejected the shared key. Copy the Shared Key from Developer Console → Settings → Identity again, without spaces.");
+      }
+      return out("unreachable", "Amazon could not be reached. Try again in a minute.");
+    }
+  }
+  if (app.type === "stripe") {
+    const key = stripeKeyOf(app);
+    if (!key) return out("invalid", "No Stripe API key yet. Create a restricted key in the Stripe Dashboard → Developers → API keys.");
+    if (/^pk_/.test(key)) return out("invalid", "This is a publishable key (pk_…). Use a restricted key (rk_…) or a secret key (sk_…).");
+    const mode = isTestKey(key) ? "test" : "live";
+    const { client } = stripeClientFor(deps.stores, deps.fetch);
+    try {
+      // Read access to both objects RevenueDot reads first; one item each.
+      await client.get(app, "/v1/subscriptions", { limit: "1", status: "all" });
+      await client.get(app, "/v1/checkout/sessions", { limit: "1" });
+      return out("valid", `Stripe accepted the ${mode} mode key.`, { mode });
+    } catch (e) {
+      if (e instanceof StripeApiError) {
+        if (e.kind === "credentials" && e.status === 403) return out("invalid", `The key works but cannot read everything RevenueDot needs. Give the restricted key read access to Subscriptions, Invoices, Checkout Sessions, Charges, Customers, Products and Prices. Stripe said: ${e.message}`, { mode });
+        if (e.kind === "credentials") return out("invalid", "Stripe rejected the key. Copy it again from the Stripe Dashboard → Developers → API keys.", { mode });
+        if (e.kind === "transient") return out("unreachable", "Stripe could not be reached. Try again in a minute.", { mode });
+        return out("invalid", `Stripe refused the check: ${e.message}`, { mode });
+      }
+      if (e instanceof RCError) return out("invalid", e.message);
+      return out("unreachable", "Stripe could not be reached. Try again in a minute.", { mode });
+    }
+  }
   return out("invalid", `${app.type} apps have no store credentials to check.`);
 }
 
@@ -98,6 +143,8 @@ export function credentialFailureOf(e: unknown): string | null {
   if (e instanceof RCError && e.code === Codes.INVALID_APPLE_SUBSCRIPTION_KEY) return e.message;
   if (e instanceof GoogleApiError && e.kind === "credentials") return e.message;
   if (e instanceof RCError && e.status === 503 && e.message.startsWith("Google Play credentials problem")) return e.message;
+  if (e instanceof RCError && /^(Amazon|Stripe) credentials problem/.test(e.message)) return e.message;
+  if ((e instanceof AmazonApiError || e instanceof StripeApiError) && e.kind === "credentials") return e.message;
   return null;
 }
 
@@ -108,12 +155,12 @@ export function credentialFailureOf(e: unknown): string | null {
 export function withCredentialHealth(stores: Record<string, StoreAdapter>, db: DB, now: () => Date): Record<string, StoreAdapter> {
   const out: Record<string, StoreAdapter> = {};
   for (const [type, adapter] of Object.entries(stores)) {
-    if (type !== "app_store" && type !== "mac_app_store" && type !== "play_store") { out[type] = adapter; continue; }
+    if (!STORE_TYPES.includes(type)) { out[type] = adapter; continue; }
     // Keep the adapter's own fields (fetchFn, client ...) that appleApiFor/googleClientFor read.
     out[type] = Object.assign(Object.create(Object.getPrototypeOf(adapter)), adapter, {
-      async verify(app: AppRow, input: Parameters<StoreAdapter["verify"]>[1], catalog: Parameters<StoreAdapter["verify"]>[2]) {
+      async verify(app: AppRow, input: Parameters<StoreAdapter["verify"]>[1], catalog: Parameters<StoreAdapter["verify"]>[2], extra?: Parameters<StoreAdapter["verify"]>[3]) {
         try {
-          return await adapter.verify.call(adapter, app, input, catalog);
+          return await adapter.verify.call(adapter, app, input, catalog, extra);
         } catch (e) {
           const why = credentialFailureOf(e);
           if (why) await recordCredentialFailure(db, app.id, why, now()).catch(() => {});
@@ -126,7 +173,7 @@ export function withCredentialHealth(stores: Record<string, StoreAdapter>, db: D
 }
 
 const HOUR = 3600_000;
-const STORE_TYPES = ["app_store", "mac_app_store", "play_store"];
+
 const hasAppleKey = (c: Record<string, unknown>) => ["subscription_private_key", "private_key"].some((k) => typeof c[k] === "string" && !!(c[k] as string).trim());
 
 /** The tick's re-checks: failing apps every hour, apps never checked or not checked for a day. At most `limit` per run. */
@@ -138,9 +185,15 @@ export async function recheckDueCredentials(deps: CheckDeps & { db: DB }, now: D
     lte(A.credentialsCheckedAt, new Date(now.getTime() - 24 * HOUR)),
   ))).limit(limit * 3);
   let checked = 0;
-  for (const app of due) {
+  for (const row of due) {
     if (checked >= limit) break;
-    const configured = app.type === "play_store" ? hasServiceAccount(app) : hasAppleKey(app.credentials ?? {});
+    let app = row;
+    try { app = await withStoreSecrets(deps, row); } catch (e) {
+      // Sealed Amazon or Stripe secrets this server cannot open: the app must enter them again.
+      await recordCredentialCheck(deps.db, row.id, { status: "invalid", message: e instanceof Error ? e.message : String(e) }, now);
+      continue;
+    }
+    const configured = app.type === "play_store" ? hasServiceAccount(app) : app.type === "amazon" ? !!sharedSecretOf(app) : app.type === "stripe" ? !!stripeKeyOf(app) : hasAppleKey(app.credentials ?? {});
     if (!configured) {
       // Nothing to check: no status, and try again in a day (the check time also keeps the query small).
       await deps.db.update(A).set({ credentialsStatus: null, credentialsError: null, credentialsCheckedAt: now }).where(eq(A.id, app.id));

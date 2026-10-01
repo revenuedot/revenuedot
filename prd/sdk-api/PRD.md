@@ -1,6 +1,6 @@
 # SDK-compatible API (scope 1.1, with the 1.0 contract harness)
 
-**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 15 answer with real data and 25 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
+**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 17 answer with real data and 23 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
 
 ## Users and jobs
 - **App developers** change only the SDK's proxy URL and keep their app code, their public API key and their paywalls.
@@ -15,7 +15,7 @@ Essential (Tier 1)
 - Signed responses (Trusted Entitlements) when `REVENUEDOT_SIGNING_KEY` is set.
 
 Later
-- Customer Center configuration, virtual currency balances, paywall remote config, web purchases and their redemption, Amazon Appstore receipts and ad reward verification.
+- Customer Center configuration, virtual currency balances, paywall remote config, web purchases and their redemption, and ad reward verification. (Amazon Appstore receipts are real since Tier 2: `prd/store-amazon/PRD.md`; SDK events are stored for the charts since Tier 2: `prd/charts/PRD.md`.)
 
 ## Endpoint inventory
 Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingHTTPRequestPath.swift`, `EventsHTTPRequestPath.swift`, `DiagnosticsHTTPRequestPath.swift` and `SourceHealthChecker.swift` in `revenuedot/purchases-ios`; Android `purchases/src/main/kotlin/com/revenuecat/purchases/common/networking/Endpoint.kt` in `revenuedot/purchases-android`; web `src/networking/endpoints.ts` and `src/behavioural-events/events-tracker.ts` in `revenuedot/purchases-js`. All three forks were taken from upstream `main` on 2026-09-30. `purchases-hybrid-common` makes no HTTP calls of its own: it calls the native SDKs. The device harnesses use the published RevenueCat iOS 5.92.0 and Android 10.24.0.
@@ -49,12 +49,12 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 22 | POST | `/v1/subscribers/redeem_purchase` | iOS, Android | Stub | 400 · 7849 | `redeemWebPurchase` returns `invalidToken`: there are no web purchases to redeem |
 | 23 | POST | `/v1/external_purchase_tokens` | iOS | Stub | 200 `{"id":…}` | Apple external-purchase token registered; the web checkout it leads to (row 29) fails |
 | 24 | GET | `/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}` | iOS, Android | Stub | 200 `status: failed` | `pollRewardVerification` stops after one request and returns failed |
-| 25 | GET | `/v1/receipts/amazon/{store_user_id}/{receipt_id}` | Android | Stub | 400 · 7662 | Amazon purchase fails with an error and stays unconsumed, like a receipt post for an Amazon app |
+| 25 | GET | `/v1/receipts/amazon/{store_user_id}/{receipt_id}` | Android | Real | 200 Amazon's receipt data with `termSku`; 400 · 7103 unknown receipt; 400 · 7662 for a key that is not an Amazon app's; 503 · 7101 while Amazon is unavailable | The SDK posts the term SKU as the product id; an error leaves the Amazon purchase unconsumed. Spec: `prd/store-amazon/PRD.md` |
 | 26 | POST | `/v1/config/{domain}` | iOS, Android | Real | 200 RC Container (`application/x-rc-format`), 204 when the sent manifest is current | Remote config: published paywalls as workflows (one per offering) and `ui_config`, with every blob inline; how iOS 5.83+ and current Android load paywalls |
 | 27 | GET | `/v1/config/{domain}` | iOS, Android | Stub | 204 | Remote config fallback path |
 | 28 | GET | `/rcbilling/v1/subscribers/{app_user_id}/offering_products` | iOS | Stub | 200 `{"offerings":{}}` | Defined in the SDK with no caller |
 | 29 | POST | `/rcbilling/v1/hosted-checkout` | iOS | Stub | 400 · 7000 | Paywall web checkout returns `failed`; no retry |
-| 30 | POST | `/v1/events` | iOS, Android, web | Stub | 200 `{}` | Paywall, customer center and ad events are stored for the charts (`sdk_events`, one row per SDK event id); a malformed batch still gets 200 so it is not resent |
+| 30 | POST | `/v1/events` | iOS, Android, web | Real | 200 `{}` | Paywall, customer center and ad events are stored for the charts (`sdk_events`, one row per SDK event id); a malformed batch still gets 200 so it is not resent |
 | 31 | POST | `/v1/diagnostics` | iOS, Android | Stub | 200 `{}` | Diagnostics are accepted and not resent |
 | 32 | GET | `/rcbilling/v1/branding` | web | Stub | 200 the app's name, default look | Web Billing (`rcb_` keys) checkout branding |
 | 33 | POST | `/rcbilling/v1/checkout/prepare` | web | Stub | 400 · 7000 | Web Billing purchase fails with an error in the SDK's purchase screen |
@@ -70,7 +70,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 43 | GET, POST | 14 IAM alternates: `/v1/customer`, `/v1/customer/offerings`, `/v1/customer/intro_eligibility`, `/v1/customer/attribution`, `/v1/customer/attributes`, `/v1/customer/adservices_attribution`, `/v1/customer/health_report`, `/v1/customer/customercenter`, `/v1/customer/customercenter/support/create-ticket`, `/v1/customer/virtual_currencies`, `/v1/customer/restore/eligibility`, `/v1/customer/ads/reward_verifications/{client_transaction_id}`, `/rcbilling/v1/customer/offering_products`, `/rcbilling/v1/customer/products` | iOS, Android | Absent | none | Used in place of rows 1, 3, 7, 11, 12, 13, 17-21, 24, 28 and 9 only in IAM mode |
 <!-- inventory:end -->
 
-Counts: rows 1-40 are 40 routed pairs (15 real, 25 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
+Counts: rows 1-40 are 40 routed pairs (17 real, 23 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
 
 ## RevenueCat behaviour we match
 - New customers answer 201 and known customers 200 on `GET /v1/subscribers/{id}` and on `logIn` (fixtures `ios/req-login.json` and `ios/resp-login-real-signed.json`; https://www.revenuecat.com/docs/customers/identifying-customers).
@@ -93,14 +93,14 @@ Routes are in `apps/server/src/routes/sdk.ts`; attribution is in `apps/server/sr
 ## Tests that prove it
 - `packages/contract/test/sdk-inventory.test.ts` parses the inventory table above. It sends every routed row with the iOS SDK's request headers and checks the documented status, the RevenueCat error code, that the answer is JSON (or 204) with `X-RevenueCat-Request-Time`, and that a JSON 404 is a deliberate RevenueCat error rather than a missing route. It also checks that the absent rows are really unrouted and that the counts in this file add up.
 - `packages/contract/test/sdk.test.ts` covers fixture sanity against the SDK schemas, auth errors, customer info, Test Store receipts (idempotency, consumables, lifetime), ownership and transfers, attributes, offerings and mapping, and the calls the SDK makes on its own. The schemas are in `packages/contract/src/sdk-schemas.ts`.
-- `packages/contract/test/sdk-endpoints.test.ts` covers every route added for the inventory: offer signatures verified with the key's public half, both app account token rules and 7234; legacy attribution and AdServices attributes in customer info, the v2 customer and a webhook payload; `$ip` and `$deviceVersion`; redemption, external purchase tokens, reward verification, Amazon, web offering products, hosted checkout, Web Billing and workflows, each against the keys of its fixture.
+- `packages/contract/test/sdk-endpoints.test.ts` covers every route added for the inventory: offer signatures verified with the key's public half, both app account token rules and 7234; legacy attribution and AdServices attributes in customer info, the v2 customer and a webhook payload; `$ip` and `$deviceVersion`; redemption, external purchase tokens, reward verification, Amazon (7662 for a non-Amazon key; the real route is in `apps/server/test/amazon.test.ts`), web offering products, hosted checkout, Web Billing and workflows, each against the keys of its fixture.
 - `apps/server/test/signing.test.ts` verifies RevenueCat's published signature vectors, signs our own responses, rejects tampering and rotates the intermediate key.
 - `scripts/e2e/ios/run.ts` (XCUITest, RevenueCat iOS 5.92.0, iPhone 17 Pro simulator) and `scripts/e2e/android/run.ts` (UIAutomator, RevenueCat Android 10.24.0, Android 15 emulator) drive the unmodified SDKs. Besides configure, customer info, offerings, a Test Store purchase and `logIn`, both call `setEmail`, `setDisplayName`, `setAttributes`, `setAdjustID`, `collectDeviceIdentifiers`, `syncAttributesAndOfferingsIfNeeded`, `syncPurchases`, the virtual currencies call, `redeemWebPurchase` with a deep link and `pollRewardVerification`. iOS also calls `addAttributionData` (Apple Search Ads), `enableAdServicesAttributionTokenCollection` and the Customer Center fetch; Android also calls `setMediaSource` and `setCampaign`. The runner reads the server's request log (`REVENUEDOT_REQUEST_LOG`): each new call happens exactly once with its documented status, and no SDK call reaches an unrouted path or gets a 5xx. It then checks the stored attributes on the v2 customer the dashboard reads (`$ip` and `$deviceVersion` filled in, the Apple Search Ads campaign on iOS) and in the purchase's webhook `subscriber_attributes`. Helpers: `scripts/e2e/sdk-calls.ts`.
 
 ## Known gaps
 - Customer Center has no configuration, so its screen shows an error; virtual currencies have no balances; paywall remote config is empty (Tier 2).
 - RevenueDot takes no web payments, so Web Billing checkout, hosted checkout and web purchase redemption always fail with the codes above.
-- Amazon Appstore receipts and server-side ad reward verification are not supported.
+- Server-side ad reward verification is not supported.
 - The iOS SDK sends no AdServices token from a simulator (it logs that the token is not available there), so `adservices_attribution` and the Apple lookup are tested only in `sdk-endpoints.test.ts`, with a stubbed Apple API.
 - A promotional-offer request needs a real StoreKit subscription transaction on the device, so `POST /v1/offers` is tested only in `sdk-endpoints.test.ts`, where the signature is checked with the key's public half.
 - Android's Customer Center fetch is internal to the SDK and runs only from the RevenueCatUI screen, which the Android harness does not include.
