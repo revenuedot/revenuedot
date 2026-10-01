@@ -1,0 +1,80 @@
+{
+  "identifier" : "8A6B2D11",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "A1B2C3D4",
+      "localizations" : [
+        {
+          "description" : "Removes ads",
+          "displayName" : "Remove Ads",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.example.noads",
+      "referenceName" : "Remove Ads",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "9E8D7C6B",
+      "localizations" : [
+
+      ],
+      "name" : "Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "F1E2D3C4",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Premium every week",
+              "displayName" : "Premium Weekly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.example.premium.weekly",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "Premium Weekly",
+          "subscriptionGroupID" : "9E8D7C6B",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "F1E2D3C5",
+          "localizations" : [
+
+          ],
+          "productID" : "com.example.premium.weekly",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "Duplicate",
+          "subscriptionGroupID" : "9E8D7C6B",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 1,
+    "minor" : 1
+  }
+}

@@ -10,7 +10,7 @@ interface Log {
   additional_data: Record<string, unknown>;
 }
 
-const ACTOR: Record<string, string> = { user: "Dashboard user", api_key: "API key", oauth_client: "AI assistant (OAuth)", system: "System", service_account: "Service account" };
+const ACTOR: Record<string, string> = { assistant: "RevenueDot AI", user: "Dashboard user", api_key: "API key", oauth_client: "AI assistant (OAuth)", system: "System", service_account: "Service account" };
 const label = (action: string) => action.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 export function AuditLogs({ pid }: { pid: string }) {
@@ -44,7 +44,10 @@ export function AuditLogs({ pid }: { pid: string }) {
           { key: "when", header: "When", render: (r) => <span title={fmt.dateTime(r.occurred_at)}>{fmt.dateTime(r.occurred_at)}</span> },
           { key: "what", header: "What", render: (r) => label(r.action_type) },
           { key: "target", header: "Target", render: (r) => <><span className="subtle">{r.target_type.replace(/_/g, " ")} </span><code>{r.target_identifier}</code></> },
-          { key: "who", header: "Who", render: (r) => <><Tag tone={r.actor_type === "oauth_client" ? "gold" : "muted"}>{ACTOR[r.actor_type] ?? r.actor_type}</Tag> <code>{r.actor_identifier}</code></> },
+          { key: "who", header: "Who", render: (r) => r.actor_type === "assistant"
+            // RevenueDot AI acting after the person approved the change in the chat.
+            ? <><Tag tone="gold">RevenueDot AI</Tag> <span className="subtle">on behalf of</span> <code>{String(r.additional_data.actor_display ?? "").replace(/^assistant on behalf of /, "") || r.actor_identifier}</code></>
+            : <><Tag tone={r.actor_type === "oauth_client" ? "gold" : "muted"}>{ACTOR[r.actor_type] ?? r.actor_type}</Tag> <code>{r.actor_identifier}</code></> },
         ]} />
       )}
       {q.hasNextPage && <button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</button>}

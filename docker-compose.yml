@@ -20,6 +20,13 @@ services:
       REVENUEDOT_CUSTOM_DOMAIN_TARGET: ${REVENUEDOT_CUSTOM_DOMAIN_TARGET:-}
       # Seals integration and data export credentials at rest (see .env.example).
       REVENUEDOT_ENCRYPTION_KEY: ${REVENUEDOT_ENCRYPTION_KEY:-}
+      # "Generate with AI" on paywalls and RevenueDot AI, the assistant: off without a key (see .env.example).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      REVENUEDOT_AI_MODEL: ${REVENUEDOT_AI_MODEL:-}
+      REVENUEDOT_ASSISTANT_MODEL: ${REVENUEDOT_ASSISTANT_MODEL:-}
+      REVENUEDOT_ASSISTANT_CAPS: ${REVENUEDOT_ASSISTANT_CAPS:-}
       # Google OAuth client for "Connect AdMob"; unset lets each project enter its own (see .env.example).
       REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID:-}
       REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET:-}

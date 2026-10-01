@@ -127,7 +127,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
   r.post(`${P}/actions/transfer_ownership`, scope("project_configuration:projects:read_write"), async (c) => {
     const p = await projectOf(c);
     const who = c.get("principal");
-    if (who.kind !== "user") throw new V2Error(403, "authorization_error", "Project ownership can only be transferred from the dashboard.");
+    // Not through an API key, and not through RevenueDot AI: only the person in the dashboard can hand the project over.
+    if (who.kind !== "user" || who.via === "assistant") throw new V2Error(403, "authorization_error", "Project ownership can only be transferred from the dashboard.");
     // An owner who left the project no longer counts: any admin may then hand it on.
     const [ownerMember] = p.ownerUserId ? await db.select({ id: schema.memberships.userId }).from(schema.memberships)
       .where(and(eq(schema.memberships.projectId, p.id), eq(schema.memberships.userId, p.ownerUserId))).limit(1) : [];

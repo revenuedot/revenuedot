@@ -3,7 +3,7 @@ import { API_PATH } from "../src/api-paths.js";
 
 describe("paths the Cloud Worker answers on the dashboard host", () => {
   it("includes the OAuth pages and endpoints, so ChatGPT and Claude land on the consent page and not the dashboard", () => {
-    for (const p of ["/oauth/authorize", "/oauth/token", "/oauth/register", "/.well-known/oauth-authorization-server", "/auth/login", "/v2/projects", "/v1/subscribers/x", "/verified/my-app", "/verified/my-app/og.png", "/.well-known/jwks.json"]) {
+    for (const p of ["/oauth/authorize", "/oauth/token", "/oauth/register", "/.well-known/oauth-authorization-server", "/auth/login", "/v2/projects", "/v1/subscribers/x", "/share/first-sale/fs_x", "/agents/assistant-agent/aic_1", "/verified/my-app", "/verified/my-app/og.png", "/.well-known/jwks.json"]) {
       expect(API_PATH.test(p), p).toBe(true);
     }
   });

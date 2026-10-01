@@ -1,6 +1,6 @@
 # Project settings: General, Brand, Blocked customers, Verified Metrics (batch F)
 
-**Status:** built on branch `tier2-settings-auth` (2026-10-01). Migration 0021. The AI features tab comes from batch E (`tier2-ai-assistant`, PR #10) and is not duplicated here; Audit logs, Collaborators and Domains already existed.
+**Status:** built on branch `tier2-settings-auth` (2026-10-01). Migration 0021. The AI features tab comes from batch E (`tier2-ai-assistant`) and is not duplicated here; Audit logs, Collaborators and Domains already existed.
 
 Scope rows: parity matrix "Project settings tabs" (batch F). Contact-sheet frame 28 (RevenueCat's Project Settings, General tab). Tabs in RevenueCat's order: **General · AI features · Brand · Audit logs · Blocked customers · Collaborators · Verified Metrics · Domains**.
 
@@ -54,7 +54,7 @@ Scope rows: parity matrix "Project settings tabs" (batch F). Contact-sheet frame
 - Endpoints: `GET/POST /v2/projects/{id}/verified_metrics`, `POST …/verified_metrics/actions/publish`, `POST …/verified_metrics/actions/unpublish`, `GET /v2/projects/{id}/verified_metrics/slug_availability?slug=`.
 
 ## 5. Dashboard
-- `/projects/:id/settings/:tab` with tabs in RevenueCat's order. New tabs: `brand`, `blocked-customers`, `verified-metrics`. AI features stays a placeholder on this branch until PR #10 merges.
+- `/projects/:id/settings/:tab` with tabs in RevenueCat's order. New tabs: `brand`, `blocked-customers`, `verified-metrics`; AI features comes from batch E.
 - Every tab uses DESIGN.md: square hairline panels, uppercase labels, the gold accent only for the live state ("Published" dot).
 - Phone width: forms stack, tables hide secondary columns.
 

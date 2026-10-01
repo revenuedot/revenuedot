@@ -35,6 +35,9 @@ export function parseWrite(method: string, path: string): Parsed | null {
   if (!rest.length) return method === "POST" ? { actionType: "project_updated", targetType: "project", targetId: seg[2] } : null; // deleting the project deletes its log too (a row for it would break the foreign key)
   // Project actions: POST /v2/projects/p/actions/transfer_ownership is project_transfer_ownership.
   if (rest[0] === "actions" && rest[1]) return method === "POST" ? { actionType: `project_${rest[1]}`, targetType: "project", targetId: seg[2] } : null;
+  // RevenueDot AI: the setting is project configuration; chats, files and the first-sale card change nothing in the
+  // project (the assistant's own writes go through the API's routes and are audited there).
+  if (rest[0] === "ai") return rest[1] === "settings" && method === "POST" ? { actionType: "ai_settings_updated", targetType: "project", targetId: seg[2] } : null;
   let i = 0;
   if (rest[0] === "integrations" || rest[0] === "ads" || rest[0] === "auth") i = 1;
   const coll = rest[i]!;
@@ -69,7 +72,11 @@ export function auditMiddleware(deps: Deps): MiddlewareHandler<{ Variables: V2Va
       const p = c.get("principal");
       let actorType = "user";
       let actor = "unknown";
-      if (p.kind === "user") actor = p.userId;
+      if (p.kind === "user" && p.via === "assistant") {
+        // RevenueDot AI acting for a user after they approved the change in the chat (prd/ai-assistant/PRD.md §2).
+        actorType = "assistant";
+        actor = p.userId;
+      } else if (p.kind === "user") actor = p.userId;
       else {
         const [k] = await deps.db.select({ name: schema.apiKeys.name }).from(schema.apiKeys).where(eq(schema.apiKeys.id, p.keyId)).limit(1);
         actorType = k?.name.startsWith("OAuth: ") ? "oauth_client" : "api_key";
@@ -77,7 +84,10 @@ export function auditMiddleware(deps: Deps): MiddlewareHandler<{ Variables: V2Va
       }
       await deps.db.insert(schema.auditLogs).values({
         id: newId("log", 12), projectId, actionType: parsed.actionType, targetType: parsed.targetType, targetIdentifier: targetId, actorType, actorIdentifier: actor,
-        additionalData: { method, status: c.res.status, ...(actorType === "oauth_client" && p.kind === "key" ? { key_id: p.keyId } : {}) }, occurredAt: deps.now(),
+        additionalData: {
+          method, status: c.res.status, ...(actorType === "oauth_client" && p.kind === "key" ? { key_id: p.keyId } : {}),
+          ...(p.kind === "user" && p.via === "assistant" ? { actor_display: `assistant on behalf of ${p.email ?? p.userId}`, on_behalf_of: p.userId, conversation_id: p.conversationId } : {}),
+        }, occurredAt: deps.now(),
       });
     } catch (e) {
       // An audit failure must never fail the write it describes.

@@ -7,6 +7,7 @@ import { ConfirmDialog, CopyButton, Dialog, Field, Menu, PageHead, Switch, Tabs,
 import { api, fmt, type List } from "../../lib/api";
 import { AuditLogs } from "./AuditLogs";
 import { DomainsTab } from "../web/Domains";
+import { AiFeaturesTab } from "../ai/AiFeaturesTab";
 import { base, errMsg, type Collaborator, type ProjectSettings as Project, type SandboxAccess, type TransferBehavior } from "./data";
 import { BrandTab } from "../settings/Brand";
 import { BlockedCustomersTab } from "../settings/BlockedCustomers";
@@ -15,7 +16,7 @@ import { VerifiedMetricsTab } from "../settings/VerifiedMetrics";
 /**
  * Project settings (/projects/:projectId/settings/:tab), tabs in RevenueCat's order (frame 28, prd/project-settings):
  * General (name, project ID, transfer behaviour with an optional sandbox behaviour, sandbox testing access enforced on the
- * server, transfer ownership to an admin, delete), AI features (batch E), Brand (colour, gradient and font presets for
+ * server, transfer ownership to an admin, delete), AI features (what RevenueDot AI may do here, pages/ai/AiFeaturesTab.tsx), Brand (colour, gradient and font presets for
  * the paywall editor), Audit logs, Blocked customers, Collaborators (roles, invites; prd/account-email), Verified Metrics
  * (the public page) and Domains (pages/web/Domains.tsx).
  * GAPS vs RevenueCat: the Operations, Growth and Support roles.
@@ -30,7 +31,7 @@ const BEHAVIORS: { value: TransferBehavior; label: string; text: string }[] = [
 
 type Tab = "general" | "ai" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains";
 const TABS: { value: Tab; label: string; badge?: string }[] = [
-  { value: "general", label: "General" }, { value: "ai", label: "AI features", badge: "SOON" }, { value: "brand", label: "Brand" },
+  { value: "general", label: "General" }, { value: "ai", label: "AI features" }, { value: "brand", label: "Brand" },
   { value: "audit-logs", label: "Audit logs" }, { value: "blocked-customers", label: "Blocked customers" }, { value: "collaborators", label: "Collaborators" },
   { value: "verified-metrics", label: "Verified Metrics" }, { value: "domains", label: "Domains" },
 ];
@@ -409,10 +410,6 @@ function Collaborators({ pid }: { pid: string }) {
   );
 }
 
-const SOON_TEXT: Record<string, [string, string]> = {
-  ai: ["AI features", "Ask questions about your revenue and customers in plain language."],
-};
-
 export function ProjectSettingsPage() {
   const pid = useProjectId();
   const nav = useNavigate();
@@ -438,7 +435,7 @@ export function ProjectSettingsPage() {
           {t === "brand" && <BrandTab pid={pid} />}
           {t === "blocked-customers" && <BlockedCustomersTab pid={pid} />}
           {t === "verified-metrics" && <VerifiedMetricsTab pid={pid} />}
-          {SOON_TEXT[t] && <div className="empty"><h3>{SOON_TEXT[t]![0]} comes in a later release</h3><p>{SOON_TEXT[t]![1]}</p></div>}
+          {t === "ai" && <AiFeaturesTab pid={pid} />}
         </div>
       </div>
     </Shell>
