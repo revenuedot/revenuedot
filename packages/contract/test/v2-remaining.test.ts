@@ -140,6 +140,10 @@ describe("subscriber tokens (authenticate)", () => {
     // Ids are compared after the same decoding the routes apply.
     await refused(await sdk(`/v1/subscribers/${encodeURIComponent(encodeURIComponent("someone_else"))}`, tok));
     expect((await sdk("/v1/subscribers/pinned", tok)).status).toBe(201);
+    // SDK events are recorded for the token's own app user id only.
+    const ev = (id: string, user: string) => ({ id, app_user_id: user, type: "paywall_impression", timestamp: h.now().getTime(), version: 1, session_id: "s", paywall_id: "p", offering_id: "default" });
+    expect((await sdk("/v1/events", tok, { method: "POST", json: { events: [ev("E1", "pinned"), ev("E2", "someone_else")] } })).status).toBe(200);
+    expect((await h.db.select().from(schema.sdkEvents)).map((r) => [r.id, r.appUserId])).toEqual([["E1", "pinned"]]);
     // The app's own key has no subscriber to speak for.
     await refused(await sdk("/v1/customer", h.ids.iosKey));
     h.setNow(new Date(h.now().getTime() + 3600_000 + 1));

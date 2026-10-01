@@ -435,6 +435,12 @@ export function sdkRoutes(deps: Deps) {
         const text = await c.req.text();
         let body: unknown = null;
         if (text.length <= MAX_BODY_BYTES) { try { body = JSON.parse(text); } catch { /* skipped */ } }
+        // A subscriber token records events for its own app user id only.
+        const sub = c.get("auth").subscriber;
+        if (sub && body && typeof body === "object" && Array.isArray((body as { events?: unknown }).events)) {
+          const b = body as { events: Array<{ app_user_id?: unknown } | null> };
+          b.events = b.events.filter((ev) => ev?.app_user_id === sub.appUserId);
+        }
         await storeSdkEvents(deps.db, { projectId: c.get("auth").projectId, app: c.get("app")?.id ? c.get("app") : null, body, now: deps.now(), sandboxHeader: c.req.header("x-is-sandbox") === "true" });
       }
     } catch (e) { console.warn("Storing SDK events failed", e); }
