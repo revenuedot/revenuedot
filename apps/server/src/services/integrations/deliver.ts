@@ -1,4 +1,4 @@
-import { and, eq, lte, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
 import {
   BIGQUERY_SCOPE, bigQueryCreateTable, buildIntegration, responseError, retryableStatus, type EventContext, type IntegrationKind, type OutRequest,
 } from "@revenuedot/core/integrations";
@@ -190,7 +190,7 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
   const budget = rt.budgetMs ?? 15_000;
   const ranked = db.select({ id: D.id, at: D.nextAttemptAt, rank: sql<number>`row_number() over (partition by ${D.integrationId} order by ${D.nextAttemptAt}, ${D.id})`.as("rank") })
     .from(D).innerJoin(I, eq(I.id, D.integrationId))
-    .where(and(eq(D.status, "pending"), lte(D.nextAttemptAt, rt.now), eq(I.enabled, true))).as("ranked");
+    .where(and(inArray(D.status, ["pending", "sending"]), lte(D.nextAttemptAt, rt.now), eq(I.enabled, true))).as("ranked");
   const due = await db.select({ id: ranked.id }).from(ranked).where(lte(ranked.rank, PER_INTEGRATION)).orderBy(ranked.at, ranked.id).limit(limit);
   let next = 0, attempted = 0;
   const lease = new Date(rt.now.getTime() + LEASE_MS);
@@ -199,8 +199,9 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
       const id = due[next++]!.id;
       try {
         // Claim it: another tick that picked the same row finds it leased and skips it.
-        const [claimed] = await db.update(D).set({ nextAttemptAt: lease, attempts: sql`${D.attempts} + 1` })
-          .where(and(eq(D.id, id), eq(D.status, "pending"), lte(D.nextAttemptAt, rt.now))).returning({ attempts: D.attempts });
+        // "sending" marks the lease; a lease that runs out (the tick died) is due again like a pending delivery.
+        const [claimed] = await db.update(D).set({ status: "sending", nextAttemptAt: lease, attempts: sql`${D.attempts} + 1` })
+          .where(and(eq(D.id, id), inArray(D.status, ["pending", "sending"]), lte(D.nextAttemptAt, rt.now))).returning({ attempts: D.attempts });
         if (!claimed) continue;
         attempted++;
         // A delivery that keeps killing the tick never reaches fail(); stop after the normal number of attempts.
@@ -220,10 +221,11 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
 
 /**
  * Manual retry: queue the delivery again now with a fresh retry schedule (a skipped one is rebuilt, so new attributes
- * or keys count). Returns false while a tick holds the delivery's lease (it is being sent right now).
+ * or keys count). A delivery waiting for its next scheduled attempt (after a 5xx or a timeout) is sent now instead of
+ * waiting, as webhook deliveries are. Returns false only while a tick holds the delivery's lease (it is being sent).
  */
 export async function requeueIntegrationDelivery(db: DB, deliveryId: string, now: Date): Promise<boolean> {
   const rows = await db.update(D).set({ status: "pending", nextAttemptAt: now, attempts: 0 })
-    .where(and(eq(D.id, deliveryId), or(ne(D.status, "pending"), lte(D.nextAttemptAt, now)))).returning({ id: D.id });
+    .where(and(eq(D.id, deliveryId), or(ne(D.status, "sending"), lte(D.nextAttemptAt, now)))).returning({ id: D.id });
   return rows.length > 0;
 }
