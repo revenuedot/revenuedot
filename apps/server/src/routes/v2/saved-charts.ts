@@ -10,8 +10,9 @@ import { body, notFound, paginate, paramError, scope, V2Error, type V2Context, t
  * page's URL state: range, start, end, res, segment, filters, sel, env and compare. Scopes: charts_metrics:charts:read to
  * list, charts_metrics:charts:read_write to change.
  */
+const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be a date such as 2026-01-31");
 const View = z.object({
-  range: z.string().max(20).optional(), start: z.string().max(20).optional(), end: z.string().max(20).optional(), res: z.string().max(20).optional(),
+  range: z.string().max(20).optional(), start: Day.optional(), end: Day.optional(), res: z.string().max(20).optional(),
   segment: z.string().max(60).optional(), filters: z.string().max(4000).optional(), sel: z.string().max(2000).optional(),
   env: z.enum(["production", "sandbox"]).optional(), compare: z.boolean().optional(),
 }).strict();

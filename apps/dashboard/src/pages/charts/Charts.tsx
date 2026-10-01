@@ -112,7 +112,10 @@ function ChartRail({ pid, current, savedId }: { pid: string; current: string; sa
   const toast = useToast();
   const match = (c: ChartDef) => !q.trim() || c.display_name.toLowerCase().includes(q.trim().toLowerCase());
   const mine = (saved.data?.items ?? []).filter((s) => !q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
-  const remove = async (s: SavedChart) => { await api(`/v2/projects/${pid}/saved_charts/${s.id}`, { method: "DELETE" }); await qc.invalidateQueries({ queryKey: ["saved-charts", pid] }); toast(`Removed “${s.name}”`); };
+  const remove = async (s: SavedChart) => {
+    try { await api(`/v2/projects/${pid}/saved_charts/${s.id}`, { method: "DELETE" }); toast(`Removed “${s.name}”`); } catch (e) { toast(e instanceof Error ? e.message : String(e)); }
+    await qc.invalidateQueries({ queryKey: ["saved-charts", pid] });
+  };
   return (
     <aside className="crail" aria-label="Charts">
       <div className="crail-s"><Icon name="search" /><input aria-label="Search charts" placeholder="Search charts" value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -213,11 +216,12 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   if (Object.keys(selectors).length) query.set("selectors", JSON.stringify(selectors));
   const data = useQuery({ queryKey: ["chart", pid, def.name, query.toString()], queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${query}`), placeholderData: keepPreviousData });
   // Compare: the window of the same length that ends the day before this one starts, at the same resolution.
-  const span = Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`);
+  // A hand-edited or saved URL can carry any start and end; iso() throws on an invalid date, so compare needs valid days.
+  const startMs = Date.parse(`${start}T00:00:00Z`), span = Date.parse(`${end}T00:00:00Z`) - startMs;
+  const canCompare = compare && Number.isFinite(startMs) && Number.isFinite(span) && span >= 0;
   const prevQuery = new URLSearchParams(query);
-  prevQuery.set("end_date", iso(Date.parse(`${start}T00:00:00Z`) - DAY));
-  prevQuery.set("start_date", iso(Date.parse(`${start}T00:00:00Z`) - DAY - span));
-  const prev = useQuery({ queryKey: ["chart", pid, def.name, prevQuery.toString()], enabled: compare, queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${prevQuery}`) });
+  if (canCompare) { prevQuery.set("end_date", iso(startMs - DAY)); prevQuery.set("start_date", iso(startMs - DAY - span)); }
+  const prev = useQuery({ queryKey: ["chart", pid, def.name, prevQuery.toString()], enabled: canCompare, queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${prevQuery}`) });
   const saved = useSaved(pid);
   const savedNow = saved.data?.items.find((x) => x.id === savedId) ?? null;
   const [saving, setSaving] = useState(false);
@@ -288,7 +292,7 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
           ) : body.periods ? (
             <CohortTable body={body} />
           ) : (
-            <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching || (compare && prev.isFetching)} prev={compare ? prev.data ?? null : null} />
+            <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching || (canCompare && prev.isFetching)} prev={canCompare ? prev.data ?? null : null} />
           )}
           {def.name === "app_store_save_outcomes" && <p className="fn">RevenueDot does not use Apple's Retention Messaging API yet, so this chart stays at zero.</p>}
           <p className="fn"><a className="ul" href={`https://revenuedot.app/docs/guides/charts#${def.name}`} target="_blank" rel="noreferrer">How {def.display_name} is calculated →</a></p>
