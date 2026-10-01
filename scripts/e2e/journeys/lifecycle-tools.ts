@@ -273,6 +273,10 @@ async function retention(ctx: Ctx, R: RefundProject, xcode: Pki) {
   await dev.v2("POST", `/retention_offers/${cancel.body.id}`, { active: true });
   const offers = await sql`SELECT trigger, store, active, product_mapping FROM retention_offers WHERE project_id = ${dev.projectId} ORDER BY created_at`;
   c.eq("retention_offers rows in SQL", offers.map((o) => [o.trigger, o.store, o.active]), [["cancel", "app_store", true], ["cancel", "play_store", true], ["refund", "app_store", true]]);
+  const extra = await post({ trigger: "cancel", name: "Temporary offer", title: "Temp", store: "app_store", product_mapping: { pro_monthly: "temp_offer" } });
+  const del = await dev.v2r("DELETE", `/retention_offers/${extra.body.id}`);
+  const left = await sql`SELECT count(*)::int AS n FROM retention_offers WHERE id = ${extra.body.id}`;
+  c.check("DELETE removes a retention offer (row gone)", del.status === 200 && left[0]!.n === 0, { status: del.status, rows: left[0]!.n });
 
   c.begin("Retention: Apple Retention Messaging saved for the App Store app");
   const A = `/apps/${R.appleAppId}/retention_messaging`;
