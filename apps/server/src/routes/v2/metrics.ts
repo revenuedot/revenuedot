@@ -1,5 +1,5 @@
 import { and, eq, gte, lte } from "drizzle-orm";
-import { accessEndsAt } from "@revenuedot/core";
+import { accessEndsAt, commission, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { subRowToDomain } from "../../repo/customers.js";
@@ -93,5 +93,29 @@ export function metricsRoutes(r: V2Router, deps: Deps) {
       currency: "USD",
       metrics: METRICS.map((m) => ({ object: "overview_metric", ...m, value: v[m.id], last_updated_at: now.getTime(), last_updated_at_iso8601: now.toISOString() })),
     });
+  });
+
+  // Revenue over an inclusive date range, from the same transaction ledger as the overview (production only, USD).
+  r.get("/v2/projects/:project_id/metrics/revenue", scope("charts_metrics:overview:read"), async (c) => {
+    const date = (name: string) => {
+      const v = c.req.query(name);
+      if (!v) throw paramError(`${name} is required (a date such as 2026-01-31).`, name);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(v))) throw paramError(`${name} must be a date such as 2026-01-31.`, name);
+      return v;
+    };
+    const start = date("start_date"), end = date("end_date");
+    if (end < start) throw paramError("end_date must not be before start_date.", "end_date");
+    const currency = c.req.query("currency") ?? "USD";
+    if (currency !== "USD") throw paramError("Only USD is supported for now.", "currency");
+    const type = c.req.query("revenue_type") ?? "revenue";
+    if (!["revenue", "revenue_net_of_taxes", "proceeds"].includes(type)) throw paramError("revenue_type must be revenue, revenue_net_of_taxes or proceeds.", "revenue_type");
+    const T = schema.transactions;
+    const rows = await deps.db.select({ store: T.store, usd: T.revenueUsd }).from(T).where(and(
+      eq(T.projectId, c.get("projectId")), eq(T.isSandbox, false),
+      gte(T.purchasedAt, new Date(`${start}T00:00:00Z`)), lte(T.purchasedAt, new Date(`${end}T23:59:59.999Z`))));
+    // We hold no tax data, so revenue net of taxes equals revenue; proceeds subtract the estimated store commission.
+    let total = 0;
+    for (const x of rows) total += type === "proceeds" ? x.usd * (1 - commission(x.store as Store)) : x.usd;
+    return c.json({ object: "revenue_metric", start_date: start, end_date: end, currency: "USD", value: round2(total), revenue_type: type });
   });
 }

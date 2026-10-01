@@ -14,6 +14,8 @@ import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
 import { attributionDataToAttributes, inBackground, resolveAdServicesToken, resolveDeviceAttributes, setAttributionOnce } from "../services/attribution.js";
 import { appleCredentials } from "../stores/apple/api.js";
 import { appAccountTokenFor, signOffer } from "../services/promo-offers.js";
+import { customerCenterFor } from "../services/customer-center.js";
+import { balancesOf } from "../services/virtual-currencies.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
 
@@ -224,11 +226,17 @@ export function sdkRoutes(deps: Deps) {
   r.get("/v1/product_entitlement_mapping", async (c) => c.json(await productEntitlementMappingJSON(deps.db, c.get("app").projectId)));
 
   // 15-16. Customer Center (Tier 2): no config yet, so the SDK hides the UI.
-  r.get("/v1/customercenter/:id", (c) => { throw new RCError(404, Codes.NOT_FOUND, "Customer Center is not configured."); });
+  r.get("/v1/customercenter/:id", async (c) => c.json({ customer_center: await customerCenterFor(deps.db, c.get("app").projectId) }));
   r.post("/v1/customercenter/support/create-ticket", (c) => c.json({ sent: false }));
 
   // 17-18. Virtual currencies (Tier 2): empty balances.
-  r.get("/v1/subscribers/:id/virtual_currencies", (c) => c.json({ virtual_currencies: {} }));
+  r.get("/v1/subscribers/:id/virtual_currencies", async (c) => {
+    const projectId = c.get("app").projectId;
+    const cust = await findCustomer(deps.db, projectId, decodeURIComponent(c.req.param("id")));
+    const out: Record<string, { balance: number; name: string; code: string; description: string | null }> = {};
+    if (cust) for (const b of await balancesOf(deps.db, projectId, cust.id, { includeEmpty: true })) out[b.code] = { balance: b.balance, name: b.name, code: b.code, description: b.description };
+    return c.json({ virtual_currencies: out });
+  });
 
   // 19. Web purchase redemption. RevenueDot sells nothing on the web, so no token is valid: 7849 is the SDK's
   // `invalidToken` result, which apps show as "this link is not valid".

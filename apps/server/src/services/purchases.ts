@@ -5,6 +5,7 @@ import { Codes, RCError } from "../errors.js";
 import { backdateFirstSeen, findCustomer, isOnlyAnonymous, mergeCustomers, nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
 import type { VerifiedPurchase, VerifiedSubscription } from "../stores/types.js";
 import { recordEvent, type EventSubject } from "./events.js";
+import { grantForPurchase } from "./virtual-currencies.js";
 import { adoptImportedChain } from "./imported-chains.js";
 import { usdValue, type FxFetch } from "./fx.js";
 
@@ -136,6 +137,9 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (priceUsd ?? 0),
         priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
       }).onConflictDoNothing();
+      if (kind === "purchase" || kind === "renewal" || kind === "trial") {
+        await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
+      }
     }
   }
   if (p.replacesStoreKey && p.replacesStoreKey !== p.storeKey) await applyReplacement(db, ctx, p);
@@ -186,6 +190,9 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
       revenueUsd: (d.isRefund ? -1 : 1) * (priceUsd ?? 0),
       priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null,
     }).onConflictDoNothing();
+    if (kind === "one_time") {
+      await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, productIdentifier: p.productIdentifier, trial: false, transactionId: p.storeTransactionId, now: ctx.now });
+    }
   }
   const [o] = await db.select().from(customers).where(eq(customers.id, owner.id));
   return o!;

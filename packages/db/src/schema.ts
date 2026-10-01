@@ -10,6 +10,8 @@ export const projects = pgTable("projects", {
   /** What happens when a receipt already owned by another non-anonymous user is posted. */
   transferBehavior: text("transfer_behavior").notNull().default("transfer"),
   sandboxTransferBehavior: text("sandbox_transfer_behavior"),
+  /** Customer Center configuration (appearance, screens, support, localization) merged over the built-in default. */
+  customerCenter: jsonb("customer_center").$type<Record<string, unknown>>(),
   createdAt: created(),
 });
 
@@ -423,3 +425,48 @@ export const alerts = pgTable("alerts", {
   lastNotifiedAt: ts("last_notified_at"),
   resolvedAt: ts("resolved_at"),
 }, (t) => [uniqueIndex("alerts_subject").on(t.kind, t.subjectId), index("alerts_project").on(t.projectId, t.status)]);
+
+/** In-app currencies (virtual currencies). A purchase of a granting product credits the customer's balance. */
+export const virtualCurrencies = pgTable("virtual_currencies", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  state: text("state").notNull().default("active"),
+  /** [{ product_ids, amount, trial_amount, expire_at_cycle_end }] as set through the API. */
+  productGrants: jsonb("product_grants").$type<{ product_ids: string[]; amount: number; trial_amount: number; expire_at_cycle_end: boolean }[]>().notNull().default([]),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.code] })]);
+
+export const virtualCurrencyBalances = pgTable("virtual_currency_balances", {
+  customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  balance: integer("balance").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.customerId, t.code] })]);
+
+/** Ledger of balance changes. `sourceKey` makes a grant idempotent (a store transaction id or an API Idempotency-Key). */
+export const virtualCurrencyTransactions = pgTable("virtual_currency_transactions", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  amount: integer("amount").notNull(),
+  /** `api` (adjustment through the REST API), `purchase` (product grant) or `sdk` (spend from the app). */
+  source: text("source").notNull(),
+  sourceKey: text("source_key"),
+  reference: text("reference"),
+  createdAt: created(),
+}, (t) => [index("vc_tx_customer").on(t.customerId), uniqueIndex("vc_tx_source_key").on(t.projectId, t.customerId, t.code, t.sourceKey)]);
+
+/** Who changed what in a project. Written by a middleware on every successful v2 write. */
+export const auditLogs = pgTable("audit_logs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  actionType: text("action_type").notNull(),
+  targetType: text("target_type").notNull(),
+  targetIdentifier: text("target_identifier").notNull(),
+  actorType: text("actor_type").notNull(),
+  actorIdentifier: text("actor_identifier").notNull(),
+  additionalData: jsonb("additional_data").$type<Record<string, unknown>>().notNull().default({}),
+  occurredAt: ts("occurred_at").notNull().defaultNow(),
+}, (t) => [index("audit_logs_project_time").on(t.projectId, t.occurredAt)]);

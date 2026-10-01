@@ -1,6 +1,6 @@
 # SDK-compatible API (scope 1.1, with the 1.0 contract harness)
 
-**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 12 answer with real data and 28 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
+**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 40 of the 58 method-and-path pairs have a route: 14 answer with real data and 26 are safe stubs. The other 18 are used only in the SDKs' internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
 
 ## Users and jobs
 - **App developers** change only the SDK's proxy URL and keep their app code, their public API key and their paywalls.
@@ -42,9 +42,9 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 15 | GET | `/v1/health/connectivity` | iOS | Stub | 200 `{"status":"ok"}` | API-source probe, internal failover setting only |
 | 16 | GET | `/v1/subscribers/{app_user_id}/health_report_availability` | iOS | Stub | 200 `{"report_logs":false}` | Debug builds; `false` skips the health report |
 | 17 | GET | `/v1/subscribers/{app_user_id}/health_report` | iOS | Stub | 200 passed, no checks | Debug builds, only after availability says yes |
-| 18 | GET | `/v1/customercenter/{app_user_id}` | iOS, Android | Stub | 404 · 7259 | Customer Center is not configured: the SDK returns an error and the Customer Center screen shows its error state |
+| 18 | GET | `/v1/customercenter/{app_user_id}` | iOS, Android | Real | 200 | The project's Customer Center configuration: built-in default (management and no-active screens, support email of the first admin) merged with what `POST /v2/projects/{id}/customer_center_config` stored |
 | 19 | POST | `/v1/customercenter/support/create-ticket` | iOS, Android | Stub | 200 `{"sent":false}` | The support form reports that nothing was sent |
-| 20 | GET | `/v1/subscribers/{app_user_id}/virtual_currencies` | iOS, Android, web | Stub | 200 `{"virtual_currencies":{}}` | `virtualCurrencies()` returns no balances |
+| 20 | GET | `/v1/subscribers/{app_user_id}/virtual_currencies` | iOS, Android, web | Real | 200 `virtual_currencies` by code with balance, name, code, description | `virtualCurrencies()` returns the customer's balances (empty for a customer we have not seen) |
 | 21 | POST | `/v1/subscribers/{app_user_id}/restore/eligibility` | iOS | Stub | 200 allowed | StoreKit 2 restore behaviour check |
 | 22 | POST | `/v1/subscribers/redeem_purchase` | iOS, Android | Stub | 400 · 7849 | `redeemWebPurchase` returns `invalidToken`: there are no web purchases to redeem |
 | 23 | POST | `/v1/external_purchase_tokens` | iOS | Stub | 200 `{"id":…}` | Apple external-purchase token registered; the web checkout it leads to (row 29) fails |
@@ -70,7 +70,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 43 | GET, POST | 14 IAM alternates: `/v1/customer`, `/v1/customer/offerings`, `/v1/customer/intro_eligibility`, `/v1/customer/attribution`, `/v1/customer/attributes`, `/v1/customer/adservices_attribution`, `/v1/customer/health_report`, `/v1/customer/customercenter`, `/v1/customer/customercenter/support/create-ticket`, `/v1/customer/virtual_currencies`, `/v1/customer/restore/eligibility`, `/v1/customer/ads/reward_verifications/{client_transaction_id}`, `/rcbilling/v1/customer/offering_products`, `/rcbilling/v1/customer/products` | iOS, Android | Absent | none | Used in place of rows 1, 3, 7, 11, 12, 13, 17-21, 24, 28 and 9 only in IAM mode |
 <!-- inventory:end -->
 
-Counts: rows 1-40 are 40 routed pairs (12 real, 28 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
+Counts: rows 1-40 are 40 routed pairs (14 real, 26 stubs); rows 41-43 are 18 absent pairs (1 + 3 + 14). Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
 
 ## RevenueCat behaviour we match
 - New customers answer 201 and known customers 200 on `GET /v1/subscribers/{id}` and on `logIn` (fixtures `ios/req-login.json` and `ios/resp-login-real-signed.json`; https://www.revenuecat.com/docs/customers/identifying-customers).

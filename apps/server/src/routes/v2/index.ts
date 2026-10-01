@@ -18,6 +18,9 @@ import { extensionRoutes } from "./extensions.js";
 import { setupRoutes } from "./setup.js";
 import { importRoutes } from "./import.js";
 import { memberRoutes } from "./members.js";
+import { virtualCurrencyRoutes } from "./virtual-currencies.js";
+import { customerExtraRoutes } from "./customer-extras.js";
+import { auditMiddleware, auditRoutes } from "./audit.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -67,6 +70,8 @@ export function v2Routes(deps: Deps) {
     await next();
   });
 
+  r.use("/v2/projects/:project_id/*", auditMiddleware(deps));
+
   projectRoutes(r, deps);
   appRoutes(r, deps);
   productRoutes(r, deps);
@@ -79,6 +84,9 @@ export function v2Routes(deps: Deps) {
   setupRoutes(r, deps);
   importRoutes(r, deps);
   memberRoutes(r, deps);
+  virtualCurrencyRoutes(r, deps);
+  customerExtraRoutes(r, deps);
+  auditRoutes(r, deps);
 
   r.all("/v2/*", () => { throw new V2Error(404, "resource_missing", "Resource not found."); });
   return r;
