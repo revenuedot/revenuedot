@@ -108,6 +108,7 @@ describe("OAuth for MCP clients", () => {
     const other = await env.signup("bob@example.com", "Bob's app");
     const page = await (await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`, { cookie: alice.cookie })).text();
     expect(page).toContain("Connect Claude to RevenueDot");
+    expect(page).toContain("Use another account");
     expect(page).toContain(`value="${alice.projectId}"`);
     expect(page).not.toContain(other.projectId);
 

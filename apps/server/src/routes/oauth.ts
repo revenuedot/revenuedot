@@ -252,6 +252,7 @@ export function oauthRoutes(deps: Deps) {
     const options = projects.map((p) => `<option value="${esc(p.id)}" data-role="${esc(p.role)}">${esc(p.name)}${p.role === "viewer" ? " (view only)" : ""}</option>`).join("");
     const body = `
       <p><strong>${esc(req.client.name)}</strong> wants to use RevenueDot as <strong>${esc(user.email)}</strong>. It will get an API key for one project.</p>
+      <p class="muted">Not you? <a href="#" id="switch">Use another account</a></p>
       ${req.client.id.startsWith("https://") ? `<p class="muted">App address: ${esc(new URL(req.client.id).host)}</p>` : ""}
       <form method="post" action="/oauth/authorize">
         ${hidden}<input type="hidden" name="csrf" value="${await csrfFor(sid!, req.client.id)}">
@@ -267,6 +268,12 @@ export function oauthRoutes(deps: Deps) {
         <div class="row"><button name="decision" value="deny" class="secondary">Cancel</button><button name="decision" value="allow">Allow access</button></div>
       </form>
       <script>
+        // Signs out of this browser's session and shows the sign-in form again, for the same authorization request.
+        document.getElementById("switch").addEventListener("click", async (e) => {
+          e.preventDefault();
+          await fetch("/auth/logout", { method: "POST" }).catch(() => {});
+          location.reload();
+        });
         // Money actions need "Read and change"; the checkbox follows the access choice (the server enforces it too).
         const box = document.getElementById("support");
         const sync = () => { const ro = document.querySelector('input[name=access][value="project:read"]').checked; box.disabled = ro; if (ro) box.checked = false; };
