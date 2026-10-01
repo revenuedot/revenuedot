@@ -24,6 +24,7 @@ import { amazonClientFor, amazonReceiptData } from "../stores/amazon/index.js";
 import { mergeStoredState, rowPrice, subRowOf } from "../stores/rows.js";
 import { withStoreSecrets } from "../services/store-secrets.js";
 import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
+import { createTicket, type TicketInput } from "../services/support.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
 
@@ -372,7 +373,15 @@ export function sdkRoutes(deps: Deps) {
 
   // 15-16. Customer Center (Tier 2): no config yet, so the SDK hides the UI.
   r.get("/v1/customercenter/:id", async (c) => c.json({ customer_center: await customerCenterFor(deps.db, c.get("app").projectId) }));
-  r.post("/v1/customercenter/support/create-ticket", (c) => c.json({ sent: false }));
+  // Customer Center tickets: stored, emailed to the support address, listed under Lifecycle > Support (services/support.ts).
+  r.post("/v1/customercenter/support/create-ticket", async (c) => {
+    const app = c.get("app");
+    const b = await c.req.json().catch(() => ({})) as TicketInput;
+    // A subscriber token speaks for its own app user id only.
+    const sub = c.get("auth")?.subscriber as { appUserId: string } | undefined;
+    if (sub) b.app_user_id = sub.appUserId;
+    return c.json(await createTicket(deps, { id: app.id ?? null, projectId: app.projectId, name: app.name ?? null }, b, publicOrigin(c)));
+  });
 
   // 17-18. Virtual currencies (Tier 2): empty balances.
   r.get("/v1/subscribers/:id/virtual_currencies", async (c) => {

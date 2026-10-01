@@ -21,7 +21,7 @@ export function smtpMailer(url: string, from: string, opts: { replyTo?: string; 
   return {
     driver: "smtp",
     async send(msg) {
-      const r = await transport.sendMail({ from, to: msg.to, subject: msg.subject, text: msg.text, html: msg.html, replyTo: msg.replyTo ?? opts.replyTo });
+      const r = await transport.sendMail({ from, to: msg.to, subject: msg.subject, text: msg.text, html: msg.html, replyTo: msg.replyTo ?? opts.replyTo, ...(msg.headers ? { headers: msg.headers } : {}) });
       return { id: r.messageId };
     },
   };

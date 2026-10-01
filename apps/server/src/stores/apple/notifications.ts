@@ -6,6 +6,7 @@ import type { AppRecord, Deps } from "../../context.js";
 import { RCError } from "../../errors.js";
 import { applyFromStore } from "../../services/purchases.js";
 import { adoptImportedChain } from "../../services/imported-chains.js";
+import { handleConsumptionRequest, noteRefundDeclined } from "../../services/refunds.js";
 import type { AppRow } from "../types.js";
 import { appleStoreOf, expectedBundleId, verifyRenewalJws, verifyTransactionJws, xcodeRootsOf } from "./index.js";
 import { JwsError, verifyAppleJws } from "./jws.js";
@@ -21,7 +22,7 @@ interface NotificationPayload {
   subtype?: string;
   notificationUUID?: string;
   signedDate?: number;
-  data?: { appAppleId?: number; bundleId?: string; environment?: string; signedTransactionInfo?: string; signedRenewalInfo?: string; status?: number };
+  data?: { appAppleId?: number; bundleId?: string; environment?: string; signedTransactionInfo?: string; signedRenewalInfo?: string; status?: number; consumptionRequestReason?: string };
   summary?: { bundleId?: string; environment?: string };
 }
 
@@ -108,6 +109,15 @@ async function processNotification(deps: Deps, app: AppRecord, n: NotificationPa
   } catch (e) {
     if (e instanceof RCError && e.status === 400) throw new NotificationError(e.message);
     throw e;
+  }
+  // Refund Control: answer Apple's refund request, or record that Apple declined one (services/refunds.ts).
+  if (n.notificationType === "CONSUMPTION_REQUEST") {
+    await handleConsumptionRequest(deps, app, tx, { signedDate: n.signedDate, reason: d.consumptionRequestReason ?? null });
+    return true;
+  }
+  if (n.notificationType === "REFUND_DECLINED") {
+    await noteRefundDeclined(deps, app, tx, n.signedDate ? new Date(n.signedDate) : now);
+    return true;
   }
   const store = appleStoreOf(app);
   if (tx.type === "Auto-Renewable Subscription") {

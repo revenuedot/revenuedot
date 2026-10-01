@@ -12,6 +12,8 @@ export interface MailMessage {
   text: string;
   html: string;
   replyTo?: string;
+  /** Extra headers (List-Unsubscribe on win-back email). The SMTP driver sends them; the Cloudflare binding does not take any. */
+  headers?: Record<string, string>;
 }
 
 export interface Mailer {

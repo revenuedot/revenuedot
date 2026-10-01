@@ -9,6 +9,11 @@ const HOSTS: Record<AppleEnv, string> = {
   production: "https://api.storekit.itunes.apple.com",
   sandbox: "https://api.storekit-sandbox.itunes.apple.com",
 };
+/** The Retention Messaging API's documented hosts. */
+const MESSAGING_HOSTS: Record<AppleEnv, string> = {
+  production: "https://api.storekit.apple.com",
+  sandbox: "https://api.storekit-sandbox.apple.com",
+};
 const TIMEOUT_MS = 15_000;
 const MAX_HISTORY_PAGES = 50;
 
@@ -64,13 +69,17 @@ export class AppStoreServerApi {
     return this.send<T>(env, "GET", path);
   }
 
-  /** One authorised call; null on 404. */
-  async send<T>(env: AppleEnv, method: "GET" | "PUT" | "POST", path: string, body?: unknown): Promise<T | null> {
+  /** One authorised call; null on 404. An empty 2xx body (202 Accepted) is `{}`. */
+  send<T>(env: AppleEnv, method: "GET" | "PUT" | "POST" | "DELETE", path: string, body?: unknown): Promise<T | null> {
+    return this.call<T>(`${HOSTS[env]}${path}`, method, body);
+  }
+
+  private async call<T>(url: string, method: string, body?: unknown): Promise<T | null> {
     const headers: Record<string, string> = { Authorization: `Bearer ${await this.jwt()}` };
     if (body !== undefined) headers["content-type"] = "application/json";
     let res: Response;
     try {
-      res = await this.fetchFn(`${HOSTS[env]}${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      res = await this.fetchFn(url, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(TIMEOUT_MS) });
     } catch {
       throw new RCError(503, Codes.STORE_PROBLEM, "The App Store could not be reached. Try again later.");
     }
@@ -81,11 +90,29 @@ export class AppStoreServerApi {
       const body = await res.json().catch(() => ({})) as { errorCode?: number; errorMessage?: string };
       throw new AppleApiClientError(res.status, body.errorCode ?? null, body.errorMessage ?? `App Store Server API answered ${res.status}`);
     }
+    const text = await res.text().catch(() => "");
+    if (!text.trim()) return {} as T;
     try {
-      return await res.json() as T;
+      return JSON.parse(text) as T;
     } catch {
       throw new RCError(503, Codes.STORE_PROBLEM, "The App Store returned an unreadable response. Try again later.");
     }
+  }
+
+  /** Send Consumption Information V1 (answer to CONSUMPTION_REQUEST): 202 Accepted, no body. */
+  sendConsumptionInformation(env: AppleEnv, transactionId: string, body: Record<string, unknown>) {
+    return this.send<Record<string, never>>(env, "PUT", `/inApps/v1/transactions/consumption/${encodeURIComponent(transactionId)}`, body);
+  }
+
+  /** Retention Messaging API (pre-release, needs Apple's approval): Upload Message, Configure Default Message, Configure Realtime URL. */
+  uploadRetentionMessage(env: AppleEnv, messageId: string, body: { header: string; body: string }) {
+    return this.call<Record<string, never>>(`${MESSAGING_HOSTS[env]}/inApps/v1/messaging/message/${encodeURIComponent(messageId)}`, "PUT", body);
+  }
+  configureDefaultRetentionMessage(env: AppleEnv, productId: string, locale: string, messageId: string) {
+    return this.call<Record<string, never>>(`${MESSAGING_HOSTS[env]}/inApps/v1/messaging/default/${encodeURIComponent(productId)}/${encodeURIComponent(locale)}`, "PUT", { messageIdentifier: messageId });
+  }
+  configureRealtimeUrl(env: AppleEnv, realtimeURL: string) {
+    return this.call<Record<string, never>>(`${MESSAGING_HOSTS[env]}/inApps/v1/messaging/realtime/url`, "PUT", { realtimeURL });
   }
 
   /** Every signed transaction of the customer, following pagination. null when the transaction is unknown. */

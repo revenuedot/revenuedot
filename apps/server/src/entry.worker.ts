@@ -76,7 +76,7 @@ async function runTick(env: Env, db: DB, why: string) {
       stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron",
       encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true,
     });
-    if (r.expired || r.voided || r.sent || r.integrations || r.exports || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
+    if (r.expired || r.voided || r.consumption || r.winback || r.sent || r.integrations || r.exports || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
     return r;
   } catch (e) {
     console.error(`tick (${why}) failed`, e);

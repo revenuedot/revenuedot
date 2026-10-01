@@ -7,6 +7,8 @@ import { deliverDueIntegrations } from "./integrations/deliver.js";
 import { processExportRuns, queueDueExports } from "./exports/run.js";
 import { depsSecretKey } from "./secrets.js";
 import { runAlerts } from "./alerts.js";
+import { retryDueConsumption } from "./refunds.js";
+import { runDueCampaigns } from "./winback.js";
 import { recheckDueCredentials } from "./credential-health.js";
 import type { Mailer } from "../mail/index.js";
 import { subRowToDomain } from "../repo/customers.js";
@@ -43,6 +45,9 @@ export interface TickOptions {
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
   const expired = await recordDueExpirations(db, now);
   const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
+  // Refund Control answers that failed for a passing reason, inside Apple's 12-hour window.
+  let consumption = 0;
+  try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now }); } catch (e) { console.error("tick: consumption information retries failed", e); }
   const sent = await deliverDue(db, fetchImpl, now);
   // A bad REVENUEDOT_ENCRYPTION_KEY leaves deliveries and exports queued (not failed) until the key is fixed.
   const secretKey = await depsSecretKey(opts).then((k) => ({ ok: true as const, k }), (e) => { console.error("tick: integration secrets key", e); return { ok: false as const }; });
@@ -56,6 +61,9 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   }
   const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {}, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }, now) : 0;
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
+  // Win-back campaigns that are due today (each runs once a day at its UTC hour).
+  let winback = 0;
+  try { winback = await runDueCampaigns({ db, mailer: opts.mailer, now: () => now }, opts.publicUrl); } catch (e) { console.error("tick: win-back campaigns failed", e); }
   let exports = 0;
   if (opts.exports !== false && secretKey.ok) {
     try {
@@ -65,7 +73,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
       console.error("tick: data exports failed", e);
     }
   }
-  return { expired, voided, sent, integrations, exports, credentialsChecked, alerts };
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback };
 }
 
 /** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */
