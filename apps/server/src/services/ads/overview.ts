@@ -29,6 +29,7 @@ async function groups(db: DB, o: { projectId: string; sandbox: boolean; appId: s
   return rows.map((r) => ({ ...r, count: Number(r.count), micros: Number(r.micros) }));
 }
 
+/** `fetch`: the HTTP client for the ECB's rates; undefined uses the global fetch (like the charts), null uses only cached and bundled rates. */
 export async function loadAdsOverview(db: DB, o: { projectId: string; range: AdsRange; sandbox: boolean; appId: string | null; now: Date; fetch?: FxFetch | null }) {
   const { days, start, end, previousStart } = periodDays(o.range, o.now);
   const [current, previous, subs, customers, any, units] = await Promise.all([
@@ -43,7 +44,7 @@ export async function loadAdsOverview(db: DB, o: { projectId: string; range: Ads
     db.select().from(schema.adUnits).where(eq(schema.adUnits.projectId, o.projectId)),
   ]);
   if ([...current, ...previous].some((g) => g.type === AD_TYPES.revenue && (g.currency ?? "USD").toUpperCase() !== "USD")) {
-    await ensureEcbRange(db, previousStart, o.now, o.fetch ?? null);
+    await ensureEcbRange(db, previousStart, o.now, o.fetch);
   }
   const fxl = await fxLookup(db);
   const fx = (amount: number, currency: string, at: number) => fxl.toUsd(amount, currency, at);
