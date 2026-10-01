@@ -40,7 +40,20 @@ type RangeId = (typeof RANGES)[number]["value"];
 const RESOLUTIONS = [["day", "Daily"], ["week", "Weekly"], ["month", "Monthly"], ["quarter", "Quarterly"], ["year", "Yearly"]] as const;
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
 
-function parseJson<T>(v: string | null, fallback: T): T { if (!v) return fallback; try { return JSON.parse(v) as T; } catch { return fallback; } }
+/** A URL parameter's JSON, or the fallback when it is missing, malformed or the wrong shape (a hand-edited link). */
+function parseJson<T>(v: string | null, fallback: T, ok: (x: unknown) => boolean): T {
+  if (!v) return fallback;
+  try { const x: unknown = JSON.parse(v); return ok(x) ? (x as T) : fallback; } catch { return fallback; }
+}
+const isFilters = (x: unknown) => Array.isArray(x) && x.every((f) => !!f && typeof f.name === "string" && Array.isArray(f.values) && f.values.every((v: unknown) => typeof v === "string"));
+const isSelectors = (x: unknown) => !!x && typeof x === "object" && !Array.isArray(x) && Object.values(x).every((v) => typeof v === "string");
+
+/** Values by cohort, segment, measure and period: one lookup per table cell instead of a scan. */
+function valueIndex(body: ChartData) {
+  const m = new Map<string, ChartData["values"][number]>();
+  for (const v of body.values) m.set(`${v.cohort}|${v.segment ?? ""}|${v.measure ?? ""}|${v.period ?? ""}`, v);
+  return (cohort: number, o: { segment?: number; measure?: number; period?: number }) => m.get(`${cohort}|${o.segment ?? ""}|${o.measure ?? ""}|${o.period ?? ""}`);
+}
 
 /** Value formatting by unit: money in the chart's currency, percentages with one decimal, counts with separators. */
 function formatter(unit: string, currency: string, precision = 2) {
@@ -153,8 +166,8 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   const start = range === "custom" ? sp.get("start") ?? iso(today - 29 * DAY) : iso(today - (preset.days - 1) * DAY);
   const resolution = sp.get("res") ?? (cohortTable || preset.days > 120 ? "month" : "day");
   const segment = sp.get("segment") ?? "";
-  const filters = parseJson<{ name: string; values: string[] }[]>(sp.get("filters"), []);
-  const selectors = parseJson<Record<string, string>>(sp.get("sel"), {});
+  const filters = parseJson<{ name: string; values: string[] }[]>(sp.get("filters"), [], isFilters);
+  const selectors = parseJson<Record<string, string>>(sp.get("sel"), {}, isSelectors);
   const env = sp.get("env") === "sandbox" ? "sandbox" : "production";
   const set = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(sp);
@@ -240,7 +253,7 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
 function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: ChartData; currency: string; fetching: boolean }) {
   const [picked, setPicked] = useState<number | null>(null);
   const starts = useMemo(() => [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b), [body]);
-  const incomplete = useMemo(() => starts.map((s) => body.values.some((v) => v.cohort === s && v.incomplete)), [body, starts]);
+  const incomplete = useMemo(() => { const inc = new Set(body.values.filter((v) => v.incomplete).map((v) => v.cohort)); return starts.map((s) => inc.has(s)); }, [body, starts]);
   const periods = starts.map((s, i) => ({ start: s * 1000, ...periodLabels(s * 1000, body.resolution), incomplete: incomplete[i]! }));
   const chartable = body.measures.map((m, i) => ({ m, i })).filter((x) => x.m.chartable);
   // Never two y axes: chartable measures are grouped by unit and one group is plotted at a time. A segmented chart
@@ -251,7 +264,8 @@ function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: C
   const gi = picked !== null && picked < groups.length ? picked : 0;
   const group = groups[gi] ?? [];
   const sel = group[0]?.i ?? 0;
-  const at = (seg: number | undefined, measure: number) => starts.map((s) => body.values.find((v) => v.cohort === s && v.measure === measure && v.segment === seg)?.value ?? null);
+  const lookup = useMemo(() => valueIndex(body), [body]);
+  const at = (seg: number | undefined, measure: number) => starts.map((s) => lookup(s, { segment: seg, measure })?.value ?? null);
   let series: Series[];
   if (segmented) series = body.segments!.map((s, i) => ({ key: `s${i}`, label: s.display_name, values: at(i, sel), other: s.is_other })).filter((_, i) => !body.segments![i]!.is_total);
   else series = group.map((x) => ({ key: `m${x.i}`, label: x.m.display_name, values: at(undefined, x.i) }));
@@ -305,9 +319,10 @@ function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: C
 function CohortTable({ body }: { body: ChartData }) {
   const periods = body.periods!;
   const cohorts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
-  const cell = (c: number, k: number) => body.values.find((v) => v.cohort === c && v.period === k);
+  const lookup = useMemo(() => valueIndex(body), [body]);
+  const cell = (c: number, k: number) => lookup(c, { period: k });
   const vals = body.values.filter((v) => (v.period ?? 0) > 0 && v.value !== null).map((v) => v.value as number);
-  const max = Math.max(0, ...vals);
+  const max = vals.reduce((a, b) => Math.max(a, b), 0);
   const predicted = body.values.some((v) => v.predicted);
   return (
     <section className="panel cpanel" aria-label={`${body.display_name} table`}>
@@ -337,15 +352,16 @@ function CohortTable({ body }: { body: ChartData }) {
 
 function csvRows(body: ChartData): (string | number | null)[][] {
   const day = (s: number) => iso(s * 1000);
+  const lookup = valueIndex(body);
   if (body.periods) {
     const cohorts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
-    return [["cohort", ...body.periods.map((p) => p.display_name)], ...cohorts.map((c) => [day(c), ...body.periods!.map((_, k) => body.values.find((v) => v.cohort === c && v.period === k)?.value ?? null)])];
+    return [["cohort", ...body.periods.map((p) => p.display_name)], ...cohorts.map((c) => [day(c), ...body.periods!.map((_, k) => lookup(c, { period: k })?.value ?? null)])];
   }
   const starts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
   if (body.segments) {
     const cols = body.segments.flatMap((s, i) => body.measures.map((m, j) => ({ name: `${s.display_name} · ${m.display_name}`, i, j })));
-    return [["period", ...cols.map((c) => c.name)], ...starts.map((s) => [day(s), ...cols.map((c) => body.values.find((v) => v.cohort === s && v.segment === c.i && v.measure === c.j)?.value ?? null)])];
+    return [["period", ...cols.map((c) => c.name)], ...starts.map((s) => [day(s), ...cols.map((c) => lookup(s, { segment: c.i, measure: c.j })?.value ?? null)])];
   }
-  return [["period", ...body.measures.map((m) => m.display_name), "incomplete"], ...starts.map((s) => [day(s), ...body.measures.map((_, j) => body.values.find((v) => v.cohort === s && v.measure === j)?.value ?? null), body.values.some((v) => v.cohort === s && v.incomplete) ? "true" : "false"])];
+  return [["period", ...body.measures.map((m) => m.display_name), "incomplete"], ...starts.map((s) => [day(s), ...body.measures.map((_, j) => lookup(s, { measure: j })?.value ?? null), body.measures.some((_, j) => lookup(s, { measure: j })?.incomplete) ? "true" : "false"])];
 }
 

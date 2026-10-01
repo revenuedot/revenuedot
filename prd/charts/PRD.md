@@ -120,7 +120,7 @@ Customer dimensions filter customers and everything they did; purchase dimension
 `apps/server/src/services/charts/reference-sql.ts` holds PostgreSQL for the core charts (revenue, transactions, non-subscription purchases, refunds, new trials, new customers, active subscriptions, active trials, MRR), written against our schema. `packages/contract/test/charts-sql.test.ts` runs each query on the test database and checks it returns the same numbers as the API. The docs page `revenuedot.app/docs/guides/charts` prints them.
 
 ## Data we now store (migration 0012)
-- `sdk_events`: the paywall, Customer Center and ad events the SDKs post to `/v1/events` (deduplicated by the SDK's event id), with the customer resolved from `app_user_id`. Before this, `/v1/events` was accepted and dropped.
+- `sdk_events`: the paywall, Customer Center and ad events the SDKs post to `/v1/events` (deduplicated by the SDK's event id), with the customer resolved from `app_user_id`. Before this, `/v1/events` was accepted and dropped. The endpoint takes a public key, so a body over 512 kB is dropped unread, a batch keeps its first 500 events, strings are capped at 500 characters and a payload at 8,000; the response stays `{}` with status 200. Events from iOS sandbox and TestFlight builds (`X-Is-Sandbox: true`) are stored as sandbox.
 - `customer_activity`: one row per customer per UTC day on which the SDK called us (written when a request touches the customer). Backfilled from `first_seen` and `last_seen`.
 - `subscriptions.cancel_survey_reason`: Google Play's cancel survey answer.
 
@@ -145,4 +145,4 @@ Customer dimensions filter customers and everything they did; purchase dimension
 - **Prediction Explorer** uses a chain-ladder projection of our own data, not RevenueCat's cross-customer survival model.
 - **App Store Save Outcomes** is always zero, and **Refund Request Outcomes** covers Apple only (Google sends no refund requests we can see).
 - **Active Customers** starts counting from migration 0012; earlier days only have each customer's first and last seen day.
-- Charts are computed on request from the project's rows. Large projects will need precomputed daily tables; the definitions will not change.
+- Charts are computed on request from the project's rows: the ledger, subscriptions and customers always, and SDK events, activity days and refund requests only for the charts that read them (`chartSources` in `services/charts/load.ts`). Large projects will need precomputed daily tables; the definitions will not change.

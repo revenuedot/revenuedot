@@ -5,7 +5,7 @@ import {
 } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { loadChartInput } from "../../services/charts/load.js";
+import { chartSources, loadChartInput } from "../../services/charts/load.js";
 import { paramError, scope, V2Error, type V2Context, type V2Router } from "./common.js";
 
 /**
@@ -151,7 +151,8 @@ export function chartRoutes(r: V2Router, deps: Deps) {
   r.get(P, scope("charts_metrics:charts:read"), async (c) => {
     const now = deps.now();
     const p = parse(c, now);
-    const input = await loadChartInput(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, now, currency: p.currency, fetch: deps.fetch ?? undefined });
+    const sources = chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution), to: p.req.rangeEnd });
+    const input = await loadChartInput(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, now, currency: p.currency, fetch: deps.fetch ?? undefined, sources });
     const run = runChart(p.def, input, p.req, { filters: p.filters, segment: p.segment, limit: p.limit });
     const o = run.output;
     const labels = p.segment ? await dimLabels(deps, c.get("projectId"), p.segment) : null;
@@ -180,9 +181,17 @@ export function chartRoutes(r: V2Router, deps: Deps) {
     const segs = [...run.segments.map((s) => ({ id: s.id, isOther: s.isOther, total: false, output: s.output })), { id: "Total", isOther: false, total: true, output: o }];
     const nested = o.measures.length > 1 ? o.measures.map((m) => series(m.display_name, m)) : null;
     body.segments = segs.map((s) => series(s.total ? "Total" : s.isOther ? "Other" : labels!(s.id), o.measures[0]!, { is_total: s.total, is_other: s.isOther, id: s.id, ...(nested ? { nested_measures: nested } : {}) }));
-    if (!p.aggregate) body.values = segs.flatMap((s, i) => s.output.kind !== "series" ? [] : s.output.points.flatMap((pt) => pt.values.map((v, j) => ({
-      cohort: secs(pt.start), segment: i, measure: j, value: round(v, o.measures[j] ?? o.measures[0]!), incomplete: pt.incomplete,
-    }))));
+    // `measure` indexes the total's measures. Charts whose measures follow the data (one per survey option) can have
+    // fewer in a segment: those are matched by id, and an option a segment never chose is 0.
+    if (!p.aggregate) body.values = segs.flatMap((s, i) => {
+      const so = s.output;
+      if (so.kind !== "series") return [];
+      const own = new Map(so.measures.map((m, j) => [m.id, j]));
+      return so.points.flatMap((pt) => o.measures.map((m, k) => {
+        const j = own.get(m.id);
+        return { cohort: secs(pt.start), segment: i, measure: k, value: j === undefined ? (p.def.dynamicMeasures ? 0 : null) : round(pt.values[j] ?? null, m), incomplete: pt.incomplete };
+      }));
+    });
     return c.json(body);
   });
 
@@ -191,7 +200,9 @@ export function chartRoutes(r: V2Router, deps: Deps) {
     const env = c.req.query("environment") ?? "production";
     if (env !== "production" && env !== "sandbox") throw paramError("environment must be production or sandbox.", "environment");
     const projectId = c.get("projectId");
-    const input = await loadChartInput(deps.db, { projectId, sandbox: env === "sandbox", now: deps.now(), currency: "USD", fetch: null });
+    // The filter values come from the ledger, customers and the chart's SDK events; activity and refund requests add none.
+    const sources = { ...chartSources(def.name, null), activity: null, refundRequests: false };
+    const input = await loadChartInput(deps.db, { projectId, sandbox: env === "sandbox", now: deps.now(), currency: "USD", fetch: null, sources });
     const options = await Promise.all(def.dims.map(async (d) => {
       const label = await dimLabels(deps, projectId, d);
       return dimValues(input, d).slice(0, 200).map((v) => ({ id: v, display_name: label(v) }));

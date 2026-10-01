@@ -9,6 +9,7 @@ import { softwareApplication } from "../lib/jsonld";
 import { cloudBill, revenueCatBill, usd, CLOUD_CAP, CLOUD_FREE_UP_TO } from "../lib/pricing";
 import { FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED } from "../lib/faq";
 import { SITE } from "../site";
+import { playerUrl, VIDEOS } from "../lib/videos.mjs";
 import overviewLight from "../assets/screens/overview-light.png";
 import overviewDark from "../assets/screens/overview-dark.png";
 import customer from "../assets/screens/customer-light.png";
@@ -99,10 +100,8 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
         <h2 class="h2">Run your subscriptions by asking in chat</h2>
         <p class="lede">Connect RevenueDot to ChatGPT or Claude, then check revenue, find a customer, grant access or fix a webhook in plain words. It asks before changing anything, never moves money without your approval, and never takes your store keys.</p>
       </div>
-      <div class="shot video">
-        <video controls preload="none" playsinline width="1920" height="1080" poster="/videos/revenuedot-chatgpt-demo.webp" aria-label="87-second demo: RevenueDot running a subscription app from ChatGPT">
-          <source src="/videos/revenuedot-chatgpt-demo.mp4" type="video/mp4" />
-        </video>
+      <div class="shot stream">
+        <iframe src={playerUrl("revenuedot-chatgpt-demo")} title={VIDEOS["revenuedot-chatgpt-demo"].title} loading="lazy" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
       </div>
       <p class="small more"><a href="/docs/guides/connect-ai-assistants">Connect ChatGPT, Claude or Cursor</a> <span class="muted">in about a minute with one URL.</span></p>
     </div>

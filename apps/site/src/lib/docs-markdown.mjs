@@ -4,11 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { satteriHeadingIdsPlugin } from "@astrojs/markdown-satteri";
 import { docsDir, rewriteHref } from "./docs-source.mjs";
+import { playerUrl, VIDEOS, videoFromHref } from "./videos.mjs";
 
 const LANGS = { bash: "Shell", sh: "Shell", shell: "Shell", zsh: "Shell", json: "JSON", jsonc: "JSON", ts: "TypeScript", typescript: "TypeScript", js: "JavaScript", javascript: "JavaScript", swift: "Swift", kotlin: "Kotlin", dart: "Dart", csharp: "C#", ruby: "Ruby", python: "Python", go: "Go", yaml: "YAML", diff: "Diff", http: "HTTP", csv: "CSV", cron: "Cron", text: "Text", plaintext: "Text" };
 
 const el = (tagName, properties, children = []) => ({ type: "element", tagName, properties, children });
 const text = (value) => ({ type: "text", value });
+const streamPlayer = (name, extra = []) =>
+  el("span", { className: ["shot", "stream", ...extra] }, [
+    el("iframe", { src: playerUrl(name), title: VIDEOS[name].title, loading: "lazy", allow: "accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen", allowFullScreen: true }),
+  ]);
 
 /** The docs-repo path of the file being rendered, or null when it is not a docs-repo file. */
 function relOf(ctx) {
@@ -28,16 +33,11 @@ const docsPlugin = {
       if (tag === "a") {
         const href = node.properties?.href;
         if (typeof href !== "string") return;
-        // [![poster](x.webp)](x.mp4) stays a thumbnail link on GitHub and plays in place on the site.
+        // [![poster](x.webp)](https://revenuedot.app/videos/x.mp4) stays a thumbnail link on GitHub and plays in
+        // place on the site in Cloudflare Stream's player.
         const img = node.children?.filter((c) => c.type === "element");
-        if (/\.mp4$/.test(href) && img?.length === 1 && img[0].tagName === "img") {
-          const { src, alt } = img[0].properties ?? {};
-          return el("span", { className: ["shot", "doc-video"] }, [
-            el("video", { controls: true, preload: "none", playsInline: true, poster: src, ariaLabel: alt, width: 1920, height: 1080 }, [
-              el("source", { src: href, type: "video/mp4" }),
-            ]),
-          ]);
-        }
+        const video = videoFromHref(href);
+        if (video && img?.length === 1 && img[0].tagName === "img") return streamPlayer(video, ["doc-video"]);
         const next = rewriteHref(rel, href);
         if (next && next !== href) ctx.setProperty(node, "href", next);
         return;

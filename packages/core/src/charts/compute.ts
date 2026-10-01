@@ -50,6 +50,10 @@ export class Prepared {
   private _moves: Move[] | null = null;
   private _cohort: Map<string, number> | null = null;
   private _byCustomer: Map<string, ChartTx[]> | null = null;
+  private _subsByCustomer: Map<string, Sub[]> | null = null;
+  private _lifecycle: Map<string, ChartInput["lifecycle"]> | null = null;
+  private _firstImpression: Map<string, number> | null = null;
+  private _sorted = new Map<string, unknown[]>();
   constructor(readonly input: ChartInput) {
     const family = new Set(input.subStates.filter((s) => s.familyShared).map(chainKey));
     this.txs = input.txs.filter((t) => !isExcludedStore(t.store) && !family.has(chainKey(t)));
@@ -60,6 +64,19 @@ export class Prepared {
   get now() { return this.input.now; }
   get subs() { return (this._subs ??= buildSubscriptions({ ...this.input, txs: this.txs })); }
   get moves() { return (this._moves ??= pairMoves(subMoves(this.subs, this.now))); }
+  private sortedBy<T>(key: string, rows: () => T[], at: (x: T) => number): T[] {
+    let v = this._sorted.get(key) as T[] | undefined;
+    if (!v) this._sorted.set(key, (v = [...rows()].sort((a, b) => at(a) - at(b))));
+    return v;
+  }
+  /** Rows in time order, so each period reads only its own slice (see `within`). */
+  get txsByTime() { return this.sortedBy("txs", () => this.txs, atOf); }
+  get sdkByTime() { return this.sortedBy("sdk", () => this.input.sdkEvents, atOf); }
+  get movesByTime() { return this.sortedBy("moves", () => this.moves, atOf); }
+  get activityByTime() { return this.sortedBy("activity", () => this.input.activity, (a) => a.day); }
+  get trialsByStart() { return this.sortedBy("trials", () => trialPeriods(this), (t) => t.start); }
+  get trialsByEnd() { return this.sortedBy("trialEnds", () => trialPeriods(this), (t) => t.end); }
+  get cohortTimes() { return this.sortedBy("cohort", () => [...this.cohortDate.values()], (t) => t); }
   money(t: ChartTx) { return moneyOf(t, this.input, this.purchases); }
   /** Each customer's cohort date: the earlier of first seen and first transaction. */
   get cohortDate() {
@@ -69,14 +86,46 @@ export class Prepared {
     for (const t of this.txs) { const c = m.get(t.customerId); if (c !== undefined && t.at < c) m.set(t.customerId, t.at); }
     return (this._cohort = m);
   }
+  /** The customer's ledger rows in time order. */
   txsOf(customerId: string): ChartTx[] {
-    if (!this._byCustomer) {
-      this._byCustomer = new Map();
-      for (const t of [...this.txs].sort((a, b) => a.at - b.at)) this._byCustomer.set(t.customerId, [...(this._byCustomer.get(t.customerId) ?? []), t]);
-    }
+    if (!this._byCustomer) this._byCustomer = groupBy(this.txsByTime, (t) => t.customerId);
     return this._byCustomer.get(customerId) ?? [];
   }
+  /** The customer's subscriptions. */
+  subsOf(customerId: string): Sub[] {
+    return (this._subsByCustomer ??= groupBy(this.subs, (s) => s.customerId)).get(customerId) ?? [];
+  }
+  /** Lifecycle events of one subscription chain (customer, store, product) in time order. */
+  lifecycleOf(s: Pick<Sub, "customerId" | "store" | "productId">): ChartInput["lifecycle"] {
+    this._lifecycle ??= groupBy([...this.input.lifecycle].sort((a, b) => a.at - b.at), (e) => `${e.customerId}|${e.store}|${e.productId}`);
+    return this._lifecycle.get(`${s.customerId}|${s.store}|${s.productId}`) ?? [];
+  }
+  /** Each customer's first paywall impression. */
+  get firstImpression(): Map<string, number> {
+    if (this._firstImpression) return this._firstImpression;
+    const m = new Map<string, number>();
+    for (const e of this.input.sdkEvents) if (e.type === "paywall_impression" && e.customerId && (m.get(e.customerId) ?? Infinity) > e.at) m.set(e.customerId, e.at);
+    return (this._firstImpression = m);
+  }
   refundedAt(t: ChartTx) { return this.refunds.get(`${t.store}|${t.storeTransactionId}`); }
+}
+
+const atOf = (x: { at: number }) => x.at;
+/** The first index whose time is at or after `t` in rows sorted by time. */
+function lowerBound<T>(rows: T[], at: (x: T) => number, t: number): number {
+  let lo = 0, hi = rows.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (at(rows[mid]!) < t) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+/** The rows of a time-sorted list in [from, to). */
+function within<T>(rows: T[], at: (x: T) => number, [from, to]: [number, number]): T[] {
+  return to > from ? rows.slice(lowerBound(rows, at, from), lowerBound(rows, at, to)) : [];
+}
+
+function groupBy<T>(items: T[], key: (x: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const x of items) { const k = key(x); const l = m.get(k); if (l) l.push(x); else m.set(k, [x]); }
+  return m;
 }
 
 /** A move annotated for the movement charts: paid-to-paid product changes become one expansion or contraction. */
@@ -121,6 +170,11 @@ type SeriesFn = (d: Prepared, f: Frame, sel: Record<string, string>) => { measur
 type CohortFn = (d: Prepared, f: Frame, sel: Record<string, string>, def: ChartDef) => CohortOutput;
 
 const inW = (t: number, [a, b]: [number, number]) => t >= a && t < b;
+/** Items grouped by the period whose window holds their time (windows are ordered and do not overlap). */
+function byBucket<T>(f: Frame, items: T[], at: (x: T) => number): T[][] {
+  const sorted = [...items].sort((a, b) => at(a) - at(b));
+  return f.buckets.map((b) => within(sorted, at, f.window(b)));
+}
 
 /** A flow chart: one value per measure from the things that happened in each period. */
 const flow = (fn: (d: Prepared, w: [number, number], sel: Record<string, string>, f: Frame) => (number | null)[]): SeriesFn =>
@@ -135,11 +189,11 @@ const stock = (fn: (d: Prepared, at: number, sel: Record<string, string>) => (nu
 function cohortSeries<T>(members: (d: Prepared, sel: Record<string, string>) => { at: number; item: T; windowEnd: number }[],
   measure: (d: Prepared, items: T[], sel: Record<string, string>) => (number | null)[]): SeriesFn {
   return (d, f, sel) => {
-    const all = members(d, sel);
+    const all = members(d, sel).sort((a, b) => a.at - b.at);
     return {
       points: f.buckets.map((b) => {
         const w = f.window(b);
-        const mine = all.filter((x) => inW(x.at, w));
+        const mine = within(all, atOf, w);
         return { start: b.start, values: measure(d, mine.map((x) => x.item), sel), incomplete: f.clipped(b) || mine.some((x) => x.windowEnd > d.now + 1) };
       }),
     };
@@ -150,12 +204,12 @@ function cohortSeries<T>(members: (d: Prepared, sel: Record<string, string>) => 
 const revenue = flow((d, w, sel) => {
   const proceeds = sel.revenue_type === "proceeds";
   let money = 0, count = 0;
-  for (const t of d.txs) {
-    if (!inW(t.at, w) || t.kind === "trial") continue;
+  for (const t of within(d.txsByTime, atOf, w)) {
+    if (t.kind === "trial") continue;
     money += d.money(t) * (proceeds ? proceedsFactor(t.store) : 1);
     if (PAID_KINDS.has(t.kind)) count++;
   }
-  for (const e of d.input.sdkEvents) if (e.type === "rc_ads_ad_revenue" && inW(e.at, w)) money += (e.revenueUsd ?? 0) * d.input.fx(e.at);
+  for (const e of within(d.sdkByTime, atOf, w)) if (e.type === "rc_ads_ad_revenue") money += (e.revenueUsd ?? 0) * d.input.fx(e.at);
   return [money, count];
 });
 
@@ -165,8 +219,7 @@ const arr = stock((d, at) => [mrrAt(d, at) * 12]);
 
 const mrrMovement = flow((d, w) => {
   let nw = 0, resub = 0, exp = 0, churn = 0, contr = 0;
-  for (const x of d.moves) {
-    if (!inW(x.at, w)) continue;
+  for (const x of within(d.movesByTime, atOf, w)) {
     if (x.category === "new") nw += x.mrr;
     else if (x.category === "resubscription") resub += x.mrr;
     else if (x.category === "change" || x.category === "reprice") { if (x.mrr > 0) exp += x.mrr; else contr += x.mrr; }
@@ -175,14 +228,13 @@ const mrrMovement = flow((d, w) => {
   return [nw, resub, exp, churn, contr, nw + resub + exp + churn + contr];
 });
 
-const nonSubscription = flow((d, w) => [d.txs.filter((t) => t.kind === "one_time" && inW(t.at, w)).length]);
+const nonSubscription = flow((d, w) => [within(d.txsByTime, atOf, w).filter((t) => t.kind === "one_time").length]);
 
 // ── Ads ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 function ads(d: Prepared, w: [number, number]) {
   let revenue = 0, impressions = 0, clicks = 0, loaded = 0, failed = 0;
   const daily = new Map<number, Set<string>>();
-  for (const e of d.input.sdkEvents) {
-    if (!inW(e.at, w)) continue;
+  for (const e of within(d.sdkByTime, atOf, w)) {
     if (e.type === "rc_ads_ad_revenue") {
       revenue += (e.revenueUsd ?? 0) * d.input.fx(e.at);
       if (e.customerId) { const k = dayStart(e.at); daily.set(k, (daily.get(k) ?? new Set()).add(e.customerId)); }
@@ -209,8 +261,7 @@ const actives = stock((d, at) => [d.subs.filter((s) => paidAt(s, at)).length]);
 
 const activesMovement = flow((d, w) => {
   let nw = 0, resub = 0, churned = 0;
-  for (const x of d.moves) {
-    if (!inW(x.at, w)) continue;
+  for (const x of within(d.movesByTime, atOf, w)) {
     if (x.category === "new") nw += 1;
     else if (x.category === "resubscription") resub += 1;
     else if (x.category === "churn" || x.category === "recovery") churned += x.actives;
@@ -220,8 +271,7 @@ const activesMovement = flow((d, w) => {
 
 const activesNew = flow((d, w) => {
   const c = { trial_conversion: 0, new: 0, product_change: 0, resubscription: 0 };
-  for (const x of d.moves) {
-    if (!inW(x.at, w)) continue;
+  for (const x of within(d.movesByTime, atOf, w)) {
     if (x.type === "trial_conversion" || x.type === "new" || x.type === "product_change" || x.type === "resubscription") c[x.type]++;
   }
   return [c.trial_conversion + c.new + c.product_change + c.resubscription, c.trial_conversion, c.new, c.product_change, c.resubscription];
@@ -270,13 +320,11 @@ function trialPeriods(d: Prepared) {
   });
   return out;
 }
-const trialsNew = flow((d, w) => [trialPeriods(d).filter((t) => inW(t.start, w)).length]);
+const trialsNew = flow((d, w) => [within(d.trialsByStart, (t) => t.start, w).length]);
 const trialsMovement = flow((d, w) => {
   let nw = 0, conv = 0, exp = 0;
-  for (const t of trialPeriods(d)) {
-    if (inW(t.start, w)) nw++;
-    if (t.end <= d.now && inW(t.end, w)) { if (t.converted) conv--; else exp--; }
-  }
+  nw = within(d.trialsByStart, (t) => t.start, w).length;
+  for (const t of within(d.trialsByEnd, (t) => t.end, w)) { if (t.end > d.now) continue; if (t.converted) conv--; else exp--; }
   return [nw, conv, exp, nw + conv + exp];
 });
 
@@ -303,12 +351,12 @@ const trialConversionRate = cohortSeries(trialStarters, (d, subs) => {
 });
 
 function lastOptOut(d: Prepared, s: Sub): number | null {
-  const evs = d.input.lifecycle.filter((e) => e.customerId === s.customerId && e.store === s.store && e.productId === s.productId && e.at >= s.trialStart! && e.at < (s.trialEnd ?? Infinity)).sort((a, b) => a.at - b.at);
+  const evs = d.lifecycleOf(s).filter((e) => e.at >= s.trialStart! && e.at < (s.trialEnd ?? Infinity));
   let out: number | null = null;
   for (const e of evs) { if (e.type === "CANCELLATION") out = e.at; else if (e.type === "UNCANCELLATION") out = null; }
   return out;
 }
-const billingIssueInTrial = (d: Prepared, s: Sub) => d.input.lifecycle.some((e) => e.type === "BILLING_ISSUE" && e.customerId === s.customerId && e.store === s.store && e.productId === s.productId && e.at >= s.trialStart! && e.at <= (s.trialEnd ?? Infinity) + DAY);
+const billingIssueInTrial = (d: Prepared, s: Sub) => d.lifecycleOf(s).some((e) => e.type === "BILLING_ISSUE" && e.at >= s.trialStart! && e.at <= (s.trialEnd ?? Infinity) + DAY);
 const trialCancellation = cohortSeries(trialStarters, (d, subs, sel) => {
   const limit = selectorDays(sel.cancellation_timeframe ?? "7_days") * DAY;
   const firsts = oncePerCustomer(subs);
@@ -324,8 +372,9 @@ const trialCancellation = cohortSeries(trialStarters, (d, subs, sel) => {
 });
 
 // ── Customers and conversion ───────────────────────────────────────────────────────────────────────────────────────
-const customersNew = flow((d, w) => [[...d.cohortDate.values()].filter((t) => inW(t, w)).length]);
-const customersActive = flow((d, w) => [new Set(d.input.activity.filter((a) => inW(a.day, w) || (a.day < w[0] && a.day + DAY > w[0])).map((a) => a.customerId)).size]);
+const customersNew = flow((d, w) => [within(d.cohortTimes, (t) => t, w).length]);
+/** A day counts when any part of it falls in the window. */
+const customersActive = flow((d, w) => [new Set(within(d.activityByTime, (a) => a.day, [w[0] - DAY + 1, w[1]]).map((a) => a.customerId)).size]);
 
 /** New customers by cohort date, each with the window that the selector gives them. */
 const newCustomers = (days: (sel: Record<string, string>) => number) => (d: Prepared, sel: Record<string, string>) =>
@@ -381,13 +430,13 @@ const ltvPerPaying = cohortSeries(newCustomers(lifetimeDays), (d, ids, sel) => {
 
 const RANK = ["converted", "set_to_convert", "set_to_cancel", "billing_issue", "abandoned"] as const;
 const trialFunnel = cohortSeries((d) => [...d.cohortDate].map(([id, at]) => {
-  const running = d.subs.some((s) => s.customerId === id && s.trialStart !== null && (s.trialEnd ?? Infinity) > d.now && s.paidStart === null);
+  const running = d.subsOf(id).some((s) => s.trialStart !== null && (s.trialEnd ?? Infinity) > d.now && s.paidStart === null);
   return { at, item: id, windowEnd: running ? Infinity : at };
 }), (d, ids) => {
   const counts = { converted: 0, set_to_convert: 0, set_to_cancel: 0, billing_issue: 0, abandoned: 0 };
   let started = 0;
   for (const id of ids) {
-    const mine = d.subs.filter((s) => s.customerId === id && s.trialStart !== null);
+    const mine = d.subsOf(id).filter((s) => s.trialStart !== null);
     if (!mine.length) continue;
     started++;
     const statuses = mine.map((s): (typeof RANK)[number] => {
@@ -401,13 +450,8 @@ const trialFunnel = cohortSeries((d) => [...d.cohortDate].map(([id, at]) => {
 });
 
 // ── Paywalls ───────────────────────────────────────────────────────────────────────────────────────────────────────
-const firstImpression = (d: Prepared) => {
-  const m = new Map<string, number>();
-  for (const e of d.input.sdkEvents) if (e.type === "paywall_impression" && e.customerId && (m.get(e.customerId) ?? Infinity) > e.at) m.set(e.customerId, e.at);
-  return m;
-};
 const paywallEncounter = cohortSeries(newCustomers(() => 14), (d, ids) => {
-  const first = firstImpression(d);
+  const first = d.firstImpression;
   const share = (k: number) => rate(ids.filter((id) => { const t = first.get(id); return t !== undefined && t < windowEnd(d.cohortDate.get(id)!, k); }).length, ids.length);
   return [share(0), share(1), share(3), share(7), share(14), ids.length];
 });
@@ -416,22 +460,23 @@ const paywallEncounter = cohortSeries(newCustomers(() => 14), (d, ids) => {
 interface Pair { customerId: string; paywall: string; first: number; conversion: ChartTx | null; initiated: boolean }
 function pairs(d: Prepared): Pair[] {
   const m = new Map<string, Pair>();
-  const evs = [...d.input.sdkEvents].sort((a, b) => a.at - b.at);
+  const evs = d.sdkByTime;
   for (const e of evs) {
     if (e.type !== "paywall_impression" || !e.customerId) continue;
     const k = `${e.customerId}|${e.paywallId ?? ""}`;
     if (!m.has(k)) m.set(k, { customerId: e.customerId, paywall: e.paywallId ?? "", first: e.at, conversion: null, initiated: false });
   }
-  for (const p of m.values()) {
+  const initiated = groupBy(evs.filter((e) => e.type === "paywall_purchase_initiated" && e.customerId), (e) => `${e.customerId}|${e.paywallId ?? ""}`);
+  for (const [k, p] of m) {
     const end = windowEnd(p.first, 3);
     p.conversion = d.txsOf(p.customerId).find((t) => CONVERSION_KINDS.has(t.kind) && t.at >= dayStart(p.first) && t.at < end) ?? null;
-    p.initiated = evs.some((e) => e.customerId === p.customerId && (e.paywallId ?? "") === p.paywall && e.type === "paywall_purchase_initiated" && e.at >= p.first && e.at < end);
+    p.initiated = (initiated.get(k) ?? []).some((e) => e.at >= p.first && e.at < end);
   }
   return [...m.values()];
 }
 const pairMembers = (days: (sel: Record<string, string>) => number) => (d: Prepared, sel: Record<string, string>) =>
   pairs(d).map((p) => ({ at: p.first, item: p, windowEnd: Math.max(windowEnd(p.first, 3), windowEnd(p.first, days(sel))) }));
-const trialOf = (d: Prepared, t: ChartTx) => d.subs.find((s) => s.customerId === t.customerId && s.store === t.store && s.productId === t.productId && s.trialStart === t.at) ?? null;
+const trialOf = (d: Prepared, t: ChartTx) => d.subsOf(t.customerId).find((s) => s.store === t.store && s.productId === t.productId && s.trialStart === t.at) ?? null;
 const paywallConversion = cohortSeries(pairMembers(() => 3), (d, ps) => {
   let init = 0, paid = 0, trialStarts = 0, trialConv = 0;
   for (const p of ps) {
@@ -464,20 +509,19 @@ const churn: SeriesFn = (d, f) => ({
     const w = f.window(b);
     const atStart = d.subs.filter((s) => paidAt(s, w[0] - 1)).length;
     let churned = 0;
-    for (const x of d.moves) if (inW(x.at, w) && (x.category === "churn" || x.category === "paired_out" || x.category === "recovery")) churned -= x.actives;
+    for (const x of within(d.movesByTime, atOf, w)) if (x.category === "churn" || x.category === "paired_out" || x.category === "recovery") churned -= x.actives;
     return { start: b.start, values: [rate(churned, atStart), atStart, churned], incomplete: f.clipped(b) };
   }),
 });
 
 const refundRate = flow((d, w) => {
-  const paid = d.txs.filter((t) => PAID_KINDS.has(t.kind) && inW(t.at, w));
+  const paid = within(d.txsByTime, atOf, w).filter((t) => PAID_KINDS.has(t.kind));
   const refunded = paid.filter((t) => d.refundedAt(t) !== undefined).length;
   return [rate(refunded, paid.length), paid.length, refunded];
 });
 const refunds = flow((d, w) => {
   let money = 0, n = 0;
-  for (const t of d.txs) {
-    if (!inW(t.at, w)) continue;
+  for (const t of within(d.txsByTime, atOf, w)) {
     if (t.kind === "refund") { money -= d.money(t); n++; }
     if (t.kind === "refund_reversal") { money -= d.money(t); n--; }
   }
@@ -490,7 +534,7 @@ const refundRequests = flow((d, w) => {
   for (const r of evs) {
     if (r.kind !== "request" || !inW(r.at, w)) continue;
     total++;
-    amount += (r.usd ?? 0) * d.input.fx(r.at);
+    amount += (r.usd ?? 0) * d.input.fx(r.purchasedAt ?? r.at);
     const after = evs.filter((x) => x.transactionId === r.transactionId && x.kind !== "request" && x.at >= r.at).sort((a, b) => a.at - b.at);
     const granted = after.find((x) => x.kind === "granted");
     if (granted && after.some((x) => x.kind === "reversed" && x.at >= granted.at)) c.reversed++;
@@ -526,7 +570,9 @@ const playStoreCancelReasons: SeriesFn = (d, f) => {
 const surveyResponses: SeriesFn = (d, f) => {
   const evs = d.input.sdkEvents.filter((e) => e.type === "customer_center_survey_option_chosen");
   const totals = new Map<string, number>();
-  for (const e of evs) if (f.buckets.some((b) => inW(e.at, f.window(b)))) totals.set(e.surveyOptionId ?? "", (totals.get(e.surveyOptionId ?? "") ?? 0) + 1);
+  const windows = f.buckets.map((b) => f.window(b));
+  const from = Math.min(...windows.map((w) => w[0])), to = Math.max(...windows.map((w) => w[1]));
+  for (const e of evs) if (e.at >= from && e.at < to) totals.set(e.surveyOptionId ?? "", (totals.get(e.surveyOptionId ?? "") ?? 0) + 1);
   const options = [...totals].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([id]) => id);
   return {
     measures: [{ id: "responses", display_name: "Responses", description: "Survey answers in the period.", unit: "#", decimal_precision: 0, chartable: false, tabulable: true, flow: true },
@@ -555,7 +601,7 @@ const MAX_AGE = 24;
 
 function explorerRows(d: Prepared, f: Frame, how: string, cell: (ids: string[], start: Map<string, number>, n: number) => number) {
   const members = cohortMembers(d, how);
-  const rows = f.buckets.map((b) => ({ b, ids: [...members].filter(([, t]) => inW(t, f.window(b))).map(([id]) => id) }));
+  const rows = byBucket(f, [...members], ([, t]) => t).map((list, i) => ({ b: f.buckets[i]!, ids: list.map(([id]) => id) }));
   const oldest = f.buckets[0]?.start ?? d.now;
   let ages = 0;
   while (ages < MAX_AGE && addMonths(oldest, ages + 1) <= d.now) ages++;
@@ -581,7 +627,7 @@ const cohortExplorer: CohortFn = (d, f, sel) => {
       const from = cumulative ? c : addMonths(c, n), to = addMonths(c, n + 1);
       if (money) { v += revenueIn(d, id, from, to, what === "proceeds"); continue; }
       const at = Math.min(to, d.now + 1) - 1;
-      for (const s of d.subs) if (s.customerId === id && paidAt(s, at) && (what === "retained_subscriptions" || statusAt(s, at, d.now) === "set_to_renew")) v++;
+      for (const s of d.subsOf(id)) if (paidAt(s, at) && (what === "retained_subscriptions" || statusAt(s, at, d.now) === "set_to_renew")) v++;
     }
     return what === "realized_ltv_per_customer" ? v / ids.length : v;
   });
@@ -611,7 +657,7 @@ function explorerOutput(rows: CohortOutput["rows"], how: string, measureName: st
 const predictionExplorer: CohortFn = (d, f, sel) => {
   const how = sel.cohorting_date ?? "new_customers";
   const members = cohortMembers(d, how);
-  const rows = f.buckets.map((b) => ({ b, ids: [...members].filter(([, t]) => inW(t, f.window(b))).map(([id]) => id) }));
+  const rows = byBucket(f, [...members], ([, t]) => t).map((list, i) => ({ b: f.buckets[i]!, ids: list.map(([id]) => id) }));
   const realized = rows.map(({ b, ids }) => Array.from({ length: MAX_AGE + 1 }, (_, n) => {
     if (!ids.length || addMonths(b.start, n) > d.now) return null;
     let v = 0;
@@ -655,7 +701,7 @@ const subscriptionRetention: CohortFn = (d, f, sel) => {
     return s.paidStart! + k * Math.max(DAY, first.end - first.start);
   };
   const reached = (s: Sub) => s.periods.filter((p) => !p.trial && p.end > p.start).length;
-  const rows = f.buckets.map((b) => ({ b, subs: subs.filter((s) => inW(s.paidStart!, f.window(b))) }));
+  const rows = byBucket(f, subs, (s) => s.paidStart!).map((list, i) => ({ b: f.buckets[i]!, subs: list }));
   let cols = 1;
   for (const r of rows) for (const s of r.subs) { let k = 1; while (k < MAX_AGE && len(s, k) <= d.now) k++; cols = Math.max(cols, k); }
   return {
