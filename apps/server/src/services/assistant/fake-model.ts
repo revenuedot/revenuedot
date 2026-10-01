@@ -82,7 +82,7 @@ export function fakeLanguageModel(script: FakeScript = defaultScript, opts: { de
         }
         if ("toolCalls" in step) {
           step.toolCalls.forEach((c, i) => {
-            const id = `call_${calls.length}_${i}`;
+            const id = `call_${crypto.randomUUID().slice(0, 8)}_${i}`;
             const input = JSON.stringify(c.input);
             parts.push({ type: "tool-input-start", id, toolName: c.toolName }, { type: "tool-input-delta", id, delta: input }, { type: "tool-input-end", id });
             parts.push({ type: "tool-call", toolCallId: id, toolName: c.toolName, input });

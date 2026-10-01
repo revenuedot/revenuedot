@@ -90,10 +90,11 @@ Tools are defined in the MCP server's format (`name`, `title`, `description`, zo
 - `apps/server/test/assistant-agent.test.ts`: the agent loop with a scripted fake model: a read tool call → result → answer; a write tool call → approval card → approve → the write runs and is audited; deny → nothing changes; caps refuse a turn.
 - `apps/server/test/assistant-stream.test.ts`: SSE streaming, resume from stored chunks mid-answer, stale streams marked interrupted, conversations CRUD and ownership.
 - `packages/core/test/storekit.test.ts`: the parser against real-format `.storekit` fixtures (subscriptions with intro offers, consumables, non-consumables, non-renewing).
+- `apps/dashboard/e2e/do-smoke.mjs`: the Durable Object runtime under `cf dev` with the fake model.
 - `apps/dashboard/e2e/assistant.spec.ts` (fake model, `E2E_PORT=5408`, one worker): open `/ai`, ask, see a tool card, approve a write, see the result; the Overview bar; the settings tab; screenshots at 1440×900 light and dark.
 
 ## Gaps
 - No live model run yet (needs a deploy for Workers AI, a key for self-host).
-- The Durable Object path is type-checked and bundled but not exercised by the e2e run, which uses the Node runtime.
+- The Durable Object path is not in the Playwright run (which uses the Node runtime); it passed a local run under `cf dev` with the fake model (`apps/dashboard/e2e/do-smoke.mjs`, steps in `docs/cloud.md`), not yet on Cloudflare.
 - Tools that write to App Store Connect and Google Play (Tier 3) are not built; `create_in_store` exists in the API and can become a tool later.
 - The assistant's own settings (instructions, memory) from RevenueCat's assistant are not built.

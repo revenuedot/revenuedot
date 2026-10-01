@@ -43,6 +43,8 @@ export default defineConfig({
       // RevenueDot AI conversations (prd/ai-assistant/PRD.md); the model is Workers AI through `AI` unless a provider key
       // (ANTHROPIC_API_KEY or OPENAI_API_KEY) is set as a secret.
       AssistantAgent: bindings.durableObject({ worker: "revenuedot", exportName: "AssistantAgent" }),
+      // Local `cf dev` only: REVENUEDOT_ASSISTANT_FAKE=1 in the shell answers with the scripted fake model (no model call).
+      ...(process.env.REVENUEDOT_ASSISTANT_FAKE === "1" ? { REVENUEDOT_ASSISTANT_FAKE: bindings.text("1") } : {}),
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
     },
   },
