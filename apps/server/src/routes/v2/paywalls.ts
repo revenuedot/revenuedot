@@ -148,6 +148,10 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     const now = deps.now();
     if (!(await hit(db, `paywall-ai:${projectId}`, 1, 5_000, now))) throw new V2Error(429, "rate_limit_error", "One paywall generation every 5 seconds. Try again in a moment.", undefined, true);
     if (!(await hit(db, `paywall-ai-day:${projectId}`, 60, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "This project has used its 60 paywall generations for today.", undefined, true);
+    // Projects are free to create, so a person (and the whole server) has a daily cap too: the model is billed per call.
+    const principal = c.get("principal");
+    if (principal.kind === "user" && !(await hit(db, `paywall-ai-user:${principal.userId}`, 100, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "You have used your 100 paywall generations for today.", undefined, true);
+    if (!(await hit(db, "paywall-ai-server", 5_000, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "Paywall generation is busy today. Try again tomorrow.", undefined, true);
     const req = { prompt: b.prompt, appName: b.app_name, brandColors: b.brand_colors, packages: packages.length ? packages : undefined, locale: b.locale };
     const m = paywallAiMessages(req);
     let answer: string;

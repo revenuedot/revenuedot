@@ -16,13 +16,17 @@ export interface PaywallModel {
 /** The Workers AI binding's `run`, typed only as far as we use it. */
 export interface WorkersAi { run(model: string, input: { messages: { role: string; content: string }[]; max_tokens?: number; temperature?: number }): Promise<unknown> }
 
+/** Output cap per call (cost) and how long a self-hosted provider may take before the request fails. */
+const MAX_TOKENS = 4096;
+const TIMEOUT_MS = 90_000;
+
 export const WORKERS_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 export function workersAiModel(ai: WorkersAi, model = WORKERS_AI_MODEL): PaywallModel {
   return {
     provider: "Workers AI", model,
     async complete(system, user) {
-      const r = await ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_tokens: 4096, temperature: 0.4 });
+      const r = await ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_tokens: MAX_TOKENS, temperature: 0.4 });
       const o = r as { response?: unknown };
       // Newer models may return the parsed object when the answer is JSON.
       if (typeof o?.response === "string") return o.response;
@@ -37,8 +41,8 @@ export function openAiModel(apiKey: string, model = "gpt-4.1-mini", f: typeof fe
     provider: "OpenAI", model,
     async complete(system, user) {
       const res = await f(`${baseUrl}/chat/completions`, {
-        method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ model, temperature: 0.4, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+        method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS),
+        body: JSON.stringify({ model, max_tokens: MAX_TOKENS, temperature: 0.4, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
       });
       const body = (await res.json().catch(() => null)) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } } | null;
       if (!res.ok) throw new Error(`OpenAI answered ${res.status}: ${body?.error?.message ?? "no message"}`);
@@ -54,8 +58,8 @@ export function anthropicModel(apiKey: string, model = "claude-sonnet-4-5", f: t
     provider: "Anthropic", model,
     async complete(system, user) {
       const res = await f("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model, max_tokens: 4096, temperature: 0.4, system, messages: [{ role: "user", content: user }] }),
+        method: "POST", headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS),
+        body: JSON.stringify({ model, max_tokens: MAX_TOKENS, temperature: 0.4, system, messages: [{ role: "user", content: user }] }),
       });
       const body = (await res.json().catch(() => null)) as { content?: { type: string; text?: string }[]; error?: { message?: string } } | null;
       if (!res.ok) throw new Error(`Anthropic answered ${res.status}: ${body?.error?.message ?? "no message"}`);
