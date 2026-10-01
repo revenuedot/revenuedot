@@ -1,6 +1,6 @@
 # SDK-compatible API (scope 1.1, with the 1.0 contract harness)
 
-**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 55 of the 58 method-and-path pairs have a route: 26 answer with real data and 29 are safe stubs. The other 3 are the SDKs' identity-provider login calls (`/auth/*`), used only in their internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The 15 subscriber-token paths of that mode (`/v1/customer/*`) are routed since branch `tier2-v2-events`: they take the access token from the v2 `authenticate` operation. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
+**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 55 of the 58 method-and-path pairs have a route: 28 answer with real data and 27 are safe stubs. The other 3 are the SDKs' identity-provider login calls (`/auth/*`), used only in their internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The 15 subscriber-token paths of that mode (`/v1/customer/*`) are routed since branch `tier2-v2-events`: they take the access token from the v2 `authenticate` operation. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
 
 ## Users and jobs
 - **App developers** change only the SDK's proxy URL and keep their app code, their public API key and their paywalls.
@@ -15,7 +15,7 @@ Essential (Tier 1)
 - Signed responses (Trusted Entitlements) when `REVENUEDOT_SIGNING_KEY` is set.
 
 Later
-- Customer Center configuration, virtual currency balances, paywall remote config, web purchases and their redemption, and ad reward verification. (Amazon Appstore receipts are real since Tier 2: `prd/store-amazon/PRD.md`; SDK events are stored for the charts since Tier 2: `prd/charts/PRD.md`.)
+- Customer Center configuration, virtual currency balances, paywall remote config, and ad reward verification. (Web purchases and their redemption are real since Tier 3 web billing: `prd/web-billing/PRD.md`.) (Amazon Appstore receipts are real since Tier 2: `prd/store-amazon/PRD.md`; SDK events are stored for the charts since Tier 2: `prd/charts/PRD.md`.)
 
 ## Endpoint inventory
 Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingHTTPRequestPath.swift`, `EventsHTTPRequestPath.swift`, `DiagnosticsHTTPRequestPath.swift` and `SourceHealthChecker.swift` in `revenuedot/purchases-ios`; Android `purchases/src/main/kotlin/com/revenuecat/purchases/common/networking/Endpoint.kt` in `revenuedot/purchases-android`; web `src/networking/endpoints.ts` and `src/behavioural-events/events-tracker.ts` in `revenuedot/purchases-js`. All three forks were taken from upstream `main` on 2026-09-30. `purchases-hybrid-common` makes no HTTP calls of its own: it calls the native SDKs. The device harnesses use the published RevenueCat iOS 5.92.0 and Android 10.24.0.
@@ -46,14 +46,14 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 19 | POST | `/v1/customercenter/support/create-ticket` | iOS, Android | Stub | 200 `{"sent":false}` | The support form reports that nothing was sent |
 | 20 | GET | `/v1/subscribers/{app_user_id}/virtual_currencies` | iOS, Android, web | Real | 200 `virtual_currencies` by code with balance, name, code, description | `virtualCurrencies()` returns the customer's balances (empty for a customer we have not seen) |
 | 21 | POST | `/v1/subscribers/{app_user_id}/restore/eligibility` | iOS | Stub | 200 allowed | StoreKit 2 restore behaviour check |
-| 22 | POST | `/v1/subscribers/redeem_purchase` | iOS, Android | Stub | 400 · 7849 | `redeemWebPurchase` returns `invalidToken`: there are no web purchases to redeem |
+| 22 | POST | `/v1/subscribers/redeem_purchase` | iOS, Android | Real | 200 customer info; 400 · 7849 for an invalid token (also 7852 when another user redeemed it, 7853 when it expired, with `purchase_redemption_error_info.obfuscated_email`) | `redeemWebPurchase` returns `success`, `invalidToken`, `purchaseBelongsToOtherUser` or `expired` (a new link is emailed). Web purchases come from RevenueDot's hosted checkout (`prd/web-billing/PRD.md` §4) |
 | 23 | POST | `/v1/external_purchase_tokens` | iOS | Stub | 200 `{"id":…}` | Apple external-purchase token registered; the web checkout it leads to (row 29) fails |
 | 24 | GET | `/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}` | iOS, Android | Stub | 200 `status: failed` | `pollRewardVerification` stops after one request and returns failed |
 | 25 | GET | `/v1/receipts/amazon/{store_user_id}/{receipt_id}` | Android | Real | 200 Amazon's receipt data with `termSku`; 400 · 7103 unknown receipt; 400 · 7662 for a key that is not an Amazon app's; 503 · 7101 while Amazon is unavailable | The SDK posts the term SKU as the product id; an error leaves the Amazon purchase unconsumed. Spec: `prd/store-amazon/PRD.md` |
 | 26 | POST | `/v1/config/{domain}` | iOS, Android | Real | 200 RC Container (`application/x-rc-format`), 204 when the sent manifest is current | Remote config: published paywalls as workflows (one per offering) and `ui_config`, with every blob inline; how iOS 5.83+ and current Android load paywalls |
 | 27 | GET | `/v1/config/{domain}` | iOS, Android | Stub | 204 | Remote config fallback path |
 | 28 | GET | `/rcbilling/v1/subscribers/{app_user_id}/offering_products` | iOS | Stub | 200 `{"offerings":{}}` | Defined in the SDK with no caller |
-| 29 | POST | `/rcbilling/v1/hosted-checkout` | iOS | Stub | 400 · 7000 | Paywall web checkout returns `failed`; no retry |
+| 29 | POST | `/rcbilling/v1/hosted-checkout` | iOS | Real | 200 `operation_session_id`, `checkout_url` (Stripe Checkout), `success_url`, `cancel_url`; 400 · 7000 when the package has no web product | Paywall web checkout opens the Stripe page and closes on the success or cancel URL (`prd/web-billing/PRD.md` §2) |
 | 30 | POST | `/v1/events` | iOS, Android, web | Real | 200 `{}` | Paywall, customer center and ad events are stored for the charts (`sdk_events`, one row per SDK event id); a malformed batch still gets 200 so it is not resent |
 | 31 | POST | `/v1/diagnostics` | iOS, Android | Stub | 200 `{}` | Diagnostics are accepted and not resent |
 | 32 | GET | `/rcbilling/v1/branding` | web | Stub | 200 the app's name, default look | Web Billing (`rcb_` keys) checkout branding |
@@ -83,7 +83,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 56 | POST | `/auth/login`, `/auth/token`, `/auth/revoke` | iOS, Android | Absent | none | IAM user login with an identity provider, internal and off by default. `/auth/login` on RevenueDot is the dashboard's sign-in |
 <!-- inventory:end -->
 
-Counts: rows 1-55 are 55 routed pairs (26 real, 29 stubs); row 56 is 3 absent pairs.
+Counts: rows 1-55 are 55 routed pairs (28 real, 27 stubs); row 56 is 3 absent pairs.
 
 **Subscriber tokens (rows 41-55).** `POST /v2/projects/{project_id}/apps/{app_id}/authenticate` issues an `rdat_` token for one app user id of one app, valid for one hour (`prd/rest-api/PRD.md`). Sent as `Authorization: Bearer rdat_…`, it is accepted everywhere the app's public key is, pinned to its app user id: a `/v1/customer/*` path is served by the matching `/v1/subscribers/{app_user_id}/*` route, a `/v1/subscribers/{other id}` path, a receipt, offer signature, `logIn` or alias whose `app_user_id` or `new_app_user_id` is another app user id answers 401 · 7224, `POST /v1/events` keeps only the token's own events, and an expired token answers 401 · 7224 (the SDK's "invalid auth token"). Deleting the customer revokes its tokens. The currency spend runs in one transaction with a conditional decrement per currency, so concurrent spends never take a balance below zero. The app's public key on a `/v1/customer/*` path also answers 401 · 7224, because these paths name no app user id. Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
 
@@ -116,7 +116,7 @@ Routes are in `apps/server/src/routes/sdk.ts`; attribution is in `apps/server/sr
 
 ## Known gaps
 - Customer Center has no configuration, so its screen shows an error; virtual currencies have no balances; paywall remote config is empty (Tier 2).
-- RevenueDot takes no web payments, so Web Billing checkout, hosted checkout and web purchase redemption always fail with the codes above.
+- Web purchase redemption and the iOS hosted checkout are real since web billing (`prd/web-billing/PRD.md`). The purchases-js Web Billing flow (`rcb_` keys, `/rcbilling/v1/checkout/*`, Stripe Elements inside the SDK) still answers with the codes above: RevenueDot's checkout is a hosted page.
 - Server-side ad reward verification is not supported.
 - The iOS SDK sends no AdServices token from a simulator (it logs that the token is not available there), so `adservices_attribution` and the Apple lookup are tested only in `sdk-endpoints.test.ts`, with a stubbed Apple API.
 - A promotional-offer request needs a real StoreKit subscription transaction on the device, so `POST /v1/offers` is tested only in `sdk-endpoints.test.ts`, where the signature is checked with the key's public half.

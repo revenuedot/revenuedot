@@ -35,3 +35,8 @@ Each PRD is short and has the same sections: users and jobs, essential now and l
 | Tier 2 | Offline entitlements (product mapping per store) | [offline-entitlements](offline-entitlements/PRD.md) |
 | Tier 2 | The rest of v2 (restore by order id, create in store, subscriber tokens, discounts and invoices excluded) | [rest-api](rest-api/PRD.md) |
 | Tier 2 | All 21 webhook events | [webhooks](webhooks/PRD.md) |
+
+## Tier 3
+| Scope | Feature | PRD |
+|---|---|---|
+| Tier 3 | Web billing: web providers, hosted checkout, purchase links, redemption links, funnels, web discounts, domains | [web-billing](web-billing/PRD.md) |

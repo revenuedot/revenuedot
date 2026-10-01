@@ -40,7 +40,7 @@ Tier 2 (this change)
 | SUBSCRIBER_ALIAS | yes, opt-in | a new app user id joins an existing customer | RevenueCat's field table (no sample) |
 | TEMPORARY_ENTITLEMENT_GRANT | never | RevenueDot never grants unverified access | `temporary_entitlement_grant.json` kept for the day it does |
 | INVOICE_ISSUANCE | never | RevenueCat Billing only | `invoice_issued.json` kept |
-| PURCHASE_REDEEMED | never | no web purchases to redeem yet | `purchase_redeemed.json` kept |
+| PURCHASE_REDEEMED | yes | a web purchase is redeemed in the app (`prd/web-billing/PRD.md` §4) | `purchase_redeemed.json`, key by key plus `app_user_id` (`packages/contract/test/redemption.test.ts`) |
 
 **SUBSCRIBER_ALIAS.** RevenueCat: "a new App User ID was registered for an existing subscriber", deprecated, "new projects don't receive this webhook", with the common and subscriber identity fields (https://www.revenuecat.com/docs/integrations/webhooks/event-types-and-fields). RevenueDot records it whenever an app user id joins an existing customer: `logIn` of a new id on an anonymous customer, `logIn` that merges the anonymous customer into an existing one, Android's `POST /v1/subscribers/{id}/alias`, and the receipt merges (an anonymous owner merged into the poster, an anonymous poster merged into the owner, and the "share" transfer behaviour). `app_user_id` is the new id. It is always in the customer's event history, but it is delivered only to webhooks and integrations whose event filter names it. A webhook with no filter, like a new RevenueCat project, never gets it.
 
@@ -48,10 +48,11 @@ Tier 2 (this change)
 
 **INVOICE_ISSUANCE** fires when RevenueCat Billing issues an unpaid invoice, and RevenueCat's table marks it RevenueCat Billing only, not even Stripe. RevenueDot has no billing engine of its own. The Stripe store (PR #3) uses the customer's own Stripe Billing, where RevenueCat does not send it either.
 
-**PURCHASE_REDEEMED** fires when a web purchase (Stripe, Paddle or RevenueCat Billing) is redeemed in the app through a redemption link. RevenueDot issues no redemption links, so `POST /v1/subscribers/redeem_purchase` answers 7849 and nothing is ever redeemed. PR #3 adds Stripe purchases but no redemption links. When redemption lands, the event's fields are RevenueCat's sample (`purchase_redeemed.json`).
+**PURCHASE_REDEEMED** fires when a web purchase from RevenueDot's hosted checkout is redeemed in the app through a redemption link (`POST /v1/subscribers/redeem_purchase`, `prd/web-billing/PRD.md` §4). Its fields are RevenueCat's sample (`purchase_redeemed.json`): `store` STRIPE, `redeemed_from` (the anonymous web id), `redeemed_by`, `redemption_outcome` alias, `redemption_platform`, `product_id`, `entitlement_ids`, `workflow_id` (the funnel id, or null), `workflow_step_id` null, `trace_id` (the web checkout id), plus `app_user_id` (the redeemer) so analytics tools know who it is.
+
+**FUNNEL_VIEWED, FUNNEL_STEP_COMPLETED and FUNNEL_PURCHASE** are RevenueDot's own types for web funnels (`prd/web-billing/PRD.md` §5). Like SUBSCRIBER_ALIAS they are opt-in: only webhooks and integrations whose filter names them receive them, so receivers that know only RevenueCat's types never see them.
 
 Later
-- PURCHASE_REDEEMED with web purchase redemption.
 
 ## RevenueCat behaviour we match
 - Only an HTTP 200 counts as delivered. Retries come after 5, 10, 20, 40 and 80 minutes, and the request times out after 60 seconds (https://www.revenuecat.com/docs/integrations/webhooks).
@@ -80,4 +81,4 @@ Later
 ## Known gaps
 - `renewal_number` is sent on REFUND_REVERSED only, where RevenueCat's sample has it.
 - `metadata` is not sent. It exists only for RevenueCat Billing.
-- TEMPORARY_ENTITLEMENT_GRANT, INVOICE_ISSUANCE and PURCHASE_REDEEMED can be selected as filters but are never sent (reasons above).
+- TEMPORARY_ENTITLEMENT_GRANT and INVOICE_ISSUANCE can be selected as filters but are never sent (reasons above).
