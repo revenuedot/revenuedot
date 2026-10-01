@@ -1,0 +1,44 @@
+# Publishes the CocoaPods of an SDK fork (prd/sdk-forks/PRD.md, release job). Runs on a GitHub macOS runner because
+# `pod trunk push` validates every platform in the podspec (iOS, macOS, tvOS, watchOS, visionOS) and needs all their
+# simulators. The trunk session token is the `COCOAPODS_TRUNK_TOKEN` secret of the `production` environment.
+name: Release pods
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Fork repository (revenuedot/<repo>)
+        required: true
+        type: choice
+        options: [purchases-ios, purchases-hybrid-common]
+      tag:
+        description: Git tag to publish, e.g. 5.91.0-revenuedot
+        required: true
+      podspecs:
+        description: Podspecs in publish order, space separated
+        required: true
+
+jobs:
+  push:
+    runs-on: macos-15
+    environment: production
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: revenuedot/${{ inputs.repo }}
+          ref: ${{ inputs.tag }}
+      - name: Push pods
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+          PODSPECS: ${{ inputs.podspecs }}
+        run: |
+          pod --version
+          for spec in $PODSPECS; do
+            name="$(basename "$spec" .podspec)"
+            version="$(ruby -e "print Pod::Specification.from_file('$spec').version" -r cocoapods 2>/dev/null || true)"
+            # Already published (a rerun after a later pod failed): skip it.
+            if [ -n "$version" ] && pod trunk info "$name" 2>/dev/null | grep -q -- "- $version "; then echo "$name $version is already on trunk"; continue; fi
+            # --synchronous makes the next pod see this one in the spec repo right away.
+            pod trunk push "$spec" --allow-warnings --skip-tests --synchronous
+          done
