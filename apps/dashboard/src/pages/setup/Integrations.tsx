@@ -48,7 +48,7 @@ export function Integrations() {
   const card = (i: Integration) => (
     <Link key={i.id} className="card" to={`/projects/${pid}/integrations/${i.to}`} data-integration={i.id}>
       <div className="card-h"><span className="mono-tile" aria-hidden>{i.name.slice(0, 2)}</span><b>{i.name}</b>
-        {active(i) ? <Tag tone="up">Active{activeCount(i) > 1 ? ` · ${activeCount(i)}` : ""}</Tag> : <Tag tone="muted">Set up</Tag>}
+        {active(i) ? <Tag tone="up">Active · {activeCount(i)}</Tag> : <Tag tone="muted">Set up</Tag>}
       </div>
       <p>{i.text}</p>
       {i.via && <span className="cellsub">Via webhook</span>}

@@ -86,7 +86,7 @@ export const INTEGRATIONS: IntegrationSpec[] = [
       { key: "event_tokens", label: "Event tokens", type: "tokens", hint: "The Adjust event token for each step. Steps without a token are not sent." },
       { key: "oauth_token", label: "S2S auth token", type: "secret", hint: "Only when S2S security is on in Adjust." }, REPORTING,
     ] },
-  { kind: "meta", name: "Meta", category: "attribution", text: "Send purchase conversions to Meta through the Conversions API.", environment: "production", eventNames: true, docs: `${DOCS}#meta`,
+  { kind: "meta", name: "Meta Ads", category: "attribution", text: "Send purchase conversions to Meta through the Conversions API.", environment: "production", eventNames: true, docs: `${DOCS}#meta`,
     fields: [
       { key: "dataset_id", label: "Dataset ID", type: "text", required: true },
       { key: "access_token", label: "Conversions API access token", type: "secret", required: true },

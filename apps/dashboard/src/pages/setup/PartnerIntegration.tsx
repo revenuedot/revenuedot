@@ -8,6 +8,7 @@ import { Check, CodeBlock, ConfirmDialog, Dialog, Disclosure, EVENT_TONE, Field,
 import { api, fmt, type List } from "../../lib/api";
 import { base, errMsg, useApps, useIntegrations, useIntegrationTypes, type Integration, type IntegrationDelivery, type IntegrationType } from "./data";
 import { IntercomInboxPanel } from "./SupportApps";
+import { AppleAdsPanel } from "../ads/AppleAdsPanel";
 
 /**
  * One partner integration (/projects/:projectId/integrations/:type): Slack, Segment, Amplitude, Mixpanel, PostHog,
@@ -301,6 +302,7 @@ export function PartnerIntegrationPage() {
             {spec.type === "intercom_inbox" && <IntercomInboxPanel pid={pid} />}
             <IntegrationForm key={current?.id ?? "new"} pid={pid} spec={spec} current={current} onSaved={() => toast(current ? "Saved." : spec.connection ? `${spec.name} is connected.` : `${spec.name} is connected. Send a test event to check it.`)} />
             {current && !spec.connection && <Deliveries pid={pid} integration={current} />}
+            {spec.type === "apple_search_ads" && <AppleAdsPanel pid={pid} canSync={!!current?.secrets.private_key?.configured} />}
           </>
         )}
       </div>
