@@ -145,7 +145,8 @@ function General({ p }: { p: Project }) {
   const [deleting, setDeleting] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const sandboxValue = sandboxOn ? sandbox : null;
-  const testerList = [...new Set(testers.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean))];
+  // One id per line, as the hint says: app user ids may contain commas.
+  const testerList = [...new Set(testers.split(/\r?\n/).map((x) => x.trim()).filter(Boolean))];
   const dirty = name.trim() !== p.name || behavior !== p.transfer_behavior || sandboxValue !== p.sandbox_transfer_behavior
     || access !== p.sandbox_testing_access || testerList.join("\n") !== p.sandbox_testers.join("\n");
   const reset = () => {

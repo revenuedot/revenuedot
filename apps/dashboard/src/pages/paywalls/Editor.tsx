@@ -90,6 +90,8 @@ function Editor({ paywallId }: { paywallId: string }) {
     setColorAliases(a);
     force((x) => x + 1);
   }, [brandValue]);
+  // Other previews (the paywall list, templates) must not draw this project's named colours after the editor closes.
+  useEffect(() => () => setColorAliases({}), []);
   const fontFaces = brandValue.fonts.map((f) => `@font-face{font-family:"${f.font_key}";src:url("${f.url}");font-display:swap}`).join("\n");
   // A document the designer cannot show (wrong shape, too deep) opens in the JSON tab only.
   const broken = useMemo(() => (doc ? docShapeError(doc) : null), [doc]);

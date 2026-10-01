@@ -1,6 +1,7 @@
 /** Brand presets and fonts, shared by the Brand tab and the paywall editor's colour and font pickers (prd/project-settings §2). */
 import { useQuery } from "@tanstack/react-query";
-import { api, type List } from "../../lib/api";
+import { api } from "../../lib/api";
+import { listAll } from "../catalog/lib";
 import { fileBase64 } from "../paywalls/lib";
 
 export interface ColorPreset { key: string; name: string; light: string; dark: string | null }
@@ -11,7 +12,7 @@ export interface Font { object: "font"; id: string; name: string; family_name: s
 
 const v2 = (pid: string) => `/v2/projects/${encodeURIComponent(pid)}`;
 export const useBrand = (pid: string) => useQuery({ queryKey: ["brand", pid], enabled: !!pid, queryFn: () => api<Brand>(`${v2(pid)}/brand`) });
-export const useFonts = (pid: string) => useQuery({ queryKey: ["fonts", pid], enabled: !!pid, queryFn: async () => (await api<List<Font>>(`${v2(pid)}/fonts?limit=100`)).items });
+export const useFonts = (pid: string) => useQuery({ queryKey: ["fonts", pid], enabled: !!pid, queryFn: () => listAll<Font>(`${v2(pid)}/fonts`) });
 export const saveBrand = (pid: string, b: Partial<Pick<Brand, "color_presets" | "gradient_presets">>) => api<Brand>(`${v2(pid)}/brand`, { method: "POST", json: b });
 
 export async function uploadFont(pid: string, file: File): Promise<Font> {
@@ -26,8 +27,14 @@ export const gradientCss = (g: Pick<GradientPreset, "type" | "degrees" | "points
   const stops = g.points.map((p) => `${cssColor(p.color)} ${p.percent}%`).join(", ");
   return g.type === "linear" ? `linear-gradient(${g.degrees ?? 180}deg, ${stops})` : `radial-gradient(circle, ${stops})`;
 };
-/** A preset key from its name: "Brand Gold" → "brand_gold". */
-export const keyOf = (name: string) => name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "color";
+/** A preset key from its name: "Brand Gold" → "brand_gold". A name with no a-z or 0-9 gets the first free `color_<n>`. */
+export const keyOf = (name: string, taken: string[] = []) => {
+  const k = name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+  if (k) return k;
+  let n = 1;
+  while (taken.includes(`color_${n}`)) n++;
+  return `color_${n}`;
+};
 
 const WEIGHTS: Record<number, string> = { 100: "Thin", 200: "Extra light", 300: "Light", 400: "Regular", 500: "Medium", 600: "Semibold", 700: "Bold", 800: "Extra bold", 900: "Black" };
 /** "Bold", "Regular Italic": a font's weight and style as people say them. */

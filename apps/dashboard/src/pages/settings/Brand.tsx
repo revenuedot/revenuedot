@@ -14,15 +14,17 @@ import "./settings.css";
 
 const HEX = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
 const six = (h: string) => (h.length >= 7 ? h.slice(0, 7) : "#000000");
+/** A colour picked in the native picker (which has no alpha) keeps the alpha the hex had. */
+const withAlpha = (picked: string, prev: string) => `${picked.toUpperCase()}${HEX.test(prev) && prev.length === 9 ? prev.slice(7).toUpperCase() : ""}`;
 
 function ColorDialog({ initial, taken, onSave, onClose }: { initial: ColorPreset | null; taken: string[]; onSave: (c: ColorPreset) => Promise<void>; onClose: () => void }) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [light, setLight] = useState(initial ? six(initial.light).toUpperCase() : "#0A0A0A");
+  const [light, setLight] = useState(initial ? initial.light.toUpperCase() : "#0A0A0A");
   const [darkOn, setDarkOn] = useState(!!initial?.dark);
-  const [dark, setDark] = useState(initial?.dark ? six(initial.dark).toUpperCase() : "#FAFAFA");
+  const [dark, setDark] = useState(initial?.dark ? initial.dark.toUpperCase() : "#FAFAFA");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const key = initial?.key ?? keyOf(name);
+  const key = initial?.key ?? keyOf(name, taken);
   const save = async () => {
     if (!name.trim()) return setError("Give the colour a name.");
     if (!HEX.test(light) || (darkOn && !HEX.test(dark))) return setError("Colours are #RRGGBB or #RRGGBBAA.");
@@ -32,7 +34,7 @@ function ColorDialog({ initial, taken, onSave, onClose }: { initial: ColorPreset
   };
   const swatch = (id: string, v: string, set: (s: string) => void, label: string) => (
     <div className="br-hex">
-      <input type="color" aria-label={`${label} picker`} value={six(HEX.test(v) ? v : "#000000")} onChange={(e) => set(e.target.value.toUpperCase())} />
+      <input type="color" aria-label={`${label} picker`} value={six(HEX.test(v) ? v : "#000000")} onChange={(e) => set(withAlpha(e.target.value, v))} />
       <input id={id} className="input mono" value={v} maxLength={9} onChange={(e) => set(e.target.value.trim())} />
     </div>
   );
@@ -59,14 +61,14 @@ function GradientDialog({ initial, taken, onSave, onClose }: { initial: Gradient
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState<"linear" | "radial">(initial?.type ?? "linear");
   const [degrees, setDegrees] = useState(initial?.degrees ?? 180);
-  const [points, setPoints] = useState<GradientPoint[]>(initial?.points.map((p) => ({ color: six(p.color).toUpperCase(), percent: p.percent })) ?? [{ color: "#0A0A0A", percent: 0 }, { color: "#525252", percent: 100 }]);
+  const [points, setPoints] = useState<GradientPoint[]>(initial?.points.map((p) => ({ color: p.color.toUpperCase(), percent: p.percent })) ?? [{ color: "#0A0A0A", percent: 0 }, { color: "#525252", percent: 100 }]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const key = initial?.key ?? keyOf(name);
+  const key = initial?.key ?? keyOf(name, taken);
   const setPoint = (i: number, p: Partial<GradientPoint>) => setPoints((ps) => ps.map((x, j) => (j === i ? { ...x, ...p } : x)));
   const save = async () => {
     if (!name.trim()) return setError("Give the gradient a name.");
-    if (points.some((p) => !HEX.test(p.color))) return setError("Every stop needs a #RRGGBB colour.");
+    if (points.some((p) => !HEX.test(p.color))) return setError("Every stop needs a #RRGGBB or #RRGGBBAA colour.");
     if (!initial && taken.includes(key)) return setError(`A preset named like this exists (${key}). Pick another name.`);
     setBusy(true);
     try { await onSave({ key, name: name.trim(), type, ...(type === "linear" ? { degrees } : {}), points: [...points].sort((a, b) => a.percent - b.percent), dark_points: initial?.dark_points ?? null }); onClose(); }
@@ -90,7 +92,7 @@ function GradientDialog({ initial, taken, onSave, onClose }: { initial: Gradient
           <legend className="flabel">Stops</legend>
           {points.map((p, i) => (
             <div key={i} className="hrow">
-              <input type="color" aria-label={`Stop ${i + 1} colour`} value={six(HEX.test(p.color) ? p.color : "#000000")} onChange={(e) => setPoint(i, { color: e.target.value.toUpperCase() })} />
+              <input type="color" aria-label={`Stop ${i + 1} colour`} value={six(HEX.test(p.color) ? p.color : "#000000")} onChange={(e) => setPoint(i, { color: withAlpha(e.target.value, p.color) })} />
               <input aria-label={`Stop ${i + 1} hex`} className="input mono br-hexin" value={p.color} maxLength={9} onChange={(e) => setPoint(i, { color: e.target.value.trim() })} />
               <input aria-label={`Stop ${i + 1} position`} className="input mono br-num" type="number" min={0} max={100} value={p.percent} onChange={(e) => setPoint(i, { percent: Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))) })} /><span className="subtle">%</span>
               <button type="button" className="ib" aria-label={`Remove stop ${i + 1}`} disabled={points.length <= 2} onClick={() => setPoints((ps) => ps.filter((_, j) => j !== i))}><Icon name="close" /></button>

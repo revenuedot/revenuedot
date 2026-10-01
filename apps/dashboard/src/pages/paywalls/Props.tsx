@@ -268,7 +268,10 @@ function FontPicker({ value, onChange }: { value: string | undefined; onChange: 
   const { fonts, pid } = useContext(BrandCtx);
   const qc = useQueryClient();
   const toast = useToast();
-  const [custom, setCustom] = useState(() => !!value && !fonts.some((f) => f.font_key === value));
+  // "Other font name…" shows for a name that is no uploaded font (worked out on every render, so fonts that load late or an
+  // undo are shown right), or while the user chose it explicitly.
+  const [otherChosen, setCustom] = useState(false);
+  const custom = otherChosen || (!!value && !fonts.some((f) => f.font_key === value));
   const [busy, setBusy] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const upload = async (f: File | undefined) => {

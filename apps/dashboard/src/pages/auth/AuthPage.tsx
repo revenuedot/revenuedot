@@ -84,7 +84,7 @@ function ProviderDialog({ pid, initial, onClose }: { pid: string; initial: Provi
         </div>
         <p className="section-sub">Example: a user with {claim || "sub"} <code>abc123</code> signs in as app user ID <code>{prefix}abc123</code>. Users who already signed in keep their app user ID if you change this later.</p>
         <Field label="Name (optional)" htmlFor="ap-name"><input id="ap-name" className="input" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        {error && !error.param && <div className="banner err" role="alert">{error.message}</div>}
+        {error && !["firebase_project_id", "issuer", "audiences", "jwks_url", "app_user_id_claim", "app_user_id_prefix"].includes(error.param?.split(".")[0] ?? "") && <div className="banner err" role="alert">{error.message}</div>}
         <button type="submit" hidden />
       </form>
     </Dialog>
@@ -196,8 +196,8 @@ export function AuthPage() {
             </div>
             {settings.isError ? <div className="banner err" role="alert">{errMsg(settings.error)}</div> : (
               <div className="stack tight">
-                <Switch checked={!!s?.enabled} onChange={(v) => void setS({ enabled: v }, v ? "Auth is on." : "Auth is off. Sign-ins are refused.")} label={s?.enabled ? "Auth is on for this project" : "Auth is off for this project"} />
-                <Switch checked={!!s?.allow_anonymous} onChange={(v) => void setS({ allow_anonymous: v }, v ? "Anonymous sign-in allowed." : "Anonymous sign-in turned off.")} label="Allow anonymous sign-in" />
+                <Switch checked={!!s?.enabled} disabled={!s} onChange={(v) => void setS({ enabled: v }, v ? "Auth is on." : "Auth is off. Sign-ins are refused.")} label={s?.enabled ? "Auth is on for this project" : "Auth is off for this project"} />
+                <Switch checked={!!s?.allow_anonymous} disabled={!s} onChange={(v) => void setS({ allow_anonymous: v }, v ? "Anonymous sign-in allowed." : "Anonymous sign-in turned off.")} label="Allow anonymous sign-in" />
               </div>
             )}
           </div>

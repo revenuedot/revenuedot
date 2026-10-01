@@ -42,11 +42,18 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
   // Live slug check, debounced.
   useEffect(() => {
     if (!d || !q.data || d.slug === q.data.slug) { setSlugState(null); return; }
+    // An answer for a slug the user has typed past is dropped.
+    let live = true;
     const t = setTimeout(async () => {
-      try { setSlugState(await api(`${base(pid)}/verified_metrics/slug_availability?slug=${encodeURIComponent(d.slug)}`)); } catch { /* the save reports it */ }
+      try {
+        const r = await api<{ slug: string; available: boolean; reason: string | null }>(`${base(pid)}/verified_metrics/slug_availability?slug=${encodeURIComponent(d.slug)}`);
+        if (live) setSlugState(r);
+      } catch { /* the save reports it */ }
     }, 300);
-    return () => clearTimeout(t);
+    return () => { live = false; clearTimeout(t); };
   }, [d?.slug, q.data, pid]);
+  // Only the answer for the slug in the field counts.
+  const slugCheck = slugState && d && slugState.slug === d.slug.trim().toLowerCase() ? slugState : null;
   const overview = useQuery({ queryKey: ["overview", pid, "production"], enabled: !!pid, queryFn: () => api<{ metrics: { id: string; value: number }[] }>(`/v2/projects/${pid}/metrics/overview?environment=production`) });
   const histories = useQueries({ queries: (["mrr", "revenue", "active_subscriptions", "active_trials", "new_customers", "active_users"] as MetricId[]).map((id) => ({
     queryKey: ["verified-history", pid, id], enabled: !!pid,
@@ -85,7 +92,7 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
           <div className="pb stack">
             <p className="section-sub">A public page with your production numbers, computed by RevenueDot from store receipts and notifications. It shows totals only: no customers, no sandbox data.</p>
             {live && <div className="hrow"><a className="btn btn-line" href={s.url} target="_blank" rel="noreferrer"><Icon name="link" />Open page</a><CopyButton value={s.url} label="Copy page URL" /></div>}
-            <Field label="Share URL" htmlFor="vm-slug" hint={slugState && !slugState.available ? undefined : "3 to 40 characters: a-z, 0-9 and dashes."} error={error?.param === "slug" ? error.message : slugState && !slugState.available ? slugState.reason : null}>
+            <Field label="Share URL" htmlFor="vm-slug" hint={slugCheck && !slugCheck.available ? undefined : "3 to 40 characters: a-z, 0-9 and dashes."} error={error?.param === "slug" ? error.message : slugCheck && !slugCheck.available ? slugCheck.reason : null}>
               <div className="vm-url"><span>{host}</span><input id="vm-slug" value={d.slug} maxLength={40} spellCheck={false} onChange={(e) => set({ slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })} /></div>
             </Field>
             <Field label="Display name" htmlFor="vm-name" error={error?.param === "display_name" ? error.message : null}>
@@ -125,7 +132,7 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
                 <button type="button" className="btn btn-line" onClick={() => file.current?.click()}>Upload</button>
                 <input ref={file} type="file" hidden accept="image/png,image/jpeg,image/webp" aria-label="Icon image" onChange={async (e) => {
                   const f = e.target.files?.[0]; if (!f) return;
-                  try { const a = await uploadImage(pid, f); await qc.invalidateQueries({ queryKey: ["paywall-media", pid] }); set({ icon_asset_id: a.id }); } catch (err) { toast(errMsg(err)); }
+                  try { const a = await uploadImage(pid, f); await qc.invalidateQueries({ queryKey: ["paywall-media", pid] }); setD((cur) => (cur ? { ...cur, icon_asset_id: a.id } : cur)); } catch (err) { toast(errMsg(err)); }
                 }} />
               </div>
             )}
