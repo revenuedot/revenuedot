@@ -1,5 +1,5 @@
 {
-  "id": "95f655e9-a313-4b57-adc0-e56b708d65da",
+  "id": "78d81f70-c056-4acc-a5c1-0238e78457f8",
   "prevId": "1c6a549c-f4eb-43a9-bd87-b59021a83f2e",
   "version": "7",
   "dialect": "postgresql",
@@ -1019,6 +1019,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "customers_project_first_seen": {
+          "name": "customers_project_first_seen",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_seen",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1276,6 +1303,33 @@
           "columns": [
             {
               "expression": "customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "events_project_created": {
+          "name": "events_project_created",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1842,6 +1896,12 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
+        "progress": {
+          "name": "progress",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "rows": {
           "name": "rows",
           "type": "integer",
@@ -1851,7 +1911,7 @@
         },
         "bytes": {
           "name": "bytes",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
@@ -4415,6 +4475,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "subscriptions_project_updated": {
+          "name": "subscriptions_project_updated",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4764,6 +4851,33 @@
             },
             {
               "expression": "purchased_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transactions_project_created": {
+          "name": "transactions_project_created",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

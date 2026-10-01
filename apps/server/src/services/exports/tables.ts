@@ -56,14 +56,21 @@ export const PAGE = 2000;
 
 export interface Window { since: Date | null; until: Date; environment: "both" | "production" | "sandbox" }
 
-/** Keyset cursor inside one export: (time, id) of the last row read. */
-export interface Cursor { t: Date; id: string }
+/**
+ * Keyset cursor inside one export: (time, id) of the last row read. `t` is Postgres's own text for the timestamp, so
+ * microseconds survive (a JavaScript Date keeps milliseconds only, and rows written by `now()` share sub-millisecond
+ * times: reading them back through a Date would repeat rows at every page and loop forever on a big batch).
+ */
+export interface Cursor { t: string; id: string }
 
 const T = schema.transactions, S = schema.subscriptions, C = schema.customers, A = schema.customerAttributes, AL = schema.customerAliases, E = schema.events;
 const PAID = ["purchase", "renewal", "trial", "one_time"];
 
 const inWindow = (col: AnyColumn, w: Window) => (w.since ? and(gt(col, w.since), lte(col, w.until))! : lte(col, w.until));
-const after = (time: AnyColumn, id: AnyColumn, c: Cursor | null) => (c ? sql`(${time}, ${id}) > (${c.t.toISOString()}::timestamptz, ${c.id})` : undefined);
+const after = (time: AnyColumn, id: AnyColumn, c: Cursor | null) => (c ? sql`(${time}, ${id}) > (${c.t}::timestamptz, ${c.id})` : undefined);
+/** The exact text of a timestamp column, for the next page's cursor. */
+const exact = (col: AnyColumn) => sql<string>`${col}::text`;
+const nextCursor = <T extends { k: string }>(rows: T[], id: (r: T) => string): Cursor | null => (rows.length === PAGE ? { t: rows[rows.length - 1]!.k, id: id(rows[rows.length - 1]!) } : null);
 
 async function customerInfo(db: DB, ids: string[]) {
   if (!ids.length) return new Map<string, { c: typeof C.$inferSelect; last: string; aliases: string[]; reserved: Record<string, unknown>; custom: Record<string, unknown>; attrsAt: number }>();
@@ -91,8 +98,9 @@ const maxDate = (...d: (Date | null | undefined)[]) => d.reduce<Date | null>((m,
 export async function readPage(db: DB, projectId: string, table: ExportTable, w: Window, cursor: Cursor | null): Promise<{ rows: Row[]; next: Cursor | null }> {
   if (table === "transactions") return transactionsPage(db, projectId, w, cursor);
   if (table === "subscriptions") {
-    const rows = await db.select().from(S).where(and(eq(S.projectId, projectId), envCond(S.isSandbox, w), inWindow(S.updatedAt, w), after(S.updatedAt, S.id, cursor)))
+    const page = await db.select({ s: S, k: exact(S.updatedAt) }).from(S).where(and(eq(S.projectId, projectId), envCond(S.isSandbox, w), inWindow(S.updatedAt, w), after(S.updatedAt, S.id, cursor)))
       .orderBy(asc(S.updatedAt), asc(S.id)).limit(PAGE);
+    const rows = page.map((r) => r.s);
     const info = await customerInfo(db, [...new Set(rows.map((r) => r.customerId))]);
     return {
       rows: rows.map((s) => ({
@@ -103,15 +111,15 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
         original_store_transaction_id: s.originalTransactionId ?? s.storeKey, price_in_purchased_currency: s.priceAmount, purchased_currency: s.priceCurrency, price_in_usd: s.priceUsd,
         country: s.countryCode, presented_offering: s.presentedOfferingId, auto_renew_product_identifier: s.autoRenewProductId, updated_at: s.updatedAt,
       })),
-      next: rows.length === PAGE ? { t: rows[rows.length - 1]!.updatedAt, id: rows[rows.length - 1]!.id } : null,
+      next: nextCursor(page, (r) => r.s.id),
     };
   }
   if (table === "events") {
     const envE = w.environment === "both" ? undefined : eq(E.environment, w.environment);
-    const rows = await db.select().from(E).where(and(eq(E.projectId, projectId), envE, inWindow(E.createdAt, w), after(E.createdAt, E.id, cursor)))
+    const page = await db.select({ e: E, k: exact(E.createdAt) }).from(E).where(and(eq(E.projectId, projectId), envE, inWindow(E.createdAt, w), after(E.createdAt, E.id, cursor)))
       .orderBy(asc(E.createdAt), asc(E.id)).limit(PAGE);
     return {
-      rows: rows.map((e) => {
+      rows: page.map(({ e }) => {
         const ev = ((e.payload as { event?: Record<string, any> }).event ?? {}) as Record<string, any>;
         return {
           event_id: e.id, type: e.type, event_time: new Date(e.eventTimestampMs), recorded_at: e.createdAt, environment: e.environment, app_id: e.appId,
@@ -120,7 +128,7 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
           price_in_purchased_currency: typeof ev.price_in_purchased_currency === "number" ? ev.price_in_purchased_currency : null, payload: JSON.stringify(ev),
         };
       }),
-      next: rows.length === PAGE ? { t: rows[rows.length - 1]!.createdAt, id: rows[rows.length - 1]!.id } : null,
+      next: nextCursor(page, (r) => r.e.id),
     };
   }
   // customers: new, seen, or with attributes changed in the window. The keyset is first_seen + id.
@@ -130,8 +138,9 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
   const windowCond = w.since ? or(inWindow(C.firstSeen, w), inWindow(C.lastSeen, w), attrChanged) : lte(C.firstSeen, w.until);
   const sandboxCond = w.environment === "both" ? undefined
     : sql`exists (select 1 from ${T} where ${T.customerId} = ${C.id} and ${T.isSandbox} = ${w.environment === "sandbox"})`;
-  const rows = await db.select().from(C).where(and(eq(C.projectId, projectId), windowCond, sandboxCond, cursor ? sql`(${C.firstSeen}, ${C.id}) > (${cursor.t.toISOString()}::timestamptz, ${cursor.id})` : undefined))
+  const page = await db.select({ c: C, k: exact(C.firstSeen) }).from(C).where(and(eq(C.projectId, projectId), windowCond, sandboxCond, after(C.firstSeen, C.id, cursor)))
     .orderBy(asc(C.firstSeen), asc(C.id)).limit(PAGE);
+  const rows = page.map((r) => r.c);
   const info = await customerInfo(db, rows.map((r) => r.id));
   return {
     rows: rows.map((c) => {
@@ -143,7 +152,7 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
         updated_at: maxDate(c.lastSeen, i.attrsAt ? new Date(i.attrsAt) : null),
       };
     }),
-    next: rows.length === PAGE ? { t: rows[rows.length - 1]!.firstSeen, id: rows[rows.length - 1]!.id } : null,
+    next: nextCursor(page, (r) => r.c.id),
   };
 }
 
@@ -157,8 +166,9 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
     sql`exists (select 1 from ${S} s where s.project_id = ${T.projectId} and s.store = ${T.store} and s.store_transaction_id = ${T.storeTransactionId}
       and s.updated_at > ${w.since.toISOString()}::timestamptz and s.updated_at <= ${w.until.toISOString()}::timestamptz)`,
   ) : undefined;
-  const rows = await db.select().from(T).where(and(eq(T.projectId, projectId), inArray(T.kind, PAID), envCond(T.isSandbox, w), lte(T.createdAt, w.until), changed, after(T.createdAt, T.id, cursor)))
+  const page = await db.select({ t: T, k: exact(T.createdAt) }).from(T).where(and(eq(T.projectId, projectId), inArray(T.kind, PAID), envCond(T.isSandbox, w), lte(T.createdAt, w.until), changed, after(T.createdAt, T.id, cursor)))
     .orderBy(asc(T.createdAt), asc(T.id)).limit(PAGE);
+  const rows = page.map((r) => r.t);
   if (!rows.length) return { rows: [], next: null };
   const customerIds = [...new Set(rows.map((r) => r.customerId))];
   const [info, subs, chainTx, products, ents] = await Promise.all([
@@ -231,5 +241,5 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
       offer: null, offer_type: null, first_seen_time: i?.c.firstSeen ?? null, auto_resume_time: current ? s?.autoResumeDate ?? null : null, app_id: t.appId,
     };
   });
-  return { rows: out, next: rows.length === PAGE ? { t: rows[rows.length - 1]!.createdAt, id: rows[rows.length - 1]!.id } : null };
+  return { rows: out, next: nextCursor(page, (r) => r.t.id) };
 }

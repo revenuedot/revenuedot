@@ -125,7 +125,7 @@ export const customers = pgTable("customers", {
   originalPurchaseDate: ts("original_purchase_date"),
   /** Offering forced for this customer by the REST API (overrides the current offering). */
   offeringOverrideId: text("offering_override_id"),
-}, (t) => [index("customers_project").on(t.projectId, t.lastSeen)]);
+}, (t) => [index("customers_project").on(t.projectId, t.lastSeen), index("customers_project_first_seen").on(t.projectId, t.firstSeen, t.id)]);
 
 /** Every app user id that points at a customer (the original id is an alias too). */
 export const customerAliases = pgTable("customer_aliases", {
@@ -184,7 +184,7 @@ export const subscriptions = pgTable("subscriptions", {
   /** Google Play: the customer's answer to the cancel survey (`cancelSurveyResult.reason`), for the cancel reasons chart. */
   cancelSurveyReason: text("cancel_survey_reason"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [uniqueIndex("subscriptions_store_key").on(t.projectId, t.store, t.storeKey), index("subscriptions_customer").on(t.customerId)]);
+}, (t) => [uniqueIndex("subscriptions_store_key").on(t.projectId, t.store, t.storeKey), index("subscriptions_customer").on(t.customerId), index("subscriptions_project_updated").on(t.projectId, t.updatedAt, t.id)]);
 
 export const nonSubscriptions = pgTable("non_subscriptions", {
   id: text("id").primaryKey(),
@@ -225,7 +225,7 @@ export const transactions = pgTable("transactions", {
   countryCode: text("country_code"),
   /** When RevenueDot recorded the row (incremental data exports read this; rows from before migration 0013 carry its run time). */
   createdAt: created(),
-}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt)]);
+}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id)]);
 
 /** Customer lifecycle events; the source for webhooks and the customer history timeline. */
 export const events = pgTable("events", {
@@ -238,7 +238,7 @@ export const events = pgTable("events", {
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
   eventTimestampMs: bigint("event_timestamp_ms", { mode: "number" }).notNull(),
   createdAt: created(),
-}, (t) => [index("events_project_time").on(t.projectId, t.eventTimestampMs), index("events_customer").on(t.customerId)]);
+}, (t) => [index("events_project_time").on(t.projectId, t.eventTimestampMs), index("events_customer").on(t.customerId), index("events_project_created").on(t.projectId, t.createdAt, t.id)]);
 
 export const webhooks = pgTable("webhooks", {
   id: text("id").primaryKey(),
@@ -699,6 +699,8 @@ export const exportJobs = pgTable("export_jobs", {
 }, (t) => [index("export_jobs_project").on(t.projectId), index("export_jobs_due").on(t.enabled, t.nextRunAt)]);
 
 export interface ExportFile { table: string; key: string; rows: number; bytes: number }
+/** Where an unfinished run stopped: the index into the job's tables, the page cursor inside it, the last part written. */
+export interface ExportProgress { table: number; cursor: { t: string; id: string } | null; part: number }
 
 export const exportRuns = pgTable("export_runs", {
   id: text("id").primaryKey(),
@@ -712,8 +714,10 @@ export const exportRuns = pgTable("export_runs", {
   attempts: integer("attempts").notNull().default(0),
   nextAttemptAt: ts("next_attempt_at").notNull().defaultNow(),
   files: jsonb("files").$type<ExportFile[]>().notNull().default([]),
+  /** Set while a run is spread over several ticks (services/exports/run.ts); null when it has not started or is done. */
+  progress: jsonb("progress").$type<ExportProgress | null>(),
   rows: integer("rows").notNull().default(0),
-  bytes: integer("bytes").notNull().default(0),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
   error: text("error"),
   startedAt: ts("started_at"),
   finishedAt: ts("finished_at"),

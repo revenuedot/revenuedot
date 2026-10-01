@@ -10,7 +10,7 @@ import { mkdirSync } from "node:fs";
 import * as schema from "./schema.js";
 
 export { schema };
-export type { PaywallContent, ExportFile } from "./schema.js";
+export type { PaywallContent, ExportFile, ExportProgress } from "./schema.js";
 export type DB = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));

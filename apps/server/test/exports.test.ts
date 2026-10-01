@@ -11,7 +11,9 @@ import { getOrCreateCustomer, setAttributes } from "../src/repo/customers.js";
 import { applyPurchases } from "../src/services/purchases.js";
 import { clearGoogleTokens } from "../src/services/google-sa.js";
 import { gunzip, parseCsv } from "../src/services/exports/files.js";
-import { nextRunAt } from "../src/services/exports/run.js";
+import { nextRunAt, runExport } from "../src/services/exports/run.js";
+import { secretKeyFrom } from "../src/services/secrets.js";
+import { sql } from "drizzle-orm";
 import { sha256Hex, signV4 } from "../src/services/exports/sigv4.js";
 import { COLUMNS } from "../src/services/exports/tables.js";
 import type { VerifiedSubscription } from "../src/stores/types.js";
@@ -262,5 +264,66 @@ describe("export runs", () => {
     expect((await call("POST", `/integrations/exports/${job.id}/actions/check`, {}, denied.f)).body).toMatchObject({ ok: false, message: "S3 answered HTTP 403. Check that the credentials can list and write to the bucket." });
     const audit = await h.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.projectId, "proj1"));
     expect(audit.map((a) => a.actionType)).toEqual(["data_export_created"]);
+  });
+});
+
+describe("big exports", () => {
+  it("spreads a run over several ticks, one file at a time, with rows that share a microsecond timestamp read once", async () => {
+    const call = api();
+    const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["events"], compression: "none" })).body;
+    // 10,500 events written by one statement: one created_at, with microseconds, for all of them.
+    await h.db.execute(sql`insert into events (id, project_id, type, environment, payload, event_timestamp_ms, created_at)
+      select 'bulk' || lpad(g::text, 6, '0'), 'proj1', 'TEST', 'production', '{"api_version":"1.0","event":{}}'::jsonb, 0, timestamptz '2026-09-01 11:00:00.123456+00'
+      from generate_series(1, 10500) g`);
+    const run = (await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" })).body;
+    const { f, puts } = bucket();
+    const rt = { fetch: f, now: h.now(), secretKey: await secretKeyFrom(KEY, null) };
+    expect(await runExport(h.db, run.id, rt, 0)).toBe(true);
+    let [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
+    expect([r!.status, r!.progress?.part, r!.files.length]).toEqual(["queued", 1, 1]);
+    expect(await runExport(h.db, run.id, rt, 0)).toBe(true);
+    [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
+    expect([r!.status, r!.progress, r!.attempts]).toEqual(["succeeded", null, 0]);
+    expect(puts.map((p) => p.url.split("/").pop())).toEqual(["events_20260901T120000Z.csv", "events_20260901T120000Z_part2.csv"]);
+    const ids = puts.flatMap((p) => parseCsv(new TextDecoder().decode(p.bytes)).slice(1).map((row) => row[0]!)).filter((id) => id.startsWith("bulk"));
+    expect(ids).toHaveLength(10500);
+    expect(new Set(ids).size).toBe(10500);
+    expect(r!.files.map((x) => x.rows).reduce((a, b) => a + b, 0)).toBe(r!.rows);
+  });
+
+  it("a run whose tick keeps dying fails after three tries instead of looping", async () => {
+    const call = api();
+    const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["transactions"] })).body;
+    const run = (await call("POST", `/integrations/exports/${job.id}/actions/run`, {})).body;
+    await h.db.update(schema.exportRuns).set({ status: "running", attempts: 2, nextAttemptAt: new Date(h.now().getTime() - 60_000) }).where(eq(schema.exportRuns.id, run.id));
+    const { f, puts } = bucket();
+    await tick(h.db, h.now(), f, { encryptionKey: KEY });
+    const [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
+    expect(r!.status).toBe("failed");
+    expect(r!.error).toMatch(/stopped before it finished/);
+    expect(puts).toHaveLength(0);
+  });
+
+  it("a run another tick holds is left alone", async () => {
+    const call = api();
+    const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["transactions"] })).body;
+    const run = (await call("POST", `/integrations/exports/${job.id}/actions/run`, {})).body;
+    await h.db.update(schema.exportRuns).set({ status: "running", nextAttemptAt: new Date(h.now().getTime() + 60_000) }).where(eq(schema.exportRuns.id, run.id));
+    const { f, puts } = bucket();
+    expect((await tick(h.db, h.now(), f, { encryptionKey: KEY })).exports).toBe(0);
+    expect(puts).toHaveLength(0);
+  });
+
+  it("refuses an endpoint on the server's own network on Cloud", async () => {
+    const cloud = createApp({ db: h.db, now: h.now, stores: defaultStores(), encryptionKey: KEY, edition: "cloud" });
+    const res = await cloud.fetch(new Request("http://localhost/v2/projects/proj1/integrations/exports", {
+      method: "POST", headers: { Authorization: `Bearer ${h.ids.secretKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ ...S3, config: { ...S3.config, endpoint: "http://10.1.2.3:9000" } }),
+    }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { param: string }).param).toBe("config.endpoint");
+    const call = api();
+    expect((await call("POST", "/integrations/exports", { ...S3, config: { ...S3.config, endpoint: "http://169.254.169.254" } })).body.param).toBe("config.endpoint");
+    expect((await call("POST", "/integrations/exports", { ...S3, config: { ...S3.config, prefix: "a/../../other" } })).body.param).toBe("config.prefix");
   });
 });

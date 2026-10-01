@@ -35,8 +35,9 @@ CREATE TABLE "export_runs" (
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"files" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"progress" jsonb,
 	"rows" integer DEFAULT 0 NOT NULL,
-	"bytes" integer DEFAULT 0 NOT NULL,
+	"bytes" bigint DEFAULT 0 NOT NULL,
 	"error" text,
 	"started_at" timestamp with time zone,
 	"finished_at" timestamp with time zone,
@@ -93,4 +94,8 @@ CREATE INDEX "export_runs_due" ON "export_runs" USING btree ("status","next_atte
 CREATE INDEX "integration_deliveries_due" ON "integration_deliveries" USING btree ("status","next_attempt_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "integration_deliveries_unique" ON "integration_deliveries" USING btree ("integration_id","event_id");--> statement-breakpoint
 CREATE INDEX "integration_deliveries_log" ON "integration_deliveries" USING btree ("integration_id","created_at");--> statement-breakpoint
-CREATE INDEX "integrations_project" ON "integrations" USING btree ("project_id");
+CREATE INDEX "integrations_project" ON "integrations" USING btree ("project_id");--> statement-breakpoint
+CREATE INDEX "customers_project_first_seen" ON "customers" USING btree ("project_id","first_seen","id");--> statement-breakpoint
+CREATE INDEX "events_project_created" ON "events" USING btree ("project_id","created_at","id");--> statement-breakpoint
+CREATE INDEX "subscriptions_project_updated" ON "subscriptions" USING btree ("project_id","updated_at","id");--> statement-breakpoint
+CREATE INDEX "transactions_project_created" ON "transactions" USING btree ("project_id","created_at","id");
