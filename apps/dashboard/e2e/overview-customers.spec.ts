@@ -129,15 +129,23 @@ test("customers: list, pagination, exact search and the top-bar search", async (
   await expect(rows.first()).toContainText("pro");
   await expect(rows.first()).toContainText("$54.89");
 
+  // Search matches part of an app user ID or email (customer lists); nothing matches a made-up value.
   await page.getByPlaceholder("App user ID, email or store transaction ID").fill("wren");
   await page.getByRole("button", { name: "Search" }).click();
-  await expect(page.getByText('No customer matches "wren"')).toBeVisible();
+  await expect(page).toHaveURL(/q=wren$/);
+  await expect(rows).toHaveCount(1);
+  await page.getByPlaceholder("App user ID, email or store transaction ID").fill("nobody-matches-this");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByText('No customer matches "nobody-matches-this"')).toBeVisible();
   await page.getByRole("button", { name: "Clear search" }).click();
   await expect(rows).toHaveCount(25);
 
   await page.getByLabel("Search customers").first().fill("pbg6xs2d");
   await page.getByLabel("Search customers").first().press("Enter");
   await expect(page).toHaveURL(/customers\?q=pbg6xs2d/);
+  // The previous list stays on screen (dimmed, not clickable) until the search answers.
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("pbg6xs2d");
   await rows.first().click();
   await expect(page).toHaveURL(/customers\/pbg6xs2d$/);
 });

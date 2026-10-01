@@ -2,7 +2,7 @@
 // REVENUEDOT_SMTP_URL=smtp://user:pass@host:587 (STARTTLS when the server offers it) or smtps://user:pass@host:465 (TLS).
 // Docs: https://revenuedot.app/docs/guides/self-hosting#email
 import nodemailer from "nodemailer";
-import type { Mailer } from "./index.js";
+import { headerSafe, parseAddress, type Mailer } from "./index.js";
 
 export function smtpMailer(url: string, from: string, opts: { replyTo?: string; tls?: { rejectUnauthorized?: boolean } } = {}): Mailer {
   const u = new URL(url);
@@ -21,7 +21,8 @@ export function smtpMailer(url: string, from: string, opts: { replyTo?: string; 
   return {
     driver: "smtp",
     async send(msg) {
-      const r = await transport.sendMail({ from, to: msg.to, subject: msg.subject, text: msg.text, html: msg.html, replyTo: msg.replyTo ?? opts.replyTo });
+      const sender = parseAddress(from);
+      const r = await transport.sendMail({ from: msg.fromName ? { name: headerSafe(msg.fromName), address: sender.email } : from, to: msg.to, subject: msg.subject, text: msg.text, html: msg.html, replyTo: msg.replyTo ?? opts.replyTo, ...(msg.headers ? { headers: msg.headers } : {}) });
       return { id: r.messageId };
     },
   };

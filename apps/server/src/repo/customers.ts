@@ -116,9 +116,22 @@ export async function loadState(db: DB, customer: CustomerRow): Promise<Customer
   };
 }
 
-/** Moves everything from `from` into `into` (aliases, purchases, attributes that `into` lacks) and deletes `from`. */
+/**
+ * Moves everything from `from` into `into` (aliases, purchases, attributes that `into` lacks, in-app currency, support
+ * tickets, refund requests, win-back emails) and deletes `from`.
+ */
 export async function mergeCustomers(db: DB, fromId: string, intoId: string) {
   if (fromId === intoId) return;
+  // One transaction: a merge that stops halfway would leave balances added to `into` that a retry adds again.
+  await db.transaction(async (tx) => mergeInto(tx as unknown as DB, fromId, intoId));
+}
+
+async function mergeInto(db: DB, fromId: string, intoId: string) {
+  await mergeCurrency(db, fromId, intoId);
+  await db.update(schema.supportTickets).set({ customerId: intoId }).where(eq(schema.supportTickets.customerId, fromId));
+  await db.update(schema.refundRequests).set({ customerId: intoId }).where(eq(schema.refundRequests.customerId, fromId));
+  await db.execute(sql`UPDATE winback_sends SET customer_id = ${intoId} WHERE customer_id = ${fromId}
+    AND campaign_id NOT IN (SELECT campaign_id FROM winback_sends WHERE customer_id = ${intoId})`);
   await db.update(customerAliases).set({ customerId: intoId }).where(eq(customerAliases.customerId, fromId));
   await db.update(subscriptions).set({ customerId: intoId }).where(eq(subscriptions.customerId, fromId));
   await db.update(nonSubscriptions).set({ customerId: intoId }).where(eq(nonSubscriptions.customerId, fromId));
@@ -131,6 +144,31 @@ export async function mergeCustomers(db: DB, fromId: string, intoId: string) {
   const fromAttrs = await db.select().from(customerAttributes).where(eq(customerAttributes.customerId, fromId));
   for (const a of fromAttrs) if (!have.has(a.key)) await db.insert(customerAttributes).values({ ...a, customerId: intoId }).onConflictDoNothing();
   await db.delete(customers).where(eq(customers.id, fromId));
+}
+
+/**
+ * In-app currency follows the customer: balances are summed and ledger rows move. A ledger row whose source key the
+ * surviving customer already has (the same store transaction granted to both, or the same Idempotency-Key) stays behind
+ * and its amount is not added again, so a grant is never counted twice.
+ */
+async function mergeCurrency(db: DB, fromId: string, intoId: string) {
+  const vct = schema.virtualCurrencyTransactions, vcb = schema.virtualCurrencyBalances;
+  const fromRows = await db.select().from(vct).where(eq(vct.customerId, fromId));
+  const fromBalances = await db.select().from(vcb).where(eq(vcb.customerId, fromId));
+  if (!fromRows.length && !fromBalances.length) return;
+  const intoKeys = new Set((await db.select({ code: vct.code, key: vct.sourceKey }).from(vct).where(eq(vct.customerId, intoId)))
+    .filter((r) => r.key !== null).map((r) => `${r.code}\u0000${r.key}`));
+  const duplicate = fromRows.filter((r) => r.sourceKey !== null && intoKeys.has(`${r.code}\u0000${r.sourceKey}`));
+  const add = new Map<string, number>();
+  for (const b of fromBalances) add.set(b.code, (add.get(b.code) ?? 0) + b.balance);
+  for (const r of duplicate) add.set(r.code, (add.get(r.code) ?? 0) - r.amount);
+  if (duplicate.length) await db.delete(vct).where(inArray(vct.id, duplicate.map((r) => r.id)));
+  await db.update(vct).set({ customerId: intoId }).where(eq(vct.customerId, fromId));
+  for (const [code, amount] of add) {
+    await db.insert(vcb).values({ customerId: intoId, code, balance: Math.max(0, amount) })
+      .onConflictDoUpdate({ target: [vcb.customerId, vcb.code], set: { balance: sql`greatest(0, ${vcb.balance} + ${amount})` } });
+  }
+  await db.delete(vcb).where(eq(vcb.customerId, fromId));
 }
 
 export async function isOnlyAnonymous(db: DB, customerId: string): Promise<boolean> {

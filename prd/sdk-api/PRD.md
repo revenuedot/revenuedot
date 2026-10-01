@@ -1,6 +1,6 @@
 # SDK-compatible API (scope 1.1, with the 1.0 contract harness)
 
-**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 55 of the 58 method-and-path pairs have a route: 26 answer with real data and 29 are safe stubs. The other 3 are the SDKs' identity-provider login calls (`/auth/*`), used only in their internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The 15 subscriber-token paths of that mode (`/v1/customer/*`) are routed since branch `tier2-v2-events`: they take the access token from the v2 `authenticate` operation. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
+**Status:** Every HTTP call the current RevenueCat iOS, Android and web SDKs can make is in the inventory below. 55 of the 58 method-and-path pairs have a route: 28 answer with real data and 27 are safe stubs. The other 3 are the SDKs' identity-provider login calls (`/auth/*`), used only in their internal token-login mode (IAM), which is off by default and cannot be turned on through a public API. The 15 subscriber-token paths of that mode (`/v1/customer/*`) are routed since branch `tier2-v2-events`: they take the access token from the v2 `authenticate` operation. The unmodified iOS 5.92 and Android 10.24 SDKs pass on a simulator and an emulator, including attributes and attribution, web purchase redemption, reward verification, virtual currencies and (iOS) the Customer Center fetch, each call made once with its documented status.
 
 ## Users and jobs
 - **App developers** change only the SDK's proxy URL and keep their app code, their public API key and their paywalls.
@@ -43,7 +43,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 16 | GET | `/v1/subscribers/{app_user_id}/health_report_availability` | iOS | Stub | 200 `{"report_logs":false}` | Debug builds; `false` skips the health report |
 | 17 | GET | `/v1/subscribers/{app_user_id}/health_report` | iOS | Stub | 200 passed, no checks | Debug builds, only after availability says yes |
 | 18 | GET | `/v1/customercenter/{app_user_id}` | iOS, Android | Real | 200 | The project's Customer Center configuration: built-in default (management and no-active screens, support email of the first admin) merged with what `POST /v2/projects/{id}/customer_center_config` stored |
-| 19 | POST | `/v1/customercenter/support/create-ticket` | iOS, Android | Stub | 200 `{"sent":false}` | The support form reports that nothing was sent |
+| 19 | POST | `/v1/customercenter/support/create-ticket` | iOS, Android | Real | 200 `{"sent":true}`; `{"sent":false}` when tickets are off, a field is invalid or the customer sent 5 in an hour | Stored, emailed to the support address, listed under Lifecycle > Support (`prd/lifecycle/PRD.md`) |
 | 20 | GET | `/v1/subscribers/{app_user_id}/virtual_currencies` | iOS, Android, web | Real | 200 `virtual_currencies` by code with balance, name, code, description | `virtualCurrencies()` returns the customer's balances (empty for a customer we have not seen) |
 | 21 | POST | `/v1/subscribers/{app_user_id}/restore/eligibility` | iOS | Stub | 200 allowed | StoreKit 2 restore behaviour check |
 | 22 | POST | `/v1/subscribers/redeem_purchase` | iOS, Android | Stub | 400 · 7849 | `redeemWebPurchase` returns `invalidToken`: there are no web purchases to redeem |
@@ -74,7 +74,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 47 | POST | `/v1/customer/adservices_attribution` | iOS | Real | 200 with a subscriber token; 401 · 7224 with an app key | Row 12 |
 | 48 | GET | `/v1/customer/health_report` | iOS | Stub | 200 with a subscriber token; 401 · 7224 with an app key | Row 17 |
 | 49 | GET | `/v1/customer/customercenter` | iOS, Android | Real | 200 with a subscriber token; 401 · 7224 with an app key | Row 18 |
-| 50 | POST | `/v1/customer/customercenter/support/create-ticket` | iOS, Android | Stub | 200 with a subscriber token; 401 · 7224 with an app key | Row 19 |
+| 50 | POST | `/v1/customer/customercenter/support/create-ticket` | iOS, Android | Real | 200 with a subscriber token; 401 · 7224 with an app key | Row 19, for the token's app user id |
 | 51 | GET | `/v1/customer/virtual_currencies` | iOS, Android | Real | 200 with a subscriber token; 401 · 7224 with an app key | Row 20 |
 | 52 | POST | `/v1/customer/restore/eligibility` | iOS | Stub | 200 with a subscriber token; 401 · 7224 with an app key | Row 21 |
 | 53 | GET | `/v1/customer/ads/reward_verifications/{client_transaction_id}` | iOS, Android | Stub | 200 with a subscriber token; 401 · 7224 with an app key | Row 24 |
@@ -83,7 +83,7 @@ Sources: iOS `Sources/Networking/HTTPClient/HTTPRequestPath.swift`, `WebBillingH
 | 56 | POST | `/auth/login`, `/auth/token`, `/auth/revoke` | iOS, Android | Absent | none | IAM user login with an identity provider, internal and off by default. `/auth/login` on RevenueDot is the dashboard's sign-in |
 <!-- inventory:end -->
 
-Counts: rows 1-55 are 55 routed pairs (26 real, 29 stubs); row 56 is 3 absent pairs.
+Counts: rows 1-55 are 55 routed pairs (28 real, 27 stubs); row 56 is 3 absent pairs.
 
 **Subscriber tokens (rows 41-55).** `POST /v2/projects/{project_id}/apps/{app_id}/authenticate` issues an `rdat_` token for one app user id of one app, valid for one hour (`prd/rest-api/PRD.md`). Sent as `Authorization: Bearer rdat_…`, it is accepted everywhere the app's public key is, pinned to its app user id: a `/v1/customer/*` path is served by the matching `/v1/subscribers/{app_user_id}/*` route, a `/v1/subscribers/{other id}` path, a receipt, offer signature, `logIn` or alias whose `app_user_id` or `new_app_user_id` is another app user id answers 401 · 7224, `POST /v1/events` keeps only the token's own events, and an expired token answers 401 · 7224 (the SDK's "invalid auth token"). Deleting the customer revokes its tokens. The currency spend runs in one transaction with a conditional decrement per currency, so concurrent spends never take a balance below zero. The app's public key on a `/v1/customer/*` path also answers 401 · 7224, because these paths name no app user id. Remote-config blob downloads and paywall asset URLs are not API calls: the SDK fetches whatever URL our own responses contain, and ours contain none.
 

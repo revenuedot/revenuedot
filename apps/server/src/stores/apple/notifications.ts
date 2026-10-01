@@ -6,6 +6,7 @@ import type { AppRecord, Deps } from "../../context.js";
 import { RCError } from "../../errors.js";
 import { applyFromStore } from "../../services/purchases.js";
 import { adoptImportedChain } from "../../services/imported-chains.js";
+import { handleConsumptionRequest, noteAppleRefund, noteRefundDeclined } from "../../services/refunds.js";
 import type { AppRow } from "../types.js";
 import { appleStoreOf, expectedBundleId, verifyRenewalJws, verifyTransactionJws, xcodeRootsOf } from "./index.js";
 import { JwsError, verifyAppleJws } from "./jws.js";
@@ -21,7 +22,7 @@ interface NotificationPayload {
   subtype?: string;
   notificationUUID?: string;
   signedDate?: number;
-  data?: { appAppleId?: number; bundleId?: string; environment?: string; signedTransactionInfo?: string; signedRenewalInfo?: string; status?: number };
+  data?: { appAppleId?: number; bundleId?: string; environment?: string; signedTransactionInfo?: string; signedRenewalInfo?: string; status?: number; consumptionRequestReason?: string };
   summary?: { bundleId?: string; environment?: string };
 }
 
@@ -109,6 +110,15 @@ async function processNotification(deps: Deps, app: AppRecord, n: NotificationPa
     if (e instanceof RCError && e.status === 400) throw new NotificationError(e.message);
     throw e;
   }
+  // Refund Control: answer Apple's refund request, or record that Apple declined one (services/refunds.ts).
+  if (n.notificationType === "CONSUMPTION_REQUEST") {
+    await handleConsumptionRequest(deps, app, tx, { signedDate: n.signedDate, reason: d.consumptionRequestReason ?? null });
+    return true;
+  }
+  if (n.notificationType === "REFUND_DECLINED") {
+    await noteRefundDeclined(deps, app, tx, n.signedDate ? new Date(n.signedDate) : now);
+    return true;
+  }
   const store = appleStoreOf(app);
   if (tx.type === "Auto-Renewable Subscription") {
     // A chain imported under a guessed key takes Apple's original_transaction_id now.
@@ -117,12 +127,17 @@ async function processNotification(deps: Deps, app: AppRecord, n: NotificationPa
   const existing = await existingFor(deps.db, app.projectId, store, tx);
   if (!STATE_CHANGES.has(n.notificationType)) return !!existing;
   // An older period (e.g. a refund of a past renewal) never rolls the chain back; RevenueCat reports only the latest period.
-  if (existing?.kind === "subscription" && existing.row.purchaseDate.getTime() > tx.purchaseDate && existing.row.storeTransactionId !== tx.transactionId) return true;
+  if (existing?.kind === "subscription" && existing.row.purchaseDate.getTime() > tx.purchaseDate && existing.row.storeTransactionId !== tx.transactionId) {
+    if (n.notificationType === "REFUND") await noteAppleRefund(deps.db, app.projectId, store, tx.transactionId, tx.revocationDate ? new Date(tx.revocationDate) : now);
+    return true;
+  }
   const purchase = fromTransaction(tx, {
     store, renewal, detectedAt: n.signedDate ? new Date(n.signedDate) : now,
     previous: existing?.kind === "subscription" ? { unsubscribeDetectedAt: existing.row.unsubscribeDetectedAt, billingIssuesDetectedAt: existing.row.billingIssuesDetectedAt } : null,
     ...overrides(n.notificationType, n.subtype),
   });
+  // A refund of an older period does not change the chain, but it still answers a refund request for that transaction.
+  if (n.notificationType === "REFUND") await noteAppleRefund(deps.db, app.projectId, store, tx.transactionId, tx.revocationDate ? new Date(tx.revocationDate) : now);
   const applied = await applyFromStore(deps.db, {
     projectId: app.projectId, appId: app.id, purchase, now,
     createIfUnknown: app.credentials?.track_new_purchases === true, appUserIdHint: tx.appAccountToken ?? null, fetch: deps.fetch,

@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
+import { retentionOffersOf, withRetentionOffers } from "./retention.js";
 
 /**
  * Customer Center configuration, in the shape the SDKs decode (`GET /v1/customercenter/{id}`) and API v2 returns
@@ -55,7 +56,21 @@ async function supportEmailOf(db: DB, projectId: string): Promise<string> {
   return rows[0]?.email ?? "support@example.com";
 }
 
+/** The configuration the SDK loads: the default, the project's overrides, then the Retention offers on the cancel and refund paths. */
 export async function customerCenterFor(db: DB, projectId: string): Promise<Json> {
   const [p] = await db.select({ cc: schema.projects.customerCenter }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
-  return mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)), p?.cc ?? {});
+  const merged = mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)), p?.cc ?? {});
+  return withRetentionOffers(merged, await retentionOffersOf(db, projectId));
+}
+
+/** Customer Center support settings (email and ticket intake) without the Retention offers, for Support and tickets. */
+export async function supportSettingsFor(db: DB, projectId: string): Promise<{ email: string; tickets: { allow_creation: boolean; customer_type: string; customer_details: Record<string, boolean> } | null }> {
+  const [p] = await db.select({ cc: schema.projects.customerCenter }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
+  const merged = mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)), p?.cc ?? {});
+  const support = (merged.support ?? {}) as Json;
+  const t = support.support_tickets as Json | undefined;
+  return {
+    email: String(support.email ?? ""),
+    tickets: t ? { allow_creation: t.allow_creation === true, customer_type: String(t.customer_type ?? "all"), customer_details: (t.customer_details ?? {}) as Record<string, boolean> } : null,
+  };
 }

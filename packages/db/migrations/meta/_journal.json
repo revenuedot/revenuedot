@@ -120,6 +120,13 @@
       "when": 1790853660000,
       "tag": "0016_saved_charts",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790857500000,
+      "tag": "0017_lifecycle",
+      "breakpoints": true
     }
   ]
 }

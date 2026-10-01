@@ -8,6 +8,7 @@ import { recordEvent, recordSubscriberAlias, type EventSubject } from "./events.
 import { grantForPurchase } from "./virtual-currencies.js";
 import { adoptImportedChain } from "./imported-chains.js";
 import { usdValue, type FxFetch } from "./fx.js";
+import { noteRefund } from "./refunds.js";
 
 const { subscriptions, nonSubscriptions, transactions, projects, customers } = schema;
 
@@ -149,14 +150,17 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     const refund = d.type === "CANCELLATION" && d.isRefund;
     if (d.type === "INITIAL_PURCHASE" || d.type === "RENEWAL" || refund || d.type === "REFUND_REVERSED") {
       const kind = refund ? "refund" : d.type === "REFUND_REVERSED" ? "refund_reversal" : d.type === "RENEWAL" ? "renewal" : p.periodType === "trial" ? "trial" : "purchase";
-      await db.insert(transactions).values({
+      const inserted = await db.insert(transactions).values({
         id: newId("txn_", 16), projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store,
         storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind, isSandbox: p.isSandbox,
         purchasedAt: refund ? p.refundedAt ?? ctx.now : d.type === "REFUND_REVERSED" ? ctx.now : p.purchaseDate, expiresAt: p.expiresDate,
         revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (priceUsd ?? 0),
         priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null, createdAt: ctx.now,
         offerType: values.offerType, offerId: values.offerId,
-      }).onConflictDoNothing();
+      }).onConflictDoNothing().returning({ id: transactions.id });
+      if (kind === "refund" && inserted.length) {
+        await refundSeen(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, store: p.store, transactionId: p.storeTransactionId, originalTransactionId: p.originalTransactionId ?? p.storeKey, productId: p.productIdentifier, sandbox: p.isSandbox, amountUsd: priceUsd ?? null, at: p.refundedAt ?? ctx.now, now: ctx.now });
+      }
       if (kind === "purchase" || kind === "renewal" || kind === "trial") {
         await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
       }
@@ -203,19 +207,27 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
   for (const d of diffNonSubscription(prev, next)) {
     await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: d, subject, now: ctx.now });
     const kind = d.isRefund ? "refund" : d.type === "REFUND_REVERSED" ? "refund_reversal" : "one_time";
-    await db.insert(transactions).values({
+    const inserted = await db.insert(transactions).values({
       id: newId("txn_", 16), projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store,
       storeTransactionId: p.storeTransactionId, productIdentifier: p.productIdentifier, kind,
       isSandbox: p.isSandbox, purchasedAt: kind === "refund" ? p.refundedAt ?? ctx.now : kind === "refund_reversal" ? ctx.now : p.purchaseDate,
       revenueUsd: (d.isRefund ? -1 : 1) * (priceUsd ?? 0),
       priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null, createdAt: ctx.now,
-    }).onConflictDoNothing();
+    }).onConflictDoNothing().returning({ id: transactions.id });
+    if (kind === "refund" && inserted.length) {
+      await refundSeen(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, store: p.store, transactionId: p.storeTransactionId, productId: p.productIdentifier, sandbox: p.isSandbox, amountUsd: priceUsd ?? null, at: p.refundedAt ?? ctx.now, now: ctx.now });
+    }
     if (kind === "one_time") {
       await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, trial: false, transactionId: p.storeTransactionId, now: ctx.now });
     }
   }
   const [o] = await db.select().from(customers).where(eq(customers.id, owner.id));
   return o!;
+}
+
+/** Refund Control bookkeeping never fails the purchase it rides on. */
+async function refundSeen(db: DB, o: Parameters<typeof noteRefund>[1]) {
+  try { await noteRefund(db, o); } catch (e) { console.warn("Recording a refund for Refund Control failed", e); }
 }
 
 const planKey = (p: { productIdentifier: string; productPlanIdentifier?: string | null }) =>

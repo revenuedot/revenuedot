@@ -14,29 +14,13 @@ import { Shell } from "../../components/Shell";
 import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2, type Offering } from "../catalog/lib";
+import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type Groups, type Rules } from "../../components/conditions";
 
-interface Condition { field: string; operator: string; value?: string }
-interface Audience { id: string; name: string; rules: { groups: { conditions: Condition[] }[] }; created_at: number; stats?: { total_customers: number; active_subscriptions: number; is_approximate: boolean } }
+interface Audience { id: string; name: string; rules: Rules; created_at: number; stats?: { total_customers: number; active_subscriptions: number; is_approximate: boolean } }
 interface Rule { id: string; name: string; audience_id: string | null; offering_id: string; placements: Record<string, string | null>; position: number; state: "active" | "inactive"; starts_at: number | null; ends_at: number | null }
 interface Experiment { id: string; name: string; status: "draft" | "running" | "paused" | "stopped"; audience_id: string | null; enrollment_percent: number; variants: { id: "a" | "b"; offering_id: string }[]; started_at: number | null; stopped_at: number | null; created_at: number }
 
-const FIELDS: { value: string; label: string; hint?: string }[] = [
-  { value: "country", label: "Country", hint: "Two-letter code, e.g. US" }, { value: "platform", label: "Platform", hint: "ios, android, web" },
-  { value: "appVersion", label: "App version", hint: "e.g. 2.4.0" }, { value: "sdkVersion", label: "SDK version" }, { value: "locale", label: "Locale", hint: "e.g. en_US" },
-  { value: "status", label: "Subscription status", hint: "active, trialing, expired, never" }, { value: "activeEntitlements", label: "Active entitlements", hint: "Lookup key, e.g. pro" },
-  { value: "hasActiveEntitlement", label: "Has an active entitlement", hint: "true or false" }, { value: "totalSpent", label: "Total spent (USD)" },
-  { value: "firstSeenAt", label: "First seen", hint: "within: 7d; before/after: a date" }, { value: "lastSeenAt", label: "Last seen" },
-  { value: "latestProduct", label: "Latest product", hint: "Store product id" }, { value: "isCurrentlyTrialing", label: "In a trial", hint: "true or false" },
-  { value: "email", label: "Email" }, { value: "campaign", label: "Campaign" }, { value: "mediaSource", label: "Media source" },
-];
-const OPS: { value: string; label: string }[] = [
-  { value: "is", label: "is" }, { value: "isNot", label: "is not" }, { value: "isAnyOf", label: "is any of" }, { value: "isNotAnyOf", label: "is none of" },
-  { value: "contains", label: "contains" }, { value: "greaterThan", label: "greater than" }, { value: "lessThan", label: "less than" },
-  { value: "within", label: "within the last" }, { value: "before", label: "before" }, { value: "after", label: "after" }, { value: "isEmpty", label: "is empty" }, { value: "isNotEmpty", label: "is set" },
-];
-const fieldLabel = (f: string) => (f.startsWith("customAttribute:") ? `Attribute ${f.slice(16)}` : FIELDS.find((x) => x.value === f)?.label ?? f);
-const opLabel = (o: string) => OPS.find((x) => x.value === o)?.label ?? o;
-export const describeRules = (r: Audience["rules"]) => r.groups.map((g) => g.conditions.map((c) => `${fieldLabel(c.field)} ${opLabel(c.operator)}${c.value ? ` ${c.value}` : ""}`).join(" and ")).join(" — or — ") || "Everyone";
+export { describeRules };
 
 const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
 const useRules = (pid: string) => useQuery({ queryKey: ["targeting-rules", pid], enabled: !!pid, queryFn: async () => (await api<List<Rule>>(`${v2(pid)}/targeting_rules`)).items });
@@ -45,12 +29,11 @@ const useOfferingList = (pid: string) => useQuery({ queryKey: ["offering-list", 
 function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; existing?: Audience; onClose: () => void; onSaved: (a: Audience) => void }) {
   const toast = useToast();
   const [name, setName] = useState(existing?.name ?? "");
-  const [groups, setGroups] = useState<Condition[][]>(existing?.rules.groups.map((g) => g.conditions) ?? [[{ field: "country", operator: "isAnyOf", value: "" }]]);
+  const [groups, setGroups] = useState<Groups>(existing ? fromRules(existing.rules) : [[{ field: "country", operator: "isAnyOf", value: "" }]]);
   const [preview, setPreview] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const rules = { groups: groups.map((conditions) => ({ conditions: conditions.map((c) => ({ field: c.field, operator: c.operator, ...(["isEmpty", "isNotEmpty"].includes(c.operator) ? {} : { value: c.value ?? "" }) })) })) };
-  const setCond = (gi: number, ci: number, patch: Partial<Condition>) => setGroups(groups.map((g, i) => (i === gi ? g.map((c, j) => (j === ci ? { ...c, ...patch } : c)) : g)));
+  const rules = toRules(groups);
   async function check() {
     setErr(null);
     try { const p = await api<{ stats: { total_customers: number; is_approximate: boolean } }>(`${v2(pid)}/audiences/actions/preview`, { method: "POST", json: { rules } }); setPreview(`${p.stats.is_approximate ? "About " : ""}${fmt.int(p.stats.total_customers)} customers match today.`); }
@@ -59,6 +42,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) { setErr("Name the audience."); return; }
+    if (incomplete(groups)) { setErr("Fill in every condition's value, or remove the condition."); return; }
     setBusy(true); setErr(null);
     try {
       const a = existing ? await api<Audience>(`${v2(pid)}/audiences/${existing.id}`, { method: "POST", json: { name: name.trim(), rules } }) : await api<Audience>(`${v2(pid)}/audiences`, { method: "POST", json: { name: name.trim(), rules } });
@@ -73,24 +57,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
     </>}>
       <form id="aud-form" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Name" htmlFor="aud-name"><input id="aud-name" className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Gold plan in the US" /></Field>
-        {groups.map((g, gi) => (
-          <fieldset key={gi} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10 }}>
-            <legend className="subtle" style={{ fontSize: 12 }}>{gi === 0 ? "Customers where all of these are true" : "Or where all of these are true"}</legend>
-            {g.map((c, ci) => (
-              <div key={ci} style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                <select aria-label={`Field ${gi + 1}.${ci + 1}`} className="select" value={c.field.startsWith("customAttribute:") ? "custom" : c.field} onChange={(e) => setCond(gi, ci, { field: e.target.value === "custom" ? "customAttribute:" : e.target.value })}>
-                  {FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}<option value="custom">Custom attribute…</option>
-                </select>
-                {c.field.startsWith("customAttribute:") && <input aria-label={`Attribute ${gi + 1}.${ci + 1}`} className="input" style={{ width: 120 }} placeholder="key" value={c.field.slice(16)} onChange={(e) => setCond(gi, ci, { field: `customAttribute:${e.target.value}` })} />}
-                <select aria-label={`Operator ${gi + 1}.${ci + 1}`} className="select" value={c.operator} onChange={(e) => setCond(gi, ci, { operator: e.target.value })}>{OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-                {!["isEmpty", "isNotEmpty"].includes(c.operator) && <input aria-label={`Value ${gi + 1}.${ci + 1}`} className="input" style={{ flex: 1, minWidth: 100 }} placeholder={FIELDS.find((f) => f.value === c.field)?.hint ?? "value"} value={c.value ?? ""} onChange={(e) => setCond(gi, ci, { value: e.target.value })} />}
-                <button type="button" className="btn btn-ghost" aria-label={`Remove condition ${gi + 1}.${ci + 1}`} onClick={() => setGroups(groups.map((x, i) => (i === gi ? x.filter((_, j) => j !== ci) : x)).filter((x) => x.length))}><Icon name="trash" /></button>
-              </div>
-            ))}
-            <button type="button" className="btn btn-ghost" onClick={() => setGroups(groups.map((x, i) => (i === gi ? [...x, { field: "country", operator: "is", value: "" }] : x)))}><Icon name="plus" />And</button>
-          </fieldset>
-        ))}
-        <button type="button" className="btn btn-line" onClick={() => setGroups([...groups, [{ field: "country", operator: "is", value: "" }]])}><Icon name="plus" />Or another group</button>
+        <ConditionBuilder value={groups} onChange={setGroups} />
         {preview && <div className="banner" role="status">{preview}</div>}
         {err && <div className="banner err" role="alert">{err}</div>}
       </form>

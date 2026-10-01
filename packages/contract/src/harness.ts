@@ -1,6 +1,7 @@
 import { openDb, schema, type DB } from "@revenuedot/db";
 import { createApp, defaultStores } from "@revenuedot/server";
 import { createSecretKey } from "@revenuedot/server/services/auth.js";
+import type { Mailer } from "@revenuedot/server/mail/index.js";
 
 export interface Harness {
   db: DB;
@@ -11,9 +12,9 @@ export interface Harness {
   ids: { project: string; app: string; iosKey: string; testKey: string; androidKey: string; androidApp: string; secretKey: string };
 }
 
-/** Outbound HTTP (Apple, Google, webhooks) and after-response work, for tests that stub or await them. */
+/** Outbound HTTP (Apple, Google, webhooks), after-response work and email, for tests that stub or await them. */
 export interface HarnessOptions {
-  fetch?: typeof fetch; defer?: (task: () => Promise<unknown>) => void;
+  fetch?: typeof fetch; defer?: (task: () => Promise<unknown>) => void; mailer?: Mailer; publicUrl?: string;
   /** The paywall AI generator's model (a fake in tests) and the API origin for paywall assets. */
   ai?: import("@revenuedot/server/services/paywall-ai.js").PaywallModel; apiUrl?: string;
 }
