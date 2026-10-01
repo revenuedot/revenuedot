@@ -81,7 +81,7 @@ export function identityRoutes(deps: Deps) {
     const b = await bodyOf(c);
     const t = str(b.token, 20_000);
     if (!t) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, "token is required.");
-    await revoke(deps, { app, token: t, hint: str(b.token_type_hint, 40) });
+    await revoke(deps, { app, token: t });
     return json(c, {});
   });
 

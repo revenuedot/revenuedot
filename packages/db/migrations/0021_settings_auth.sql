@@ -43,6 +43,7 @@ CREATE TABLE "identity_sessions" (
 	"subject" text,
 	"method" text NOT NULL,
 	"refresh_hash" text NOT NULL,
+	"previous_refresh_hash" text,
 	"expires_at" timestamp with time zone NOT NULL,
 	"revoked_at" timestamp with time zone,
 	"last_used_at" timestamp with time zone,
@@ -85,6 +86,7 @@ CREATE INDEX "blocked_customers_time" ON "blocked_customers" USING btree ("proje
 CREATE INDEX "identity_links_user" ON "identity_links" USING btree ("project_id","app_user_id");--> statement-breakpoint
 CREATE INDEX "identity_links_recent" ON "identity_links" USING btree ("project_id","last_login_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "identity_sessions_refresh" ON "identity_sessions" USING btree ("refresh_hash");--> statement-breakpoint
+CREATE INDEX "identity_sessions_previous_refresh" ON "identity_sessions" USING btree ("previous_refresh_hash");--> statement-breakpoint
 CREATE INDEX "identity_sessions_user" ON "identity_sessions" USING btree ("project_id","app_user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "verified_pages_slug" ON "verified_pages" USING btree ("slug");--> statement-breakpoint
 ALTER TABLE "projects" ADD CONSTRAINT "projects_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint

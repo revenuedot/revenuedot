@@ -1230,11 +1230,16 @@ export const identitySessions = pgTable("identity_sessions", {
   subject: text("subject"),
   method: text("method").notNull(),
   refreshHash: text("refresh_hash").notNull(),
+  /** The refresh token this session rotated away from: presented again, it is a replay and ends the session. */
+  previousRefreshHash: text("previous_refresh_hash"),
   expiresAt: ts("expires_at").notNull(),
   revokedAt: ts("revoked_at"),
   lastUsedAt: ts("last_used_at"),
   createdAt: created(),
-}, (t) => [uniqueIndex("identity_sessions_refresh").on(t.refreshHash), index("identity_sessions_user").on(t.projectId, t.appUserId)]);
+}, (t) => [
+  uniqueIndex("identity_sessions_refresh").on(t.refreshHash), index("identity_sessions_previous_refresh").on(t.previousRefreshHash),
+  index("identity_sessions_user").on(t.projectId, t.appUserId),
+]);
 /**
  * RevenueDot AI conversations (prd/ai-assistant/PRD.md). Every conversation is listed here, whichever runtime holds its
  * messages: `durable_object` (RevenueDot Cloud, one Agents Durable Object per conversation) or `postgres` (self-host, the

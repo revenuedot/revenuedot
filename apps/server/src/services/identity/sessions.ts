@@ -47,6 +47,8 @@ export function identitySigner(deps: Pick<Deps, "signingKey" | "encryptionKey">)
       const key = await crypto.subtle.importKey("pkcs8", pkcs8, { name: "Ed25519" }, false, ["sign"]);
       return { key, x, kid: (await sha256Hex(x)).slice(0, 16) };
     })();
+    // A key that is not base64 fails every call the same way; do not keep the rejected promise.
+    s.catch(() => signers.delete(root));
     signers.set(root, s);
   }
   return s;
@@ -55,8 +57,9 @@ export function identitySigner(deps: Pick<Deps, "signingKey" | "encryptionKey">)
 /** GET /.well-known/jwks.json */
 export async function identityJwks(deps: Pick<Deps, "signingKey" | "encryptionKey">) {
   const s = identitySigner(deps);
-  if (!s) return { keys: [] };
-  const { x, kid } = await s;
+  const signer = s ? await s.catch(() => null) : null;
+  if (!signer) return { keys: [] };
+  const { x, kid } = signer;
   return { keys: [{ kty: "OKP", crv: "Ed25519", x, kid, alg: "EdDSA", use: "sig" }] };
 }
 
@@ -78,7 +81,7 @@ const randomHex = (n: number) => Array.from(crypto.getRandomValues(new Uint8Arra
 async function issue(deps: Deps, o: { app: AppRecord; appUserId: string; method: string; providerId: string | null; sessionId: string; refresh: string; issuer: string; scope: string }): Promise<Tokens> {
   const signer = identitySigner(deps);
   if (!signer) throw new AuthUnavailable("Auth needs REVENUEDOT_SIGNING_KEY or REVENUEDOT_ENCRYPTION_KEY on this server to sign tokens.");
-  const { key, kid } = await signer;
+  const { key, kid } = await signer.catch(() => { throw new AuthUnavailable("The server's REVENUEDOT_SIGNING_KEY or REVENUEDOT_ENCRYPTION_KEY is not valid base64, so Auth cannot sign tokens."); });
   const now = deps.now();
   const iat = Math.floor(now.getTime() / 1000);
   const exp = iat + SUBSCRIBER_TOKEN_TTL_MS / 1000;
@@ -154,29 +157,50 @@ export async function refresh(deps: Deps, o: { app: AppRecord; refreshToken: str
   const db = deps.db;
   const now = deps.now();
   const S = schema.identitySessions;
-  const [s] = await db.select().from(S).where(eq(S.refreshHash, await sha256Hex(o.refreshToken))).limit(1);
-  if (!s || s.appId !== o.app.id || s.revokedAt || s.expiresAt <= now) throw new TokenInvalid("The refresh token is not valid. Sign in again.");
+  const hash = await sha256Hex(o.refreshToken);
+  const [s] = await db.select().from(S).where(eq(S.refreshHash, hash)).limit(1);
+  if (!s) {
+    // Reuse detection (OAuth 2.0 Security BCP §4.14): a refresh token that was already rotated away is a replay, by a thief
+    // or by the app after a thief. Either way the session ends, so a stolen token stops working for both.
+    const [replayed] = await db.select({ id: S.id, appId: S.appId }).from(S).where(eq(S.previousRefreshHash, hash)).limit(1);
+    if (replayed && replayed.appId === o.app.id) await endSession(db, replayed.id, now);
+    throw new TokenInvalid(replayed ? "The refresh token was already used. The session has ended; sign in again." : "The refresh token is not valid. Sign in again.");
+  }
+  if (s.appId !== o.app.id || s.revokedAt || s.expiresAt <= now) throw new TokenInvalid("The refresh token is not valid. Sign in again.");
+  // A session lives only while Auth, its sign-in method and its provider are still turned on.
+  const [project] = await db.select({ auth: schema.projects.authSettings }).from(schema.projects).where(eq(schema.projects.id, s.projectId)).limit(1);
+  const settings = project?.auth ?? {};
+  if (!settings.enabled) throw new AuthRefused("Auth is turned off for this project.");
+  if (s.method === "anonymous" && !settings.allow_anonymous) throw new AuthRefused("Anonymous sign-in is turned off for this project.");
+  if (s.providerId) {
+    const [p] = await db.select({ enabled: schema.authProviders.enabled }).from(schema.authProviders).where(eq(schema.authProviders.id, s.providerId)).limit(1);
+    if (!p?.enabled) throw new AuthRefused("The identity provider of this session is turned off. Sign in again.");
+  }
   const next = `${REFRESH_PREFIX}${randomHex(32)}`;
   // Only one concurrent refresh wins the rotation; the other is refused like a reused token.
-  const rotated = await db.update(S).set({ refreshHash: await sha256Hex(next), lastUsedAt: now, expiresAt: new Date(now.getTime() + REFRESH_TTL_MS) })
+  const rotated = await db.update(S).set({ refreshHash: await sha256Hex(next), previousRefreshHash: s.refreshHash, lastUsedAt: now, expiresAt: new Date(now.getTime() + REFRESH_TTL_MS) })
     .where(and(eq(S.id, s.id), eq(S.refreshHash, s.refreshHash), isNull(S.revokedAt))).returning({ id: S.id });
   if (!rotated.length) throw new TokenInvalid("The refresh token was already used. Sign in again.");
   const tokens = await issue(deps, { app: o.app, appUserId: s.appUserId, method: s.method, providerId: s.providerId, sessionId: s.id, refresh: next, issuer: o.issuer, scope: o.scope || "openid offline_access" });
   return { tokens, appUserId: s.appUserId, created: false };
 }
 
-/** POST /auth/revoke (RFC 7009: unknown tokens are not an error). A refresh token ends its session and every access token it issued. */
-export async function revoke(deps: Deps, o: { app: AppRecord; token: string; hint?: string }) {
+/** Ends a session: refresh refused from now on, and every access token it issued stops working at once. */
+async function endSession(db: DB, sessionId: string, now: Date) {
+  await db.update(schema.identitySessions).set({ revokedAt: now }).where(and(eq(schema.identitySessions.id, sessionId), isNull(schema.identitySessions.revokedAt)));
+  await db.delete(schema.subscriberTokens).where(eq(schema.subscriberTokens.sessionId, sessionId));
+}
+
+/**
+ * POST /auth/revoke (RFC 7009: unknown tokens are not an error, and a wrong `token_type_hint` only changes the search
+ * order). A refresh token ends its session and every access token it issued; an access token stops working by itself.
+ */
+export async function revoke(deps: Deps, o: { app: AppRecord; token: string }) {
   const db = deps.db;
   const hash = await sha256Hex(o.token);
-  if (o.hint !== "access_token") {
-    const [s] = await db.select().from(schema.identitySessions).where(and(eq(schema.identitySessions.refreshHash, hash), eq(schema.identitySessions.appId, o.app.id))).limit(1);
-    if (s) {
-      await db.update(schema.identitySessions).set({ revokedAt: deps.now() }).where(eq(schema.identitySessions.id, s.id));
-      await db.delete(schema.subscriberTokens).where(eq(schema.subscriberTokens.sessionId, s.id));
-      return;
-    }
-  }
+  const [s] = await db.select({ id: schema.identitySessions.id }).from(schema.identitySessions)
+    .where(and(eq(schema.identitySessions.refreshHash, hash), eq(schema.identitySessions.appId, o.app.id))).limit(1);
+  if (s) return endSession(db, s.id, deps.now());
   await db.delete(schema.subscriberTokens).where(and(eq(schema.subscriberTokens.hash, hash), eq(schema.subscriberTokens.appId, o.app.id)));
 }
 

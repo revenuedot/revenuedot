@@ -1,5 +1,5 @@
 {
-  "id": "cc286d2c-997d-428e-b9cc-5938f131eeaa",
+  "id": "f9dd292c-0df1-4817-8fd6-c308afd11d70",
   "prevId": "78d84ec0-55da-4b3f-a4bf-ff4277a0cd27",
   "version": "7",
   "dialect": "postgresql",
@@ -4190,6 +4190,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "previous_refresh_hash": {
+          "name": "previous_refresh_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp with time zone",
@@ -4228,6 +4234,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "identity_sessions_previous_refresh": {
+          "name": "identity_sessions_previous_refresh",
+          "columns": [
+            {
+              "expression": "previous_refresh_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

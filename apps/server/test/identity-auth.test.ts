@@ -42,9 +42,13 @@ let h: Harness;
 let fetched: Record<string, number>;
 let jwks: Record<string, JsonWebKey[]>;
 let failing = false;
+/** A test's own answer for a URL (null: the fakes below answer). */
+let override: ((url: string) => Response | null) | null = null;
 const fakeFetch: typeof fetch = async (input) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   fetched[url] = (fetched[url] ?? 0) + 1;
+  const own = override?.(url);
+  if (own) return own;
   if (failing) return new Response("down", { status: 503 });
   if (url === `${OIDC_ISS}/.well-known/openid-configuration`) return Response.json({ issuer: OIDC_ISS, jwks_uri: `${OIDC_ISS}/jwks` });
   if (jwks[url]) return Response.json({ keys: jwks[url] }, { headers: { "cache-control": "public, max-age=3600" } });
@@ -71,7 +75,7 @@ const getAs = (token: string, path: string) => h.fetch(path, { key: token });
 beforeEach(async () => {
   keys ??= await makeKeys();
   clearIdentityCaches();
-  fetched = {}; failing = false;
+  fetched = {}; failing = false; override = null;
   jwks = { [FIREBASE_JWKS]: [keys.rsaJwk], [`${OIDC_ISS}/jwks`]: [keys.ecJwk] };
   const seed = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
   h = await harness({ fetch: fakeFetch, signingKey: seed });
@@ -226,34 +230,109 @@ describe("Auth sign-in (POST /auth/login)", () => {
     expect((await v2("POST", `${P()}/auth/providers/${p2.id}/actions/test`, { id_token: t2 })).body.valid).toBe(false);
   });
 
-  it("refreshes with rotation, refuses a reused refresh token, and revokes the session", async () => {
+  it("refreshes with rotation; a replayed refresh token ends the whole session; revoke ends a session whatever the hint", async () => {
     await enableFirebase();
+    const refreshWith = (rt: string, key = h.ids.iosKey) => h.fetch("/auth/token", { method: "POST", key, json: { grant_type: "refresh_token", refresh_token: rt } });
     const first = (await login({ method: "firebase", id_token: await firebaseToken() })).body;
-    const t = await h.fetch("/auth/token", { method: "POST", key: h.ids.iosKey, json: { grant_type: "refresh_token", refresh_token: first.refresh_token } });
+    const t = await refreshWith(first.refresh_token);
     expect(t.status).toBe(200);
     const second = await t.json() as any;
     expect(second.refresh_token).not.toBe(first.refresh_token);
     expect(decodeJwt(second.access_token).payload["rc.app_user_id"]).toBe("uid_alice");
-    const reused = await h.fetch("/auth/token", { method: "POST", key: h.ids.iosKey, json: { grant_type: "refresh_token", refresh_token: first.refresh_token } });
-    expect(reused.status).toBe(401);
-    expect(await reused.json()).toMatchObject({ code: 7224 });
-    // Another app of the project cannot use the session.
-    expect((await h.fetch("/auth/token", { method: "POST", key: h.ids.androidKey, json: { grant_type: "refresh_token", refresh_token: second.refresh_token } })).status).toBe(401);
-    // Both access tokens work until the session is revoked; then neither does.
+    // Another app of the project cannot use the session (and that is no replay).
+    expect((await refreshWith(second.refresh_token, h.ids.androidKey)).status).toBe(401);
+    // Both access tokens work while the session lives.
     expect((await getAs(first.access_token, "/v1/customer")).status).toBe(200);
-    const rv = await h.fetch("/v1/auth/revoke", { method: "POST", key: h.ids.iosKey, json: { token: second.refresh_token, token_type_hint: "refresh_token" } });
-    expect(rv.status).toBe(200);
-    expect(rv.headers.get("access-control-allow-origin")).toBe("*");
+    expect((await getAs(second.access_token, "/v1/customer")).status).toBe(200);
+    // Replaying the rotated-away token (a thief, or the app after a thief) ends the session for everyone.
+    const reused = await refreshWith(first.refresh_token);
+    expect(reused.status).toBe(401);
+    expect(await reused.json()).toMatchObject({ code: 7224, message: expect.stringMatching(/already used/) });
+    expect((await refreshWith(second.refresh_token)).status).toBe(401);
     for (const a of [first.access_token, second.access_token]) {
       const res = await getAs(a, "/v1/customer");
       expect(res.status).toBe(401);
       expect(await res.json()).toMatchObject({ code: 7224 });
     }
-    expect((await h.fetch("/auth/token", { method: "POST", key: h.ids.iosKey, json: { grant_type: "refresh_token", refresh_token: second.refresh_token } })).status).toBe(401);
-    // Expired access tokens answer 7224 too.
+    const [ended] = await h.db.select().from(schema.identitySessions).where(eq(schema.identitySessions.appUserId, "uid_alice"));
+    expect(ended!.revokedAt).not.toBeNull();
+
+    // Revoke: a refresh token ends its session and its access tokens, also when the hint says access_token.
+    const next = (await login({ method: "firebase", id_token: await firebaseToken() })).body;
+    const rv = await h.fetch("/v1/auth/revoke", { method: "POST", key: h.ids.iosKey, json: { token: next.refresh_token, token_type_hint: "access_token" } });
+    expect(rv.status).toBe(200);
+    expect(rv.headers.get("access-control-allow-origin")).toBe("*");
+    expect((await getAs(next.access_token, "/v1/customer")).status).toBe(401);
+    expect((await refreshWith(next.refresh_token)).status).toBe(401);
+    // An access token alone can be revoked; unknown tokens are fine (RFC 7009).
     const third = (await login({ method: "firebase", id_token: await firebaseToken() })).body;
+    expect((await h.fetch("/auth/revoke", { method: "POST", key: h.ids.iosKey, json: { token: third.access_token, token_type_hint: "access_token" } })).status).toBe(200);
+    expect((await getAs(third.access_token, "/v1/customer")).status).toBe(401);
+    expect((await refreshWith(third.refresh_token)).status).toBe(200);
+    expect((await h.fetch("/auth/revoke", { method: "POST", key: h.ids.iosKey, json: { token: "rdrf_unknown" } })).status).toBe(200);
+    // Expired access tokens answer 7224 too.
+    const fourth = (await login({ method: "firebase", id_token: await firebaseToken() })).body;
     h.setNow(new Date(h.now().getTime() + 3601_000));
-    expect(await (await getAs(third.access_token, "/v1/customer")).json()).toMatchObject({ code: 7224 });
+    expect(await (await getAs(fourth.access_token, "/v1/customer")).json()).toMatchObject({ code: 7224 });
+  });
+
+  it("stops refreshing once Auth, the provider or anonymous sign-in is turned off", async () => {
+    const prov = await enableFirebase();
+    await v2("POST", `${P()}/auth/settings`, { allow_anonymous: true });
+    const refreshWith = (rt: string) => h.fetch("/auth/token", { method: "POST", key: h.ids.iosKey, json: { grant_type: "refresh_token", refresh_token: rt } });
+    const fb = (await login({ method: "firebase", id_token: await firebaseToken() })).body;
+    const anon = (await login({ method: "anonymous" })).body;
+    await v2("POST", `${P()}/auth/providers/${prov.id}`, { enabled: false });
+    const off = await refreshWith(fb.refresh_token);
+    expect(off.status).toBe(403);
+    expect(await off.json()).toMatchObject({ code: 7224, message: expect.stringMatching(/provider/) });
+    await v2("POST", `${P()}/auth/providers/${prov.id}`, { enabled: true });
+    const back = await refreshWith(fb.refresh_token);
+    expect(back.status).toBe(200);
+    const fb2 = await back.json() as any;
+    await v2("POST", `${P()}/auth/settings`, { allow_anonymous: false });
+    expect((await refreshWith(anon.refresh_token)).status).toBe(403);
+    await v2("POST", `${P()}/auth/settings`, { enabled: false });
+    expect((await refreshWith(fb2.refresh_token)).status).toBe(403);
+  });
+
+  it("refuses a mapping that would make a signed-in user look anonymous", async () => {
+    await v2("POST", `${P()}/auth/settings`, { enabled: true });
+    await v2("POST", `${P()}/auth/providers`, { kind: "oidc", issuer: OIDC_ISS, audiences: ["client-123"], app_user_id_claim: "nickname" });
+    const r = await login({ method: "oidc", id_token: await oidcToken({ nickname: "$RCAnonymousID:0123456789abcdef0123456789abcdef" }) });
+    expect(r.status).toBe(401);
+    expect(r.body).toMatchObject({ code: 7224, message: expect.stringMatching(/must not start with/) });
+  });
+
+  it("reads at most 256 KB of a key or discovery answer, and asks a provider that is down at most once a minute", async () => {
+    await v2("POST", `${P()}/auth/settings`, { enabled: true });
+    const big = "https://big.example.com";
+    const prov = (await v2("POST", `${P()}/auth/providers`, { kind: "oidc", issuer: big, audiences: ["c"], jwks_url: `${big}/jwks` })).body;
+    let pulled = 0;
+    // A streamed answer with no content-length: reading stops after 256 KB.
+    override = (url) => url === `${big}/jwks`
+      ? new Response(new ReadableStream({ pull(ctl) { pulled += 1; if (pulled > 1000) ctl.close(); else ctl.enqueue(new Uint8Array(64 * 1024)); } }), { headers: { "content-type": "application/json" } })
+      : null;
+    const tok = await jwt({ alg: "ES256", kid: "ec1" }, { iss: big, aud: "c", sub: "s", exp: now() + 60 }, keys.ec.privateKey);
+    const r = await login({ method: "oidc", id_token: tok });
+    expect(r.status).toBe(503);
+    expect(r.body.message).toMatch(/larger than 256 KB/);
+    expect(pulled).toBeLessThan(10);
+    // A declared size over the limit is not read at all.
+    override = (url) => url === `${big}/jwks` ? new Response("{}", { headers: { "content-length": "999999999" } }) : null;
+    clearIdentityCaches();
+    expect((await login({ method: "oidc", id_token: tok })).body.message).toMatch(/larger than 256 KB/);
+    override = null;
+    // Discovery that fails is not asked again within a minute.
+    await v2("DELETE", `${P()}/auth/providers/${prov.id}`);
+    await v2("POST", `${P()}/auth/providers`, { kind: "oidc", issuer: OIDC_ISS, audiences: ["client-123"] });
+    failing = true;
+    expect((await login({ method: "oidc", id_token: await oidcToken() })).status).toBe(503);
+    expect((await login({ method: "oidc", id_token: await oidcToken() })).status).toBe(503);
+    expect(fetched[`${OIDC_ISS}/.well-known/openid-configuration`]).toBe(1);
+    failing = false;
+    h.setNow(new Date(h.now().getTime() + 61_000));
+    expect((await login({ method: "oidc", id_token: await oidcToken() })).status).toBe(200);
   });
 
   it("signs in anonymously only when allowed", async () => {
