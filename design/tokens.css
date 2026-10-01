@@ -30,6 +30,9 @@
   /* Charts */
   --spark: #0A0A0A;
   --spark-fill: rgb(10 10 10 / .06);
+  /* Chart series, fixed order, for charts with several series (a single series is --fg, its current period --accent).
+     Checked with the dataviz palette validator against #FFFFFF: adjacent CVD ΔE ≥ 9.2, normal-vision ΔE ≥ 27.6. */
+  --series-1: #2A78D6; --series-2: #EB6834; --series-3: #1BAF7A; --series-4: #4A3AA7; --series-5: #E87BA4;
 
   /* Type */
   --font: "Manrope", ui-sans-serif, system-ui, sans-serif;
@@ -63,6 +66,7 @@
     --border: #262626; --border-2: #1C1C1C;
     --accent-ink: #FFD35C; --up: #9BC75A; --down: #F0875A; --info: #7FB7E0;
     --spark: #FAFAFA; --spark-fill: rgb(250 250 250 / .06);
+    --series-1: #3987E5; --series-2: #D95926; --series-3: #199E70; --series-4: #9085E9; --series-5: #D55181;
     color-scheme: dark;
   }
 }
@@ -72,5 +76,6 @@
   --border: #262626; --border-2: #1C1C1C;
   --accent-ink: #FFD35C; --up: #9BC75A; --down: #F0875A; --info: #7FB7E0;
   --spark: #FAFAFA; --spark-fill: rgb(250 250 250 / .06);
+  --series-1: #3987E5; --series-2: #D95926; --series-3: #199E70; --series-4: #9085E9; --series-5: #D55181;
   color-scheme: dark;
 }

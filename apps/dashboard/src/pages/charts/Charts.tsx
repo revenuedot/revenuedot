@@ -1,0 +1,351 @@
+/*
+ * Charts: every built-in chart (prd/charts/PRD.md), grouped in a rail the way RevenueCat's chart list is, with one
+ * reusable chart page. Data: GET /v2/projects/{id}/charts/{chart} and …/options (RevenueCat's shape). The state lives in
+ * the URL (range, resolution, segment, filters, selectors, sandbox), so a chart view is a link you can share.
+ *
+ * GAPS versus RevenueCat's chart page (company/docs/research/contact-sheets/revenuecat/frames/03-chart-mrr.jpg):
+ * - No saved charts, compare-to-previous-period, annotations or chart-type switch (line ↔ bar) yet.
+ * - The "Customers" tab under the chart (the customers behind a number) is not built.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { CHARTS, GROUPS, chartDef, type ChartDef } from "@revenuedot/core";
+import { Shell } from "../../components/Shell";
+import { Icon } from "../../components/icons";
+import { Segmented, Switch, Tag, useProjectId } from "../../components/ui";
+import { api } from "../../lib/api";
+import { Legend, Plot, seriesColor, type Series } from "./plot";
+
+interface Measure { id: string; display_name: string; description: string; unit: "$" | "#" | "%"; decimal_precision: number; chartable: boolean; tabulable: boolean }
+interface SeriesMeta { id?: string; display_name: string; unit?: string; scale?: string; is_total?: boolean; is_other?: boolean; decimal_precision?: number }
+interface ChartData {
+  display_name: string; description: string; display_type: string; resolution: string; yaxis_currency: string; start_date: number; end_date: number;
+  measures: Measure[]; values: { cohort: number; measure?: number; segment?: number; period?: number; value: number | null; incomplete?: boolean; predicted?: boolean }[];
+  segments: SeriesMeta[] | null; periods?: SeriesMeta[] | null; summary: Record<string, Record<string, number | null>>; user_selectors: Record<string, string> | null;
+}
+interface Options {
+  resolutions: { id: string; display_name: string }[];
+  segments: { id: string; display_name: string }[];
+  filters: { id: string; display_name: string; options: { id: string; display_name: string }[] }[];
+  user_selectors: Record<string, { default: string; display_name: string; options: { id: string; display_name: string }[] }> | null;
+}
+
+const DAY = 86_400_000;
+const RANGES = [
+  { value: "7d", label: "7D", days: 7 }, { value: "30d", label: "30D", days: 30 }, { value: "90d", label: "90D", days: 90 },
+  { value: "12m", label: "12M", days: 365 }, { value: "custom", label: "Custom", days: 0 },
+] as const;
+type RangeId = (typeof RANGES)[number]["value"];
+const RESOLUTIONS = [["day", "Daily"], ["week", "Weekly"], ["month", "Monthly"], ["quarter", "Quarterly"], ["year", "Yearly"]] as const;
+const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+function parseJson<T>(v: string | null, fallback: T): T { if (!v) return fallback; try { return JSON.parse(v) as T; } catch { return fallback; } }
+
+/** Value formatting by unit: money in the chart's currency, percentages with one decimal, counts with separators. */
+function formatter(unit: string, currency: string, precision = 2) {
+  return (v: number | null) => {
+    if (v === null || v === undefined) return "—";
+    if (unit === "$") return v.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: Math.min(precision, 2), maximumFractionDigits: Math.max(2, precision) });
+    if (unit === "%") return `${v.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
+    return v.toLocaleString("en-US", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 });
+  };
+}
+function tickFormatter(unit: string, currency: string) {
+  return (v: number) => {
+    const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`;
+    if (unit === "$") return `${currency === "USD" ? "$" : `${currency} `}${s}`;
+    return unit === "%" ? `${s}%` : s;
+  };
+}
+function periodLabels(start: number, res: string) {
+  const d = new Date(start);
+  const m = d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  const y = String(d.getUTCFullYear());
+  if (res === "day") return { label: `${m} ${d.getUTCDate()}`, long: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) };
+  if (res === "week") return { label: `${m} ${d.getUTCDate()}`, long: `Week of ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}` };
+  if (res === "month") return { label: `${m} '${y.slice(2)}`, long: d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }) };
+  if (res === "quarter") return { label: `Q${Math.floor(d.getUTCMonth() / 3) + 1} '${y.slice(2)}`, long: `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${y}` };
+  return { label: y, long: y };
+}
+
+function downloadCsv(name: string, rows: (string | number | null)[][]) {
+  const esc = (v: string | number | null) => { const s = v === null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const blob = new Blob([rows.map((r) => r.map(esc).join(",")).join("\n") + "\n"], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function ChartRail({ pid, current }: { pid: string; current: string }) {
+  const [q, setQ] = useState("");
+  const match = (c: ChartDef) => !q.trim() || c.display_name.toLowerCase().includes(q.trim().toLowerCase());
+  return (
+    <aside className="crail" aria-label="Charts">
+      <div className="crail-s"><Icon name="search" /><input aria-label="Search charts" placeholder="Search charts" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <nav>
+        {GROUPS.map((g) => {
+          const list = CHARTS.filter((c) => c.group === g.id && c.inRail && match(c));
+          if (!list.length) return null;
+          return (
+            <div key={g.id} className="crail-g">
+              <div className="label">{g.display_name}</div>
+              {list.map((c) => (
+                <Link key={c.name} to={`/projects/${pid}/charts/${c.name}`} className={`crail-i${c.name === current ? " on" : ""}`} aria-current={c.name === current ? "page" : undefined}>{c.display_name}</Link>
+              ))}
+            </div>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+/** A dropdown of filter values for one dimension (multi-select), as a hairline popover. */
+function FilterMenu({ options, value, onChange }: { options: Options["filters"]; value: { name: string; values: string[] }[]; onChange: (v: { name: string; values: string[] }[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [picked, setDim] = useState<string>("");
+  const dim = options.some((o) => o.id === picked) ? picked : options[0]?.id ?? "";
+  const cur = options.find((o) => o.id === dim);
+  const selected = value.find((f) => f.name === dim)?.values ?? [];
+  const toggle = (id: string) => {
+    const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
+    onChange([...value.filter((f) => f.name !== dim), ...(next.length ? [{ name: dim, values: next }] : [])]);
+  };
+  if (!options.length) return null;
+  return (
+    <div className="fmenu">
+      <button type="button" className="btn btn-line" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}><Icon name="funnels" />Filter{value.length ? ` (${value.length})` : ""}</button>
+      {open && (
+        <div className="fpop" role="dialog" aria-label="Filters" onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
+          <div className="fdims" role="tablist" aria-label="Filter by">
+            {options.map((o) => <button key={o.id} type="button" role="tab" aria-selected={o.id === dim} onClick={() => setDim(o.id)}>{o.display_name}{value.some((f) => f.name === o.id) && <i className="fdot" />}</button>)}
+          </div>
+          <div className="fvals">
+            {!cur?.options.length ? <p className="subtle">No values in this project's data yet.</p> : cur.options.map((o) => (
+              <label key={o.id} className="fval"><input type="checkbox" checked={selected.includes(o.id)} onChange={() => toggle(o.id)} /><span>{o.display_name}</span></label>
+            ))}
+          </div>
+          <div className="ffoot"><button type="button" className="linkbtn" onClick={() => onChange([])}>Clear all</button><button type="button" className="btn btn-dark" onClick={() => setOpen(false)}>Done</button></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ChartsPage() {
+  const pid = useProjectId();
+  const { chartName } = useParams();
+  const def = chartName ? chartDef(chartName) : null;
+  if (!chartName || !def) return <Navigate to={`/projects/${pid}/charts/revenue`} replace />;
+  return <ChartView key={def.name} pid={pid} def={def} />;
+}
+
+function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
+  const [sp, setSp] = useSearchParams();
+  const cohortTable = def.shape === "cohort_table";
+  const range = (sp.get("range") as RangeId | null) ?? (cohortTable ? "12m" : "30d");
+  const today = Math.floor(Date.now() / DAY) * DAY;
+  const preset = RANGES.find((r) => r.value === range) ?? RANGES[1];
+  const end = range === "custom" ? sp.get("end") ?? iso(today) : iso(today);
+  const start = range === "custom" ? sp.get("start") ?? iso(today - 29 * DAY) : iso(today - (preset.days - 1) * DAY);
+  const resolution = sp.get("res") ?? (cohortTable || preset.days > 120 ? "month" : "day");
+  const segment = sp.get("segment") ?? "";
+  const filters = parseJson<{ name: string; values: string[] }[]>(sp.get("filters"), []);
+  const selectors = parseJson<Record<string, string>>(sp.get("sel"), {});
+  const env = sp.get("env") === "sandbox" ? "sandbox" : "production";
+  const set = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(sp);
+    for (const [k, v] of Object.entries(patch)) { if (v === null || v === "") next.delete(k); else next.set(k, v); }
+    setSp(next, { replace: true });
+  };
+
+  const options = useQuery({ queryKey: ["chart-options", pid, def.name, env], queryFn: () => api<Options>(`/v2/projects/${pid}/charts/${def.name}/options?environment=${env}`) });
+  const query = new URLSearchParams({ resolution, start_date: start, end_date: end, environment: env });
+  if (segment) { query.set("segment", segment); query.set("limit_num_segments", "5"); }
+  if (filters.length) query.set("filters", JSON.stringify(filters));
+  if (Object.keys(selectors).length) query.set("selectors", JSON.stringify(selectors));
+  const data = useQuery({ queryKey: ["chart", pid, def.name, query.toString()], queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${query}`), placeholderData: keepPreviousData });
+  useEffect(() => { document.title = `${def.display_name} · Charts · RevenueDot`; }, [def.display_name]);
+
+  const body = data.data;
+  const currency = body?.yaxis_currency ?? "USD";
+  return (
+    <Shell title={def.display_name} crumbs={<><Link to={`/projects/${pid}/charts`}>Charts</Link> <span className="crumb-sep">/</span> <b>{def.display_name}</b></>}>
+      <div className="charts">
+        <ChartRail pid={pid} current={def.name} />
+        <div className="page cpage">
+          <div className="head">
+            <div><h1>{def.display_name}</h1><p>{def.description}</p></div>
+            <div className="actions">
+              <Switch checked={env === "sandbox"} onChange={(v) => set({ env: v ? "sandbox" : null })} label="Sandbox data" />
+              <button type="button" className="btn btn-line" disabled={!body} onClick={() => body && downloadCsv(`${def.name}-${start}-${end}`, csvRows(body))}><Icon name="docs" />CSV</button>
+            </div>
+          </div>
+          <div className="ctools" role="group" aria-label="Chart controls">
+            <Segmented label="Date range" value={range} options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
+              onChange={(v) => set({ range: v === (cohortTable ? "12m" : "30d") ? null : v, start: v === "custom" ? start : null, end: v === "custom" ? end : null, res: null })} />
+            {range === "custom" && <>
+              <input className="input dt" type="date" aria-label="Start date" value={start} max={end} onChange={(e) => set({ start: e.target.value })} />
+              <span className="subtle">to</span>
+              <input className="input dt" type="date" aria-label="End date" value={end} min={start} onChange={(e) => set({ end: e.target.value })} />
+            </>}
+            <select className="select sm" aria-label="Resolution" value={resolution} onChange={(e) => set({ res: e.target.value })}>
+              {RESOLUTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <FilterMenu options={options.data?.filters ?? []} value={filters} onChange={(f) => set({ filters: f.length ? JSON.stringify(f) : null })} />
+            {def.segmentable && (options.data?.segments.length ?? 0) > 0 && (
+              <select className="select sm" aria-label="Segment" value={segment} onChange={(e) => set({ segment: e.target.value || null })}>
+                <option value="">No segment</option>
+                {options.data!.segments.map((s) => <option key={s.id} value={s.id}>By {s.display_name.toLowerCase()}</option>)}
+              </select>
+            )}
+            {def.selectors.map((s) => (
+              <select key={s.id} className="select sm" aria-label={s.display_name} value={selectors[s.id] ?? s.default}
+                onChange={(e) => set({ sel: JSON.stringify({ ...selectors, [s.id]: e.target.value }) })}>
+                {s.options.map((o) => <option key={o.id} value={o.id}>{s.display_name}: {o.display_name}</option>)}
+              </select>
+            ))}
+          </div>
+          {filters.length > 0 && (
+            <div className="chips" aria-label="Active filters">
+              {filters.map((f) => {
+                const o = options.data?.filters.find((x) => x.id === f.name);
+                const names = f.values.map((v) => o?.options.find((x) => x.id === v)?.display_name ?? (v || "Unknown"));
+                return <span key={f.name} className="chip">{o?.display_name ?? f.name}: {names.join(", ")}<button type="button" aria-label={`Remove ${o?.display_name ?? f.name} filter`} onClick={() => set({ filters: JSON.stringify(filters.filter((x) => x.name !== f.name)) === "[]" ? null : JSON.stringify(filters.filter((x) => x.name !== f.name)) })}><Icon name="close" /></button></span>;
+              })}
+            </div>
+          )}
+          {env === "sandbox" && <div className="banner"><Tag tone="info">Sandbox</Tag><span>Showing sandbox and Test Store purchases only. Customer counts include every customer.</span></div>}
+          {data.isError ? (
+            <div className="banner err" role="alert"><span style={{ flex: 1 }}>Could not load the chart: {data.error instanceof Error ? data.error.message : "unknown error"}.</span><button type="button" className="btn btn-line" onClick={() => data.refetch()}>Retry</button></div>
+          ) : !body ? (
+            <section className="panel cpanel" aria-busy="true"><div className="sk" style={{ height: 300, margin: 16 }} /></section>
+          ) : body.periods ? (
+            <CohortTable body={body} />
+          ) : (
+            <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching} />
+          )}
+          {def.name === "app_store_save_outcomes" && <p className="fn">RevenueDot does not use Apple's Retention Messaging API yet, so this chart stays at zero.</p>}
+          <p className="fn"><a className="ul" href={`https://revenuedot.app/docs/guides/charts#${def.name}`} target="_blank" rel="noreferrer">How {def.display_name} is calculated →</a></p>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+/** Time series: picks what to plot (one unit at a time, never two y axes), then the plot, legend and table. */
+function SeriesChart({ def, body, currency, fetching }: { def: ChartDef; body: ChartData; currency: string; fetching: boolean }) {
+  const [picked, setPicked] = useState<number | null>(null);
+  const starts = useMemo(() => [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b), [body]);
+  const incomplete = useMemo(() => starts.map((s) => body.values.some((v) => v.cohort === s && v.incomplete)), [body, starts]);
+  const periods = starts.map((s, i) => ({ start: s * 1000, ...periodLabels(s * 1000, body.resolution), incomplete: incomplete[i]! }));
+  const chartable = body.measures.map((m, i) => ({ m, i })).filter((x) => x.m.chartable);
+  // Never two y axes: chartable measures are grouped by unit and one group is plotted at a time. A segmented chart
+  // plots one measure, split by segment.
+  const segmented = !!body.segments;
+  const groups = segmented ? chartable.map((x) => [x]) : [...new Set(chartable.map((x) => x.m.unit))].map((u) => chartable.filter((x) => x.m.unit === u));
+  const groupLabel = (g: typeof chartable) => g.length === 1 ? g[0]!.m.display_name : g[0]!.m.unit === "%" ? "Rates" : g[0]!.m.unit === "$" ? "Amounts" : "Counts";
+  const gi = picked !== null && picked < groups.length ? picked : 0;
+  const group = groups[gi] ?? [];
+  const sel = group[0]?.i ?? 0;
+  const at = (seg: number | undefined, measure: number) => starts.map((s) => body.values.find((v) => v.cohort === s && v.measure === measure && v.segment === seg)?.value ?? null);
+  let series: Series[];
+  if (segmented) series = body.segments!.map((s, i) => ({ key: `s${i}`, label: s.display_name, values: at(i, sel), other: s.is_other })).filter((_, i) => !body.segments![i]!.is_total);
+  else series = group.map((x) => ({ key: `m${x.i}`, label: x.m.display_name, values: at(undefined, x.i) }));
+  const oneAtATime = groups.length > 1;
+  const unit = body.measures[sel]?.unit ?? "#";
+  const kind = (series.length > 1 && def.display_type === "stacked_bar") || (segmented && def.display_type !== "line") ? "stacked_bar" : def.display_type === "bar" || def.display_type === "stacked_bar" ? "bar" : "line";
+  const fmt = (m: Measure) => formatter(m.unit, currency, m.decimal_precision);
+  const plotFmt = formatter(unit, currency, body.measures[sel]?.decimal_precision ?? 2);
+  // Table rows: every tabulable measure, or each segment of the plotted measure.
+  const rows: { key: string; label: string; color?: string; values: (number | null)[]; format: (v: number | null) => string }[] = segmented
+    ? body.segments!.map((s, i) => ({ key: `s${i}`, label: s.display_name, color: s.is_total ? undefined : seriesColor(i, { key: "", label: "", values: [], other: s.is_other }), values: at(i, sel), format: plotFmt }))
+    : body.measures.map((m, j) => ({ key: `m${j}`, label: m.display_name, color: series.length > 1 ? (() => { const k = series.findIndex((s) => s.key === `m${j}`); return k >= 0 ? seriesColor(k, series[k]!) : undefined; })() : undefined, values: at(undefined, j), format: fmt(m) }));
+  const total = body.summary?.total ?? {};
+  const avg = body.summary?.average ?? {};
+  return (
+    <section className={`panel cpanel${fetching ? " busy" : ""}`} aria-label={`${def.display_name} chart`}>
+      {oneAtATime && (
+        <div className="cmeasure"><Segmented label="Measure" value={String(gi)} options={groups.map((g, i) => ({ value: String(i), label: groupLabel(g) }))} onChange={(v) => setPicked(Number(v))} /></div>
+      )}
+      <div className="cstats">
+        {body.measures.filter((m) => m.tabulable).slice(0, 4).map((m) => {
+          // Snapshots show the latest value, flows their total, rates their average.
+          const j = body.measures.indexOf(m);
+          const latest = def.shape === "stock" ? [...at(undefined, j)].reverse().find((x) => x !== null) ?? null : null;
+          const kind = def.shape === "stock" ? "latest" : m.display_name in total && m.unit !== "%" ? "total" : "average";
+          const v = kind === "latest" ? latest : kind === "total" ? total[m.display_name] ?? null : avg[m.display_name] ?? null;
+          return <div key={m.id}><span className="label">{m.display_name} · {kind}</span><b>{fmt(m)(v)}</b></div>;
+        })}
+      </div>
+      <Legend series={series} />
+      <Plot periods={periods} series={series} kind={kind} integer={unit === "#" && series.every((x) => x.values.every((v) => v === null || Number.isInteger(v)))} format={plotFmt} formatTick={tickFormatter(unit, currency)}
+        ariaLabel={`${def.display_name}: ${series.map((s) => s.label).join(", ")} by ${body.resolution}. Values are in the table below.`} />
+      <div className="tbl ctable">
+        <table className="compact">
+          <thead><tr><th scope="col">{segmented ? body.measures[sel]?.display_name : "Measure"}</th>{periods.map((p) => <th key={p.start} scope="col" className="amt" title={p.long}>{p.label}{p.incomplete ? "*" : ""}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <th scope="row">{r.color && <i className="key" style={{ background: r.color }} />}{r.label}</th>
+                {r.values.map((v, i) => <td key={i} className={`amt${periods[i]?.incomplete ? " inc" : ""}`}>{r.format(v)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {periods.some((p) => p.incomplete) && <div className="pfoot"><span>* Incomplete period: the data can still change.</span></div>}
+    </section>
+  );
+}
+
+function CohortTable({ body }: { body: ChartData }) {
+  const periods = body.periods!;
+  const cohorts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
+  const cell = (c: number, k: number) => body.values.find((v) => v.cohort === c && v.period === k);
+  const vals = body.values.filter((v) => (v.period ?? 0) > 0 && v.value !== null).map((v) => v.value as number);
+  const max = Math.max(0, ...vals);
+  const predicted = body.values.some((v) => v.predicted);
+  return (
+    <section className="panel cpanel" aria-label={`${body.display_name} table`}>
+      <div className="tbl cohort">
+        <table className="compact">
+          <thead><tr><th scope="col">Cohort</th>{periods.map((p, k) => <th key={k} scope="col" className="amt">{p.display_name}</th>)}</tr></thead>
+          <tbody>
+            {cohorts.map((c) => (
+              <tr key={c}>
+                <th scope="row">{periodLabels(c * 1000, body.resolution).long}</th>
+                {periods.map((p, k) => {
+                  const v = cell(c, k);
+                  const f = formatter(p.unit ?? "#", body.yaxis_currency, p.decimal_precision ?? 2);
+                  const shade = k > 0 && v?.value !== null && v?.value !== undefined && max > 0 ? 0.04 + 0.32 * (v.value / max) : 0;
+                  return <td key={k} className={`amt${v?.incomplete ? " inc" : ""}${v?.predicted ? " pred" : ""}`} style={shade ? { background: `color-mix(in srgb, var(--fg) ${(shade * 100).toFixed(0)}%, var(--panel))` } : undefined}
+                    title={v?.predicted ? "Predicted" : v?.incomplete ? "Incomplete: the cohort has not finished this period" : undefined}>{v?.value === null || !v ? "" : f(v.value)}</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="pfoot"><span>{predicted ? "Italic values are predicted. " : ""}Underlined values are incomplete: the cohort has not finished that period.</span></div>
+    </section>
+  );
+}
+
+function csvRows(body: ChartData): (string | number | null)[][] {
+  const day = (s: number) => iso(s * 1000);
+  if (body.periods) {
+    const cohorts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
+    return [["cohort", ...body.periods.map((p) => p.display_name)], ...cohorts.map((c) => [day(c), ...body.periods!.map((_, k) => body.values.find((v) => v.cohort === c && v.period === k)?.value ?? null)])];
+  }
+  const starts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
+  if (body.segments) {
+    const cols = body.segments.flatMap((s, i) => body.measures.map((m, j) => ({ name: `${s.display_name} · ${m.display_name}`, i, j })));
+    return [["period", ...cols.map((c) => c.name)], ...starts.map((s) => [day(s), ...cols.map((c) => body.values.find((v) => v.cohort === s && v.segment === c.i && v.measure === c.j)?.value ?? null)])];
+  }
+  return [["period", ...body.measures.map((m) => m.display_name), "incomplete"], ...starts.map((s) => [day(s), ...body.measures.map((_, j) => body.values.find((v) => v.cohort === s && v.measure === j)?.value ?? null), body.values.some((v) => v.cohort === s && v.incomplete) ? "true" : "false"])];
+}
+

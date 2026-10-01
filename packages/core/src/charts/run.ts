@@ -66,7 +66,7 @@ export function dimValues(input: ChartInput, dim: Dim): string[] {
   const counts = new Map<string, number>();
   const add = (v: string | null | undefined) => { if (v !== undefined) counts.set(v ?? "", (counts.get(v ?? "") ?? 0) + 1); };
   if (CUSTOMER_DIMS.has(dim)) for (const c of input.customers) add(g.fromCustomer(c.id, dim));
-  if (!CUSTOMER_DIMS.has(dim) || dim === "country") for (const t of input.txs) add(g.purchase(t)(dim));
+  if (!CUSTOMER_DIMS.has(dim) || dim === "country") for (const t of input.txs) if (t.store !== "promotional") add(g.purchase(t)(dim));
   for (const e of input.sdkEvents) add(dim === "app" ? e.appId : dim === "paywall" ? e.paywallId ?? null : dim === "survey_option" ? e.surveyOptionId ?? null : undefined);
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
 }

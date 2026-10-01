@@ -16,7 +16,7 @@ type Item = { label: string; to?: string; icon?: string; soon?: boolean; childre
 /** RevenueCat's sidebar information architecture, in order. `soon` marks Tier 2/3 areas. */
 const NAV: Item[] = [
   { label: "Overview", to: "overview", icon: "overview" },
-  { label: "Analytics", icon: "analytics", children: [{ label: "Charts", to: "charts", soon: true }, { label: "Benchmarks", to: "benchmarks", soon: true }] },
+  { label: "Analytics", icon: "analytics", children: [{ label: "Charts", to: "charts" }, { label: "Benchmarks", to: "benchmarks", soon: true }] },
   { label: "Customers", to: "customers", icon: "customers" },
   { label: "Product catalog", icon: "catalog", children: [
     { label: "Offerings", to: "product-catalog/offerings" }, { label: "Products", to: "product-catalog/products" },
