@@ -238,3 +238,106 @@ describe("verified metrics", () => {
     expect((await v2("POST", `${P()}/verified_metrics/actions/unpublish`, {})).status).toBe(422);
   });
 });
+
+describe("review fixes", () => {
+  it("keeps the owner: other admins can neither remove nor demote them, and the owner cannot leave without transferring", async () => {
+    const owner = await signup("own@example.com");
+    const pid = ((await (await h.fetch("/auth/me", { key: "", headers: { cookie: owner } })).json()) as any).projects[0].id as string;
+    const ownerId = ((await (await h.fetch("/auth/me", { key: "", headers: { cookie: owner } })).json()) as any).user.id as string;
+    const other = await signup("admin2@example.com", "Theirs");
+    const otherId = ((await (await h.fetch("/auth/me", { key: "", headers: { cookie: other } })).json()) as any).user.id as string;
+    await h.db.insert(schema.memberships).values({ userId: otherId, projectId: pid, role: "admin" });
+    // The second admin tries to take over: remove the owner, or demote them.
+    const remove = await v2("DELETE", `/v2/projects/${pid}/collaborators/${ownerId}`, undefined, { cookie: other });
+    expect(remove.status).toBe(422);
+    expect(remove.body.message).toMatch(/owner cannot be removed/);
+    const demote = await v2("POST", `/v2/projects/${pid}/collaborators/${ownerId}`, { role: "developer" }, { cookie: other });
+    expect(demote.status).toBe(422);
+    expect((await v2("POST", `/v2/projects/${pid}/actions/transfer_ownership`, { user_id: otherId }, { cookie: other })).status).toBe(403);
+    // The owner cannot leave while owning it, but can after handing it over.
+    expect((await v2("DELETE", `/v2/projects/${pid}/collaborators/${ownerId}`, undefined, { cookie: owner })).body.message).toMatch(/Transfer ownership/);
+    expect((await v2("POST", `/v2/projects/${pid}/actions/transfer_ownership`, { user_id: otherId }, { cookie: owner })).status).toBe(200);
+    expect((await v2("DELETE", `/v2/projects/${pid}/collaborators/${ownerId}`, undefined, { cookie: owner })).status).toBe(200);
+    const [p] = await h.db.select().from(schema.projects).where(eq(schema.projects.id, pid));
+    expect(p!.ownerUserId).toBe(otherId);
+  });
+
+  it("a blocked customer's purchase cannot be restored onto another app user id, and its subscriptions give no access in API v2", async () => {
+    const token = `test_${h.now().getTime()}_${crypto.randomUUID()}`;
+    await h.fetch("/v1/receipts", { method: "POST", key: h.ids.testKey, json: { app_user_id: "blocked_one", fetch_token: token, product_id: "pro_monthly", price: 9.99, currency: "USD" } });
+    await v2("POST", `${P()}/blocked_customers`, { app_user_id: "blocked_one" });
+    const subs = await v2("GET", `${P()}/customers/blocked_one/subscriptions`);
+    expect(subs.body.items[0]).toMatchObject({ status: "active", gives_access: false });
+    // The dashboard's customer page shows the block.
+    expect((await v2("GET", `${P()}/customer_summaries?ids=blocked_one`)).body.items[0]).toMatchObject({ blocked: true, active_entitlements: [] });
+    // The project transfers purchases on restore (the default), but not away from a blocked customer.
+    const restore = await h.fetch("/v1/receipts", { method: "POST", key: h.ids.testKey, json: { app_user_id: "fresh_id", fetch_token: token, product_id: "pro_monthly", price: 9.99, currency: "USD", is_restore: true } });
+    expect(restore.status).toBe(400);
+    expect(await restore.json()).toMatchObject({ code: 7102 });
+    expect((await info("fresh_id")).entitlements).toEqual({});
+    const [sub] = await h.db.select({ c: schema.customers.originalAppUserId }).from(schema.subscriptions).innerJoin(schema.customers, eq(schema.customers.id, schema.subscriptions.customerId)).where(eq(schema.subscriptions.storeKey, token));
+    expect(sub!.c).toBe("blocked_one");
+    // Unblocked, the same restore transfers as usual and access comes back.
+    await v2("DELETE", `${P()}/blocked_customers/blocked_one`);
+    expect((await v2("GET", `${P()}/customers/blocked_one/subscriptions`)).body.items[0].gives_access).toBe(true);
+    expect((await v2("GET", `${P()}/customer_summaries?ids=blocked_one`)).body.items[0].blocked).toBe(false);
+    const again = await h.fetch("/v1/receipts", { method: "POST", key: h.ids.testKey, json: { app_user_id: "fresh_id", fetch_token: token, product_id: "pro_monthly", price: 9.99, currency: "USD", is_restore: true } });
+    expect(again.status).toBe(200);
+    expect(Object.keys((await info("fresh_id")).entitlements)).toEqual(["pro"]);
+  });
+
+  it("logs blocked and unblocked anonymous ids decoded, and drops blank allowlist lines", async () => {
+    const anon = "$RCAnonymousID:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    await v2("POST", `${P()}/blocked_customers`, { app_user_id: anon });
+    expect((await v2("DELETE", `${P()}/blocked_customers/${encodeURIComponent(anon)}`)).status).toBe(200);
+    const logs = (await h.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.projectId, h.ids.project))).map((l) => `${l.actionType}:${l.targetIdentifier}`);
+    expect(logs).toEqual(expect.arrayContaining([`blocked_customer_created:${anon}`, `blocked_customer_deleted:${anon}`]));
+    const saved = await v2("POST", P(), { sandbox_testing_access: "allowlist", sandbox_testers: ["a", " a ", "", "  ", "b"] });
+    expect(saved.body.sandbox_testers).toEqual(["a", "b"]);
+  });
+
+  it("sandbox subscriptions outside sandbox testing access give no access in API v2", async () => {
+    await buy("tester_x");
+    await v2("POST", P(), { sandbox_testing_access: "nobody" });
+    expect((await v2("GET", `${P()}/customers/tester_x/subscriptions`)).body.items[0].gives_access).toBe(false);
+    await v2("POST", P(), { sandbox_testing_access: "allowlist", sandbox_testers: ["tester_x"] });
+    expect((await v2("GET", `${P()}/customers/tester_x/subscriptions`)).body.items[0].gives_access).toBe(true);
+  });
+
+  it("serves the verified page's icon by slug (never the project id), and a versioned edge cache never serves a saved or unpublished page stale", async () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    await h.db.insert(schema.mediaAssets).values({ id: "ma_icon", projectId: h.ids.project, kind: "image", objectName: "ma_icon.png", originalName: "icon.png", contentType: "image/png", size: 68, width: 1, height: 1, dataBase64: png });
+    // A Workers-style edge cache shared by the requests below.
+    const store = new Map<string, Response>();
+    const g = globalThis as unknown as { caches?: unknown };
+    const before = g.caches;
+    g.caches = { default: {
+      match: async (r: Request) => store.get(r.url)?.clone(),
+      put: async (r: Request, res: Response) => { store.set(r.url, res.clone()); },
+      delete: async (r: Request) => store.delete(r.url),
+    } };
+    try {
+      await v2("POST", `${P()}/verified_metrics/actions/publish`, { slug: "icon-app", display_name: "First name", show_icon: true, icon_asset_id: "ma_icon" });
+      const json = await (await h.fetch("/verified/icon-app/metrics.json", { key: "" })).json() as any;
+      expect(json.icon_url).toBe("http://localhost/verified/icon-app/icon?v=ma_icon");
+      const html = await (await h.fetch("/verified/icon-app", { key: "" })).text();
+      expect(html).toContain('src="http://localhost/verified/icon-app/icon?v=ma_icon"');
+      expect(html).not.toContain(h.ids.project);
+      const icon = await h.fetch("/verified/icon-app/icon?v=ma_icon", { key: "" });
+      expect(icon.status).toBe(200);
+      expect(icon.headers.get("content-type")).toBe("image/png");
+      expect(icon.headers.get("x-content-type-options")).toBe("nosniff");
+      await new Promise((r) => setTimeout(r, 10));
+      expect([...store.keys()].some((k) => k.includes("/verified/icon-app/html?v="))).toBe(true);
+      // A save: the next request computes the new name, whatever copy a data centre kept.
+      h.setNow(new Date(h.now().getTime() + 1000));
+      await v2("POST", `${P()}/verified_metrics`, { display_name: "Second name" });
+      expect(await (await h.fetch("/verified/icon-app", { key: "" })).text()).toContain("Second name");
+      // Mixed case reaches the same page; unpublishing answers 404 at once despite the cached copies.
+      expect((await h.fetch("/verified/ICON-App", { key: "" })).status).toBe(200);
+      await v2("POST", `${P()}/verified_metrics/actions/unpublish`, {});
+      expect((await h.fetch("/verified/icon-app", { key: "" })).status).toBe(404);
+      expect((await h.fetch("/verified/icon-app/icon", { key: "" })).status).toBe(404);
+    } finally { g.caches = before; }
+  });
+});

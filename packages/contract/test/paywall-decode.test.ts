@@ -49,6 +49,15 @@ describe.skipIf(!process.env.PAYWALL_DECODE)("paywalls decode in the iOS SDK", (
       const ed = await call("POST", "/v2/projects/{project_id}/paywalls", {}, { json: { offering_id: o, ...doc } });
       expect((await call("POST", "/v2/projects/{project_id}/paywalls/{paywall_id}/actions/publish", { paywall_id: ed.body.id })).status).toBe(200);
 
+      // Brand presets (prd/project-settings §2) become ui_config.app.colors: a colour without a dark side (the server fills it
+      // with the light one), one with alpha, and linear and radial gradients with and without dark stops.
+      expect((await call("POST", "/v2/projects/{project_id}/brand", {}, { ext: true, json: {
+        color_presets: [{ key: "primary", name: "Primary", light: "#0A0A0A" }, { key: "glass", name: "Glass", light: "#FFFFFF80", dark: "#00000080" }],
+        gradient_presets: [
+          { key: "sunrise", name: "Sunrise", type: "linear", degrees: 90, points: [{ color: "#FF0000", percent: 0 }, { color: "#0000FF", percent: 100 }] },
+          { key: "halo", name: "Halo", type: "radial", points: [{ color: "#FFFFFF", percent: 0 }, { color: "#000000", percent: 100 }], dark_points: [{ color: "#000000", percent: 0 }, { color: "#FFFFFF", percent: 100 }] },
+        ],
+      } })).status).toBe(200);
       const sdk = (await (await h.fetch("/v1/subscribers/anyone/offerings", { key: h.ids.testKey })).json()) as any;
       for (const off of sdk.offerings) if (off.has_paywall_components) served.push({ name: off.identifier, paywall: off.paywall_components });
       expect(served.length).toBe(PAYWALL_TEMPLATES.length + 1);
@@ -58,6 +67,13 @@ describe.skipIf(!process.env.PAYWALL_DECODE)("paywalls decode in the iOS SDK", (
 
       const res = decodeWithSdk(served);
       expect(Object.entries(res).filter(([, v]) => v !== null)).toEqual([]);
+
+      // The offerings' ui_config, brand colours included, decodes as the SDK's UIConfig.
+      expect(Object.keys(sdk.ui_config.app.colors).sort()).toEqual(["glass", "halo", "primary", "sunrise"]);
+      const uiDir = mkdtempSync(join(tmpdir(), "rd-ui-"));
+      writeFileSync(join(uiDir, "ui.json"), JSON.stringify(sdk.ui_config));
+      const ui = spawnSync(join(__dirname, "../../../scripts/e2e/paywall-decode/.build/release/paywall-decode"), [join(uiDir, "ui.json"), "ui"], { encoding: "utf8" });
+      expect(ui.stdout).toMatch(/^UI OK/);
 
       // The remote-config workflow of the editor paywall (iOS 5.83+ read paywalls only from here).
       const cfgRes = await h.fetch("/v1/config/app", { method: "POST", key: h.ids.testKey, json: { fetch_context: "app_start", app_user_id: "u1" } });

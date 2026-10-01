@@ -17,7 +17,7 @@ Scope rows: parity matrix "Project settings tabs" (batch F). Contact-sheet frame
 | Project ID | Read-only `proj…` with a copy button; "Used in REST API v2 paths". |
 | Handling multiple app user IDs | Existing: transfer behaviour, optional different sandbox behaviour. |
 | **Sandbox testing access** | "Allow testing entitlements and in-app currency for": **Anybody** (default, RevenueCat's default), **Allowlisted app user IDs** (a list of up to 500 ids, one per line), **Nobody**. |
-| **Transfer project ownership** | Only the owner may do it (an admin when the project has no recorded owner). The new owner must already be an **Admin** collaborator. A dialog names the person and asks to type the project name. Both people get an email. The old owner stays an Admin. |
+| **Transfer project ownership** | Only the owner may do it (any admin when the project has no recorded owner, which happens only when the owner's account is deleted). The new owner must already be an **Admin** collaborator. A dialog names the person and asks to type the project name. Both people get an email. The old owner stays an Admin. The owner always stays an Admin member: other admins cannot remove or demote them (422), and the owner transfers before leaving; otherwise an admin could remove the owner and then take the project. |
 | Delete project | Existing: admins only, dashboard only, typed project name, cascades everything. |
 
 **Sandbox testing access is enforced on the server**, not in the dashboard:
@@ -41,15 +41,17 @@ Scope rows: parity matrix "Project settings tabs" (batch F). Contact-sheet frame
 - **Effect** (RevenueCat: the customer "loses access to paid features across all platforms"): a customer is blocked when **any** of its app user IDs is blocked.
   - Customer info has **no entitlements** (the `entitlements` object is empty) on every SDK path, the subscriber-token paths and the v1 REST API. Subscriptions and purchases stay listed, because they are store facts.
   - API v2 customer `active_entitlements` is empty and the customer page shows a "Blocked" tag; audiences and targeting see no entitlements.
+  - API v2 subscriptions of a blocked customer show `gives_access: false` (sandbox subscriptions outside sandbox testing access too).
   - New purchases credit no in-app currency.
+  - Their purchases never move to another app user ID: a restore on another ID answers 400 · 7102 (receipt already in use) under the `transfer` and `transfer_if_no_active` behaviours, so a fresh account cannot take the access back. `share` merges the restorer into the blocked customer, which stays blocked.
   - **Webhooks keep being sent** for the customer's store events (renewals, refunds, cancellations), so revenue reporting stays right; their `entitlement_ids` still name what the product unlocks. Developers who gate access from webhooks must check the block list (`GET /v2/projects/{id}/blocked_customers/{app_user_id}` answers 200 or 404).
 - Endpoints (RevenueDot extensions): `GET /v2/projects/{id}/blocked_customers` (list, `?search=`, paging), `POST /v2/projects/{id}/blocked_customers` `{ app_user_id, note? }` (201; 200 if already blocked), `GET` and `DELETE /v2/projects/{id}/blocked_customers/{app_user_id}`. Scope `customer_information:customers:read(_write)`. Every block and unblock is in the audit log (`blocked_customer` target).
 
 ## 4. Verified Metrics
 - A public page at **`/verified/<slug>`** on the API host (Cloud: `https://api.revenuedot.app/verified/<slug>`), plus `/verified/<slug>/og.png` (1200×630 PNG for link previews) and `/verified/<slug>/metrics.json`.
 - **Settings:** status (Never published, Published, Inactive), share URL slug (3–40 characters, `a-z0-9-`, not starting or ending with `-`, unique across the server, reserved words refused), display name (1–60), chart type "Number & sparklines" (the only type, as in RevenueCat), metric order and visibility of the 6 overview metrics (MRR, Revenue, Active subscriptions, Active trials, New customers, Active customers), show project icon (an uploaded image) and show store links (App Store and Google Play URLs, https only, on `apps.apple.com` and `play.google.com`). **Publish** and **Unpublish** buttons; saving a published page republishes it.
-- **What is shown:** only aggregate **production** numbers from the overview (`overviewValues`, `metricHistory`): the value and a 28-day sparkline per visible metric, "Verified by RevenueDot", the time the numbers were computed. No customer data, no app user ids, no sandbox data, no project id.
-- **Caching:** HTML and JSON `Cache-Control: public, max-age=300, s-maxage=900`, ETag with 304; the Worker also keeps a copy in the edge cache for 15 minutes keyed by path. Unpublished or unknown slugs answer 404 with `Cache-Control: no-store`.
+- **What is shown:** only aggregate **production** numbers from the overview (`overviewValues`, `metricHistory`): the value and a 28-day sparkline per visible metric, "Verified by RevenueDot", the time the numbers were computed. No customer data, no app user ids, no sandbox data, no project id. The icon is served at `/verified/<slug>/icon` (the asset URL would name the project).
+- **Caching:** HTML and JSON `Cache-Control: public, max-age=300, s-maxage=900`, ETag with 304. Every request first reads the page row (one indexed lookup), so an unpublished or unknown slug answers 404 with `Cache-Control: no-store` at once in every data centre; the Worker's edge-cache copy is keyed by the row's `updated_at`, so a saved page is never served stale from another data centre's copy (Cloudflare's `cache.delete` only purges the local one). Slugs are case-insensitive.
 - **OG image:** drawn on the server as a PNG (no fonts or headless browser needed): display name and up to 3 visible metrics with sparklines in DESIGN.md's tokens, using a built-in pixel font.
 - Endpoints: `GET/POST /v2/projects/{id}/verified_metrics`, `POST …/verified_metrics/actions/publish`, `POST …/verified_metrics/actions/unpublish`, `GET /v2/projects/{id}/verified_metrics/slug_availability?slug=`.
 
@@ -59,7 +61,8 @@ Scope rows: parity matrix "Project settings tabs" (batch F). Contact-sheet frame
 - Phone width: forms stack, tables hide secondary columns.
 
 ## Tests
-- `packages/contract/test/v2-project-settings.test.ts` (sandbox access, ownership), `apps/server/test/blocked-customers.test.ts`, `apps/server/test/brand.test.ts`, `apps/server/test/verified-metrics.test.ts`.
+- `apps/server/test/project-settings-tabs.test.ts` (sandbox access, ownership and its protections, blocked customers and restores, `gives_access`, brand, Verified Metrics with a Workers-style edge cache), `apps/server/test/invites.test.ts`.
+- `scripts/e2e/journeys/settings-auth.ts`: the same features end to end on a real server and a Railway development database (Test Store, test purchase tool and Stripe sandbox purchases, a live-mode Stripe subscription for the verified page, the emailed invite and ownership emails through the SMTP sink), every state checked through the API and SQL.
 - `apps/dashboard/e2e/settings.spec.ts`: each tab in a real browser; `settings-shots.spec.ts` with `SHOTS=<dir>` at 1440×900, compared with frame 28.
 
 ## Not built
