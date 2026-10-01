@@ -670,14 +670,14 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
         <div className="ph"><b>More settings</b></div>
         {apple && (
           <>
-            <Disclosure title="Refund request handling" sub="Later release">
-              <p>When a customer asks Apple for a refund, Apple asks the developer for usage data. Answering these consumption requests automatically comes in a later release.</p>
+            <Disclosure title="Refund request handling" sub="Lifecycle › Refund control">
+              <p>When a customer asks Apple for a refund, Apple asks the developer for usage data. RevenueDot answers these consumption requests with your policies. <Link to={`/projects/${pid}/lifecycle/refund-control`}>Set up Refund control</Link>.</p>
             </Disclosure>
-            <Disclosure title="Apple Retention Messaging API" sub="Later release">
-              <p>Showing a retention offer inside Apple's cancellation sheet comes in a later release.</p>
+            <Disclosure title="Apple Retention Messaging API" sub="Lifecycle › Retention">
+              <p>Show a retention message or offer inside Apple's cancellation sheet. <Link to={`/projects/${pid}/lifecycle/retention`}>Set up retention messages</Link>.</p>
             </Disclosure>
-            <Disclosure title="StoreKit subscription offer key" sub="Later release">
-              <p>Signing promotional offers on the server comes in a later release. Until then, sign them in your own backend.</p>
+            <Disclosure title="StoreKit subscription offer key" sub="Uses the In-App Purchase key">
+              <p>Promotional offers are signed on the server with the In-App Purchase key above, so the SDK's promotional offers work without your own backend.</p>
             </Disclosure>
             <Disclosure title="StoreKit testing in Xcode" sub={cr.xcode_certificate.configured ? "Certificate saved" : "For purchases made in the simulator"}>
               <p>Purchases made with a StoreKit Configuration file in Xcode are signed by Xcode, not Apple. To accept them, export the certificate in Xcode (Debug → StoreKit → Manage Transactions → Editor → Save Public Certificate) and paste it here as PEM text.</p>
