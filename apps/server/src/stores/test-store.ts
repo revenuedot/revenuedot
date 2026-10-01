@@ -27,7 +27,9 @@ export const testStore: StoreAdapter = {
     if (!productId) throw new RCError(400, Codes.INVALID_RECEIPT, "product_id is required for Test Store purchases.");
     const purchaseDate = new Date(Number(m[1]));
     const type = catalog.productType(productId) ?? (input.normalDuration ? "subscription" : "non_consumable");
-    const price = input.price !== null && input.currency ? { amount: input.price, currency: input.currency } : null;
+    // The native SDKs post the price they showed; purchases-js posts Test Store receipts with `price: null` and only the
+    // currency, as RevenueCat's backend knows the price from the product. Fall back to the catalog's Test Store price.
+    const price = input.price !== null && input.currency ? { amount: input.price, currency: input.currency } : catalog.productPrice?.(productId) ?? null;
     const out: VerifiedPurchase[] = [];
     if (type === "subscription") {
       const dur = catalog.productDuration(productId) ?? input.normalDuration ?? "P1M";

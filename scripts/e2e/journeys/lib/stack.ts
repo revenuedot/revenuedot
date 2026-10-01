@@ -124,6 +124,8 @@ export class Capture {
   handlers: Array<(c: Captured, res: ServerResponse) => boolean | Promise<boolean>> = [];
   /** Static pages served at /pages/<name>. */
   pages = new Map<string, { type: string; body: string | Buffer }>();
+  /** Static folders: URL prefix (e.g. "/site/") → directory, for built web apps. */
+  dirs = new Map<string, string>();
   server!: Server;
   constructor(readonly port: number) {
     this.stripe.checkoutUrl = `http://localhost:${port}/__stripe/checkout/{id}`;
@@ -165,6 +167,17 @@ export class Capture {
       rs.setHeader("content-type", "text/html");
       rs.end(`<!doctype html><html><head><meta charset="utf-8"><title>Fake Stripe Checkout</title></head><body><h1>Fake Stripe Checkout</h1>
 <p>${s.mode}: <b data-amount>${amount}</b></p>${discount}<form method="post"><input name="email" type="email" value="${s.customer_email ?? ""}"><button type="submit">Pay</button></form></body></html>`);
+      return;
+    }
+    for (const [prefix, dir] of this.dirs) {
+      if (host !== "local" || !url.pathname.startsWith(prefix)) continue;
+      const rel = url.pathname.slice(prefix.length) || "index.html";
+      const file = join(dir, rel);
+      const target = file.startsWith(dir) && existsSync(file) && !file.endsWith("/") ? file : join(dir, "index.html");
+      const ext = target.split(".").pop() ?? "";
+      const types: Record<string, string> = { html: "text/html", js: "text/javascript", css: "text/css", svg: "image/svg+xml", png: "image/png", json: "application/json", woff2: "font/woff2" };
+      rs.setHeader("content-type", types[ext] ?? "application/octet-stream");
+      rs.end(readFileSync(target));
       return;
     }
     const page = /^\/pages\/(.+)$/.exec(url.pathname);
