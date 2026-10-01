@@ -43,6 +43,11 @@ export interface Deps {
    * a paywall edited on the dashboard host still loads its images from the API host. Unset: the request's origin.
    */
   apiUrl?: string;
+  /**
+   * The Google Cloud OAuth client for "Connect AdMob" (REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID and _SECRET). Unset: each
+   * project can enter its own client on the AdMob page (services/ads/admob.ts).
+   */
+  googleOAuth?: { clientId?: string; clientSecret?: string };
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

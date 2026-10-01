@@ -166,7 +166,7 @@ const EXPECTED: Expectation[] = [
   { method: "POST", template: "/v1/receipts", count: 1, statuses: [200], why: "the Test Store purchase; syncPurchases has no store purchase to send" },
   { method: "GET", template: "/v1/subscribers/{app_user_id}/virtual_currencies", count: 1, statuses: [200], why: "getVirtualCurrencies" },
   { method: "POST", template: "/v1/subscribers/redeem_purchase", count: 1, statuses: [400], why: "redeemWebPurchase, 7849 InvalidToken" },
-  { method: "GET", template: "/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}", count: 1, statuses: [200], why: "pollRewardVerification stops at failed" },
+  { method: "GET", template: "/v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}", count: 10, statuses: [200], why: "pollRewardVerification polls 10 times: the answer stays pending because no ad network calls back in the harness (prd/ads/PRD.md)" },
   { method: "POST", template: "/v1/config/app", min: 1, statuses: [200, 204], why: "remote config: RC Container with the published paywall as a workflow, 204 when unchanged" },
 ];
 

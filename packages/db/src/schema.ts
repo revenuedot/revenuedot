@@ -489,7 +489,7 @@ export const virtualCurrencyTransactions = pgTable("virtual_currency_transaction
   customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
   code: text("code").notNull(),
   amount: integer("amount").notNull(),
-  /** `api` (adjustment through the REST API), `purchase` (product grant) or `sdk` (spend from the app). */
+  /** `api` (adjustment through the REST API), `purchase` (product grant), `sdk` (spend from the app) or `ad_reward` (a verified rewarded ad, prd/ads/PRD.md). */
   source: text("source").notNull(),
   sourceKey: text("source_key"),
   reference: text("reference"),
@@ -897,3 +897,72 @@ export const emailSuppressions = pgTable("email_suppressions", {
   reason: text("reason").notNull().default("unsubscribed"),
   createdAt: created(),
 }, (t) => [primaryKey({ columns: [t.projectId, t.email] })]);
+
+/**
+ * Ad reward rules (prd/ads/PRD.md): what a verified rewarded ad grants. Ordered by `position`; the first enabled rule
+ * whose app, ad unit and reward item match wins. `kind` is `virtual_currency` (code, amount or the network's amount
+ * times `multiplier`) or `entitlement` (lookup key for `durationMinutes`).
+ */
+export const adRewardRules = pgTable("ad_reward_rules", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  position: integer("position").notNull(),
+  appId: text("app_id"),
+  adUnitId: text("ad_unit_id"),
+  rewardItem: text("reward_item"),
+  kind: text("kind").notNull(),
+  currencyCode: text("currency_code"),
+  amount: integer("amount"),
+  /** Use the network's `reward_amount` times this instead of `amount` (null: fixed amount). */
+  multiplier: doublePrecision("multiplier"),
+  entitlementId: text("entitlement_id"),
+  durationMinutes: integer("duration_minutes"),
+  createdAt: created(),
+  updatedAt: ts("updated_at"),
+}, (t) => [index("ad_reward_rules_project").on(t.projectId, t.position)]);
+
+/**
+ * The rewards ledger: one row per server-side verification callback (AdMob SSV) or test reward. `clientTransactionId`
+ * is the SDK's id from `generateRewardVerificationToken`, which the SDK polls; `rewards` is what was granted, in the
+ * SDK's reward shape.
+ */
+export const adRewardVerifications = pgTable("ad_reward_verifications", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id"),
+  customerId: text("customer_id").references(() => customers.id, { onDelete: "cascade" }),
+  appUserId: text("app_user_id").notNull(),
+  clientTransactionId: text("client_transaction_id").notNull(),
+  network: text("network").notNull(),
+  networkTransactionId: text("network_transaction_id").notNull(),
+  adUnitId: text("ad_unit_id"),
+  impressionId: text("impression_id"),
+  rewardItem: text("reward_item"),
+  rewardAmount: integer("reward_amount"),
+  status: text("status").notNull(),
+  failureReason: text("failure_reason"),
+  ruleId: text("rule_id"),
+  rewards: jsonb("rewards").$type<Record<string, unknown>[]>().notNull().default([]),
+  isSandbox: boolean("is_sandbox").notNull().default(false),
+  /** When the network says the reward happened (AdMob `timestamp`). */
+  occurredAt: ts("occurred_at").notNull(),
+  createdAt: created(),
+}, (t) => [
+  uniqueIndex("ad_reward_verifications_client_tx").on(t.projectId, t.clientTransactionId),
+  uniqueIndex("ad_reward_verifications_network_tx").on(t.network, t.networkTransactionId),
+  index("ad_reward_verifications_project").on(t.projectId, t.createdAt),
+]);
+
+/** Ad units loaded from a connected ad network (AdMob), for names and formats on the Ads Overview. */
+export const adUnits = pgTable("ad_units", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  network: text("network").notNull(),
+  adUnitId: text("ad_unit_id").notNull(),
+  accountId: text("account_id"),
+  networkAppId: text("network_app_id"),
+  displayName: text("display_name").notNull(),
+  format: text("format"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.network, t.adUnitId] })]);

@@ -47,7 +47,7 @@ export async function grantForPurchase(db: DB, opts: {
 
 /** Applies one signed change. Returns the ledger id, or null when `sourceKey` was already applied. */
 export async function adjust(db: DB, projectId: string, customerId: string, code: string, amount: number,
-  o: { source: "api" | "purchase" | "sdk"; sourceKey?: string | null; reference?: string | null; now: Date }): Promise<string | null> {
+  o: { source: "api" | "purchase" | "sdk" | "ad_reward"; sourceKey?: string | null; reference?: string | null; now: Date }): Promise<string | null> {
   const inserted = await db.insert(schema.virtualCurrencyTransactions).values({
     id: newId("vct_", 16), projectId, customerId, code, amount, source: o.source, sourceKey: o.sourceKey ?? null, reference: o.reference ?? null, createdAt: o.now,
   }).onConflictDoNothing().returning({ id: schema.virtualCurrencyTransactions.id });

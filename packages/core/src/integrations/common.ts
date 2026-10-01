@@ -120,7 +120,7 @@ export function defaultAnalyticsName(c: Concept): string {
 }
 
 export interface OutRequest {
-  method: "POST" | "PUT" | "GET" | "HEAD";
+  method: "POST" | "PUT" | "PATCH" | "GET" | "HEAD";
   url: string;
   headers: Record<string, string>;
   body: string;

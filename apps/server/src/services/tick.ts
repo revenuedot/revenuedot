@@ -4,6 +4,7 @@ import { schema, type DB } from "@revenuedot/db";
 import { recordEvent } from "./events.js";
 import { deliverDue } from "./webhooks.js";
 import { deliverDueIntegrations } from "./integrations/deliver.js";
+import { refreshDueAdMob } from "./ads/admob.js";
 import { processExportRuns, queueDueExports } from "./exports/run.js";
 import { depsSecretKey } from "./secrets.js";
 import { runAlerts } from "./alerts.js";
@@ -44,6 +45,9 @@ export interface TickOptions {
   consumption?: boolean;
   /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
   strictUrls?: boolean;
+  /** AdMob connections reload their ad units once a day here unless false (the Worker does it from the cron only). */
+  admob?: boolean;
+  googleOAuth?: { clientId?: string; clientSecret?: string };
 }
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
@@ -81,7 +85,11 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
       console.error("tick: data exports failed", e);
     }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback };
+  let admob = 0;
+  if (opts.admob !== false && secretKey.ok) {
+    try { admob = await refreshDueAdMob({ db, fetch: fetchImpl, now: () => now, secretKey: secretKey.k, googleOAuth: opts.googleOAuth }); } catch (e) { console.error("tick: AdMob refresh failed", e); }
+  }
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, admob };
 }
 
 /** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */

@@ -47,7 +47,7 @@ const CONFIG: Partial<Record<IntegrationKind, { settings: Record<string, any>; s
 };
 
 async function plan(kind: IntegrationKind, event: WebhookEvent, over: { settings?: Record<string, any>; secrets?: Record<string, string>; eventNames?: Record<string, string> } = {}): Promise<Plan> {
-  const c = CONFIG[kind]!;
+  const c = CONFIG[kind] ?? { settings: {}, secrets: {} };
   return buildIntegration(kind, {
     event, settings: { ...c.settings, ...over.settings }, secrets: { ...c.secrets, ...over.secrets }, eventNames: over.eventNames, now,
     context: { projectId: "proj1", dashboardUrl: "https://app.revenuedot.app", bundleId: "com.example.scanner", appVersion: "3.4.1", platformVersion: "18.5", locale: "en_US", accessToken: "ya29.token" },
