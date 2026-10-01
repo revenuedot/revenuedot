@@ -48,8 +48,8 @@ Names are RevenueCat's where the tool is the same (`revenuedot/mcp` PRD). Every 
 | | `archive-offering` | D | write |
 | Customers | `list-customers` (search by app user id, email, transaction id), `get-customer` | R | read |
 | | `list-transactions`, `list-events` | R | read |
-| | `grant-customer-entitlement`, `set-customer-attributes` | W | write |
-| | `revoke-customer-entitlement`, `delete-customer` | D | write |
+| | `grant-customer-entitlement` | W | write |
+| | `set-customer-attributes`, `revoke-customer-entitlement`, `delete-customer` | D | write |
 | Support actions | `extend-subscription` | W | support |
 | | `cancel-subscription`, `refund-subscription` | D | support |
 | | `create-test-purchase` (Test Store only) | W | support |
