@@ -62,13 +62,32 @@ async function contextFor(db: DB, row: { e: typeof E.$inferSelect; i: typeof I.$
   return ctx;
 }
 
+/**
+ * The stored event with the customer's current attributes laid over the ones it was recorded with (the newer value of
+ * each key wins). Attribution ids such as $appsflyerId often reach the server just after the first purchase, so a
+ * delivery skipped for a missing id goes through when it is retried or replayed once the app has sent the id.
+ */
+async function withCurrentAttributes(db: DB, e: typeof E.$inferSelect): Promise<Record<string, unknown>> {
+  const event = { ...(((e.payload as { event?: Record<string, unknown> }).event ?? {}) as Record<string, unknown>) };
+  if (!e.customerId || e.type === "TRANSFER") return event;
+  const current = await db.select().from(schema.customerAttributes).where(eq(schema.customerAttributes.customerId, e.customerId));
+  if (!current.length) return event;
+  const attrs = { ...((event.subscriber_attributes ?? {}) as Record<string, { value: string | null; updated_at_ms: number }>) };
+  for (const a of current) {
+    const had = attrs[a.key];
+    if (!had || (had.updated_at_ms ?? 0) < a.updatedAtMs) attrs[a.key] = { value: a.value, updated_at_ms: a.updatedAtMs };
+  }
+  event.subscriber_attributes = attrs;
+  return event;
+}
+
 /** One attempt at one delivery. */
 export async function attemptIntegration(db: DB, deliveryId: string, rt: IntegrationRuntime) {
   const [row] = await db.select({ d: D, i: I, e: E }).from(D).innerJoin(I, eq(I.id, D.integrationId)).innerJoin(E, eq(E.id, D.eventId)).where(eq(D.id, deliveryId));
   if (!row) return;
   const started = Date.now();
   const kind = row.i.kind as IntegrationKind;
-  const event = ((row.e.payload as { event?: Record<string, unknown> }).event ?? {}) as Record<string, unknown>;
+  const event = await withCurrentAttributes(db, row.e);
   let secrets: Record<string, string> = {};
   const fail = async (error: string, opts: { retry: boolean; status?: number | null; request?: string | null; requestBody?: string | null; responseBody?: string | null; sentAs?: string | null }) => {
     const attempts = row.d.attempts + 1;

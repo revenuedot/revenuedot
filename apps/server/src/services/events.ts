@@ -116,7 +116,7 @@ export async function recordEvent(db: DB, opts: {
   const payload = { api_version: "1.0", event };
   await db.insert(events).values({
     id, projectId, customerId: customer.id, type, environment: environment.toLowerCase(), appId,
-    payload, eventTimestampMs: now.getTime(),
+    payload, eventTimestampMs: now.getTime(), createdAt: now,
   });
   await queueDeliveries(db, projectId, id, type, environment.toLowerCase(), appId, now, event);
   return payload;
@@ -140,7 +140,7 @@ export async function recordRawEvent(db: DB, opts: {
     ? { event_timestamp_ms: opts.now.getTime(), app_user_id: opts.appUserId, aliases, ...opts.fields, type: opts.type, id }
     : { ...opts.fields, aliases, app_id: opts.appId, app_user_id: opts.appUserId, event_timestamp_ms: opts.now.getTime(), subscriber_attributes, type: opts.type, id };
   const environment = opts.sandbox ? "sandbox" : "production";
-  await db.insert(events).values({ id, projectId: opts.projectId, customerId: opts.customer.id, type: opts.type, environment, appId: opts.appId, payload: { api_version: "1.0", event }, eventTimestampMs: opts.now.getTime() });
+  await db.insert(events).values({ id, projectId: opts.projectId, customerId: opts.customer.id, type: opts.type, environment, appId: opts.appId, payload: { api_version: "1.0", event }, eventTimestampMs: opts.now.getTime(), createdAt: opts.now });
   await queueDeliveries(db, opts.projectId, id, opts.type, environment, opts.appId, opts.now, event);
   return event;
 }

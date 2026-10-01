@@ -15,7 +15,6 @@
     "@revenuedot/db": "workspace:*",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.6.14",
-    "hyparquet": "1.31.1",
     "hyparquet-writer": "0.16.10",
     "jose": "^5.9.6",
     "nodemailer": "^10.0.13",
@@ -30,6 +29,7 @@
     "@types/nodemailer": "^8.0.2",
     "@types/smtp-server": "^3.5.13",
     "cf": "1.0.0-beta.5",
+    "hyparquet": "1.31.1",
     "smtp-server": "^3.19.16",
     "vite": "^8.3.1"
   }
