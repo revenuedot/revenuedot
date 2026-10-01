@@ -10,7 +10,7 @@ import { restV1 } from "./rest-v1.js";
 import { appForPlatform, resolveKey } from "../services/auth.js";
 import type { ReceiptInput } from "../stores/types.js";
 import { schema } from "@revenuedot/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
 import { attributionDataToAttributes, inBackground, resolveAdServicesToken, resolveDeviceAttributes, setAttributionOnce } from "../services/attribution.js";
 import { appleCredentials } from "../stores/apple/api.js";
@@ -19,7 +19,7 @@ import { customerCenterFor } from "../services/customer-center.js";
 import { publicOrigin } from "./oauth.js";
 import { buildRemoteConfig } from "../services/remote-config.js";
 import { activeEntitlementKeys, contextFor, resolveOfferings } from "../services/targeting.js";
-import { balancesOf } from "../services/virtual-currencies.js";
+import { adjust, balancesOf } from "../services/virtual-currencies.js";
 import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
@@ -39,8 +39,9 @@ export function sdkRoutes(deps: Deps) {
     c.header("X-RevenueCat-Request-Time", String(deps.now().getTime()));
     if (path === "/v1/health" || path === "/v1/health/connectivity" || path.endsWith("/health_report_availability")) return next();
     const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-    const auth = await resolveKey(deps.db, key);
+    const auth = await resolveKey(deps.db, key, deps.now());
     if (!auth) throw new RCError(401, Codes.INVALID_API_KEY, "Invalid API Key.");
+    if (auth.subscriber) await pinSubscriber(c, auth.subscriber);
     c.set("auth", auth);
     c.set("app", auth.app ?? (await appForPlatform(deps.db, auth.projectId, c.req.header("x-platform"))) ?? ({ id: null, projectId: auth.projectId, type: "none" } as any));
     // Which SDK builds call us (setup_health.sdk_versions). Server calls with a secret key are not SDKs.
@@ -53,6 +54,79 @@ export function sdkRoutes(deps: Deps) {
   };
   r.use("/v1/*", sdkAuth);
   r.use("/rcbilling/*", sdkAuth);
+
+  /**
+   * A subscriber token (`rdat_`) speaks for one app user id: an expired token, or a path or body naming another app user
+   * id, is the SDK's "invalid auth token" (7224). The `/v1/customer/*` paths name no user and are served below.
+   */
+  async function pinSubscriber(c: any, sub: { appUserId: string; expired: boolean }) {
+    const refuse = (m: string) => new RCError(401, Codes.INVALID_AUTH_TOKEN, m);
+    if (sub.expired) throw refuse("The access token has expired. Ask your server for a new one.");
+    const path: string = c.req.path;
+    const m = /^\/(?:rcbilling\/)?v1\/(?:subscribers|customercenter)\/([^/]+)/.exec(path);
+    if (m && !["identify", "redeem_purchase", "support"].includes(m[1]!) && safeDecode(m[1]!) !== sub.appUserId) throw refuse("The access token belongs to another app user id.");
+    if (c.req.method === "POST" && (path === "/v1/receipts" || path === "/v1/subscribers/identify" || path === "/v1/subscribers/redeem_purchase")) {
+      const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+      if (b.app_user_id !== undefined && String(b.app_user_id) !== sub.appUserId) throw refuse("The access token belongs to another app user id.");
+    }
+  }
+
+  /** The SDKs' subscriber-token paths (IAM mode) and the route that serves each, for the token's app user id. */
+  const IAM_PATHS: [RegExp, (user: string, m: RegExpExecArray) => string][] = [
+    [/^\/v1\/customer$/, (u) => `/v1/subscribers/${u}`],
+    [/^\/v1\/customer\/customercenter$/, (u) => `/v1/customercenter/${u}`],
+    [/^\/v1\/customer\/customercenter\/support\/create-ticket$/, () => "/v1/customercenter/support/create-ticket"],
+    [/^\/v1\/customer\/(offerings|intro_eligibility|attribution|attributes|adservices_attribution|health_report|virtual_currencies|restore\/eligibility|ads\/reward_verifications\/[^/]+)$/, (u, m) => `/v1/subscribers/${u}/${m[1]}`],
+    [/^\/rcbilling\/v1\/customer\/(offering_products|products)$/, (u, m) => `/rcbilling/v1/subscribers/${u}/${m[1]}`],
+  ];
+  const subscriberOf = (c: any): string => {
+    const sub = c.get("auth")?.subscriber as { appUserId: string } | undefined;
+    if (!sub) throw new RCError(401, Codes.INVALID_AUTH_TOKEN, "This path needs a subscriber access token (from POST /v2/projects/{project_id}/apps/{app_id}/authenticate), not an app API key.");
+    return sub.appUserId;
+  };
+
+  // IAM 41. Spend in-app currency as the subscriber: all adjustments or none, never below zero, once per Idempotency-Key.
+  r.post("/v1/customer/virtual_currencies/spend", async (c) => {
+    const appUserId = subscriberOf(c);
+    const app = c.get("app"); const now = deps.now();
+    const b = await c.req.json().catch(() => null) as { adjustments?: unknown; reference?: unknown } | null;
+    const adj = b?.adjustments;
+    if (!adj || typeof adj !== "object" || Array.isArray(adj) || !Object.keys(adj).length || Object.values(adj).some((v) => !Number.isInteger(v) || (v as number) <= 0)) {
+      throw new RCError(400, Codes.BAD_REQUEST_PARAMS, "adjustments must map currency codes to positive whole amounts to spend.");
+    }
+    const amounts = adj as Record<string, number>;
+    const { customer } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
+    const key = c.req.header("idempotency-key");
+    const sourceKey = key ? `sdk:${key.slice(0, 200)}` : null;
+    const replay = sourceKey ? (await deps.db.select({ id: schema.virtualCurrencyTransactions.id }).from(schema.virtualCurrencyTransactions)
+      .where(and(eq(schema.virtualCurrencyTransactions.customerId, customer.id), eq(schema.virtualCurrencyTransactions.sourceKey, sourceKey))).limit(1)).length > 0 : false;
+    const have = new Map((await balancesOf(deps.db, app.projectId, customer.id, { includeEmpty: true })).map((x) => [x.code, x.balance]));
+    for (const [code, amount] of Object.entries(amounts)) {
+      if (!have.has(code)) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, `There is no in-app currency with code ${code}.`);
+      if (!replay && have.get(code)! - amount < 0) throw new RCError(422, Codes.BAD_REQUEST, `Balance of ${code} is ${have.get(code)}; spending ${amount} would take it below zero.`);
+    }
+    const reference = typeof b!.reference === "string" ? b!.reference.slice(0, 255) : null;
+    // A retried request (same Idempotency-Key) answers the balances without spending again.
+    if (!replay) for (const [code, amount] of Object.entries(amounts)) await adjust(deps.db, app.projectId, customer.id, code, -amount, { source: "sdk", sourceKey, reference, now });
+    const out: Record<string, { balance: number; name: string; code: string; description: string | null }> = {};
+    for (const x of await balancesOf(deps.db, app.projectId, customer.id, { includeEmpty: true })) out[x.code] = { balance: x.balance, name: x.name, code: x.code, description: x.description };
+    return c.json({ virtual_currencies: out });
+  });
+
+  // IAM 42-55. Served by the matching /v1/subscribers/{app_user_id} route, for the token's app user id.
+  const iam = async (c: any) => {
+    const appUserId = subscriberOf(c);
+    const url = new URL(c.req.url);
+    const hit = IAM_PATHS.map(([re, to]) => [re.exec(url.pathname), to] as const).find(([m]) => m);
+    if (!hit) throw new RCError(404, Codes.NOT_FOUND, "Unknown subscriber path.");
+    url.pathname = hit[1](encodeURIComponent(appUserId), hit[0]!);
+    const method = c.req.method;
+    const body = method === "GET" || method === "HEAD" ? undefined : await c.req.arrayBuffer();
+    return r.fetch(new Request(url, { method, headers: c.req.raw.headers, body }));
+  };
+  r.all("/v1/customer", iam);
+  r.all("/v1/customer/*", iam);
+  r.all("/rcbilling/v1/customer/*", iam);
 
   const reqInfo = (c: { req: { header: (k: string) => string | undefined } }) => {
     const s = sdkHeaders(c.req);

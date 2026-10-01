@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord } from "../context.js";
 
@@ -14,11 +14,35 @@ export interface KeyAuth {
   app: AppRecord | null;
   keyId?: string;
   permissions?: string[];
+  /** A subscriber access token (`rdat_`, from the v2 `authenticate` operation): pinned to one app user id of `app`. */
+  subscriber?: { appUserId: string; expired: boolean };
 }
 
-/** Resolves an API key: public app keys (appl_, goog_, test_, rcb_ ...) or secret keys (sk_...). */
-export async function resolveKey(db: DB, key: string): Promise<KeyAuth | null> {
+export const SUBSCRIBER_TOKEN_PREFIX = "rdat_";
+/** Lifetime of a subscriber access token. RevenueCat calls its tokens short-lived without a number; one hour is ours. */
+export const SUBSCRIBER_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+/** Issues a subscriber access token for one app user id of one app. The plaintext is returned once; only its hash is stored. */
+export async function issueSubscriberToken(db: DB, app: { id: string; projectId: string }, appUserId: string, now: Date): Promise<{ token: string; expiresAt: Date }> {
+  const raw = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const token = `${SUBSCRIBER_TOKEN_PREFIX}${raw}`;
+  const expiresAt = new Date(now.getTime() + SUBSCRIBER_TOKEN_TTL_MS);
+  await db.insert(schema.subscriberTokens).values({ hash: await sha256Hex(token), projectId: app.projectId, appId: app.id, appUserId, expiresAt, createdAt: now });
+  // Expired tokens are only kept long enough to answer "expired" instead of "unknown".
+  await db.delete(schema.subscriberTokens).where(lt(schema.subscriberTokens.expiresAt, new Date(now.getTime() - 24 * SUBSCRIBER_TOKEN_TTL_MS)));
+  return { token, expiresAt };
+}
+
+/** Resolves an API key: public app keys (appl_, goog_, test_, rcb_ ...), secret keys (sk_...) or subscriber tokens (rdat_...). */
+export async function resolveKey(db: DB, key: string, now: Date = new Date()): Promise<KeyAuth | null> {
   if (!key) return null;
+  if (key.startsWith(SUBSCRIBER_TOKEN_PREFIX)) {
+    const [row] = await db.select({ t: schema.subscriberTokens, app: schema.apps }).from(schema.subscriberTokens)
+      .innerJoin(schema.apps, eq(schema.apps.id, schema.subscriberTokens.appId))
+      .where(eq(schema.subscriberTokens.hash, await sha256Hex(key))).limit(1);
+    if (!row) return null;
+    return { kind: "public", projectId: row.t.projectId, app: row.app, subscriber: { appUserId: row.t.appUserId, expired: row.t.expiresAt <= now } };
+  }
   if (key.startsWith("sk_")) {
     const [row] = await db.select().from(schema.apiKeys).where(eq(schema.apiKeys.hash, await sha256Hex(key))).limit(1);
     if (!row) return null;

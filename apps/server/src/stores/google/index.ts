@@ -1,7 +1,8 @@
 import type { AppRow, StoreAdapter } from "../types.js";
 import { Codes, RCError } from "../../errors.js";
 import { GoogleApiError, GooglePlayClient, toRCError, type GoogleClientOptions } from "./api.js";
-import { mapProduct, mapSubscription, S, type Catalog, type Posted } from "./map.js";
+import type { VerifiedPurchase } from "../types.js";
+import { baseOrderId, mapProduct, mapSubscription, S, type Catalog, type Posted } from "./map.js";
 
 export { GooglePlayClient, GoogleApiError, toRCError } from "./api.js";
 
@@ -148,4 +149,34 @@ export async function purchaseTokensForOrders(app: AppRow, orderIds: string[], c
 /** Voided purchases (refunds, chargebacks, revocations) from the last 30 days; `type: 1` includes subscriptions. */
 export async function listVoidedPurchases(app: AppRow, opts: { startTime?: Date; endTime?: Date; type?: 0 | 1 } = {}, client: GooglePlayClient = googleStore.client) {
   try { return await client.listVoidedPurchases(app, opts); } catch (e) { throw toRCError(e); }
+}
+
+/**
+ * The purchase a Google Play order paid for (`orders.batchGet` gives the purchase token), verified like a device receipt.
+ * The order's line item says whether it is a subscription or a one-time product; the catalog decides otherwise. null
+ * when Google does not know the order. Google errors are thrown as GoogleApiError for the caller to map.
+ */
+export async function purchaseForGoogleOrder(client: GooglePlayClient, app: AppRow, orderId: string, catalog: Catalog, now: Date): Promise<VerifiedPurchase | null> {
+  let orders;
+  try {
+    orders = await client.batchGetOrders(app, [orderId]);
+  } catch (e) {
+    if (e instanceof GoogleApiError && e.kind === "invalid_token") return null;
+    throw e;
+  }
+  const order = orders.find((o) => o.orderId === orderId) ?? orders.find((o) => o.orderId && baseOrderId(o.orderId) === baseOrderId(orderId));
+  if (!order?.purchaseToken) return null;
+  const li = order.lineItems?.[0];
+  const productId = li?.productId ?? null;
+  const catalogType = productId ? catalog.productType(productId) : null;
+  const kind = li?.subscriptionDetails ? "subscription" : li?.oneTimePurchaseDetails ? "one_time" : catalogType ? (catalogType === "subscription" ? "subscription" : "one_time") : null;
+  if (kind !== "one_time") {
+    try {
+      return await verifySubscription(client, app, order.purchaseToken, catalog, now, null);
+    } catch (e) {
+      if (kind === "subscription" || !productId || !(e instanceof GoogleApiError && e.kind === "invalid_token")) throw e;
+    }
+  }
+  if (!productId) return null;
+  return verifyProduct(client, app, productId, order.purchaseToken, catalog, now, null);
 }

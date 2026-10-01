@@ -70,6 +70,19 @@ export interface ProductPurchase {
   obfuscatedExternalAccountId?: string;
 }
 
+/** orders resource (the fields RevenueDot reads). */
+export interface Order {
+  orderId: string;
+  purchaseToken?: string;
+  state?: string;
+  lineItems?: Array<{
+    productId?: string;
+    productTitle?: string;
+    subscriptionDetails?: { basePlanId?: string; offerId?: string };
+    oneTimePurchaseDetails?: { quantity?: number; offerId?: string; purchaseOptionId?: string };
+  }>;
+}
+
 export interface VoidedPurchase {
   purchaseToken: string;
   purchaseTimeMillis?: string;
@@ -90,7 +103,7 @@ export const hasServiceAccount = (app: Pick<AppRow, "credentials">) => {
 };
 
 /** Why a Google call failed, which decides the HTTP answer: bad token → 400, our setup → 400/500, Google down → 503. */
-export type GoogleErrorKind = "invalid_token" | "credentials" | "transient";
+export type GoogleErrorKind = "invalid_token" | "credentials" | "transient" | "conflict";
 
 export class GoogleApiError extends Error {
   constructor(public kind: GoogleErrorKind, message: string, public status = 0, public reason?: string) { super(message); }
@@ -198,7 +211,7 @@ export class GooglePlayClient {
   }
 
   /** One authorised call to the Play Developer API. Returns parsed JSON ({} for empty bodies). */
-  async call<T = any>(app: Pick<AppRow, "credentials" | "bundleId">, method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  async call<T = any>(app: Pick<AppRow, "credentials" | "bundleId">, method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
     const sa = serviceAccountOf(app);
     const token = await this.accessToken(sa);
     const res = await this.http(`${ANDROID_PUBLISHER}/applications/${enc(packageNameOf(app))}${path}`, {
@@ -222,6 +235,7 @@ export class GooglePlayClient {
       throw new GoogleApiError("credentials", `${message}. Grant the service account access to this app in Play Console.`, res.status, reason);
     }
     if (res.status === 429 || res.status >= 500) throw new GoogleApiError("transient", message, res.status, reason);
+    if (res.status === 409) throw new GoogleApiError("conflict", message, res.status, reason);
     if (reason === "applicationNotFound") throw new GoogleApiError("credentials", `${message}. No Play app has the package name ${app.bundleId}.`, res.status, reason);
     if (res.status === 400 || res.status === 404 || res.status === 410) throw new GoogleApiError("invalid_token", message, res.status, reason);
     throw new GoogleApiError("transient", message, res.status, reason);
@@ -281,14 +295,32 @@ export class GooglePlayClient {
   }
 
   /** orders.batchget: order id → purchase token (and the rest of each Order). */
-  async batchGetOrders(app: AppRow, orderIds: string[]): Promise<Array<{ orderId: string; purchaseToken?: string; [k: string]: unknown }>> {
-    const out: Array<{ orderId: string; purchaseToken?: string }> = [];
+  async batchGetOrders(app: AppRow, orderIds: string[]): Promise<Order[]> {
+    const out: Order[] = [];
     for (let i = 0; i < orderIds.length; i += 100) {
       const q = new URLSearchParams();
       for (const id of orderIds.slice(i, i + 100)) q.append("orderIds", id);
-      const r = await this.call<{ orders?: Array<{ orderId: string; purchaseToken?: string }> }>(app, "GET", `/orders:batchGet?${q}`);
+      const r = await this.call<{ orders?: Order[] }>(app, "GET", `/orders:batchGet?${q}`);
       out.push(...(r.orders ?? []));
     }
     return out;
+  }
+
+  /** The app's default listing language, read from a throwaway edit (edits.insert, edits.details.get, edits.delete). */
+  async defaultLanguage(app: AppRow): Promise<string> {
+    const edit = await this.call<{ id?: string }>(app, "POST", "/edits", {});
+    if (!edit.id) throw new GoogleApiError("transient", "Google did not open an edit.");
+    try {
+      const d = await this.call<{ defaultLanguage?: string }>(app, "GET", `/edits/${enc(edit.id)}/details`);
+      return d.defaultLanguage || "en-US";
+    } finally {
+      await this.call(app, "DELETE", `/edits/${enc(edit.id)}`).catch(() => undefined);
+    }
+  }
+
+  /** monetization.subscriptions.create with one listing and no base plans (base plans need prices, which Play Console adds). */
+  createSubscription(app: AppRow, productId: string, listing: { languageCode: string; title: string }) {
+    const q = new URLSearchParams({ productId, "regionsVersion.version": "2022/02" });
+    return this.call<{ productId?: string; listings?: { title?: string }[] }>(app, "POST", `/subscriptions?${q}`, { packageName: packageNameOf(app), productId, listings: [listing] });
   }
 }

@@ -33,7 +33,7 @@ Tier 2 (this change)
 | SUBSCRIPTION_EXTENDED | yes | Apple extend, Google defer, a longer expiry in the same period | `subscription_extended.json` |
 | REFUND_REVERSED | yes | Apple refund reversed | `refund_reversed.json` |
 | TRANSFER | yes | a purchase moves to another app user id | `transfer.json` |
-| VIRTUAL_CURRENCY_TRANSACTION | yes | a product grant credits a balance, an API adjustment, an SDK spend | `in-app_currency_transaction.json` |
+| VIRTUAL_CURRENCY_TRANSACTION | yes | a product grant credits a balance (RevenueCat sends none for API adjustments) | `in-app_currency_transaction.json` |
 | EXPERIMENT_ENROLLMENT | yes | a customer joins an offering experiment | `experiment_enrollment.json` |
 | PRICE_INCREASE_CONSENT_REQUIRED | yes | the store asks the customer to accept a higher price | RevenueCat's field table |
 | PRICE_INCREASE_CONSENT_APPROVED | yes | the customer accepted | RevenueCat's field table |
