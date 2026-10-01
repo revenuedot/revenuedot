@@ -196,6 +196,14 @@ describe("media assets and fonts", () => {
     expect((await h.fetch(`/assets/proj1/nope.png`, { key: "" })).status).toBe(404);
     expect((await h.fetch(`/assets/proj2/${up.body.object_name}`, { key: "" })).status).toBe(404);
     expect((await call("POST", "/v2/projects/{project_id}/media_assets", {}, { json: { filename: "x.gif", content_type: "image/gif", file_data_base64: PNG_1x1 } })).status).toBe(400);
+    // Served publicly as an image, so the bytes must be one: no HTML or SVG under an image type, no PNG labelled JPEG.
+    const html = Buffer.from("<html><script>alert(1)</script></html>").toString("base64");
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>').toString("base64");
+    for (const [content_type, data] of [["image/png", html], ["image/webp", svg], ["image/jpeg", PNG_1x1], ["image/heic", html]] as const) {
+      const bad = await call("POST", "/v2/projects/{project_id}/media_assets", {}, { json: { filename: "x", content_type, file_data_base64: data } });
+      expect(bad.status, content_type).toBe(400);
+      expect(bad.body.param).toBe("file_data_base64");
+    }
   });
 
   it("uploads a font, reads its identity, lists it, and adds it to the SDK's ui_config", async () => {

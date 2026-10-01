@@ -102,6 +102,21 @@ export function imageSize(b: Uint8Array): { width: number | null; height: number
   return none;
 }
 
+/**
+ * Whether the bytes are an image of the declared type, by their magic bytes. AVIF, HEIC and HEIF share the ISO media
+ * container (`ftyp` box), whose brands vary by encoder, so any of them matches any of the three.
+ */
+export function imageMatches(b: Uint8Array, contentType: string): boolean {
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
+  switch (contentType) {
+    case "image/png": return b.length > 8 && b[0] === 0x89 && ascii(1, 4) === "PNG";
+    case "image/jpeg": return b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    case "image/webp": return b.length > 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
+    case "image/avif": case "image/heic": case "image/heif": return b.length > 12 && ascii(4, 8) === "ftyp";
+    default: return false;
+  }
+}
+
 /** PostScript name, family, style and weight of a TrueType or OpenType font, read from its `name` and `OS/2` tables. */
 export function fontInfo(b: Uint8Array): { name: string; family_name: string; style: "normal" | "italic"; weight: number } | null {
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);

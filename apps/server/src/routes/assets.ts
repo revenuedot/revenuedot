@@ -16,6 +16,8 @@ import { ICON_PNG } from "../services/paywall-icons.generated.js";
  * - `GET /blobs/{ref}`: remote-config blobs by content ref.
  */
 const IMMUTABLE = "public, max-age=31536000, immutable";
+/** Opened directly in a browser, a file can run nothing and load nothing (uploads are images and fonts, icons are SVG). */
+const SANDBOX = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
 interface EdgeCache { match(req: Request): Promise<Response | undefined>; put(req: Request, res: Response): Promise<void> }
 /** The Workers edge cache (`caches.default`), absent on Node. */
@@ -23,11 +25,11 @@ const edgeCache = (): EdgeCache | null => (globalThis as unknown as { caches?: {
 
 function send(c: Context, bytes: Uint8Array | string, contentType: string, etag: string, extra: Record<string, string> = {}) {
   const headers: Record<string, string> = {
-    "content-type": contentType, "cache-control": IMMUTABLE, "access-control-allow-origin": "*", "x-content-type-options": "nosniff", etag,
+    "content-type": contentType, "cache-control": IMMUTABLE, "access-control-allow-origin": "*", "x-content-type-options": "nosniff", "content-security-policy": SANDBOX, etag,
     "content-length": String(typeof bytes === "string" ? new TextEncoder().encode(bytes).length : bytes.length), ...extra,
   };
   const inm = c.req.header("if-none-match");
-  if (inm && inm.split(",").map((x) => x.trim().replace(/^W\//, "")).includes(etag)) {
+  if (inm && (inm.trim() === "*" || inm.split(",").map((x) => x.trim().replace(/^W\//, "")).includes(etag))) {
     delete headers["content-length"];
     return new Response(null, { status: 304, headers });
   }
@@ -47,7 +49,8 @@ export function assetRoutes(deps: Deps) {
   });
   r.get("/assets/:project_id/:object", async (c) => {
     const cache = edgeCache();
-    const key = cache ? new Request(new URL(c.req.url).toString(), { method: "GET" }) : null;
+    // Keyed without the query string, so `?v=random` cannot bypass the cache and reach the database.
+    const key = cache ? new Request(`${new URL(c.req.url).origin}${new URL(c.req.url).pathname}`, { method: "GET" }) : null;
     if (cache && key && c.req.method === "GET" && !c.req.header("if-none-match")) {
       const hitRes = await cache.match(key).catch(() => undefined);
       if (hitRes) return hitRes;

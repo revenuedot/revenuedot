@@ -202,6 +202,8 @@ describe("asset CDN", () => {
     expect(etag).toMatch(/^".+"$/);
     expect(res.headers.get("content-length")).toBe(String(Buffer.from(PNG_1x1, "base64").length));
     expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toContain("sandbox");
     expect(res.headers.get("x-image-width")).toBe("1");
     const again = await h.fetch(path, { key: "", headers: { "if-none-match": etag } });
     expect(again.status).toBe(304);

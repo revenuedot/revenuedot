@@ -1,11 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   PAYWALL_AI_MAX_PROMPT, newId, paywallAiMessages, paywallFromModel, paywallTemplate, paywallTemplateList, repairPaywall, validatePaywall, type PaywallValidation,
 } from "@revenuedot/core";
 import { schema, type PaywallContent } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { b64decode, fontInfo, imageSize, md5Hex, newContent, fontKey, type PaywallRow } from "../../services/paywalls.js";
+import { b64decode, fontInfo, imageMatches, imageSize, md5Hex, newContent, fontKey, type PaywallRow } from "../../services/paywalls.js";
 import { publicOrigin } from "../oauth.js";
 import { hit } from "../../services/rate-limit.js";
 import { V2Error, body, conflict, expands, ms, notFound, paginate, paramError, scope, v2ErrorBody, type V2Context, type V2Router } from "./common.js";
@@ -357,6 +357,11 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     return { object: "font" as const, id: a.id, name: m.name, family_name: m.family_name, style: m.style, weight: m.weight, url: `${base}/${a.objectName}`, font_key: fontKey(a) };
   };
   const ASSET_LIMIT = 200;
+  /** Images and fonts together: each is stored in Postgres, fonts up to 5 MB. */
+  const assetRoom = async (projectId: string) => {
+    const [n] = await db.select({ n: count() }).from(schema.mediaAssets).where(eq(schema.mediaAssets.projectId, projectId));
+    if ((n?.n ?? 0) >= ASSET_LIMIT) throw new V2Error(422, "unprocessable_entity_error", `A project can hold ${ASSET_LIMIT} images and fonts.`);
+  };
 
   r.get("/v2/projects/:project_id/media_assets", scope("project_configuration:offerings:read"), async (c) => {
     const rows = await db.select().from(schema.mediaAssets).where(and(eq(schema.mediaAssets.projectId, c.get("projectId")), eq(schema.mediaAssets.kind, "image")));
@@ -366,8 +371,9 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     const projectId = c.get("projectId");
     const b = await body(c, MediaIn);
     const bytes = decodeOrFail(b.file_data_base64);
-    const count = await db.select({ id: schema.mediaAssets.id }).from(schema.mediaAssets).where(eq(schema.mediaAssets.projectId, projectId));
-    if (count.length >= ASSET_LIMIT) throw new V2Error(422, "unprocessable_entity_error", `A project can hold ${ASSET_LIMIT} assets.`);
+    // Served publicly with this content type: the bytes must be that kind of image (no HTML or SVG under an image type).
+    if (!imageMatches(bytes, b.content_type)) throw paramError(`The file is not a ${b.content_type.slice(6).toUpperCase()} image.`, "file_data_base64");
+    await assetRoom(projectId);
     const { width, height } = imageSize(bytes);
     const id = newId("ma", 14);
     const [row] = await db.insert(schema.mediaAssets).values({
@@ -386,6 +392,7 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     const bytes = decodeOrFail(b.file_data_base64);
     const info = fontInfo(bytes);
     if (!info) throw paramError("The file is not a readable TrueType or OpenType font.", "file_data_base64");
+    await assetRoom(projectId);
     const id = newId("fnt", 14);
     const [row] = await db.insert(schema.mediaAssets).values({
       id, projectId, kind: "font", objectName: `${id}.${EXT[b.content_type]}`, originalName: b.filename, contentType: b.content_type, size: bytes.length, dataBase64: b.file_data_base64,
