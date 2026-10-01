@@ -36,6 +36,6 @@
   "version": {"file": ".version"},
   "scanExclude": ["**/src/test/**", "**/src/androidTest/**", "**/src/test*/**", "examples/**", "test-apps/**", "api-tester/**", "**/detekt*/**", "**/*.api"],
   "checks": [
-    { "name": "gradle", "run": "echo 'SKIPPED: needs JDK 17 and the Android SDK (this machine has Java 8). CI runs ./gradlew :purchases:testDefaultsDebugUnitTest.'" }
+    { "name": "gradle", "timeoutSec": 1800, "note": "compiles the patched SDK (main and unit-test sources) with the renamed Maven coordinates; CI also runs the unit tests", "run": "J=${JAVA17_HOME:-/opt/homebrew/opt/openjdk@17}; A=${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}; if [ -x \"$J/bin/java\" ] && [ -d \"$A/platforms\" ]; then JAVA_HOME=$J ANDROID_HOME=$A ./gradlew -q --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :purchases:compileDefaultsDebugUnitTestKotlin; else echo 'SKIPPED: needs JDK 17 (JAVA17_HOME) and the Android SDK (ANDROID_HOME)'; fi" }
   ]
 }
