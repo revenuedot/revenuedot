@@ -5,7 +5,7 @@
  * the selected step plus the theme. validateFunnel's publish rules list the problems; Publish stays off until there are
  * none. Analytics tab: views, checkouts, purchases, conversion and revenue, each step's drop-off, and views per day.
  */
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { renderFunnelPage, validateFunnel, FUNNEL_LIMITS, type FunnelDoc, type FunnelStep, type FunnelStepType, type FunnelTheme } from "@revenuedot/core/funnels";
@@ -279,7 +279,7 @@ function StepList({ steps, sel, onSel, onAdd, onMove, onDuplicate, onRemove }: {
 
 /* ---------- properties ---------- */
 
-function Row({ id, label, children, hint }: { id: string; label: string; children: React.ReactNode; hint?: React.ReactNode }) {
+function Row({ id, label, children, hint }: { id: string; label: string; children: ReactNode; hint?: ReactNode }) {
   return <div className="pf-row"><label htmlFor={id}>{label}</label><div className="pf-ctl">{children}</div>{hint && <span className="pf-hint">{hint}</span>}</div>;
 }
 

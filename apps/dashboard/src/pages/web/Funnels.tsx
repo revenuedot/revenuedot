@@ -126,13 +126,13 @@ function LinksTable({ pid, rows, onEdit }: { pid: string; rows: PurchaseLink[]; 
           <thead><tr><th>Name</th><th>Offering</th><th>URL</th><th>Expires</th><th>Status</th><th className="amt">Checkouts / purchases</th><th aria-label="Actions" /></tr></thead>
           <tbody>
             {rows.map((l) => {
-              const items: MenuItem[] = [
+              const items: (MenuItem | "-")[] = [
                 { label: "Copy link", icon: "copy", onSelect: () => copy(l.url, "Link copied.") },
                 { label: "Copy link for a signed-in user", icon: "userplus", onSelect: () => copy(`${l.url}?app_user_id={app_user_id}`, "Copied. Replace {app_user_id} with the customer's app user ID.") },
                 { label: "Open link", icon: "arrow", onSelect: () => window.open(l.url, "_blank", "noopener") },
                 { label: "Edit", icon: "edit", onSelect: () => onEdit(l) },
                 { label: l.status === "disabled" ? "Enable" : "Disable", icon: l.status === "disabled" ? "play" : "archive", onSelect: () => toggle(l) },
-                "-" as never,
+                "-",
                 { label: "Delete", icon: "trash", danger: true, onSelect: () => setDeleting(l) },
               ];
               return (

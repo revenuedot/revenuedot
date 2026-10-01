@@ -8,6 +8,9 @@
  *   notifications had arrived on those days, so events, transactions and webhooks are the real ones.
  * A second account (fresh@revenuedot.test / e2e-password-1) has an empty project for the first-run checklist.
  * Every email the server sends is kept in memory and listed at GET /__mail?to=<address> (account-email.spec.ts).
+ * Web billing (web.spec.ts): Stripe calls with FAKE_STRIPE_KEY go to an in-memory Stripe account whose Checkout Sessions
+ * open GET /__stripe/checkout/<id>, a fake "Stripe Checkout" page whose Pay button completes the session and redirects
+ * (303) to its success_url. Custom domain checks read DNS from POST /__dns instead of Cloudflare's resolver.
  */
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -22,7 +25,7 @@ import { tick } from "@revenuedot/server/services/tick.js";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
-import { fakeStores } from "./store-fakes.ts";
+import { fakeStores, webStripe } from "./store-fakes.ts";
 import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 
 const PORT = Number(process.env.PORT ?? 5199);
@@ -61,14 +64,50 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
 });
 const api = createApp({ db, now, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi });
 
+// Custom domain verification asks Cloudflare's DNS-over-HTTPS resolver; here it answers from records set with POST /__dns.
+const dns: Record<string, { CNAME?: string[]; TXT?: string[] }> = {};
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  if (!url.startsWith("https://cloudflare-dns.com/dns-query")) return realFetch(input, init);
+  const u = new URL(url);
+  const name = u.searchParams.get("name")!, type = u.searchParams.get("type") as "CNAME" | "TXT";
+  const data = dns[name]?.[type] ?? [];
+  return new Response(JSON.stringify({ Status: 0, Answer: data.map((d) => ({ name, type: type === "CNAME" ? 5 : 16, TTL: 60, data: type === "TXT" ? `"${d}"` : `${d}.` })) }), { headers: { "content-type": "application/dns-json" } });
+}) as typeof fetch;
+
 let ready = false;
 const web = new Hono();
 // Playwright waits for this: 503 while seeding, 200 once the data is in.
 web.get("/__ready", (c) => (ready ? c.text("ready") : c.text("seeding", 503)));
 web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
+web.post("/__dns", async (c) => { const b = await c.req.json() as { name: string; CNAME?: string[]; TXT?: string[] }; dns[b.name] = { CNAME: b.CNAME, TXT: b.TXT }; return c.json({ ok: true }); });
+// A minimal stand-in for Stripe's hosted Checkout page (never Stripe itself).
+const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+web.get("/__stripe/checkout/:id", (c) => {
+  const s = webStripe.sessions.get(c.req.param("id"));
+  if (!s) return c.text("No such checkout session", 404);
+  const item = s.line_items.data[0];
+  const amount = `${(item.price.unit_amount / 100).toFixed(2)} ${String(item.price.currency).toUpperCase()}`;
+  const discount = s.discounts?.[0] ? `<p data-discount>Discount applied (${esc(s.discounts[0].promotion_code ?? s.discounts[0].coupon)})</p>` : "";
+  return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fake Stripe Checkout</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:420px;margin:40px auto;padding:0 20px}input,button{font:inherit;width:100%;padding:12px;margin:6px 0;box-sizing:border-box}button{background:#635bff;color:#fff;border:0;cursor:pointer}</style></head>
+<body><h1>Fake Stripe Checkout</h1><p>Test only. No card is charged and Stripe is never called.</p>
+<p>${esc(s.mode === "subscription" ? "Subscription" : "One-time payment")}: <b data-amount>${esc(amount)}</b>${s.subscription_data?.trial_period_days ? ` after a ${esc(s.subscription_data.trial_period_days)}-day trial` : ""}</p>${discount}
+<form method="post"><label>Email <input name="email" type="email" value="${esc(s.customer_email ?? "")}" placeholder="buyer@example.com"></label><button type="submit">Pay</button></form>
+${s.cancel_url ? `<p><a href="${esc(s.cancel_url)}">Back</a></p>` : ""}</body></html>`);
+});
+web.post("/__stripe/checkout/:id", async (c) => {
+  const s = webStripe.sessions.get(c.req.param("id"));
+  if (!s) return c.text("No such checkout session", 404);
+  const form = await c.req.parseBody();
+  const email = typeof form.email === "string" && form.email.trim() ? form.email.trim() : undefined;
+  webStripe.complete(s.id, { email });
+  return c.redirect(s.success_url, 303);
+});
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling|blobs)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|rcbilling|blobs|pay)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
   // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
   if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);
@@ -81,6 +120,7 @@ web.all("/*", async (c) => {
 if (!existsSync(join(DIST, "index.html"))) { console.error(`No dashboard build at ${DIST}. Run vite build first.`); process.exit(1); }
 serve({ fetch: web.fetch, port: PORT });
 const base = `http://localhost:${PORT}`;
+webStripe.checkoutUrl = `${base}/__stripe/checkout/{id}`;
 
 // 1. API-made demo data.
 const cookie = await session(base, "e2e@revenuedot.test", "e2e-password-1", "Scanner");
