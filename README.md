@@ -196,6 +196,12 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 
 <p><img alt="Two RevenueDot paywalls rendered by the unmodified RevenueCat iOS SDK's PaywallView on the iOS simulator: the Annual first template, and a paywall built in the editor with a countdown, a carousel, tabs and a timeline" src="docs/assets/paywalls-ios.png" width="420"></p>
 
+<p><img alt="RevenueDot Web page: the Stripe web provider, the pay address and the four-step checklist (connect Stripe, web config, web products, offering) all done" src="docs/assets/web/web.png" width="100%"></p>
+
+<p><img alt="RevenueDot funnel builder: the steps list, a live phone preview of the first quiz question and the step's properties" src="docs/assets/web/funnel-builder.png" width="100%"></p>
+
+<p><img alt="A hosted purchase link page on a phone" src="docs/assets/web/pay-link-390.png" width="260"> <img alt="The hosted success page with the Open the app redemption button" src="docs/assets/web/pay-success-390.png" width="260"></p>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
   <img alt="RevenueDot Charts: MRR Movement by week with new and churned MRR, the grouped chart list, filters and the data table" src="docs/assets/charts-light.png" width="100%">
