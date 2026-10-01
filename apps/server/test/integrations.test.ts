@@ -197,7 +197,7 @@ describe("delivery", () => {
   it("sends a test event to one integration with a customer's attributes", async () => {
     const call = api();
     const slack = (await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/t" } })).body;
-    const meta = (await call("POST", "/integrations/partners", { type: "meta", settings: { dataset_id: "999", access_token: "EAA_tok" } })).body;
+    const meta = (await call("POST", "/integrations/partners", { type: "meta", settings: { dataset_id: "999", access_token: "EAA_tok", test_event_code: "TEST42" } })).body;
     const t = await call("POST", `/integrations/partners/${slack.id}/test`, {});
     expect(t.status).toBe(201);
     expect(t.body).toMatchObject({ object: "integration_delivery", event_type: "TEST", status: "pending" });
@@ -208,10 +208,19 @@ describe("delivery", () => {
     await call("POST", `/integrations/partners/${meta.id}/test`, { app_user_id: "u6" });
     const { f, seen } = fake((r) => new Response(r.url.includes("facebook") ? '{"events_received":1}' : "ok", { status: 200 }));
     await run(f);
-    const slackMsg = JSON.parse(seen.find((s) => s.url === "https://hooks.slack.com/t")!.body);
-    expect(slackMsg.text).toMatch(/^Customer \$RCAnonymousID:[0-9a-f]{32} is a test customer: Slack is connected to RevenueDot: test_product\.$/);
+    const slackTexts = seen.filter((s) => s.url === "https://hooks.slack.com/t").map((s) => JSON.parse(s.body).text as string);
+    expect(slackTexts.some((t) => /^Customer \$RCAnonymousID:[0-9a-f]{32} is a test customer: Slack is connected to RevenueDot: test_product\.$/.test(t))).toBe(true);
     const metaBody = JSON.parse(seen.find((s) => s.url.includes("graph.facebook.com/v21.0/999/events"))!.body);
-    expect(metaBody.data[0]).toMatchObject({ event_name: "Subscribe", user_data: { anon_id: "fb-anon" } });
+    expect(metaBody).toMatchObject({ test_event_code: "TEST42", data: [{ event_name: "Subscribe", user_data: { anon_id: "fb-anon" } }] });
+    // Without a test event code a Meta test would count as a real conversion, so it is skipped.
+    await call("POST", `/integrations/partners/${meta.id}`, { settings: { test_event_code: null } });
+    await h.db.delete(schema.integrationDeliveries).where(eq(schema.integrationDeliveries.integrationId, meta.id));
+    await call("POST", `/integrations/partners/${meta.id}/test`, { app_user_id: "u6" });
+    const before = seen.length;
+    await run(f);
+    expect(seen.length).toBe(before);
+    const [skipped] = (await call("GET", `/integrations/partners/${meta.id}/deliveries`)).body.items;
+    expect(skipped).toMatchObject({ status: "skipped", event_type: "TEST" });
     expect((await call("POST", `/integrations/partners/${slack.id}`, { enabled: false })).status).toBe(200);
     expect((await call("POST", `/integrations/partners/${slack.id}/test`, {})).status).toBe(422);
   });
@@ -246,13 +255,88 @@ describe("delivery", () => {
     expect(d.request_body).not.toContain("ya29.bq");
   });
 
-  it("a delivery whose secrets cannot be decrypted fails with a clear message", async () => {
+  it("a delivery whose secrets cannot be decrypted waits on the retry schedule with a clear message", async () => {
     const call = api();
     await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/z" } });
     await purchase("u8");
     const { f } = fake();
     await tick(h.db, h.now(), f, { encryptionKey: btoa(String.fromCharCode(...new Uint8Array(32).fill(9))) });
     const [d] = await h.db.select().from(schema.integrationDeliveries);
-    expect([d!.status, d!.lastError]).toEqual(["failed", "The credentials were encrypted with a different key (REVENUEDOT_ENCRYPTION_KEY or REVENUEDOT_SIGNING_KEY changed). Enter them again."]);
+    expect([d!.status, d!.attempts, d!.lastError]).toEqual(["pending", 1, "The credentials were encrypted with a different key (REVENUEDOT_ENCRYPTION_KEY or REVENUEDOT_SIGNING_KEY changed). Enter them again."]);
+    expect(d!.nextAttemptAt.getTime()).toBe(h.now().getTime() + 5 * MIN);
+  });
+});
+
+describe("delivery under load and misconfiguration", () => {
+  it("two overlapping ticks send each delivery once", async () => {
+    const call = api();
+    await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/once" } });
+    for (const u of ["o1", "o2", "o3"]) await purchase(u);
+    const { f, seen } = fake(async () => { await new Promise((r) => setTimeout(r, 20)); return new Response("ok"); });
+    await Promise.all([run(f), run(f)]);
+    expect(seen).toHaveLength(3);
+    const rows = await h.db.select().from(schema.integrationDeliveries);
+    expect(rows.map((d) => [d.status, d.attempts])).toEqual([["delivered", 1], ["delivered", 1], ["delivered", 1]]);
+  });
+
+  it("a big backlog in one integration does not starve another project's integration", async () => {
+    const call = api();
+    const busy = (await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/busy" } })).body;
+    for (let i = 0; i < 30; i++) await purchase(`b${i}`);
+    const quiet = (await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/quiet" } })).body;
+    await purchase("q1");
+    expect((await h.db.select().from(schema.integrationDeliveries).where(eq(schema.integrationDeliveries.integrationId, busy.id))).length).toBe(31);
+    const { f, seen } = fake();
+    await run(f);
+    // At most 10 per integration per tick, so the quiet one goes out in the first tick.
+    expect(seen.filter((s) => s.url.endsWith("/busy"))).toHaveLength(10);
+    expect(seen.filter((s) => s.url.endsWith("/quiet"))).toHaveLength(1);
+    expect(quiet.id).toBeTruthy();
+  });
+
+  it("refuses private-network URLs on Cloud and metadata addresses everywhere, without sending", async () => {
+    const call = api();
+    await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "http://127.0.0.1:9/slack" } });
+    const meta = await call("POST", "/integrations/partners", { type: "posthog", settings: { api_key: "phc_x", region: "custom", host: "http://169.254.169.254" } });
+    expect(meta.status).toBe(400);
+    expect(meta.body.param).toBe("settings.host");
+    const cloud = createApp({ db: h.db, now: h.now, stores: defaultStores(), encryptionKey: KEY, edition: "cloud" });
+    const res = await cloud.fetch(new Request("http://localhost/v2/projects/proj1/integrations/partners", {
+      method: "POST", headers: { Authorization: `Bearer ${h.ids.secretKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "slack", settings: { webhook_url: "https://10.0.0.8/hook" } }),
+    }));
+    expect(res.status).toBe(400);
+    await purchase("p1");
+    const { f, seen } = fake();
+    await tick(h.db, h.now(), f, { encryptionKey: KEY, strictUrls: true });
+    expect(seen).toHaveLength(0);
+    const [d] = await h.db.select().from(schema.integrationDeliveries);
+    expect([d!.status, d!.lastError]).toEqual(["failed", "The slack URL must be an https URL. Fix the integration's settings, then replay."]);
+  });
+
+  it("a malformed REVENUEDOT_ENCRYPTION_KEY leaves deliveries queued and the rest of the tick running", async () => {
+    const call = api();
+    await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/k" } });
+    await purchase("k1");
+    const { f, seen } = fake();
+    const r = await tick(h.db, h.now(), f, { encryptionKey: "bm90LTMyLWJ5dGVz" });
+    expect(r).toMatchObject({ integrations: 0, exports: 0 });
+    expect(r.alerts).toBeDefined();
+    expect(seen).toHaveLength(0);
+    const [d] = await h.db.select().from(schema.integrationDeliveries);
+    expect([d!.status, d!.attempts]).toEqual(["pending", 0]);
+    await run(f);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("escapes Slack control characters in customer and product ids", async () => {
+    const call = api();
+    await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/esc" } });
+    await purchase("<!channel> <https://evil.example|Reset>");
+    const { f, seen } = fake();
+    await run(f);
+    const text = JSON.parse(seen[0]!.body).text as string;
+    expect(text).toContain("&lt;!channel&gt; &lt;https://evil.example|Reset&gt;");
+    expect(text).not.toContain("<!channel>");
   });
 });

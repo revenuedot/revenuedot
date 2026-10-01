@@ -157,7 +157,8 @@ export async function queueDeliveries(db: DB, projectId: string, eventId: string
     if (h.eventTypes && h.eventTypes.length && !h.eventTypes.includes(type)) continue;
     await db.insert(webhookDeliveries).values({ id: crypto.randomUUID(), webhookId: h.id, eventId, nextAttemptAt: now, createdAt: now }).onConflictDoNothing();
   }
-  if (event) await queueIntegrationDeliveries(db, { projectId, eventId, type, environment, appId, event, now });
+  // Integrations are never allowed to fail the purchase or webhook path that recorded the event.
+  if (event) await queueIntegrationDeliveries(db, { projectId, eventId, type, environment, appId, event, now }).catch((e) => console.error(`integration fan-out for event ${eventId} failed`, e));
 }
 
 export { rcDate };

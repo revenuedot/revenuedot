@@ -18,8 +18,9 @@ const { subscriptions, customers, customerAliases } = schema;
 /**
  * The one periodic job (every minute: Workers cron in the cloud, an interval in Node):
  * record EXPIRATION for subscriptions whose access has ended, run the daily Google Play voided-purchases scan for apps
- * that are due, send due webhooks and integration deliveries, queue and run due data exports, re-check store credentials
- * that are due, then open, remind and resolve alert emails.
+ * that are due, send due webhooks and integration deliveries, re-check store credentials that are due, open, remind and
+ * resolve alert emails, then queue and run due data exports (last: they are the heaviest work).
+ * Integrations and exports are fenced off: an error in either is logged and never stops the rest of the tick.
  * `stores` supplies the Play client (tests inject a fake Google).
  */
 export interface TickOptions {
@@ -35,21 +36,35 @@ export interface TickOptions {
   signingKey?: string;
   /** Data exports run here unless false (the Worker skips them on request-kicked ticks). */
   exports?: boolean;
+  /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
+  strictUrls?: boolean;
 }
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
   const expired = await recordDueExpirations(db, now);
   const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
   const sent = await deliverDue(db, fetchImpl, now);
-  const secretKey = await depsSecretKey(opts);
-  const integrations = await deliverDueIntegrations(db, { fetch: fetchImpl, now, secretKey, publicUrl: opts.publicUrl });
-  let exports = 0;
-  if (opts.exports !== false) {
-    await queueDueExports(db, now);
-    exports = await processExportRuns(db, { fetch: fetchImpl, now, secretKey });
+  // A bad REVENUEDOT_ENCRYPTION_KEY leaves deliveries and exports queued (not failed) until the key is fixed.
+  const secretKey = await depsSecretKey(opts).then((k) => ({ ok: true as const, k }), (e) => { console.error("tick: integration secrets key", e); return { ok: false as const }; });
+  let integrations = 0;
+  if (secretKey.ok) {
+    try {
+      integrations = await deliverDueIntegrations(db, { fetch: fetchImpl, now, secretKey: secretKey.k, publicUrl: opts.publicUrl, strictUrls: opts.strictUrls });
+    } catch (e) {
+      console.error("tick: integration deliveries failed", e);
+    }
   }
   const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {} }, now) : 0;
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
+  let exports = 0;
+  if (opts.exports !== false && secretKey.ok) {
+    try {
+      await queueDueExports(db, now);
+      exports = await processExportRuns(db, { fetch: fetchImpl, now, secretKey: secretKey.k, strictUrls: opts.strictUrls });
+    } catch (e) {
+      console.error("tick: data exports failed", e);
+    }
+  }
   return { expired, voided, sent, integrations, exports, credentialsChecked, alerts };
 }
 
