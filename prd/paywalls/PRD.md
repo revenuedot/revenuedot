@@ -1,6 +1,6 @@
 # Paywalls (scope Tier 2)
 
-**Status:** building on branch `tier2-paywalls` (batch A of `company/docs/research/parity-matrix.md`). Before this branch: a three-template form, a preview drawn by hand, draft, publish and versions on the server. This spec brings the dashboard to RevenueCat's paywall builder: a template gallery, a visual editor over the real component JSON, an AI generator, localizations and a cached asset CDN.
+**Status:** built on branch `tier2-paywalls` (batch A of `company/docs/research/parity-matrix.md`). Before this branch: a three-template form, a preview drawn by hand, draft, publish and versions on the server. This spec brings the dashboard to RevenueCat's paywall builder: a template gallery, a visual editor over the real component JSON, an AI generator, localizations and a cached asset CDN.
 
 ## Users and jobs
 - **An indie developer** picks a proven 2026 layout (trial timeline, annual pre-selected), types their copy, publishes, and sees it in RevenueCatUI's `PaywallView` without an app release.
@@ -80,7 +80,7 @@ Each template takes the offering's real package identifiers (and falls back to `
 ## 4. Asset CDN
 - Uploaded images and fonts are served at `GET /assets/{project_id}/{object_name}` with `Cache-Control: public, max-age=31536000, immutable`, a strong `ETag`, `If-None-Match` → 304, `Content-Length`, CORS `*`, and `HEAD`. On Cloud the Worker answers repeat requests from the Cloudflare edge cache without a database query.
 - Media assets report `original_width` and `original_height` so the editor writes the real size into `source.light.width/height`.
-- Built-in icons (40, our own drawings) are served at `GET /assets/icons/{name}.png` (96 × 96, white on transparent; the SDK tints them) and as SVG at `/assets/icons/{name}.svg`.
+- Built-in icons (44, our own drawings) are served at `GET /assets/icons/{name}.png` (96 × 96, white on transparent; the SDK tints them) and as SVG at `/assets/icons/{name}.svg`.
 - `asset_base_url` is the origin the SDK talks to (the API host on Cloud), so published image URLs resolve from the app. The contract test fetches every image URL of a published paywall.
 
 ## 5. Localizations

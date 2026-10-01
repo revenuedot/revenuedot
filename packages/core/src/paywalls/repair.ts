@@ -58,7 +58,9 @@ class R {
     this.strings = Object.fromEntries(Object.entries(strings).filter(([, v]) => isStr(v))) as Record<string, string>;
     this.bg = hex8(o.colors?.background) ? o.colors!.background! : "#ffffff";
     this.fg = hex8(o.colors?.text) ? o.colors!.text! : luminance(this.bg) > 0.5 ? "#111111" : "#ffffff";
-    this.accent = hex8(o.colors?.accent) ? o.colors!.accent! : "#111111";
+    // An accent that disappears on the background (black on navy) becomes the text colour.
+    const accent = hex8(o.colors?.accent) ? o.colors!.accent! : luminance(this.bg) > 0.5 ? "#111111" : "#ffffff";
+    this.accent = Math.abs(luminance(accent) - luminance(this.bg)) < 0.25 ? this.fg : accent;
     this.muted = mix(this.fg, this.bg, 0.4);
   }
   fix(msg: string) { if (!this.fixes.includes(msg)) this.fixes.push(msg); }

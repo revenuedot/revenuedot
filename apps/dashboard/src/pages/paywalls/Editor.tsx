@@ -316,7 +316,14 @@ function Tree({ doc, strings, sel, onSel, op }: { doc: PaywallDoc; strings: Reco
   const [drag, setDrag] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: "before" | "after" | "inside" } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { ref.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(sel ?? "")}"]`)?.scrollIntoView({ block: "nearest" }); }, [sel]);
+  // Keep the selected row in view, scrolling the tree only (never the page).
+  useEffect(() => {
+    const box = ref.current, row = box?.querySelector<HTMLElement>(`[data-row="${CSS.escape(sel ?? "")}"]`);
+    if (!box || !row) return;
+    const top = row.offsetTop, bottom = top + row.offsetHeight;
+    if (top < box.scrollTop) box.scrollTop = top - 8;
+    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight + 8;
+  }, [sel]);
   const onKey = (e: RKeyboardEvent) => {
     const i = rows.findIndex((r) => r.id === sel);
     const r = rows[i];

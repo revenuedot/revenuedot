@@ -41,7 +41,7 @@ export function decodeWithSdk(items: { name: string; paywall: unknown }[]): Reco
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) void (async () => {
-  const core = await import("../../../packages/core/src/index.ts");
+  const core = await import("../../../packages/core/src/index.js");
   const items = [
     ...core.PAYWALL_TEMPLATES.map((t) => ({ name: t.id, paywall: asOfferingPaywall(t.build({ termsUrl: "https://example.com/terms", privacyUrl: "https://example.com/privacy" })) })),
     { name: "blank", paywall: asOfferingPaywall(core.blankPaywall()) },

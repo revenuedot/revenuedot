@@ -30,7 +30,7 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
   const toast = useToast();
   const [prompt, setPrompt] = useState("");
   const [app, setApp] = useState(appName);
-  const [colors, setColors] = useState<string[]>(["#111111"]);
+  const [colors, setColors] = useState<string[]>([]);
   const [offering, setOffering] = useState(fixedOffering?.id ?? offerings[0]?.id ?? "");
   const [busy, setBusy] = useState<"gen" | "save" | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
     if (prompt.trim().length < 3) { setErr("Describe the paywall in a few words."); return; }
     setBusy("gen"); setErr(null);
     try {
-      const g = await api<Generation>(`${v2(pid)}/paywalls/generate`, { method: "POST", json: { prompt: prompt.trim(), ...(app.trim() ? { app_name: app.trim() } : {}), brand_colors: colors, ...(offering ? { offering_id: offering } : {}) } });
+      const g = await api<Generation>(`${v2(pid)}/paywalls/generate`, { method: "POST", json: { prompt: prompt.trim(), ...(app.trim() ? { app_name: app.trim() } : {}), ...(colors.length ? { brand_colors: colors } : {}), ...(offering ? { offering_id: offering } : {}) } });
       setOut(g);
     } catch (e) { setErr(errMsg(e)); }
     setBusy(null);
@@ -74,12 +74,12 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
               {colors.map((c, i) => (
                 <span key={i} className="pw-swatch">
                   <input type="color" aria-label={i === 0 ? "Accent colour" : i === 1 ? "Background colour" : "Text colour"} value={c} onChange={(e) => setColors(colors.map((x, j) => (j === i ? e.target.value : x)))} />
-                  {i > 0 && <button type="button" className="ib" aria-label="Remove colour" onClick={() => setColors(colors.filter((_, j) => j !== i))}><Icon name="close" /></button>}
+                  {i === colors.length - 1 && <button type="button" className="ib" aria-label="Remove colour" onClick={() => setColors(colors.slice(0, -1))}><Icon name="close" /></button>}
                 </span>
               ))}
-              {colors.length < 3 && <button type="button" className="btn btn-ghost" onClick={() => setColors([...colors, colors.length === 1 ? "#ffffff" : "#111111"])}><Icon name="plus" />{colors.length === 1 ? "Background" : "Text"}</button>}
+              {colors.length < 3 && <button type="button" className="btn btn-ghost" onClick={() => setColors([...colors, ["#2563eb", "#ffffff", "#111111"][colors.length]!])}><Icon name="plus" />{["Accent", "Background", "Text"][colors.length]}</button>}
             </div>
-            <span className="hint">Accent first, then background and text.</span>
+            <span className="hint">Optional. Accent first, then background and text; without them the model picks.</span>
           </div>
           {!fixedOffering && offerings.length > 0 && <OfferingField id="ai-offering" offerings={offerings} value={offering} onChange={setOffering} />}
           {err && <div className="banner err" role="alert">{err}</div>}

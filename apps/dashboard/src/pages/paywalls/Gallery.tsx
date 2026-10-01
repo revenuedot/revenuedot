@@ -100,7 +100,7 @@ export function GalleryPage() {
               {shown.map((t) => (
                 <li key={t.id} className="pw-card">
                   <button type="button" className="pw-card-prev" aria-label={`Use template ${t.name}`} onClick={() => open(t)}>
-                    <Phone doc={docs.get(t.id)!} width={208} live={false} label={`${t.name} preview`} />
+                    <Phone doc={docs.get(t.id)!} width={172} live={false} label={`${t.name} preview`} />
                     <span className="pw-card-cta">Use template</span>
                   </button>
                   <div className="pw-card-b">

@@ -36,7 +36,8 @@ function send(c: Context, bytes: Uint8Array | string, contentType: string, etag:
 
 export function assetRoutes(deps: Deps) {
   const r = new Hono();
-  r.on(["GET", "HEAD"], "/assets/icons/:file", (c) => {
+  // HEAD is answered by these GET routes (Hono runs the GET handler and drops the body).
+  r.get("/assets/icons/:file", (c) => {
     const m = /^([a-z0-9_]+)\.(png|svg|heic|webp)$/.exec(c.req.param("file"));
     const name = m?.[1] ?? "";
     if (!m || !ICON_PNG[name]) return c.json({ object: "error", type: "resource_missing", message: "Icon not found. Icons: see https://revenuedot.app/docs/guides/paywalls#icons." }, 404);
@@ -44,7 +45,7 @@ export function assetRoutes(deps: Deps) {
     if (m[2] === "svg") return send(c, paywallIconSvg(name, "#000000")!, "image/svg+xml", `"icon-${name}-svg-1"`);
     return send(c, b64decode(ICON_PNG[name]!), "image/png", `"icon-${name}-1"`);
   });
-  r.on(["GET", "HEAD"], "/assets/:project_id/:object", async (c) => {
+  r.get("/assets/:project_id/:object", async (c) => {
     const cache = edgeCache();
     const key = cache ? new Request(new URL(c.req.url).toString(), { method: "GET" }) : null;
     if (cache && key && c.req.method === "GET" && !c.req.header("if-none-match")) {

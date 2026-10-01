@@ -45,7 +45,7 @@ describe("gallery templates", () => {
     const draft = (await call("GET", ONE, { paywall_id: made.body.id }, { query: "expand=components" })).body.components.draft;
     const all = components(draft.components_config);
     expect(all.filter((c) => c.type === "package").map((p) => [p.package_id, p.is_selected_by_default])).toEqual([["$rc_annual", true], ["$rc_monthly", false]]);
-    expect(all.find((c) => c.type === "icon").base_url).toBe("https://api.example.test/assets/icons");
+    expect(all.find((c) => c.type === "icon")!.base_url).toBe("https://api.example.test/assets/icons");
     expect(Object.values(draft.components_localizations.en_US)).toEqual(expect.arrayContaining(["Get full access to Scanner and everything in it.", "https://example.com/terms"]));
 
     expect((await call("POST", `${ONE}/actions/publish`, { paywall_id: made.body.id })).status).toBe(200);
@@ -90,7 +90,7 @@ describe("validation", () => {
     const fixed = await call("POST", `${PW}/validate`, {}, { ext: true, json: { components_config: { base: { stack: { components: [{ type: "text", text: "Hello" }] } } }, components_localizations: {}, repair: true, offering_id: o } });
     expect(fixed.body.valid).toBe(true);
     expect(fixed.body.fixes).toEqual(expect.arrayContaining(["Added a purchase button."]));
-    expect(components(fixed.body.components_config).find((c) => c.type === "package").package_id).toBe("$rc_annual");
+    expect(components(fixed.body.components_config).find((c) => c.type === "package")!.package_id).toBe("$rc_annual");
 
     const id = (await call("POST", PW, {}, { json: { offering_id: o, components_config: bad.components_config, components_localizations: bad.components_localizations } })).body.id;
     const pub = await call("POST", `${ONE}/actions/publish`, { paywall_id: id });
