@@ -16,3 +16,6 @@ playwright-report/
 # Importer state files (npx revenuedot import)
 revenuedot-import-*.json
 .dev.vars
+
+# Journey runs (scripts/e2e/journeys): logs, screenshots, per-run results
+scripts/e2e/journeys/build/
