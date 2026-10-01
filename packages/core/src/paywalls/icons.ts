@@ -58,7 +58,7 @@ export const PAYWALL_ICON_NAMES = Object.keys(PAYWALL_ICONS);
 
 /** The SVG for an icon, `color` stroke on a transparent ground. */
 export function paywallIconSvg(name: string, color = "#ffffff", px = 96): string | null {
-  const icon = PAYWALL_ICONS[name];
+  const icon = Object.hasOwn(PAYWALL_ICONS, name) ? PAYWALL_ICONS[name] : undefined;
   if (!icon) return null;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon.d}"/></svg>`;
 }

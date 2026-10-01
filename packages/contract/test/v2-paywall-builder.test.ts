@@ -224,6 +224,7 @@ describe("asset CDN", () => {
     expect((await h.fetch("/assets/icons/check.heic", { key: "" })).headers.get("content-type")).toBe("image/png");
     expect(await (await h.fetch("/assets/icons/star.svg", { key: "" })).text()).toMatch(/^<svg/);
     expect((await h.fetch("/assets/icons/nope.png", { key: "" })).status).toBe(404);
+    for (const f of ["constructor.png", "__proto__.svg", "tostring.png"]) expect((await h.fetch(`/assets/icons/${f}`, { key: "" })).status, f).toBe(404);
 
     const up = await call("POST", "/v2/projects/{project_id}/media_assets", {}, { json: { filename: "hero.png", content_type: "image/png", file_data_base64: PNG_1x1 } });
     const url = `${up.body.asset_base_url}/${up.body.object_name}`;

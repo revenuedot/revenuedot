@@ -38,8 +38,10 @@ const ICON_ALIASES: Record<string, string> = {
 };
 export function iconName(x: unknown): string {
   const s = isStr(x) ? x.trim().toLowerCase().replace(/\.(png|svg|heic|webp)$/, "").replace(/[\s-]+/g, "_") : "";
-  if (PAYWALL_ICONS[s]) return s;
-  const a = ICON_ALIASES[s] ?? ICON_ALIASES[s.replace(/_/g, "-")] ?? ICON_ALIASES[s.replace(/_/g, "")];
+  // Own keys only: "constructor" or "__proto__" from a model must not resolve to Object.prototype members.
+  if (Object.hasOwn(PAYWALL_ICONS, s)) return s;
+  const alias = (k: string) => (Object.hasOwn(ICON_ALIASES, k) ? ICON_ALIASES[k] : undefined);
+  const a = alias(s) ?? alias(s.replace(/_/g, "-")) ?? alias(s.replace(/_/g, ""));
   if (a) return a;
   const partial = Object.keys(PAYWALL_ICONS).find((k) => s && (s.includes(k) || k.includes(s)));
   return partial ?? "check";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PAYWALL_TEMPLATES, validatePaywall, type Json } from "../src/index.js";
+import { PAYWALL_TEMPLATES, iconName, paywallIconSvg, validatePaywall, type Json } from "../src/index.js";
 
 // Each case was found by mutating real paywalls and decoding them with the iOS SDK (scripts/e2e/paywall-decode): the SDK
 // fails to decode the whole paywall, so publishing must refuse it.
@@ -64,5 +64,16 @@ describe("publish validation refuses what the iOS SDK cannot decode", () => {
     const text = clone(first(d.components_config, "text"));
     first(d.components_config, "stack").components.push({ type: "web_view", id: "wv1", protocol_version: 2, url: "https://e.com", size: { width: { type: "fill" }, height: { type: "fit" } }, fallback: { ...text, id: "fb1" } });
     expect(errorsOf(d)).toEqual([]);
+  });
+});
+
+describe("icon names", () => {
+  it("resolve only to built-in icons, never to Object.prototype members", () => {
+    for (const n of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      expect(iconName(n), n).not.toBe(n.toLowerCase());
+      expect(typeof iconName(n)).toBe("string");
+      expect(paywallIconSvg(n.toLowerCase())).toBeNull();
+    }
+    expect(iconName("Check.png")).toBe("check");
   });
 });

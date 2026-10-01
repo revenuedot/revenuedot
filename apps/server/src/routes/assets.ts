@@ -42,7 +42,7 @@ export function assetRoutes(deps: Deps) {
   r.get("/assets/icons/:file", (c) => {
     const m = /^([a-z0-9_]+)\.(png|svg|heic|webp)$/.exec(c.req.param("file"));
     const name = m?.[1] ?? "";
-    if (!m || !ICON_PNG[name]) return c.json({ object: "error", type: "resource_missing", message: "Icon not found. Icons: see https://revenuedot.app/docs/guides/paywalls#icons." }, 404);
+    if (!m || !Object.hasOwn(ICON_PNG, name)) return c.json({ object: "error", type: "resource_missing", message: "Icon not found. Icons: see https://revenuedot.app/docs/guides/paywalls#icons." }, 404);
     // .heic and .webp names serve the PNG: the SDKs decode the bytes, not the extension.
     if (m[2] === "svg") return send(c, paywallIconSvg(name, "#000000")!, "image/svg+xml", `"icon-${name}-svg-1"`);
     return send(c, b64decode(ICON_PNG[name]!), "image/png", `"icon-${name}-1"`);
