@@ -84,6 +84,9 @@ function xcodebuild(testKey: string, shots: string | undefined) {
   }
   mkdirSync(BUILD, { recursive: true });
   // A fresh install: the SDK keeps its app user id and caches in the app's container between runs.
+  // simctl cannot uninstall from a shut-down device (it fails silently), so boot it first; "already booted" is fine.
+  spawnSync("xcrun", ["simctl", "boot", DEVICE], { stdio: "ignore" });
+  spawnSync("xcrun", ["simctl", "bootstatus", DEVICE, "-b"], { stdio: "ignore" });
   spawnSync("xcrun", ["simctl", "uninstall", DEVICE, "app.revenuedot.harness"], { stdio: "ignore" });
   const result = join(BUILD, `result-${Date.now()}.xcresult`);
   const args = [
