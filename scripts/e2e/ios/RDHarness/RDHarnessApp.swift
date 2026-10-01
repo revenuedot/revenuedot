@@ -5,6 +5,7 @@
 // `@_spi(Internal)` is only for the Customer Center fetch, which RevenueCatUI makes through the same call.
 @_spi(Internal) import RevenueCat
 import SwiftUI
+import RevenueCatUI
 
 @main
 struct RDHarnessApp: App {
@@ -112,6 +113,7 @@ final class Harness: ObservableObject {
 struct HarnessView: View {
     @StateObject private var h = Harness()
     @State private var loginID = ProcessInfo.processInfo.environment["RD_LOGIN_ID"] ?? "harness_user"
+    @State private var showPaywall = false
 
     var body: some View {
         // Status and results stay above the list, so the UI test can read them while the list is scrolled.
@@ -137,8 +139,11 @@ struct HarnessView: View {
                 Button("logIn") { Task { await h.logIn(loginID) } }.accessibilityIdentifier("loginButton")
                 Button("attribution") { Task { await h.attribution() } }.accessibilityIdentifier("attributionButton")
                 Button("other calls") { Task { await h.others() } }.accessibilityIdentifier("othersButton")
+                // RevenueCatUI renders the current offering's paywall components from RevenueDot (Paywalls V2).
+                Button("show paywall") { showPaywall = true }.accessibilityIdentifier("paywallButton")
             }
         }
         }
+        .sheet(isPresented: $showPaywall) { PaywallView(displayCloseButton: true) }
     }
 }

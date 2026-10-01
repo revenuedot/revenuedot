@@ -223,3 +223,34 @@ describe("md5", () => {
     }
   });
 });
+
+describe("template form storage and the template builder", () => {
+  it("stores the dashboard's template form next to the paywall", async () => {
+    const o = await offering("promo");
+    const id = (await call("POST", PW, {}, { json: { offering_id: o } })).body.id;
+    expect((await call("GET", `${ONE}/template`, { paywall_id: id }, { ext: true })).body.template).toBeNull();
+    const put = await call("PUT", `${ONE}/template`, { paywall_id: id }, { ext: true, json: { template: { template: "classic", headline: "Go Pro" } } });
+    expect(put.body).toMatchObject({ object: "paywall_template", paywall_id: id, template: { headline: "Go Pro" } });
+    expect((await call("GET", `${ONE}/template`, { paywall_id: id }, { ext: true })).body.template.headline).toBe("Go Pro");
+    expect((await call("PUT", `${ONE}/template`, { paywall_id: id }, { ext: true, json: { template: "x" } })).status).toBe(400);
+  });
+
+  it("builds components every SDK part can find: texts by localization id, packages by identifier, a sticky purchase button", async () => {
+    const { buildPaywall } = await import("@revenuedot/core");
+    for (const template of ["classic", "hero", "minimal"] as const) {
+      const out = buildPaywall({ template, headline: "Unlock", subheadline: "Sub", features: ["A", "B"], cta: "Buy", imageUrl: "https://example.com/x.png", packages: [{ id: "$rc_monthly", label: "Monthly" }, { id: "$rc_annual", label: "Yearly" }], selectedPackage: "$rc_annual" });
+      const all: any[] = [];
+      const walk = (x: any) => { if (x && typeof x === "object") { if (typeof x.type === "string" && x.id) all.push(x); Object.values(x).forEach(walk); } };
+      walk(out.components_config);
+      const ids = all.map((x) => x.id);
+      expect(new Set(ids).size, template).toBe(ids.length);
+      for (const t of all.filter((x) => x.type === "text")) expect(out.components_localizations.en_US[t.text_lid], `${template} ${t.text_lid}`).toBeDefined();
+      const pk = all.filter((x) => x.type === "package");
+      expect(pk.map((p) => [p.package_id, p.is_selected_by_default])).toEqual([["$rc_monthly", false], ["$rc_annual", true]]);
+      expect(all.filter((x) => x.type === "purchase_button")).toHaveLength(1);
+      expect((out.components_config.base as any).sticky_footer.type).toBe("footer");
+      expect(all.some((x) => x.type === "image")).toBe(template === "hero");
+      expect(Object.values(out.components_localizations.en_US)).toEqual(expect.arrayContaining(["Unlock", "Buy", "{{ product.price_per_period }}"]));
+    }
+  });
+});

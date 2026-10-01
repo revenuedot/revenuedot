@@ -64,6 +64,13 @@
       "when": 1790829775617,
       "tag": "0008_paywalls_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790830996852,
+      "tag": "0009_paywall_template",
+      "breakpoints": true
     }
   ]
 }

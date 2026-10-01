@@ -44,7 +44,9 @@ export function sdkPaywallComponents(p: PaywallRow, assetBaseUrl: string) {
   const v = p.published;
   if (!v?.components_config) return null;
   return {
-    id: p.id, template_name: "components", asset_base_url: assetBaseUrl, revision: v.revision, zero_decimal_place_countries: [],
+    id: p.id, template_name: "components", asset_base_url: assetBaseUrl, revision: v.revision,
+    // Storefronts where prices show without decimals ("$60" not "$60.00"), keyed by store as the SDKs decode it.
+    zero_decimal_place_countries: { apple: ["TWN", "KAZ", "MEX", "PHL", "THA"], google: ["TW", "KZ", "MX", "PH", "TH"] },
     components_config: v.components_config, components_localizations: v.components_localizations ?? {}, default_locale: v.default_locale ?? "en_US",
     ...(v.exit_offers ? { exit_offers: v.exit_offers } : {}), automatically_scale_font_size: v.automatically_scale_font_size,
     ...(v.state_declarations ? { state_declarations: v.state_declarations } : {}),

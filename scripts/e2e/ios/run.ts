@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { client, seedProject, session } from "../../../apps/dashboard/e2e/seed.ts";
 import { attributeChecks, readLog, requestChecks, type Expectation } from "../sdk-calls.ts";
+import { buildPaywall } from "../../../packages/core/src/paywall-templates.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
@@ -172,6 +173,24 @@ async function serverState(cookie: string, projectId: string): Promise<Check[]> 
   return checks;
 }
 
+/** A paywall from the "classic" template on the current offering, published, so RevenueCatUI has something to render. */
+async function publishTemplatePaywall(cookie: string, projectId: string) {
+  const P = `${BASE}/v2/projects/${projectId}`;
+  const req = async (method: string, path: string, body?: unknown) => {
+    const r = await fetch(P + path, { method, headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
+    return r.json() as Promise<any>;
+  };
+  const offerings = await req("GET", "/offerings?expand=items.package");
+  const current = offerings.items.find((o: any) => o.is_current);
+  const content = buildPaywall({
+    template: "classic", headline: "Unlock everything", subheadline: "Scan without limits.", features: ["Unlimited scans", "Cloud backup"], cta: "Start my plan",
+    packages: current.packages.items.map((p: any) => ({ id: p.lookup_key, label: p.display_name })),
+  });
+  const pw = await req("POST", "/paywalls", { offering_id: current.id, name: "Harness", ...content });
+  await req("POST", `/paywalls/${pw.id}/actions/publish`);
+}
+
 let server: ChildProcess | undefined;
 try {
   const shots = process.env.SHOTS;
@@ -187,6 +206,7 @@ try {
   const me = await (await fetch(`${BASE}/auth/me`, { headers: { cookie } })).json() as { projects: { id: string }[] };
   const projectId = me.projects[0]!.id;
   const seeded = await seedProject(BASE, cookie, projectId, { customers: 2 });
+  await publishTemplatePaywall(cookie, projectId);
   console.log(`Server ${BASE}, project ${projectId}, Test Store key ${seeded.testKey.slice(0, 9)}…, device ${DEVICE}, login id ${LOGIN_ID}`);
 
   const t0 = Date.now();

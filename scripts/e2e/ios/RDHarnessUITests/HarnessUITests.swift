@@ -64,7 +64,15 @@ final class HarnessUITests: XCTestCase {
         for _ in 0..<5 where !app.buttons["othersButton"].isHittable { app.swipeUp() }
         app.buttons["othersButton"].tap()
         waitStatus("others: ok", 60)
-        XCTAssertEqual(app.staticTexts["extras"].label, "sync=ok vc=0 redeem=invalidToken reward=failed cc=error")
+        XCTAssertEqual(app.staticTexts["extras"].label, "sync=ok vc=0 redeem=invalidToken reward=failed cc=loaded")
         shot("ios-4-other-calls")
+
+        // The paywall made from a RevenueDot template renders in RevenueCatUI with its texts and purchase button.
+        for _ in 0..<5 where !app.buttons["paywallButton"].isHittable { app.swipeUp() }
+        app.buttons["paywallButton"].tap()
+        XCTAssertTrue(app.staticTexts["Unlock everything"].waitForExistence(timeout: 30), "paywall headline")
+        XCTAssertTrue(app.staticTexts["Unlimited scans"].exists, "paywall feature")
+        XCTAssertTrue(app.buttons["Start my plan"].exists || app.staticTexts["Start my plan"].exists, "purchase button")
+        shot("ios-5-paywall")
     }
 }

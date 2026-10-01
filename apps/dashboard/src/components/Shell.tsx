@@ -23,7 +23,7 @@ const NAV: Item[] = [
     { label: "Entitlements", to: "product-catalog/entitlements" }, { label: "In-app currencies", to: "product-catalog/virtual-currencies" },
     { label: "Web discounts", to: "web-discounts", soon: true },
   ] },
-  { label: "Paywalls", to: "paywalls", icon: "paywalls", soon: true },
+  { label: "Paywalls", to: "paywalls", icon: "paywalls" },
   { label: "Targeting", to: "targeting", icon: "targeting", soon: true },
   { label: "Experiments", to: "experiments", icon: "experiments", soon: true },
   { label: "Funnels", to: "funnels", icon: "funnels", soon: true },

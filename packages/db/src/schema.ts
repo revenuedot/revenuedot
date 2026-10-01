@@ -496,6 +496,8 @@ export const paywalls = pgTable("paywalls", {
   revision: integer("revision").notNull().default(1),
   draft: jsonb("draft").$type<PaywallContent | null>(),
   published: jsonb("published").$type<PaywallContent | null>(),
+  /** The dashboard template form that produced the draft (RevenueDot only), so the form can be reopened. */
+  template: jsonb("template").$type<Record<string, unknown> | null>(),
   publishedAt: ts("published_at"),
   createdAt: created(),
 }, (t) => [index("paywalls_project").on(t.projectId), uniqueIndex("paywalls_offering").on(t.offeringId)]);

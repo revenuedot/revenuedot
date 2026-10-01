@@ -1,0 +1,1 @@
+ALTER TABLE "paywalls" ADD COLUMN "template" jsonb;

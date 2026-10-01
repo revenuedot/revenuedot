@@ -416,3 +416,5 @@ td .hrow{flex-wrap:nowrap}
 .members .show-sm{display:none}
 @media (max-width:640px){.verify-banner{padding:10px 16px}.members .hide-sm{display:none}.members td:first-child{width:100%;max-width:0}.members td:first-child b{word-break:break-all}.members .show-sm{display:inline}.members th,.members td{padding-left:10px;padding-right:10px}}
 .auth-card .sw{text-align:left}
+
+@media (max-width: 900px){.pw-grid{grid-template-columns:minmax(0,1fr)!important}}

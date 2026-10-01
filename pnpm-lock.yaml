@@ -23,6 +23,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@revenuedot/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@tanstack/react-query':
         specifier: ^5.62.8
         version: 5.104.0(react@19.3.0)

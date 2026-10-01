@@ -218,6 +218,19 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     return c.json(versionOut(v));
   });
 
+  // RevenueDot extension: the dashboard's template form for a paywall, kept next to the draft it produced.
+  r.get(`${P}/:paywall_id/template`, scope("project_configuration:offerings:read"), async (c) => {
+    const p = await find(c);
+    return c.json({ object: "paywall_template", paywall_id: p.id, template: p.template ?? null });
+  });
+  r.put(`${P}/:paywall_id/template`, scope("project_configuration:offerings:read_write"), async (c) => {
+    const p = await find(c);
+    const b = await body(c, z.object({ template: z.record(z.unknown()).nullable() }).strict());
+    if (b.template && JSON.stringify(b.template).length > 50_000) throw paramError("template is larger than 50 KB.", "template");
+    await db.update(schema.paywalls).set({ template: b.template }).where(eq(schema.paywalls.id, p.id));
+    return c.json({ object: "paywall_template", paywall_id: p.id, template: b.template });
+  });
+
   // ---- Media assets and fonts ----
   const assetBase = (c: V2Context) => `${publicOrigin(c)}/assets/${c.get("projectId")}`;
   const mediaShape = (a: typeof schema.mediaAssets.$inferSelect, base: string) => ({

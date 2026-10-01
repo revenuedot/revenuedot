@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite", "build": "vite build", "preview": "vite preview",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "seed": "tsx scripts/seed-demo.ts",
     "e2e": "vite build && playwright test -c e2e/playwright.config.ts",
     "e2e:server": "tsx e2e/server.ts"
@@ -13,7 +15,8 @@
     "@tanstack/react-query": "^5.62.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.1.1"
+    "react-router-dom": "^7.1.1",
+    "@revenuedot/core": "workspace:*"
   },
   "devDependencies": {
     "@hono/node-server": "^1.13.7",

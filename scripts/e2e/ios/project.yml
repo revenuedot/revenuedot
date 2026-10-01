@@ -17,6 +17,9 @@ targets:
     sources: [RDHarness]
     dependencies:
       - package: RevenueCat
+        product: RevenueCat
+      - package: RevenueCat
+        product: RevenueCatUI
     info:
       path: RDHarness/Info.plist
       properties:
