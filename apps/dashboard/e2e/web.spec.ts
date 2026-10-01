@@ -380,6 +380,18 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     await expect(frow.locator("td.amt").nth(1)).toHaveText("1");
   });
 
+  await test.step("Build with AI: the generated draft becomes a new funnel (the e2e server's fake model)", async () => {
+    await page.goto(`${WEB}/projects/${pid}/funnels`);
+    await page.getByRole("button", { name: "Create web funnel" }).click();
+    await page.getByRole("menuitem", { name: "Build with AI" }).click();
+    const d = page.getByRole("dialog", { name: "Build a funnel with AI" });
+    await d.getByLabel("Describe the funnel").fill("A sleep app quiz");
+    await d.getByRole("button", { name: "Generate funnel" }).click();
+    await page.waitForURL(/\/funnels\/fnl_/);
+    await expect(page.frameLocator('iframe[title="Funnel preview"]').getByRole("heading", { name: "AI: A sleep app quiz" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Steps" }).locator(".fb-row")).toHaveCount(4);
+  });
+
   await test.step("phone width: every web page fits 390px and the builder stacks steps, preview, properties", async () => {
     await narrow(`${WEB}/projects/${pid}/web`, () => expect(page.getByText("You can sell on the web.")).toBeVisible());
     await narrow(`${WEB}/projects/${pid}/funnels`, () => expect(page.getByRole("table", { name: "Purchase links" })).toBeVisible());

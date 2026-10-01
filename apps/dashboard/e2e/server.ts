@@ -49,6 +49,17 @@ const mail = memoryMailer();
 // "Generate with AI" answers from a fake model (no network): a paywall whose headline echoes the request, written the
 // sloppy way a real model sometimes does, so the server's repair runs. E2E_AI=off turns the generator off.
 const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, user) => {
+  // "Build with AI" for funnels: a short quiz whose question echoes the request.
+  const funnelAsk = /Funnel request: (.*)/.exec(user)?.[1]?.slice(0, 60);
+  if (funnelAsk) return "```json\n" + JSON.stringify({
+    theme: { background: "#FFFFFF", text: "#0A0A0A", accent: "#0A0A0A", button_text: "#FFFFFF", corner_radius: 0 },
+    steps: [
+      { id: "goal", type: "question", title: `AI: ${funnelAsk}`, options: [{ id: "a", label: "Sleep longer" }, { id: "b", label: "Fall asleep faster" }], attribute: "goal" },
+      { id: "email", type: "email", title: "Where should we send your plan?", placeholder: "you@example.com", required: true },
+      { id: "paywall", type: "paywall", title: "Start your free week", features: ["Daily plan", "Sleep sounds"], allow_codes: true, button_label: "Continue" },
+      { id: "success", type: "success", title: "You are in", body: "Open the app to start.", show_redemption: true },
+    ],
+  }) + "\n```";
   const ask = /Paywall request: (.*)/.exec(user)?.[1]?.slice(0, 60) ?? "Go Pro";
   return "Here is your paywall:\n```json\n" + JSON.stringify({
     name: "AI paywall", background: "#0f172a",
