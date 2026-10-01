@@ -160,3 +160,54 @@ export async function usdValue(db: DB, price: { amount: number; currency: string
   if (usd.rates[cur]) return round(price.amount / usd.rates[cur]!);
   return null;
 }
+
+/**
+ * Makes sure the ECB rates for [from, to] are cached, with one request for the whole range when the cache has gaps
+ * (charts in a display currency other than USD need a rate for every day). Failures are ignored: callers fall back to
+ * the nearest cached or bundled rates.
+ */
+export async function ensureEcbRange(db: DB, from: Date, to: Date, fetchFn: FxFetch | null | undefined): Promise<void> {
+  const f = fetchFn === undefined ? globalFetch : fetchFn;
+  if (!f) return;
+  const start = day(from), end = day(to.getTime() > Date.now() ? new Date() : to);
+  if (start > end) return;
+  const F = schema.fxRates;
+  const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(F).where(and(eq(F.source, "ecb"), gte(F.date, start), lte(F.date, end)));
+  // About 250 ECB publication days a year: fetch when fewer than 90% of them are cached.
+  if (n >= Math.floor((gapDays(start, end) + 1) * (250 / 365) * 0.9)) return;
+  const res = await get(f, `${ECB}?startPeriod=${start}&endPeriod=${end}&format=csvdata&detail=dataonly`, "text/csv");
+  if (!res?.ok) return;
+  try { await save(db, "ecb", parseEcbCsv(await res.text())); } catch { /* fall back to what is cached */ }
+}
+
+/**
+ * Every cached rate in one lookup: `toUsd(amount, currency, at)` and `fromUsd(currency, at)` at the last day on or
+ * before `at` that has rates (ECB first, the `usd` source for currencies the ECB does not publish), else the nearest
+ * cached day, else the bundled rates. No network: call ensureEcbRange first when a range needs filling.
+ */
+export async function fxLookup(db: DB) {
+  const F = schema.fxRates;
+  const rows = await db.select({ source: F.source, date: F.date, rates: F.rates }).from(F).orderBy(asc(F.date));
+  const bySource = (s: Source) => { const r = rows.filter((x) => x.source === s); return r.length ? r : [BUNDLED[s]]; };
+  const tables = { ecb: bySource("ecb"), usd: bySource("usd") };
+  const on = (s: Source, at: number): Rates => {
+    const t = tables[s];
+    const date = day(new Date(at));
+    let lo = 0, hi = t.length - 1, best = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (t[mid]!.date <= date) { best = mid; lo = mid + 1; } else hi = mid - 1; }
+    return t[best >= 0 ? best : 0]!;
+  };
+  /** Units of `currency` per 1 USD on a date, or null if unknown. */
+  const perUsd = (currency: string, at: number): number | null => {
+    const cur = currency.toUpperCase();
+    if (cur === "USD") return 1;
+    const e = on("ecb", at).rates;
+    if (e[cur] && e.USD) return e[cur]! / e.USD;
+    const u = on("usd", at).rates;
+    return u[cur] ?? null;
+  };
+  return {
+    perUsd,
+    toUsd: (amount: number, currency: string, at: number) => { const r = perUsd(currency, at); return r ? amount / r : null; },
+  };
+}

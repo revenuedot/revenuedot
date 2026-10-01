@@ -317,9 +317,15 @@ describe("Google real-time developer notifications", () => {
   it("cancel then restore: CANCELLATION(UNSUBSCRIBE) at the cancel time, then UNCANCELLATION", async () => {
     await purchased();
     e.h.setNow(at(5));
-    e.g.subs.set("tok_pro_1", sub({ start: T0, expiry: MONTH_END, order: "GPA.1000-0000-0000-00001", state: "SUBSCRIPTION_STATE_CANCELED", cancelTime: at(4), ack: true }));
+    const cancelled = sub({ start: T0, expiry: MONTH_END, order: "GPA.1000-0000-0000-00001", state: "SUBSCRIPTION_STATE_CANCELED", cancelTime: at(4), ack: true });
+    cancelled.canceledStateContext!.userInitiatedCancellation!.cancelSurveyResult = { reason: "CANCEL_SURVEY_REASON_COST_RELATED" };
+    e.g.subs.set("tok_pro_1", cancelled);
     await e.rtdn(subNote(3, "tok_pro_1"));
     expect((await e.events("CANCELLATION"))[0]).toMatchObject({ cancel_reason: "UNSUBSCRIBE" });
+    // The cancel survey answer is kept for the Play Store Cancel Reasons chart (not sent on webhooks).
+    const surveyOf = async () => (await e.h.db.select().from(schema.subscriptions).where(eq(schema.subscriptions.storeKey, "tok_pro_1")))[0]!.cancelSurveyReason;
+    expect(await surveyOf()).toBe("CANCEL_SURVEY_REASON_COST_RELATED");
+    expect((await e.events("CANCELLATION"))[0]).not.toHaveProperty("cancel_survey_reason");
     let ci = await info("user_a");
     expect(ci.subscriber.subscriptions.pro!.unsubscribe_detected_at).toBe(at(4).toISOString().replace(".000", ""));
     expect(ci.subscriber.entitlements.pro!.expires_date).toBe("2026-10-01T12:00:00Z");
@@ -330,6 +336,7 @@ describe("Google real-time developer notifications", () => {
     expect(await e.events("UNCANCELLATION")).toHaveLength(1);
     ci = await info("user_a");
     expect(ci.subscriber.subscriptions.pro!.unsubscribe_detected_at).toBeNull();
+    expect(await surveyOf()).toBeNull();
   });
 
   it("a voided purchase refunds the current period: CANCELLATION(CUSTOMER_SUPPORT) with a negative price, access ends", async () => {

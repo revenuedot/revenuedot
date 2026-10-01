@@ -139,7 +139,7 @@ export const CHARTS: ChartDef[] = [
       flowM("direct", "Direct Purchases", "#", "Subscriptions bought without a trial (paid introductory offers included)."),
       flowM("product_changes", "Product Changes", "#", "Subscriptions started by changing from another product."),
       flowM("resubscriptions", "Resubscriptions", "#", "Subscriptions started by customers whose earlier subscription had ended.")] }),
-  def({ name: "subscription_retention", display_name: "Subscription Retention", group: "subscriptions", display_type: "cohort", shape: "cohort_table", dims: SUBS,
+  def({ name: "subscription_retention", display_name: "Subscription Retention", group: "subscriptions", display_type: "cohort", shape: "cohort_table", dims: SUBS, segmentable: false,
     selectors: [{ id: "retention_scale", display_name: "Show", default: "relative", options: [{ id: "relative", display_name: "Relative (%)" }, { id: "absolute", display_name: "Absolute (#)" }] }],
     description: "Paid subscriptions cohorted by their first paid date, and how many reached each later paid period.",
     measures: [m("retention", "Retention", "%", "Subscriptions that reached the paid period, among those that had time to reach it.", { precision: 1 })] }),

@@ -214,7 +214,8 @@ describe("metrics overview", () => {
   it("normalises periods to a month", () => {
     expect(monthlyFactor("P1M")).toBe(1);
     expect(monthlyFactor("P1Y")).toBeCloseTo(1 / 12, 10);
-    expect(monthlyFactor("P1W")).toBeCloseTo(4.33, 10);
+    // RevenueCat's MRR table: a week is ×4 (not 4.33), a day ×30.
+    expect(monthlyFactor("P1W")).toBe(4);
     expect(monthlyFactor("P3M")).toBeCloseTo(1 / 3, 10);
     expect(monthlyFactor("P3D")).toBeCloseTo(10, 10);
     expect(monthlyFactor(null)).toBeNull();
@@ -240,7 +241,7 @@ describe("metrics overview", () => {
     const e = await cust("e", d(-60), d(-40));
     await sub(a, {}); // monthly 9.99
     await sub(b, { productIdentifier: "pro_annual", priceUsd: 59.99, priceAmount: 59.99, expiresDate: d(300) }); // 59.99 / 12
-    await sub(c, { productIdentifier: "pro_weekly", priceUsd: 2.99, priceAmount: 2.99, expiresDate: d(2) }); // 2.99 * 4.33
+    await sub(c, { productIdentifier: "pro_weekly", priceUsd: 2.99, priceAmount: 2.99, expiresDate: d(2) }); // 2.99 * 4
     await sub(c, { appId: "app_play", store: "play_store", productIdentifier: "pro", productPlanIdentifier: "monthly", priceUsd: 4.99, priceAmount: 4.99 }); // 4.99
     await sub(a, { periodType: "trial", priceUsd: 0, priceAmount: 0 }); // trial
     await sub(e, { expiresDate: d(-1) }); // expired
@@ -265,7 +266,7 @@ describe("metrics overview", () => {
     expect(m).toEqual({
       active_trials: 1,
       active_subscriptions: 5,
-      mrr: Math.round((9.99 + 59.99 / 12 + 2.99 * 4.33 + 4.99 + 9.99) * 100) / 100,
+      mrr: Math.round((9.99 + 59.99 / 12 + 2.99 * 4 + 4.99 + 9.99) * 100) / 100,
       revenue: 59.99,
       new_customers: 2, // b (10 days ago) and c (3 days ago)
       active_users: 3, // a, b, c

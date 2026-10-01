@@ -173,10 +173,11 @@ export function moneyOf(t: ChartTx, input: ChartInput, purchases: Map<string, nu
 export function productIndex(products: ChartProduct[]) {
   const byApp = new Map<string, ChartProduct>();
   const any = new Map<string, ChartProduct>();
-  for (const p of products) { byApp.set(`${p.appId ?? ""}|${p.storeIdentifier}`, p); if (!any.has(p.storeIdentifier)) any.set(p.storeIdentifier, p); }
-  // Google products are stored as "subscription:base_plan"; the ledger may hold either form.
-  return (appId: string | null, productId: string) =>
-    byApp.get(`${appId ?? ""}|${productId}`) ?? any.get(productId) ?? any.get(productId.split(":")[0]!) ?? null;
+  const add = (key: string, p: ChartProduct) => { if (!byApp.has(`${p.appId ?? ""}|${key}`)) byApp.set(`${p.appId ?? ""}|${key}`, p); if (!any.has(key)) any.set(key, p); };
+  for (const p of products) add(p.storeIdentifier, p);
+  // Google products are "subscription:base_plan" in the catalog while the ledger holds the subscription id.
+  for (const p of products) if (p.storeIdentifier.includes(":")) add(p.storeIdentifier.split(":")[0]!, p);
+  return (appId: string | null, productId: string) => byApp.get(`${appId ?? ""}|${productId}`) ?? any.get(productId) ?? null;
 }
 
 /** Excluded from every money and subscription measure: granted access and Family Sharing. */
