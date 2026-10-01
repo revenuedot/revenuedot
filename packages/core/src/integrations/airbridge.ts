@@ -45,7 +45,7 @@ export async function buildAirbridge(i: BuildInput): Promise<Plan> {
   const app = (sandbox ? i.settings.sandbox_app_name : i.settings.app_name) as string | undefined;
   const token = sandbox ? i.secrets.sandbox_api_token || i.secrets.api_token : i.secrets.api_token;
   if (!app || !token) return skip(sandbox ? "Sandbox events need a sandbox Airbridge app name." : "No Airbridge app name and API token are saved.");
-  const platform = platformOf(e.store);
+  const platform = platformOf(e.store, i.context?.platform);
   if (platform !== "ios" && platform !== "android") return skip(`${e.store} purchases are not sent to Airbridge's app events.`);
   const packageName = i.context?.bundleId;
   if (!packageName) return skip("The app has no bundle ID or package name saved, which Airbridge needs.");

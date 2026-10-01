@@ -34,7 +34,7 @@ export async function buildKochava(i: BuildInput): Promise<Plan> {
   const e = i.event;
   const c = conceptOf(e);
   if (!c || !KOCHAVA_EVENTS.includes(c)) return skip(`${e.type} events are not sent to Kochava.`);
-  const platform = platformOf(e.store);
+  const platform = platformOf(e.store, i.context?.platform);
   if (platform !== "ios" && platform !== "android") return skip(`${e.store} purchases are not sent to Kochava.`);
   const label = platform === "ios" ? "iOS" : "Android";
   const sandbox = isSandbox(e);

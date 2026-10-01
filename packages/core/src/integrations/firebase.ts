@@ -26,7 +26,7 @@ export async function buildFirebase(i: BuildInput): Promise<Plan> {
   const c = conceptOf(e);
   const name = c ? FIREBASE_NAMES[c] : undefined;
   if (!c || !name) return skip(`${e.type} events are not sent to Firebase.`);
-  const platform = platformOf(e.store);
+  const platform = platformOf(e.store, i.context?.platform);
   const p = platform === "android" ? "android" : "ios";
   if (platform !== "ios" && platform !== "android" && e.type !== "TEST") return skip(`${e.store} purchases have no Firebase app stream.`);
   const appId = i.settings[`${p}_firebase_app_id`] as string | undefined;

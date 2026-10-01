@@ -31,7 +31,7 @@ export async function buildAppsFlyer(i: BuildInput): Promise<Plan> {
   if (isFunnelConcept(c)) return buildAppsFlyerWeb(i, c);
   const key = isSandbox(e) ? i.secrets.sandbox_dev_key : i.secrets.dev_key;
   if (!key) return skip(isSandbox(e) ? "Sandbox events need a sandbox developer key." : "No AppsFlyer developer key is saved.");
-  const platform = platformOf(e.store);
+  const platform = platformOf(e.store, i.context?.platform);
   const appId = platform === "android" ? i.settings.android_app_id : platform === "ios" ? i.settings.ios_app_id : null;
   if (!appId) return skip(platform === "ios" || platform === "android" ? `No AppsFlyer app ID is saved for ${platform === "ios" ? "iOS" : "Android"}.` : `${e.store} purchases are not sent to AppsFlyer's mobile API.`);
   const afId = attr(e, "$appsflyerId");
