@@ -8,7 +8,7 @@ import { createApp } from "./app.js";
 import { API_PATH } from "./api-paths.js";
 import { tick } from "./services/tick.js";
 import { routeAssistantAgent } from "./assistant-agent.worker.js";
-import { baseDeps, mailerFor, publicUrlFor, stores, type Env, type ExecutionContext, type ScheduledController } from "./worker-deps.js";
+import { baseDeps, googleOAuthFor, mailerFor, publicUrlFor, stores, type Env, type ExecutionContext, type ScheduledController } from "./worker-deps.js";
 export { AssistantAgent } from "./assistant-agent.worker.js";
 export type { Env } from "./worker-deps.js";
 
@@ -45,9 +45,9 @@ async function runTick(env: Env, db: DB, why: string) {
     // Data exports (file uploads) run on the cron only, never in a tick kicked by a request.
     const r = await tick(db, new Date(), fetch, {
       stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron", winback: why === "cron", consumption: why === "cron",
-      encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true,
+      encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true, googleOAuth: googleOAuthFor(env), admob: why === "cron",
     });
-    if (r.expired || r.voided || r.consumption || r.winback || r.sent || r.integrations || r.exports || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
+    if (r.expired || r.voided || r.consumption || r.winback || r.sent || r.integrations || r.exports || r.credentialsChecked || r.admob || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
     return r;
   } catch (e) {
     console.error(`tick (${why}) failed`, e);

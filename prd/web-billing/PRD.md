@@ -120,5 +120,5 @@ Public pages (no auth): `GET <pay>/<project>/<slug>`, `…/success`, `GET <pay>/
 - No real Stripe account has been used; a run in Stripe test mode with a restricted key is the next check (form encoding of nested fields, Checkout redirects, coupon `currency_options`).
 - Custom domains on Cloud need the Cloudflare for SaaS custom hostname created by hand; `pay.revenuedot.app` needs its DNS record and worker route added (both account changes).
 - The purchases-js Web Billing flow (`rcb_` keys, `/rcbilling/v1/checkout/*`, Stripe Elements inside the SDK) is still a stub: RevenueDot's checkout is a hosted page.
-- Funnel events go to webhooks and four analytics integrations; ad networks (Meta, AppsFlyer, Adjust) do not get them yet.
+- Funnel events go to webhooks, four analytics integrations and, since Batch D, Meta, Google Tag Manager, Branch and AppsFlyer as web events (`prd/integrations/PRD.md`, "Funnel events to ad networks"); Adjust gets none (it needs its web SDK).
 - "Check credentials" tests the key's read permissions only; a key without write access fails at the first web product with a message naming Products and Prices.

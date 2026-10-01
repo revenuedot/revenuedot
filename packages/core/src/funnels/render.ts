@@ -200,7 +200,7 @@ const SCRIPT = `(function(){
 var D=JSON.parse(document.getElementById("rd-data").textContent);var steps=[].slice.call(document.querySelectorAll("section[data-step]"));
 var cur=0,hist=[],answers={},email=D.ctx.email||"",sent={};
 function idx(id){for(var i=0;i<steps.length;i++)if(steps[i].getAttribute("data-step")===id)return i;return -1}
-function send(type,extra){if(D.mode!=="live"||!D.urls.events)return;var b=JSON.stringify(Object.assign({type:type,funnel_id:D.ctx.funnel_id,link_id:D.ctx.link_id,session_id:D.ctx.session_id,app_user_id:D.ctx.app_user_id||D.ctx.visitor_id,query:D.ctx.query},extra||{}));
+function send(type,extra){if(D.mode!=="live"||!D.urls.events)return;var b=JSON.stringify(Object.assign({type:type,funnel_id:D.ctx.funnel_id,link_id:D.ctx.link_id,session_id:D.ctx.session_id,app_user_id:D.ctx.app_user_id||D.ctx.visitor_id,query:D.ctx.query,page_url:location.origin+location.pathname},extra||{}));
 try{if(navigator.sendBeacon&&navigator.sendBeacon(D.urls.events,new Blob([b],{type:"application/json"})))return}catch(e){}try{fetch(D.urls.events,{method:"POST",headers:{"content-type":"application/json"},body:b,keepalive:true})}catch(e){}}
 function stepInfo(i){var s=steps[i];return{step_id:s.getAttribute("data-step"),step_type:s.getAttribute("data-type"),step_index:i}}
 function show(i,push){if(i<0||i>=steps.length)return;if(push)hist.push(cur);steps[cur].classList.remove("on");cur=i;steps[i].classList.add("on");

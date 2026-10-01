@@ -8,6 +8,8 @@ import { lifecyclePublicRoutes } from "./routes/lifecycle-public.js";
 import { authRoutes } from "./routes/auth.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { v2Routes } from "./routes/v2/index.js";
+import { adsPublicRoutes } from "./routes/ads-public.js";
+import { supportAppRoutes } from "./routes/support-apps.js";
 import { withCredentialHealth } from "./services/credential-health.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 import { PAY_CTX, payRoutes } from "./routes/pay.js";
@@ -64,6 +66,9 @@ export function createApp(input: Deps) {
   app.route("/", notificationRoutes(deps));
   // Apple's Retention Messaging call and the win-back email links (no API key).
   app.route("/", lifecyclePublicRoutes(deps));
+  // AdMob's reward callback and OAuth redirect, and the Intercom inbox app (each authenticated by its caller, no API key).
+  app.route("/", adsPublicRoutes(deps));
+  app.route("/", supportAppRoutes(deps));
   app.route("/", authRoutes(deps));
   // Public share cards (the first-sale card, prd/ai-assistant/PRD.md).
   app.route("/", shareRoutes(deps));

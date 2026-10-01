@@ -27,7 +27,7 @@ const NAV: Item[] = [
   { label: "Targeting", to: "targeting", icon: "targeting" },
   { label: "Experiments", to: "experiments", icon: "experiments" },
   { label: "Funnels", to: "funnels", icon: "funnels" },
-  { label: "Ads", icon: "ads", children: [{ label: "Overview", to: "ads", soon: true }, { label: "Rewards", to: "ads/rewards", soon: true }] },
+  { label: "Ads", icon: "ads", children: [{ label: "Overview", to: "ads" }, { label: "Rewards", to: "ads/rewards" }] },
   { label: "Lifecycle", icon: "lifecycle", children: [
     { label: "Customer Center", to: "lifecycle/customer-center" }, { label: "Support", to: "lifecycle/support" },
     { label: "Retention", to: "lifecycle/retention" }, { label: "Refund control", to: "lifecycle/refund-control" },
@@ -56,7 +56,7 @@ function NavItem({ item, base }: { item: Item; base: string }) {
     );
   }
   return (
-    <NavLink to={`${base}/${item.to}`} className={({ isActive }) => `it${isActive ? " active" : ""}`} end={item.to === "overview"}>
+    <NavLink to={`${base}/${item.to}`} className={({ isActive }) => `it${isActive ? " active" : ""}`} end={item.to === "overview" || item.to === "ads"}>
       {item.icon && <Icon name={item.icon} />}{item.label}{item.soon && <span className="soon">SOON</span>}
     </NavLink>
   );

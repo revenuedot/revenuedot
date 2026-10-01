@@ -33,7 +33,7 @@ export function parseWrite(method: string, path: string): Parsed | null {
   // project (the assistant's own writes go through the API's routes and are audited there).
   if (rest[0] === "ai") return rest[1] === "settings" && method === "POST" ? { actionType: "ai_settings_updated", targetType: "project", targetId: seg[2] } : null;
   let i = 0;
-  if (rest[0] === "integrations") i = 1;
+  if (rest[0] === "integrations" || rest[0] === "ads") i = 1;
   const coll = rest[i]!;
   const id = rest[i + 1] ?? null;
   const target = SINGULAR[coll] ?? coll.replace(/s$/, "");

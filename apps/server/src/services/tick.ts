@@ -4,6 +4,8 @@ import { schema, type DB } from "@revenuedot/db";
 import { recordEvent } from "./events.js";
 import { deliverDue } from "./webhooks.js";
 import { deliverDueIntegrations } from "./integrations/deliver.js";
+import { refreshDueAdMob } from "./ads/admob.js";
+import { purgeFunnelClientContext } from "./web/funnels.js";
 import { processExportRuns, queueDueExports } from "./exports/run.js";
 import { depsSecretKey } from "./secrets.js";
 import { runAlerts } from "./alerts.js";
@@ -46,6 +48,11 @@ export interface TickOptions {
   consumption?: boolean;
   /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
   strictUrls?: boolean;
+  /** AdMob connections reload their ad units once a day here unless false (the Worker does it from the cron only). */
+  admob?: boolean;
+  googleOAuth?: { clientId?: string; clientSecret?: string };
+  /** Remove funnel visitors' IP addresses and user agents older than 7 days now (default: at minute 7 of each hour). */
+  purgeFunnelClients?: boolean;
 }
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
@@ -86,8 +93,21 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
       console.error("tick: data exports failed", e);
     }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, firstSales };
+  let admob = 0;
+  if (opts.admob !== false && secretKey.ok) {
+    try { admob = await refreshDueAdMob({ db, fetch: fetchImpl, now: () => now, secretKey: secretKey.k, googleOAuth: opts.googleOAuth }); } catch (e) { console.error("tick: AdMob refresh failed", e); }
+  }
+  // Funnel visitors' IP addresses and user agents (kept for Meta and Branch) are removed after 7 days, once an hour.
+  let funnelClientsPurged = 0;
+  const hour = Math.floor(now.getTime() / 3_600_000);
+  if (opts.purgeFunnelClients ?? (now.getUTCMinutes() === 7 && lastFunnelPurgeHour !== hour)) {
+    lastFunnelPurgeHour = hour;
+    try { funnelClientsPurged = await purgeFunnelClientContext(db, now); } catch (e) { console.error("tick: funnel visitor purge failed", e); }
+  }
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, admob, funnelClientsPurged, firstSales };
 }
+
+let lastFunnelPurgeHour = -1;
 
 /** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */
 export async function recordDueExpirations(db: DB, now: Date, only?: { projectId: string; store: string; storeKey: string }) {

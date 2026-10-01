@@ -31,6 +31,9 @@ export interface Env {
   REVENUEDOT_ENCRYPTION_KEY?: string;
   /** Workers AI, for "Generate with AI" on paywalls. No key needed. */
   AI?: WorkersAi;
+  /** Optional secrets: the Google Cloud OAuth client for "Connect AdMob" (prd/ads/PRD.md). Unset: projects enter their own. */
+  REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID?: string;
+  REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET?: string;
   /** Where hosted web pages live (prd/web-billing/PRD.md §7). Default https://api.revenuedot.app/pay until pay.revenuedot.app is routed here. */
   REVENUEDOT_PAY_URL?: string;
   /** The host custom domains CNAME to (the Cloudflare for SaaS fallback origin, docs/cloud.md). */
@@ -49,6 +52,7 @@ export interface Env {
 
 export const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
 export const publicUrlFor = (env: Env) => env.REVENUEDOT_PUBLIC_URL || "https://app.revenuedot.app";
+export const googleOAuthFor = (env: Env) => ({ clientId: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID || undefined, clientSecret: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET || undefined });
 
 
 export const stores = defaultStores();
@@ -69,6 +73,7 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   ai: env.AI ? workersAiModel(env.AI) : undefined,
   // Apps reach the API host; paywall images and icons are served from it.
   apiUrl: "https://api.revenuedot.app",
+  googleOAuth: googleOAuthFor(env),
   payUrl: env.REVENUEDOT_PAY_URL || "https://api.revenuedot.app/pay",
   customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
   // RevenueDot AI: a provider key set as a secret wins; otherwise Workers AI (Kimi K2.6). Conversations run in Durable Objects.
