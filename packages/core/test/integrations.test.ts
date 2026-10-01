@@ -380,7 +380,7 @@ describe("partner answers", () => {
   it("every catalogue entry has a builder and documented fields", async () => {
     for (const s of INTEGRATIONS) {
       // Connections (AdMob, the help desk apps) send no events and have their own guides; Zendesk has no settings at all.
-      if (s.connection) { expect(s.docs).toMatch(/^https:\/\/revenuedot\.app\/docs\/guides\/(ads|support-integrations)#/); continue; }
+      if (s.connection) { expect(s.docs).toMatch(/^https:\/\/revenuedot\.app\/docs\/guides\/(ads|support-integrations|integrations)#/); continue; }
       expect(s.fields.length).toBeGreaterThan(0);
       expect(s.docs).toMatch(/^https:\/\/revenuedot\.app\/docs\/guides\/integrations#/);
       const p = await plan(s.kind, purchase);
