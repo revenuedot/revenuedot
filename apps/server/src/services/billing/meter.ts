@@ -120,7 +120,9 @@ async function reportMeter(rt: BillingRuntime, acct: typeof schema.billingAccoun
   const { end } = monthBounds(month);
   // An event for a past month is dated its last second, so it lands in that month's period.
   const at = end <= rt.now ? new Date(end.getTime() - 1000) : rt.now;
-  const identifier = `rd-${acct.userId}-${month}-${cents}`.slice(0, 100);
+  // Unique per report: Stripe refuses a repeated identifier for 24 hours, and a bill can go back to an earlier value. With
+  // the meter's "last" aggregation a repeated report never double-counts anyway.
+  const identifier = `rd-${acct.userId}-${month}-${cents}-${Math.floor(rt.now.getTime() / 1000)}`.slice(0, 100);
   try {
     await billingStripe(rt.config!, rt.fetch).meterEvent({ customer: acct.stripeCustomerId, cents, identifier, timestamp: at });
     await rt.db.insert(R).values({ userId: acct.userId, month, cents, identifier, reportedAt: rt.now }).onConflictDoUpdate({ target: [R.userId, R.month], set: { cents, identifier, reportedAt: rt.now } });
