@@ -1,0 +1,51 @@
+---
+// The singular alternative page: "RevenueCat alternative", "open-source RevenueCat alternative", "self-hosted RevenueCat".
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Points from "../components/Points.astro";
+import Blocks from "../components/Blocks.astro";
+import Faq from "../components/Faq.astro";
+import Related from "../components/Related.astro";
+import CtaBand from "../components/CtaBand.astro";
+import Md from "../components/Md.astro";
+import Code from "../components/Code.astro";
+import Shot from "../components/Shot.astro";
+import { ALTERNATIVE_PAGE as P } from "../data";
+import { plain } from "../lib/md";
+import { ogFor } from "../lib/og";
+import { softwareApplication, webPage } from "../lib/jsonld";
+import { SITE } from "../site";
+import overview from "../assets/screens/overview-light.png";
+import overviewDark from "../assets/screens/overview-dark.png";
+const path = "/revenuecat-alternative";
+const image = ogFor(path);
+const faq = P.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+---
+<Base title={P.metaTitle} description={P.metaDescription} path={path} image={image} imageAlt={P.title}
+  crumbs={[{ name: "RevenueCat alternative", path }]} faq={faq}
+  jsonld={[webPage({ title: P.title, description: P.metaDescription, path, image, about: "RevenueCat alternative" }), softwareApplication()]}>
+  <div class="wrap">
+    <PageHead label="RevenueCat alternative" title={P.title}>
+      <Md class="lede" text={P.answer} />
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
+      </div>
+      <p class="small muted">Prefer your own servers? <a href="/self-host">Self-host free</a> · <a href="/revenuecat-alternatives">See every alternative</a></p>
+    </PageHead>
+    <div class="line"><Code title="The one line" label="Swift" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!  // or your own server
+Purchases.configure(withAPIKey: "appl_...")                       // unchanged`} /></div>
+    <div class="hero-shot"><Shot light={overview} dark={overviewDark} eager alt="RevenueDot dashboard overview with MRR, active subscriptions, trials, revenue and recent transactions" caption="The RevenueDot dashboard, captured from the running app with demo data." /></div>
+  </div>
+  <Points points={P.points} />
+  <Blocks blocks={P.blocks} />
+  <section class="section" id="faq"><div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">RevenueCat alternative: questions people ask</h2></div><Faq items={faq} open={0} /></div></section>
+  <Related items={["/compare/revenuedot-vs-revenuecat", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing", "/self-host", "/features"]} />
+  <CtaBand />
+</Base>
+<style>
+  .line { max-width: 760px; margin-bottom: 48px; }
+  .hero-shot { margin-bottom: 72px; }
+  .small a { color: var(--fg); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+</style>

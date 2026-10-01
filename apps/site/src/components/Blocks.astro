@@ -1,0 +1,61 @@
+---
+// Body sections of a landing, integration, chart or comparison page (Block in src/data/types.ts).
+import type { Block } from "../data/types";
+import Md from "./Md.astro";
+import Code from "./Code.astro";
+import Shot from "./Shot.astro";
+import { shot } from "../lib/shots";
+import { md } from "../lib/md";
+interface Props { blocks: Block[] }
+const { blocks } = Astro.props;
+const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+---
+{blocks.map((b) => (
+  <section class="section" id={id(b.h2)}>
+    <div class="wrap">
+      <div class="head">
+        {b.label && <p class="label">{b.label}</p>}
+        <h2 class="h2 sm">{b.h2}</h2>
+      </div>
+      <div class="body">
+        {b.paras?.map((p) => <Md text={p} class="lede-p" />)}
+        {b.bullets && <ul class="ticks">{b.bullets.map((t) => <Md as="li" text={t} />)}</ul>}
+        {b.steps && (
+          <ol class="steps">
+            {b.steps.map((s, i) => (
+              <li><span class="num">{String(i + 1).padStart(2, "0")}</span><div><h3 class="h3">{s.name}</h3><Md text={s.text} /></div></li>
+            ))}
+          </ol>
+        )}
+        {b.code && <Code title={b.code.title} label={b.code.label} code={b.code.code} />}
+        {b.table && (
+          <div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr>{b.table.head.map((h) => <th scope="col">{h}</th>)}</tr></thead>
+                <tbody>{b.table.rows.map((r) => <tr>{r.map((c, i) => i === 0 ? <th scope="row" set:html={md(c)} /> : <td set:html={md(c)} />)}</tr>)}</tbody>
+              </table>
+            </div>
+            {b.table.caption && <Md class="tiny caption" text={b.table.caption} />}
+          </div>
+        )}
+        {b.shot && <Shot light={shot(b.shot.src)} alt={b.shot.alt} caption={b.shot.caption} />}
+      </div>
+    </div>
+  </section>
+))}
+<style>
+  .body { display: grid; gap: 20px; max-width: 920px; }
+  .body :global(.lede-p) { font-size: 17px; line-height: 1.65; color: var(--fg-2); max-width: 760px; }
+  .body :global(.lede-p a), .ticks :global(a), .steps :global(a) { color: var(--fg); }
+  .ticks { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; max-width: 760px; }
+  .ticks :global(li) { position: relative; padding-left: 22px; color: var(--fg-2); font-size: 16px; line-height: 1.6; }
+  .ticks :global(li)::before { content: ""; position: absolute; left: 2px; top: .62em; width: 7px; height: 7px; background: var(--accent); }
+  .steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); background: var(--panel); }
+  .steps li { display: grid; grid-template-columns: 48px 1fr; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border-2); }
+  .steps li:last-child { border-bottom: 0; }
+  .steps .h3 { font-size: 17px; margin-bottom: 6px; }
+  .steps :global(p) { color: var(--fg-2); font-size: 15px; line-height: 1.6; }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  @media (max-width: 640px) { .steps li { grid-template-columns: 1fr; gap: 6px; padding: 16px; } }
+</style>

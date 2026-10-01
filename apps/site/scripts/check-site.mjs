@@ -57,13 +57,18 @@ const descriptions = new Map();
 const expectTypes = {
   "/": ["Organization", "WebSite", "SoftwareApplication", "FAQPage"],
   "/pricing": ["Organization", "SoftwareApplication", "FAQPage", "BreadcrumbList"],
-  "/revenuedot-vs-revenuecat": ["Organization", "FAQPage", "BreadcrumbList"],
+  "/revenuecat-alternative": ["Organization", "WebPage", "SoftwareApplication", "FAQPage", "BreadcrumbList"],
+  "/revenuecat-alternatives": ["Organization", "WebPage", "ItemList", "FAQPage", "BreadcrumbList"],
   "/migrate-from-revenuecat": ["Organization", "HowTo", "FAQPage", "BreadcrumbList"],
 };
 const typesFor = (route) =>
   expectTypes[route] ??
   (route === "/docs" || route.startsWith("/docs/") ? ["Organization", "TechArticle", "BreadcrumbList"]
     : route.startsWith("/blog/") ? ["Organization", "BlogPosting", "BreadcrumbList"]
+    : /^\/(features|stores|sdks|solutions|integrations|charts|compare)$/.test(route) ? ["Organization", "WebPage", "ItemList", "BreadcrumbList"]
+    : /^\/(features|stores|sdks|solutions|compare)\//.test(route) ? ["Organization", "WebPage", "FAQPage", "BreadcrumbList"]
+    : route.startsWith("/integrations/") ? ["Organization", "WebPage", "HowTo", "FAQPage", "BreadcrumbList"]
+    : route.startsWith("/charts/") ? ["Organization", "TechArticle", "FAQPage", "BreadcrumbList"]
     : route === "/404" ? ["Organization"] : ["Organization", "BreadcrumbList"]);
 let links = 0;
 let ldBlocks = 0;
@@ -89,6 +94,8 @@ for (const file of htmlFiles) {
     const canonical = html.match(/<link rel="canonical" href="([^"]*)"/)?.[1];
     if (canonical !== SITE + (route === "/" ? "/" : route)) fail(route, `canonical is ${canonical}`);
     for (const m of ["og:title", "og:description", "og:image", "og:url"]) if (!html.includes(`property="${m}"`)) fail(route, `missing ${m}`);
+    const og = html.match(/<meta property="og:image" content="https:\/\/revenuedot\.app(\/[^"]+)"/)?.[1];
+    if (og && !existsSync(path.join(dist, og))) fail(route, `og:image ${og} is not in dist (run node --experimental-strip-types scripts/og.mjs)`);
     if (!html.includes('name="twitter:card" content="summary_large_image"')) fail(route, "missing twitter card");
   }
 

@@ -20,6 +20,7 @@ const current = (href: string) => path === href || path.startsWith(href + "/");
         <nav class="sheet" aria-label="Mobile">
           <div class="sheet-cta"><a class="btn" href={SITE.signup}>Start free on Cloud</a><a class="btn secondary" href={SITE.login}>Sign in</a></div>
           {NAV.map((n) => <a href={n.href} aria-current={current(n.href) ? "page" : undefined}>{n.label}</a>)}
+          <a href="/self-host">Self-host</a>
           <a href="/changelog">Changelog</a>
           <a href={SITE.github} rel="noopener">GitHub</a>
         </nav>
@@ -31,7 +32,7 @@ const current = (href: string) => path === href || path.startsWith(href + "/");
   .top { position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--border); }
   .bar { display: flex; align-items: center; gap: 32px; height: 64px; }
   .brand { display: inline-flex; color: var(--fg); flex: none; }
-  .nav { display: flex; gap: 24px; flex: 1; }
+  .nav { display: flex; gap: 22px; flex: 1; }
   .nav a { font-size: 14px; font-weight: 600; color: var(--fg-2); text-decoration: none; }
   .nav a:hover, .nav a[aria-current="page"] { color: var(--fg); }
   .nav a[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -47,7 +48,7 @@ const current = (href: string) => path === href || path.startsWith(href + "/");
   .sheet a:last-child { border-bottom: 0; }
   .sheet-cta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 0 12px; border-bottom: 1px solid var(--border-2); }
   .sheet .sheet-cta a { justify-content: center; padding: 0 12px; border-bottom: 1px solid var(--border); }
-  @media (max-width: 960px) { .nav { display: none; } .menu { display: block; } .bar { gap: 16px; } }
+  @media (max-width: 1140px) { .nav { display: none; } .menu { display: block; } .bar { gap: 16px; } }
   @media (max-width: 640px) { .gh { display: none; } }
   /* Phones: logo, Sign in, Start free and the menu button must fit in 358px (390px less the 16px gutters). */
   @media (max-width: 420px) { .bar { gap: 10px; } .brand :global(svg) { height: 18px; width: auto; } .signin { padding: 0 4px; } .actions { gap: 6px; } }

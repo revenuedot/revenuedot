@@ -1,0 +1,37 @@
+---
+// "Keep reading" cards: related pages with their label and one line, plus docs links.
+import { related } from "../data";
+interface Props { items: string[]; docs?: { href: string; label: string }[]; title?: string }
+const { items, docs = [], title = "Related" } = Astro.props;
+const cards = related(items).slice(0, 6);
+---
+{(cards.length > 0 || docs.length > 0) && (
+  <section class="section" id="related">
+    <div class="wrap">
+      <div class="head"><p class="label">Keep reading</p><h2 class="h2 sm">{title}</h2></div>
+      {cards.length > 0 && (
+        <div class="grid"><div class="gi cols-3">
+          {cards.map((c) => (
+            <a class="cell card" href={c.href}>
+              <p class="label">{c.label}</p>
+              <h3 class="h3">{c.title}</h3>
+              <p>{c.card}</p>
+              <span class="arrow go">→</span>
+            </a>
+          ))}
+        </div></div>
+      )}
+      {docs.length > 0 && (
+        <p class="small docs">Docs: {docs.map((d, i) => <>{i > 0 && " · "}<a href={d.href}>{d.label}</a></>)}</p>
+      )}
+    </div>
+  </section>
+)}
+<style>
+  .card { text-decoration: none; transition: background var(--fast) var(--ease); }
+  .card:hover { background: var(--hover); }
+  .go { color: var(--fg-3); }
+  .docs { margin-top: 24px; color: var(--fg-2); }
+  .docs a { color: var(--fg); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+</style>

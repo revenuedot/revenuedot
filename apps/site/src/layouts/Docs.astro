@@ -33,8 +33,10 @@ interface Props {
   published?: string;
   section?: string;
   ogType?: "website" | "article";
+  /** Social card (scripts/og.mjs). */
+  image?: string;
 }
-const { title, description, path, fullTitle, crumbs, jsonld = [], nav, currentId, headings = [], prev, next, prevLabel = "Previous", nextLabel = "Next", editUrl, editLabel = "Edit this page on GitHub", mdUrl, modified, published, section, ogType = "article" } = Astro.props;
+const { title, description, path, fullTitle, crumbs, jsonld = [], nav, currentId, headings = [], prev, next, prevLabel = "Previous", nextLabel = "Next", editUrl, editLabel = "Edit this page on GitHub", mdUrl, modified, published, section, ogType = "article", image } = Astro.props;
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3).map((h) => ({ ...h, text: h.text.replace(/#$/, "").trim() }));
 const openAll = !currentId;
 // Meta description: whole sentences up to 170 characters (the full text stays in the page, JSON-LD and .md twin).
@@ -49,7 +51,7 @@ const metaDescription = (() => {
 })();
 const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 ---
-<Base title={title} description={metaDescription} path={path} fullTitle={fullTitle} ogType={ogType} jsonld={[...jsonld, breadcrumbList(crumbs)]}>
+<Base title={title} description={metaDescription} path={path} fullTitle={fullTitle} ogType={ogType} image={image} jsonld={[...jsonld, breadcrumbList(crumbs)]}>
   {mdUrl && <link slot="head" rel="alternate" type="text/markdown" href={mdUrl} title="This page as Markdown" />}
   <div class:list={["docs", { "no-nav": !nav }]}>
     {nav && (

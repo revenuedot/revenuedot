@@ -1,0 +1,10 @@
+---
+import Hub from "../../templates/Hub.astro";
+import { LANDINGS, landingPath } from "../../data";
+import { platformLogo } from "../../lib/platform-logos";
+const cards = LANDINGS.filter((l) => l.section === "stores").map((l) => ({ href: landingPath(l), title: l.name, text: l.card, logo: platformLogo(l.slug) }));
+---
+<Hub path="/stores" name="Stores" label="Stores" title={"App stores and payment providers RevenueDot supports"} metaTitle={"Stores: App Store, Google Play, Amazon and Stripe"}
+  description={"Purchases from the App Store, Google Play, the Amazon Appstore and Stripe, plus a Test Store for development, in one backend with one customer record."}
+  answer={"RevenueDot checks purchases and follows renewals, refunds and cancellations from the **App Store**, **Google Play**, the **Amazon Appstore** and **Stripe**, and has a **Test Store** for purchases without any store account. Every store feeds the same customer, entitlements, webhooks and charts."}
+  groups={[{ title: "All stores", cards }]} />

@@ -1,0 +1,64 @@
+---
+// A hub page: an answer-first head, then cards grouped by heading, each with an optional logo.
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Faq from "../components/Faq.astro";
+import CtaBand from "../components/CtaBand.astro";
+import Md from "../components/Md.astro";
+import Clip from "../components/Clip.astro";
+import { CLIPS } from "../lib/clips";
+import { itemList, webPage } from "../lib/jsonld";
+import { ogFor } from "../lib/og";
+import { SITE, type Faq as F } from "../site";
+type Card = { href: string; title: string; text: string; logo?: string; tag?: string };
+interface Props {
+  path: string; name: string; label: string; title: string; metaTitle: string; description: string; answer: string;
+  groups: { title: string; intro?: string; cards: Card[] }[]; faq?: F[]; cols?: 2 | 3 | 4;
+}
+const { path, name, label, title, metaTitle, description, answer, groups, faq = [], cols = 3 } = Astro.props;
+const all = groups.flatMap((g) => g.cards);
+const image = ogFor(path);
+const clip = CLIPS[path];
+---
+<Base title={metaTitle} description={description} path={path} image={image} imageAlt={title} crumbs={[{ name, path }]} faq={faq}
+  jsonld={[webPage({ title, description, path, image }), itemList(title, all.map((c) => ({ name: c.title, path: c.href })))]}>
+  <div class="wrap">
+    <PageHead label={label} title={title}>
+      <Md class="lede" text={answer} />
+      <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud</a><a class="btn secondary" href="/docs">Read the docs <span class="arrow">→</span></a></div>
+    </PageHead>
+  </div>
+  {clip && <div class="wrap clipwrap"><Clip name={clip.name} alt={clip.alt} caption={clip.caption} /></div>}
+  {groups.map((g, gi) => (
+    <section class={`section${gi === 0 ? " first tight" : ""}`} id={g.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}>
+      <div class="wrap">
+        <div class="head"><h2 class="h2 sm">{g.title}</h2>{g.intro && <Md class="lede" text={g.intro} />}</div>
+        <div class="grid"><div class={`gi cols-${cols}`}>
+          {g.cards.map((c) => (
+            <a class="cell card" href={c.href}>
+              <div class="top">
+                {c.logo && <span class="logo"><img src={c.logo} alt="" width="28" height="28" loading="lazy" decoding="async" /></span>}
+                {c.tag && <span class="tag muted">{c.tag}</span>}
+              </div>
+              <h3 class="h3">{c.title}</h3>
+              <p>{c.text}</p>
+            </a>
+          ))}
+        </div></div>
+      </div>
+    </section>
+  ))}
+  {faq.length > 0 && (
+    <section class="section" id="faq"><div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">Questions people ask</h2></div><Faq items={faq} open={0} /></div></section>
+  )}
+  <CtaBand />
+</Base>
+<style>
+  .clipwrap { margin: 0 auto 72px; }
+  .card { text-decoration: none; transition: background var(--fast) var(--ease); }
+  .card:hover { background: var(--hover); }
+  .top { display: flex; align-items: center; justify-content: space-between; min-height: 4px; }
+  .logo { display: inline-grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--border); background: #FFFFFF; }
+  .logo img { width: 28px; height: 28px; object-fit: contain; }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+</style>

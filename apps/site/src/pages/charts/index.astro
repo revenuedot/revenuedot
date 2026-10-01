@@ -1,0 +1,20 @@
+---
+import Hub from "../../templates/Hub.astro";
+import { CHART_PAGES, GROUPS, chartPath } from "../../data";
+const groups = GROUPS.map((g) => ({
+  title: g.display_name,
+  cards: CHART_PAGES.filter((c) => c.def.group === g.id).map((c) => ({ href: chartPath(c), title: c.def.display_name, text: c.metaDescription.split(". ")[0].replace(/\.$/, "") + ".", tag: c.def.display_type === "cohort" ? "Cohort" : c.def.shape === "stock" ? "Snapshot" : c.def.shape === "flow" ? "Per period" : "Cohort" })),
+})).filter((g) => g.cards.length);
+const faq = [
+  { q: "Which subscription metrics should an app track first?", a: "Start with MRR, active subscriptions, trial conversion rate, churn and refund rate. They tell you how much recurring revenue you have, whether trials turn into payers, and how fast paying customers leave. Add realized LTV and cohort retention once you have a few months of data." },
+  { q: "Are RevenueDot charts the same as RevenueCat's?", a: "RevenueDot has all 41 charts RevenueCat's Charts API names plus Google Play cancel reasons and Customer Center survey responses. The API at GET /v2/projects/{project_id}/charts/{name} returns the same response shape, so scripts and dashboards built on RevenueCat's Charts API keep working." },
+  { q: "Is sandbox data included in charts?", a: "No. Charts count production purchases only, so test purchases never inflate revenue or conversion. You can switch a chart to sandbox data to check your setup." },
+  { q: "Can I get chart data with SQL?", a: "Self-hosted RevenueDot keeps every purchase in your own Postgres, and the repository publishes reference SQL for eight core charts that is tested to match the API." },
+];
+---
+<Hub path="/charts" name="Charts" label="Subscription analytics" cols={3}
+  title={`Subscription app metrics: all ${CHART_PAGES.length} charts, defined`}
+  metaTitle="Subscription app metrics and charts, defined"
+  description={`MRR, ARR, churn, trial conversion, LTV, refunds and ${CHART_PAGES.length - 6} more subscription charts: what each metric means, how it is calculated and what to do with it.`}
+  answer={`Every subscription metric RevenueDot charts, with the exact definition and formula: **revenue** and **MRR**, **active subscriptions**, **trial conversion**, **churn**, **refunds**, **LTV** and **cohort retention**. Charts exclude sandbox purchases, convert to USD at the purchase-date rate, and count refunds on the day they happen. Each is in the dashboard and the Charts API.`}
+  groups={groups} faq={faq} />

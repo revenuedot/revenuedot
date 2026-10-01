@@ -27,14 +27,15 @@ export const SITE = {
   // Cookieless Cloudflare Web Analytics. Set PUBLIC_CF_WEB_ANALYTICS_TOKEN at build time to turn it on; unset = no beacon.
   analyticsToken: (import.meta.env.PUBLIC_CF_WEB_ANALYTICS_TOKEN as string | undefined) || "",
   // Date competitor prices were last checked against their public pricing pages.
-  pricesChecked: "September 2026",
+  pricesChecked: "October 2026",
 } as const;
 
 export const NAV = [
+  { href: "/features", label: "Features" },
+  { href: "/integrations", label: "Integrations" },
   { href: "/pricing", label: "Pricing" },
   { href: "/migrate-from-revenuecat", label: "Migrate" },
-  { href: "/self-host", label: "Self-host" },
-  { href: "/revenuedot-vs-revenuecat", label: "Compare" },
+  { href: "/compare", label: "Compare" },
   { href: "/docs", label: "Docs" },
   { href: "/blog", label: "Blog" },
 ] as const;
@@ -45,17 +46,35 @@ export const FOOTER = [
     links: [
       { href: "https://app.revenuedot.app/signup", label: "Start free on Cloud" },
       { href: "https://app.revenuedot.app/login", label: "Sign in" },
+      { href: "/features", label: "Features" },
+      { href: "/features/paywalls", label: "Paywalls" },
+      { href: "/features/web-billing", label: "Web checkout" },
+      { href: "/charts", label: "Subscription charts" },
+      { href: "/integrations", label: "Integrations" },
       { href: "/pricing", label: "Pricing" },
+      { href: "/changelog", label: "Changelog" },
+    ],
+  },
+  {
+    title: "Compare",
+    links: [
+      { href: "/revenuecat-alternative", label: "RevenueCat alternative" },
+      { href: "/revenuecat-alternatives", label: "RevenueCat alternatives" },
+      { href: "/compare/revenuedot-vs-revenuecat", label: "RevenueDot vs RevenueCat" },
+      { href: "/compare/revenuedot-vs-adapty", label: "RevenueDot vs Adapty" },
+      { href: "/compare/revenuedot-vs-superwall", label: "RevenueDot vs Superwall" },
+      { href: "/compare/revenuedot-vs-qonversion", label: "RevenueDot vs Qonversion" },
       { href: "/migrate-from-revenuecat", label: "Migrate from RevenueCat" },
       { href: "/self-host", label: "Self-host" },
-      { href: "/revenuedot-vs-revenuecat", label: "RevenueDot vs RevenueCat" },
-      { href: "/changelog", label: "Changelog" },
     ],
   },
   {
     title: "Developers",
     links: [
       { href: "/docs", label: "Docs" },
+      { href: "/sdks", label: "SDKs" },
+      { href: "/stores", label: "Stores" },
+      { href: "/solutions", label: "Solutions" },
       { href: "/blog", label: "Blog" },
       { href: "https://github.com/revenuedot/revenuedot", label: "GitHub" },
       { href: "https://github.com/revenuedot/examples", label: "Examples" },

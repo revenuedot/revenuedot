@@ -87,7 +87,7 @@ export function techArticle(a: ArticleInput) {
 }
 
 /** A blog post. */
-export function blogPosting(a: ArticleInput & { author?: string }) {
+export function blogPosting(a: ArticleInput & { author?: string; image?: string }) {
   const url = new URL(a.path, SITE.url).href;
   return {
     "@type": "BlogPosting",
@@ -101,6 +101,46 @@ export function blogPosting(a: ArticleInput & { author?: string }) {
     ...(a.modified || a.published ? { dateModified: a.modified ?? a.published } : {}),
     author: a.author && a.author !== "RevenueDot team" ? { "@type": "Person", name: a.author } : { "@id": ORG_ID },
     publisher: { "@id": ORG_ID },
-    image: new URL(SITE.ogImage, SITE.url).href,
+    image: new URL(a.image ?? SITE.ogImage, SITE.url).href,
+  };
+}
+
+/** A how-to built from numbered steps on the page. */
+export function howTo(name: string, description: string, steps: { name: string; text: string }[], path: string) {
+  const url = new URL(path, SITE.url).href;
+  return {
+    "@type": "HowTo",
+    "@id": `${url}#howto`,
+    name,
+    description,
+    step: steps.map((s, i) => ({ "@type": "HowToStep", position: i + 1, name: s.name, text: s.text })),
+  };
+}
+
+/** A hub page's list of child pages. */
+export function itemList(name: string, items: { name: string; path: string }[]) {
+  return {
+    "@type": "ItemList",
+    name,
+    numberOfItems: items.length,
+    itemListElement: items.map((it, i) => ({ "@type": "ListItem", position: i + 1, name: it.name, url: new URL(it.path, SITE.url).href })),
+  };
+}
+
+/** A marketing or reference page about one subject, published by RevenueDot. */
+export function webPage(a: { title: string; description: string; path: string; image?: string; about?: string; modified?: string }) {
+  const url = new URL(a.path, SITE.url).href;
+  return {
+    "@type": "WebPage",
+    "@id": `${url}#webpage`,
+    name: a.title,
+    description: a.description,
+    url,
+    inLanguage: "en",
+    isPartOf: { "@id": `${SITE.url}/#website` },
+    publisher: { "@id": `${SITE.url}/#organization` },
+    ...(a.image ? { primaryImageOfPage: { "@type": "ImageObject", url: new URL(a.image, SITE.url).href, width: 1200, height: 630 } } : {}),
+    ...(a.about ? { about: { "@type": "Thing", name: a.about } } : {}),
+    ...(a.modified ? { dateModified: a.modified } : {}),
   };
 }

@@ -1,0 +1,16 @@
+---
+import Hub from "../../templates/Hub.astro";
+import { COMPARISONS, comparePath } from "../../data";
+const vs = COMPARISONS.filter((c) => c.kind === "vs").map((c) => ({ href: comparePath(c), title: c.columns.join(" vs "), text: c.card }));
+const versus = COMPARISONS.filter((c) => c.kind === "versus").map((c) => ({ href: comparePath(c), title: c.columns.slice(0, 2).join(" vs "), text: c.card }));
+const lists = [
+  { href: "/revenuecat-alternative", title: "The open-source RevenueCat alternative", text: "Keep the RevenueCat SDK, change one line, and own your purchase data." },
+  { href: "/revenuecat-alternatives", title: "Best RevenueCat alternatives in 2026", text: "Every credible option compared on price, open source, self-hosting and features." },
+];
+---
+<Hub path="/compare" name="Compare" label="Compare" cols={3}
+  title="Compare in-app subscription platforms"
+  metaTitle="Compare RevenueCat, Adapty, Superwall and RevenueDot"
+  description="Sourced comparisons of RevenueDot, RevenueCat, Adapty, Superwall, Qonversion and Apphud: price at each revenue level, open source, self-hosting and features."
+  answer="Every subscription platform charges about 1% of tracked revenue once you pass its free tier. **RevenueDot** is the open-source option: it works with the RevenueCat SDK, is free on Cloud up to $10,000 a month in tracked revenue, and you can self-host it. These pages compare it, feature by feature and price by price, with a source for every claim."
+  groups={[{ title: "RevenueDot vs the alternatives", cards: vs }, { title: "Head to head", intro: "Two hosted vendors side by side, with RevenueDot as the open-source third column.", cards: versus }, { title: "Alternatives", cards: lists }]} />

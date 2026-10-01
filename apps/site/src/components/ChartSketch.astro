@@ -1,0 +1,43 @@
+---
+// A drawn illustration of a chart's shape (line, bars, stacked bars or cohort grid) for charts without a capture.
+// Deterministic from the chart name. Not data: the caption says so.
+import type { ChartDef } from "../../../../packages/core/src/charts/catalog";
+interface Props { def: ChartDef }
+const { def } = Astro.props;
+const W = 720, H = 300, n = 18;
+let seed = [...def.name].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
+const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+const trend = def.group === "churn" ? -0.2 : 0.6;
+const vals = Array.from({ length: n }, (_, i) => 0.3 + (trend * i) / n / 1.4 + rnd() * 0.18);
+const max = Math.max(...vals) * 1.1;
+const x = (i: number) => (i / (n - 1)) * (W - 40) + 20;
+const y = (v: number) => H - 24 - (v / max) * (H - 56);
+const bw = (W - 40) / n - 10;
+const pts = vals.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+const rows = 6, cols = 9, cw = W / cols, ch = (H - 12) / rows;
+const cells: { x: number; y: number; o: number }[] = [];
+if (def.display_type === "cohort") for (let r = 0; r < rows; r++) for (let c = 0; c < cols - r; c++) cells.push({ x: c * cw + 2, y: r * ch + 2, o: Math.max(0.08, 1 - c * 0.11 - rnd() * 0.08) * 0.85 });
+---
+<figure class="sketch">
+  <div class="shot pad">
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Illustration of the shape of the ${def.display_name} chart`}>
+      {def.display_type !== "cohort" && [0, 1, 2, 3].map((i) => <line x1="0" x2={W} y1={24 + i * 84} y2={24 + i * 84} class="g" />)}
+      {def.display_type === "cohort" && cells.map((c) => <rect x={c.x} y={c.y} width={cw - 4} height={ch - 4} class="ink" fill-opacity={c.o.toFixed(2)} />)}
+      {def.display_type === "line" && <><polygon points={`${x(0)},${H - 24} ${pts} ${x(n - 1)},${H - 24}`} class="area" /><polyline points={pts} class="line" /><rect x={x(n - 1) - 6} y={y(vals[n - 1]) - 6} width="12" height="12" class="acc" /></>}
+      {def.display_type === "bar" && vals.map((v, i) => <rect x={x(i) - bw / 2} y={y(v)} width={bw} height={H - 24 - y(v)} class={i === n - 1 ? "acc" : "ink"} />)}
+      {def.display_type === "stacked_bar" && vals.map((v, i) => { const mid = y(v) + (H - 24 - y(v)) * 0.45; return <><rect x={x(i) - bw / 2} y={y(v)} width={bw} height={mid - y(v) - 2} class="s1" /><rect x={x(i) - bw / 2} y={mid} width={bw} height={H - 24 - mid} class="s2" /></>; })}
+    </svg>
+  </div>
+  <figcaption class="caption tiny">The shape of the {def.display_name} chart, drawn for illustration. Your dashboard shows your own data.</figcaption>
+</figure>
+<style>
+  .sketch { margin: 0; }
+  .pad { padding: 28px; }
+  svg { display: block; width: 100%; height: auto; }
+  .g { stroke: var(--border); stroke-width: 1; }
+  .ink { fill: var(--fg); }
+  .area { fill: var(--spark-fill); }
+  .line { fill: none; stroke: var(--fg); stroke-width: 2.5; }
+  .acc { fill: var(--accent); }
+  .s1 { fill: var(--series-1); } .s2 { fill: var(--series-2); }
+</style>

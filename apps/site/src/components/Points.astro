@@ -1,0 +1,13 @@
+---
+import Md from "./Md.astro";
+interface Props { points: { title: string; text: string }[] }
+const { points } = Astro.props;
+const cols = points.length === 4 ? "cols-4" : points.length === 2 ? "cols-2" : "cols-3";
+---
+<section class="section tight" aria-label="Highlights">
+  <div class="wrap">
+    <div class="grid"><div class={`gi ${cols}`}>
+      {points.map((p) => <div class="cell"><h3 class="h3">{p.title}</h3><Md text={p.text} /></div>)}
+    </div></div>
+  </div>
+</section>

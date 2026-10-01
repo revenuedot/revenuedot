@@ -21,6 +21,8 @@ const blog = defineCollection({
     date: z.coerce.date().optional(),
     author: z.string().optional(),
     draft: z.boolean().optional(),
+    /** Cover image, a site path such as /blog/assets/<post>/cover.svg. */
+    image: z.string().optional(),
   }),
 });
 

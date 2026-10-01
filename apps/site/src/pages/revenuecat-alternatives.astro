@@ -1,0 +1,74 @@
+---
+// The plural list page: "RevenueCat alternatives", "best RevenueCat alternatives 2026".
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Faq from "../components/Faq.astro";
+import Related from "../components/Related.astro";
+import CtaBand from "../components/CtaBand.astro";
+import Md from "../components/Md.astro";
+import { ALTERNATIVES, ALTERNATIVES_INTRO as I } from "../data";
+import { md, plain } from "../lib/md";
+import { ogFor } from "../lib/og";
+import { itemList, webPage } from "../lib/jsonld";
+import { SITE } from "../site";
+const path = "/revenuecat-alternatives";
+const image = ogFor(path);
+const title = `The ${ALTERNATIVES.length} best RevenueCat alternatives in 2026`;
+const description = "RevenueDot, Adapty, Superwall, Qonversion, Apphud, Purchasely and building in-house, compared on price, open source, self-hosting and features, with sources.";
+const faq = I.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+---
+<Base title="Best RevenueCat alternatives in 2026, compared" description={description} path={path} image={image} imageAlt={title}
+  crumbs={[{ name: "RevenueCat alternatives", path }]} faq={faq}
+  jsonld={[webPage({ title, description, path, image }), itemList(title, ALTERNATIVES.map((a) => ({ name: a.name, path: `${path}#${id(a.name)}` })))]}>
+  <div class="wrap">
+    <PageHead label={`Alternatives · checked ${I.checked}`} title={title}>
+      <Md class="lede" text={I.answer} />
+      <div class="btns"><a class="btn" href={SITE.signup}>Try RevenueDot free</a><a class="btn secondary" href="/compare">All comparisons <span class="arrow">→</span></a></div>
+    </PageHead>
+  </div>
+  <section class="section tight first" id="summary">
+    <div class="wrap">
+      <div class="table-wrap"><table>
+        <thead><tr><th scope="col">Option</th><th scope="col">Best for</th><th scope="col">Pricing</th><th scope="col">Open source</th><th scope="col">Self-host</th></tr></thead>
+        <tbody>{ALTERNATIVES.map((a) => <tr><th scope="row"><a href={`#${id(a.name)}`}>{a.name}</a></th><td set:html={md(a.bestFor)} /><td set:html={md(a.pricing)} /><td set:html={md(a.openSource)} /><td set:html={md(a.selfHost)} /></tr>)}</tbody>
+      </table></div>
+    </div>
+  </section>
+  {ALTERNATIVES.map((a, i) => (
+    <section class="section" id={id(a.name)}>
+      <div class="wrap alt">
+        <div class="head">
+          <p class="num">{String(i + 1).padStart(2, "0")}</p>
+          <h2 class="h2 sm">{a.name}</h2>
+          <Md class="small muted" text={`Best for: ${a.bestFor}`} />
+        </div>
+        <div class="body">
+          <Md class="sum" text={a.summary} />
+          <div class="grid"><div class="gi cols-2">
+            <div class="cell"><p class="label">Strengths</p><ul class="ticks">{a.pros.map((p) => <Md as="li" text={p} />)}</ul></div>
+            <div class="cell"><p class="label">Watch out for</p><ul class="ticks neg">{a.cons.map((p) => <Md as="li" text={p} />)}</ul></div>
+          </div></div>
+          <p class="tiny">Sources: {a.sources.map((s, j) => <>{j > 0 && " · "}<a href={s.url} rel="noopener">{s.label}</a></>)}{a.compare && <> · <a href={a.compare}>Full comparison →</a></>}</p>
+        </div>
+      </div>
+    </section>
+  ))}
+  <section class="section" id="faq"><div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">RevenueCat alternatives: questions people ask</h2></div><Faq items={faq} open={0} /><p class="tiny caption">RevenueDot is not affiliated with any company on this page. Names are trademarks of their owners.</p></div></section>
+  <Related items={["/revenuecat-alternative", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-adapty", "/compare/revenuecat-vs-superwall", "/migrate-from-revenuecat", "/pricing"]} />
+  <CtaBand />
+</Base>
+<style>
+  .alt { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .alt .head { margin: 0; position: sticky; top: 96px; }
+  .body { display: grid; gap: 20px; }
+  .body :global(.sum) { font-size: 17px; line-height: 1.65; color: var(--fg-2); }
+  .body :global(a), td :global(a), th a { color: var(--fg); }
+  .ticks { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .ticks :global(li) { position: relative; padding-left: 20px; color: var(--fg-2); font-size: 15px; line-height: 1.55; }
+  .ticks :global(li)::before { content: ""; position: absolute; left: 2px; top: .6em; width: 7px; height: 7px; background: var(--up); }
+  .ticks.neg :global(li)::before { background: var(--fg-3); }
+  .tiny a { color: var(--fg-2); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  @media (max-width: 900px) { .alt { grid-template-columns: 1fr; gap: 20px; } .alt .head { position: static; } }
+</style>
