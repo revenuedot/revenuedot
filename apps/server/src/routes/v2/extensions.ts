@@ -273,7 +273,10 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     try {
       steps = testStoreScenario({
         scenario, token, productId: prod.storeIdentifier, productType: prod.type, duration: prod.duration, start, now,
-        price: b.price !== undefined ? { amount: b.price, currency: b.currency ?? "USD" } : null, countryCode: b.country_code ?? null,
+        // Without a price, the product's Test Store price from the catalog (what the SDK shows), as for SDK receipts.
+        price: b.price !== undefined ? { amount: b.price, currency: b.currency ?? "USD" }
+          : prod.testStorePriceMicros !== null && prod.testStorePriceCurrency ? { amount: prod.testStorePriceMicros / 1_000_000, currency: prod.testStorePriceCurrency } : null,
+        countryCode: b.country_code ?? null,
       });
     } catch (e) {
       throw paramError(e instanceof Error ? e.message : String(e), start && start > now ? "purchased_at" : "scenario");
