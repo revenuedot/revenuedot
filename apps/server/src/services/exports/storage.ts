@@ -54,7 +54,11 @@ const sendErr = async (what: string, res: Response) => {
 async function call(t: StorageTarget, f: typeof fetch, url: string, init: RequestInit, what: string): Promise<Response> {
   const problem = outboundUrlProblem(url, !!t.strictUrls);
   if (problem) throw new StorageError(`The ${what} endpoint ${problem}.`, false);
-  try { return await f(url, init); } catch (e) { throw new StorageError(`${what} did not answer: ${e instanceof Error ? e.message : String(e)}`, true); }
+  let res: Response;
+  try { res = await f(url, { ...init, redirect: "manual" }); } catch (e) { throw new StorageError(`${what} did not answer: ${e instanceof Error ? e.message : String(e)}`, true); }
+  // Not followed: the guard checked only this URL, and a redirect could point at a metadata or private address.
+  if ((res.status >= 300 && res.status < 400) || res.type === "opaqueredirect") throw new StorageError(`${what} answered with a redirect, which is not followed. Use the bucket's own endpoint.`, false, res.status || undefined);
+  return res;
 }
 
 /** Uploads one file. Returns the object's URI (s3://, r2://, gs://). */

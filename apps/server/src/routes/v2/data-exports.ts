@@ -125,6 +125,10 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
   r.post(`${P}/:export_id`, scope("project_configuration:integrations:read_write"), async (c) => {
     const j = await find(c.get("projectId"), c.req.param("export_id"));
     const b = await body(c, Update);
+    // A run reads the job's tables, format and destination on every slice; changing them mid-run would mix them.
+    const [busy] = await db.select({ id: schema.exportRuns.id }).from(schema.exportRuns)
+      .where(and(eq(schema.exportRuns.jobId, j.id), inArray(schema.exportRuns.status, ["queued", "running"]))).limit(1);
+    if (busy) throw new V2Error(409, "resource_locked_error", "A run of this export is queued or running. Change it after the run finishes.", undefined, true);
     const destination = b.destination ?? (j.destination as Destination);
     const config: Record<string, unknown> = { ...j.destinationConfig };
     for (const [k, v] of Object.entries(b.config ?? {})) { if (v === null || v === "") delete config[k]; else config[k] = v; }
@@ -157,15 +161,21 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
     const j = await find(c.get("projectId"), c.req.param("export_id"));
     const b = await body(c, Run);
     const R = schema.exportRuns;
-    const [open] = await db.select().from(R).where(and(eq(R.jobId, j.id), inArray(R.status, ["queued", "running"]))).limit(1);
-    if (open) throw new V2Error(409, "resource_locked_error", "A run of this export is already queued or running.", undefined, true);
     const now = deps.now();
     const mode = b.mode ?? j.mode;
     const starts = j.tables.map((t) => j.cursor[t]);
     const windowStart = mode === "full" || starts.some((s) => s === undefined) ? null : new Date(Math.min(...(starts as number[])));
-    const [run] = await db.insert(R).values({ id: newId("exprun_", 14), jobId: j.id, status: "queued", trigger: "manual", mode, windowStart, windowEnd: now, nextAttemptAt: now, createdAt: now }).returning();
+    // The job row lock makes "no open run, then insert" atomic against the scheduler and a second click.
+    const run = await db.transaction(async (tx) => {
+      await tx.select({ id: schema.exportJobs.id }).from(schema.exportJobs).where(eq(schema.exportJobs.id, j.id)).for("update");
+      const [open] = await tx.select({ id: R.id }).from(R).where(and(eq(R.jobId, j.id), inArray(R.status, ["queued", "running"]))).limit(1);
+      if (open) return null;
+      const [row] = await tx.insert(R).values({ id: newId("exprun_", 14), jobId: j.id, status: "queued", trigger: "manual", mode, windowStart, windowEnd: now, nextAttemptAt: now, createdAt: now }).returning();
+      return row!;
+    });
+    if (!run) throw new V2Error(409, "resource_locked_error", "A run of this export is already queued or running.", undefined, true);
     deps.kick?.();
-    return c.json(runShape(run!), 201);
+    return c.json(runShape(run), 201);
   });
 
   r.post(`${P}/:export_id/actions/check`, scope("project_configuration:integrations:read_write"), async (c) => {

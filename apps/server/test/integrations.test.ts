@@ -268,6 +268,32 @@ describe("delivery", () => {
 });
 
 describe("delivery under load and misconfiguration", () => {
+  it("does not follow redirects, refuses a retry while the delivery is leased, and gives up on a delivery that keeps dying", async () => {
+    const call = api();
+    const slack = (await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/redirect" } })).body;
+    await purchase("r1");
+    const { f, seen } = fake(() => new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data/" } }));
+    await run(f);
+    expect(seen.map((r) => r.url)).toEqual(["https://hooks.slack.com/redirect"]);
+    const D = schema.integrationDeliveries;
+    let [d] = await h.db.select().from(D);
+    expect(d!.lastError).toMatch(/redirect, which is not followed/);
+    expect(d!.responseBody ?? "").toBe("");
+
+    // A tick holds the lease: Retry answers 409 instead of queueing a second send.
+    await h.db.update(D).set({ status: "pending", nextAttemptAt: new Date(h.now().getTime() + 10 * MIN) }).where(eq(D.id, d!.id));
+    const locked = await call("POST", `/integrations/partners/${slack.id}/deliveries/${d!.id}/retry`);
+    expect([locked.status, locked.body.type]).toEqual([409, "resource_locked_error"]);
+
+    // Claimed once more than the retry schedule allows (each earlier claim died with the tick): failed without sending.
+    await h.db.update(D).set({ status: "pending", nextAttemptAt: h.now(), attempts: 6 }).where(eq(D.id, d!.id));
+    const before = seen.length;
+    await run(f);
+    [d] = await h.db.select().from(D);
+    expect([d!.status, seen.length - before]).toEqual(["failed", 0]);
+    expect(d!.lastError).toMatch(/Gave up/);
+  });
+
   it("two overlapping ticks send each delivery once", async () => {
     const call = api();
     await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/once" } });

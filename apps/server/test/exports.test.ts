@@ -122,6 +122,9 @@ describe("export runs", () => {
     const started = await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
     expect(started.body).toMatchObject({ object: "data_export_run", status: "queued", trigger: "manual", mode: "incremental", window_start: null });
     expect((await call("POST", `/integrations/exports/${job.id}/actions/run`, {})).status).toBe(409);
+    // Settings stay fixed while a run is open: a run reads them on every slice.
+    const edit = await call("POST", `/integrations/exports/${job.id}`, { tables: ["events"] });
+    expect([edit.status, edit.body.type]).toEqual([409, "resource_locked_error"]);
 
     const { f, puts } = bucket();
     const r = await run(f);

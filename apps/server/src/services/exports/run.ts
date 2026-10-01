@@ -50,11 +50,15 @@ export async function queueDueExports(db: DB, now: Date) {
     // Move next_run_at first, only if no other tick did: the tick that wins queues the run.
     const [won] = await db.update(J).set({ nextRunAt: nextRunAt(job, now) }).where(and(eq(J.id, job.id), eq(J.nextRunAt, job.nextRunAt!))).returning({ id: J.id });
     if (!won) continue;
-    const open = await db.select({ id: R.id }).from(R).where(and(eq(R.jobId, job.id), inArray(R.status, ["queued", "running"]))).limit(1);
-    if (open.length) continue;
     const starts = job.tables.map((t) => job.cursor[t]);
     const windowStart = job.mode === "full" || starts.some((x) => x === undefined) ? null : new Date(Math.min(...(starts as number[])));
-    await db.insert(R).values({ id: newId("exprun_", 14), jobId: job.id, status: "queued", trigger: "schedule", mode: job.mode, windowStart, windowEnd: job.nextRunAt!, nextAttemptAt: now, createdAt: now });
+    // Same job row lock as the manual run route, so the two cannot both queue a run.
+    await db.transaction(async (tx) => {
+      await tx.select({ id: J.id }).from(J).where(eq(J.id, job.id)).for("update");
+      const open = await tx.select({ id: R.id }).from(R).where(and(eq(R.jobId, job.id), inArray(R.status, ["queued", "running"]))).limit(1);
+      if (open.length) return;
+      await tx.insert(R).values({ id: newId("exprun_", 14), jobId: job.id, status: "queued", trigger: "schedule", mode: job.mode, windowStart, windowEnd: job.nextRunAt!, nextAttemptAt: now, createdAt: now });
+    });
   }
   return due.length;
 }

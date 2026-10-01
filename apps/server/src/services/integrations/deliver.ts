@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, lte, ne, or, sql } from "drizzle-orm";
 import {
   BIGQUERY_SCOPE, bigQueryCreateTable, buildIntegration, responseError, retryableStatus, type EventContext, type IntegrationKind, type OutRequest,
 } from "@revenuedot/core/integrations";
@@ -51,7 +51,12 @@ async function send(r: OutRequest, f: typeof fetch, timeoutMs: number): Promise<
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const res = await f(r.url, { method: r.method, headers: r.headers, body: r.method === "GET" || r.method === "HEAD" ? undefined : r.body, signal: ctl.signal });
+    // Redirects are not followed: the URL guard checked only this URL, and a redirect could point anywhere,
+    // including a cloud metadata address whose answer would land in the delivery log.
+    const res = await f(r.url, { method: r.method, headers: r.headers, body: r.method === "GET" || r.method === "HEAD" ? undefined : r.body, signal: ctl.signal, redirect: "manual" });
+    if ((res.status >= 300 && res.status < 400) || res.type === "opaqueredirect") {
+      return { status: res.status || null, body: "", error: "The partner answered with a redirect, which is not followed. Use the final URL." };
+    }
     const body = await res.text().catch(() => "");
     return { status: res.status, body, error: null };
   } catch (e) {
@@ -198,6 +203,11 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
           .where(and(eq(D.id, id), eq(D.status, "pending"), lte(D.nextAttemptAt, rt.now))).returning({ attempts: D.attempts });
         if (!claimed) continue;
         attempted++;
+        // A delivery that keeps killing the tick never reaches fail(); stop after the normal number of attempts.
+        if (claimed.attempts > RETRY_MINUTES.length + 1) {
+          await db.update(D).set({ status: "failed", nextAttemptAt: rt.now, lastError: "Gave up: the delivery stopped the sender on every attempt." }).where(eq(D.id, id));
+          continue;
+        }
         await attemptIntegration(db, id, rt, claimed.attempts);
       } catch (e) {
         console.error(`integration delivery ${id} failed`, e);
@@ -208,7 +218,12 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
   return attempted;
 }
 
-/** Manual retry or replay: queue the delivery again now (a skipped one is rebuilt, so new attributes or keys count). */
-export async function requeueIntegrationDelivery(db: DB, deliveryId: string, now: Date) {
-  await db.update(D).set({ status: "pending", nextAttemptAt: now }).where(eq(D.id, deliveryId));
+/**
+ * Manual retry: queue the delivery again now with a fresh retry schedule (a skipped one is rebuilt, so new attributes
+ * or keys count). Returns false while a tick holds the delivery's lease (it is being sent right now).
+ */
+export async function requeueIntegrationDelivery(db: DB, deliveryId: string, now: Date): Promise<boolean> {
+  const rows = await db.update(D).set({ status: "pending", nextAttemptAt: now, attempts: 0 })
+    .where(and(eq(D.id, deliveryId), or(ne(D.status, "pending"), lte(D.nextAttemptAt, now)))).returning({ id: D.id });
+  return rows.length > 0;
 }

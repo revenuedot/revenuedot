@@ -259,7 +259,9 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const D = schema.integrationDeliveries;
     const [d] = await db.select().from(D).where(and(eq(D.integrationId, i.id), eq(D.id, c.req.param("delivery_id")))).limit(1);
     if (!d) throw notFound("Integration delivery");
-    await requeueIntegrationDelivery(db, d.id, deps.now());
+    if (!(await requeueIntegrationDelivery(db, d.id, deps.now()))) {
+      throw new V2Error(409, "resource_locked_error", "This delivery is being sent right now. Try again in a minute.", undefined, true);
+    }
     deps.kick?.();
     const [row] = await db.select({ d: D, type: schema.events.type }).from(D).innerJoin(schema.events, eq(schema.events.id, D.eventId)).where(eq(D.id, d.id));
     return c.json(deliveryShape(row!.d, row!.type));
@@ -273,7 +275,8 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const conds = [eq(D.integrationId, i.id), inArray(D.status, statuses)];
     if (b.since !== undefined) conds.push(gte(D.createdAt, new Date(b.since)));
     if (b.until !== undefined) conds.push(lte(D.createdAt, new Date(b.until)));
-    const rows = await db.update(D).set({ status: "pending", nextAttemptAt: deps.now() }).where(and(...conds)).returning({ id: D.id });
+    // A replay starts a fresh retry schedule.
+    const rows = await db.update(D).set({ status: "pending", nextAttemptAt: deps.now(), attempts: 0 }).where(and(...conds)).returning({ id: D.id });
     deps.kick?.();
     return c.json({ object: "integration_replay", integration_id: i.id, statuses, queued: rows.length });
   });
