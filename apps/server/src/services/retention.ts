@@ -20,7 +20,12 @@ export function promotionalOfferFor(offers: OfferRow[]): Json | null {
   if (!live.length) return null;
   const mapping: Record<string, string> = {};
   for (const o of live) Object.assign(mapping, o.productMapping);
-  const first = (store: string) => live.filter((o) => o.store === store).flatMap((o) => Object.values(o.productMapping))[0] ?? "";
+  // The SDKs look up product_mapping by the customer's product first; the top-level id is a fallback: the first offer's
+  // id for the alphabetically first product (Postgres keeps JSON keys in its own order, so order by key).
+  const first = (store: string) => {
+    const o = live.find((x) => x.store === store && Object.keys(x.productMapping).length);
+    return o ? o.productMapping[Object.keys(o.productMapping).sort()[0]!]! : "";
+  };
   const lead = live[0]!;
   return { ios_offer_id: first("app_store"), android_offer_id: first("play_store"), eligible: true, title: lead.title, subtitle: lead.subtitle, product_mapping: mapping };
 }
