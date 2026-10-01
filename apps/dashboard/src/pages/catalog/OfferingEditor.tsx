@@ -38,7 +38,7 @@ interface Draft {
   orig?: { description: string; position: number; products: Record<string, string> };
 }
 type PkgErr = { ident?: string; description?: string };
-type Tab = "packages" | "metadata" | "paywall";
+type Tab = "packages" | "metadata";
 
 let uidSeq = 0;
 const uid = () => `d${++uidSeq}`;
@@ -270,7 +270,7 @@ function EditorForm({ pid, base, initial, apps, products, title }: { pid: string
         </form>
 
         <Tabs label="Offering sections" idBase="of" value={tab} onChange={setTab}
-          tabs={[{ value: "packages", label: "Packages" }, { value: "metadata", label: "Metadata" }, { value: "paywall", label: "Paywall", disabled: true, badge: "SOON" }]}
+          tabs={[{ value: "packages", label: "Packages" }, { value: "metadata", label: "Metadata" }]}
           right={tab === "packages" ? <button type="button" className="btn btn-ghost" onClick={addPackage} aria-label="New package"><Icon name="plus" /><span className="cat-hide-sm">New package</span></button> : undefined} />
 
         {tab === "packages" && (

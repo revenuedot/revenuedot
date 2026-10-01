@@ -115,6 +115,23 @@ export function inviteEmail(o: { base: string; url: string; projectName: string;
   });
 }
 
+/** Project ownership changed (prd/project-settings §1): one email to the new owner, one to the previous owner. */
+export function ownershipEmail(o: { base: string; url: string; projectName: string; from: string; to: string; you: "new" | "old" }): Rendered {
+  const isNew = o.you === "new";
+  return layout({
+    subject: isNew ? `You now own ${o.projectName} on RevenueDot` : `${o.to} now owns ${o.projectName} on RevenueDot`,
+    preheader: isNew ? `${o.from} transferred the project to you.` : `You transferred ${o.projectName} to ${o.to}.`,
+    heading: isNew ? `You now own ${o.projectName}` : `${o.projectName} has a new owner`,
+    paragraphs: isNew
+      ? [`${o.from} transferred ownership of the project ${o.projectName} to you.`, "As the owner you can transfer the project again. Your role stays Admin."]
+      : [`You transferred ownership of the project ${o.projectName} to ${o.to}.`, "You keep the Admin role. Only the new owner can transfer the project again."],
+    button: { label: "Open project settings", url: o.url },
+    after: ["If you did not expect this, contact the other person or reply to this email."],
+    settingsUrl: settingsUrl(o.base),
+    reason: `You received this because you are ${isNew ? "the new" : "the previous"} owner of a RevenueDot project.`,
+  });
+}
+
 export type AlertKind = "store_notifications" | "webhook" | "store_credentials";
 
 export interface AlertInfo {

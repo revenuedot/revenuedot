@@ -11,7 +11,7 @@ export interface Me {
 }
 export const useMe = (enabled = true) => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
 
-type Item = { label: string; to?: string; icon?: string; soon?: boolean; children?: Item[] };
+type Item = { label: string; to?: string; icon?: string; soon?: boolean; badge?: string; children?: Item[] };
 
 /** RevenueCat's sidebar information architecture, in order. `soon` marks Tier 2/3 areas. */
 const NAV: Item[] = [
@@ -33,6 +33,7 @@ const NAV: Item[] = [
     { label: "Retention", to: "lifecycle/retention" }, { label: "Refund control", to: "lifecycle/refund-control" },
     { label: "Win-back", to: "lifecycle/winback" },
   ] },
+  { label: "Auth", to: "auth", icon: "auth", badge: "BETA" },
 ];
 const FOOT: Item[] = [
   { label: "Apps", to: "apps", icon: "apps" }, { label: "Web", to: "web", icon: "web" },
@@ -57,7 +58,7 @@ function NavItem({ item, base }: { item: Item; base: string }) {
   }
   return (
     <NavLink to={`${base}/${item.to}`} className={({ isActive }) => `it${isActive ? " active" : ""}`} end={item.to === "overview" || item.to === "ads"}>
-      {item.icon && <Icon name={item.icon} />}{item.label}{item.soon && <span className="soon">SOON</span>}
+      {item.icon && <Icon name={item.icon} />}{item.label}{item.soon && <span className="soon">SOON</span>}{item.badge && <span className="soon">{item.badge}</span>}
     </NavLink>
   );
 }

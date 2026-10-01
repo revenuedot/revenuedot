@@ -148,6 +148,13 @@
       "when": 1790891109601,
       "tag": "0020_ai_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790893270230,
+      "tag": "0021_settings_auth",
+      "breakpoints": true
     }
   ]
 }

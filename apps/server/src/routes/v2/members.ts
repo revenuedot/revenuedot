@@ -15,7 +15,8 @@ import { V2Error, body, listOf, notFound, paramError, scope, type V2Context, typ
  *   DELETE /v2/projects/{project_id}/invites/{invite_id}                   revoke (admins)
  *   POST   /v2/projects/{project_id}/collaborators/{user_id}               change a member's role (admins)
  *   DELETE /v2/projects/{project_id}/collaborators/{user_id}               remove a member (admins), or leave the project (yourself)
- * A project always keeps at least one admin.
+ * A project always keeps at least one admin, and its owner stays an admin member until they transfer ownership
+ * (prd/project-settings §1): otherwise another admin could remove or demote the owner and then take the project over.
  */
 
 const Role = z.enum(ROLES);
@@ -50,6 +51,10 @@ export function memberRoutes(r: V2Router, deps: Deps) {
     const [m] = await db.select().from(schema.memberships).where(and(eq(schema.memberships.projectId, c.get("projectId")), eq(schema.memberships.userId, c.req.param("user_id")!))).limit(1);
     if (!m) throw notFound("Collaborator");
     return m;
+  };
+  const ownerOf = async (projectId: string) => {
+    const [p] = await db.select({ owner: schema.projects.ownerUserId }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
+    return p?.owner ?? null;
   };
   const collaborator = async (userId: string, role: string) => {
     const [u] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
@@ -104,6 +109,9 @@ export function memberRoutes(r: V2Router, deps: Deps) {
     if (m.role === "admin" && b.role !== "admin" && (await adminCount(db, m.projectId)) <= 1) {
       throw paramError("A project needs at least one admin. Make someone else an admin first.", "role");
     }
+    if (b.role !== "admin" && (await ownerOf(m.projectId)) === m.userId) {
+      throw new V2Error(422, "unprocessable_entity_error", "The project owner must stay an Admin. The owner can transfer ownership first in Project settings.", "role");
+    }
     await db.update(schema.memberships).set({ role: b.role }).where(and(eq(schema.memberships.projectId, m.projectId), eq(schema.memberships.userId, m.userId)));
     return c.json(await collaborator(m.userId, b.role));
   });
@@ -115,6 +123,11 @@ export function memberRoutes(r: V2Router, deps: Deps) {
     if (m.userId !== p.userId) await admin(c);
     if (m.role === "admin" && (await adminCount(db, m.projectId)) <= 1) {
       throw new V2Error(422, "unprocessable_entity_error", m.userId === p.userId ? "You are the only admin. Make someone else an admin before you leave, or delete the project." : "A project needs at least one admin.");
+    }
+    if ((await ownerOf(m.projectId)) === m.userId) {
+      throw new V2Error(422, "unprocessable_entity_error", m.userId === p.userId
+        ? "You own this project. Transfer ownership to another admin in Project settings before you leave."
+        : "The project owner cannot be removed. The owner can transfer ownership first in Project settings.");
     }
     await db.delete(schema.memberships).where(and(eq(schema.memberships.projectId, m.projectId), eq(schema.memberships.userId, m.userId)));
     return c.json({ object: "collaborator", id: m.userId, deleted_at: deps.now().getTime() });

@@ -24,9 +24,9 @@ export const newContent = (over: Partial<PaywallContent> = {}): PaywallContent =
  * `locales` are the locales the project's published paywalls use, which get the SDK's period and price words
  * (packages/core/src/paywalls/locales.ts) in their language.
  */
-export function uiConfig(fonts: Record<string, unknown> = {}, locales: Iterable<string> = []) {
+export function uiConfig(fonts: Record<string, unknown> = {}, locales: Iterable<string> = [], colors: Record<string, unknown> = {}) {
   return {
-    app: { colors: {}, fonts },
+    app: { colors, fonts },
     custom_variables: {},
     localizations: uiLocalizations(locales),
     variable_config: { function_compatibility_map: {}, variable_compatibility_map: {} },

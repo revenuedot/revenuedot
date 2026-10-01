@@ -37,6 +37,8 @@ import { retentionRoutes } from "./retention.js";
 import { supportRoutes } from "./support.js";
 import { winbackRoutes } from "./winback.js";
 import { customerListRoutes } from "./customer-lists.js";
+import { projectSettingsRoutes } from "./project-settings.js";
+import { authRoutes as authConfigRoutes } from "./auth.js";
 import { assistantRoutes } from "./assistant.js";
 import { ASSISTANT_CTX } from "../../services/assistant/client.js";
 import { assistantScope } from "../../services/assistant/access.js";
@@ -143,6 +145,8 @@ export function v2Routes(deps: Deps) {
   discountRoutes(r, deps);
   webRoutes(r, deps);
   billingExcludedRoutes(r, deps);
+  projectSettingsRoutes(r, deps);
+  authConfigRoutes(r, deps);
   assistantRoutes(r, deps);
 
   r.all("/v2/*", () => { throw new V2Error(404, "resource_missing", "Resource not found."); });

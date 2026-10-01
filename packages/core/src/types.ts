@@ -77,6 +77,12 @@ export interface CustomerState {
   subscriptions: Subscription[];
   nonSubscriptions: NonSubscription[];
   attributes: Record<string, AttributeValue>;
+  /**
+   * Project rules that take access away (prd/project-settings): `blocked` (one of the customer's app user ids is on the
+   * block list) grants nothing; `sandbox: false` (sandbox testing access does not include this customer) ignores sandbox
+   * purchases. Absent: full access.
+   */
+  access?: { blocked?: boolean; sandbox?: boolean };
 }
 
 /** Entitlement lookup key -> product identifiers that unlock it (project catalog). */

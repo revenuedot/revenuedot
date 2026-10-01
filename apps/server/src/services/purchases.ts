@@ -9,6 +9,7 @@ import { grantForPurchase } from "./virtual-currencies.js";
 import { adoptImportedChain } from "./imported-chains.js";
 import { usdValue, type FxFetch } from "./fx.js";
 import { noteRefund } from "./refunds.js";
+import { accessOf } from "../repo/access.js";
 
 const { subscriptions, nonSubscriptions, transactions, projects, customers } = schema;
 
@@ -68,7 +69,9 @@ async function resolveOwnership(db: DB, current: CustomerRow, existingOwnerId: s
   }
   const [project] = await db.select().from(projects).where(eq(projects.id, ctx.projectId));
   const behavior = (sandbox ? project?.sandboxTransferBehavior : null) ?? project?.transferBehavior ?? "transfer";
-  if (behavior === "keep") {
+  // A blocked customer's purchases never move to another app user id (prd/project-settings §3): restoring them on a fresh
+  // id would hand the blocked customer's access straight back. Sharing (below) keeps them blocked, so it may go ahead.
+  if (behavior === "keep" || (behavior !== "share" && (await accessOf(db, prevOwner)).blocked)) {
     throw new RCError(400, Codes.RECEIPT_ALREADY_IN_USE, "The receipt is already in use by another subscriber.");
   }
   if (behavior === "share") {

@@ -63,7 +63,7 @@ export async function signup(db: DB, input: { email: string; password: string; n
   await db.insert(users).values({ id, email, name: input.name ?? null, passwordHash: await hashPassword(input.password), emailVerifiedAt: input.emailVerifiedAt ?? null });
   if (input.projectName) {
     const pid = newId("proj", 8);
-    await db.insert(projects).values({ id: pid, name: input.projectName });
+    await db.insert(projects).values({ id: pid, name: input.projectName, ownerUserId: id });
     await db.insert(memberships).values({ userId: id, projectId: pid, role: "admin" });
   }
   return { userId: id };

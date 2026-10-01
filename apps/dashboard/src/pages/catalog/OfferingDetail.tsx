@@ -18,7 +18,7 @@ import { DefaultTag, useOfferingActions } from "./Offerings";
 import { MetadataEditor, metadataText, parseMetadata } from "./OfferingEditor";
 import { catalogKey, errMsg, packageLabel, useApps, useOfferings, useRefreshCatalog, v2, type Offering } from "./lib";
 
-type Tab = "packages" | "metadata" | "paywall";
+type Tab = "packages" | "metadata";
 
 export function OfferingDetail() {
   const pid = useProjectId();
@@ -56,12 +56,12 @@ export function OfferingDetail() {
               ["Display name", o.display_name],
               ["Status", o.state === "active" ? <Tag tone="up">Active</Tag> : <Tag>Inactive</Tag>],
               ["Created", <span key="c" className="mono">{fmt.dateTime(o.created_at)}</span>],
-              ["Paywall", <span key="p" className="subtle">Paywalls arrive in a later release.</span>],
-              ["Web purchase link", <span key="w" className="subtle">Web purchase links arrive in a later release.</span>],
-              ["Targeting", <span key="t" className="subtle">Targeting rules arrive in a later release. Today every customer gets the default offering unless the API sets an override.</span>],
+              ["Paywall", o.paywall_id ? <Link key="p" to={`/projects/${pid}/paywalls/${o.paywall_id}`}>Edit paywall</Link> : <Link key="p" to={`/projects/${pid}/paywalls/templates`}>Create a paywall</Link>],
+              ["Web purchase link", <Link key="w" to={`/projects/${pid}/web`}>Purchase links on the Web page</Link>],
+              ["Targeting", <Link key="t" to={`/projects/${pid}/targeting`}>Targeting rules</Link>],
             ]} />
             <Tabs label="Offering sections" idBase="od" value={tab} onChange={setTab}
-              tabs={[{ value: "packages", label: "Packages" }, { value: "metadata", label: "Metadata" }, { value: "paywall", label: "Paywall", disabled: true, badge: "SOON" }]} />
+              tabs={[{ value: "packages", label: "Packages" }, { value: "metadata", label: "Metadata" }]} />
             {tab === "packages" && (
               <div role="tabpanel" id="od-packages-panel" aria-labelledby="od-packages" className="cat-pkgs">
                 <p className="cat-lead">Packages set which product each app offers. An app only sees packages that have a product for it.</p>

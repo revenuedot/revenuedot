@@ -189,6 +189,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Paywalls** | Native paywalls the RevenueCat SDKs render (all 17 component types): a gallery of ten templates built on 2026 conversion research, a visual editor (layers, properties, undo, light and dark, translations, versions), "Generate with AI" (Workers AI on Cloud, your OpenAI or Anthropic key on self-host), and a cached asset CDN. Every published paywall is checked to decode in the SDK ([guide](https://revenuedot.app/docs/guides/paywalls)) | Tier 2 · built, tested; renders in RevenueCatUI on the iOS simulator |
 | **Growth** | Experiments, targeting, virtual currencies, Customer Center | Tier 2 · built and tested |
 | **Lifecycle** | **Refund Control**: ordered policies answer Apple's refund requests with [consumption information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) inside the 12-hour window, Google refunds and chargebacks recorded, refund rate and amounts. **Retention**: cancel and refund offers in the in-app Customer Center, and Apple's [Retention Messaging API](https://developer.apple.com/documentation/retentionmessaging) on Apple's cancel screen. **Win-back campaigns**: email churned subscribers an offer, with click tracking, one-click unsubscribe and reactivations. **Support**: Customer Center tickets by email and a help desk summary for Intercom or Zendesk ([guides](https://revenuedot.app/docs/guides/refund-control)) | Tier 2/3 · built, tested against a mocked App Store and an in-memory mailer; Apple's Retention Messaging API needs Apple's approval |
+| **Project settings** | RevenueCat's tabs: sandbox testing access enforced on the server (anybody, allowlisted app user IDs, nobody), ownership transfer to an admin, brand colour and gradient presets and fonts in the paywall editor and the SDK's named colours, blocked customers who lose paid features on every platform, and a public **Verified Metrics** page with production totals, sparklines and a link-preview image ([guide](https://revenuedot.app/docs/guides/project-settings)) | Tier 2 · built, tested and browser-validated |
+| **Auth (beta)** | Sign users in with Firebase or any OpenID Connect provider (Auth0, Clerk, Supabase, Cognito, Google, Apple): ID tokens verified with the provider's keys, logIn semantics, an access token that reads customer info, attributes and in-app currency balances without a backend, refresh and sign-out, balances by identity for your server, in the RevenueCat SDKs' token-login wire format ([guide](https://revenuedot.app/docs/guides/auth)) | Tier 2 · built, tested with keys generated in the tests; no real Firebase project or provider called yet |
 | **Customers** | Customer lists (all, active, sandbox, non-subscription, expired), saved audiences, filters from the audience builder, summary cards, CSV export ([guide](https://revenuedot.app/docs/guides/customer-lists)) | Tier 1/2 · built and tested |
 | **RevenueDot AI** | An assistant in the dashboard that answers from your own metrics, 43 charts, customers, catalog, experiments and webhook health, and makes small changes (grant access, create products, set the current offering, pause experiments, replay webhooks) only after you approve each one, audited as "RevenueDot AI on behalf of" you. A full-page chat with history, screenshots, `@` mentions and a `.storekit` importer; an Ask bar on the Overview; a read and write / read only / off setting per project; a shareable first-sale card. Its tools have the MCP server's names ([guide](https://revenuedot.app/docs/guides/revenuedot-ai)) | Tier 2 · built, tested with a scripted model; Cloud (Workers AI, Durable Objects) and self-host (your Anthropic or OpenAI key) |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
@@ -353,6 +355,13 @@ revenuedot/
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/settings/auth-dark.png">
+  <img alt="RevenueDot Auth: the Auth switch, three explainer cards, a Firebase and an Auth0 identity provider, and the sign-in snippets" src="docs/assets/settings/auth.png" width="100%">
+</picture>
+
+<p><img alt="A public RevenueDot Verified Metrics page: MRR, revenue, active subscriptions and active trials with 28-day sparklines" src="docs/assets/settings/verified-page.png" width="100%"></p>
+
 ## FAQ
 
 <details><summary><b>Is RevenueDot an open-source alternative to RevenueCat?</b></summary>
@@ -360,6 +369,24 @@ Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/S
 Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call, so it can replace RevenueCat without changing your app's purchase code.
 </details>
 
+<details><summary><b>Can I sign users in with Firebase Auth and link them to their subscriptions without a backend?</b></summary>
+
+Yes. Turn on Auth, add your Firebase project (or any OpenID Connect provider), and have the app send its ID token to `POST /v1/auth/login` with its public SDK key. RevenueDot verifies the token with the provider's published keys, signs the user in as their app user ID (moving purchases made before sign-in, like `logIn`), and returns an access token that reads customer info, attributes and in-app currency balances. See the [Auth guide](https://revenuedot.app/docs/guides/auth).
+</details>
+
+<details><summary><b>How do I stop sandbox and TestFlight purchases from unlocking premium for strangers?</b></summary>
+
+Set **Project settings → General → Sandbox testing access** to "Allowlisted app user IDs" and list your testers, or to "Nobody". The server then gives no entitlements or in-app currency for sandbox purchases by anyone else; the purchases are still recorded and sent to webhooks. See [Project settings](https://revenuedot.app/docs/guides/project-settings#sandbox-testing-access).
+</details>
+
+<details><summary><b>How do I block a fraudulent user from premium features?</b></summary>
+
+Block their app user ID under **Project settings → Blocked customers** or with `POST /v2/projects/{project_id}/blocked_customers`. Customer info then shows no entitlements on every platform and purchases credit no currency, while revenue and webhooks keep flowing. Unblock restores access at once.
+</details>
+
+<details><summary><b>Can I publish verified MRR and revenue numbers?</b></summary>
+
+Yes. **Project settings → Verified Metrics** publishes a public page at `/verified/<slug>` with your production MRR, revenue, subscriptions, trials and customers, 28-day sparklines and a link-preview image. It shows totals only, never customers or sandbox data.
 <details><summary><b>Does RevenueDot have an AI assistant like RevenueCat's Rico?</b></summary>
 
 Yes. RevenueCat's dashboard has Rico, an AI advisor that answers questions about your subscription data ([RevenueCat docs](https://www.revenuecat.com/docs/tools/rico)). RevenueDot AI does the same from the dashboard's sparkle button or the Overview's Ask bar, reads any of the 43 charts, customers, the catalog, experiments and webhook health, and can grant access, create products, set the current offering, pause experiments or replay webhooks after you approve each change. Admins choose read and write, read only, or off per project. Self-hosted, it uses your own Anthropic or OpenAI key and keeps conversations in your Postgres. Guide: [RevenueDot AI](https://revenuedot.app/docs/guides/revenuedot-ai).

@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { fontConfig, paywallLocales, servedLocalizations, uiConfig } from "./paywalls.js";
+import { brandColors, projectBrand } from "./brand.js";
 
 /**
  * Remote configuration for the SDKs (`POST /v1/config/app`). RevenueCat SDKs from iOS 5.83 on load paywalls only from
@@ -75,7 +76,7 @@ export interface Built { body: Uint8Array | null; manifest: string }
 export async function buildRemoteConfig(db: DB, projectId: string, origin: string, known: string | null, prefetched: string[]): Promise<Built> {
   const assetBase = `${origin}/assets/${projectId}`;
   const pws = await db.select().from(schema.paywalls).where(eq(schema.paywalls.projectId, projectId));
-  const ui = uiConfig(await fontConfig(db, projectId, assetBase), paywallLocales(pws));
+  const ui = uiConfig(await fontConfig(db, projectId, assetBase), paywallLocales(pws), brandColors(await projectBrand(db, projectId)));
   const blobs = new Map<string, Uint8Array>();
   const addBlob = async (value: unknown) => { const bytes = enc.encode(JSON.stringify(value)); const ref = await blobRef(bytes); blobs.set(ref, bytes); return ref; };
   const uiItems: Record<string, { blob_ref: string; prefetch: boolean }> = {};

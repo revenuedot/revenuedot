@@ -3,6 +3,7 @@ import { z } from "zod";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { findCustomer, getOrCreateCustomer } from "../../repo/customers.js";
+import { accessOf } from "../../repo/access.js";
 import { createSecretKey } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { recordDueExpirations } from "../../services/tick.js";
@@ -303,7 +304,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     return c.json({
       object: "test_purchase", scenario, store_transaction_id: token, event_types: recorded.map((r) => r.type),
       customer: await customerShape(db, owner, { now, detail: true }),
-      subscription: sub ? subscriptionShape(sub, owner.originalAppUserId, cat, rev!.get(sub.id) ?? 0, now) : null,
+      subscription: sub ? subscriptionShape(sub, owner.originalAppUserId, cat, rev!.get(sub.id) ?? 0, now, await accessOf(db, owner)) : null,
       purchase: one ? purchaseShape(one, owner.originalAppUserId, cat) : null,
     }, 201);
   });

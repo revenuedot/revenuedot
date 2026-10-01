@@ -37,14 +37,20 @@ const useC = () => useContext(C)!;
 
 // ---- Values ---------------------------------------------------------------------------------------------------------
 
+/** Named colours of the project's Brand presets (`ui_config.app.colors`), for `{ "type": "alias" }` colours. Set by the editor. */
+let ALIASES: Record<string, { light: Json; dark: Json }> = {};
+export function setColorAliases(a: Record<string, { light: Json; dark: Json }>) { ALIASES = a; }
+
 function color(scheme: unknown, dark: boolean): string | undefined {
   const s = scheme as Json | undefined;
   if (!s || typeof s !== "object") return undefined;
   const info = (dark && s.dark) || s.light;
-  return colorInfo(info);
+  return colorInfo(info, dark);
 }
-function colorInfo(info: Json | undefined): string | undefined {
+function colorInfo(info: Json | undefined, dark = false): string | undefined {
   if (!info) return undefined;
+  // Like the SDKs: an alias takes the preset's light or dark side; an unknown alias draws nothing.
+  if (info.type === "alias" && typeof info.value === "string") { const a = ALIASES[info.value]; return a ? colorInfo(dark ? a.dark : a.light) : "transparent"; }
   if (info.type === "hex" && typeof info.value === "string") return hexCss(info.value);
   if ((info.type === "linear" || info.type === "radial") && Array.isArray(info.points)) {
     const stops = info.points.map((p: Json) => `${hexCss(p.color)} ${p.percent}%`).join(", ");

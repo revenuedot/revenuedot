@@ -27,7 +27,7 @@ export function projectRoutes(r: V2Router, deps: Deps) {
     if (p.kind !== "user") throw new V2Error(403, "authorization_error", "Secret API keys are scoped to one project and cannot create projects. Sign in to the dashboard to create one.");
     const b = await body(c, ProjectCreate);
     const id = newId("proj", 8);
-    const [row] = await db.insert(schema.projects).values({ id, name: b.name, createdAt: deps.now() }).returning();
+    const [row] = await db.insert(schema.projects).values({ id, name: b.name, ownerUserId: p.userId, createdAt: deps.now() }).returning();
     await db.insert(schema.memberships).values({ userId: p.userId, projectId: id, role: "admin" });
     return c.json(projectShape(row!), 200);
   });
