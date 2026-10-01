@@ -1,5 +1,6 @@
 import { encodePath, sha256Hex, signV4 } from "./sigv4.js";
 import { googleAccessToken, parseServiceAccount } from "../google-sa.js";
+import { outboundUrlProblem } from "../outbound.js";
 
 /**
  * Where export files go. All three speak plain HTTPS with WebCrypto signing, so they work on Node and Workers:
@@ -14,7 +15,13 @@ export type Destination = "s3" | "r2" | "gcs";
 export const DESTINATIONS: Destination[] = ["s3", "r2", "gcs"];
 export const GCS_SCOPE = "https://www.googleapis.com/auth/devstorage.read_write";
 
-export interface StorageTarget { destination: Destination; config: Record<string, any>; secrets: Record<string, string> }
+export interface StorageTarget {
+  destination: Destination;
+  config: Record<string, any>;
+  secrets: Record<string, string>;
+  /** RevenueDot Cloud: refuse endpoints on private networks (services/outbound.ts). */
+  strictUrls?: boolean;
+}
 
 export class StorageError extends Error {
   constructor(message: string, public transient: boolean, public status: number | null = null) { super(message); }
@@ -44,7 +51,9 @@ const sendErr = async (what: string, res: Response) => {
   return new StorageError(`${what} answered HTTP ${res.status}${code ? ` (${code})` : ""}.`, res.status >= 500 || res.status === 429 || res.status === 408, res.status);
 };
 
-async function call(f: typeof fetch, url: string, init: RequestInit, what: string): Promise<Response> {
+async function call(t: StorageTarget, f: typeof fetch, url: string, init: RequestInit, what: string): Promise<Response> {
+  const problem = outboundUrlProblem(url, !!t.strictUrls);
+  if (problem) throw new StorageError(`The ${what} endpoint ${problem}.`, false);
   try { return await f(url, init); } catch (e) { throw new StorageError(`${what} did not answer: ${e instanceof Error ? e.message : String(e)}`, true); }
 }
 
@@ -55,7 +64,7 @@ export async function putObject(t: StorageTarget, key: string, bytes: Uint8Array
     if (!bucket) throw new StorageError("Set the bucket name.", false);
     const token = await gcsToken(t, f, now);
     const url = `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucket)}/o?uploadType=media&name=${encodeURIComponent(key)}`;
-    const res = await call(f, url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": contentType }, body: bytes as Uint8Array<ArrayBuffer> }, "Google Cloud Storage");
+    const res = await call(t, f, url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": contentType }, body: bytes as Uint8Array<ArrayBuffer> }, "Google Cloud Storage");
     if (!res.ok) throw await sendErr("Google Cloud Storage", res);
     return `gs://${bucket}/${key}`;
   }
@@ -67,7 +76,7 @@ export async function putObject(t: StorageTarget, key: string, bytes: Uint8Array
     method: "PUT", url, payloadHash: await sha256Hex(bytes), headers: { "content-type": contentType },
     accessKeyId: keyId, secretAccessKey: secret, region: b.region, service: "s3", now, contentSha256Header: true,
   });
-  const res = await call(f, url, { method: "PUT", headers: signed.headers, body: bytes as Uint8Array<ArrayBuffer> }, t.destination === "r2" ? "R2" : "S3");
+  const res = await call(t, f, url, { method: "PUT", headers: signed.headers, body: bytes as Uint8Array<ArrayBuffer> }, t.destination === "r2" ? "R2" : "S3");
   if (!res.ok) throw await sendErr(t.destination === "r2" ? "R2" : "S3", res);
   return `${t.destination === "r2" ? "r2" : "s3"}://${t.config.bucket}/${key}`;
 }
@@ -76,7 +85,7 @@ export async function putObject(t: StorageTarget, key: string, bytes: Uint8Array
 export async function checkBucket(t: StorageTarget, f: typeof fetch, now: Date): Promise<void> {
   if (t.destination === "gcs") {
     const token = await gcsToken(t, f, now);
-    const res = await call(f, `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(String(t.config.bucket ?? ""))}`, { headers: { authorization: `Bearer ${token}` } }, "Google Cloud Storage");
+    const res = await call(t, f, `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(String(t.config.bucket ?? ""))}`, { headers: { authorization: `Bearer ${token}` } }, "Google Cloud Storage");
     if (!res.ok) throw await sendErr("Google Cloud Storage", res);
     return;
   }
@@ -84,7 +93,7 @@ export async function checkBucket(t: StorageTarget, f: typeof fetch, now: Date):
   const keyId = String(t.config.access_key_id ?? ""), secret = t.secrets.secret_access_key;
   if (!keyId || !secret) throw new StorageError("Set the access key ID and secret access key.", false);
   const signed = await signV4({ method: "HEAD", url: b.bucketUrl, payloadHash: await sha256Hex(""), accessKeyId: keyId, secretAccessKey: secret, region: b.region, service: "s3", now, contentSha256Header: true });
-  const res = await call(f, b.bucketUrl, { method: "HEAD", headers: signed.headers }, t.destination === "r2" ? "R2" : "S3");
+  const res = await call(t, f, b.bucketUrl, { method: "HEAD", headers: signed.headers }, t.destination === "r2" ? "R2" : "S3");
   if (!res.ok) throw await sendErr(t.destination === "r2" ? "R2" : "S3", res);
 }
 

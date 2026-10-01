@@ -7,6 +7,7 @@ import { depsSecretKey, mergeSecrets, unseal } from "../../services/secrets.js";
 import { nextRunAt } from "../../services/exports/run.js";
 import { checkBucket, StorageError, type Destination } from "../../services/exports/storage.js";
 import { EXPORT_TABLES } from "../../services/exports/tables.js";
+import { outboundUrlProblem } from "../../services/outbound.js";
 import { V2Error, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Router } from "./common.js";
 
 /**
@@ -26,7 +27,7 @@ import { V2Error, body, listOf, notFound, pageParams, paginate, paramError, scop
 const Dest = z.enum(["s3", "r2", "gcs"]);
 const Config = z.object({
   bucket: z.string().trim().min(3).max(222).regex(/^[a-z0-9][a-z0-9._-]*[a-z0-9]$/, "must be a valid bucket name (lower case letters, digits, dots, dashes)").optional(),
-  prefix: z.string().trim().max(512).regex(/^[^\\]*$/).nullable().optional(),
+  prefix: z.string().trim().max(512).regex(/^[^\\]*$/).refine((p) => !p.split("/").some((seg) => seg === "." || seg === ".."), "must not contain . or .. folders").nullable().optional(),
   region: z.string().trim().regex(/^[a-z0-9-]{2,32}$/).nullable().optional(),
   endpoint: z.string().trim().url().refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL").nullable().optional(),
   account_id: z.string().trim().regex(/^[a-f0-9]{32}$/, "must be the 32-character Cloudflare account ID").nullable().optional(),
@@ -71,8 +72,10 @@ export function runShape(r: RunRow) {
   };
 }
 
-function checkDestination(dest: Destination, config: Record<string, unknown>, secrets: Record<string, string>) {
+function checkDestination(dest: Destination, config: Record<string, unknown>, secrets: Record<string, string>, strictUrls: boolean) {
   if (!config.bucket) throw paramError("config.bucket: set the bucket name.", "config.bucket");
+  const endpointProblem = typeof config.endpoint === "string" ? outboundUrlProblem(config.endpoint, strictUrls) : null;
+  if (endpointProblem) throw paramError(`config.endpoint: ${endpointProblem}.`, "config.endpoint");
   if (dest === "gcs") {
     let j: Record<string, unknown> | null = null;
     try { j = secrets.service_account_json ? JSON.parse(secrets.service_account_json) : null; } catch { j = null; }
@@ -103,7 +106,7 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, Create);
     const config = cleanConfig(b.config);
     const merged = await mergeSecrets(null, b.credentials ?? {}, await depsSecretKey(deps));
-    checkDestination(b.destination, config, merged.values);
+    checkDestination(b.destination, config, merged.values, deps.edition === "cloud");
     const schedule = b.schedule ?? "daily";
     const hourUtc = b.hour_utc ?? 3;
     const weekday = schedule === "weekly" ? b.weekday ?? 1 : null;
@@ -129,7 +132,7 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
     const creds: Record<string, string | null | undefined> = { ...(b.credentials ?? {}) };
     if (b.destination && SECRET_FIELDS[b.destination] !== SECRET_FIELDS[j.destination as Destination]) creds[SECRET_FIELDS[j.destination as Destination]] = null;
     const merged = await mergeSecrets(j.secrets, creds, await depsSecretKey(deps));
-    checkDestination(destination, config, merged.values);
+    checkDestination(destination, config, merged.values, deps.edition === "cloud");
     const schedule = b.schedule ?? j.schedule, hourUtc = b.hour_utc ?? j.hourUtc;
     const weekday = schedule === "weekly" ? (b.weekday !== undefined ? b.weekday ?? 1 : j.weekday ?? 1) : null;
     const timing = b.schedule !== undefined || b.hour_utc !== undefined || b.weekday !== undefined || b.enabled === true;
@@ -170,7 +173,7 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
     const now = deps.now();
     try {
       const secrets = await unseal(j.secrets, await depsSecretKey(deps));
-      await checkBucket({ destination: j.destination as Destination, config: j.destinationConfig, secrets }, deps.fetch ?? fetch, now);
+      await checkBucket({ destination: j.destination as Destination, config: j.destinationConfig, secrets, strictUrls: deps.edition === "cloud" }, deps.fetch ?? fetch, now);
       return c.json({ object: "storage_check", export_id: j.id, ok: true, message: `RevenueDot can reach the bucket ${j.destinationConfig.bucket}.`, checked_at: now.getTime() });
     } catch (e) {
       const message = e instanceof StorageError && e.status === 403 ? `${e.message} Check that the credentials can list and write to the bucket.`

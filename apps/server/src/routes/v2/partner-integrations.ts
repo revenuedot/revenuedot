@@ -7,6 +7,7 @@ import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer } from "../../repo/customers.js";
 import { depsSecretKey, mergeSecrets } from "../../services/secrets.js";
 import { requeueIntegrationDelivery } from "../../services/integrations/deliver.js";
+import { outboundUrlProblem } from "../../services/outbound.js";
 import { V2Error, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Router } from "./common.js";
 import { ALL_WEBHOOK_EVENT_TYPES } from "./integrations.js";
 
@@ -94,15 +95,24 @@ function checkField(f: IntegrationField, v: unknown, at: string): unknown {
 }
 
 /** Required fields and cross-field rules, on the merged result. */
-function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>, secrets: Record<string, string>) {
+function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>, secrets: Record<string, string>, strictUrls: boolean) {
   for (const f of spec.fields) {
     if (!f.required) continue;
     const has = f.type === "secret" ? !!secrets[f.key] : settings[f.key] !== undefined && settings[f.key] !== null && settings[f.key] !== "";
     if (!has) throw paramError(`settings.${f.key}: ${f.label} is required for ${spec.name}.`, `settings.${f.key}`);
   }
-  // Slack only issues https URLs; plain http is allowed for a local test receiver.
-  if (spec.kind === "slack" && secrets.webhook_url && !/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/)/i.test(secrets.webhook_url)) throw paramError("settings.webhook_url: must be an https URL.", "settings.webhook_url");
-  if (spec.kind === "posthog" && settings.region === "custom" && !/^https?:\/\/[^/]+/i.test(String(settings.host ?? ""))) throw paramError("settings.host: enter your PostHog URL, such as https://posthog.example.com.", "settings.host");
+  // Slack only issues https URLs. A self-hosted server may also post to its own network (a local test receiver);
+  // RevenueDot Cloud refuses private addresses (services/outbound.ts).
+  if (spec.kind === "slack" && secrets.webhook_url) {
+    const problem = outboundUrlProblem(secrets.webhook_url, strictUrls) ?? (strictUrls || /^https:/i.test(secrets.webhook_url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(secrets.webhook_url) ? null : "must be an https URL");
+    if (problem) throw paramError(`settings.webhook_url: ${problem}.`, "settings.webhook_url");
+  }
+  if (spec.kind === "posthog" && settings.region === "custom") {
+    const host = String(settings.host ?? "");
+    let problem = /^https?:\/\/[^/]+/i.test(host) ? outboundUrlProblem(host, strictUrls) : "enter your PostHog URL, such as https://posthog.example.com";
+    if (!problem && (host.includes("?") || host.includes("#"))) problem = "must be the PostHog address only, without ? or #";
+    if (problem) throw paramError(`settings.host: ${problem}.`, "settings.host");
+  }
   if (spec.kind === "bigquery" && secrets.service_account_json) {
     let j: Record<string, unknown> | null = null;
     try { j = JSON.parse(secrets.service_account_json); } catch { j = null; }
@@ -149,7 +159,7 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const { plain, secrets } = splitSettings(spec, b.settings ?? {});
     const settings = Object.fromEntries(Object.entries(plain).filter(([, v]) => v !== null));
     const merged = await mergeSecrets(null, secrets, await key());
-    checkComplete(spec, settings, merged.values);
+    checkComplete(spec, settings, merged.values, deps.edition === "cloud");
     const now = deps.now();
     const [row] = await db.insert(schema.integrations).values({
       id: newId("intg_", 14), projectId, kind: b.type, name: b.name ?? spec.name, enabled: b.enabled ?? true,
@@ -170,7 +180,7 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const settings: Record<string, unknown> = { ...i.settings };
     for (const [k, v] of Object.entries(plain)) { if (v === null) delete settings[k]; else settings[k] = v; }
     const merged = await mergeSecrets(i.secrets, secrets, await key());
-    checkComplete(spec, settings, merged.values);
+    checkComplete(spec, settings, merged.values, deps.edition === "cloud");
     const et = types(b.event_types);
     const [row] = await db.update(schema.integrations).set({
       ...(b.name !== undefined ? { name: b.name } : {}), ...(b.enabled !== undefined ? { enabled: b.enabled } : {}),

@@ -1,8 +1,10 @@
 /**
  * Google service-account sign-in with WebCrypto only (Node and Cloudflare Workers): an RS256 JWT assertion exchanged for
  * an OAuth access token (https://developers.google.com/identity/protocols/oauth2/service-account#httprest).
- * Used by the BigQuery integration and Google Cloud Storage exports. Tokens are cached per account and scope until a
- * minute before they expire.
+ * Used by the BigQuery integration and Google Cloud Storage exports. Tokens are cached per private key and scope until a
+ * minute before they expire, so a key pasted into one project can never pick up a token minted for another.
+ * The key file's `token_uri` is ignored: the assertion always goes to Google's token endpoint, never to a URL a
+ * customer could point at the server's own network.
  */
 
 export interface ServiceAccountKey { client_email: string; private_key: string; private_key_id?: string; token_uri?: string; project_id?: string }
@@ -53,20 +55,25 @@ function importKey(pem: string): Promise<CryptoKey> {
 export async function serviceAccountAssertion(sa: ServiceAccountKey, scope: string, nowMs: number): Promise<string> {
   const iat = Math.floor(nowMs / 1000);
   const header = { alg: "RS256", typ: "JWT", ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) };
-  const claims = { iss: sa.client_email, scope, aud: sa.token_uri ?? GOOGLE_TOKEN_URL, iat, exp: iat + 3600 };
+  const claims = { iss: sa.client_email, scope, aud: GOOGLE_TOKEN_URL, iat, exp: iat + 3600 };
   const input = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
   const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", await importKey(sa.private_key), new TextEncoder().encode(input)));
   return `${input}.${b64url(sig)}`;
 }
 
+async function keyFingerprint(pem: string) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pem));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function googleAccessToken(sa: ServiceAccountKey, scope: string, fetchImpl: typeof fetch, nowMs = Date.now()): Promise<string> {
-  const cacheKey = `${sa.client_email}|${sa.private_key_id ?? ""}|${scope}`;
+  const cacheKey = `${sa.client_email}|${await keyFingerprint(sa.private_key)}|${scope}`;
   const hit = tokens.get(cacheKey);
   if (hit && hit.expiresAt > nowMs + 60_000) return hit.token;
   const assertion = await serviceAccountAssertion(sa, scope, nowMs);
   let res: Response;
   try {
-    res = await fetchImpl(sa.token_uri ?? GOOGLE_TOKEN_URL, {
+    res = await fetchImpl(GOOGLE_TOKEN_URL, {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }).toString(),
     });

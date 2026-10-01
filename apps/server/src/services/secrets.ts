@@ -12,31 +12,50 @@ import { fromBase64, toBase64 } from "./signing.js";
 
 export type SecretMap = Record<string, string>;
 
-export interface SecretKey { id: string; key: CryptoKey }
+export interface SecretKey {
+  id: string;
+  key: CryptoKey;
+  /**
+   * Older keys that may still open stored secrets: with REVENUEDOT_ENCRYPTION_KEY set, the key derived from
+   * REVENUEDOT_SIGNING_KEY, so a server that adds a dedicated key later keeps reading what it sealed before.
+   */
+  previous?: SecretKey[];
+}
 
 const cache = new Map<string, Promise<SecretKey | null>>();
 
 const sha256 = async (b: Uint8Array) => new Uint8Array(await crypto.subtle.digest("SHA-256", b as Uint8Array<ArrayBuffer>));
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 
+async function aesKey(raw: Uint8Array<ArrayBuffer>): Promise<SecretKey> {
+  const key = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  return { id: hex(await sha256(raw)).slice(0, 8), key };
+}
+
+async function derivedFromSigningKey(signingKey: string): Promise<SecretKey> {
+  const ikm = await crypto.subtle.importKey("raw", fromBase64(signingKey), "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode("revenuedot"), info: new TextEncoder().encode("integration secrets v1") }, ikm, 256);
+  return aesKey(new Uint8Array(bits));
+}
+
 /** Resolves the sealing key: an explicit encryption key wins, else one derived from the signing key, else none. */
 export function secretKeyFrom(encryptionKey?: string | null, signingKey?: string | null): Promise<SecretKey | null> {
-  const id = `${encryptionKey ?? ""}|${signingKey ?? ""}`;
+  const enc = encryptionKey?.trim() || "", sign = signingKey?.trim() || "";
+  const id = `${enc}|${sign}`;
   let p = cache.get(id);
   if (!p) {
     p = (async () => {
-      let raw: Uint8Array<ArrayBuffer> | null = null;
-      if (encryptionKey?.trim()) {
-        raw = fromBase64(encryptionKey.trim());
+      if (enc) {
+        const raw = fromBase64(enc);
         if (raw.length !== 32) throw new Error("REVENUEDOT_ENCRYPTION_KEY must be the base64 of 32 random bytes (openssl rand -base64 32).");
-      } else if (signingKey?.trim()) {
-        const ikm = await crypto.subtle.importKey("raw", fromBase64(signingKey.trim()), "HKDF", false, ["deriveBits"]);
-        raw = new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode("revenuedot"), info: new TextEncoder().encode("integration secrets v1") }, ikm, 256));
+        const primary = await aesKey(raw);
+        if (sign) primary.previous = [await derivedFromSigningKey(sign)];
+        return primary;
       }
-      if (!raw) return null;
-      const key = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-      return { id: hex(await sha256(raw)).slice(0, 8), key };
+      return sign ? derivedFromSigningKey(sign) : null;
     })();
+    // A bad key fails every call the same way; do not keep the rejected promise around.
+    p.catch(() => cache.delete(id));
     cache.set(id, p);
   }
   return p;
@@ -66,9 +85,10 @@ export async function unseal(stored: string | null | undefined, key: SecretKey |
   const [v, id, iv, ct] = stored.split(":");
   if (v !== "v1" || !iv || !ct) throw new SecretsError("The stored credentials are in an unknown format. Enter them again.");
   if (!key) throw new SecretsError("The credentials are encrypted, but this server has no REVENUEDOT_ENCRYPTION_KEY or REVENUEDOT_SIGNING_KEY to decrypt them.");
-  if (key.id !== id) throw new SecretsError("The credentials were encrypted with a different key (REVENUEDOT_ENCRYPTION_KEY or REVENUEDOT_SIGNING_KEY changed). Enter them again.");
+  const match = [key, ...(key.previous ?? [])].find((k) => k.id === id);
+  if (!match) throw new SecretsError("The credentials were encrypted with a different key (REVENUEDOT_ENCRYPTION_KEY or REVENUEDOT_SIGNING_KEY changed). Enter them again.");
   try {
-    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64(iv) }, key.key, fromBase64(ct));
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase64(iv) }, match.key, fromBase64(ct));
     return JSON.parse(new TextDecoder().decode(pt));
   } catch {
     throw new SecretsError("The stored credentials could not be decrypted. Enter them again.");
