@@ -35,8 +35,8 @@ rewardedAd.setServerSideVerificationOptions(
         .build()
 )
 
-// When the ad's reward callback fires
-Purchases.sharedInstance.pollRewardVerificationWith(token.clientTransactionID, onResult = { result -> /* … */ })`;
+// When the ad's reward callback fires (in a coroutine)
+val result = Purchases.sharedInstance.awaitPollRewardVerification(token.clientTransactionId)`;
 
 interface Currency { code: string; name: string }
 interface Entitlement { id: string; lookup_key: string; display_name: string }
