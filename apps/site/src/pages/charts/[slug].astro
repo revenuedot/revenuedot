@@ -38,7 +38,7 @@ const shape = d.shape === "stock" ? "A snapshot at the end of each period" : d.s
     <PageHead label={`Chart · ${group}`} title={page.title}>
       <Md class="lede answer" text={page.answer} />
       <div class="btns">
-        <a class="btn" href={SITE.signup}>See your {d.display_name} free</a>
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
         <a class="btn secondary" href="/charts">All {CHART_PAGES.length} charts <span class="arrow">→</span></a>
       </div>
     </PageHead>
@@ -117,11 +117,12 @@ const shape = d.shape === "stock" ? "A snapshot at the end of each period" : d.s
   .formula { color: var(--fg) !important; font-size: 17px !important; font-weight: 600; }
   .mono { font-family: var(--mono); color: var(--fg) !important; }
   .two { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .two > * { min-width: 0; }
   .two .head { margin-bottom: 0; position: sticky; top: 96px; }
   .prose :global(p) { margin-bottom: 16px; }
   .prose :global(a) { color: var(--fg); }
   .more { margin-top: 12px; }
   .more a { color: var(--fg); }
   .h2.sm { font-size: clamp(26px, 3vw, 36px); }
-  @media (max-width: 900px) { .two { grid-template-columns: 1fr; gap: 24px; } .two .head { position: static; } .span2 { grid-column: auto; } }
+  @media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); gap: 24px; } .two .head { position: static; } .span2 { grid-column: auto; } }
 </style>

@@ -186,3 +186,7 @@ dialog.search::backdrop { background: rgb(10 10 10 / .4); }
 /* Blog: the cover sits above the post; images inside posts are full width with a hairline frame. */
 .dbody .cover { display: block; width: 100%; height: auto; margin: 0 0 32px; background: #FFFFFF; }
 .dbody p > img { display: block; width: 100%; height: auto; margin: 8px 0; background: #FFFFFF; }
+/* Long identifiers (event names, URLs) wrap on phones instead of widening the page. */
+.dmain, .dbody { min-width: 0; }
+.dbody { overflow-wrap: break-word; }
+.dbody :not(pre) > code { overflow-wrap: anywhere; }

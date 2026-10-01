@@ -45,7 +45,8 @@ const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^
   </section>
 ))}
 <style>
-  .body { display: grid; gap: 20px; max-width: 920px; }
+  .body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; max-width: 920px; }
+  .body > :global(*) { min-width: 0; }
   .body :global(.lede-p) { font-size: 17px; line-height: 1.65; color: var(--fg-2); max-width: 760px; }
   .body :global(.lede-p a), .ticks :global(a), .steps :global(a) { color: var(--fg); }
   .ticks { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; max-width: 760px; }

@@ -14,7 +14,7 @@ export async function getStaticPaths() {
 
 const { post, newer, older } = Astro.props as { post: BlogPost; newer?: BlogPost; older?: BlogPost };
 const { Content, headings } = await render(post.entry);
-const { title, description, href: path, date, author, image: cover } = post;
+const { title, description, href: path, date, author } = post;
 const image = ogFor(path);
 const modified = lastModified(`${post.entry.id}.md`);
 const fullTitle = [" | RevenueDot Blog", " | RevenueDot"].map((s) => title + s).find((t) => t.length <= 70) ?? title;
@@ -39,6 +39,5 @@ const item = (p?: BlogPost) => p && { id: p.entry.id, href: p.href, label: p.tit
   image={image}
   jsonld={[blogPosting({ title, description, path, published: date || undefined, modified, author, image })]}
 >
-  {cover && <img class="cover" src={cover} alt="" width="1600" height="900" fetchpriority="high" decoding="async" />}
   <Content />
 </Docs>
