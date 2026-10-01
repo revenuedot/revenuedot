@@ -18,7 +18,10 @@ import { SdkSetup } from "./sdk";
  * App Store: name, bundle ID, URL scheme, in-app purchase key (.p8 + key ID + issuer ID) with a live check against Apple,
  * App Store Connect API key + vendor number, server notification URL with live "last received", forwarding URL,
  * "track new purchases", collapsed extras, public key, REST identifier, delete. Google Play: package name, service
- * account JSON with a live check, Pub/Sub push endpoint and steps. Test Store: nothing to configure, a test purchase.
+ * account JSON with a live check, Pub/Sub push endpoint and steps. Amazon Appstore: package name, shared key with a live
+ * RVS check, the Real-time Notifications URL (SNS) with its live status, an optional pinned SNS topic. Stripe: restricted
+ * key with a live check, webhook URL with the events to select and the signing secret, how app user ids are found, when
+ * a subscription counts, and server snippets for POST /v1/receipts. Test Store: nothing to configure, a test purchase.
  *
  * GAPS vs RevenueCat (later tiers; each shows as a note in its collapsed section):
  * - "Apply in App Store Connect" (setting the notification URL through Apple's API) and Apple's "request a test
@@ -36,6 +39,8 @@ type Draft = {
   sharedSecret: string; xcodeCert: string;
   sa: { name: string; text: string } | null;
   forwardUrl: string; trackNew: boolean; allowUnsigned: boolean;
+  amazonSecret: string; snsTopic: string;
+  stripeKey: string; stripeWhsec: string; stripeAccount: string; userSource: "metadata" | "customer_id" | "anonymous"; metadataKey: string; registerOn: "invoice_paid" | "invoice_created";
 };
 
 const initial = (a: App, s: StoreSettings): Draft => ({
@@ -45,7 +50,19 @@ const initial = (a: App, s: StoreSettings): Draft => ({
   vendor: s.credentials.app_store_connect_api_key.vendor_number ?? "",
   sharedSecret: "", xcodeCert: "", sa: null,
   forwardUrl: s.notification_forward_url ?? "", trackNew: s.track_new_purchases, allowUnsigned: s.allow_unsigned_receipts,
+  amazonSecret: "", snsTopic: s.sns_topic_arn ?? "",
+  stripeKey: "", stripeWhsec: "", stripeAccount: s.stripe?.stripe_account_id ?? "", userSource: s.stripe?.app_user_id_source ?? "metadata",
+  metadataKey: s.stripe?.app_user_id_metadata_key ?? "app_user_id", registerOn: s.stripe?.register_on ?? "invoice_paid",
 });
+
+type StoreName = "Apple" | "Google" | "Amazon" | "Stripe";
+const storeName = (type: App["type"]): StoreName => (type === "play_store" ? "Google" : type === "amazon" ? "Amazon" : type === "stripe" ? "Stripe" : "Apple");
+
+/** The Stripe events the webhook endpoint needs (RevenueCat's list plus the ones RevenueDot also reads). */
+export const STRIPE_EVENTS = [
+  "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "customer.subscription.paused", "customer.subscription.resumed",
+  "invoice.paid", "invoice.payment_failed", "invoice.updated", "charge.refunded", "checkout.session.completed",
+];
 
 const KEY_ID = /^[A-Z0-9]{10}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,9 +102,21 @@ function validate(type: App["type"], d: Draft, s: StoreSettings, origin: string)
     if (d.sharedSecret && !/^[0-9a-f]{32}$/i.test(d.sharedSecret.trim())) e.sharedSecret = "A shared secret is 32 letters and digits.";
     if (d.xcodeCert && !/BEGIN CERTIFICATE/.test(d.xcodeCert)) e.xcodeCert = "Paste the certificate as PEM text (-----BEGIN CERTIFICATE-----).";
   }
-  if (type === "play_store") {
+  if (type === "play_store" || type === "amazon") {
     if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(d.storeId.trim())) e.storeId = "A package name looks like com.company.app.";
     if (d.sa) { const p = parseServiceAccount(d.sa.text); if (typeof p === "string") e.sa = p; }
+  }
+  if (type === "amazon") {
+    if (d.amazonSecret && /\s/.test(d.amazonSecret.trim())) e.amazonSecret = "The shared key has no spaces. Copy it again from Settings → Identity.";
+    if (d.snsTopic.trim() && !/^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w-]+$/.test(d.snsTopic.trim())) e.snsTopic = "An SNS topic ARN looks like arn:aws:sns:us-east-1:123456789012:topic-name.";
+  }
+  if (type === "stripe") {
+    const k = d.stripeKey.trim();
+    if (k && /^pk_/.test(k)) e.stripeKey = "This is a publishable key (pk_…). Paste a restricted key (rk_…) instead.";
+    else if (k && !/^(rk|sk)_(live|test)_[A-Za-z0-9]+$/.test(k)) e.stripeKey = "A restricted key starts with rk_live_ or rk_test_.";
+    if (d.stripeWhsec.trim() && !/^whsec_[A-Za-z0-9+/=]+$/.test(d.stripeWhsec.trim())) e.stripeWhsec = "The signing secret starts with whsec_.";
+    if (d.stripeAccount.trim() && !/^acct_[A-Za-z0-9]+$/.test(d.stripeAccount.trim())) e.stripeAccount = "A Stripe account id starts with acct_.";
+    if (d.userSource === "metadata" && !/^[\w.-]{1,40}$/.test(d.metadataKey.trim())) e.metadataKey = "Use the metadata key you set in Stripe, for example app_user_id.";
   }
   const f = d.forwardUrl.trim();
   if (f) {
@@ -121,17 +150,21 @@ function CheckResult({ state }: { state: { busy: boolean; result: CredentialsChe
 }
 
 /** "Last received" for store notifications, refreshed every 10 seconds while the page is open. */
-function NotificationStatus({ s, store }: { s: StoreSettings; store: "Apple" | "Google" }) {
+function NotificationStatus({ s, store }: { s: StoreSettings; store: StoreName }) {
   if (s.last_notification_error) return <StatusLine tone="bad">The last notification from {store} could not be processed: {s.last_notification_error}</StatusLine>;
   if (s.last_notification_at) return <StatusLine tone="ok">{store} notifications are configured correctly. Last received {fmt.ago(s.last_notification_at)} ({fmt.dateTime(s.last_notification_at)}).</StatusLine>;
   return <StatusLine tone="live">Waiting for the first notification from {store}. This updates by itself once {store} sends one.</StatusLine>;
 }
 
-function ForwardField({ d, set, errors, s, store }: { d: Draft; set: (p: Partial<Draft>) => void; errors: Record<string, string>; s: StoreSettings; store: "Apple" | "Google" }) {
+const FORWARD_NAME: Record<StoreName, string> = {
+  Apple: " Apple Server Notification URL", Google: " Google real-time notification URL", Amazon: " Amazon Real-time Notifications URL", Stripe: " Stripe webhook endpoint URL",
+};
+
+function ForwardField({ d, set, errors, s, store }: { d: Draft; set: (p: Partial<Draft>) => void; errors: Record<string, string>; s: StoreSettings; store: StoreName }) {
   return (
     <Field label="Forward notifications to RevenueCat or your own server" htmlFor="forward-url" error={errors.forwardUrl} hint={<>
       Optional. RevenueDot sends every {store} notification, unchanged, to this URL as well. Running side by side with RevenueCat? Paste the
-      {store === "Apple" ? " Apple Server Notification URL" : " Google real-time notification URL"} from your RevenueCat app settings here, so both stay up to date while you switch.
+      {FORWARD_NAME[store]} from your RevenueCat app settings here, so both stay up to date while you switch.
       {s.last_forward && <> Last forward: <span className="mono">{s.last_forward.status === 0 ? "no answer" : `HTTP ${s.last_forward.status}`}</span>, {fmt.ago(s.last_forward.at)}.</>}
     </>}>
       <input id="forward-url" className="input mono" inputMode="url" placeholder="https://api.revenuecat.com/v1/incoming-webhooks/…" value={d.forwardUrl}
@@ -140,13 +173,15 @@ function ForwardField({ d, set, errors, s, store }: { d: Draft; set: (p: Partial
   );
 }
 
-function TrackNew({ d, set, store }: { d: Draft; set: (p: Partial<Draft>) => void; store: "Apple" | "Google" }) {
-  return (
-    <Check checked={d.trackNew} onChange={(v) => set({ trackNew: v })} label="Track new purchases from server-to-server notifications"
-      hint={store === "Apple"
-        ? "Record purchases RevenueDot first hears about from Apple, for example one made before your app sent its receipt. The customer is matched by the purchase's appAccountToken, or gets an anonymous ID."
-        : "Record purchases RevenueDot first hears about from Google. The customer is matched by the obfuscated account ID set at purchase, or gets an anonymous ID."} />
-  );
+const TRACK_HINT: Record<StoreName, string> = {
+  Apple: "Record purchases RevenueDot first hears about from Apple, for example one made before your app sent its receipt. The customer is matched by the purchase's appAccountToken, or gets an anonymous ID.",
+  Google: "Record purchases RevenueDot first hears about from Google. The customer is matched by the obfuscated account ID set at purchase, or gets an anonymous ID.",
+  Amazon: "Record purchases RevenueDot first hears about from Amazon. Amazon's notifications carry no app user ID, so the customer gets an anonymous ID until the app posts the receipt.",
+  Stripe: "Record subscriptions and Checkout purchases RevenueDot first hears about from Stripe, even if your backend never posts them. The customer is found as set below.",
+};
+
+function TrackNew({ d, set, store }: { d: Draft; set: (p: Partial<Draft>) => void; store: StoreName }) {
+  return <Check checked={d.trackNew} onChange={(v) => set({ trackNew: v })} label="Track new purchases from server-to-server notifications" hint={TRACK_HINT[store]} />;
 }
 
 function TestPurchase({ pid, app }: { pid: string; app: App }) {
@@ -240,12 +275,15 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [check, setCheck] = useState<{ busy: boolean; result: CredentialsCheck | null; error: string | null }>({ busy: false, result: null, error: null });
-  const [replacing, setReplacing] = useState<{ p8?: boolean; asc?: boolean; sa?: boolean; secret?: boolean }>({});
+  const [replacing, setReplacing] = useState<{ p8?: boolean; asc?: boolean; sa?: boolean; secret?: boolean; amazon?: boolean; stripeKey?: boolean; whsec?: boolean }>({});
   const [deleting, setDeleting] = useState(false);
   const set = (p: Partial<Draft>) => { setTouched(true); setD((x) => ({ ...x, ...p })); setErrors((e) => { const n = { ...e }; for (const k of Object.keys(p)) delete n[k]; return n; }); };
   const apple = app.type === "app_store" || app.type === "mac_app_store";
   const google = app.type === "play_store";
+  const amazon = app.type === "amazon";
+  const stripe = app.type === "stripe";
   const test = app.type === "test_store";
+  const name = storeName(app.type);
   const dirty = JSON.stringify(d) !== JSON.stringify(start);
   const sa = d.sa ? parseServiceAccount(d.sa.text) : null;
 
@@ -260,6 +298,8 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
     setCheck({ busy: true, result: null, error: null });
     const json = !useDraft ? {} : apple
       ? { [app.type]: { bundle_id: d.storeId.trim() || null, subscription_private_key: d.p8?.text ?? null, subscription_key_id: d.keyId.trim() || null, subscription_key_issuer: d.issuerId.trim() || null } }
+      : amazon ? { amazon: { package_name: d.storeId.trim() || null, shared_secret: d.amazonSecret.trim() || null } }
+      : stripe ? { stripe: { stripe_secret_key: d.stripeKey.trim() || null, stripe_account_id: d.stripeAccount.trim() || null } }
       : { play_store: { package_name: d.storeId.trim() || null, play_service_account_credentials_json: d.sa?.text ?? null } };
     try {
       const r = await api<CredentialsCheck>(`${base(pid)}/apps/${app.id}/actions/verify_credentials`, { method: "POST", json });
@@ -295,7 +335,20 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
       put("package_name", d.storeId.trim(), start.storeId);
       if (d.sa) { details.play_service_account_credentials_json = d.sa.text.trim(); credsChanged = true; }
     }
-    if (apple || google) {
+    if (amazon) {
+      put("package_name", d.storeId.trim(), start.storeId);
+      if (d.amazonSecret.trim()) { details.shared_secret = d.amazonSecret.trim(); credsChanged = true; }
+      put("sns_topic_arn", d.snsTopic.trim() || null, start.snsTopic || null);
+    }
+    if (stripe) {
+      if (d.stripeKey.trim()) { details.stripe_secret_key = d.stripeKey.trim(); credsChanged = true; }
+      if (d.stripeWhsec.trim()) details.stripe_webhook_secret = d.stripeWhsec.trim();
+      put("stripe_account_id", d.stripeAccount.trim() || null, start.stripeAccount || null);
+      put("app_user_id_source", d.userSource, start.userSource);
+      put("app_user_id_metadata_key", d.metadataKey.trim(), start.metadataKey);
+      put("register_on", d.registerOn, start.registerOn);
+    }
+    if (!test) {
       put("notification_forward_url", d.forwardUrl.trim() || null, start.forwardUrl || null);
       put("track_new_purchases", d.trackNew, start.trackNew);
     }
@@ -326,6 +379,13 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const cr = s.credentials;
   const keyOk = cr.subscription_key.configured;
   const saOk = cr.play_service_account.configured;
+  const amazonOk = !!cr.amazon_shared_secret?.configured;
+  const stripeKey = cr.stripe_secret_key;
+  const stripeOk = !!stripeKey?.configured;
+  const whsecOk = !!cr.stripe_webhook_secret?.configured;
+  const credsOk = apple ? keyOk : google ? saOk : amazon ? amazonOk : stripeOk;
+  const credsName = apple ? "In-app purchase key" : google ? "Service account" : amazon ? "Shared key" : "Stripe API key";
+  const notifName = apple ? "Server notifications" : google ? "Real-time developer notifications" : amazon ? "Real-time Notifications" : "Stripe webhooks";
 
   return (
     <div className="page narrow">
@@ -338,11 +398,13 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
 
       {!test && (
         <section className="panel" aria-label="Setup checklist">
-          <div className="ph"><b>Setup checklist</b><span className="link">{[apple ? keyOk : saOk, !!s.last_notification_at].filter(Boolean).length} of 2 verified</span></div>
+          <div className="ph"><b>Setup checklist</b><span className="link">{[credsOk, !!s.last_notification_at].filter(Boolean).length} of 2 verified</span></div>
           <div className="pb stack tight">
-            <StatusLine tone={(apple ? keyOk : saOk) ? "ok" : "bad"}><a className="linkish" href="#credentials">{apple ? "In-app purchase key" : "Service account"}</a> {(apple ? keyOk : saOk) ? "is saved." : "is missing. RevenueDot needs it to check purchases with " + (apple ? "Apple." : "Google.")}</StatusLine>
-            <StatusLine tone={s.last_notification_at ? "ok" : "idle"}><a className="linkish" href="#notifications">{apple ? "Server notifications" : "Real-time developer notifications"}</a> {s.last_notification_at ? `arrive (last ${fmt.ago(s.last_notification_at)}).` : "have not arrived yet."}</StatusLine>
-            <StatusLine tone="idle"><a className="linkish" href="#sdk">SDK</a>: set the proxy URL and this app's key in your app, then make a sandbox purchase.</StatusLine>
+            <StatusLine tone={credsOk ? "ok" : "bad"}><a className="linkish" href="#credentials">{credsName}</a> {credsOk ? "is saved." : `is missing. RevenueDot needs it to check purchases with ${name}.`}</StatusLine>
+            <StatusLine tone={s.last_notification_at ? "ok" : "idle"}><a className="linkish" href="#notifications">{notifName}</a> {s.last_notification_at ? `arrive (last ${fmt.ago(s.last_notification_at)}).` : "have not arrived yet."}</StatusLine>
+            {stripe
+              ? <StatusLine tone="idle"><a className="linkish" href="#sdk">Your backend</a>: post each new subscription or Checkout Session to <span className="mono">/v1/receipts</span> with this app's key.</StatusLine>
+              : <StatusLine tone="idle"><a className="linkish" href="#sdk">SDK</a>: set the proxy URL and this app's key in your app, then make a sandbox purchase.</StatusLine>}
           </div>
         </section>
       )}
@@ -352,8 +414,8 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           <Field label="App name" htmlFor="app-name" error={errors.name}>
             <input id="app-name" className="input" maxLength={255} value={d.name} aria-invalid={!!errors.name} onChange={(e) => set({ name: e.target.value })} />
           </Field>
-          {(apple || google) && (
-            <Field label={store.idLabel!} htmlFor="f-storeId" error={errors.storeId} hint={apple ? "In Xcode: your target → General → Bundle Identifier." : "Shown under your app's name in Play Console."}>
+          {(apple || google || amazon) && (
+            <Field label={store.idLabel!} htmlFor="f-storeId" error={errors.storeId} hint={apple ? "In Xcode: your target → General → Bundle Identifier." : amazon ? "Your app's package name in the Amazon Appstore Console." : "Shown under your app's name in Play Console."}>
               <input id="f-storeId" className="input mono" value={d.storeId} spellCheck={false} aria-invalid={!!errors.storeId} onChange={(e) => set({ storeId: e.target.value })} />
             </Field>
           )}
@@ -488,6 +550,122 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
         </Section>
       )}
 
+      {amazon && (
+        <Section id="credentials" title="Amazon shared key" tag={<span className="tag gold">Required</span>}>
+          <p className="section-sub">RevenueDot sends every Amazon receipt to Amazon's Receipt Verification Service with this key, to check the purchase and read renewals and cancellations.</p>
+          <ol className="steps">
+            <li>Sign in to the <a href="https://developer.amazon.com/settings/console/sdk/shared-key" target="_blank" rel="noreferrer">Amazon Developer Console → Settings → Identity</a>.</li>
+            <li>Copy the <b>Shared Key</b> and paste it below.</li>
+            <li>Check it. Amazon answers right away; a wrong key is reported here, never on a customer's purchase.</li>
+          </ol>
+          {amazonOk && !replacing.amazon && !d.amazonSecret
+            ? <Saved onReplace={() => setReplacing({ ...replacing, amazon: true })} replaceLabel="Replace key">A shared key is saved. It is never shown again.</Saved>
+            : (
+              <Field label="Shared key" htmlFor="f-amazonSecret" error={errors.amazonSecret}>
+                <input id="f-amazonSecret" className="input mono" type="password" autoComplete="off" spellCheck={false} value={d.amazonSecret} aria-invalid={!!errors.amazonSecret} onChange={(e) => set({ amazonSecret: e.target.value })} />
+              </Field>
+            )}
+          <div className="hrow">
+            <button type="button" className="btn btn-line" disabled={check.busy || (!amazonOk && !d.amazonSecret.trim())} onClick={() => runCheck(true)}><Icon name="refresh" />Check credentials</button>
+            <CheckResult state={check} />
+          </div>
+        </Section>
+      )}
+
+      {amazon && s.notification_url && (
+        <Section id="notifications" title="Amazon Real-time Notifications">
+          <p className="section-sub">Amazon tells RevenueDot about renewals, cancellations and refunds of one-time purchases as they happen, through Amazon SNS. Every message's SNS signature is checked.</p>
+          <Field label="Real-time Notifications URL" htmlFor="notif-url">
+            <CopyField value={s.notification_url} label="notification URL" />
+          </Field>
+          <NotificationStatus s={s} store="Amazon" />
+          <ol className="steps">
+            <li>In the <a href="https://developer.amazon.com/apps-and-games/console/apps/list.html" target="_blank" rel="noreferrer">Amazon Appstore Console</a>, open your app → <b>App Services</b> → <b>Real-time Notifications</b>.</li>
+            <li>Expand <b>Add an Endpoint</b>, paste the URL above and click <b>Submit</b>.</li>
+            <li>RevenueDot confirms the subscription by itself. Amazon shows <b>Verified</b> within seconds, and the status above turns green.</li>
+          </ol>
+          <Field label="SNS topic ARN" htmlFor="f-snsTopic" error={errors.snsTopic} hint="Optional. Once set, messages from any other SNS topic are refused. Copy the TopicArn of the first notification from the log.">
+            <input id="f-snsTopic" className="input mono" spellCheck={false} placeholder="arn:aws:sns:us-east-1:123456789012:…" value={d.snsTopic} aria-invalid={!!errors.snsTopic} onChange={(e) => set({ snsTopic: e.target.value })} />
+          </Field>
+          <ForwardField d={d} set={set} errors={errors} s={s} store="Amazon" />
+          <TrackNew d={d} set={set} store="Amazon" />
+        </Section>
+      )}
+
+      {stripe && (
+        <Section id="credentials" title="Stripe API key" tag={<span className="tag gold">Required</span>}>
+          <p className="section-sub">RevenueDot reads subscriptions, invoices and Checkout Sessions from your own Stripe account with a restricted key. It never charges, refunds or changes anything in Stripe.</p>
+          <ol className="steps">
+            <li>In the <a href="https://dashboard.stripe.com/apikeys/create" target="_blank" rel="noreferrer">Stripe Dashboard → Developers → API keys</a>, click <b>Create restricted key</b>.</li>
+            <li>Give it <b>Read</b> access to Subscriptions, Invoices, Checkout Sessions, Charges, Customers, Products and Prices. Leave everything else at None.</li>
+            <li>Paste the key below and check it. A test-mode key (rk_test_…) records sandbox purchases; use a separate Stripe app for each mode or sandbox.</li>
+          </ol>
+          {stripeOk && !replacing.stripeKey && !d.stripeKey
+            ? <Saved onReplace={() => setReplacing({ ...replacing, stripeKey: true })} replaceLabel="Replace key">A {stripeKey?.mode === "test" ? "test mode" : "live mode"} {stripeKey?.kind === "restricted" ? "restricted" : "secret"} key ending in <span className="mono">{stripeKey?.last4}</span> is saved.</Saved>
+            : (
+              <Field label="Restricted key" htmlFor="f-stripeKey" error={errors.stripeKey}>
+                <input id="f-stripeKey" className="input mono" type="password" autoComplete="off" spellCheck={false} placeholder="rk_live_…" value={d.stripeKey} aria-invalid={!!errors.stripeKey} onChange={(e) => set({ stripeKey: e.target.value })} />
+              </Field>
+            )}
+          <div className="hrow">
+            <button type="button" className="btn btn-line" disabled={check.busy || (!stripeOk && !d.stripeKey.trim())} onClick={() => runCheck(true)}><Icon name="refresh" />Check credentials</button>
+            <CheckResult state={check} />
+          </div>
+          <Field label="Connected account ID" htmlFor="f-stripeAccount" error={errors.stripeAccount} hint="Optional. Only for a Stripe Connect platform key that acts for one connected account (sent as Stripe-Account).">
+            <input id="f-stripeAccount" className="input mono" spellCheck={false} placeholder="acct_…" value={d.stripeAccount} aria-invalid={!!errors.stripeAccount} onChange={(e) => set({ stripeAccount: e.target.value })} />
+          </Field>
+        </Section>
+      )}
+
+      {stripe && s.notification_url && (
+        <Section id="notifications" title="Stripe webhooks">
+          <p className="section-sub">Stripe tells RevenueDot about renewals, failed payments, cancellations and refunds. Every event's Stripe-Signature is checked with the signing secret.</p>
+          <Field label="Webhook endpoint URL" htmlFor="notif-url">
+            <CopyField value={s.notification_url} label="webhook endpoint URL" />
+          </Field>
+          <NotificationStatus s={s} store="Stripe" />
+          <ol className="steps">
+            <li>In the <a href="https://dashboard.stripe.com/webhooks/create" target="_blank" rel="noreferrer">Stripe Dashboard → Developers → Webhooks</a>, add an endpoint with the URL above.</li>
+            <li>Select these events: <span className="mono">{STRIPE_EVENTS.join(", ")}</span>. Other events are accepted and ignored.</li>
+            <li>Reveal the endpoint's <b>Signing secret</b> and paste it below.</li>
+          </ol>
+          {whsecOk && !replacing.whsec && !d.stripeWhsec
+            ? <Saved onReplace={() => setReplacing({ ...replacing, whsec: true })} replaceLabel="Replace secret">A signing secret is saved.</Saved>
+            : (
+              <Field label="Signing secret" htmlFor="f-stripeWhsec" error={errors.stripeWhsec} hint={!whsecOk ? "Without it every webhook is refused with 400." : undefined}>
+                <input id="f-stripeWhsec" className="input mono" type="password" autoComplete="off" spellCheck={false} placeholder="whsec_…" value={d.stripeWhsec} aria-invalid={!!errors.stripeWhsec} onChange={(e) => set({ stripeWhsec: e.target.value })} />
+              </Field>
+            )}
+          <ForwardField d={d} set={set} errors={errors} s={s} store="Stripe" />
+        </Section>
+      )}
+
+      {stripe && (
+        <Section id="stripe-purchases" title="Which purchases count">
+          <Field label="When does a subscription count?" htmlFor="f-registerOn" hint="Paid is safer: access starts once Stripe reports the first invoice paid. Created grants access while the first invoice is still open.">
+            <select id="f-registerOn" className="select" value={d.registerOn} onChange={(e) => set({ registerOn: e.target.value as Draft["registerOn"] })}>
+              <option value="invoice_paid">When the invoice is paid</option>
+              <option value="invoice_created">When the invoice is created</option>
+            </select>
+          </Field>
+          <TrackNew d={d} set={set} store="Stripe" />
+          <div className="cols">
+            <Field label="Find the app user ID from" htmlFor="f-userSource" hint="For purchases first seen in a webhook. Posts from your backend always carry the app user ID.">
+              <select id="f-userSource" className="select" value={d.userSource} onChange={(e) => set({ userSource: e.target.value as Draft["userSource"] })}>
+                <option value="metadata">A Stripe metadata key</option>
+                <option value="customer_id">The Stripe customer ID</option>
+                <option value="anonymous">An anonymous ID</option>
+              </select>
+            </Field>
+            {d.userSource === "metadata" && (
+              <Field label="Metadata key" htmlFor="f-metadataKey" error={errors.metadataKey} hint="Read on the Checkout Session and the subscription.">
+                <input id="f-metadataKey" className="input mono" spellCheck={false} value={d.metadataKey} aria-invalid={!!errors.metadataKey} onChange={(e) => set({ metadataKey: e.target.value })} />
+              </Field>
+            )}
+          </div>
+        </Section>
+      )}
+
       <section className="panel" aria-label="More settings">
         <div className="ph"><b>More settings</b></div>
         {apple && (
@@ -528,12 +706,14 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
         )}
         <Disclosure title="Public API key" sub="The key your app passes to the SDK" defaultOpen={test}>
           {key ? <SecretText value={key} label="public SDK key" /> : <span className="subtle">Loading…</span>}
-          <p>Public keys are safe to ship in your app. They can only read and post purchases for this app's customers.</p>
+          <p>{stripe ? "Use this key in your backend's posts to /v1/receipts. It can only read and post purchases for this app's customers." : "Public keys are safe to ship in your app. They can only read and post purchases for this app's customers."}</p>
         </Disclosure>
       </section>
 
-      <Section id="sdk" title="SDK setup">
-        <p className="section-sub">Your app keeps using the RevenueCat SDK. Add one line that points it at this server, before <span className="mono">configure</span>, and use this app's key.</p>
+      <Section id="sdk" title={stripe ? "Send purchases from your backend" : "SDK setup"}>
+        <p className="section-sub">{stripe
+          ? <>After Stripe confirms a purchase (<span className="mono">customer.subscription.created</span> or <span className="mono">checkout.session.completed</span>), post its subscription or Checkout Session id with the customer's app user ID. Your apps then see the same entitlements.</>
+          : <>Your app keeps using the RevenueCat SDK. Add one line that points it at this server, before <span className="mono">configure</span>, and use this app's key.</>}</p>
         {key && <SdkSetup type={app.type} origin={origin} publicKey={key} />}
       </Section>
 

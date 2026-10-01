@@ -11,6 +11,7 @@ export interface App {
   mac_app_store?: { bundle_id: string };
   play_store?: { package_name: string; play_service_account_credentials_configured: boolean };
   amazon?: { package_name: string };
+  stripe?: { stripe_account_id: string | null };
 }
 
 export interface PublicKey { object: "public_api_key"; id: string; key: string; environment: "production" | "sandbox"; app_id: string; created_at: number }
@@ -27,10 +28,17 @@ export interface StoreSettings {
     shared_secret: { configured: boolean };
     play_service_account: { configured: boolean; client_email: string | null };
     xcode_certificate: { configured: boolean };
+    amazon_shared_secret?: { configured: boolean };
+    stripe_secret_key?: { configured: boolean; mode: "live" | "test" | null; kind: "restricted" | "secret" | "other" | null; last4: string | null };
+    stripe_webhook_secret?: { configured: boolean };
   };
+  /** Amazon: the SNS topic notifications must come from (optional). */
+  sns_topic_arn?: string | null;
+  /** Stripe: how purchases first seen in a webhook find their customer, and when a subscription counts. */
+  stripe?: { stripe_account_id: string | null; app_user_id_source: "metadata" | "customer_id" | "anonymous"; app_user_id_metadata_key: string; register_on: "invoice_paid" | "invoice_created"; configured: boolean } | null;
 }
 
-export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string }
+export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string; mode?: "live" | "test" }
 
 export interface SdkVersion {
   app_id: string | null; platform: string; platform_flavor: string; platform_flavor_version: string | null; sdk_version: string;
@@ -70,13 +78,13 @@ export interface Collaborator { object: "collaborator"; id: string; name: string
 
 export interface Product { object: "product"; id: string; store_identifier: string; type: string; display_name: string | null; app_id: string }
 
-export const STORES: Record<string, { label: string; icon: string; idLabel?: string; idField?: "bundle_id" | "package_name"; notif?: "apple" | "google" }> = {
+export const STORES: Record<string, { label: string; icon: string; idLabel?: string; idField?: "bundle_id" | "package_name"; notif?: "apple" | "google" | "amazon" | "stripe" }> = {
   app_store: { label: "App Store", icon: "apple", idLabel: "Bundle ID", idField: "bundle_id", notif: "apple" },
   mac_app_store: { label: "Mac App Store", icon: "apple", idLabel: "Bundle ID", idField: "bundle_id", notif: "apple" },
   play_store: { label: "Google Play", icon: "play", idLabel: "Package name", idField: "package_name", notif: "google" },
   test_store: { label: "Test Store", icon: "flask" },
-  amazon: { label: "Amazon Appstore", icon: "apps", idLabel: "Package name", idField: "package_name" },
-  stripe: { label: "Stripe", icon: "web" }, rc_billing: { label: "Web Billing", icon: "web" }, roku: { label: "Roku", icon: "apps" }, paddle: { label: "Paddle", icon: "web" },
+  amazon: { label: "Amazon Appstore", icon: "apps", idLabel: "Package name", idField: "package_name", notif: "amazon" },
+  stripe: { label: "Stripe", icon: "web", notif: "stripe" }, rc_billing: { label: "Web Billing", icon: "web" }, roku: { label: "Roku", icon: "apps" }, paddle: { label: "Paddle", icon: "web" },
 };
 
 export const storeId = (a: App) => a.app_store?.bundle_id ?? a.mac_app_store?.bundle_id ?? a.play_store?.package_name ?? a.amazon?.package_name ?? null;
