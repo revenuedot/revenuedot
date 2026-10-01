@@ -24,6 +24,14 @@ const tiers = [10_000, 50_000, 250_000, 1_000_000];
 const partners = INTEGRATIONS.filter((i) => !["webhooks", "data-exports"].includes(i.kind));
 const wall = ["amplitude", "mixpanel", "posthog", "segment", "firebase", "bigquery", "appsflyer", "adjust", "branch", "meta-ads", "braze", "onesignal", "slack", "intercom", "zendesk", "google-admob"]
   .map((s) => partners.find((p) => p.slug === s)).filter((p) => !!p);
+const resources = [
+  { href: "/tools/revenuecat-fee-calculator", label: "Free tool", title: "RevenueCat fee calculator", text: "See RevenueCat's fee at your revenue next to Adapty, Qonversion, Superwall and RevenueDot." },
+  { href: "/blog/paywall-best-practices-2026", label: "Guide", title: "Paywall best practices for 2026", text: "Hard paywalls, trial timelines, annual first and exit offers, with the data behind each." },
+  { href: "/blog/subscription-app-metrics", label: "Guide", title: "Subscription metrics that matter", text: "MRR, churn, trial conversion and LTV, defined, with a chart for each." },
+  { href: "/errors", label: "Reference", title: "RevenueCat SDK error codes", text: "Every SDK error with its causes and fixes, for iOS, Android, React Native and Flutter." },
+  { href: "/glossary", label: "Reference", title: "Subscription app glossary", text: "Grace periods, offer codes, store notifications and more, in plain English." },
+  { href: "/blog/storekit-2-vs-revenuecat", label: "Guide", title: "Do you still need RevenueCat with StoreKit 2?", text: "What StoreKit 2 does on the device and what still needs a server." },
+];
 const features = [
   { href: "/features/paywalls", title: "Paywalls", text: "Ten templates, a visual editor and an AI generator. Rendered natively by the RevenueCat SDK." },
   { href: "/features/experiments", title: "Targeting and A/B tests", text: "Audiences, placements and offering experiments with revenue and chance to win." },
@@ -133,6 +141,18 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
       <div class="wall">
         {wall.map((p) => <a href={integrationPath(p)} class="logo-tile" title={p.name}><img src={logo(p.logo)} alt={p.name} width="52" height="52" loading="lazy" decoding="async" /><span>{p.name}</span></a>)}
       </div>
+    </div>
+  </section>
+
+  <section class="section" id="resources">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Guides and free tools</p>
+        <h2 class="h2">Answers for subscription app developers</h2>
+      </div>
+      <div class="grid"><div class="gi cols-3">
+        {resources.map((r) => <a class="cell card" href={r.href}><p class="label">{r.label}</p><h3 class="h3">{r.title}</h3><p>{r.text}</p><span class="arrow go">→</span></a>)}
+      </div></div>
     </div>
   </section>
 
