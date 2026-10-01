@@ -7,3 +7,10 @@
 /legal /legal/terms 301
 /terms /legal/terms 301
 /privacy /legal/privacy 301
+# People guess these on the marketing domain; accounts live on the dashboard.
+/signup https://app.revenuedot.app/signup 302
+/sign-up https://app.revenuedot.app/signup 302
+/login https://app.revenuedot.app/login 302
+/signin https://app.revenuedot.app/login 302
+/sign-in https://app.revenuedot.app/login 302
+/app https://app.revenuedot.app/login 302
