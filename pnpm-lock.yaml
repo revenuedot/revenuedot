@@ -87,6 +87,9 @@ importers:
       hono:
         specifier: ^4.6.14
         version: 4.13.11
+      hyparquet-writer:
+        specifier: 0.16.10
+        version: 0.16.10
       jose:
         specifier: ^5.9.6
         version: 5.10.0
@@ -109,6 +112,9 @@ importers:
       cf:
         specifier: 1.0.0-beta.5
         version: 1.0.0-beta.5(@types/node@22.20.4)
+      hyparquet:
+        specifier: 1.31.1
+        version: 1.31.1
       smtp-server:
         specifier: ^3.19.16
         version: 3.19.16
@@ -2480,6 +2486,12 @@ packages:
 
   http-cache-semantics@4.2.0:
     resolution: {integrity: sha512-dTxcvPXqPvXBQpq5dUr6mEMJX4oIEFv6bwom3FDwKRDsuIjjJGANqhBuoAn9c1RQJIdAKav33ED65E2ys+87QQ==}
+
+  hyparquet-writer@0.16.10:
+    resolution: {integrity: sha512-53fpiA57kdJ2V7X97/VSAzHr8rb8Z2cr126T1pTL9TapZNOP/wNJqFh+jc7dRwwg9TpVMYeRNDMb+r5oiLqwjg==}
+
+  hyparquet@1.31.1:
+    resolution: {integrity: sha512-tF9580Xb+41+Eb+mH0av1k7m1PWl+PSKrX66Yd7UOZ760cwEXP9/enwHRMSCeVncaubRI8XPb3v580/ujYKK5w==}
 
   ipv6-normalize@1.0.1:
     resolution: {integrity: sha512-Bm6H79i01DjgGTCWjUuCjJ6QDo1HB96PT/xCYuyJUP9WFbVDrLSbG4EZCvOCun2rNswZb0c3e4Jt/ws795esHA==}
@@ -5199,6 +5211,12 @@ snapshots:
   html-void-elements@3.0.0: {}
 
   http-cache-semantics@4.2.0: {}
+
+  hyparquet-writer@0.16.10:
+    dependencies:
+      hyparquet: 1.31.1
+
+  hyparquet@1.31.1: {}
 
   ipv6-normalize@1.0.1: {}
 

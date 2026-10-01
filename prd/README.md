@@ -24,3 +24,8 @@ Each PRD is short and has the same sections: users and jobs, essential now and l
 | 1.14 | MCP server and agent skills | [mcp-and-skills](mcp-and-skills/PRD.md) |
 | 1.15, 1.17 | Docs, examples and cookbook | [ecosystem](ecosystem/PRD.md) |
 | 1.16 | Brand and marketing site | [site](site/PRD.md) |
+
+## Tier 2
+| Scope | Feature | PRD |
+|---|---|---|
+| Tier 2 | Integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust, Meta) and scheduled data exports | [integrations](integrations/PRD.md) |

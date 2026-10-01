@@ -121,3 +121,31 @@ export const useProducts = (pid: string, appId?: string) => useQuery({
 export const apiOrigin = () => (window.location.hostname === "app.revenuedot.app" ? "https://api.revenuedot.app" : window.location.origin);
 
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong. Try again.");
+
+/** Third-party integrations and data exports (RevenueDot extensions under /integrations/partners and /integrations/exports). */
+export interface IntegrationField { key: string; label: string; type: "text" | "secret" | "select" | "boolean" | "textarea" | "tokens"; required?: boolean; options?: { value: string; label: string }[]; hint?: string; placeholder?: string; when?: { key: string; value: string } }
+export interface IntegrationType { object: "integration_type"; type: string; name: string; category: string; description: string; default_environment: "production" | "sandbox" | null; event_names: boolean; fields: IntegrationField[]; docs_url: string }
+export interface Integration {
+  object: "integration"; id: string; type: string; name: string; enabled: boolean; environment: "production" | "sandbox" | null; app_id: string | null;
+  event_types: string[]; settings: Record<string, unknown>; secrets: Record<string, { configured: boolean; hint: string | null }>; event_names: Record<string, string>;
+  status: { last_delivered_at: number | null; last_error: string | null; consecutive_failures: number }; created_at: number;
+}
+export interface IntegrationDelivery {
+  object: "integration_delivery"; id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed" | "skipped"; attempts: number; sent_as: string | null;
+  next_attempt_at: number | null; request: string | null; request_body: string | null; response_status: number | null; response_ms: number | null; response_body: string | null; last_error: string | null; created_at: number;
+}
+export interface DataExport {
+  object: "data_export"; id: string; name: string; enabled: boolean; destination: "s3" | "r2" | "gcs";
+  config: { bucket: string | null; prefix: string | null; region: string | null; endpoint: string | null; account_id: string | null; access_key_id: string | null };
+  credentials: Record<string, { configured: boolean; hint: string | null }>; format: "csv" | "parquet"; compression: "gzip" | "none"; schedule: "daily" | "weekly";
+  hour_utc: number; weekday: number | null; mode: "incremental" | "full"; tables: string[]; environment: "production" | "sandbox" | null;
+  next_run_at: number | null; last_run_at: number | null; last_error: string | null; consecutive_failures: number; created_at: number;
+}
+export interface ExportRun {
+  object: "data_export_run"; id: string; status: "queued" | "running" | "succeeded" | "failed"; trigger: "schedule" | "manual"; mode: "incremental" | "full";
+  window_start: number | null; window_end: number; attempts: number; next_attempt_at: number | null; files: { table: string; key: string; rows: number; bytes: number }[];
+  rows: number; bytes: number; error: string | null; started_at: number | null; finished_at: number | null; created_at: number;
+}
+export const useIntegrationTypes = (pid: string) => useQuery({ queryKey: ["integration_types", pid], queryFn: async () => (await api<List<IntegrationType>>(`${base(pid)}/integrations/catalog`)).items, enabled: !!pid, staleTime: 300_000 });
+export const useIntegrations = (pid: string) => useQuery({ queryKey: ["integrations", pid], queryFn: () => all<Integration>(`${base(pid)}/integrations/partners`), enabled: !!pid });
+export const useExports = (pid: string) => useQuery({ queryKey: ["exports", pid], queryFn: () => all<DataExport>(`${base(pid)}/integrations/exports`), enabled: !!pid });

@@ -29,6 +29,7 @@ Later
 - Delivery code: `apps/server/src/services/webhooks.ts` (signing, one attempt, `deliverDue`, retry). Events are queued in `services/events.ts`. The one-minute job in `services/tick.ts` sends due deliveries and records EXPIRATION.
 - `GET`, `POST` `/v2/projects/{id}/integrations/webhooks`, plus `GET`, `POST` and `DELETE .../{webhook_integration_id}`. RevenueCat's API returns the signing secret only when a webhook is created.
 - Extensions: `GET /v2/projects/{id}/webhooks/{webhook_id}/deliveries` (`?status=`), `POST .../deliveries/{delivery_id}/retry`, and `POST /v2/projects/{id}/integrations/webhooks/{id}/test`.
+- The same queue also feeds the third-party integrations (Slack, Segment, Amplitude ...): `queueDeliveries` queues each event to matching integrations too, and the tick sends them with the same retry schedule. See `prd/integrations/PRD.md`.
 - Dashboard: `/projects/:projectId/integrations/webhooks` (list), `/new`, `/:webhookId` (details and delivery log with retry) and `/:webhookId/edit` (`apps/dashboard/src/pages/setup/Webhooks.tsx`).
 
 ## Tests that prove it

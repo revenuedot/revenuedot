@@ -13,6 +13,8 @@ import { AppConfig } from "./pages/setup/AppConfig";
 import { ApiKeys } from "./pages/setup/ApiKeys";
 import { Integrations } from "./pages/setup/Integrations";
 import { WebhookDetail, WebhookEdit, WebhookList, WebhookNew } from "./pages/setup/Webhooks";
+import { ExportDetail, ExportNew, ExportsList } from "./pages/setup/Exports";
+import { PartnerIntegrationPage } from "./pages/setup/PartnerIntegration";
 import { ProjectSettingsPage } from "./pages/setup/ProjectSettings";
 import { VirtualCurrenciesPage } from "./pages/catalog/VirtualCurrencies";
 import { CustomerCenterPage } from "./pages/lifecycle/CustomerCenter";
@@ -51,6 +53,10 @@ export const routes = [
   <Route key="webhook-new" path="/projects/:projectId/integrations/webhooks/new" element={<WebhookNew />} />,
   <Route key="webhook" path="/projects/:projectId/integrations/webhooks/:webhookId" element={<WebhookDetail />} />,
   <Route key="webhook-edit" path="/projects/:projectId/integrations/webhooks/:webhookId/edit" element={<WebhookEdit />} />,
+  <Route key="exports" path="/projects/:projectId/integrations/exports" element={<ExportsList />} />,
+  <Route key="export-new" path="/projects/:projectId/integrations/exports/new" element={<ExportNew />} />,
+  <Route key="export" path="/projects/:projectId/integrations/exports/:exportId" element={<ExportDetail />} />,
+  <Route key="integration" path="/projects/:projectId/integrations/:type" element={<PartnerIntegrationPage />} />,
   <Route key="settings" path="/projects/:projectId/settings" element={<ProjectSettingsPage />} />,
   <Route key="settings-tab" path="/projects/:projectId/settings/:tab" element={<ProjectSettingsPage />} />,
 ];

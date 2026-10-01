@@ -16,6 +16,8 @@ services:
       REVENUEDOT_MAIL_FROM: ${REVENUEDOT_MAIL_FROM:-}
       REVENUEDOT_MAIL_REPLY_TO: ${REVENUEDOT_MAIL_REPLY_TO:-}
       REVENUEDOT_PUBLIC_URL: ${REVENUEDOT_PUBLIC_URL:-}
+      # Seals integration and data export credentials at rest (see .env.example).
+      REVENUEDOT_ENCRYPTION_KEY: ${REVENUEDOT_ENCRYPTION_KEY:-}
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped
