@@ -173,6 +173,9 @@ importers:
       drizzle-orm:
         specifier: ^0.38.3
         version: 0.38.4(@electric-sql/pglite@0.2.17)(@types/react@19.3.0)(postgres@3.4.9)(react@19.3.0)
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.9
       yaml:
         specifier: ^2.6.1
         version: 2.9.1

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { openDb, schema, type DB } from "@revenuedot/db";
+import { schema, type DB } from "@revenuedot/db";
 import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
 import { BUNDLED_ECB, BUNDLED_USD, USD_SOURCE_FIRST_DAY, parseEcbCsv, parseUsdJson, usdValue, type FxFetch } from "../src/services/fx.js";
+import { openTestDb } from "../../../packages/contract/src/test-db.js";
 
 /**
  * Non-USD prices convert to USD at the rate of the purchase date (or the last day before it with rates): ECB first, the
@@ -40,7 +41,7 @@ function mockEcb(opts: { fail?: boolean; jsdelivrDown?: boolean } = {}) {
 }
 
 async function setup(fetch: FxFetch) {
-  const opened = await openDb("pglite://memory");
+  const opened = await openTestDb();
   close = opened.close;
   const db: DB = opened.db;
   const app = createApp({ db, now: () => new Date("2026-09-01T12:00:00Z"), stores: defaultStores(), signingKey: "", fetch: fetch as typeof globalThis.fetch });

@@ -1,4 +1,5 @@
 import { openDb, schema, type DB } from "@revenuedot/db";
+import { openTestDb } from "./test-db.js";
 import { createApp, defaultStores } from "@revenuedot/server";
 import { createSecretKey } from "@revenuedot/server/services/auth.js";
 import type { Mailer } from "@revenuedot/server/mail/index.js";
@@ -23,10 +24,10 @@ export interface HarnessOptions {
   databaseUrl?: string;
 }
 
-/** Boots the server on an in-memory Postgres with one project, an App Store app, a Play app and a Test Store app. */
+/** Boots the server on an empty Postgres (in-memory PGlite, or real Postgres with REVENUEDOT_TEST_PG_URL) with one project, an App Store app, a Play app and a Test Store app. */
 export async function harness(opts: HarnessOptions = {}): Promise<Harness> {
   const { databaseUrl, ...appOpts } = opts;
-  const { db, close } = await openDb(databaseUrl ?? "pglite://memory");
+  const { db, close } = databaseUrl ? await openDb(databaseUrl) : await openTestDb();
   let clock = new Date("2026-09-01T12:00:00Z");
   const app = createApp({ db, now: () => clock, stores: defaultStores(), ...appOpts });
   const ids = { project: "proj1", app: "app_ios", iosKey: "appl_testkey123", testKey: "test_key123", androidKey: "goog_testkey123", androidApp: "app_play", secretKey: "" };
