@@ -30,7 +30,9 @@ setInterval(runTick, 30_000);
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
 const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250), signup, mailer, publicUrl, encryptionKey: process.env.REVENUEDOT_ENCRYPTION_KEY?.trim() || undefined,
   // "Generate with AI" on paywalls: OPENAI_API_KEY or ANTHROPIC_API_KEY (REVENUEDOT_AI_MODEL to pick the model); off without either.
-  ai: modelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined });
+  ai: modelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined,
+  // Hosted web pages (purchase links, funnels): REVENUEDOT_PAY_URL, else <this server>/pay; custom domains CNAME to the pay host.
+  payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 if (existsSync(`${dist}/index.html`)) {

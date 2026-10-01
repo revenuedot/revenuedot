@@ -47,8 +47,11 @@ export async function syncSubscription(ctx: SyncCtx, subId: string, opts: { meta
     if (p.expiresDate) p.expiresDate = minDate(p.expiresDate, p.refundedAt);
     p.gracePeriodExpiresDate = null;
   }
-  const hint = !row && track(app) ? appUserIdFor(app, { ...(opts.metadata ?? {}), ...(sub.metadata ?? {}) }, idOf(sub.customer)) : null;
-  const applied = await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: track(app), appUserIdHint: hint });
+  const meta = { ...(opts.metadata ?? {}), ...(sub.metadata ?? {}) };
+  // A subscription from RevenueDot's hosted checkout names its app user id itself and is always tracked (prd/web-billing/PRD.md §2).
+  const web = typeof meta.rd_app_user_id === "string" && meta.rd_app_user_id ? meta.rd_app_user_id.slice(0, 100) : null;
+  const hint = !row && (web || track(app)) ? web ?? appUserIdFor(app, meta, idOf(sub.customer)) : null;
+  const applied = await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: track(app) || !!web, appUserIdHint: hint });
   return { status: applied ? "processed" : "unknown_purchase", sandbox: p.isSandbox };
 }
 
