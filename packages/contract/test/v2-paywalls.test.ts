@@ -82,6 +82,10 @@ describe("paywalls", () => {
     expect(patch.body).toMatchObject({ revision: 2, name: "Hero v2" });
     const stale = await call("PATCH", ONE, { paywall_id: id }, { json: { revision: 1, name: "stale" } });
     expect(stale.status).toBe(409);
+    // Every SDK downloads a published paywall: content over 1 MB is refused.
+    const huge = await call("PATCH", ONE, { paywall_id: id }, { json: { revision: 2, components_localizations: { en_US: { headline: "x".repeat(1_000_001) } } } });
+    expect(huge.status).toBe(400);
+    expect(huge.body.param).toBe("components_config");
     expect(stale.body.param).toBe("revision");
     expect((await call("PATCH", ONE, { paywall_id: id }, { json: { name: "no revision" } })).status).toBe(400);
     const draft = (await call("GET", ONE, { paywall_id: id }, { query: "expand=components" })).body.components.draft;

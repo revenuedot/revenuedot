@@ -57,6 +57,12 @@ const MediaIn = z.object({
 }).strict();
 const FontIn = z.object({ filename: z.string().min(1).max(255), content_type: z.enum(["font/ttf", "font/otf"]), file_data_base64: z.string().min(1).max(6_990_508) }).strict();
 
+/** Every SDK downloads a published paywall with the offerings and remote config; real ones are 10-200 KB. */
+const MAX_CONTENT = 1_000_000;
+const sizeCheck = (b: { components_config?: unknown; components_localizations?: unknown }) => {
+  if (JSON.stringify([b.components_config ?? null, b.components_localizations ?? null]).length > MAX_CONTENT) throw paramError("components_config and components_localizations together are larger than 1 MB.", "components_config");
+};
+
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/avif": "avif", "image/heic": "heic", "image/heif": "heif", "image/webp": "webp", "font/ttf": "ttf", "font/otf": "otf" };
 
 const versionShape = (c: PaywallContent) => ({
@@ -128,6 +134,7 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
 
   r.post(`${P}/validate`, scope("project_configuration:offerings:read"), async (c) => {
     const b = await body(c, ValidateIn);
+    sizeCheck(b);
     const packages = b.offering_id ? (await packagesOf((await offeringOf(c.get("projectId"), b.offering_id)).offering.id)).map((p) => p.id) : undefined;
     let doc: Record<string, unknown> = { components_config: b.components_config, components_localizations: b.components_localizations, default_locale: b.default_locale ?? "en_US" };
     let fixes: string[] = [];
@@ -195,6 +202,7 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     } else if ("components_config" in raw) {
       const b = CreateDraft.safeParse(raw);
       if (!b.success) throw paramError(`${b.error.issues[0]!.path.join(".")}: ${b.error.issues[0]!.message}`, b.error.issues[0]!.path.join(".") || undefined);
+      sizeCheck(b.data);
       if (b.data.offering_id) { const { offering, taken } = await offeringOf(projectId, b.data.offering_id); if (taken) throw conflict("That offering already has a paywall.", "offering_id"); offeringId = offering.id; }
       name = b.data.name ?? null; scale = b.data.automatically_scale_font_size ?? true;
       content = newContent({ components_config: b.data.components_config, components_localizations: b.data.components_localizations, default_locale: b.data.default_locale ?? "en_US", automatically_scale_font_size: scale });
@@ -217,6 +225,7 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
   r.patch(`${P}/:paywall_id`, scope("project_configuration:offerings:read_write"), async (c) => {
     const p = await find(c);
     const b = await body(c, Update);
+    sizeCheck({ components_config: b.components_config ?? (p.draft ?? p.published)?.components_config, components_localizations: b.components_localizations ?? (p.draft ?? p.published)?.components_localizations });
     if (b.revision !== p.revision) throw conflict(`The paywall is at revision ${p.revision}, not ${b.revision}. Fetch it again and retry.`, "revision");
     // The draft starts from the published version when there are no unpublished changes.
     const base = p.draft ?? p.published ?? newContent();
