@@ -206,7 +206,7 @@ export function AddAppDialog({ pid, onClose, initial }: { pid: string; onClose: 
       <form id="add-app" className="stack" onSubmit={submit} noValidate>
         <div className="choice" role="group" aria-label="Store">
           {CHOICES.map((c) => (
-            <button key={c.type} type="button" aria-pressed={type === c.type} disabled={c.soon}
+            <button key={c.type} type="button" aria-pressed={type === c.type} disabled={c.soon} aria-label={c.soon ? `${c.label} (soon)` : c.label} title={c.text}
               onClick={() => { setType(c.type); setErrors({}); if (c.type === "test_store" && !name) setName("Test Store"); }}>
               <Icon name={STORES[c.type]!.icon} /><span><b>{c.label}{c.soon && <span className="soon">SOON</span>}</b><small>{c.text}</small></span>
             </button>

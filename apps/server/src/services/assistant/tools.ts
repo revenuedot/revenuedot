@@ -502,8 +502,16 @@ export function redactSecrets(v: unknown, depth = 0, inSecret = false): unknown 
 }
 
 /** Keeps a tool result under `max` characters of JSON: long lists are cut and say how many items were left out. */
+/** Epoch-millisecond fields (`ends_at`, `expires_date`, …) as ISO 8601 UTC: models misread raw milliseconds as dates. */
+function readableTimes(x: unknown): unknown {
+  if (Array.isArray(x)) return x.map(readableTimes);
+  if (!x || typeof x !== "object") return x;
+  return Object.fromEntries(Object.entries(x).map(([k, y]) =>
+    [k, typeof y === "number" && /(_at|_date|^date)$/.test(k) && y >= 1e12 && y < 1e13 ? new Date(y).toISOString() : readableTimes(y)]));
+}
+
 export function compactResult(v: unknown, max = 12_000): unknown {
-  const clean = redactSecrets(v);
+  const clean = readableTimes(redactSecrets(v));
   if (JSON.stringify(clean ?? null).length <= max) return clean;
   const cut = (x: unknown, n: number): unknown => {
     if (Array.isArray(x)) return x.length > n ? [...x.slice(0, n).map((y) => cut(y, n)), { omitted: x.length - n }] : x.map((y) => cut(y, n));
