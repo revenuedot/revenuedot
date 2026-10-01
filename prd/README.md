@@ -29,3 +29,7 @@ Each PRD is short and has the same sections: users and jobs, essential now and l
 | Scope | Feature | PRD |
 |---|---|---|
 | Tier 2 | Integrations (Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust, Meta) and scheduled data exports | [integrations](integrations/PRD.md) |
+| Tier 2 | Win-back offers (App Store, Google Play offers) | [win-back-offers](win-back-offers/PRD.md) |
+| Tier 2 | Offline entitlements (product mapping per store) | [offline-entitlements](offline-entitlements/PRD.md) |
+| Tier 2 | The rest of v2 (restore by order id, create in store, subscriber tokens, discounts and invoices excluded) | [rest-api](rest-api/PRD.md) |
+| Tier 2 | All 21 webhook events | [webhooks](webhooks/PRD.md) |
