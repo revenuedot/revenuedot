@@ -22,7 +22,9 @@ import { RefundControlPage } from "./pages/lifecycle/RefundControl";
 import { RetentionPage } from "./pages/lifecycle/Retention";
 import { SupportPage } from "./pages/lifecycle/Support";
 import { WinbackEditor, WinbackListPage } from "./pages/lifecycle/Winback";
-import { PaywallEditor, PaywallsPage } from "./pages/paywalls/Paywalls";
+import { PaywallsPage } from "./pages/paywalls/Paywalls";
+import { PaywallEditor } from "./pages/paywalls/Editor";
+import { GalleryPage } from "./pages/paywalls/Gallery";
 import { ExperimentDetail, ExperimentsPage, TargetingPage } from "./pages/targeting/Targeting";
 import { ChartsPage } from "./pages/charts/Charts";
 
@@ -50,6 +52,7 @@ export const routes = [
   <Route key="winback-new" path="/projects/:projectId/lifecycle/winback/new" element={<WinbackEditor />} />,
   <Route key="winback-campaign" path="/projects/:projectId/lifecycle/winback/:campaignId" element={<WinbackEditor />} />,
   <Route key="paywalls" path="/projects/:projectId/paywalls" element={<PaywallsPage />} />,
+  <Route key="paywall-templates" path="/projects/:projectId/paywalls/templates" element={<GalleryPage />} />,
   <Route key="paywall" path="/projects/:projectId/paywalls/:paywallId" element={<PaywallEditor />} />,
   <Route key="targeting" path="/projects/:projectId/targeting" element={<TargetingPage />} />,
   <Route key="experiments" path="/projects/:projectId/experiments" element={<ExperimentsPage />} />,

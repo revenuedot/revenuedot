@@ -1,4 +1,4 @@
-import { fontConfig, publishedByOffering, sdkPaywallComponents, uiConfig } from "../services/paywalls.js";
+import { fontConfig, paywallLocales, publishedByOffering, sdkPaywallComponents, uiConfig } from "../services/paywalls.js";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { EntitlementMap } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
@@ -66,7 +66,7 @@ export async function offeringsJSON(db: DB, projectId: string, appId: string, op
       }),
     })),
     placements: { fallback_offering_id: current?.lookupKey ?? null, offering_ids_by_placement: {} },
-    ui_config: uiConfig(await fontConfig(db, projectId, assetBase)),
+    ui_config: uiConfig(await fontConfig(db, projectId, assetBase), paywallLocales(pw.values())),
   };
 }
 

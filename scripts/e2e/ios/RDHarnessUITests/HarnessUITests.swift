@@ -67,14 +67,30 @@ final class HarnessUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["extras"].label, "sync=ok vc=0 redeem=invalidToken reward=failed cc=loaded")
         shot("ios-4-other-calls")
 
-        // The paywall made from a RevenueDot template renders in RevenueCatUI with its texts and purchase button.
+        // The paywall made from the RevenueDot gallery template "Annual first" renders in RevenueCatUI: headline, benefit
+        // rows with icons, both plans, the purchase button and the restore link.
+        let has = { (text: String) in app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch }
         for _ in 0..<5 where !app.buttons["paywallButton"].isHittable { app.swipeUp() }
         app.buttons["paywallButton"].tap()
-        XCTAssertTrue(app.staticTexts["Unlock everything"].waitForExistence(timeout: 30), "paywall headline")
-        // Features render with a check mark ("✓  Unlimited scans"); the purchase button shows its text.
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Unlimited scans")).firstMatch.exists, "paywall feature")
-        XCTAssertTrue(app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "Start my plan")).firstMatch.exists, "purchase button")
-        XCTAssertTrue(app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "Restore purchases")).firstMatch.exists, "restore button")
+        XCTAssertTrue(app.staticTexts["Unlock Harness"].waitForExistence(timeout: 30), "template paywall headline")
         shot("ios-5-paywall")
+        XCTAssertTrue(has("Unlimited access to every feature").exists, "template paywall benefit")
+        // The seeded offering has weekly, monthly and yearly: the template shows yearly first, then weekly.
+        XCTAssertTrue(has("Yearly").exists, "template paywall yearly plan")
+        XCTAssertTrue(has("Weekly").exists, "template paywall second plan")
+        XCTAssertTrue(has("Continue").exists || has("Start free trial").exists, "template paywall purchase button")
+        XCTAssertTrue(has("Restore").exists, "template paywall restore button")
+        app.swipeDown(velocity: .fast)
+        XCTAssertTrue(app.buttons["editorPaywallButton"].waitForExistence(timeout: 10))
+
+        // The paywall built with the editor's operations on the "editor" offering: timeline, tabs, carousel and countdown.
+        for _ in 0..<5 where !app.buttons["editorPaywallButton"].isHittable { app.swipeUp() }
+        app.buttons["editorPaywallButton"].tap()
+        XCTAssertTrue(app.staticTexts["Built in the editor"].waitForExistence(timeout: 30), "editor paywall headline")
+        shot("ios-6-editor-paywall")
+        XCTAssertTrue(has("Full access starts now").exists, "editor paywall timeline")
+        XCTAssertTrue(has("Plus").exists, "editor paywall tabs")
+        XCTAssertTrue(has("Page 1").exists, "editor paywall carousel")
+        XCTAssertTrue(has("Ends in").exists, "editor paywall countdown")
     }
 }

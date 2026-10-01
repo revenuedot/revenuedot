@@ -23,6 +23,7 @@ import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { fakeStores } from "./store-fakes.ts";
+import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 
 const PORT = Number(process.env.PORT ?? 5199);
 const DIST = new URL("../dist", import.meta.url).pathname;
@@ -42,7 +43,23 @@ setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
 const mail = memoryMailer();
 // Amazon and Stripe answer from in-process fakes (store-fakes.ts): the e2e run never calls them.
-const api = createApp({ db, now, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); } });
+// "Generate with AI" answers from a fake model (no network): a paywall whose headline echoes the request, written the
+// sloppy way a real model sometimes does, so the server's repair runs. E2E_AI=off turns the generator off.
+const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, user) => {
+  const ask = /Paywall request: (.*)/.exec(user)?.[1]?.slice(0, 60) ?? "Go Pro";
+  return "Here is your paywall:\n```json\n" + JSON.stringify({
+    name: "AI paywall", background: "#0f172a",
+    components: [
+      { type: "title", text: `AI: ${ask}`, color: "#ffffff" },
+      { type: "text", text: "Everything you need, nothing you don't.", color: "#cbd5e1", font_size: "body" },
+      { type: "features", items: [{ icon: "sparkles", text: "Smart suggestions" }, { icon: "cloud", text: "Backup and sync" }, "No ads"] },
+      { type: "timeline", items: [{ icon: "unlock", title: "Today", description: "Full access" }, { icon: "bell", title: "Day 5", description: "A reminder" }] },
+      { type: "packages" },
+    ],
+    footer: [{ type: "cta", text: "Start free trial" }, { type: "button", action: "restore" }],
+  }) + "\n```";
+});
+const api = createApp({ db, now, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi });
 
 let ready = false;
 const web = new Hono();
@@ -51,8 +68,10 @@ web.get("/__ready", (c) => (ready ? c.text("ready") : c.text("seeding", 503)));
 web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|rcbilling|blobs)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
+  // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
+  if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);
   if (path !== "/" && file.startsWith(DIST) && existsSync(file) && !file.endsWith("/")) {
     const types: Record<string, string> = { ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".woff2": "font/woff2" };
     return new Response(readFileSync(file), { headers: { "content-type": types[extname(file)] ?? "application/octet-stream" } });

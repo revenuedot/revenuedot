@@ -16,7 +16,7 @@ const sdkOfferings = async () => (await (await h.fetch("/v1/subscribers/anyone/o
 const hero = {
   base: {
     background: { type: "color", value: { light: { type: "hex", value: "#112233ff" } } },
-    stack: { id: "root", type: "stack", components: [{ id: "t1", type: "text", text_lid: "headline", color: { light: { type: "hex", value: "#ffffffff" } } }], dimension: { type: "vertical", alignment: "center", distribution: "center" }, size: { width: { type: "fill" }, height: { type: "fill" } }, spacing: 16, margin: {}, padding: {} },
+    stack: { id: "root", type: "stack", components: [{ id: "t1", type: "text", text_lid: "headline", color: { light: { type: "hex", value: "#ffffffff" } }, font_weight: "bold", font_size: 28, horizontal_alignment: "center", size: { width: { type: "fill" }, height: { type: "fit" } }, padding: {}, margin: {} }], dimension: { type: "vertical", alignment: "center", distribution: "center" }, size: { width: { type: "fill" }, height: { type: "fill" } }, spacing: 16, margin: {}, padding: {} },
   },
 };
 
@@ -82,6 +82,10 @@ describe("paywalls", () => {
     expect(patch.body).toMatchObject({ revision: 2, name: "Hero v2" });
     const stale = await call("PATCH", ONE, { paywall_id: id }, { json: { revision: 1, name: "stale" } });
     expect(stale.status).toBe(409);
+    // Every SDK downloads a published paywall: content over 1 MB is refused.
+    const huge = await call("PATCH", ONE, { paywall_id: id }, { json: { revision: 2, components_localizations: { en_US: { headline: "x".repeat(1_000_001) } } } });
+    expect(huge.status).toBe(400);
+    expect(huge.body.param).toBe("components_config");
     expect(stale.body.param).toBe("revision");
     expect((await call("PATCH", ONE, { paywall_id: id }, { json: { name: "no revision" } })).status).toBe(400);
     const draft = (await call("GET", ONE, { paywall_id: id }, { query: "expand=components" })).body.components.draft;
@@ -196,6 +200,14 @@ describe("media assets and fonts", () => {
     expect((await h.fetch(`/assets/proj1/nope.png`, { key: "" })).status).toBe(404);
     expect((await h.fetch(`/assets/proj2/${up.body.object_name}`, { key: "" })).status).toBe(404);
     expect((await call("POST", "/v2/projects/{project_id}/media_assets", {}, { json: { filename: "x.gif", content_type: "image/gif", file_data_base64: PNG_1x1 } })).status).toBe(400);
+    // Served publicly as an image, so the bytes must be one: no HTML or SVG under an image type, no PNG labelled JPEG.
+    const html = Buffer.from("<html><script>alert(1)</script></html>").toString("base64");
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>').toString("base64");
+    for (const [content_type, data] of [["image/png", html], ["image/webp", svg], ["image/jpeg", PNG_1x1], ["image/heic", html]] as const) {
+      const bad = await call("POST", "/v2/projects/{project_id}/media_assets", {}, { json: { filename: "x", content_type, file_data_base64: data } });
+      expect(bad.status, content_type).toBe(400);
+      expect(bad.body.param).toBe("file_data_base64");
+    }
   });
 
   it("uploads a font, reads its identity, lists it, and adds it to the SDK's ui_config", async () => {

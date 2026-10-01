@@ -184,10 +184,18 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
+| **Paywalls** | Native paywalls the RevenueCat SDKs render (all 17 component types): a gallery of ten templates built on 2026 conversion research, a visual editor (layers, properties, undo, light and dark, translations, versions), "Generate with AI" (Workers AI on Cloud, your OpenAI or Anthropic key on self-host), and a cached asset CDN. Every published paywall is checked to decode in the SDK ([guide](https://revenuedot.app/docs/guides/paywalls)) | Tier 2 · built, tested; renders in RevenueCatUI on the iOS simulator |
+| **Growth** | Experiments, targeting, virtual currencies, Customer Center | Tier 2 · built and tested |
 | **Lifecycle** | **Refund Control**: ordered policies answer Apple's refund requests with [consumption information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) inside the 12-hour window, Google refunds and chargebacks recorded, refund rate and amounts. **Retention**: cancel and refund offers in the in-app Customer Center, and Apple's [Retention Messaging API](https://developer.apple.com/documentation/retentionmessaging) on Apple's cancel screen. **Win-back campaigns**: email churned subscribers an offer, with click tracking, one-click unsubscribe and reactivations. **Support**: Customer Center tickets by email and a help desk summary for Intercom or Zendesk ([guides](https://revenuedot.app/docs/guides/refund-control)) | Tier 2/3 · built, tested against a mocked App Store and an in-memory mailer; Apple's Retention Messaging API needs Apple's approval |
 | **Customers** | Customer lists (all, active, sandbox, non-subscription, expired), saved audiences, filters from the audience builder, summary cards, CSV export ([guide](https://revenuedot.app/docs/guides/customer-lists)) | Tier 1/2 · built and tested |
-| **Growth** | Paywalls, experiments, targeting, virtual currencies, Customer Center configuration | Tier 2 · built |
 | **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/paywalls-editor-dark.png">
+  <img alt="RevenueDot paywall editor: the layer tree, a phone preview of the Annual first template and the properties of the selected package" src="docs/assets/paywalls-editor-light.png" width="100%">
+</picture>
+
+<p><img alt="Two RevenueDot paywalls rendered by the unmodified RevenueCat iOS SDK's PaywallView on the iOS simulator: the Annual first template, and a paywall built in the editor with a countdown, a carousel, tabs and a timeline" src="docs/assets/paywalls-ios.png" width="420"></p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
@@ -419,6 +427,16 @@ Create a Stripe app in RevenueDot with a restricted key from your own Stripe acc
 <details><summary><b>Does RevenueDot have RevenueCat's charts, like MRR, churn and trial conversion?</b></summary>
 
 Yes. All 42 built-in charts are in the dashboard and at `GET /v2/projects/{project_id}/charts/{chart_name}` with RevenueCat's chart names, parameters and response shape. They follow RevenueCat's definitions: sandbox excluded, USD at the purchase-date rate, refunds on the refund date. The [charts guide](https://revenuedot.app/docs/guides/charts) explains every chart and publishes the SQL behind the core ones.
+</details>
+
+<details><summary><b>Does RevenueDot support RevenueCat paywalls (Paywalls V2) and RevenueCatUI's PaywallView?</b></summary>
+
+Yes. RevenueDot serves paywalls in the components format that RevenueCatUI's `PaywallView` renders, in the offerings response and in remote config (which iOS SDK 5.83 and later read). Build them from ten templates, in a visual editor with all 17 component types (text, image, icon, stack, button, package, purchase button, sticky footer, timeline, tabs and their controls, carousel, video, countdown, web view), or with "Generate with AI". The server refuses to publish a paywall the SDK could not decode. See the [paywalls guide](https://revenuedot.app/docs/guides/paywalls).
+</details>
+
+<details><summary><b>Can I generate a paywall with AI on a self-hosted server?</b></summary>
+
+Yes, with your own key: set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. RevenueDot Cloud uses Cloudflare Workers AI and needs no key. The model's answer is checked and repaired before you see it.
 </details>
 
 <details><summary><b>What license is it under?</b></summary>

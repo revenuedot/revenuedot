@@ -13,7 +13,11 @@ export interface Harness {
 }
 
 /** Outbound HTTP (Apple, Google, webhooks), after-response work and email, for tests that stub or await them. */
-export interface HarnessOptions { fetch?: typeof fetch; defer?: (task: () => Promise<unknown>) => void; mailer?: Mailer; publicUrl?: string }
+export interface HarnessOptions {
+  fetch?: typeof fetch; defer?: (task: () => Promise<unknown>) => void; mailer?: Mailer; publicUrl?: string;
+  /** The paywall AI generator's model (a fake in tests) and the API origin for paywall assets. */
+  ai?: import("@revenuedot/server/services/paywall-ai.js").PaywallModel; apiUrl?: string;
+}
 
 /** Boots the server on an in-memory Postgres with one project, an App Store app, a Play app and a Test Store app. */
 export async function harness(opts: HarnessOptions = {}): Promise<Harness> {
