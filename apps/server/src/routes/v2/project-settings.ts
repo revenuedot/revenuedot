@@ -39,10 +39,14 @@ export function projectSettingsRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, BrandIn);
     const [cur] = await db.select({ brand: schema.projects.brand }).from(schema.projects).where(eq(schema.projects.id, c.get("projectId"))).limit(1);
     const prev = brandOf(cur?.brand);
-    const next = brandOf({ color_presets: b.color_presets ?? prev.color_presets, gradient_presets: b.gradient_presets ?? prev.gradient_presets });
-    // Keys are shared between the two lists (both become ui_config.app.colors).
-    const keys = [...next.color_presets, ...next.gradient_presets].map((x) => x.key);
-    if (new Set(keys).size !== keys.length) throw paramError("Each preset needs its own key; colour and gradient presets share one namespace.", "gradient_presets");
+    const merged = { color_presets: b.color_presets ?? prev.color_presets, gradient_presets: b.gradient_presets ?? prev.gradient_presets };
+    // Keys are shared between the two lists (both become ui_config.app.colors), also when only one list is sent.
+    const check = BrandIn.safeParse(merged);
+    if (!check.success) {
+      const i = check.error.issues[0]!;
+      throw paramError(`${i.path.join(".")}: ${i.message}. Colour and gradient presets share one set of keys.`, String(i.path[0] ?? "gradient_presets"));
+    }
+    const next = brandOf(merged);
     await db.update(schema.projects).set({ brand: next }).where(eq(schema.projects.id, c.get("projectId")));
     return c.json(brandOut(next));
   });
