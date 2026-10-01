@@ -15,6 +15,7 @@ const SINGULAR: Record<string, string> = {
   subscriptions: "subscription", purchases: "purchase", webhooks: "webhook_integration", api_keys: "api_key", virtual_currencies: "virtual_currency",
   invites: "invite", collaborators: "collaborator", paywalls: "paywall", audiences: "audience", discounts: "discount", experiments: "experiment",
   customer_center_config: "customer_center", test_purchases: "test_purchase", partners: "integration", exports: "data_export",
+  refund_control: "refund_control", retention_offers: "retention_offer", support_tickets: "support_ticket", winback_campaigns: "winback_campaign",
 };
 /** Writes that change nothing worth auditing. */
 const QUIET = new Set(["verify_credentials", "preview", "test", "check"]);

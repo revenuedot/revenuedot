@@ -2,7 +2,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { computeEntitlements, isActive } from "@revenuedot/core";
 import { entitlementMap } from "../repo/catalog.js";
-import { aliasesOf, loadState, type CustomerRow } from "../repo/customers.js";
+import { loadState, type CustomerRow } from "../repo/customers.js";
+import { buildContext, loadCustomerData } from "./customer-context.js";
 import { recordRawEvent } from "./events.js";
 
 /**
@@ -23,13 +24,15 @@ export interface CustomerContext {
   totalSpent: number; totalRenewals: number; latestProduct: string | null; latestStore: string | null; anyActiveStore: string[];
   isCurrentlyTrialing: boolean; hasMadeSandboxPurchase: boolean; hasMadeNonSubscriptionPurchase: boolean;
   firstPurchaseAt: number | null; mostRecentPurchaseAt: number | null; latestExpirationAt: number | null; allPurchasedProductIds: string[];
+  /** Latest renewal, trial conversion included (Refund Control's "recent renewal" template). */
+  lastRenewalAt: number | null;
 }
 
 export const emptyContext = (): CustomerContext => ({
   customerId: null, appUserIds: [], originalAppUserId: null, country: null, platform: null, appVersion: null, sdkVersion: null, sdkFlavor: null, platformVersion: null,
   storefront: null, locale: null, firstSeenAt: null, lastSeenAt: null, attributes: {}, activeEntitlements: [], status: "never", totalSpent: 0, totalRenewals: 0,
   latestProduct: null, latestStore: null, anyActiveStore: [], isCurrentlyTrialing: false, hasMadeSandboxPurchase: false, hasMadeNonSubscriptionPurchase: false,
-  firstPurchaseAt: null, mostRecentPurchaseAt: null, latestExpirationAt: null, allPurchasedProductIds: [],
+  firstPurchaseAt: null, mostRecentPurchaseAt: null, latestExpirationAt: null, allPurchasedProductIds: [], lastRenewalAt: null,
 });
 
 const ATTRIBUTE_FIELDS: Record<string, string> = {
@@ -42,7 +45,7 @@ export const SUPPORTED_FIELDS = new Set([
   "country", "customerId", "originalAppUserId", "status", "platform", "storefront", "locale", "appVersion", "sdkVersion", "sdkFlavor", "platformVersion",
   "lastSeenAt", "firstSeenAt", "firstPurchaseAt", "mostRecentPurchaseAt", "latestExpirationAt", "totalRenewals", "totalSpent", "latestProduct", "latestStore",
   "anyActiveStore", "hasActiveEntitlement", "activeEntitlements", "isCurrentlyTrialing", "hasMadeSandboxPurchase", "hasMadeNonSubscriptionPurchase",
-  "allPurchasedProductIds", ...Object.keys(ATTRIBUTE_FIELDS),
+  "allPurchasedProductIds", "lastRenewalAt", ...Object.keys(ATTRIBUTE_FIELDS),
 ]);
 export const OPERATORS = new Set(["is", "isNot", "isAnyOf", "isNotAnyOf", "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual", "equal", "notEqual",
   "contains", "doesNotContain", "containsAnyOf", "before", "beforeOrOn", "on", "after", "afterOrOn", "within", "between", "notBetween", "isEmpty", "isNotEmpty"]);
@@ -67,7 +70,7 @@ function compareVersions(a: string, b: string) {
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] ?? 0) - (pb[i] ?? 0); if (d) return Math.sign(d); }
   return 0;
 }
-const DATE_FIELDS = new Set(["lastSeenAt", "firstSeenAt", "firstPurchaseAt", "mostRecentPurchaseAt", "latestExpirationAt"]);
+const DATE_FIELDS = new Set(["lastSeenAt", "firstSeenAt", "firstPurchaseAt", "mostRecentPurchaseAt", "latestExpirationAt", "lastRenewalAt"]);
 const VERSION_FIELDS = new Set(["appVersion", "sdkVersion", "platformVersion"]);
 const list = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 const lc = (x: unknown) => String(x).toLowerCase();
@@ -163,48 +166,15 @@ export async function activeEntitlementKeys(db: DB, customer: CustomerRow, now: 
 
 /** Everything a condition can ask about one customer, from the database plus the current SDK request's headers. */
 export async function contextFor(db: DB, customer: CustomerRow | null, headers: Record<string, string | undefined>, now: Date, entitlementsActive: string[] = []): Promise<CustomerContext> {
-  const ctx = emptyContext();
-  ctx.platform = headers["x-platform"]?.toLowerCase() ?? null;
-  ctx.appVersion = headers["x-client-version"] ?? null;
-  ctx.sdkVersion = headers["x-version"] ?? null;
-  ctx.sdkFlavor = headers["x-platform-flavor"] ?? null;
-  ctx.platformVersion = headers["x-platform-version"] ?? null;
-  ctx.storefront = headers["x-storefront"] ?? null;
-  ctx.locale = headers["x-preferred-locales"]?.split(",")[0]?.trim() ?? null;
-  ctx.country = ctx.storefront ?? null;
-  if (!customer) return ctx;
-  ctx.customerId = customer.id;
-  ctx.originalAppUserId = customer.originalAppUserId;
-  ctx.appUserIds = await aliasesOf(db, customer.id);
-  ctx.country = customer.lastSeenCountry ?? ctx.country;
-  ctx.platform ??= customer.lastSeenPlatform?.toLowerCase() ?? null;
-  ctx.appVersion ??= customer.lastSeenAppVersion;
-  ctx.sdkVersion ??= customer.lastSeenSdkVersion;
-  ctx.firstSeenAt = customer.firstSeen.getTime();
-  ctx.lastSeenAt = customer.lastSeen.getTime();
-  for (const a of await db.select().from(schema.customerAttributes).where(eq(schema.customerAttributes.customerId, customer.id))) ctx.attributes[a.key] = a.value;
-  const subs = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.customerId, customer.id));
-  const ones = await db.select().from(schema.nonSubscriptions).where(eq(schema.nonSubscriptions.customerId, customer.id));
-  const tx = await db.select({ usd: schema.transactions.revenueUsd, kind: schema.transactions.kind, sandbox: schema.transactions.isSandbox }).from(schema.transactions).where(eq(schema.transactions.customerId, customer.id));
-  ctx.totalSpent = Math.round(tx.filter((t) => !t.sandbox).reduce((s, t) => s + t.usd, 0) * 100) / 100;
-  ctx.totalRenewals = tx.filter((t) => t.kind === "renewal").length;
-  const real = subs.filter((s) => s.store !== "promotional");
-  const active = real.filter((s) => !s.refundedAt && (!s.expiresDate || s.expiresDate > now || (s.gracePeriodExpiresDate && s.gracePeriodExpiresDate > now)));
-  ctx.isCurrentlyTrialing = active.some((s) => s.periodType === "trial");
-  ctx.status = active.length ? (ctx.isCurrentlyTrialing ? "trialing" : "active") : real.length || ones.length ? "expired" : "never";
-  ctx.anyActiveStore = [...new Set(active.map((s) => s.store))];
-  const purchases = [...real.map((s) => ({ at: s.purchaseDate.getTime(), first: s.originalPurchaseDate.getTime(), product: s.productIdentifier, store: s.store, sandbox: s.isSandbox })),
-    ...ones.map((o) => ({ at: o.purchaseDate.getTime(), first: o.purchaseDate.getTime(), product: o.productIdentifier, store: o.store, sandbox: o.isSandbox }))].sort((a, b) => b.at - a.at);
-  ctx.latestProduct = purchases[0]?.product ?? null;
-  ctx.latestStore = purchases[0]?.store ?? null;
-  ctx.mostRecentPurchaseAt = purchases[0]?.at ?? null;
-  ctx.firstPurchaseAt = purchases.length ? Math.min(...purchases.map((p) => p.first)) : null;
-  ctx.latestExpirationAt = real.reduce<number | null>((m, s) => (s.expiresDate && (m === null || s.expiresDate.getTime() > m) ? s.expiresDate.getTime() : m), null);
-  ctx.hasMadeSandboxPurchase = purchases.some((p) => p.sandbox);
-  ctx.hasMadeNonSubscriptionPurchase = ones.length > 0;
-  ctx.allPurchasedProductIds = [...new Set(purchases.map((p) => p.product))];
-  ctx.activeEntitlements = entitlementsActive;
-  return ctx;
+  const h: Partial<CustomerContext> = {
+    platform: headers["x-platform"]?.toLowerCase() ?? null, appVersion: headers["x-client-version"] ?? null, sdkVersion: headers["x-version"] ?? null,
+    sdkFlavor: headers["x-platform-flavor"] ?? null, platformVersion: headers["x-platform-version"] ?? null, storefront: headers["x-storefront"] ?? null,
+    locale: headers["x-preferred-locales"]?.split(",")[0]?.trim() ?? null,
+  };
+  h.country = h.storefront ?? null;
+  if (!customer) return { ...emptyContext(), ...Object.fromEntries(Object.entries(h).filter(([, v]) => v !== null)) };
+  const data = (await loadCustomerData(db, [customer])).get(customer.id)!;
+  return buildContext(data, now, entitlementsActive, h);
 }
 
 export interface Resolution {

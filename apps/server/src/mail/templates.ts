@@ -168,3 +168,43 @@ export function alertEmail(o: AlertInfo & { base: string; state: "open" | "remin
     reason: `You received this because you are an admin of ${o.projectName}. Turn these emails off in your notification settings.`,
   });
 }
+
+/** A Customer Center support ticket, to the project's support address; Reply-To is the customer. */
+export function supportTicketEmail(o: { base: string; projectName: string; appName: string | null; customerEmail: string; description: string; details: [string, string][]; url: string }): Rendered {
+  return layout({
+    subject: `Support request from ${o.customerEmail}${o.appName ? ` (${o.appName})` : ""}`,
+    preheader: o.description.slice(0, 120),
+    heading: `New support request in ${o.projectName}`,
+    paragraphs: [`${o.customerEmail} wrote from the Customer Center${o.appName ? ` in ${o.appName}` : ""}:`, o.description, ...o.details.map(([k, v]) => `${k}: ${v}`)],
+    button: { label: "Open the ticket", url: o.url },
+    after: ["Reply to this email to answer the customer directly."],
+    settingsUrl: settingsUrl(o.base),
+    reason: `You received this because this address is the Customer Center support email of ${o.projectName}.`,
+  });
+}
+
+/**
+ * A win-back email to an app's customer. It speaks for the app, not for RevenueDot: the app's name on top, the developer's
+ * text, one button, and an unsubscribe link. An open-tracking image is added only when the campaign asks for it.
+ */
+export function winbackEmail(o: { appName: string; subject: string; heading: string; body: string; buttonLabel: string; offerUrl: string; unsubscribeUrl: string; pixelUrl?: string | null }): Rendered {
+  const paras = o.body.split(/\n{2,}/).map((t) => t.trim()).filter(Boolean);
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(o.subject)}</title></head>` +
+    `<body style="margin:0;padding:0;background:#FFFFFF;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;"><tr><td align="center" style="padding:32px 16px;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;font-family:${FONT};">` +
+    `<tr><td style="padding:0 0 20px;font-size:15px;font-weight:600;color:${INK};">${esc(o.appName)}</td></tr>` +
+    `<tr><td style="border-top:1px solid ${BORDER};padding:28px 0 8px;">` +
+    `<h1 style="margin:0 0 16px;font-size:22px;line-height:30px;font-weight:600;letter-spacing:-0.02em;color:${INK};">${esc(o.heading)}</h1>` +
+    paras.map((t) => `<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:${INK};">${esc(t)}</p>`).join("") +
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;"><tr><td style="background:${INK};">` +
+    `<a href="${esc(o.offerUrl)}" style="display:inline-block;padding:12px 20px;font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(o.buttonLabel)}</a>` +
+    `</td></tr></table></td></tr>` +
+    `<tr><td style="border-top:1px solid ${BORDER};padding:20px 0 0;font-size:12px;line-height:18px;color:${FG3};">` +
+    `You received this because you subscribed to ${esc(o.appName)}. <a href="${esc(o.unsubscribeUrl)}" style="color:${FG3};">Unsubscribe</a>` +
+    `</td></tr></table></td></tr></table>` +
+    (o.pixelUrl ? `<img src="${esc(o.pixelUrl)}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">` : "") +
+    `</body></html>`;
+  const text = [o.heading, "", ...paras.flatMap((t) => [t, ""]), `${o.buttonLabel}: ${o.offerUrl}`, "", "--", `You received this because you subscribed to ${o.appName}. Unsubscribe: ${o.unsubscribeUrl}`].join("\n");
+  return { subject: o.subject, text, html };
+}

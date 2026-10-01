@@ -29,9 +29,9 @@ const NAV: Item[] = [
   { label: "Funnels", to: "funnels", icon: "funnels" },
   { label: "Ads", icon: "ads", children: [{ label: "Overview", to: "ads", soon: true }, { label: "Rewards", to: "ads/rewards", soon: true }] },
   { label: "Lifecycle", icon: "lifecycle", children: [
-    { label: "Customer Center", to: "lifecycle/customer-center" }, { label: "Support", to: "lifecycle/support", soon: true },
-    { label: "Retention", to: "lifecycle/retention", soon: true }, { label: "Refund control", to: "lifecycle/refund-control", soon: true },
-    { label: "Win-back", to: "lifecycle/winback", soon: true },
+    { label: "Customer Center", to: "lifecycle/customer-center" }, { label: "Support", to: "lifecycle/support" },
+    { label: "Retention", to: "lifecycle/retention" }, { label: "Refund control", to: "lifecycle/refund-control" },
+    { label: "Win-back", to: "lifecycle/winback" },
   ] },
 ];
 const FOOT: Item[] = [

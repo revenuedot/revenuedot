@@ -3,7 +3,8 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { activeEntitlementKeys, contextFor, fieldSupported, OPERATORS, rulesMatch, type Rules } from "../../services/targeting.js";
+import { fieldSupported, OPERATORS, rulesMatch, type Rules } from "../../services/targeting.js";
+import { projectContexts } from "../../services/customer-context.js";
 import { V2Error, body, embeddedList, expands, listOf, notFound, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 
 /** Audiences (RevenueCat's v2 shape), targeting rules and offering experiments (RevenueDot extensions). */
@@ -48,13 +49,8 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
   /** Matches the audience against the project's most recently seen customers (up to 5,000) and summarises them. */
   const preview = async (projectId: string, rules: Rules) => {
     const now = deps.now();
-    const custs = await db.select().from(schema.customers).where(eq(schema.customers.projectId, projectId)).orderBy(desc(schema.customers.lastSeen)).limit(SAMPLE_LIMIT + 1);
-    const approximate = custs.length > SAMPLE_LIMIT;
-    const matched = [];
-    for (const cu of custs.slice(0, SAMPLE_LIMIT)) {
-      const ctx = await contextFor(db, cu, {}, now, await activeEntitlementKeys(db, cu, now));
-      if (rulesMatch(ctx, rules, now.getTime())) matched.push({ cu, ctx });
-    }
+    const { items, truncated: approximate } = await projectContexts(db, projectId, now, SAMPLE_LIMIT);
+    const matched = items.filter((m) => rulesMatch(m.ctx, rules, now.getTime())).map((m) => ({ cu: m.data.customer, ctx: m.ctx }));
     return {
       stats: {
         total_customers: matched.length, active_subscriptions: matched.filter((m) => m.ctx.status === "active").length, active_trials: matched.filter((m) => m.ctx.status === "trialing").length,
@@ -138,6 +134,9 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
     const a = await findAudience(c.get("projectId"), c.req.param("audience_id")!);
     const u = await usedBy(a.id);
     if (u.targeting_rules.length || u.experiments.length) throw new V2Error(409, "resource_already_exists", "The audience is used by a targeting rule or an experiment. Remove it there first.");
+    const [campaign] = await db.select({ name: schema.winbackCampaigns.name }).from(schema.winbackCampaigns)
+      .where(and(eq(schema.winbackCampaigns.projectId, a.projectId), sql`${schema.winbackCampaigns.audience}->>'audience_id' = ${a.id}`)).limit(1);
+    if (campaign) throw new V2Error(409, "resource_already_exists", `The audience is used by the win-back campaign "${campaign.name}". Remove it there first.`);
     await db.delete(schema.audiences).where(eq(schema.audiences.id, a.id));
     return c.json({ object: "audience", id: a.id, deleted_at: deps.now().getTime() });
   });

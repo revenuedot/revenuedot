@@ -13,6 +13,8 @@ export const projects = pgTable("projects", {
   sandboxTransferBehavior: text("sandbox_transfer_behavior"),
   /** Customer Center configuration (appearance, screens, support, localization) merged over the built-in default. */
   customerCenter: jsonb("customer_center").$type<Record<string, unknown>>(),
+  /** Refund Control settings: { default_preference, customer_consented } (prd/lifecycle/PRD.md). */
+  refundSettings: jsonb("refund_settings").$type<{ default_preference?: string; customer_consented?: boolean }>(),
   createdAt: created(),
 });
 
@@ -41,6 +43,8 @@ export const apps = pgTable("apps", {
   credentialsStatus: text("credentials_status"),
   credentialsError: text("credentials_error"),
   credentialsCheckedAt: ts("credentials_checked_at"),
+  /** App Store apps: Apple Retention Messaging configuration (messages, defaults, real-time rules); see services/retention.ts. */
+  retentionMessaging: jsonb("retention_messaging").$type<Record<string, unknown>>(),
   createdAt: created(),
 }, (t) => [uniqueIndex("apps_public_key").on(t.publicKey), index("apps_project").on(t.projectId)]);
 
@@ -256,7 +260,7 @@ export const transactions = pgTable("transactions", {
   offerId: text("offer_id"),
   /** When RevenueDot recorded the row (incremental data exports read this; rows from before migration 0013 carry its run time). */
   createdAt: created(),
-}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id)]);
+}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id), index("transactions_customer").on(t.customerId, t.purchasedAt)]);
 
 /** Customer lifecycle events; the source for webhooks and the customer history timeline. */
 export const events = pgTable("events", {
@@ -766,6 +770,134 @@ export const exportRuns = pgTable("export_runs", {
   finishedAt: ts("finished_at"),
   createdAt: created(),
 }, (t) => [index("export_runs_job").on(t.jobId, t.createdAt), index("export_runs_due").on(t.status, t.nextAttemptAt)]);
+
+/**
+ * Refund Control policies, evaluated in `position` order when Apple asks about a refund (CONSUMPTION_REQUEST): the first
+ * policy whose rules match the customer decides the refund preference; no match uses the project's default.
+ */
+export const refundPolicies = pgTable("refund_policies", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** first_purchase_date, platform, recent_renewal or custom (the template the policy started from). */
+  template: text("template").notNull().default("custom"),
+  rules: jsonb("rules").$type<{ groups: { conditions: { field: string; operator: string; value?: string; currency?: string }[] }[] }>().notNull(),
+  /** prefer_refund, prefer_no_refund, consumption_only or do_not_respond. */
+  preference: text("preference").notNull(),
+  position: integer("position").notNull(),
+  createdAt: created(),
+  updatedAt: ts("updated_at"),
+}, (t) => [index("refund_policies_project").on(t.projectId, t.position)]);
+
+/**
+ * One refund request per store transaction: Apple's CONSUMPTION_REQUEST (answered with consumption information), or a
+ * refund we learned of without a request (Apple REFUND, Google voided purchases and chargebacks).
+ * `consumptionStatus`: pending, sent, skipped, failed, expired or not_applicable. `outcome`: pending, approved or declined.
+ */
+export const refundRequests = pgTable("refund_requests", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id"),
+  customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  appUserId: text("app_user_id"),
+  store: text("store").notNull(),
+  isSandbox: boolean("is_sandbox").notNull().default(false),
+  transactionId: text("transaction_id").notNull(),
+  originalTransactionId: text("original_transaction_id"),
+  productId: text("product_id"),
+  amountUsd: doublePrecision("amount_usd"),
+  reason: text("reason"),
+  requestedAt: ts("requested_at").notNull(),
+  deadlineAt: ts("deadline_at"),
+  policyId: text("policy_id"),
+  policyName: text("policy_name"),
+  preference: text("preference"),
+  consumptionStatus: text("consumption_status").notNull(),
+  consumption: jsonb("consumption").$type<Record<string, unknown>>(),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: ts("next_attempt_at"),
+  lastError: text("last_error"),
+  sentAt: ts("sent_at"),
+  outcome: text("outcome").notNull().default("pending"),
+  outcomeAt: ts("outcome_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("refund_requests_tx").on(t.projectId, t.store, t.transactionId), index("refund_requests_project_time").on(t.projectId, t.requestedAt), index("refund_requests_due").on(t.consumptionStatus, t.nextAttemptAt), index("refund_requests_customer").on(t.customerId)]);
+
+/** Customer Center retention offers: a promotional offer shown when a customer cancels (`cancel`) or asks for a refund (`refund`). */
+export const retentionOffers = pgTable("retention_offers", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  trigger: text("trigger").notNull(),
+  name: text("name").notNull(),
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull().default(""),
+  /** app_store or play_store: which SDK reads the offer ids. */
+  store: text("store").notNull(),
+  /** Store product id → store offer id (Apple promotional offer id, Google offer id). */
+  productMapping: jsonb("product_mapping").$type<Record<string, string>>().notNull().default({}),
+  active: boolean("active").notNull().default(true),
+  createdAt: created(),
+  updatedAt: ts("updated_at"),
+}, (t) => [index("retention_offers_project").on(t.projectId)]);
+
+/** Tickets customers send from the Customer Center (`POST /v1/customercenter/support/create-ticket`). */
+export const supportTickets = pgTable("support_tickets", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id"),
+  customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  appUserId: text("app_user_id").notNull(),
+  customerEmail: text("customer_email").notNull(),
+  description: text("description").notNull(),
+  /** open or closed. */
+  status: text("status").notNull().default("open"),
+  /** The support address the ticket was emailed to, and whether the mailer accepted it. */
+  emailedTo: text("emailed_to"),
+  emailed: boolean("emailed").notNull().default(false),
+  createdAt: created(),
+  closedAt: ts("closed_at"),
+}, (t) => [index("support_tickets_project").on(t.projectId, t.createdAt), index("support_tickets_customer").on(t.customerId)]);
+
+/** Win-back campaigns: email churned subscribers an offer. Audience, email and offer are JSON (services/winback.ts). */
+export const winbackCampaigns = pgTable("winback_campaigns", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** draft, active or paused. */
+  status: text("status").notNull().default("draft"),
+  audience: jsonb("audience").$type<Record<string, unknown>>().notNull(),
+  email: jsonb("email").$type<Record<string, unknown>>().notNull(),
+  offer: jsonb("offer").$type<Record<string, unknown>>().notNull(),
+  sendHourUtc: integer("send_hour_utc").notNull().default(16),
+  trackOpens: boolean("track_opens").notNull().default(false),
+  lastRunAt: ts("last_run_at"),
+  createdAt: created(),
+  updatedAt: ts("updated_at"),
+}, (t) => [index("winback_campaigns_project").on(t.projectId)]);
+
+/** One win-back email to one customer. `token` (random) identifies the email in its tracking and unsubscribe links. */
+export const winbackSends = pgTable("winback_sends", {
+  id: text("id").primaryKey(),
+  campaignId: text("campaign_id").notNull().references(() => winbackCampaigns.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  customerId: text("customer_id").references(() => customers.id, { onDelete: "set null" }),
+  email: text("email").notNull(),
+  token: text("token").notNull(),
+  offerUrl: text("offer_url").notNull(),
+  sentAt: ts("sent_at").notNull(),
+  openedAt: ts("opened_at"),
+  clickedAt: ts("clicked_at"),
+  unsubscribedAt: ts("unsubscribed_at"),
+  error: text("error"),
+}, (t) => [uniqueIndex("winback_sends_token").on(t.token), uniqueIndex("winback_sends_once").on(t.campaignId, t.customerId), index("winback_sends_project").on(t.projectId, t.sentAt), index("winback_sends_customer").on(t.customerId)]);
+
+/** Addresses that unsubscribed from a project's marketing email (win-back). Lower-cased. */
+export const emailSuppressions = pgTable("email_suppressions", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  reason: text("reason").notNull().default("unsubscribed"),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.email] })]);
 
 /* ---- Web billing, purchase links, funnels, web discounts, domains (prd/web-billing/PRD.md, migration 0018) ---- */
 

@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import type { Deps } from "./context.js";
 import { sdkRoutes } from "./routes/sdk.js";
 import { notificationRoutes } from "./routes/notifications.js";
+import { lifecyclePublicRoutes } from "./routes/lifecycle-public.js";
 import { authRoutes } from "./routes/auth.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { v2Routes } from "./routes/v2/index.js";
@@ -58,6 +59,8 @@ export function createApp(input: Deps) {
   app.get("/", (c) => c.json({ name: "RevenueDot", docs: "https://revenuedot.app/docs" }));
   // Store notifications are mounted before the SDK routes, which require an SDK API key.
   app.route("/", notificationRoutes(deps));
+  // Apple's Retention Messaging call and the win-back email links (no API key).
+  app.route("/", lifecyclePublicRoutes(deps));
   app.route("/", authRoutes(deps));
   // OAuth 2.1 for MCP clients: the access token is a project-scoped secret key.
   app.route("/", oauthRoutes(deps));

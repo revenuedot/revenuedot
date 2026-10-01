@@ -32,6 +32,11 @@ import { subscriberAuthRoutes } from "./subscriber-auth.js";
 import { billingExcludedRoutes } from "./billing-excluded.js";
 import { discountRoutes } from "./discounts.js";
 import { webRoutes } from "./web.js";
+import { refundControlRoutes } from "./refund-control.js";
+import { retentionRoutes } from "./retention.js";
+import { supportRoutes } from "./support.js";
+import { winbackRoutes } from "./winback.js";
+import { customerListRoutes } from "./customer-lists.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -85,6 +90,12 @@ export function v2Routes(deps: Deps) {
 
   projectRoutes(r, deps);
   appRoutes(r, deps);
+  // Lifecycle and customer lists (prd/lifecycle/PRD.md), before the customer routes they share a prefix with.
+  refundControlRoutes(r, deps);
+  retentionRoutes(r, deps);
+  supportRoutes(r, deps);
+  winbackRoutes(r, deps);
+  customerListRoutes(r, deps);
   productRoutes(r, deps);
   entitlementRoutes(r, deps);
   offeringRoutes(r, deps);
