@@ -124,9 +124,20 @@ export function sdkRoutes(deps: Deps) {
     const body = method === "GET" || method === "HEAD" ? undefined : await c.req.arrayBuffer();
     return r.fetch(new Request(url, { method, headers: c.req.raw.headers, body }));
   };
-  r.all("/v1/customer", iam);
-  r.all("/v1/customer/*", iam);
-  r.all("/rcbilling/v1/customer/*", iam);
+  r.get("/v1/customer", iam);
+  r.get("/v1/customer/offerings", iam);
+  r.post("/v1/customer/intro_eligibility", iam);
+  r.post("/v1/customer/attribution", iam);
+  r.post("/v1/customer/attributes", iam);
+  r.post("/v1/customer/adservices_attribution", iam);
+  r.get("/v1/customer/health_report", iam);
+  r.get("/v1/customer/customercenter", iam);
+  r.post("/v1/customer/customercenter/support/create-ticket", iam);
+  r.get("/v1/customer/virtual_currencies", iam);
+  r.post("/v1/customer/restore/eligibility", iam);
+  r.get("/v1/customer/ads/reward_verifications/:client_transaction_id", iam);
+  r.get("/rcbilling/v1/customer/offering_products", iam);
+  r.get("/rcbilling/v1/customer/products", iam);
 
   const reqInfo = (c: { req: { header: (k: string) => string | undefined } }) => {
     const s = sdkHeaders(c.req);
