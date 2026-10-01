@@ -152,6 +152,9 @@ test("invites and members: invite, accept as a new and an existing user, roles, 
   // 1. A new person creates an account from the link.
   const guest = await newPage(browser);
   const guestErrors = watch(guest);
+  // A signed-out invitee's page never asks /auth/me (a 401 there is logged as a console error).
+  const guest401: string[] = [];
+  guest.on("response", (r) => { if (r.status() === 401) guest401.push(new URL(r.url()).pathname); });
   await guest.goto(await linkFor(page, newbie, "/invite?token="));
   await expect(guest.getByRole("heading", { name: "Join Team project" })).toBeVisible();
   await expect(guest.getByText(`Olive Owner invited ${newbie} to Team project as Viewer.`)).toBeVisible();
@@ -160,6 +163,7 @@ test("invites and members: invite, accept as a new and an existing user, roles, 
   await guest.getByLabel("Your name").fill("Nia Newbie");
   await guest.getByLabel("Password").fill(PW);
   await shot(guest, "invite-new");
+  expect(guest401).toEqual([]);
   await guest.getByRole("button", { name: "Create account and join" }).click();
   await guest.waitForURL(new RegExp(`/projects/${pid}/overview`));
   await guest.goto(`/projects/${pid}/settings/collaborators`);

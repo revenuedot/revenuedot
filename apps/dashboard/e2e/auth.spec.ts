@@ -28,3 +28,24 @@ test("closed sign-up: the sign-up page explains how to open it, and sign-in has 
   await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("signed out: a deep link asks for sign-in first, with no refused API calls, then opens that page", async ({ page }) => {
+  expect((await page.request.post("/auth/login", { data: { email: "e2e@revenuedot.test", password: "e2e-password-1" } })).ok()).toBe(true);
+  const pid: string = (await (await page.request.get("/auth/me")).json()).projects[0].id;
+  await page.request.post("/auth/logout");
+  await page.context().clearCookies();
+  const failed: string[] = [];
+  page.on("response", (r) => { if (r.status() >= 400) failed.push(`${r.status()} ${new URL(r.url()).pathname}`); });
+  await page.goto(`/projects/${pid}/customers`);
+  await page.waitForURL(/\/login\?next=/);
+  await expect(page.getByRole("heading", { name: "Sign in to RevenueDot" })).toBeVisible();
+  await page.goto("/account");
+  await page.waitForURL(/\/login\?next=%2Faccount/);
+  expect(failed).toEqual([]);
+  await page.goto(`/login?next=${encodeURIComponent(`/projects/${pid}/customers`)}`);
+  await page.getByLabel("Email", { exact: true }).fill("e2e@revenuedot.test");
+  await page.getByLabel("Password").fill("e2e-password-1");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(new RegExp(`/projects/${pid}/customers$`));
+  await expect(page.getByRole("heading", { name: "Customers" })).toBeVisible();
+});

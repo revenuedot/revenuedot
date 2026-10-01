@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Icon, Mark } from "./icons";
 
@@ -84,7 +85,7 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
           <hr />
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/new"); }}><Icon name="plus" />New project</button>
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account"); }}><Icon name="settings" />Account settings</button>
-          <button role="menuitem" type="button" onClick={async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav("/login"); }}><Icon name="logout" />Sign out</button>
+          <button role="menuitem" type="button" onClick={() => { setOpen(false); void signOut(qc, () => flushSync(() => nav("/login"))); }}><Icon name="logout" />Sign out</button>
         </div>
       )}
     </div>
@@ -188,3 +189,21 @@ export function Copy({ value, label }: { value: string; label?: string }) {
     </span>
   );
 }
+
+/**
+ * Sign out without a single request answering 401: no query may start (offline mode pauses them) or still be running
+ * when the session ends, and the project pages leave before the cache is cleared (clearing it under a mounted page
+ * makes that page fetch again, after the session is gone).
+ */
+export async function signOut(qc: QueryClient, leave: () => void) {
+  onlineManager.setOnline(false);
+  try {
+    for (let i = 0; i < 50 && qc.isFetching() > 0; i++) await new Promise((r) => setTimeout(r, 100));
+    await api("/auth/logout", { method: "POST" });
+    leave();
+    qc.clear();
+  } finally {
+    onlineManager.setOnline(true);
+  }
+}
+

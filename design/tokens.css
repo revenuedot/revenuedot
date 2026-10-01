@@ -13,7 +13,7 @@
   /* Ink */
   --fg: #0A0A0A;            /* text, primary buttons, selected segment */
   --fg-2: #525252;          /* secondary text, inactive nav */
-  --fg-3: #737373;          /* labels, captions, placeholders */
+  --fg-3: #6B6B6B;          /* labels, captions, placeholders (4.5:1 on --active) */
 
   /* Lines: neutral grey hairlines, one per edge */
   --border: #E5E5E5;        /* panel edges, grid dividers */
@@ -23,7 +23,7 @@
   --accent: #F7B500;        /* the gold dot: live, current period, focus ring, sparkline endpoint */
   --accent-ink: #8A5A00;    /* gold text on white (6.1:1) */
   --accent-wash: rgb(247 181 0 / .14);
-  --up: #5F822B;            /* growth, renewals, healthy */
+  --up: #587A27;            /* growth, renewals, healthy (5.0:1 on white) */
   --down: #C2410C;          /* decline, refunds, failures */
   --info: #2F6F9F;          /* trials, sandbox */
 

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { useMe, type Me } from "../components/Shell";
+import { signOut, useMe, type Me } from "../components/Shell";
 import { Mark } from "../components/icons";
 import { Switch, useToast } from "../components/ui";
 
@@ -144,7 +145,9 @@ export function InvitePage() {
   const token = params.get("token") ?? "";
   const nav = useNavigate();
   const qc = useQueryClient();
-  const me = useMe();
+  // Ask /auth/config first: /auth/me answers 401 to a signed-out visitor (most invitees), which the browser logs as an error.
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ signed_in?: boolean }>("/auth/config"), retry: false });
+  const me = useMe(config.data?.signed_in === true);
   const info = useQuery({ queryKey: ["invite", token], retry: false, enabled: !!token, queryFn: () => api<InviteInfo>(`/auth/invites/${encodeURIComponent(token)}`) });
   const [form, setForm] = useState({ name: "", password: "" });
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +162,7 @@ export function InvitePage() {
       </Card>
     );
   }
-  if (info.isLoading || me.isLoading || !info.data) return <Card title="Your invite" sub="Loading…"><span /></Card>;
+  if (info.isLoading || config.isLoading || me.isLoading || !info.data) return <Card title="Your invite" sub="Loading…"><span /></Card>;
   const i = info.data;
   const who = i.invited_by ? (i.invited_by.name || i.invited_by.email) : "A teammate";
   const sub = <>{who} invited <b>{i.email}</b> to <b>{i.project.name}</b> as {ROLE_LABEL[i.role] ?? i.role}.</>;
@@ -174,7 +177,7 @@ export function InvitePage() {
       return (
         <Card title={`Join ${i.project.name}`} sub={sub}>
           <div className="banner warn" role="status">You are signed in as {signedIn.email}. This invite is for {i.email}.</div>
-          <button type="button" className="btn btn-dark btn-lg" onClick={async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav(`/login?next=${encodeURIComponent(here)}`); }}>Sign in as {i.email}</button>
+          <button type="button" className="btn btn-dark btn-lg" onClick={() => { void signOut(qc, () => flushSync(() => nav(`/login?next=${encodeURIComponent(here)}`))); }}>Sign in as {i.email}</button>
         </Card>
       );
     }

@@ -107,7 +107,8 @@ test("in-app currencies, Customer Center and audit logs", async ({ page }) => {
   for (const path of [`product-catalog/virtual-currencies`, `lifecycle/customer-center`, `settings/audit-logs`]) {
     await page.goto(`/projects/${pid}/${path}`);
     await page.waitForTimeout(300);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${path} fits 390px`).toBe(true);
+    // Neither the document nor the app's scroll area scrolls sideways.
+    expect(await page.evaluate(() => { const s = document.querySelector(".scroll"); return document.documentElement.scrollWidth <= window.innerWidth + 1 && (!s || s.scrollWidth <= s.clientWidth + 1); }), `${path} fits 390px`).toBe(true);
   }
   expect(errors.filter((e) => !/status of 4\d\d/.test(e))).toEqual([]);
 });
