@@ -1,6 +1,7 @@
 import { openDb, schema, type DB } from "@revenuedot/db";
 import { createApp, defaultStores } from "@revenuedot/server";
 import { createSecretKey } from "@revenuedot/server/services/auth.js";
+import type { Mailer } from "@revenuedot/server/mail/index.js";
 
 export interface Harness {
   db: DB;
@@ -11,8 +12,8 @@ export interface Harness {
   ids: { project: string; app: string; iosKey: string; testKey: string; androidKey: string; androidApp: string; secretKey: string };
 }
 
-/** Outbound HTTP (Apple, Google, webhooks) and after-response work, for tests that stub or await them. */
-export interface HarnessOptions { fetch?: typeof fetch; defer?: (task: () => Promise<unknown>) => void }
+/** Outbound HTTP (Apple, Google, webhooks), after-response work and email, for tests that stub or await them. */
+export interface HarnessOptions { fetch?: typeof fetch; defer?: (task: () => Promise<unknown>) => void; mailer?: Mailer; publicUrl?: string }
 
 /** Boots the server on an in-memory Postgres with one project, an App Store app, a Play app and a Test Store app. */
 export async function harness(opts: HarnessOptions = {}): Promise<Harness> {
