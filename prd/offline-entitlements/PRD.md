@@ -35,9 +35,10 @@ Later
 - `packages/contract/test/offline-entitlements.test.ts`:
   - The iOS fixture's catalog produces exactly the iOS fixture. The Android fixture's catalog produces the Android fixture, except that the bare key holds the union.
   - Both responses decode with the SDK schema.
-  - For every product of a mixed catalog (App Store with billing plans, Play with several base plans, one-time products), a purchase is applied, the online entitlements are read from customer info, and each SDK's offline algorithm (re-implemented from the forks) is run over the mapping: iOS matches online exactly; Android matches exactly for single-plan products and is a superset otherwise.
+  - For every product of a mixed catalog (App Store with billing plans, Play with several base plans, one-time products), the online entitlements come from the server's own rule (`computeEntitlements`) and each SDK's offline algorithm (re-implemented from the forks) is run over the mapping: iOS matches online exactly for products without a billing plan; Android matches exactly for single-plan products and is a superset otherwise. Billing-plan keys are checked against the iOS lookup rule.
   - Keys never leak across apps.
 - `packages/contract/test/sdk.test.ts` keeps the bare-and-plan key check, now with the Play app's key.
 
 ## Known gaps
 - Amazon and Stripe products are mapped by the generic rule; their SDK paths are not covered by a fixture yet.
+- Online, an App Store purchase does not record its billing plan yet (iOS 26.4 monthly-commitment plans), so a product stored only as `product:monthly` unlocks its entitlement offline but not online. No RevenueDot catalog uses billing plans today.
