@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { buildCustomerInfo, isAnonymous } from "@revenuedot/core";
+import { buildCustomerInfo, isAnonymous, newId } from "@revenuedot/core";
 import { Codes, RCError, errorResponse } from "../errors.js";
 import type { Deps, Vars } from "../context.js";
 import { entitlementMap, offeringsJSON, productEntitlementMappingJSON, productInfo } from "../repo/catalog.js";
@@ -10,7 +10,7 @@ import { restV1 } from "./rest-v1.js";
 import { appForPlatform, resolveKey } from "../services/auth.js";
 import type { ReceiptInput } from "../stores/types.js";
 import { schema } from "@revenuedot/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
 import { attributionDataToAttributes, inBackground, resolveAdServicesToken, resolveDeviceAttributes, setAttributionOnce } from "../services/attribution.js";
 import { appleCredentials } from "../stores/apple/api.js";
@@ -19,7 +19,7 @@ import { customerCenterFor } from "../services/customer-center.js";
 import { publicOrigin } from "./oauth.js";
 import { buildRemoteConfig } from "../services/remote-config.js";
 import { activeEntitlementKeys, contextFor, resolveOfferings } from "../services/targeting.js";
-import { adjust, balancesOf } from "../services/virtual-currencies.js";
+import { balancesOf } from "../services/virtual-currencies.js";
 import { amazonClientFor, amazonReceiptData } from "../stores/amazon/index.js";
 import { mergeStoredState, rowPrice, subRowOf } from "../stores/rows.js";
 import { withStoreSecrets } from "../services/store-secrets.js";
@@ -61,16 +61,23 @@ export function sdkRoutes(deps: Deps) {
   /**
    * A subscriber token (`rdat_`) speaks for one app user id: an expired token, or a path or body naming another app user
    * id, is the SDK's "invalid auth token" (7224). The `/v1/customer/*` paths name no user and are served below.
+   * Ids are compared the way the routes read them: a path segment is decoded twice (Hono, then `userId`), a body id once.
    */
+  const USERLESS_POSTS = new Set(["/v1/subscribers/identify", "/v1/subscribers/redeem_purchase", "/v1/customercenter/support/create-ticket"]);
+  const BODY_USER_POSTS = new Set(["/v1/receipts", "/v1/subscribers/identify", "/v1/subscribers/redeem_purchase", "/v1/offers"]);
   async function pinSubscriber(c: any, sub: { appUserId: string; expired: boolean }) {
     const refuse = (m: string) => new RCError(401, Codes.INVALID_AUTH_TOKEN, m);
     if (sub.expired) throw refuse("The access token has expired. Ask your server for a new one.");
+    const other = () => refuse("The access token belongs to another app user id.");
     const path: string = c.req.path;
+    const post = c.req.method === "POST";
     const m = /^\/(?:rcbilling\/)?v1\/(?:subscribers|customercenter)\/([^/]+)/.exec(path);
-    if (m && !["identify", "redeem_purchase", "support"].includes(m[1]!) && safeDecode(m[1]!) !== sub.appUserId) throw refuse("The access token belongs to another app user id.");
-    if (c.req.method === "POST" && (path === "/v1/receipts" || path === "/v1/subscribers/identify" || path === "/v1/subscribers/redeem_purchase")) {
+    if (m && !(post && USERLESS_POSTS.has(path)) && safeDecode(safeDecode(m[1]!)) !== sub.appUserId) throw other();
+    const alias = /^\/v1\/subscribers\/[^/]+\/alias$/.test(path);
+    if (post && (BODY_USER_POSTS.has(path) || alias)) {
       const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
-      if (b.app_user_id !== undefined && String(b.app_user_id) !== sub.appUserId) throw refuse("The access token belongs to another app user id.");
+      // identify and alias would merge, or answer for, the customer named by new_app_user_id.
+      for (const k of ["app_user_id", "new_app_user_id"]) if (b?.[k] !== undefined && safeDecode(String(b[k])) !== sub.appUserId) throw other();
     }
   }
 
@@ -94,23 +101,30 @@ export function sdkRoutes(deps: Deps) {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => null) as { adjustments?: unknown; reference?: unknown } | null;
     const adj = b?.adjustments;
-    if (!adj || typeof adj !== "object" || Array.isArray(adj) || !Object.keys(adj).length || Object.values(adj).some((v) => !Number.isInteger(v) || (v as number) <= 0)) {
+    if (!adj || typeof adj !== "object" || Array.isArray(adj) || !Object.keys(adj).length || Object.values(adj).some((v) => !Number.isInteger(v) || (v as number) <= 0 || (v as number) > 2_147_483_647)) {
       throw new RCError(400, Codes.BAD_REQUEST_PARAMS, "adjustments must map currency codes to positive whole amounts to spend.");
     }
-    const amounts = adj as Record<string, number>;
+    const amounts = Object.entries(adj as Record<string, number>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     const { customer } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
     const key = c.req.header("idempotency-key");
     const sourceKey = key ? `sdk:${key.slice(0, 200)}` : null;
-    const replay = sourceKey ? (await deps.db.select({ id: schema.virtualCurrencyTransactions.id }).from(schema.virtualCurrencyTransactions)
-      .where(and(eq(schema.virtualCurrencyTransactions.customerId, customer.id), eq(schema.virtualCurrencyTransactions.sourceKey, sourceKey))).limit(1)).length > 0 : false;
     const have = new Map((await balancesOf(deps.db, app.projectId, customer.id, { includeEmpty: true })).map((x) => [x.code, x.balance]));
-    for (const [code, amount] of Object.entries(amounts)) {
-      if (!have.has(code)) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, `There is no in-app currency with code ${code}.`);
-      if (!replay && have.get(code)! - amount < 0) throw new RCError(422, Codes.BAD_REQUEST, `Balance of ${code} is ${have.get(code)}; spending ${amount} would take it below zero.`);
-    }
+    for (const [code] of amounts) if (!have.has(code)) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, `There is no in-app currency with code ${code}.`);
     const reference = typeof b!.reference === "string" ? b!.reference.slice(0, 255) : null;
-    // A retried request (same Idempotency-Key) answers the balances without spending again.
-    if (!replay) for (const [code, amount] of Object.entries(amounts)) await adjust(deps.db, app.projectId, customer.id, code, -amount, { source: "sdk", sourceKey, reference, now });
+    // One transaction: every currency is spent or none. A conditional decrement keeps concurrent spends from taking a
+    // balance below zero; the ledger's unique source key makes a retry with the same Idempotency-Key spend nothing again.
+    await deps.db.transaction(async (tx) => {
+      for (const [code, amount] of amounts) {
+        const entry = await tx.insert(schema.virtualCurrencyTransactions).values({
+          id: newId("vct_", 16), projectId: app.projectId, customerId: customer.id, code, amount: -amount, source: "sdk", sourceKey, reference, createdAt: now,
+        }).onConflictDoNothing().returning({ id: schema.virtualCurrencyTransactions.id });
+        if (!entry.length) continue;
+        const spent = await tx.update(schema.virtualCurrencyBalances).set({ balance: sql`${schema.virtualCurrencyBalances.balance} - ${amount}` })
+          .where(and(eq(schema.virtualCurrencyBalances.customerId, customer.id), eq(schema.virtualCurrencyBalances.code, code), gte(schema.virtualCurrencyBalances.balance, amount)))
+          .returning({ balance: schema.virtualCurrencyBalances.balance });
+        if (!spent.length) throw new RCError(422, Codes.BAD_REQUEST, `Balance of ${code} is ${have.get(code)}; spending ${amount} would take it below zero.`);
+      }
+    });
     const out: Record<string, { balance: number; name: string; code: string; description: string | null }> = {};
     for (const x of await balancesOf(deps.db, app.projectId, customer.id, { includeEmpty: true })) out[x.code] = { balance: x.balance, name: x.name, code: x.code, description: x.description };
     return c.json({ virtual_currencies: out });
@@ -281,9 +295,9 @@ export function sdkRoutes(deps: Deps) {
   r.post("/v1/subscribers/:id/alias", async (c) => {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;
-    const newId = userId(String(b.new_app_user_id ?? ""));
-    const { customer, aliased } = await identify(deps.db, app.projectId, userId(c.req.param("id")), newId, now);
-    if (aliased) await aliasEvent(c, customer.id, newId, now);
+    const newAppUserId = userId(String(b.new_app_user_id ?? ""));
+    const { customer, aliased } = await identify(deps.db, app.projectId, userId(c.req.param("id")), newAppUserId, now);
+    if (aliased) await aliasEvent(c, customer.id, newAppUserId, now);
     return c.json({});
   });
 

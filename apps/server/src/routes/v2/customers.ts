@@ -3,7 +3,8 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { findCustomer, getOrCreateCustomer, setAttributes, type CustomerRow } from "../../repo/customers.js";
+import { aliasesOf, findCustomer, getOrCreateCustomer, setAttributes, type CustomerRow } from "../../repo/customers.js";
+import { revokeSubscriberTokens } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { subscriptionTransactions } from "../../services/subscription-transactions.js";
 import { StoreActionError, cancelSubscription, extendSubscription, refundOrder, revokeSubscription } from "../../services/store-actions.js";
@@ -100,7 +101,8 @@ export function customerRoutes(r: V2Router, deps: Deps) {
 
   r.delete(`${C}/:customer_id`, scope("customer_information:customers:read_write"), async (c) => {
     const cust = await find(c);
-    // Aliases, attributes, subscriptions, purchases, transactions and events cascade.
+    // Aliases, attributes, subscriptions, purchases, transactions and events cascade; subscriber tokens are revoked.
+    await revokeSubscriberTokens(db, cust.projectId, await aliasesOf(db, cust.id));
     await db.delete(schema.customers).where(and(eq(schema.customers.projectId, cust.projectId), eq(schema.customers.id, cust.id)));
     return c.json({ object: "customer", id: c.req.param("customer_id"), deleted_at: deps.now().getTime() });
   });

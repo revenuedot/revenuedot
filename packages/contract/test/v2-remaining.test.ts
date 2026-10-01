@@ -129,6 +129,16 @@ describe("subscriber tokens (authenticate)", () => {
     await refused(await sdk("/v1/subscribers/someone_else/offerings", tok));
     await refused(await sdk("/v1/receipts", tok, { method: "POST", json: { app_user_id: "someone_else", fetch_token: "x" } }));
     await refused(await sdk("/v1/subscribers/identify", tok, { method: "POST", json: { app_user_id: "someone_else", new_app_user_id: "z" } }));
+    // logIn and alias would answer for, or merge into, the customer named by new_app_user_id.
+    await sdk("/v1/subscribers/someone_else", h.ids.iosKey);
+    await refused(await sdk("/v1/subscribers/identify", tok, { method: "POST", json: { app_user_id: "pinned", new_app_user_id: "someone_else" } }));
+    await refused(await sdk("/v1/subscribers/pinned/alias", tok, { method: "POST", json: { new_app_user_id: "someone_else" } }));
+    await refused(await sdk("/v1/offers", tok, { method: "POST", json: { app_user_id: "someone_else", generate_offers: [{ product_id: "pro_monthly", offer_id: "o" }] } }));
+    // App user ids that look like the user-less paths are still other users.
+    for (const other of ["identify", "redeem_purchase", "support"]) await refused(await sdk(`/v1/subscribers/${other}`, tok));
+    await refused(await sdk("/v1/customercenter/support", tok));
+    // Ids are compared after the same decoding the routes apply.
+    await refused(await sdk(`/v1/subscribers/${encodeURIComponent(encodeURIComponent("someone_else"))}`, tok));
     expect((await sdk("/v1/subscribers/pinned", tok)).status).toBe(201);
     // The app's own key has no subscriber to speak for.
     await refused(await sdk("/v1/customer", h.ids.iosKey));
@@ -137,6 +147,15 @@ describe("subscriber tokens (authenticate)", () => {
     expect((await sdk("/v1/customer", "rdat_unknown")).status).toBe(401);
     // A token is never a v2 key.
     expect((await call("GET", "/v2/projects/{project_id}/apps", {}, { key: tok, ext: true })).status).toBe(403);
+  });
+
+  it("is revoked when its customer is deleted", async () => {
+    await call("POST", "/v2/projects/{project_id}/customers", {}, { json: { id: "leaver" } });
+    const { access_token: tok } = await tokenFor("leaver");
+    expect((await sdk("/v1/customer", tok)).status).toBe(200);
+    expect((await call("DELETE", "/v2/projects/{project_id}/customers/{customer_id}", { customer_id: "leaver" })).status).toBe(200);
+    expect((await sdk("/v1/customer", tok)).status).toBe(401);
+    expect(await h.db.select().from(schema.customers).where(eq(schema.customers.originalAppUserId, "leaver"))).toEqual([]);
   });
 
   it("spends in-app currency: all or nothing, never below zero, once per Idempotency-Key", async () => {
@@ -165,6 +184,13 @@ describe("subscriber tokens (authenticate)", () => {
     }
     const ledger = await h.db.select().from(schema.virtualCurrencyTransactions).where(eq(schema.virtualCurrencyTransactions.source, "sdk"));
     expect(ledger.map((l) => [l.code, l.amount, l.reference])).toEqual([["GLD", -4, "sword"]]);
+    // Concurrent spends never take a balance below zero: 6 gold buys exactly three spends of 2.
+    const results = await Promise.all(Array.from({ length: 6 }, () => spend({ adjustments: { GLD: 2 } })));
+    expect(results.map((r) => r.status).sort()).toEqual([200, 200, 200, 422, 422, 422]);
+    const after = await (await sdk("/v1/customer/virtual_currencies", tok)).json() as any;
+    expect(after.virtual_currencies.GLD.balance).toBe(0);
+    await h.db.delete(schema.virtualCurrencyTransactions).where(eq(schema.virtualCurrencyTransactions.amount, -2));
+    expect((await spend({ adjustments: { GLD: 2_147_483_648 } })).status).toBe(400);
     // RevenueCat sends no webhook for balance changes outside purchases and the dashboard.
     expect(await h.db.select().from(schema.events).where(eq(schema.events.type, "VIRTUAL_CURRENCY_TRANSACTION"))).toEqual([]);
   });

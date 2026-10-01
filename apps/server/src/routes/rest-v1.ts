@@ -5,7 +5,8 @@ import { schema } from "@revenuedot/db";
 import { Codes, RCError } from "../errors.js";
 import type { Deps, Vars } from "../context.js";
 import { entitlementMap } from "../repo/catalog.js";
-import { findCustomer, getOrCreateCustomer, loadState } from "../repo/customers.js";
+import { aliasesOf, findCustomer, getOrCreateCustomer, loadState } from "../repo/customers.js";
+import { revokeSubscriberTokens } from "../services/auth.js";
 import { applyPurchases } from "../services/purchases.js";
 import { addDuration } from "../stores/test-store.js";
 import {
@@ -33,6 +34,7 @@ export function restV1(r: Hono<{ Variables: Vars }>, deps: Deps) {
     const projectId = requireSecret(c);
     const cust = await findCustomer(deps.db, projectId, uid(c));
     if (!cust) throw new RCError(404, Codes.NOT_FOUND, "Subscriber not found.");
+    await revokeSubscriberTokens(deps.db, projectId, await aliasesOf(deps.db, cust.id));
     await deps.db.delete(schema.customers).where(eq(schema.customers.id, cust.id));
     return c.json({ app_user_id: uid(c) });
   });

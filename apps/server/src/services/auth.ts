@@ -1,4 +1,4 @@
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord } from "../context.js";
 
@@ -31,6 +31,11 @@ export async function issueSubscriberToken(db: DB, app: { id: string; projectId:
   // Expired tokens are only kept long enough to answer "expired" instead of "unknown".
   await db.delete(schema.subscriberTokens).where(lt(schema.subscriberTokens.expiresAt, new Date(now.getTime() - 24 * SUBSCRIBER_TOKEN_TTL_MS)));
   return { token, expiresAt };
+}
+
+/** Revokes every subscriber token issued for these app user ids (a deleted customer's ids), so none can recreate it. */
+export async function revokeSubscriberTokens(db: DB, projectId: string, appUserIds: string[]) {
+  if (appUserIds.length) await db.delete(schema.subscriberTokens).where(and(eq(schema.subscriberTokens.projectId, projectId), inArray(schema.subscriberTokens.appUserId, appUserIds)));
 }
 
 /** Resolves an API key: public app keys (appl_, goog_, test_, rcb_ ...), secret keys (sk_...) or subscriber tokens (rdat_...). */

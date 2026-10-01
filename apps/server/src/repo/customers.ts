@@ -156,8 +156,9 @@ export async function identify(db: DB, projectId: string, oldId: string, newAppU
     return { customer: (await findCustomer(db, projectId, newAppUserId))!, created: false, aliased };
   }
   if (old && isAnonymous(oldId) && (await isOnlyAnonymous(db, old.id))) {
-    await db.insert(customerAliases).values({ projectId, appUserId: newAppUserId, customerId: old.id }).onConflictDoNothing();
-    return { customer: (await findCustomer(db, projectId, newAppUserId))!, created: true, aliased: true };
+    // A concurrent logIn may have added the alias first: only the call that added it reports (and emits) the alias.
+    const added = await db.insert(customerAliases).values({ projectId, appUserId: newAppUserId, customerId: old.id }).onConflictDoNothing().returning({ appUserId: customerAliases.appUserId });
+    return { customer: (await findCustomer(db, projectId, newAppUserId))!, created: true, aliased: added.length > 0 };
   }
   return { ...(await getOrCreateCustomer(db, projectId, newAppUserId, now)), aliased: false };
 }
