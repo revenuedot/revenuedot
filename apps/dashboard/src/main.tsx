@@ -26,7 +26,6 @@ function Home() {
 }
 
 const SOON: [string, string, string][] = [
-  ["charts", "Charts", "42 revenue and subscription charts with RevenueCat's definitions."],
   ["benchmarks", "Benchmarks", "How your conversion and retention compare with apps like yours."],
   ["product-catalog/virtual-currencies", "In-app currencies", "Coins and credits that customers earn and spend."],
   ["web-discounts", "Web discounts", "Discounts applied at web checkout."],

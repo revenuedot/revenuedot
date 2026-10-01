@@ -103,6 +103,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     // `undefined` means the store did not say; keep what we know. A cancel reason only lives while auto-renew is off.
     cancelReason: !p.unsubscribeDetectedAt ? null : p.cancelReason === undefined ? existing?.cancelReason ?? null : p.cancelReason,
     priceIncreaseStatus: p.priceIncreaseStatus === undefined ? existing?.priceIncreaseStatus ?? null : p.priceIncreaseStatus,
+    cancelSurveyReason: p.cancelSurveyReason === undefined ? existing?.cancelSurveyReason ?? null : p.cancelSurveyReason,
     // Access that runs past now reopens the chain for a future EXPIRATION; an EXPIRATION derived below sets it again.
     presentedOfferingId: existing?.presentedOfferingId ?? ctx.presentedOfferingId ?? null,
     expiredEventAt: (p.expiresDate === null || p.expiresDate > ctx.now || (p.gracePeriodExpiresDate && p.gracePeriodExpiresDate > ctx.now)) ? null : existing?.expiredEventAt ?? null,

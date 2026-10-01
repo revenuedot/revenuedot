@@ -25,6 +25,8 @@ export interface VerifiedSubscription {
   autoRenewProductId?: string | null;
   /** Why auto-renew is off beyond "the customer turned it off". `undefined` = the store did not say (keep what is stored). */
   cancelReason?: "PRICE_INCREASE" | "DEVELOPER_INITIATED" | "BILLING_ERROR" | null;
+  /** Google Play: the answer to the cancel survey (CANCEL_SURVEY_REASON_…), when the customer gave one. */
+  cancelSurveyReason?: string | null;
   /** Price increase consent state. `undefined` = the store did not say (keep what is stored). */
   priceIncreaseStatus?: "pending" | "accepted" | null;
   /** Google Play: the purchase token this one replaced (`linkedPurchaseToken` of an upgrade, downgrade or resubscribe). */

@@ -7,7 +7,7 @@
  * - Project filter chips ("All projects" plus one chip per project): later tier; the project switcher sits in the sidebar.
  * - "Ask about revenue" AI bar: shown, labelled coming soon (RevenueDot AI is Tier 2).
  * - Info tooltips that define each card: the definitions are in the card's title attribute instead.
- * - Cards do not open a chart yet (Charts are Tier 2).
+ * - Only the card's label links to its chart; RevenueCat opens the chart from anywhere on the card.
  * - Active customers has no sparkline: only each customer's latest visit is stored, so there is no daily history.
  * - Setup health has no SDK-version row and no migration row yet: the API does not record SDK versions or imports.
  * - Currency is USD only (the API refuses other currencies rather than mislabel them).
@@ -50,6 +50,9 @@ const CARDS: { id: MetricId; label: string; icon: string; stock: boolean; money?
   { id: "new_customers", label: "New customers", icon: "userplus", stock: false, define: "App user IDs first seen in the period. Aliases of one customer count once." },
   { id: "active_users", label: "Active customers", icon: "customers", stock: false, define: "Customers whose app contacted RevenueDot in the period. Aliases of one customer count once." },
 ];
+
+/** The chart behind each card. */
+const CHART_OF: Record<MetricId, string> = { active_trials: "trials", active_subscriptions: "actives", mrr: "mrr", revenue: "revenue", new_customers: "customers_new", active_users: "customers_active" };
 
 /** Re-renders every `ms` so "last received 4s ago" stays true. Off when the user prefers reduced motion. */
 function useNow(ms: number) {
@@ -96,7 +99,7 @@ function MetricGrid({ pid, env, period }: { pid: string; env: string; period: (t
         const context = c.id === "mrr" ? "monthly recurring revenue" : c.stock ? "in total" : `last ${period.words}`;
         return (
           <article className="m" key={c.id} title={c.define} data-metric={c.id}>
-            <div className="lab">{c.label}<Icon name={c.icon} /></div>
+            <div className="lab"><Link to={`/projects/${pid}/charts/${CHART_OF[c.id]}`} className="ul" title={`Open the ${c.label} chart`}>{c.label}</Link><Icon name={c.icon} /></div>
             {value === undefined ? <span className="sk num" /> : <div className="v"><MetricValue value={value} isMoney={c.money} /></div>}
             <div className="meta">
               {value !== undefined && h && <Delta value={value} previous={h.previous_value} stock={c.stock} words={period.words} isMoney={c.money} />}
