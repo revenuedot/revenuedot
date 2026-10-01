@@ -89,7 +89,7 @@ describe("funnels", () => {
     expect(a).toMatchObject({ object: "funnel_analytics", views: 2, checkouts: 1, purchases: 1, conversion: 0.5 });
     expect(a.revenue_usd).toBeCloseTo(59.99, 2);
     expect(a.steps[0]).toEqual({ id: "goal", type: "question", title: "What do you want to get done?", viewed: 2, completed: 1, drop_off: 0.5 });
-    expect(a.steps[4]).toMatchObject({ type: "success", completed: 1 });
+    expect(a.steps[4]).toMatchObject({ type: "success", viewed: 1, completed: 1, drop_off: 0 });
     expect(a.daily).toHaveLength(7);
     const list = (await env.api("GET", `${P()}/funnels`)).body.items;
     expect(list[0]).toMatchObject({ views_30d: 2, purchases_30d: 1, status: "published" });

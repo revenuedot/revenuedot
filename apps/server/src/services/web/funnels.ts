@@ -67,7 +67,8 @@ export async function funnelAnalytics(db: DB, f: FunnelRow, days: number, now: D
   const revenue = rows.filter((r) => r.type === "purchase").reduce((a, r) => a + r.revenue, 0);
   const doc = (f.published ?? f.draft) as unknown as FunnelDoc;
   const steps = (doc.steps ?? []).map((s) => {
-    const viewed = count("step_viewed", s.id);
+    // The success step is the page Stripe returns paying visitors to: every purchase saw it.
+    const viewed = s.type === "success" ? Math.max(purchases, count("step_viewed", s.id)) : count("step_viewed", s.id);
     const completed = s.type === "success" ? purchases : count("step_completed", s.id);
     return { id: s.id, type: s.type, title: s.title, viewed, completed, drop_off: viewed ? Math.max(0, Math.round((1 - completed / viewed) * 1000) / 1000) : 0 };
   });
