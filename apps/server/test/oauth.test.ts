@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { openDb, schema, type DB } from "@revenuedot/db";
 import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
-import { OAUTH_SCOPES } from "../src/routes/oauth.js";
+import { OAUTH_SCOPES, clientDocUrlOk } from "../src/routes/oauth.js";
 
 /** OAuth 2.1 for MCP clients: metadata, dynamic client registration, consent with the dashboard session, PKCE code exchange. */
 
@@ -18,12 +18,12 @@ async function pkce() {
   return { verifier, challenge };
 }
 
-async function setup() {
+async function setup(fetchImpl?: typeof fetch) {
   const opened = await openDb("pglite://memory");
   close = opened.close;
   const db: DB = opened.db;
   let clock = new Date("2026-09-30T12:00:00Z");
-  const app = createApp({ db, now: () => clock, stores: defaultStores(), signingKey: "" });
+  const app = createApp({ db, now: () => clock, stores: defaultStores(), signingKey: "", fetch: fetchImpl });
   const call = async (method: string, path: string, init: { json?: unknown; form?: Record<string, string>; cookie?: string; headers?: Record<string, string> } = {}) => {
     const headers = new Headers(init.headers);
     let body: string | undefined;
@@ -64,7 +64,8 @@ describe("OAuth for MCP clients", () => {
     expect(await res.json()).toMatchObject({
       issuer: "https://api.example.com", authorization_endpoint: "https://api.example.com/oauth/authorize", token_endpoint: "https://api.example.com/oauth/token",
       registration_endpoint: "https://api.example.com/oauth/register", code_challenge_methods_supported: ["S256"], grant_types_supported: ["authorization_code"],
-      token_endpoint_auth_methods_supported: ["none"], scopes_supported: ["project:read", "project:write"],
+      token_endpoint_auth_methods_supported: ["none"], scopes_supported: ["project:read", "project:write", "project:support"],
+      client_id_metadata_document_supported: true, authorization_response_iss_parameter_supported: true,
     });
   });
 
@@ -218,5 +219,121 @@ describe("OAuth for MCP clients", () => {
     const code = new URL(res.headers.get("location")!).searchParams.get("code")!;
     const t = await (await env.call("POST", "/oauth/token", { form: { grant_type: "authorization_code", code, code_verifier: verifier } })).json() as { scope: string; project_id: string };
     expect(t).toMatchObject({ scope: "project:read", project_id: alice.projectId });
+  });
+
+  it("grants the money-actions scope only when the user ticks it, never with read only, and shows it as its own key permission set", async () => {
+    const env = await setup();
+    const { client_id } = await (await env.register()).json() as { client_id: string };
+    const alice = await env.signup("alice@example.com");
+    const { verifier, challenge } = await pkce();
+    const query = { response_type: "code", client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", scope: "project:write project:support" };
+    const html = await (await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`, { cookie: alice.cookie })).text();
+    expect(html).toContain("Money actions");
+    expect(html).toMatch(/name="support" value="1" checked/);
+    const tokenFor = async (choice: Record<string, string>, form: Record<string, string> = {}) => {
+      const page = await (await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`, { cookie: alice.cookie })).text();
+      const fields = Object.fromEntries([...page.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [m[1]!, m[2]!]));
+      const res = await env.call("POST", "/oauth/authorize", { cookie: alice.cookie, form: { ...fields, project_id: alice.projectId, decision: "allow", ...choice, ...form } });
+      const code = new URL(res.headers.get("location")!).searchParams.get("code")!;
+      return (await (await env.call("POST", "/oauth/token", { form: { grant_type: "authorization_code", code, code_verifier: verifier } })).json()) as { access_token: string; scope: string };
+    };
+    const withSupport = await tokenFor({ access: "project:write", support: "1" });
+    expect(withSupport.scope).toBe("project:write project:support");
+    const without = await tokenFor({ access: "project:write" });
+    expect(without.scope).toBe("project:write");
+    const readOnly = await tokenFor({ access: "project:read", support: "1" });
+    expect(readOnly.scope).toBe("project:read");
+    const keys = await (await env.call("GET", `/v2/projects/${alice.projectId}/api_keys`, { cookie: alice.cookie })).json() as { items: { name: string; permissions: string[] }[] };
+    const perms = keys.items.filter((k) => k.name === "OAuth: Claude").map((k) => k.permissions.length).sort((a, b) => a - b);
+    expect(perms).toEqual([OAUTH_SCOPES["project:read"].length, OAUTH_SCOPES["project:write"].length, OAUTH_SCOPES["project:write"].length + OAUTH_SCOPES["project:support"].length]);
+  });
+
+  it("rejects a resource that is not an absolute URL without a fragment, and a token request for another resource", async () => {
+    const env = await setup();
+    const { client_id } = await (await env.register()).json() as { client_id: string };
+    const alice = await env.signup("alice@example.com");
+    const { verifier, challenge } = await pkce();
+    const base = { response_type: "code", client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", state: "s" };
+    const bad = await env.call("GET", `/oauth/authorize?${new URLSearchParams({ ...base, resource: "mcp.example.com#x" })}`, { cookie: alice.cookie });
+    expect(new URL(bad.headers.get("location")!).searchParams.get("error")).toBe("invalid_request");
+    const code = new URL((await consent(env, alice.cookie, { ...base, resource: "https://mcp.example.com/mcp" })).headers.get("location")!).searchParams.get("code")!;
+    const tok = await env.call("POST", "/oauth/token", { form: { grant_type: "authorization_code", code, code_verifier: verifier, resource: "https://other.example.com/mcp" } });
+    expect(await tok.json()).toMatchObject({ error: "invalid_target" });
+  });
+
+  describe("client ID metadata documents", () => {
+    const CLIENT = "https://chatgpt.example.com/oauth/client.json";
+    const doc = (over: Record<string, unknown> = {}) => ({ client_id: CLIENT, client_name: "ChatGPT", redirect_uris: ["https://chatgpt.example.com/connector/oauth/cb"], token_endpoint_auth_method: "none", grant_types: ["authorization_code"], ...over });
+    const fetcher = (body: unknown, init: { status?: number; type?: string } = {}) => {
+      const calls: string[] = [];
+      const f = (async (url: string) => { calls.push(String(url)); return new Response(typeof body === "string" ? body : JSON.stringify(body), { status: init.status ?? 200, headers: { "content-type": init.type ?? "application/json" } }); }) as unknown as typeof fetch;
+      return { f, calls };
+    };
+    const authorize = async (env: Env, cookie: string, redirect = "https://chatgpt.example.com/connector/oauth/cb") => {
+      const { challenge } = await pkce();
+      return env.call("GET", `/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: CLIENT, redirect_uri: redirect, code_challenge: challenge, code_challenge_method: "S256", state: "s" })}`, { cookie });
+    };
+
+    it("accepts a URL client_id, shows its host, runs the whole flow, and reads the document once an hour", async () => {
+      const { f, calls } = fetcher(doc());
+      const env = await setup(f);
+      const alice = await env.signup("alice@example.com");
+      const { verifier, challenge } = await pkce();
+      const query = { response_type: "code", client_id: CLIENT, redirect_uri: "https://chatgpt.example.com/connector/oauth/cb", code_challenge: challenge, code_challenge_method: "S256", state: "s" };
+      const page = await (await env.call("GET", `/oauth/authorize?${new URLSearchParams(query)}`, { cookie: alice.cookie })).text();
+      expect(page).toContain("Connect ChatGPT to RevenueDot");
+      expect(page).toContain("chatgpt.example.com");
+      const res = await consent(env, alice.cookie, query);
+      const loc = new URL(res.headers.get("location")!);
+      expect(loc.origin + loc.pathname).toBe("https://chatgpt.example.com/connector/oauth/cb");
+      const tok = await env.call("POST", "/oauth/token", { form: { grant_type: "authorization_code", code: loc.searchParams.get("code")!, code_verifier: verifier, client_id: CLIENT } });
+      expect(tok.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      env.setNow(new Date("2026-09-30T13:30:00Z"));
+      await authorize(env, alice.cookie);
+      expect(calls).toHaveLength(2);
+    });
+
+    it("keeps working from the saved copy when the document is unreachable later", async () => {
+      let ok = true;
+      const f = (async () => (ok ? new Response(JSON.stringify(doc()), { headers: { "content-type": "application/json" } }) : new Response("no", { status: 500 }))) as unknown as typeof fetch;
+      const env = await setup(f);
+      const alice = await env.signup("alice@example.com");
+      expect((await authorize(env, alice.cookie)).status).toBe(200);
+      ok = false;
+      env.setNow(new Date("2026-09-30T14:00:00Z"));
+      expect((await authorize(env, alice.cookie)).status).toBe(200);
+    });
+
+    it.each([
+      ["a different client_id inside", doc({ client_id: "https://evil.example.com/c.json" }), {}],
+      ["a redirect the document does not list", doc(), { redirect: "https://evil.example.com/cb" }],
+      ["a plain http redirect", doc({ redirect_uris: ["http://chatgpt.example.com/cb"] }), {}],
+      ["a client that wants a secret", doc({ token_endpoint_auth_method: "client_secret_basic" }), {}],
+      ["no redirect_uris", doc({ redirect_uris: [] }), {}],
+      ["HTML instead of JSON", "<html></html>", { type: "text/html" }],
+      ["a document over 10 KB", doc({ client_name: "x".repeat(11_000) }), {}],
+      ["a 404", doc(), { status: 404 }],
+    ])("refuses %s", async (_name, body, extra: { redirect?: string; type?: string; status?: number }) => {
+      const { f } = fetcher(body, extra);
+      const env = await setup(f);
+      const alice = await env.signup("alice@example.com");
+      const res = await authorize(env, alice.cookie, extra.redirect);
+      expect(res.status).toBe(400);
+      expect(res.headers.get("location")).toBeNull();
+    });
+
+    it("never fetches addresses that are not public https", async () => {
+      for (const bad of ["http://chatgpt.example.com/c.json", "https://127.0.0.1/c.json", "https://localhost/c.json", "https://[::1]/c.json", "https://169.254.169.254/latest", "https://db.internal/c.json", "https://user:pw@chatgpt.example.com/c.json", "https://chatgpt.example.com/", "https://nodots/c.json"]) {
+        expect(clientDocUrlOk(bad), bad).toBe(false);
+      }
+      expect(clientDocUrlOk(CLIENT)).toBe(true);
+      let called = 0;
+      const env = await setup((async () => { called++; return new Response("{}"); }) as unknown as typeof fetch);
+      const alice = await env.signup("alice@example.com");
+      const res = await env.call("GET", `/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: "https://169.254.169.254/latest/meta", redirect_uri: "https://x.example.com/cb", code_challenge: "a".repeat(43), code_challenge_method: "S256" })}`, { cookie: alice.cookie });
+      expect(res.status).toBe(400);
+      expect(called).toBe(0);
+    });
   });
 });

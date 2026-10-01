@@ -17,6 +17,9 @@ import { SESSION_COOKIE, projectsForUser, sessionUser } from "../services/sessio
  *   POST /oauth/authorize                          the user's decision; redirects back with a one-time code
  *   POST /oauth/token                              authorization_code grant with PKCE (S256)
  *
+ * Clients identify themselves with a registered client_id or, preferably, an https URL that serves their metadata (a client
+ * ID metadata document, MCP spec 2025-11-25); ChatGPT and Claude both use the URL form.
+ *
  * The access token is a secret API key (sk_...) bound to the one project the user picked, with only the scopes the
  * user approved. It never expires and shows in the project's API keys, where it is revoked like any other key.
  */
@@ -35,8 +38,13 @@ export const OAUTH_SCOPES = {
     "project_configuration:integrations:read_write", "customer_information:customers:read_write", "customer_information:subscriptions:read",
     "customer_information:purchases:read", "charts_metrics:overview:read",
   ],
+  /** Extra consent for subscription and purchase actions (cancel, refund, extend, test purchases). Never granted with read only. */
+  "project:support": ["customer_information:subscriptions:read_write", "customer_information:purchases:read_write"],
 } as const;
-type Scope = keyof typeof OAUTH_SCOPES;
+type Level = "project:read" | "project:write";
+const SUPPORT = "project:support";
+const permissionsFor = (level: Level, support: boolean) => [...OAUTH_SCOPES[level], ...(support ? OAUTH_SCOPES[SUPPORT] : [])];
+const scopeString = (level: Level, support: boolean) => (support ? `${level} ${SUPPORT}` : level);
 const CODE_TTL_MS = 10 * 60_000;
 
 const b64url = (u: Uint8Array) => btoa(String.fromCharCode(...u)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -63,11 +71,72 @@ function redirectUriOk(u: string) {
   return !["javascript", "data", "file", "vbscript", "blob", "about", "ftp", "ws", "wss"].includes(scheme);
 }
 
+/** RFC 8707: an absolute URI without a fragment. */
+function resourceOk(r: string) {
+  try { const u = new URL(r); return !u.hash && (u.protocol === "https:" || u.hostname === "localhost" || u.hostname === "127.0.0.1"); } catch { return false; }
+}
+
 /** Requested scopes, narrowed to the ones we know. No scope means read and write (the user can still pick read only). */
-function parseScope(raw: string | undefined): Scope {
+function parseScope(raw: string | undefined): { level: Level; support: boolean } {
   const want = (raw ?? "").split(/\s+/).filter(Boolean);
-  if (want.length && !want.includes("project:write") && want.includes("project:read")) return "project:read";
-  return "project:write";
+  const level: Level = want.length && !want.includes("project:write") && want.includes("project:read") ? "project:read" : "project:write";
+  return { level, support: level === "project:write" && want.includes(SUPPORT) };
+}
+
+const CLIENT_DOC_MAX_BYTES = 10_240;
+const CLIENT_DOC_TTL_MS = 60 * 60_000;
+
+/** A client ID metadata document URL must be public https: no credentials, no IP literal, no local or internal names. */
+export function clientDocUrlOk(raw: string) {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  if (u.protocol !== "https:" || u.username || u.password || u.hash || !u.pathname || u.pathname === "/") return false;
+  const h = u.hostname.toLowerCase();
+  if (!h.includes(".") || /^[\d.]+$/.test(h) || h.startsWith("[") || h === "localhost" || /\.(local|localhost|internal|lan|home|test|invalid)$/.test(h)) return false;
+  return true;
+}
+
+async function readCapped(res: Response, max: number) {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) { await reader.cancel().catch(() => {}); throw new Error("too large"); }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const ch of chunks) { all.set(ch, at); at += ch.byteLength; }
+  return new TextDecoder().decode(all);
+}
+
+/** Fetches and checks a client ID metadata document. Returns the client's name and redirect URIs, or why it was refused. */
+export async function fetchClientDoc(url: string, doFetch: typeof fetch): Promise<{ name: string; redirectUris: string[] } | { error: string }> {
+  if (!clientDocUrlOk(url)) return { error: "The client_id URL is not a public https address." };
+  let doc: unknown;
+  try {
+    const res = await doFetch(url, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return { error: `The client metadata document answered ${res.status}.` };
+    if (!(res.headers.get("content-type") ?? "").includes("json")) return { error: "The client metadata document is not JSON." };
+    doc = JSON.parse(await readCapped(res, CLIENT_DOC_MAX_BYTES));
+  } catch (e) {
+    return { error: e instanceof Error && e.message === "too large" ? "The client metadata document is larger than 10 KB." : "The client metadata document could not be read." };
+  }
+  if (!doc || typeof doc !== "object") return { error: "The client metadata document must be a JSON object." };
+  const d = doc as Record<string, unknown>;
+  if (d.client_id !== url) return { error: "client_id in the metadata document does not equal its URL." };
+  const uris = d.redirect_uris;
+  if (!Array.isArray(uris) || !uris.length || uris.length > 10 || !uris.every((u) => typeof u === "string" && u.length <= 2048 && redirectUriOk(u))) {
+    return { error: "redirect_uris in the metadata document must be 1 to 10 allowed URLs." };
+  }
+  if (d.token_endpoint_auth_method !== undefined && d.token_endpoint_auth_method !== "none") return { error: "Only public clients (token_endpoint_auth_method none) are supported." };
+  if (Array.isArray(d.grant_types) && !d.grant_types.includes("authorization_code")) return { error: "grant_types must include authorization_code." };
+  const name = typeof d.client_name === "string" && d.client_name.trim() ? d.client_name.trim().slice(0, 100) : new URL(url).hostname;
+  return { name, redirectUris: uris as string[] };
 }
 
 export function oauthRoutes(deps: Deps) {
@@ -91,6 +160,8 @@ export function oauthRoutes(deps: Deps) {
       grant_types_supported: ["authorization_code"],
       token_endpoint_auth_methods_supported: ["none"],
       code_challenge_methods_supported: ["S256"],
+      client_id_metadata_document_supported: true,
+      authorization_response_iss_parameter_supported: true,
       service_documentation: "https://revenuedot.app/docs/mcp",
     });
   });
@@ -122,18 +193,30 @@ export function oauthRoutes(deps: Deps) {
   /** Reads and checks an authorization request (query on GET, form on POST). `fatal` errors must not redirect. */
   async function authRequest(p: Record<string, string | undefined>) {
     const clientId = p.client_id ?? "";
-    const [client] = clientId ? await db.select().from(schema.oauthClients).where(eq(schema.oauthClients.id, clientId)).limit(1) : [];
+    let [client] = clientId ? await db.select().from(schema.oauthClients).where(eq(schema.oauthClients.id, clientId)).limit(1) : [];
+    // A client_id that is an https URL names a client metadata document: read it, and keep the result for an hour.
+    if (clientId.startsWith("https://") && (!client || deps.now().getTime() - client.createdAt.getTime() > CLIENT_DOC_TTL_MS)) {
+      const doc = await fetchClientDoc(clientId, deps.fetch ?? fetch);
+      if ("error" in doc) {
+        if (!client) return { fatal: `RevenueDot could not verify this app. ${doc.error}` } as const;
+      } else if (client) {
+        [client] = await db.update(schema.oauthClients).set({ name: doc.name, redirectUris: doc.redirectUris, createdAt: deps.now() }).where(eq(schema.oauthClients.id, clientId)).returning();
+      } else {
+        [client] = await db.insert(schema.oauthClients).values({ id: clientId, name: doc.name, redirectUris: doc.redirectUris, createdAt: deps.now() }).returning();
+      }
+    }
     if (!client) return { fatal: "This app is not registered with RevenueDot (unknown client_id). Try connecting again from the app." } as const;
     const redirectUri = p.redirect_uri ?? (client.redirectUris.length === 1 ? client.redirectUris[0]! : "");
     if (!client.redirectUris.includes(redirectUri)) return { fatal: "The redirect_uri does not match one the app registered." } as const;
     const req = {
-      client, redirectUri, state: p.state, scope: parseScope(p.scope), resource: p.resource || null,
+      client, redirectUri, state: p.state, ...parseScope(p.scope), resource: p.resource || null,
       codeChallenge: p.code_challenge ?? "", method: p.code_challenge_method ?? "",
     };
     let error: string | null = null;
     if (p.response_type !== "code") error = "response_type must be code.";
     else if (!req.codeChallenge || req.method !== "S256") error = "PKCE is required: send code_challenge with code_challenge_method=S256.";
     else if (!/^[A-Za-z0-9_-]{43,128}$/.test(req.codeChallenge)) error = "code_challenge is not a valid S256 challenge.";
+    else if (req.resource && !resourceOk(req.resource)) error = "resource must be an absolute URL without a fragment.";
     return { req, error };
   }
 
@@ -161,12 +244,16 @@ export function oauthRoutes(deps: Deps) {
     const options = projects.map((p) => `<option value="${esc(p.id)}" data-role="${esc(p.role)}">${esc(p.name)}${p.role === "viewer" ? " (view only)" : ""}</option>`).join("");
     const body = `
       <p><strong>${esc(req.client.name)}</strong> wants to use RevenueDot as <strong>${esc(user.email)}</strong>. It will get an API key for one project.</p>
+      ${req.client.id.startsWith("https://") ? `<p class="muted">App address: ${esc(new URL(req.client.id).host)}</p>` : ""}
       <form method="post" action="/oauth/authorize">
         ${hidden}<input type="hidden" name="csrf" value="${await csrfFor(sid!, req.client.id)}">
         <label>Project<select name="project_id">${options}</select></label>
         <fieldset><legend>Access</legend>
-          <label class="opt"><input type="radio" name="access" value="project:write"${req.scope === "project:write" ? " checked" : ""}> Read and change products, entitlements, offerings, customers' granted access and webhooks</label>
-          <label class="opt"><input type="radio" name="access" value="project:read"${req.scope === "project:read" ? " checked" : ""}> Read only</label>
+          <label class="opt"><input type="radio" name="access" value="project:write"${req.level === "project:write" ? " checked" : ""}> Read and change products, entitlements, offerings, customers' granted access and webhooks</label>
+          <label class="opt"><input type="radio" name="access" value="project:read"${req.level === "project:read" ? " checked" : ""}> Read only</label>
+        </fieldset>
+        <fieldset><legend>Money actions</legend>
+          <label class="opt"><input type="checkbox" name="support" value="1"${req.support ? " checked" : ""}> Also allow cancelling, refunding and extending subscriptions, and Test Store purchases (needs "Read and change")</label>
         </fieldset>
         <p class="muted">You will return to ${esc(redirectHost)}. Revoke access any time under API keys in the dashboard.</p>
         <div class="row"><button name="decision" value="deny" class="secondary">Cancel</button><button name="decision" value="allow">Allow access</button></div>
@@ -189,11 +276,12 @@ export function oauthRoutes(deps: Deps) {
     const project = (await projectsForUser(db, user.id)).find((p) => p.id === form.project_id);
     if (!project) return c.html(page("Cannot connect", "<p>You are not a member of that project.</p>"), 403);
     // Viewers can only hand out read access.
-    const scope: Scope = project.role === "viewer" || form.access === "project:read" ? "project:read" : "project:write";
+    const level: Level = project.role === "viewer" || form.access === "project:read" ? "project:read" : "project:write";
+    const support = level === "project:write" && form.support === "1";
     const code = randomToken();
     await db.insert(schema.oauthCodes).values({
       hash: await sha256Hex(code), clientId: req.client.id, userId: user.id, projectId: project.id, redirectUri: req.redirectUri,
-      codeChallenge: req.codeChallenge, scope, permissions: [...OAUTH_SCOPES[scope]], resource: req.resource,
+      codeChallenge: req.codeChallenge, scope: scopeString(level, support), permissions: permissionsFor(level, support), resource: req.resource,
       expiresAt: new Date(deps.now().getTime() + CODE_TTL_MS),
     });
     return c.redirect(back(req.redirectUri, { code, state: req.state, iss }), 302);
@@ -217,13 +305,17 @@ export function oauthRoutes(deps: Deps) {
     if (!row) return tokenError(c, "invalid_grant", "The authorization code is invalid, expired or already used.");
     if (p.client_id && p.client_id !== row.clientId) return tokenError(c, "invalid_grant", "The code was issued to another client.");
     if (p.redirect_uri !== undefined && p.redirect_uri !== row.redirectUri) return tokenError(c, "invalid_grant", "redirect_uri does not match the authorization request.");
+    if (p.resource && row.resource && p.resource !== row.resource) return tokenError(c, "invalid_target", "resource does not match the authorization request.");
     if ((await s256(p.code_verifier)) !== row.codeChallenge) return tokenError(c, "invalid_grant", "code_verifier does not match the code_challenge.");
     const [member] = await db.select().from(schema.memberships)
       .where(and(eq(schema.memberships.userId, row.userId), eq(schema.memberships.projectId, row.projectId))).limit(1);
     if (!member) return tokenError(c, "invalid_grant", "The user is no longer a member of the project.");
-    const scope = (member.role === "viewer" ? "project:read" : row.scope) as Scope;
+    // A viewer who lost write access since consent only gets read.
+    const level: Level = member.role === "viewer" ? "project:read" : row.scope.startsWith("project:read") ? "project:read" : "project:write";
+    const support = level === "project:write" && row.scope.includes(SUPPORT);
+    const scope = scopeString(level, support);
     const [client] = await db.select().from(schema.oauthClients).where(eq(schema.oauthClients.id, row.clientId)).limit(1);
-    const { key } = await createSecretKey(db, row.projectId, `OAuth: ${client?.name ?? "MCP client"}`.slice(0, 100), [...OAUTH_SCOPES[scope]]);
+    const { key } = await createSecretKey(db, row.projectId, `OAuth: ${client?.name ?? "MCP client"}`.slice(0, 100), permissionsFor(level, support));
     c.header("Cache-Control", "no-store");
     return c.json({ access_token: key, token_type: "Bearer", scope, project_id: row.projectId });
   });

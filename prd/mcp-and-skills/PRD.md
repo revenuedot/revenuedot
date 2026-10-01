@@ -1,5 +1,7 @@
 # MCP server, agent skills and llms.txt (scope 1.14)
 
+**The ChatGPT plugin, the Claude connector and the growth from 17 to 34 tools are specified in [`../chatgpt-claude-plugins/PRD.md`](../chatgpt-claude-plugins/PRD.md); where the two differ, that file is newer.**
+
 **The hosted MCP server is live at https://mcp.revenuedot.app/mcp (since 2026-09-30); the npm package is not published.** `revenuedot/mcp` has 17 tools over the REST API v2, Streamable HTTP and stdio transports, bearer-key and OAuth modes, and a Cloudflare Worker that its `ci.yml` deploys from `main` after the tests pass, then checks live. The server has an OAuth 2.1 authorization server whose access tokens are project-scoped secret keys. `revenuedot/agent-skills` has `migrate-from-revenuecat`, `add-subscriptions` and `self-host`. `@revenuedot/mcp` and the `revenuedot` CLI are not on npm, so `npx` needs the from-source fallback. `llms.txt`, `llms/` and `llms-full.txt` are generated from `revenuedot/docs` (`npm run build:llms`) and served at https://revenuedot.app/llms.txt. State: hosted MCP live, packages unpublished. Code: `../mcp/`, `../agent-skills/`, [`apps/server/src/routes/oauth.ts`](../../apps/server/src/routes/oauth.ts), `../docs/llms.txt` (sibling repos in the local workspace).
 
 ## Users and jobs to be done
