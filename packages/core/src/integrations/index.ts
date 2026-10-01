@@ -83,7 +83,7 @@ export const INTEGRATIONS: IntegrationSpec[] = [
       { key: "region", label: "Region", type: "select", options: [{ value: "us", label: "US Cloud" }, { value: "eu", label: "EU Cloud" }, { value: "custom", label: "Self-hosted" }] },
       { key: "host", label: "PostHog URL", type: "text", placeholder: "https://posthog.example.com", when: { key: "region", value: "custom" } }, REPORTING,
     ] },
-  { kind: "firebase", name: "Firebase", category: "analytics", text: "Purchase events in Google Analytics for Firebase.", environment: "both", eventNames: false, docs: `${DOCS}#firebase`,
+  { kind: "firebase", name: "Firebase", category: "analytics", text: "Purchase events in Google Analytics for Firebase.", environment: "production", eventNames: false, docs: `${DOCS}#firebase`,
     fields: [
       { key: "ios_firebase_app_id", label: "iOS Firebase app ID", type: "text", placeholder: "1:1234567890:ios:abc123" },
       { key: "ios_api_secret", label: "iOS Measurement Protocol API secret", type: "secret" },
@@ -134,7 +134,8 @@ export const INTEGRATION_EVENTS: Record<IntegrationKind, Concept[] | "all"> = {
 
 /** Whether an integration of this kind sends this event at all (before its own checks for keys and device ids). */
 export function sendsEvent(kind: IntegrationKind, event: WebhookEvent): boolean {
-  const list = INTEGRATION_EVENTS[kind];
+  const list = INTEGRATION_EVENTS[kind] as Concept[] | "all" | undefined;
+  if (!list) return false;
   if (list === "all") return true;
   const c = conceptOf(event);
   return !!c && list.includes(c);
@@ -177,7 +178,7 @@ export const STEP_LABELS: Record<Concept, string> = {
   initial_purchase: "Initial purchase", trial_started: "Trial started", trial_converted: "Trial converted", trial_cancelled: "Trial cancelled",
   renewal: "Renewal", cancellation: "Cancellation or refund", uncancellation: "Uncancellation", non_subscription_purchase: "One-time purchase",
   subscription_paused: "Subscription paused", expiration: "Expiration", billing_issue: "Billing issue", product_change: "Product change",
-  transfer: "Transfer", purchase_redeemed: "Web purchase redeemed", experiment_enrollment: "Experiment enrollment", test: "Test event",
+  transfer: "Transfer", purchase_redeemed: "Web purchase redeemed", experiment_enrollment: "Experiment enrollment", refund_reversed: "Refund reversed", test: "Test event",
 };
 
 /** The name an integration sends for a step when no override is set (null: the integration has no event names). */

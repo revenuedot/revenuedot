@@ -12,7 +12,7 @@ export const SEGMENT_HOSTS = { us: "https://api.segment.io", eu: "https://events
 
 export const SEGMENT_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
-  "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "test",
+  "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "refund_reversed", "test",
 ];
 
 const secs = (ms: unknown) => (typeof ms === "number" ? Math.floor(ms / 1000) : null);

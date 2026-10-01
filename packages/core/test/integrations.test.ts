@@ -386,3 +386,34 @@ describe("partner answers", () => {
     }
   });
 });
+
+describe("review fixes", () => {
+  const reversed: WebhookEvent = { ...purchase, id: "5E7B1C2A-1111-4222-8333-000000000099", type: "REFUND_REVERSED" };
+
+  it("REFUND_REVERSED reaches the analytics and attribution tools with positive revenue", async () => {
+    expect(conceptOf(reversed)).toBe("refund_reversed");
+    for (const k of ["slack", "segment", "amplitude", "mixpanel", "posthog", "appsflyer", "bigquery"] as IntegrationKind[]) expect(sendsEvent(k, reversed), k).toBe(true);
+    for (const k of ["adjust", "meta", "firebase"] as IntegrationKind[]) expect(sendsEvent(k, reversed), k).toBe(false);
+    const amp = await sent("amplitude", reversed);
+    expect(amp.name).toBe("rc_refund_reversed_event");
+    expect(amp.requests[0]!.json.events[0]).toMatchObject({ revenue: 10.79, revenueType: "purchase" });
+    expect((await sent("slack", reversed)).requests[0]!.json.text).toBe("Customer user_42 had a refund reversed: pro_monthly ($10.79).");
+  });
+
+  it("Meta sends a test event only to Events Manager's test tab", async () => {
+    const test: WebhookEvent = { ...purchase, type: "TEST" };
+    expect(await skipped("meta", test)).toMatch(/test event code/);
+    const p = await sent("meta", test, { settings: { test_event_code: "TEST1" } });
+    expect(p.requests[0]!.json).toMatchObject({ test_event_code: "TEST1", data: [{ event_name: "Subscribe" }] });
+  });
+
+  it("Firebase defaults to production events, and unknown kinds queue nothing", () => {
+    expect(INTEGRATIONS.find((s) => s.kind === "firebase")!.environment).toBe("production");
+    expect(sendsEvent("nope" as IntegrationKind, purchase)).toBe(false);
+  });
+
+  it("Slack keeps customer-controlled ids as text", async () => {
+    const p = await sent("slack", { ...purchase, app_user_id: "<!channel>", product_id: "<https://x.example|win>" });
+    expect(p.requests[0]!.json.text).toBe("Customer &lt;!channel&gt; started a subscription: &lt;https://x.example|win&gt; ($10.79).");
+  });
+});

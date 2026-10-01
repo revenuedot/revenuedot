@@ -25,6 +25,8 @@ export async function buildMeta(i: BuildInput): Promise<Plan> {
   const c = conceptOf(e);
   const name = c ? nameFor(c, (x) => META_NAMES[x] ?? null, i.eventNames) : null;
   if (!c || !name || !(c in META_NAMES)) return skip(`${e.type} events are not sent to Meta.`);
+  // A test event would count as a real conversion and steer ad delivery; send it only to Events Manager's Test Events.
+  if (c === "test" && !i.settings.test_event_code) return skip("Test events are sent to Meta only with a test event code, so they never count as real conversions.");
   const sandbox = isSandbox(e);
   const dataset = sandbox ? i.settings.sandbox_dataset_id : i.settings.dataset_id;
   const token = sandbox ? i.secrets.sandbox_access_token : i.secrets.access_token;

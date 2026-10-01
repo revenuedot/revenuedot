@@ -26,7 +26,7 @@ export const BIGQUERY_SCHEMA: [string, string, "NULLABLE" | "REQUIRED" | "REPEAT
   ["cancel_reason", "STRING", "NULLABLE"], ["expiration_reason", "STRING", "NULLABLE"], ["payload", "JSON", "NULLABLE"],
 ];
 
-const ts = (ms: unknown) => (typeof ms === "number" ? new Date(ms).toISOString() : null);
+const ts = (ms: unknown) => (typeof ms === "number" && Number.isFinite(ms) && Math.abs(ms) <= 8.64e15 ? new Date(ms).toISOString() : null);
 
 export function bigQueryRow(e: Record<string, any>, reporting: unknown) {
   return {

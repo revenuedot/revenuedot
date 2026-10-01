@@ -13,7 +13,7 @@ export const MIXPANEL_HOSTS = { us: "https://api.mixpanel.com", eu: "https://api
 
 export const MIXPANEL_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
-  "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "test",
+  "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "refund_reversed", "test",
 ];
 
 /** Mixpanel's $insert_id allows 36 alphanumeric characters or dashes. */

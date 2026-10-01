@@ -11,7 +11,7 @@ export const POSTHOG_HOSTS = { us: "https://us.i.posthog.com", eu: "https://eu.i
 
 export const POSTHOG_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
-  "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "test",
+  "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "refund_reversed", "test",
 ];
 
 const PLATFORMS: Record<string, string> = { APP_STORE: "iOS", MAC_APP_STORE: "macOS", PLAY_STORE: "Android", AMAZON: "Amazon", STRIPE: "Web", RC_BILLING: "Web", PADDLE: "Web" };

@@ -19,12 +19,12 @@ export type WebhookEvent = Record<string, any>;
 export type Concept =
   | "initial_purchase" | "trial_started" | "trial_converted" | "trial_cancelled" | "renewal" | "cancellation" | "uncancellation"
   | "non_subscription_purchase" | "subscription_paused" | "expiration" | "billing_issue" | "product_change" | "transfer"
-  | "purchase_redeemed" | "experiment_enrollment" | "test";
+  | "purchase_redeemed" | "experiment_enrollment" | "refund_reversed" | "test";
 
 export const CONCEPTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "transfer",
-  "purchase_redeemed", "experiment_enrollment", "test",
+  "purchase_redeemed", "experiment_enrollment", "refund_reversed", "test",
 ];
 
 export function conceptOf(e: WebhookEvent): Concept | null {
@@ -42,6 +42,7 @@ export function conceptOf(e: WebhookEvent): Concept | null {
     case "TRANSFER": return "transfer";
     case "PURCHASE_REDEEMED": return "purchase_redeemed";
     case "EXPERIMENT_ENROLLMENT": return "experiment_enrollment";
+    case "REFUND_REVERSED": return "refund_reversed";
     case "TEST": return "test";
     default: return null;
   }
@@ -129,7 +130,7 @@ export function revenueLocal(e: WebhookEvent, reporting: unknown = "gross"): num
 
 export const round = (n: number) => Math.round(n * 1e6) / 1e6;
 
-export const iso = (ms: unknown) => (typeof ms === "number" ? new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z") : null);
+export const iso = (ms: unknown) => (typeof ms === "number" && Number.isFinite(ms) && Math.abs(ms) <= 8.64e15 ? new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z") : null);
 
 /**
  * The subscription status after the event, for the `rc_subscription_status` user property: active, intro, cancelled,

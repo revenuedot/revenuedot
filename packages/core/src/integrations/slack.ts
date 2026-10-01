@@ -9,7 +9,7 @@ import { conceptOf, isSandbox, json, revenueUsd, skip, type BuildInput, type Con
 
 const GOOD = "#5F822B", BAD = "#C2410C";
 
-export const SLACK_EVENTS: Concept[] = ["initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "non_subscription_purchase", "billing_issue", "product_change", "test"];
+export const SLACK_EVENTS: Concept[] = ["initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "non_subscription_purchase", "billing_issue", "product_change", "refund_reversed", "test"];
 
 const LINES: Partial<Record<Concept, { verb: string; good: boolean; money?: boolean }>> = {
   initial_purchase: { verb: "started a subscription", good: true, money: true },
@@ -21,10 +21,12 @@ const LINES: Partial<Record<Concept, { verb: string; good: boolean; money?: bool
   non_subscription_purchase: { verb: "made a purchase", good: true, money: true },
   billing_issue: { verb: "has a billing issue", good: false },
   product_change: { verb: "changed their plan", good: true },
+  refund_reversed: { verb: "had a refund reversed", good: true, money: true },
   test: { verb: "is a test customer: Slack is connected to RevenueDot", good: true },
 };
 
 const usd = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
+/** Slack's control characters; customer ids and product ids come from apps, so `<!channel>` or a link must stay text. */
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export async function buildSlack(i: BuildInput): Promise<Plan> {
@@ -47,10 +49,10 @@ export async function buildSlack(i: BuildInput): Promise<Plan> {
     { title: "Product", value: esc(product), short: true },
   ];
   if (line.money || refund) fields.push({ title: "Revenue", value: usd(revenue), short: true });
-  if (e.store) fields.push({ title: "Store", value: String(e.store), short: true });
-  if (e.country_code) fields.push({ title: "Country", value: String(e.country_code), short: true });
+  if (e.store) fields.push({ title: "Store", value: esc(String(e.store)), short: true });
+  if (e.country_code) fields.push({ title: "Country", value: esc(String(e.country_code)), short: true });
   if (isSandbox(e)) fields.push({ title: "Environment", value: "Sandbox", short: true });
-  const text = `Customer ${who} ${verb}${product ? `: ${product}` : ""}${line.money || refund ? ` (${usd(revenue)})` : ""}.`;
+  const text = `Customer ${esc(who)} ${verb}${product ? `: ${esc(product)}` : ""}${line.money || refund ? ` (${usd(revenue)})` : ""}.`;
   const body = {
     text,
     username: "RevenueDot",

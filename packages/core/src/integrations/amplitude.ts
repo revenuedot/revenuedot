@@ -12,7 +12,7 @@ export const AMPLITUDE_URLS = { us: "https://api2.amplitude.com/2/httpapi", eu: 
 export const AMPLITUDE_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed",
-  "experiment_enrollment", "test",
+  "experiment_enrollment", "refund_reversed", "test",
 ];
 
 const PLATFORMS: Record<string, string> = { APP_STORE: "iOS", MAC_APP_STORE: "macOS", PLAY_STORE: "Android", AMAZON: "Amazon", STRIPE: "Web", RC_BILLING: "Web", PADDLE: "Web" };
@@ -34,7 +34,7 @@ export async function buildAmplitude(i: BuildInput): Promise<Plan> {
     ...ids, event_type: name, time: e.event_timestamp_ms ?? i.now.getTime(), insert_id: String(e.id), partner_id: "revenuedot",
     platform: PLATFORMS[e.store as string] ?? undefined, event_properties: lifecycleProperties(e, i.settings.reporting),
   };
-  if (["initial_purchase", "trial_converted", "renewal", "non_subscription_purchase", "cancellation"].includes(c) && revenue !== 0) {
+  if (["initial_purchase", "trial_converted", "renewal", "non_subscription_purchase", "cancellation", "refund_reversed"].includes(c) && revenue !== 0) {
     Object.assign(event, { revenue, price: revenue, quantity: 1, productId: e.product_id, revenueType: revenue < 0 ? "refund" : c === "renewal" || c === "trial_converted" ? "renewal" : "purchase" });
   }
   if (e.country_code) event.country = e.country_code;

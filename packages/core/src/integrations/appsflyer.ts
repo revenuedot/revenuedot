@@ -11,7 +11,7 @@ import { attr, conceptOf, defaultAnalyticsName, isSandbox, json, nameFor, platfo
 
 export const APPSFLYER_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation",
-  "non_subscription_purchase", "expiration", "billing_issue", "product_change", "test",
+  "non_subscription_purchase", "expiration", "billing_issue", "product_change", "refund_reversed", "test",
 ];
 
 const pad = (n: number, w = 2) => String(n).padStart(w, "0");
