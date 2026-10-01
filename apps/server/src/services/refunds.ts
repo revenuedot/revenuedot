@@ -181,8 +181,8 @@ async function settingsFor(db: DB, projectId: string): Promise<RefundSettings> {
 }
 
 /** The policy decision for one customer (or an unknown one). */
-export async function decide(db: DB, projectId: string, customer: CustomerRow | null, now: Date): Promise<{ decision: Decision; data: CustomerData | null }> {
-  const settings = await settingsFor(db, projectId);
+export async function decide(db: DB, projectId: string, customer: CustomerRow | null, now: Date, settings?: RefundSettings): Promise<{ decision: Decision; data: CustomerData | null }> {
+  settings ??= await settingsFor(db, projectId);
   const loaded = customer ? (await contextsFor(db, projectId, [customer], now))[0]! : null;
   const decision = choosePolicy(await policiesOf(db, projectId), loaded?.ctx ?? emptyContext(), now.getTime(), settings.default_preference);
   return { decision, data: loaded?.data ?? null };
@@ -207,8 +207,8 @@ export async function handleConsumptionRequest(deps: RefundDeps, app: AppRecord,
   if (existing && existing.consumptionStatus !== "pending" && existing.consumptionStatus !== "failed") return existing;
 
   const customer = await customerFor(db, app.projectId, store, tx);
-  const { decision, data } = await decide(db, app.projectId, customer, now);
   const settings = await settingsFor(db, app.projectId);
+  const { decision, data } = await decide(db, app.projectId, customer, now, settings);
   const amountUsd = tx.price != null && tx.currency ? await usdValue(db, { amount: tx.price / 1000, currency: tx.currency }, new Date(tx.purchaseDate), deps.fetch ?? null) : null;
   let consumptionStatus = "pending";
   let consumption: Record<string, unknown> | null = null;
@@ -225,17 +225,25 @@ export async function handleConsumptionRequest(deps: RefundDeps, app: AppRecord,
   }
   const values = {
     projectId: app.projectId, appId: app.id, customerId: customer?.id ?? null,
-    appUserId: data ? data.aliases.find((a) => !a.startsWith("$RCAnonymousID:")) ?? data.customer.originalAppUserId : tx.appAccountToken ?? null,
+    appUserId: data ? data.aliases.find((a) => !a.startsWith("$RCAnonymousID:")) ?? data.customer.originalAppUserId : null,
     store, isSandbox: sandbox, transactionId: tx.transactionId, originalTransactionId: tx.originalTransactionId, productId: tx.productId, amountUsd,
     reason: n.reason ?? null, requestedAt, deadlineAt: new Date(requestedAt.getTime() + APPLE_WINDOW_MS),
     policyId: decision.policyId, policyName: decision.policyName, preference: decision.preference,
     consumptionStatus, consumption, lastError, nextAttemptAt: consumptionStatus === "pending" ? now : null,
   };
-  let row: typeof schema.refundRequests.$inferSelect;
-  if (existing) [row] = await db.update(schema.refundRequests).set(values).where(eq(schema.refundRequests.id, existing.id)).returning() as [typeof row];
-  else [row] = await db.insert(schema.refundRequests).values({ id: newId("rfq_", 16), ...values, createdAt: now }).returning() as [typeof row];
-  if (row.consumptionStatus === "pending") row = await sendConsumption(deps, row, app);
-  return row;
+  let row: typeof schema.refundRequests.$inferSelect | undefined;
+  if (existing) [row] = await db.update(schema.refundRequests).set(values).where(eq(schema.refundRequests.id, existing.id)).returning();
+  else {
+    [row] = await db.insert(schema.refundRequests).values({ id: newId("rfq_", 16), ...values, createdAt: now }).onConflictDoNothing().returning();
+    // Apple delivered the same notification twice at once: the other delivery recorded (and answers) it.
+    if (!row) {
+      const [other] = await db.select().from(schema.refundRequests)
+        .where(and(eq(schema.refundRequests.projectId, app.projectId), eq(schema.refundRequests.store, store), eq(schema.refundRequests.transactionId, tx.transactionId))).limit(1);
+      return other!;
+    }
+  }
+  if (row!.consumptionStatus === "pending") row = await sendConsumption(deps, row!, app);
+  return row!;
 }
 
 /** One attempt to send the stored payload; failures back off (5 min, 15 min, then hourly) until just before the deadline. */
@@ -249,6 +257,10 @@ export async function sendConsumption(deps: RefundDeps, row: typeof schema.refun
   }
   const [app] = appRow ? [appRow] : await db.select().from(schema.apps).where(eq(schema.apps.id, row.appId ?? "")).limit(1);
   if (!app || !row.consumption) return update({ consumptionStatus: "failed", nextAttemptAt: null, lastError: "The app or the payload is gone." });
+  // Consent is checked again at every attempt: turning it off in Refund Control stops answers that are still queued.
+  if (!(await settingsFor(db, row.projectId)).customer_consented) {
+    return update({ consumptionStatus: "skipped", nextAttemptAt: null, lastError: "Customer consent is not confirmed in Refund Control settings, so Apple gets no consumption information." });
+  }
   const attempts = row.attempts + 1;
   let api: ReturnType<typeof appleApiFor> = null;
   try { api = appleApiFor(deps.stores, app, deps.fetch, deps.now); } catch { /* an incomplete key is reported below */ }
@@ -270,13 +282,25 @@ export async function sendConsumption(deps: RefundDeps, row: typeof schema.refun
   }
 }
 
-/** The tick: retry answers that failed for a passing reason, and close the ones whose window ended. */
+/** Most retries one tick sends (each is one App Store call of up to 15 seconds); the rest wait for the next tick. */
+export const RETRIES_PER_TICK = 20;
+/** A claimed retry is not picked up by another tick for this long, so two overlapping ticks never answer twice. */
+const CLAIM_MS = 2 * 60_000;
+
+/** The tick: retry answers that failed for a passing reason, nearest deadline first, and close the ones whose window ended. */
 export async function retryDueConsumption(deps: RefundDeps): Promise<number> {
   const now = deps.now();
-  const due = await deps.db.select().from(schema.refundRequests)
-    .where(and(eq(schema.refundRequests.consumptionStatus, "pending"), or(isNull(schema.refundRequests.nextAttemptAt), lte(schema.refundRequests.nextAttemptAt, now)))).limit(50);
-  for (const r of due) await sendConsumption(deps, r);
-  return due.length;
+  const rr = schema.refundRequests;
+  const dueNow = and(eq(rr.consumptionStatus, "pending"), or(isNull(rr.nextAttemptAt), lte(rr.nextAttemptAt, now)));
+  const due = await deps.db.select().from(rr).where(dueNow).orderBy(asc(rr.deadlineAt)).limit(RETRIES_PER_TICK);
+  let done = 0;
+  for (const r of due) {
+    const [claimed] = await deps.db.update(rr).set({ nextAttemptAt: new Date(now.getTime() + CLAIM_MS) }).where(and(eq(rr.id, r.id), dueNow)).returning();
+    if (!claimed) continue;
+    await sendConsumption(deps, { ...claimed, nextAttemptAt: r.nextAttemptAt });
+    done++;
+  }
+  return done;
 }
 
 // ---------- Outcomes ----------

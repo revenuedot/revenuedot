@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SMTPServer } from "smtp-server";
 import type { AddressInfo } from "node:net";
 import { smtpMailer } from "../src/mail/smtp.js";
-import { cloudflareMailer, logMailer, parseAddress } from "../src/mail/index.js";
+import { cloudflareMailer, isEmailAddress, logMailer, parseAddress } from "../src/mail/index.js";
 import { alertEmail, inviteEmail, passwordResetEmail, verifyEmail } from "../src/mail/templates.js";
 
 let server: SMTPServer | undefined;
@@ -70,6 +70,19 @@ describe("log and Cloudflare drivers", () => {
     expect(await m.send({ to: "a@example.com", subject: "S", text: "T", html: "<p>T</p>" })).toEqual({ id: "cf-1" });
     expect(calls).toEqual([{ to: "a@example.com", from: { email: "no-reply@mail.revenuedot.app", name: "RevenueDot" }, subject: "S", text: "T", html: "<p>T</p>", replyTo: "hello@revenuedot.app" }]);
     expect(parseAddress("a@b.co")).toEqual({ email: "a@b.co" });
+  });
+
+  it("the Cloudflare driver sends List-Unsubscribe headers and the app's From name, with no line breaks in headers", async () => {
+    const calls: any[] = [];
+    const m = cloudflareMailer({ send: async (x) => { calls.push(x); return { messageId: "cf-2" }; } });
+    const headers = { "List-Unsubscribe": "<https://app.example/v1/winback/u/t>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" };
+    await m.send({ to: "a@example.com", subject: "Come back\r\nBcc: x@evil.example", text: "T", html: "<p>T</p>", headers, fromName: "Scanner\nPro" });
+    expect(calls[0]).toMatchObject({ from: { email: "no-reply@mail.revenuedot.app", name: "Scanner Pro" }, subject: "Come back Bcc: x@evil.example", headers });
+  });
+
+  it("isEmailAddress accepts one plain mailbox only", () => {
+    for (const ok of ["a@b.co", "Wren@Example.com", "first.last+tag@sub.example.org"]) expect(isEmailAddress(ok)).toBe(true);
+    for (const bad of ["a@b", "a b@c.co", "a@b.co, c@d.co", "a@b.co?cc=x@y.co", "Name <a@b.co>", "a@b.co\r\nBcc: x@y.co", "a@-b.co", ""]) expect(isEmailAddress(bad)).toBe(false);
   });
 });
 

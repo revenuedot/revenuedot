@@ -61,23 +61,33 @@ export function refundControlRoutes(r: V2Router, deps: Deps) {
     const projectId = c.get("projectId");
     const b = await body(c, SaveIn);
     const now = deps.now();
-    if (b.settings) {
-      const [p] = await db.select({ s: schema.projects.refundSettings }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
-      await db.update(schema.projects).set({ refundSettings: { ...settingsOf(p?.s ?? null), ...b.settings } }).where(eq(schema.projects.id, projectId));
-    }
+    // Everything is checked before anything is written, and the write is one transaction: a stale tab or a bad rule
+    // never leaves half a save behind.
+    const existing = await db.select().from(schema.refundPolicies).where(eq(schema.refundPolicies.projectId, projectId));
     if (b.policies) {
       b.policies.forEach((p, i) => checkRules(p.rules, `policies.${i}.rules`));
-      const existing = await db.select().from(schema.refundPolicies).where(eq(schema.refundPolicies.projectId, projectId));
-      const keep = new Set(b.policies.map((p) => p.id).filter(Boolean));
-      for (const e of existing) if (!keep.has(e.id)) await db.delete(schema.refundPolicies).where(eq(schema.refundPolicies.id, e.id));
       for (const [i, p] of b.policies.entries()) {
-        const mine = p.id ? existing.find((e) => e.id === p.id) : undefined;
-        if (p.id && !mine) throw paramError(`policies.${i}.id: no policy ${p.id} in this project.`, `policies.${i}.id`);
-        const values = { name: p.name, template: p.template, rules: p.rules, preference: p.preference, position: i };
-        if (mine) await db.update(schema.refundPolicies).set({ ...values, updatedAt: now }).where(eq(schema.refundPolicies.id, mine.id));
-        else await db.insert(schema.refundPolicies).values({ id: newId("rfp_", 12), projectId, ...values, createdAt: now });
+        if (p.id && !existing.some((e) => e.id === p.id)) throw paramError(`policies.${i}.id: no policy ${p.id} in this project. Reload the page and try again.`, `policies.${i}.id`);
       }
+      const ids = b.policies.map((p) => p.id).filter(Boolean);
+      if (new Set(ids).size !== ids.length) throw paramError("policies: a policy id appears twice.", "policies");
     }
+    await db.transaction(async (raw) => {
+      const tx = raw as unknown as typeof db;
+      if (b.settings) {
+        const [p] = await tx.select({ s: schema.projects.refundSettings }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
+        await tx.update(schema.projects).set({ refundSettings: { ...settingsOf(p?.s ?? null), ...b.settings } }).where(eq(schema.projects.id, projectId));
+      }
+      if (b.policies) {
+        const keep = new Set(b.policies.map((p) => p.id).filter(Boolean));
+        for (const e of existing) if (!keep.has(e.id)) await tx.delete(schema.refundPolicies).where(eq(schema.refundPolicies.id, e.id));
+        for (const [i, p] of b.policies.entries()) {
+          const values = { name: p.name, template: p.template, rules: p.rules, preference: p.preference, position: i };
+          if (p.id) await tx.update(schema.refundPolicies).set({ ...values, updatedAt: now }).where(and(eq(schema.refundPolicies.id, p.id), eq(schema.refundPolicies.projectId, projectId)));
+          else await tx.insert(schema.refundPolicies).values({ id: newId("rfp_", 12), projectId, ...values, createdAt: now });
+        }
+      }
+    });
     return c.json(await view(projectId));
   });
 

@@ -5,7 +5,7 @@ import { harness, type Harness } from "../../../packages/contract/src/harness.js
 import { memoryMailer } from "../src/mail/index.js";
 import { getOrCreateCustomer, setAttributes } from "../src/repo/customers.js";
 import { applyPurchases } from "../src/services/purchases.js";
-import { offerUrlFor, runDueCampaigns } from "../src/services/winback.js";
+import { SENDS_PER_TICK, offerUrlFor, runCampaign, runDueCampaigns } from "../src/services/winback.js";
 import type { VerifiedPurchase } from "../src/stores/types.js";
 
 /** Win-back campaigns (prd/lifecycle/PRD.md): audience, sending, links, unsubscribe, reactivation. */
@@ -160,6 +160,60 @@ describe("win-back campaigns", () => {
     expect((await v2(`/winback_campaigns/${draft.body.id}/actions/run`, { method: "POST" })).status).toBe(422);
     expect((await v2(`/winback_campaigns/${draft.body.id}`, { method: "DELETE" })).body.object).toBe("winback_campaign");
     expect((await v2(`/winback_campaigns/${draft.body.id}`)).status).toBe(404);
+  });
+
+  it("a tick sends at most SENDS_PER_TICK emails across campaigns and finishes the run in the next ticks", async () => {
+    h.setNow(new Date(NOW));
+    for (let i = 0; i < 60; i++) await subscriber(`lapsed_${i}`, { endedDaysAgo: 10, email: `lapsed${i}@example.com` });
+    const a = await v2("/winback_campaigns", { method: "POST", json: campaign({ name: "A", send_hour_utc: 14 }) });
+    const b = await v2("/winback_campaigns", { method: "POST", json: campaign({ name: "B", send_hour_utc: 14 }) });
+    const deps = (at: number) => ({ db: h.db, mailer: mail, now: () => new Date(at) });
+    expect(SENDS_PER_TICK).toBe(100);
+    expect(await runDueCampaigns(deps(Date.parse("2026-09-01T14:00:00Z")), "https://app.example.test")).toBe(100);
+    // The unfinished campaign has no last run yet, so the next tick goes on with it; then both are done for the day.
+    const runs = async () => Object.fromEntries((await h.db.select().from(schema.winbackCampaigns)).map((c) => [c.id, c.lastRunAt?.toISOString() ?? null]));
+    expect(Object.values(await runs()).filter(Boolean)).toHaveLength(1);
+    expect(await runDueCampaigns(deps(Date.parse("2026-09-01T14:01:00Z")), "https://app.example.test")).toBe(20);
+    expect(await runs()).toEqual({ [a.body.id]: expect.any(String), [b.body.id]: expect.any(String) });
+    expect(await runDueCampaigns(deps(Date.parse("2026-09-01T14:02:00Z")), "https://app.example.test")).toBe(0);
+    expect(mail.sent).toHaveLength(120);
+    // The email speaks for the app: the From name is the sender name, or the project's name.
+    expect(new Set(mail.sent.map((m) => m.fromName))).toEqual(new Set(["Scanner"]));
+  });
+
+  it("List-Unsubscribe is sent only with an https link; test emails are rate limited and go to one plain address", async () => {
+    h.setNow(new Date(NOW));
+    await subscriber("lapsed_http", { endedDaysAgo: 10, email: "http@example.com" });
+    const c = await v2("/winback_campaigns", { method: "POST", json: campaign({ email: { ...campaign().email, sender_name: "Scanner Pro" } }) });
+    const [row] = await h.db.select().from(schema.winbackCampaigns).where(eq(schema.winbackCampaigns.id, c.body.id));
+    await runCampaign({ db: h.db, mailer: mail, now: () => new Date(NOW) }, row!, "http://localhost:8080");
+    expect(mail.sent[0]).toMatchObject({ to: "http@example.com", fromName: "Scanner Pro" });
+    expect(mail.sent[0]!.headers).toBeUndefined();
+
+    expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "me@scanner.app?cc=x@evil.example" } })).status).toBe(400);
+    expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "a@x.example, b@y.example" } })).status).toBe(400);
+    for (let i = 0; i < 10; i++) expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "me@scanner.app" } })).status).toBe(200);
+    expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "me@scanner.app" } })).status).toBe(429);
+  });
+
+  it("never emails a customer whose $email is not one plain address", async () => {
+    h.setNow(new Date(NOW));
+    await subscriber("bad_1", { endedDaysAgo: 10, email: "victim@x.example?bcc=me@evil.example" });
+    await subscriber("bad_2", { endedDaysAgo: 10, email: "a@x.example,b@y.example" });
+    await subscriber("good", { endedDaysAgo: 10, email: "good@example.com" });
+    const c = await v2("/winback_campaigns", { method: "POST", json: campaign() });
+    expect((await v2(`/winback_campaigns/${c.body.id}/actions/run`, { method: "POST" })).body.sent).toBe(1);
+    expect(mail.sent.map((m) => m.to)).toEqual(["good@example.com"]);
+  });
+
+  it("an audience a campaign uses cannot be deleted", async () => {
+    const aud = await v2("/audiences", { method: "POST", json: { name: "US", rules: { groups: [{ conditions: [{ field: "country", operator: "is", value: "US" }] }] } } });
+    const c = await v2("/winback_campaigns", { method: "POST", json: campaign({ audience: { churned_min_days: 1, churned_max_days: 30, product_ids: [], stores: [], audience_id: aud.body.id } }) });
+    const del = await v2(`/audiences/${aud.body.id}`, { method: "DELETE" });
+    expect(del.status).toBe(409);
+    expect(del.body.message).toContain("Come back in September");
+    await v2(`/winback_campaigns/${c.body.id}`, { method: "DELETE" });
+    expect((await v2(`/audiences/${aud.body.id}`, { method: "DELETE" })).status).toBe(200);
   });
 
   it("offer links: App Store subscriptions page, the Play Store page for the product, or the campaign's URL", () => {

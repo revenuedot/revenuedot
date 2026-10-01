@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { schema } from "@revenuedot/db";
 import { harness, type Harness } from "../../../packages/contract/src/harness.js";
 import { memoryMailer } from "../src/mail/index.js";
+import { TICKET_LIMITS } from "../src/services/support.js";
 
 /** Support (prd/lifecycle/PRD.md): Customer Center tickets and the help desk summary. */
 let h: Harness;
@@ -68,6 +69,49 @@ describe("POST /v1/customercenter/support/create-ticket", () => {
   });
 });
 
+describe("create-ticket abuse limits", () => {
+  const from = (ip: string, user: string, email = `${user}@example.org`) =>
+    h.fetch("/v1/customercenter/support/create-ticket", { method: "POST", key: h.ids.testKey, headers: { "cf-connecting-ip": ip }, json: { app_user_id: user, customer_email: email, issue_description: "Help" } });
+
+  it("limits tickets per caller IP and per project, not only per app user id", async () => {
+    await settings({ email: "help@scanner.app" });
+    for (let i = 0; i < TICKET_LIMITS.perIp; i++) expect(await (await from("203.0.113.7", `rot${i}`)).json()).toEqual({ sent: true });
+    expect(await (await from("203.0.113.7", "rot-next")).json()).toEqual({ sent: false });
+    expect(await (await from("198.51.100.1", "other")).json()).toEqual({ sent: true });
+    // The project's inbox gets at most TICKET_LIMITS.perProject in an hour, whatever the IPs.
+    for (let i = 0; i < TICKET_LIMITS.perProject; i++) await from(`10.0.${Math.floor(i / 10)}.${i % 10}`, `spread${i}`);
+    expect(await h.db.select().from(schema.supportTickets)).toHaveLength(TICKET_LIMITS.perProject);
+    expect(mail.sent).toHaveLength(TICKET_LIMITS.perProject);
+    h.setNow(new Date(h.now().getTime() + 3600_000 + 1000));
+    expect(await (await from("10.9.9.9", "next-hour")).json()).toEqual({ sent: true });
+  });
+
+  it("refuses an email that is not one plain address, an oversized body, and customers the settings exclude", async () => {
+    await settings({ email: "help@scanner.app" });
+    expect(await (await from("192.0.2.1", "u1", "victim@x.example?bcc=me@evil.example")).json()).toEqual({ sent: false });
+    expect(await (await from("192.0.2.1", "u1", "me%40evil.example,victim@x.example")).json()).toEqual({ sent: false });
+    const big = await h.fetch("/v1/customercenter/support/create-ticket", { method: "POST", key: h.ids.testKey, json: { app_user_id: "u1", customer_email: "u1@example.org", issue_description: "x".repeat(40_000) } });
+    expect(await big.json()).toEqual({ sent: false });
+    await settings({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "active" } });
+    expect(await (await from("192.0.2.2", "nobody-pays")).json()).toEqual({ sent: false });
+    await payingCustomer();
+    expect(await (await from("192.0.2.2", "wren", "wren@example.com")).json()).toEqual({ sent: true });
+    await settings({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "not_active" } });
+    expect(await (await from("192.0.2.3", "wren", "wren@example.com")).json()).toEqual({ sent: false });
+    expect(await (await from("192.0.2.3", "free-user")).json()).toEqual({ sent: true });
+    await settings({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "none" } });
+    expect(await (await from("192.0.2.4", "free-user")).json()).toEqual({ sent: false });
+  });
+
+  it("escapes the customer's text in the ticket email", async () => {
+    await settings({ email: "help@scanner.app" });
+    await h.fetch("/v1/customercenter/support/create-ticket", { method: "POST", key: h.ids.testKey, json: { app_user_id: "<b>x</b>", customer_email: "x@example.org", issue_description: "<img src=x onerror=alert(1)>" } });
+    expect(mail.sent[0]!.html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(mail.sent[0]!.html).not.toContain("<img src=x");
+    expect(mail.sent[0]!.html).toContain("&lt;b&gt;x&lt;/b&gt;");
+  });
+});
+
 describe("tickets and the help desk summary in API v2", () => {
   it("lists tickets newest first, closes and reopens them", async () => {
     await ticket({ app_user_id: "a", customer_email: "a@example.org", issue_description: "First" });
@@ -76,6 +120,8 @@ describe("tickets and the help desk summary in API v2", () => {
     const list = await (await v2("/support_tickets")).json() as any;
     expect(list.items.map((t: any) => t.description)).toEqual(["Second", "First"]);
     const id = list.items[1].id;
+    expect(await (await v2(`/support_tickets/${id}`)).json()).toMatchObject({ object: "support_ticket", id, description: "First" });
+    expect((await v2("/support_tickets/tkt_missing")).status).toBe(404);
     const closed = await (await v2(`/support_tickets/${id}`, { method: "POST", json: { status: "closed" } })).json() as any;
     expect(closed).toMatchObject({ object: "support_ticket", status: "closed", closed_at: h.now().getTime() });
     expect((await (await v2("/support_tickets?status=open")).json() as any).items.map((t: any) => t.description)).toEqual(["Second"]);

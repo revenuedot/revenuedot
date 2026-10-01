@@ -117,6 +117,34 @@ describe("Apple Retention Messaging", () => {
     expect((app!.retentionMessaging as any).stats).toMatchObject({ requests: 5, answered: 3, last_environment: "Sandbox", last_request_at: T0 });
   });
 
+  it("refuses replayed, Xcode-signed or unbound production requests, and answers {} when the offer cannot be signed", async () => {
+    const { call } = await setup();
+    await call("", { enabled: true, messages, rules: [{ product_id: "pro_monthly", message_id: PROMO }, { product_id: null, message_id: TEXT }] });
+    // A request signed more than 5 minutes ago is a replay.
+    expect((await realtime({ signedDate: T0 - 6 * 60_000 })).status).toBe(400);
+    expect((await realtime({ signedDate: T0 + 5 * 60_000 })).status).toBe(400);
+    expect((await realtime({ signedDate: T0 - 60_000, productId: "pro_weekly" })).status).toBe(200);
+    // Apple's sandbox may leave appAppleId out; production must carry the app's Apple ID.
+    expect((await realtime({ appAppleId: undefined, productId: "pro_weekly" })).status).toBe(200);
+    expect((await realtime({ environment: "Production", productId: "pro_weekly" })).status).toBe(200);
+    expect((await realtime({ environment: "Production", appAppleId: undefined })).status).toBe(400);
+    // Only the App Store calls this endpoint.
+    expect((await realtime({ environment: "Xcode" })).status).toBe(400);
+    // Duplicate defaults for one product and locale are refused.
+    expect((await call("", { defaults: [{ product_id: "pro_monthly", locale: "en-US", message_id: TEXT }, { product_id: "pro_monthly", locale: "en_US", message_id: TEXT }] })).status).toBe(400);
+    // A broken In-App Purchase key: Apple gets {} and shows its default message.
+    await h!.db.update(schema.apps).set({ credentials: { key_id: "KEY123", issuer_id: "issuer", private_key: "not a key", app_apple_id: "1234567890" } }).where(eq(schema.apps.id, APP_ID));
+    const broken = await realtime({ productId: "pro_monthly" });
+    expect(broken.status).toBe(200);
+    expect(await broken.json()).toEqual({});
+  });
+
+  it("answers no production request for an app without its Apple ID", async () => {
+    h = await appleHarness({ credentials: { key_id: "KEY123", issuer_id: "issuer", private_key: await makeP8() } });
+    expect((await realtime({ environment: "Production" })).status).toBe(400);
+    expect((await realtime({ environment: "Sandbox" })).status).toBe(200);
+  });
+
   it("Sync to Apple uploads messages once, sets the defaults and registers the real-time URL", async () => {
     const { apple, call } = await setup();
     await call("", { enabled: true, messages: [messages[0], messages[2]], defaults: [{ product_id: "pro_monthly", locale: "en-US", message_id: TEXT }], rules: [{ product_id: null, message_id: TEXT }] });

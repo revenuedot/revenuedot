@@ -259,7 +259,7 @@ export const transactions = pgTable("transactions", {
   offerId: text("offer_id"),
   /** When RevenueDot recorded the row (incremental data exports read this; rows from before migration 0013 carry its run time). */
   createdAt: created(),
-}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id)]);
+}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id), index("transactions_customer").on(t.customerId, t.purchasedAt)]);
 
 /** Customer lifecycle events; the source for webhooks and the customer history timeline. */
 export const events = pgTable("events", {
@@ -820,7 +820,7 @@ export const refundRequests = pgTable("refund_requests", {
   outcome: text("outcome").notNull().default("pending"),
   outcomeAt: ts("outcome_at"),
   createdAt: created(),
-}, (t) => [uniqueIndex("refund_requests_tx").on(t.projectId, t.store, t.transactionId), index("refund_requests_project_time").on(t.projectId, t.requestedAt), index("refund_requests_due").on(t.consumptionStatus, t.nextAttemptAt)]);
+}, (t) => [uniqueIndex("refund_requests_tx").on(t.projectId, t.store, t.transactionId), index("refund_requests_project_time").on(t.projectId, t.requestedAt), index("refund_requests_due").on(t.consumptionStatus, t.nextAttemptAt), index("refund_requests_customer").on(t.customerId)]);
 
 /** Customer Center retention offers: a promotional offer shown when a customer cancels (`cancel`) or asks for a refund (`refund`). */
 export const retentionOffers = pgTable("retention_offers", {
@@ -855,7 +855,7 @@ export const supportTickets = pgTable("support_tickets", {
   emailed: boolean("emailed").notNull().default(false),
   createdAt: created(),
   closedAt: ts("closed_at"),
-}, (t) => [index("support_tickets_project").on(t.projectId, t.createdAt)]);
+}, (t) => [index("support_tickets_project").on(t.projectId, t.createdAt), index("support_tickets_customer").on(t.customerId)]);
 
 /** Win-back campaigns: email churned subscribers an offer. Audience, email and offer are JSON (services/winback.ts). */
 export const winbackCampaigns = pgTable("winback_campaigns", {
@@ -888,7 +888,7 @@ export const winbackSends = pgTable("winback_sends", {
   clickedAt: ts("clicked_at"),
   unsubscribedAt: ts("unsubscribed_at"),
   error: text("error"),
-}, (t) => [uniqueIndex("winback_sends_token").on(t.token), uniqueIndex("winback_sends_once").on(t.campaignId, t.customerId), index("winback_sends_project").on(t.projectId, t.sentAt)]);
+}, (t) => [uniqueIndex("winback_sends_token").on(t.token), uniqueIndex("winback_sends_once").on(t.campaignId, t.customerId), index("winback_sends_project").on(t.projectId, t.sentAt), index("winback_sends_customer").on(t.customerId)]);
 
 /** Addresses that unsubscribed from a project's marketing email (win-back). Lower-cased. */
 export const emailSuppressions = pgTable("email_suppressions", {

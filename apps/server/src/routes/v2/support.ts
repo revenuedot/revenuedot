@@ -31,6 +31,12 @@ export function supportRoutes(r: V2Router, deps: Deps) {
     return c.json(listOf(c, page.map(ticketShape), rows.length > limit ? page[page.length - 1]!.id : null));
   });
 
+  r.get(`${P}/support_tickets/:ticket_id`, scope("customer_information:customers:read"), async (c) => {
+    const [x] = await db.select().from(t).where(and(eq(t.projectId, c.get("projectId")), eq(t.id, c.req.param("ticket_id")))).limit(1);
+    if (!x) throw notFound("Support ticket");
+    return c.json(ticketShape(x));
+  });
+
   r.post(`${P}/support_tickets/:ticket_id`, scope("customer_information:customers:read_write"), async (c) => {
     const b = await body(c, z.object({ status: z.enum(["open", "closed"]) }).strict());
     const [x] = await db.select().from(t).where(and(eq(t.projectId, c.get("projectId")), eq(t.id, c.req.param("ticket_id")))).limit(1);

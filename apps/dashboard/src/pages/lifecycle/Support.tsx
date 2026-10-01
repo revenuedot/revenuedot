@@ -7,7 +7,7 @@
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmt, type List } from "../../lib/api";
 import { Shell } from "../../components/Shell";
 import { Check, CodeBlock, DataTable, EmptyState, Field, KeyValue, PageHead, Panel, Segmented, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
@@ -141,10 +141,16 @@ function Tickets() {
   const [sp, setSp] = useSearchParams();
   const [status, setStatus] = useState<"open" | "closed" | "all">("open");
   const selectedId = sp.get("ticket");
-  const q = useQuery({ queryKey: ["support-tickets", pid, status], enabled: !!pid, queryFn: () => api<List<SupportTicket>>(`${v2(pid)}/support_tickets?status=${status}&limit=100`), placeholderData: (p) => p });
-  const one = useQuery({ queryKey: ["support-ticket", pid, selectedId], enabled: !!selectedId && !q.data?.items.some((t) => t.id === selectedId),
-    queryFn: async () => (await api<List<SupportTicket>>(`${v2(pid)}/support_tickets?status=all&limit=100`)).items.find((t) => t.id === selectedId) ?? null });
-  const rows = q.data?.items ?? [];
+  const q = useInfiniteQuery({
+    queryKey: ["support-tickets", pid, status], enabled: !!pid, initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => api<List<SupportTicket>>(`${v2(pid)}/support_tickets?status=${status}&limit=100${pageParam ? `&starting_after=${encodeURIComponent(pageParam)}` : ""}`),
+    getNextPageParam: (last) => (last.next_page ? new URL(last.next_page, window.location.origin).searchParams.get("starting_after") : null),
+    placeholderData: (p) => p,
+  });
+  const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
+  // A ticket linked from its email may be older than the loaded pages: load it by id.
+  const one = useQuery({ queryKey: ["support-ticket", pid, selectedId], enabled: !!selectedId && !rows.some((t) => t.id === selectedId), retry: false,
+    queryFn: () => api<SupportTicket>(`${v2(pid)}/support_tickets/${encodeURIComponent(selectedId!)}`) });
   const sel = rows.find((t) => t.id === selectedId) ?? one.data ?? null;
   const pick = (t: SupportTicket | null) => { const n = new URLSearchParams(sp); n.set("tab", "tickets"); if (t) n.set("ticket", t.id); else n.delete("ticket"); setSp(n, { replace: true }); };
   const setTicket = async (t: SupportTicket, next: "open" | "closed") => {
@@ -175,6 +181,8 @@ function Tickets() {
                 { key: "s", header: "Status", render: (t) => <Tag tone={t.status === "open" ? "info" : "muted"}>{t.status === "open" ? "Open" : "Closed"}</Tag> },
                 { key: "a", header: "", align: "right", render: (t) => <button type="button" className="btn btn-line" aria-label={`${t.status === "open" ? "Close" : "Reopen"} ticket from ${t.customer_email}`} onClick={(e) => { e.stopPropagation(); void setTicket(t, t.status === "open" ? "closed" : "open"); }}>{t.status === "open" ? "Close" : "Reopen"}</button> },
               ]} />
+            {q.hasNextPage && <div className="hrow" style={{ marginTop: 12 }}><button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Show older tickets"}</button></div>}
+            {one.isError && selectedId && <div className="banner err" role="alert" style={{ marginTop: 12 }}>Ticket {selectedId} could not be loaded: {errMsg(one.error)}</div>}
           </div>
           {sel && (
             <Panel title="Ticket" link={<button type="button" className="linkbtn" onClick={() => pick(null)}>Close panel</button>}>
@@ -186,7 +194,7 @@ function Tickets() {
                   ["Status", sel.status === "open" ? "Open" : `Closed ${sel.closed_at ? fmt.dateTime(sel.closed_at) : ""}`],
                 ]} />
                 <div className="hrow">
-                  <a className="btn btn-dark" href={`mailto:${sel.customer_email}?subject=${encodeURIComponent("Re: your support request")}`}>Reply by email</a>
+                  <a className="btn btn-dark" href={`mailto:${encodeURIComponent(sel.customer_email)}?subject=${encodeURIComponent("Re: your support request")}`}>Reply by email</a>
                   <button type="button" className="btn btn-line" onClick={() => void setTicket(sel, sel.status === "open" ? "closed" : "open")}>{sel.status === "open" ? "Close ticket" : "Reopen ticket"}</button>
                 </div>
               </div>

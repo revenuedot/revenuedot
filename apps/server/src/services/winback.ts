@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
-import { trySend, type Mailer } from "../mail/index.js";
+import { isEmailAddress, trySend, type Mailer } from "../mail/index.js";
 import { winbackEmail } from "../mail/templates.js";
 import { projectContexts, subActive, type LoadedContext } from "./customer-context.js";
 import { supportSettingsFor } from "./customer-center.js";
@@ -19,8 +19,13 @@ export interface WinbackOffer { type: "store" | "url"; url?: string | null }
 
 export const DEFAULT_AUDIENCE: WinbackAudience = { churned_min_days: 3, churned_max_days: 60, product_ids: [], stores: [], audience_id: null };
 const DAY = 86_400_000;
-/** At most this many emails per campaign run. */
+/** At most this many emails per campaign per day (and per "Send now"). */
 export const MAX_PER_RUN = 500;
+/** One tick sends at most this many win-back emails and looks at most at this many due campaigns; the rest wait a minute. */
+export const SENDS_PER_TICK = 100;
+export const CAMPAIGNS_PER_TICK = 5;
+/** All of a project's campaigns together send at most this many emails in 24 hours (abuse cap for a shared mailer). */
+export const PROJECT_DAILY_MAX = 2_000;
 /** A purchase this long after the email counts as won back. */
 export const REACTIVATION_WINDOW_MS = 30 * DAY;
 
@@ -39,7 +44,7 @@ export function selectCandidates(items: LoadedContext[], a: WinbackAudience, now
   const out: Candidate[] = [];
   for (const { data, ctx } of items) {
     const email = data.attributes.$email?.trim();
-    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || o.suppressed.has(email.toLowerCase()) || o.alreadySent.has(data.customer.id)) continue;
+    if (!email || !isEmailAddress(email) || o.suppressed.has(email.toLowerCase()) || o.alreadySent.has(data.customer.id)) continue;
     const subs = data.subs.filter((s) => s.store !== "promotional" && !s.isSandbox);
     if (!subs.length || subs.some((s) => subActive(s, new Date(now)))) continue;
     // Access ended at the refund, or else at expiry; the latest ending is when the customer churned.
@@ -113,16 +118,25 @@ export function renderFor(c: CampaignRow, appName: string, base: string, tok: st
   });
 }
 
-/** One run: email up to MAX_PER_RUN candidates. Each customer gets the email at most once per campaign. */
-export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string): Promise<{ sent: number; failed: number; skipped: number }> {
+/**
+ * One run: email up to `limit` candidates (sent or failed; candidates without an offer link are skipped). Each customer
+ * gets the email at most once per campaign. `done` is false when candidates are left for a later run.
+ */
+export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string, limit = MAX_PER_RUN): Promise<{ sent: number; failed: number; skipped: number; done: boolean }> {
   const { db } = deps;
   const now = deps.now();
   const { candidates } = await candidatesFor(db, c, now);
   const [project] = await db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, c.projectId));
   const support = await supportSettingsFor(db, c.projectId);
-  const replyTo = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(support.email) && !support.email.endsWith("@example.com") ? support.email : undefined;
-  let sent = 0, failed = 0, skipped = 0;
-  for (const cand of candidates.slice(0, MAX_PER_RUN)) {
+  const replyTo = isEmailAddress(support.email) && !support.email.endsWith("@example.com") ? support.email : undefined;
+  const appName = emailOf(c).sender_name?.trim() || project?.name || "Your app";
+  const [{ n: lastDay }] = await db.select({ n: count() }).from(schema.winbackSends)
+    .where(and(eq(schema.winbackSends.projectId, c.projectId), gte(schema.winbackSends.sentAt, new Date(now.getTime() - DAY)))) as [{ n: number }];
+  limit = Math.min(limit, PROJECT_DAILY_MAX - Number(lastDay));
+  let sent = 0, failed = 0, skipped = 0, looked = 0;
+  for (const cand of candidates) {
+    if (sent + failed >= limit) break;
+    looked++;
     const offerUrl = offerUrlFor(offerOf(c), cand);
     if (!offerUrl) { skipped++; continue; }
     const tok = token();
@@ -130,28 +144,48 @@ export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string):
       .onConflictDoNothing().returning({ id: schema.winbackSends.id });
     if (!inserted.length) { skipped++; continue; }
     const mail = renderFor(c, project?.name ?? "Your app", base, tok, offerUrl);
+    const unsubscribe = `${base}/v1/winback/u/${tok}`;
     const ok = await trySend(deps.mailer, {
-      to: cand.email, ...mail, replyTo,
-      headers: { "List-Unsubscribe": `<${base}/v1/winback/u/${tok}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+      to: cand.email, ...mail, replyTo, fromName: appName,
+      // RFC 8058 one-click unsubscribe; mail providers (and Cloudflare Email Sending) take https links only.
+      ...(unsubscribe.startsWith("https://") ? { headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
     });
     if (ok) sent++;
     else { failed++; await db.update(schema.winbackSends).set({ error: "The mailer did not accept the email." }).where(eq(schema.winbackSends.id, inserted[0]!.id)); }
   }
-  await db.update(schema.winbackCampaigns).set({ lastRunAt: now }).where(eq(schema.winbackCampaigns.id, c.id));
-  return { sent, failed, skipped };
+  return { sent, failed, skipped, done: limit <= 0 || looked >= candidates.length };
 }
 
-/** The tick: active campaigns run once a day, at or after their UTC hour. */
+/**
+ * The tick: active campaigns run once a day, at or after their UTC hour. A run that has more candidates than the tick's
+ * budget goes on in the next ticks, until everyone eligible got the email or the campaign sent MAX_PER_RUN that day.
+ */
 export async function runDueCampaigns(deps: SendDeps, publicUrl?: string): Promise<number> {
+  const { db } = deps;
   const now = deps.now();
-  const active = await deps.db.select().from(schema.winbackCampaigns).where(eq(schema.winbackCampaigns.status, "active"));
-  let total = 0;
+  const active = await db.select().from(schema.winbackCampaigns).where(eq(schema.winbackCampaigns.status, "active"))
+    .orderBy(sql`${schema.winbackCampaigns.lastRunAt} asc nulls first`, asc(schema.winbackCampaigns.id));
+  let total = 0, budget = SENDS_PER_TICK, looked = 0;
   for (const c of active) {
+    if (budget <= 0 || looked >= CAMPAIGNS_PER_TICK) break;
     const slot = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), c.sendHourUtc));
     if (now < slot || (c.lastRunAt && c.lastRunAt >= slot)) continue;
     const base = publicUrl ?? emailOf(c).link_base;
     if (!base) continue;
-    try { total += (await runCampaign(deps, c, base)).sent; } catch (e) { console.error(`win-back campaign ${c.id} failed`, e); }
+    looked++;
+    const finish = () => db.update(schema.winbackCampaigns).set({ lastRunAt: now }).where(eq(schema.winbackCampaigns.id, c.id));
+    try {
+      const [{ n }] = await db.select({ n: count() }).from(schema.winbackSends).where(and(eq(schema.winbackSends.campaignId, c.id), gte(schema.winbackSends.sentAt, slot))) as [{ n: number }];
+      const left = MAX_PER_RUN - Number(n);
+      if (left <= 0) { await finish(); continue; }
+      const r = await runCampaign(deps, c, base, Math.min(budget, left));
+      budget -= r.sent + r.failed;
+      total += r.sent;
+      if (r.done || r.sent + r.failed >= left) await finish();
+    } catch (e) {
+      console.error(`win-back campaign ${c.id} failed`, e);
+      await finish().catch(() => undefined);
+    }
   }
   return total;
 }
@@ -161,19 +195,30 @@ export async function campaignStats(db: DB, campaignIds: string[]) {
   const out = new Map<string, { sent: number; failed: number; opened: number; clicked: number; unsubscribed: number; reactivated: number; reactivated_revenue_in_usd: number }>();
   for (const id of campaignIds) out.set(id, { sent: 0, failed: 0, opened: 0, clicked: 0, unsubscribed: 0, reactivated: 0, reactivated_revenue_in_usd: 0 });
   if (!campaignIds.length) return out;
-  const sends = await db.select().from(schema.winbackSends).where(inArray(schema.winbackSends.campaignId, campaignIds));
-  const customerIds = [...new Set(sends.map((s) => s.customerId).filter((x): x is string => !!x))];
-  const earliest = sends.length ? new Date(Math.min(...sends.map((s) => s.sentAt.getTime()))) : new Date();
-  const tx = customerIds.length ? await db.select().from(schema.transactions).where(and(inArray(schema.transactions.customerId, customerIds), gte(schema.transactions.purchasedAt, earliest),
-    inArray(schema.transactions.kind, ["purchase", "renewal", "trial", "one_time"]), eq(schema.transactions.isSandbox, false))) : [];
-  for (const s of sends) {
-    const st = out.get(s.campaignId)!;
-    if (s.error) st.failed++; else st.sent++;
-    if (s.openedAt) st.opened++;
-    if (s.clickedAt) st.clicked++;
-    if (s.unsubscribedAt) st.unsubscribed++;
-    const back = tx.filter((t) => t.customerId === s.customerId && t.purchasedAt >= s.sentAt && t.purchasedAt.getTime() <= s.sentAt.getTime() + REACTIVATION_WINDOW_MS);
-    if (back.length && !s.error) { st.reactivated++; st.reactivated_revenue_in_usd = Math.round((st.reactivated_revenue_in_usd + back.reduce((x, t) => x + t.revenueUsd, 0)) * 100) / 100; }
+  // Counted in Postgres: a campaign can have sent to many thousands of customers.
+  const rows = await db.execute(sql`
+    SELECT s.campaign_id AS id,
+      count(*) FILTER (WHERE s.error IS NULL)::int AS sent,
+      count(*) FILTER (WHERE s.error IS NOT NULL)::int AS failed,
+      count(*) FILTER (WHERE s.opened_at IS NOT NULL)::int AS opened,
+      count(*) FILTER (WHERE s.clicked_at IS NOT NULL)::int AS clicked,
+      count(*) FILTER (WHERE s.unsubscribed_at IS NOT NULL)::int AS unsubscribed,
+      count(*) FILTER (WHERE s.error IS NULL AND r.n > 0)::int AS reactivated,
+      coalesce(sum(r.usd) FILTER (WHERE s.error IS NULL AND r.n > 0), 0)::float8 AS revenue
+    FROM winback_sends s
+    LEFT JOIN LATERAL (
+      SELECT count(*) AS n, coalesce(sum(t.revenue_usd), 0) AS usd FROM transactions t
+      WHERE t.customer_id = s.customer_id AND t.purchased_at >= s.sent_at AND t.purchased_at <= s.sent_at + make_interval(secs => ${REACTIVATION_WINDOW_MS / 1000})
+        AND t.kind IN ('purchase', 'renewal', 'trial', 'one_time') AND t.is_sandbox = false
+    ) r ON true
+    WHERE s.campaign_id IN (${sql.join(campaignIds.map((id) => sql`${id}`), sql`, `)})
+    GROUP BY s.campaign_id`);
+  const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { id: string; sent: number; failed: number; opened: number; clicked: number; unsubscribed: number; reactivated: number; revenue: number }[];
+  for (const r of list) {
+    out.set(r.id, {
+      sent: Number(r.sent), failed: Number(r.failed), opened: Number(r.opened), clicked: Number(r.clicked), unsubscribed: Number(r.unsubscribed),
+      reactivated: Number(r.reactivated), reactivated_revenue_in_usd: Math.round(Number(r.revenue) * 100) / 100,
+    });
   }
   return out;
 }

@@ -4,7 +4,6 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { esc } from "../mail/templates.js";
 import { JwsError, verifyAppleJws } from "../stores/apple/jws.js";
-import { xcodeRootsOf } from "../stores/apple/index.js";
 import { messagingOf, realtimeAnswer, type RealtimeRequest } from "../services/retention.js";
 import { markClicked, markOpened, sendByToken, unsubscribe } from "../services/winback.js";
 
@@ -12,6 +11,9 @@ import { markClicked, markOpened, sendByToken, unsubscribe } from "../services/w
  * Public lifecycle endpoints (no API key): Apple's real-time Retention Messaging call, and the links in win-back emails.
  * Mounted before the SDK routes, which would otherwise ask for an SDK key.
  */
+
+const MAX_REQUEST_AGE_MS = 5 * 60_000;
+const MAX_CLOCK_SKEW_MS = 60_000;
 
 const GIF = Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"), (c) => c.charCodeAt(0));
 
@@ -33,16 +35,24 @@ export function lifecyclePublicRoutes(deps: Deps) {
     if (typeof b?.signedPayload !== "string") return c.json({ error: "signedPayload is missing." }, 400);
     let req: RealtimeRequest;
     try {
-      req = await verifyAppleJws<RealtimeRequest>(b.signedPayload, { xcodeRoots: xcodeRootsOf(app), now: deps.now() });
+      // Only the App Store calls this endpoint: Xcode's local StoreKit certificates are not accepted.
+      req = await verifyAppleJws<RealtimeRequest>(b.signedPayload, { xcodeRoots: [], now: deps.now() });
     } catch (e) {
       if (e instanceof JwsError) return c.json({ error: `The signed payload is not valid: ${e.message}.` }, 400);
       throw e;
     }
-    // Apple: always check appAppleId, and do not answer a request for another app.
+    if (req?.environment !== "Production" && req?.environment !== "Sandbox") return c.json({ error: "The signed payload is not a retention message request." }, 400);
+    // A captured request cannot be replayed later: Apple signs each call just before it waits 700 ms for the answer.
+    const age = deps.now().getTime() - Number(req.signedDate);
+    if (!Number.isFinite(age) || age > MAX_REQUEST_AGE_MS || age < -MAX_CLOCK_SKEW_MS) return c.json({ error: "The signed payload is too old." }, 400);
+    // Apple: always check appAppleId, and do not answer a request for another app. Production requires it to be set.
     const expected = app.credentials?.app_apple_id;
-    if (expected && String(req.appAppleId) !== String(expected)) return c.json({ error: `The request is for Apple app id ${req.appAppleId}, not ${expected}.` }, 400);
+    if (expected && req.appAppleId != null && String(req.appAppleId) !== String(expected)) return c.json({ error: `The request is for Apple app id ${req.appAppleId}, not ${expected}.` }, 400);
+    if (req.environment === "Production" && (!expected || req.appAppleId == null)) return c.json({ error: "Set the app's Apple ID in RevenueDot before answering production requests." }, 400);
     const cfg = messagingOf(app);
-    const answer = await realtimeAnswer(cfg, req, app, deps.now());
+    let answer: Record<string, unknown> = {};
+    // Signing a promotional offer can fail (an incomplete or invalid key): Apple then shows the default message.
+    try { answer = await realtimeAnswer(cfg, req, app, deps.now()); } catch (e) { console.warn(`Retention message for app ${app.id} failed: ${e instanceof Error ? e.message : String(e)}`); }
     const now = deps.now().getTime();
     // The counter is the only write, after the answer.
     const count = db.execute(sql`UPDATE apps SET retention_messaging = jsonb_set(coalesce(retention_messaging, '{}'::jsonb), '{stats}',

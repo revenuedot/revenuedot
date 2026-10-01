@@ -40,6 +40,8 @@ export interface TickOptions {
   exports?: boolean;
   /** Win-back campaigns send here unless false (the Worker sends them from the cron only, like exports). */
   winback?: boolean;
+  /** Refund Control retries call the App Store here unless false (the Worker retries from the cron only). */
+  consumption?: boolean;
   /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
   strictUrls?: boolean;
 }
@@ -49,7 +51,9 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
   // Refund Control answers that failed for a passing reason, inside Apple's 12-hour window.
   let consumption = 0;
-  try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now }); } catch (e) { console.error("tick: consumption information retries failed", e); }
+  if (opts.consumption !== false) {
+    try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now }); } catch (e) { console.error("tick: consumption information retries failed", e); }
+  }
   const sent = await deliverDue(db, fetchImpl, now);
   // A bad REVENUEDOT_ENCRYPTION_KEY leaves deliveries and exports queued (not failed) until the key is fixed.
   const secretKey = await depsSecretKey(opts).then((k) => ({ ok: true as const, k }), (e) => { console.error("tick: integration secrets key", e); return { ok: false as const }; });

@@ -6,7 +6,7 @@
  * Lists scan the 10,000 most recently seen customers. Search matches part of an app user ID or email; a whole store
  * transaction ID still finds its customer through RevenueCat's exact search (GET /customers?search=).
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../components/Shell";
@@ -38,6 +38,9 @@ const STATUS: Record<Row["subscription_status"], { label: string; tone: "up" | "
   billing_issue: { label: "Billing issue", tone: "down" }, expired: { label: "Expired", tone: "muted" }, none: { label: "None", tone: "muted" },
 };
 
+/** An audience has at most 20 groups (the API's limit). */
+const MAX_GROUPS = 20;
+
 /** The current list's rules combined with the filter: (A1 or A2) and (F1 or F2) = A1F1 or A1F2 or A2F1 or A2F2. */
 function combined(list: string, audiences: Audience[], filter: Rules): Rules {
   const b = BUILT_IN.find((x) => x.id === list);
@@ -45,7 +48,7 @@ function combined(list: string, audiences: Audience[], filter: Rules): Rules {
   const f = filter.groups.map((g) => g.conditions);
   if (!base.length) return { groups: f.map((conditions) => ({ conditions })) };
   if (!f.length) return { groups: base.map((conditions) => ({ conditions })) };
-  return { groups: base.flatMap((a) => f.map((x) => ({ conditions: [...a, ...x] }))).slice(0, 20) };
+  return { groups: base.flatMap((a) => f.map((x) => ({ conditions: [...a, ...x] }))) };
 }
 
 export function Customers() {
@@ -65,7 +68,14 @@ export function Customers() {
   const [filterErr, setFilterErr] = useState<string | null>(null);
   // Cursors of the pages before this one, so "Previous" works without the API paging backwards.
   const [trail, setTrail] = useState<(string | null)[]>([]);
-  useEffect(() => { setDraft(q); }, [q]);
+  // The box follows the URL when the search changes elsewhere (top bar, Clear, back), but never overwrites typing that
+  // started after this page's own submit: the router can commit that URL change after the next keystrokes.
+  const pushed = useRef<string | null>(null);
+  useEffect(() => {
+    if (pushed.current !== null && pushed.current === q) { pushed.current = null; return; }
+    pushed.current = null;
+    setDraft(q);
+  }, [q]);
   useEffect(() => { if (!after) setTrail([]); }, [after]);
 
   const audiences = useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
@@ -89,7 +99,30 @@ export function Customers() {
     setSp(n);
   };
   const pickList = (id: string) => { setParams({ list: id === "all" ? null : id }); };
-  const search = (e: FormEvent) => { e.preventDefault(); setParams({ q: draft.trim() || null }); };
+  const search = (e: FormEvent) => {
+    e.preventDefault();
+    const next = draft.trim();
+    if (next !== q) pushed.current = next;
+    setParams({ q: next || null });
+  };
+  const [exporting, setExporting] = useState(false);
+  // Fetched, not a plain download link: an error (a deleted audience, a bad filter) shows here instead of saving as a .csv.
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const r = await fetch(`${v2(pid)}/customer_lists/export?${params(false)}`, { credentials: "same-origin" });
+      if (!r.ok) {
+        const body = await r.json().catch(() => null) as { message?: string } | null;
+        throw new Error(body?.message ?? `Export failed (${r.status})`);
+      }
+      const name = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1] ?? "customers.csv";
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement("a");
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (x) { toast(errMsg(x)); }
+    setExporting(false);
+  };
   const go = (cursor: string | null, back = false) => {
     const n = new URLSearchParams(sp);
     if (cursor) n.set("after", cursor); else n.delete("after");
@@ -161,7 +194,7 @@ export function Customers() {
                 <Icon name="funnels" />Filter{applied.groups.length > 0 && <span className="soon" style={{ marginLeft: 0 }} aria-hidden data-testid="filter-count">{applied.groups.reduce((n, g) => n + g.conditions.length, 0)}</span>}
               </button>
               <button type="button" className="btn btn-line" onClick={() => setSaving(true)}>Save audience</button>
-              <a className="btn btn-line" href={`${v2(pid)}/customer_lists/export?${params(false)}`} download><Icon name="docs" />Export all</a>
+              <button type="button" className="btn btn-line" disabled={exporting} onClick={() => void exportCsv()}><Icon name="docs" />{exporting ? "Exporting…" : "Export all"}</button>
             </div>
             {filterOpen && (
               <div id="cust-filter" className="panel pb filter-panel stack tight">
@@ -221,8 +254,10 @@ function SaveAudienceDialog({ pid, rules, listNote, hasSearch, onClose, onSaved 
   const [name, setName] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const tooMany = rules.groups.length > MAX_GROUPS;
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (tooMany) return;
     if (!name.trim()) { setErr("Name the audience."); return; }
     setBusy(true); setErr(null);
     try { const a = await api<Audience>(`${v2(pid)}/audiences`, { method: "POST", json: { name: name.trim(), rules } }); await onSaved(a); onClose(); }
@@ -231,7 +266,7 @@ function SaveAudienceDialog({ pid, rules, listNote, hasSearch, onClose, onSaved 
   return (
     <Dialog title="Save audience" onClose={onClose} footer={<>
       <button type="button" className="btn btn-line" onClick={onClose}>Cancel</button>
-      <button type="submit" form="save-aud" className="btn btn-dark" disabled={busy}>{busy ? "Saving…" : "Save audience"}</button>
+      <button type="submit" form="save-aud" className="btn btn-dark" disabled={busy || tooMany}>{busy ? "Saving…" : "Save audience"}</button>
     </>}>
       <form id="save-aud" onSubmit={submit} noValidate className="stack tight">
         <Field label="Name" htmlFor="save-aud-name"><input id="save-aud-name" className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Lapsed in the US" /></Field>
@@ -239,6 +274,7 @@ function SaveAudienceDialog({ pid, rules, listNote, hasSearch, onClose, onSaved 
         {listNote && <p className="subtle" style={{ margin: 0, fontSize: 12 }}>The list is saved as a condition: {listNote}.</p>}
         {hasSearch && <p className="subtle" style={{ margin: 0, fontSize: 12 }}>The search text is not part of the audience.</p>}
         <p className="subtle" style={{ margin: 0, fontSize: 12 }}>Audiences also work in Targeting, Experiments and Win-back.</p>
+        {tooMany && <div className="banner err" role="alert">This list and filter combine into {rules.groups.length} groups of conditions; an audience holds at most {MAX_GROUPS}. Use fewer "or" groups.</div>}
         {err && <div className="banner err" role="alert">{err}</div>}
       </form>
     </Dialog>

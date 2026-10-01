@@ -97,8 +97,10 @@ export async function queryCustomerList(db: DB, projectId: string, q: ListQuery,
 
 const csvCell = (v: unknown) => {
   const s = v === null || v === undefined ? "" : String(v);
-  // A leading = + - @ would run as a formula in a spreadsheet.
-  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  if (/^-?\d+(\.\d+)?$/.test(s)) return s;
+  // A text cell that starts with = + - @ (also after spaces or control characters, or as full-width ＝＋－＠) would run as
+  // a formula in Excel, Sheets or LibreOffice: a leading apostrophe keeps it text. Numbers are written as numbers.
+  const safe = /^[\s\u0000-\u001f]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(s) ? `'${s}` : s;
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 const iso = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : "");

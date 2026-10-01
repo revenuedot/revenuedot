@@ -121,7 +121,7 @@ function AppMessaging({ app, env }: { app: App; env: AppleEnv }) {
             : <StatusLine tone="bad">No In-App Purchase key yet: syncing to Apple and signing promotional offers need it. <Link className="link-u" to={`/projects/${pid}/apps/${app.id}`}>Add it in the app's settings</Link></StatusLine>}
           {m.app_apple_id
             ? <StatusLine tone="ok">Apple ID of the app: <span className="mono">{m.app_apple_id}</span>. RevenueDot only answers Apple's requests for this app.</StatusLine>
-            : <AppleIdForm pid={pid} appId={app.id} onSaved={() => { void qc.invalidateQueries({ queryKey: key }); void qc.invalidateQueries({ queryKey: ["catalog", pid] }); }} />}
+            : <AppleIdForm pid={pid} appId={app.id} appType={app.type} onSaved={() => { void qc.invalidateQueries({ queryKey: key }); void qc.invalidateQueries({ queryKey: ["catalog", pid] }); }} />}
           <StatusLine tone={m.stats.requests ? "live" : "idle"}>
             <span data-testid="rm-requests">{fmt.int(m.stats.requests)} request{m.stats.requests === 1 ? "" : "s"} from Apple, {fmt.int(m.stats.answered)} answered with a message</span>
             {m.stats.last_request_at ? <span className="subtle"> · last {fmt.ago(m.stats.last_request_at)} ({m.stats.last_environment?.toLowerCase() ?? "unknown"})</span> : <span className="subtle"> · none yet in either environment</span>}
@@ -212,8 +212,17 @@ function AppMessaging({ app, env }: { app: App; env: AppleEnv }) {
   );
 }
 
+/** A v4 UUID; crypto.randomUUID only exists on https and localhost, and self-hosted dashboards may be plain http. */
+function uuid(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40; b[8] = (b[8]! & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 /** Apple sends the app's Apple ID (appAppleId) with every real-time request; RevenueDot checks it against this value. */
-function AppleIdForm({ pid, appId, onSaved }: { pid: string; appId: string; onSaved: () => void }) {
+function AppleIdForm({ pid, appId, appType, onSaved }: { pid: string; appId: string; appType: string; onSaved: () => void }) {
   const toast = useToast();
   const [v, setV] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -222,7 +231,7 @@ function AppleIdForm({ pid, appId, onSaved }: { pid: string; appId: string; onSa
     e.preventDefault();
     if (!/^\d{6,12}$/.test(v.trim())) { setErr("The Apple ID is the number in App Store Connect > App Information, e.g. 1234567890."); return; }
     setBusy(true); setErr(null);
-    try { await api(`${v2(pid)}/apps/${appId}`, { method: "POST", json: { app_store: { app_apple_id: v.trim() } } }); toast("Apple ID saved"); onSaved(); }
+    try { await api(`${v2(pid)}/apps/${appId}`, { method: "POST", json: { [appType === "mac_app_store" ? "mac_app_store" : "app_store"]: { app_apple_id: v.trim() } } }); toast("Apple ID saved"); onSaved(); }
     catch (x) { setErr(errMsg(x)); }
     setBusy(false);
   }
@@ -255,7 +264,7 @@ function MessageDialog({ products, onClose, onSave }: { products: Product[]; onC
     if (kind === "switch_plan" && !alt) { setErr("Pick the product to suggest."); return; }
     if (kind === "promotional_offer" && !offer.trim()) { setErr("Enter the App Store promotional offer ID."); return; }
     setBusy(true); setErr(null);
-    const ok = await onSave({ id: crypto.randomUUID(), kind, header: header.trim(), body: body.trim(), alternate_product_id: kind === "switch_plan" ? alt : null, promotional_offer_id: kind === "promotional_offer" ? offer.trim() : null });
+    const ok = await onSave({ id: uuid(), kind, header: header.trim(), body: body.trim(), alternate_product_id: kind === "switch_plan" ? alt : null, promotional_offer_id: kind === "promotional_offer" ? offer.trim() : null });
     setBusy(false);
     if (ok) onClose();
   }
@@ -361,6 +370,7 @@ function OfferDialog({ trigger, apps, products, onClose, onSaved }: { trigger: R
     const mapping = rows.filter(([p, o]) => p && o.trim());
     if (!name.trim() || !title.trim()) { setErr("Name the offer and give it a title."); return; }
     if (!mapping.length) { setErr("Link at least one product to a store offer ID."); return; }
+    if (new Set(mapping.map(([p]) => p)).size !== mapping.length) { setErr("Each product can have one offer ID: remove the repeated product."); return; }
     setBusy(true); setErr(null);
     try {
       await api(`${v2(pid)}/retention_offers`, { method: "POST", json: { trigger, name: name.trim(), title: title.trim(), subtitle: subtitle.trim(), store, product_mapping: Object.fromEntries(mapping.map(([p, o]) => [p, o.trim()])), active: true } });

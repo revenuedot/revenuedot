@@ -317,7 +317,7 @@ test("customers: lists, summary cards, filter, save audience, export, search", a
   await expect(page.locator("table tbody tr").first()).toBeVisible();
 
   // Export downloads a CSV with a header row.
-  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Export all" }).click()]);
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export all" }).click()]);
   const csv = readFileSync((await download.path())!, "utf8");
   expect(csv.split("\r\n")[0]).toBe("app_user_id,email,subscription_status,auto_renewal_status,first_seen_at,last_seen_at,spent_in_usd,latest_product_id,latest_store,latest_purchase_at,country,platform");
   expect(download.suggestedFilename()).toMatch(/^customers-aud.*\.csv$/);

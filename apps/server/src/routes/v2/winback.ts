@@ -3,7 +3,8 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { trySend } from "../../mail/index.js";
+import { isEmailAddress, trySend } from "../../mail/index.js";
+import { hit } from "../../services/rate-limit.js";
 import { publicOrigin } from "../oauth.js";
 import { DEFAULT_AUDIENCE, audienceOf, campaignStats, candidatesFor, emailOf, offerOf, recentSends, renderFor, runCampaign, type CampaignRow } from "../../services/winback.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Router } from "./common.js";
@@ -106,19 +107,22 @@ export function winbackRoutes(r: V2Router, deps: Deps) {
   });
   r.post(`${P}/:campaign_id/actions/send_test`, scope("project_configuration:projects:read_write"), async (c) => {
     const row = await find(c.get("projectId"), c.req.param("campaign_id"));
-    const b = await body(c, z.object({ email: z.string().email() }).strict());
+    const b = await body(c, z.object({ email: z.string().refine(isEmailAddress, "a single email address") }).strict());
+    // Test emails go to any address through the server's mailer: a few per hour per project.
+    if (!(await hit(db, `winback-test:${row.projectId}`, 10, 3600_000, deps.now()))) throw new V2Error(429, "rate_limit_error", "Too many test emails. Try again in an hour.", undefined, true);
     const [project] = await db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, row.projectId));
     const base = deps.publicUrl ?? publicOrigin(c);
     const offer = offerOf(row);
     const mail = renderFor(row, project?.name ?? "Your app", base, "test-email-preview-token", offer.type === "url" && offer.url ? offer.url : "https://apps.apple.com/account/subscriptions");
-    const ok = await trySend(deps.mailer, { to: b.email, ...mail, subject: `[Test] ${mail.subject}` });
+    const ok = await trySend(deps.mailer, { to: b.email, ...mail, subject: `[Test] ${mail.subject}`, fromName: emailOf(row).sender_name?.trim() || project?.name || undefined });
     if (!ok) throw new V2Error(502, "server_error", "The mailer did not accept the test email. Check the server's mail settings.", undefined, true);
     return c.json({ object: "winback_test", sent_to: b.email });
   });
   r.post(`${P}/:campaign_id/actions/run`, scope("project_configuration:projects:read_write"), async (c) => {
     const row = await find(c.get("projectId"), c.req.param("campaign_id"));
     if (row.status !== "active") throw new V2Error(422, "unprocessable_entity_error", "Start the campaign before sending it.");
-    const res = await runCampaign({ db, mailer: deps.mailer, now: deps.now }, row, deps.publicUrl ?? publicOrigin(c));
-    return c.json({ object: "winback_run", ...res });
+    const { sent, failed, skipped } = await runCampaign({ db, mailer: deps.mailer, now: deps.now }, row, deps.publicUrl ?? publicOrigin(c));
+    await db.update(schema.winbackCampaigns).set({ lastRunAt: deps.now() }).where(eq(schema.winbackCampaigns.id, row.id));
+    return c.json({ object: "winback_run", sent, failed, skipped });
   });
 }

@@ -134,6 +134,9 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
     const a = await findAudience(c.get("projectId"), c.req.param("audience_id")!);
     const u = await usedBy(a.id);
     if (u.targeting_rules.length || u.experiments.length) throw new V2Error(409, "resource_already_exists", "The audience is used by a targeting rule or an experiment. Remove it there first.");
+    const [campaign] = await db.select({ name: schema.winbackCampaigns.name }).from(schema.winbackCampaigns)
+      .where(and(eq(schema.winbackCampaigns.projectId, a.projectId), sql`${schema.winbackCampaigns.audience}->>'audience_id' = ${a.id}`)).limit(1);
+    if (campaign) throw new V2Error(409, "resource_already_exists", `The audience is used by the win-back campaign "${campaign.name}". Remove it there first.`);
     await db.delete(schema.audiences).where(eq(schema.audiences.id, a.id));
     return c.json({ object: "audience", id: a.id, deleted_at: deps.now().getTime() });
   });

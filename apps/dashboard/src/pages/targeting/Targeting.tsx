@@ -14,7 +14,7 @@ import { Shell } from "../../components/Shell";
 import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2, type Offering } from "../catalog/lib";
-import { ConditionBuilder, describeRules, fromRules, toRules, type Groups, type Rules } from "../../components/conditions";
+import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type Groups, type Rules } from "../../components/conditions";
 
 interface Audience { id: string; name: string; rules: Rules; created_at: number; stats?: { total_customers: number; active_subscriptions: number; is_approximate: boolean } }
 interface Rule { id: string; name: string; audience_id: string | null; offering_id: string; placements: Record<string, string | null>; position: number; state: "active" | "inactive"; starts_at: number | null; ends_at: number | null }
@@ -42,6 +42,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) { setErr("Name the audience."); return; }
+    if (incomplete(groups)) { setErr("Fill in every condition's value, or remove the condition."); return; }
     setBusy(true); setErr(null);
     try {
       const a = existing ? await api<Audience>(`${v2(pid)}/audiences/${existing.id}`, { method: "POST", json: { name: name.trim(), rules } }) : await api<Audience>(`${v2(pid)}/audiences`, { method: "POST", json: { name: name.trim(), rules } });

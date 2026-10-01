@@ -238,7 +238,7 @@ RevenueDot is tested against the RevenueCat SDKs' own test fixtures (94 request 
 | `GET /v1/product_entitlement_mapping` | Offline entitlements |
 | `POST /v1/config/app` · `POST /v1/events` · `POST /v1/diagnostics` | Configuration and SDK events |
 
-The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 55 of them: 26 answer with real data and 29 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The 15 subscriber-token paths (`/v1/customer/*`) take an access token from the v2 `authenticate` operation. The other 3 are the identity-provider login calls (`/auth/*`) of an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
+The current iOS, Android and web SDKs can call 58 method-and-path pairs. RevenueDot routes 55 of them: 28 answer with real data and 27 with safe fixed answers that the SDK treats as a normal result, such as "no web purchases to redeem". The 15 subscriber-token paths (`/v1/customer/*`) take an access token from the v2 `authenticate` operation. The other 3 are the identity-provider login calls (`/auth/*`) of an internal token-login mode that is off by default. The full inventory, with the answer and the SDK's behaviour for each, is in [`prd/sdk-api/PRD.md`](prd/sdk-api/PRD.md), and a contract test sends every row.
 
 </details>
 

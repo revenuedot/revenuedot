@@ -12,9 +12,22 @@ export interface MailMessage {
   text: string;
   html: string;
   replyTo?: string;
-  /** Extra headers (List-Unsubscribe on win-back email). The SMTP driver sends them; the Cloudflare binding does not take any. */
+  /** Extra headers (List-Unsubscribe and List-Unsubscribe-Post on win-back email). Both drivers send them. */
   headers?: Record<string, string>;
+  /** The sender's display name instead of the configured one (win-back email speaks for the app); the address stays. */
+  fromName?: string;
 }
+
+/**
+ * An address RevenueDot may put in To or Reply-To: one plain mailbox (no display name, comment, list or whitespace), so
+ * a customer-supplied value can never add a recipient or a header.
+ */
+export function isEmailAddress(s: string): boolean {
+  return s.length <= 254 && /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/.test(s);
+}
+
+/** A header value without line breaks or other control characters (subjects built from user text). */
+export const headerSafe = (s: string) => s.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
 
 export interface Mailer {
   readonly driver: "cloudflare" | "smtp" | "log" | "memory";
@@ -27,7 +40,7 @@ export const CLOUD_REPLY_TO = "hello@revenuedot.app";
 
 /** The Workers `send_email` binding (the structured builder). */
 export interface SendEmailBinding {
-  send(message: { to: string; from: string | { email: string; name?: string }; subject: string; text?: string; html?: string; replyTo?: string }): Promise<{ messageId: string }>;
+  send(message: { to: string; from: string | { email: string; name?: string }; subject: string; text?: string; html?: string; replyTo?: string; headers?: Record<string, string> }): Promise<{ messageId: string }>;
 }
 
 /** Splits `Name <addr@x>` into its parts; a bare address has no name. */
@@ -41,7 +54,11 @@ export function cloudflareMailer(binding: SendEmailBinding, from = CLOUD_FROM, r
   return {
     driver: "cloudflare",
     async send(msg) {
-      const r = await binding.send({ to: msg.to, from: parseAddress(from), subject: msg.subject, text: msg.text, html: msg.html, replyTo: msg.replyTo ?? replyTo });
+      const sender = parseAddress(from);
+      const r = await binding.send({
+        to: msg.to, from: msg.fromName ? { email: sender.email, name: headerSafe(msg.fromName) } : sender, subject: headerSafe(msg.subject), text: msg.text, html: msg.html,
+        replyTo: msg.replyTo ?? replyTo, ...(msg.headers ? { headers: msg.headers } : {}),
+      });
       return { id: r.messageId };
     },
   };

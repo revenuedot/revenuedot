@@ -122,6 +122,11 @@ export async function loadState(db: DB, customer: CustomerRow): Promise<Customer
  */
 export async function mergeCustomers(db: DB, fromId: string, intoId: string) {
   if (fromId === intoId) return;
+  // One transaction: a merge that stops halfway would leave balances added to `into` that a retry adds again.
+  await db.transaction(async (tx) => mergeInto(tx as unknown as DB, fromId, intoId));
+}
+
+async function mergeInto(db: DB, fromId: string, intoId: string) {
   await mergeCurrency(db, fromId, intoId);
   await db.update(schema.supportTickets).set({ customerId: intoId }).where(eq(schema.supportTickets.customerId, fromId));
   await db.update(schema.refundRequests).set({ customerId: intoId }).where(eq(schema.refundRequests.customerId, fromId));

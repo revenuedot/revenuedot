@@ -18,6 +18,7 @@ export const FIELDS: { value: string; label: string; hint?: string }[] = [
   { value: "firstPurchaseAt", label: "First purchase", hint: "within: 7d; before/after: a date" }, { value: "lastRenewalAt", label: "Last renewal", hint: "within: 24h; before/after: a date" },
   { value: "latestProduct", label: "Latest product", hint: "Store product id" }, { value: "latestStore", label: "Latest store", hint: "app_store, play_store, stripe …" },
   { value: "isCurrentlyTrialing", label: "In a trial", hint: "true or false" },
+  { value: "hasMadeSandboxPurchase", label: "Made a sandbox purchase", hint: "true or false" }, { value: "hasMadeNonSubscriptionPurchase", label: "Made a one-time purchase", hint: "true or false" },
   { value: "email", label: "Email" }, { value: "campaign", label: "Campaign" }, { value: "mediaSource", label: "Media source" },
 ];
 export const OPS: { value: string; label: string }[] = [
@@ -60,10 +61,15 @@ export function ConditionBuilder({ value, onChange, labelPrefix = "", emptyText 
             return (
               <div key={ci} className="cond-r">
                 <select aria-label={L(`Field ${n}`)} className="select" value={c.field.startsWith("customAttribute:") ? "custom" : c.field} onChange={(e) => setCond(gi, ci, { field: e.target.value === "custom" ? "customAttribute:" : e.target.value })}>
+                  {/* A field this builder does not list (from the API or an imported audience) still shows as itself. */}
+                  {!c.field.startsWith("customAttribute:") && !FIELDS.some((f) => f.value === c.field) && <option value={c.field}>{c.field}</option>}
                   {FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}<option value="custom">Custom attribute…</option>
                 </select>
                 {c.field.startsWith("customAttribute:") && <input aria-label={L(`Attribute ${n}`)} className="input mono cond-key" placeholder="key" value={c.field.slice(16)} onChange={(e) => setCond(gi, ci, { field: `customAttribute:${e.target.value}` })} />}
-                <select aria-label={L(`Operator ${n}`)} className="select" value={c.operator} onChange={(e) => setCond(gi, ci, { operator: e.target.value })}>{OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+                <select aria-label={L(`Operator ${n}`)} className="select" value={c.operator} onChange={(e) => setCond(gi, ci, { operator: e.target.value })}>
+                  {!OPS.some((o) => o.value === c.operator) && <option value={c.operator}>{c.operator}</option>}
+                  {OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
                 {!NO_VALUE.includes(c.operator) && <input aria-label={L(`Value ${n}`)} className="input cond-v" placeholder={FIELDS.find((f) => f.value === c.field)?.hint ?? "value"} value={c.value ?? ""} onChange={(e) => setCond(gi, ci, { value: e.target.value })} />}
                 <button type="button" className="ib" aria-label={L(`Remove condition ${n}`)} onClick={() => onChange(value.map((x, i) => (i === gi ? x.filter((_, j) => j !== ci) : x)).filter((x) => x.length))}><Icon name="trash" /></button>
               </div>

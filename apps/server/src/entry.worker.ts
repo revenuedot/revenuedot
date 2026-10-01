@@ -79,7 +79,7 @@ async function runTick(env: Env, db: DB, why: string) {
     // Credential re-checks call Apple and Google; only the cron does them, not the ticks kicked by requests.
     // Data exports (file uploads) run on the cron only, never in a tick kicked by a request.
     const r = await tick(db, new Date(), fetch, {
-      stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron", winback: why === "cron",
+      stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron", winback: why === "cron", consumption: why === "cron",
       encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true,
     });
     if (r.expired || r.voided || r.consumption || r.winback || r.sent || r.integrations || r.exports || r.credentialsChecked || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));

@@ -101,6 +101,9 @@ export function retentionRoutes(r: V2Router, deps: Deps) {
     if (b.defaults) next.defaults = b.defaults.map((d) => ({ ...d, configured: cur.defaults.find((x) => x.product_id === d.product_id && x.locale === d.locale && x.message_id === d.message_id)?.configured ?? [] }));
     if (b.rules) next.rules = b.rules;
     const ids = new Set(next.messages.map((m) => m.id));
+    // Apple keeps one default message per product and locale.
+    const pairs = next.defaults.map((d) => `${d.product_id}\u0000${d.locale.toLowerCase().replace("_", "-")}`);
+    if (new Set(pairs).size !== pairs.length) throw paramError("defaults: one default message per product and locale.", "defaults");
     for (const [i, d] of next.defaults.entries()) {
       const m = next.messages.find((x) => x.id === d.message_id);
       if (!m) throw paramError(`defaults.${i}.message_id: no such message.`, `defaults.${i}.message_id`);

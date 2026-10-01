@@ -3,9 +3,9 @@ import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { supportTicketEmail } from "../mail/templates.js";
-import { trySend } from "../mail/index.js";
+import { isEmailAddress, trySend } from "../mail/index.js";
 import { findCustomer, type CustomerRow } from "../repo/customers.js";
-import { contextsFor, subActive } from "./customer-context.js";
+import { contextsFor, subActive, type LoadedContext } from "./customer-context.js";
 import { supportSettingsFor } from "./customer-center.js";
 import { hit } from "./rate-limit.js";
 
@@ -15,32 +15,41 @@ import { hit } from "./rate-limit.js";
  * subscription state from the support summary.
  */
 
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const TICKETS_PER_HOUR = 5;
+/** Ticket limits per hour: per customer, per caller IP, and per project (what the support inbox receives at most). */
+export const TICKET_LIMITS = { perCustomer: 5, perIp: 20, perProject: 100 };
 /** What the email shows when the project has not chosen (RevenueCat's customer_details keys). */
 const DEFAULT_DETAILS: Record<string, boolean> = { appUserId: true, activeEntitlements: true, country: true, lastSeenAppVersion: true, totalSpent: true, userSince: true, lastOpened: true, deviceVersion: true };
 
 export interface TicketInput { app_user_id?: unknown; customer_email?: unknown; issue_description?: unknown }
 
 /** The SDK's create-ticket call. `sent: false` tells the SDK to fall back to its email link. */
-export async function createTicket(deps: Deps, app: { id: string | null; projectId: string; name?: string | null }, b: TicketInput, origin: string): Promise<{ sent: boolean }> {
+export async function createTicket(deps: Deps, app: { id: string | null; projectId: string; name?: string | null }, b: TicketInput, origin: string, ip = "unknown"): Promise<{ sent: boolean }> {
   const { db } = deps;
   const now = deps.now();
   const appUserId = typeof b.app_user_id === "string" ? b.app_user_id.trim().slice(0, 512) : "";
-  const email = typeof b.customer_email === "string" ? b.customer_email.trim().slice(0, 320) : "";
+  const email = typeof b.customer_email === "string" ? b.customer_email.trim() : "";
   const description = typeof b.issue_description === "string" ? b.issue_description.trim().slice(0, 5000) : "";
-  if (!appUserId || !EMAIL.test(email) || !description) return { sent: false };
+  if (!appUserId || !isEmailAddress(email) || !description) return { sent: false };
   const settings = await supportSettingsFor(db, app.projectId);
-  if (settings.tickets && !settings.tickets.allow_creation) return { sent: false };
-  if (!(await hit(db, `ticket:${app.projectId}:${appUserId}`, TICKETS_PER_HOUR, 3600_000, now))) return { sent: false };
+  const who = settings.tickets?.customer_type ?? "all";
+  if ((settings.tickets && !settings.tickets.allow_creation) || who === "none") return { sent: false };
+  // The public SDK key is in every copy of the app: limit by caller and by project too, not only by the (free-form) app user id.
+  const hour = 3600_000;
+  if (!(await hit(db, `ticket:ip:${app.projectId}:${ip}`, TICKET_LIMITS.perIp, hour, now))) return { sent: false };
+  if (!(await hit(db, `ticket:${app.projectId}:${appUserId}`, TICKET_LIMITS.perCustomer, hour, now))) return { sent: false };
   const customer = await findCustomer(db, app.projectId, appUserId);
+  const loaded = customer ? (await contextsFor(db, app.projectId, [customer], now))[0]! : null;
+  // customer_type: who may open a ticket (active subscribers, everyone else, or all).
+  const active = loaded ? loaded.ctx.status === "active" || loaded.ctx.status === "trialing" || loaded.ctx.activeEntitlements.length > 0 : false;
+  if ((who === "active" && !active) || (who === "not_active" && active)) return { sent: false };
+  if (!(await hit(db, `ticket:project:${app.projectId}`, TICKET_LIMITS.perProject, hour, now))) return { sent: false };
   const id = newId("tkt_", 16);
-  const to = EMAIL.test(settings.email) && !settings.email.endsWith("@example.com") ? settings.email : null;
+  const to = isEmailAddress(settings.email) && !settings.email.endsWith("@example.com") ? settings.email : null;
   await db.insert(schema.supportTickets).values({ id, projectId: app.projectId, appId: app.id, customerId: customer?.id ?? null, appUserId, customerEmail: email, description, emailedTo: to, createdAt: now });
   if (to) {
     const [project] = await db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, app.projectId));
     const base = deps.publicUrl ?? origin;
-    const details = await ticketDetails(db, app.projectId, customer, appUserId, settings.tickets?.customer_details ?? DEFAULT_DETAILS, now);
+    const details = ticketDetails(loaded, appUserId, settings.tickets?.customer_details ?? DEFAULT_DETAILS);
     const mail = supportTicketEmail({ base, projectName: project?.name ?? "your project", appName: app.name ?? null, customerEmail: email, description, details, url: `${base}/projects/${app.projectId}/lifecycle/support?ticket=${id}` });
     const sent = await trySend(deps.mailer, { to, ...mail, replyTo: email });
     if (sent) await db.update(schema.supportTickets).set({ emailed: true }).where(eq(schema.supportTickets.id, id));
@@ -49,11 +58,12 @@ export async function createTicket(deps: Deps, app: { id: string | null; project
 }
 
 /** The customer facts the project allows in ticket emails (`support.support_tickets.customer_details`). */
-async function ticketDetails(db: DB, projectId: string, customer: CustomerRow | null, appUserId: string, allow: Record<string, boolean>, now: Date): Promise<[string, string][]> {
+function ticketDetails(loaded: LoadedContext | null, appUserId: string, allow: Record<string, boolean>): [string, string][] {
   const out: [string, string][] = [];
   if (allow.appUserId) out.push(["App user ID", appUserId]);
-  if (!customer) return out;
-  const [{ ctx, data }] = await contextsFor(db, projectId, [customer], now) as [Awaited<ReturnType<typeof contextsFor>>[number]];
+  if (!loaded) return out;
+  const { ctx, data } = loaded;
+  const customer = data.customer;
   const a = data.attributes;
   if (allow.activeEntitlements) out.push(["Active entitlements", ctx.activeEntitlements.join(", ") || "None"]);
   if (allow.totalSpent) out.push(["Total spent", `$${ctx.totalSpent.toFixed(2)}`]);

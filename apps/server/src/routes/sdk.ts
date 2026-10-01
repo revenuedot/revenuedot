@@ -25,6 +25,9 @@ import { mergeStoredState, rowPrice, subRowOf } from "../stores/rows.js";
 import { withStoreSecrets } from "../services/store-secrets.js";
 import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
 import { createTicket, type TicketInput } from "../services/support.js";
+import { clientIp } from "../services/rate-limit.js";
+
+const TICKET_BODY_BYTES = 32_000;
 
 const safeDecode = (v: string) => { try { return decodeURIComponent(v); } catch { return v; } };
 
@@ -377,11 +380,15 @@ export function sdkRoutes(deps: Deps) {
   // listed under Lifecycle > Support (services/support.ts).
   r.post("/v1/customercenter/support/create-ticket", async (c) => {
     const app = c.get("app");
-    const b = await c.req.json().catch(() => ({})) as TicketInput;
+    // A ticket is a few kilobytes; a larger body is not read.
+    const text = Number(c.req.header("content-length") ?? 0) <= TICKET_BODY_BYTES ? await c.req.text().catch(() => "") : "";
+    let b: TicketInput = {};
+    if (text.length <= TICKET_BODY_BYTES) { try { b = (JSON.parse(text) ?? {}) as TicketInput; } catch { /* sent: false below */ } }
+    if (typeof b !== "object" || Array.isArray(b)) b = {};
     // A subscriber token speaks for its own app user id only.
     const sub = c.get("auth")?.subscriber as { appUserId: string } | undefined;
     if (sub) b.app_user_id = sub.appUserId;
-    return c.json(await createTicket(deps, { id: app.id ?? null, projectId: app.projectId, name: app.name ?? null }, b, publicOrigin(c)));
+    return c.json(await createTicket(deps, { id: app.id ?? null, projectId: app.projectId, name: app.name ?? null }, b, publicOrigin(c), clientIp((n) => c.req.header(n))));
   });
 
   // 17-18. Virtual currencies (Tier 2): empty balances.

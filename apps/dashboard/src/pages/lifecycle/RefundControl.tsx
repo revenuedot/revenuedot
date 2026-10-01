@@ -57,7 +57,20 @@ export function RefundControlPage() {
   const [over, setOver] = useState<number | null>(null);
   const focusKey = useRef<string | null>(null);
 
-  useEffect(() => { if (q.data) setState(fromServer(q.data)); }, [q.data]);
+  // A refetch that only refreshes customer counts keeps unsaved edits; a saved change from the server replaces them.
+  const serverPrint = useRef<string | null>(null);
+  useEffect(() => {
+    if (!q.data) return;
+    const next = fromServer(q.data);
+    const fp = fingerprint(next);
+    setState((s) => {
+      const keep = !!s && serverPrint.current === fp && fingerprint(s) !== fp;
+      serverPrint.current = fp;
+      if (!keep) return next;
+      const counts = new Map(next.policies.map((p) => [p.id, p.count]));
+      return { ...s!, policies: s!.policies.map((p) => (p.id && counts.has(p.id) ? { ...p, count: counts.get(p.id)! } : p)) };
+    });
+  }, [q.data]);
   const dirty = useMemo(() => !!(state && q.data && fingerprint(state) !== fingerprint(fromServer(q.data))), [state, q.data]);
   useEffect(() => {
     if (!focusKey.current) return;

@@ -123,9 +123,13 @@ CREATE INDEX "refund_policies_project" ON "refund_policies" USING btree ("projec
 CREATE UNIQUE INDEX "refund_requests_tx" ON "refund_requests" USING btree ("project_id","store","transaction_id");--> statement-breakpoint
 CREATE INDEX "refund_requests_project_time" ON "refund_requests" USING btree ("project_id","requested_at");--> statement-breakpoint
 CREATE INDEX "refund_requests_due" ON "refund_requests" USING btree ("consumption_status","next_attempt_at");--> statement-breakpoint
+CREATE INDEX "refund_requests_customer" ON "refund_requests" USING btree ("customer_id");--> statement-breakpoint
 CREATE INDEX "retention_offers_project" ON "retention_offers" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "support_tickets_project" ON "support_tickets" USING btree ("project_id","created_at");--> statement-breakpoint
+CREATE INDEX "support_tickets_customer" ON "support_tickets" USING btree ("customer_id");--> statement-breakpoint
 CREATE INDEX "winback_campaigns_project" ON "winback_campaigns" USING btree ("project_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "winback_sends_token" ON "winback_sends" USING btree ("token");--> statement-breakpoint
 CREATE UNIQUE INDEX "winback_sends_once" ON "winback_sends" USING btree ("campaign_id","customer_id");--> statement-breakpoint
-CREATE INDEX "winback_sends_project" ON "winback_sends" USING btree ("project_id","sent_at");
+CREATE INDEX "winback_sends_project" ON "winback_sends" USING btree ("project_id","sent_at");--> statement-breakpoint
+CREATE INDEX "winback_sends_customer" ON "winback_sends" USING btree ("customer_id");--> statement-breakpoint
+CREATE INDEX "transactions_customer" ON "transactions" USING btree ("customer_id","purchased_at");

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { harness, type Harness } from "../../../packages/contract/src/harness.js";
 import { findCustomer, mergeCustomers } from "../src/repo/customers.js";
@@ -60,5 +60,21 @@ describe("mergeCustomers and in-app currency", () => {
     expect(await balances("a_user")).toEqual({ GLD: 105 });
     const ledger = await h.db.select().from(schema.virtualCurrencyTransactions).where(eq(schema.virtualCurrencyTransactions.customerId, b.id));
     expect(ledger.map((r) => r.amount).sort((x, y) => x - y)).toEqual([5, 100]);
+  });
+
+  it("a merge that fails halfway changes nothing, so a retry never adds the balance twice", async () => {
+    await h.fetch("/v2/projects/proj1/customers", { method: "POST", key: h.ids.secretKey, json: { id: "c_user" } });
+    await h.fetch("/v2/projects/proj1/customers", { method: "POST", key: h.ids.secretKey, json: { id: "d_user" } });
+    await credit("c_user", { adjustments: { GLD: 70 } });
+    await credit("d_user", { adjustments: { GLD: 10 } });
+    const c = (await findCustomer(h.db, "proj1", "c_user"))!, d = (await findCustomer(h.db, "proj1", "d_user"))!;
+    // A statement after the currency move fails.
+    await h.db.execute(sql`ALTER TABLE customer_activity RENAME TO customer_activity_off`);
+    await expect(mergeCustomers(h.db, c.id, d.id)).rejects.toThrow();
+    await h.db.execute(sql`ALTER TABLE customer_activity_off RENAME TO customer_activity`);
+    expect(await balances("c_user")).toEqual({ GLD: 70 });
+    expect(await balances("d_user")).toEqual({ GLD: 10 });
+    await mergeCustomers(h.db, c.id, d.id);
+    expect(await balances("d_user")).toEqual({ GLD: 80 });
   });
 });

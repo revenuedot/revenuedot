@@ -5,7 +5,7 @@
  * https link), and when (once a day at a UTC hour). RevenueDot has no web checkout yet, so there are no web purchase links.
  * API: /winback_campaigns, /winback_campaigns/{id}, .../actions/preview, .../actions/send_test, .../actions/run.
  */
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmt, type List } from "../../lib/api";
@@ -88,7 +88,14 @@ export function WinbackEditor() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"test" | "send" | "delete" | null>(null);
-  useEffect(() => { if (q.data) setForm(formOf(q.data)); }, [q.data]);
+  // Load the campaign into the form when it first arrives or its saved content changes, not when only its stats refresh.
+  const loaded = useRef<string | null>(null);
+  useEffect(() => {
+    if (!q.data) return;
+    const f = formOf(q.data);
+    const json = JSON.stringify(f);
+    if (json !== loaded.current) { loaded.current = json; setForm(f); }
+  }, [q.data]);
   const dirty = isNew || (!!q.data && JSON.stringify(form) !== JSON.stringify(formOf(q.data)));
   const preview = useQuery({
     queryKey: ["winback-preview", pid, campaignId, q.data?.updated_at ?? q.data?.created_at, q.data?.last_run_at], enabled: !isNew && !!q.data,
@@ -285,7 +292,9 @@ export function WinbackEditor() {
       </div>
       {dialog === "test" && <SendTestDialog pid={pid} campaignId={campaignId!} defaultEmail={me.data?.user.email ?? ""} beforeSend={dirty ? save : undefined} onClose={() => setDialog(null)} />}
       {dialog === "send" && c && (
-        <ConfirmDialog title="Send this campaign now?" confirmLabel="Send now" onClose={() => setDialog(null)} onConfirm={async () => {
+        <ConfirmDialog title="Send this campaign now?" confirmLabel={dirty ? "Save and send now" : "Send now"} onClose={() => setDialog(null)} onConfirm={async () => {
+          // Customers get a campaign once: the email that goes out must be the one on screen.
+          if (dirty && !(await save())) throw new Error("The changes could not be saved, so nothing was sent. Fix the form and try again.");
           const r = await api<{ sent: number; failed: number; skipped: number }>(`${v2(pid)}/winback_campaigns/${campaignId}/actions/run`, { method: "POST" });
           await qc.invalidateQueries({ queryKey: key }); await qc.invalidateQueries({ queryKey: ["winback", pid] });
           toast(`Sent ${r.sent} email${r.sent === 1 ? "" : "s"}${r.failed ? `, ${r.failed} failed` : ""}`);

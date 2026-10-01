@@ -202,6 +202,39 @@ describe("CONSUMPTION_REQUEST", () => {
     expect(apple.calls.length).toBe(before);
   });
 
+  it("a queued retry sends nothing once consent is turned off, and one tick never sends a request twice", async () => {
+    const { apple, key } = await setup();
+    apple.setStatus(503);
+    h!.setNow(T0 + 2 * DAY);
+    await h!.notify(await consumptionNotification());
+    expect((await requests())[0]).toMatchObject({ consumptionStatus: "pending", attempts: 1 });
+    const tickDeps = { db: h!.db, stores: {}, now: h!.now, fetch: apple.fetch as unknown as typeof fetch };
+    // Two overlapping ticks: only one of them claims the request.
+    apple.setStatus(202);
+    h!.setNow(T0 + 2 * DAY + 6 * 60_000);
+    const [x, y] = await Promise.all([retryDueConsumption(tickDeps), retryDueConsumption(tickDeps)]);
+    expect(x + y).toBe(1);
+    expect(apple.calls.filter((c) => c.method === "PUT")).toHaveLength(2);
+
+    // Queue it again, then turn consent off before the tick: the request is skipped, Apple hears nothing.
+    await h!.db.update(schema.refundRequests).set({ consumptionStatus: "pending", nextAttemptAt: new Date(T0 + 2 * DAY + 7 * 60_000), sentAt: null });
+    await h!.request("/v2/projects/proj1/refund_control", { method: "POST", headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ settings: { customer_consented: false } }) });
+    h!.setNow(T0 + 2 * DAY + 8 * 60_000);
+    await retryDueConsumption(tickDeps);
+    expect(apple.calls.filter((c) => c.method === "PUT")).toHaveLength(2);
+    expect((await requests())[0]).toMatchObject({ consumptionStatus: "skipped", lastError: expect.stringMatching(/consent/) });
+  });
+
+  it("the same notification delivered twice at once records one request", async () => {
+    const { apple } = await setup();
+    h!.setNow(T0 + 2 * DAY);
+    const body = await consumptionNotification();
+    const [a, b] = await Promise.all([h!.notify(body), h!.notify(body)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(await requests()).toHaveLength(1);
+    expect(apple.calls.filter((c) => c.method === "PUT").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("REFUND approves the request and REFUND_DECLINED declines one; the cards count both", async () => {
     const { key } = await setup();
     h!.setNow(T0 + 2 * DAY);
@@ -268,5 +301,12 @@ describe("Refund Control settings and policies API", () => {
     const bad = await call({ policies: [{ ...ios, rules: { groups: [{ conditions: [{ field: "favouriteColour", operator: "is", value: "red" }] }] } }] });
     expect(bad.status).toBe(400);
     expect((await (await call()).json() as any).policies).toHaveLength(2);
+
+    // A stale tab: an id that is gone fails the whole save, settings included, and deletes nothing.
+    const stale = await call({ settings: { default_preference: "prefer_refund" }, policies: [{ ...ios, id: "rfp_gone" }, { ...everyone, id: swapped.policies[0].id }] });
+    expect(stale.status).toBe(400);
+    const after = await (await call()).json() as any;
+    expect(after.policies.map((p: any) => p.id)).toEqual(swapped.policies.map((p: any) => p.id));
+    expect(after.settings.default_preference).toBe("consumption_only");
   });
 });

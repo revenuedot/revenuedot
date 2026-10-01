@@ -104,5 +104,11 @@ describe("customer lists", () => {
   it("CSV cells are quoted and never start a spreadsheet formula", () => {
     const csv = toCsv([{ object: "customer_list_row", id: "=HYPERLINK(\"x\")", customer_uuid: "c", email: "a,b@example.com", subscription_status: "none", auto_renewal_status: null, first_seen_at: 0, last_seen_at: 0, spent_in_usd: 0, latest_purchase: null, country: null, platform: null }]);
     expect(csv.split("\r\n")[1]).toBe(`"'=HYPERLINK(""x"")","a,b@example.com",none,,,,0.00,,,,,`);
+    const row = (id: string, spent = 0) => toCsv([{ object: "customer_list_row", id, customer_uuid: "c", email: null, subscription_status: "none", auto_renewal_status: null, first_seen_at: 0, last_seen_at: 0, spent_in_usd: spent, latest_purchase: null, country: null, platform: null }]).split("\r\n")[1]!.split(",")[0];
+    expect(row(" =1+1")).toBe("' =1+1");
+    expect(row("\t@SUM(A1)")).toBe("'\t@SUM(A1)");
+    expect(row("\uFF1D1+1")).toBe("'\uFF1D1+1");
+    expect(row("-12")).toBe("-12");
+    expect(toCsv([{ object: "customer_list_row", id: "u", customer_uuid: "c", email: null, subscription_status: "none", auto_renewal_status: null, first_seen_at: 0, last_seen_at: 0, spent_in_usd: -4.5, latest_purchase: null, country: null, platform: null }])).toContain(",-4.50,");
   });
 });
