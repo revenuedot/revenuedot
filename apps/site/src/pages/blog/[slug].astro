@@ -3,7 +3,7 @@
 import { render } from "astro:content";
 import Docs from "../../layouts/Docs.astro";
 import { blogPosts, lastModified, type BlogPost } from "../../lib/docs";
-import { blogPosting } from "../../lib/jsonld";
+import { blogPosting, faqPage } from "../../lib/jsonld";
 import { DOCS_REPO } from "../../lib/docs-source.mjs";
 import { ogFor } from "../../lib/og";
 
@@ -16,6 +16,13 @@ const { post, newer, older } = Astro.props as { post: BlogPost; newer?: BlogPost
 const { Content, headings } = await render(post.entry);
 const { title, description, href: path, date, author } = post;
 const image = ogFor(path);
+// The post's "## FAQ" section (### question, then answer paragraphs) becomes FAQPage markup, so answer engines can quote it.
+const plainMd = (t: string) => t.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*`]/g, "").replace(/\s+/g, " ").trim();
+const faqBlock = (post.entry.body ?? "").split(/^## FAQ.*$/m)[1]?.split(/^## /m)[0] ?? "";
+const faq = faqBlock.split(/^### /m).slice(1).map((chunk) => {
+  const [q, ...rest] = chunk.split("\n");
+  return { q: plainMd(q), a: plainMd(rest.join(" ")) };
+}).filter((f) => f.q && f.a);
 const modified = lastModified(`${post.entry.id}.md`);
 const fullTitle = [" | RevenueDot Blog", " | RevenueDot"].map((s) => title + s).find((t) => t.length <= 70) ?? title;
 const item = (p?: BlogPost) => p && { id: p.entry.id, href: p.href, label: p.title, title: p.title, description: p.description };
@@ -37,7 +44,7 @@ const item = (p?: BlogPost) => p && { id: p.entry.id, href: p.href, label: p.tit
   published={date || undefined}
   section="Blog"
   image={image}
-  jsonld={[blogPosting({ title, description, path, published: date || undefined, modified, author, image })]}
+  jsonld={[blogPosting({ title, description, path, published: date || undefined, modified, author, image }), ...(faq.length ? [faqPage(faq)] : [])]}
 >
   <Content />
 </Docs>
