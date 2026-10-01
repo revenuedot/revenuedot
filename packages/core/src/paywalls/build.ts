@@ -115,11 +115,13 @@ export class DocBuilder {
     };
   }
   icon(baseUrl: string, name: string, o: { size?: number; color?: string; colorDark?: string | null; bg?: string; bgShape?: "circle" | "rectangle"; padding?: Json; margin?: Json } = {}): Json {
-    const s = o.size ?? 20;
+    // RevenueCatUI pads the glyph inside `size` (size is the whole icon, background included), so the frame is the
+    // glyph plus the padding.
+    const s = o.size ?? 20, p = o.padding ?? ZERO;
     return {
       id: this.id("n"), type: "icon", base_url: baseUrl.replace(/\/+$/, ""), icon_name: name,
       formats: { svg: `${name}.svg`, png: `${name}.png`, heic: `${name}.png`, webp: `${name}.png` },
-      size: sz(fixed(s), fixed(s)), padding: o.padding ?? ZERO, margin: o.margin ?? ZERO, color: scheme(o.color ?? "#111111", o.colorDark),
+      size: sz(fixed(s + (p.leading ?? 0) + (p.trailing ?? 0)), fixed(s + (p.top ?? 0) + (p.bottom ?? 0))), padding: o.padding ?? ZERO, margin: o.margin ?? ZERO, color: scheme(o.color ?? "#111111", o.colorDark),
       icon_background: o.bg ? { color: scheme(o.bg), shape: o.bgShape === "rectangle" ? { type: "rectangle", corners: corners(8) } : { type: "circle" } } : null,
     };
   }

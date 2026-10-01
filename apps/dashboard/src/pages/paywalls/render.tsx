@@ -280,14 +280,18 @@ function Icon({ c: raw, dir }: { c: Json; dir: Dir }) {
   const ctx = useC();
   const c = resolve(raw, ctx);
   if (c.visible === false) return null;
+  // As in RevenueCatUI: `size` is the whole icon and the padding sits inside it, around the glyph.
   const w = c.size?.width?.type === "fixed" ? c.size.width.value : 24;
   const h = c.size?.height?.type === "fixed" ? c.size.height.value : w;
+  const p = c.padding ?? {};
+  const glyph = Math.max(0, Math.min(w - (p.leading ?? 0) - (p.trailing ?? 0), h - (p.top ?? 0) - (p.bottom ?? 0)));
   const bg = c.icon_background;
   const style: CSSProperties = {
-    ...sizing({ width: { type: "fit" }, height: { type: "fit" } }, dir), padding: box(c.padding), margin: box(c.margin), flex: "none",
+    width: w, height: h, boxSizing: "border-box", padding: box(c.padding), margin: box(c.margin), flex: "none", display: "flex", alignItems: "center", justifyContent: "center",
     ...(bg ? { background: color(bg.color, ctx.dark), borderRadius: bg.shape?.type === "circle" ? "50%" : radius(bg.shape) ?? 0 } : {}),
   };
-  return <Pickable c={c} style={style}><IconGlyph name={c.icon_name} color={color(c.color, ctx.dark) ?? "#000"} size={Math.min(w, h)} /></Pickable>;
+  void dir;
+  return <Pickable c={c} style={style}><IconGlyph name={c.icon_name} color={color(c.color, ctx.dark) ?? "#000"} size={glyph} /></Pickable>;
 }
 
 function Package({ c: raw, dir }: { c: Json; dir: Dir }) {
@@ -320,7 +324,7 @@ function Timeline({ c: raw, dir }: { c: Json; dir: Dir }) {
     <Pickable c={c} style={{ ...sizing(c.size, dir), padding: box(c.padding), margin: box(c.margin), display: "flex", flexDirection: "column", gap: c.item_spacing ?? 16 }}>
       {items.map((it, i) => {
         const conn = it.connector;
-        const iconW = (it.icon?.size?.width?.value ?? 20) + (it.icon?.padding?.leading ?? 0) + (it.icon?.padding?.trailing ?? 0);
+        const iconW = it.icon?.size?.width?.value ?? 20;
         return (
           <div key={i} style={{ display: "grid", gridTemplateColumns: `${iconW}px 1fr`, columnGap: c.column_gutter ?? 12, position: "relative" }}>
             {conn && i < items.length - 1 && <div style={{ position: "absolute", left: iconW / 2 - (conn.width ?? 4) / 2, top: iconW + (conn.margin?.top ?? 0), bottom: -(c.item_spacing ?? 16) - (conn.margin?.bottom ?? 0), width: conn.width ?? 4, background: color(conn.color, ctx.dark) }} />}

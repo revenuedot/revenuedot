@@ -363,9 +363,10 @@ function timelineC(r: R, x: Json): Json | null {
       const i: Json = isObj(it) ? it : { title: String(it) };
       const title = isObj(i.title) ? textC(r, i.title, { size: 16, weight: "semibold", align: "leading" }) : textC(r, { text: i.title ?? i.text ?? "" }, { size: 16, weight: "semibold", align: "leading" });
       const desc = i.description === undefined || i.description === null ? null : isObj(i.description) ? textC(r, i.description, { size: 14, align: "leading", color: r.muted }) : textC(r, { text: String(i.description) }, { size: 14, align: "leading", color: r.muted });
-      const ic = isObj(i.icon) ? iconC(r, i.icon, { size: 16, color: "#ffffff" }) : iconC(r, { icon_name: i.icon ?? "check", icon_background: { color: r.accent }, padding: 6 }, { size: 16, color: luminance(r.accent) > 0.6 ? "#111111" : "#ffffff" });
+      // The size includes the padding (RevenueCatUI pads inside the frame): a 16pt glyph in a 28pt circle.
+      const ic = isObj(i.icon) ? iconC(r, i.icon, { size: 28, color: "#ffffff" }) : iconC(r, { icon_name: i.icon ?? "check", icon_background: { color: r.accent }, padding: 6 }, { size: 28, color: luminance(r.accent) > 0.6 ? "#111111" : "#ffffff" });
       if (!isObj(i.icon)) ic.icon_background = { color: scheme(r.accent), shape: { type: "circle" } };
-      const conn = isObj(i.connector) ? { width: num(i.connector.width, 6), color: colorOf(r, i.connector.color, r.accent), margin: padOf(i.connector.margin, pad(2, 0)) } : { width: 6, color: scheme(mix(r.accent, r.bg, 0.5)), margin: pad(2, 0) };
+      const conn = isObj(i.connector) ? { width: num(i.connector.width, 6), color: colorOf(r, i.connector.color, r.accent), margin: padOf(i.connector.margin, pad(2, 0)) } : { width: 2, color: scheme(mix(r.accent, r.bg, 0.6)), margin: pad(4, 0) };
       return { title, ...(desc ? { description: desc } : {}), icon: ic, connector: conn };
     }),
   };

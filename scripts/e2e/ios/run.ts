@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { client, seedProject, session } from "../../../apps/dashboard/e2e/seed.ts";
 import { attributeChecks, readLog, requestChecks, type Expectation } from "../sdk-calls.ts";
-import { buildPaywall } from "../../../packages/core/src/paywall-templates.ts";
+import { ADDABLE_TYPES, applyOp, blankPaywall, locate, newComponent } from "../../../packages/core/src/index.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
@@ -176,22 +176,42 @@ async function serverState(cookie: string, projectId: string): Promise<Check[]> 
   return checks;
 }
 
-/** A paywall from the "classic" template on the current offering, published, so RevenueCatUI has something to render. */
-async function publishTemplatePaywall(cookie: string, projectId: string) {
+/**
+ * Two published paywalls for RevenueCatUI to render: the gallery template "Annual first" on the current offering (made by
+ * the server from `template_id`), and on a second offering "editor" a paywall built with the dashboard editor's own
+ * operations (packages/core/src/paywalls/editor.ts): a timeline, tabs, a carousel, a countdown, an icon and an image.
+ */
+async function publishPaywalls(cookie: string, projectId: string) {
   const P = `${BASE}/v2/projects/${projectId}`;
   const req = async (method: string, path: string, body?: unknown) => {
     const r = await fetch(P + path, { method, headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
     if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
     return r.json() as Promise<any>;
   };
-  const offerings = await req("GET", "/offerings?expand=items.package");
+  const offerings = await req("GET", "/offerings?expand=items.package.product");
   const current = offerings.items.find((o: any) => o.is_current);
-  const content = buildPaywall({
-    template: "classic", headline: "Unlock everything", subheadline: "Scan without limits.", features: ["Unlimited scans", "Cloud backup"], cta: "Start my plan",
-    packages: current.packages.items.map((p: any) => ({ id: p.lookup_key, label: p.display_name })),
-  });
-  const pw = await req("POST", "/paywalls", { offering_id: current.id, name: "Harness", ...content });
+  const pw = await req("POST", "/paywalls", { offering_id: current.id, template_id: "annual_two_plan", template_options: { app_name: "Harness", terms_url: "https://revenuedot.app/legal/terms", privacy_url: "https://revenuedot.app/legal/privacy" } });
   await req("POST", `/paywalls/${pw.id}/actions/publish`);
+
+  // The "editor" offering reuses the current offering's monthly and annual products.
+  const editor = await req("POST", "/offerings", { lookup_key: "editor", display_name: "Editor" });
+  for (const p of current.packages.items.filter((x: any) => ["$rc_monthly", "$rc_annual"].includes(x.lookup_key))) {
+    const pk = await req("POST", `/offerings/${editor.id}/packages`, { lookup_key: p.lookup_key, display_name: p.display_name });
+    await req("POST", `/packages/${pk.id}/actions/attach_products`, { products: p.products.items.map((x: any) => ({ product_id: x.product.id, eligibility_criteria: "all" })) });
+  }
+  const icons = (await req("GET", "/paywall_templates")).icon_base_url as string;
+  let doc = blankPaywall({ iconBaseUrl: icons, packages: [{ id: "$rc_annual" }, { id: "$rc_monthly" }] });
+  // The headline, as the editor's properties panel sets it.
+  const title = doc.components_config.base.stack.components.find((c: any) => c.type === "text");
+  doc.components_localizations.en_US![title.text_lid] = "Built in the editor";
+  for (const t of ADDABLE_TYPES) {
+    if (["sticky_footer", "video", "web_view", "package", "purchase_button"].includes(t)) continue;
+    const c = newComponent(t, { doc, iconBaseUrl: icons, packages: ["$rc_annual", "$rc_monthly"] });
+    doc = applyOp(doc, { kind: "insert", component: c, targetId: title.id, position: "after" })!.doc;
+  }
+  if (!locate(doc, title.id)) throw new Error("editor paywall lost its headline");
+  const ed = await req("POST", "/paywalls", { offering_id: editor.id, name: "Editor", ...doc });
+  await req("POST", `/paywalls/${ed.id}/actions/publish`);
 }
 
 let server: ChildProcess | undefined;
@@ -209,7 +229,7 @@ try {
   const me = await (await fetch(`${BASE}/auth/me`, { headers: { cookie } })).json() as { projects: { id: string }[] };
   const projectId = me.projects[0]!.id;
   const seeded = await seedProject(BASE, cookie, projectId, { customers: 2 });
-  await publishTemplatePaywall(cookie, projectId);
+  await publishPaywalls(cookie, projectId);
   console.log(`Server ${BASE}, project ${projectId}, Test Store key ${seeded.testKey.slice(0, 9)}…, device ${DEVICE}, login id ${LOGIN_ID}`);
 
   const t0 = Date.now();

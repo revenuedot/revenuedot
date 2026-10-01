@@ -192,6 +192,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
   <img alt="RevenueDot paywall editor: the layer tree, a phone preview of the Annual first template and the properties of the selected package" src="docs/assets/paywalls-editor-light.png" width="100%">
 </picture>
 
+<p><img alt="Two RevenueDot paywalls rendered by the unmodified RevenueCat iOS SDK's PaywallView on the iOS simulator: the Annual first template, and a paywall built in the editor with a countdown, a carousel, tabs and a timeline" src="docs/assets/paywalls-ios.png" width="420"></p>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
   <img alt="RevenueDot Charts: MRR Movement by week with new and churned MRR, the grouped chart list, filters and the data table" src="docs/assets/charts-light.png" width="100%">

@@ -222,7 +222,8 @@ export function newComponent(type: AddableType, ctx: NewComponentContext): Json 
       id: id("l"), type: "timeline", icon_alignment: "title", item_spacing: 18, text_spacing: 4, column_gutter: 14, size: sz(FILL, FIT), padding: ZERO, margin: ZERO,
       items: [["unlock", "Today", "Full access starts now"], ["bell", "Before it ends", "We send you a reminder"], ["star", "Trial ends", "Your plan starts"]].map(([n, t, d]) => ({
         title: text(t!, { weight: "semibold", align: "leading" }), description: text(d!, { size: 14, color: muted, align: "leading" }),
-        icon: { ...icon(n!, 16, "#ffffff"), padding: pad(6), icon_background: { color: scheme(accent), shape: { type: "circle" } } }, connector: { width: 6, color: scheme("#e5e5e5"), margin: pad(2, 0) },
+        // The icon's size includes its padding (RevenueCatUI pads inside the frame): a 16pt glyph in a 28pt circle.
+        icon: { ...icon(n!, 28, "#ffffff"), padding: pad(6), icon_background: { color: scheme(accent), shape: { type: "circle" } } }, connector: { width: 2, color: scheme("#e5e5e5"), margin: pad(4, 0) },
       })),
     };
     case "tabs": {
