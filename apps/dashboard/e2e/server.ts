@@ -130,12 +130,75 @@ const people: [string, string, Parameters<typeof chain>[3] & { at: number; sid: 
   ["oliver_ios", "US", { at: 88, sid: "scanner.pro.monthly", trial: true, periods: 4 }],
   ["sofia_ios", "ES", { at: 12, sid: "scanner.pro.weekly", trial: true, periods: 1 }],
 ];
+const customerIds: Record<string, string> = {};
 for (const [user, country, o] of people) {
   const c = await chain(user, o.sid, ago(o.at), { ...o, country });
+  customerIds[user] = c.id;
   if (user === "wjqx8kd2rn1") {
     await call("POST", `${P}/customers/${user}/attributes`, { attributes: [{ name: "$email", value: "wren@example.com" }, { name: "$displayName", value: "Wren" }, { name: "$mediaSource", value: "Apple Search Ads" }, { name: "$campaign", value: "fall_launch" }, { name: "$idfv", value: "7B4E1C2A-19F2-4E0B-9C0F-2D4A7B1E9A11" }, { name: "plan_source", value: "paywall_v3" }] });
     await touch(db, c.id, new Date(Date.now() - 90_000), { platform: "iOS", appVersion: "3.4.1", country: "US" });
   }
 }
+await seedLifecycle();
 ready = true;
 console.log(`E2E server ready on ${base} (project ${projectId})`);
+
+/**
+ * 3. Lifecycle demo data (prd/lifecycle/PRD.md), written straight to the tables because Apple's CONSUMPTION_REQUEST,
+ * Customer Center tickets and churn need real store traffic: two lapsed App Store subscribers, emails on churned
+ * customers (win-back previews find them), refund policies and requests over the last 28 days, a Customer Center
+ * retention offer and two support tickets.
+ */
+async function seedLifecycle() {
+  for (const [user, country, o] of [
+    ["lena_ios", "DE", { at: 50, sid: "scanner.pro.weekly", trial: false, periods: 4 }],
+    ["ravi_ios", "IN", { at: 75, sid: "scanner.pro.monthly", trial: true, periods: 1, cancelAt: ago(60) }],
+  ] as const) customerIds[user] = (await chain(user, o.sid, ago(o.at), { ...o, country })).id;
+  const at = Date.now();
+  for (const [user, email] of [["pbg6xs2d", "bruna@example.com"], ["zr7m0plw", "zoe.r@example.com"], ["lena_ios", "lena@example.com"], ["ravi_ios", "ravi@example.com"]] as const) {
+    await db.insert(schema.customerAttributes).values({ customerId: customerIds[user]!, key: "$email", value: email, updatedAtMs: at }).onConflictDoNothing();
+  }
+  const policies = [
+    { id: "rfp_e2erenewal1", name: "Renewed in the last day", template: "recent_renewal", rules: { groups: [{ conditions: [{ field: "lastRenewalAt", operator: "within", value: "24h" }] }] }, preference: "prefer_refund", position: 0 },
+    { id: "rfp_e2eloyal001", name: "Spent over $40", template: "custom", rules: { groups: [{ conditions: [{ field: "totalSpent", operator: "greaterThan", value: "40" }] }] }, preference: "prefer_no_refund", position: 1 },
+  ];
+  for (const p of policies) await db.insert(schema.refundPolicies).values({ ...p, projectId, createdAt: ago(30) });
+  const prefs: Record<string, string> = { rfp_e2erenewal1: "prefer_refund", rfp_e2eloyal001: "prefer_no_refund" };
+  const requests: [string, string, number, number, "approved" | "declined" | "pending", "sent" | "skipped" | "pending", string | null, string][] = [
+    // pbg6xs2d's refund is already a request row: the purchase pipeline records every refund it sees.
+    ["lena_ios", "scanner.pro.weekly", 4.99, 23, "approved", "sent", "rfp_e2erenewal1", "UNINTENDED_PURCHASE"],
+    ["wjqx8kd2rn1", "scanner.pro.weekly", 4.99, 24, "declined", "sent", "rfp_e2eloyal001", "UNSATISFIED_WITH_PURCHASE"],
+    ["ne45gd13", "scanner.pro.monthly", 9.99, 19, "declined", "sent", "rfp_e2eloyal001", "OTHER"],
+    ["oliver_ios", "scanner.pro.monthly", 9.99, 15, "declined", "sent", "rfp_e2eloyal001", "UNSATISFIED_WITH_PURCHASE"],
+    ["sofia_ios", "scanner.pro.weekly", 4.99, 8, "approved", "sent", null, "FULFILLMENT_ISSUE"],
+    ["c1tdha8u", "scanner.pro.yearly", 39.99, 6, "declined", "skipped", null, "UNSATISFIED_WITH_PURCHASE"],
+    ["k2aa91qe", "scanner.pro.monthly", 9.99, 2, "pending", "sent", "rfp_e2eloyal001", "UNINTENDED_PURCHASE"],
+    ["zr7m0plw", "scanner.pro.weekly", 4.99, 0.2, "pending", "pending", null, "OTHER"],
+  ];
+  for (const [i, [user, product, amount, daysAgo, outcome, status, policyId, reason]] of requests.entries()) {
+    const requestedAt = ago(daysAgo);
+    const policy = policies.find((p) => p.id === policyId);
+    const preference = policyId ? prefs[policyId]! : "consumption_only";
+    await db.insert(schema.refundRequests).values({
+      id: `rfr_e2e${String(i).padStart(9, "0")}`, projectId, appId: ios.id, customerId: customerIds[user] ?? null, appUserId: user, store: "app_store", isSandbox: false,
+      transactionId: `3000000${i}${Math.floor(daysAgo * 1000)}`, originalTransactionId: `3000000${i}`, productId: product, amountUsd: amount, reason,
+      requestedAt, deadlineAt: new Date(requestedAt.getTime() + 12 * 3600_000), policyId, policyName: policy?.name ?? "Default policy", preference,
+      consumptionStatus: status, consumption: status === "sent" ? { consumptionStatus: 2, customerConsented: true, deliveryStatus: 0, platform: 1, refundPreference: preference === "prefer_refund" ? 1 : preference === "prefer_no_refund" ? 2 : 0 } : null,
+      attempts: status === "sent" ? 1 : 0, sentAt: status === "sent" ? new Date(requestedAt.getTime() + 60_000) : null,
+      lastError: status === "skipped" ? "Customers have not consented to sharing consumption data." : null,
+      nextAttemptAt: status === "pending" ? new Date(Date.now() + 86400_000) : null,
+      outcome, outcomeAt: outcome === "pending" ? null : new Date(requestedAt.getTime() + 2 * 86400_000 > Date.now() ? Date.now() : requestedAt.getTime() + 2 * 86400_000),
+      createdAt: requestedAt,
+    });
+  }
+  await db.insert(schema.retentionOffers).values({
+    id: "rto_e2ecancel01", projectId, trigger: "cancel", name: "Half off for 3 months", title: "Wait! Stay for 50% off", subtitle: "Keep Pro for half the price for three months.",
+    store: "app_store", productMapping: { "scanner.pro.monthly": "pro_monthly_50off", "scanner.pro.yearly": "pro_yearly_50off" }, active: true, createdAt: ago(10),
+  });
+  await db.insert(schema.supportTickets).values([
+    { id: "tkt_e2eopen000000001", projectId, appId: ios.id, customerId: customerIds.wjqx8kd2rn1!, appUserId: "wjqx8kd2rn1", customerEmail: "wren@example.com",
+      description: "I was charged twice for the weekly plan this morning. Can you refund one of the charges? My receipts both say Pro weekly.", emailedTo: null, createdAt: new Date(Date.now() - 3 * 3600_000) },
+    { id: "tkt_e2eclosed0000001", projectId, appId: ios.id, customerId: customerIds.hana_ios!, appUserId: "hana_ios", customerEmail: "hana@example.com",
+      description: "How do I restore my purchase on a new iPad?", status: "closed", emailedTo: null, createdAt: ago(4), closedAt: ago(3) },
+  ]);
+}

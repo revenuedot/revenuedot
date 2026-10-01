@@ -94,7 +94,8 @@ test("overview: live cards match the API, periods and sandbox switch, transactio
   // Setup health: live App Store notification time and the missing key, which links to the app.
   const health = page.getByRole("region", { name: "Setup health" });
   await expect(health).toContainText("App Store notifications");
-  await expect(health).toContainText(/Last received \d+s ago/);
+  // The suite runs for a few minutes before this test, so the seeded notification may be over a minute old.
+  await expect(health).toContainText(/Last received \d+ ?(s|min) ago/);
   await expect(health).toContainText("Scanner iOS: In-app purchase key missing");
   await expect(health.getByRole("link", { name: "Fix →" })).toHaveAttribute("href", new RegExp(`/projects/${pid}/apps/`));
 
@@ -128,9 +129,14 @@ test("customers: list, pagination, exact search and the top-bar search", async (
   await expect(rows.first()).toContainText("pro");
   await expect(rows.first()).toContainText("$54.89");
 
+  // Search matches part of an app user ID or email (customer lists); nothing matches a made-up value.
   await page.getByPlaceholder("App user ID, email or store transaction ID").fill("wren");
   await page.getByRole("button", { name: "Search" }).click();
-  await expect(page.getByText('No customer matches "wren"')).toBeVisible();
+  await expect(page).toHaveURL(/q=wren$/);
+  await expect(rows).toHaveCount(1);
+  await page.getByPlaceholder("App user ID, email or store transaction ID").fill("nobody-matches-this");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByText('No customer matches "nobody-matches-this"')).toBeVisible();
   await page.getByRole("button", { name: "Clear search" }).click();
   await expect(rows).toHaveCount(25);
 

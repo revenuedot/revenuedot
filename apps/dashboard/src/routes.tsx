@@ -18,6 +18,10 @@ import { PartnerIntegrationPage } from "./pages/setup/PartnerIntegration";
 import { ProjectSettingsPage } from "./pages/setup/ProjectSettings";
 import { VirtualCurrenciesPage } from "./pages/catalog/VirtualCurrencies";
 import { CustomerCenterPage } from "./pages/lifecycle/CustomerCenter";
+import { RefundControlPage } from "./pages/lifecycle/RefundControl";
+import { RetentionPage } from "./pages/lifecycle/Retention";
+import { SupportPage } from "./pages/lifecycle/Support";
+import { WinbackEditor, WinbackListPage } from "./pages/lifecycle/Winback";
 import { PaywallEditor, PaywallsPage } from "./pages/paywalls/Paywalls";
 import { ExperimentDetail, ExperimentsPage, TargetingPage } from "./pages/targeting/Targeting";
 import { ChartsPage } from "./pages/charts/Charts";
@@ -39,6 +43,12 @@ export const routes = [
   <Route key="catalog-entitlement" path="/projects/:projectId/product-catalog/entitlements/:entitlementId" element={<EntitlementDetail />} />,
   <Route key="catalog-currencies" path="/projects/:projectId/product-catalog/virtual-currencies" element={<VirtualCurrenciesPage />} />,
   <Route key="customer-center" path="/projects/:projectId/lifecycle/customer-center" element={<CustomerCenterPage />} />,
+  <Route key="support" path="/projects/:projectId/lifecycle/support" element={<SupportPage />} />,
+  <Route key="retention" path="/projects/:projectId/lifecycle/retention" element={<RetentionPage />} />,
+  <Route key="refund-control" path="/projects/:projectId/lifecycle/refund-control" element={<RefundControlPage />} />,
+  <Route key="winback" path="/projects/:projectId/lifecycle/winback" element={<WinbackListPage />} />,
+  <Route key="winback-new" path="/projects/:projectId/lifecycle/winback/new" element={<WinbackEditor />} />,
+  <Route key="winback-campaign" path="/projects/:projectId/lifecycle/winback/:campaignId" element={<WinbackEditor />} />,
   <Route key="paywalls" path="/projects/:projectId/paywalls" element={<PaywallsPage />} />,
   <Route key="paywall" path="/projects/:projectId/paywalls/:paywallId" element={<PaywallEditor />} />,
   <Route key="targeting" path="/projects/:projectId/targeting" element={<TargetingPage />} />,
