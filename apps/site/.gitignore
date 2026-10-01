@@ -12,3 +12,4 @@ public/og.png
 # Copied from the docs repo's blog/assets by scripts/copy-brand.mjs
 public/blog/
 node_modules
+.clips-raw/
