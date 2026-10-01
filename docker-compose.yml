@@ -20,6 +20,13 @@ services:
       REVENUEDOT_CUSTOM_DOMAIN_TARGET: ${REVENUEDOT_CUSTOM_DOMAIN_TARGET:-}
       # Seals integration and data export credentials at rest (see .env.example).
       REVENUEDOT_ENCRYPTION_KEY: ${REVENUEDOT_ENCRYPTION_KEY:-}
+      # "Generate with AI" on paywalls and RevenueDot AI, the assistant: off without a key (see .env.example).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      REVENUEDOT_AI_MODEL: ${REVENUEDOT_AI_MODEL:-}
+      REVENUEDOT_ASSISTANT_MODEL: ${REVENUEDOT_ASSISTANT_MODEL:-}
+      REVENUEDOT_ASSISTANT_CAPS: ${REVENUEDOT_ASSISTANT_CAPS:-}
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped

@@ -5,6 +5,7 @@ import { cloudflareMailer, logMailer, type SendEmailBinding } from "./mail/index
 import { workersAiModel, type WorkersAi } from "./services/paywall-ai.js";
 import { assistantModelFromEnv, workersAiAssistantModel, type WorkersAiBinding } from "./services/assistant/models.js";
 import { capsFromEnv } from "./services/assistant/limits.js";
+import { fakeAssistantModel } from "./services/assistant/fake-model.js";
 import type { Deps } from "./context.js";
 
 /** A Durable Object namespace, typed only as far as we use it (the shared tsconfig has no Workers types). */
@@ -42,6 +43,8 @@ export interface Env {
   REVENUEDOT_ASSISTANT_MODEL?: string;
   /** JSON caps for RevenueDot AI (services/assistant/limits.ts). */
   REVENUEDOT_ASSISTANT_CAPS?: string;
+  /** Local `cf dev` only: "1" answers with the scripted fake model, so the Durable Object runtime can be tried without a model call. Never set in production. */
+  REVENUEDOT_ASSISTANT_FAKE?: string;
 }
 
 export const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
@@ -69,7 +72,8 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   payUrl: env.REVENUEDOT_PAY_URL || "https://api.revenuedot.app/pay",
   customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
   // RevenueDot AI: a provider key set as a secret wins; otherwise Workers AI (Kimi K2.6). Conversations run in Durable Objects.
-  assistant: assistantModelFromEnv(env as unknown as Record<string, string | undefined>) ?? (env.AI ? workersAiAssistantModel(env.AI as unknown as WorkersAiBinding) : undefined),
+  assistant: env.REVENUEDOT_ASSISTANT_FAKE === "1" ? fakeAssistantModel(undefined, { delayMs: 20 })
+    : assistantModelFromEnv(env as unknown as Record<string, string | undefined>) ?? (env.AI ? workersAiAssistantModel(env.AI as unknown as WorkersAiBinding) : undefined),
   assistantRuntime: env.AssistantAgent ? "durable_object" : "sse",
   assistantCaps: capsFromEnv(env.REVENUEDOT_ASSISTANT_CAPS),
   destroyConversation: env.AssistantAgent ? async (id: string) => {
