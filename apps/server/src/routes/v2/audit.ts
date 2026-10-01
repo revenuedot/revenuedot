@@ -28,7 +28,8 @@ interface Parsed { actionType: string; targetType: string; targetId: string | nu
 
 /** `POST /v2/projects/p/products/x/actions/archive` becomes product_archive on x. Returns null for paths we do not audit. */
 export function parseWrite(method: string, path: string): Parsed | null {
-  const seg = path.split("/").filter(Boolean);
+  // Segments are decoded one by one, so an id such as `$RCAnonymousID:…` is logged as the id, not `%24RCAnonymousID%3A…`.
+  const seg = path.split("/").filter(Boolean).map((s) => { try { return decodeURIComponent(s); } catch { return s; } });
   if (seg[0] !== "v2" || seg[1] !== "projects") return null;
   const rest = seg.slice(3);
   if (!seg[2]) return null;

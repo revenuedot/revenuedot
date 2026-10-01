@@ -39,7 +39,7 @@ const ProjectUpdate = z.object({
   transfer_behavior: Behavior.optional(),
   sandbox_transfer_behavior: Behavior.nullable().optional(),
   sandbox_testing_access: z.enum(SANDBOX_ACCESS).optional(),
-  sandbox_testers: z.array(z.string().trim().min(1).max(100)).max(500).optional(),
+  sandbox_testers: z.array(z.string().trim().max(100)).max(500).optional(),
 });
 const TransferOwnership = z.object({ user_id: z.string().min(1).max(100) });
 

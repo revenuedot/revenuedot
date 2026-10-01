@@ -4,6 +4,7 @@ import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer, getOrCreateCustomer, setAttributes, type CustomerRow } from "../../repo/customers.js";
+import { accessOf } from "../../repo/access.js";
 import { revokeSubscriberTokens } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { subscriptionTransactions } from "../../services/subscription-transactions.js";
@@ -140,9 +141,8 @@ export function customerRoutes(r: V2Router, deps: Deps) {
     const e = env(c);
     const rows = await db.select().from(schema.subscriptions).where(and(eq(schema.subscriptions.projectId, cust.projectId), eq(schema.subscriptions.customerId, cust.id),
       ...(e ? [eq(schema.subscriptions.isSandbox, e === "sandbox")] : [])));
-    const cat = await loadCatalog(db, cust.projectId);
-    const rev = await subscriptionRevenue(db, rows);
-    return c.json(paginate(c, rows, (s) => s.id, (s) => s.originalPurchaseDate.getTime(), (s) => subscriptionShape(s, cust.originalAppUserId, cat, rev.get(s.id) ?? 0, deps.now())));
+    const [cat, rev, access] = await Promise.all([loadCatalog(db, cust.projectId), subscriptionRevenue(db, rows), accessOf(db, cust)]);
+    return c.json(paginate(c, rows, (s) => s.id, (s) => s.originalPurchaseDate.getTime(), (s) => subscriptionShape(s, cust.originalAppUserId, cat, rev.get(s.id) ?? 0, deps.now(), access)));
   });
 
   r.get(`${C}/:customer_id/purchases`, scope("customer_information:purchases:read"), async (c) => {
@@ -231,7 +231,9 @@ export function customerRoutes(r: V2Router, deps: Deps) {
   const subsList = async (c: V2Context, rows: { s: typeof schema.subscriptions.$inferSelect; cu: CustomerRow }[]) => {
     const cat = await loadCatalog(db, c.get("projectId"));
     const rev = await subscriptionRevenue(db, rows.map((x) => x.s));
-    return rows.map((x) => subscriptionShape(x.s, x.cu.originalAppUserId, cat, rev.get(x.s.id) ?? 0, deps.now()));
+    const owners = [...new Map(rows.map((x) => [x.cu.id, x.cu])).values()];
+    const access = new Map(await Promise.all(owners.map(async (cu) => [cu.id, await accessOf(db, cu)] as const)));
+    return rows.map((x) => subscriptionShape(x.s, x.cu.originalAppUserId, cat, rev.get(x.s.id) ?? 0, deps.now(), access.get(x.cu.id)));
   };
 
   r.get(S, scope("customer_information:subscriptions:read"), async (c) => {

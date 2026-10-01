@@ -43,6 +43,8 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
     platform: cust.lastSeenPlatform ?? null,
     stores: [...new Set([...subs.map((s) => s.store), ...ones.map((p) => p.store)])].sort(),
     offering_override: override ? { id: override.id, lookup_key: override.lookupKey, display_name: override.displayName } : null,
+    /** One of the customer's app user ids is on the block list: no entitlements anywhere (prd/project-settings §3). */
+    blocked: !!state.access?.blocked,
     active_entitlements: active.flatMap((e) => {
       const row = entRow(e.identifier);
       if (!row) return [];

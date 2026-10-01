@@ -3,6 +3,7 @@ import { accessEndsAt, commission, computeEntitlements, isActive, willRenew, typ
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../../repo/catalog.js";
 import { loadState, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
+import type { Access } from "../../repo/access.js";
 import { embeddedList, ms, round2 } from "./common.js";
 import { storeSecretSet } from "../../services/store-secrets.js";
 
@@ -201,14 +202,19 @@ export function subscriptionStatus(s: SubRow, now: Date) {
   return { status, access, renewal };
 }
 
-export function subscriptionShape(s: SubRow, customerAppUserId: string, cat: Catalog, revenueUsd: number, now: Date) {
+/**
+ * `access` is the customer's project access (repo/access.ts): a blocked customer's subscriptions, and sandbox ones outside
+ * sandbox testing access, give no access even while the store period runs, like their entitlements.
+ */
+export function subscriptionShape(s: SubRow, customerAppUserId: string, cat: Catalog, revenueUsd: number, now: Date, access?: Access) {
   const prod = s.store === "promotional" ? null : cat.findProduct(s.productIdentifier, s.productPlanIdentifier, s.appId);
   const ents = cat.entitlementsFor(prod ? cat.productIdsFor(s.productIdentifier, s.productPlanIdentifier) : [], s.store === "promotional" ? s.entitlementIdentifier : null);
   const st = subscriptionStatus(s, now);
   return {
     object: "subscription" as const, id: s.id, customer_id: customerAppUserId, original_customer_id: customerAppUserId,
     product_id: prod?.id ?? null, starts_at: s.originalPurchaseDate.getTime(), current_period_starts_at: s.purchaseDate.getTime(),
-    current_period_ends_at: ms(s.expiresDate), ends_at: ms(s.expiresDate), gives_access: st.access,
+    current_period_ends_at: ms(s.expiresDate), ends_at: ms(s.expiresDate),
+    gives_access: st.access && !access?.blocked && (access?.sandbox !== false || !s.isSandbox),
     pending_payment: st.status === "in_billing_retry" || st.status === "in_grace_period", auto_renewal_status: st.renewal, status: st.status,
     total_revenue_in_usd: monetary(revenueUsd, s.store), presented_offering_id: cat.offeringId(s.presentedOfferingId),
     entitlements: embeddedList(`/v2/projects/${s.projectId}/subscriptions/${s.id}/entitlements`, ents.map((e) => entitlementShape(e))),
