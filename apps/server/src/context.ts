@@ -50,6 +50,19 @@ export interface Deps {
   payUrl?: string;
   /** The host custom domains must CNAME to (REVENUEDOT_CUSTOM_DOMAIN_TARGET). Unset: the pay host. */
   customDomainTarget?: string;
+  /**
+   * The model behind RevenueDot AI (services/assistant/models.ts): Workers AI on Cloud, Anthropic or OpenAI on self-host.
+   * Unset: the assistant is hidden and its routes answer 503.
+   */
+  assistant?: import("./services/assistant/models.js").AssistantModel;
+  /** Where conversations run: "durable_object" (Cloud, one Agents Durable Object each) or "sse" (Postgres, the default). */
+  assistantRuntime?: "durable_object" | "sse";
+  /** Daily caps (REVENUEDOT_ASSISTANT_CAPS). Unset: services/assistant/limits.ts DEFAULT_CAPS. */
+  assistantCaps?: import("./services/assistant/limits.js").AssistantCaps;
+  /** Cloud: wipes a conversation's Durable Object after its row is deleted. */
+  destroyConversation?: (conversationId: string) => Promise<void>;
+  /** The app's own fetch. Set by createApp; RevenueDot AI's tools call the REST API v2 through it in-process. */
+  dispatch?: (req: Request) => Promise<Response>;
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

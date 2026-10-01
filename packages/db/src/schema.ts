@@ -15,6 +15,10 @@ export const projects = pgTable("projects", {
   customerCenter: jsonb("customer_center").$type<Record<string, unknown>>(),
   /** Refund Control settings: { default_preference, customer_consented } (prd/lifecycle/PRD.md). */
   refundSettings: jsonb("refund_settings").$type<{ default_preference?: string; customer_consented?: boolean }>(),
+  /** What RevenueDot AI may do here (prd/ai-assistant/PRD.md): "read_write" (writes ask first), "read_only" or "disabled". */
+  aiAccess: text("ai_access").notNull().default("read_write"),
+  /** When an admin hid the first-sale card on the Overview. */
+  firstSaleDismissedAt: ts("first_sale_dismissed_at"),
   createdAt: created(),
 });
 
@@ -1072,3 +1076,75 @@ export const discountCodes = pgTable("discount_codes", {
   stripe: jsonb("stripe").$type<Record<string, string>>().notNull().default({}),
   createdAt: created(),
 }, (t) => [primaryKey({ columns: [t.projectId, t.codeKey] }), index("discount_codes_discount").on(t.discountId)]);
+
+/**
+ * RevenueDot AI conversations (prd/ai-assistant/PRD.md). Every conversation is listed here, whichever runtime holds its
+ * messages: `durable_object` (RevenueDot Cloud, one Agents Durable Object per conversation) or `postgres` (self-host, the
+ * tables below). A conversation belongs to one user in one project.
+ */
+export const aiConversations = pgTable("ai_conversations", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("New conversation"),
+  runtime: text("runtime").notNull().default("postgres"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("ai_conversations_owner").on(t.projectId, t.userId, t.updatedAt)]);
+
+/** Self-host transcript: one AI SDK UIMessage per row, in order. */
+export const aiMessages = pgTable("ai_messages", {
+  conversationId: text("conversation_id").notNull().references(() => aiConversations.id, { onDelete: "cascade" }),
+  id: text("id").notNull(),
+  position: integer("position").notNull(),
+  role: text("role").notNull(),
+  message: jsonb("message").$type<Record<string, unknown>>().notNull(),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.conversationId, t.id] }), index("ai_messages_order").on(t.conversationId, t.position)]);
+
+/** Self-host: one answer being streamed. Its chunks are kept so a reload or another tab resumes mid-answer. */
+export const aiStreams = pgTable("ai_streams", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull().references(() => aiConversations.id, { onDelete: "cascade" }),
+  /** "streaming", "done", "error", "stopped" or "interrupted" (no chunk for 60 seconds, e.g. the server restarted). */
+  status: text("status").notNull().default("streaming"),
+  error: text("error"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("ai_streams_conversation").on(t.conversationId, t.createdAt)]);
+
+export const aiStreamChunks = pgTable("ai_stream_chunks", {
+  streamId: text("stream_id").notNull().references(() => aiStreams.id, { onDelete: "cascade" }),
+  seq: integer("seq").notNull(),
+  chunk: jsonb("chunk").$type<Record<string, unknown>>().notNull(),
+}, (t) => [primaryKey({ columns: [t.streamId, t.seq] })]);
+
+/** Images and .storekit files attached in the chat (both runtimes). Read back only by the project's members. */
+export const aiFiles = pgTable("ai_files", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  mediaType: text("media_type").notNull(),
+  size: integer("size").notNull(),
+  dataBase64: text("data_base64").notNull(),
+  createdAt: created(),
+}, (t) => [index("ai_files_project").on(t.projectId, t.createdAt)]);
+
+/** Tokens the model used per key ("user:<id>", "project:<id>", "server") and UTC day, for the daily cost caps. */
+export const aiUsage = pgTable("ai_usage", {
+  key: text("key").notNull(),
+  day: text("day").notNull(),
+  turns: integer("turns").notNull().default(0),
+  inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+  outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.key, t.day] })]);
+
+/** Shareable cards, e.g. the project's first production sale. `id` is the unguessable token in the public URL. */
+export const aiShareCards = pgTable("ai_share_cards", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+  createdAt: created(),
+}, (t) => [uniqueIndex("ai_share_cards_kind").on(t.projectId, t.kind)]);

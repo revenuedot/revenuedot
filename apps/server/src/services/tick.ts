@@ -10,6 +10,8 @@ import { runAlerts } from "./alerts.js";
 import { retryDueConsumption } from "./refunds.js";
 import { runDueCampaigns } from "./winback.js";
 import { recheckDueCredentials } from "./credential-health.js";
+import { ensureFirstSaleCards } from "./assistant/first-sale.js";
+import { pruneStreams } from "./assistant/store.js";
 import type { Mailer } from "../mail/index.js";
 import { subRowToDomain } from "../repo/customers.js";
 import { scanDueVoidedPurchases } from "../stores/google/voided.js";
@@ -72,6 +74,9 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   if (opts.winback !== false) {
     try { winback = await runDueCampaigns({ db, mailer: opts.mailer, now: () => now }, opts.publicUrl); } catch (e) { console.error("tick: win-back campaigns failed", e); }
   }
+  // RevenueDot AI: the first-sale card for projects whose first paid production purchase just arrived, and old stream chunks.
+  let firstSales = 0;
+  try { firstSales = await ensureFirstSaleCards(db, now); await pruneStreams(db, now); } catch (e) { console.error("tick: first-sale cards failed", e); }
   let exports = 0;
   if (opts.exports !== false && secretKey.ok) {
     try {
@@ -81,7 +86,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
       console.error("tick: data exports failed", e);
     }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback };
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, firstSales };
 }
 
 /** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */

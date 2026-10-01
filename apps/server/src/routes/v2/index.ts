@@ -37,6 +37,9 @@ import { retentionRoutes } from "./retention.js";
 import { supportRoutes } from "./support.js";
 import { winbackRoutes } from "./winback.js";
 import { customerListRoutes } from "./customer-lists.js";
+import { assistantRoutes } from "./assistant.js";
+import { ASSISTANT_CTX } from "../../services/assistant/client.js";
+import { assistantScope } from "../../services/assistant/access.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -51,8 +54,12 @@ export function v2Routes(deps: Deps) {
 
   r.use("/v2/*", async (c, next) => {
     c.set("deps", deps);
+    // RevenueDot AI acting for a signed-in user (services/assistant/client.ts). Only in-process requests carry this.
+    const assistant = ASSISTANT_CTX.get(c.req.raw);
     const header = c.req.header("authorization");
-    if (header !== undefined && header.trim() !== "") {
+    if (assistant) {
+      c.set("principal", { kind: "user", userId: assistant.userId, via: "assistant", email: assistant.email, conversationId: assistant.conversationId });
+    } else if (header !== undefined && header.trim() !== "") {
       const key = header.replace(/^Bearer\s+/i, "").trim();
       const auth = await resolveKey(deps.db, key, deps.now());
       if (!auth) throw new V2Error(401, "authentication_error", "Invalid API key.");
@@ -80,6 +87,14 @@ export function v2Routes(deps: Deps) {
       const [m] = await deps.db.select().from(schema.memberships)
         .where(and(eq(schema.memberships.userId, p.userId), eq(schema.memberships.projectId, projectId))).limit(1);
       if (!m) throw new V2Error(404, "resource_missing", "Project not found.");
+      if (p.via === "assistant") {
+        // The assistant works in its conversation's project only, and writes only where the project allows it.
+        if (ASSISTANT_CTX.get(c.req.raw)?.projectId !== projectId) throw new V2Error(404, "resource_missing", "Project not found.");
+        const [proj] = await deps.db.select({ aiAccess: schema.projects.aiAccess }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
+        const s = assistantScope(proj?.aiAccess ?? "disabled", m.role);
+        const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
+        if (!s.canRead || (write && !s.canWrite)) throw new V2Error(403, "authorization_error", s.reason ?? "RevenueDot AI cannot do this here.");
+      }
       c.set("principal", { ...p, role: m.role });
     }
     c.set("projectId", projectId);
@@ -120,6 +135,7 @@ export function v2Routes(deps: Deps) {
   discountRoutes(r, deps);
   webRoutes(r, deps);
   billingExcludedRoutes(r, deps);
+  assistantRoutes(r, deps);
 
   r.all("/v2/*", () => { throw new V2Error(404, "resource_missing", "Resource not found."); });
   return r;

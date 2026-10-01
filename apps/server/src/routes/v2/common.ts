@@ -40,7 +40,7 @@ export const paramError = (message: string, param?: string) => new V2Error(400, 
 /** Who is calling: a secret API key (bound to one project) or a dashboard user (session cookie). */
 export type Principal =
   | { kind: "key"; projectId: string; keyId: string; permissions: string[] }
-  | { kind: "user"; userId: string; role?: string };
+  | { kind: "user"; userId: string; role?: string; via?: "assistant"; email?: string; conversationId?: string };
 
 export type V2Vars = { principal: Principal; projectId: string; deps: Deps };
 export type V2Context = Context<{ Variables: V2Vars }>;

@@ -12,11 +12,14 @@ import { withCredentialHealth } from "./services/credential-health.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 import { PAY_CTX, payRoutes } from "./routes/pay.js";
 import { projectForHost } from "./services/web/domains.js";
+import { shareRoutes } from "./routes/share.js";
 
 export function createApp(input: Deps) {
   // Receipt checks that the store answers with a credentials error mark the app failing (the credentials alert).
   const deps: Deps = { ...input, stores: withCredentialHealth(input.stores, input.db, input.now) };
   const app = new Hono();
+  // RevenueDot AI's tools call the API in-process through the app itself (services/assistant/client.ts).
+  deps.dispatch = (req) => Promise.resolve(app.fetch(req));
   const pay = payRoutes(deps);
   // Hosted web pages on the pay host (REVENUEDOT_PAY_URL without a path) and on verified custom domains are served by the
   // pay routes at the root of that host (prd/web-billing/PRD.md §7). Everything else on those hosts is not found.
@@ -62,6 +65,8 @@ export function createApp(input: Deps) {
   // Apple's Retention Messaging call and the win-back email links (no API key).
   app.route("/", lifecyclePublicRoutes(deps));
   app.route("/", authRoutes(deps));
+  // Public share cards (the first-sale card, prd/ai-assistant/PRD.md).
+  app.route("/", shareRoutes(deps));
   // OAuth 2.1 for MCP clients: the access token is a project-scoped secret key.
   app.route("/", oauthRoutes(deps));
   // REST API v2 (secret key or dashboard session); mounted before the SDK routes.
