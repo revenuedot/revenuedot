@@ -12,7 +12,7 @@ test("closed sign-up: the sign-up page explains how to open it, and sign-in has 
   await page.goto("/signup");
   await expect(page.getByRole("heading", { name: "Sign-up is closed" })).toBeVisible();
   await expect(page.getByText("REVENUEDOT_ALLOW_SIGNUP=true")).toBeVisible();
-  await expect(page.getByLabel("Work email")).toHaveCount(0);
+  await expect(page.getByLabel("Email", { exact: true })).toHaveCount(0);
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/signup-closed.png` });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);

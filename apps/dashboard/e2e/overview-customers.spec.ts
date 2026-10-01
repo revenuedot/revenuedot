@@ -11,7 +11,7 @@ async function signIn(page: Page, email = "e2e@revenuedot.test") {
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(`${page.url()}: ${m.text()}`); });
   page.on("pageerror", (e) => consoleErrors.push(`${page.url()}: ${e.message}`));
   await page.goto("/login");
-  await page.getByLabel("Work email").fill(email);
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/\/projects\/[^/]+\/overview/);

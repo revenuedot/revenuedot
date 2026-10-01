@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import "./styles/app.css";
 import { AuthPage } from "./pages/Auth";
 import { AccountPage, ForgotPasswordPage, InvitePage, ResetPasswordPage, VerifyEmailPage } from "./pages/AccountPages";
@@ -9,12 +9,17 @@ import { Soon } from "./pages/Soon";
 import { routes } from "./routes";
 import { useMe } from "./components/Shell";
 import { ToastProvider } from "./components/ui";
+import { api } from "./lib/api";
 
 try { const t = localStorage.getItem("rd-theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* ignore */ }
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } } });
 
 function Home() {
-  const me = useMe();
+  // Ask /auth/config first: /auth/me answers 401 when signed out, which the browser logs as an error.
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ signed_in?: boolean }>("/auth/config"), retry: false });
+  const me = useMe(config.data?.signed_in === true);
+  if (config.isLoading) return null;
+  if (!config.data?.signed_in) return <Navigate to="/login" replace />;
   if (me.isLoading) return null;
   if (me.isError || !me.data) return <Navigate to="/login" replace />;
   return <Navigate to={me.data.projects[0] ? `/projects/${me.data.projects[0].id}/overview` : "/projects/new"} replace />;

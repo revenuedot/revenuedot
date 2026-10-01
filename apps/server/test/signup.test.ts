@@ -25,10 +25,10 @@ async function server(over: Partial<Deps>) {
 describe("sign-up on a self-hosted server (owner_only, the default of the Node entry)", () => {
   it("takes the first account, then refuses new ones with 403 while the owner can still sign in", async () => {
     const s = await server({ signup: "owner_only" });
-    expect((await s.call("GET", "/auth/config")).body).toEqual({ edition: "self-hosted", signup: "open" });
+    expect((await s.call("GET", "/auth/config")).body).toEqual({ edition: "self-hosted", signup: "open", signed_in: false });
     const owner = await s.signup("owner@example.com");
     expect(owner.status).toBe(201);
-    expect((await s.call("GET", "/auth/config")).body).toEqual({ edition: "self-hosted", signup: "closed" });
+    expect((await s.call("GET", "/auth/config")).body).toEqual({ edition: "self-hosted", signup: "closed", signed_in: false });
 
     const second = await s.signup("stranger@example.com");
     expect(second.status).toBe(403);
@@ -49,7 +49,7 @@ describe("sign-up on a self-hosted server (owner_only, the default of the Node e
     const cloud = await server({ edition: "cloud", signup: "owner_only" });
     expect((await cloud.signup("a@example.com")).status).toBe(201);
     expect((await cloud.signup("b@example.com")).status).toBe(201);
-    expect((await cloud.call("GET", "/auth/config")).body).toEqual({ edition: "cloud", signup: "open" });
+    expect((await cloud.call("GET", "/auth/config")).body).toEqual({ edition: "cloud", signup: "open", signed_in: false });
   });
 });
 

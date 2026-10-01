@@ -80,7 +80,7 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
   await test.step("sign up, then create a second project from the project switcher", async () => {
     await page.goto(`${WEB}/signup`);
     await page.getByLabel("Your name").fill("Setup e2e");
-    await page.getByLabel("Work email").fill(`setup-${stamp}@revenuedot.test`);
+    await page.getByLabel("Email", { exact: true }).fill(`setup-${stamp}@revenuedot.test`);
     await page.getByLabel("Password").fill(`e2e-${stamp}-pw`);
     await page.getByLabel("First project").fill("First project");
     await page.getByRole("button", { name: "Create account" }).click();

@@ -9,7 +9,7 @@ export interface Me {
   account?: { edition: string; plan: string; email_verification_required: boolean };
   projects: { id: string; name: string; role: string }[];
 }
-export const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false });
+export const useMe = (enabled = true) => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
 
 type Item = { label: string; to?: string; icon?: string; soon?: boolean; children?: Item[] };
 

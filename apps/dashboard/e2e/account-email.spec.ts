@@ -52,7 +52,7 @@ const mailCount = async (page: Page, to: string) => ((await (await page.request.
 async function signupUi(page: Page, email: string, name: string, project: string) {
   await page.goto("/signup");
   await page.getByLabel("Your name").fill(name);
-  await page.getByLabel("Work email").fill(email);
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password").fill(PW);
   await page.getByLabel("First project").fill(project);
   await page.getByRole("button", { name: "Create account" }).click();
@@ -70,7 +70,7 @@ test("forgot password: request a link, set a new password, get signed in; the li
   await page.context().clearCookies();
 
   await page.goto("/login");
-  await page.getByLabel("Work email").fill(email);
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByRole("link", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveValue(email); // carried over from the sign-in form
@@ -174,7 +174,7 @@ test("invites and members: invite, accept as a new and an existing user, roles, 
   await other.goto(await linkFor(page, existing, "/invite?token="));
   await expect(other.getByText("You already have a RevenueDot account.")).toBeVisible();
   await other.getByRole("link", { name: "Sign in to accept" }).click();
-  await other.getByLabel("Work email").fill(existing);
+  await other.getByLabel("Email", { exact: true }).fill(existing);
   await other.getByLabel("Password").fill(PW);
   await other.getByRole("button", { name: "Sign in" }).click();
   await expect(other.getByRole("heading", { name: "Join Team project" })).toBeVisible();

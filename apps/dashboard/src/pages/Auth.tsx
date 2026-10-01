@@ -17,10 +17,10 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const [busy, setBusy] = useState(false);
   const signup = mode === "signup";
   // Self-hosted servers take only their owner's account unless REVENUEDOT_ALLOW_SIGNUP=true.
-  const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ edition: string; signup: "open" | "closed" }>("/auth/config"), retry: false });
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ edition: string; signup: "open" | "closed"; signed_in?: boolean }>("/auth/config"), retry: false });
   const closed = config.data?.signup === "closed";
   const cloud = config.data?.edition === "cloud";
-  const me = useMe();
+  const me = useMe(config.data?.signed_in === true);
   useEffect(() => { document.title = `${signup ? "Create your account" : "Sign in"} · RevenueDot`; }, [signup]);
   // Keeps the destination when people switch between sign in, sign up and forgot password.
   const withNext = (path: string) => (next ? `${path}${path.includes("?") ? "&" : "?"}next=${encodeURIComponent(next)}` : path);

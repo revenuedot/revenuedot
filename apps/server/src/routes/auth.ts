@@ -53,7 +53,8 @@ export function authRoutes(deps: Deps) {
   };
 
   // What the sign-in pages need before showing a form. No session required.
-  r.get("/auth/config", async (c) => c.json({ edition: deps.edition ?? "self-hosted", signup: (await signupOpen()) ? "open" : "closed" }));
+  // signed_in lets the sign-in pages skip their form without probing /auth/me, which answers 401 when signed out.
+  r.get("/auth/config", async (c) => c.json({ edition: deps.edition ?? "self-hosted", signup: (await signupOpen()) ? "open" : "closed", signed_in: !!(await me(c)) }));
 
   r.post("/auth/signup", async (c) => {
     const p = Signup.safeParse(await json(c));

@@ -12,7 +12,7 @@ async function signIn(page: Page) {
   page.on("console", (m) => { if (m.type() === "error") errors.push(`${page.url()}: ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`${page.url()}: ${e.message}`));
   await page.goto("/login");
-  await page.getByLabel("Work email").fill("e2e@revenuedot.test");
+  await page.getByLabel("Email", { exact: true }).fill("e2e@revenuedot.test");
   await page.getByLabel("Password").fill("e2e-password-1");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/\/projects\/[^/]+\/overview/);
