@@ -3,6 +3,7 @@ import { newId, webhookStore, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { CustomerRow } from "../repo/customers.js";
 import { recordRawEvent } from "./events.js";
+import { accessOf } from "../repo/access.js";
 
 /**
  * In-app currencies (virtual currencies). A balance is the sum of its ledger rows; `virtual_currency_balances` caches it.
@@ -20,6 +21,9 @@ export async function grantForPurchase(db: DB, opts: {
   const currencies = await db.select().from(schema.virtualCurrencies)
     .where(and(eq(schema.virtualCurrencies.projectId, opts.projectId), eq(schema.virtualCurrencies.state, "active")));
   if (!currencies.some((c) => c.productGrants.length)) return {};
+  // Blocked customers, and sandbox purchases outside the project's sandbox testing access, credit nothing (prd/project-settings).
+  const access = await accessOf(db, opts.customer);
+  if (access.blocked || (opts.sandbox && access.sandbox === false)) return {};
   const ids = [opts.productIdentifier, ...(opts.productPlanIdentifier ? [`${opts.productIdentifier}:${opts.productPlanIdentifier}`] : [])];
   const products = await db.select({ id: schema.products.id, name: schema.products.displayName }).from(schema.products)
     .where(and(eq(schema.products.projectId, opts.projectId), inArray(schema.products.storeIdentifier, ids), ...(opts.appId ? [eq(schema.products.appId, opts.appId)] : [])));

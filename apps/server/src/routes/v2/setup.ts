@@ -13,11 +13,16 @@ import { notificationHealth } from "./notification-health.js";
 import { apiRole } from "../../services/members.js";
 import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
 import { storeSecretHintOf, storeSecretSet, stripeKeyHintOf, withStoreSecrets } from "../../services/store-secrets.js";
+import { SANDBOX_ACCESS } from "../../repo/access.js";
+import { ownershipEmail } from "../../mail/templates.js";
+import { trySend } from "../../mail/index.js";
+import { linkBase, requestOrigin } from "../../services/account-email.js";
 
 /**
  * Project setup endpoints for the dashboard (apps, project settings, webhook tests).
  *   GET    /v2/projects/{project_id}                                             project with its settings (extension)
- *   POST   /v2/projects/{project_id}                                             update name and transfer behaviour (extension)
+ *   POST   /v2/projects/{project_id}                                             update name, transfer behaviour and sandbox testing access (extension)
+ *   POST   /v2/projects/{project_id}/actions/transfer_ownership                  hand the project to an admin collaborator (extension; owner, dashboard only)
  *   DELETE /v2/projects/{project_id}                                             delete the project and everything in it (extension; admins, dashboard only)
  *   GET    /v2/projects/{project_id}/collaborators                               RevenueCat's collaborator list
  *   GET    /v2/projects/{project_id}/apps/{app_id}/store_settings                non-secret store setup state (extension)
@@ -33,7 +38,10 @@ const ProjectUpdate = z.object({
   name: z.string().trim().min(1, "must not be empty").max(100).optional(),
   transfer_behavior: Behavior.optional(),
   sandbox_transfer_behavior: Behavior.nullable().optional(),
+  sandbox_testing_access: z.enum(SANDBOX_ACCESS).optional(),
+  sandbox_testers: z.array(z.string().trim().min(1).max(100)).max(500).optional(),
 });
+const TransferOwnership = z.object({ user_id: z.string().min(1).max(100) });
 
 const str = z.string().max(20_000).nullable().optional();
 const Verify = z.object({
@@ -57,8 +65,12 @@ const MassExtend = z.object({
 type ProjectRow = typeof schema.projects.$inferSelect;
 type AppRow = typeof schema.apps.$inferSelect;
 
-export function projectSettingsShape(p: ProjectRow) {
-  return { ...projectShape(p), transfer_behavior: p.transferBehavior, sandbox_transfer_behavior: p.sandboxTransferBehavior ?? null };
+export function projectSettingsShape(p: ProjectRow, owner: { id: string; email: string; name: string | null } | null = null) {
+  return {
+    ...projectShape(p), transfer_behavior: p.transferBehavior, sandbox_transfer_behavior: p.sandboxTransferBehavior ?? null,
+    sandbox_testing_access: p.sandboxTestingAccess, sandbox_testers: p.sandboxTesters ?? [],
+    owner: owner ? { id: owner.id, email: owner.email, name: owner.name ?? null } : null,
+  };
 }
 
 /** The public origin the stores should call: the forwarded host behind a proxy, else the request's own origin. */
@@ -87,7 +99,14 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     return a;
   };
 
-  r.get(P, scope("project_configuration:projects:read"), async (c) => c.json(projectSettingsShape(await projectOf(c))));
+  const ownerOf = async (p: ProjectRow) => {
+    if (!p.ownerUserId) return null;
+    const [u] = await db.select({ id: schema.users.id, email: schema.users.email, name: schema.users.name }).from(schema.users).where(eq(schema.users.id, p.ownerUserId)).limit(1);
+    return u ?? null;
+  };
+  const settingsOut = async (p: ProjectRow) => projectSettingsShape(p, await ownerOf(p));
+
+  r.get(P, scope("project_configuration:projects:read"), async (c) => c.json(await settingsOut(await projectOf(c))));
 
   r.post(P, scope("project_configuration:projects:read_write"), async (c) => {
     const p = await projectOf(c);
@@ -96,9 +115,42 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     if (b.name !== undefined) set.name = b.name;
     if (b.transfer_behavior !== undefined) set.transferBehavior = b.transfer_behavior;
     if (b.sandbox_transfer_behavior !== undefined) set.sandboxTransferBehavior = b.sandbox_transfer_behavior;
-    if (!Object.keys(set).length) return c.json(projectSettingsShape(p));
+    if (b.sandbox_testing_access !== undefined) set.sandboxTestingAccess = b.sandbox_testing_access;
+    // Duplicates and blank lines from a pasted list are dropped; order is kept.
+    if (b.sandbox_testers !== undefined) set.sandboxTesters = [...new Set(b.sandbox_testers.map((x) => x.trim()).filter(Boolean))];
+    if (!Object.keys(set).length) return c.json(await settingsOut(p));
     const [row] = await db.update(schema.projects).set(set).where(eq(schema.projects.id, p.id)).returning();
-    return c.json(projectSettingsShape(row!));
+    return c.json(await settingsOut(row!));
+  });
+
+  // The owner hands the project to another admin. The old owner stays an admin; both get an email.
+  r.post(`${P}/actions/transfer_ownership`, scope("project_configuration:projects:read_write"), async (c) => {
+    const p = await projectOf(c);
+    const who = c.get("principal");
+    if (who.kind !== "user") throw new V2Error(403, "authorization_error", "Project ownership can only be transferred from the dashboard.");
+    // An owner who left the project no longer counts: any admin may then hand it on.
+    const [ownerMember] = p.ownerUserId ? await db.select({ id: schema.memberships.userId }).from(schema.memberships)
+      .where(and(eq(schema.memberships.projectId, p.id), eq(schema.memberships.userId, p.ownerUserId))).limit(1) : [];
+    if (who.role !== "admin" || (ownerMember && ownerMember.id !== who.userId)) throw new V2Error(403, "authorization_error", "Only the project owner can transfer ownership.");
+    const b = await body(c, TransferOwnership);
+    if (b.user_id === who.userId && p.ownerUserId === who.userId) throw paramError("You already own this project.", "user_id");
+    const [target] = await db.select({ u: schema.users, role: schema.memberships.role }).from(schema.memberships)
+      .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
+      .where(and(eq(schema.memberships.projectId, p.id), eq(schema.memberships.userId, b.user_id))).limit(1);
+    if (!target) throw new V2Error(422, "unprocessable_entity_error", "The new owner must be a collaborator on this project.", "user_id");
+    if (target.role !== "admin") throw new V2Error(422, "unprocessable_entity_error", "The new owner must have the Admin role. Change their role first.", "user_id");
+    const [row] = await db.update(schema.projects).set({ ownerUserId: target.u.id }).where(eq(schema.projects.id, p.id)).returning();
+    const [from] = await db.select().from(schema.users).where(eq(schema.users.id, who.userId)).limit(1);
+    const base = linkBase(deps, requestOrigin(c.req.url, (n) => c.req.header(n)));
+    const fromName = from?.name?.trim() || from?.email || "The previous owner";
+    const toName = target.u.name?.trim() || target.u.email;
+    const url = `${base}/projects/${p.id}/settings/general`;
+    // Email failures never undo the transfer; the dashboard shows the new owner either way.
+    const sent = await Promise.all([
+      trySend(deps.mailer, { to: target.u.email, ...ownershipEmail({ base, url, projectName: p.name, from: fromName, to: toName, you: "new" }) }),
+      ...(from ? [trySend(deps.mailer, { to: from.email, ...ownershipEmail({ base, url, projectName: p.name, from: fromName, to: toName, you: "old" }) })] : []),
+    ]);
+    return c.json({ ...(await settingsOut(row!)), email_sent: sent.every(Boolean) });
   });
 
   // Everything in the project goes with it (foreign keys cascade). Only admins signed in to the dashboard may do this.

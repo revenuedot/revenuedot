@@ -7,7 +7,7 @@ import { findCustomer, getOrCreateCustomer, identify, loadState, setAttributes, 
 import { applyPurchases } from "../services/purchases.js";
 import { recordSubscriberAlias } from "../services/events.js";
 import { restV1 } from "./rest-v1.js";
-import { appForPlatform, resolveKey } from "../services/auth.js";
+import { appForPlatform, isSubscriberToken, resolveKey } from "../services/auth.js";
 import type { ReceiptInput } from "../stores/types.js";
 import { schema } from "@revenuedot/db";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -52,6 +52,8 @@ export function sdkRoutes(deps: Deps) {
     if (path === "/v1/health" || path === "/v1/health/connectivity" || path.endsWith("/health_report_availability")) return next();
     const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
     const auth = await resolveKey(deps.db, key, deps.now());
+    // An unknown or revoked access token is "invalid auth token", so an SDK in token mode refreshes or signs in again.
+    if (!auth && isSubscriberToken(key)) throw new RCError(401, Codes.INVALID_AUTH_TOKEN, "The access token is not valid. Sign in again.");
     if (!auth) throw new RCError(401, Codes.INVALID_API_KEY, "Invalid API Key.");
     if (auth.subscriber) await pinSubscriber(c, auth.subscriber);
     c.set("auth", auth);
@@ -155,6 +157,7 @@ export function sdkRoutes(deps: Deps) {
   r.post("/v1/customer/intro_eligibility", iam);
   r.post("/v1/customer/attribution", iam);
   r.post("/v1/customer/attributes", iam);
+  r.get("/v1/customer/attributes", iam);
   r.post("/v1/customer/adservices_attribution", iam);
   r.get("/v1/customer/health_report", iam);
   r.get("/v1/customer/customercenter", iam);
@@ -311,6 +314,18 @@ export function sdkRoutes(deps: Deps) {
   });
 
   // 6. Attributes
+  // Auth (prd/auth §6): the attributes the SDK set, read back by the app with its access token (or by a server with a
+  // secret key). A plain public key cannot read them: attributes can hold an email address or a phone number.
+  r.get("/v1/subscribers/:id/attributes", async (c) => {
+    const auth = c.get("auth");
+    if (auth.kind !== "secret" && !auth.subscriber) throw new RCError(401, Codes.INVALID_AUTH_TOKEN, "Reading attributes needs a subscriber access token or a secret key.");
+    const app = c.get("app");
+    const cust = await findCustomer(deps.db, app.projectId, userId(c.req.param("id")));
+    const out: Record<string, { value: string | null; updated_at_ms: number }> = {};
+    if (cust) for (const a of await deps.db.select().from(schema.customerAttributes).where(eq(schema.customerAttributes.customerId, cust.id))) out[a.key] = { value: a.value, updated_at_ms: a.updatedAtMs };
+    return c.json({ subscriber_attributes: out });
+  });
+
   r.post("/v1/subscribers/:id/attributes", async (c) => {
     const app = c.get("app"); const now = deps.now();
     const b = await c.req.json().catch(() => ({})) as Record<string, any>;

@@ -409,6 +409,12 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     }).returning();
     return c.json(fontOut(row!, assetBase(c)), 201);
   });
+  // Brand tab (prd/project-settings §2). A paywall that still names the font falls back to the system font in the SDKs.
+  r.delete("/v2/projects/:project_id/fonts/:font_id", scope("project_configuration:offerings:read_write"), async (c) => {
+    const [row] = await db.delete(schema.mediaAssets).where(and(eq(schema.mediaAssets.projectId, c.get("projectId")), eq(schema.mediaAssets.id, c.req.param("font_id")!), eq(schema.mediaAssets.kind, "font"))).returning({ id: schema.mediaAssets.id });
+    if (!row) throw notFound("Font");
+    return c.json({ object: "font", id: row.id, deleted_at: deps.now().getTime() });
+  });
 }
 
 function decodeOrFail(b64: string): Uint8Array {

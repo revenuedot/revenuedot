@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 const ts = (n: string) => timestamp(n, { withTimezone: true, mode: "date" });
 const created = () => ts("created_at").notNull().defaultNow();
@@ -15,6 +15,16 @@ export const projects = pgTable("projects", {
   customerCenter: jsonb("customer_center").$type<Record<string, unknown>>(),
   /** Refund Control settings: { default_preference, customer_consented } (prd/lifecycle/PRD.md). */
   refundSettings: jsonb("refund_settings").$type<{ default_preference?: string; customer_consented?: boolean }>(),
+  /** Who may unlock entitlements and in-app currency with sandbox purchases: "anybody", "allowlist" or "nobody" (prd/project-settings). */
+  sandboxTestingAccess: text("sandbox_testing_access").notNull().default("anybody"),
+  /** App user ids allowed to test when `sandboxTestingAccess` is "allowlist". */
+  sandboxTesters: text("sandbox_testers").array().notNull().default(sql`'{}'::text[]`),
+  /** The project's owner; only they may transfer ownership. Null on projects whose owner left (any admin may then). */
+  ownerUserId: text("owner_user_id").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+  /** Brand: colour and gradient presets for the colour pickers and the SDK's `ui_config.app.colors`. */
+  brand: jsonb("brand").$type<{ color_presets?: unknown[]; gradient_presets?: unknown[] }>(),
+  /** Auth (prd/auth): { enabled, allow_anonymous }. */
+  authSettings: jsonb("auth_settings").$type<{ enabled?: boolean; allow_anonymous?: boolean }>(),
   createdAt: created(),
 });
 
@@ -71,6 +81,8 @@ export const subscriberTokens = pgTable("subscriber_tokens", {
   appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
   appUserId: text("app_user_id").notNull(),
   expiresAt: ts("expires_at").notNull(),
+  /** The Auth sign-in session that issued this token (prd/auth); revoking the session deletes its tokens. */
+  sessionId: text("session_id").references((): AnyPgColumn => identitySessions.id, { onDelete: "cascade" }),
   createdAt: created(),
 }, (t) => [index("subscriber_tokens_expiry").on(t.expiresAt)]);
 
@@ -1143,3 +1155,79 @@ export const adUnits = pgTable("ad_units", {
   format: text("format"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.projectId, t.network, t.adUnitId] })]);
+
+/** App user ids blocked in a project: their customers get no entitlements and no currency grants (prd/project-settings §3). */
+export const blockedCustomers = pgTable("blocked_customers", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appUserId: text("app_user_id").notNull(),
+  note: text("note"),
+  /** Who blocked it: a user id, or `key:<api key id>`. */
+  blockedBy: text("blocked_by"),
+  blockedAt: ts("blocked_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.appUserId] }), index("blocked_customers_time").on(t.projectId, t.blockedAt)]);
+
+/** The public Verified Metrics page of a project (prd/project-settings §4). */
+export const verifiedPages = pgTable("verified_pages", {
+  projectId: text("project_id").primaryKey().references(() => projects.id, { onDelete: "cascade" }),
+  slug: text("slug").notNull(),
+  displayName: text("display_name").notNull(),
+  chartType: text("chart_type").notNull().default("number_sparkline"),
+  /** The 6 overview metrics in display order, each with its visibility. */
+  metrics: jsonb("metrics").$type<{ id: string; visible: boolean }[]>().notNull(),
+  showIcon: boolean("show_icon").notNull().default(false),
+  iconAssetId: text("icon_asset_id"),
+  showStoreLinks: boolean("show_store_links").notNull().default(false),
+  appStoreUrl: text("app_store_url"),
+  playStoreUrl: text("play_store_url"),
+  /** "never_published", "published" or "inactive". */
+  status: text("status").notNull().default("never_published"),
+  publishedAt: ts("published_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  createdAt: created(),
+}, (t) => [uniqueIndex("verified_pages_slug").on(t.slug)]);
+
+/** Identity providers for Auth (prd/auth): Firebase or OpenID Connect. */
+export const authProviders = pgTable("auth_providers", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  /** "firebase" or "oidc". */
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  issuer: text("issuer").notNull(),
+  audiences: text("audiences").array().notNull(),
+  /** Null: Firebase's published keys, or discovery from the issuer. */
+  jwksUrl: text("jwks_url"),
+  firebaseProjectId: text("firebase_project_id"),
+  appUserIdClaim: text("app_user_id_claim").notNull().default("sub"),
+  appUserIdPrefix: text("app_user_id_prefix").notNull().default(""),
+  enabled: boolean("enabled").notNull().default(true),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  createdAt: created(),
+}, (t) => [index("auth_providers_project").on(t.projectId)]);
+
+/** A verified identity (provider + subject) and the app user id it signs in as. */
+export const identityLinks = pgTable("identity_links", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  providerId: text("provider_id").notNull().references(() => authProviders.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull(),
+  appUserId: text("app_user_id").notNull(),
+  logins: integer("logins").notNull().default(1),
+  lastLoginAt: ts("last_login_at").notNull().defaultNow(),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.providerId, t.subject] }), index("identity_links_user").on(t.projectId, t.appUserId), index("identity_links_recent").on(t.projectId, t.lastLoginAt)]);
+
+/** An Auth sign-in session: its refresh token (hashed, rotated on use) and the access tokens it issued. */
+export const identitySessions = pgTable("identity_sessions", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  appUserId: text("app_user_id").notNull(),
+  providerId: text("provider_id").references(() => authProviders.id, { onDelete: "cascade" }),
+  subject: text("subject"),
+  method: text("method").notNull(),
+  refreshHash: text("refresh_hash").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  revokedAt: ts("revoked_at"),
+  lastUsedAt: ts("last_used_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("identity_sessions_refresh").on(t.refreshHash), index("identity_sessions_user").on(t.projectId, t.appUserId)]);

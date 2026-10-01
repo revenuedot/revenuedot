@@ -84,8 +84,8 @@ describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
     expect(rows.map((r) => r.n)).toEqual(rows.map((_, i) => i + 1));
     const real = rows.filter((r) => r.handling === "Real").length, stub = rows.filter((r) => r.handling === "Stub").length;
     const absent = rows.filter((r) => r.handling === "Absent").reduce((n, r) => n + (/^(\d+) IAM/.exec(r.path) ? Number(/^(\d+)/.exec(r.path)![1]) : r.path.split(",").length), 0);
-    expect({ real, stub, absent }).toEqual({ real: 32, stub: 23, absent: 3 });
-    expect(PRD).toContain(`55 of the 58 method-and-path pairs have a route: 32 answer with real data and 23 are safe stubs. The other 3`);
+    expect({ real, stub, absent }).toEqual({ real: 35, stub: 23, absent: 0 });
+    expect(PRD).toContain(`58 of the 58 method-and-path pairs have a route: 35 answer with real data and 23 are safe stubs.`);
   });
 
   for (const r of routed) {
@@ -113,13 +113,16 @@ describe("the SDK endpoint inventory (prd/sdk-api/PRD.md)", () => {
     });
   }
 
-  it("absent rows have no route (the IAM identity-provider login), and /auth/login is the dashboard's sign-in", async () => {
+  it("/auth/* with an app key is Auth sign-in; without an Authorization header /auth/login is the dashboard's sign-in", async () => {
     for (const path of ["/auth/token", "/auth/revoke"]) {
-      const res = await h.fetch(path, { method: "POST", headers: IOS_HEADERS, json: {} });
+      const res = await h.fetch(path, { method: "POST", key: "", json: {} });
       expect(res.status, path).toBe(404);
-      expect(await res.text()).not.toMatch(/"code"/);
     }
-    const login = await h.fetch("/auth/login", { method: "POST", key: "", json: { method: "anonymous" } });
-    expect(login.status).not.toBe(404);
+    const login = await h.fetch("/auth/login", { method: "POST", key: "", json: { email: "nobody@example.com", password: "wrong" } });
+    expect(login.status).toBe(401);
+    expect(await login.json()).toMatchObject({ type: "authentication_error" });
+    const app = await h.fetch("/auth/login", { method: "POST", headers: IOS_HEADERS, json: { method: "anonymous", scope: "openid offline_access" } });
+    expect(app.status).toBe(403);
+    expect(await app.json()).toMatchObject({ code: 7224 });
   });
 });

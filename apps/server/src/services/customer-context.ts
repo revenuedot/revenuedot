@@ -4,6 +4,7 @@ import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../repo/catalog.js";
 import { nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
 import { emptyContext, type CustomerContext } from "./targeting.js";
+import { accessFor, projectAccess } from "../repo/access.js";
 
 /**
  * Everything the audience condition builder can ask about customers, loaded for many customers in a handful of queries.
@@ -110,10 +111,10 @@ export interface LoadedContext { data: CustomerData; ctx: CustomerContext }
 /** Contexts for these customers, active entitlements included (one catalog read per project). */
 export async function contextsFor(db: DB, projectId: string, customers: CustomerRow[], now: Date): Promise<LoadedContext[]> {
   const data = await loadCustomerData(db, customers);
-  const map = await entitlementMap(db, projectId);
+  const [map, pa] = await Promise.all([entitlementMap(db, projectId), projectAccess(db, projectId)]);
   return customers.map((c) => {
     const d = data.get(c.id)!;
-    const ents = computeEntitlements(stateOf(d), map).filter((e) => isActive(e, now)).map((e) => e.identifier);
+    const ents = computeEntitlements({ ...stateOf(d), access: accessFor(pa, d.aliases) }, map).filter((e) => isActive(e, now)).map((e) => e.identifier);
     return { data: d, ctx: buildContext(d, now, ents) };
   });
 }

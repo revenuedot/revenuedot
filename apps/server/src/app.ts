@@ -14,6 +14,8 @@ import { withCredentialHealth } from "./services/credential-health.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 import { PAY_CTX, payRoutes } from "./routes/pay.js";
 import { projectForHost } from "./services/web/domains.js";
+import { identityRoutes } from "./routes/identity.js";
+import { verifiedRoutes } from "./routes/verified.js";
 
 export function createApp(input: Deps) {
   // Receipt checks that the store answers with a credentials error mark the app failing (the credentials alert).
@@ -66,7 +68,11 @@ export function createApp(input: Deps) {
   // AdMob's reward callback and OAuth redirect, and the Intercom inbox app (each authenticated by its caller, no API key).
   app.route("/", adsPublicRoutes(deps));
   app.route("/", supportAppRoutes(deps));
+  // App sign-in (Auth, prd/auth) answers POST /auth/login when it carries an app key; the dashboard's sign-in gets the rest.
+  app.route("/", identityRoutes(deps));
   app.route("/", authRoutes(deps));
+  // Public Verified Metrics pages (prd/project-settings §4).
+  app.route("/", verifiedRoutes(deps));
   // OAuth 2.1 for MCP clients: the access token is a project-scoped secret key.
   app.route("/", oauthRoutes(deps));
   // REST API v2 (secret key or dashboard session); mounted before the SDK routes.

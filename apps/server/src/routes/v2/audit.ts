@@ -16,7 +16,11 @@ const SINGULAR: Record<string, string> = {
   invites: "invite", collaborators: "collaborator", paywalls: "paywall", audiences: "audience", discounts: "discount", experiments: "experiment",
   customer_center_config: "customer_center", test_purchases: "test_purchase", partners: "integration", exports: "data_export",
   refund_control: "refund_control", retention_offers: "retention_offer", support_tickets: "support_ticket", winback_campaigns: "winback_campaign",
+  blocked_customers: "blocked_customer", verified_metrics: "verified_metrics", brand: "brand", fonts: "font", providers: "auth_provider",
+  identities: "auth_identity", settings: "auth_settings",
 };
+/** One object per project: a POST without an id updates it. */
+const SINGLETONS = new Set(["brand", "verified_metrics", "auth_settings"]);
 /** Writes that change nothing worth auditing. */
 const QUIET = new Set(["verify_credentials", "preview", "test", "check"]);
 
@@ -29,14 +33,19 @@ export function parseWrite(method: string, path: string): Parsed | null {
   const rest = seg.slice(3);
   if (!seg[2]) return null;
   if (!rest.length) return method === "POST" ? { actionType: "project_updated", targetType: "project", targetId: seg[2] } : null; // deleting the project deletes its log too (a row for it would break the foreign key)
+  // Project actions: POST /v2/projects/p/actions/transfer_ownership is project_transfer_ownership.
+  if (rest[0] === "actions" && rest[1]) return method === "POST" ? { actionType: `project_${rest[1]}`, targetType: "project", targetId: seg[2] } : null;
   let i = 0;
-  if (rest[0] === "integrations" || rest[0] === "ads") i = 1;
+  if (rest[0] === "integrations" || rest[0] === "ads" || rest[0] === "auth") i = 1;
   const coll = rest[i]!;
-  const id = rest[i + 1] ?? null;
+  let id = rest[i + 1] ?? null;
   const target = SINGULAR[coll] ?? coll.replace(/s$/, "");
-  const tail = rest.slice(i + 2);
+  let tail = rest.slice(i + 2);
+  // An Auth identity is named by provider and subject.
+  if (coll === "identities" && tail.length === 1) { id = `${id}/${tail[0]}`; tail = []; }
   if (tail[0] === "actions" && tail[1]) return QUIET.has(tail[1]) ? null : { actionType: `${target}_${tail[1]}`, targetType: target, targetId: id };
   if (tail.length) return method === "POST" ? { actionType: `${target}_${tail.join("_").replace(/s$/, "")}_created`, targetType: target, targetId: id } : null;
+  if (method === "POST" && SINGLETONS.has(target)) return { actionType: `${target}_updated`, targetType: target, targetId: seg[2] };
   if (method === "POST") return id ? { actionType: `${target}_updated`, targetType: target, targetId: id } : { actionType: `${target}_created`, targetType: target, targetId: null };
   if (method === "DELETE") return { actionType: `${target}_deleted`, targetType: target, targetId: id };
   return null;
