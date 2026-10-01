@@ -24,6 +24,8 @@ const [FEATURES, STORES, SDK_PAGES, SOLUTIONS, IA, IB, CA, CB, COMPARE, ALT_PAGE
   load("integrations-a.ts", "INTEGRATIONS_A"), load("integrations-b.ts", "INTEGRATIONS_B"),
   load("charts-a.ts", "CHARTS_A"), load("charts-b.ts", "CHARTS_B"), load("compare.ts", "COMPARE"), load("compare.ts", "ALTERNATIVE_PAGE"), load("alternatives.ts", "ALTERNATIVES"),
 ]);
+const GLOSSARY = (await import(pathToFileURL(path.join(D, "glossary.ts")).href)).GLOSSARY;
+const { termQuestion } = await import(pathToFileURL(path.join(site, "src/lib/glossary-title.ts")).href);
 const { CHARTS: CATALOG, GROUPS } = await import(pathToFileURL(path.join(repo, "packages/core/src/charts/catalog.ts")).href);
 
 const file = (p) => pathToFileURL(p).href;
@@ -177,6 +179,14 @@ for (const [p, label, title, s] of [
   ["/docs", "Docs", "RevenueDot documentation", "screens/offerings-light.png"],
   ["/changelog", "Changelog", "What shipped in RevenueDot", "charts-light.png"],
 ]) add(p, page(`${chrome(label, title)}<div class="crop"><img src="${shotFile(s)}"></div>`));
+
+// Glossary
+const srcLogos = (t) => [/apple\.com/.test(t.sources.map((x) => x.url).join()) && "apple.svg", /android\.com|google\.com/.test(t.sources.map((x) => x.url).join()) && "google-play.svg"].filter(Boolean);
+for (const t of GLOSSARY) {
+  const logos = srcLogos(t).map((f) => logoFile(f)).filter(Boolean);
+  add(`/glossary/${t.slug}`, page(`${chrome(`Glossary · ${t.category}`, termQuestion(t.slug, t.term))}<div class="vis" data-og-safe><div style="display:grid;gap:18px;justify-items:center"><p class="cap">Defined from official docs</p><div style="display:flex;gap:16px">${(logos.length ? logos : [logoFile("app-store.svg")]).map((u) => `<div class="tile"><img src="${u}"></div>`).join("")}</div></div></div>`));
+}
+add("/glossary", page(`${chrome("Glossary", `${GLOSSARY.length} subscription app terms, explained`)}<div class="vis" data-og-safe><div style="display:flex;gap:16px"><div class="tile"><img src="${logoFile("apple.svg")}"></div><div class="tile"><img src="${logoFile("google-play.svg")}"></div></div></div>`));
 
 // Free tools
 if (rcRow) add("/tools/revenuecat-fee-calculator", page(`${chrome("Free tool", "RevenueCat fee calculator")}${billVis(COMPARE[0].price.head, rcRow)}`));

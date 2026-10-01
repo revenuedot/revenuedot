@@ -52,6 +52,7 @@ export const FOOTER = [
       { href: "/charts", label: "Subscription charts" },
       { href: "/integrations", label: "Integrations" },
       { href: "/tools", label: "Free tools" },
+      { href: "/glossary", label: "Glossary" },
       { href: "/pricing", label: "Pricing" },
       { href: "/changelog", label: "Changelog" },
     ],

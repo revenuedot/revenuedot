@@ -10,6 +10,7 @@ import { CHARTS_A } from "./charts-a";
 import { CHARTS_B } from "./charts-b";
 import { COMPARE, ALTERNATIVE_PAGE } from "./compare";
 import { ALTERNATIVES, ALTERNATIVES_INTRO } from "./alternatives";
+import { GLOSSARY } from "./glossary";
 import { CHARTS as CATALOG, GROUPS, type ChartDef } from "../../../../packages/core/src/charts/catalog";
 
 export { ALTERNATIVE_PAGE, ALTERNATIVES, ALTERNATIVES_INTRO, GROUPS };
@@ -66,6 +67,7 @@ const STATIC: Record<string, Entry> = {
   "/charts": { title: "Subscription charts", card: "All 43 subscription charts, from MRR to trial conversion, defined and explained.", label: "Hub" },
   "/compare": { title: "Comparisons", card: "RevenueDot next to RevenueCat, Adapty, Superwall, Qonversion and Apphud.", label: "Hub" },
   "/features": { title: "Features", card: "Everything RevenueDot does, from receipts to paywalls and web checkout.", label: "Hub" },
+  "/glossary": { title: "Subscription app glossary", card: "In-app purchase and subscription terms explained, with Apple's and Google's sources.", label: "Hub" },
   "/tools": { title: "Free tools", card: "Free calculators for RevenueCat fees, store commission and subscription revenue.", label: "Hub" },
 };
 for (const t of TOOLS) STATIC[t.path] = { title: t.title, card: t.card, label: "Free tool" };
@@ -78,6 +80,8 @@ export function entry(path: string): Entry | undefined {
   if (i) return { title: i.name, card: i.card, label: "Integration" };
   const c = CHART_PAGES.find((x) => chartPath(x) === path);
   if (c) return { title: c.def.display_name, card: c.answer.split(". ")[0] + ".", label: "Chart" };
+  const g = GLOSSARY.find((x) => `/glossary/${x.slug}` === path);
+  if (g) return { title: g.term, card: g.short, label: "Glossary" };
   const v = COMPARISONS.find((x) => comparePath(x) === path);
   if (v) return { title: v.columns.slice(0, 2).join(" vs "), card: v.card, label: "Comparison" };
   return undefined;
@@ -88,7 +92,7 @@ export function related(items: string[]) {
   return items
     .map((r) => (r.startsWith("/") ? r : chartByName(r) ? chartPath(chartByName(r)!) : ""))
     .filter((p, i, a) => p && a.indexOf(p) === i)
-    .map((p) => ({ href: p, ...(entry(p) ?? (p.startsWith("/docs") ? { title: p.replace(/^\/docs\//, "").split("/").pop()!.replace(/-/g, " "), card: "Read the docs.", label: "Docs" } : undefined)) }))
+    .map((p) => ({ href: p, ...(entry(p) ?? (p.startsWith("/docs") ? { title: ((t) => t.charAt(0).toUpperCase() + t.slice(1))(p.replace(/^\/docs\//, "").split("/").pop()!.replace(/-/g, " ")), card: "Read the docs.", label: "Docs" } : undefined)) }))
     .filter((r): r is { href: string; title: string; card: string; label: string } => !!r.title);
 }
 
@@ -101,5 +105,6 @@ export function seoPaths(): { path: string; title: string; card: string }[] {
     ...INTEGRATIONS.map((i) => ({ path: integrationPath(i), title: i.title, card: i.card })),
     ...CHART_PAGES.map((c) => ({ path: chartPath(c), title: c.title, card: c.answer })),
     ...COMPARISONS.map((c) => ({ path: comparePath(c), title: c.title, card: c.card })),
+    ...GLOSSARY.map((g) => ({ path: `/glossary/${g.slug}`, title: g.term, card: g.short })),
   ];
 }
