@@ -162,7 +162,7 @@ export function oauthRoutes(deps: Deps) {
       code_challenge_methods_supported: ["S256"],
       client_id_metadata_document_supported: true,
       authorization_response_iss_parameter_supported: true,
-      service_documentation: "https://revenuedot.app/docs/mcp",
+      service_documentation: "https://revenuedot.app/docs/guides/connect-ai-assistants",
     });
   });
 

@@ -25,7 +25,7 @@
 | Tools that write to App Store Connect or Google Play | 3 | Same as `prd/mcp-and-skills/PRD.md` |
 
 ## The 34 tools
-Names are RevenueCat's where the tool is the same (`revenuedot/mcp` PRD). Every name is at most 64 characters; every tool has a `title`; no tool takes or returns a store secret, a private key or an API key; every tool takes an optional `project_id` (default: the connection's only project). Kinds: **R** read-only, **W** writes without deleting, **D** destructive (clients ask the user first).
+Names are RevenueCat's where the tool is the same (`revenuedot/mcp` PRD). Every name is at most 64 characters; every tool has a `title`; no tool takes a store secret, a private key, an API key or a header credential, and the only secret a result carries is a webhook's signing secret, once, when it is created; every tool takes an optional `project_id` (default: the connection's only project). Kinds: **R** read-only, **W** writes without deleting, **D** destructive (clients ask the user first).
 
 | Group | Tool | Kind | OAuth scope |
 |---|---|---|---|
@@ -51,6 +51,8 @@ Names are RevenueCat's where the tool is the same (`revenuedot/mcp` PRD). Every 
 
 The listing test asserts the exact counts.
 
+**Differences from RevenueCat's tools, on purpose:** `create-webhook-integration` has no `authorization_header` input (a header is a credential; it is set in the dashboard). `verify-store-credentials` takes only an app id.
+
 **Left out on purpose:** API key tools (an agent must not mint keys), app creation (needs store credentials that belong in the dashboard), member and invite tools, project deletion, and anything that accepts a credential.
 
 ## OAuth changes (`apps/server/src/routes/oauth.ts`, `mcp/src/http.ts`)
@@ -59,7 +61,7 @@ The listing test asserts the exact counts.
 3. **Client ID metadata documents:** a `client_id` that is an `https` URL is fetched (HTTPS only, no private addresses, 5 second timeout, 10 KB, JSON, `client_id` must equal the URL, redirect URIs validated by the same rules as registration) and cached for an hour. `client_id_metadata_document_supported: true` is published. Dynamic registration stays for clients that need it.
 4. **`iss` parameter** on the authorization response (RFC 9207) and `authorization_response_iss_parameter_supported: true`.
 5. **`resource` checked:** when sent it must be an absolute URL without a fragment (RFC 8707); it is stored on the code, and a token request that names a different `resource` gets `invalid_target`.
-6. **Per-tool security schemes:** every tool descriptor carries `_meta.securitySchemes = [{ type: "oauth2", scopes: [...] }]` and the server answers an unauthenticated `tools/list` (so directories can read the tool list), while any `tools/call` without a token returns 401 with `WWW-Authenticate`.
+6. **Per-tool security schemes:** every tool descriptor carries `_meta.securitySchemes = [{ type: "oauth2", scopes: [...] }]`. Every MCP call without a token still answers 401 with `WWW-Authenticate` (a first connection asks for read and change; money actions are asked for later).
 7. **Domain verification:** `GET /.well-known/openai-apps-challenge` returns the value of `OPENAI_APPS_CHALLENGE` (Worker variable) as plain text; 404 when unset.
 
 Still true: tokens are project-scoped secret keys that do not expire, shown in API keys, revoked by deleting the key. Refresh tokens stay in Known gaps.
