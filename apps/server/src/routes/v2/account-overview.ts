@@ -3,7 +3,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { HISTORY_METRICS, metricHistory, type HistoryMetric, type MetricHistory } from "../../services/metric-history.js";
 import { projectsForUser } from "../../services/sessions.js";
-import { overviewValues, type OverviewValues } from "./metrics.js";
+import { METRICS, overviewValues, type OverviewValues } from "./metrics.js";
 import { V2Error, allows, listOf, pageParams, paramError, round2, type V2Context, type V2Router } from "./common.js";
 import { userProjectPrincipal } from "./project-access.js";
 
@@ -18,14 +18,6 @@ import { userProjectPrincipal } from "./project-access.js";
  * set; ids the user cannot open are ignored, so ids cannot be probed.
  */
 
-const CARDS: { id: HistoryMetric; name: string; description: string; unit: string; period: "P0D" | "P28D" }[] = [
-  { id: "active_trials", name: "Active Trials", description: "In total", unit: "#", period: "P0D" },
-  { id: "active_subscriptions", name: "Active Subscriptions", description: "In total", unit: "#", period: "P0D" },
-  { id: "mrr", name: "MRR", description: "Monthly Recurring Revenue", unit: "$", period: "P28D" },
-  { id: "revenue", name: "Revenue", description: "Last 28 days", unit: "$", period: "P28D" },
-  { id: "new_customers", name: "New Customers", description: "Last 28 days", unit: "#", period: "P28D" },
-  { id: "active_users", name: "Active Customers", description: "Last 28 days", unit: "#", period: "P28D" },
-];
 const MONEY = new Set<HistoryMetric>(["mrr", "revenue"]);
 
 /** Sums overview values; money is rounded to cents. */
@@ -73,9 +65,23 @@ async function accessibleProjects(deps: Deps, c: V2Context, need: Scope): Promis
       const principal = await userProjectPrincipal(deps, c, p, x.id);
       out.push(allows(principal, need) ? { id: x.id, name: x.name, included: true } : { id: x.id, name: x.name, included: false, reason: "Your role in this project does not include this data." });
     } catch (e) {
-      out.push({ id: x.id, name: x.name, included: false, reason: e instanceof V2Error ? e.message : "This project cannot be opened right now." });
+      // 404: the membership is gone or an extension closed the project to this person (deprovisioned): the project route
+      // would answer "Project not found", which reads oddly next to a project listed by name.
+      if (!(e instanceof V2Error)) console.error(`account overview: project ${x.id} could not be checked`, e);
+      const reason = !(e instanceof V2Error) ? "This project cannot be opened right now." : e.status === 404 ? "You no longer have access to this project." : e.message;
+      out.push({ id: x.id, name: x.name, included: false, reason });
     }
   }
+  return out;
+}
+
+/** `fn` over `items`, at most `n` at a time (each project's Overview is seven queries; many projects must not open them all at once). */
+async function mapLimit<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]!); }
+  }));
   return out;
 }
 
@@ -97,14 +103,14 @@ export function accountOverviewRoutes(r: V2Router, deps: Deps) {
     const projects = await accessibleProjects(deps, c, "charts_metrics:overview:read");
     const ids = projects.filter((x) => x.included).map((x) => x.id);
     const now = deps.now();
-    const per = await Promise.all(ids.map(async (id) => ({
+    const per = await mapLimit(ids, 4, async (id) => ({
       values: await overviewValues(db, id, now, env),
       history: await Promise.all(HISTORY_METRICS.map((m) => metricHistory(db, id, now, m, days, env))),
-    })));
+    }));
     const total = sumOverview(per.map((x) => x.values));
     return c.json({
       object: "account_overview", currency: "USD", environment: env, days, projects,
-      metrics: CARDS.map((m) => {
+      metrics: METRICS.map((m) => {
         const h = sumHistories(m.id, per.map((x) => x.history[HISTORY_METRICS.indexOf(m.id)]!));
         return {
           object: "overview_metric", ...m, value: total[m.id],

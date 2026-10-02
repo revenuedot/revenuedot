@@ -1,6 +1,7 @@
 // Overview across projects (GET /v2/overview, GET /v2/overview/transactions): sums, roles, custom roles and denials
 // from extensions, project_ids, pagination, and who may call it.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { and, eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import type { ServerExtension } from "../src/extensions.js";
 import { createSecretKey } from "../src/services/auth.js";
@@ -89,6 +90,13 @@ describe("GET /v2/overview", () => {
     const one = await a.browser.call("GET", `/v2/overview?project_ids=proj_view,${b.projectId},nope`);
     expect(one.body.projects).toEqual([{ id: "proj_view", name: "Viewer project", included: true }]);
     expect(metric(one.body, "revenue").value).toBe(19.99);
+    // Removed from the project: it is gone from the list and the sums, and its id is ignored.
+    await s.db.delete(schema.memberships).where(and(eq(schema.memberships.userId, a.userId), eq(schema.memberships.projectId, "proj_view")));
+    const after = await a.browser.call("GET", "/v2/overview");
+    expect(after.body.projects.map((p: any) => p.id)).not.toContain("proj_view");
+    expect(metric(after.body, "revenue").value).toBe(9.99);
+    expect((await a.browser.call("GET", "/v2/overview?project_ids=proj_view")).body.projects).toEqual([]);
+    expect((await a.browser.call("GET", "/v2/overview/transactions?starting_after=tx_proj_view_v1")).body.param).toBe("starting_after");
   });
 
   it("validates its parameters and refuses API keys and signed-out calls", async () => {
