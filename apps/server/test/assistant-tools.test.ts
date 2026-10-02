@@ -11,15 +11,15 @@ import { inProcessClient, RevenueDotApiError } from "../src/services/assistant/c
 import { compactChart, compactResult, isWriteTool, redactSecrets, tools, toolsByName } from "../src/services/assistant/tools.js";
 
 const names = (t: { name: string }[]) => t.map((x) => x.name);
-const WRITES = ["grant-customer-entitlement", "revoke-customer-entitlement", "create-product", "attach-products-to-entitlement", "attach-products-to-package", "set-current-offering", "import-storekit-products", "start-experiment", "pause-experiment", "retry-webhook-delivery", "replay-failed-webhook-deliveries"];
+const WRITES = ["grant-customer-entitlement", "revoke-customer-entitlement", "create-product", "attach-products-to-entitlement", "attach-products-to-package", "set-current-offering", "import-storekit-products", "create-experiment", "create-targeting-rule", "start-experiment", "pause-experiment", "stop-experiment", "retry-webhook-delivery", "replay-failed-webhook-deliveries"];
 
 describe("tool catalog", () => {
   it("has the MCP server's names for shared tools and the read and write tools the spec lists", () => {
     for (const n of ["get-metrics", "get-customer", "list-customers", "list-events", "list-transactions", "list-products", "list-entitlements", "list-offerings", "list-apps",
       "get-project-health", "list-webhook-integrations", "list-webhook-deliveries", "retry-webhook-delivery", "grant-customer-entitlement", "revoke-customer-entitlement",
       "create-product", "attach-products-to-entitlement", "attach-products-to-package", "get-import-status"]) expect(toolsByName.has(n), n).toBe(true);
-    for (const n of ["list-charts", "get-chart", "list-paywalls", "list-targeting-rules", "list-experiments", "get-experiment-results", "list-integrations", "set-current-offering",
-      "start-experiment", "pause-experiment", "replay-failed-webhook-deliveries", "import-storekit-products"]) expect(toolsByName.has(n), n).toBe(true);
+    for (const n of ["list-charts", "get-chart", "list-paywalls", "list-targeting-rules", "list-audiences", "list-experiments", "get-experiment-results", "list-integrations", "set-current-offering",
+      "create-experiment", "create-targeting-rule", "start-experiment", "pause-experiment", "stop-experiment", "replay-failed-webhook-deliveries", "import-storekit-products"]) expect(toolsByName.has(n), n).toBe(true);
     expect(names(tools.filter(isWriteTool)).sort()).toEqual([...WRITES].sort());
   });
 
@@ -84,6 +84,22 @@ describe("the in-process client acts as the signed-in user", () => {
     const stranger = await s.signup("eve@example.com");
     const asStranger = inProcessClient(s.deps.dispatch, { userId: stranger.userId, email: "eve@example.com", projectId: s.pid, conversationId: "c" });
     await expect(toolsByName.get("list-products")!.run(asStranger, {} as never)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("create-experiment drafts an experiment from offering lookup keys and create-targeting-rule a rule that is off", async () => {
+    const s = await assistantServer();
+    const c = inProcessClient(s.deps.dispatch, { userId: s.admin.userId, email: "ada@example.com", projectId: s.pid, conversationId: "c" });
+    for (const key of ["default", "trial14"]) await s.admin.browser.call("POST", `${s.P}/offerings`, { lookup_key: key, display_name: key });
+    const exp = await toolsByName.get("create-experiment")!.run(c, { name: "14-day trial", type: "free_trial_offer", control_offering: "default", treatment_offerings: ["trial14"], notes: "Longer trial, more payers." } as never) as Record<string, any>;
+    expect(exp).toMatchObject({ object: "experiment", status: "draft", type: "free_trial_offer", primary_metric: "conversion_to_paying", notes: "Longer trial, more payers.", variants: [{ id: "a" }, { id: "b" }] });
+    await expect(toolsByName.get("create-experiment")!.run(c, { name: "x", control_offering: "default", treatment_offerings: ["nope"] } as never)).rejects.toMatchObject({ status: 404 });
+    const rule = await toolsByName.get("create-targeting-rule")!.run(c, { name: "Trial for all", offering: "trial14", placements: { onboarding: "default" }, starts_at: "7d" } as never) as Record<string, any>;
+    expect(rule).toMatchObject({ object: "targeting_rule", state: "inactive", name: "Trial for all" });
+    expect(rule.starts_at).toBeGreaterThan(Date.now());
+    expect(Object.values(rule.placements)[0]).toMatch(/^ofrng/);
+    const [log] = await s.db.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.projectId, s.pid), eq(schema.auditLogs.actionType, "experiment_created")));
+    expect(log).toMatchObject({ actorType: "assistant" });
+    expect(await toolsByName.get("list-audiences")!.run(c, {} as never)).toMatchObject({ items: [] });
   });
 
   it("get-chart answers any chart compacted, and list-charts lists all 43", async () => {

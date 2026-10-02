@@ -12,7 +12,7 @@ import * as schema from "./schema.js";
 
 export { schema };
 export type { DeliveryAttempt } from "./schema.js";
-export type { PaywallContent, ExportFile, ExportProgress, ArchiveFileEntry, ArchiveTableEntry, ArchiveProgress } from "./schema.js";
+export type { PaywallContent, ExportFile, ExportProgress, ArchiveFileEntry, ArchiveTableEntry, ArchiveProgress, ExperimentVariant } from "./schema.js";
 export type DB = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));

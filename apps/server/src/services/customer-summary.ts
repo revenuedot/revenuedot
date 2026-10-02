@@ -104,7 +104,7 @@ async function currentOfferingFor(db: DB, data: CustomerData, override: typeof s
   const o = offs.find((x) => x.id === r.currentOfferingId);
   if (r.experiment) {
     const [e] = await db.select({ name: schema.experiments.name }).from(schema.experiments).where(eq(schema.experiments.id, r.experiment.id)).limit(1);
-    return shape(o, "experiment", { experiment_id: r.experiment.id, experiment_name: e?.name ?? null, variant: r.experiment.variant });
+    return shape(o, "experiment", { experiment_id: r.experiment.id, experiment_name: e?.name ?? null, variant: r.experiment.variant, variant_name: r.experiment.variantName });
   }
   if (r.rule) {
     const [t] = await db.select({ name: schema.targetingRules.name }).from(schema.targetingRules).where(eq(schema.targetingRules.id, r.rule.id)).limit(1);

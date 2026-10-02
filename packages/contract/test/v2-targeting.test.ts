@@ -219,7 +219,7 @@ describe("experiments", () => {
 
     // A purchase by an enrolled customer carries `experiments` in its webhook event.
     const buyer = Object.keys(seen).find((u) => seen[u] === "promo")!;
-    await buy(h, buyer, "pro_monthly", new Date(Date.now() + 1000), 10);
+    await buy(h, buyer, "pro_monthly", new Date(h.now().getTime() + 1000), 10);
     const ip = await h.db.select().from(schema.events).where(eq(schema.events.type, "INITIAL_PURCHASE"));
     expect((ip[0]!.payload as any).event.experiments).toEqual([{ experiment_id: id, experiment_variant: "b", enrolled_at_ms: expect.any(Number) }]);
 

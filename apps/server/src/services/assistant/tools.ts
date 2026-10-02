@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { CHARTS, parseStoreKitConfig } from "@revenuedot/core";
+import { CHARTS, EXPERIMENT_TYPE_IDS, METRIC_IDS, PRIMARY_METRIC_IDS, parseStoreKitConfig } from "@revenuedot/core";
 import { RevenueDotApiError, type RevenueDotClient } from "./client.js";
 
 /**
@@ -239,14 +239,20 @@ export const tools: ToolDefinition[] = [
     run: async (c) => c.request("GET", `${await P(c)}/targeting_rules`, { query: { limit: 100 } }),
   }),
   define({
+    name: "list-audiences", title: "List audiences",
+    description: "Saved audiences (sets of customer conditions) that targeting rules and experiments can use, with their conditions.",
+    inputSchema: {}, annotations: READ, scopes: ["audiences:audiences:read"],
+    run: async (c) => c.request("GET", `${await P(c)}/audiences`, { query: { limit: 100 } }),
+  }),
+  define({
     name: "list-experiments", title: "List experiments",
-    description: "Offering A/B experiments with status (draft, running, paused, stopped), the two offerings and the enrollment percent.",
+    description: "Offering experiments with status (draft, running, paused, stopped), type, priority (1 enrolls first), variants (control a and treatments b to d with offerings and placements), enrollment mode, audience, share and enrolled customers.",
     inputSchema: {}, annotations: READ, scopes: ["project_configuration:offerings:read"],
     run: async (c) => c.request("GET", `${await P(c)}/experiments`, { query: { limit: 100 } }),
   }),
   define({
     name: "get-experiment-results", title: "Get experiment results",
-    description: "An experiment's results per variant: enrolled customers, trials, conversions, revenue and the chance each variant is better.",
+    description: "An experiment's results per variant: customers, initial conversion, trials and trial conversion, conversion to paying, active and churned subscribers, refunds, realized LTV and MRR per customer, each with a 95% interval, the lift over the control and the chance to beat it, plus guidance on whether there is enough data.",
     inputSchema: { experiment_id: z.string().describe("Experiment id (see list-experiments).") },
     annotations: READ, scopes: ["project_configuration:offerings:read"],
     run: async (c, a) => c.request("GET", `${await P(c)}/experiments/${enc(a.experiment_id)}/results`),
@@ -418,10 +424,61 @@ export const tools: ToolDefinition[] = [
     },
   }),
 
-  // ---- Write: experiments
+  // ---- Write: experiments and targeting
+  define({
+    name: "create-experiment", title: "Create experiment draft",
+    description: "Drafts an offering experiment: a control offering and 1 to 3 treatment offerings, with a type, metrics, a hypothesis and who to enroll. It is always created as a draft that nobody joins until the user starts it. Offerings can be ids or lookup keys (see list-offerings).",
+    inputSchema: {
+      name: z.string().min(1).max(256).describe("A short name, such as \"Annual first\"."),
+      type: z.enum(EXPERIMENT_TYPE_IDS).optional().describe("What is tested; sets the default metrics."),
+      control_offering: z.string().describe("The offering customers see today (id or lookup key), usually the current offering."),
+      treatment_offerings: z.array(z.string()).min(1).max(3).describe("1 to 3 offerings to test against the control (ids or lookup keys)."),
+      primary_metric: z.enum(PRIMARY_METRIC_IDS as [string, ...string[]]).optional().describe("The metric that decides the winner (default from the type)."),
+      secondary_metrics: z.array(z.enum(METRIC_IDS as [string, ...string[]])).max(12).optional(),
+      notes: z.string().max(5000).optional().describe("The hypothesis in Markdown: what changes, what you expect and why."),
+      enrollment: z.enum(["new", "new_and_existing"]).optional().describe("new (default): only customers first seen after the start; new_and_existing: anyone."),
+      audience_id: z.string().optional().describe("A saved audience (see list-audiences); default everyone."),
+      enrollment_percent: z.number().int().min(1).max(100).optional().describe("Share of matching customers to enroll (default 100)."),
+    },
+    annotations: CREATE, scopes: ["project_configuration:offerings:read_write"],
+    run: async (c, a) => {
+      const base = await P(c);
+      const ids = [await offeringId(c, base, a.control_offering), ...(await Promise.all(a.treatment_offerings.map((o) => offeringId(c, base, o))))];
+      return c.request("POST", `${base}/experiments`, {
+        body: {
+          name: a.name, type: a.type, primary_metric: a.primary_metric, secondary_metrics: a.secondary_metrics, notes: a.notes, enrollment: a.enrollment,
+          audience_id: a.audience_id, enrollment_percent: a.enrollment_percent, variants: ids.map((offering_id) => ({ offering_id })),
+        },
+      });
+    },
+  }),
+  define({
+    name: "create-targeting-rule", title: "Create targeting rule",
+    description: "Drafts a targeting rule: customers in an audience (or everyone) get an offering, optionally another offering per placement, optionally between two dates. It is created turned off; the user turns it on from the Targeting page.",
+    inputSchema: {
+      name: z.string().min(1).max(256),
+      offering: z.string().describe("The offering they get (id or lookup key)."),
+      audience_id: z.string().optional().describe("A saved audience (see list-audiences); default everyone."),
+      placements: z.record(z.string(), z.string().nullable()).optional().describe("Placement id → offering (id or lookup key), or null for no paywall there."),
+      starts_at: z.union([z.number(), z.string()]).optional().describe("When it starts: ms, ISO date or a duration from now such as 7d."),
+      ends_at: z.union([z.number(), z.string()]).optional().describe("When it ends: ms, ISO date or a duration from now."),
+    },
+    annotations: CREATE, scopes: ["project_configuration:offerings:read_write"],
+    run: async (c, a) => {
+      const base = await P(c);
+      const placements: Record<string, string | null> = {};
+      for (const [k, v] of Object.entries(a.placements ?? {})) placements[k] = v ? await offeringId(c, base, v) : null;
+      return c.request("POST", `${base}/targeting_rules`, {
+        body: {
+          name: a.name, offering_id: await offeringId(c, base, a.offering), audience_id: a.audience_id ?? null, placements, state: "inactive",
+          ...(a.starts_at !== undefined ? { starts_at: toEpochMs(a.starts_at) } : {}), ...(a.ends_at !== undefined ? { ends_at: toEpochMs(a.ends_at) } : {}),
+        },
+      });
+    },
+  }),
   define({
     name: "start-experiment", title: "Start experiment",
-    description: "Starts (or resumes) an offering experiment: new customers in its audience are enrolled and split between the two offerings.",
+    description: "Starts (or resumes) an offering experiment: customers its enrollment mode and audience admit are enrolled and split evenly between its variants.",
     inputSchema: { experiment_id: z.string().describe("Experiment id (see list-experiments).") },
     annotations: CREATE, scopes: ["project_configuration:offerings:read_write"],
     run: async (c, a) => c.request("POST", `${await P(c)}/experiments/${enc(a.experiment_id)}/actions/start`),
@@ -432,6 +489,13 @@ export const tools: ToolDefinition[] = [
     inputSchema: { experiment_id: z.string().describe("Experiment id (see list-experiments).") },
     annotations: { ...ATTACH, destructiveHint: true }, scopes: ["project_configuration:offerings:read_write"],
     run: async (c, a) => c.request("POST", `${await P(c)}/experiments/${enc(a.experiment_id)}/actions/pause`),
+  }),
+  define({
+    name: "stop-experiment", title: "Stop experiment",
+    description: "Stops an experiment for good: enrolled customers go back to targeting or the current offering on their next request. Results stay. A stopped experiment cannot run again.",
+    inputSchema: { experiment_id: z.string().describe("Experiment id (see list-experiments).") },
+    annotations: DESTROY, scopes: ["project_configuration:offerings:read_write"],
+    run: async (c, a) => c.request("POST", `${await P(c)}/experiments/${enc(a.experiment_id)}/actions/stop`),
   }),
 
   // ---- Write: webhook deliveries

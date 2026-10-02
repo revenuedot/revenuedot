@@ -25,6 +25,7 @@ import { customerExtraRoutes } from "./customer-extras.js";
 import { auditMiddleware, auditRoutes } from "./audit.js";
 import { paywallRoutes } from "./paywalls.js";
 import { targetingRoutes } from "./targeting.js";
+import { experimentRoutes } from "./experiments.js";
 import { chartRoutes } from "./charts.js";
 import { savedChartRoutes } from "./saved-charts.js";
 import { partnerIntegrationRoutes } from "./partner-integrations.js";
@@ -135,6 +136,7 @@ export function v2Routes(deps: Deps) {
   auditRoutes(r, deps);
   paywallRoutes(r, deps);
   targetingRoutes(r, deps);
+  experimentRoutes(r, deps);
   chartRoutes(r, deps);
   savedChartRoutes(r, deps);
   partnerIntegrationRoutes(r, deps);
