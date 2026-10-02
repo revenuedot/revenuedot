@@ -192,7 +192,7 @@ Reference: RevenueCat's chart page (Charts v3) as observed on 2026-10-01. Under 
 ### 6. Saved charts in the rail
 Already built (prd/paywalls/PRD.md §6): "Saved" on top of the rail, opening one restores the view, rename and delete from its menu. Saved views now keep the chart type.
 
-### Data (migration 0028)
+### Data (migration 0029)
 - `chart_annotations` (id, project, start and end date, title, description, created_by, created and updated time).
 - `chart_shares` (id, the token and its SHA-256 (unique), project, chart, view, snapshot, the PNG preview, created_by, created time, revoked time). Both travel in project exports (prd/moves-export).
 
