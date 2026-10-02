@@ -241,11 +241,16 @@ test("customers: sort by a column header, page in that order, hide app user IDs"
   await expect(page).toHaveURL(/\/customers\/wjqx8kd2rn1$/);
   await page.goBack();
 
+  // Showing IDs again (the toggle lives in the table header, so clear the search first) names the customer again.
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(rows.first().locator("td").first()).toHaveText("••••••••••");
   await eye.click();
   await expect(eye).toHaveAttribute("aria-pressed", "false");
+  await expect(rows.first().locator("td").first()).not.toHaveText("••••••••••");
+  await page.getByPlaceholder("App user ID, email or store transaction ID").fill(tx);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByRole("heading", { name: `"${tx}" belongs to wjqx8kd2rn1` })).toBeVisible();
   await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await expect(rows.first().locator("td").first()).not.toHaveText("••••••••••");
   await rows.first().locator("a").first().click();
   await expect(page).toHaveURL(/\/customers\/[^/?]+$/);
 });
