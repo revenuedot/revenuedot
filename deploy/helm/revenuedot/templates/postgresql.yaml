@@ -16,6 +16,9 @@ metadata:
   labels:
     {{- include "revenuedot.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
+  annotations:
+    # The data volume outlives helm uninstall, and Postgres keeps the first password; a reinstall must reuse it.
+    helm.sh/resource-policy: keep
 type: Opaque
 stringData:
   POSTGRES_PASSWORD: {{ $password | quote }}

@@ -1,4 +1,9 @@
 # Production shape: external Postgres through a Secret, hook Job migrations, Ingress with TLS, S3 archives (keys in the Secret).
+image:
+  repository: registry.example.com/revenuedot
+  tag: ci
+env:
+  NODE_EXTRA_CA_CERTS: /etc/ssl/certs/rds-global-bundle.pem
 publicUrl: https://revenuedot.example.com
 database:
   existingSecret: revenuedot-db

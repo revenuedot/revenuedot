@@ -48,7 +48,8 @@ app.kubernetes.io/part-of: revenuedot
 {{- end -}}
 
 {{- define "revenuedot.image" -}}
-{{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) -}}
+{{- $repo := required "Set image.repository: there is no published RevenueDot image yet. Build and push one (docker build -t <registry>/revenuedot:<tag> . in the repository) and set image.repository and image.tag." .Values.image.repository -}}
+{{- printf "%s:%s" $repo (default .Chart.AppVersion .Values.image.tag) -}}
 {{- end -}}
 
 {{/* The public address: publicUrl, else the first Ingress host. */}}
@@ -89,6 +90,9 @@ DATABASE_URL
 {{- if .Values.postgresql.enabled }}{{ $sources = add1 $sources }}{{ end -}}
 {{- if ne (int $sources) 1 -}}
 {{- fail "Choose exactly one database: database.existingSecret (production), database.url, or postgresql.enabled=true (evaluation only)." -}}
+{{- end -}}
+{{- if ge (add (int .Values.shutdown.delayMs) (int .Values.shutdown.timeoutMs)) (mul (int .Values.terminationGracePeriodSeconds) 1000) -}}
+{{- fail "shutdown.delayMs + shutdown.timeoutMs must be less than terminationGracePeriodSeconds, or Kubernetes kills replicas mid-drain." -}}
 {{- end -}}
 {{- if lt (int .Values.database.poolMax) 2 -}}
 {{- fail "database.poolMax must be at least 2 (one connection is reserved for the cluster locks)." -}}

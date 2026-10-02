@@ -12,8 +12,9 @@
 replicaCount: 2
 
 image:
-  # Build and push your own until the published image exists: docker build -t <registry>/revenuedot:<tag> . (repo root)
-  repository: ghcr.io/revenuedot/revenuedot
+  # Required: there is no published image yet. Build and push your own from the repository root
+  # (docker build -t <registry>/revenuedot:<tag> .) and set repository and tag.
+  repository: ""
   # Defaults to the chart's appVersion.
   tag: ""
   pullPolicy: IfNotPresent
@@ -46,6 +47,7 @@ migrations:
   # startup: always on replica start.
   mode: auto
   backoffLimit: 2
+  # Helm waits 5 minutes for a hook by default: pass --timeout 15m to helm install/upgrade for long migrations.
   activeDeadlineSeconds: 900
   resources:
     requests: { cpu: 100m, memory: 256Mi }
@@ -123,14 +125,16 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
+  # Off by default: Node rarely returns memory, so scaling on it only adds replicas (and Postgres connections).
+  targetMemoryUtilizationPercentage: null
 
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
 
 # Kubernetes sends SIGTERM, then waits this long. The server turns /readyz 503, waits shutdown.delayMs for the load
-# balancer to notice, then drains for up to shutdown.timeoutMs; keep delay + timeout under the grace period.
+# balancer to notice, then drains for up to shutdown.timeoutMs; delay + timeout must stay under the grace period (the chart
+# refuses to render otherwise).
 terminationGracePeriodSeconds: 30
 shutdown:
   delayMs: 5000

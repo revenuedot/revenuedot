@@ -39,6 +39,15 @@ spec:
           command: ["node", "--import", "tsx", "src/migrate.node.ts"]
           env:
             {{- include "revenuedot.databaseEnv" . | nindent 12 }}
+            {{- /* The chart's ConfigMap does not exist yet at pre-install, so env values go in directly. */}}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | toString | quote }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}
           securityContext:

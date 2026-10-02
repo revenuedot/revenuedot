@@ -96,13 +96,16 @@ jobs:
           docker run -d --name app --network rd -p 8787:8787 -e DATABASE_URL=postgres://postgres:ci@db:5432/revenuedot revenuedot:ci
           for i in $(seq 1 60); do curl -sf http://localhost:8787/ && break; sleep 1; done
           curl -sf http://localhost:8787/ || { docker logs app; exit 1; }
-      # The way the Helm chart and the ECS task run it (prd/ha-self-host/PRD.md): migration job first, then replicas as a
-      # non-root user on a read-only root filesystem, migrating under the lock; SIGTERM drains and exits 0.
+      # The way the Helm chart runs it (prd/ha-self-host/PRD.md): a replica that skips migrating refuses an unmigrated
+      # database, the migration job runs, then replicas start as a non-root user on a read-only root filesystem; SIGTERM
+      # drains and exits 0.
       - name: Run like the Helm chart (migration job, read-only non-root replicas, drain on SIGTERM)
         run: |
           DB=postgres://postgres:ci@db:5432/revenuedot_ha
           docker exec db psql -U postgres -c 'CREATE DATABASE revenuedot_ha'
           RO="--read-only --tmpfs /tmp:rw,size=256m --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges"
+          out=$(docker run --rm --network rd $RO -e DATABASE_URL=$DB -e REVENUEDOT_MIGRATE=skip revenuedot:ci 2>&1) && { echo "$out"; echo "started on an unmigrated database"; exit 1; }
+          grep -q 'started without migrating (REVENUEDOT_MIGRATE=skip)' <<<"$out" || { echo "$out"; exit 1; }
           docker run --rm --network rd $RO -e DATABASE_URL=$DB revenuedot:ci node --import tsx src/migrate.node.ts
           for n in 1 2; do docker run -d --name r$n --network rd -p 879$n:8787 $RO -e DATABASE_URL=$DB -e REVENUEDOT_MIGRATE=skip -e REVENUEDOT_ARCHIVE_DIR=db -e REVENUEDOT_SHUTDOWN_DELAY_MS=1000 revenuedot:ci; done
           for n in 1 2; do
@@ -131,10 +134,14 @@ jobs:
             helm lint --strict . -f "$f"
             helm template rd . -f "$f" > "$RUNNER_TEMP/rendered/$(basename "$f")"
           done
-          # Guard rails: no database, two databases, and a hook Job without an existing Secret all refuse to render.
-          ! helm template rd . --set publicUrl=https://x.example.com 2>/dev/null
-          ! helm template rd . --set publicUrl=https://x.example.com --set database.url=postgres://x --set postgresql.enabled=true 2>/dev/null
-          ! helm template rd . --set publicUrl=https://x.example.com --set database.url=postgres://x --set migrations.mode=job 2>/dev/null
+          # Guard rails: each of these must refuse to render, with its own message (a bare `! cmd` would never fail the step).
+          refuses() { local want="$1"; shift; if out=$(helm template rd . "$@" 2>&1); then echo "rendered, expected: $want"; exit 1; fi; grep -q "$want" <<<"$out" || { echo "$out"; exit 1; }; }
+          ok="--set image.repository=registry.example.com/revenuedot --set publicUrl=https://x.example.com"
+          refuses "Set image.repository" --set publicUrl=https://x.example.com --set database.url=postgres://x
+          refuses "exactly one database" $ok
+          refuses "exactly one database" $ok --set database.url=postgres://x --set postgresql.enabled=true
+          refuses "needs database.existingSecret" $ok --set database.url=postgres://x --set migrations.mode=job
+          refuses "terminationGracePeriodSeconds" $ok --set database.url=postgres://x --set shutdown.timeoutMs=30000
       - name: kubeconform (Kubernetes 1.29 to 1.33, strict)
         run: |
           curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz kubeconform

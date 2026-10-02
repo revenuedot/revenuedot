@@ -17,7 +17,7 @@ COPY --from=build /app /app
 WORKDIR /app/apps/server
 ENV NODE_ENV=production PORT=8787 DASHBOARD_DIST=/app/apps/dashboard/dist
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://localhost:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s CMD node -e "fetch('http://localhost:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # Node runs as PID 1 (no pnpm wrapper), so SIGTERM reaches the server and it drains (prd/ha-self-host/PRD.md).
 # Migrations only (Helm hook Job, ECS and Cloud Run tasks): node --import tsx src/migrate.node.ts
 CMD ["node", "--import", "tsx", "src/entry.node.ts"]

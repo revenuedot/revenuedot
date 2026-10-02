@@ -1,3 +1,23 @@
+{{- /* Plain settings; .Values.env adds to them and wins on a clash (a key set twice would not install). */}}
+{{- $data := dict "PORT" "8787" "NODE_ENV" "production" -}}
+{{- $_ := set $data "REVENUEDOT_PUBLIC_URL" (include "revenuedot.publicUrl" .) -}}
+{{- with .Values.apiUrl }}{{ $_ := set $data "REVENUEDOT_API_URL" (trimSuffix "/" .) }}{{ end -}}
+{{- $_ := set $data "REVENUEDOT_ALLOW_SIGNUP" (toString .Values.allowSignup) -}}
+{{- $_ := set $data "REVENUEDOT_BACKGROUND_JOBS" (ternary "on" "off" .Values.backgroundJobs) -}}
+{{- $_ := set $data "REVENUEDOT_SHUTDOWN_DELAY_MS" (toString .Values.shutdown.delayMs) -}}
+{{- $_ := set $data "REVENUEDOT_SHUTDOWN_TIMEOUT_MS" (toString .Values.shutdown.timeoutMs) -}}
+{{- with .Values.mail.from }}{{ $_ := set $data "REVENUEDOT_MAIL_FROM" . }}{{ end -}}
+{{- with .Values.mail.replyTo }}{{ $_ := set $data "REVENUEDOT_MAIL_REPLY_TO" . }}{{ end -}}
+{{- if .Values.archives.s3.bucket -}}
+{{- $_ := set $data "REVENUEDOT_ARCHIVE_S3_BUCKET" .Values.archives.s3.bucket -}}
+{{- $_ := set $data "REVENUEDOT_ARCHIVE_S3_REGION" .Values.archives.s3.region -}}
+{{- $_ := set $data "REVENUEDOT_ARCHIVE_S3_ENDPOINT" .Values.archives.s3.endpoint -}}
+{{- $_ := set $data "REVENUEDOT_ARCHIVE_S3_PREFIX" .Values.archives.s3.prefix -}}
+{{- else -}}
+{{- /* No bucket: archives live in Postgres, never on a pod's disk. */}}
+{{- $_ := set $data "REVENUEDOT_ARCHIVE_DIR" "db" -}}
+{{- end -}}
+{{- range $k, $v := .Values.env }}{{ $_ := set $data $k (toString $v) }}{{ end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,31 +25,6 @@ metadata:
   labels:
     {{- include "revenuedot.labels" . | nindent 4 }}
 data:
-  PORT: "8787"
-  NODE_ENV: production
-  REVENUEDOT_PUBLIC_URL: {{ include "revenuedot.publicUrl" . | quote }}
-  {{- with .Values.apiUrl }}
-  REVENUEDOT_API_URL: {{ . | trimSuffix "/" | quote }}
-  {{- end }}
-  REVENUEDOT_ALLOW_SIGNUP: {{ .Values.allowSignup | toString | quote }}
-  REVENUEDOT_BACKGROUND_JOBS: {{ ternary "on" "off" .Values.backgroundJobs | quote }}
-  REVENUEDOT_SHUTDOWN_DELAY_MS: {{ .Values.shutdown.delayMs | quote }}
-  REVENUEDOT_SHUTDOWN_TIMEOUT_MS: {{ .Values.shutdown.timeoutMs | quote }}
-  {{- with .Values.mail.from }}
-  REVENUEDOT_MAIL_FROM: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.mail.replyTo }}
-  REVENUEDOT_MAIL_REPLY_TO: {{ . | quote }}
-  {{- end }}
-  {{- if .Values.archives.s3.bucket }}
-  REVENUEDOT_ARCHIVE_S3_BUCKET: {{ .Values.archives.s3.bucket | quote }}
-  REVENUEDOT_ARCHIVE_S3_REGION: {{ .Values.archives.s3.region | quote }}
-  REVENUEDOT_ARCHIVE_S3_ENDPOINT: {{ .Values.archives.s3.endpoint | quote }}
-  REVENUEDOT_ARCHIVE_S3_PREFIX: {{ .Values.archives.s3.prefix | quote }}
-  {{- else }}
-  # No bucket: archives live in Postgres, never on a pod's disk.
-  REVENUEDOT_ARCHIVE_DIR: db
-  {{- end }}
-  {{- range $k, $v := .Values.env }}
-  {{ $k }}: {{ $v | toString | quote }}
+  {{- range $k, $v := $data }}
+  {{ $k }}: {{ $v | quote }}
   {{- end }}
