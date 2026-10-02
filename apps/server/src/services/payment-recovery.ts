@@ -98,6 +98,9 @@ export async function trackRecovery(db: DB, o: {
     if (issueNow && (!open || types.has("RENEWAL") || refund)) {
       const { settings } = await projectSettings(db, o.projectId);
       const detected = o.billingIssuesDetectedAt && o.billingIssuesDetectedAt <= o.now ? o.billingIssuesDetectedAt : o.now;
+      // A billing issue already older than the window (imported history) can never be recovered: no case, so it never
+      // shows up as a fresh loss in the numbers.
+      if (detected.getTime() + settings.window_days * DAY < o.now.getTime()) return;
       await db.insert(schema.recoveryCases).values({
         id: newId("rcv_", 16), projectId: o.projectId, customerId: o.customerId, subscriptionId: o.subscriptionId, appId: o.appId, store: o.store, storeKey: o.storeKey,
         productId: o.productId, isSandbox: o.isSandbox, status: "open", detectedAt: detected, graceExpiresAt: o.gracePeriodExpiresAt, atRiskUsd: o.priceUsd,

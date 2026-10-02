@@ -6,7 +6,7 @@ import { FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stri
 import { CustomerInfoSchema } from "../../../packages/contract/src/sdk-schemas.js";
 import { memoryMailer } from "../src/mail/index.js";
 import { tick } from "../src/services/tick.js";
-import { DEFAULT_STEPS, runPaymentRecovery } from "../src/services/payment-recovery.js";
+import { DEFAULT_STEPS, runPaymentRecovery, trackRecovery } from "../src/services/payment-recovery.js";
 import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
 import { appleHarness, makePki, notificationBody, renewalInfo, signJws, T0, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
 import { env as googleEnv, makeKeys, sub as playSub, type Env as GoogleEnv, type Keys } from "./google-helpers.js";
@@ -402,5 +402,21 @@ describe("tick fairness", () => {
     // The capped project's cases stay due for when its cap frees up.
     const [capped] = await db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.id, "rcv_proj_capped_0"));
     expect(capped).toMatchObject({ status: "open", stepsSent: 0 });
+  });
+
+  it("an imported chain whose billing issue is older than the recovery window opens no case", async () => {
+    web = await webEnv({});
+    const { db } = web.h;
+    const now = web.h.now();
+    await projectWithDueCases(db, "proj_imp", 1, now);
+    await db.delete(schema.recoveryCases).where(eq(schema.recoveryCases.projectId, "proj_imp"));
+    const base = { projectId: "proj_imp", customerId: "cus_proj_imp_0", subscriptionId: "sub_proj_imp_0", appId: null, store: "app_store", productId: "pro.monthly", isSandbox: false,
+      derived: [{ type: "INITIAL_PURCHASE" }] as never, gracePeriodExpiresAt: null, priceUsd: 9.99, transactionId: "tx_imp", now };
+    // A billing issue from 90 days ago (an import of history): already past the 30-day window, nothing to recover.
+    await trackRecovery(db, { ...base, storeKey: "otx_proj_imp_0", billingIssuesDetectedAt: new Date(now.getTime() - 90 * DAY) });
+    expect(await db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.projectId, "proj_imp"))).toHaveLength(0);
+    // One from yesterday still opens a case.
+    await trackRecovery(db, { ...base, storeKey: "otx_proj_imp_0", billingIssuesDetectedAt: new Date(now.getTime() - DAY) });
+    expect(await db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.projectId, "proj_imp"))).toEqual([expect.objectContaining({ status: "open" })]);
   });
 });
