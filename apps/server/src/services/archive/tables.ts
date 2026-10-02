@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0030_experiments_v2";
+export const ARCHIVE_SCHEMA = "0031_experiments_v2";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -142,6 +142,10 @@ export const NOT_EXPORTED: Record<string, string> = {
   billing_invoices: "RevenueDot Cloud billing is per account and server.",
   billing_notices: "RevenueDot Cloud billing is per account and server.",
   recovery_portal_links: "One-time payment links that last 30 minutes.",
+  store_listings: "A cache of App Store and Google Play prices; the target reads them from the stores again.",
+  store_listing_syncs: "When this server last read each app's store prices.",
+  product_edits: "Product editor files describe changes already made in the stores; the audit log, which is exported, records every store write.",
+  product_edit_rows: "Part of product editor files.",
   benchmark_project_values: "Benchmarks are computed on RevenueDot Cloud from projects that share there; rebuilt nightly.",
   benchmark_aggregates: "Peer percentiles across projects, not one project's data.",
   benchmark_runs: "Runs of this server's nightly benchmark job.",

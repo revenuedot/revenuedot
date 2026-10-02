@@ -12,3 +12,8 @@ export const E2E_PLAY_EMAIL = "e2e-import@e2e-project.iam.gserviceaccount.com";
 /** An App Store Connect key whose app has no products yet, and a Play service account without "View app information". */
 export const E2E_ASC_EMPTY_KEY_ID = "E2EASCNONE";
 export const E2E_PLAY_DENIED_EMAIL = "e2e-denied@e2e-project.iam.gserviceaccount.com";
+/** Store prices and the product editor (product-editor.spec.ts): the App Store Connect key and Play service account of the stateful fakes. */
+export const E2E_EDITOR_ASC_KEY_ID = "E2EASCEDIT";
+export const E2E_EDITOR_BUNDLE = "com.example.e2e.editor";
+export const E2E_EDITOR_PACKAGE = "com.example.e2e.editor.android";
+export const E2E_EDITOR_PLAY_EMAIL = "e2e-editor@e2e-project.iam.gserviceaccount.com";

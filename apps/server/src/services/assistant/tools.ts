@@ -57,6 +57,19 @@ export function toEpochMs(v: number | string, now = Date.now()): number {
   return t;
 }
 
+/** Every item of a v2 list (100 a page, at most 50 pages). */
+async function allItems<T extends { id: string }>(c: RevenueDotClient, path: string, query: Record<string, string | number | undefined> = {}): Promise<T[]> {
+  const out: T[] = [];
+  let after: string | undefined;
+  for (let page = 0; page < 50; page++) {
+    const r = await c.request<{ items: T[]; next_page: string | null }>("GET", path, { query: { ...query, limit: 100, starting_after: after } });
+    out.push(...r.items);
+    if (!r.next_page || !r.items.length) break;
+    after = r.items[r.items.length - 1]!.id;
+  }
+  return out;
+}
+
 /** Entitlements may be named by id (entl...) or lookup key ("pro"); the API takes ids. */
 async function entitlementId(c: RevenueDotClient, base: string, idOrKey: string) {
   if (/^entl/.test(idOrKey)) return idOrKey;
@@ -383,6 +396,116 @@ export const tools: ToolDefinition[] = [
     run: async (c, a) => c.request("POST", `${await P(c)}/products`, {
       body: { app_id: a.app_id, store_identifier: a.store_identifier, type: a.type, display_name: a.display_name, ...(a.subscription_duration ? { subscription: { duration: a.subscription_duration } } : {}) },
     }),
+  }),
+  define({
+    name: "create-products", title: "Create products",
+    description: "Creates several catalog products in one approval (\"Create with AI\" on the Products page): read list-apps first and use their ids. store_identifier follows the store: an App Store product id (com.example.pro.monthly), a Google Play subscription as subscription_id:base_plan_id (pro:monthly), any id on the Test Store. Test Store products take a price. Products that already exist on their app are skipped. Optionally attaches every product to an entitlement, created when its lookup key is new.",
+    inputSchema: {
+      products: z.array(z.object({
+        app_id: z.string().describe("The app (see list-apps)."),
+        store_identifier: z.string().min(1).max(255).describe("The store's product id."),
+        type: z.enum(["subscription", "one_time", "consumable", "non_consumable", "non_renewing_subscription"]).describe("subscription for auto-renewing plans."),
+        display_name: z.string().max(255).optional().describe("Name shown in the dashboard, e.g. Pro Monthly."),
+        subscription_duration: z.string().optional().describe("ISO 8601 period for subscriptions: P1W, P1M, P3M, P6M, P1Y."),
+        test_store_price: z.object({ amount: z.number().positive().max(1_000_000), currency: z.string().length(3) }).optional().describe("Test Store apps only: the price, e.g. { amount: 9.99, currency: USD }."),
+      })).min(1).max(50),
+      entitlement: z.object({ lookup_key: z.string().min(1).max(200), display_name: z.string().max(1500).optional() }).optional()
+        .describe("Attach every product to this entitlement (created when the lookup key is new), e.g. { lookup_key: pro }."),
+    },
+    annotations: CREATE, scopes: ["project_configuration:products:read_write"],
+    run: async (c, a) => {
+      const base = await P(c);
+      const created: { id: string; store_identifier: string; app_id: string }[] = [];
+      const skipped: { store_identifier: string; app_id: string; reason: string; id?: string }[] = [];
+      const failed: { store_identifier: string; app_id: string; error: string }[] = [];
+      for (const p of a.products) {
+        const sid = p.store_identifier.trim();
+        try {
+          const row = await c.request<{ id: string }>("POST", `${base}/products`, {
+            body: {
+              app_id: p.app_id, store_identifier: sid, type: p.type, display_name: p.display_name,
+              ...(p.subscription_duration && p.type === "subscription" ? { subscription: { duration: p.subscription_duration } } : {}),
+              ...(p.test_store_price ? { test_store_price: { amount_micros: Math.round(p.test_store_price.amount * 1_000_000), currency: p.test_store_price.currency.toUpperCase() } } : {}),
+            },
+          });
+          created.push({ id: row.id, store_identifier: sid, app_id: p.app_id });
+        } catch (e) {
+          if (e instanceof RevenueDotApiError && e.status === 409) {
+            const existing = await allItems<{ id: string; store_identifier: string }>(c, `${base}/products`, { app_id: p.app_id }).catch(() => []);
+            skipped.push({ store_identifier: sid, app_id: p.app_id, reason: "already exists", id: existing.find((x) => x.store_identifier === sid)?.id });
+          } else failed.push({ store_identifier: sid, app_id: p.app_id, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      // The products are written: a refused entitlement step (a role without entitlement access, a bad lookup key) is
+      // reported with them rather than hiding what was created.
+      let entitlement: { id: string; lookup_key: string; created: boolean } | null = null;
+      let entitlementError: string | null = null;
+      const ids = [...created.map((x) => x.id), ...skipped.flatMap((x) => (x.id ? [x.id] : []))];
+      if (a.entitlement && ids.length) {
+        let found: { id: string; lookup_key: string } | undefined;
+        let made: { id: string; lookup_key: string } | undefined;
+        try {
+          found = (await allItems<{ id: string; lookup_key: string }>(c, `${base}/entitlements`)).find((e) => e.lookup_key === a.entitlement!.lookup_key);
+          made = found ? undefined : await c.request<{ id: string; lookup_key: string }>("POST", `${base}/entitlements`, { body: { lookup_key: a.entitlement.lookup_key, display_name: a.entitlement.display_name || a.entitlement.lookup_key } });
+          const ent = (found ?? made)!;
+          for (let i = 0; i < ids.length; i += 50) await c.request("POST", `${base}/entitlements/${enc(ent.id)}/actions/attach_products`, { body: { product_ids: ids.slice(i, i + 50) } });
+          entitlement = { id: ent.id, lookup_key: ent.lookup_key, created: !found };
+        } catch (e) {
+          entitlementError = `The products were created, but attaching them to ${a.entitlement.lookup_key} failed${made ? " (the entitlement was created)" : ""}: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
+      return { object: "products_created", created, skipped, failed, entitlement, ...(entitlementError ? { entitlement_error: entitlementError } : {}) };
+    },
+  }),
+  define({
+    name: "create-offering", title: "Create offering",
+    description: "Creates an offering with its packages and their products in one approval (\"Create with AI\" on the Offerings page): read list-products first. Package lookup keys are RevenueCat's reserved ones ($rc_monthly, $rc_annual, $rc_six_month, $rc_three_month, $rc_two_month, $rc_weekly, $rc_lifetime) or a custom id. Products are named by id (prod...) or store identifier (every app's product with that identifier is added, at most one per app). make_current makes it the offering apps show by default.",
+    inputSchema: {
+      lookup_key: z.string().min(1).max(200).describe("The offering identifier the app reads, e.g. default or black_friday."),
+      display_name: z.string().min(1).max(1500),
+      packages: z.array(z.object({
+        lookup_key: z.string().min(1).max(200), display_name: z.string().min(1).max(1500),
+        products: z.array(z.string()).max(20).describe("Product ids (prod...) or store identifiers."),
+      })).min(1).max(20),
+      metadata: z.record(z.string(), z.unknown()).optional().describe("Offering metadata the app reads at runtime."),
+      make_current: z.boolean().optional(),
+    },
+    annotations: CREATE, scopes: ["project_configuration:offerings:read_write", "project_configuration:packages:read_write"],
+    run: async (c, a) => {
+      const base = await P(c);
+      const all = await allItems<{ id: string; store_identifier: string; app_id: string }>(c, `${base}/products`);
+      const offering = await c.request<{ id: string; lookup_key: string }>("POST", `${base}/offerings`, { body: { lookup_key: a.lookup_key, display_name: a.display_name, ...(a.metadata ? { metadata: a.metadata } : {}) } });
+      const packages: { id: string; lookup_key: string; product_ids: string[]; unknown: string[]; error?: string }[] = [];
+      // The offering exists from here on: a refused package or attach is reported with what was created, not thrown.
+      let error: string | null = null;
+      for (const [i, pk] of a.packages.entries()) {
+        let made: { id: string; lookup_key: string } | undefined;
+        const unknown: string[] = [];
+        const byApp = new Map<string, string>();
+        for (const ref of pk.products) {
+          const hits = all.filter((p) => p.id === ref || p.store_identifier === ref);
+          if (!hits.length) unknown.push(ref);
+          for (const h of hits) if (!byApp.has(h.app_id)) byApp.set(h.app_id, h.id);
+        }
+        const ids = [...byApp.values()];
+        try {
+          made = await c.request<{ id: string; lookup_key: string }>("POST", `${base}/offerings/${enc(offering.id)}/packages`, { body: { lookup_key: pk.lookup_key, display_name: pk.display_name, position: i } });
+          if (ids.length) await c.request("POST", `${base}/packages/${enc(made.id)}/actions/attach_products`, { body: { products: ids.map((product_id) => ({ product_id, eligibility_criteria: "all" })) } });
+          packages.push({ id: made.id, lookup_key: made.lookup_key, product_ids: ids, unknown });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          error ??= `Package ${pk.lookup_key}: ${msg}`;
+          if (made) packages.push({ id: made.id, lookup_key: made.lookup_key, product_ids: [], unknown, error: `Its products were not attached: ${msg}` });
+        }
+      }
+      let current = false;
+      if (a.make_current) {
+        try { await c.request("POST", `${base}/offerings/${enc(offering.id)}`, { body: { is_current: true } }); current = true; } catch (e) {
+          error ??= `The offering was created but not made current: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
+      return { object: "offering_created", id: offering.id, lookup_key: offering.lookup_key, is_current: current, packages, ...(error ? { error } : {}) };
+    },
   }),
   define({
     name: "attach-products-to-entitlement", title: "Attach products to entitlement",

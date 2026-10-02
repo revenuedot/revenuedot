@@ -11,7 +11,7 @@ import { inProcessClient, RevenueDotApiError } from "../src/services/assistant/c
 import { compactChart, compactResult, isWriteTool, redactSecrets, tools, toolsByName } from "../src/services/assistant/tools.js";
 
 const names = (t: { name: string }[]) => t.map((x) => x.name);
-const WRITES = ["grant-customer-entitlement", "revoke-customer-entitlement", "create-product", "attach-products-to-entitlement", "attach-products-to-package", "set-current-offering", "import-storekit-products", "create-experiment", "create-targeting-rule", "start-experiment", "pause-experiment", "stop-experiment", "retry-webhook-delivery", "replay-failed-webhook-deliveries"];
+const WRITES = ["grant-customer-entitlement", "revoke-customer-entitlement", "create-product", "create-products", "create-offering", "attach-products-to-entitlement", "attach-products-to-package", "set-current-offering", "import-storekit-products", "create-experiment", "create-targeting-rule", "start-experiment", "pause-experiment", "stop-experiment", "retry-webhook-delivery", "replay-failed-webhook-deliveries"];
 
 describe("tool catalog", () => {
   it("has the MCP server's names for shared tools and the read and write tools the spec lists", () => {

@@ -1,8 +1,10 @@
 /**
  * Offerings list: /projects/:projectId/product-catalog/offerings
  *
+ * "New offering" offers Create from scratch (the editor) and Create with AI (CreateWithAi.tsx, RevenueDot AI drafts the
+ * offering and its packages, written only after the user approves).
+ *
  * GAPS versus RevenueCat's dashboard (later tiers):
- * - "New offering → Create with AI" is not offered; only "Create from scratch".
  * - The experiment hint ("Offerings can also be used to test pricing … as variants in an experiment") waits for Experiments (Tier 2).
  * - Paywall, web purchase link and targeting columns/rows wait for Paywalls, Web and Targeting (Tier 2/3).
  */
@@ -13,7 +15,9 @@ import { Shell } from "../../components/Shell";
 import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Segmented, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { CatalogCrumbs, LoadError, LoadingRows } from "./parts";
-import { copyKey, count, errMsg, isConflict, lookupKeyError, useOfferings, useProducts, useRefreshCatalog, v2, type Offering, type Package } from "./lib";
+import { copyKey, count, errMsg, isConflict, lookupKeyError, useApps, useOfferings, useProducts, useRefreshCatalog, v2, type Offering, type Package } from "./lib";
+import { NewMenu } from "./store-parts";
+import { CreateWithAiDialog } from "./CreateWithAi";
 
 type Filter = "all" | "active" | "inactive";
 
@@ -27,7 +31,9 @@ export function OfferingsPage() {
   const nav = useNavigate();
   const offerings = useOfferings(pid);
   const products = useProducts(pid);
+  const apps = useApps(pid);
   const [filter, setFilter] = useState<Filter>("active");
+  const [withAi, setWithAi] = useState(false);
   const actions = useOfferingActions(pid, offerings.data ?? []);
   const all = offerings.data ?? [];
   const rows = all.filter((o) => filter === "all" || o.state === filter)
@@ -40,14 +46,14 @@ export function OfferingsPage() {
     <Shell title="Offerings" crumbs={<CatalogCrumbs pid={pid} section="Offerings" />}>
       <div className="page">
         <PageHead title="Offerings" sub="The set of products your paywall offers. Your app asks the SDK for offerings; it gets the default offering unless a customer has an override."
-          actions={<Link className="btn btn-dark" to={`${base}/offerings/new`}><Icon name="plus" />New offering</Link>} />
+          actions={<NewMenu pid={pid} what="offering" onScratch={() => nav(`${base}/offerings/new`)} onAi={() => setWithAi(true)} />} />
 
         {offerings.isError ? <LoadError error={offerings.error} retry={() => offerings.refetch()} /> : offerings.isLoading ? <LoadingRows label="Loading offerings" /> : all.length === 0 ? (
           <EmptyState title="No offerings yet"
             text={noProducts ? "Create your first product, then group products into an offering. The SDK shows the default offering on your paywall." : "Group your products into an offering with one package per plan, such as Monthly and Annual. Your first offering becomes the default the SDK returns."}
             action={<div className="actions" style={{ justifyContent: "center" }}>
               {noProducts && <Link className="btn btn-line" to={`${base}/products`}>Create a product</Link>}
-              <Link className="btn btn-dark" to={`${base}/offerings/new`}><Icon name="plus" />New offering</Link>
+              <NewMenu pid={pid} what="offering" onScratch={() => nav(`${base}/offerings/new`)} onAi={() => setWithAi(true)} />
             </div>} />
         ) : (
           <>
@@ -75,6 +81,7 @@ export function OfferingsPage() {
         )}
       </div>
       {actions.dialog}
+      {withAi && <CreateWithAiDialog pid={pid} what="offering" apps={apps.data ?? []} onClose={() => setWithAi(false)} />}
     </Shell>
   );
 }

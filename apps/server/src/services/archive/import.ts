@@ -245,7 +245,7 @@ export async function applyRows(db: DB, projectId: string, table: string, column
     const res = await db.execute(sql`INSERT INTO ${ident(table)} (${target}${fillCols}) SELECT ${source}${fillVals} FROM json_populate_recordset(NULL::${ident(table)}, ${json}::json) r WHERE ${inScope} ON CONFLICT (${pk}) ${onConflict}`);
     written += Number((res as { rowCount?: number; count?: number }).rowCount ?? (res as { count?: number }).count ?? 0);
   }
-  // Experiments from an archive written before migration 0030 (no variants column): upgrade them as the migration did,
+  // Experiments from an archive written before migration 0031 (no variants column): upgrade them as the migration did,
   // so they keep enrolling everyone who asks and keep their old enrollment order.
   if (table === "experiments" && !columns.includes("variants")) await upgradeArchivedExperiments(db, projectId);
   if (table === "projects") {
@@ -256,7 +256,7 @@ export async function applyRows(db: DB, projectId: string, table: string, column
   return { rows: written, skipped };
 }
 
-/** Migration 0030's data steps for one project's experiments (prd/experiments/PRD.md §2). */
+/** Migration 0031's data steps for one project's experiments (prd/experiments/PRD.md §2). */
 export async function upgradeArchivedExperiments(db: DB, projectId: string) {
   await db.execute(sql`UPDATE experiments SET variants = jsonb_build_array(
       jsonb_build_object('id', 'a', 'name', 'Control', 'offering_id', offering_a, 'placements', '{}'::jsonb),

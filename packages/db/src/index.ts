@@ -13,7 +13,7 @@ import { LOCK_KEYS } from "./locks.js";
 
 export { schema };
 export type { DeliveryAttempt } from "./schema.js";
-export type { PaywallContent, ExportFile, ExportProgress, ArchiveFileEntry, ArchiveTableEntry, ArchiveProgress, ExperimentVariant } from "./schema.js";
+export type { PaywallContent, ExportFile, ExportProgress, ArchiveFileEntry, ArchiveTableEntry, ArchiveProgress, StorePrice, ExperimentVariant } from "./schema.js";
 export type DB = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));

@@ -19,6 +19,8 @@ import { runDueCampaigns } from "./winback.js";
 import { runPaymentRecovery } from "./payment-recovery.js";
 import type { StripeConnectConfig } from "./stripe-connect-config.js";
 import { recheckDueCredentials } from "./credential-health.js";
+import { refreshDueStorePrices } from "./store-prices.js";
+import type { Deps } from "../context.js";
 import { ensureFirstSaleCards } from "./assistant/first-sale.js";
 import { pruneStreams } from "./assistant/store.js";
 import type { Mailer } from "../mail/index.js";
@@ -44,6 +46,8 @@ export interface TickOptions {
   publicUrl?: string;
   /** Ask Apple and Google whether stored credentials still work (failing apps hourly, others daily). The entry points turn it on; tests leave it off. */
   checkCredentials?: boolean;
+  /** Re-read App Store and Google Play prices of apps not refreshed in 24 hours (services/store-prices.ts). The entry points turn it on. */
+  storePrices?: boolean;
   /** Keys that unseal integration and export credentials (services/secrets.ts); unset falls back to the environment. */
   encryptionKey?: string;
   signingKey?: string;
@@ -101,6 +105,11 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     }
   }
   const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {}, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey, stripeConnect: opts.stripeConnect }, now) : 0;
+  let storePrices = 0;
+  // Store prices call App Store Connect and Google Play: a long step, skipped while draining like the others.
+  if (opts.storePrices && !draining()) {
+    try { storePrices = await refreshDueStorePrices({ db, now: () => now, stores: opts.stores ?? {}, fetch: fetchImpl } as Deps); } catch (e) { console.error("tick: store prices failed", e); }
+  }
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
   // Win-back campaigns that are due today (each runs once a day at its UTC hour).
   let winback = 0;
@@ -158,7 +167,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

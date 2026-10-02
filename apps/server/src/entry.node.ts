@@ -73,7 +73,7 @@ const runTick = async (): Promise<boolean> => {
     try {
       const r = await lock.tryRun(async () => {
         const started = Date.now();
-        const out = await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing, extensions, stripeConnect, signal: stopping.signal });
+        const out = await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, storePrices: true, googleOAuth, archiveStore, edition, billing, extensions, stripeConnect, signal: stopping.signal });
         // REVENUEDOT_TICK_LOG=1: one line per run, with the time the lock was held (the cluster test checks no two overlap).
         if (tickLog) console.log(`tick ${JSON.stringify({ replica, started, ended: Date.now(), sent: out.sent, expired: out.expired, alerts: out.alerts })}`);
         return out;

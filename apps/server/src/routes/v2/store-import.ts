@@ -34,7 +34,7 @@ export function storeImportRoutes(r: V2Router, deps: Deps) {
     const catalog = await catalogOf(deps, app);
     const items = listing.items.map((item) => {
       const match = catalogMatch(item, catalog);
-      const { stripe: _, ...shown } = item;
+      const { stripe: _, ref: __, ...shown } = item;
       return { object: "store_product_listing" as const, ...shown, in_catalog: !!match, product_id: match?.id ?? null };
     });
     return c.json({ ...listOf(c, items, null), app_id: app.id, store: listing.store, warnings: listing.warnings });

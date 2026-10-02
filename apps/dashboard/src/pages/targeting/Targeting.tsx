@@ -223,7 +223,7 @@ export function TargetingPage() {
       <div className="page">
         <PageHead title="Targeting" sub="Show different offerings to different customers without an app release. Rules are checked from top to bottom; the first live rule that matches decides."
           actions={!canEdit ? undefined : tab !== "audiences"
-            ? <Menu label="New rule" text="New rule" primary items={[
+            ? <Menu label="New rule" text="New rule" variant="dark" items={[
                 { label: "Create from scratch", icon: "plus", disabled: !offs.data?.length, hint: offs.data?.length ? undefined : "Create an offering first", onSelect: newRule },
                 { label: "Create with RevenueDot AI", icon: "spark", disabled: !aiOk || !offs.data?.length, hint: ai.data && !aiOk ? ai.data.reason ?? "RevenueDot AI is not available here." : undefined, onSelect: () => setDialog(<AskDialog pid={pid} kind="targeting rule" onClose={close} />) },
               ]} />

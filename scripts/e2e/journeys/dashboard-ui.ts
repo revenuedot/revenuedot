@@ -356,6 +356,7 @@ const journey: Journey = {
         await go(`${B}/product-catalog/products`);
         const newProduct = async (app: string, sid: string, type: string, duration: string | null, name: string) => {
           await page.getByRole("button", { name: "New product" }).first().click();
+          await page.getByRole("menuitem", { name: "Create from scratch" }).click();
           const d = dialog("New product");
           await d.getByLabel("App", { exact: true }).selectOption({ label: app });
           await d.getByLabel("Store identifier").fill(sid);
@@ -1144,6 +1145,7 @@ const journey: Journey = {
         await expect(vp.getByRole("heading", { name: "Overview" })).toBeVisible();
         await vp.goto(`${ctx.base}${B}/product-catalog/products`); await vp.waitForLoadState("networkidle").catch(() => {});
         await vp.getByRole("button", { name: "New product" }).first().click();
+        await vp.getByRole("menuitem", { name: "Create from scratch" }).click();
         let d = vp.getByRole("dialog", { name: "New product" });
         await d.getByLabel("App", { exact: true }).selectOption({ label: "Pocket Scanner for iPhone (App Store)" });
         await d.getByLabel("Store identifier").fill("viewer.try");
@@ -1203,6 +1205,7 @@ const journey: Journey = {
         const before = (await v2("GET", "/products?limit=100")).items.length;
         await go(`${B}/product-catalog/products`);
         await page.getByRole("button", { name: "New product" }).first().click();
+        await page.getByRole("menuitem", { name: "Create from scratch" }).click();
         let d = dialog("New product");
         await d.getByLabel("App", { exact: true }).selectOption({ label: "Pocket Scanner for iPhone (App Store)" });
         await d.getByRole("button", { name: "Create product" }).click();

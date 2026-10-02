@@ -36,7 +36,7 @@ import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { and, eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { startCloud } from "./cloud-server.ts";
-import { connectPlatform, fakeStoreFetch, fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
+import { connectPlatform, editorAsc, editorPlay, fakeStoreFetch, fakeStores, resetEditorStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
 import { FAKE_CONNECT_CLIENT_ID, FAKE_CONNECT_WHSEC, FAKE_PLATFORM_KEY, FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stripe.ts";
 import { signStripePayload } from "@revenuedot/server/stores/stripe/signature.js";
 import type { StripeConnectConfig } from "@revenuedot/server/services/stripe-connect-config.js";
@@ -67,6 +67,14 @@ const localFetch: typeof fetch = async (input, init) => {
   if (process.env.E2E_REAL_STORES === "1" && ["api.appstoreconnect.apple.com", "androidpublisher.googleapis.com", "oauth2.googleapis.com"].includes(url.hostname)) {
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     if (method === "GET" || url.href === "https://oauth2.googleapis.com/token") return fetch(input, init);
+    // E2E_REAL_PLAY_WRITES=1 (the product editor's one real round trip): price patches of the Play sandbox app's
+    // pro_monthly and pro_annual subscriptions only. Every other write, app or product is still refused.
+    if (process.env.E2E_REAL_PLAY_WRITES === "1" && method === "PATCH" && url.hostname === "androidpublisher.googleapis.com"
+      && /^\/androidpublisher\/v3\/applications\/app\.revenuedot\.sandbox\/subscriptions\/(pro_monthly|pro_annual)$/.test(url.pathname)
+      && url.searchParams.get("updateMask") === "basePlans") {
+      console.log(`e2e: real Play write ${method} ${url.pathname}`);
+      return fetch(input, init);
+    }
     return new Response(JSON.stringify({ error: `The e2e server is read-only against real stores (${method} ${url.host} refused).` }), { status: 403, headers: { "content-type": "application/json" } });
   }
   if (url.href.startsWith("https://cloudflare-dns.com/dns-query")) {
@@ -293,6 +301,28 @@ web.post("/__stripe/seed", async (c) => {
   for (const p of b.products ?? []) webStripe.products.set(String(p.id), { object: "product", active: true, livemode: false, default_price: null, metadata: {}, ...p });
   for (const p of b.prices ?? []) webStripe.prices.set(String(p.id), { object: "price", active: true, livemode: false, billing_scheme: "per_unit", metadata: {}, ...p });
   return c.json({ ok: true });
+});
+// The product editor's stateful App Store Connect and Play fakes (product-editor.spec.ts): reset them, make the next
+// matching store calls fail, and read a price back.
+web.post("/__stores/editor/reset", (c) => { resetEditorStores(); return c.json({ ok: true }); });
+web.post("/__stores/editor/fail", async (c) => {
+  const b = await c.req.json() as { store: "asc" | "play"; method: string; path_includes: string; territory?: string; status: number; message: string; times?: number };
+  const match = (m: string, path: string, body: any) => m === b.method && path.includes(b.path_includes) && (!b.territory || body?.data?.relationships?.territory?.data?.id === b.territory);
+  if (b.store === "asc") editorAsc.fail(match, b.status, b.message, "", b.times ?? 1);
+  else editorPlay.fail(match, b.status, b.message, b.times ?? 1);
+  return c.json({ ok: true });
+});
+web.get("/__stores/editor/price", (c) => {
+  const q = (k: string) => c.req.query(k) ?? "";
+  if (q("store") === "asc") {
+    const sub = editorAsc.subs.find((x) => x.productId === q("product"));
+    const iap = editorAsc.iaps.find((x) => x.productId === q("product"));
+    return c.json({ price: sub ? editorAsc.currentSubPrice(sub.id, q("territory")) : iap ? editorAsc.currentIapPrice(iap.id, q("territory")) : null, exists: !!(sub || iap) });
+  }
+  const [id, plan] = q("product").split(":");
+  const micros = editorPlay.price(id!, plan!, q("territory"));
+  const bp = editorPlay.subscriptions.find((x) => x.productId === id)?.basePlans?.find((b: any) => b.basePlanId === plan);
+  return c.json({ price: micros === null ? null : micros / 1_000_000, exists: !!bp, state: bp?.state ?? null });
 });
 // The nightly benchmark job, run to the end now (today's run is redone), and one pass of the weekly digest.
 web.post("/__jobs/benchmarks", async (c) => {

@@ -10,9 +10,25 @@ export interface App {
 export interface Product {
   object: "product"; id: string; store_identifier: string; type: string; state: "active" | "inactive"; created_at: number; app_id: string;
   display_name: string | null; subscription?: { duration: string | null }; one_time?: { is_consumable: boolean | null };
-  /** With expand=items.indicative_price: the Test Store price, null when there is none. */
-  indicative_price?: { amount_micros: number; currency: string } | null;
+  /**
+   * With expand=items.indicative_price: the Test Store price, else the store's price in the United States (or the base
+   * territory) from the last price refresh, else the Stripe web product's price; null when none is known.
+   */
+  indicative_price?: { amount_micros: number; currency: string; country?: string | null } | null;
+  /** With expand=items.store_details: the store's status and base price from the last refresh; null when not read. */
+  store_details?: StoreDetails | null;
 }
+export interface StoreDetails {
+  status: string | null; store_state: string | null; price: { amount_micros: number; currency: string; territory: string | null } | null;
+  territories: number; duration: string | null; display_name: string | null; editable: boolean; refreshed_at: number; refresh_status: string | null;
+}
+export interface StorePrice { territory: string; currency: string; amount_micros: number }
+export interface StoreListing {
+  object: "store_listing"; app_id: string; store_identifier: string; product_id: string | null; type: string; display_name: string | null; duration: string | null;
+  store_state: string | null; status: string | null; group: { id: string; name: string | null } | null; store_id: string | null;
+  price: { amount_micros: number; currency: string; territory: string | null } | null; prices: StorePrice[]; editable: boolean; note: string | null; refreshed_at: number;
+}
+export interface PriceSync { app_id: string; store: string; can_read_prices: boolean; reason: string | null; status: "ok" | "failing" | "never"; error: string | null; item_count: number; refreshed_at: number | null }
 export interface Entitlement { object: "entitlement"; id: string; lookup_key: string; display_name: string; created_at: number; state: "active" | "inactive"; products?: List<Product> }
 export interface PackageProduct { product: Product; eligibility_criteria: "all" | "google_sdk_lt_6" | "google_sdk_ge_6" }
 export interface Package { object: "package"; id: string; lookup_key: string; display_name: string; position: number; created_at: number; products?: List<PackageProduct> }
@@ -39,7 +55,12 @@ export const v2 = (pid: string) => `/v2/projects/${encodeURIComponent(pid)}`;
 export const catalogKey = (pid: string) => ["catalog", pid] as const;
 
 export const useApps = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "apps"], queryFn: () => listAll<App>(`${v2(pid)}/apps`), enabled: !!pid });
-export const useProducts = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "products"], queryFn: () => listAll<Product>(`${v2(pid)}/products?expand=items.indicative_price`), enabled: !!pid });
+export const useProducts = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "products"], queryFn: () => listAll<Product>(`${v2(pid)}/products?expand=items.indicative_price&expand=items.store_details`), enabled: !!pid });
+/** Cached App Store and Google Play prices of the project (every territory), and each app's last price refresh. */
+export const useStorePrices = (pid: string) => useQuery({
+  queryKey: [...catalogKey(pid), "store-prices"], enabled: !!pid,
+  queryFn: () => api<{ items: StoreListing[]; apps: PriceSync[] }>(`${v2(pid)}/store_prices`),
+});
 export const useEntitlements = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "entitlements"], queryFn: () => listAll<Entitlement>(`${v2(pid)}/entitlements?expand=items.product`), enabled: !!pid });
 export const useOfferings = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "offerings"], queryFn: () => listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`), enabled: !!pid });
 
@@ -168,6 +189,37 @@ export function storeIdHelp(type: string | undefined): { placeholder: string; hi
 }
 
 export const productName = (p: Product) => p.display_name || p.store_identifier;
+
+/** "/year", "/3 months", "" for one-time products. */
+export function perPeriod(iso: string | null | undefined): string {
+  const m = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?$/.exec(iso ?? "");
+  if (!m || !iso) return "";
+  const parts = [["year", m[1]], ["month", m[2]], ["week", m[3]], ["day", m[4]]].filter(([, n]) => n && Number(n) > 0);
+  if (parts.length !== 1) return `/${durationLabel(iso)}`;
+  const [unit, n] = parts[0] as [string, string];
+  return Number(n) === 1 ? `/${unit}` : `/${n} ${unit}s`;
+}
+/** RevenueCat's list label: "$89.99/year", "$3.99/week", "$99.99" for one-time products; null without a price. */
+export function priceAndPeriod(p: Product): string | null {
+  if (!p.indicative_price) return null;
+  return `${priceLabel(p.indicative_price)}${p.type === "subscription" ? perPeriod(p.subscription?.duration ?? p.store_details?.duration) : ""}`;
+}
+
+/** The store's state in words, and the tag tone (App Store review states, Google Play base plan states). */
+const STORE_STATUS: Record<string, [string, "up" | "down" | "info" | "gold" | "muted"]> = {
+  approved: ["Approved", "up"], active: ["Active", "up"], ready_to_submit: ["Ready to submit", "info"], waiting_for_review: ["Waiting for review", "info"],
+  in_review: ["In review", "info"], pending_binary_approval: ["Pending binary approval", "info"], missing_metadata: ["Missing metadata", "gold"],
+  developer_action_needed: ["Developer action needed", "down"], rejected: ["Rejected", "down"], removed_from_sale: ["Removed from sale", "muted"],
+  developer_removed_from_sale: ["Removed from sale", "muted"], draft: ["Draft", "muted"], inactive: ["Inactive", "muted"], inactive_published: ["Inactive", "muted"],
+};
+export function storeStatus(status: string | null | undefined): { label: string; tone: "up" | "down" | "info" | "gold" | "muted" } | null {
+  if (!status) return null;
+  const s = STORE_STATUS[status.toLowerCase()];
+  return s ? { label: s[0], tone: s[1] } : { label: status.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), tone: "muted" };
+}
+
+/** The stores whose prices RevenueDot reads and the product editor writes. */
+export const PRICE_STORES = new Set(["app_store", "mac_app_store", "play_store"]);
 
 /** The API's message, or a plain fallback. */
 export const errMsg = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong. Try again.");

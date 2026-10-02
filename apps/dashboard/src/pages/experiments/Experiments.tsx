@@ -59,7 +59,7 @@ export function ExperimentsPage() {
     <Shell title="Experiments">
       <div className="page">
         <PageHead title="Experiments" sub="Test offerings, prices, trials and paywalls against each other. Each customer always sees the same variant; results compare conversion, revenue and retention with 95% intervals."
-          actions={canEdit ? <Menu label="New experiment" text="New experiment" primary items={newItems} /> : undefined} />
+          actions={canEdit ? <Menu label="New experiment" text="New experiment" variant="dark" items={newItems} /> : undefined} />
         {q.isLoading ? <div className="panel pb subtle">Loading…</div> : q.isError ? <div className="banner err" role="alert">{errMsg(q.error)}</div> : !all.length && !canEdit ? (
           <section className="panel pb subtle">No experiments yet. Your role in this project can view experiments; an admin or developer creates them.</section>
         ) : !all.length ? (
