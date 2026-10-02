@@ -167,7 +167,7 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
                 return (
                   <div key={m.id}>
                     <div className="l">{LABEL[m.id][0]}</div>
-                    <div className="v">{LABEL[m.id][1] === "$" ? fmt.usd(v) : fmt.int(v)}</div>
+                    <div className="v">{LABEL[m.id][1] === "$" ? fmt.usdRaw(v) : fmt.int(v)}</div>
                     <Sparkline values={(histories[i]?.data?.values ?? []).map((p) => p.value)} />
                   </div>
                 );

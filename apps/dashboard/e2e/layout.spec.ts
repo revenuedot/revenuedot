@@ -39,7 +39,9 @@ test("no page, table or tab row scrolls sideways at 1024, 1200 and 1440px", asyn
     `${P}/lifecycle/payment-recovery`, `${P}/lifecycle/payment-recovery?environment=sandbox`,
     `${P}/paywalls`, `${P}/paywalls/templates`, `${P}/ads`, `${P}/ads/rewards`, `${P}/targeting`, `${P}/experiments`, `${P}/web`, `${P}/funnels`, `${P}/web-discounts`, `${P}/auth`,
     `${P}/apps`, app && `${P}/apps/${app}`, `${P}/api-keys`, `${P}/integrations`, `${P}/integrations/webhooks`, wh && `${P}/integrations/webhooks/${wh}`, `${P}/integrations/exports`,
-    ...["general", "ai", "brand", "audit-logs", "blocked-customers", "collaborators", "verified-metrics", "domains", "export"].map((t) => `${P}/settings/${t}`), `/account`,
+    ...["general", "ai", "brand", "audit-logs", "blocked-customers", "collaborators", "verified-metrics", "domains", "export"].map((t) => `${P}/settings/${t}`),
+    // Account settings: /account opens General; every section is measured.
+    ...["general", "billing", "security", "notifications", "interface", "date-and-region"].map((t) => `/account/${t}`),
   ].filter((r): r is string => !!r);
   const found = await measure(page, routes, P);
   expect(found).toEqual([]);

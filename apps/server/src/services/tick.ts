@@ -14,6 +14,7 @@ import { dbStore } from "./archive/store.js";
 import { processServerMoves } from "./archive/server-move.js";
 import { runBilling } from "./billing/meter.js";
 import { runAlerts } from "./alerts.js";
+import { runAccountNotifications } from "./account-notifications.js";
 import { retryDueConsumption } from "./refunds.js";
 import { runDueCampaigns } from "./winback.js";
 import { runPaymentRecovery } from "./payment-recovery.js";
@@ -78,6 +79,8 @@ export interface TickOptions {
   edition?: "cloud" | "self-hosted";
   /** RevenueDot Cloud billing (prd/cloud-billing/PRD.md): metering, the Stripe meter and usage emails. Cloud only. */
   billing?: import("./billing/stripe.js").BillingConfig | null;
+  /** Weekly summaries, experiment results and anomaly alerts (prd/account-settings §4) run here unless false. */
+  accountNotifications?: boolean;
   /** Aborted when this replica starts shutting down: the run stops sending webhooks after those in flight and skips the
    *  steps it has not started (each resumes on the next run, on any replica). */
   signal?: AbortSignal;
@@ -111,6 +114,14 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     try { storePrices = await refreshDueStorePrices({ db, now: () => now, stores: opts.stores ?? {}, fetch: fetchImpl } as Deps); } catch (e) { console.error("tick: store prices failed", e); }
   }
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
+  // Account notification emails (weekly summary, experiment results, revenue anomalies): bounded per tick, idempotent.
+  let notifications = 0;
+  if (opts.accountNotifications !== false && !draining()) {
+    try {
+      const n = await runAccountNotifications({ db, mailer: opts.mailer, publicUrl: opts.publicUrl, fetch: fetchImpl }, now);
+      notifications = n.weekly + n.experiments + n.anomalies;
+    } catch (e) { console.error("tick: account notifications failed", e); }
+  }
   // Win-back campaigns that are due today (each runs once a day at its UTC hour).
   let winback = 0;
   if (opts.winback !== false) {
@@ -167,7 +178,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

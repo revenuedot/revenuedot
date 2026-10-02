@@ -75,12 +75,15 @@ export async function appForPlatform(db: DB, projectId: string, platform: string
   return null;
 }
 
-/** Creates a secret key and returns the plaintext once. */
-export async function createSecretKey(db: DB, projectId: string, name: string, permissions: string[] = ["*"]): Promise<{ id: string; key: string }> {
+/**
+ * Creates a secret key and returns the plaintext once. OAuth keys (routes/oauth.ts) record who granted them and to which
+ * client, for Account settings → Security → Active OAuth tokens.
+ */
+export async function createSecretKey(db: DB, projectId: string, name: string, permissions: string[] = ["*"], grant?: { userId: string; clientId: string }): Promise<{ id: string; key: string }> {
   const raw = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
   const key = `sk_${raw}`;
   const id = `key_${raw.slice(0, 10)}`;
-  await db.insert(schema.apiKeys).values({ id, projectId, name, hash: await sha256Hex(key), prefix: key.slice(0, 7), permissions });
+  await db.insert(schema.apiKeys).values({ id, projectId, name, hash: await sha256Hex(key), prefix: key.slice(0, 7), permissions, createdByUserId: grant?.userId ?? null, oauthClientId: grant?.clientId ?? null });
   return { id, key };
 }
 

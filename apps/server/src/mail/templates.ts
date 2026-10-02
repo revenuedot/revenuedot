@@ -23,8 +23,12 @@ interface Layout {
   blocks?: { title: string; lines: string[]; link?: { label: string; url: string } }[];
   /** Small print under the button (plain text). */
   after?: string[];
+  /** A hairline table of figures (label, value, change) between the paragraphs and the button: the weekly summary. */
+  table?: { head?: [string, string, string]; rows: [string, string, string][] };
   /** Where "Notification settings" in the footer points. */
   settingsUrl: string;
+  /** Opt-in emails (the weekly summary, experiment results, anomaly alerts): the one-click unsubscribe link. */
+  unsubscribeUrl?: string;
   /** Why the reader got this email. */
   reason: string;
 }
@@ -32,6 +36,14 @@ interface Layout {
 function layout(l: Layout): Rendered {
   const p = (t: string) => `<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:${INK};">${esc(t)}</p>`;
   const small = (t: string) => `<p style="margin:0 0 12px;font-size:13px;line-height:20px;color:${FG2};">${esc(t)}</p>`;
+  const cell = (t: string, o: { right?: boolean; muted?: boolean; head?: boolean } = {}) =>
+    `<td style="padding:${o.head ? "0 0 8px" : "10px 0"};border-bottom:1px solid ${BORDER};font-size:${o.head ? 11 : 14}px;line-height:20px;${o.head ? `font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${FG3};` : `color:${o.muted ? FG2 : INK};`}${o.right ? "text-align:right;font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;" : ""}">${esc(t)}</td>`;
+  const table = l.table
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border-collapse:collapse;">` +
+      (l.table.head ? `<tr>${cell(l.table.head[0], { head: true })}${cell(l.table.head[1], { head: true, right: true })}${cell(l.table.head[2], { head: true, right: true })}</tr>` : "") +
+      l.table.rows.map(([a, b, c]) => `<tr>${cell(a)}${cell(b, { right: true })}${cell(c, { right: true, muted: true })}</tr>`).join("") +
+      `</table>`
+    : "";
   const blocks = (l.blocks ?? []).map((b, i) =>
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-top:1px solid ${BORDER};"><tr><td style="padding:16px 0 0;">` +
     `<p style="margin:0 0 8px;font-size:15px;line-height:22px;font-weight:600;color:${INK};"><span style="font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;color:${FG3};">${i + 1}.</span> ${esc(b.title)}</p>` +
@@ -56,25 +68,30 @@ function layout(l: Layout): Rendered {
     `<tr><td style="padding:0 0 28px;">${mark}</td></tr>` +
     `<tr><td style="border-top:1px solid ${BORDER};padding:28px 0 8px;">` +
     `<h1 style="margin:0 0 16px;font-size:22px;line-height:30px;font-weight:600;letter-spacing:-0.02em;color:${INK};">${esc(l.heading)}</h1>` +
-    l.paragraphs.map(p).join("") + blocks + button + (l.after ?? []).map(small).join("") +
+    l.paragraphs.map(p).join("") + table + blocks + button + (l.after ?? []).map(small).join("") +
     `</td></tr>` +
     `<tr><td style="border-top:1px solid ${BORDER};padding:20px 0 0;font-size:12px;line-height:18px;color:${FG3};">` +
     `${esc(l.reason)}<br>RevenueDot · <a href="${esc(l.settingsUrl)}" style="color:${FG3};">Notification settings</a>` +
+    (l.unsubscribeUrl ? ` · <a href="${esc(l.unsubscribeUrl)}" style="color:${FG3};">Unsubscribe</a>` : "") +
     `</td></tr></table></td></tr></table></body></html>`;
   const text = [
     l.heading, "",
     ...l.paragraphs.flatMap((t) => [t, ""]),
+    ...(l.table ? [...l.table.rows.map(([a, b, c]) => `${a}: ${b}${c ? ` (${c})` : ""}`), ""] : []),
     ...(l.blocks ?? []).flatMap((b, i) => [`${i + 1}. ${b.title}`, ...b.lines, ...(b.link ? [`${b.link.label}: ${b.link.url}`] : []), ""]),
     ...(l.button ? [`${l.button.label}: ${l.button.url}`, ""] : []),
     ...(l.after ?? []).flatMap((t) => [t, ""]),
     "--",
     l.reason,
     `RevenueDot · Notification settings: ${l.settingsUrl}`,
+    ...(l.unsubscribeUrl ? [`Unsubscribe: ${l.unsubscribeUrl}`] : []),
   ].join("\n");
   return { subject: l.subject, text, html };
 }
 
-export const settingsUrl = (base: string) => `${base}/account`;
+export const settingsUrl = (base: string) => `${base}/account/notifications`;
+/** Account settings → Security, where sessions, two-factor and the password live. */
+export const securityUrl = (base: string) => `${base}/account/security`;
 
 export function passwordResetEmail(o: { base: string; url: string }): Rendered {
   return layout({
@@ -311,5 +328,122 @@ export function billingPaymentEmail(o: { base: string; kind: "failed" | "unpaid"
   return layout({
     subject: t.subject, preheader: t.body[0]!, heading: t.heading, paragraphs: t.body, button: { label: t.button, url: billingUrl(o.base) },
     after: o.invoiceUrl ? [`Invoice: ${o.invoiceUrl}`] : [], settingsUrl: settingsUrl(o.base), reason: "You received this because you pay for RevenueDot Cloud.",
+  });
+}
+
+/* ---- Account settings (prd/account-settings/PRD.md) ---- */
+
+/** To the new address: the link that moves the account to it. */
+export function emailChangeConfirmEmail(o: { base: string; url: string; oldEmail: string; newEmail: string }): Rendered {
+  return layout({
+    subject: "Confirm your new email for RevenueDot",
+    preheader: `Move your RevenueDot account from ${o.oldEmail} to this address.`,
+    heading: "Confirm your new email address",
+    paragraphs: [`Someone signed in to the RevenueDot account ${o.oldEmail} asked to change its email to ${o.newEmail}. Confirm that this address is yours and the account moves to it.`],
+    button: { label: "Confirm new email", url: o.url },
+    after: ["The link works once and expires in 24 hours. Until you confirm, the account keeps its old address.", "If you did not ask for this, ignore this email: nothing changes."],
+    settingsUrl: settingsUrl(o.base),
+    reason: "You received this because this address was entered as the new email of a RevenueDot account.",
+  });
+}
+
+/** To the old address: a change was asked for, or has happened. */
+export function emailChangeNoticeEmail(o: { base: string; oldEmail: string; newEmail: string; state: "requested" | "changed" }): Rendered {
+  const asked = o.state === "requested";
+  return layout({
+    subject: asked ? "Your RevenueDot email is about to change" : "Your RevenueDot email was changed",
+    preheader: asked ? `A change to ${o.newEmail} is waiting for confirmation.` : `Your account now signs in with ${o.newEmail}.`,
+    heading: asked ? "Someone asked to change your email" : "Your email was changed",
+    paragraphs: asked
+      ? [`Someone signed in to your RevenueDot account asked to change its email from ${o.oldEmail} to ${o.newEmail}. The change happens only when the link we sent to ${o.newEmail} is used.`, "If this was not you, change your password now and sign out every other session in Account settings → Security."]
+      : [`Your RevenueDot account now uses ${o.newEmail}. Sign in with that address from now on; this address gets no more email about the account.`, "If this was not you, reply to this email at once so we can lock the account."],
+    button: { label: asked ? "Review security settings" : "Open the dashboard", url: asked ? securityUrl(o.base) : o.base },
+    settingsUrl: settingsUrl(o.base),
+    reason: "You received this because this address belongs, or belonged, to a RevenueDot account.",
+  });
+}
+
+export function passwordChangedEmail(o: { base: string; email: string }): Rendered {
+  return layout({
+    subject: "Your RevenueDot password was changed",
+    preheader: "Every other session was signed out.",
+    heading: "Your password was changed",
+    paragraphs: [`The password of the RevenueDot account ${o.email} was just changed, and every other signed-in browser was signed out.`, "If this was not you, reset your password now with \"Forgot password?\" on the sign-in page."],
+    button: { label: "Review security settings", url: securityUrl(o.base) },
+    settingsUrl: settingsUrl(o.base),
+    reason: "You received this because the password of your RevenueDot account changed.",
+  });
+}
+
+export type TwoFactorNotice = "enabled" | "disabled" | "recovery_used" | "codes_regenerated";
+export function twoFactorEmail(o: { base: string; email: string; kind: TwoFactorNotice; remaining?: number }): Rendered {
+  const t = {
+    enabled: { subject: "Two-factor authentication is on", heading: "Two-factor authentication is on", body: [`Signing in to ${o.email} now also needs a code from your authenticator app.`, "Keep your recovery codes somewhere safe: each one signs you in once if you lose your phone."] },
+    disabled: { subject: "Two-factor authentication is off", heading: "Two-factor authentication was turned off", body: [`Signing in to ${o.email} needs only the password again.`, "If this was not you, change your password now and turn two-factor authentication back on."] },
+    recovery_used: { subject: "A recovery code was used to sign in", heading: "A recovery code was used", body: [`Someone signed in to ${o.email} with a recovery code instead of the authenticator app. ${o.remaining ?? 0} recovery code${o.remaining === 1 ? " is" : "s are"} left.`, "If you lost your phone, set up the authenticator app again and make new recovery codes. If this was not you, change your password now."] },
+    codes_regenerated: { subject: "New two-factor recovery codes", heading: "You have new recovery codes", body: [`New recovery codes were made for ${o.email}. The old ones no longer work.`] },
+  }[o.kind];
+  return layout({
+    subject: t.subject, preheader: t.body[0]!, heading: t.heading, paragraphs: t.body,
+    button: { label: "Review security settings", url: securityUrl(o.base) },
+    settingsUrl: settingsUrl(o.base), reason: "You received this because the security settings of your RevenueDot account changed.",
+  });
+}
+
+export function accountDeletedEmail(o: { base: string; email: string; projects: string[] }): Rendered {
+  return layout({
+    subject: "Your RevenueDot account was deleted",
+    preheader: "The account and its own projects are gone.",
+    heading: "Your account was deleted",
+    paragraphs: [
+      `The RevenueDot account ${o.email} was deleted, with its sessions, keys and settings.`,
+      o.projects.length ? `Projects deleted with it: ${o.projects.join(", ")}.` : "No project was deleted: every project you were in has other members.",
+      "If you want to come back, sign up again any time.",
+    ],
+    settingsUrl: o.base,
+    reason: "You received this because this address belonged to a RevenueDot account.",
+  });
+}
+
+/** The weekly summary of one project (figures already formatted in the reader's currency). */
+export function weeklySummaryEmail(o: { base: string; projectName: string; weekLabel: string; rows: [string, string, string][]; url: string; headline: string; unsubscribeUrl?: string }): Rendered {
+  return layout({
+    subject: `${o.projectName}: your week, ${o.weekLabel}`,
+    preheader: o.headline,
+    heading: `${o.projectName}, ${o.weekLabel}`,
+    paragraphs: [o.headline],
+    table: { head: ["Metric", "This week", "Vs last week"], rows: o.rows },
+    button: { label: "Open the charts", url: o.url },
+    after: ["Production purchases only, from the same numbers as the Charts page. Weeks start on the day you chose in Date and region."],
+    settingsUrl: settingsUrl(o.base), unsubscribeUrl: o.unsubscribeUrl,
+    reason: `You received this because you turned on the weekly summary for ${o.projectName}.`,
+  });
+}
+
+export function experimentResultEmail(o: { base: string; projectName: string; experimentName: string; kind: "enough_data" | "ended"; rows: [string, string, string][]; verdict: string; url: string; unsubscribeUrl?: string }): Rendered {
+  const enough = o.kind === "enough_data";
+  return layout({
+    subject: enough ? `${o.experimentName} has enough data to read` : `${o.experimentName} ended`,
+    preheader: o.verdict,
+    heading: enough ? `${o.experimentName} has enough data` : `${o.experimentName} ended`,
+    paragraphs: [enough ? `Both variants of the experiment ${o.experimentName} in ${o.projectName} have at least 100 customers.` : `The experiment ${o.experimentName} in ${o.projectName} was stopped. These are its final results.`, o.verdict],
+    table: { head: ["Variant", "Conversion", "Revenue per customer"], rows: o.rows },
+    button: { label: "Open the experiment", url: o.url },
+    settingsUrl: settingsUrl(o.base), unsubscribeUrl: o.unsubscribeUrl,
+    reason: `You received this because you turned on experiment results for ${o.projectName}.`,
+  });
+}
+
+export function anomalyEmail(o: { base: string; projectName: string; day: string; lines: { title: string; text: string }[]; url: string; sensitivity: string; unsubscribeUrl?: string }): Rendered {
+  const first = o.lines[0]!;
+  return layout({
+    subject: `${o.projectName}: ${first.title.toLowerCase()} on ${o.day}`,
+    preheader: first.text,
+    heading: `${o.projectName}: unusual ${o.day}`,
+    paragraphs: o.lines.map((l) => `${l.title}. ${l.text}`),
+    button: { label: "Open the chart", url: o.url },
+    after: [`Compared with the 28 days before, at ${o.sensitivity} sensitivity. A sudden drop often means a broken paywall, a failing store connection or an app update; a spike, a feature or a promotion.`],
+    settingsUrl: settingsUrl(o.base), unsubscribeUrl: o.unsubscribeUrl,
+    reason: `You received this because you turned on revenue anomaly alerts for ${o.projectName}.`,
   });
 }

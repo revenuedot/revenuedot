@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Shell, useMe } from "../components/Shell";
-import { PageHead, Tag, useToast } from "../components/ui";
+import { useMe } from "../components/Shell";
+import { Tag, useToast } from "../components/ui";
+import { AccountLayout } from "./account/AccountLayout";
 import { api, ApiError, fmt } from "../lib/api";
 import "./billing.css";
 
 /**
- * Billing (/account/billing, RevenueDot Cloud only; prd/cloud-billing/PRD.md): the plan and its state, this month's tracked
+ * Account settings → Billing (/account/billing; prd/account-settings §2): the projects this person owns and belongs to with
+ * role and plan, then on RevenueDot Cloud with billing set up (prd/cloud-billing/PRD.md): the plan and its state, this month's tracked
  * revenue against the plan's limit, the bill so far, the plans with Upgrade (Stripe Checkout), Manage billing (Customer
  * Portal) or Contact us, and invoices. Self-hosted servers have no billing.
  */
@@ -38,24 +40,20 @@ function Meter({ value, max, label }: { value: number; max: number; label: strin
 
 export function BillingPage() {
   const me = useMe();
-  const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cloud = me.data?.account?.edition === "cloud";
-  const q = useQuery({ queryKey: ["billing"], queryFn: () => api<Billing>("/v2/billing"), enabled: cloud, refetchInterval: params.get("checkout") === "success" ? 3000 : false });
+  // Like the Billing link: only on Cloud once RevenueDot's Stripe is set up (`billing_ready`).
+  const q = useQuery({ queryKey: ["billing"], queryFn: () => api<Billing>("/v2/billing"), enabled: cloud && !!me.data?.account?.billing_ready, refetchInterval: params.get("checkout") === "success" ? 3000 : false });
   useEffect(() => {
     const c = params.get("checkout");
     if (c === "success") toast("Thanks. Your plan changes as soon as Stripe confirms the payment.");
     if (c === "cancelled") toast("Checkout cancelled. Nothing changed.");
     if (c) { const t = setTimeout(() => { setParams({}, { replace: true }); void qc.invalidateQueries({ queryKey: ["me"] }); }, 15_000); return () => clearTimeout(t); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  let last = "";
-  try { last = localStorage.getItem("rd-last-project") ?? ""; } catch { /* ignore */ }
-  const pid = me.data?.projects.find((p) => p.id === last)?.id ?? me.data?.projects[0]?.id ?? "";
-  useEffect(() => { if (me.data && !pid) nav("/account"); }, [me.data, pid, nav]);
   const go = async (what: "checkout" | "portal") => {
     setBusy(what); setError(null);
     try {
@@ -66,26 +64,27 @@ export function BillingPage() {
   const b = q.data;
   const current = b?.plans.find((p) => p.id === b.account.plan);
   const limit = b ? (b.account.plan === "free" ? b.usage.free_limit_usd : b.usage.ceiling_usd) : 0;
+  const ready = cloud && !!me.data?.account?.billing_ready;
   return (
-    <Shell title="Billing" projectId={pid} crumbs={<><span>Account</span> <span className="crumb-sep">/</span> <b>Billing</b></>}>
-      <div className="page narrow">
-        <PageHead title="Billing" sub={me.data ? `RevenueDot Cloud · ${me.data.user.email}` : undefined} />
+    <AccountLayout section="billing" sub={me.data ? (cloud ? `RevenueDot Cloud · ${me.data.user.email}` : `Self-hosted · ${me.data.user.email}`) : undefined}>
+        <OwnedProjects />
         {me.data && !cloud && <div className="banner" role="status">Billing is only on RevenueDot Cloud. This server is self-hosted: free and unmetered, with no limits.</div>}
+        {me.data && cloud && !ready && <div className="banner" role="status">Billing is not switched on yet: RevenueDot Cloud is free for every account until it is.</div>}
         {q.isError && <div className="banner err" role="alert">Billing could not be loaded: {q.error instanceof Error ? q.error.message : ""}</div>}
         {b && (
           <div className="stack">
             {b.flags.includes("past_due") && <div className="banner err" role="alert">Your last payment failed. Stripe tries again over the next days; your apps keep working. <button type="button" className="link-u" onClick={() => go("portal")}>Update your card</button>.</div>}
             {b.flags.includes("unpaid") && <div className="banner err" role="alert">We could not collect your payment, so your account is back on Cloud Free. Your apps keep working. Upgrade again below.</div>}
-            {b.flags.includes("over_free_limit") && b.stripe_ready && <div className="banner warn" role="status">Your apps tracked {fmt.usd(b.usage.tracked_revenue_usd)} this month, above Cloud Free's {fmt.usd(b.usage.free_limit_usd)}. Nothing stops working; upgrade to Cloud Standard ({fmt.usd(b.usage.standard_bill_usd, true)} this month so far).</div>}
-            {b.flags.includes("over_standard_limit") && <div className="banner warn" role="status">Your apps tracked more than {fmt.usd(b.usage.ceiling_usd)} this month. Write to <a href="mailto:hello@revenuedot.app">hello@revenuedot.app</a> to move to Enterprise.</div>}
+            {b.flags.includes("over_free_limit") && b.stripe_ready && <div className="banner warn" role="status">Your apps tracked {fmt.usdRaw(b.usage.tracked_revenue_usd)} this month, above Cloud Free's {fmt.usdRaw(b.usage.free_limit_usd)}. Nothing stops working; upgrade to Cloud Standard ({fmt.usdRaw(b.usage.standard_bill_usd, true)} this month so far).</div>}
+            {b.flags.includes("over_standard_limit") && <div className="banner warn" role="status">Your apps tracked more than {fmt.usdRaw(b.usage.ceiling_usd)} this month. Write to <a href="mailto:hello@revenuedot.app">hello@revenuedot.app</a> to move to Enterprise.</div>}
             {!b.stripe_ready && <div className="banner" role="status">Billing is not switched on yet: RevenueDot Cloud is free for every account until it is.</div>}
             {error && <div className="banner err" role="alert">{error}</div>}
 
             <section className="bl-grid" aria-label="This month">
               <div><span className="l">Plan</span><span className="v name">{current?.name ?? "Cloud Free"}</span><span className="d"><Tag tone={STATUS[b.account.status]?.tone ?? "muted"}>{STATUS[b.account.status]?.label ?? b.account.status}</Tag>{b.account.cancel_at && <span className="subtle"> Ends {fmt.date(b.account.cancel_at)}</span>}</span></div>
-              <div><span className="l">Tracked revenue, {monthName(b.usage.month)}</span><span className="v" data-tracked>{fmt.usd(b.usage.tracked_revenue_usd, true)}</span>
-                {limit ? <><Meter value={b.usage.tracked_revenue_usd} max={limit} label="Tracked revenue against the plan's limit" /><span className="d mono">{Math.round((b.usage.tracked_revenue_usd / limit) * 100)}% of {fmt.usd(limit)}</span></> : <span className="d">No limit</span>}</div>
-              <div><span className="l">Bill so far</span><span className="v" data-bill>{b.account.plan === "enterprise" ? "By contract" : fmt.usd(b.usage.bill_usd, true)}</span><span className="d">{b.account.plan === "standard" ? `0.5% above ${fmt.usd(b.usage.free_limit_usd)}, at most ${fmt.usd(b.usage.cap_usd)}` : b.account.plan === "free" ? `${fmt.usd(b.usage.standard_bill_usd, true)} on Cloud Standard` : ""}</span></div>
+              <div><span className="l">Tracked revenue, {monthName(b.usage.month)}</span><span className="v" data-tracked>{fmt.usdRaw(b.usage.tracked_revenue_usd, true)}</span>
+                {limit ? <><Meter value={b.usage.tracked_revenue_usd} max={limit} label="Tracked revenue against the plan's limit" /><span className="d mono">{Math.round((b.usage.tracked_revenue_usd / limit) * 100)}% of {fmt.usdRaw(limit)}</span></> : <span className="d">No limit</span>}</div>
+              <div><span className="l">Bill so far</span><span className="v" data-bill>{b.account.plan === "enterprise" ? "By contract" : fmt.usdRaw(b.usage.bill_usd, true)}</span><span className="d">{b.account.plan === "standard" ? `0.5% above ${fmt.usdRaw(b.usage.free_limit_usd)}, at most ${fmt.usdRaw(b.usage.cap_usd)}` : b.account.plan === "free" ? `${fmt.usdRaw(b.usage.standard_bill_usd, true)} on Cloud Standard` : ""}</span></div>
               <div><span className="l">Month ends</span><span className="v">{fmt.date(b.usage.period_end - 1)}</span><span className="d">{b.usage.computed_at ? `Updated ${fmt.ago(b.usage.computed_at)}` : "Measured hourly"}</span></div>
             </section>
 
@@ -94,7 +93,7 @@ export function BillingPage() {
               <div className="pb"><p className="section-sub">Production purchases and renewals in {monthName(b.usage.month)}, in USD at the purchase-date rate. Sandbox purchases, trials and refunds do not count; refunds are not subtracted.</p></div>
               <div className="tbl"><table>
                 <thead><tr><th>Project</th><th className="num">Transactions</th><th className="num">Tracked revenue</th></tr></thead>
-                <tbody>{b.usage.projects.map((p) => <tr key={p.project_id}><td><Link to={`/projects/${p.project_id}/overview`}>{p.name ?? p.project_id}</Link></td><td className="num mono">{fmt.int(p.transactions)}</td><td className="num mono">{fmt.usd(p.tracked_revenue_usd, true)}</td></tr>)}</tbody>
+                <tbody>{b.usage.projects.map((p) => <tr key={p.project_id}><td><Link to={`/projects/${p.project_id}/overview`}>{p.name ?? p.project_id}</Link></td><td className="num mono">{fmt.int(p.transactions)}</td><td className="num mono">{fmt.usdRaw(p.tracked_revenue_usd, true)}</td></tr>)}</tbody>
               </table></div>
             </section>
 
@@ -123,17 +122,51 @@ export function BillingPage() {
                   <tbody>{b.invoices.map((i) => (
                     <tr key={i.id}><td>{fmt.date(i.created_at)}</td><td className="mono">{i.number ?? "—"}</td>
                       <td>{i.status === "paid" ? <Tag tone="up">Paid</Tag> : i.status === "open" ? <Tag tone="down">Open</Tag> : <Tag>{i.status}</Tag>}</td>
-                      <td className="num mono">{fmt.usd(i.amount_due, true)}</td>
+                      <td className="num mono">{fmt.usdRaw(i.amount_due, true)}</td>
                       <td className="actions-cell">{i.hosted_invoice_url && <a className="btn btn-line" href={i.hosted_invoice_url} target="_blank" rel="noreferrer">View</a>}{i.invoice_pdf && <a className="btn btn-line" href={i.invoice_pdf} target="_blank" rel="noreferrer">PDF</a>}</td>
                     </tr>
                   ))}</tbody>
                 </table></div>
               ) : <div className="pb subtle">No invoices yet. Cloud Free has none; Cloud Standard invoices arrive at the start of each month.</div>}
             </section>
-            <p className="subtle">Self-hosting stays free with no limits. Prices: <a href="https://revenuedot.app/pricing" target="_blank" rel="noreferrer">revenuedot.app/pricing</a>.</p>
+            <p className="subtle">Self-hosting stays free with no limits. Amounts are in USD, the currency RevenueDot Cloud bills in. Prices: <a href="https://revenuedot.app/pricing" target="_blank" rel="noreferrer">revenuedot.app/pricing</a>.</p>
           </div>
         )}
-      </div>
-    </Shell>
+    </AccountLayout>
+  );
+}
+
+interface AccountProject { id: string; name: string; role: string; is_owner: boolean; members: number; owner: { id: string; name: string | null; email: string } | null; plan: { id: string; name: string } }
+const ROLE: Record<string, string> = { admin: "Admin", developer: "Developer", viewer: "Viewer" };
+
+/** RevenueCat's "Owned projects" (project, role, plan), then the projects this person is a member of. */
+function OwnedProjects() {
+  const q = useQuery({ queryKey: ["account-projects"], queryFn: () => api<{ edition: string; items: AccountProject[] }>("/auth/account/projects") });
+  const owned = q.data?.items.filter((p) => p.is_owner) ?? [];
+  const member = q.data?.items.filter((p) => !p.is_owner) ?? [];
+  const table = (rows: AccountProject[], ownerCol: boolean) => (
+    <div className="tbl"><table>
+      <thead><tr><th>Project</th><th>Your role</th>{ownerCol && <th>Owner</th>}<th>Members</th><th>Plan</th></tr></thead>
+      <tbody>{rows.map((p) => (
+        <tr key={p.id} data-account-project={p.id}>
+          <td><Link to={`/projects/${p.id}/overview`}>{p.name}</Link></td>
+          <td>{ROLE[p.role] ?? p.role}</td>
+          {ownerCol && <td>{p.owner ? (p.owner.name || p.owner.email) : "—"}</td>}
+          <td className="num mono">{p.members}</td>
+          <td>{p.plan.name}</td>
+        </tr>
+      ))}</tbody>
+    </table></div>
+  );
+  return (
+    <>
+      <section className="panel" aria-labelledby="owned-h">
+        <div className="ph"><b id="owned-h">Owned projects</b><Link className="btn btn-line" to="/projects/new">New project</Link></div>
+        {q.isError ? <div className="pb"><div className="banner err" role="alert">{q.error instanceof Error ? q.error.message : "Could not load projects."}</div></div>
+          : !q.data ? <div className="pb subtle">Loading…</div>
+          : owned.length ? table(owned, false) : <div className="pb subtle">You do not own a project. Projects you create, or that are transferred to you, appear here.</div>}
+      </section>
+      {member.length > 0 && <section className="panel" aria-labelledby="member-h"><div className="ph"><b id="member-h">Projects you are a member of</b></div>{table(member, true)}</section>}
+    </>
   );
 }

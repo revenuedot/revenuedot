@@ -15,6 +15,8 @@ export interface ChartRequest {
   /** Count the whole first period of flow charts (RevenueCat's `expand_periods`). */
   expand: boolean;
   selectors: Record<string, string>;
+  /** First day of weekly buckets, 0 = Sunday … 6 = Saturday (default Monday). RevenueDot extension. */
+  weekStart?: number;
 }
 
 export interface SeriesPoint { start: number; values: (number | null)[]; incomplete: boolean }
@@ -155,7 +157,7 @@ function pairMoves(moves: SubMove[]): Move[] {
 export class Frame {
   readonly buckets: Bucket[];
   constructor(readonly req: ChartRequest, readonly now: number, max = 1000) {
-    this.buckets = buckets(req.rangeStart, req.rangeEnd, req.resolution, max);
+    this.buckets = buckets(req.rangeStart, req.rangeEnd, req.resolution, max, req.weekStart);
   }
   private get stop() { return Math.min(this.req.rangeEnd, this.now + 1); }
   /** [from, to) of a flow or cohort period: clipped to the range and to now. */

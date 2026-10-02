@@ -30,6 +30,7 @@
     "react-router-dom": "^7.1.1",
     "streamdown": "^2.7.0",
     "tailwind-merge": "^3.7.0",
+    "uqr": "0.1.2",
     "use-stick-to-bottom": "^1.1.6"
   },
   "devDependencies": {

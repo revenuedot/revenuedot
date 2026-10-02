@@ -1,3 +1,4 @@
+import { formatUsd } from "./prefs";
 /** Types and wording shared by the Overview and the customer pages. Shapes follow RevenueCat's API v2 plus our extensions. */
 import { STORE_LABEL } from "../components/ui";
 
@@ -71,10 +72,13 @@ export function shortId(id: string, max = 14) {
 
 export const isAnonymous = (id: string) => id.startsWith("$RCAnonymousID:");
 
-/** Money with cents, or "—". Negative amounts (refunds) keep a real minus sign. */
-export function money(n: number | null | undefined, currency = "USD") {
+/**
+ * Money with cents, or "—". Negative amounts (refunds) keep a real minus sign. Without a currency the amount is one of
+ * the API's USD values and is shown in the display currency; with one (a store price) it stays in that currency.
+ */
+export function money(n: number | null | undefined, currency?: string) {
   if (n === null || n === undefined) return "—";
-  const s = Math.abs(n).toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const s = currency ? Math.abs(n).toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }) : formatUsd(Math.abs(n), true);
   return n < 0 ? `−${s}` : s;
 }
 

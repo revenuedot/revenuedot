@@ -31,6 +31,11 @@ export interface ServerExtension {
   config?(deps: Deps): Promise<Record<string, unknown>>;
   /** Extra fields for GET /auth/me. */
   me?(a: { deps: Deps; userId: string; sessionId: string | null }): Promise<Record<string, unknown>>;
+  /**
+   * Before an account is deleted (Account settings → General, prd/account-settings): a refusal stops it, for example
+   * when the person is the last owner of an organization that still has members.
+   */
+  beforeAccountDelete?(a: { deps: Deps; userId: string }): Promise<{ message: string } | null>;
   /** Runs at the end of every tick (services/tick.ts). Errors are logged and never stop the tick. */
   tick?(db: DB, now: Date): Promise<Record<string, number> | void>;
 }

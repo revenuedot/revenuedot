@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
-  addMonths, ATTRIBUTION_DIMS, chartDef, DIM_LABEL, NO_ATTRIBUTION, dimValues, floorTo, isoDay, RESOLUTIONS, runChart,
+  addMonths, ATTRIBUTION_DIMS, chartDef, DEFAULT_WEEK_START, DIM_LABEL, NO_ATTRIBUTION, dimValues, floorTo, isoDay, RESOLUTIONS, runChart,
   type ChartDef, type ChartFilter, type ChartOutput, type ChartRequest, type Dim, type MeasureDef, type Resolution,
 } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
@@ -17,6 +17,7 @@ import { paramError, scope, V2Error, type V2Context, type V2Router } from "./com
 const DAY = 86_400_000;
 export const CURRENCIES = ["USD", "EUR", "GBP", "AUD", "CAD", "JPY", "BRL", "KRW", "CNY", "MXN", "SEK", "PLN", "NZD", "CHF"];
 const MAX_PERIODS = 1000;
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const DOCS = "https://revenuedot.app/docs/guides/charts";
 const STORE_LABEL: Record<string, string> = { app_store: "App Store", mac_app_store: "Mac App Store", play_store: "Google Play", amazon: "Amazon", stripe: "Stripe", rc_billing: "Web", test_store: "Test Store", paddle: "Paddle", roku: "Roku", external: "External" };
 
@@ -53,6 +54,15 @@ interface Parsed {
 function parse(c: V2Context, now: Date): Parsed {
   const def = chart(c);
   const q = (k: string) => c.req.query(k);
+  // RevenueDot extension: week_start (0 = Sunday … 6 = Saturday, or the day's name) sets the first day of weekly buckets.
+  const wsRaw = (q("week_start") ?? "").trim().toLowerCase();
+  let weekStart = DEFAULT_WEEK_START;
+  if (wsRaw !== "") {
+    const byName = WEEKDAYS.indexOf(wsRaw);
+    const n = byName >= 0 ? byName : /^[0-6]$/.test(wsRaw) ? Number(wsRaw) : -1;
+    if (n < 0) throw paramError("week_start must be 0 (Sunday) to 6 (Saturday), or a day such as monday.", "week_start");
+    weekStart = n;
+  }
   const resRaw = q("resolution");
   let resolution: Resolution = def.defaultResolution;
   if (resRaw !== undefined && resRaw !== "") {
@@ -67,7 +77,7 @@ function parse(c: V2Context, now: Date): Parsed {
   if (lastDay < rangeStart) throw paramError("end_date must not be before start_date.", "end_date");
   const rangeEnd = lastDay + DAY;
   let n = 0;
-  for (let s = floorTo(rangeStart, resolution); s < rangeEnd && n <= MAX_PERIODS; s = addPeriodsSafe(s, resolution)) n++;
+  for (let s = floorTo(rangeStart, resolution, weekStart); s < rangeEnd && n <= MAX_PERIODS; s = addPeriodsSafe(s, resolution)) n++;
   if (n > MAX_PERIODS) throw paramError(`The range has more than ${MAX_PERIODS} ${resolution} periods. Use a shorter range or a coarser resolution.`, "start_date");
 
   const currency = (q("currency") ?? "USD").toUpperCase();
@@ -104,7 +114,7 @@ function parse(c: V2Context, now: Date): Parsed {
   return {
     def, filters: filters.map((f) => ({ name: f.name as Dim, values: f.values.map(String) })), segment, limit, currency, sandbox: env === "sandbox",
     aggregate: aggregate as Parsed["aggregate"], annotations: bool("include_annotations", q("include_annotations"), false), rangeStart, lastDay,
-    req: { resolution, rangeStart, rangeEnd, expand: bool("expand_periods", q("expand_periods"), false), selectors: Object.fromEntries(Object.entries(selectors).map(([k, v]) => [k, String(v)])) },
+    req: { resolution, rangeStart, rangeEnd, expand: bool("expand_periods", q("expand_periods"), false), selectors: Object.fromEntries(Object.entries(selectors).map(([k, v]) => [k, String(v)])), weekStart },
   };
 }
 function addPeriodsSafe(s: number, r: Resolution) { return r === "day" ? s + DAY : r === "week" ? s + 7 * DAY : addMonths(s, r === "month" ? 1 : r === "quarter" ? 3 : 12); }
@@ -152,7 +162,7 @@ export function chartRoutes(r: V2Router, deps: Deps) {
   r.get(P, scope("charts_metrics:charts:read"), async (c) => {
     const now = deps.now();
     const p = parse(c, now);
-    const sources = chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution), to: p.req.rangeEnd });
+    const sources = chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution, p.req.weekStart), to: p.req.rangeEnd });
     const input = await loadChartInput(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, now, currency: p.currency, fetch: deps.fetch ?? undefined, sources });
     const run = runChart(p.def, input, p.req, { filters: p.filters, segment: p.segment, limit: p.limit });
     const o = run.output;

@@ -89,8 +89,11 @@ export const apiKeys = pgTable("api_keys", {
   prefix: text("prefix").notNull(),
   permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
   lastUsedAt: ts("last_used_at"),
+  /** OAuth keys (routes/oauth.ts): who granted the key, and to which client (Account settings → Security). */
+  createdByUserId: text("created_by_user_id").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+  oauthClientId: text("oauth_client_id").references((): AnyPgColumn => oauthClients.id, { onDelete: "set null" }),
   createdAt: created(),
-}, (t) => [uniqueIndex("api_keys_hash").on(t.hash)]);
+}, (t) => [uniqueIndex("api_keys_hash").on(t.hash), index("api_keys_created_by").on(t.createdByUserId)]);
 
 /**
  * Subscriber access tokens from `POST /v2/projects/{id}/apps/{id}/authenticate`: short-lived, bound to one app and one app
@@ -480,6 +483,21 @@ export const users = pgTable("users", {
   emailVerifiedAt: ts("email_verified_at"),
   /** Alert emails (failing notifications, webhooks, store credentials) for projects this user administers. */
   alertEmails: boolean("alert_emails").notNull().default(true),
+  /** Account settings (prd/account-settings/PRD.md): "system", "light" or "dark". */
+  theme: text("theme").notNull().default("system"),
+  /** Accent tint "#RRGGBB" replacing the gold accent in the dashboard; null keeps the gold. */
+  tint: text("tint"),
+  /** First day of the week, 0 = Sunday … 6 = Saturday (charts' weekly buckets, date pickers, the weekly summary). */
+  weekStart: integer("week_start").notNull().default(1),
+  /** Currency the dashboard shows money in (ISO 4217, one of the charts' currencies). The API stays USD. */
+  displayCurrency: text("display_currency").notNull().default("USD"),
+  /** TOTP secret (RFC 6238), sealed with services/secrets.ts. Set but not enabled while setup waits for a first code. */
+  totpSecret: text("totp_secret"),
+  /** When two-factor authentication was turned on; null: off. */
+  totpEnabledAt: ts("totp_enabled_at"),
+  /** The last accepted TOTP time step, so a code is never accepted twice. */
+  totpLastStep: bigint("totp_last_step", { mode: "number" }),
+  passwordChangedAt: ts("password_changed_at"),
   /** The weekly AI growth insights digest for projects this user administers (prd/attribution-benchmarks-insights). */
   insightsEmails: boolean("insights_emails").notNull().default(true),
   createdAt: created(),
@@ -496,7 +514,14 @@ export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   expiresAt: ts("expires_at").notNull(),
-});
+  createdAt: ts("created_at").notNull().defaultNow(),
+  /** Updated at most every 5 minutes (services/sessions.ts). */
+  lastSeenAt: ts("last_seen_at"),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
+  /** How the session began: password, two_factor, signup, reset, invite, email_change or sso. */
+  method: text("method").notNull().default("password"),
+}, (t) => [index("sessions_user").on(t.userId)]);
 
 /**
  * Which SDK builds call the SDK endpoints, per app: one row per platform, flavor (native or the hybrid SDK) and version.
@@ -586,10 +611,57 @@ export const authTokens = pgTable("auth_tokens", {
   kind: text("kind").notNull(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
+  /** Email change links: the address the account moves to once the link is used. */
+  newEmail: text("new_email"),
   expiresAt: ts("expires_at").notNull(),
   usedAt: ts("used_at"),
   createdAt: created(),
 }, (t) => [index("auth_tokens_user").on(t.userId, t.kind)]);
+
+/** Two-factor recovery codes (prd/account-settings): 10 per user, SHA-256 only, each works once. */
+export const twoFactorRecoveryCodes = pgTable("two_factor_recovery_codes", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  hash: text("hash").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.userId, t.hash] })]);
+
+/**
+ * Email notifications a user chose per project (Account settings → Notifications). No row: everything off.
+ * `anomalySensitivity`: "low", "medium" or "high" (packages/core/src/anomaly.ts).
+ */
+export const notificationPrefs = pgTable("notification_prefs", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  weeklySummary: boolean("weekly_summary").notNull().default(false),
+  experimentResults: boolean("experiment_results").notNull().default(false),
+  anomalyAlerts: boolean("anomaly_alerts").notNull().default(false),
+  anomalySensitivity: text("anomaly_sensitivity").notNull().default("medium"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.projectId] })]);
+
+/**
+ * One row per email of services/account-notifications.ts, written before it is sent, so every email goes out once:
+ * kind "weekly_summary" (key: the week's first day), "experiment_enough_data" / "experiment_ended" (key: experiment id),
+ * "revenue_anomaly" (key: the day). `tokenHash`: SHA-256 of the email's one-click unsubscribe link (RFC 8058), which
+ * turns that kind off for that project.
+ */
+export const notificationSends = pgTable("notification_sends", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  key: text("key").notNull(),
+  tokenHash: text("token_hash"),
+  sentAt: ts("sent_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.projectId, t.kind, t.key] }), uniqueIndex("notification_sends_token").on(t.tokenHash)]);
+
+/** The daily revenue anomaly check per project and UTC day (YYYY-MM-DD): run once, emailed from the result. */
+export const anomalyChecks = pgTable("anomaly_checks", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  day: text("day").notNull(),
+  result: jsonb("result").$type<Record<string, unknown>>().notNull(),
+  checkedAt: ts("checked_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.day] })]);
 
 /** Invitations to a project by email. The link token is stored as a SHA-256; resending replaces it. */
 export const invites = pgTable("invites", {
