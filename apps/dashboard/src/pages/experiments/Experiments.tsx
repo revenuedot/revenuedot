@@ -13,7 +13,7 @@ import { DataTable, Dialog, Menu, PageHead, Tag, useProjectId, useToast, type Me
 import { Icon } from "../../components/icons";
 import { errMsg, v2 } from "../catalog/lib";
 import { useAiStatus } from "../ai/data";
-import { askAssistant, STATUS_TONE, statusLabel, typeName, useExperiments, useOfferingsFull, type Experiment } from "./lib";
+import { askAssistant, STATUS_TONE, statusLabel, typeName, useCanEdit, useExperiments, useOfferingsFull, useOrderSaver, type Experiment } from "./lib";
 
 const STARTERS = EXPERIMENT_TYPES.filter((t) => t.id !== "other");
 const ICONS: Record<string, string> = { introductory_offer: "dollar", free_trial_offer: "hourglass", paywall_design: "paywalls", price_point: "dollar", subscription_duration: "refresh", subscription_ordering: "updown" };
@@ -22,25 +22,23 @@ export function ExperimentsPage() {
   const pid = useProjectId();
   const nav = useNavigate();
   const toast = useToast();
-  const qc = useQueryClient();
   const q = useExperiments(pid);
   const offs = useOfferingsFull(pid);
   const ai = useAiStatus(pid);
+  const canEdit = useCanEdit(pid);
   const [askOpen, setAskOpen] = useState(false);
   const [drag, setDrag] = useState<{ from: string; over: string | null } | null>(null);
   const all = q.data ?? [];
   const open = all.filter((x) => x.status !== "stopped").sort((a, b) => a.priority - b.priority || a.created_at - b.created_at);
   const stopped = all.filter((x) => x.status === "stopped").sort((a, b) => (b.stopped_at ?? 0) - (a.stopped_at ?? 0));
-  const offName = (id: string) => offs.data?.find((o) => o.id === id)?.lookup_key ?? "deleted offering";
+  const offName = (id: string) => (offs.data ? offs.data.find((o) => o.id === id)?.lookup_key ?? "deleted offering" : "…");
   const aiOk = !!ai.data?.available && !!ai.data?.can_write;
   const aiHint = ai.data && !aiOk ? (ai.data.reason ?? (ai.data.available ? "RevenueDot AI can only read in this project." : "RevenueDot AI is not set up on this server.")) : undefined;
 
-  const reorder = async (ids: string[]) => {
-    qc.setQueryData<Experiment[]>(["experiments", pid], (xs) => xs?.map((x) => ({ ...x, priority: ids.indexOf(x.id) >= 0 ? ids.indexOf(x.id) + 1 : x.priority })));
-    try { await api(`${v2(pid)}/experiments/actions/reorder`, { method: "POST", json: { experiment_ids: ids } }); toast("Enrollment order saved"); }
-    catch (e) { toast(errMsg(e)); }
-    await qc.invalidateQueries({ queryKey: ["experiments", pid] });
-  };
+  const reorder = useOrderSaver<Experiment>(["experiments", pid],
+    (xs, ids) => xs.map((x) => ({ ...x, priority: ids.indexOf(x.id) >= 0 ? ids.indexOf(x.id) + 1 : x.priority })),
+    (ids) => api(`${v2(pid)}/experiments/actions/reorder`, { method: "POST", json: { experiment_ids: ids } }),
+    (error) => toast(error ?? "Enrollment order saved"));
   const move = (id: string, to: number) => {
     const ids = open.map((x) => x.id);
     const from = ids.indexOf(id);
@@ -61,8 +59,10 @@ export function ExperimentsPage() {
     <Shell title="Experiments">
       <div className="page">
         <PageHead title="Experiments" sub="Test offerings, prices, trials and paywalls against each other. Each customer always sees the same variant; results compare conversion, revenue and retention with 95% intervals."
-          actions={<Menu label="New experiment" text="New experiment" primary items={newItems} />} />
-        {q.isLoading ? <div className="panel pb subtle">Loading…</div> : q.isError ? <div className="banner err" role="alert">{errMsg(q.error)}</div> : !all.length ? (
+          actions={canEdit ? <Menu label="New experiment" text="New experiment" primary items={newItems} /> : undefined} />
+        {q.isLoading ? <div className="panel pb subtle">Loading…</div> : q.isError ? <div className="banner err" role="alert">{errMsg(q.error)}</div> : !all.length && !canEdit ? (
+          <section className="panel pb subtle">No experiments yet. Your role in this project can view experiments; an admin or developer creates them.</section>
+        ) : !all.length ? (
           <section className="panel xp-empty">
             <div className="pb">
               <h2>Start with a proven test</h2>
@@ -90,12 +90,12 @@ export function ExperimentsPage() {
                   {open.map((x, i) => (
                     <li key={x.id} className={`xp-item${drag?.from === x.id ? " dragging" : ""}${drag?.over === x.id && drag.from !== x.id ? " over" : ""}`}
                       onDragOver={(e) => { if (drag) { e.preventDefault(); if (drag.over !== x.id) setDrag({ ...drag, over: x.id }); } }} onDrop={(e) => onDrop(e, x.id)}>
-                      <button type="button" className="ib grip" draggable aria-label={`Priority of ${x.name}: ${i + 1}. Use the up and down arrow keys to move it.`} title="Drag to change the enrollment order" data-grip={x.id}
+                      {canEdit && <button type="button" className="ib grip" draggable aria-label={`Priority of ${x.name}: ${i + 1}. Use the up and down arrow keys to move it.`} title="Drag to change the enrollment order" data-grip={x.id}
                         onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", x.id); setDrag({ from: x.id, over: null }); }}
                         onDragEnd={() => setDrag(null)}
                         onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); move(x.id, i + (e.key === "ArrowUp" ? -1 : 1)); requestAnimationFrame(() => (document.querySelector(`[data-grip="${x.id}"]`) as HTMLElement | null)?.focus()); } }}>
                         <Icon name="grip" />
-                      </button>
+                      </button>}
                       <span className="pos mono">{i + 1}</span>
                       <Link className="xp-item-main" to={`/projects/${pid}/experiments/${x.id}`}>
                         <b>{x.name}</b>
@@ -103,12 +103,12 @@ export function ExperimentsPage() {
                       </Link>
                       <span className="mono xp-count">{fmt.int(x.enrolled_customers ?? 0)} customers</span>
                       <Tag tone={STATUS_TONE[x.status]}>{statusLabel(x.status)}</Tag>
-                      <Menu label={`Actions for ${x.name}`} items={[
+                      {canEdit && <Menu label={`Actions for ${x.name}`} items={[
                         { label: "Open", icon: "arrow", onSelect: () => nav(`/projects/${pid}/experiments/${x.id}`) },
                         { label: "Edit", icon: "edit", onSelect: () => nav(`/projects/${pid}/experiments/${x.id}/edit`) },
                         { label: "Move up", icon: "up", disabled: i === 0, onSelect: () => move(x.id, i - 1) },
                         { label: "Move down", icon: "down", disabled: i === open.length - 1, onSelect: () => move(x.id, i + 1) },
-                      ]} />
+                      ]} />}
                     </li>
                   ))}
                 </ol>
@@ -142,6 +142,7 @@ const EXAMPLES: Record<"experiment" | "targeting rule", string[]> = {
 /** "Create with RevenueDot AI": what to test, in words; RevenueDot AI drafts it and asks before saving. */
 export function AskDialog({ pid, kind, onClose }: { pid: string; kind: "experiment" | "targeting rule"; onClose: () => void }) {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -153,7 +154,7 @@ export function AskDialog({ pid, kind, onClose }: { pid: string; kind: "experime
       const ask = kind === "experiment"
         ? `Draft an experiment (save it as a draft, do not start it): ${text.trim()}`
         : `Draft a targeting rule (create it turned off): ${text.trim()}`;
-      await askAssistant(pid, ask, nav);
+      await askAssistant(pid, ask, nav, () => void qc.invalidateQueries({ queryKey: ["ai-conversations", pid] }));
     } catch (x) { setErr(errMsg(x)); setBusy(false); }
   }
   return (

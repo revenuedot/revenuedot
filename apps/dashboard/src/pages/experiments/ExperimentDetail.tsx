@@ -10,13 +10,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { EXPERIMENT_METRICS } from "@revenuedot/core";
 import { api, fmt } from "../../lib/api";
 import { Shell } from "../../components/Shell";
-import { ConfirmDialog, Disclosure, KeyValue, Menu, PageHead, Panel, Tag, useProjectId, useToast } from "../../components/ui";
+import { ConfirmDialog, Disclosure, KeyValue, Menu, PageHead, Panel, Tag, useProjectId, useSandboxParam, useToast } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { describeRules } from "../../components/conditions";
 import { errMsg, v2 } from "../catalog/lib";
 import { Legend, Plot, type Series } from "../charts/plot";
 import { Markdown } from "./Markdown";
-import { formatMetric, metric, pct0, signedPct, STATUS_TONE, statusLabel, typeName, useAudiences, useOfferingsFull, type Experiment, type Results, type VariantResult } from "./lib";
+import { downloadCsv, formatMetric, metric, pct0, signedPct, STATUS_TONE, statusLabel, typeName, useAudiences, useCanEdit, useOfferingsFull, type Experiment, type Results, type VariantResult } from "./lib";
 
 export function ExperimentDetail() {
   const pid = useProjectId();
@@ -27,16 +27,22 @@ export function ExperimentDetail() {
   const x = useQuery({ queryKey: ["experiment", pid, experimentId], queryFn: () => api<Experiment>(`${v2(pid)}/experiments/${experimentId}`) });
   const offs = useOfferingsFull(pid);
   const auds = useAudiences(pid);
+  const canEdit = useCanEdit(pid);
   const [confirm, setConfirm] = useState<ReactNode>(null);
+  const [acting, setActing] = useState(false);
   const e = x.data;
   const offName = (id: string | null) => (id ? offs.data?.find((o) => o.id === id)?.lookup_key ?? `${id} (deleted)` : "—");
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["experiment", pid, experimentId] }), qc.invalidateQueries({ queryKey: ["experiments", pid] }), qc.invalidateQueries({ queryKey: ["experiment-results", pid, experimentId] })]);
   const act = async (action: "start" | "pause" | "stop") => {
+    // One action at a time: a double click on Start would otherwise answer "A running experiment cannot start".
+    if (acting) return;
+    setActing(true);
     try {
       await api(`${v2(pid)}/experiments/${experimentId}/actions/${action}`, { method: "POST" });
       await refresh();
       toast(action === "start" ? (e?.status === "paused" ? "Resumed: new customers join again" : "Experiment running: customers join from their next offerings request") : action === "pause" ? "Paused: nobody new joins; enrolled customers keep their variant" : "Experiment stopped");
     } catch (err) { toast(errMsg(err)); }
+    setActing(false);
   };
   const duplicate = async () => {
     if (!e) return;
@@ -52,21 +58,25 @@ export function ExperimentDetail() {
     } catch (err) { toast(errMsg(err)); }
   };
   const audience = e ? (e.audience_rules ? describeRules(e.audience_rules) : e.audience_id ? auds.data?.find((a) => a.id === e.audience_id)?.name ?? e.audience_id : "Everyone") : "";
-  const actions = e && (
+  const actions = e && canEdit && (
     <div className="xp-row">
-      {(e.status === "draft" || e.status === "paused") && <button type="button" className="btn btn-dark" onClick={() => void act("start")}>{e.status === "draft" ? "Start" : "Resume"}</button>}
-      {e.status === "running" && <button type="button" className="btn btn-line" onClick={() => void act("pause")}>Pause</button>}
-      {(e.status === "running" || e.status === "paused") && <button type="button" className="btn btn-line" onClick={() => setConfirm(
+      {(e.status === "draft" || e.status === "paused") && <button type="button" className="btn btn-dark" disabled={acting} onClick={() => void act("start")}>{e.status === "draft" ? "Start" : "Resume"}</button>}
+      {e.status === "running" && <button type="button" className="btn btn-line" disabled={acting} onClick={() => void act("pause")}>Pause</button>}
+      {(e.status === "running" || e.status === "paused") && <button type="button" className="btn btn-line" disabled={acting} onClick={() => setConfirm(
         <ConfirmDialog title="Stop this experiment?" confirmLabel="Stop experiment" danger onClose={() => setConfirm(null)} onConfirm={() => act("stop")}>
-          <p>Enrolled customers get the usual offering on their next request. Results keep updating, but a stopped experiment cannot run again.</p>
+          <p>On their next request, its customers get what targeting gives them, or join another running experiment that accepts them. Results keep updating, but a stopped experiment cannot run again.</p>
         </ConfirmDialog>)}>Stop</button>}
       <Menu label="More actions" items={[
         { label: "Edit", icon: "edit", onSelect: () => nav(`/projects/${pid}/experiments/${experimentId}/edit`) },
         { label: "Duplicate as a draft", icon: "duplicate", onSelect: () => void duplicate() },
         "-",
         { label: "Delete", icon: "trash", danger: true, disabled: e.status === "running", hint: e.status === "running" ? "Stop it first" : undefined, onSelect: () => setConfirm(
-          <ConfirmDialog title="Delete this experiment?" confirmLabel="Delete" danger onClose={() => setConfirm(null)} onConfirm={async () => { await api(`${v2(pid)}/experiments/${experimentId}`, { method: "DELETE" }); await qc.invalidateQueries({ queryKey: ["experiments", pid] }); nav(`/projects/${pid}/experiments`); }}>
-            <p>Its enrollments and results are deleted. Customers in it go back to the usual offering.</p>
+          <ConfirmDialog title="Delete this experiment?" confirmLabel="Delete" danger onClose={() => setConfirm(null)} onConfirm={async () => {
+            await api(`${v2(pid)}/experiments/${experimentId}`, { method: "DELETE" });
+            qc.removeQueries({ queryKey: ["experiment", pid, experimentId] }); qc.removeQueries({ queryKey: ["experiment-results", pid, experimentId] });
+            await qc.invalidateQueries({ queryKey: ["experiments", pid] }); nav(`/projects/${pid}/experiments`);
+          }}>
+            <p>Its enrollments and results are deleted. On their next request, its customers get what targeting gives them, or join another running experiment.</p>
           </ConfirmDialog>) },
       ]} />
     </div>
@@ -110,7 +120,10 @@ export function ExperimentDetail() {
 }
 
 function ResultsPanel({ pid, e, offName }: { pid: string; e: Experiment; offName: (id: string | null) => string }) {
-  const [env, setEnv] = useState<"production" | "sandbox">("production");
+  const toast = useToast();
+  // Kept in the URL as `?environment=sandbox`, like every Sandbox data switch.
+  const [sandbox, setSandbox] = useSandboxParam();
+  const env = sandbox ? "sandbox" : "production";
   const [platform, setPlatform] = useState("");
   const [country, setCountry] = useState("");
   const [paywall, setPaywall] = useState<"" | "all" | "viewed" | "not_viewed">("");
@@ -121,7 +134,7 @@ function ResultsPanel({ pid, e, offName }: { pid: string; e: Experiment; offName
   const rest = EXPERIMENT_METRICS.map((m) => m.id).filter((m) => !shown.includes(m));
   const [chartMetric, setChartMetric] = useState(e.primary_metric);
   const variants = r?.variants.items ?? [];
-  const exportUrl = (kind: "summary" | "daily") => `${v2(pid)}/experiments/${e.id}/results/export?kind=${kind}&${query}`;
+  const exportCsv = (kind: "summary" | "daily") => downloadCsv(`${v2(pid)}/experiments/${e.id}/results/export?kind=${kind}&${query}`, `experiment-${e.id}-${kind}.csv`).catch((err) => toast(errMsg(err)));
   const g = r?.guidance;
   const tone = !g ? "" : g.leader && g.enough_data && g.leader.chance_to_beat_control >= 0.95 ? "ok" : g.enough_data ? "" : "warn";
 
@@ -130,13 +143,13 @@ function ResultsPanel({ pid, e, offName }: { pid: string; e: Experiment; offName
       <div className="ph"><b id="xp-results">Results</b>
         <span className="link xp-tools">
           <Menu label="Export CSV" text="Export CSV" icon="download" items={[
-            { label: "Summary per variant (CSV)", icon: "download", onSelect: () => { window.location.href = exportUrl("summary"); } },
-            { label: "Every metric by day (CSV)", icon: "download", onSelect: () => { window.location.href = exportUrl("daily"); } },
+            { label: "Summary per variant (CSV)", icon: "download", onSelect: () => void exportCsv("summary") },
+            { label: "Every metric by day (CSV)", icon: "download", onSelect: () => void exportCsv("daily") },
           ]} />
         </span>
       </div>
       <div className="xp-filters">
-        <label><span className="label">Environment</span><select aria-label="Environment" className="select" value={env} onChange={(ev) => setEnv(ev.target.value as typeof env)}><option value="production">Production</option><option value="sandbox">Sandbox</option></select></label>
+        <label><span className="label">Environment</span><select aria-label="Environment" className="select" value={env} onChange={(ev) => setSandbox(ev.target.value === "sandbox")}><option value="production">Production</option><option value="sandbox">Sandbox</option></select></label>
         <label><span className="label">Platform</span><select aria-label="Platform" className="select" value={platform} onChange={(ev) => setPlatform(ev.target.value)}><option value="">All platforms</option>{(r?.filter_options.platforms ?? []).map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
         <label><span className="label">Country</span><select aria-label="Country" className="select" value={country} onChange={(ev) => setCountry(ev.target.value)}><option value="">All countries</option>{(r?.filter_options.countries ?? []).map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
         <label><span className="label">Paywall</span><select aria-label="Paywall views" className="select" value={paywall || r?.filters.paywall || "all"} onChange={(ev) => setPaywall(ev.target.value as typeof paywall)}>
@@ -152,7 +165,7 @@ function ResultsPanel({ pid, e, offName }: { pid: string; e: Experiment; offName
                 <div key={v.id} className="kpi">
                   <div className="lab"><span><i className="key" style={{ background: `var(--series-${i + 1})` }} /> {v.id.toUpperCase()} · {v.name}</span></div>
                   <div className="v">{fmt.int(v.customers)}</div>
-                  <div className="meta">customers{e.track_paywall_views ? ` · ${fmt.int(v.paywall_viewers)} viewed a paywall` : ""} · <code>{offName(v.offering_id)}</code></div>
+                  <div className="meta">customers{r.sample ? ` in the sample (of ${fmt.int(r.sample.enrolled_by_variant[v.id] ?? 0)} enrolled)` : ""}{e.track_paywall_views ? ` · ${fmt.int(v.paywall_viewers)} viewed a paywall` : ""} · <code>{offName(v.offering_id)}</code></div>
                 </div>
               ))}
             </div>
@@ -189,11 +202,11 @@ function MetricTable({ ids, variants, primary, control }: { ids: string[]; varia
                       <span className="xp-val">{formatMetric(id, x?.value)}</span>
                       {x?.lower !== undefined && x?.lower !== null && <small className="mono">95%: {formatMetric(id, x.lower)} to {formatMetric(id, x.upper)}</small>}
                       {(m.kind === "rate") && x?.denominator !== undefined && <small className="mono">{fmt.int(x.numerator)} of {fmt.int(x.denominator)}</small>}
-                      {v.id !== control && x?.chance_to_beat_control !== undefined && (
-                        <>
-                          <small className={`mono ${good(x.lift)}`}>Lift {signedPct(x.lift)}{x.lift_lower !== null && x.lift_lower !== undefined ? ` (${signedPct(x.lift_lower)} to ${signedPct(x.lift_upper)})` : ""}</small>
-                          <small className="mono"><b>{pct0(x.chance_to_beat_control)}</b> chance to beat the control</small>
-                        </>
+                      {v.id !== control && x?.lift !== undefined && x.lift !== null && (
+                        <small className={`mono ${good(x.lift)}`}>Lift {signedPct(x.lift)}{x.lift_lower !== null && x.lift_lower !== undefined ? ` (${signedPct(x.lift_lower)} to ${signedPct(x.lift_upper)})` : ""}</small>
+                      )}
+                      {v.id !== control && x?.chance_to_beat_control !== undefined && x.chance_to_beat_control !== null && (
+                        <small className="mono"><b>{pct0(x.chance_to_beat_control)}</b> chance to beat the control</small>
                       )}
                     </td>
                   );

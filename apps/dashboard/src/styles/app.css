@@ -1011,7 +1011,7 @@ td .c-narrow{display:none}
 .xp-checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 16px}
 .xp-notes{width:100%;min-height:140px;font:13px/20px var(--mono);margin-top:8px;resize:vertical}
 .xp-notes-prev{border:1px solid var(--border);padding:12px 14px;margin-top:8px;min-height:140px}
-.xp-md{font-size:13px;line-height:20px}
+.xp-md{font-size:13px;line-height:20px;overflow-wrap:anywhere}
 .xp-md h3,.xp-md h4,.xp-md h5{font:600 14px/20px var(--font);margin:10px 0 4px}
 .xp-md>:first-child{margin-top:0}
 .xp-md>:last-child{margin-bottom:0}
@@ -1039,7 +1039,7 @@ td .c-narrow{display:none}
 .xp-pkgs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .xp-pkg-b{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .xp-vlist{list-style:none;margin:0;padding:0}
-.xp-vlist li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 16px;border-bottom:1px solid var(--border-2);font-size:13px}
+.xp-vlist li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 16px;border-bottom:1px solid var(--border-2);font-size:13px;overflow-wrap:anywhere;min-width:0}
 .xp-vlist li:last-child{border-bottom:0}
 .xp-vlist small{flex-basis:100%;padding-left:20px;font-size:12px;color:var(--fg-3)}
 .xp-vlist i.key,.xp-kpis i.key{display:inline-block;width:10px;height:10px;flex:none}
@@ -1063,7 +1063,7 @@ td .c-narrow{display:none}
 .xp-chart .disc{margin-top:8px}
 @media (max-width:1100px){.xp-cats,.xp-checks{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.xp-variants,.xp-variants.n3,.xp-variants.n4,.xp-grid2,.xp-est{grid-template-columns:minmax(0,1fr)}.xp-est>div+div{border-left:0;border-top:1px solid var(--border)}}
-@media (max-width:640px){.xp-cats,.xp-checks{grid-template-columns:minmax(0,1fr)}.xp-item{flex-wrap:wrap}.xp-item-main{flex-basis:calc(100% - 60px)}.xp-item-main small{white-space:normal}.xp-filters label{min-width:0;flex:1 1 140px}.xp-chart-h .select{min-width:0;width:100%}.xp-kpis{grid-template-columns:minmax(0,1fr)!important}.xp-foot{flex-wrap:wrap}}
+@media (max-width:640px){.xp-cats,.xp-checks{grid-template-columns:minmax(0,1fr)}.xp-item{flex-wrap:wrap}.xp-item-main{flex-basis:calc(100% - 80px)}.xp-item-main small{white-space:normal}.xp-filters label{min-width:0;flex:1 1 140px}.xp-chart-h .select{min-width:0;width:100%}.xp-kpis{grid-template-columns:minmax(0,1fr)!important}.xp-foot{flex-wrap:wrap}}
 
 /* Targeting rules as cards (prd/experiments/PRD.md §6) */
 .tg-stack{display:flex;flex-direction:column;gap:var(--gap)}
@@ -1074,7 +1074,7 @@ td .c-narrow{display:none}
 .tg-card-h{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 6px;border-bottom:1px solid var(--border-2);flex-wrap:wrap}
 .tg-name{font:600 14px/20px var(--font);flex:1 1 160px;min-width:0;overflow-wrap:anywhere}
 .tg-when{font-size:12px}
-.tg-card-b{padding:12px 16px 14px 46px;font-size:13px;line-height:20px;color:var(--fg-2)}
+.tg-card-b{padding:12px 16px 14px 46px;font-size:13px;line-height:20px;color:var(--fg-2);overflow-wrap:anywhere}
 .tg-card-b p{margin:0 0 4px}
 .tg-card-b b{color:var(--fg)}
 .tg-card-b ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:2px}

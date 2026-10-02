@@ -13,17 +13,17 @@ import { api, fmt, type List } from "../../lib/api";
 import { Shell } from "../../components/Shell";
 import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
-import { errMsg, v2, type Offering } from "../catalog/lib";
+import { errMsg, listAll, v2, type Offering } from "../catalog/lib";
 import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type Groups } from "../../components/conditions";
 import { useAiStatus } from "../ai/data";
 import { AskDialog } from "../experiments/Experiments";
-import type { Audience, TargetingRule as Rule } from "../experiments/lib";
+import { useCanEdit, useOrderSaver, type Audience, type TargetingRule as Rule } from "../experiments/lib";
 
 export { describeRules };
 
 const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
 const useRules = (pid: string) => useQuery({ queryKey: ["targeting-rules", pid], enabled: !!pid, queryFn: async () => (await api<List<Rule>>(`${v2(pid)}/targeting_rules`)).items });
-const useOfferingList = (pid: string) => useQuery({ queryKey: ["offering-list", pid], enabled: !!pid, queryFn: async () => (await api<List<Offering>>(`${v2(pid)}/offerings?limit=100`)).items });
+const useOfferingList = (pid: string) => useQuery({ queryKey: ["offering-list", pid], enabled: !!pid, queryFn: () => listAll<Offering>(`${v2(pid)}/offerings`) });
 
 type Phase = "live" | "scheduled" | "inactive";
 /** Where a rule is now: live (on, started, not ended), scheduled (on, starts later) or inactive (off, or ended). */
@@ -79,7 +79,10 @@ function RuleDialog({ pid, existing, audiences, offerings, onClose }: { pid: str
   const qc = useQueryClient();
   const [name, setName] = useState(existing?.name ?? "");
   const [audience, setAudience] = useState(existing?.audience_id ?? "");
-  const [offering, setOffering] = useState(existing?.offering_id ?? offerings.find((o) => !o.is_current)?.id ?? offerings[0]?.id ?? "");
+  // Archived offerings are not served to the SDK: never a new rule's default, and listed only when a rule already names one.
+  const servable = offerings.filter((o) => o.state !== "inactive");
+  const [offering, setOffering] = useState(existing?.offering_id ?? servable.find((o) => !o.is_current)?.id ?? servable[0]?.id ?? "");
+  const choices = (keep: string | null) => offerings.filter((o) => o.state !== "inactive" || o.id === keep);
   const [placements, setPlacements] = useState<[string, string][]>(Object.entries(existing?.placements ?? {}).map(([k, v]) => [k, v ?? ""]));
   const [starts, setStarts] = useState(toLocal(existing?.starts_at ?? null));
   const [ends, setEnds] = useState(toLocal(existing?.ends_at ?? null));
@@ -110,7 +113,7 @@ function RuleDialog({ pid, existing, audiences, offerings, onClose }: { pid: str
           <select id="rule-aud" className="select" value={audience} onChange={(e) => setAudience(e.target.value)}><option value="">Any audience</option>{audiences.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
         </Field>
         <Field label="Current offering" htmlFor="rule-off" hint="What Offerings.current returns for them, and what every placement not listed below shows.">
-          <select id="rule-off" className="select" value={offering} onChange={(e) => setOffering(e.target.value)}>{offerings.map((o) => <option key={o.id} value={o.id}>{o.display_name} ({o.lookup_key})</option>)}</select>
+          <select id="rule-off" className="select" value={offering} onChange={(e) => setOffering(e.target.value)}>{choices(existing?.offering_id ?? null).map((o) => <option key={o.id} value={o.id}>{o.display_name} ({o.lookup_key}){o.state === "inactive" ? " · archived" : ""}</option>)}</select>
         </Field>
         <div>
           <div className="label">Placements</div>
@@ -119,7 +122,7 @@ function RuleDialog({ pid, existing, audiences, offerings, onClose }: { pid: str
             <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <input aria-label={`Placement ${i + 1}`} className="input mono" value={k} placeholder="onboarding_end" onChange={(e) => setPlacements(placements.map((p, j) => (j === i ? [e.target.value, p[1]] : p)))} />
               <select aria-label={`Placement offering ${i + 1}`} className="select" value={v} onChange={(e) => setPlacements(placements.map((p, j) => (j === i ? [p[0], e.target.value] : p)))}>
-                <option value="">No paywall</option>{offerings.map((o) => <option key={o.id} value={o.id}>{o.lookup_key}</option>)}
+                <option value="">No paywall</option>{choices(existing?.placements[k] ?? null).map((o) => <option key={o.id} value={o.id}>{o.lookup_key}{o.state === "inactive" ? " · archived" : ""}</option>)}
               </select>
               <button type="button" className="btn btn-ghost" aria-label={`Remove placement ${i + 1}`} onClick={() => setPlacements(placements.filter((_, j) => j !== i))}><Icon name="trash" /></button>
             </div>
@@ -145,6 +148,7 @@ export function TargetingPage() {
   const auds = useAudiences(pid);
   const offs = useOfferingList(pid);
   const ai = useAiStatus(pid);
+  const canEdit = useCanEdit(pid);
   const [dialog, setDialog] = useState<ReactNode>(null);
   const [drag, setDrag] = useState<{ from: string; over: string | null } | null>(null);
   const close = () => setDialog(null);
@@ -158,14 +162,13 @@ export function TargetingPage() {
   const current = offs.data?.find((o) => o.is_current);
   const aiOk = !!ai.data?.available && !!ai.data?.can_write;
 
+  const saveOrder = useOrderSaver<Rule>(["targeting-rules", pid], (rs, ids) => rs.map((r) => ({ ...r, position: ids.indexOf(r.id) })),
+    (ids) => api(`${v2(pid)}/targeting_rules/actions/reorder`, { method: "POST", json: { rule_ids: ids } }), (error) => toast(error ?? "Order saved"));
   /** Reorders the rules of one tab; the other tabs' rules keep their slots in the global order. */
-  const reorder = async (subset: string[]) => {
+  const reorder = (subset: string[]) => {
     const set = new Set(subset);
     const queue = [...subset];
-    const ids = all.map((r) => (set.has(r.id) ? queue.shift()! : r.id));
-    qc.setQueryData<Rule[]>(["targeting-rules", pid], (rs) => rs?.map((r) => ({ ...r, position: ids.indexOf(r.id) })));
-    try { await api(`${v2(pid)}/targeting_rules/actions/reorder`, { method: "POST", json: { rule_ids: ids } }); toast("Order saved"); } catch (e) { toast(errMsg(e)); }
-    await refresh();
+    return saveOrder(all.map((r) => (set.has(r.id) ? queue.shift()! : r.id)));
   };
   const move = (id: string, to: number) => {
     const ids = shown.map((r) => r.id);
@@ -218,7 +221,7 @@ export function TargetingPage() {
     <Shell title="Targeting">
       <div className="page">
         <PageHead title="Targeting" sub="Show different offerings to different customers without an app release. Rules are checked from top to bottom; the first live rule that matches decides."
-          actions={tab !== "audiences"
+          actions={!canEdit ? undefined : tab !== "audiences"
             ? <Menu label="New rule" text="New rule" primary items={[
                 { label: "Create from scratch", icon: "plus", disabled: !offs.data?.length, hint: offs.data?.length ? undefined : "Create an offering first", onSelect: newRule },
                 { label: "Create with RevenueDot AI", icon: "spark", disabled: !aiOk || !offs.data?.length, hint: ai.data && !aiOk ? ai.data.reason ?? "RevenueDot AI is not available here." : undefined, onSelect: () => setDialog(<AskDialog pid={pid} kind="targeting rule" onClose={close} />) },
@@ -228,7 +231,7 @@ export function TargetingPage() {
           { value: "live", label: rules.data ? `Live · ${byPhase.live.length}` : "Live" }, { value: "scheduled", label: rules.data ? `Scheduled · ${byPhase.scheduled.length}` : "Scheduled" },
           { value: "inactive", label: rules.data ? `Inactive · ${byPhase.inactive.length}` : "Inactive" }, { value: "audiences", label: "Audiences" },
         ]} />
-        {tab !== "audiences" ? (rules.isLoading || offs.isLoading ? <div className="panel pb subtle">Loading…</div> : (
+        {tab !== "audiences" ? (rules.isError || offs.isError ? <div className="banner err" role="alert">{errMsg(rules.error ?? offs.error)}</div> : rules.isLoading || offs.isLoading ? <div className="panel pb subtle">Loading…</div> : (
           <div role="tabpanel" id={`targeting-${tab}-panel`} aria-labelledby={`targeting-${tab}`} className="tg-stack">
             {!shown.length ? <EmptyState title={`No ${tab} rules`} text={offs.data?.length ? empty[tab] : "Create an offering first."} /> : (
               <ol className="tg-list">
@@ -238,17 +241,17 @@ export function TargetingPage() {
                     <li key={r.id} className={`tg-card${drag?.from === r.id ? " dragging" : ""}${drag?.over === r.id && drag.from !== r.id ? " over" : ""}`} aria-label={`Rule ${r.name}`}
                       onDragOver={(e) => { if (drag) { e.preventDefault(); if (drag.over !== r.id) setDrag({ ...drag, over: r.id }); } }} onDrop={(e) => onDrop(e, r.id)}>
                       <div className="tg-card-h">
-                        <button type="button" className="ib grip" draggable aria-label={`Move ${r.name}. Use the up and down arrow keys.`} title="Drag to reorder" data-grip={r.id}
+                        {canEdit && <button type="button" className="ib grip" draggable aria-label={`Move ${r.name}. Use the up and down arrow keys.`} title="Drag to reorder" data-grip={r.id}
                           onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.id); setDrag({ from: r.id, over: null }); }}
                           onDragEnd={() => setDrag(null)}
                           onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); move(r.id, i + (e.key === "ArrowUp" ? -1 : 1)); requestAnimationFrame(() => (document.querySelector(`[data-grip="${r.id}"]`) as HTMLElement | null)?.focus()); } }}>
                           <Icon name="grip" />
-                        </button>
+                        </button>}
                         <span className="pos mono">{i + 1}</span>
                         <b className="tg-name">{r.name}</b>
                         {schedule(r) && <span className="subtle tg-when">{schedule(r)}</span>}
                         <Tag tone={tab === "live" ? "up" : tab === "scheduled" ? "info" : "muted"}>{tab === "live" ? "Live" : tab === "scheduled" ? "Scheduled" : r.state === "active" ? "Ended" : "Off"}</Tag>
-                        <Menu label={`Actions for ${r.name}`} items={ruleMenu(r, i)} />
+                        {canEdit && <Menu label={`Actions for ${r.name}`} items={ruleMenu(r, i)} />}
                       </div>
                       <div className="tg-card-b">
                         <p>If customer matches <b>{audName(r.audience_id)}</b> then show</p>
@@ -267,7 +270,7 @@ export function TargetingPage() {
                 <div className="ph"><b id="tg-default">Default offering</b></div>
                 <div className="pb">
                   <Field label="Select default offering" htmlFor="tg-default-off" hint="Show the selected offering to customers who don't match any of the rules above.">
-                    <select id="tg-default-off" className="select" value={current?.id ?? ""} onChange={(e) => setDefault(e.target.value)}>
+                    <select id="tg-default-off" className="select" value={current?.id ?? ""} disabled={!canEdit} onChange={(e) => setDefault(e.target.value)}>
                       {!current && <option value="" disabled>Choose an offering</option>}
                       {offs.data.filter((o) => o.state !== "inactive" || o.is_current).map((o) => <option key={o.id} value={o.id}>{o.display_name} ({o.lookup_key})</option>)}
                     </select>
@@ -276,13 +279,13 @@ export function TargetingPage() {
               </section>
             ) : null}
           </div>
-        )) : (auds.isLoading ? <div className="panel pb subtle">Loading…</div> : !auds.data?.length ? (
+        )) : (auds.isError ? <div className="banner err" role="alert">{errMsg(auds.error)}</div> : auds.isLoading ? <div className="panel pb subtle">Loading…</div> : !auds.data?.length ? (
           <EmptyState title="No audiences" text="An audience is a set of conditions on customers, such as country, app version, subscription status or a custom attribute." />
         ) : (
           <DataTable rowKey={(a) => a.id} rows={auds.data} columns={[
             { key: "name", header: "Audience", render: (a) => a.name },
             { key: "rules", header: "Conditions", render: (a) => <span className="subtle">{describeRules(a.rules)}</span> },
-            { key: "menu", header: "", align: "right", render: (a) => <Menu label={`Actions for ${a.name}`} items={[
+            { key: "menu", header: "", align: "right", render: (a) => canEdit && <Menu label={`Actions for ${a.name}`} items={[
               { label: "Edit", icon: "edit", onSelect: () => setDialog(<AudienceDialog pid={pid} existing={a} onClose={close} onSaved={() => refresh()} />) },
               "-", { label: "Delete", icon: "trash", danger: true, onSelect: () => setDialog(<ConfirmDialog title="Delete this audience?" confirmLabel="Delete audience" danger onClose={close} onConfirm={async () => { await api(`${v2(pid)}/audiences/${a.id}`, { method: "DELETE" }); await refresh(); toast("Audience deleted"); }}><p>Rules and experiments that use it must be changed first.</p></ConfirmDialog>) },
             ]} /> },

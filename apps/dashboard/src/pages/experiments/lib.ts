@@ -1,8 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NavigateFunction } from "react-router-dom";
 import { EXPERIMENT_METRICS, EXPERIMENT_TYPES, type MetricDef } from "@revenuedot/core";
 import { api, type List } from "../../lib/api";
-import { listAll, v2, type Offering } from "../catalog/lib";
+import { useMe } from "../../components/Shell";
+import { errMsg, listAll, v2, type Offering } from "../catalog/lib";
 import type { Rules } from "../../components/conditions";
 
 /** Experiments in the dashboard (prd/experiments/PRD.md): API shapes, queries and words shared by the pages. */
@@ -26,6 +28,8 @@ export interface Results {
   variants: List<VariantResult>;
   guidance: { enough_data: boolean; min_customers: number; min_events: number; customers_needed_per_variant: number | null; leader: { variant_id: string; chance_to_beat_control: number } | null; message: string };
   series: { days: number[]; values: Record<string, Record<string, (number | null)[]>> };
+  /** Null when every enrolled customer is counted; otherwise the random sample the numbers come from. */
+  sample?: { customers: number; enrolled_customers: number; enrolled_by_variant: Record<string, number> } | null;
 }
 
 export const STATUS_TONE: Record<Status, "up" | "gold" | "muted" | "info"> = { draft: "muted", running: "up", paused: "gold", stopped: "info" };
@@ -42,7 +46,8 @@ export function formatMetric(id: string, v: number | null | undefined): string {
   return Math.round(v).toLocaleString("en-US");
 }
 export const signedPct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
-export const pct0 = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`);
+/** A chance as a whole percentage; never "100%" or "0%", which would claim certainty. */
+export const pct0 = (v: number | null | undefined) => (v === null || v === undefined ? "—" : v > 0.99 ? ">99%" : v < 0.01 ? "<1%" : `${Math.round(v * 100)}%`);
 
 export const useExperiments = (pid: string) => useQuery({ queryKey: ["experiments", pid], enabled: !!pid, queryFn: () => listAll<Experiment>(`${v2(pid)}/experiments`) });
 export const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
@@ -50,9 +55,61 @@ export const useRules = (pid: string) => useQuery({ queryKey: ["targeting-rules"
 /** Offerings with their packages and products (the duplicate dialog swaps products). */
 export const useOfferingsFull = (pid: string) => useQuery({ queryKey: ["offering-list-full", pid], enabled: !!pid, queryFn: () => listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`) });
 
+/**
+ * Whether the signed-in person may change experiments and targeting in this project. Viewers only read, so their pages
+ * show no write controls; the server checks every write (custom roles included) whatever the page shows.
+ */
+export function useCanEdit(pid: string) {
+  const me = useMe();
+  return !!me.data && me.data.projects.find((p) => p.id === pid)?.role !== "viewer";
+}
+
+/**
+ * Saves a drag or arrow-key order: the list moves at once (optimistic), saves run one at a time, and only the latest
+ * order is sent after a save in flight, so quick moves never interleave on the server. The list reloads once the
+ * last save is done (or failed, which puts the saved order back).
+ */
+export function useOrderSaver<T>(queryKey: unknown[], apply: (rows: T[], ids: string[]) => T[], post: (ids: string[]) => Promise<unknown>, onDone: (error: string | null) => void) {
+  const qc = useQueryClient();
+  const busy = useRef(false);
+  const next = useRef<string[] | null>(null);
+  const send = async (ids: string[]): Promise<void> => {
+    if (busy.current) { next.current = ids; return; }
+    busy.current = true;
+    let error: string | null = null;
+    try { await post(ids); } catch (e) { error = errMsg(e); }
+    busy.current = false;
+    const queued = next.current;
+    next.current = null;
+    if (queued && !error) return send(queued);
+    await qc.invalidateQueries({ queryKey });
+    onDone(error);
+  };
+  return async (ids: string[]) => {
+    await qc.cancelQueries({ queryKey });
+    qc.setQueryData<T[]>(queryKey, (rows) => (rows ? apply(rows, ids) : rows));
+    await send(ids);
+  };
+}
+
+/** Downloads a CSV export with fetch, so an error shows as a toast instead of replacing the page. */
+export async function downloadCsv(url: string, fallbackName: string) {
+  const r = await fetch(url, { credentials: "same-origin" });
+  if (!r.ok) {
+    const body = (await r.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? `Export failed (${r.status})`);
+  }
+  const name = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  const href = URL.createObjectURL(await r.blob());
+  const a = document.createElement("a");
+  a.href = href; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 10_000);
+}
+
 /** Opens RevenueDot AI on a new conversation that asks `text`, the way the Overview's Ask bar does. */
-export async function askAssistant(pid: string, text: string, nav: NavigateFunction) {
+export async function askAssistant(pid: string, text: string, nav: NavigateFunction, onCreated?: () => void) {
   const conv = await api<{ id: string }>(`${v2(pid)}/ai/conversations`, { method: "POST", json: {} });
+  onCreated?.();
   nav(`/projects/${pid}/ai/${conv.id}`, { state: { pending: { text, files: [] } } });
 }
 

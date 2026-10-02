@@ -18,11 +18,13 @@ import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type G
 import { errMsg, v2, type Offering } from "../catalog/lib";
 import { DuplicateOfferingDialog } from "./DuplicateOffering";
 import { Markdown } from "./Markdown";
-import { TREATMENT_HELP, metric, typeName, useAudiences, useOfferingsFull, useRules, type Experiment } from "./lib";
+import { TREATMENT_HELP, metric, typeName, useAudiences, useCanEdit, useOfferingsFull, useRules, type Experiment } from "./lib";
 
 interface VariantDraft { name: string; offering: string; placements: Record<string, string> }
 /** "" in a placement means "no paywall" (null in the API). */
 const NONE = "";
+/** The API's limit on secondary metrics. */
+const MAX_SECONDARY = 12;
 
 export function ExperimentFormPage() {
   const pid = useProjectId();
@@ -32,19 +34,21 @@ export function ExperimentFormPage() {
   const offs = useOfferingsFull(pid);
   const auds = useAudiences(pid);
   const rules = useRules(pid);
+  const canEdit = useCanEdit(pid);
   const ready = offs.data && auds.data && rules.data && (!experimentId || existing.data);
+  const failed = [existing, offs, auds, rules].find((q) => q.isError);
   const title = experimentId ? `Edit ${existing.data?.name ?? "experiment"}` : "New experiment";
   return (
     <Shell title={title} crumbs={<><Link className="cat-crumb-up" to={`/projects/${pid}/experiments`}>Experiments</Link> <span className="cat-crumb-up">/</span> <b className="cat-crumb">{experimentId ? existing.data?.name ?? "" : "New"}</b></>}>
       <div className="page xp-form">
-        {!ready ? (existing.isError ? <div className="banner err" role="alert">{errMsg(existing.error)}</div> : <div className="panel pb subtle">Loading…</div>)
-          : <Form key={experimentId ?? params.get("type") ?? "new"} pid={pid} existing={existing.data} offerings={offs.data!} startType={params.get("type")} />}
+        {failed ? <div className="banner err" role="alert">{errMsg(failed.error)}</div> : !ready ? <div className="panel pb subtle">Loading…</div>
+          : <Form key={experimentId ?? params.get("type") ?? "new"} pid={pid} existing={existing.data} offerings={offs.data!} startType={params.get("type")} readOnly={!canEdit} />}
       </div>
     </Shell>
   );
 }
 
-function Form({ pid, existing, offerings, startType }: { pid: string; existing?: Experiment; offerings: Offering[]; startType: string | null }) {
+function Form({ pid, existing, offerings, startType, readOnly }: { pid: string; existing?: Experiment; offerings: Offering[]; startType: string | null; readOnly: boolean }) {
   const nav = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
@@ -79,13 +83,19 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
   const offName = (id: string) => offerings.find((o) => o.id === id)?.lookup_key ?? id;
   const changeType = (t: ExperimentType) => {
     setType(t);
-    // Metrics follow the type until the user picks their own.
+    // Metrics follow the type until the user picks their own; once started, the primary metric decides the winner, so
+    // only the user changes it.
+    if (locked) return;
     const was = TYPE_DEFAULTS[type];
     if (primary === was.primary) setPrimary(TYPE_DEFAULTS[t].primary);
     if (JSON.stringify(secondary) === JSON.stringify(was.secondary)) setSecondary(TYPE_DEFAULTS[t].secondary);
   };
   const setVariant = (i: number, patch: Partial<VariantDraft>) => {
-    setVariants((vs) => vs.map((v, j) => (j === i ? { ...v, ...patch } : v)));
+    // Placements added before the variant had an offering were left empty ("no paywall"): they follow its first offering.
+    setVariants((vs) => vs.map((v, j) => (j !== i ? v : {
+      ...v, ...patch,
+      ...(patch.offering && !v.offering && !patch.placements ? { placements: Object.fromEntries(Object.entries(v.placements).map(([k, o]) => [k, o || patch.offering!])) } : {}),
+    })));
     // A changed variant may now be valid: drop its errors until the next save.
     setErrors((e) => (e[`v${i}`] || e[`vn${i}`] ? Object.fromEntries(Object.entries(e).filter(([k]) => k !== `v${i}` && k !== `vn${i}`)) : e));
   };
@@ -93,7 +103,11 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
     const id = VARIANT_IDS[variants.length]!;
     setVariants([...variants, { name: variantDefaultName(id), offering: "", placements: Object.fromEntries(placementKeys.map((k) => [k, variants[0]!.placements[k] ?? NONE])) }]);
   };
-  const removeVariant = (i: number) => setVariants(variants.filter((_, j) => j !== i).map((v, j) => ({ ...v, name: v.name === variantDefaultName(VARIANT_IDS[j >= i ? j + 1 : j]!) ? variantDefaultName(VARIANT_IDS[j]!) : v.name })));
+  const removeVariant = (i: number) => {
+    setVariants(variants.filter((_, j) => j !== i).map((v, j) => ({ ...v, name: v.name === variantDefaultName(VARIANT_IDS[j >= i ? j + 1 : j]!) ? variantDefaultName(VARIANT_IDS[j]!) : v.name })));
+    // Variant errors are keyed by position: they would point at the wrong variant now.
+    setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !/^vn?\d+$/.test(k))));
+  };
   const addPlacement = (key: string) => {
     setPlacementKeys([...placementKeys, key]);
     setVariants(variants.map((v) => ({ ...v, placements: { ...v.placements, [key]: v.offering } })));
@@ -112,14 +126,16 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
   };
 
   const audienceRules = audMode === "custom" ? toRules(groups) : null;
+  // Conditions still being written would estimate everyone: no estimate until they are complete.
+  const estimable = audMode !== "custom" || (!!groups.length && !incomplete(groups));
   const estimateBody = useMemo(() => ({
-    audience_id: audMode === "saved" && audienceId ? audienceId : null, audience_rules: audMode === "custom" && !incomplete(groups) && audienceRules?.groups.length ? audienceRules : null,
-    enrollment, enrollment_percent: Math.min(100, Math.max(1, Number(pct) || 100)), variant_count: variants.length,
+    audience_id: audMode === "saved" && audienceId ? audienceId : null, audience_rules: audMode === "custom" && estimable && audienceRules?.groups.length ? audienceRules : null,
+    enrollment, enrollment_percent: pct === "" ? 100 : Math.min(100, Math.max(1, Number(pct))), variant_count: variants.length,
   }), [audMode, audienceId, groups, enrollment, pct, variants.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [debounced, setDebounced] = useState(estimateBody);
   useEffect(() => { const t = setTimeout(() => setDebounced(estimateBody), 350); return () => clearTimeout(t); }, [estimateBody]);
   const estimate = useQuery({
-    queryKey: ["experiment-estimate", pid, debounced], enabled: !locked,
+    queryKey: ["experiment-estimate", pid, debounced], enabled: !locked && !readOnly && estimable,
     queryFn: () => api<{ matching_customers: number; enrolled_customers: number; customers_per_variant: number; is_approximate: boolean }>(`${v2(pid)}/experiments/actions/estimate`, { method: "POST", json: debounced }),
   });
 
@@ -138,7 +154,7 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
         if (seen.has(sig) && !e[`v${i}`]) e[`v${i}`] = `Same offering and placements as ${variants[seen.get(sig)!]!.name}. Change the offering or a placement.`;
         seen.set(sig, i);
       });
-      if (audMode === "saved" && !audienceId) e.audience = "Pick a saved audience, or choose Everyone.";
+      if (audMode === "saved" && !audienceId) e.audience = auds.length ? "Pick a saved audience, or choose Everyone." : "There is no saved audience yet: choose Everyone or custom filters.";
       if (audMode === "custom" && (!groups.length || incomplete(groups))) e.audience = "Fill in every condition's value, or remove the condition.";
     }
     const n = Number(pct);
@@ -159,18 +175,20 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
       variants: variants.map((v) => ({ name: v.name.trim(), offering_id: v.offering, placements: Object.fromEntries(Object.entries(v.placements).map(([k, o]) => [k, o || null])) })),
     };
     let saved: Experiment | null = null;
+    // The list, the experiment and its results (the primary metric may have changed).
+    const invalidate = (id: string) => Promise.all([qc.invalidateQueries({ queryKey: ["experiments", pid] }), qc.invalidateQueries({ queryKey: ["experiment", pid, id] }), qc.invalidateQueries({ queryKey: ["experiment-results", pid, id] })]);
     try {
       saved = existing ? await api<Experiment>(`${v2(pid)}/experiments/${existing.id}`, { method: "POST", json }) : await api<Experiment>(`${v2(pid)}/experiments`, { method: "POST", json });
       if (mode === "start") await api(`${v2(pid)}/experiments/${saved.id}/actions/start`, { method: "POST" });
-      await Promise.all([qc.invalidateQueries({ queryKey: ["experiments", pid] }), qc.invalidateQueries({ queryKey: ["experiment", pid, saved.id] })]);
+      await invalidate(saved.id);
       toast(mode === "start" ? "Experiment running: customers join from their next offerings request" : existing ? "Experiment saved" : "Draft saved");
       nav(`/projects/${pid}/experiments/${saved.id}`);
     } catch (err) {
       // Saved but not started: open the draft (a retry here would make a second one) and say why it did not start.
-      if (saved && !existing) {
-        await qc.invalidateQueries({ queryKey: ["experiments", pid] });
+      if (saved) {
+        await invalidate(saved.id);
         toast(`Saved as a draft, but it did not start: ${errMsg(err)}`);
-        nav(`/projects/${pid}/experiments/${saved.id}`, { replace: true });
+        nav(`/projects/${pid}/experiments/${saved.id}`, { replace: !existing });
         return;
       }
       setBanner(errMsg(err)); setBusy(null);
@@ -182,6 +200,7 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
   return (
     <>
     <form onSubmit={submit} noValidate>
+      {readOnly && <div className="banner" role="status">Your role in this project can view experiments but not change them.</div>}
       <PageHead title={existing ? `Edit ${existing.name}` : "New experiment"} sub={locked
         ? "This experiment has started: its variants, enrollment and audience are fixed. Name, type, metrics, notes and the share of customers can still change."
         : "Test offerings against each other. Each customer always sees the same variant, and results compare conversion, revenue and retention."} />
@@ -190,7 +209,7 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
         <div className="ph"><b id="xp-details">Details</b></div>
         <div className="pb xp-stack">
           <div className="xp-grid2">
-            <Field label="Name" htmlFor="xp-name" error={errors.name}><input id="xp-name" className="input" value={name} aria-invalid={!!errors.name} onChange={(e) => setName(e.target.value)} placeholder="Annual plan first" /></Field>
+            <Field label="Name" htmlFor="xp-name" error={errors.name}><input id="xp-name" className="input" value={name} maxLength={256} aria-invalid={!!errors.name} onChange={(e) => setName(e.target.value)} placeholder="Annual plan first" /></Field>
             <Field label="Experiment type" htmlFor="xp-type" hint={EXPERIMENT_TYPES.find((t) => t.id === type)?.hint}>
               <select id="xp-type" className="select" value={type} onChange={(e) => changeType(e.target.value as ExperimentType)}>{EXPERIMENT_TYPES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
             </Field>
@@ -199,11 +218,13 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
             <select id="xp-primary" className="select" value={primary} onChange={(e) => setPrimary(e.target.value)}>{metricOptions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
           </Field>
           <fieldset className="xp-fs">
-            <legend className="label">Secondary metrics</legend>
+            <legend className="label">Secondary metrics <span className="subtle">(up to {MAX_SECONDARY})</span></legend>
             <div className="xp-checks">
-              {EXPERIMENT_METRICS.filter((m) => m.id !== primary).map((m) => (
-                <Check key={m.id} checked={secondary.includes(m.id)} label={m.name} onChange={(on) => setSecondary(on ? [...secondary, m.id] : secondary.filter((x) => x !== m.id))} />
-              ))}
+              {EXPERIMENT_METRICS.filter((m) => m.id !== primary).map((m) => {
+                const on = secondary.includes(m.id);
+                const full = secondary.filter((x) => x !== primary).length >= MAX_SECONDARY;
+                return <Check key={m.id} checked={on} disabled={!on && full} label={m.name} onChange={(next) => setSecondary(next ? [...secondary, m.id] : secondary.filter((x) => x !== m.id))} />;
+              })}
             </div>
           </fieldset>
           <div>
@@ -244,9 +265,10 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
               <div key={i} className="xp-variant" aria-label={`Variant ${VARIANT_IDS[i]!.toUpperCase()}`} role="group">
                 <div className="xp-variant-h">
                   <span className="xp-vid">{VARIANT_IDS[i]!.toUpperCase()}</span>
-                  <input aria-label={`Variant ${VARIANT_IDS[i]!.toUpperCase()} name`} className="input" value={v.name} disabled={locked} aria-invalid={!!errors[`vn${i}`]} onChange={(e) => setVariant(i, { name: e.target.value })} />
+                  <input aria-label={`Variant ${VARIANT_IDS[i]!.toUpperCase()} name`} className="input" value={v.name} maxLength={100} disabled={locked} aria-invalid={!!errors[`vn${i}`]} onChange={(e) => setVariant(i, { name: e.target.value })} />
                   {i >= 2 && !locked && <button type="button" className="ib" aria-label={`Remove variant ${VARIANT_IDS[i]!.toUpperCase()}`} onClick={() => removeVariant(i)}><Icon name="trash" /></button>}
                 </div>
+                {errors[`vn${i}`] && <span className="err" role="alert">{errors[`vn${i}`]}</span>}
                 <Field label={i === 0 ? "Offering (control: what customers see today)" : "Offering"} htmlFor={`xp-off-${i}`} error={errors[`v${i}`]}>
                   <select id={`xp-off-${i}`} className="select" value={v.offering} disabled={locked} aria-invalid={!!errors[`v${i}`]}
                     onChange={(e) => { if (e.target.value === "__dup") { setDup(i); return; } setVariant(i, { offering: e.target.value }); }}>
@@ -304,9 +326,10 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
           </div>
           {audMode === "saved" && (auds.length
             ? <Field label="Saved audience" htmlFor="xp-aud-id" error={errors.audience} hint={describeRules(auds.find((a) => a.id === audienceId)?.rules)}>
-                <select id="xp-aud-id" className="select" value={audienceId} disabled={locked} onChange={(e) => setAudienceId(e.target.value)}>{auds.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+                <select id="xp-aud-id" className="select" value={audienceId} disabled={locked} aria-invalid={!!errors.audience} onChange={(e) => setAudienceId(e.target.value)}>{auds.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
               </Field>
-            : <p className="subtle">No saved audiences yet. Make one in <Link className="ul" to={`/projects/${pid}/targeting`}>Targeting → Audiences</Link>, or use custom filters.</p>)}
+            : <><p className="subtle">No saved audiences yet. Make one in <Link className="ul" to={`/projects/${pid}/targeting`}>Targeting → Audiences</Link>, or use custom filters.</p>
+              {errors.audience && <span className="err" role="alert">{errors.audience}</span>}</>)}
           {audMode === "custom" && (locked ? <p className="subtle">{describeRules(audienceRules)}</p> : <ConditionBuilder value={groups} onChange={setGroups} />)}
           {audMode === "custom" && errors.audience && <span className="err" role="alert">{errors.audience}</span>}
           <div className="xp-grid2">
@@ -315,8 +338,8 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
             </Field>
             {!locked && (
               <div className="xp-est" aria-live="polite">
-                <div><span className="label">Matching customers (last 7 days)</span><b className="mono" data-testid="xp-est-matching">{estimate.data ? `${estimate.data.is_approximate ? "≈ " : ""}${estimate.data.matching_customers.toLocaleString("en-US")}` : "…"}</b></div>
-                <div><span className="label">Customers per variant (last 7 days)</span><b className="mono" data-testid="xp-est-per">{estimate.data ? estimate.data.customers_per_variant.toLocaleString("en-US") : "…"}</b></div>
+                <div><span className="label">Matching customers (last 7 days)</span><b className="mono" data-testid="xp-est-matching" title={estimate.isError ? errMsg(estimate.error) : undefined}>{!estimable || estimate.isError ? "—" : estimate.data ? `${estimate.data.is_approximate ? "≈ " : ""}${estimate.data.matching_customers.toLocaleString("en-US")}` : "…"}</b></div>
+                <div><span className="label">Customers per variant (last 7 days)</span><b className="mono" data-testid="xp-est-per">{!estimable || estimate.isError ? "—" : estimate.data ? estimate.data.customers_per_variant.toLocaleString("en-US") : "…"}</b></div>
               </div>
             )}
           </div>
@@ -328,8 +351,8 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
       <div className="xp-foot">
         <Link className="btn btn-ghost" to={existing ? `/projects/${pid}/experiments/${existing.id}` : `/projects/${pid}/experiments`}>Cancel</Link>
         <span />
-        <button type="submit" className="btn btn-line" disabled={!!busy}>{busy === "draft" ? "Saving…" : locked ? "Save changes" : "Save as draft"}</button>
-        {(!existing || existing.status === "draft") && <button type="button" className="btn btn-dark" disabled={!!busy} onClick={() => void save("start")}>{busy === "start" ? "Starting…" : "Start experiment"}</button>}
+        {!readOnly && <button type="submit" className="btn btn-line" disabled={!!busy}>{busy === "draft" ? "Saving…" : locked ? "Save changes" : "Save as draft"}</button>}
+        {!readOnly && (!existing || existing.status === "draft") && <button type="button" className="btn btn-dark" disabled={!!busy} onClick={() => void save("start")}>{busy === "start" ? "Starting…" : "Start experiment"}</button>}
       </div>
     </form>
 
