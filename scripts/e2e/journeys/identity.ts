@@ -7,6 +7,7 @@
 // SUBSCRIBER_ALIAS events.
 import type { Journey } from "./run.ts";
 import { type Ctx, anonId, eventsOf, sdkClient, signUp, standardCatalog } from "./lib/context.ts";
+import { chromium } from "./onboarding.ts";
 
 const journey: Journey = {
   name: "identity",
@@ -68,6 +69,34 @@ const journey: Journey = {
     c.check("v2 aliases list has both anonymous ids and the player id", [anonA, anonB, player].every((id) => aliasesV2.items.some((a: any) => a.id === id)), aliasesV2.items);
     const aliasEvents = await eventsOf(ctx, P, { type: "SUBSCRIBER_ALIAS" });
     c.check("SUBSCRIBER_ALIAS recorded for the merge", aliasEvents.some((e) => e.app_user_id === player), aliasEvents.map((e) => e.app_user_id));
+
+    c.begin("the merged customer in the dashboard (Chromium)");
+    {
+      const browser = await chromium().launch();
+      const errors: string[] = [];
+      try {
+        const bcx = await browser.newContext();
+        await bcx.addCookies([{ name: "rd_session", value: dev.cookie.split("=")[1]!, url: ctx.base }]);
+        const page = await bcx.newPage();
+        page.on("pageerror", (e) => errors.push(String(e)));
+        page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+        page.on("response", (r) => { if (r.url().startsWith(ctx.base) && r.status() >= 400) errors.push(`${r.status()} ${new URL(r.url()).pathname}`); });
+        // The player's page lists both anonymous ids as aliases; opening one of those ids lands on the same customer.
+        await page.goto(`${ctx.base}/projects/${P}/customers/${encodeURIComponent(player)}`);
+        await page.locator(".aliases").waitFor({ timeout: 20_000 }).catch(() => {});
+        await page.waitForLoadState("networkidle").catch(() => {});
+        const aliasText = await page.locator(".aliases").innerText().catch(() => "");
+        const ids = [anonA, anonB, player];
+        c.check("the merged customer's page lists the other two ids as aliases", ids.filter((x) => aliasText.includes(x)).length === 2, aliasText);
+        await page.goto(`${ctx.base}/projects/${P}/customers/${encodeURIComponent(anonB)}`);
+        await page.waitForLoadState("networkidle").catch(() => {});
+        const viaAlias = await page.locator(".aliases").innerText().catch(() => "");
+        c.check("an old anonymous id opens the same merged customer", ids.filter((x) => viaAlias.includes(x)).length === 2 && !(await page.getByText("Customer not found").count()), viaAlias);
+        const gold = page.locator("section.panel").filter({ has: page.locator(".ph b", { hasText: /^In-app currencies$/ }) });
+        c.check("the page shows the merged 200 gold", (await gold.innerText().catch(() => "")).includes("200"), await gold.innerText().catch(() => ""));
+        c.eq("no page errors, console errors or failed requests", errors, []);
+      } finally { await browser.close(); }
+    }
 
     c.begin("alias (Android SDK alias call, Block Store recovery)");
     const anonC = anonId();
