@@ -409,11 +409,27 @@ describe("SCIM Groups and role mappings", () => {
   });
 });
 
+describe("SCIM and existing accounts", () => {
+  it("an account whose address nobody confirmed loses its password and sessions when SCIM creates the person", async () => {
+    const { srv, scim } = await setup();
+    // Someone signed up with Bob's work address before the organization provisioned him; nobody confirmed it.
+    const squatter = await srv.signup("bob@acme.test", "Squat");
+    const u = await scim("POST", "/Users", { schemas: [USER], userName: "bob@acme.test", emails: [{ value: "bob@acme.test", primary: true }] });
+    expect(u.status).toBe(201);
+    expect((await squatter.browser.call("GET", "/auth/me")).status).toBe(401);
+    expect((await srv.browser().call("POST", "/auth/login", { email: "bob@acme.test", password: "correct horse battery" })).status).toBe(401);
+    const [row] = await srv.db.select().from(schema.users).where(eq(schema.users.email, "bob@acme.test"));
+    expect(row!.passwordHash).toBeNull();
+    expect(row!.emailVerifiedAt).not.toBeNull();
+  });
+});
+
 describe("SCIM deprovisioning", () => {
   it("ends a signed-in person's project access and sessions on active false, restores access on reactivation, and DELETE removes it", async () => {
     const { srv, owner, orgId, scim } = await setup();
-    // Alice signed up with a password before the organization provisioned her.
+    // Alice signed up with a password, and confirmed her address, before the organization provisioned her.
     const alice = await srv.signup("alice@acme.test", "Alice's own");
+    await srv.db.update(schema.users).set({ emailVerifiedAt: srv.now() }).where(eq(schema.users.id, alice.userId));
     const u = await scim("POST", "/Users", { schemas: [USER], userName: "alice@acme.test", emails: [{ value: "alice@acme.test", primary: true }] });
     expect(u.status).toBe(201);
     await owner.browser.call("POST", `/v2/organizations/${orgId}/role_mappings`, { group: "Eng", project_id: owner.projectId, role: "viewer" });
