@@ -12,6 +12,10 @@ describe("goalFor: the steps toward paying", () => {
     expect(goalFor("POST", "/v2/projects/proj_1/apps/app_1/stripe_connect/actions/finish")?.goal).toBe("stripe_connected");
     expect(goalFor("POST", "/v2/billing/checkout")).toEqual({ goal: "checkout_started", params: { plan: "standard" } });
   });
+  it("a signup through an invite is not a new customer", () => {
+    expect(goalFor("POST", "/auth/signup", { email: "a@b.co", invite_token: "tok" })?.goal).toBe("invite_signup_completed");
+    expect(goalFor("POST", "/auth/signup", { email: "a@b.co", project_name: "x" })?.goal).toBe("signup_completed");
+  });
   it("ignores reads, edits of existing things and unrelated writes", () => {
     expect(goalFor("GET", "/v2/projects")).toBeUndefined();
     expect(goalFor("POST", "/v2/projects/proj_1/integrations/webhooks/wh_1")).toBeUndefined();
@@ -32,8 +36,8 @@ describe("goalFor: the steps toward paying", () => {
 
 describe("sending to DataFast", () => {
   let calls: unknown[][];
-  beforeEach(() => { calls = []; (globalThis as any).window = { datafast: (...a: unknown[]) => calls.push(a) }; });
-  afterEach(() => { delete (globalThis as any).window; });
+  beforeEach(() => { calls = []; (globalThis as any).location = { hostname: "app.revenuedot.app" }; (globalThis as any).window = { datafast: (...a: unknown[]) => calls.push(a) }; });
+  afterEach(() => { delete (globalThis as any).window; delete (globalThis as any).location; });
 
   it("track sends the goal with string parameters, and nothing when the script is absent or throws", () => {
     track("app_created");
@@ -43,6 +47,12 @@ describe("sending to DataFast", () => {
     expect(() => track("x")).not.toThrow();
     (globalThis as any).window = {};
     expect(() => track("x")).not.toThrow();
+  });
+  it("sends nothing from any other host, such as a self-hosted dashboard with its own DataFast snippet", () => {
+    (globalThis as any).location = { hostname: "revenue.example.com" };
+    track("app_created");
+    identifyUser({ user: { email: "a@b.co", name: null, email_verified: true }, projects: [] });
+    expect(calls).toEqual([]);
   });
   it("trackRequest records a goal only for the steps", () => {
     trackRequest("GET", "/auth/me");

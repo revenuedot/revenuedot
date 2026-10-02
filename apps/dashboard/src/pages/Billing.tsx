@@ -51,7 +51,12 @@ export function BillingPage() {
   const q = useQuery({ queryKey: ["billing"], queryFn: () => api<Billing>("/v2/billing"), enabled: cloud && !!me.data?.account?.billing_ready, refetchInterval: params.get("checkout") === "success" ? 3000 : false });
   useEffect(() => {
     const c = params.get("checkout");
-    if (c === "success" || c === "cancelled") track("checkout_returned", { result: c });
+    if (c === "success" || c === "cancelled") {
+      // Once per return: a refresh or back-navigation within the 15 seconds the parameter stays must not count again.
+      let seen = 0;
+      try { seen = Number(sessionStorage.getItem("rd-checkout-returned") ?? 0); sessionStorage.setItem("rd-checkout-returned", String(Date.now())); } catch { /* ignore */ }
+      if (Date.now() - seen > 60_000) track("checkout_returned", { result: c });
+    }
     if (c === "success") toast("Thanks. Your plan changes as soon as Stripe confirms the payment.");
     if (c === "cancelled") toast("Checkout cancelled. Nothing changed.");
     if (c) { const t = setTimeout(() => { setParams({}, { replace: true }); void qc.invalidateQueries({ queryKey: ["me"] }); }, 15_000); return () => clearTimeout(t); }

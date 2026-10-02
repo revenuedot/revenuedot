@@ -2,14 +2,12 @@
 // DataFast web analytics for revenuedot.app (docs/analytics.md): pageviews, referrers, goals, and the cookies the
 // Cloud dashboard reads to attribute a Stripe payment to the channel that brought the visitor.
 import { DATAFAST } from "../datafast";
-const { websiteId, domain, proxy } = DATAFAST;
-const src = proxy ? `https://${proxy}/js/script.js` : "https://datafa.st/js/script.js";
-const api = proxy ? `https://${proxy}/api/events` : undefined;
+const { websiteId, domain } = DATAFAST;
 ---
 <script is:inline>
   window.datafast = window.datafast || function () { (window.datafast.q = window.datafast.q || []).push(arguments); };
 </script>
-<script is:inline defer data-website-id={websiteId} data-domain={domain} data-api-url={api} src={src}></script>
+<script is:inline defer data-website-id={websiteId} data-domain={domain} src="https://datafa.st/js/script.js"></script>
 <script is:inline>
   // Goals from link targets, so no page needs its own attributes. One goal per click, with where on the page it was.
   (function () {

@@ -9,7 +9,6 @@ Goal: know which channel brings each visitor, signup and paying Cloud customer, 
 4. **User profile**: the dashboard identifies the signed-in user by email, with plan, project count and email-verified.
 5. **Goals** for each step toward paying (site clicks, contact-sales form, signup, first project, app, API key, checkout), and scroll goals on the home and pricing sections.
 6. **Bot traffic**: the site Worker reports AI, search and training crawlers to DataFast, server side.
-7. **Managed proxy** `a.revenuedot.app` (CNAME to `proxy.datafast.io`, DNS only) so ad blockers do not drop events. Switched on by setting `proxy` in `apps/site/src/datafast.ts` and `apps/dashboard/src/lib/analytics.ts`.
 
 ## Rules
 - The website id (`dfid_…`) is public. No API key is needed: goals and identify come from the browser, revenue from Stripe, bots from the public bot endpoint.

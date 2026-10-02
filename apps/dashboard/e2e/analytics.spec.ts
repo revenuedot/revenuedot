@@ -29,6 +29,7 @@ test("sign up, create a project and upgrade: goals, the user profile and the Str
   ]);
   // Survives full page loads (the Checkout round trip) by keeping the calls in sessionStorage.
   await page.addInitScript(() => {
+    (window as unknown as { __rdAnalyticsTest: boolean }).__rdAnalyticsTest = true;
     const read = () => { try { return JSON.parse(sessionStorage.getItem("__df") ?? "[]"); } catch { return []; } };
     (window as unknown as { datafast: (...a: unknown[]) => void }).datafast = (...a: unknown[]) => { const c = read(); c.push(a); sessionStorage.setItem("__df", JSON.stringify(c)); };
   });

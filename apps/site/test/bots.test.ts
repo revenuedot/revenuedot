@@ -33,6 +33,9 @@ describe("trackCrawler", () => {
       req("https://revenuedot.app/logo.png", "GPTBot/1.2"),
       req("https://revenuedot.app/api/contact-sales", "GPTBot/1.2", { method: "POST" }),
       req("https://revenuedot.app/", null),
+      req("https://revenuedot.app/", "Mozilla/5.0 (Linux; Android 13; CUBOT_X5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"),
+      req("https://revenuedot.app/", "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0 Safari/537.36 BIDUBrowser/8.7"),
+      req("https://preview.revenuedot.workers.dev/", "GPTBot/1.2"),
     ];
     for (const r of cases) {
       const fetcher = vi.fn(async () => new Response("{}"));

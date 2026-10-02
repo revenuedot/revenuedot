@@ -6,11 +6,19 @@
  */
 type Df = (...args: unknown[]) => void;
 
-/** The website id is public (it is in every page's HTML). `proxy` and `site.ts` in apps/site hold the same values. */
-export const DATAFAST = { websiteId: "dfid_D9m4bJCw2lmFrxMQaatXu", domain: "revenuedot.app", proxy: "" } as const;
+/** The website id is public (it is in every page's HTML). `apps/site/src/datafast.ts` holds the same values. */
+export const DATAFAST = { websiteId: "dfid_D9m4bJCw2lmFrxMQaatXu", domain: "revenuedot.app" } as const;
 export const CLOUD_HOST = "app.revenuedot.app";
 
-const df = (): Df | undefined => (typeof window === "undefined" ? undefined : (window as unknown as { datafast?: Df }).datafast);
+/**
+ * The tracker's function, only on RevenueDot Cloud: a self-hoster's own DataFast snippet must never receive our goals or the user's
+ * email. `__rdAnalyticsTest` lets the browser e2e (which runs on localhost) stand in for that host.
+ */
+const df = (): Df | undefined => {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as { datafast?: Df; __rdAnalyticsTest?: boolean };
+  return location.hostname === CLOUD_HOST || w.__rdAnalyticsTest === true ? w.datafast : undefined;
+};
 
 /** Loads the tracking script on RevenueDot Cloud. */
 export function initAnalytics(): void {
@@ -19,10 +27,9 @@ export function initAnalytics(): void {
   w.datafast = w.datafast || function (...a: unknown[]) { (w.datafast!.q = w.datafast!.q || []).push(a); };
   const s = document.createElement("script");
   s.defer = true;
-  s.src = DATAFAST.proxy ? `https://${DATAFAST.proxy}/js/script.js` : "https://datafa.st/js/script.js";
+  s.src = "https://datafa.st/js/script.js";
   s.dataset.websiteId = DATAFAST.websiteId;
   s.dataset.domain = DATAFAST.domain;
-  if (DATAFAST.proxy) s.dataset.apiUrl = `https://${DATAFAST.proxy}/api/events`;
   document.head.appendChild(s);
 }
 
@@ -72,15 +79,18 @@ const STEPS: { method: string; path: RegExp; goal: string; params?: Record<strin
 ];
 
 /** The goal for a request that succeeded, or undefined. `path` may carry a query string. */
-export function goalFor(method: string, path: string): { goal: string; params?: Record<string, string> } | undefined {
+export function goalFor(method: string, path: string, body?: unknown): { goal: string; params?: Record<string, string> } | undefined {
   const p = path.split("?")[0]!;
   const m = method.toUpperCase();
   const s = STEPS.find((x) => x.method === m && x.path.test(p));
-  return s ? { goal: s.goal, params: s.params } : undefined;
+  if (!s) return undefined;
+  // A teammate signing up through an invite is not a new customer.
+  if (s.goal === "signup_completed" && body && typeof body === "object" && "invite_token" in body && (body as { invite_token?: unknown }).invite_token) return { goal: "invite_signup_completed" };
+  return { goal: s.goal, params: s.params };
 }
 
 /** Called by the API client after a successful request. */
-export function trackRequest(method: string, path: string): void {
-  const g = goalFor(method, path);
+export function trackRequest(method: string, path: string, body?: unknown): void {
+  const g = goalFor(method, path, body);
   if (g) track(g.goal, g.params);
 }
