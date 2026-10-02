@@ -19,6 +19,9 @@ jobs:
 
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       server: ${{ steps.f.outputs.server }}
       site: ${{ steps.f.outputs.site }}
@@ -29,12 +32,19 @@ jobs:
         with:
           fetch-depth: 0
       - id: f
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ github.event_name }}" != "push" ]; then
             echo "server=${{ github.event_name == 'workflow_dispatch' }}" >> "$GITHUB_OUTPUT"
             echo "site=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+          # Compare with the last deploy that succeeded, not only this push: GitHub keeps one pending run per concurrency
+          # group and cancels the older one, so a server change queued behind another deploy was never shipped (PR #24).
+          base=$(gh api "repos/${{ github.repository }}/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1" -q '.workflow_runs[0].head_sha' 2>/dev/null || true)
+          git cat-file -e "$base^{commit}" 2>/dev/null || base="${{ github.event.before }}"
+          echo "Changes since $base"
+          files=$(git diff --name-only "$base" "${{ github.sha }}" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
           echo "$files" | grep -qE '^(apps/(server|dashboard)|packages|scripts/(deploy-cloud|migrate|smoke-cloud)|pnpm-lock\.yaml|package\.json)' && echo server=true >> "$GITHUB_OUTPUT" || echo server=false >> "$GITHUB_OUTPUT"
           echo "$files" | grep -qE '^(apps/site|design|brand|pnpm-lock\.yaml)' && echo site=true >> "$GITHUB_OUTPUT" || echo site=false >> "$GITHUB_OUTPUT"
 
