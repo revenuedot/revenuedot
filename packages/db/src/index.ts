@@ -38,24 +38,53 @@ export async function assertNoSkippedMigrations(db: DB, folder = migrationsFolde
 }
 
 /**
- * Opens the database.
- * - `postgres://...` uses a real Postgres (self-host, cloud).
- * - `pglite://memory` or unset uses an in-process Postgres (tests); `pglite://./.data/dev` persists to disk (local dev).
+ * Advisory lock keys shared by every RevenueDot process on one database (prd/ha-self-host/PRD.md): migrations, and the
+ * background job (apps/server/src/cluster.ts). Session locks: they need a direct connection, RDS Proxy or PgBouncer in
+ * session mode, never PgBouncer in transaction mode.
  */
-export async function openDb(url = process.env.DATABASE_URL ?? "pglite://memory"): Promise<{ db: DB; close: () => Promise<void> }> {
+export const LOCK_KEYS = { migrate: 5_276_440_101, tick: 5_276_440_102 } as const;
+
+export interface OpenDbOptions {
+  /** Apply pending migrations before returning (default true). Replicas started after a migration Job pass false. */
+  migrate?: boolean;
+  /** Connections in the pool (default DATABASE_POOL_MAX or 10; at least 2, since locks reserve one). Postgres only. */
+  max?: number;
+}
+
+/**
+ * Opens the database.
+ * - `postgres://...` uses a real Postgres (self-host, cloud). Several servers can open the same database at once:
+ *   migrations run under an advisory lock, so the first one migrates and the others wait, then find nothing to do.
+ * - `pglite://memory` or unset uses an in-process Postgres (tests); `pglite://./.data/dev` persists to disk (local dev).
+ * `sql` is the postgres.js client (Postgres only), for session locks on a reserved connection.
+ */
+export async function openDb(url = process.env.DATABASE_URL ?? "pglite://memory", opts: OpenDbOptions = {}): Promise<{ db: DB; close: () => Promise<void>; sql?: postgres.Sql }> {
+  const migrate = opts.migrate ?? true;
   if (url.startsWith("postgres")) {
+    const max = Math.max(2, opts.max ?? (Number(process.env.DATABASE_POOL_MAX) || 10));
     // Migrations re-check the drizzle schema on every start; Postgres NOTICEs about it are noise in self-host logs.
-    const sql = postgres(url, { max: 10, prepare: false, onnotice: () => {} });
+    const sql = postgres(url, { max, prepare: false, onnotice: () => {} });
     const db = drizzlePg(sql, { schema }) as unknown as DB;
-    await assertNoSkippedMigrations(db);
-    await migratePg(db as never, { migrationsFolder });
-    return { db, close: () => sql.end() };
+    if (migrate) {
+      const lock = await sql.reserve();
+      try {
+        await lock`select pg_advisory_lock(${LOCK_KEYS.migrate}::bigint)`;
+        await assertNoSkippedMigrations(db);
+        await migratePg(db as never, { migrationsFolder });
+      } finally {
+        await lock`select pg_advisory_unlock(${LOCK_KEYS.migrate}::bigint)`.catch(() => {});
+        lock.release();
+      }
+    }
+    return { db, close: () => sql.end({ timeout: 5 }), sql };
   }
   const path = url.replace(/^pglite:\/\//, "");
   if (path !== "memory" && path !== "") mkdirSync(path, { recursive: true });
   const client = path === "memory" || path === "" ? new PGlite() : new PGlite(path);
   const db = drizzlePglite(client, { schema }) as unknown as DB;
-  await assertNoSkippedMigrations(db);
-  await migratePglite(db as never, { migrationsFolder });
+  if (migrate) {
+    await assertNoSkippedMigrations(db);
+    await migratePglite(db as never, { migrationsFolder });
+  }
   return { db, close: () => client.close() };
 }

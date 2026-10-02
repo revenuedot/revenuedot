@@ -1,0 +1,10 @@
+# Evaluation shape: bundled Postgres, migrations on replica start, fixed replicas, chart-made Secret.
+publicUrl: http://revenuedot.localhost
+postgresql:
+  enabled: true
+autoscaling:
+  enabled: false
+replicaCount: 2
+allowSignup: true
+secrets:
+  encryptionKey: ZXZhbHVhdGlvbi1vbmx5LWVuY3J5cHRpb24ta2V5LTMyYg==

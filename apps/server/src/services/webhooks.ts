@@ -124,13 +124,28 @@ export async function attempt(db: DB, deliveryId: string, fetchImpl: typeof fetc
     .where(eq(webhooks.id, row.h.id));
 }
 
-/** Sends every due delivery. Retries for a disabled webhook wait until it is enabled again. */
+/** How long a claimed delivery is held by the job that claimed it: longer than one attempt's 60-second timeout. */
+export const DELIVERY_LEASE_MS = 2 * 60_000;
+
+/**
+ * Sends every due delivery. Retries for a disabled webhook wait until it is enabled again.
+ * Each delivery is claimed first (its next attempt moved 2 minutes ahead, only if it is still due), so two jobs running at
+ * once (several self-hosted replicas, or the Worker's cron and a request-kicked run) never send it twice. A job that dies
+ * mid-attempt leaves the claim to lapse, and the delivery is sent again after it (at least once, as RevenueCat does).
+ */
 export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50) {
   const due = await db.select({ id: webhookDeliveries.id }).from(webhookDeliveries)
     .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId))
     .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
-  for (const d of due) await attempt(db, d.id, fetchImpl, now);
-  return due.length;
+  let sent = 0;
+  for (const d of due) {
+    const [claimed] = await db.update(webhookDeliveries).set({ nextAttemptAt: new Date(now.getTime() + DELIVERY_LEASE_MS) })
+      .where(and(eq(webhookDeliveries.id, d.id), eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now))).returning({ id: webhookDeliveries.id });
+    if (!claimed) continue;
+    await attempt(db, d.id, fetchImpl, now);
+    sent++;
+  }
+  return sent;
 }
 
 /** Manual retry from the dashboard or API: queue immediately. */

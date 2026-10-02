@@ -167,26 +167,37 @@ export async function recordDueExpirations(db: DB, now: Date, only?: { projectId
     ...(only ? [] : [notMoving(subscriptions.projectId)]),
     ...(only ? [eq(subscriptions.projectId, only.projectId), eq(subscriptions.store, only.store), eq(subscriptions.storeKey, only.storeKey)] : []),
   )).limit(500);
+  let recorded = 0;
   for (const s of expired) {
-    const [customer] = await db.select().from(customers).where(eq(customers.id, s.customerId));
-    if (!customer) continue;
-    const aliases = await db.select({ a: customerAliases.appUserId }).from(customerAliases).where(eq(customerAliases.customerId, customer.id));
-    const appUserId = aliases.find((a) => !a.a.startsWith("$RCAnonymousID:"))?.a ?? customer.originalAppUserId;
-    const d = subRowToDomain(s);
-    if (!s.refundedAt) {
-      await recordEvent(db, {
-        projectId: s.projectId, appId: s.appId, customer, appUserId,
-        derived: { type: "EXPIRATION", expirationReason: expirationReasonOf(d) },
-        subject: {
-          store: d.store, productId: d.productIdentifier, productPlanId: d.productPlanIdentifier, periodType: d.periodType,
-          purchasedAt: d.purchaseDate, expiresAt: d.expiresDate, transactionId: d.storeTransactionId ?? null,
-          originalTransactionId: d.originalTransactionId ?? s.storeKey, isSandbox: d.isSandbox, isFamilyShare: d.ownershipType === "FAMILY_SHARED",
-          countryCode: s.countryCode, price: d.price, priceUsd: s.priceUsd, presentedOfferingId: s.presentedOfferingId,
-        },
-        now,
-      });
-    }
-    await db.update(subscriptions).set({ expiredEventAt: now }).where(eq(subscriptions.id, s.id));
+    // One transaction marks the subscription (only if no other run has) and records the event, so two runs at once
+    // (several replicas, or the Worker's cron and a request-kicked run) record one EXPIRATION; a failure records neither.
+    if (await db.transaction(async (tx) => {
+      const [claimed] = await tx.update(subscriptions).set({ expiredEventAt: now }).where(and(eq(subscriptions.id, s.id), isNull(subscriptions.expiredEventAt))).returning({ id: subscriptions.id });
+      if (!claimed) return false;
+      await recordExpiration(tx as unknown as DB, s, now);
+      return true;
+    })) recorded++;
   }
-  return expired.length;
+  return recorded;
+}
+
+async function recordExpiration(db: DB, s: typeof subscriptions.$inferSelect, now: Date) {
+  const [customer] = await db.select().from(customers).where(eq(customers.id, s.customerId));
+  if (!customer) return;
+  const aliases = await db.select({ a: customerAliases.appUserId }).from(customerAliases).where(eq(customerAliases.customerId, customer.id));
+  const appUserId = aliases.find((a) => !a.a.startsWith("$RCAnonymousID:"))?.a ?? customer.originalAppUserId;
+  const d = subRowToDomain(s);
+  if (!s.refundedAt) {
+    await recordEvent(db, {
+      projectId: s.projectId, appId: s.appId, customer, appUserId,
+      derived: { type: "EXPIRATION", expirationReason: expirationReasonOf(d) },
+      subject: {
+        store: d.store, productId: d.productIdentifier, productPlanId: d.productPlanIdentifier, periodType: d.periodType,
+        purchasedAt: d.purchaseDate, expiresAt: d.expiresDate, transactionId: d.storeTransactionId ?? null,
+        originalTransactionId: d.originalTransactionId ?? s.storeKey, isSandbox: d.isSandbox, isFamilyShare: d.ownershipType === "FAMILY_SHARED",
+        countryCode: s.countryCode, price: d.price, priceUsd: s.priceUsd, presentedOfferingId: s.presentedOfferingId,
+      },
+      now,
+    });
+  }
 }

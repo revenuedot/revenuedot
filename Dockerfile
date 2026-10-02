@@ -13,12 +13,11 @@ COPY brand ./brand
 RUN pnpm install --frozen-lockfile && pnpm --filter @revenuedot/dashboard build
 
 FROM node:24-slim
-RUN corepack enable
-WORKDIR /app
 COPY --from=build /app /app
-# The pnpm version in package.json, fetched once at build time: a container start needs no download from npm.
-RUN corepack install
+WORKDIR /app/apps/server
 ENV NODE_ENV=production PORT=8787 DASHBOARD_DIST=/app/apps/dashboard/dist
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://localhost:8787/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["pnpm", "--filter", "@revenuedot/server", "start"]
+HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://localhost:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# Node runs as PID 1 (no pnpm wrapper), so SIGTERM reaches the server and it drains (prd/ha-self-host/PRD.md).
+# Migrations only (Helm hook Job, ECS and Cloud Run tasks): node --import tsx src/migrate.node.ts
+CMD ["node", "--import", "tsx", "src/entry.node.ts"]

@@ -1,0 +1,37 @@
+# helm test: every replica behind the Service answers /readyz (database reachable, not draining).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "revenuedot.fullname" . }}-test-readyz
+  labels:
+    {{- include "revenuedot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: readyz
+      image: {{ include "revenuedot.image" . }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command:
+        - node
+        - -e
+        - |
+          const url = "http://{{ include "revenuedot.fullname" . }}:{{ .Values.service.port }}";
+          (async () => {
+            for (const path of ["/readyz", "/healthz", "/v1/health"]) {
+              const r = await fetch(url + path);
+              console.log(path, r.status);
+              if (!r.ok) process.exit(1);
+            }
+          })().catch((e) => { console.error(e); process.exit(1); });
+      resources:
+        requests: { cpu: 10m, memory: 64Mi }
+        limits: { memory: 128Mi }
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}

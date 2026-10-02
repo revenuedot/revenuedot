@@ -7,7 +7,8 @@
     "dev": "REVENUEDOT_ALLOW_SIGNUP=${REVENUEDOT_ALLOW_SIGNUP:-true} tsx watch src/entry.node.ts",
     "start": "tsx src/entry.node.ts",
     "dev:worker": "cf dev",
-    "build:worker": "cf build"
+    "build:worker": "cf build",
+    "migrate": "tsx src/migrate.node.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.41",

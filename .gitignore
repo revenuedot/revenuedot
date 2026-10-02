@@ -19,3 +19,6 @@ revenuedot-import-*.json
 
 # Journey runs (scripts/e2e/journeys): logs, screenshots, per-run results
 scripts/e2e/journeys/build/
+
+# High-availability runs (scripts/e2e/cluster): one server log per replica
+scripts/e2e/cluster/build/
