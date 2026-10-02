@@ -3,6 +3,7 @@ import { outboundUrlProblem } from "../src/services/outbound.js";
 import { seal, secretKeyFrom, unseal } from "../src/services/secrets.js";
 import { clearGoogleTokens, googleAccessToken, type ServiceAccountKey } from "../src/services/google-sa.js";
 import { makeKeys } from "./google-helpers.js";
+import { GooglePlayClient, type ServiceAccount } from "../src/stores/google/api.js";
 
 /** The outbound URL guard, the sealing key ring and the Google token cache: the defences around customer-set URLs and keys. */
 
@@ -55,6 +56,22 @@ describe("Google service-account tokens", () => {
     // Same client_email and key id, a different private key: must not get the first key's token.
     const b = await googleAccessToken({ ...sa, private_key: otherKey }, "scope", f, now);
     const c = await googleAccessToken(sa, "scope", f, now);
+    expect([a, b, c]).toEqual(["tok-1", "tok-2", "tok-1"]);
+    expect(urls).toEqual(["https://oauth2.googleapis.com/token", "https://oauth2.googleapis.com/token"]);
+  });
+});
+
+describe("Google Play client tokens", () => {
+  it("go to Google's token endpoint whatever the key file's token_uri says, and are cached per private key", async () => {
+    const sa = (await makeKeys()).sa as unknown as ServiceAccount;
+    const otherKey = ((await makeKeys()).sa as unknown as ServiceAccount).private_key;
+    const urls: string[] = [];
+    let n = 0;
+    const client = new GooglePlayClient({ fetch: (async (url: string) => { urls.push(String(url)); n++; return Response.json({ access_token: `tok-${n}`, expires_in: 3600 }); }) as unknown as typeof fetch });
+    const a = await client.accessToken({ ...sa, token_uri: "http://169.254.169.254/token" });
+    // Same client_email and private_key_id (neither is secret), another private key: must not get the first key's token.
+    const b = await client.accessToken({ ...sa, private_key: otherKey });
+    const c = await client.accessToken(sa);
     expect([a, b, c]).toEqual(["tok-1", "tok-2", "tok-1"]);
     expect(urls).toEqual(["https://oauth2.googleapis.com/token", "https://oauth2.googleapis.com/token"]);
   });

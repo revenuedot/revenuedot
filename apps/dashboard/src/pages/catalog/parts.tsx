@@ -174,7 +174,7 @@ export function NewProductDialog({ pid, apps, appId, onClose, onCreated }: { pid
           <input id="np-name" className="input" placeholder="e.g. Pro monthly" value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
         </Field>
         {errors.form && <div className="banner err" role="alert">{errors.form}</div>}
-        <p className="cat-note" style={{ margin: 0 }}><Icon name="docs" />Importing products from App Store Connect and Google Play comes in a later release.</p>
+        {app && ["app_store", "mac_app_store", "play_store", "stripe"].includes(app.type) && <p className="cat-note" style={{ margin: 0 }}><Icon name="docs" />Already set up in {app.type === "play_store" ? "Google Play" : app.type === "stripe" ? "Stripe" : "App Store Connect"}? Use Import products on the Products page to bring products over with their type and duration.</p>}
       </form>
     </Dialog>
   );

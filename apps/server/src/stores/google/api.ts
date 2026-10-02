@@ -96,6 +96,33 @@ export interface VoidedPurchase {
   refundType?: number;
 }
 
+/** monetization.subscriptions resource (the fields the product import reads). */
+export interface PlaySubscription {
+  productId: string;
+  listings?: Array<{ languageCode?: string; title?: string }>;
+  basePlans?: Array<{
+    basePlanId: string;
+    state?: string;
+    autoRenewingBasePlanType?: { billingPeriodDuration?: string; legacyCompatible?: boolean };
+    prepaidBasePlanType?: { billingPeriodDuration?: string };
+    installmentsBasePlanType?: { billingPeriodDuration?: string };
+  }>;
+  archived?: boolean;
+}
+
+/** monetization.onetimeproducts resource (the fields the product import reads). */
+export interface PlayOneTimeProduct {
+  productId: string;
+  listings?: Array<{ languageCode?: string; title?: string }>;
+  purchaseOptions?: Array<{ purchaseOptionId?: string; state?: string; buyOption?: { legacyCompatible?: boolean }; rentOption?: object }>;
+}
+
+/** inappproducts resource (legacy API; still lists one-time products made before Play's 2025 purchase options). */
+export interface PlayInAppProduct {
+  sku: string; status?: string; purchaseType?: string; defaultLanguage?: string;
+  listings?: Record<string, { title?: string }>;
+}
+
 /** Whether the app has a service account configured at all (either field name). */
 export const hasServiceAccount = (app: Pick<AppRow, "credentials">) => {
   const raw = app.credentials?.play_service_account_credentials_json ?? app.credentials?.service_account;
@@ -176,9 +203,14 @@ export class GooglePlayClient {
     }
   }
 
-  /** OAuth 2.0 JWT bearer grant with the service account; tokens are cached until a minute before expiry. */
+  /**
+   * OAuth 2.0 JWT bearer grant with the service account; tokens are cached until a minute before expiry. The cache is
+   * keyed by the private key (client_email and private_key_id are not secret: a key file with another project's email
+   * must never pick up that project's token), and the key file's `token_uri` is ignored: the signed assertion always
+   * goes to Google's token endpoint, never to a URL a customer could point at the server's own network.
+   */
   async accessToken(sa: ServiceAccount): Promise<string> {
-    const cacheKey = `${sa.client_email}|${sa.private_key_id ?? ""}`;
+    const cacheKey = `${sa.client_email}|${sa.private_key}`;
     const nowMs = Date.now();
     const cached = this.tokens.get(cacheKey);
     if (cached && cached.expiresAt > nowMs + 60_000) return cached.token;
@@ -190,7 +222,7 @@ export class GooglePlayClient {
       this.keys.set(sa.private_key, key);
     }
     const signingKey: KeyLike = key;
-    const aud = sa.token_uri ?? OAUTH_TOKEN_URL;
+    const aud = OAUTH_TOKEN_URL;
     const iat = Math.floor(nowMs / 1000);
     const assertion = await new SignJWT({ scope: ANDROID_PUBLISHER_SCOPE })
       .setProtectedHeader({ alg: "RS256", typ: "JWT", ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) })
@@ -322,5 +354,33 @@ export class GooglePlayClient {
   createSubscription(app: AppRow, productId: string, listing: { languageCode: string; title: string }) {
     const q = new URLSearchParams({ productId, "regionsVersion.version": "2022/02" });
     return this.call<{ productId?: string; listings?: { title?: string }[] }>(app, "POST", `/subscriptions?${q}`, { packageName: packageNameOf(app), productId, listings: [listing] });
+  }
+
+  /** Pages through a Play list: `pageToken`/`nextPageToken` (monetization) or `token`/`tokenPagination` (inappproducts). */
+  private async listPages<T>(app: AppRow, path: string, field: string, params: Record<string, string>, legacy: boolean, maxPages: number): Promise<{ items: T[]; truncated: boolean }> {
+    const items: T[] = [];
+    let token: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const q = new URLSearchParams(params);
+      if (token) q.set(legacy ? "token" : "pageToken", token);
+      const r = await this.call<Record<string, unknown> & { nextPageToken?: string; tokenPagination?: { nextPageToken?: string } }>(app, "GET", `${path}?${q}`);
+      items.push(...((r[field] as T[] | undefined) ?? []));
+      token = legacy ? r.tokenPagination?.nextPageToken : r.nextPageToken;
+      if (!token) return { items, truncated: false };
+    }
+    return { items, truncated: true };
+  }
+
+  /** monetization.subscriptions.list: every subscription with its base plans (archived ones left out). */
+  listSubscriptions(app: AppRow, maxPages = 25) {
+    return this.listPages<PlaySubscription>(app, "/subscriptions", "subscriptions", { pageSize: "100" }, false, maxPages);
+  }
+  /** monetization.onetimeproducts.list: one-time products with their purchase options. */
+  listOneTimeProducts(app: AppRow, maxPages = 25) {
+    return this.listPages<PlayOneTimeProduct>(app, "/oneTimeProducts", "oneTimeProducts", { pageSize: "100" }, false, maxPages);
+  }
+  /** inappproducts.list (legacy): managed products and, before base plans, subscriptions. */
+  listInAppProducts(app: AppRow, maxPages = 25) {
+    return this.listPages<PlayInAppProduct>(app, "/inappproducts", "inappproduct", { maxResults: "100" }, true, maxPages);
   }
 }

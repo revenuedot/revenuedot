@@ -44,6 +44,7 @@ const P: Record<string, ReactNode> = {
   box: <><rect x="2.5" y="3.5" width="11" height="10" /><path d="M2.5 6.5h11" /></>,
   userplus: <><circle cx="7" cy="5.5" r="2.5" /><path d="M2 14c.7-2.4 2.7-3.8 5-3.8M12 9v5M9.5 11.5h5" /></>,
   refresh: <path d="M13.5 8A5.5 5.5 0 113 5.2M3 2v3.2h3.2" />,
+  download: <path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 11v2.5h11V11" />,
   more: <><circle cx="3.5" cy="8" r=".6" /><circle cx="8" cy="8" r=".6" /><circle cx="12.5" cy="8" r=".6" /></>,
   grip: <><circle cx="6" cy="4" r=".5" /><circle cx="10" cy="4" r=".5" /><circle cx="6" cy="8" r=".5" /><circle cx="10" cy="8" r=".5" /><circle cx="6" cy="12" r=".5" /><circle cx="10" cy="12" r=".5" /></>,
   edit: <path d="M10.5 2.5l3 3L6 13H3v-3z" />,

@@ -89,3 +89,31 @@ a.cat-lnk:hover{text-decoration-color:var(--fg)}
   .cat-savebar .cat-in{padding:12px 16px}
   .cat-titlerow h1{font-size:24px;line-height:30px}
 }
+
+/* Import products dialog (ImportProducts.tsx). On phones the type, duration and group columns shrink to nothing (cells stay
+   in place, so the columns still line up with the colgroup) and the type shows under the product name instead. */
+.dialog:has(.imp){width:min(900px,calc(100vw - 32px))}
+/* Anchored to the top, so the dialog does not jump while the list grows or shrinks with the search. */
+.scrim:has(.imp){align-items:start;padding-top:max(16px,6vh)}
+.imp{display:flex;flex-direction:column;gap:14px;min-width:0}
+.imp-list{max-height:min(46vh,440px);overflow:hidden auto;border:1px solid var(--border)}
+.imp-table{width:100%;table-layout:fixed}
+.imp-table thead th{position:sticky;top:0;background:var(--panel);z-index:1}
+.imp-table .imp-c{width:36px;padding-right:0}
+.imp-table tr.row{cursor:pointer}
+.imp-table tr.imp-off{cursor:default}
+.imp-table tr.imp-off .cat-t{color:var(--fg-2)}
+.imp-box{align-items:center}
+.imp-box input:indeterminate{background:linear-gradient(var(--fg),var(--fg)) center/8px 2px no-repeat}
+.imp-box input:disabled{cursor:not-allowed}
+.imp-meta{display:none;font-size:12px;line-height:16px;color:var(--fg-2)}
+.imp-table td{overflow-wrap:anywhere}
+.imp-note{font-size:12px;line-height:16px;color:var(--fg-3);white-space:normal}
+.imp-state{display:inline-block;white-space:normal;font:500 11px/16px var(--font);text-transform:uppercase;letter-spacing:.04em;color:var(--fg-3)}
+.imp-ents{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+.imp-ents legend{font:600 11px/16px var(--font);text-transform:uppercase;letter-spacing:.05em;color:var(--fg-3);padding:0;margin-bottom:8px}
+.imp-ents legend .subtle{text-transform:none;letter-spacing:0;font-weight:500}
+.imp-entlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 16px}
+.imp-result{display:flex;flex-direction:column;gap:10px}
+.imp-ids{margin:6px 0 0;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+@media (max-width:640px){.imp-table col.imp-hide{width:0!important}.imp-table col.imp-stat{width:112px!important}.imp-table th,.imp-table td{padding-left:8px;padding-right:8px}.imp-table col.imp-prod{width:auto!important}.imp-table th:nth-child(n+3):nth-child(-n+5),.imp-table td:nth-child(n+3):nth-child(-n+5){padding:0;border:0;overflow:hidden;visibility:hidden}.imp-meta{display:block}}
