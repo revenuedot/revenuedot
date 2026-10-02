@@ -104,7 +104,14 @@ export function v2Routes(deps: Deps) {
         const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
         if (!s.canRead || (write && !s.canWrite)) throw new V2Error(403, "authorization_error", s.reason ?? "RevenueDot AI cannot do this here.");
       }
-      c.set("principal", { ...p, role: m.role });
+      // Enterprise extensions may deny access (enforced single sign-on) or give a custom role's permissions.
+      let permissions: string[] | undefined;
+      for (const x of deps.extensions ?? []) {
+        const a = await x.projectAccess?.({ deps, userId: p.userId, sessionId: getCookie(c, SESSION_COOKIE) ?? null, projectId, role: m.role });
+        if (a?.deny) throw new V2Error(a.deny.status, a.deny.status === 404 ? "resource_missing" : "authorization_error", a.deny.message);
+        if (a?.permissions) permissions = a.permissions;
+      }
+      c.set("principal", { ...p, role: m.role, ...(permissions ? { permissions } : {}) });
     }
     c.set("projectId", projectId);
     await next();

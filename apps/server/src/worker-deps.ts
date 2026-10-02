@@ -50,6 +50,11 @@ export interface Env {
   REVENUEDOT_ASSISTANT_CAPS?: string;
   /** Local `cf dev` only: "1" answers with the scripted fake model, so the Durable Object runtime can be tried without a model call. Never set in production. */
   REVENUEDOT_ASSISTANT_FAKE?: string;
+  /** Optional secret: the RevenueDot Enterprise licence key that turns on the `ee/` features (extensions.ts). Unset: off. */
+  REVENUEDOT_LICENSE_KEY?: string;
+  /** Data location (ee/server/region.ts): this deployment's region ("us" or "eu") and JSON of every region's API and dashboard origins. */
+  REVENUEDOT_REGION?: string;
+  REVENUEDOT_REGIONS?: string;
 }
 
 export const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());

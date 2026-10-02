@@ -249,7 +249,7 @@ export function oauthRoutes(deps: Deps) {
     const hidden = ["client_id", "redirect_uri", "state", "scope", "resource", "code_challenge", "code_challenge_method", "response_type"]
       .filter((k) => q[k] !== undefined).map((k) => `<input type="hidden" name="${k}" value="${esc(q[k]!)}">`).join("");
     const redirectHost = (() => { const u = new URL(req.redirectUri); return u.host || `${u.protocol}//`; })();
-    const options = projects.map((p) => `<option value="${esc(p.id)}" data-role="${esc(p.role)}">${esc(p.name)}${p.role === "viewer" ? " (view only)" : ""}</option>`).join("");
+    const options = projects.map((p) => `<option value="${esc(p.id)}" data-role="${esc(p.role)}">${esc(p.name)}${p.role !== "admin" && p.role !== "developer" ? " (view only)" : ""}</option>`).join("");
     const body = `
       <p><strong>${esc(req.client.name)}</strong> wants to use RevenueDot as <strong>${esc(user.email)}</strong>. It will get an API key for one project.</p>
       <p class="muted">Not you? <a href="#" id="switch">Use another account</a></p>
@@ -297,8 +297,8 @@ export function oauthRoutes(deps: Deps) {
     if (form.decision !== "allow") return c.redirect(back(req.redirectUri, { error: "access_denied", error_description: "The user did not allow access.", state: req.state, iss }), 302);
     const project = (await projectsForUser(db, user.id)).find((p) => p.id === form.project_id);
     if (!project) return c.html(page("Cannot connect", "<p>You are not a member of that project.</p>"), 403);
-    // Viewers can only hand out read access.
-    const level: Level = project.role === "viewer" || form.access === "project:read" ? "project:read" : "project:write";
+    // Viewers (and any role other than admin or developer, such as a custom role) can only hand out read access.
+    const level: Level = (project.role !== "admin" && project.role !== "developer") || form.access === "project:read" ? "project:read" : "project:write";
     const support = level === "project:write" && form.support === "1";
     const code = randomToken();
     await db.insert(schema.oauthCodes).values({
@@ -333,7 +333,7 @@ export function oauthRoutes(deps: Deps) {
       .where(and(eq(schema.memberships.userId, row.userId), eq(schema.memberships.projectId, row.projectId))).limit(1);
     if (!member) return tokenError(c, "invalid_grant", "The user is no longer a member of the project.");
     // A viewer who lost write access since consent only gets read.
-    const level: Level = member.role === "viewer" ? "project:read" : row.scope.startsWith("project:read") ? "project:read" : "project:write";
+    const level: Level = member.role !== "admin" && member.role !== "developer" ? "project:read" : row.scope.startsWith("project:read") ? "project:read" : "project:write";
     const support = level === "project:write" && row.scope.includes(SUPPORT);
     const scope = scopeString(level, support);
     const [client] = await db.select().from(schema.oauthClients).where(eq(schema.oauthClients.id, row.clientId)).limit(1);

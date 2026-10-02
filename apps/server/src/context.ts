@@ -68,6 +68,8 @@ export interface Deps {
   destroyConversation?: (conversationId: string) => Promise<void>;
   /** The app's own fetch. Set by createApp; RevenueDot AI's tools call the REST API v2 through it in-process. */
   dispatch?: (req: Request) => Promise<Response>;
+  /** Enterprise extensions (extensions.ts). Empty or unset in the open-source build. */
+  extensions?: import("./extensions.js").ServerExtension[];
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

@@ -53,6 +53,8 @@ export interface TickOptions {
   googleOAuth?: { clientId?: string; clientSecret?: string };
   /** Remove funnel visitors' IP addresses and user agents older than 7 days now (default: at minute 7 of each hour). */
   purgeFunnelClients?: boolean;
+  /** Enterprise extensions (extensions.ts) whose own periodic work runs last. None in the open-source build. */
+  extensions?: import("../extensions.js").ServerExtension[];
 }
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
@@ -104,7 +106,11 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     lastFunnelPurgeHour = hour;
     try { funnelClientsPurged = await purgeFunnelClientContext(db, now); } catch (e) { console.error("tick: funnel visitor purge failed", e); }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, admob, funnelClientsPurged, firstSales };
+  const extensions: Record<string, number> = {};
+  for (const x of opts.extensions ?? []) {
+    try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
+  }
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, admob, funnelClientsPurged, firstSales, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

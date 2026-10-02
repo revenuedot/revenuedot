@@ -155,6 +155,13 @@
       "when": 1790893270230,
       "tag": "0021_settings_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791238870230,
+      "tag": "0025_enterprise",
+      "breakpoints": true
     }
   ]
 }
