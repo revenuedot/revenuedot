@@ -18,11 +18,12 @@ import { projectForHost } from "./services/web/domains.js";
 import { identityRoutes } from "./routes/identity.js";
 import { verifiedRoutes } from "./routes/verified.js";
 import { shareRoutes } from "./routes/share.js";
+import { insightsPublicRoutes } from "./routes/insights-public.js";
 import { importRoutes } from "./routes/imports.js";
 import { billingRoutes } from "./routes/billing.js";
 import { moveGate } from "./services/archive/gate.js";
 
-export function createApp(input: Deps) {
+export function createApp(input: Deps): Hono & { deps: Deps } {
   // Receipt checks that the store answers with a credentials error mark the app failing (the credentials alert).
   const deps: Deps = { ...input, stores: withCredentialHealth(input.stores, input.db, input.now) };
   const app = new Hono();
@@ -83,6 +84,8 @@ export function createApp(input: Deps) {
   app.route("/", supportAppRoutes(deps));
   // App sign-in (Auth, prd/auth) answers POST /auth/login when it carries an app key; the dashboard's sign-in gets the rest.
   app.route("/", identityRoutes(deps));
+  // The weekly insights digest's one-click opt-out (no sign-in), before the dashboard's account routes.
+  app.route("/", insightsPublicRoutes(deps));
   app.route("/", authRoutes(deps));
   // Account settings (prd/account-settings/PRD.md): email change, password, sessions, two-factor, OAuth tokens, deletion,
   // notification preferences and the display currency's rate.
@@ -102,5 +105,6 @@ export function createApp(input: Deps) {
   app.route("/", v2Routes(deps));
   app.route("/pay", pay);
   app.route("/", sdkRoutes(deps));
-  return app;
+  // The deps routes see (with `dispatch`): scheduled jobs that call the API in-process (AI growth insights) use them.
+  return Object.assign(app, { deps });
 }

@@ -28,6 +28,8 @@ import { PaywallEditor } from "./pages/paywalls/Editor";
 import { GalleryPage } from "./pages/paywalls/Gallery";
 import { ExperimentDetail, ExperimentsPage, TargetingPage } from "./pages/targeting/Targeting";
 import { ChartsPage } from "./pages/charts/Charts";
+import { AttributionPage } from "./pages/analytics/Attribution";
+import { BenchmarksPage } from "./pages/analytics/Benchmarks";
 import { AdsOverviewPage } from "./pages/ads/AdsOverview";
 import { RewardsPage } from "./pages/ads/Rewards";
 import { AdMobPage } from "./pages/ads/AdMobPage";
@@ -50,6 +52,8 @@ export const routes = [
   <Route key="ai-conversation" path="/projects/:projectId/ai/:conversationId" element={<Assistant />} />,
   <Route key="charts" path="/projects/:projectId/charts" element={<ChartsPage />} />,
   <Route key="chart" path="/projects/:projectId/charts/:chartName" element={<ChartsPage />} />,
+  <Route key="attribution" path="/projects/:projectId/attribution" element={<AttributionPage />} />,
+  <Route key="benchmarks" path="/projects/:projectId/benchmarks" element={<BenchmarksPage />} />,
   <Route key="customers" path="/projects/:projectId/customers" element={<Customers />} />,
   <Route key="customer" path="/projects/:projectId/customers/:appUserId" element={<CustomerDetail />} />,
   <Route key="catalog-offerings" path="/projects/:projectId/product-catalog/offerings" element={<OfferingsPage />} />,

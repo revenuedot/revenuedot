@@ -188,7 +188,14 @@
       "idx": 28,
       "version": "7",
       "when": 1790930000000,
-      "tag": "0028_account_settings",
+      "tag": "0028_attribution_benchmarks_insights",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790940000000,
+      "tag": "0029_account_settings",
       "breakpoints": true
     }
   ]

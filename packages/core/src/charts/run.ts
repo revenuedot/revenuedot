@@ -1,4 +1,5 @@
 import type { ChartDef, Dim } from "./catalog.js";
+import { ATTRIBUTION_DIMS, type AttributionDim } from "../attribution.js";
 import { computeChart, Frame, Prepared, type ChartOutput, type ChartRequest } from "./compute.js";
 import { productIndex, type ChartCustomer, type ChartInput } from "./model.js";
 
@@ -7,13 +8,15 @@ export interface ChartFilter { name: Dim; values: string[]; exclude?: boolean }
 
 /** The value of a dimension for each kind of row; undefined when the dimension does not apply to that kind of row. */
 type Getter = (dim: Dim) => string | null | undefined;
-const CUSTOMER_DIMS = new Set<Dim>(["country", "platform", "app_version"]);
+const CUSTOMER_DIMS = new Set<Dim>(["country", "platform", "app_version", ...ATTRIBUTION_DIMS]);
+const isAttribution = (d: Dim): d is AttributionDim => (ATTRIBUTION_DIMS as string[]).includes(d);
 
 function getters(input: ChartInput) {
   const customers = new Map<string, ChartCustomer>(input.customers.map((c) => [c.id, c]));
   const product = productIndex(input.products);
   const fromCustomer = (id: string | null, dim: Dim) => {
     const c = id ? customers.get(id) : undefined;
+    if (isAttribution(dim)) return c?.attribution?.[dim] ?? null;
     return dim === "country" ? c?.country ?? null : dim === "platform" ? c?.platform ?? null : dim === "app_version" ? c?.appVersion ?? null : undefined;
   };
   const purchase = (x: { customerId: string; appId: string | null; store: string; productId: string; country?: string | null; offering?: string | null }): Getter => (dim) => {

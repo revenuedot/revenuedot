@@ -20,7 +20,6 @@ const MAX_CLOCK_SKEW_MS = 60_000;
 
 const GIF = Uint8Array.from(atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"), (c) => c.charCodeAt(0));
 
-/** A plain page for links opened from emails (unsubscribe, payment links), light and dark. */
 export const page = (title: string, body: string, form?: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title>` +
   `<style>body{margin:0;background:#fff;color:#0A0A0A;font:15px/24px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}main{max-width:480px;margin:15vh auto;padding:0 16px}` +
   `h1{font-size:22px;line-height:30px;font-weight:600;letter-spacing:-.02em;margin:0 0 12px}p{color:#525252;margin:0 0 20px}button{height:36px;padding:0 16px;border:0;background:#0A0A0A;color:#fff;font:600 12px/1 inherit;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}` +

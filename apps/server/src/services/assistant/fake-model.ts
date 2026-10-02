@@ -35,6 +35,7 @@ const money = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US",
 export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, lastToolResults }) => {
   const sys = prompt.find((m) => m.role === "system");
   const base = /\/projects\/[A-Za-z0-9_]+/.exec(typeof sys?.content === "string" ? sys.content : "")?.[0] ?? "";
+  if (typeof sys?.content === "string" && sys.content.includes("this week's growth insights")) return insightsStep(prompt, tools, lastToolResults);
   if (lastToolResults.length) {
     const r = lastToolResults.find((x) => x.toolName === "grant-customer-entitlement") ?? lastToolResults[0]!;
     const out = r.output as Record<string, any>;
@@ -116,4 +117,29 @@ export function fakeLanguageModel(script: FakeScript = defaultScript, opts: { de
 export function fakeAssistantModel(script?: FakeScript, opts?: { delayMs?: number }): AssistantModel & { fake: ReturnType<typeof fakeLanguageModel> } {
   const fake = fakeLanguageModel(script, opts);
   return { provider: "Fake", model: "fake-assistant-model", languageModel: fake, vision: true, fake };
+}
+
+/**
+ * AI growth insights (services/insights): look at one chart with a read tool, then answer with JSON built from the data
+ * pack in the first user message, quoting its numbers and citing its ids.
+ */
+function insightsStep(prompt: Prompt, tools: string[], lastToolResults: { toolName: string; output: unknown }[]): FakeStep {
+  const askedTool = prompt.some((m) => m.role === "tool");
+  if (!askedTool && !lastToolResults.length && tools.includes("get-chart")) return { toolCalls: [{ toolName: "get-chart", input: { chart: "mrr", resolution: "week" } }] };
+  const first = prompt.find((m) => m.role === "user");
+  const text = first && Array.isArray(first.content) ? first.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("\n") : typeof first?.content === "string" ? first.content : "";
+  const json = /```json\s*([\s\S]*?)```/.exec(text)?.[1];
+  let items: { id: string; label: string; unit: string; value: number | null; previous: number | null; change_pct: number | null; window: string }[] = [];
+  try { items = JSON.parse(json ?? "{}").items ?? []; } catch { /* no pack */ }
+  const fmt = (v: number | null, unit: string) => (v === null ? "n/a" : unit === "$" ? money(v) : unit === "%" ? `${v.toFixed(1)}%` : String(v));
+  const pick = (id: string) => items.find((i) => i.id === id && i.value !== null);
+  const chosen = [pick("revenue"), pick("trial_conversion"), items.find((i) => i.id.startsWith("campaign_")), items.find((i) => i.id.startsWith("benchmark_")), pick("new_customers"), pick("mrr"), pick("refund_rate")]
+    .filter((x): x is NonNullable<typeof x> => !!x).filter((x, i, a) => a.indexOf(x) === i).slice(0, 4);
+  const insights = chosen.map((i) => ({
+    title: `${i.label.replace(/\s*\(.*$/, "").replace(/:.*$/, "")}: ${fmt(i.value, i.unit)}`.slice(0, 80),
+    finding: `${i.label} is ${fmt(i.value, i.unit)}${i.previous !== null ? `, against ${fmt(i.previous, i.unit)} (${i.window})` : ""}.`,
+    recommendation: i.id.startsWith("campaign_") ? "Move more of next week's ad budget to this campaign and compare its day-30 revenue." : i.id === "trial_conversion" ? "Run an experiment with a 14-day trial against the current one." : "Open the chart, find the day the change started and check what shipped then.",
+    metric_ids: [i.id],
+  }));
+  return { text: "```json\n" + JSON.stringify({ insights }) + "\n```" };
 }

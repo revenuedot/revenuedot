@@ -102,6 +102,7 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
     const projectId = c.get("projectId");
     const want = (c.req.queries("fields") ?? []).flatMap((x) => x.split(",")).map((x) => x.trim()).filter(Boolean);
     const ATTR: Record<string, string> = { mediaSource: "$mediaSource", campaign: "$campaign", adGroup: "$adGroup", ad: "$ad", keyword: "$keyword", creative: "$creative" };
+    const ATTR_COLUMN: Record<string, string> = { mediaSource: "media_source", campaign: "campaign", adGroup: "ad_group", ad: "ad", keyword: "keyword", creative: "creative" };
     const fields = want.length ? want : Object.keys(ATTR);
     const items = [];
     for (const f of fields) {
@@ -112,7 +113,11 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
         continue;
       }
       if (!key) throw paramError(`fields: ${f} has no options.`, "fields");
-      const rows = await db.execute(sql`select distinct a.value from customer_attributes a join customers c on c.id = a.customer_id where c.project_id = ${projectId} and a.key = ${key} and a.value is not null limit 201`);
+      // Attribution fields read the first-class rows, so Apple Search Ads campaigns are offered by name.
+      const col = ATTR_COLUMN[f];
+      const rows = col
+        ? await db.execute(sql`select distinct ${sql.raw(col)} as value from customer_attribution where project_id = ${projectId} and ${sql.raw(col)} is not null order by 1 limit 201`)
+        : await db.execute(sql`select distinct a.value from customer_attributes a join customers c on c.id = a.customer_id where c.project_id = ${projectId} and a.key = ${key} and a.value is not null limit 201`);
       const values = (rows as unknown as { rows?: { value: string }[] }).rows ?? (rows as unknown as { value: string }[]);
       items.push({
         object: "audience_filter_field_options", field: f, options: values.slice(0, 200).map((v) => ({ object: "audience_filter_option", id: v.value, display_name: v.value })),

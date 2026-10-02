@@ -184,11 +184,14 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
-| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 67 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
+| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 68 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
 | **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · built, tested against a fake Stripe; switched on when the Stripe keys are set |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · all ten released on npm, CocoaPods, Maven Central, OpenUPM and as git tags |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
-| **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
+| **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments (attribution included), CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
+| **Attribution** | The attribution the SDK already sends (media source, campaign, ad group, keyword, ad, creative, the Apple Search Ads AdServices token, AppsFlyer, Adjust and Branch ids) kept as one record per customer; every chart segments by it; **Revenue by campaign** with day-0, day-7, day-30 and to-date revenue, spend and ROAS; Customers and audience filters ([guide](https://revenuedot.app/docs/guides/attribution)) | Tier 3 · built, tested on a real server and Postgres |
+| **Benchmarks** | RevenueDot Cloud only, opt-in: your trial conversion, churn, refund rate, LTV, ARPU and prices against the percentiles of similar apps by category, platform and country; groups need 10 apps and nothing identifies an app ([guide](https://revenuedot.app/docs/guides/benchmarks)) | Tier 3 · built, tested |
+| **Growth insights** | Every Monday RevenueDot AI reads your charts, campaigns and benchmarks and writes 3 to 5 numbers-backed recommendations on the Overview, emailed to admins (one-click opt-out); read-only ([guide](https://revenuedot.app/docs/guides/growth-insights)) | Tier 3 · built, tested with a scripted model and a real Workers AI run |
 | **Paywalls** | Native paywalls the RevenueCat SDKs render (all 17 component types): a gallery of ten templates built on 2026 conversion research, a visual editor (layers, properties, undo, light and dark, translations, versions), "Generate with AI" (Workers AI on Cloud, your OpenAI or Anthropic key on self-host), and a cached asset CDN. Every published paywall is checked to decode in the SDK ([guide](https://revenuedot.app/docs/guides/paywalls)) | Tier 2 · built, tested; renders in RevenueCatUI on the iOS simulator |
 | **Growth** | Experiments, targeting, virtual currencies, Customer Center (dashboard editor: paths, cancel survey with offers, colours, 33 languages, preview) | Tier 2 · built and tested |
 | **Payment recovery** | When a renewal fails on any store (App Store billing retry, Google Play grace period or account hold, Stripe past due, Amazon grace), the subscriber gets emails from your app on your schedule (day 0, 3 and 7 by default) with one link that opens the right place to fix the payment: Apple's payment page, the Play Store subscription, or your Stripe customer portal. The in-app Customer Center opens the same link. Unsubscribe in one click. The page shows what is at risk, the emails sent, and the revenue recovered after an email ([guide](https://revenuedot.app/docs/guides/payment-recovery)) | Tier 3 · built, tested against fake stores, the SMTP driver and a real browser; no real failed payment recovered yet |
@@ -222,6 +225,21 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ai/ai-conversation-dark.png">
   <img alt="RevenueDot AI: the chat history rail, a question about revenue answered with the Revenue metrics tool card, and an approval card asking to grant Pro to a customer for 7 days with Deny and Approve" src="docs/assets/ai/ai-conversation-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/insights/overview-insights-dark.png">
+  <img alt="RevenueDot Overview with Growth insights: the ask bar, the six metric cards, and this week's recommendations, each with its numbers, what to do, Open and Ask about this" src="docs/assets/insights/overview-insights-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/insights/attribution-dark.png">
+  <img alt="RevenueDot Revenue by campaign: new customers, revenue to date and ROAS for 90 days, and a table of campaigns with trials, paying customers, day 0, day 7, day 30 and to-date revenue, spend and ROAS" src="docs/assets/insights/attribution-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/insights/benchmarks-dark.png">
+  <img alt="RevenueDot Benchmarks: the biggest opportunity (monthly churn against the median app), and each metric with the app's value, the 25th to 75th percentile band of Health and Fitness apps, the median and where the app stands" src="docs/assets/insights/benchmarks-light.png" width="100%">
 </picture>
 
 <picture>
@@ -374,7 +392,7 @@ revenuedot/
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
 - **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
-- **Tier 3 · enterprise:** organizations, custom roles, SSO (SAML and OpenID Connect), SCIM, data location, audit retention and signed compliance exports are built in `ee/`; still planned: high-availability self-host, an SLA, an EU Cloud region, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
+- **Tier 3 · enterprise:** organizations, custom roles, SSO (SAML and OpenID Connect), SCIM, data location, audit retention and signed compliance exports are built in `ee/`; still planned: high-availability self-host, an SLA, an EU Cloud region, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built. Attribution (revenue by campaign, attribution chart segments), opt-in anonymized benchmarks on Cloud and weekly AI growth insights are built.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -391,6 +409,16 @@ Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/S
 </picture>
 
 ## FAQ
+
+<details><summary><b>Can I see revenue by ad campaign, like RevenueCat's Apple Search Ads charts?</b></summary>
+
+Yes. RevenueDot keeps the attribution the RevenueCat SDK already sends (`$mediaSource`, `$campaign`, `$adGroup`, `$keyword`, `$ad`, `$creative`, the Apple Search Ads AdServices token and partner ids) as one record per customer. Every chart can be filtered and segmented by media source, campaign, ad group, keyword, ad or creative, for any network, not only Apple Search Ads as in RevenueCat's charts ([RevenueCat docs](https://www.revenuecat.com/docs/dashboard-and-metrics/charts)). **Analytics → Attribution** lists each campaign's new customers, paying customers and revenue on day 0, by day 7, by day 30 and to date; type your spend to see ROAS. See [Attribution](https://revenuedot.app/docs/guides/attribution).
+</details>
+
+<details><summary><b>Does RevenueDot have benchmarks against other apps, and is my data shared?</b></summary>
+
+On RevenueDot Cloud, yes, and only if an admin turns sharing on: nothing is shared by default, and only sharing projects see peer numbers. RevenueDot publishes percentiles of groups of at least 10 apps from 10 different accounts (category, platform, country) and never shows an app, a customer, a mean or an exact count. A self-hosted server shares nothing. RevenueCat shows a benchmark group when it has enough apps to stay anonymous and does not publish the minimum ([RevenueCat docs](https://www.revenuecat.com/docs/dashboard-and-metrics/benchmarks)). See [Benchmarks](https://revenuedot.app/docs/guides/benchmarks).
+</details>
 
 <details><summary><b>Is RevenueDot an open-source alternative to RevenueCat?</b></summary>
 

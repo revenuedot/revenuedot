@@ -2,6 +2,8 @@
  * The audience condition builder, shared by Targeting (audiences), Refund Control (policy eligibility) and Customers
  * (filters). Rules are groups OR-ed together; the conditions inside a group are AND-ed (the server's `rulesMatch`).
  */
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
 import { Icon } from "./icons";
 
 export interface Condition { field: string; operator: string; value?: string }
@@ -19,8 +21,23 @@ export const FIELDS: { value: string; label: string; hint?: string }[] = [
   { value: "latestProduct", label: "Latest product", hint: "Store product id" }, { value: "latestStore", label: "Latest store", hint: "app_store, play_store, stripe …" },
   { value: "isCurrentlyTrialing", label: "In a trial", hint: "true or false" },
   { value: "hasMadeSandboxPurchase", label: "Made a sandbox purchase", hint: "true or false" }, { value: "hasMadeNonSubscriptionPurchase", label: "Made a one-time purchase", hint: "true or false" },
-  { value: "email", label: "Email" }, { value: "campaign", label: "Campaign" }, { value: "mediaSource", label: "Media source" },
+  { value: "email", label: "Email" },
+  // Attribution (prd/attribution-benchmarks-insights §1): Apple Search Ads campaigns and ad groups by name once loaded.
+  { value: "mediaSource", label: "Media source", hint: "e.g. Apple Search Ads" }, { value: "campaign", label: "Campaign" }, { value: "adGroup", label: "Ad group" },
+  { value: "keyword", label: "Keyword" }, { value: "ad", label: "Ad" }, { value: "creative", label: "Creative" },
 ];
+/** Fields whose values the project's data suggests (GET …/audiences/filter_options). */
+export const SUGGESTED_FIELDS = ["mediaSource", "campaign", "adGroup", "keyword", "ad", "creative"];
+/** The project's attribution values, as suggestions for the value box. */
+export function useFieldSuggestions(pid: string) {
+  return useQuery({
+    queryKey: ["filter-options", pid], enabled: !!pid, staleTime: 60_000,
+    queryFn: async () => {
+      const r = await api<{ items: { field: string; options: { id: string }[] }[] }>(`/v2/projects/${pid}/audiences/filter_options?fields=${SUGGESTED_FIELDS.join(",")}`);
+      return Object.fromEntries(r.items.map((i) => [i.field, i.options.map((o) => o.id)])) as Record<string, string[]>;
+    },
+  });
+}
 export const OPS: { value: string; label: string }[] = [
   { value: "is", label: "is" }, { value: "isNot", label: "is not" }, { value: "isAnyOf", label: "is any of" }, { value: "isNotAnyOf", label: "is none of" },
   { value: "contains", label: "contains" }, { value: "greaterThan", label: "greater than" }, { value: "lessThan", label: "less than" },
@@ -47,8 +64,9 @@ const blank = (): Condition => ({ field: "country", operator: "is", value: "" })
  * Groups of conditions. `labelPrefix` keeps the accessible names unique when a page shows several builders
  * ("Policy 2 field 1.1"); without it the names are "Field 1.1", "Operator 1.1", "Value 1.1".
  */
-export function ConditionBuilder({ value, onChange, labelPrefix = "", emptyText }: { value: Groups; onChange: (g: Groups) => void; labelPrefix?: string; emptyText?: string }) {
+export function ConditionBuilder({ value, onChange, labelPrefix = "", emptyText, suggestions }: { value: Groups; onChange: (g: Groups) => void; labelPrefix?: string; emptyText?: string; suggestions?: Record<string, string[]> }) {
   const L = (s: string) => (labelPrefix ? `${labelPrefix} ${s.toLowerCase()}` : s);
+  const listId = (field: string) => `cond-sugg-${labelPrefix.replace(/\W+/g, "-")}-${field}`;
   const setCond = (gi: number, ci: number, patch: Partial<Condition>) => onChange(value.map((g, i) => (i === gi ? g.map((c, j) => (j === ci ? { ...c, ...patch } : c)) : g)));
   return (
     <div className="cond">
@@ -70,7 +88,8 @@ export function ConditionBuilder({ value, onChange, labelPrefix = "", emptyText 
                   {!OPS.some((o) => o.value === c.operator) && <option value={c.operator}>{c.operator}</option>}
                   {OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-                {!NO_VALUE.includes(c.operator) && <input aria-label={L(`Value ${n}`)} className="input cond-v" placeholder={FIELDS.find((f) => f.value === c.field)?.hint ?? "value"} value={c.value ?? ""} onChange={(e) => setCond(gi, ci, { value: e.target.value })} />}
+                {!NO_VALUE.includes(c.operator) && <input aria-label={L(`Value ${n}`)} className="input cond-v" placeholder={FIELDS.find((f) => f.value === c.field)?.hint ?? "value"} value={c.value ?? ""} onChange={(e) => setCond(gi, ci, { value: e.target.value })}
+                  list={suggestions?.[c.field]?.length ? listId(c.field) : undefined} />}
                 <button type="button" className="ib" aria-label={L(`Remove condition ${n}`)} onClick={() => onChange(value.map((x, i) => (i === gi ? x.filter((_, j) => j !== ci) : x)).filter((x) => x.length))}><Icon name="trash" /></button>
               </div>
             );
@@ -78,6 +97,7 @@ export function ConditionBuilder({ value, onChange, labelPrefix = "", emptyText 
           <button type="button" className="btn btn-ghost" aria-label={labelPrefix ? L(`And (group ${gi + 1})`) : undefined} onClick={() => onChange(value.map((x, i) => (i === gi ? [...x, blank()] : x)))}><Icon name="plus" />And</button>
         </fieldset>
       ))}
+      {Object.entries(suggestions ?? {}).map(([field, vals]) => <datalist key={field} id={listId(field)}>{vals.map((v) => <option key={v} value={v} />)}</datalist>)}
       <div>
         <button type="button" className="btn btn-line" aria-label={labelPrefix ? L(value.length ? "Or another group" : "Add a condition") : undefined} onClick={() => onChange([...value, [blank()]])}>
           <Icon name="plus" />{value.length ? "Or another group" : "Add a condition"}

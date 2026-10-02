@@ -23,7 +23,7 @@ const Forgot = z.object({ email: z.string().max(320) });
 const Token = z.object({ token: z.string().min(1).max(200) });
 const Reset = z.object({ token: z.string().min(1).max(200), password: Password });
 const MeUpdate = z.object({
-  name: z.string().trim().max(100).nullable().optional(), alert_emails: z.boolean().optional(),
+  name: z.string().trim().max(100).nullable().optional(), alert_emails: z.boolean().optional(), insights_emails: z.boolean().optional(),
   // Account settings → Interface and Date and region (prd/account-settings); checked by preferencesPatch.
   theme: z.unknown().optional(), tint: z.unknown().optional(), week_start: z.unknown().optional(), display_currency: z.unknown().optional(),
 });
@@ -55,7 +55,7 @@ export function authRoutes(deps: Deps) {
   const me = (c: Context) => sessionUser(deps.db, getCookie(c, SESSION_COOKIE), deps.now());
   /** The user as GET /auth/me shows it: profile, preferences, security state and a waiting email change. */
   const userOut = async (u: User) => ({
-    id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails,
+    id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails, insights_emails: u.insightsEmails,
     preferences: preferencesOf(u), has_password: !!u.passwordHash,
     two_factor: { enabled: twoFactorOn(u), enabled_at: u.totpEnabledAt?.getTime() ?? null, recovery_codes_left: twoFactorOn(u) ? await recoveryCodesLeft(deps.db, u.id) : 0 },
     pending_email: await pendingEmailChange(deps.db, u, deps.now()), password_changed_at: u.passwordChangedAt?.getTime() ?? null, created_at: u.createdAt.getTime(),
@@ -198,8 +198,8 @@ export function authRoutes(deps: Deps) {
       account: {
         edition: deps.edition ?? "self-hosted", plan: u.plan, billing_ready: deps.edition === "cloud" && !stripeProblem(deps.billing),
         billing_status: deps.edition === "cloud" ? (await deps.db.select({ s: schema.billingAccounts.status }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)))[0]?.s ?? "none" : null, email_verification_required: needsVerification(deps, u),
-        // Account settings → General lists the Stripe accounts connected with Connect with Stripe (prd/web-billing §8).
-        features: { stripe_connect: true },
+        // Account settings → General lists the Stripe accounts connected with Connect with Stripe (prd/web-billing §8); the rest are cloud-only features (prd/attribution-benchmarks-insights).
+        features: { stripe_connect: true, benchmarks: !!deps.benchmarks, insights_digest: !!deps.insightsDigest && !!deps.assistant },
       },
       projects: await projectsForUser(deps.db, u.id),
       ...(await meExtras(c, u.id)),
@@ -217,6 +217,7 @@ export function authRoutes(deps: Deps) {
     const set: Partial<typeof schema.users.$inferInsert> = { ...prefs.set };
     if (p.data.name !== undefined) set.name = p.data.name || null;
     if (p.data.alert_emails !== undefined) set.alertEmails = p.data.alert_emails;
+    if (p.data.insights_emails !== undefined) set.insightsEmails = p.data.insights_emails;
     const [row] = Object.keys(set).length ? await deps.db.update(schema.users).set(set).where(eq(schema.users.id, u.id)).returning() : [u];
     return c.json({ user: await userOut(row!) });
   });

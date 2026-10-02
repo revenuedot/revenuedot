@@ -9,25 +9,25 @@ import { applyTheme, clearCachedPrefs, effectiveTheme } from "../lib/prefs";
 export interface Preferences { theme: "system" | "light" | "dark"; tint: string | null; week_start: number; display_currency: string }
 export interface Me {
   user: {
-    id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean;
+    id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean; insights_emails?: boolean;
     /** Account settings (prd/account-settings/PRD.md). Optional: older servers do not send them. */
     preferences?: Preferences; has_password?: boolean;
     two_factor?: { enabled: boolean; enabled_at: number | null; recovery_codes_left: number };
     pending_email?: { email: string; expires_at: number } | null; password_changed_at?: number | null; created_at?: number;
   };
-  account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean; features?: { stripe_connect?: boolean } };
+  account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean; features?: { stripe_connect?: boolean; benchmarks?: boolean; insights_digest?: boolean } };
   projects: { id: string; name: string; role: string }[];
   /** Only with an enterprise licence (src/extensions.tsx). */
   enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
 }
 export const useMe = (enabled = true) => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
 
-type Item = { label: string; to?: string; icon?: string; soon?: boolean; badge?: string; children?: Item[] };
+type Item = { label: string; to?: string; icon?: string; soon?: boolean; badge?: string; children?: Item[]; feature?: "benchmarks" };
 
 /** RevenueCat's sidebar information architecture, in order. `soon` marks Tier 2/3 areas. */
 const NAV: Item[] = [
   { label: "Overview", to: "overview", icon: "overview" },
-  { label: "Analytics", icon: "analytics", children: [{ label: "Charts", to: "charts" }, { label: "Benchmarks", to: "benchmarks", soon: true }] },
+  { label: "Analytics", icon: "analytics", children: [{ label: "Charts", to: "charts" }, { label: "Attribution", to: "attribution" }, { label: "Benchmarks", to: "benchmarks", feature: "benchmarks" }] },
   { label: "Customers", to: "customers", icon: "customers" },
   { label: "Product catalog", icon: "catalog", children: [
     { label: "Offerings", to: "product-catalog/offerings" }, { label: "Products", to: "product-catalog/products" },
@@ -54,6 +54,9 @@ const FOOT: Item[] = [
 
 function NavItem({ item, base }: { item: Item; base: string }) {
   const loc = useLocation();
+  const me = useMe();
+  // Cloud-only items (Benchmarks) are not shown on a self-hosted server.
+  const shown = (i: Item) => !i.feature || !!me.data?.account?.features?.[i.feature];
   const childActive = item.children?.some((c) => c.to && loc.pathname.startsWith(`${base}/${c.to}`));
   const [open, setOpen] = useState<boolean>(!!childActive || item.label === "Product catalog");
   useEffect(() => { if (childActive) setOpen(true); }, [childActive]);
@@ -63,7 +66,7 @@ function NavItem({ item, base }: { item: Item; base: string }) {
         <button className="it" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
           <Icon name={item.icon!} />{item.label}<Icon name="chev" className="i chev" />
         </button>
-        {open && <div className="sub">{item.children.map((c) => <NavItem key={c.label} item={c} base={base} />)}</div>}
+        {open && <div className="sub">{item.children.filter(shown).map((c) => <NavItem key={c.label} item={c} base={base} />)}</div>}
       </>
     );
   }

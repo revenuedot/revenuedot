@@ -19,7 +19,7 @@ const K1 = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => i + 3)))
 const K2 = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => 90 + i)));
 let src: Harness;
 let dst: { db: DB; close: () => Promise<void> };
-let third: { db: DB; close: () => Promise<void> };
+let third: { db: DB; close: () => Promise<void> } | undefined;
 let apps: Record<string, ReturnType<typeof createApp>>;
 let dir: string;
 /** Tests: file uploads to target.test fail (the network drops during a copy). */
@@ -41,21 +41,29 @@ beforeEach(async () => {
     expect(r.status).toBe(200);
   }
   dst = await openDb("pglite://memory");
-  third = await openDb("pglite://memory");
-  for (const d of [dst, third]) await d.db.insert(schema.users).values({ id: "usr_t", email: "mover@example.com" });
+  await dst.db.insert(schema.users).values({ id: "usr_t", email: "mover@example.com" });
   apps = {
     "source.test": createApp({ db: src.db, now: src.now, stores: defaultStores(), encryptionKey: K1, fetch: net, apiUrl: "http://source.test" }),
     "target.test": createApp({ db: dst.db, now: src.now, stores: defaultStores(), encryptionKey: K2, fetch: net, apiUrl: "http://target.test" }),
-    "third.test": createApp({ db: third.db, now: src.now, stores: defaultStores(), encryptionKey: K2, fetch: net, apiUrl: "http://third.test" }),
   };
   dir = mkdtempSync(join(tmpdir(), "rd-move-"));
   targetDown = false;
 });
-afterEach(async () => { await src.close(); await dst.close(); await third.close(); });
+afterEach(async () => { await src.close(); await dst.close(); await third?.close(); third = undefined; });
+
+/** The third server (the archive test only): one in-memory database fewer to migrate for every other test. */
+async function openThird() {
+  third = await openDb("pglite://memory");
+  await third.db.insert(schema.users).values({ id: "usr_t", email: "mover@example.com" });
+  apps["third.test"] = createApp({ db: third.db, now: src.now, stores: defaultStores(), encryptionKey: K2, fetch: net, apiUrl: "http://third.test" });
+  return third;
+}
 
 async function cli(args: string[], env: Record<string, string>) {
   const out: string[] = [], err: string[] = [];
-  const io: CliIO = { out: (s) => out.push(s), err: (s) => err.push(s), env, http: { fetch: net, sleep: async () => {} }, sleep: async () => {} };
+  // --finish waits 10 seconds for the pause to reach every server process: the waits move this clock, not the real one.
+  let clock = Date.now();
+  const io: CliIO = { out: (s) => out.push(s), err: (s) => err.push(s), env, http: { fetch: net, sleep: async () => {} }, sleep: async (ms) => { clock += ms; }, now: () => clock };
   const code = await main(args, io);
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
@@ -76,7 +84,7 @@ describe("npx revenuedot move", () => {
 
     const copy = await cli(base, env);
     expect(copy.code, copy.err).toBe(0);
-    expect(copy.out).toMatch(/All 67 tables match/);
+    expect(copy.out).toMatch(/All 68 tables match/);
     expect(copy.out).toMatch(/still serves the project/);
     const [incoming] = await dst.db.select().from(schema.projects);
     expect(incoming!.moveState).toBe("incoming");
@@ -139,7 +147,7 @@ describe("npx revenuedot move", () => {
     const token = (await createImportToken(dst.db, "usr_t", src.now())).token;
     const right = await cli(["move", "--from", "http://source.test", "--to", "http://target.test", "--state", join(dir, "s.json")], { REVENUEDOT_FROM_KEY: src.ids.secretKey, REVENUEDOT_TO_TOKEN: token });
     expect(right.code, right.err).toBe(0);
-    expect(right.out).toMatch(/All 67 tables match/);
+    expect(right.out).toMatch(/All 68 tables match/);
   });
 });
 
@@ -150,10 +158,11 @@ describe("npx revenuedot export", () => {
     expect(r.code, r.err).toBe(0);
     expect(r.out).toMatch(/Saved .*proj1\.tar.*project Scanner \(proj1\).*no secrets/);
     expect(existsSync(out)).toBe(true);
+    const third = await openThird();
     const token = (await createImportToken(third.db, "usr_t", src.now())).token;
     const m = await cli(["move", "--from-archive", out, "--to", "http://third.test", "--state", join(dir, "a.json")], { REVENUEDOT_TO_TOKEN: token });
     expect(m.code, m.err).toBe(0);
-    expect(m.out).toMatch(/All 67 tables match/);
+    expect(m.out).toMatch(/All 68 tables match/);
     expect(await third.db.select().from(schema.customerAliases)).toHaveLength(2);
     // Without secrets the webhook's signing secret is not in the archive.
     const [hook] = await third.db.select().from(schema.webhooks);

@@ -26,6 +26,13 @@ export function AccountNotificationsPage() {
       toast(v ? "Alert emails are on." : "Alert emails are off.");
     } catch (e) { toast(errText(e)); }
   };
+  const saveDigest = async (v: boolean) => {
+    try {
+      const r = await api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: { insights_emails: v } });
+      qc.setQueryData<Me>(["me"], (m) => (m ? { ...m, user: { ...m.user, ...r.user } } : m));
+      toast(v ? "The weekly digest is on." : "The weekly digest is off.");
+    } catch (e) { toast(errText(e)); }
+  };
   const save = async (p: ProjectPrefs, patch: Partial<Pick<ProjectPrefs, Key | "anomaly_sensitivity">>, done: string) => {
     qc.setQueryData<Settings>(["notifications"], (s) => (s ? { ...s, projects: s.projects.map((x) => (x.project.id === p.project.id ? { ...x, ...patch } : x)) } : s));
     try { await api(`/auth/notifications/${p.project.id}`, { method: "PUT", json: patch }); toast(done); }
@@ -39,6 +46,11 @@ export function AccountNotificationsPage() {
           <Row label="Alert emails" help="For projects where you are an admin: store notifications failing, a webhook that keeps failing, or store credentials that Apple or Google rejected. At most one email a day per problem, and one when it is fixed.">
             <Switch checked={me.data.user.alert_emails} onChange={saveAlerts} label="Email me about problems with my projects" />
           </Row>
+          {me.data.account?.features?.insights_digest && (
+            <Row label="Weekly growth insights" help="Every Monday, for projects where you are an admin: 3 to 5 things to act on, written by RevenueDot AI from your own charts, with the numbers behind them.">
+              <Switch checked={me.data.user.insights_emails ?? true} onChange={saveDigest} label="Email me the weekly growth insights digest" />
+            </Row>
+          )}
         </Section>
         <Section title="Performance emails" id="performance" sub={<>Per project. The weekly summary arrives each {week} (your first day of the week, in Date and region) with MRR, revenue, new customers, trials and churn against the week before. Revenue anomaly alerts compare yesterday with the 28 days before it, every morning (UTC).</>}>
           {q.isError ? <div className="acct-pad"><div className="banner err" role="alert">{errText(q.error)}</div></div> : !q.data ? <div className="acct-empty">Loading…</div> : !q.data.projects.length ? (
