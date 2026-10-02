@@ -38,13 +38,25 @@ for (const dir of existsSync(BUILD) ? readdirSync(BUILD).filter((d) => /^\d{14}/
 }
 const runs = new Map<string, string[]>();
 for (const [journey, dir] of latest) runs.set(dir, [...(runs.get(dir) ?? []), journey]);
-for (const [dir, journeys] of runs) {
-  for (const line of readFileSync(join(BUILD, dir, "requests.jsonl"), "utf8").split("\n")) {
+const record = (file: string, journeys: string[]) => {
+  for (const line of readFileSync(file, "utf8").split("\n")) {
     if (!line) continue;
     const r = JSON.parse(line) as { method: string; path: string; status: number };
     const route = match(r.method, decodeURI(r.path));
     if (!route) continue;
     for (const j of journeys) route.journeys.set(j, (route.journeys.get(j) ?? new Set()).add(r.status));
+  }
+};
+for (const [dir, journeys] of runs) {
+  record(join(BUILD, dir, "requests.jsonl"), journeys);
+  // Servers a journey starts itself (the move's Cloud server, the billing server) log under <run>/<journey>/<name>/.
+  for (const j of journeys) {
+    const jdir = join(BUILD, dir, j);
+    if (!existsSync(jdir)) continue;
+    for (const sub of readdirSync(jdir)) {
+      const f = join(jdir, sub, "requests.jsonl");
+      if (existsSync(f)) record(f, [j]);
+    }
   }
 }
 // Tests.

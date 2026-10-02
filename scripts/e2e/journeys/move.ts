@@ -109,6 +109,32 @@ const journey: Journey = {
       const work = join(ctx.out, "cli");
       mkdirSync(work, { recursive: true });
 
+      c.begin("self-hosted: a downloadable export through the API (list, latest, one, delete)");
+      {
+        const api = async (method: string, path: string, json?: unknown) => {
+          const r = await fetch(`${A.base}/v2/projects/${dev.projectId}${path}`, { method, headers: { authorization: `Bearer ${sk.key}`, ...(json === undefined ? {} : { "content-type": "application/json" }) }, body: json === undefined ? undefined : JSON.stringify(json) });
+          return { status: r.status, body: await r.json().catch(() => null) as any };
+        };
+        const made = await api("POST", "/exports", {});
+        c.check("POST /exports starts an export (202)", made.status === 202 && typeof made.body?.id === "string", made.body);
+        let one = made;
+        for (let i = 0; i < 60 && one.body?.status !== "succeeded" && one.body?.status !== "failed"; i++) {
+          await api("POST", `/exports/${made.body.id}/actions/advance`, {});
+          one = await api("GET", `/exports/${made.body.id}`);
+        }
+        c.check("GET /exports/{id}: the export succeeded with a download link", one.status === 200 && one.body.status === "succeeded" && /\/v2\/exports\/download\//.test(one.body.download_url ?? ""), { status: one.status, export: one.body?.status });
+        const list = await api("GET", "/exports");
+        c.check("GET /exports lists it", list.status === 200 && list.body.items.some((x: any) => x.id === made.body.id), list.body?.items?.map((x: any) => x.id));
+        const latest = await api("GET", "/export");
+        c.eq("GET /export answers the latest export", latest.body?.id, made.body.id);
+        const dl = await fetch(one.body.download_url);
+        c.check("the download link serves the archive", dl.status === 200, dl.status);
+        await dl.arrayBuffer().catch(() => {});
+        const del = await api("DELETE", `/exports/${made.body.id}`);
+        const after = await api("GET", `/exports/${made.body.id}`);
+        c.check("DELETE /exports/{id} deletes the files; the export is then expired", del.status === 200 && del.body.deleted === true && after.body?.status === "expired", { del: del.body, after: after.body?.status });
+      }
+
       c.begin("npx revenuedot move --dry-run");
       const dry = await cli(["move", "--from", A.base, "--to", B.base, "--dry-run"], env, work);
       c.check("exit 0", dry.code === 0, hideUrls(dry.err).slice(-1500));
@@ -145,6 +171,12 @@ const journey: Journey = {
       c.check("the webhook kept its signing secret", hookB?.signing_secret === secret);
       const restB = await fetch(`${B.base}/v2/projects/${dev.projectId}/customers/${encodeURIComponent(anon)}`, { headers: { authorization: `Bearer ${sk.key}` } });
       c.eq("the backend's secret key works on Cloud, same project id and customer id", restB.status, 200);
+
+      const imports = await (await fetch(`${B.base}/v2/imports`, { headers: { cookie } })).json() as any;
+      const imp = imports.items?.[0];
+      c.check("Cloud: GET /v2/imports lists the finished import for the signed-in account", imp?.status === "finished" && imp.project_id === dev.projectId, imports.items?.map((x: any) => [x.status, x.project_id]));
+      const impOne = await (await fetch(`${B.base}/v2/imports/${imp?.id}`, { headers: { cookie } })).json() as any;
+      c.check("Cloud: GET /v2/imports/{id} answers it with its report", impOne.id === imp?.id && impOne.status === "finished" && !!impOne.report, { status: impOne.status, report: !!impOne.report });
 
       c.begin("after: the old app build keeps working through the forward");
       const aReqBefore = A.requests().length;
