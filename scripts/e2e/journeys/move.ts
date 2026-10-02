@@ -118,7 +118,7 @@ const journey: Journey = {
 
       c.begin("npx revenuedot move (copy and verify)");
       const copy = await cli(["move", "--from", A.base, "--to", B.base], env, work);
-      c.check("exit 0, all 64 tables match", copy.code === 0 && /All 64 tables match/.test(copy.out), hideUrls(copy.out + copy.err).slice(-2000));
+      c.check("exit 0, all 65 tables match", copy.code === 0 && /All 65 tables match/.test(copy.out), hideUrls(copy.out + copy.err).slice(-2000));
       const incoming = await sqlB`SELECT move_state, moved_in_from FROM projects WHERE id = ${dev.projectId}`;
       c.has("Cloud holds the copy as incoming", incoming[0], { move_state: "incoming", moved_in_from: A.base });
       const stillHere = await fetch(`${A.base}/v1/subscribers/${encodeURIComponent(anon)}`, { headers: { authorization: `Bearer ${cat.testKey}` } });
