@@ -64,7 +64,7 @@ RevenueCat's v2 spec has 128 operations and every one has a route (branch `tier2
 ## Blockers and notes
 - RevenueCat dashboard side-by-side studies are saved under `company/docs/research/contact-sheets/revenuecat/`.
 - No real App Store, Google Play, Amazon or Stripe purchase has run end to end yet; each needs store credentials. Amazon and Stripe secrets are sealed in `apps.secrets` (migration 0014, `services/store-secrets.ts`); Apple and Google credentials are still plain in `apps.credentials`. Store paths are tested against mocked Apple and Google APIs, and the unmodified RevenueCat iOS SDK 5.92 and Android SDK 10.24 pass Test Store purchases on the simulator and emulator (`scripts/e2e/ios`, `scripts/e2e/android`).
-- Not on a package registry yet: the React Native, Capacitor and Cordova SDK forks the ESM TypeScript types (npm, waiting on Kai's first publish), `@revenuedot/purchases-js-vega`, and the Unity fork on OpenUPM (listed, first build pending). Until the npm wrappers are out, use the stock SDK with a proxy URL.
+- Not on a package registry yet: the React Native, Capacitor and Cordova SDK forks, the ESM TypeScript types (npm, waiting on Kai's first publish), `@revenuedot/purchases-js-vega`, and the Unity fork on OpenUPM (listed, first build pending). Until the npm wrappers are out, use the stock SDK with a proxy URL.
 - Customer pages of the RevenueCat dashboard were blocked by the agent's personal-data guard.
 
 ## Known gaps (next up)
