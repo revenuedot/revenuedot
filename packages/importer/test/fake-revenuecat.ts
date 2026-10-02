@@ -36,6 +36,8 @@ export class FakeRevenueCat {
   hooks: Hook[] = [];
   /** Largest page served, whatever `limit` asks for (small values exercise pagination). */
   maxPage = 100;
+  /** Customers the list leaves out though they answer by id (RevenueCat's real list does this). */
+  unlisted = new Set<string>();
   /** Called after each list page is served (a test can reorder the model the way live activity does). */
   onList?: (template: string, items: Obj[]) => void;
 
@@ -160,7 +162,7 @@ export class FakeRevenueCat {
         body = this.list(r, (pk?.products ?? []).map((x) => ({ product: product(x.product_id), eligibility_criteria: x.eligibility_criteria })), (x) => x.product.id);
         break;
       }
-      case "/customers": body = this.list(r, m.customers.map((c) => customerShape(c, false))); break;
+      case "/customers": body = this.list(r, m.customers.filter((c) => !this.unlisted.has(c.id)).map((c) => customerShape(c, false))); break;
       case "/customers/{customer_id}": { const c = cust(); if (!c) return this.send(res, r, 404, this.error(404, "resource_missing", "Customer not found.")); body = customerShape(c, true); break; }
       case "/customers/{customer_id}/aliases": body = this.list(r, cust()?.aliases ?? []); break;
       case "/customers/{customer_id}/attributes": body = this.list(r, cust()?.attributes ?? [], (x) => x.name); break;
