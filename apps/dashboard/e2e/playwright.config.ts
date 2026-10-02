@@ -1,6 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
 const PORT = Number(process.env.E2E_PORT ?? 5199);
+/** E2E_BASE_URL: run against an e2e server you started yourself (for example on a Railway development database). */
+const EXTERNAL = process.env.E2E_BASE_URL;
 
 /** Runs against e2e/server.ts: the real API on an in-memory database plus the built dashboard (see e2e/README.md). */
 export default defineConfig({
@@ -11,8 +13,8 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: [["list"]],
-  use: { baseURL: `http://localhost:${PORT}`, viewport: { width: 1440, height: 1000 }, trace: "retain-on-failure" },
-  webServer: {
+  use: { baseURL: EXTERNAL ?? `http://localhost:${PORT}`, viewport: { width: 1440, height: 1000 }, trace: "retain-on-failure" },
+  webServer: EXTERNAL ? undefined : {
     command: `PORT=${PORT} tsx e2e/server.ts`,
     cwd: new URL("..", import.meta.url).pathname,
     // 503 while the server seeds its data, 200 when it is ready.

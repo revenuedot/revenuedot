@@ -61,6 +61,8 @@ export function instructionsFor(ctx: AssistantContext, now: Date): string {
     "- Money is USD and data is production unless the user asks for another currency or for sandbox (test) purchases.",
     `- Link to the page a number comes from with a relative markdown link: [MRR chart](${base}/charts/mrr), [customer](${base}/customers/<app_user_id>), [offerings](${base}/product-catalog/offerings), [webhooks](${base}/integrations/webhooks), [experiments](${base}/experiments).`,
     "- For growth questions, look at trends (get-chart over 90 days or more), compare segments, and suggest one or two concrete next steps the user can take in RevenueDot.",
+    `- To draft an experiment, read list-offerings (and list-audiences when an audience is mentioned), use the current offering as the control unless the user names one, then call create-experiment with a short name, the type, and the hypothesis in notes. It creates a draft; after it succeeds, link to it: [the draft](${base}/experiments/<id>). If no offering differs from the control yet, say which offering to duplicate and change on the Experiments page instead of inventing one.`,
+    `- To draft a targeting rule, call create-targeting-rule; it is created turned off. Link to [Targeting](${base}/targeting).`,
     "",
     "Changing things:",
     ctx.scope.canWrite

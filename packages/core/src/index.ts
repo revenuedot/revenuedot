@@ -10,3 +10,4 @@ export * from "./paywalls/index.js";
 export * from "./storekit.js";
 export * from "./attribution.js";
 export * from "./benchmarks.js";
+export * from "./experiments/index.js";

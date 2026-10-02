@@ -27,7 +27,10 @@ import { PaymentRecoveryPage } from "./pages/lifecycle/PaymentRecovery";
 import { PaywallsPage } from "./pages/paywalls/Paywalls";
 import { PaywallEditor } from "./pages/paywalls/Editor";
 import { GalleryPage } from "./pages/paywalls/Gallery";
-import { ExperimentDetail, ExperimentsPage, TargetingPage } from "./pages/targeting/Targeting";
+import { TargetingPage } from "./pages/targeting/Targeting";
+import { ExperimentsPage } from "./pages/experiments/Experiments";
+import { ExperimentDetail } from "./pages/experiments/ExperimentDetail";
+import { ExperimentFormPage } from "./pages/experiments/ExperimentForm";
 import { ChartsPage } from "./pages/charts/Charts";
 import { AttributionPage } from "./pages/analytics/Attribution";
 import { BenchmarksPage } from "./pages/analytics/Benchmarks";
@@ -82,7 +85,9 @@ export const routes = [
   <Route key="ads-rewards" path="/projects/:projectId/ads/rewards" element={<RewardsPage />} />,
   <Route key="targeting" path="/projects/:projectId/targeting" element={<TargetingPage />} />,
   <Route key="experiments" path="/projects/:projectId/experiments" element={<ExperimentsPage />} />,
+  <Route key="experiment-new" path="/projects/:projectId/experiments/new" element={<ExperimentFormPage />} />,
   <Route key="experiment" path="/projects/:projectId/experiments/:experimentId" element={<ExperimentDetail />} />,
+  <Route key="experiment-edit" path="/projects/:projectId/experiments/:experimentId/edit" element={<ExperimentFormPage />} />,
   <Route key="web" path="/projects/:projectId/web" element={<WebPage />} />,
   <Route key="funnels" path="/projects/:projectId/funnels" element={<FunnelsPage />} />,
   <Route key="funnel" path="/projects/:projectId/funnels/:funnelId" element={<FunnelBuilderPage />} />,

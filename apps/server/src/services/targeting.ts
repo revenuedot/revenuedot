@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
-import { computeEntitlements, isActive } from "@revenuedot/core";
+import { assignVariant, computeEntitlements, enrollBucket, isActive, variantDefaultName } from "@revenuedot/core";
+import type { ExperimentVariant } from "@revenuedot/db";
 import { entitlementMap } from "../repo/catalog.js";
 import { loadState, type CustomerRow } from "../repo/customers.js";
 import { buildContext, loadCustomerData } from "./customer-context.js";
@@ -193,27 +194,51 @@ export interface Resolution {
   currentOfferingId: string | null;
   placements: Record<string, string | null>;
   rule: { id: string; revision: number } | null;
-  experiment: { id: string; variant: "a" | "b"; offeringId: string } | null;
+  experiment: { id: string; variant: string; variantName: string; offeringId: string } | null;
 }
 
-/** A stable number 0..99 for a customer in an experiment, so a customer always lands in the same bucket. */
-async function bucket(seed: string): Promise<number> {
-  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(seed)));
-  return ((h[0]! << 8) | h[1]!) % 100;
+type ExperimentRow = typeof schema.experiments.$inferSelect;
+
+/** An experiment's variants; rows written before migration 0031 (or archives from older servers) only have offering_a/b. */
+export function variantsOf(e: Pick<ExperimentRow, "variants" | "offeringA" | "offeringB">): ExperimentVariant[] {
+  if (Array.isArray(e.variants) && e.variants.length) return e.variants;
+  return [
+    { id: "a", name: variantDefaultName("a"), offering_id: e.offeringA ?? "", placements: {} },
+    { id: "b", name: variantDefaultName("b"), offering_id: e.offeringB ?? "", placements: {} },
+  ];
 }
 
 /**
- * The offering for this request: a running experiment the customer is (or now gets) enrolled in wins, then the first live
- * targeting rule that matches, then the project's current offering. Enrolling records EXPERIMENT_ENROLLMENT once;
- * `enroll: false` resolves the same way without enrolling anyone.
+ * Running and paused experiments in enrollment order: priority 1 first, then the earliest started. Priority 0 is a row an
+ * older server wrote during a deploy (the column default): it goes after the numbered ones, earliest started first, as
+ * that server would have ordered it.
  */
-export async function resolveOfferings(db: DB, projectId: string, customer: CustomerRow | null, ctx: CustomerContext, now: Date, defaultOfferingId: string | null, opts: { enroll?: boolean } = {}): Promise<Resolution> {
+const rank = (x: ExperimentRow) => (x.priority > 0 ? x.priority : Number.MAX_SAFE_INTEGER);
+export const byPriority = (a: ExperimentRow, b: ExperimentRow) => rank(a) - rank(b) || (a.startedAt?.getTime() ?? Infinity) - (b.startedAt?.getTime() ?? Infinity) || a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
+
+/**
+ * Whether a running experiment may enroll this customer now (prd/experiments/PRD.md §2): the enrollment mode, then the
+ * audience (saved or inline), then the share. Exported for the dashboard's estimate and the tests.
+ */
+export async function admits(e: ExperimentRow, customer: CustomerRow, inAudience: (e: ExperimentRow) => boolean): Promise<boolean> {
+  if (e.enrollment === "new" && (!e.startedAt || customer.firstSeen.getTime() < e.startedAt.getTime())) return false;
+  if (!inAudience(e)) return false;
+  return (await enrollBucket(e.id, customer.id)) < e.enrollmentPercent;
+}
+
+/**
+ * The offering for this request: the experiment the customer is in (running or paused) wins, then a running experiment
+ * that enrolls them now (checked by priority), then the first live targeting rule that matches, then the project's
+ * current offering. A variant's placements overlay the rule's. Enrolling records EXPERIMENT_ENROLLMENT once;
+ * `enroll: false` resolves the same way without enrolling anyone (the dashboard's customer page).
+ */
+export async function resolveOfferings(db: DB, projectId: string, customer: CustomerRow | null, ctx: CustomerContext, now: Date, defaultOfferingId: string | null, opts: { enroll?: boolean; appUserId?: string | null; sandbox?: boolean } = {}): Promise<Resolution> {
   const out: Resolution = { currentOfferingId: defaultOfferingId, placements: {}, rule: null, experiment: null };
   const audienceIds = new Set<string>();
   const rules = (await db.select().from(schema.targetingRules).where(and(eq(schema.targetingRules.projectId, projectId), eq(schema.targetingRules.state, "active"))).orderBy(asc(schema.targetingRules.position)))
     .filter((r) => (!r.startsAt || r.startsAt <= now) && (!r.endsAt || r.endsAt > now));
   // Paused experiments keep serving their enrolled customers but enroll nobody new.
-  const exps = await db.select().from(schema.experiments).where(and(eq(schema.experiments.projectId, projectId), inArray(schema.experiments.status, ["running", "paused"])));
+  const exps = (await db.select().from(schema.experiments).where(and(eq(schema.experiments.projectId, projectId), inArray(schema.experiments.status, ["running", "paused"])))).sort(byPriority);
   for (const r of rules) if (r.audienceId) audienceIds.add(r.audienceId);
   for (const e of exps) if (e.audienceId) audienceIds.add(e.audienceId);
   const auds = audienceIds.size ? await db.select().from(schema.audiences).where(inArray(schema.audiences.id, [...audienceIds])) : [];
@@ -222,6 +247,7 @@ export async function resolveOfferings(db: DB, projectId: string, customer: Cust
     const a = auds.find((x) => x.id === id);
     return !!a && rulesMatch(ctx, a.rules as Rules, now.getTime());
   };
+  const inExperimentAudience = (e: ExperimentRow) => (e.audienceRules ? rulesMatch(ctx, e.audienceRules as Rules, now.getTime()) : inAudience(e.audienceId));
 
   for (const r of rules) {
     if (!inAudience(r.audienceId)) continue;
@@ -233,26 +259,29 @@ export async function resolveOfferings(db: DB, projectId: string, customer: Cust
 
   if (customer && exps.length) {
     const mine = await db.select().from(schema.experimentEnrollments).where(and(eq(schema.experimentEnrollments.customerId, customer.id), inArray(schema.experimentEnrollments.experimentId, exps.map((e) => e.id))));
-    let chosen = mine[0] ? { e: exps.find((x) => x.id === mine[0]!.experimentId)!, variant: mine[0]!.variant as "a" | "b", isNew: false } : null;
+    // Sticky: an enrollment in a running or paused experiment wins (the first by priority if there were ever two).
+    const held = exps.find((e) => mine.some((m) => m.experimentId === e.id));
+    let chosen = held ? { e: held, variant: mine.find((m) => m.experimentId === held.id)!.variant, isNew: false } : null;
     if (!chosen) {
-      for (const e of exps.filter((x) => x.status === "running").sort((a, b) => (a.startedAt?.getTime() ?? 0) - (b.startedAt?.getTime() ?? 0))) {
-        if (!inAudience(e.audienceId)) continue;
-        if ((await bucket(`${e.id}:enroll:${customer.id}`)) >= e.enrollmentPercent) continue;
-        chosen = { e, variant: (await bucket(`${e.id}:variant:${customer.id}`)) < 50 ? "a" : "b", isNew: true };
+      for (const e of exps) {
+        if (e.status !== "running" || !(await admits(e, customer, inExperimentAudience))) continue;
+        chosen = { e, variant: await assignVariant(e.id, customer.id, variantsOf(e).map((v) => v.id)), isNew: true };
         break;
       }
     }
     if (chosen) {
-      const offeringId = chosen.variant === "a" ? chosen.e.offeringA : chosen.e.offeringB;
-      out.currentOfferingId = offeringId;
-      out.experiment = { id: chosen.e.id, variant: chosen.variant, offeringId };
+      const vs = variantsOf(chosen.e);
+      const v = vs.find((x) => x.id === chosen!.variant) ?? vs[0]!;
+      out.currentOfferingId = v.offering_id;
+      out.placements = { ...out.placements, ...v.placements };
+      out.experiment = { id: chosen.e.id, variant: chosen.variant, variantName: v.name, offeringId: v.offering_id };
       // A preview (the dashboard's customer page) shows the experiment the next SDK request would enroll them in, without enrolling.
       if (chosen.isNew && opts.enroll !== false) {
-        const inserted = await db.insert(schema.experimentEnrollments).values({ experimentId: chosen.e.id, customerId: customer.id, variant: chosen.variant, enrolledAt: now }).onConflictDoNothing().returning();
+        const inserted = await db.insert(schema.experimentEnrollments).values({ experimentId: chosen.e.id, customerId: customer.id, variant: chosen.variant, enrolledAt: now, isSandbox: !!opts.sandbox }).onConflictDoNothing().returning();
         if (inserted.length) {
-          const [o] = await db.select({ key: schema.offerings.lookupKey }).from(schema.offerings).where(eq(schema.offerings.id, offeringId));
+          const [o] = await db.select({ key: schema.offerings.lookupKey }).from(schema.offerings).where(eq(schema.offerings.id, v.offering_id));
           await recordRawEvent(db, {
-            projectId, appId: null, customer, appUserId: ctx.appUserIds[0] ?? customer.originalAppUserId, type: "EXPERIMENT_ENROLLMENT", sandbox: false, now,
+            projectId, appId: null, customer, appUserId: opts.appUserId ?? ctx.appUserIds[0] ?? customer.originalAppUserId, type: "EXPERIMENT_ENROLLMENT", sandbox: !!opts.sandbox, now,
             shape: "experiment",
             fields: { original_app_user_id: customer.originalAppUserId, experiment_id: chosen.e.id, experiment_variant: chosen.variant, offering_id: o?.key ?? null, experiment_enrolled_at_ms: now.getTime() },
           });

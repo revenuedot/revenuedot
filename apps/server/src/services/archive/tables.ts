@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0030_catalog_extras";
+export const ARCHIVE_SCHEMA = "0031_experiments_v2";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 

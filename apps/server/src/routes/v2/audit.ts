@@ -22,7 +22,7 @@ const SINGULAR: Record<string, string> = {
 /** One object per project: a POST without an id updates it. */
 const SINGLETONS = new Set(["brand", "verified_metrics", "auth_settings"]);
 /** Writes that change nothing worth auditing. */
-const QUIET = new Set(["verify_credentials", "preview", "test", "check", "advance", "refresh"]);
+const QUIET = new Set(["verify_credentials", "preview", "test", "check", "advance", "refresh", "estimate"]);
 
 interface Parsed { actionType: string; targetType: string; targetId: string | null }
 
@@ -49,6 +49,8 @@ export function parseWrite(method: string, path: string): Parsed | null {
   let tail = rest.slice(i + 2);
   // An Auth identity is named by provider and subject.
   if (coll === "identities" && tail.length === 1) { id = `${id}/${tail[0]}`; tail = []; }
+  // A collection action: POST /v2/projects/p/experiments/actions/reorder is experiment_reorder on the project.
+  if (id === "actions" && tail.length === 1) return method === "POST" && !QUIET.has(tail[0]!) ? { actionType: `${target}_${tail[0]}`, targetType: target, targetId: seg[2] } : null;
   if (tail[0] === "actions" && tail[1]) return QUIET.has(tail[1]) ? null : { actionType: `${target}_${tail[1]}`, targetType: target, targetId: id };
   // A sub-collection's action: POST /v2/projects/p/apps/a/store_products/actions/import is app_store_products_import on a.
   if (tail.length === 3 && tail[1] === "actions") return method === "POST" && !QUIET.has(tail[2]!) ? { actionType: `${target}_${tail[0]}_${tail[2]}`, targetType: target, targetId: id } : null;

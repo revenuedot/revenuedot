@@ -300,10 +300,18 @@ export async function customerShape(db: DB, c: CustomerRow, opts: { now: Date; d
   const url = `${base(c.projectId)}/customers/${encodeURIComponent(id)}`;
   if (opts.detail) {
     out.active_entitlements = embeddedList(`${url}/active_entitlements`, await activeEntitlements(db, c, opts.now));
-    out.experiment = null;
+    out.experiment = await experimentEnrollment(db, c.id);
   }
   if (opts.attributes) out.attributes = embeddedList(`${url}/attributes`, await attributeItems(db, c.id));
   return out;
+}
+
+/** The experiment the customer is in (or was in last), in RevenueCat's ExperimentEnrollment shape. */
+async function experimentEnrollment(db: DB, customerId: string) {
+  const rows = await db.select({ id: schema.experiments.id, name: schema.experiments.name, status: schema.experiments.status, variant: schema.experimentEnrollments.variant, at: schema.experimentEnrollments.enrolledAt })
+    .from(schema.experimentEnrollments).innerJoin(schema.experiments, eq(schema.experiments.id, schema.experimentEnrollments.experimentId)).where(eq(schema.experimentEnrollments.customerId, customerId));
+  const pick = rows.filter((r) => r.status !== "stopped").sort((a, b) => b.at.getTime() - a.at.getTime())[0] ?? rows.sort((a, b) => b.at.getTime() - a.at.getTime())[0];
+  return pick ? { object: "experiment_enrollment" as const, id: pick.id, name: pick.name, variant: pick.variant } : null;
 }
 
 export async function attributeItems(db: DB, customerId: string) {
