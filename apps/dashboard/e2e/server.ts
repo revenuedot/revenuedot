@@ -254,6 +254,16 @@ web.post("/__stripe/refund", async (c) => {
   const delivered = await deliverConnect(connectPlatform.connectEvent(hit.account.connect.accountId, "charge.refunded", { id: `ch_${crypto.randomUUID().slice(0, 8)}`, object: "charge", amount: inv?.amount_paid ?? 0, amount_refunded: inv?.amount_paid ?? 0, refunded: true, currency: inv?.currency ?? "usd", invoice: inv?.id, livemode: false, refunds: { data: [{ created: Math.floor(Date.now() / 1000) }] } }));
   return c.json({ delivered });
 });
+// A Stripe customer without an email address (payment-recovery.spec.ts: the Customer Center's no-email page).
+web.post("/__stripe/customer_email", async (c) => {
+  const b = await c.req.json() as { subscription?: string; email: string | null };
+  const hit = b.subscription ? connectPlatform.find(webStripe, (a) => a.subscriptions.get(b.subscription!)) : newestSubscription(true);
+  if (!hit) return c.json({ error: "no subscription" }, 404);
+  const customer = hit.account.customers.get(String(hit.value.customer));
+  if (!customer) return c.json({ error: "no customer" }, 404);
+  customer.email = b.email;
+  return c.json({ subscription: hit.value.id, customer: customer.id, email: b.email });
+});
 // Onboarding progress of a connected account (account.updated through the Connect endpoint).
 web.post("/__stripe/account_updated", async (c) => {
   const b = await c.req.json() as { account?: string; charges_enabled: boolean };

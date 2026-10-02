@@ -113,6 +113,8 @@ test("payment recovery: off, turn on, billing issues on four stores, emails, por
   });
 
   let stripeUser = "";
+  let key = "", webLinkUrl = "";
+  let infoOf: (user: string) => Promise<any> = async () => null;
   await test.step("a web subscriber on a connected Stripe account; its renewal fails (sandbox)", async () => {
     const app = await ok("POST", `${P}/apps`, { name: "Scanner Web", type: "stripe" });
     await page.goto(`${WEB}/projects/${pid}/apps/${app.id}`);
@@ -144,6 +146,29 @@ test("payment recovery: off, turn on, billing issues on four stores, emails, por
     await expect(casesPanel().locator("tbody tr")).toContainText(stripeUser);
     await expect(casesPanel().locator("tbody tr").locator(".tag")).toHaveText("Billing issue");
     await shot("recovery-at-risk");
+
+    // Customer Center: customer info is readable with the public SDK key, so its link never opens the portal itself.
+    key = (await ok("GET", `${P}/apps/${app.id}/public_api_keys`)).items[0].key as string;
+    webLinkUrl = link;
+    infoOf = async (user: string) => (await (await page.request.get(`${WEB}/v1/subscribers/${user}`, { headers: { authorization: `Bearer ${key}`, "x-platform": "stripe" } })).json()).subscriber;
+    const center = (await infoOf(stripeUser)).management_url as string;
+    expect(center).toMatch(/\/v1\/recovery\/c\/[A-Za-z0-9_-]+$/);
+    await page.goto(center);
+    await expect(page.getByRole("heading", { name: "We'll email you a secure link" })).toBeVisible();
+    await page.getByRole("button", { name: "Email me the link" }).click();
+    await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+    await expect.poll(async () => (await mails(`web-${stamp}@example.com`)).filter((m) => m.subject.startsWith("Your link")).length).toBe(1);
+    const linkMail = (await mails(`web-${stamp}@example.com`)).find((m) => m.subject.startsWith("Your link"))!;
+    const oneTime = /http:\/\/[^\s]+\/v1\/recovery\/p\/[A-Za-z0-9_-]+/.exec(linkMail.text)![0];
+    await page.goto(oneTime);
+    await expect(page.getByRole("heading", { name: "Update your payment method" })).toBeVisible();
+    await page.getByRole("button", { name: "Update payment method" }).click();
+    await expect(page.getByRole("heading", { name: "Fake Stripe customer portal" })).toBeVisible();
+    await page.goto(oneTime);
+    await expect(page.getByRole("heading", { name: "This link was already used" })).toBeVisible();
+    await shot("recovery-customer-center");
+
+    await page.goto(pageUrl);
   });
 
   await test.step("Send due emails: one email per store, from the app, with working links", async () => {
@@ -151,7 +176,7 @@ test("payment recovery: off, turn on, billing issues on four stores, emails, por
     await page.getByRole("button", { name: "Send due emails" }).click();
     await toast(/Sent \d+ emails?|Nothing is due right now/);
     for (const to of [`web-${stamp}@example.com`, ...["app_store", "play_store", "amazon"].map((s) => `${s}-${stamp}@example.com`)]) {
-      await expect.poll(async () => (await mails(to)).length, { message: `an email to ${to}` }).toBe(1);
+      await expect.poll(async () => (await mails(to)).filter((m) => !m.subject.startsWith("Your link")).length, { message: `an email to ${to}` }).toBe(1);
     }
     await page.reload();
     await page.getByRole("switch", { name: "Sandbox data" }).click();
@@ -218,6 +243,24 @@ test("payment recovery: off, turn on, billing issues on four stores, emails, por
     expect(st.by_store.map((s: any) => [s.store, s.recovered]).sort()).toEqual([["amazon", 0], ["app_store", 1], ["play_store", 1]]);
     await page.getByRole("button", { name: "All" }).click();
     await expect(casesPanel().locator("tbody tr")).toHaveCount(3);
+  });
+
+  await test.step("Customer Center without an email address: the page says where to update the payment instead", async () => {
+    // A second web subscriber with no email address anywhere: the page says where to update the payment instead.
+    const noEmailUser = `web_noemail_${stamp}`;
+    await page.goto(`${webLinkUrl}?app_user_id=${noEmailUser}`);
+    await page.getByRole("button", { name: "Continue to payment" }).click();
+    await page.getByRole("button", { name: "Pay" }).click();
+    await expect(page.getByRole("heading", { name: "Thank you for your purchase" })).toBeVisible();
+    expect((await ok("POST", "/__stripe/customer_email", { email: null })).email).toBeNull();
+    // The checkout's email became $email; the app clears it (the SDK sends "" for a removed attribute).
+    const cleared = await page.request.post(`${WEB}/v1/subscribers/${noEmailUser}/attributes`, { headers: { authorization: `Bearer ${key}`, "x-platform": "stripe" }, data: { attributes: { $email: { value: "", updated_at_ms: Date.now() + 1000 } } } });
+    expect(cleared.ok()).toBe(true);
+    await ok("POST", "/__stripe/fail_renewal", {});
+    await expect.poll(async () => (await infoOf(noEmailUser)).management_url, { message: "a case for the subscriber without email" }).toMatch(/\/v1\/recovery\/c\//);
+    await page.goto((await infoOf(noEmailUser)).management_url);
+    await expect(page.getByText("We have no email address for your subscription")).toBeVisible();
+    await page.goto(pageUrl);
   });
 
   await test.step("phone width and dark mode", async () => {
