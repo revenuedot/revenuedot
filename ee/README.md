@@ -1,6 +1,6 @@
 # ee/
 
-Paid enterprise features: organizations, custom roles, single sign-on (SAML 2.0 and OpenID Connect), SCIM 2.0 provisioning, data-location controls, audit retention and compliance exports. High availability and the SLA are planned. Licensed under `ee/LICENSE`, not AGPL-3.0. Free for development and testing; production use needs a RevenueDot Enterprise subscription. Spec: `prd/enterprise/PRD.md`. User docs: https://revenuedot.app/docs/guides/enterprise
+Paid enterprise features: organizations, custom roles, single sign-on (SAML 2.0 and OpenID Connect), SCIM 2.0 provisioning, data-location controls, audit retention and compliance exports. High availability and the SLA are planned. Licensed under the RevenueDot Enterprise License in `ee/LICENSE` (the n8n Enterprise License with only the names changed), not AGPL-3.0. Free for development and testing; production use needs a valid RevenueDot Enterprise license. Spec: `prd/enterprise/PRD.md`. User docs: https://revenuedot.app/docs/guides/enterprise
 
 ## Turning it on
 - `REVENUEDOT_LICENSE_KEY=rdl1_…` turns on the features the key lists (`server/license.ts` checks its Ed25519 signature).

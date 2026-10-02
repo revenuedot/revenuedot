@@ -28,7 +28,7 @@ Patterns followed: WorkOS for SSO set-up fields, DNS TXT domain verification, en
 
 ## 2. Licence gate and extension points
 - `REVENUEDOT_LICENSE_KEY=rdl1_<payload>.<signature>`: an Ed25519-signed JSON payload `{ v, id, licensee, features: ["*"] | [...], max_orgs, edition: "self-hosted" | "cloud" | "any", issued_at, expires_at }`, checked against public keys pinned in `ee/server/license.ts`. Expired keys keep working for 14 days with a warning, then the features turn off (password sign-in keeps working; SSO-only accounts need a password reset or a renewed key).
-- `REVENUEDOT_EE_DEV=true`: every feature, for development and testing only (ee/LICENSE clause 3). Refused on RevenueDot Cloud. The dashboard shows a "Development licence" banner on organization pages.
+- `REVENUEDOT_EE_DEV=true`: every feature, for development and testing only (ee/LICENSE allows copying and changing it for development and testing without a subscription). Refused on RevenueDot Cloud. The dashboard shows a "Development licence" banner on organization pages.
 - Features: `organizations`, `custom_roles`, `sso`, `scim`, `data_location`, `audit_retention`, `compliance_exports`.
 - Server hooks (`ServerExtension`): `mount` (middleware and routes before the core's), `projectAccess` (deny, or a custom role's permissions), `passwordPolicy` (enforced SSO), `config` and `me` (dashboard flags), `tick` (periodic work). Dashboard hook: a lazily loaded module that adds `/organizations/*` routes and an "Organization settings" entry; loaded only when `/auth/me` returns `enterprise`.
 - `ee/scripts/license-keygen.ts` makes the signing key pair; `ee/scripts/license-issue.ts` issues keys. **Decision for Kai:** the production public key is not pinned yet (§12).
@@ -87,7 +87,7 @@ Patterns followed: WorkOS for SSO set-up fields, DNS TXT domain verification, en
 ## 12. Decisions for Kai
 1. **Licence signing key:** generate the Ed25519 pair (`pnpm tsx ee/scripts/license-keygen.ts`), keep the private key in 1Password, pin the public key in `ee/server/license.ts`, and set a Cloud licence (`REVENUEDOT_LICENSE_KEY` Worker secret). Until then only development mode turns features on.
 2. **Which features are on Cloud Standard:** `company/docs/business-model.md` lists SSO, audit logs and region choice under Cloud Standard, while Tier 3 lists them as paid `ee/`. Options: Cloud Standard gets SSO (SAML and OIDC) and audit export; Enterprise adds SCIM, custom roles, enforcement, retention over one year and EU hosting.
-3. **Development mode:** `REVENUEDOT_EE_DEV=true` unlocks everything on a self-hosted server with no key (ee/LICENSE clause 3 allows development use). Alternative: free 30-day development keys.
+3. **Development mode:** `REVENUEDOT_EE_DEV=true` unlocks everything on a self-hosted server with no key (ee/LICENSE allows development and testing use without a subscription). Alternative: free 30-day development keys.
 4. **EU region on Cloud:** whether and when to stand up the EU deployment (cost in `docs/data-location.md`).
 5. **Retention on Cloud for non-enterprise projects:** the core keeps audit logs forever; a Cloud default (for example 90 days) would make retention a real upgrade.
 

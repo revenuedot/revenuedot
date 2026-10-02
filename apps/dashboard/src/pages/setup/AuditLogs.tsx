@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { DataTable, EmptyState, Field, Tag } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
-import { base, errMsg } from "./data";
+import { base, errMsg, type Collaborator } from "./data";
 
 /** Audit logs tab: who changed what in the project, newest first, with a date filter. `GET /v2/projects/{id}/audit_logs`. */
 interface Log {
@@ -30,6 +30,9 @@ export function AuditLogs({ pid }: { pid: string }) {
     enabled: !!pid,
   });
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
+  // Show people by email, as RevenueCat does; someone who has left the project keeps their user id.
+  const people = useQuery({ queryKey: ["collaborators", pid], enabled: !!pid, queryFn: async () => (await api<List<Collaborator>>(`${base(pid)}/collaborators`)).items });
+  const emailOf = (id: string) => people.data?.find((m) => m.id === id)?.email;
   return (
     <div className="panel pb" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
@@ -47,7 +50,7 @@ export function AuditLogs({ pid }: { pid: string }) {
           { key: "who", header: "Who", render: (r) => r.actor_type === "assistant"
             // RevenueDot AI acting after the person approved the change in the chat.
             ? <><Tag tone="gold">RevenueDot AI</Tag> <span className="subtle">on behalf of</span> <code>{String(r.additional_data.actor_display ?? "").replace(/^assistant on behalf of /, "") || r.actor_identifier}</code></>
-            : <><Tag tone={r.actor_type === "oauth_client" ? "gold" : "muted"}>{ACTOR[r.actor_type] ?? r.actor_type}</Tag> <code>{r.actor_identifier}</code></> },
+            : <><Tag tone={r.actor_type === "oauth_client" ? "gold" : "muted"}>{ACTOR[r.actor_type] ?? r.actor_type}</Tag> {r.actor_type === "user" && emailOf(r.actor_identifier) ? <span title={r.actor_identifier}>{emailOf(r.actor_identifier)}</span> : <code>{r.actor_identifier}</code>}</> },
         ]} />
       )}
       {q.hasNextPage && <button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</button>}

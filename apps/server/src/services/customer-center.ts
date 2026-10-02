@@ -1,52 +1,18 @@
 import { and, asc, eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
-import { retentionOffersOf, withRetentionOffers } from "./retention.js";
+import { ccOfferRefs, defaultCustomerCenter, mergeConfig, resolveCcOfferRefs, sdkCustomerCenter, validateCustomerCenter } from "@revenuedot/core/customer-center";
+import { promotionalOfferFor, retentionOffersOf, withRetentionOffers } from "./retention.js";
 
 /**
- * Customer Center configuration, in the shape the SDKs decode (`GET /v1/customercenter/{id}`) and API v2 returns
- * (`GET /v2/projects/{id}/customers/{id}/customer_center`). A project starts with the default below; what is stored in
- * `projects.customer_center` is merged over it, key by key, so a project can change only the support email or one screen.
+ * Customer Center configuration (prd/customer-center/PRD.md), in the shape the SDKs decode (`GET /v1/customercenter/{id}`)
+ * and API v2 returns (`GET /v2/projects/{id}/customers/{id}/customer_center`). A project starts with the default; what is
+ * stored in `projects.customer_center` is merged over it, key by key (arrays replace), so a project can change only the
+ * support email or store the whole configuration the dashboard editor saves. The pure parts live in
+ * `packages/core/src/customer-center`.
  */
 
 type Json = Record<string, unknown>;
-const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.isArray(v);
-
-/** Objects merge key by key; arrays and scalars replace. */
-export function mergeConfig(base: Json, over: Json): Json {
-  const out: Json = { ...base };
-  for (const [k, v] of Object.entries(over)) out[k] = isObj(v) && isObj(base[k]) ? mergeConfig(base[k] as Json, v) : v;
-  return out;
-}
-
-const STRINGS: Record<string, string> = {
-  no_thanks: "No, thanks", restore_purchases: "Restore purchases", cancel: "Cancel", contact_support: "Contact support",
-  manage_subscription: "Manage your subscription", check_past_purchases: "Check past purchases", dismiss: "Dismiss", done: "Done",
-  no_subscriptions_found: "No subscriptions found", default_subject: "Support request", default_body: "Please describe your issue or question.",
-};
-
-export function defaultCustomerCenter(supportEmail: string): Json {
-  const path = (id: string, title: string, type: string, extra: Json = {}) => ({ id, title, type, ...extra });
-  return {
-    appearance: { light: {}, dark: {} },
-    screens: {
-      MANAGEMENT: {
-        type: "MANAGEMENT", title: "Manage subscription", subtitle: "Choose what you want to do.",
-        paths: [
-          path("path_cancel", "Cancel subscription", "CANCEL"),
-          path("path_refund", "Request a refund", "REFUND_REQUEST"),
-          path("path_missing", "Missing purchase", "MISSING_PURCHASE"),
-        ],
-      },
-      NO_ACTIVE: {
-        type: "NO_ACTIVE", title: "No active subscriptions", subtitle: "We could not find an active subscription for this account.",
-        paths: [path("path_missing_none", "Restore purchases", "MISSING_PURCHASE")],
-      },
-    },
-    localization: { locale: "en_US", localized_strings: STRINGS },
-    support: { email: supportEmail, should_warn_customer_to_update: false, display_purchase_history_link: true, display_user_details_section: true, display_virtual_currencies: false },
-    change_plans: [],
-  };
-}
+export { mergeConfig };
 
 /** The first project admin's email, or a neutral address when none is on file (self-hosted installs created through the CLI). */
 async function supportEmailOf(db: DB, projectId: string): Promise<string> {
@@ -56,17 +22,46 @@ async function supportEmailOf(db: DB, projectId: string): Promise<string> {
   return rows[0]?.email ?? "support@example.com";
 }
 
-/** The configuration the SDK loads: the default, the project's overrides, then the Retention offers on the cancel and refund paths. */
-export async function customerCenterFor(db: DB, projectId: string): Promise<Json> {
+async function storedOf(db: DB, projectId: string): Promise<Json | null> {
   const [p] = await db.select({ cc: schema.projects.customerCenter }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
-  const merged = mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)), p?.cc ?? {});
-  return withRetentionOffers(merged, await retentionOffersOf(db, projectId));
+  return p?.cc ?? null;
+}
+
+/** The editable configuration: the default with the stored overrides merged in (what the dashboard editor starts from). */
+export async function customerCenterConfigOf(db: DB, projectId: string): Promise<Json> {
+  return mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)) as unknown as Json, (await storedOf(db, projectId)) ?? {});
+}
+
+/** Problems with stored overrides once merged over the default ("field: message" lines; empty when valid). */
+export async function customerCenterProblems(db: DB, projectId: string, overrides: Json): Promise<string[]> {
+  const merged = mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)) as unknown as Json, overrides);
+  const problems = validateCustomerCenter(merged);
+  const refs = ccOfferRefs(merged);
+  if (refs.length) {
+    const ids = new Set((await retentionOffersOf(db, projectId)).map((o) => o.id));
+    // A reference that is already stored stays allowed after its offer is deleted (the SDK gets "no offer"), so saving
+    // other settings (the Support page, the support email) never fails on it; only new references must exist.
+    const stored = await storedOf(db, projectId);
+    const kept = new Set(stored ? ccOfferRefs(stored).map((r) => r.id) : []);
+    for (const r of refs) if (!ids.has(r.id) && !kept.has(r.id)) problems.push(`${r.at}.retention_offer_id: no Retention offer "${r.id}" in this project.`);
+  }
+  return problems;
+}
+
+/**
+ * The configuration the SDK loads: the default, the project's overrides with Retention offer references resolved (a deleted
+ * or inactive offer becomes "no offer"), the Retention offers on cancel and refund paths that do not set an offer, then the SDK shape in the customer's language (`X-Preferred-Locales`).
+ */
+export async function customerCenterFor(db: DB, projectId: string, opts: { preferredLocales?: string | null } = {}): Promise<Json> {
+  const offers = await retentionOffersOf(db, projectId);
+  const byId = new Map(offers.map((o) => [o.id, o]));
+  const merged = resolveCcOfferRefs(await customerCenterConfigOf(db, projectId), (id) => { const o = byId.get(id); return o ? promotionalOfferFor([o]) : null; });
+  return sdkCustomerCenter(withRetentionOffers(merged, offers), { preferredLocales: opts.preferredLocales });
 }
 
 /** Customer Center support settings (email and ticket intake) without the Retention offers, for Support and tickets. */
 export async function supportSettingsFor(db: DB, projectId: string): Promise<{ email: string; tickets: { allow_creation: boolean; customer_type: string; customer_details: Record<string, boolean> } | null }> {
-  const [p] = await db.select({ cc: schema.projects.customerCenter }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
-  const merged = mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)), p?.cc ?? {});
+  const merged = await customerCenterConfigOf(db, projectId);
   const support = (merged.support ?? {}) as Json;
   const t = support.support_tickets as Json | undefined;
   return {

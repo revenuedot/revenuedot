@@ -1,5 +1,5 @@
 // RevenueDot Enterprise (ee/LICENSE). Licence keys: which enterprise features a server may run. Spec: prd/enterprise/PRD.md §2.
-// Clause 5 of ee/LICENSE forbids moving, changing, disabling or circumventing this check.
+// Production use needs a valid RevenueDot Enterprise licence (ee/LICENSE); this check decides which features a server turns on.
 import { fromBase64, toBase64 } from "../../apps/server/src/services/signing.js";
 
 /** Every enterprise feature. A licence lists the ones it covers, or "*" for all. */
@@ -59,7 +59,7 @@ async function verifyWith(publicKeyB64: string, data: Uint8Array, sig: Uint8Arra
 /**
  * Checks a licence key: `rdl1_<base64url payload JSON>.<base64url Ed25519 signature of the payload bytes>`.
  * `REVENUEDOT_EE_DEV=true` without a key is development mode: every feature, for development and testing only
- * (ee/LICENSE clause 3), never on RevenueDot Cloud.
+ * (ee/LICENSE allows copying and changing it for development and testing without a subscription), never on RevenueDot Cloud.
  */
 export async function checkLicense(o: { key?: string | null; dev?: boolean; edition?: "cloud" | "self-hosted"; now: number; publicKeys?: string[] }): Promise<LicenseState> {
   const key = o.key?.trim();

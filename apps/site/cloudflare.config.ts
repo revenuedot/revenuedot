@@ -1,7 +1,8 @@
-// revenuedot.app marketing site: static assets on Cloudflare Workers (no Worker script), deployed with the `cf` CLI.
+// revenuedot.app marketing site on Cloudflare Workers, deployed with the `cf` CLI. Static assets answer every request
+// except /api/*, which the Worker script handles (worker/index.ts: the contact-sales form and the visitor's country).
 // Deploy only after approval: pnpm --filter site run deploy. vite.config.ts hands the Astro build (dist/) to cf as the
 // Worker's static assets. www.revenuedot.app redirects to the apex with a zone redirect rule (docs/cloud.md).
-import { defineConfig } from "cf/config";
+import { bindings, defineConfig } from "cf/config";
 
 export default defineConfig({
   // The Circo account. Every `cf` command run from this folder targets it unless CLOUDFLARE_ACCOUNT_ID says otherwise.
@@ -9,7 +10,21 @@ export default defineConfig({
   worker: {
     name: "revenuedot-site",
     compatibilityDate: "2026-09-01",
-    assets: { htmlHandling: "drop-trailing-slash", notFoundHandling: "404-page" },
+    entrypoint: "worker/index.ts",
+    assets: { htmlHandling: "drop-trailing-slash", notFoundHandling: "404-page", runWorkerFirst: ["/api/*"] },
     domains: ["revenuedot.app", "www.revenuedot.app"],
+    observability: { enabled: true },
+    env: {
+      ASSETS: bindings.assets(),
+      // Contact-sales leads (table sales_leads, created by the Worker on first use). D1 database "revenuedot-leads".
+      LEADS: bindings.d1({ id: "5a27c04b-9869-419c-9ec8-c2ad0fb63dda", name: "revenuedot-leads" }),
+      // Lead notifications. mail.revenuedot.app is onboarded for Email Sending on the Circo account (as for worker
+      // `revenuedot`). `cf dev` logs the email instead of sending it unless REVENUEDOT_EMAIL_REMOTE=1.
+      EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
+      // Where lead emails go. sales@circo.so delivers to Kai (tested 2026-10-01).
+      SALES_TO: bindings.text(process.env.REVENUEDOT_SALES_TO ?? "sales@circo.so"),
+      // 5 contact-sales posts a minute per IP address.
+      LEAD_LIMIT: bindings.rateLimit({ namespace: "1101", simple: { limit: 5, period: 60 } }),
+    },
   },
 });

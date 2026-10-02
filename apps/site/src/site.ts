@@ -54,6 +54,7 @@ export const FOOTER = [
       { href: "/tools", label: "Free tools" },
       { href: "/glossary", label: "Glossary" },
       { href: "/pricing", label: "Pricing" },
+      { href: "/contact-sales", label: "Contact sales" },
       { href: "/changelog", label: "Changelog" },
     ],
   },
