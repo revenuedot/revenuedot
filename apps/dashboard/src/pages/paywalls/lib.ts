@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PaywallDoc } from "@revenuedot/core";
 import { api, type List } from "../../lib/api";
-import { listAll, useProducts, v2, type Offering } from "../catalog/lib";
+import { catalogKey, listAll, useProducts, v2, type Offering } from "../catalog/lib";
 import { previewProducts, type PreviewProduct } from "./preview-values";
 
 export interface Version { revision: number | null; components_config: Record<string, unknown> | null; components_localizations: Record<string, Record<string, unknown>>; default_locale: string | null }
@@ -27,20 +27,23 @@ export const usePaywalls = (pid: string) => useQuery({
     return Promise.all(list.items.map((p) => api<Paywall>(`${v2(pid)}/paywalls/${p.id}?expand=components&expand=offering`)));
   },
 });
+/** Active offerings with their packages and products: the catalog's own query (same cache), so catalog edits show here. */
 export const useOfferingsWithPackages = (pid: string) => useQuery({
-  queryKey: ["paywall-offerings", pid], enabled: !!pid,
-  queryFn: async () => (await listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`)).filter((o) => o.state !== "inactive"),
+  queryKey: [...catalogKey(pid), "offerings"], enabled: !!pid,
+  queryFn: () => listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`),
+  select: (all) => all.filter((o) => o.state !== "inactive"),
 });
 /**
  * The preview's real products for an offering: each package's Test Store price, duration and name (previewProducts).
  * Offering expansions carry no price, so prices come from the catalog's product list (expand=items.indicative_price).
+ * `ready` is false until that list has loaded, so captions do not claim "no Test Store price" while it is loading.
  */
-export function usePreviewProducts(pid: string, offering: Offering | null | undefined): { prices: Record<string, PreviewProduct>; anyReal: boolean } {
+export function usePreviewProducts(pid: string, offering: Offering | null | undefined): { prices: Record<string, PreviewProduct>; anyReal: boolean; ready: boolean } {
   const products = useProducts(pid);
   return useMemo(() => {
     const prices = previewProducts(offering, products.data);
-    return { prices, anyReal: Object.values(prices).some((p) => !!p.price) };
-  }, [offering, products.data]);
+    return { prices, anyReal: Object.values(prices).some((p) => !!p.price), ready: products.isSuccess };
+  }, [offering, products.data, products.isSuccess]);
 }
 export const useTemplates = (pid: string) => useQuery({
   queryKey: ["paywall-templates", pid], enabled: !!pid, staleTime: Infinity,

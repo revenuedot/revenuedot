@@ -262,7 +262,7 @@ function Editor({ paywallId }: { paywallId: string }) {
                   </>}
                 </div>
                 <div className="pwr-pick"><Phone doc={doc} width={phoneW} state={{ dark, locale, intro }} focus={sel} onPick={setSel} selectedPkg={pkgPreview} onSelectPkg={setPkgPreview} prices={preview.prices} /></div>
-                <p className="subtle pe-cap" data-testid="price-note">{preview.anyReal ? "Test Store prices from the offering's products; sample prices where a product has none." : "Sample prices: no product in this offering has a Test Store price."} Devices show the store's local price.</p>
+                <p className="subtle pe-cap" data-testid="price-note">{!preview.ready ? "Sample prices until the offering's products load." : preview.anyReal ? "Test Store prices from the offering's products; sample prices where a product has none." : "Sample prices: no product in this offering has a Test Store price."} Devices show the store's local price.</p>
               </section>
               <section className="panel pe-props" aria-label="Properties">
                 {fontFaces && <style>{fontFaces}</style>}

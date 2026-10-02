@@ -95,7 +95,7 @@ export function GalleryPage() {
           <p className="subtle pw-count" aria-live="polite">{shown.length} of {PAYWALL_TEMPLATES.length} templates</p>
         </aside>
         <div className="pw-grid-wrap">
-          <div className="head"><div><h1>Select template</h1><p>Each layout comes from a measured 2026 result. {preview.anyReal ? "Prices are your products' Test Store prices, with sample values where a product has none" : "Prices show as sample values here"}; the app shows the store's local prices.</p></div></div>
+          <div className="head"><div><h1>Select template</h1><p>Each layout comes from a measured 2026 result. {preview.ready && preview.anyReal ? "Prices are your products' Test Store prices, with sample values where a product has none" : "Prices show as sample values here"}; the app shows the store's local prices.</p></div></div>
           {!shown.length ? <div className="empty"><b>No template matches these filters.</b><button type="button" className="btn btn-line" onClick={() => { setF({ ...DEF }); setSp(new URLSearchParams(), { replace: true }); }}>Clear filters</button></div> : (
             <ul className="pw-cards" aria-label="Templates">
               {shown.map((t) => (

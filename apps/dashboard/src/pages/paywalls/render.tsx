@@ -32,11 +32,12 @@ interface Ctx {
   remaining: number | null;
   /** The active tab control of the enclosing tabs component, rendered where `tab_control` sits. */
   control: (() => ReactNode) | null;
-  /** Packages selected by default per tab, so switching tabs selects that tab's default. */
   /** Real products of the offering's packages (Test Store price, duration, name); samples fill the rest. */
   prices?: Record<string, PreviewProduct>;
   /** Every package identifier in the paywall, for `product.relative_discount`. */
   packages: string[];
+  /** The previewed locale: price and period words follow it, as on devices. */
+  locale: string;
 }
 const C = createContext<Ctx | null>(null);
 const useC = () => useContext(C)!;
@@ -90,7 +91,7 @@ function fill(text: string, c: Ctx): string {
       const d = Math.floor(ms / 86_400_000), h = Math.floor(ms / 3_600_000) % 24, m = Math.floor(ms / 60_000) % 60, s = Math.floor(ms / 1000) % 60;
       const map: Record<string, string> = { count_days_with_zero: two(d), count_days_without_zero: String(d), count_hours_with_zero: two(h), count_hours_without_zero: String(h), count_minutes_with_zero: two(m), count_minutes_without_zero: String(m), count_seconds_with_zero: two(s), count_seconds_without_zero: String(s) };
       v = map[key];
-    } else v = productValues(c.pkg ?? c.selectedPkg, c.prices, c.packages)[key];
+    } else v = productValues(c.pkg ?? c.selectedPkg, c.prices, c.packages, c.locale)[key];
     // Own keys only: `{{ constructor }}` must stay as typed, not print Object's source.
     if (typeof v !== "string") return all;
     return fn === "uppercase" ? v.toUpperCase() : fn === "lowercase" ? v.toLowerCase() : fn === "capitalize" ? v.replace(/^./, (x) => x.toUpperCase()) : v;
@@ -477,7 +478,6 @@ export function stringsFor(doc: PaywallDoc, locale: string): Record<string, unkn
   return { ...base, ...(doc.components_localizations[locale] ?? {}) };
 }
 
-/** The first package selected by default (or the first package), outside tabs. */
 /** Every package identifier in the paywall, in order of appearance. */
 function packageList(doc: PaywallDoc): string[] {
   const out: string[] = [];
@@ -492,6 +492,7 @@ function packageList(doc: PaywallDoc): string[] {
   return out;
 }
 
+/** The first package selected by default (or the first package), outside tabs. */
 function defaultPackage(doc: PaywallDoc): string | null {
   let first: string | null = null, sel: string | null = null;
   const walk = (x: unknown) => {
@@ -557,7 +558,7 @@ function PhoneView({ doc, state = {}, width = 320, focus, onPick, selectedPkg, o
   const setPkg = (id: string) => { setOwnPkg(id); onSelectPkg?.(id); };
   const dark = !!state.dark;
   const ctx: Ctx = {
-    strings: stringsFor(doc, state.locale ?? doc.default_locale), dark, intro: state.intro ?? true, selectedPkg: pkg, setSelectedPkg: setPkg,
+    strings: stringsFor(doc, state.locale ?? doc.default_locale), locale: state.locale ?? doc.default_locale ?? "en_US", dark, intro: state.intro ?? true, selectedPkg: pkg, setSelectedPkg: setPkg,
     tabs, setTab: (a, b) => setTabs((t) => ({ ...t, [a]: b })), now, focus, onPick, pkg: null, pkgSelected: false, tabSelected: false, remaining: null, control: null, prices, packages,
   };
   const base = doc.components_config?.base;
