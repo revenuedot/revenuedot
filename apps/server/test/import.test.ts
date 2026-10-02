@@ -9,6 +9,7 @@ import { defaultStores } from "../src/stores/index.js";
 import { createAppleStore, setAppleRootsForTesting } from "../src/stores/apple/index.js";
 import { createSecretKey } from "../src/services/auth.js";
 import { tick } from "../src/services/tick.js";
+import { importedAppleChainKey } from "../src/services/imported-chains.js";
 import { DAY, T0, appleHarness, makeP8, makePki, notificationBody, renewalInfo, signJws, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
 import { env, makeKeys, sub, type Env, type Keys } from "./google-helpers.js";
 
@@ -411,5 +412,14 @@ describe("POST /v2/projects/{id}/import/customers (Google Play)", () => {
     const [s] = await e.h.db.select().from(schema.subscriptions);
     expect(s!.storeKey).toBe("tok_from_export");
     expect(e.g.calls.filter((c) => c.url.includes("orders:batchGet"))).toEqual([]);
+  });
+});
+
+describe("importedAppleChainKey", () => {
+  it("picks the same row every time when several of the customer's chains hold the transaction: the newest period, then the id", () => {
+    const row = (id: string, storeKey: string, day: number, over: Record<string, unknown> = {}) => ({ id, storeKey, store: "app_store", customerId: "c1", storeTransactionId: "t9", purchaseDate: new Date(T0 + day * DAY), ...over });
+    expect(importedAppleChainKey([row("s2", "K2", 1), row("s1", "K1", 5), row("s3", "K3", 5)], "app_store", "c1", ["t9"])).toBe("K1");
+    expect(importedAppleChainKey([row("s1", "K1", 5, { customerId: "c2" }), row("s2", "K2", 1)], "app_store", "c1", ["t9"])).toBe("K2");
+    expect(importedAppleChainKey([row("s1", "K1", 5)], "app_store", "c1", ["t8"])).toBeNull();
   });
 });

@@ -33,10 +33,15 @@ describe("requestJson", () => {
     expect(e.message).toBe("404 from https://x.test/a: Customer not found.");
   });
 
-  it("tries a request that timed out once more, then throws TimeoutError with the limit in seconds", async () => {
+  it("retries timeouts like network errors, or `timeoutRetries` times, then throws TimeoutError with the limit in seconds", async () => {
+    let reads = 0;
+    const slowRead = async () => { reads++; throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); };
+    await expect(requestJson("https://x.test/read", {}, { fetch: slowRead, sleep: async () => {}, maxRetries: 3 })).rejects.toBeInstanceOf(TimeoutError);
+    expect(reads).toBe(4);
+    await expect(requestJson("https://x.test/read", {}, { fetch: slowRead, sleep: async () => {}, maxRetries: 0 })).rejects.toBeInstanceOf(TimeoutError);
     let calls = 0;
     const slow = async () => { calls++; throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); };
-    const e = await requestJson("https://x.test/import?x=1", {}, { fetch: slow, sleep: async () => {}, timeoutMs: 60_000 }).catch((x) => x);
+    const e = await requestJson("https://x.test/import?x=1", {}, { fetch: slow, sleep: async () => {}, timeoutMs: 60_000, timeoutRetries: 1 }).catch((x) => x);
     expect(e).toBeInstanceOf(TimeoutError);
     expect(e.message).toBe("No answer from https://x.test/import within 60 s.");
     expect(calls).toBe(2);

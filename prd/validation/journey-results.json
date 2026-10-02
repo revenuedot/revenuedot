@@ -16,7 +16,7 @@
   "import": {
     "title": "Import customers from RevenueCat: a 100-customer page in under 5 s, idempotent re-run, merges, the CLI end to end",
     "date": "2026-10-02",
-    "run": "202610020334295740",
+    "run": "202610020417315740",
     "passed": 45,
     "failed": 0
   }

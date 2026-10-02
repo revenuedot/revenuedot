@@ -46,28 +46,34 @@ const K = (...parts: string[]) => parts.join("\u0000");
 const IN_CHUNK = 5000;
 const chunks = <X>(xs: X[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, (i + 1) * n));
 const rowChunks = <X extends object>(rows: X[]) => (rows.length ? chunks(rows, Math.max(1, Math.floor(60_000 / Math.max(...rows.map((r) => Object.keys(r).length))))) : []);
-/** `SET col = excluded.col` for the columns an import writes; other columns (live SDK traffic's) stay as they are. */
+/** `SET col = excluded.col` for the columns this import changed; every other column (live SDK traffic's) stays as it is. */
 const excluded = <Tb extends object>(table: Tb, cols: readonly (keyof Tb & string)[]) =>
   Object.fromEntries(cols.map((c) => [c, sql.raw(`excluded."${(table[c] as unknown as PgColumn).name}"`)]));
 
-const CUSTOMER_COLS = ["firstSeen", "lastSeen", "lastSeenAppVersion", "lastSeenCountry", "lastSeenPlatform", "originalPurchaseDate"] as const;
-const SUB_COLS = [
-  "customerId", "appId", "storeKey", "productIdentifier", "productPlanIdentifier", "isSandbox", "purchaseDate", "originalPurchaseDate", "expiresDate",
-  "periodType", "ownershipType", "unsubscribeDetectedAt", "billingIssuesDetectedAt", "gracePeriodExpiresDate", "refundedAt", "autoResumeDate",
-  "storeTransactionId", "originalTransactionId", "priceAmount", "priceCurrency", "priceUsd", "countryCode", "autoRenewProductId", "entitlementIdentifier",
-  "cancelReason", "priceIncreaseStatus", "expiredEventAt", "updatedAt",
-] as const satisfies readonly (keyof SubRow)[];
 const NON_SUB_COLS = ["customerId", "appId", "productIdentifier", "isSandbox", "isConsumable", "purchaseDate", "refundedAt", "priceAmount", "priceCurrency", "priceUsd", "countryCode"] as const satisfies readonly (keyof NonSubRow)[];
 /** Columns of a new subscription row the import does not set (database defaults). */
 const SUB_DEFAULTS = { presentedOfferingId: null, cancelSurveyReason: null, offerType: null, offerId: null, eligibleWinBackOfferIds: null, winBackOffersAt: null } satisfies Partial<SubRow>;
 
+const same = (x: unknown, v: unknown) => (v instanceof Date || x instanceof Date ? (x as Date | null)?.getTime?.() === (v as Date | null)?.getTime?.() : x === v);
 export function sameState(a: Record<string, unknown>, b: Record<string, unknown>) {
-  for (const [k, v] of Object.entries(b)) {
-    const x = a[k];
-    if (v instanceof Date || x instanceof Date) { if ((x as Date | null)?.getTime?.() !== (v as Date | null)?.getTime?.()) return false; }
-    else if (x !== v) return false;
-  }
+  for (const [k, v] of Object.entries(b)) if (!same(a[k], v)) return false;
   return true;
+}
+/** Records which columns of `cur` a patch really changes. */
+function markChanged(cols: Map<string, Set<string>>, id: string, cur: Record<string, unknown>, patch: Record<string, unknown>) {
+  let set = cols.get(id);
+  for (const [k, v] of Object.entries(patch)) if (!same(cur[k], v)) { if (!set) cols.set(id, (set = new Set())); set.add(k); }
+}
+/** Changed rows grouped by the exact columns they changed: one upsert per group sets only those columns. */
+function byColumns<R>(cols: Map<string, Set<string>>, row: (id: string) => R) {
+  const groups = new Map<string, { cols: string[]; rows: R[] }>();
+  for (const [id, set] of cols) {
+    const list = [...set].sort();
+    const g = groups.get(list.join(",")) ?? { cols: list, rows: [] };
+    g.rows.push(row(id));
+    groups.set(list.join(","), g);
+  }
+  return [...groups.values()];
 }
 
 /** The rows one page can touch, the changes made to them, and the statements that write those changes. */
@@ -84,11 +90,13 @@ class WorkingSet {
   nonSubs = new Map<string, NonSubRow>();
 
   private newCustomers = new Set<string>();
-  private changedCustomers = new Set<string>();
+  /** customer id → the columns this page changed */
+  private changedCustomers = new Map<string, Set<string>>();
   private newAliases: (typeof A.$inferInsert)[] = [];
-  private changedAttrs = new Set<string>();
+  private changedAttrs = new Map<string, { customerId: string; key: string }>();
   private newSubs = new Set<string>();
-  private changedSubs = new Set<string>();
+  /** subscription id → the columns this page changed */
+  private changedSubs = new Map<string, Set<string>>();
   private goneSubs = new Set<string>();
   private changedNonSubs = new Set<string>();
   private txns = new Map<string, TxnRow>();
@@ -139,8 +147,8 @@ class WorkingSet {
   patchCustomer(id: string, patch: Partial<CustomerRow>) {
     const cur = this.customers.get(id)!;
     if (sameState(cur, patch)) return;
+    if (!this.newCustomers.has(id)) markChanged(this.changedCustomers, id, cur, patch);
     this.customers.set(id, { ...cur, ...patch });
-    if (!this.newCustomers.has(id)) this.changedCustomers.add(id);
   }
   addAlias(appUserId: string, customerId: string, createdAt: Date) {
     if (this.aliases.has(appUserId)) return;
@@ -150,7 +158,7 @@ class WorkingSet {
   attr(customerId: string, key: string) { return this.attrs.get(K(customerId, key)); }
   setAttr(customerId: string, key: string, value: string | null, updatedAtMs: number) {
     this.attrs.set(K(customerId, key), { value, updatedAtMs });
-    this.changedAttrs.add(K(customerId, key));
+    this.changedAttrs.set(K(customerId, key), { customerId, key });
   }
   sub(store: string, key: string) { const id = this.subKeys.get(K(store, key)); return id ? this.subs.get(id) : undefined; }
   addSub(row: SubRow) { this.subs.set(row.id, row); this.subKeys.set(K(row.store, row.storeKey), row.id); this.newSubs.add(row.id); }
@@ -159,8 +167,8 @@ class WorkingSet {
     if (sameState(cur, patch)) return;
     const next = { ...cur, ...patch };
     if (next.storeKey !== cur.storeKey) { this.subKeys.delete(K(cur.store, cur.storeKey)); this.subKeys.set(K(next.store, next.storeKey), id); }
+    if (!this.newSubs.has(id)) markChanged(this.changedSubs, id, cur, patch);
     this.subs.set(id, next);
-    if (!this.newSubs.has(id)) this.changedSubs.add(id);
   }
   deleteSub(id: string) {
     const cur = this.subs.get(id)!;
@@ -180,15 +188,19 @@ class WorkingSet {
   /** Writes every change: one statement per table (more only past the parameter limit). */
   async flush() {
     const { db, projectId } = this;
-    const custRows = [...this.newCustomers, ...this.changedCustomers].map((id) => this.customers.get(id)!);
-    for (const part of rowChunks(custRows)) await db.insert(C).values(part).onConflictDoUpdate({ target: C.id, set: excluded(C, CUSTOMER_COLS) });
+    for (const part of rowChunks([...this.newCustomers].map((id) => this.customers.get(id)!))) await db.insert(C).values(part);
+    for (const g of byColumns(this.changedCustomers, (id) => this.customers.get(id)!)) {
+      for (const part of rowChunks(g.rows)) await db.insert(C).values(part).onConflictDoUpdate({ target: C.id, set: excluded(C, g.cols as (keyof typeof C & string)[]) });
+    }
     for (const part of rowChunks(this.newAliases)) await db.insert(A).values(part).onConflictDoNothing();
-    const attrRows = [...this.changedAttrs].map((k) => { const [customerId, key] = k.split("\u0000") as [string, string]; return { customerId, key, ...this.attrs.get(k)! }; });
+    const attrRows = [...this.changedAttrs].map(([k, { customerId, key }]) => ({ customerId, key, ...this.attrs.get(k)! }));
     for (const part of rowChunks(attrRows)) await db.insert(CA).values(part).onConflictDoUpdate({ target: [CA.customerId, CA.key], set: excluded(CA, ["value", "updatedAtMs"]) });
     for (const part of chunks([...this.goneSubs], IN_CHUNK)) await db.delete(S).where(inArray(S.id, part));
-    // Existing rows first: a placeholder key one row gives up may be taken by a new row in the same statement.
-    const subRows = [...this.changedSubs, ...this.newSubs].map((id) => this.subs.get(id)!);
-    for (const part of rowChunks(subRows)) await db.insert(S).values(part).onConflictDoUpdate({ target: S.id, set: excluded(S, SUB_COLS) });
+    // Existing rows before new ones: a placeholder key one row gives up may be taken by a new row.
+    for (const g of byColumns(this.changedSubs, (id) => this.subs.get(id)!)) {
+      for (const part of rowChunks(g.rows)) await db.insert(S).values(part).onConflictDoUpdate({ target: S.id, set: excluded(S, g.cols as (keyof typeof S & string)[]) });
+    }
+    for (const part of rowChunks([...this.newSubs].map((id) => this.subs.get(id)!))) await db.insert(S).values(part);
     const nonSubRows = [...this.changedNonSubs].map((k) => this.nonSubs.get(k)!);
     for (const part of rowChunks(nonSubRows)) {
       await db.insert(N).values(part).onConflictDoUpdate({ target: [N.projectId, N.store, N.storeTransactionId], set: excluded(N, NON_SUB_COLS) });
