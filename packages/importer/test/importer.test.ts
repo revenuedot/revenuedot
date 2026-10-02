@@ -205,6 +205,30 @@ describe("revenuedot import", () => {
 });
 
 describe("the revenuedot command", () => {
+  it("asks RevenueCat for pages of 50 by default; a page that times out stops with advice to use a smaller --page-size", async () => {
+    e = await setup();
+    await e.run({ limit: 1, dryRun: true });
+    expect(e.rc.requests.find((r) => r.template === "/v2/projects/{project_id}/customers")!.query.get("limit")).toBe("50");
+
+    // The server takes longer than the client waits for any page of more than 4 customers.
+    const base = bridge(e.h);
+    let importCalls = 0;
+    const slow: typeof base = async (url, init) => {
+      if (url.endsWith("/import/customers")) {
+        importCalls++;
+        if (JSON.parse(String(init?.body)).customers.length > 4) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      }
+      return base(url, init);
+    };
+    const target = { fetch: slow, sleep: async () => {}, timeoutMs: 60_000 };
+    await expect(e.run({ targetHttp: target })).rejects.toThrow("RevenueDot did not finish importing a page of 14 customers within 60 s. Run the same command again with --page-size 7: it resumes at this page.");
+    expect(importCalls).toBe(2);
+    expect(loadState(e.statePath)!.customers).toMatchObject({ imported: 0, complete: false });
+    const r = await e.run({ targetHttp: target, pageSize: 4 });
+    expect(r.customers).toMatchObject({ imported: 14, complete: true, pages: 4 });
+    expect((await verify(e)).mismatches).toEqual([]);
+  });
+
   it("imports, verifies and plans over real HTTP, with usage errors as exit code 2", async () => {
     e = await setup();
     const server = await serveHarness(e.h);
@@ -233,6 +257,9 @@ describe("the revenuedot command", () => {
       expect(out.join("\n")).toContain(`${server.url}/v1/notifications/apple/app_ios`);
 
       expect(await main(["import", "--rc-project", PROJECT], { ...io, env: {} })).toBe(2);
+      err.length = 0;
+      expect(await main(["import", ...common, "--page-size", "101"], io)).toBe(1);
+      expect(err.join("\n")).toContain("--page-size must be 100 or less");
       expect(await main(["import", ...common.slice(2), "--rc-key", "appl_public"], io)).toBe(2);
       expect(await main(["import", "--dry-run", ...common, "--json"], io)).toBe(0);
       expect(JSON.parse(out[out.length - 1]!)).toMatchObject({ dryRun: true, customers: { imported: 14 } });

@@ -24,6 +24,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   "connect-recovery": () => import("./connect-recovery.ts"),
   move: () => import("./move.ts"),
   billing: () => import("./billing.ts"),
+  import: () => import("./import.ts"),
 };
 
 async function main() {
