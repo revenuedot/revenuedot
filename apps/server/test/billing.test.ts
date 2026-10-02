@@ -231,6 +231,10 @@ describe("where billing does not run", () => {
     const none = createApp({ db: h.db, now: h.now, stores: defaultStores(), edition: "cloud" });
     const page = await call("GET", "/v2/billing", undefined, none);
     expect(page.body).toMatchObject({ stripe_ready: false, account: { plan: "free" } });
+    // Until Stripe is set up the dashboard links no Billing page (production today); with it, it does.
+    expect((await call("GET", "/auth/me", undefined, none)).body.account).toMatchObject({ edition: "cloud", billing_ready: false });
+    expect((await call("GET", "/auth/me", undefined, live)).body.account.billing_ready).toBe(false);
+    expect((await call("GET", "/auth/me")).body.account.billing_ready).toBe(true);
     // Without a session: 401.
     expect((await app.fetch(new Request("https://app.revenuedot.test/v2/billing"))).status).toBe(401);
     const [acct] = await h.db.select().from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, "usr_1"));
