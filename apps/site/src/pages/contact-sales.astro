@@ -234,7 +234,7 @@ const KEYS = "ABCDEFGHIJ";
 <script>
   import { AsYouType, getExampleNumber, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/max";
   import examples from "libphonenumber-js/mobile/examples";
-  import { parsePhone, validate } from "../../worker/lead";
+  import { isEmail, parsePhone, validate } from "../../worker/lead";
 
   const form = document.getElementById("cs-form") as HTMLFormElement;
   const steps = [...form.querySelectorAll<HTMLElement>(".step")];
@@ -291,7 +291,7 @@ const KEYS = "ABCDEFGHIJ";
   // Saves the answers so far once the email is valid, so a buyer who leaves halfway is not lost.
   const saveDraft = () => {
     const body = { ...data(), step: at + 1 };
-    if (!validate({ ...body, name: "x", company: "x", role: "other", phone: "+14155550132", revenue: "undisclosed", current: "other", timeline: "researching" }).ok) return;
+    if (!isEmail(String(body.email ?? "").trim())) return;
     fetch("/api/contact-sales/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
   };
 
