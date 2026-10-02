@@ -18,7 +18,8 @@ export interface Manifest {
 export interface ExportInfo { id: string; status: "queued" | "running" | "succeeded" | "failed" | "expired"; error?: string | null; rows?: number; progress?: { table: number } | null }
 export interface PlanTable { name: string; archive_rows: number; target_rows: number }
 export interface Plan { project: { id: string; name: string | null; exists: boolean; state: string | null }; conflicts: string[]; needs_replace: boolean; tables: PlanTable[]; secrets_included: boolean }
-export interface VerifyTable { name: string; source_rows: number; target_rows: number; source_checksum: string; target_checksum: string; match: boolean }
+/** `skipped_rows`: rows written on the source while it was exported whose parent row (a new customer) the archive lacks. */
+export interface VerifyTable { name: string; source_rows: number; target_rows: number; skipped_rows?: number; source_checksum: string; target_checksum: string; match: boolean }
 export interface VerifyResult { done: boolean; tables?: VerifyTable[]; ok?: boolean }
 export interface NotificationUrl { app_id: string; app_name: string; store: string; url: string; where: string }
 export interface FinishReport {
@@ -195,6 +196,8 @@ export async function runMove(ctx: MoveContext, s: MoveState, deadline = Infinit
           throw new MoveError(`${s.error}${s.mode === "finish" ? ` ${ctx.source.label} serves the project again.` : ""}`);
         }
         log(`Verified: ${s.verify.length} tables, ${s.verify.reduce((n, t) => n + t.target_rows, 0)} rows, every count and checksum matches.`);
+        const left = s.verify.reduce((n, t) => n + (t.skipped_rows ?? 0), 0);
+        if (left) log(`${left} row(s) written on ${ctx.source.label} during the export belong to records created after their table was read (such as a new app user); they were left out${s.mode === "copy" ? " and arrive with --finish" : ", and the app creates them again on the new server"}.`);
         s.phase = s.mode === "finish" ? "finish" : "done";
         await save();
         break;
@@ -236,7 +239,7 @@ export function formatPlan(p: Plan): string {
 export function formatVerify(v: VerifyTable[]): string {
   const bad = v.filter((t) => !t.match);
   const lines = [`${"Table".padEnd(32)} ${"Source".padStart(10)} ${"Target".padStart(10)}  Checksum`];
-  for (const t of v.filter((x) => x.source_rows || x.target_rows || !x.match)) lines.push(`${t.name.padEnd(32)} ${String(t.source_rows).padStart(10)} ${String(t.target_rows).padStart(10)}  ${t.match ? "match" : "DIFFERENT"}`);
+  for (const t of v.filter((x) => x.source_rows || x.target_rows || !x.match)) lines.push(`${t.name.padEnd(32)} ${String(t.source_rows).padStart(10)} ${String(t.target_rows).padStart(10)}  ${t.match ? "match" : "DIFFERENT"}${t.skipped_rows ? ` (${t.skipped_rows} left out: created during the export)` : ""}`);
   lines.push("", bad.length ? `${bad.length} table(s) differ.` : `All ${v.length} tables match.`);
   return lines.join("\n");
 }

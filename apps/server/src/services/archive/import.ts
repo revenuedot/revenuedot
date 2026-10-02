@@ -3,7 +3,7 @@ import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { fromBase64, toBase64 } from "../signing.js";
 import { seal, unseal, type SecretKey } from "../secrets.js";
-import { PassphraseError, bytesToLines, decryptJson, gunzip, passphraseKey, sha256Hex, type Kdf } from "./format.js";
+import { PassphraseError, ZERO_SUM, addRows, addSums, bytesToLines, decryptJson, gunzip, passphraseKey, sha256Hex, type Kdf } from "./format.js";
 import { ARCHIVE_FORMAT, ARCHIVE_SCHEMA, ident, rowsOf, scopeWhere, tableInfos } from "./tables.js";
 import type { SecretEntry } from "./export.js";
 
@@ -129,7 +129,7 @@ export async function beginImport(db: DB, imp: ImportRow, m: Manifest, o: { pass
   if (imp.projectId === m.project.id && imp.status === "importing") await db.delete(schema.projects).where(and(eq(schema.projects.id, m.project.id), eq(schema.projects.moveState, "incoming")));
   const filesDone = {};
   const [row] = await db.update(I).set({
-    status: "importing", projectId: m.project.id, manifest: m as unknown as Record<string, unknown>, sourceUrl: m.source?.url ?? null, secretKey, filesDone, updatedAt: o.now, verify: null,
+    status: "importing", projectId: m.project.id, manifest: m as unknown as Record<string, unknown>, sourceUrl: m.source?.url ?? null, secretKey, filesDone, updatedAt: o.now, verify: null, report: {},
   }).where(eq(I.id, imp.id)).returning();
   return row!;
 }
@@ -145,7 +145,7 @@ function fileOf(m: Manifest, name: string) {
 }
 
 /** Applies one archive file. Answers whether it was applied (false: the same file was applied before). */
-export async function applyFile(db: DB, imp: ImportRow, name: string, bytes: Uint8Array, o: { userId: string; serverKey: SecretKey | null; now: Date }): Promise<{ applied: boolean; rows: number }> {
+export async function applyFile(db: DB, imp: ImportRow, name: string, bytes: Uint8Array, o: { userId: string; serverKey: SecretKey | null; now: Date }): Promise<{ applied: boolean; rows: number; skipped?: number }> {
   if (imp.status !== "importing" || !imp.manifest || !imp.projectId) throw new ImportError("Send the manifest first (POST /v2/imports).", "state");
   const m = imp.manifest as unknown as Manifest;
   const hit = fileOf(m, name);
@@ -159,6 +159,7 @@ export async function applyFile(db: DB, imp: ImportRow, name: string, bytes: Uin
   const missing = m.tables.slice(0, at).flatMap((t) => t.files.map((f) => f.name)).filter((n) => !imp.filesDone[n]);
   if (missing.length) throw new ImportError(`Send ${missing[0]} before ${name} (tables load in the manifest's order).`, "state");
   let rows = 0;
+  let skipped: string[] = [];
   if (hit.secret) {
     if (!hit.table.files.every((f) => imp.filesDone[f.name])) throw new ImportError(`Send the ${hit.table.name} table files before its secrets.`, "state");
     if (!imp.secretKey) throw new ImportError("The archive has encrypted secrets: send the export passphrase.", "passphrase");
@@ -167,18 +168,38 @@ export async function applyFile(db: DB, imp: ImportRow, name: string, bytes: Uin
     try { box = await decryptJson(raw, bytes); } catch (e) { throw new ImportError(e instanceof PassphraseError ? e.message : String(e), "passphrase"); }
     rows = await applySecrets(db, imp.projectId, hit.table.name, box.rows, o.serverKey);
   } else {
-    rows = await applyRows(db, imp.projectId, hit.table.name, hit.table.columns, bytesToLines(await gunzip(bytes)), { userId: o.userId, now: o.now, from: m.source?.url ?? null });
+    ({ rows, skipped } = await applyRows(db, imp.projectId, hit.table.name, hit.table.columns, bytesToLines(await gunzip(bytes)), { userId: o.userId, now: o.now, from: m.source?.url ?? null }));
   }
+  // Rows left out (their parent is not in the archive) are kept as a count and checksum, so verification still adds up.
+  const skip = skipped.length ? { [name]: { table: hit.table.name, rows: skipped.length, sum: await addRows(ZERO_SUM, skipped) } } : null;
   // Recorded atomically per file name, so two parallel uploads never lose each other's mark.
-  await db.update(I).set({ filesDone: sql`${I.filesDone} || ${JSON.stringify({ [name]: digest })}::jsonb`, updatedAt: o.now }).where(eq(I.id, imp.id));
-  return { applied: true, rows };
+  await db.update(I).set({
+    filesDone: sql`${I.filesDone} || ${JSON.stringify({ [name]: digest })}::jsonb`, updatedAt: o.now,
+    ...(skip ? { report: sql`jsonb_set(${I.report}, '{skipped_files}', coalesce(${I.report}->'skipped_files', '{}'::jsonb) || ${JSON.stringify(skip)}::jsonb)` } : {}),
+  }).where(eq(I.id, imp.id));
+  return { applied: true, rows, skipped: skipped.length };
 }
 
-/** Upserts rows of one table, only for this project. */
-export async function applyRows(db: DB, projectId: string, table: string, columns: string[], lines: string[], o: { userId: string; now: Date; from: string | null }): Promise<number> {
+/** Rows an import left out, per table: their count and checksum (see applyRows). */
+export function skippedByTable(imp: ImportRow): Map<string, { rows: number; sum: string }> {
+  const out = new Map<string, { rows: number; sum: string }>();
+  const files = (imp.report?.skipped_files ?? {}) as Record<string, { table: string; rows: number; sum: string }>;
+  for (const f of Object.values(files)) {
+    const cur = out.get(f.table) ?? { rows: 0, sum: ZERO_SUM };
+    out.set(f.table, { rows: cur.rows + f.rows, sum: addSums(cur.sum, f.sum) });
+  }
+  return out;
+}
+
+/**
+ * Upserts rows of one table, only for this project. A row whose parent row (by foreign key) is not here is left out and
+ * returned in `skipped`: the source keeps serving while it is exported table by table, so a customer created after the
+ * customers table was read can have an alias or activity in a later table. Loading it would fail the whole file forever.
+ */
+export async function applyRows(db: DB, projectId: string, table: string, columns: string[], lines: string[], o: { userId: string; now: Date; from: string | null }): Promise<{ rows: number; skipped: string[] }> {
   const t = tableInfos().get(table);
   if (!t) throw new ImportError(`Unknown table ${table}.`);
-  if (!lines.length) return 0;
+  if (!lines.length) return { rows: 0, skipped: [] };
   const cols = columns.filter((c) => t.columns.includes(c));
   if (table === "projects") {
     if (lines.length !== 1 || (JSON.parse(lines[0]!) as { id?: string }).id !== projectId) throw new ImportError("The projects file must hold exactly the imported project.");
@@ -202,9 +223,25 @@ export async function applyRows(db: DB, projectId: string, table: string, column
   const fill = Object.entries(t.fill ?? {});
   const fillCols = fill.length ? sql`, ${sql.join(fill.map(([c]) => ident(c)), sql`, `)}` : sql``;
   const fillVals = fill.length ? sql`, ${sql.join(fill.map(([, v]) => sql.raw(v)), sql`, `)}` : sql``;
+  const parentThere = t.fks.map((fk) => {
+    const isNull = sql.join(fk.columns.map((c) => sql`r.${ident(c)} IS NULL`), sql` OR `);
+    const match = sql.join(fk.columns.map((c, i) => sql`p.${ident(fk.parentColumns[i]!)} = r.${ident(c)}`), sql` AND `);
+    return sql`(${isNull} OR EXISTS (SELECT 1 FROM ${ident(fk.parent)} p WHERE ${match}))`;
+  });
   let written = 0;
+  const skipped: string[] = [];
   for (let i = 0; i < lines.length; i += BATCH) {
-    const json = `[${lines.slice(i, i + BATCH).join(",")}]`;
+    let batch = lines.slice(i, i + BATCH);
+    if (parentThere.length) {
+      const orphans = rowsOf<{ i: number }>(await db.execute(sql`SELECT (e.ord - 1)::int AS i FROM json_array_elements(${`[${batch.join(",")}]`}::json) WITH ORDINALITY AS e(v, ord), LATERAL json_populate_record(NULL::${ident(table)}, e.v) r WHERE NOT (${sql.join(parentThere, sql` AND `)})`));
+      if (orphans.length) {
+        const out = new Set(orphans.map((x) => Number(x.i)));
+        skipped.push(...batch.filter((_l, k) => out.has(k)));
+        batch = batch.filter((_l, k) => !out.has(k));
+        if (!batch.length) continue;
+      }
+    }
+    const json = `[${batch.join(",")}]`;
     const res = await db.execute(sql`INSERT INTO ${ident(table)} (${target}${fillCols}) SELECT ${source}${fillVals} FROM json_populate_recordset(NULL::${ident(table)}, ${json}::json) r WHERE ${inScope} ON CONFLICT (${pk}) ${onConflict}`);
     written += Number((res as { rowCount?: number; count?: number }).rowCount ?? (res as { count?: number }).count ?? 0);
   }
@@ -213,7 +250,7 @@ export async function applyRows(db: DB, projectId: string, table: string, column
     await db.update(schema.projects).set({ ownerUserId: o.userId, moveState: "incoming", movedInAt: o.now, movedInFrom: o.from, moveUpdatedAt: o.now }).where(eq(schema.projects.id, projectId));
     await db.insert(schema.memberships).values({ userId: o.userId, projectId, role: "admin" }).onConflictDoUpdate({ target: [schema.memberships.userId, schema.memberships.projectId], set: { role: "admin" } });
   }
-  return written;
+  return { rows: written, skipped };
 }
 
 function idsInTarget(parent: string, projectId: string): ReturnType<typeof sql> {

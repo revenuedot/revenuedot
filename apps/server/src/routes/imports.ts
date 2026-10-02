@@ -6,7 +6,8 @@ import type { Deps } from "../context.js";
 import { SESSION_COOKIE, sessionUser } from "../services/sessions.js";
 import { needsVerification } from "../services/account-email.js";
 import { advanceExport, checkDownloadToken, createExport, exportTar } from "../services/archive/export.js";
-import { ImportError, applyFile, applyMembers, beginImport, createImportToken, finishImport, importForToken, planImport, type ImportRow, type Manifest } from "../services/archive/import.js";
+import { ImportError, applyFile, applyMembers, beginImport, createImportToken, finishImport, importForToken, planImport, skippedByTable, type ImportRow, type Manifest } from "../services/archive/import.js";
+import { ZERO_SUM, addSums } from "../services/archive/format.js";
 import { apiOrigin, archiveRuntime, linkMaterial } from "../services/archive/runtime.js";
 import { moveStateChanged } from "../services/archive/gate.js";
 
@@ -133,9 +134,13 @@ export function importRoutes(deps: Deps) {
     if (!e || e.status === "failed") return err(c, 409, "resource_locked_error", `Verification failed: ${e?.error ?? "unknown"}`);
     if (e.status !== "succeeded") return c.json({ object: "import_verify", done: false, tables_done: e.progress?.table ?? 0 });
     const mine = new Map(e.tables.map((t) => [t.name, t]));
+    // Rows left out because their parent was not in the archive count towards the source's numbers (applyRows).
+    const skipped = skippedByTable(imp);
     const tables = m.tables.map((t) => {
       const x = mine.get(t.name);
-      return { name: t.name, source_rows: t.rows, target_rows: x?.rows ?? 0, source_checksum: t.checksum, target_checksum: x?.checksum ?? "", match: !!x && x.rows === t.rows && x.checksum === t.checksum };
+      const sk = skipped.get(t.name) ?? { rows: 0, sum: ZERO_SUM };
+      const match = !!x && x.rows + sk.rows === t.rows && addSums(x.checksum, sk.sum) === t.checksum;
+      return { name: t.name, source_rows: t.rows, target_rows: x?.rows ?? 0, skipped_rows: sk.rows, source_checksum: t.checksum, target_checksum: x?.checksum ?? "", match };
     });
     const ok = tables.every((t) => t.match);
     await db.update(I).set({ verify: { export_id: exportId, manifest_export: m.export_id ?? null, ok, at: deps.now().getTime() } }).where(eq(I.id, imp.id));

@@ -21,7 +21,7 @@ interface Export {
   download_url?: string;
 }
 interface PlanTable { name: string; archive_rows: number; target_rows: number }
-interface VerifyTable { name: string; source_rows: number; target_rows: number; match: boolean }
+interface VerifyTable { name: string; source_rows: number; target_rows: number; skipped_rows?: number; match: boolean }
 interface NoteUrl { app_id: string; app_name: string; store: string; url: string; where: string }
 interface Move {
   object: "project_move"; id: string; status: "running" | "ready" | "copied" | "finished" | "failed" | "cancelled"; target_url: string; mode: "copy" | "finish"; dry_run: boolean;
@@ -120,9 +120,10 @@ function PlanTableView({ tables }: { tables: PlanTable[] }) {
 function VerifyView({ tables }: { tables: VerifyTable[] }) {
   const bad = tables.filter((t) => !t.match);
   const rows = tables.reduce((n, t) => n + t.target_rows, 0);
+  const left = tables.reduce((n, t) => n + (t.skipped_rows ?? 0), 0);
   return (
     <div className="stack">
-      <div className={`banner ${bad.length ? "err" : "ok"}`} role="status">{bad.length ? `${bad.length} table(s) differ: ${bad.map((t) => t.name).join(", ")}.` : `Verified: all ${tables.length} tables and ${fmt.int(rows)} rows match, by count and checksum.`}</div>
+      <div className={`banner ${bad.length ? "err" : "ok"}`} role="status">{bad.length ? `${bad.length} table(s) differ: ${bad.map((t) => t.name).join(", ")}.` : `Verified: all ${tables.length} tables and ${fmt.int(rows)} rows match, by count and checksum.${left ? ` ${fmt.int(left)} row(s) written here during the export belong to records created after their table was read (such as a new app user); Finish move copies them.` : ""}`}</div>
       {bad.length > 0 && (
         <div className="tbl"><table><thead><tr><th>Table</th><th className="num">Here</th><th className="num">There</th></tr></thead>
           <tbody>{bad.map((t) => <tr key={t.name}><td className="mono">{t.name}</td><td className="num mono">{t.source_rows}</td><td className="num mono">{t.target_rows}</td></tr>)}</tbody></table></div>

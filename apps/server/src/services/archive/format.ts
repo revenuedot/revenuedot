@@ -35,6 +35,9 @@ export async function addRows(sum: string, lines: string[]): Promise<string> {
   return s.toString(16).padStart(64, "0");
 }
 
+/** Two table checksums added (rows split between two sets, such as rows loaded and rows left out). */
+export const addSums = (a: string, b: string) => ((BigInt(`0x${a}`) + BigInt(`0x${b}`)) % MOD).toString(16).padStart(64, "0");
+
 export const linesToBytes = (lines: string[]) => enc.encode(lines.length ? `${lines.join("\n")}\n` : "");
 export const bytesToLines = (b: Uint8Array) => dec.decode(b).split("\n").filter((l) => l.length > 0);
 

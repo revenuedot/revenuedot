@@ -138,6 +138,8 @@ export interface TableInfo extends ArchiveTable {
   /** The columns an archive holds (all but `local`). */
   columns: string[];
   pk: string[];
+  /** Foreign keys to other archived tables (not `projects`): an import checks each row's parent is there. */
+  fks: { columns: string[]; parent: string; parentColumns: string[] }[];
 }
 
 let infos: Map<string, TableInfo> | null = null;
@@ -147,6 +149,7 @@ export function tableInfos(): Map<string, TableInfo> {
   if (infos) return infos;
   const byName = new Map<string, ReturnType<typeof getTableConfig>>();
   for (const v of Object.values(schema) as unknown[]) if (v instanceof PgTable) { const cfg = getTableConfig(v); byName.set(cfg.name, cfg); }
+  const archived = new Set(ARCHIVE_TABLES.map((t) => t.name));
   infos = new Map();
   for (const t of ARCHIVE_TABLES) {
     const cfg = byName.get(t.name);
@@ -154,7 +157,9 @@ export function tableInfos(): Map<string, TableInfo> {
     const allColumns = cfg.columns.map((c) => c.name);
     const pk = cfg.primaryKeys[0]?.columns.map((c) => c.name) ?? cfg.columns.filter((c) => c.primary).map((c) => c.name);
     if (!pk.length) throw new Error(`archive: ${t.name} has no primary key`);
-    infos.set(t.name, { ...t, allColumns, columns: allColumns.filter((c) => !t.local?.includes(c)), pk });
+    const fks = cfg.foreignKeys.map((fk) => fk.reference()).map((r) => ({ columns: r.columns.map((c) => c.name), parent: getTableConfig(r.foreignTable).name, parentColumns: r.foreignColumns.map((c) => c.name) }))
+      .filter((fk) => fk.parent !== "projects" && archived.has(fk.parent) && !fk.columns.some((c) => t.local?.includes(c)));
+    infos.set(t.name, { ...t, allColumns, columns: allColumns.filter((c) => !t.local?.includes(c)), pk, fks });
   }
   return infos;
 }

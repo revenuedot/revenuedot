@@ -13,6 +13,8 @@ import { applyRows, createImportToken } from "../src/services/archive/import.js"
 import { createSession } from "../src/services/sessions.js";
 import { projectForHost } from "../src/services/web/domains.js";
 import { gunzip, sha256Hex, untar } from "../src/services/archive/format.js";
+import { advanceExport, createExport } from "../src/services/archive/export.js";
+import { dbStore } from "../src/services/archive/store.js";
 import { tick } from "../src/services/tick.js";
 import { moveStateChanged } from "../src/services/archive/gate.js";
 import { seedEverything } from "./archive-seed.js";
@@ -211,6 +213,38 @@ describe("export and import round trip", () => {
     expect((await srcApp.fetch(new Request(e.download_url!.replace(/.$/, "x")))).status).toBe(404);
     src.setNow(new Date(src.now().getTime() + 2 * 3600_000));
     expect((await srcApp.fetch(new Request(e.download_url!))).status).toBe(404);
+  });
+});
+
+describe("a live source", () => {
+  it("rows written while the export runs (a new app user's customer, alias and activity) do not stop the copy", async () => {
+    // The export reads one table after another over several ticks while apps keep calling the source.
+    const rt = { db: src.db, store: dbStore(src.db), now: src.now(), serverKey: k1, budgetMs: 0 };
+    const e = await createExport(rt, { projectId: "proj1", purpose: "move", passphrase: PASS });
+    const order = [...tableInfos().keys()];
+    let row = e, injected = false;
+    while (row.status !== "succeeded") {
+      row = (await advanceExport(rt, e.id))!;
+      if (!injected && row.progress && row.progress.table > order.indexOf("customers")) {
+        injected = true;
+        // GET /v1/subscribers for a new install, even while paused: a customer, its alias and today's activity.
+        expect((await srcApp.fetch(new Request("http://source.test/v1/subscribers/new-install", { headers: { authorization: `Bearer ${src.ids.testKey}` } }))).status).toBe(201);
+      }
+    }
+    expect(injected).toBe(true);
+    const source = new HttpSource("http://source.test", src.ids.secretKey, { fetch: net, sleep: async () => {} });
+    await source.project();
+    const fixed = Object.assign(Object.create(Object.getPrototypeOf(source)), source, { startExport: async () => ({ id: e.id, status: "succeeded" as const }), advanceExport: async () => ({ id: e.id, status: "succeeded" as const }) });
+    const token = (await createImportToken(dst.db, "usr_target", src.now())).token;
+    const target = new HttpTarget("http://target.test", token, { fetch: net, sleep: async () => {}, maxRetries: 0 });
+    const state = newMoveState("http://source.test", "http://target.test", "copy");
+    await runMove({ source: fixed, target, passphrase: PASS, drainSeconds: 0 }, state);
+    expect(state.phase).toBe("done");
+    // Every table matches; the rows whose customer was not in the archive yet are counted, not lost silently.
+    expect(state.verify!.filter((t) => !t.match)).toEqual([]);
+    const activity = state.verify!.find((t) => t.name === "customer_activity")!;
+    expect(activity).toMatchObject({ skipped_rows: 1, target_rows: activity.source_rows - 1 });
+    expect(await dst.db.select().from(schema.customers).where(eq(schema.customers.originalAppUserId, "new-install"))).toEqual([]);
   });
 });
 
