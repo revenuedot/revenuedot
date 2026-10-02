@@ -1,22 +1,22 @@
-# RevenueDot Individual Contributor License Agreement
+# RevenueDot Entity Contributor License Agreement
 
-This is the Harmony Individual Contributor License Agreement, version 1.0, with its blanks filled in for RevenueDot. If you contribute on behalf of your employer or another company, that company signs the [Entity Contributor License Agreement](CLA-entity.md) instead. How to sign is at the [end of this file](#how-to-sign).
+This is the Harmony Entity Contributor License Agreement, version 1.0, with its blanks filled in for RevenueDot. A company signs it when its employees or contractors contribute on its behalf. Individuals contributing for themselves sign the [Individual Contributor License Agreement](CLA.md). How to sign is at the [end of this file](#how-to-sign).
 
 ---
 
-## Individual Contributor License Agreement
+## Entity Contributor License Agreement
 
 Thank you for your interest in contributing to Circo, Inc. ("We" or "Us").
 
-This contributor agreement ("Agreement") documents the rights granted by contributors to Us. To make this document effective, please sign it and send it to Us by mail, email, fax, or electronic submission, following the instructions at https://github.com/revenuedot/revenuedot/blob/main/.github/CLA.md#how-to-sign. This is a legally binding document, so please read it carefully before agreeing to it. The Agreement may cover more than one software project managed by Us.
+This contributor agreement ("Agreement") documents the rights granted by contributors to Us. To make this document effective, please sign it and send it to Us by mail, email, fax, or electronic submission, following the instructions at https://github.com/revenuedot/revenuedot/blob/main/.github/CLA-entity.md#how-to-sign. This is a legally binding document, so please read it carefully before agreeing to it. The Agreement may cover more than one software project managed by Us.
 
 ### 1. Definitions
 
-"You" means the individual who Submits a Contribution to Us.
+"You" means any Legal Entity on behalf of whom a Contribution has been received by Us. "Legal Entity" means an entity which is not a natural person. "Affiliates" means other Legal Entities that control, are controlled by, or under common control with that Legal Entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such Legal Entity, whether by contract or otherwise, (ii) ownership of fifty percent (50%) or more of the outstanding shares or securities which vote to elect the management or other persons who direct such Legal Entity or (iii) beneficial ownership of such entity.
 
 "Contribution" means any work of authorship that is Submitted by You to Us in which You own or assert ownership of the Copyright. If You do not own the Copyright in the entire work of authorship, please follow the instructions in https://github.com/revenuedot/revenuedot/blob/main/CONTRIBUTING.md#work-you-do-not-own.
 
-"Copyright" means all rights protecting works of authorship owned or controlled by You, including copyright, moral and neighboring rights, as appropriate, for the full term of their existence including any extensions by You.
+"Copyright" means all rights protecting works of authorship owned or controlled by You or Your Affiliates, including copyright, moral and neighboring rights, as appropriate, for the full term of their existence including any extensions by You.
 
 "Material" means the work of authorship which is made available by Us to third parties. When this Agreement covers more than one software project, the Material means the work of authorship to which the Contribution was Submitted. After You Submit the Contribution, it may be included in the Material.
 
@@ -38,7 +38,7 @@ This contributor agreement ("Agreement") documents the rights granted by contrib
 
 #### 2.2 Patent License
 
-For patent claims including, without limitation, method, process, and apparatus claims which You own, control or have the right to grant, now or in the future, You grant to Us a perpetual, worldwide, non-exclusive, transferable, royalty-free, irrevocable patent license, with the right to sublicense these rights to multiple tiers of sublicensees, to make, have made, use, sell, offer for sale, import and otherwise transfer the Contribution and the Contribution in combination with the Material (and portions of such combination). This license is granted only to the extent that the exercise of the licensed rights infringes such patent claims; and provided that this license is conditioned upon compliance with Section 2.3.
+For patent claims including, without limitation, method, process, and apparatus claims which You or Your Affiliates own, control or have the right to grant, now or in the future, You grant to Us a perpetual, worldwide, non-exclusive, transferable, royalty-free, irrevocable patent license, with the right to sublicense these rights to multiple tiers of sublicensees, to make, have made, use, sell, offer for sale, import and otherwise transfer the Contribution and the Contribution in combination with the Material (and portions of such combination). This license is granted only to the extent that the exercise of the licensed rights infringes such patent claims; and provided that this license is conditioned upon compliance with Section 2.3.
 
 #### 2.3 Outbound License
 
@@ -64,9 +64,9 @@ You confirm that:
 
 (a) You have the legal authority to enter into this Agreement.
 
-(b) You own the Copyright and patent claims covering the Contribution which are required to grant the rights under Section 2.
+(b) You or Your Affiliates own the Copyright and patent claims covering the Contribution which are required to grant the rights under Section 2.
 
-(c) The grant of rights under Section 2 does not violate any grant of rights which You have made to third parties, including Your employer. If You are an employee, You have had Your employer approve this Agreement or sign the Entity version of this document. If You are less than eighteen years old, please have Your parents or guardian sign the Agreement.
+(c) The grant of rights under Section 2 does not violate any grant of rights which You or Your Affiliates have made to third parties.
 
 (d) You have followed the instructions in https://github.com/revenuedot/revenuedot/blob/main/CONTRIBUTING.md#work-you-do-not-own, if You do not own the Copyright in the entire work of authorship Submitted.
 
@@ -94,6 +94,8 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU BE LIABL
 
 Name: ________________________
 
+Title: ________________________
+
 Address: ________________________
 
 **Us**
@@ -102,9 +104,8 @@ Name: Circo, Inc.
 
 ---
 
-Based on the Harmony Individual Contributor License Agreement, version 1.0, by Project Harmony (https://harmonyagreements.org), licensed under the Creative Commons Attribution 3.0 Unported License (https://creativecommons.org/licenses/by/3.0/). Changes: the template blanks are filled in and outbound license Option Five is selected.
+Based on the Harmony Entity Contributor License Agreement, version 1.0, by Project Harmony (https://harmonyagreements.org), licensed under the Creative Commons Attribution 3.0 Unported License (https://creativecommons.org/licenses/by/3.0/). Changes: the template blanks are filled in and outbound license Option Five is selected.
 
 ## How to sign
 
-- **Individuals:** comment on your pull request: "I have read the CLA Document and I hereby sign the CLA". Your GitHub account and the comment are your signature.
-- **Companies:** sign the [Entity Contributor License Agreement](CLA-entity.md) and email it to legal@revenuedot.app, with the GitHub accounts of the people who contribute for you.
+An officer of the company fills in the signature block above, signs, and emails the signed copy to legal@revenuedot.app with the GitHub accounts of the people who contribute on the company's behalf. Each of those people also comments on their first pull request: "I have read the CLA Document and I hereby sign the CLA".
