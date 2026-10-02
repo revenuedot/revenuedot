@@ -114,16 +114,15 @@
   "self-host": {
     "title": "Self-hosting: docker compose with the repo's image on a Railway database, owner sign-up, a purchase, a restart",
     "date": "2026-10-02",
-    "run": "202610020513165600",
-    "passed": 2,
-    "failed": 2,
-    "error": "stopped: enough free disk for an image build (3.9 GB free)"
+    "run": "202610020752205600",
+    "passed": 42,
+    "failed": 0
   },
   "move": {
     "title": "Self-hosted to Cloud with npx revenuedot move: purchases-js before and after, webhooks keep their secret",
     "date": "2026-10-02",
-    "run": "202610020513165600",
-    "passed": 48,
+    "run": "202610020807295600",
+    "passed": 56,
     "failed": 0
   },
   "billing": {
