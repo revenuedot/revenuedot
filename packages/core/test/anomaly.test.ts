@@ -57,6 +57,20 @@ describe("detectAnomaly", () => {
     expect(detectAnomaly("new_subscriptions", flat, 8).anomaly).toBe(false);
   });
 
+  it("needs 14 days with a value, so a young or sparse project never alerts on its first sales", () => {
+    // A week of sales after three weeks of nothing: the median is 0 and every sale would look like a spike.
+    const young = [...Array(21).fill(0), ...Array(7).fill(100)];
+    expect(detectAnomaly("revenue", young, 100)).toMatchObject({ anomaly: false, reason: "not_enough_history" });
+    expect(detectAnomaly("revenue", [...Array(26).fill(0), 40, 60], 50)).toMatchObject({ anomaly: false, reason: "not_enough_history" });
+    // Sales on one day in three.
+    const sparse = Array.from({ length: 28 }, (_, i) => (i % 3 === 0 ? 30 : 0));
+    expect(detectAnomaly("revenue", sparse, 30)).toMatchObject({ anomaly: false, reason: "not_enough_history" });
+    expect(detectAnomaly("new_subscriptions", [...Array(26).fill(0), 3, 4], 3)).toMatchObject({ anomaly: false, reason: "not_enough_history" });
+    // Fourteen days with sales are enough history to judge.
+    expect(detectAnomaly("revenue", [...Array(14).fill(0), ...steady(1000, 50, 14)], 5000)).toMatchObject({ anomaly: true, direction: "up" });
+    expect(detectAnomaly("revenue", [...Array(15).fill(0), ...steady(1000, 50, 13)], 5000)).toMatchObject({ reason: "not_enough_history" });
+  });
+
   it("needs 14 days of history and something in it", () => {
     expect(detectAnomaly("revenue", steady(1000, 50, 13), 0)).toMatchObject({ anomaly: false, reason: "not_enough_history" });
     expect(detectAnomaly("revenue", steady(1000, 50, 14), 0)).toMatchObject({ anomaly: true });

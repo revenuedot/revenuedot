@@ -8,8 +8,9 @@
  *   - the relative change |x − median| / median is at least `relative` (always true when the median is 0),
  *   - the absolute change is at least `minAbsolute` for that series (so $3 against $1 never alerts).
  * A flat history (MAD 0) would make every change infinite, so the spread has floors: 10% of the median, and the
- * series' minimum change divided by `z`. Fewer than ANOMALY_MIN_HISTORY days of history, or a history of nothing but
- * zeros (an app that is not live yet), is "not enough history" and never alerts.
+ * series' minimum change divided by `z`. A history with fewer than ANOMALY_MIN_HISTORY days that have a value (an app
+ * that went live last week, or one that sells on one day in three) is "not enough history" and never alerts: its median
+ * is 0, and every sale would look like a spike.
  */
 
 export type AnomalySensitivity = "low" | "medium" | "high";
@@ -23,7 +24,7 @@ export const ANOMALY_RULES: Record<AnomalySensitivity, SensitivityRule> = {
   high: { z: 2, relative: 0.2, minAbsolute: { revenue: 10, new_subscriptions: 2 } },
 };
 
-/** Days of history the baseline uses, and the fewest it accepts. */
+/** Days of history the baseline uses, and the fewest days with a value (not 0) it accepts. */
 export const ANOMALY_BASELINE_DAYS = 28;
 export const ANOMALY_MIN_HISTORY = 14;
 
@@ -64,7 +65,7 @@ export function detectAnomaly(series: AnomalySeries, history: number[], value: n
   const change = med !== 0 ? diff / Math.abs(med) : null;
   const direction = diff > 0 ? "up" : diff < 0 ? "down" : "flat";
   const base = { series, value, median: med, spread, z: round(z, 2), change: change === null ? null : round(change, 4), direction } as const;
-  if (h.length < ANOMALY_MIN_HISTORY || h.every((x) => x === 0)) return { ...base, anomaly: false, reason: "not_enough_history" };
+  if (h.filter((x) => x !== 0).length < ANOMALY_MIN_HISTORY) return { ...base, anomaly: false, reason: "not_enough_history" };
   const anomaly = Math.abs(z) >= rule.z && (change === null || Math.abs(change) >= rule.relative) && Math.abs(diff) >= minAbs;
   return { ...base, anomaly, reason: anomaly ? "anomaly" : "within_range" };
 }

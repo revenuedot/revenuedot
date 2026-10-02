@@ -84,7 +84,12 @@ export async function weeklyDigest(deps: NotifyDeps, projectId: string, weekStar
   };
   const mrr = series("mrr", "mrr"), rev = series("revenue", "revenue"), cust = series("customers_new", "new_customers"), trials = series("trials_new", "new_trials");
   const churned = series("churn", "churned_actives"), rate = series("churn", "churn_rate");
-  const week = (k: 0 | 1): WeekNumbers => ({ mrr: mrr[k] ?? 0, revenue: rev[k] ?? 0, newCustomers: cust[k] ?? 0, newTrials: trials[k] ?? 0, churned: Math.abs(churned[k] ?? 0), churnRate: rate[k] ?? null });
+  // Churned actives are net of billing recoveries: a week with more recoveries than churns counts as no churn, never as
+  // churn of the opposite sign.
+  const week = (k: 0 | 1): WeekNumbers => ({
+    mrr: mrr[k] ?? 0, revenue: rev[k] ?? 0, newCustomers: cust[k] ?? 0, newTrials: trials[k] ?? 0,
+    churned: Math.max(0, churned[k] ?? 0), churnRate: rate[k] == null ? null : Math.max(0, rate[k]!),
+  });
   const previous = week(0), current = week(1);
   const empty = [previous, current].every((w) => !w.mrr && !w.revenue && !w.newCustomers && !w.newTrials && !w.churned);
   return { weekStart, currency, current, previous, empty };

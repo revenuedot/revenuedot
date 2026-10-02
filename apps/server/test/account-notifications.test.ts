@@ -45,7 +45,7 @@ const mails = (to: string) => s!.mail.sent.filter((m) => m.to === to);
 
 /**
  * Project "scan": four monthly $10 subscriptions in the week of Sep 14 (Mon) and three more plus a trial in the week of
- * Sep 21, and a refund of one of the first four.
+ * Sep 21.
  */
 async function weekData() {
   await project("scan", "Scanner");
@@ -116,6 +116,20 @@ describe("weekly summary", () => {
     expect(s.mail.sent).toHaveLength(0);
     // The empty week was handled once (no email), so it is not computed again.
     expect((await run()).analysed).toBe(0);
+  });
+
+  it("shows churned subscriptions and the churn rate", async () => {
+    s = await accountServer({ fetch: noNetwork });
+    await weekData();
+    // Two monthly subscriptions from August that end in the week of Sep 21 without renewing.
+    await purchase("scan", "2026-08-22");
+    await purchase("scan", "2026-08-23");
+    await member("uma@example.com", "scan", { weeklySummary: true });
+    s.setNow(T("2026-09-28T07:00:00Z"));
+    expect((await run()).weekly).toBe(1);
+    const [m] = mails("uma@example.com");
+    expect(m!.text).toContain("Churned subscriptions: 2 (+2)");
+    expect(m!.text).toMatch(/Churn rate: 33\.3% \(\+33\.3 pts\)/);
   });
 
   it("formats changes", () => {
@@ -209,7 +223,7 @@ describe("revenue anomaly alerts", () => {
     await project("scan");
     await project("young");
     await dailyRevenue("scan", "2026-08-31", 28, 100); // Sep 27 is a normal $100 day
-    await dailyRevenue("young", "2026-09-20", 7, 100); // a week of history only
+    await dailyRevenue("young", "2026-09-21", 7, 100); // six days of history, and a normal $100 on the day checked
     await member("abe@example.com", "scan", { anomalyAlerts: true, anomalySensitivity: "high" });
     await member("bo@example.com", "young", { anomalyAlerts: true });
     s.setNow(T("2026-09-28T07:00:00Z"));
