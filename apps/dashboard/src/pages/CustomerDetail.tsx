@@ -19,6 +19,7 @@ import { Copy, Shell } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { ConfirmDialog, Dialog, EmptyState, EVENT_TONE, Field, Menu, Panel, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
+import { listAll } from "./catalog/lib";
 import {
   attributeLabel, durationWords, eventLabel, flag, isAnonymous, money, per, PERIOD_TYPE, relative, RENEWAL, storeLabel, SUB_STATUS,
   type Attribute, type Customer, type CustomerEvent, type CustomerSummary, type Entitlement, type Offering, type Product, type Purchase, type Subscription,
@@ -276,15 +277,16 @@ interface Currency { code: string; name: string; state?: string }
 
 /** In-app currency balances, with a manual credit or debit (support goodwill, corrections), as on RevenueCat's customer page. */
 function Currencies({ pid, id, onDone }: { pid: string; id: string; onDone: (msg: string) => void }) {
-  const currencies = useQuery({ queryKey: ["virtual-currencies", pid], queryFn: () => api<List<Currency>>(`/v2/projects/${pid}/virtual_currencies?limit=100`) });
+  // Same key and shape (an array) as the In-app currencies page, which shares this cache.
+  const currencies = useQuery({ queryKey: ["virtual-currencies", pid], queryFn: () => listAll<Currency>(`/v2/projects/${pid}/virtual_currencies`) });
   const balances = useQuery({ queryKey: ["customer-balances", pid, id], queryFn: () => api<List<Balance>>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/virtual_currencies`) });
   const [open, setOpen] = useState(false);
-  const list = currencies.data?.items ?? [];
+  const list = currencies.data ?? [];
   if (!list.length) return null;
   const bal = (code: string) => balances.data?.items.find((b) => b.currency_code === code)?.balance ?? 0;
   return (
-    <Panel title="In-app currencies" link={<button type="button" className="linkbtn" onClick={() => setOpen(true)}>Adjust →</button>} flush>
-      {balances.isLoading ? <Loading lines={1} /> : (
+    <Panel title="In-app currencies" link={balances.data ? <button type="button" className="linkbtn" onClick={() => setOpen(true)}>Adjust →</button> : undefined} flush>
+      {balances.isLoading ? <Loading lines={1} /> : balances.isError ? <Failed error={balances.error} retry={() => void balances.refetch()} /> : (
         <dl className="kvs">
           {list.map((cur) => <div key={cur.code} style={{ display: "contents" }}><dt>{cur.name} <span className="mono subtle" style={{ fontSize: 12 }}>{cur.code}</span></dt><dd className="mono">{fmt.int(bal(cur.code))}</dd></div>)}
         </dl>

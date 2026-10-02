@@ -69,7 +69,13 @@ test("in-app currencies, Customer Center and audit logs", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(panel).toContainText("125");
   expect((await json(req, "GET", `${P}/customers/gamer_1/virtual_currencies`)).items[0]).toMatchObject({ currency_code: "GLD", balance: 125 });
-  await page.goto(`/projects/${pid}/product-catalog/virtual-currencies`);
+  // Back to the currencies page without a reload: both pages share the currency list in the query cache.
+  await page.evaluate((to) => { history.pushState({}, "", to); dispatchEvent(new PopStateEvent("popstate")); }, `/projects/${pid}/product-catalog/virtual-currencies`);
+  await expect(page.getByRole("cell", { name: "GLD", exact: true })).toBeVisible();
+  // And back to the customer page, which reads the list that page cached.
+  await page.evaluate((to) => { history.pushState({}, "", to); dispatchEvent(new PopStateEvent("popstate")); }, `/projects/${pid}/customers/gamer_1`);
+  await expect(panel).toContainText("125");
+  await page.evaluate((to) => { history.pushState({}, "", to); dispatchEvent(new PopStateEvent("popstate")); }, `/projects/${pid}/product-catalog/virtual-currencies`);
 
   // Edit, archive, unarchive, delete from the row menu.
   await page.getByRole("button", { name: "Actions for GLD" }).click();
