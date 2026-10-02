@@ -51,6 +51,7 @@ describe("CSV and validation (pure)", () => {
     expect(parsePrice("0", "USD")).toEqual({ error: "price must be above 0." });
     expect(parsePrice("-1", "USD")).toMatchObject({ error: expect.stringMatching(/not a number/) });
     expect(parsePrice("abc", "USD")).toMatchObject({ error: expect.stringMatching(/not a number/) });
+    expect(parsePrice("10,99", "EUR")).toEqual({ error: 'price "10,99" is not a number such as 9.99. Use a dot for decimals and no thousands separators.' });
     expect(parsePrice("100000001", "USD")).toMatchObject({ error: expect.stringMatching(/largest price/) });
   });
 
@@ -71,7 +72,7 @@ describe("CSV and validation (pure)", () => {
       "pro_monthly,,,,,JPN,JPY,1500.5,",           // 6: decimals in yen
       "pro_yearly,,,,,USA,USD,59.99,",             // 7: unknown product
       "lifetime,,,,,USA,USD,abc,",                 // 8: not a number
-      "lifetime,,,,,USA,USD,0,",                   // 9: zero (after line 8 failed, not a duplicate)
+      "lifetime,,,,,USA,USD,0,",                   // 9: the same product and territory as line 8 (whatever line 8's price)
       "new.sub,New,subscription,P1M,,USA,USD,4.99,create",   // 10: no group
       "pro_monthly,,,,,GBR,GBP,8.99,create",       // 11: create an existing product
       "x,,,,,USA,USD,1,delete",                    // 12: unknown action
@@ -88,7 +89,7 @@ describe("CSV and validation (pure)", () => {
       [6, 'JPY prices have no decimals; "1500.5" has 1.'],
       [7, "pro_yearly is not in App Store Connect for this app. Check the identifier, or set action to create to add it as a new product."],
       [8, 'price "abc" is not a number such as 9.99.'],
-      [9, "price must be above 0."],
+      [9, "lifetime in USA is on lines 8 and 9. Keep one of them."],
       [10, "New subscription new.sub needs a group: the subscription group's reference name, created when it does not exist."],
       [11, "pro_monthly already exists in App Store Connect. Leave action empty to change its prices."],
       [12, 'action "delete" is not one of: create, update, or empty.'],
@@ -334,7 +335,7 @@ describe("files, roles and errors", () => {
     s = await storeCatalogServer();
     const bad = await upload(s, "app_play", `${HEADER}\npremium:monthly,,,,,US,USD,abc,\npremium:monthly,,,,,US,USD,9.49,`);
     expect(bad.status).toBe(201);
-    expect(bad.body).toMatchObject({ status: "invalid", rows: [], errors: [{ line: 2, message: 'price "abc" is not a number such as 9.99.' }] });
+    expect(bad.body).toMatchObject({ status: "invalid", rows: [], errors: [{ line: 2, message: 'price "abc" is not a number such as 9.99.' }, { line: 3, message: "premium:monthly in US is on lines 2 and 3. Keep one of them." }] });
     expect(await commit(s, bad.body.id)).toMatchObject({ status: 409, body: { message: "This file has errors. Fix them and upload it again." } });
     expect((await upload(s, "app_play", "")).status).toBe(400);
     expect((await upload(s, "app_ts", `${HEADER}\nx,,,,,US,USD,1,`)).status).toBe(422);
@@ -342,7 +343,7 @@ describe("files, roles and errors", () => {
 
     const viewer = await s.member("vic@example.com", "viewer");
     expect((await viewer.browser.call("GET", `${s.P}/product_edits`)).body.items).toHaveLength(1);
-    expect((await viewer.browser.call("GET", `${s.P}/product_edits/${bad.body.id}`)).body.errors).toHaveLength(1);
+    expect((await viewer.browser.call("GET", `${s.P}/product_edits/${bad.body.id}`)).body.errors).toHaveLength(2);
     expect((await download(s, "app_play", "all=true", viewer.browser.cookie!)).status).toBe(200);
     expect((await upload(s, "app_play", `${HEADER}\npremium:monthly,,,,,US,USD,10.99,`, {}, viewer.browser)).status).toBe(403);
     expect((await viewer.browser.call("DELETE", `${s.P}/product_edits/${bad.body.id}`)).status).toBe(403);
@@ -356,5 +357,62 @@ describe("files, roles and errors", () => {
     expect((await s.api("GET", `${s.P}/product_edits/${bad.body.id}`)).status).toBe(404);
     const other = await s.signup("eve@example.com");
     expect((await other.browser.call("GET", `/v2/projects/${other.projectId}/product_edits/${mine.body.id}`)).status).toBe(404);
+  });
+});
+
+describe("review fixes: no lost store prices, one commit per app", () => {
+  it("an in-app purchase with a price scheduled for later is left alone; price points come in one call for many territories", async () => {
+    s = await storeCatalogServer();
+    s.asc.schedules.get(s.ids.lifetime)!.future = [{ territory: "USA", tier: s.asc.tierOf(149.99), startDate: "2026-12-01" }];
+    const csv = (await download(s, "app_ios", "store_identifiers=focus_lifetime,focus_pro_monthly")).text;
+    const up = await upload(s, "app_ios", edit(csv, [["focus_lifetime", "GBR", s.asc.customerPrice("GBR", s.asc.tierOf(89.99))], ["focus_pro_monthly", "USA", "10.99"], ["focus_pro_monthly", "GBR", s.asc.customerPrice("GBR", s.asc.tierOf(10.99))], ["focus_pro_monthly", "DEU", s.asc.customerPrice("DEU", s.asc.tierOf(10.99))]]));
+    expect(up.body.status).toBe("ready");
+    const r = await commit(s, up.body.id);
+    const life = r.body.rows.find((x: any) => x.store_identifier === "focus_lifetime");
+    expect(life).toMatchObject({ status: "failed", error: expect.stringMatching(/has a price change scheduled in App Store Connect \(USA\)/) });
+    // The schedule was not written, so the scheduled price is still there.
+    expect(s.asc.calls.filter((c) => c.method === "POST" && c.path === "/v1/inAppPurchasePriceSchedules")).toHaveLength(0);
+    expect(s.asc.schedules.get(s.ids.lifetime)!.future).toHaveLength(1);
+    // The subscription's three territories: one price point call, three price writes.
+    const pointCalls = s.asc.calls.filter((c) => c.path.startsWith(`/v1/subscriptions/${s!.ids.proMonthly}/pricePoints`));
+    expect(pointCalls).toHaveLength(1);
+    expect(new URL(`https://x${pointCalls[0]!.path}`).searchParams.get("filter[territory]")!.split(",").sort()).toEqual(["DEU", "GBR", "USA"]);
+    expect(r.body.rows.filter((x: any) => x.store_identifier === "focus_pro_monthly").every((x: any) => x.status === "succeeded")).toBe(true);
+  });
+
+  it("a second file of the same app waits for the first; a file being committed cannot be discarded", async () => {
+    s = await storeCatalogServer();
+    const csv = (await download(s, "app_play", "store_identifiers=premium:monthly,premium:annual")).text;
+    const a = await upload(s, "app_play", edit(csv, [["premium:monthly", "US", "10.99"]]));
+    const b = await upload(s, "app_play", edit(csv, [["premium:annual", "US", "64.99"]]));
+    await s.db.update(schema.productEdits).set({ lockedUntil: new Date(s.now().getTime() + 60_000), status: "committing" }).where(eq(schema.productEdits.id, a.body.id));
+    expect(await commit(s, b.body.id)).toMatchObject({ status: 409, body: { type: "resource_locked_error", message: "Another product file of this app is being committed right now. Wait for it to finish." } });
+    expect((await s.api("DELETE", `${s.P}/product_edits/${a.body.id}`)).status).toBe(409);
+    await s.db.update(schema.productEdits).set({ lockedUntil: null }).where(eq(schema.productEdits.id, a.body.id));
+    expect((await commit(s, a.body.id)).body.status).toBe("committed");
+    expect((await commit(s, b.body.id)).body.status).toBe("committed");
+    expect([s.play.price("premium", "monthly", "US"), s.play.price("premium", "annual", "US")]).toEqual([10_990_000, 64_990_000]);
+  });
+
+  it("Play: a row already at its price keeps its success when the patch fails; a base plan Play does not activate fails its rows", async () => {
+    s = await storeCatalogServer();
+    const csv = (await download(s, "app_play", "store_identifiers=premium:monthly")).text;
+    const up = await upload(s, "app_play", edit(csv, [["premium:monthly", "US", "10.99"], ["premium:monthly", "GB", "8.49"]]));
+    // Someone set the US price in Play Console meanwhile; then Play refuses the patch once.
+    const us = s.play.subscriptions[0]!.basePlans[0].regionalConfigs.find((r: any) => r.regionCode === "US");
+    us.price = { currencyCode: "USD", units: "10", nanos: 990000000 };
+    s.play.fail((m) => m === "PATCH", 400, "Request contains an invalid argument.", 1);
+    const r = await commit(s, up.body.id);
+    expect(r.body.rows.map((x: any) => [x.territory, x.status, x.error])).toEqual([
+      ["US", "succeeded", "Already at this price."], ["GB", "failed", "Google Play: Request contains an invalid argument."],
+    ]);
+    const plan = await upload(s, "app_play", `${HEADER}\npremium:biweekly,Focus Premium,subscription,P1W,,US,USD,4.99,create`);
+    s.play.fail((m, p) => m === "POST" && p.includes(":activate"), 500, "Backend Error", 1);
+    const made = await commit(s, plan.body.id);
+    expect(made.body.rows[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/^The base plan was created but not activated: Google Play could not be reached/) });
+    expect(s.play.subscriptions[0]!.basePlans.find((b: any) => b.basePlanId === "biweekly").state).toBe("DRAFT");
+    // Retry: Play activates it now.
+    expect((await commit(s, plan.body.id, "retry")).body.status).toBe("committed");
+    expect(s.play.subscriptions[0]!.basePlans.find((b: any) => b.basePlanId === "biweekly").state).toBe("ACTIVE");
   });
 });

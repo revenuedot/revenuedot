@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
@@ -131,7 +131,7 @@ const BIG_CHANGE = 0.5;
 /** A price cell as micros of its currency, or why it is not one. */
 export function parsePrice(raw: string, currency: string): { micros: number } | { error: string } {
   const t = raw.trim().replace(/^\$/, "");
-  if (!/^\d+(\.\d+)?$/.test(t)) return { error: `price "${raw.trim()}" is not a number such as 9.99.` };
+  if (!/^\d+(\.\d+)?$/.test(t)) return { error: `price "${raw.trim()}" is not a number such as 9.99.${/,/.test(t) ? " Use a dot for decimals and no thousands separators." : ""}` };
   const digits = currencyDigits(currency);
   const decimals = t.includes(".") ? t.split(".")[1]!.replace(/0+$/, "").length : 0;
   if (decimals > digits) return { error: digits === 0 ? `${currency} prices have no decimals; "${t}" has ${decimals}.` : `${currency} prices have at most ${digits} decimals; "${t}" has ${decimals}.` };
@@ -235,12 +235,12 @@ export function validateFile(kind: "apple" | "play", text: string, live: PricedL
       else { blank++; warnings.push({ line, message: `${id} in ${territory} has no price; nothing changes for it.` }); }
       continue;
     }
-    const price = parsePrice(rawPrice, currency);
-    if ("error" in price) { fail(line, price.error); continue; }
     const key = `${id}|${territory}`;
     const dup = seen.get(key);
     if (dup !== undefined) { fail(line, `${id} in ${territory} is on lines ${dup} and ${line}. Keep one of them.`); continue; }
     seen.set(key, line);
+    const price = parsePrice(rawPrice, currency);
+    if ("error" in price) { fail(line, price.error); continue; }
 
     if (action === "create") {
       changes.push({ kind: "new_product", line, store_identifier: id, territory, currency, old_micros: null, new_micros: price.micros, product: newProducts.get(id)!.product });
@@ -262,6 +262,9 @@ export function validateFile(kind: "apple" | "play", text: string, live: PricedL
     if (current && current.amount_micros === price.micros) { unchanged++; continue; }
     if (current && current.currency !== currency) { fail(line, `${id} is priced in ${current.currency} in ${territory}, not ${currency}.`); continue; }
     changes.push({ kind: "price_change", line, store_identifier: id, territory, currency, old_micros: current?.amount_micros ?? null, new_micros: price.micros, product: null });
+    if (kind === "apple" && ex.type !== "subscription" && territory === ex.base?.territory) {
+      warnings.push({ line, message: `${territory} is the base territory of ${id}: Apple also moves its automatic prices in every territory without a manual price.` });
+    }
     if (current && Math.abs(price.micros / current.amount_micros - 1) > BIG_CHANGE) {
       const pct = Math.round((price.micros / current.amount_micros - 1) * 100);
       bigChanges.push({ line, text: `${id} in ${territory} changes by ${pct > 0 ? "+" : ""}${pct}% (${microsText(current.amount_micros, currency)} → ${microsText(price.micros, currency)}). Check it is not a typo.` });
@@ -381,25 +384,29 @@ export async function createEdit(deps: Deps, app: App, input: { fileName: string
   requireCredentials(app, kind, true);
   const read = await refreshStorePrices(deps, app);
   let records: { line: number; cells: string[] }[] = [];
-  try { records = readCsv(input.csv); } catch { /* validateFile reports it */ }
+  try { records = readCsv(input.csv).filter((r) => r.cells.some((c) => c.trim() !== "")); } catch { /* validateFile reports it */ }
   const tCol = (records[0]?.cells ?? []).findIndex((c) => c.trim().toLowerCase() === "territory");
   const need = tCol < 0 ? [] : [...new Set(records.slice(1).map((r) => (r.cells[tCol] ?? "").trim().toUpperCase()).filter(Boolean))];
   const territories = await territoriesFor(deps, app, kind, read.items, need);
   const v = validateFile(kind, input.csv, read.items, territories);
   const now = deps.now();
   const id = newId("pedit", 14);
-  const [edit] = await deps.db.insert(schema.productEdits).values({
-    id, projectId: app.projectId, appId: app.id, store: app.type, status: v.errors.length ? "invalid" : "ready", fileName: input.fileName.slice(0, 200) || "products.csv",
-    csv: input.csv, errors: v.errors, warnings: v.warnings.slice(0, 500), summary: v.summary,
-    options: kind === "apple" ? { preserve_current_price: input.preserveCurrentPrice ?? true } : {}, createdBy: input.createdBy, createdAt: now, updatedAt: now,
-  }).returning();
-  for (let i = 0; i < v.changes.length; i += 500) {
-    await deps.db.insert(schema.productEditRows).values(v.changes.slice(i, i + 500).map((c, j) => ({
-      editId: id, idx: i + j, kind: c.kind, line: c.line, storeIdentifier: c.store_identifier, territory: c.territory, currency: c.currency,
-      oldMicros: c.old_micros, newMicros: c.new_micros, product: c.product,
-    })));
-  }
-  return edit!;
+  const edit = await deps.db.transaction(async (tx) => {
+    const [row] = await tx.insert(schema.productEdits).values({
+      id, projectId: app.projectId, appId: app.id, store: app.type, status: v.errors.length ? "invalid" : "ready", fileName: input.fileName.slice(0, 200) || "products.csv",
+      csv: input.csv, errors: v.errors, warnings: v.warnings.slice(0, 500), summary: v.summary,
+      options: kind === "apple" ? { preserve_current_price: input.preserveCurrentPrice ?? true } : {}, createdBy: input.createdBy, createdAt: now, updatedAt: now,
+    }).returning();
+    // The edit and its rows land together: a ready edit never misses rows.
+    for (let i = 0; i < v.changes.length; i += 500) {
+      await tx.insert(schema.productEditRows).values(v.changes.slice(i, i + 500).map((c, j) => ({
+        editId: id, idx: i + j, kind: c.kind, line: c.line, storeIdentifier: c.store_identifier, territory: c.territory, currency: c.currency,
+        oldMicros: c.old_micros, newMicros: c.new_micros, product: c.product,
+      })));
+    }
+    return row!;
+  });
+  return edit;
 }
 
 export async function editRows(deps: Deps, editId: string) {
@@ -439,9 +446,13 @@ export async function commitEdit(deps: Deps, edit: EditRow, actor: AuditActor, o
   requireCredentials(app, kind, true);
   const now = deps.now();
   const E = schema.productEdits, R = schema.productEditRows;
-  // Only one commit of an edit at a time.
+  // One commit per app at a time: price schedules and Play subscriptions are read, changed and written back whole, so two
+  // files of one app committing together could undo each other (and one edit never commits twice at once).
+  const other = await deps.db.select({ id: E.id }).from(E).where(and(eq(E.appId, edit.appId), ne(E.id, edit.id), gt(E.lockedUntil, now))).limit(1);
+  if (other.length) throw new StoreOpError("conflict", "Another product file of this app is being committed right now. Wait for it to finish.", "locked");
   const [locked] = await deps.db.update(E).set({ lockedUntil: new Date(now.getTime() + LOCK_MS), status: "committing", updatedAt: now })
-    .where(and(eq(E.id, edit.id), inArray(E.status, COMMITTABLE), or(isNull(E.lockedUntil), lt(E.lockedUntil, now)))).returning();
+    .where(and(eq(E.id, edit.id), inArray(E.status, COMMITTABLE), or(isNull(E.lockedUntil), lt(E.lockedUntil, now)),
+      sql`not exists (select 1 from ${E} o where o.app_id = ${edit.appId} and o.id <> ${edit.id} and o.locked_until > ${now.toISOString()}::timestamptz)`)).returning();
   if (!locked) throw new StoreOpError("conflict", "This edit is being committed right now. Wait for it to finish.", "locked");
   if (opts.retry) await deps.db.update(R).set({ status: "pending", error: null, updatedAt: now }).where(and(eq(R.editId, edit.id), eq(R.status, "failed")));
 
@@ -553,14 +564,16 @@ async function productCreated(ctx: CommitContext, storeIdentifier: string, store
 const ASC_PERIOD: Record<string, string> = { P1W: "ONE_WEEK", P1M: "ONE_MONTH", P2M: "TWO_MONTHS", P3M: "THREE_MONTHS", P6M: "SIX_MONTHS", P1Y: "ONE_YEAR" };
 const ASC_IAP: Record<string, "CONSUMABLE" | "NON_CONSUMABLE" | "NON_RENEWING_SUBSCRIPTION"> = { consumable: "CONSUMABLE", non_consumable: "NON_CONSUMABLE", non_renewing_subscription: "NON_RENEWING_SUBSCRIPTION" };
 
-async function pointsFor(ctx: CommitContext, api: AppStoreConnectApi, sub: boolean, ref: string, territory: string) {
-  const key = `${sub ? "s" : "i"}|${ref}|${territory}`;
-  let points = ctx.pricePoints.get(key);
-  if (!points) {
-    points = sub ? await api.subscriptionPricePoints(ref, territory) : await api.inAppPurchasePricePoints(ref, territory);
-    ctx.pricePoints.set(key, points);
+/** Price points of these territories (cached for the commit), fetched 20 territories a call. */
+async function pointsFor(ctx: CommitContext, api: AppStoreConnectApi, sub: boolean, ref: string, territories: string[]) {
+  const key = (t: string) => `${sub ? "s" : "i"}|${ref}|${t}`;
+  const missing = [...new Set(territories)].filter((t) => !ctx.pricePoints.has(key(t)));
+  for (let i = 0; i < missing.length; i += 20) {
+    const chunk = missing.slice(i, i + 20);
+    const got = sub ? await api.subscriptionPricePoints(ref, chunk) : await api.inAppPurchasePricePoints(ref, chunk);
+    for (const t of chunk) ctx.pricePoints.set(key(t), got.get(t) ?? []);
   }
-  return points;
+  return (t: string) => ctx.pricePoints.get(key(t)) ?? [];
 }
 
 /** The price point with exactly this price, or a message naming the nearest ones. */
@@ -602,17 +615,20 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
     isSub = listing!.type === "subscription";
   }
 
+  if (Date.now() > ctx.deadline) return rows.map(() => null);
   if (isSub) {
     const preserve = ctx.edit.options.preserve_current_price !== false;
-    // A retried row may have gone through before: read the current prices once and skip rows already at their price.
-    const current = rows.some((r) => r.attempts > 0) ? await api.subscriptionPrices(ref, today) : [];
+    // A row may have gone through in a run that was cut off: read the current prices first and skip rows already at
+    // their price. Then the price points of every territory of the product in a few calls.
+    const current = await api.subscriptionPrices(ref, today);
+    const points = await pointsFor(ctx, api, true, ref, rows.map((r) => r.territory));
     const out: MaybeOutcome[] = [];
     for (const r of rows) {
       if (Date.now() > ctx.deadline) { out.push(null); continue; }
       const now = current.find((p) => p.territory === r.territory);
       if (now && decimalMicros(now.customerPrice) === r.newMicros) { out.push({ ok: true, note: "Already at this price." }); continue; }
       try {
-        const m = matchPoint(await pointsFor(ctx, api, true, ref, r.territory), r.newMicros, r.territory, r.currency);
+        const m = matchPoint(points(r.territory), r.newMicros, r.territory, r.currency);
         if ("error" in m) { out.push({ ok: false, error: m.error }); continue; }
         await api.createSubscriptionPrice(ref, r.territory, m.id, preserve);
         out.push({ ok: true });
@@ -624,15 +640,23 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
     return out;
   }
 
-  // In-app purchases: one schedule for the product, keeping the manual prices nobody changed.
+  // In-app purchases: one schedule for the product, keeping the manual prices nobody changed. Writing a schedule replaces
+  // the whole one, so a product with a price scheduled for a later date, or a list RevenueDot could not read to the end,
+  // is left alone rather than losing those prices.
   const schedule = await api.inAppPurchaseSchedule(ref, today);
+  if (schedule?.scheduled.length) {
+    return rows.map(() => ({ ok: false, error: `${id} has a price change scheduled in App Store Connect (${schedule.scheduled.join(", ")}). Writing its prices would remove it: change the prices in App Store Connect, or remove the scheduled change and retry.` }));
+  }
+  if (schedule?.truncated) return rows.map(() => ({ ok: false, error: `${id} has more manual prices than RevenueDot reads at once; change its prices in App Store Connect.` }));
   const manual = new Map<string, string>();
   for (const p of schedule?.manual ?? []) if (p.pricePointId) manual.set(p.territory, p.pricePointId);
+  const points = await pointsFor(ctx, api, false, ref, rows.map((r) => r.territory));
+  if (Date.now() > ctx.deadline) return rows.map(() => null);
   const out: Outcome[] = [];
   const applied: number[] = [];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]!;
-    const m = matchPoint(await pointsFor(ctx, api, false, ref, r.territory), r.newMicros, r.territory, r.currency);
+    const m = matchPoint(points(r.territory), r.newMicros, r.territory, r.currency);
     if ("error" in m) { out[i] = { ok: false, error: m.error }; continue; }
     manual.set(r.territory, m.id);
     applied.push(i);
@@ -700,7 +724,14 @@ async function commitPlay(ctx: CommitContext, subscriptionId: string, rows: Edit
     changed = setRegion(plan, r) || changed;
   });
   if (changed) {
-    await client.patchSubscriptionBasePlans(row, { ...sub, basePlans: plans });
+    try {
+      await client.patchSubscriptionBasePlans(row, { ...sub, basePlans: plans });
+    } catch (e) {
+      if (isCredentialError(e)) throw e;
+      // Rows already at their price keep that outcome; the others share Play's refusal.
+      const msg = storeMessage("play", e);
+      return rows.map((_, i) => out[i] ?? { ok: false, error: msg });
+    }
     for (const [bp, rs] of newPlans) if (!ctx.created[`${subscriptionId}:${bp}`]) await productCreated(ctx, `${subscriptionId}:${bp}`, `${subscriptionId}:${bp}`, rs[0]!.product ?? {});
   }
   const activated = newPlans.size ? await activateNew(ctx, client, row, subscriptionId, newPlans, true) : new Map<string, Outcome>();
@@ -727,8 +758,9 @@ async function activateNew(ctx: CommitContext, client: ReturnType<typeof googleC
     let o: Outcome = { ok: true };
     try { await client.activateBasePlan(row, subscriptionId, bp); } catch (e) {
       if (isCredentialError(e)) throw e;
-      // Already active (a retry) is fine; anything else leaves the plan as a draft.
-      if (!(e instanceof GoogleApiError && /already active|ACTIVE/i.test(e.message))) o = { ok: false, error: `The base plan was created but not activated: ${storeMessage("play", e)} Activate it in Play Console.` };
+      // Already active (a retry) is fine: Play's own state decides, not the wording of its error.
+      const now = await client.getSubscription(row, subscriptionId).catch(() => null);
+      if (now?.basePlans?.find((b) => b.basePlanId === bp)?.state !== "ACTIVE") o = { ok: false, error: `The base plan was created but not activated: ${storeMessage("play", e)} Activate it in Play Console.` };
     }
     out.set(bp, o);
   }

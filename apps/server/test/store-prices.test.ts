@@ -156,3 +156,16 @@ describe("daily refresh", () => {
     expect(await refreshDueStorePrices(deps, 5)).toBe(2);
   });
 });
+
+describe("daily refresh: incomplete keys", () => {
+  it("never picks an app whose App Store Connect key or service account is empty", async () => {
+    s = await storeCatalogServer();
+    await s.db.insert(schema.apps).values([
+      { id: "app_empty_asc", projectId: s.pid, name: "Empty key", type: "app_store", bundleId: "com.x", publicKey: "appl_empty", credentials: { app_store_connect_api_key: "", app_store_connect_api_key_id: "", app_store_connect_api_key_issuer: "" } },
+      { id: "app_empty_play", projectId: s.pid, name: "Empty SA", type: "play_store", bundleId: "com.y", publicKey: "goog_empty", credentials: { service_account: "" } },
+    ]);
+    expect(await refreshDueStorePrices(s.deps, 5)).toBe(2);
+    const syncs = await s.db.select().from(schema.storeListingSyncs);
+    expect(syncs.map((x) => x.appId).sort()).toEqual(["app_ios", "app_play"]);
+  });
+});

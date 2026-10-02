@@ -57,6 +57,19 @@ export function toEpochMs(v: number | string, now = Date.now()): number {
   return t;
 }
 
+/** Every item of a v2 list (100 a page, at most 50 pages). */
+async function allItems<T extends { id: string }>(c: RevenueDotClient, path: string, query: Record<string, string | number | undefined> = {}): Promise<T[]> {
+  const out: T[] = [];
+  let after: string | undefined;
+  for (let page = 0; page < 50; page++) {
+    const r = await c.request<{ items: T[]; next_page: string | null }>("GET", path, { query: { ...query, limit: 100, starting_after: after } });
+    out.push(...r.items);
+    if (!r.next_page || !r.items.length) break;
+    after = r.items[r.items.length - 1]!.id;
+  }
+  return out;
+}
+
 /** Entitlements may be named by id (entl...) or lookup key ("pro"); the API takes ids. */
 async function entitlementId(c: RevenueDotClient, base: string, idOrKey: string) {
   if (/^entl/.test(idOrKey)) return idOrKey;
@@ -382,16 +395,16 @@ export const tools: ToolDefinition[] = [
           created.push({ id: row.id, store_identifier: p.store_identifier, app_id: p.app_id });
         } catch (e) {
           if (e instanceof RevenueDotApiError && e.status === 409) {
-            const existing = await c.request<{ items: { id: string; store_identifier: string }[] }>("GET", `${base}/products`, { query: { app_id: p.app_id, limit: 100 } }).catch(() => ({ items: [] }));
-            skipped.push({ store_identifier: p.store_identifier, app_id: p.app_id, reason: "already exists", id: existing.items.find((x) => x.store_identifier === p.store_identifier)?.id });
+            const existing = await allItems<{ id: string; store_identifier: string }>(c, `${base}/products`, { app_id: p.app_id }).catch(() => []);
+            skipped.push({ store_identifier: p.store_identifier, app_id: p.app_id, reason: "already exists", id: existing.find((x) => x.store_identifier === p.store_identifier.trim())?.id });
           } else failed.push({ store_identifier: p.store_identifier, app_id: p.app_id, error: e instanceof Error ? e.message : String(e) });
         }
       }
       let entitlement: { id: string; lookup_key: string; created: boolean } | null = null;
       const ids = [...created.map((x) => x.id), ...skipped.flatMap((x) => (x.id ? [x.id] : []))];
       if (a.entitlement && ids.length) {
-        const list = await c.request<{ items: { id: string; lookup_key: string }[] }>("GET", `${base}/entitlements`, { query: { limit: 100 } });
-        const found = list.items.find((e) => e.lookup_key === a.entitlement!.lookup_key);
+        const list = await allItems<{ id: string; lookup_key: string }>(c, `${base}/entitlements`);
+        const found = list.find((e) => e.lookup_key === a.entitlement!.lookup_key);
         const ent = found ?? await c.request<{ id: string; lookup_key: string }>("POST", `${base}/entitlements`, { body: { lookup_key: a.entitlement.lookup_key, display_name: a.entitlement.display_name || a.entitlement.lookup_key } });
         for (let i = 0; i < ids.length; i += 50) await c.request("POST", `${base}/entitlements/${enc(ent.id)}/actions/attach_products`, { body: { product_ids: ids.slice(i, i + 50) } });
         entitlement = { id: ent.id, lookup_key: ent.lookup_key, created: !found };
@@ -415,14 +428,7 @@ export const tools: ToolDefinition[] = [
     annotations: CREATE, scopes: ["project_configuration:offerings:read_write", "project_configuration:packages:read_write"],
     run: async (c, a) => {
       const base = await P(c);
-      const all: { id: string; store_identifier: string; app_id: string }[] = [];
-      let after: string | undefined;
-      for (let page = 0; page < 50; page++) {
-        const r = await c.request<{ items: { id: string; store_identifier: string; app_id: string }[]; next_page: string | null }>("GET", `${base}/products`, { query: { limit: 100, starting_after: after } });
-        all.push(...r.items);
-        if (!r.next_page || !r.items.length) break;
-        after = r.items[r.items.length - 1]!.id;
-      }
+      const all = await allItems<{ id: string; store_identifier: string; app_id: string }>(c, `${base}/products`);
       const offering = await c.request<{ id: string; lookup_key: string }>("POST", `${base}/offerings`, { body: { lookup_key: a.lookup_key, display_name: a.display_name, ...(a.metadata ? { metadata: a.metadata } : {}) } });
       const packages: { id: string; lookup_key: string; product_ids: string[]; unknown: string[] }[] = [];
       for (const [i, pk] of a.packages.entries()) {

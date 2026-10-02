@@ -162,11 +162,24 @@ export class AppStoreConnectApi {
     return currentPrices(r.data, r.included, "subscriptionPricePoint", today);
   }
 
-  /** The price points of one territory for a subscription (customer price and id), all of them. */
-  async subscriptionPricePoints(subscriptionId: string, territory: string): Promise<{ id: string; customerPrice: string }[]> {
-    const q = new URLSearchParams({ "filter[territory]": territory, limit: "8000", "fields[subscriptionPricePoints]": "customerPrice" });
-    const r = await this.listAll(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}/pricePoints?${q}`, 10);
-    return r.data.map((p) => ({ id: p.id, customerPrice: String(p.attributes?.customerPrice ?? "") }));
+  /**
+   * The price points of some territories for a subscription, by territory (`filter[territory]` takes a list). Throws when
+   * App Store Connect has more pages than RevenueDot reads, so a price is never matched against part of the list.
+   */
+  subscriptionPricePoints(subscriptionId: string, territories: string[]) {
+    return this.pricePointsOf(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}/pricePoints`, "subscriptionPricePoints", territories);
+  }
+
+  private async pricePointsOf(path: string, type: string, territories: string[]): Promise<Map<string, { id: string; customerPrice: string }[]>> {
+    const q = new URLSearchParams({ "filter[territory]": territories.join(","), include: "territory", limit: "8000", [`fields[${type}]`]: "customerPrice,territory" });
+    const r = await this.listAll(`${path}?${q}`, 25);
+    if (r.truncated) throw new ConnectError("unavailable", "App Store Connect has more price points than RevenueDot reads at once. Change fewer territories in one file.");
+    const out = new Map<string, { id: string; customerPrice: string }[]>(territories.map((t) => [t, []]));
+    for (const p of r.data) {
+      const t = relId(p, "territory") ?? (territories.length === 1 ? territories[0]! : null);
+      if (t) out.set(t, [...(out.get(t) ?? []), { id: p.id, customerPrice: String(p.attributes?.customerPrice ?? "") }]);
+    }
+    return out;
   }
 
   /** Schedules a subscription price in one territory (no start date: as soon as Apple allows). */
@@ -187,7 +200,7 @@ export class AppStoreConnectApi {
    * An in-app purchase's price schedule: its base territory and the current manual and automatic (equalised) prices.
    * Null when the product has no price yet.
    */
-  async inAppPurchaseSchedule(iapId: string, today: string): Promise<{ id: string; baseTerritory: string | null; manual: AscPrice[]; automatic: AscPrice[] } | null> {
+  async inAppPurchaseSchedule(iapId: string, today: string): Promise<{ id: string; baseTerritory: string | null; manual: AscPrice[]; automatic: AscPrice[]; scheduled: string[]; truncated: boolean } | null> {
     let schedule: { data?: Resource };
     try {
       schedule = await this.send("GET", `/v2/inAppPurchases/${encodeURIComponent(iapId)}/iapPriceSchedule`);
@@ -205,20 +218,20 @@ export class AppStoreConnectApi {
       include: "inAppPurchasePricePoint,territory", limit: "200", "fields[inAppPurchasePrices]": "startDate,endDate,manual,inAppPurchasePricePoint,territory",
       "fields[inAppPurchasePricePoints]": "customerPrice,territory", "fields[territories]": "currency",
     });
-    const manual = await this.listAllIncluded(`/v1/inAppPurchasePriceSchedules/${encodeURIComponent(id)}/manualPrices?${q}`, 10);
-    const automatic = await this.listAllIncluded(`/v1/inAppPurchasePriceSchedules/${encodeURIComponent(id)}/automaticPrices?${q}`, 10);
+    const manual = await this.listAllIncluded(`/v1/inAppPurchasePriceSchedules/${encodeURIComponent(id)}/manualPrices?${q}`, 25);
+    const automatic = await this.listAllIncluded(`/v1/inAppPurchasePriceSchedules/${encodeURIComponent(id)}/automaticPrices?${q}`, 25);
+    // Manual prices that start after today: a schedule written back without them would delete them.
+    const scheduled = [...new Set(manual.data.filter((r) => typeof r.attributes?.startDate === "string" && (r.attributes.startDate as string) > today).map((r) => relId(r, "territory") ?? "?"))];
     return {
-      id, baseTerritory: base.data?.id ?? null,
+      id, baseTerritory: base.data?.id ?? null, scheduled, truncated: manual.truncated,
       manual: currentPrices(manual.data, manual.included, "inAppPurchasePricePoint", today).map((p) => ({ ...p, manual: true })),
       automatic: currentPrices(automatic.data, automatic.included, "inAppPurchasePricePoint", today).map((p) => ({ ...p, manual: false })),
     };
   }
 
-  /** The price points of one territory for an in-app purchase. */
-  async inAppPurchasePricePoints(iapId: string, territory: string): Promise<{ id: string; customerPrice: string }[]> {
-    const q = new URLSearchParams({ "filter[territory]": territory, limit: "8000", "fields[inAppPurchasePricePoints]": "customerPrice" });
-    const r = await this.listAll(`/v2/inAppPurchases/${encodeURIComponent(iapId)}/pricePoints?${q}`, 10);
-    return r.data.map((p) => ({ id: p.id, customerPrice: String(p.attributes?.customerPrice ?? "") }));
+  /** The price points of some territories for an in-app purchase, by territory. */
+  inAppPurchasePricePoints(iapId: string, territories: string[]) {
+    return this.pricePointsOf(`/v2/inAppPurchases/${encodeURIComponent(iapId)}/pricePoints`, "inAppPurchasePricePoints", territories);
   }
 
   /**

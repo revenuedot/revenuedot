@@ -219,7 +219,8 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
     { key: "status", header: "Status", sort: sorter.of("status"), className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (i) => { const st = storeStatus(i.status); return st ? <Tag tone={st.tone}>{st.label}</Tag> : "—"; } },
   ];
   const ordered = [...items].sort(sorter.sort.key === "product" ? sorter.cmp((i: StoreListing) => i.display_name ?? i.store_identifier)
-    : sorter.sort.key === "price" ? sorter.cmp((i: StoreListing) => (i.price && i.price.currency === "USD" ? i.price.amount_micros : i.price ? i.price.amount_micros / 1e6 : null))
+    // Prices group by currency first, then by amount: micros of different currencies are not comparable.
+    : sorter.sort.key === "price" ? sorter.cmp((i: StoreListing) => (i.price ? `${i.price.currency} ${String(i.price.amount_micros).padStart(16, "0")}` : null))
       : sorter.cmp((i: StoreListing) => storeStatus(i.status)?.label ?? null));
   return (
     <div className="pe-products">
@@ -275,9 +276,13 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
   const qc = useQueryClient();
   const toast = useToast();
   const key = [...catalogKey(pid), "edit", editId];
-  const edit = useQuery({ queryKey: key, queryFn: () => api<Edit>(`${v2(pid)}/product_edits/${encodeURIComponent(editId)}`) });
-  const [confirm, setConfirm] = useState(false);
   const [running, setRunning] = useState(false);
+  // Another tab (or person) committing this file: follow its progress.
+  const edit = useQuery({
+    queryKey: key, queryFn: () => api<Edit>(`${v2(pid)}/product_edits/${encodeURIComponent(editId)}`),
+    refetchInterval: (q) => (q.state.data?.status === "committing" && !running ? 3000 : false),
+  });
+  const [confirm, setConfirm] = useState(false);
   const [discard, setDiscard] = useState(false);
   // The checkbox follows the click at once; the server's copy is the truth after the save.
   const [preserveShown, setPreserveShown] = useState<boolean | null>(null);

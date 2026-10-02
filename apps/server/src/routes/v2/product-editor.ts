@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
@@ -177,8 +177,12 @@ export function productEditorRoutes(r: V2Router, deps: Deps) {
 
   r.delete(`${P}/product_edits/:edit_id`, scope("project_configuration:products:read_write"), async (c) => {
     const e = await findEditOr404(c);
-    if (e.status !== "ready" && e.status !== "invalid") throw new V2Error(409, "invalid_request", "Only an edit that was not committed can be discarded; committed rows stay in the history.");
-    await db.delete(schema.productEdits).where(eq(schema.productEdits.id, e.id));
+    const notCommitted = () => new V2Error(409, "invalid_request", "Only an edit that was not committed can be discarded; committed rows stay in the history.");
+    if (e.status !== "ready" && e.status !== "invalid") throw notCommitted();
+    // In one statement with the check, so a commit that starts at the same moment is never deleted under it.
+    const E = schema.productEdits;
+    const gone = await db.delete(E).where(and(eq(E.id, e.id), inArray(E.status, ["ready", "invalid"]), or(isNull(E.lockedUntil), lt(E.lockedUntil, deps.now())))).returning({ id: E.id });
+    if (!gone.length) throw notCommitted();
     return c.json({ object: "product_edit", id: e.id, deleted_at: deps.now().getTime() });
   });
 

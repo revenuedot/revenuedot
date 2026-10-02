@@ -153,7 +153,8 @@ export async function saveListings(deps: Deps, app: App, items: PricedListing[])
   const unique = [...new Map(rows.map((r) => [r.storeIdentifier, r])).values()];
   await deps.db.transaction(async (tx) => {
     await tx.delete(schema.storeListings).where(eq(schema.storeListings.appId, app.id));
-    for (let i = 0; i < unique.length; i += 200) await tx.insert(schema.storeListings).values(unique.slice(i, i + 200));
+    // A refresh running at the same moment may have written the same rows: they are the same read.
+    for (let i = 0; i < unique.length; i += 200) await tx.insert(schema.storeListings).values(unique.slice(i, i + 200)).onConflictDoNothing();
     await tx.insert(schema.storeListingSyncs).values({ appId: app.id, projectId: app.projectId, status: "ok", error: null, itemCount: unique.length, refreshedAt: now })
       .onConflictDoUpdate({ target: schema.storeListingSyncs.appId, set: { status: "ok", error: null, itemCount: unique.length, refreshedAt: now } });
   });
@@ -175,7 +176,8 @@ export async function refreshStorePrices(deps: Deps, app: App) {
   try {
     read = await readStorePrices(deps, app);
   } catch (e) {
-    if (e instanceof StoreOpError) await recordFailure(deps, app, e);
+    // Every failure is recorded, so the daily refresh moves on to other apps instead of retrying this one each minute.
+    await recordFailure(deps, app, e instanceof StoreOpError ? e : new Error("The store could not be read.")).catch(() => undefined);
     throw e;
   }
   await saveListings(deps, app, read.items);
@@ -223,16 +225,20 @@ export async function refreshDueStorePrices(deps: Deps, max = 5): Promise<number
     .where(and(
       inArray(A.type, [...PRICE_STORES]),
       or(isNull(S.refreshedAt), lt(S.refreshedAt, new Date(now.getTime() - STALE_MS))),
+      // The same tests as connectCredentials and hasServiceAccount, so an app with an empty key is never picked.
       or(
-        and(inArray(A.type, [...APPLE]), sql`(${A.credentials} ->> 'app_store_connect_api_key') is not null`),
-        and(eq(A.type, "play_store"), sql`coalesce(${A.credentials} ->> 'play_service_account_credentials_json', ${A.credentials} ->> 'service_account') is not null`),
+        and(inArray(A.type, [...APPLE]), sql`nullif(trim(${A.credentials} ->> 'app_store_connect_api_key'), '') is not null and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_id'), '') is not null and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_issuer'), '') is not null`),
+        and(eq(A.type, "play_store"), sql`coalesce(nullif(${A.credentials} ->> 'play_service_account_credentials_json', ''), nullif(${A.credentials} ->> 'service_account', '')) is not null`),
       ),
     ))
     .orderBy(sql`${S.refreshedAt} asc nulls first`).limit(max * 2);
   let done = 0;
   for (const { app } of due) {
     if (done >= max) break;
-    if (APPLE.has(app.type) ? !connectCredentials(app) : !hasServiceAccount(app)) continue;
+    if (APPLE.has(app.type) ? !connectCredentials(app) : !hasServiceAccount(app)) {
+      await recordFailure(deps, app, new StoreOpError("credentials", "The app's store key is incomplete."));
+      continue;
+    }
     done++;
     try { await refreshStorePrices(deps, app); } catch (e) {
       if (!(e instanceof StoreOpError)) console.error("store prices: refresh failed", app.id, e);

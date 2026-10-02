@@ -52,7 +52,7 @@ export class FakeAppStoreConnect {
   iaps: AscIap[] = [];
   subPrices: AscSubPrice[] = [];
   /** In-app purchase price schedules: base territory and manual prices (tier per territory). */
-  schedules = new Map<string, { baseTerritory: string; manual: Map<string, number> }>();
+  schedules = new Map<string, { baseTerritory: string; manual: Map<string, number>; future?: { territory: string; tier: number; startDate: string }[] }>();
   /** Page sizes, to exercise `links.next` paging. */
   pageSize = { prices: 200, iaps: 200, subscriptions: 200, pricePoints: 8000 };
   calls: { method: string; path: string; body?: unknown }[] = [];
@@ -112,6 +112,9 @@ export class FakeAppStoreConnect {
     const q = new URLSearchParams(url.search); q.set("cursor", String(cursor + limit));
     const next = cursor + limit < all.length ? `${this.host}${url.pathname}?${q}` : undefined;
     return json(200, { data: items, ...extra(items), links: { self: url.href, ...(next ? { next } : {}) }, meta: { paging: { total: all.length, limit } } });
+  }
+  private pointResource(type: string, ref: string, t: string, tier: number) {
+    return { type, id: this.pricePointId(ref, t, tier), attributes: { customerPrice: this.customerPrice(t, tier), proceeds: "0" }, relationships: { territory: { data: { type: "territories", id: t } } } };
   }
   private territoryResource(id: string) { return { type: "territories", id, attributes: { currency: this.territory(id)?.currency } }; }
   private error(status: number, title: string, detail = "", code = "ENTITY_ERROR") { return json(status, { errors: [{ status: String(status), code, title, detail }] }); }
@@ -177,10 +180,11 @@ export class FakeAppStoreConnect {
       }));
     }
     if ((m = /^\/v1\/subscriptions\/(\d+)\/pricePoints$/.exec(path)) && method === "GET") {
-      const t = url.searchParams.get("filter[territory]");
-      if (!t) return this.error(400, "A parameter is required", "filter[territory] is required", "PARAMETER_ERROR.REQUIRED");
-      if (!this.territory(t)) return this.error(400, "A parameter has an invalid value", `'${t}' is not a valid filter value`, "PARAMETER_ERROR.INVALID");
-      return this.page(url, LADDER.map((_, tier) => ({ type: "subscriptionPricePoints", id: this.pricePointId(m![1]!, t, tier), attributes: { customerPrice: this.customerPrice(t, tier), proceeds: "0" } })), this.pageSize.pricePoints);
+      const ts = (url.searchParams.get("filter[territory]") ?? "").split(",").filter(Boolean);
+      if (!ts.length) return this.error(400, "A parameter is required", "filter[territory] is required", "PARAMETER_ERROR.REQUIRED");
+      const bad = ts.find((t) => !this.territory(t));
+      if (bad) return this.error(400, "A parameter has an invalid value", `'${bad}' is not a valid filter value`, "PARAMETER_ERROR.INVALID");
+      return this.page(url, ts.flatMap((t) => LADDER.map((_, tier) => this.pointResource("subscriptionPricePoints", m![1]!, t, tier))), this.pageSize.pricePoints);
     }
     if (method === "POST" && path === "/v1/subscriptionPrices") {
       const r = body.data.relationships;
@@ -207,9 +211,11 @@ export class FakeAppStoreConnect {
       const s = this.schedules.get(m[1]!);
       if (!s) return this.error(404, "The specified resource does not exist", "", "NOT_FOUND");
       const base = s.manual.get(s.baseTerritory)!;
-      const entries = m[2] === "manualPrices" ? [...s.manual] : FAKE_TERRITORIES.filter((t) => !s.manual.has(t.asc)).map((t) => [t.asc, base] as [string, number]);
-      const items = entries.map(([t, tier]) => ({
-        type: "inAppPurchasePrices", id: b64({ i: m![1], t, p: tier, m: m![2] }), attributes: { startDate: null, endDate: null, manual: m![2] === "manualPrices" },
+      const entries: [string, number, string | null][] = m[2] === "manualPrices"
+        ? [...[...s.manual].map(([t, tier]) => [t, tier, null] as [string, number, null]), ...(s.future ?? []).map((f) => [f.territory, f.tier, f.startDate] as [string, number, string])]
+        : FAKE_TERRITORIES.filter((t) => !s.manual.has(t.asc)).map((t) => [t.asc, base, null] as [string, number, null]);
+      const items = entries.map(([t, tier, start]) => ({
+        type: "inAppPurchasePrices", id: b64({ i: m![1], t, p: tier, m: m![2], s: start }), attributes: { startDate: start, endDate: null, manual: m![2] === "manualPrices" },
         relationships: { inAppPurchasePricePoint: { data: { type: "inAppPurchasePricePoints", id: this.pricePointId(m![1]!, t, tier) } }, territory: { data: { type: "territories", id: t } } },
       }));
       return this.page(url, items, this.pageSize.prices, (page) => ({
@@ -220,9 +226,10 @@ export class FakeAppStoreConnect {
       }));
     }
     if ((m = /^\/v2\/inAppPurchases\/(\d+)\/pricePoints$/.exec(path)) && method === "GET") {
-      const t = url.searchParams.get("filter[territory]");
-      if (!t || !this.territory(t)) return this.error(400, "A parameter has an invalid value", `'${t}' is not a valid filter value`, "PARAMETER_ERROR.INVALID");
-      return this.page(url, LADDER.map((_, tier) => ({ type: "inAppPurchasePricePoints", id: this.pricePointId(m![1]!, t, tier), attributes: { customerPrice: this.customerPrice(t, tier), proceeds: "0" } })), this.pageSize.pricePoints);
+      const ts = (url.searchParams.get("filter[territory]") ?? "").split(",").filter(Boolean);
+      const bad = ts.find((t) => !this.territory(t));
+      if (!ts.length || bad) return this.error(400, "A parameter has an invalid value", `'${bad ?? ""}' is not a valid filter value`, "PARAMETER_ERROR.INVALID");
+      return this.page(url, ts.flatMap((t) => LADDER.map((_, tier) => this.pointResource("inAppPurchasePricePoints", m![1]!, t, tier))), this.pageSize.pricePoints);
     }
     if (method === "POST" && path === "/v1/inAppPurchasePriceSchedules") {
       const r = body.data.relationships;
