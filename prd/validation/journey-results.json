@@ -149,8 +149,8 @@
   "account": {
     "title": "Account settings: email change, password, two-factor, sessions, OAuth tokens, preferences, anomaly alert, deletion",
     "date": "2026-10-02",
-    "run": "202610020803165680",
-    "passed": 51,
+    "run": "202610021550245710",
+    "passed": 58,
     "failed": 0
   }
 }
