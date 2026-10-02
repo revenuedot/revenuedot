@@ -28,3 +28,22 @@ test("closed sign-up: the sign-up page explains how to open it, and sign-in has 
   await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("closed sign-up: an invite link sent to the sign-up page opens the invite instead of the closed notice", async ({ page }) => {
+  await page.route("**/auth/config", (r) => r.fulfill({ json: { edition: "self-hosted", signup: "closed" } }));
+  await page.goto(`/signup?next=${encodeURIComponent("/invite?token=not-a-real-token")}`);
+  await page.waitForURL(/\/invite\?token=not-a-real-token$/);
+  await expect(page.getByRole("heading", { name: "Sign-up is closed" })).toHaveCount(0);
+});
+
+test("sign-in only follows next= to pages on this site", async ({ page, baseURL }) => {
+  for (const next of ["/\\evil.example/", "/\t/evil.example/", "//evil.example/", "https://evil.example/"]) {
+    await page.context().clearCookies();
+    await page.goto(`/login?next=${encodeURIComponent(next)}`);
+    await page.getByLabel("Email", { exact: true }).fill("e2e@revenuedot.test");
+    await page.getByLabel("Password").fill("e2e-password-1");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL(/\/projects\/[^/]+\/overview/, { timeout: 10_000 });
+    expect(new URL(page.url()).origin).toBe(new URL(baseURL!).origin);
+  }
+});
