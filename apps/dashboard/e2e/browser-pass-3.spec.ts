@@ -91,7 +91,8 @@ test("Products at 1200px: nothing cut; Attach creates an entitlement in place, r
   await expect(table.getByText("None").first()).toBeVisible();
   await expect(table.locator("..").evaluate((d) => d.scrollWidth <= d.clientWidth)).resolves.toBe(true);
 
-  await page.getByRole("link", { name: "Pro yearly" }).click();
+  // Rows lead with the price and period, the identifier and display name under it (catalog PRD).
+  await table.getByRole("row", { name: /Pro yearly/ }).getByRole("link", { name: "$39.99/year" }).click();
   await page.getByRole("button", { name: "Attach" }).click();
   let d = page.getByRole("dialog", { name: "Attach to entitlement" });
   await expect(d.getByText("This project has no other entitlement yet.")).toBeVisible();
@@ -108,7 +109,7 @@ test("Products at 1200px: nothing cut; Attach creates an entitlement in place, r
 
   await page.goto(`/projects/${ids.sleep}/product-catalog/products`);
   await expect(table.getByText("pro", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "pro_monthly" }).click();
+  await table.getByRole("row", { name: /pro_monthly/ }).getByRole("link", { name: "€4.99/week" }).click();
   await page.getByRole("button", { name: "Attach" }).click();
   d = page.getByRole("dialog", { name: "Attach to entitlement" });
   await d.getByRole("button", { name: "New entitlement" }).click();
@@ -125,16 +126,18 @@ test("Products at 1200px: nothing cut; Attach creates an entitlement in place, r
   expect(ents[0].products.items).toHaveLength(2);
 });
 
-test("Offerings: the header's New offering link opens the form, with and without offerings", async ({ page }) => {
+test("Offerings: the header's New offering menu opens the form, with and without offerings", async ({ page }) => {
   watch(page);
   await signIn(page);
   const open = async (pid: string) => {
     await page.goto(`/projects/${pid}/product-catalog/offerings`);
-    await page.locator(".head .actions").getByRole("link", { name: "New offering" }).click();
+    // New offering is a menu: Create from scratch or Create with AI.
+    await page.locator(".head .actions").getByRole("button", { name: "New offering" }).click();
+    await page.getByRole("menuitem", { name: "Create from scratch" }).click();
     await expect(page).toHaveURL(/\/offerings\/new$/);
     await expect(page.getByRole("heading", { name: "New offering" })).toBeVisible();
   };
-  await open(ids.focus); // empty: the header link and the empty state's button both show
+  await open(ids.focus); // empty: the header menu and the empty state's menu both show
   await json(page.request, "POST", `/v2/projects/${ids.sleep}/offerings`, { lookup_key: "default", display_name: "Standard" });
   await page.goto(`/projects/${ids.sleep}/product-catalog/offerings`);
   await expect(page.getByText("default", { exact: true }).first()).toBeVisible();
