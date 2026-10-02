@@ -488,7 +488,7 @@ let onboarding = offerings.currentOffering(forPlacement: "onboarding_end")`,
       },
       {
         q: "Does RevenueDot support Paddle or other web payment providers?",
-        a: "Not yet. Stripe is the only web provider today. Connect with Stripe through OAuth, Paddle and an embedded checkout are not built.",
+        a: "RevenueDot tracks Paddle Billing purchases that your backend posts, with Paddle's signed notifications. Its own hosted checkout, purchase links and funnels run on Stripe only: Paddle as a checkout provider, Connect with Stripe through OAuth and an embedded checkout are not built.",
       },
     ],
     docs: [
