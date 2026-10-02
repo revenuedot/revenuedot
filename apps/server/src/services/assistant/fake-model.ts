@@ -93,6 +93,7 @@ export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, l
     return { text: `Here is the draft offering ${d.lookup_key} with ${d.packages.length} packages. Approve to create it.`, toolCalls: [{ toolName: "create-offering", input: d }] };
   }
   if (typeof sys?.content === "string" && sys.content.includes("this week's growth insights")) return insightsStep(prompt, tools, lastToolResults);
+  const has = (name: string) => tools.includes(name);
   if (lastToolResults.length) {
     const r = lastToolResults.find((x) => x.toolName === "grant-customer-entitlement") ?? lastToolResults[0]!;
     const out = r.output as Record<string, any>;
@@ -106,10 +107,31 @@ export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, l
     if (r.toolName === "create-products") return { text: `Created ${out?.created?.length ?? 0} products${out?.skipped?.length ? `, skipped ${out.skipped.length} that already existed` : ""}${out?.entitlement ? ` and attached them to ${out.entitlement.lookup_key}` : ""}. See [products](${base}/product-catalog/products).` };
     if (r.toolName === "create-offering") return { text: `Created the offering ${out?.lookup_key} with ${out?.packages?.length ?? 0} packages${out?.is_current ? "; it is now the current offering" : ""}. See [offerings](${base}/product-catalog/offerings).` };
     if (r.toolName === "get-project-health") return { text: `Setup health: ${out?.apps?.length ?? 0} apps checked, webhooks delivered ${out?.webhooks?.delivered_percent_24h ?? "n/a"}% in the last 24 hours.` };
+    // Drafting an experiment or a targeting rule: read the offerings, then propose the draft (an approval card).
+    if (r.toolName === "list-offerings" && Array.isArray(out?.items)) {
+      const items = out.items as { id: string; lookup_key: string; is_current: boolean }[];
+      const named = items.filter((o) => new RegExp(`\\b${o.lookup_key.replace(/[^\w]/g, ".")}\\b`, "i").test(text));
+      const control = items.find((o) => o.is_current) ?? items[0];
+      const others = items.filter((o) => o !== control);
+      if (/targeting rule/i.test(text)) {
+        const pick = named.find((o) => o !== control) ?? others[0];
+        if (!pick || !has("create-targeting-rule")) return { text: "You need a second offering for a targeting rule. Create one in Product catalog → Offerings." };
+        return { text: `I'll draft a rule that shows ${pick.lookup_key}. It stays off until you turn it on.`, toolCalls: [{ toolName: "create-targeting-rule", input: { name: `Show ${pick.lookup_key}`, offering: pick.lookup_key } }] };
+      }
+      const treatments = named.filter((o) => o !== control);
+      const pick = treatments.length ? treatments : others.slice(0, 1);
+      if (!control || !pick.length || !has("create-experiment")) return { text: "There is only one offering, so there is nothing to test against it yet. Duplicate it on the Experiments page and change the copy first." };
+      const type = /trial/i.test(text) ? "free_trial_offer" : /price/i.test(text) ? "price_point" : /annual|monthly|weekly|duration/i.test(text) ? "subscription_duration" : /design|paywall/i.test(text) ? "paywall_design" : "other";
+      return {
+        text: `I'll draft it as an experiment with ${control.lookup_key} as the control. Nobody joins until you start it.`,
+        toolCalls: [{ toolName: "create-experiment", input: { name: `${control.lookup_key} vs ${pick.map((o) => o.lookup_key).join(" vs ")}`, type, control_offering: control.lookup_key, treatment_offerings: pick.map((o) => o.lookup_key), notes: `Hypothesis: ${text.slice(0, 300)}` } }],
+      };
+    }
+    if (r.toolName === "create-experiment" && out?.id) return { text: `Done: [${out.name}](${base}/experiments/${out.id}) is saved as a draft with ${out.variants?.length ?? 2} variants. Review it and start it when you are ready.` };
+    if (r.toolName === "create-targeting-rule" && out?.id) return { text: `Done: the rule "${out.name}" is saved and turned off. Turn it on from [Targeting](${base}/targeting).` };
     return { text: `${r.toolName} returned ${JSON.stringify(out).slice(0, 200)}` };
   }
   const t = text.toLowerCase();
-  const has = (name: string) => tools.includes(name);
   if (drafting) {
     const write = drafting === "products" ? "create-products" : "create-offering";
     if (!has(write)) return { text: "I can't change anything in this project: RevenueDot AI is read only here." };
@@ -123,6 +145,7 @@ export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, l
     const read = /\blook\s*up\b/i.test(text) && has("get-customer") ? [{ toolName: "get-customer", input: { customer_id: grant[2]! } }] : [];
     return { text: "I'll grant it for 7 days once you approve.", toolCalls: [...read, write] };
   }
+  if (/(draft|create|set up).*(experiment|targeting rule)|\btest\b.*\b(against|vs)\b/.test(t) && has("list-offerings")) return { toolCalls: [{ toolName: "list-offerings", input: {} }] };
   if (/(revenue|mrr|insight|growth|doing|subscri)/.test(t) && has("get-metrics")) return { toolCalls: [{ toolName: "get-metrics", input: {} }] };
   if (/(health|webhook|notification)/.test(t) && has("get-project-health")) return { toolCalls: [{ toolName: "get-project-health", input: {} }] };
   if (/fail please/.test(t)) return { error: "The model provider is unavailable (fake)." };

@@ -886,27 +886,54 @@ export const targetingRules = pgTable("targeting_rules", {
   createdAt: created(),
 }, (t) => [index("targeting_rules_project").on(t.projectId, t.position)]);
 
-/** Offering A/B tests. Enrolled customers get variant a's or b's offering as their current offering. */
+/** One arm of an experiment: what `Offerings.current` returns to customers in it, and per-placement offerings. */
+export interface ExperimentVariant { id: string; name: string; offering_id: string; placements: Record<string, string | null> }
+
+/**
+ * Offering experiments (prd/experiments/PRD.md): a control (`a`) and up to three treatments (`b`, `c`, `d`) in `variants`.
+ * `offeringA` and `offeringB` mirror the first two variants for older readers and archives written before migration 0031.
+ */
 export const experiments = pgTable("experiments", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   status: text("status").notNull().default("draft"),
+  /** introductory_offer, free_trial_offer, paywall_design, price_point, subscription_duration, subscription_ordering or other. */
+  type: text("type").notNull().default("other"),
+  primaryMetric: text("primary_metric").notNull().default("initial_conversion_rate"),
+  secondaryMetrics: jsonb("secondary_metrics").$type<string[]>().notNull().default([]),
+  /** The hypothesis, in Markdown. */
+  notes: text("notes").notNull().default(""),
+  /**
+   * "new": customers first seen after the start; "new_and_existing": anyone who asks while it runs. The column default is
+   * the pre-0031 behaviour (for rows an older server writes); the API always sets it, "new" unless asked otherwise.
+   */
+  enrollment: text("enrollment").notNull().default("new_and_existing"),
+  trackPaywallViews: boolean("track_paywall_views").notNull().default(false),
   audienceId: text("audience_id").references(() => audiences.id, { onDelete: "restrict" }),
-  /** Share of eligible new customers enrolled, 1 to 100. */
+  /** Conditions written for this experiment only (the audience rule format), instead of a saved audience. */
+  audienceRules: jsonb("audience_rules").$type<{ groups: { conditions: { field: string; operator: string; value?: string; currency?: string }[] }[] } | null>(),
+  /** Share of eligible customers enrolled, 1 to 100. */
   enrollmentPercent: integer("enrollment_percent").notNull().default(100),
-  offeringA: text("offering_a").notNull().references(() => offerings.id, { onDelete: "cascade" }),
-  offeringB: text("offering_b").notNull().references(() => offerings.id, { onDelete: "cascade" }),
+  variants: jsonb("variants").$type<ExperimentVariant[]>().notNull().default([]),
+  /** Enrollment order among the project's experiments: 1 is checked first. */
+  priority: integer("priority").notNull().default(0),
+  offeringA: text("offering_a").references(() => offerings.id, { onDelete: "set null" }),
+  offeringB: text("offering_b").references(() => offerings.id, { onDelete: "set null" }),
   startedAt: ts("started_at"),
+  pausedAt: ts("paused_at"),
   stoppedAt: ts("stopped_at"),
   createdAt: created(),
-}, (t) => [index("experiments_project").on(t.projectId)]);
+  updatedAt: ts("updated_at"),
+}, (t) => [index("experiments_project").on(t.projectId), index("experiments_project_priority").on(t.projectId, t.priority)]);
 
 export const experimentEnrollments = pgTable("experiment_enrollments", {
   experimentId: text("experiment_id").notNull().references(() => experiments.id, { onDelete: "cascade" }),
   customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
   variant: text("variant").notNull(),
   enrolledAt: ts("enrolled_at").notNull(),
+  /** Enrolled from a test device (the Test Store or an iOS sandbox build): production results leave these customers out. */
+  isSandbox: boolean("is_sandbox").notNull().default(false),
 }, (t) => [primaryKey({ columns: [t.experimentId, t.customerId] }), index("experiment_enrollments_customer").on(t.customerId)]);
 
 /** Content-addressed blobs served to the SDKs' remote configuration (workflows, ui_config). `ref` = base64url(SHA-256(bytes)[0..24]). */

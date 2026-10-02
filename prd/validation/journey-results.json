@@ -30,7 +30,7 @@
   "targeting": {
     "title": "Targeting: audience from SDK attributes, rule with placements, two-offering experiment, enrollment, results",
     "date": "2026-10-02",
-    "run": "202610020513165600",
+    "run": "202610020927295553",
     "passed": 26,
     "failed": 0
   },
@@ -79,7 +79,7 @@
   "dashboard-ui": {
     "title": "The dashboard in a real browser: every page, every object created, edited and deleted, phone width, dark mode",
     "date": "2026-10-02",
-    "run": "202610020547185600",
+    "run": "202610020927295553",
     "passed": 411,
     "failed": 0
   },
@@ -151,6 +151,13 @@
     "date": "2026-10-02",
     "run": "202610021550245710",
     "passed": 58,
+    "failed": 0
+  },
+  "experiments": {
+    "title": "Experiments v2: 4 and 2 variants, modes, audience, priority, placements, 400 SDK customers, results against SQL, CSV, AI draft",
+    "date": "2026-10-02",
+    "run": "202610020914025553",
+    "passed": 53,
     "failed": 0
   },
   "insights": {

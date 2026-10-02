@@ -169,9 +169,9 @@ describe("experiment results", () => {
     expect((await run()).experiments).toBe(0);
     const [m] = mails("xen@example.com");
     expect(m!.subject).toBe("Annual first has enough data to read");
-    expect(m!.text).toContain("A (100 customers): 10.0% ($3.00)");
-    expect(m!.text).toContain("B (100 customers): 20.0% ($6.00)");
-    expect(m!.text).toContain("B beats A on conversion with a 98% chance.");
+    expect(m!.text).toContain("Control (100 customers): 10.0% ($3.00)");
+    expect(m!.text).toContain("Treatment B (100 customers): 20.0% ($6.00)");
+    expect(m!.text).toContain("Treatment B beats Control with a 98% chance.");
     expect(m!.text).toContain(`https://dash.example.com/projects/scan/experiments/${big}`);
     // Stopping both: one "ended" email each, and the small one never gets an "enough data" email afterwards.
     await s.db.update(schema.experiments).set({ status: "stopped", stoppedAt: s.now() });
@@ -270,6 +270,8 @@ describe("review fixes", () => {
       const cid = `r_${v}${i}`;
       await s.db.insert(schema.customers).values({ id: cid, projectId: "scan", originalAppUserId: cid, firstSeen: T("2026-09-02") });
       await s.db.insert(schema.experimentEnrollments).values({ experimentId: "exp_ready", customerId: cid, variant: v, enrolledAt: T("2026-09-02") });
+      // Results need 10 conversions per variant before they read as enough data.
+      if (i < 10) await purchase("scan", "2026-09-03", { customer: cid, usd: 30 });
     }
     const limits = { projects: 5, emails: 20, budgetMs: 15_000 };
     await run(limits);

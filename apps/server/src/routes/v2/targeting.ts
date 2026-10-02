@@ -3,15 +3,14 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { experimentResults } from "../../services/experiments.js";
 import { fieldSupported, OPERATORS, rulesMatch, type Rules } from "../../services/targeting.js";
 import { projectContexts } from "../../services/customer-context.js";
 import { V2Error, body, embeddedList, expands, listOf, notFound, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 
-/** Audiences (RevenueCat's v2 shape), targeting rules and offering experiments (RevenueDot extensions). */
+/** Audiences (RevenueCat's v2 shape) and targeting rules (RevenueDot extension). Experiments: ./experiments.ts. */
 
-const Cond = z.object({ field: z.string().min(1).max(200), operator: z.string(), value: z.string().max(5000).optional(), currency: z.string().optional() }).strict();
-const RulesIn = z.object({ groups: z.array(z.object({ conditions: z.array(Cond).max(50) }).strict()).max(20) }).strict();
+export const Cond = z.object({ field: z.string().min(1).max(200), operator: z.string(), value: z.string().max(5000).optional(), currency: z.string().optional() }).strict();
+export const RulesIn = z.object({ groups: z.array(z.object({ conditions: z.array(Cond).max(50) }).strict()).max(20) }).strict();
 const AudienceIn = z.object({ name: z.string().min(1).max(256), rules: RulesIn }).strict();
 const AudienceUpdate = z.object({ name: z.string().min(1).max(256).optional(), rules: RulesIn.optional() }).strict();
 const Preview = z.union([z.object({ audience_uuid: z.string().min(1) }).strict(), z.object({ rules: RulesIn }).strict()]);
@@ -22,11 +21,6 @@ const RuleIn = z.object({
 }).strict();
 const RuleUpdate = RuleIn.partial().strict();
 const Order = z.object({ rule_ids: z.array(z.string()).min(1) }).strict();
-const ExperimentIn = z.object({
-  name: z.string().min(1).max(256), audience_id: z.string().nullable().optional(), enrollment_percent: z.number().int().min(1).max(100).optional(),
-  offering_a: z.string().min(1), offering_b: z.string().min(1),
-}).strict();
-const ExperimentUpdate = ExperimentIn.partial().strict();
 
 const SAMPLE_LIMIT = 5000;
 
@@ -206,82 +200,12 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, Order);
     const rows = await db.select().from(schema.targetingRules).where(eq(schema.targetingRules.projectId, projectId));
     if (b.rule_ids.length !== rows.length || !rows.every((x) => b.rule_ids.includes(x.id))) throw paramError("rule_ids must list every targeting rule of the project once.", "rule_ids");
-    for (const [i, id] of b.rule_ids.entries()) await db.update(schema.targetingRules).set({ position: i }).where(eq(schema.targetingRules.id, id));
+    // One transaction: an order half written would match customers by a mix of the old and the new positions.
+    await db.transaction(async (raw) => {
+      const tx = raw as unknown as typeof db;
+      for (const [i, id] of b.rule_ids.entries()) await tx.update(schema.targetingRules).set({ position: i }).where(eq(schema.targetingRules.id, id));
+    });
     const out = await db.select().from(schema.targetingRules).where(eq(schema.targetingRules.projectId, projectId)).orderBy(asc(schema.targetingRules.position));
     return c.json(listOf(c, out.map(ruleShape), null, `/v2/projects/${projectId}/targeting_rules`));
-  });
-
-  // ---- Experiments (extension) ----
-  const E = "/v2/projects/:project_id/experiments";
-  const findExp = async (c: V2Context) => {
-    const [x] = await db.select().from(schema.experiments).where(and(eq(schema.experiments.projectId, c.get("projectId")), eq(schema.experiments.id, c.req.param("experiment_id")!))).limit(1);
-    if (!x) throw notFound("Experiment");
-    return x;
-  };
-  const expShape = (x: typeof schema.experiments.$inferSelect) => ({
-    object: "experiment" as const, id: x.id, project_id: x.projectId, name: x.name, status: x.status, audience_id: x.audienceId, enrollment_percent: x.enrollmentPercent,
-    variants: [{ id: "a", offering_id: x.offeringA }, { id: "b", offering_id: x.offeringB }], started_at: x.startedAt?.getTime() ?? null, stopped_at: x.stoppedAt?.getTime() ?? null,
-    created_at: x.createdAt.getTime(),
-  });
-
-  r.get(E, scope("project_configuration:offerings:read"), async (c) => {
-    const rows = await db.select().from(schema.experiments).where(eq(schema.experiments.projectId, c.get("projectId")));
-    return c.json(paginate(c, rows, (x) => x.id, (x) => x.createdAt.getTime(), expShape));
-  });
-  r.post(E, scope("project_configuration:offerings:read_write"), async (c) => {
-    const projectId = c.get("projectId");
-    const b = await body(c, ExperimentIn);
-    if (b.offering_a === b.offering_b) throw paramError("The two variants need different offerings.", "offering_b");
-    await checkOffering(projectId, b.offering_a, "offering_a");
-    await checkOffering(projectId, b.offering_b, "offering_b");
-    if (b.audience_id) await findAudience(projectId, b.audience_id);
-    const [x] = await db.insert(schema.experiments).values({
-      id: newId("prexp", 10), projectId, name: b.name, audienceId: b.audience_id ?? null, enrollmentPercent: b.enrollment_percent ?? 100, offeringA: b.offering_a, offeringB: b.offering_b, createdAt: deps.now(),
-    }).returning();
-    return c.json(expShape(x!), 201);
-  });
-  r.get(`${E}/:experiment_id`, scope("project_configuration:offerings:read"), async (c) => c.json(expShape(await findExp(c))));
-  r.post(`${E}/:experiment_id`, scope("project_configuration:offerings:read_write"), async (c) => {
-    const x = await findExp(c);
-    const b = await body(c, ExperimentUpdate);
-    if (x.status !== "draft" && (b.offering_a || b.offering_b || b.audience_id !== undefined)) throw new V2Error(422, "unprocessable_entity_error", "Variants and audience can only change while the experiment is a draft.");
-    if (b.offering_a) await checkOffering(x.projectId, b.offering_a, "offering_a");
-    if (b.offering_b) await checkOffering(x.projectId, b.offering_b, "offering_b");
-    if (b.audience_id) await findAudience(x.projectId, b.audience_id);
-    if ((b.offering_a ?? x.offeringA) === (b.offering_b ?? x.offeringB)) throw paramError("The two variants need different offerings.", "offering_b");
-    const [out] = await db.update(schema.experiments).set({
-      ...(b.name ? { name: b.name } : {}), ...(b.audience_id !== undefined ? { audienceId: b.audience_id } : {}), ...(b.enrollment_percent ? { enrollmentPercent: b.enrollment_percent } : {}),
-      ...(b.offering_a ? { offeringA: b.offering_a } : {}), ...(b.offering_b ? { offeringB: b.offering_b } : {}),
-    }).where(eq(schema.experiments.id, x.id)).returning();
-    return c.json(expShape(out!));
-  });
-  r.delete(`${E}/:experiment_id`, scope("project_configuration:offerings:read_write"), async (c) => {
-    const x = await findExp(c);
-    if (x.status === "running") throw new V2Error(422, "unprocessable_entity_error", "Stop the experiment before deleting it.");
-    await db.delete(schema.experiments).where(eq(schema.experiments.id, x.id));
-    return c.json({ object: "experiment", id: x.id, deleted_at: deps.now().getTime() });
-  });
-  const transition = (action: string, from: string[], to: string) => async (c: V2Context) => {
-    const x = await findExp(c);
-    if (!from.includes(x.status)) throw new V2Error(422, "unprocessable_entity_error", `A ${x.status} experiment cannot ${action}.`);
-    const now = deps.now();
-    const [out] = await db.update(schema.experiments).set({ status: to, ...(action === "start" && !x.startedAt ? { startedAt: now } : {}), ...(to === "stopped" ? { stoppedAt: now } : {}) }).where(eq(schema.experiments.id, x.id)).returning();
-    return c.json(expShape(out!));
-  };
-  r.post(`${E}/:experiment_id/actions/start`, scope("project_configuration:offerings:read_write"), transition("start", ["draft", "paused"], "running"));
-  r.post(`${E}/:experiment_id/actions/pause`, scope("project_configuration:offerings:read_write"), transition("pause", ["running"], "paused"));
-  r.post(`${E}/:experiment_id/actions/stop`, scope("project_configuration:offerings:read_write"), transition("stop", ["running", "paused"], "stopped"));
-
-  // Results: per variant, customers enrolled, how many converted (any purchase or trial after enrolling), revenue after
-  // enrolling (production, USD), and the chance that b beats a on conversion (normal approximation of two proportions).
-  r.get(`${E}/:experiment_id/results`, scope("project_configuration:offerings:read"), async (c) => {
-    const x = await findExp(c);
-    const env = c.req.query("environment") ?? "production";
-    if (env !== "production" && env !== "sandbox") throw paramError("environment must be production or sandbox.", "environment");
-    const { a, b, chanceBBeatsA, enoughData } = await experimentResults(db, x, env);
-    return c.json({
-      object: "experiment_results", experiment_id: x.id, environment: env, currency: "USD", variants: embeddedList(`/v2/projects/${x.projectId}/experiments/${x.id}/results`, [a, b]),
-      chance_b_beats_a: chanceBBeatsA, enough_data: enoughData,
-    });
   });
 }

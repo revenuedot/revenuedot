@@ -6,7 +6,7 @@ import { anomalyEmail, experimentResultEmail, weeklySummaryEmail } from "../mail
 import { linkBase, randomToken } from "./account-email.js";
 import { sha256Hex } from "./auth.js";
 import { chartSources, loadChartInput, type ChartSources } from "./charts/load.js";
-import { experimentResults } from "./experiments.js";
+import { loadExperimentResults } from "../routes/v2/experiments.js";
 import { fxLookup, type FxFetch } from "./fx.js";
 import { hit } from "./rate-limit.js";
 
@@ -225,8 +225,8 @@ export async function runAccountNotifications(deps: NotifyDeps, now: Date, limit
       // Still running: analysed again at most once an hour until it has enough data.
       if (!ended && !(await hit(db, `notify:experiment:${x.id}`, 1, EXPERIMENT_RECHECK_MS, now))) continue;
       out.analysed++;
-      const res = await experimentResults(db, x, "production");
-      if (!ended && !res.enoughData) continue;
+      const res = (await loadExperimentResults({ db, now: () => now }, x, { env: "production", paywall: x.trackPaywallViews ? "viewed" : "all", platform: null, country: null, paywallAsked: false })).computed;
+      if (!ended && !res.guidance.enough_data) continue;
       for (const r of waiting) {
         if (!canSend()) continue;
         const unsubscribe = await claim(r.u.id, x.projectId, kind, x.id);
@@ -234,9 +234,11 @@ export async function runAccountNotifications(deps: NotifyDeps, now: Date, limit
         // An experiment that ended counts as read: no "enough data" email after the "ended" one.
         if (ended) await claim(r.u.id, x.projectId, "experiment_enough_data", x.id);
         const cur = await display(r.u.displayCurrency, now.getTime());
-        const rows: [string, string, string][] = [res.a, res.b].map((v) => [`${v.id.toUpperCase()} (${v.customers} customers)`, `${(v.conversion_rate * 100).toFixed(1)}%`, money(cur.conv(v.revenue_per_customer), cur.currency)]);
-        const chance = Math.round(res.chanceBBeatsA * 100);
-        const verdict = chance >= 95 ? `B beats A on conversion with a ${chance}% chance.` : chance <= 5 ? `A beats B on conversion with a ${100 - chance}% chance.` : `No clear winner yet: B has a ${chance}% chance of beating A on conversion.`;
+        const metric = (v: (typeof res.variants)[number], id: string) => Number(v.metrics[id]?.value ?? 0);
+        const rows: [string, string, string][] = res.variants.map((v) => [`${v.name} (${v.customers} customers)`, `${(metric(v, "initial_conversion_rate") * 100).toFixed(1)}%`, money(cur.conv(metric(v, "realized_ltv_per_customer")), cur.currency)]);
+        const lead = res.guidance.leader;
+        const leadName = lead ? res.variants.find((v) => v.id === lead.variant_id)?.name : null;
+        const verdict = lead && lead.chance_to_beat_control >= 0.95 ? `${leadName} beats ${res.variants[0]!.name} with a ${Math.round(lead.chance_to_beat_control * 100)}% chance.` : `No clear winner yet. ${res.guidance.message}`;
         emails++;
         const mail = experimentResultEmail({ base, projectName: r.p.name, experimentName: x.name, kind: ended ? "ended" : "enough_data", rows, verdict, url: `${base}/projects/${x.projectId}/experiments/${x.id}`, unsubscribeUrl: unsubscribe });
         if (await send(r.u.email, mail, unsubscribe)) out.experiments++;
