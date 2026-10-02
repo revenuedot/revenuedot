@@ -131,6 +131,20 @@ export class StripeClient {
     throw new StripeApiError("transient", message, res.status, err.code);
   }
 
+  /** Every page of a list endpoint (`limit=100`, `starting_after`), up to `maxPages`; `truncated` when pages were left. */
+  async listAll<T extends { id: string }>(app: Pick<AppRow, "credentials">, path: string, query: Record<string, string | string[]> = {}, maxPages = 50): Promise<{ data: T[]; truncated: boolean }> {
+    const data: T[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const r = await this.get<{ data?: T[]; has_more?: boolean }>(app, path, { ...query, limit: "100", ...(after ? { starting_after: after } : {}) });
+      const items = r.data ?? [];
+      data.push(...items);
+      if (!r.has_more || !items.length) return { data, truncated: false };
+      after = items[items.length - 1]!.id;
+    }
+    return { data, truncated: true };
+  }
+
   subscription(app: Pick<AppRow, "credentials">, id: string) {
     return this.get<StripeSubscription>(app, `/v1/subscriptions/${encodeURIComponent(id)}`, { "expand[]": ["latest_invoice", "items.data.price.currency_options"] });
   }

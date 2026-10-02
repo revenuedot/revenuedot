@@ -17,7 +17,7 @@ const CreateInStore = z.object({
 });
 
 /** Store operation failures in API v2's error vocabulary. */
-function v2StoreError(e: unknown): unknown {
+export function v2StoreError(e: unknown): unknown {
   if (!(e instanceof StoreOpError)) return e;
   switch (e.kind) {
     case "not_found": return new V2Error(404, "resource_missing", e.message, e.param);

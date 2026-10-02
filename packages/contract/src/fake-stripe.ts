@@ -102,6 +102,15 @@ export class FakeStripeAccount {
     const list = (data: unknown[]) => json(200, { object: "list", data, has_more: false, url: u.pathname });
     const expand = u.searchParams.getAll("expand[]");
     const missing = (what: string, x: string) => err(404, `No such ${what}: '${x}'`, "resource_missing");
+    // Stripe's list paging: `active`, `limit` (default 10, at most 100) and `starting_after`.
+    const page = (all: Obj[]) => {
+      const active = u.searchParams.get("active");
+      const rows = active === null ? all : all.filter((x) => String(x.active) === active);
+      const limit = Math.min(100, Number(u.searchParams.get("limit") ?? 10) || 10);
+      const after = u.searchParams.get("starting_after");
+      const start = after ? rows.findIndex((x) => x.id === after) + 1 : 0;
+      return json(200, { object: "list", data: rows.slice(start, start + limit), has_more: start + limit < rows.length, url: u.pathname });
+    };
 
     if (res === "products") {
       if (method === "POST" && !id) {
@@ -111,6 +120,7 @@ export class FakeStripeAccount {
         return json(200, prod);
       }
       if (method === "GET" && id) return this.products.has(id) ? json(200, this.products.get(id)) : missing("product", id);
+      if (method === "GET") return page([...this.products.values()]);
     }
     if (res === "prices") {
       if (method === "POST" && !id) {
@@ -125,7 +135,7 @@ export class FakeStripeAccount {
         return json(200, price);
       }
       if (method === "GET" && id) return this.prices.has(id) ? json(200, this.prices.get(id)) : missing("price", id);
-      if (method === "GET") return list([...this.prices.values()].filter((x) => !u.searchParams.get("product") || x.product === u.searchParams.get("product")));
+      if (method === "GET") return page([...this.prices.values()].filter((x) => !u.searchParams.get("product") || x.product === u.searchParams.get("product")));
     }
     if (res === "coupons") {
       if (method === "POST" && !id) {

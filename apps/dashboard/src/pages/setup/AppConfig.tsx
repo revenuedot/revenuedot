@@ -13,6 +13,8 @@ import {
 } from "./data";
 import { SdkSetup } from "./sdk";
 import { StripeConnectPanel } from "./StripeConnect";
+import { ImportProductsDialog } from "../catalog/ImportProducts";
+import type { App as CatalogApp } from "../catalog/lib";
 
 /**
  * App configuration (/projects/:projectId/apps/:appId): RevenueCat's long app form (frames 23-25), one page per store.
@@ -29,7 +31,7 @@ import { StripeConnectPanel } from "./StripeConnect";
  *   notification": the developer pastes the URL by hand.
  * - Refund request handling (answering Apple's consumption requests), Retention Messaging API, StoreKit
  *   subscription offer key (signing promotional offers) and the Small Business Program commission dates.
- * - A live check for the App Store Connect API key (it is stored; product import that uses it comes later).
+ * - A live check for the App Store Connect API key (product import uses it; errors show in the import dialog).
  * - "Download sample app" banner.
  */
 
@@ -274,6 +276,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const [touched, setTouched] = useState(false);
   useEffect(() => { if (!touched) setD(start); }, [start, touched]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [check, setCheck] = useState<{ busy: boolean; result: CredentialsCheck | null; error: string | null }>({ busy: false, result: null, error: null });
   const [replacing, setReplacing] = useState<{ p8?: boolean; asc?: boolean; sa?: boolean; secret?: boolean; amazon?: boolean; stripeKey?: boolean; whsec?: boolean }>({});
@@ -396,7 +399,9 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           <h1>{app.name}</h1>
           <p className="hrow">{store.label} · <span className="copy"><span>{app.id}</span><CopyButton value={app.id} label="Copy app ID" /></span></p>
         </div>
+        {(apple || google || stripe) && <div className="actions"><button type="button" className="btn btn-line" onClick={() => setImporting(true)}><Icon name="download" />Import products</button></div>}
       </div>
+      {importing && <ImportProductsDialog pid={pid} apps={[app as unknown as CatalogApp]} appId={app.id} onClose={() => setImporting(false)} />}
 
       {!test && (
         <section className="panel" aria-label="Setup checklist">
@@ -474,7 +479,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
 
       {apple && (
         <Section id="asc" title="App Store Connect API key" tag={<span className="tag muted">Optional</span>}>
-          <p className="section-sub">A separate key with the App Manager role. Store it now so importing your products and prices from Apple works when that arrives. Create it in <a className="linkish" href="https://appstoreconnect.apple.com/access/integrations/api" target="_blank" rel="noreferrer">Users and Access → Integrations → App Store Connect API</a>.</p>
+          <p className="section-sub">A separate key with the App Manager role. RevenueDot uses it to import your products from App Store Connect (Import products, above) and to create products there. Create it in <a className="linkish" href="https://appstoreconnect.apple.com/access/integrations/api" target="_blank" rel="noreferrer">Users and Access → Integrations → App Store Connect API</a>.</p>
           {cr.app_store_connect_api_key.configured && !replacing.asc && !d.ascP8
             ? <Saved onReplace={() => setReplacing({ ...replacing, asc: true })} replaceLabel="Replace key">Key <span className="mono">{cr.app_store_connect_api_key.key_id ?? ""}</span> is saved.</Saved>
             : (
