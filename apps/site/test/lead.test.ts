@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parsePhone, score, validate, type Lead } from "../worker/lead";
-import worker, { leadEmail } from "../worker/index";
+import worker, { digestEmail, leadEmail, sendDigest } from "../worker/index";
 
 const good = {
   name: "Maya Chen", email: "maya@habitly.app", company: "Habitly", role: "founder",
@@ -157,5 +157,33 @@ describe("worker", () => {
     const m = leadEmail(lead({ name: "<script>x</script>", message: "a & b" }), "warm", { country: "US", referrer: "", userAgent: "" });
     expect(m.html).not.toContain("<script>");
     expect(m.html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("partial-lead digest", () => {
+  const rows = [
+    { id: "a", email: "maya@habitly.app", answers: JSON.stringify({ revenue: "1m_5m", current: "other", currentOther: "Glassfy", timeline: "this_month" }), step: 4, updated_at: "2026-10-02T10:00:00.000Z", country: "US" },
+    { id: "b", email: "sam@tiny.app", answers: "{}", step: 1, updated_at: "2026-10-02T09:00:00.000Z", country: null },
+  ];
+  it("lists each person with how far they got and their answers", () => {
+    const m = digestEmail(rows);
+    expect(m.subject).toBe("[Partial] 2 people started the contact-sales form but did not send it");
+    expect(m.text).toContain("maya@habitly.app (stopped at contact details, US, 2026-10-02 10:00 UTC)");
+    expect(m.text).toContain("$1M to $5M a month · uses Other (Glassfy) · This month");
+    expect(m.text).toContain("sam@tiny.app (stopped at revenue");
+  });
+  it("emails only when there are partial leads, then marks them reported", async () => {
+    const sql: string[] = [];
+    const sent: { subject: string }[] = [];
+    const make = (results: unknown[]) => ({
+      LEADS: { prepare: (q: string) => { sql.push(q); const st = { run: async () => ({}), all: async () => ({ results: q.includes("SELECT d.id") ? results : [] }) }; return { ...st, bind: () => st }; } },
+      EMAIL: { send: async (m: { subject: string }) => { sent.push(m); } },
+      SALES_TO: "sales@circo.so",
+    });
+    expect(await sendDigest(make([]) as never, new Date("2026-10-02T15:00:00Z"))).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(await sendDigest(make(rows) as never, new Date("2026-10-02T15:00:00Z"))).toBe(2);
+    expect(sent).toHaveLength(1);
+    expect(sql.some((q) => q.startsWith("UPDATE sales_lead_drafts SET digested = 1"))).toBe(true);
   });
 });
