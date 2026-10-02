@@ -93,6 +93,10 @@ const KEYS = "ABCDEFGHIJ";
                 </div>
                 <p class="err" id="err-phone" hidden></p>
               </div>
+              <label class="consent" for="consent_call">
+                <input id="consent_call" name="consent_call" type="checkbox" value="on" />
+                <span>Call me about this. RevenueDot may call or text this number, including with automated technology.</span>
+              </label>
             </fieldset>
 
 
@@ -180,6 +184,9 @@ const KEYS = "ABCDEFGHIJ";
   [aria-invalid="true"] { border-color: var(--down) !important; }
   .phone { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr); }
   .phone select { border-right: 0; }
+  .consent { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; font-size: 14px; line-height: 1.5; color: var(--fg-2); }
+  .consent input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--fg); cursor: pointer; }
+  .consent input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .opts.compact { display: flex; flex-wrap: wrap; }
   .opt { position: relative; display: flex; cursor: pointer; min-width: 0; }

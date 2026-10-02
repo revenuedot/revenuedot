@@ -2,21 +2,17 @@
 //   GET  /api/geo            the visitor's country (Cloudflare's guess), so the phone picker starts on the right country
 //   POST /api/contact-sales  the contact-sales form: validate, store in D1 (LEADS), email sales (EMAIL to SALES_TO)
 //   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
+//   /api/agent/*             the ElevenLabs sales voice agent (worker/agent.ts): init, lookup, meeting, send_info, docs,
+//                            postcall. A new hot or warm lead who ticked "Call me about this" gets a call within seconds.
 // Scheduled (daily, cloudflare.config.ts): one email to sales listing people who started the form and did not finish.
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
+import { agent, esc, json, later, outboundPlan, startOutboundCall, type AgentEnv, type Ctx } from "./agent";
 import { isEmail, vendorLabel, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
 
-interface D1Stmt { run(): Promise<unknown>; all<T = Record<string, unknown>>(): Promise<{ results: T[] }> }
-interface D1 { prepare(sql: string): D1Stmt & { bind(...v: unknown[]): D1Stmt } }
-interface SendEmail { send(m: { to: string; from: { email: string; name?: string }; subject: string; text: string; html: string; replyTo?: string }): Promise<unknown> }
 interface RateLimit { limit(o: { key: string }): Promise<{ success: boolean }> }
-interface Env {
-  ASSETS: { fetch(req: Request): Promise<Response> };
-  LEADS?: D1;
-  EMAIL?: SendEmail;
+interface Env extends AgentEnv {
   LEAD_LIMIT?: RateLimit;
   DRAFT_LIMIT?: RateLimit;
-  SALES_TO?: string;
 }
 
 const FROM = { email: "no-reply@mail.revenuedot.app", name: "RevenueDot website" };
@@ -31,19 +27,22 @@ const DRAFTS = `CREATE TABLE IF NOT EXISTS sales_lead_drafts (
   id TEXT PRIMARY KEY, email TEXT NOT NULL, answers TEXT NOT NULL, step INTEGER NOT NULL,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, country TEXT)`;
 let schemaReady = false;
-const ADD_OTHER = "ALTER TABLE sales_leads ADD COLUMN current_other TEXT";
+// Columns added after the table was first created; "duplicate column" means they are already there.
+const ADD_COLUMNS = [
+  "ALTER TABLE sales_leads ADD COLUMN current_other TEXT",
+  "ALTER TABLE sales_leads ADD COLUMN consent_call INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE sales_leads ADD COLUMN outbound_conversation_id TEXT",
+];
 let draftsReady = false;
 
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 // A plain page for form posts made without JavaScript. `body` is trusted HTML built here.
 const page = (title: string, body: string, status = 200) => new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><body style="font:16px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:12vh auto;padding:0 16px;color:#0A0A0A"><h1 style="font-size:24px;letter-spacing:-.02em">${title}</h1><p>${body}</p></body></html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export default {
-  async scheduled(_controller: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
+  async scheduled(_controller: unknown, env: Env, ctx: Ctx) {
     ctx.waitUntil(sendDigest(env).catch((e) => console.error("contact-sales: digest failed", e)));
   },
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: Ctx): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/geo" && request.method === "GET") {
       const country = (request as Request & { cf?: { country?: string } }).cf?.country ?? null;
@@ -55,8 +54,9 @@ export default {
     }
     if (url.pathname === "/api/contact-sales") {
       if (request.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
-      return contactSales(request, env);
+      return contactSales(request, env, ctx);
     }
+    if (url.pathname.startsWith("/api/agent/")) return agent(request, env, ctx);
     if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Not found." }, 404);
     return env.ASSETS.fetch(request);
   },
@@ -105,7 +105,7 @@ async function readBody(request: Request): Promise<{ data: Record<string, unknow
   return null;
 }
 
-async function contactSales(request: Request, env: Env): Promise<Response> {
+async function contactSales(request: Request, env: Env, ctx?: Ctx): Promise<Response> {
   const origin = request.headers.get("origin");
   if (origin && !ALLOWED_ORIGIN.test(origin)) return json({ ok: false, error: "This form only accepts posts from revenuedot.app." }, 403);
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
@@ -140,41 +140,44 @@ async function contactSales(request: Request, env: Env): Promise<Response> {
     try {
       if (!schemaReady) {
         await env.LEADS.prepare(SCHEMA).run();
-        // Tables created before current_other existed get the column; "duplicate column" means it is already there.
-        await env.LEADS.prepare(ADD_OTHER).run().catch(() => {});
+        for (const sql of ADD_COLUMNS) await env.LEADS.prepare(sql).run().catch(() => {});
         schemaReady = true;
       }
-      await env.LEADS.prepare(`INSERT INTO sales_leads (id, created_at, score, name, email, company, role, phone, phone_country, revenue, current_vendor, current_other, needs, timeline, platforms, website, message, country, referrer, user_agent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      await env.LEADS.prepare(`INSERT INTO sales_leads (id, created_at, score, name, email, company, role, phone, phone_country, revenue, current_vendor, current_other, needs, timeline, platforms, website, message, country, referrer, user_agent, consent_call)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
         id, new Date().toISOString(), s, lead.name, lead.email, lead.company, lead.role, lead.phone, lead.phoneCountry, lead.revenue, lead.current, lead.currentOther || null,
-        JSON.stringify(lead.needs), lead.timeline, JSON.stringify(lead.platforms), lead.website || null, lead.message || null, meta.country, meta.referrer || null, meta.userAgent || null,
+        JSON.stringify(lead.needs), lead.timeline, JSON.stringify(lead.platforms), lead.website || null, lead.message || null, meta.country, meta.referrer || null, meta.userAgent || null, lead.consentCall ? 1 : 0,
       ).run();
       stored = true;
     } catch (e) { console.error("contact-sales: storing the lead failed", e); }
   }
 
+  // Speed to lead: the voice agent calls now, or the sales email says why it did not.
+  const call = outboundPlan(lead, s, env);
   let emailed = false;
   if (env.EMAIL && env.SALES_TO) {
     try {
-      await env.EMAIL.send({ to: env.SALES_TO, from: FROM, replyTo: lead.email, ...leadEmail(lead, s, meta) });
+      await env.EMAIL.send({ to: env.SALES_TO, from: FROM, replyTo: lead.email, ...leadEmail(lead, s, meta, call.note) });
       emailed = true;
       if (stored) await env.LEADS!.prepare("UPDATE sales_leads SET emailed = 1 WHERE id = ?").bind(id).run().catch(() => {});
     } catch (e) { console.error("contact-sales: emailing the lead failed", e); }
   }
   const draftId = typeof data.draftId === "string" && /^[a-f0-9-]{36}$/.test(data.draftId) ? data.draftId : null;
   if (draftId && env.LEADS) await env.LEADS.prepare("UPDATE sales_lead_drafts SET completed = 1 WHERE id = ?").bind(draftId).run().catch(() => {});
-  console.log(JSON.stringify({ event: "contact_sales", id, score: s, stored, emailed }));
+  if (call.call) await later(ctx, startOutboundCall(env, lead, id));
+  console.log(JSON.stringify({ event: "contact_sales", id, score: s, stored, emailed, called: call.call }));
   if (!stored && !emailed) return json({ ok: false, error: "We could not save your request. Email sales@revenuedot.app instead." }, 503);
   return done(s === "self_serve" ? "self_serve" : "sales");
 }
 
-export function leadEmail(l: Lead, s: Score, meta: { country: string | null; referrer: string; userAgent: string }) {
+export function leadEmail(l: Lead, s: Score, meta: { country: string | null; referrer: string; userAgent: string }, call?: string) {
   const rows: [string, string][] = [
     ["Name", l.name], ["Email", l.email], ["Phone", `${parsePhoneNumberFromString(l.phone)?.formatInternational() ?? l.phone} (dial ${l.phone})`], ["Company", l.company], ["Role", l.role ? label(ROLES, l.role) : "Not given"],
     ["Monthly in-app revenue", label(REVENUE, l.revenue)], ["Uses today", vendorLabel(l)],
     ["Needs", l.needs.map((n) => label(NEEDS, n)).join(", ") || "None chosen"], ["Timeline", label(TIMELINE, l.timeline)],
     ["Platforms", l.platforms.map((p) => label(PLATFORMS, p)).join(", ") || "Not given"], ["Website", l.website || "Not given"],
     ["Visitor country", meta.country ?? "Unknown"], ["Came from", meta.referrer || "Direct"],
+    ["Agreed to a call", l.consentCall ? "Yes" : "No"], ...(call ? [["Voice agent", call] as [string, string]] : []),
   ];
   const revenue = l.revenue === "undisclosed" ? "revenue not shared" : label(REVENUE, l.revenue).replace(" a month", "/mo");
   const subject = `[${SCORE_LABEL[s]}] Sales lead: ${l.company} (${l.name}), ${revenue}, uses ${vendorLabel(l)}`.replace(/[\r\n]+/g, " ").slice(0, 200);

@@ -85,6 +85,8 @@ export interface Lead {
   platforms: string[];
   website: string;
   message: string;
+  /** Ticked "Call me about this" (form field consent_call): agreed to calls and texts, including automated ones. */
+  consentCall: boolean;
 }
 
 export type Score = "hot" | "warm" | "self_serve" | "nurture";
@@ -120,6 +122,8 @@ export function validate(input: Record<string, unknown>): Result {
   const website = text(input.website, 200);
   const message = text(input.message, 4000);
   const phone = parsePhone(text(input.phone, 40), text(input.phoneCountry, 2).toUpperCase());
+  // A ticked checkbox posts "on"; JSON may send true. Anything else, including no answer, is no consent.
+  const consentCall = input.consent_call === true || /^(on|true|1|yes)$/i.test(text(input.consent_call, 8));
 
   if (!name) errors.name = "Enter your name.";
   if (!isEmail(email)) errors.email = "Enter a valid work email, like you@company.com.";
@@ -136,7 +140,7 @@ export function validate(input: Record<string, unknown>): Result {
   return {
     ok: true,
     lead: {
-      name, email, company, role, revenue, current, currentOther, timeline, website, message,
+      name, email, company, role, revenue, current, currentOther, timeline, website, message, consentCall,
       phone: phone!.e164, phoneCountry: phone!.country,
       needs: list(input.needs, keys(NEEDS)),
       platforms: list(input.platforms, keys(PLATFORMS)),
