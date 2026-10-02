@@ -116,7 +116,7 @@ describe("CSV and validation (pure)", () => {
     expect(v.warnings.map((w) => w.message)).toEqual([
       "The product editor changes prices only: the new display_name of pro_monthly is ignored. Change it in App Store Connect.",
       "pro_monthly in JPN has no price; nothing changes for it.",
-      "pro_monthly in USA changes by +100% (9.99 → 19.99). Check it is not a typo.",
+      "pro_monthly in USA changes by +100.1% (9.99 → 19.99). Check it is not a typo.",
       "new.sub gets a price in 1 of 4 territories; the App Store sells it only where it has one.",
     ]);
     expect(validateFile("apple", `${HEADER}\npro_monthly,,,,,USA,USD,9.99,`, LIVE, TERR).errors).toEqual([{ line: null, message: "The file changes nothing: every price matches App Store Connect." }]);
@@ -498,5 +498,47 @@ describe("second review: scheduled subscription prices, partial refusals, base p
     const v = validateFile("apple", [HEADER, "pro_monthly,,,,,USA,USD,9.995,", "pro_monthly,,,,,GBR,GBP,9.49,", "coins,Caf�,consumable,,,USA,USD,0.99,create"].join("\n"), live, TERR);
     expect(v.errors).toEqual([{ line: 4, message: 'The name of coins has characters that could not be read (shown as �). Save the file as "CSV UTF-8" and upload it again.' }]);
     expect(v.summary).toMatchObject({ unchanged: 1, price_changes: 1 });
+  });
+});
+
+describe("second review: prices moved in the store, a create that went through, the in-app purchase's base territory", () => {
+  it("a price changed in the store after the upload is not overwritten (App Store and Play)", async () => {
+    s = await storeCatalogServer();
+    const ios = (await download(s, "app_ios", "store_identifiers=focus_pro_monthly")).text;
+    const a = await upload(s, "app_ios", edit(ios, [["focus_pro_monthly", "USA", "10.99"], ["focus_pro_monthly", "GBR", s.asc.customerPrice("GBR", s.asc.tierOf(10.99))]]));
+    // A teammate sets USA to 12.99 in App Store Connect before the commit.
+    s.asc.subPrices.push({ id: "mate1", subscriptionId: s.ids.proMonthly, territory: "USA", tier: s.asc.tierOf(12.99), startDate: "2026-09-30", preserved: false });
+    const r = await commit(s, a.body.id);
+    expect(r.body.rows.map((x: any) => [x.territory, x.status])).toEqual([["USA", "failed"], ["GBR", "succeeded"]]);
+    expect(r.body.rows[0].error).toBe("The price in USA changed in App Store Connect after this file was uploaded (12.99 USD now, 9.99 USD in the file). Upload a new file to change it.");
+    expect(s.asc.currentSubPrice(s.ids.proMonthly, "USA")).toBe("12.99");
+
+    const play = (await download(s, "app_play", "store_identifiers=premium:monthly")).text;
+    const b = await upload(s, "app_play", edit(play, [["premium:monthly", "US", "10.99"], ["premium:monthly", "GB", "8.49"]]));
+    s.play.subscriptions[0]!.basePlans[0].regionalConfigs.find((x: any) => x.regionCode === "US").price = { currencyCode: "USD", units: "11", nanos: 490000000 };
+    const rp = await commit(s, b.body.id);
+    expect(rp.body.rows.map((x: any) => [x.territory, x.status])).toEqual([["US", "failed"], ["GB", "succeeded"]]);
+    expect(rp.body.rows[0].error).toMatch(/^The price in US changed in Google Play after this file was uploaded \(11\.49 USD now/);
+    expect([s.play.price("premium", "monthly", "US"), s.play.price("premium", "monthly", "GB")]).toEqual([11_490_000, 8_490_000]);
+  });
+
+  it("App Store: a create that went through but whose answer was lost is picked up by the retry", async () => {
+    s = await storeCatalogServer();
+    const up = await upload(s, "app_ios", `${HEADER}\nfocus_gems,Gems,consumable,,,USA,USD,0.99,create`);
+    s.asc.fail((m, p) => m === "POST" && p === "/v2/inAppPurchases", 503, "Service Unavailable", "", 1);
+    expect((await commit(s, up.body.id)).body.rows[0]).toMatchObject({ status: "failed", attempts: 1 });
+    // Apple made the product anyway (the answer was lost on the way back).
+    const gems = s.asc.addIap(s.ids.ascApp, "focus_gems", "Gems", "CONSUMABLE", "MISSING_METADATA");
+    const again = await commit(s, up.body.id, "retry");
+    expect(again.body).toMatchObject({ status: "committed", rows: [{ status: "succeeded" }] });
+    expect(s.asc.currentIapPrice(gems, "USA")).toBe("0.99");
+    expect(s.asc.iaps.filter((i) => i.productId === "focus_gems")).toHaveLength(1);
+  });
+
+  it("the base territory note follows Apple's base territory of an in-app purchase, not the United States", () => {
+    const live = [listing("coins", [["USA", "USD", 990_000], ["GBR", "GBP", 990_000]], { type: "consumable", duration: null, group: null, base: { territory: "USA", currency: "USD", amount_micros: 990_000 }, storeBase: "GBR" })];
+    const notes = (csv: string) => validateFile("apple", `${HEADER}\n${csv}`, live, TERR).warnings.map((w) => w.message);
+    expect(notes("coins,,,,,GBR,GBP,1.49,")).toContain("GBR is the base territory of coins: Apple also moves its automatic prices in every territory without a manual price.");
+    expect(notes("coins,,,,,USA,USD,1.49,").some((m) => m.includes("base territory"))).toBe(false);
   });
 });

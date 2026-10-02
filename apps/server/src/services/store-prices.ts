@@ -23,6 +23,8 @@ export interface PricedListing extends StoreListing {
   /** App Store: the subscription or in-app purchase id; Google Play: the product id. */
   storeRef: string | null;
   editable: boolean;
+  /** App Store in-app purchases: Apple's base territory, whose price moves every territory without a manual price. */
+  storeBase?: string | null;
 }
 
 const APPLE = new Set(["app_store", "mac_app_store"]);
@@ -103,7 +105,7 @@ export async function readStorePrices(deps: Deps, app: App): Promise<{ store: st
           for (const p of schedule?.automatic ?? []) byTerritory.set(p.territory, p);
           for (const p of schedule?.manual ?? []) byTerritory.set(p.territory, p);
           const prices = fromAscPrices([...byTerritory.values()]).sort((a, b) => a.territory.localeCompare(b.territory));
-          return { ...item, prices, base: basePrice(prices, schedule?.baseTerritory), storeRef: ref.id, editable: true };
+          return { ...item, prices, base: basePrice(prices, schedule?.baseTerritory), storeRef: ref.id, editable: true, storeBase: schedule?.baseTerritory ?? null };
         }
         return { ...item, prices: [], base: null, storeRef: null, editable: false };
       });

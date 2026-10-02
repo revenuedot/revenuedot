@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
@@ -10,6 +10,7 @@ import { googleClientFor } from "../stores/google/index.js";
 import type { AuditActor } from "../routes/v2/audit.js";
 import { writeAudit } from "../routes/v2/audit.js";
 import { StoreOpError } from "./store-ops.js";
+import { listStoreProducts } from "./store-import.js";
 import { decimalMicros, fromConnect, refreshStorePrices, type PricedListing } from "./store-prices.js";
 
 /**
@@ -267,11 +268,11 @@ export function validateFile(kind: "apple" | "play", text: string, live: PricedL
     if (current && current.amount_micros === price.micros) { unchanged++; continue; }
     if (current && current.currency !== currency) { fail(line, `${id} is priced in ${current.currency} in ${territory}, not ${currency}.`); continue; }
     changes.push({ kind: "price_change", line, store_identifier: id, territory, currency, old_micros: current?.amount_micros ?? null, new_micros: price.micros, product: null });
-    if (kind === "apple" && ex.type !== "subscription" && territory === ex.base?.territory) {
+    if (kind === "apple" && ex.type !== "subscription" && territory === (ex.storeBase ?? ex.base?.territory)) {
       warnings.push({ line, message: `${territory} is the base territory of ${id}: Apple also moves its automatic prices in every territory without a manual price.` });
     }
     if (current && Math.abs(price.micros / current.amount_micros - 1) > BIG_CHANGE) {
-      const pct = Math.round((price.micros / current.amount_micros - 1) * 100);
+      const pct = Math.round((price.micros / current.amount_micros - 1) * 1000) / 10;
       bigChanges.push({ line, text: `${id} in ${territory} changes by ${pct > 0 ? "+" : ""}${pct}% (${microsText(current.amount_micros, currency)} → ${microsText(price.micros, currency)}). Check it is not a typo.` });
     }
   }
@@ -425,9 +426,11 @@ export async function findEdit(deps: Deps, projectId: string, id: string) {
   return e ?? null;
 }
 
+/** The files of a project (or one app), newest first, without their CSV text (up to 1 MB each). */
 export async function listEdits(deps: Deps, projectId: string, appId?: string) {
   const E = schema.productEdits;
-  return deps.db.select().from(E).where(and(eq(E.projectId, projectId), ...(appId ? [eq(E.appId, appId)] : []))).orderBy(desc(E.createdAt), desc(E.id)).limit(200);
+  const { csv: _, ...columns } = getTableColumns(E);
+  return deps.db.select(columns).from(E).where(and(eq(E.projectId, projectId), ...(appId ? [eq(E.appId, appId)] : []))).orderBy(desc(E.createdAt), desc(E.id)).limit(200);
 }
 
 // ---- Commit ---------------------------------------------------------------------------------------------------------
@@ -609,6 +612,16 @@ function matchPoint(points: { id: string; customerPrice: string }[], micros: num
   return { error: `The App Store has no price of ${microsText(micros, currency)} ${currency} in ${territory}. The nearest App Store prices are ${near.join(" and ")}.` };
 }
 
+/**
+ * A price change whose store price moved since the upload (it is neither the file's current price nor its new one) is
+ * not written: someone changed it in the store meanwhile, and the reviewed diff no longer says what the commit does.
+ */
+function movedSinceUpload(kind: "apple" | "play", r: EditLineRow, nowMicros: number | null): Outcome | null {
+  if (r.kind !== "price_change" || nowMicros === r.oldMicros || nowMicros === r.newMicros) return null;
+  const text = (m: number | null) => (m === null ? "no price" : `${microsText(m, r.currency)} ${r.currency}`);
+  return { ok: false, error: `The price in ${r.territory} changed in ${STORE_NAME[kind]} after this file was uploaded (${text(nowMicros)} now, ${text(r.oldMicros)} in the file). Upload a new file to change it.` };
+}
+
 async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<MaybeOutcome[]> {
   const { deps, app } = ctx;
   const api = ascApi(deps, app);
@@ -626,10 +639,19 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
       const ascApp = await api.appByBundleId(app.bundleId);
       if (!ascApp) throw new StoreOpError("invalid", `App Store Connect has no app with bundle ID ${app.bundleId} that this API key can see.`);
       const name = (p.display_name ?? id).slice(0, 64);
-      const created = isSub
-        ? await api.createSubscription(await api.subscriptionGroup(ascApp.id, p.group ?? "Subscriptions"), { name, productId: id, subscriptionPeriod: ASC_PERIOD[p.duration ?? ""] ?? "ONE_MONTH" })
-        : await api.createInAppPurchase(ascApp.id, { name, productId: id, inAppPurchaseType: ASC_IAP[p.type ?? ""] ?? "NON_CONSUMABLE" });
-      ref = created.data.id;
+      try {
+        const created = isSub
+          ? await api.createSubscription(await api.subscriptionGroup(ascApp.id, p.group ?? "Subscriptions"), { name, productId: id, subscriptionPeriod: ASC_PERIOD[p.duration ?? ""] ?? "ONE_MONTH" })
+          : await api.createInAppPurchase(ascApp.id, { name, productId: id, inAppPurchaseType: ASC_IAP[p.type ?? ""] ?? "NON_CONSUMABLE" });
+        ref = created.data.id;
+      } catch (e) {
+        // An earlier attempt's create went through at Apple but its answer never arrived: Apple now refuses the product
+        // id as taken, so the retry carries on with the product that attempt made.
+        if (!(e instanceof ConnectError && e.kind === "conflict") || !rows.some((r) => r.attempts > 0)) throw e;
+        const made = (await listStoreProducts(deps, app)).items.find((i) => i.store_identifier === id && i.ref?.kind === (isSub ? "asc_subscription" : "asc_iap"));
+        if (!made?.ref || !("id" in made.ref)) throw e;
+        ref = made.ref.id;
+      }
       await productCreated(ctx, id, ref, p);
     }
   } else {
@@ -657,7 +679,10 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
       }
       if (Date.now() > ctx.deadline) { out.push(null); continue; }
       const now = schedule.current.find((p) => p.territory === r.territory);
-      if (now && decimalMicros(now.customerPrice) === r.newMicros) { out.push({ ok: true, note: "Already at this price." }); continue; }
+      const nowMicros = now ? decimalMicros(now.customerPrice) : null;
+      if (nowMicros !== null && nowMicros === r.newMicros) { out.push({ ok: true, note: "Already at this price." }); continue; }
+      const moved = movedSinceUpload("apple", r, nowMicros);
+      if (moved) { out.push(moved); continue; }
       try {
         const m = matchPoint(points(r.territory), r.newMicros, r.territory, r.currency);
         if ("error" in m) { out.push({ ok: false, error: m.error }); continue; }
@@ -684,10 +709,15 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
   for (const p of schedule?.manual ?? []) if (p.pricePointId) manual.set(p.territory, p.pricePointId);
   const points = await pointsFor(ctx, api, false, ref, rows.map((r) => r.territory));
   if (Date.now() > ctx.deadline) return rows.map(() => null);
+  // Each territory's price now: its manual price, else Apple's automatic one.
+  const nowPrice = new Map<string, number | null>();
+  for (const p of [...(schedule?.automatic ?? []), ...(schedule?.manual ?? [])]) nowPrice.set(p.territory, decimalMicros(p.customerPrice));
   const out: Outcome[] = [];
   const applied: number[] = [];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]!;
+    const moved = movedSinceUpload("apple", r, nowPrice.get(r.territory) ?? null);
+    if (moved) { out[i] = moved; continue; }
     const m = matchPoint(points(r.territory), r.newMicros, r.territory, r.currency);
     if ("error" in m) { out[i] = { ok: false, error: m.error }; continue; }
     manual.set(r.territory, m.id);
@@ -758,6 +788,8 @@ async function commitPlay(ctx: CommitContext, subscriptionId: string, rows: Edit
       if (!plan) { out[i] = { ok: false, error: `Base plan ${planOf(r)} is no longer in Google Play.` }; return; }
       const cfg = plan.regionalConfigs!.find((c) => c.regionCode === r.territory);
       if (cfg && moneyMicros(cfg.price) === r.newMicros && cfg.price?.currencyCode === r.currency) { out[i] = { ok: true, note: "Already at this price." }; return; }
+      const moved = movedSinceUpload("play", r, cfg ? moneyMicros(cfg.price) : null);
+      if (moved) { out[i] = moved; return; }
       changed = setRegion(plan, r) || changed;
     });
     if (changed) {
@@ -801,7 +833,7 @@ function setRegion(plan: PlayBasePlan, r: EditLineRow): boolean {
 
 // ---- Answers --------------------------------------------------------------------------------------------------------
 
-export function editShape(e: EditRow, rows?: EditLineRow[]) {
+export function editShape(e: Omit<EditRow, "csv">, rows?: EditLineRow[]) {
   const counts = rows ? { pending: rows.filter((r) => r.status === "pending").length, succeeded: rows.filter((r) => r.status === "succeeded").length, failed: rows.filter((r) => r.status === "failed").length } : undefined;
   return {
     object: "product_edit" as const, id: e.id, app_id: e.appId, store: e.store, status: e.status, file_name: e.fileName,
