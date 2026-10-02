@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
@@ -168,6 +168,9 @@ const CHOICES: { type: AppType; label: string; text: string; soon?: boolean }[] 
 const BUNDLE = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
 const PACKAGE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
 
+/** Stores Add app offers (the others show as "Soon"). */
+const ADDABLE: AppType[] = CHOICES.filter((c) => !c.soon).map((c) => c.type);
+
 export function AddAppDialog({ pid, onClose, initial }: { pid: string; onClose: () => void; initial?: AppType }) {
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -236,7 +239,16 @@ export function Apps() {
   const nav = useNavigate();
   const apps = useApps(pid);
   const health = useSetupHealth(pid);
+  // `?add` (or `?add=<store>`) opens Add app directly: the Overview checklist and empty states link here. The parameter is
+  // removed once read, so Back from the new app (or a reload) does not open the dialog again.
+  const [sp, setSp] = useSearchParams();
   const [adding, setAdding] = useState<AppType | null>(null);
+  const addParam = sp.get("add");
+  useEffect(() => {
+    if (addParam === null) return;
+    setAdding(ADDABLE.includes(addParam as AppType) ? addParam as AppType : "app_store");
+    const n = new URLSearchParams(sp); n.delete("add"); setSp(n, { replace: true });
+  }, [addParam]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasTest = apps.data?.some((a) => a.type === "test_store");
   const add = <button type="button" className="btn btn-dark" onClick={() => setAdding("app_store")}><Icon name="plus" />Add app</button>;
 
@@ -256,7 +268,8 @@ export function Apps() {
         {!!apps.data?.length && (
           <div className="panel tbl">
             <table>
-              <thead><tr><th>Name</th><th>App ID</th><th>Bundle / package ID</th><th>Public SDK key</th><th>Setup</th></tr></thead>
+              {/* App ID and the store's bundle or package ID share one column, and Setup wraps, so the table fits from 1024px up. */}
+              <thead><tr><th>Name</th><th>App ID · bundle ID</th><th>Public SDK key</th><th>Setup</th></tr></thead>
               <tbody>
                 {apps.data.map((a) => {
                   const st = setupState(a, health.data?.apps.find((x) => x.id === a.id));
@@ -264,10 +277,12 @@ export function Apps() {
                   return (
                     <tr key={a.id} className="row" tabIndex={0} onClick={() => nav(`/projects/${pid}/apps/${a.id}`)} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) nav(`/projects/${pid}/apps/${a.id}`); }}>
                       <td><StoreCell app={a} /></td>
-                      <td className="id"><span className="hrow" onClick={(e) => e.stopPropagation()}>{a.id}<CopyButton value={a.id} label="Copy app ID" /></span></td>
-                      <td className="id">{sid ? <span className="hrow" onClick={(e) => e.stopPropagation()}>{sid}<CopyButton value={sid} label="Copy bundle ID" /></span> : <span className="subtle">—</span>}</td>
-                      <td><KeyCell pid={pid} appId={a.id} /></td>
-                      <td><span title={st.detail}><StatusLine tone={st.tone}>{st.text}</StatusLine></span></td>
+                      <td className="id w2"><span className="appids" onClick={(e) => e.stopPropagation()}>
+                        <span className="hrow">{a.id}<CopyButton value={a.id} label="Copy app ID" /></span>
+                        {sid && <span className="hrow subtle">{sid}<CopyButton value={sid} label={`Copy ${(STORES[a.type]?.idLabel ?? "Bundle ID").replace(/^./, (c) => c.toLowerCase())}`} /></span>}
+                      </span></td>
+                      <td className="w2"><KeyCell pid={pid} appId={a.id} /></td>
+                      <td className="w2 apps-setup"><span title={st.detail}><StatusLine tone={st.tone}>{st.text}</StatusLine></span></td>
                     </tr>
                   );
                 })}

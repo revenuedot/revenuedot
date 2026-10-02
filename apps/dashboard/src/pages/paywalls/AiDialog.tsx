@@ -12,7 +12,7 @@ import { Icon } from "../../components/icons";
 import { errMsg, v2, type Offering } from "../catalog/lib";
 import { Phone } from "./render";
 import { OfferingField } from "./Paywalls";
-import type { Generation, Paywall } from "./lib";
+import { usePreviewProducts, type Generation, type Paywall } from "./lib";
 
 /** The server explains its own 429 and 502 answers; a gateway's HTML error page or a dropped connection gets a plain sentence. */
 const aiError = (e: unknown) => {
@@ -45,6 +45,7 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
   const [busy, setBusy] = useState<"gen" | "save" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [out, setOut] = useState<Generation | null>(null);
+  const preview = usePreviewProducts(pid, fixedOffering ?? offerings.find((o) => o.id === offering));
   const generate = async () => {
     if (prompt.trim().length < 3) { setErr("Describe the paywall in a few words."); return; }
     setBusy("gen"); setErr(null);
@@ -101,7 +102,7 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
           )}
         </div>
         <div className="pw-ai-prev">
-          {doc ? <Phone doc={doc} width={260} label="Generated paywall preview" /> : (
+          {doc ? <Phone doc={doc} width={260} label="Generated paywall preview" prices={preview.prices} /> : (
             <div className="pw-ai-wait">{busy === "gen" ? <><span className="live" />Writing your paywall…</> : <><Icon name="phone" />The preview shows here.</>}</div>
           )}
         </div>

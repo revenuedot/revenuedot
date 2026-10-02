@@ -3,11 +3,13 @@
  * (purchases-ios RevenueCatUI/Templates/V2): stacks are flexboxes (vertical, horizontal) or overlays (zlayer); sizes are
  * fit, fill, fixed or relative; the sticky footer is pinned under a scrolling body; overrides apply for the selected
  * package, the selected tab and intro-offer eligibility; colours switch between light and dark; `{{ product.* }}` and
- * countdown variables are filled with sample prices. Used by the gallery thumbnails and the editor, so both show exactly
+ * countdown variables are filled with the offering's real products where known (Test Store price, duration) and sample
+ * prices otherwise (preview-values.ts). Used by the gallery thumbnails and the editor, so both show exactly
  * the JSON that is published.
  */
 import { Component as ReactComponent, createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { PAYWALL_ICONS, type Json, type PaywallDoc } from "@revenuedot/core";
+import { productValues, type PreviewProduct } from "./preview-values";
 
 export interface PreviewState { dark: boolean; locale: string; intro: boolean }
 interface Ctx {
@@ -30,7 +32,12 @@ interface Ctx {
   remaining: number | null;
   /** The active tab control of the enclosing tabs component, rendered where `tab_control` sits. */
   control: (() => ReactNode) | null;
-  /** Packages selected by default per tab, so switching tabs selects that tab's default. */
+  /** Real products of the offering's packages (Test Store price, duration, name); samples fill the rest. */
+  prices?: Record<string, PreviewProduct>;
+  /** Every package identifier in the paywall, for `product.relative_discount`. */
+  packages: string[];
+  /** The previewed locale: price and period words follow it, as on devices. */
+  locale: string;
 }
 const C = createContext<Ctx | null>(null);
 const useC = () => useContext(C)!;
@@ -75,28 +82,6 @@ const radius = (shape: Json | undefined) => {
 const WEIGHT: Record<string, number> = { thin: 100, extra_light: 200, light: 300, regular: 400, medium: 500, semibold: 600, bold: 700, extra_bold: 800, black: 900 };
 const NAMED: Record<string, number> = { heading_xxl: 40, heading_xl: 34, heading_l: 28, heading_m: 24, heading_s: 20, heading_xs: 16, body_xl: 18, body_l: 17, body_m: 15, body_s: 13 };
 
-/** Sample products for the preview, by package identifier. */
-function product(id: string | null) {
-  const p = id ?? "";
-  const annual = /annual|year/i.test(p), weekly = /week/i.test(p), life = /life/i.test(p), six = /six/i.test(p), three = /three/i.test(p);
-  const [price, n, unit, short] = life ? [99.99, 0, "lifetime", ""] : annual ? [39.99, 1, "year", "yr"] : weekly ? [2.99, 1, "week", "wk"] : six ? [24.99, 6, "month", "mo"] : three ? [14.99, 3, "month", "mo"] : [6.99, 1, "month", "mo"];
-  const days = life ? 0 : unit === "year" ? 365 : unit === "week" ? 7 : 30 * n;
-  const money = (v: number) => `$${v.toFixed(2)}`;
-  const per = (d: number) => (days ? money((price / days) * d) : money(price));
-  const periodly = life ? "lifetime" : annual ? "yearly" : weekly ? "weekly" : n > 1 ? `every ${n} months` : "monthly";
-  return {
-    "product.price": money(price), "product.price_per_period": life ? money(price) : `${money(price)}/${n > 1 ? `${n} ${unit}s` : unit}`,
-    "product.price_per_period_abbreviated": life ? money(price) : `${money(price)}/${n > 1 ? `${n}${short}` : short}`,
-    "product.price_per_day": per(1), "product.price_per_week": per(7), "product.price_per_month": per(30), "product.price_per_year": per(365),
-    "product.period": unit, "product.period_abbreviated": short, "product.periodly": periodly, "product.period_with_unit": life ? "lifetime" : `${n} ${unit}${n > 1 ? "s" : ""}`,
-    "product.period_in_days": String(days), "product.period_in_weeks": String(Math.round(days / 7)), "product.period_in_months": String(Math.round(days / 30)), "product.period_in_years": String(Math.round(days / 365)),
-    "product.offer_price": "free", "product.offer_price_per_day": "free", "product.offer_price_per_week": "free", "product.offer_price_per_month": "free", "product.offer_price_per_year": "free",
-    "product.offer_price_with_zero": "$0.00", "product.offer_period": "week", "product.offer_period_abbreviated": "wk", "product.offer_period_with_unit": "1 week", "product.offer_period_in_days": "7",
-    "product.offer_period_in_weeks": "1", "product.offer_period_in_months": "0", "product.offer_period_in_years": "0", "product.offer_end_date": "in 7 days",
-    "product.relative_discount": annual ? "52%" : "", "product.store_product_name": `Pro ${annual ? "Yearly" : weekly ? "Weekly" : life ? "Lifetime" : "Monthly"}`,
-    "product.currency_code": "USD", "product.currency_symbol": "$", "product.secondary_offer_price": "", "product.secondary_offer_period": "", "product.secondary_offer_period_abbreviated": "",
-  } as Record<string, string>;
-}
 const two = (n: number) => String(Math.max(0, n)).padStart(2, "0");
 function fill(text: string, c: Ctx): string {
   return text.replace(/\{\{\s*([\w.]+)\s*(?:\|\s*(\w+)\s*)?\}\}/g, (all, key: string, fn?: string) => {
@@ -106,7 +91,7 @@ function fill(text: string, c: Ctx): string {
       const d = Math.floor(ms / 86_400_000), h = Math.floor(ms / 3_600_000) % 24, m = Math.floor(ms / 60_000) % 60, s = Math.floor(ms / 1000) % 60;
       const map: Record<string, string> = { count_days_with_zero: two(d), count_days_without_zero: String(d), count_hours_with_zero: two(h), count_hours_without_zero: String(h), count_minutes_with_zero: two(m), count_minutes_without_zero: String(m), count_seconds_with_zero: two(s), count_seconds_without_zero: String(s) };
       v = map[key];
-    } else v = product(c.pkg ?? c.selectedPkg)[key];
+    } else v = productValues(c.pkg ?? c.selectedPkg, c.prices, c.packages, c.locale)[key];
     // Own keys only: `{{ constructor }}` must stay as typed, not print Object's source.
     if (typeof v !== "string") return all;
     return fn === "uppercase" ? v.toUpperCase() : fn === "lowercase" ? v.toLowerCase() : fn === "capitalize" ? v.replace(/^./, (x) => x.toUpperCase()) : v;
@@ -493,6 +478,20 @@ export function stringsFor(doc: PaywallDoc, locale: string): Record<string, unkn
   return { ...base, ...(doc.components_localizations[locale] ?? {}) };
 }
 
+/** Every package identifier in the paywall, in order of appearance. */
+function packageList(doc: PaywallDoc): string[] {
+  const out: string[] = [];
+  const walk = (x: unknown) => {
+    if (Array.isArray(x)) return x.forEach(walk);
+    if (!x || typeof x !== "object") return;
+    const o = x as Json;
+    if (o.type === "package" && typeof o.package_id === "string" && !out.includes(o.package_id)) out.push(o.package_id);
+    for (const v of Object.values(o)) walk(v);
+  };
+  walk(doc.components_config);
+  return out;
+}
+
 /** The first package selected by default (or the first package), outside tabs. */
 function defaultPackage(doc: PaywallDoc): string | null {
   let first: string | null = null, sel: string | null = null;
@@ -521,6 +520,8 @@ export interface PhoneProps {
   label?: string;
   /** Ticks the countdown every second (off for gallery thumbnails). */
   live?: boolean;
+  /** The offering's real products by package identifier (previewProducts in preview-values.ts). */
+  prices?: Record<string, PreviewProduct>;
 }
 
 /**
@@ -545,19 +546,20 @@ export function Phone(p: PhoneProps) {
     )}><PhoneView {...p} /></Guard>
   );
 }
-function PhoneView({ doc, state = {}, width = 320, focus, onPick, selectedPkg, onSelectPkg, label = "Paywall preview", live = true }: PhoneProps) {
+function PhoneView({ doc, state = {}, width = 320, focus, onPick, selectedPkg, onSelectPkg, label = "Paywall preview", live = true, prices }: PhoneProps) {
   const W = 390, H = 844, scale = width / W;
   const [ownPkg, setOwnPkg] = useState<string | null>(null);
   const [tabs, setTabs] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { if (!live) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [live]);
   const dflt = useMemo(() => defaultPackage(doc), [doc]);
+  const packages = useMemo(() => packageList(doc), [doc]);
   const pkg = selectedPkg !== undefined && selectedPkg !== null ? selectedPkg : ownPkg ?? dflt;
   const setPkg = (id: string) => { setOwnPkg(id); onSelectPkg?.(id); };
   const dark = !!state.dark;
   const ctx: Ctx = {
-    strings: stringsFor(doc, state.locale ?? doc.default_locale), dark, intro: state.intro ?? true, selectedPkg: pkg, setSelectedPkg: setPkg,
-    tabs, setTab: (a, b) => setTabs((t) => ({ ...t, [a]: b })), now, focus, onPick, pkg: null, pkgSelected: false, tabSelected: false, remaining: null, control: null,
+    strings: stringsFor(doc, state.locale ?? doc.default_locale), locale: state.locale ?? doc.default_locale ?? "en_US", dark, intro: state.intro ?? true, selectedPkg: pkg, setSelectedPkg: setPkg,
+    tabs, setTab: (a, b) => setTabs((t) => ({ ...t, [a]: b })), now, focus, onPick, pkg: null, pkgSelected: false, tabSelected: false, remaining: null, control: null, prices, packages,
   };
   const base = doc.components_config?.base;
   const bg = backgroundCss(base?.background, dark);

@@ -15,6 +15,13 @@ import { BUNDLED_ECB, BUNDLED_USD } from "./fx-bundled.js";
 
 export { BUNDLED_ECB, BUNDLED_USD };
 
+/**
+ * The ISO 4217 codes a price can be converted to USD from (the bundled tables cover every currency in the App Store and
+ * Google Play price lists). A price in any other code would be recorded as $0 of revenue, so prices set by hand (Test
+ * Store prices, test purchases) are refused in it.
+ */
+export const CONVERTIBLE_CURRENCIES: ReadonlySet<string> = new Set([...Object.keys(BUNDLED_USD.rates), ...Object.keys(BUNDLED_ECB.rates)]);
+
 export type FxFetch = (url: string, init?: RequestInit) => Promise<Response>;
 type Rates = { date: string; rates: Record<string, number> };
 type Source = "ecb" | "usd";

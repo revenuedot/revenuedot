@@ -92,7 +92,7 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
 
   let content;
   if (!choices.length) {
-    content = <p className="cat-lead">Products can be imported from App Store, Mac App Store, Google Play and Stripe apps. <Link className="cat-lnk" to={`/projects/${pid}/apps`}>Add one of those apps</Link> first.</p>;
+    content = <p className="cat-lead">Products can be imported from App Store, Mac App Store, Google Play and Stripe apps. <Link className="cat-lnk" to={`/projects/${pid}/apps?add=app_store`}>Add one of those apps</Link> first.</p>;
   } else if (result) {
     const names = (ents.data ?? []).filter((e) => result.entitlement_ids.includes(e.id)).map((e) => e.lookup_key);
     content = (

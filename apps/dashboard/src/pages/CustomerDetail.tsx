@@ -440,8 +440,9 @@ export function CustomerDetail() {
               {d.subs.isError ? <Failed error={d.subs.error} retry={() => d.subs.refetch()} /> : d.subs.isLoading ? <Loading />
                 : !subs.length ? <div className="pnote">No subscriptions.</div>
                 : (
-                  <div className="tbl"><table className="compact">
-                    <thead><tr><th>Product</th><th>Status</th><th>Store</th><th>Started</th><th>Renews or ends</th><th>Renewal</th><th className="amt">Price</th><th className="amt">Revenue</th></tr></thead>
+                  <div className="tbl"><table className="compact subs">
+                    {/* Six columns with two-line cells (store under the product, renewal under the date), so the table fits its panel from 1024px up without scrolling sideways. */}
+                    <thead><tr><th>Product</th><th>Status</th><th className="hide-sm">Started</th><th>Renews or ends</th><th className="amt">Price</th><th className="amt">Revenue</th></tr></thead>
                     <tbody>
                       {[...subs].sort((a, b) => b.current_period_starts_at - a.current_period_starts_at).map((x) => {
                         const ex = extra(x.id);
@@ -449,16 +450,15 @@ export function CustomerDetail() {
                         const prod = productById(x.product_id);
                         const isPromo = x.store === "promotional";
                         const name = isPromo ? `Granted: ${x.entitlements.items.map((e) => e.display_name).join(", ") || "entitlement"}` : prod?.display_name ?? ex?.product_display_name ?? ex?.product_identifier ?? "Unknown product";
+                        const kind = ex && ex.period_type !== "normal" && ex.period_type !== "trial" && !isPromo ? PERIOD_TYPE[ex.period_type] ?? ex.period_type : null;
                         return (
                           <tr key={x.id}>
-                            <td><span title={ex ? `${ex.product_identifier} · ${x.store_subscription_identifier}` : x.store_subscription_identifier}>{name}</span> <Env env={x.environment} /></td>
-                            <td><Tag tone={st.tone}>{st.label}</Tag>{ex && ex.period_type !== "normal" && ex.period_type !== "trial" && !isPromo && <span className="subtle" style={{ marginLeft: 6, fontSize: 12 }}>{PERIOD_TYPE[ex.period_type] ?? ex.period_type}</span>}</td>
-                            <td className="subtle">{storeLabel(x.store)}</td>
-                            <td className="subtle" title={fmt.dateTime(x.starts_at)}>{shortDate(x.starts_at)}</td>
-                            <td className="subtle" title={x.ends_at ? fmt.dateTime(x.ends_at) : undefined}>{x.ends_at ? shortDate(x.ends_at) : "—"}</td>
-                            <td className="subtle">{x.gives_access ? RENEWAL[x.auto_renewal_status] ?? x.auto_renewal_status : "—"}</td>
-                            <td className="amt" title={ex?.duration ? `Every ${durationWords(ex.duration)}` : undefined}>{ex?.price ? <>{money(ex.price.amount, ex.price.currency)}{per(ex.duration) && <span className="subtle">/{per(ex.duration)}</span>}</> : "—"}</td>
-                            <td className={`amt${x.total_revenue_in_usd.gross < 0 ? " down" : ""}`}>{money(x.total_revenue_in_usd.gross)}</td>
+                            <td className="subs-prod"><span title={ex ? `${ex.product_identifier} · ${x.store_subscription_identifier}` : x.store_subscription_identifier}>{name}</span> <Env env={x.environment} /><span className="l2">{storeLabel(x.store)}</span></td>
+                            <td className="nw"><Tag tone={st.tone}>{st.label}</Tag>{kind && <span className="l2">{kind}</span>}</td>
+                            <td className="nw subtle hide-sm" title={fmt.dateTime(x.starts_at)}>{shortDate(x.starts_at)}</td>
+                            <td className="nw subtle" title={x.ends_at ? fmt.dateTime(x.ends_at) : undefined}>{x.ends_at ? shortDate(x.ends_at) : "—"}{x.gives_access && <span className="l2">{RENEWAL[x.auto_renewal_status] ?? x.auto_renewal_status}</span>}</td>
+                            <td className="amt nw" title={ex?.duration ? `Every ${durationWords(ex.duration)}` : undefined}>{ex?.price ? <>{money(ex.price.amount, ex.price.currency)}{per(ex.duration) && <span className="subtle">/{per(ex.duration)}</span>}</> : "—"}</td>
+                            <td className={`amt nw${x.total_revenue_in_usd.gross < 0 ? " down" : ""}`}>{money(x.total_revenue_in_usd.gross)}</td>
                           </tr>
                         );
                       })}
@@ -492,7 +492,8 @@ export function CustomerDetail() {
                 )}
             </Panel>
 
-            <Timeline pid={pid} id={id} entName={entName} productName={productName} />
+            {/* Below 1400px the page stacks, and the history moves after the customer's details (app.css .c-hist). */}
+            <div className="c-hist"><Timeline pid={pid} id={id} entName={entName} productName={productName} /></div>
           </div>
 
           <div className="col">
@@ -530,9 +531,9 @@ export function CustomerDetail() {
 
             {c && <Attributes attrs={c.attributes?.items ?? []} onEdit={(a) => setDialog({ kind: "attr", attr: a })} onAdd={() => setDialog({ kind: "attr" })} />}
 
-            <Panel title="Delete customer" flush>
+            <div className="c-del"><Panel title="Delete customer" flush>
               <div className="danger-zone"><span>Erase this customer and all their data.</span><button type="button" className="btn btn-danger" onClick={() => setDialog({ kind: "delete" })}><Icon name="trash" />Delete</button></div>
-            </Panel>
+            </Panel></div>
           </div>
         </div>
       </div>

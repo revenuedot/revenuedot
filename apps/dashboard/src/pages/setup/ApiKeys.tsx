@@ -145,7 +145,7 @@ export function ApiKeys() {
           <div className="ph"><b>Public app-specific keys</b><Link className="link" to={`/projects/${pid}/apps`}>Manage apps →</Link></div>
           {apps.isLoading && <div className="pb subtle">Loading…</div>}
           {apps.isError && <div className="pb"><div className="banner err" role="alert">The apps could not be loaded: {errMsg(apps.error)}</div></div>}
-          {apps.data && !apps.data.length && <div className="pb section-sub">No apps yet. <Link className="linkish" to={`/projects/${pid}/apps`}>Add an app</Link> to get its public key.</div>}
+          {apps.data && !apps.data.length && <div className="pb section-sub">No apps yet. <Link className="linkish" to={`/projects/${pid}/apps?add=app_store`}>Add an app</Link> to get its public key.</div>}
           {!!apps.data?.length && (
             <div className="tbl">
               <table>
