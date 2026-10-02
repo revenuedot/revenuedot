@@ -19,6 +19,8 @@ interface Layout {
   /** Paragraphs of plain text (escaped for HTML). */
   paragraphs: string[];
   button?: { label: string; url: string };
+  /** Numbered sections under the paragraphs (the weekly insights digest): a title, lines of text and an optional link. */
+  blocks?: { title: string; lines: string[]; link?: { label: string; url: string } }[];
   /** Small print under the button (plain text). */
   after?: string[];
   /** Where "Notification settings" in the footer points. */
@@ -30,6 +32,12 @@ interface Layout {
 function layout(l: Layout): Rendered {
   const p = (t: string) => `<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:${INK};">${esc(t)}</p>`;
   const small = (t: string) => `<p style="margin:0 0 12px;font-size:13px;line-height:20px;color:${FG2};">${esc(t)}</p>`;
+  const blocks = (l.blocks ?? []).map((b, i) =>
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border-top:1px solid ${BORDER};"><tr><td style="padding:16px 0 0;">` +
+    `<p style="margin:0 0 8px;font-size:15px;line-height:22px;font-weight:600;color:${INK};"><span style="font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;color:${FG3};">${i + 1}.</span> ${esc(b.title)}</p>` +
+    b.lines.map((t) => `<p style="margin:0 0 8px;font-size:14px;line-height:22px;color:${FG2};">${esc(t)}</p>`).join("") +
+    (b.link ? `<p style="margin:0;font-size:13px;line-height:20px;"><a href="${esc(b.link.url)}" style="color:${INK};font-weight:600;">${esc(b.link.label)} →</a></p>` : "") +
+    `</td></tr></table>`).join("");
   const button = l.button
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;"><tr><td style="background:${INK};">` +
       `<a href="${esc(l.button.url)}" style="display:inline-block;padding:12px 20px;font-family:${FONT};font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(l.button.label)}</a>` +
@@ -48,7 +56,7 @@ function layout(l: Layout): Rendered {
     `<tr><td style="padding:0 0 28px;">${mark}</td></tr>` +
     `<tr><td style="border-top:1px solid ${BORDER};padding:28px 0 8px;">` +
     `<h1 style="margin:0 0 16px;font-size:22px;line-height:30px;font-weight:600;letter-spacing:-0.02em;color:${INK};">${esc(l.heading)}</h1>` +
-    l.paragraphs.map(p).join("") + button + (l.after ?? []).map(small).join("") +
+    l.paragraphs.map(p).join("") + blocks + button + (l.after ?? []).map(small).join("") +
     `</td></tr>` +
     `<tr><td style="border-top:1px solid ${BORDER};padding:20px 0 0;font-size:12px;line-height:18px;color:${FG3};">` +
     `${esc(l.reason)}<br>RevenueDot · <a href="${esc(l.settingsUrl)}" style="color:${FG3};">Notification settings</a>` +
@@ -56,6 +64,7 @@ function layout(l: Layout): Rendered {
   const text = [
     l.heading, "",
     ...l.paragraphs.flatMap((t) => [t, ""]),
+    ...(l.blocks ?? []).flatMap((b, i) => [`${i + 1}. ${b.title}`, ...b.lines, ...(b.link ? [`${b.link.label}: ${b.link.url}`] : []), ""]),
     ...(l.button ? [`${l.button.label}: ${l.button.url}`, ""] : []),
     ...(l.after ?? []).flatMap((t) => [t, ""]),
     "--",
@@ -247,6 +256,26 @@ export function portalLinkEmail(o: { appName: string; linkUrl: string; unsubscri
     body: `You asked to update your payment method for ${o.appName}. Use the button below within ${o.minutes} minutes. It works once.\n\nIf you did not ask for this, you can ignore this email. Nothing changes.`,
     buttonLabel: "Update payment", offerUrl: o.linkUrl, unsubscribeUrl: o.unsubscribeUrl,
     reason: `You received this because you asked for it in ${o.appName}.`,
+  });
+}
+
+/** The weekly AI growth insights digest (prd/attribution-benchmarks-insights §3): numbers from the data pack, no customer ids. */
+export function insightsDigestEmail(o: {
+  base: string; projectName: string; week: string; overviewUrl: string; unsubscribeUrl: string | null;
+  insights: { title: string; finding: string; recommendation: string; numbers: string[]; url: string }[];
+}): Rendered {
+  const n = o.insights.length;
+  const weekLabel = new Date(`${o.week}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+  return layout({
+    subject: `${o.projectName}: ${n} growth ideas for the week of ${weekLabel}`,
+    preheader: o.insights[0]?.title ?? "This week's growth insights",
+    heading: `${n} growth ideas for ${o.projectName}`,
+    paragraphs: [`RevenueDot AI read your charts for the week of ${weekLabel} and picked what to act on. Every number below comes from your own data.`],
+    blocks: o.insights.map((i) => ({ title: i.title, lines: [...(i.numbers.length ? [i.numbers.join(" · ")] : []), i.finding, `What to do: ${i.recommendation}`], link: { label: "Open the chart", url: i.url } })),
+    button: { label: "Open the Overview", url: o.overviewUrl },
+    after: [o.unsubscribeUrl ? `Stop the weekly digest: ${o.unsubscribeUrl}` : "Turn the weekly digest off in your notification settings."],
+    settingsUrl: settingsUrl(o.base),
+    reason: `You received this because you are an admin of ${o.projectName} and the weekly insights digest is on.`,
   });
 }
 

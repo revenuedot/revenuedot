@@ -22,6 +22,7 @@ export async function seedEverything(db: DB, key: SecretKey | null, o: { userId:
   ]);
   await db.insert(s.customerAliases).values([{ projectId: P, appUserId: "u1", customerId: "cus_1" }, { projectId: P, appUserId: "u1-alias", customerId: "cus_1" }, { projectId: P, appUserId: "$RCAnonymousID:abc", customerId: "cus_2" }]);
   await db.insert(s.customerAttributes).values([{ customerId: "cus_1", key: "$email", value: "o'brien@example.com", updatedAtMs: 1_790_000_000_123 }, { customerId: "cus_1", key: "note", value: "line1\nline2 ☃ \"quoted\"", updatedAtMs: 1 }]);
+  await db.insert(s.customerAttribution).values({ customerId: "cus_1", projectId: P, mediaSource: "Apple Search Ads", campaign: "Brand US", campaignId: "542370539", partnerIds: { appsflyer_id: "af-1" } });
   await db.insert(s.subscriptions).values({ id: "sub_1", projectId: P, customerId: "cus_1", appId: "app_ios", store: "app_store", storeKey: "orig_1", productIdentifier: "pro_monthly", purchaseDate: T, originalPurchaseDate: T, expiresDate: new Date(T.getTime() + 30 * 86400_000), priceAmount: 9.99, priceCurrency: "EUR", priceUsd: 10.723456789012345, eligibleWinBackOfferIds: ["wb1", "wb2"], countryCode: "DE" });
   await db.insert(s.nonSubscriptions).values({ id: "ns_1", projectId: P, customerId: "cus_1", appId: "app_test", store: "test_store", productIdentifier: "lifetime", storeTransactionId: "tx_life", purchaseDate: T, priceAmount: 149.99, priceUsd: 149.99 });
   await db.insert(s.transactions).values([

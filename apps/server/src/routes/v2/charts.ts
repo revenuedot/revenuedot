@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
-  addMonths, chartDef, DIM_LABEL, dimValues, floorTo, isoDay, RESOLUTIONS, runChart,
+  addMonths, ATTRIBUTION_DIMS, chartDef, DIM_LABEL, NO_ATTRIBUTION, dimValues, floorTo, isoDay, RESOLUTIONS, runChart,
   type ChartDef, type ChartFilter, type ChartOutput, type ChartRequest, type Dim, type MeasureDef, type Resolution,
 } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
@@ -260,6 +260,7 @@ async function dimLabels(deps: Deps, projectId: string, dim: Dim): Promise<(v: s
   if (dim === "store") return (v) => unknown(v, (x) => STORE_LABEL[x] ?? x);
   if (dim === "country") return (v) => unknown(v, countryName);
   if (dim === "product_duration") return (v) => unknown(v, durationLabel);
+  if ((ATTRIBUTION_DIMS as string[]).includes(dim)) return (v) => (v === "" ? NO_ATTRIBUTION : v);
   return (v) => unknown(v, (x) => x);
 }
 

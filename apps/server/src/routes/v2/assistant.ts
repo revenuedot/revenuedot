@@ -6,13 +6,14 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { assistantScope, AI_ACCESS } from "../../services/assistant/access.js";
 import { loadAssistantContext, runAssistantTurn, titleFrom, toolNamesFor, type AssistantContext } from "../../services/assistant/agent.js";
-import { DEFAULT_CAPS, usageToday } from "../../services/assistant/limits.js";
+import { DEFAULT_CAPS, startTurn, usageToday } from "../../services/assistant/limits.js";
+import { displayInsights, generateInsights, InsightsError, weekOf } from "../../services/insights/generate.js";
 import {
   activeStream, appendChunks, conversationShape, createConversation, deleteConversation, dropStream, findConversation, finishStream, lastStream, listConversations,
   loadMessages, readChunks, saveMessages, startStream, streamStatus, touchConversation,
 } from "../../services/assistant/store.js";
 import { firstSaleCard } from "../../services/assistant/first-sale.js";
-import { allows, body, notFound, paramError, V2Error, type V2Context, type V2Router } from "./common.js";
+import { allows, body, notFound, paramError, scope as needs, V2Error, type V2Context, type V2Router } from "./common.js";
 import { publicOrigin } from "./setup.js";
 import { hit } from "../../services/rate-limit.js";
 import { getCookie } from "hono/cookie";
@@ -463,6 +464,51 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
       for (const ch of CHARTS.filter((x) => !ql || x.name.includes(ql) || x.display_name.toLowerCase().includes(ql)).slice(0, 5)) items.push({ type: "chart", id: ch.name, label: ch.display_name, detail: "Chart" });
     }
     return c.json({ object: "list", items });
+  });
+
+  // ---- AI growth insights (prd/attribution-benchmarks-insights §3)
+  const insightsOut = async (c: V2Context) => {
+    const projectId = c.get("projectId");
+    const p = c.get("principal");
+    const now = deps.now();
+    const [proj] = await db.select({ aiAccess: schema.projects.aiAccess }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
+    const role = p.kind === "user" ? p.role ?? "viewer" : "api_key";
+    const scope = assistantScope(proj?.aiAccess ?? "read_write", role === "api_key" ? "admin" : role);
+    const { current, ready } = await displayInsights(db, projectId, now);
+    let subscribed: boolean | null = null;
+    if (p.kind === "user") subscribed = (await db.select({ on: schema.users.insightsEmails }).from(schema.users).where(eq(schema.users.id, p.userId)).limit(1))[0]?.on ?? null;
+    const available = !!deps.assistant && scope.canRead;
+    return {
+      object: "ai_insights", available, reason: !deps.assistant ? "No model is configured on this server." : scope.reason,
+      week: weekOf(now), status: current?.status ?? "none", error: current?.status === "error" ? current.error : null,
+      insights_week: ready?.week ?? null, stale: !!ready && ready.week !== weekOf(now),
+      generated_at: ready?.generatedAt?.getTime() ?? null, provider: ready?.provider ?? null, model: ready?.model ?? null,
+      insights: ready?.insights ?? [], can_refresh: available && role !== "viewer" && role !== "api_key",
+      digest: { available: !!deps.insightsDigest && !!deps.assistant, subscribed },
+    };
+  };
+  // Insights carry revenue, MRR and conversion numbers: the same permission as Charts (an API key or custom role without
+  // it reads nothing here).
+  r.get(`${A}/insights`, needs("charts_metrics:charts:read"), async (c) => c.json(await insightsOut(c)));
+  r.post(`${A}/insights/refresh`, needs("charts_metrics:charts:read"), async (c) => {
+    const p = user(c);
+    if (p.role === "viewer") throw new V2Error(403, "authorization_error", "Your role in this project (viewer) does not allow this. Ask a project admin.");
+    model();
+    const now = deps.now();
+    const projectId = c.get("projectId");
+    const { current } = await displayInsights(db, projectId, now);
+    if (current?.status === "ready" && current.generatedAt && now.getTime() - current.generatedAt.getTime() < 3_600_000) {
+      throw new V2Error(429, "rate_limit_error", "These insights were written less than an hour ago. Refresh again later.");
+    }
+    const refused = await startTurn(db, deps.assistantCaps ?? DEFAULT_CAPS, p.userId, projectId, now);
+    if (refused) throw new V2Error(429, "rate_limit_error", refused);
+    try {
+      await generateInsights(deps, projectId, { by: { userId: p.userId, sessionId: getCookie(c, SESSION_COOKIE) ?? null }, now });
+    } catch (e) {
+      if (e instanceof InsightsError) throw new V2Error(e.status, e.status === 429 ? "rate_limit_error" : e.status === 403 ? "authorization_error" : e.status === 409 ? "resource_locked_error" : e.status === 400 ? "parameter_error" : "server_error", e.message, undefined, e.status === 503);
+      throw e;
+    }
+    return c.json(await insightsOut(c));
   });
 
   // ---- First-sale card

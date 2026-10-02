@@ -71,7 +71,7 @@ Docs: https://revenuedot.app/docs/migrate`;
 export interface CliIO {
   out: (s: string) => void; err: (s: string) => void; env: Record<string, string | undefined>; http?: HttpOptions; targetHttp?: HttpOptions; isTTY?: boolean;
   /** admin commands: SQL runner (tests); default: postgres at DATABASE_URL. */ query?: Query;
-  /** move: no real waiting, and archive files from memory (tests). */ sleep?: (ms: number) => Promise<void>; readFile?: (path: string) => Uint8Array;
+  /** move: no real waiting on a clock the test moves, and archive files from memory (tests). */ sleep?: (ms: number) => Promise<void>; now?: () => number; readFile?: (path: string) => Uint8Array;
   /** Asks for a missing key. Set only when stdin and stderr are terminals; without it a missing key is a usage error. */ prompt?: Prompt;
 }
 
@@ -119,7 +119,7 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
   if (v.help || !cmd) { io.out(HELP); return cmd || v.help ? 0 : 2; }
   if (cmd === "admin") return admin(sub, positionals.slice(2), v, io);
   if (cmd === "move" || cmd === "export") {
-    const mio = { out: io.out, err: io.err, env: io.env, prompt: io.prompt, http: io.targetHttp ?? io.http, isTTY: io.isTTY, sleep: io.sleep, readFile: io.readFile };
+    const mio = { out: io.out, err: io.err, env: io.env, prompt: io.prompt, http: io.targetHttp ?? io.http, isTTY: io.isTTY, sleep: io.sleep, now: io.now, readFile: io.readFile };
     try {
       return cmd === "move" ? await moveCommand(v, mio) : await exportCommand(v, mio);
     } catch (e) {

@@ -5,3 +5,4 @@ export * from "./compute.js";
 export * from "./run.js";
 export * from "./contributors.js";
 export * from "./view.js";
+export * from "./attribution-report.js";

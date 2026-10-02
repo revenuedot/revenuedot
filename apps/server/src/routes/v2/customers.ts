@@ -5,6 +5,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer, getOrCreateCustomer, setAttributes, type CustomerRow } from "../../repo/customers.js";
 import { accessOf } from "../../repo/access.js";
+import { attributionShape } from "../../repo/attribution.js";
 import { revokeSubscriberTokens } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { subscriptionTransactions } from "../../services/subscription-transactions.js";
@@ -118,6 +119,13 @@ export function customerRoutes(r: V2Router, deps: Deps) {
     const cust = await find(c);
     const items = await attributeItems(db, cust.id);
     return c.json(paginate(c, items, (a) => a.name, () => 0, (a) => a));
+  });
+
+  // RevenueDot extension: the customer's first-class attribution (prd/attribution-benchmarks-insights §1); null without one.
+  r.get(`${C}/:customer_id/attribution`, scope("customer_information:customers:read"), async (c) => {
+    const cust = await find(c);
+    const [row] = await db.select().from(schema.customerAttribution).where(eq(schema.customerAttribution.customerId, cust.id)).limit(1);
+    return c.json({ object: "customer_attribution_result", attribution: attributionShape(row) });
   });
 
   r.post(`${C}/:customer_id/attributes`, scope("customer_information:customers:read_write"), async (c) => {

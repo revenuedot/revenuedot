@@ -30,8 +30,8 @@ interface ChartData {
 }
 interface Options {
   resolutions: { id: string; display_name: string }[];
-  segments: { id: string; display_name: string }[];
-  filters: { id: string; display_name: string; options: { id: string; display_name: string }[] }[];
+  segments: { id: string; display_name: string; group_display_name?: string }[];
+  filters: { id: string; display_name: string; group_display_name?: string; options: { id: string; display_name: string }[] }[];
   user_selectors: Record<string, { default: string; display_name: string; options: { id: string; display_name: string }[] }> | null;
 }
 
@@ -319,7 +319,12 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
             {def.segmentable && (options.data?.segments.length ?? 0) > 0 && (
               <select className="select sm" aria-label="Segment" value={segment} onChange={(e) => set({ segment: e.target.value || null })}>
                 <option value="">No segment</option>
-                {options.data!.segments.map((s) => <option key={s.id} value={s.id}>By {s.display_name.toLowerCase()}</option>)}
+                {/* Grouped as the API groups them: store and product, customer, attribution … */}
+                {[...new Set(options.data!.segments.map((s) => s.group_display_name ?? ""))].map((g) => (
+                  <optgroup key={g} label={g || "Segments"}>
+                    {options.data!.segments.filter((s) => (s.group_display_name ?? "") === g).map((s) => <option key={s.id} value={s.id}>By {s.display_name.toLowerCase()}</option>)}
+                  </optgroup>
+                ))}
               </select>
             )}
             {def.selectors.map((s) => (

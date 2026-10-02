@@ -113,6 +113,7 @@ Response (`object: "chart_data"`): `category`, `display_type` (`line`, `bar`, `s
 | `app_version` | customers | the customer's last seen app version |
 | `paywall` | paywall charts | `paywall_id` of the impression |
 | `survey_option` | Customer Center survey | the option id |
+| `media_source`, `campaign`, `ad_group`, `keyword`, `ad`, `creative` | everything with customer dimensions | the customer's attribution row (`customer_attribution`); Apple Search Ads campaigns and ad groups by name once loaded; no value is "No attribution" |
 
 Customer dimensions filter customers and everything they did; purchase dimensions filter purchases but never the new-customer denominators (as RevenueCat: product filters do not apply to new customers).
 
@@ -204,7 +205,7 @@ Already built (prd/paywalls/PRD.md §6): "Saved" on top of the rail, opening one
 - **Ad revenue in purchase segments:** ad revenue has no product, store or offering, so segmenting Revenue by one of them counts it in every segment (and the Customers tab lists the customer once per segment). Segments by customer dimensions are not affected. The published SQL counts ad revenue reported in USD only; the API converts other currencies.
 - **Taxes:** stores do not report tax, so "revenue net of taxes" equals revenue, and proceeds subtract only the store commission (as `/metrics/revenue` does).
 - **Paid introductory offers** are not told apart from regular paid periods (the ledger has no offer type), so Paid Subscriptions shows them as direct purchases.
-- **Renewal cycle, offer type, first purchase month, install month, attribution and custom-attribute dimensions** are not offered yet.
+- **Renewal cycle, offer type, first purchase month, install month and custom-attribute dimensions** are not offered yet. Attribution dimensions (media source, campaign, ad group, keyword, ad, creative) are customer dimensions read from `customer_attribution` (prd/attribution-benchmarks-insights).
 - **Platform and app version** are the customer's last seen values, not the first seen ones RevenueCat uses.
 - **Subscription Status** splits each period by the subscription's current state (as RevenueCat does); past states are not kept.
 - **Prediction Explorer** uses a chain-ladder projection of our own data, not RevenueCat's cross-customer survival model.

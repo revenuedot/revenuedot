@@ -12,6 +12,7 @@ import { base, errMsg, type Collaborator, type ProjectSettings as Project, type 
 import { BrandTab } from "../settings/Brand";
 import { BlockedCustomersTab } from "../settings/BlockedCustomers";
 import { VerifiedMetricsTab } from "../settings/VerifiedMetrics";
+import { BenchmarkSharing } from "../analytics/Benchmarks";
 import { ExportMoveTab } from "../settings/ExportMove";
 
 /**
@@ -30,9 +31,9 @@ const BEHAVIORS: { value: TransferBehavior; label: string; text: string }[] = [
   { value: "share", label: "Share between App User IDs (legacy)", text: "Both app user IDs are merged into one customer and share access. Only for apps that relied on this older behaviour." },
 ];
 
-type Tab = "general" | "ai" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains" | "export";
+type Tab = "general" | "ai" | "benchmarks" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains" | "export";
 const TABS: { value: Tab; label: string; badge?: string }[] = [
-  { value: "general", label: "General" }, { value: "ai", label: "AI features" }, { value: "brand", label: "Brand" },
+  { value: "general", label: "General" }, { value: "ai", label: "AI features" }, { value: "benchmarks", label: "Benchmarks" }, { value: "brand", label: "Brand" },
   { value: "audit-logs", label: "Audit logs" }, { value: "blocked-customers", label: "Blocked customers" }, { value: "collaborators", label: "Collaborators" },
   { value: "verified-metrics", label: "Verified Metrics" }, { value: "domains", label: "Domains" }, { value: "export", label: "Export and move" },
 ];
@@ -421,12 +422,15 @@ export function ProjectSettingsPage() {
   const nav = useNavigate();
   const { tab = "general" } = useParams();
   const project = useQuery({ queryKey: ["project", pid], queryFn: () => api<Project>(base(pid)), enabled: !!pid });
-  const t = (TABS.some((x) => x.value === tab) ? tab : "general") as Tab;
+  const me = useMe();
+  // Benchmarks are a RevenueDot Cloud feature: the tab exists only there.
+  const tabs = TABS.filter((x) => x.value !== "benchmarks" || !!me.data?.account?.features?.benchmarks);
+  const t = (tabs.some((x) => x.value === tab) ? tab : "general") as Tab;
   return (
     <Shell title="Project settings">
       <div className="page narrow">
         <PageHead title="Project settings" />
-        <Tabs label="Project settings" idBase="settings" value={t} tabs={TABS} onChange={(v) => nav(`/projects/${pid}/settings/${v}`)} />
+        <Tabs label="Project settings" idBase="settings" value={t} tabs={tabs} onChange={(v) => nav(`/projects/${pid}/settings/${v}`)} />
         <div role="tabpanel" id={`settings-${t}-panel`} aria-labelledby={`settings-${t}`}>
           {t === "general" && (
             <>
@@ -442,6 +446,7 @@ export function ProjectSettingsPage() {
           {t === "blocked-customers" && <BlockedCustomersTab pid={pid} />}
           {t === "verified-metrics" && <VerifiedMetricsTab pid={pid} />}
           {t === "ai" && <AiFeaturesTab pid={pid} />}
+          {t === "benchmarks" && <BenchmarkSharing pid={pid} />}
           {t === "export" && <ExportMoveTab pid={pid} />}
         </div>
       </div>
