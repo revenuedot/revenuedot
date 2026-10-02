@@ -164,6 +164,22 @@ describe("Stripe", () => {
     void CONN_APP_KEY;
   });
 
+  it("a closed case's link no longer opens the Stripe customer portal", async () => {
+    const { acct, subId, hook } = await stripeSubscriber();
+    web!.h.setNow(new Date(web!.h.now().getTime() + 366 * DAY));
+    await hook(acct.event("invoice.payment_failed", acct.failRenewal(subId)));
+    expect(await run()).toMatchObject({ sent: 1 });
+    const tok = linkIn((recoveryMails(web!.mail)[0] as any).text, "l")!.split("/").pop()!;
+    // The window passes: the case is lost, and the old email's link must not hand out a portal session any more.
+    web!.h.setNow(new Date(web!.h.now().getTime() + 31 * DAY));
+    expect(await run()).toMatchObject({ closed: 1 });
+    const before = acct.calls.filter((c) => c.path === "/v1/billing_portal/sessions").length;
+    const page = await web!.raw(`/v1/recovery/l/${tok}`, { redirect: "manual" });
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("This link has expired");
+    expect(acct.calls.filter((c) => c.path === "/v1/billing_portal/sessions").length).toBe(before);
+  });
+
   it("unsubscribe stops the steps and suppresses the address for win-back too; GET never unsubscribes", async () => {
     const { acct, subId, hook } = await stripeSubscriber();
     web!.h.setNow(new Date(web!.h.now().getTime() + 366 * DAY));

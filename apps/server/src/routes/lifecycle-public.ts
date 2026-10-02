@@ -93,6 +93,8 @@ export function lifecyclePublicRoutes(deps: Deps) {
     const rc = await caseByToken(db, c.req.param("token"));
     if (!rc) return c.html(page("Link not found", "This link is not valid."), 404);
     if (rc.status === "recovered") return c.html(page("Your payment went through", "Your subscription is active again. There is nothing else to do."));
+    // A Stripe portal session opens the customer's billing details: only while the case is open, never from an old email.
+    if (rc.status !== "open" && rc.store === "stripe") return c.html(page("This link has expired", "Open the app to manage your subscription, or reply to the email you got and the app's support team will help you."));
     await markRecoveryClicked(db, rc, deps.now());
     const back = `${deps.apiUrl ?? publicOrigin(c)}/v1/recovery/done/${rc.token}`;
     const to = await destinationFor(deps, rc, back);
