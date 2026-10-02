@@ -55,6 +55,7 @@ export function parseWrite(method: string, path: string): Parsed | null {
   if (tail.length) return method === "POST" ? { actionType: `${target}_${tail.join("_").replace(/s$/, "")}_created`, targetType: target, targetId: id } : null;
   if (method === "POST" && SINGLETONS.has(target)) return { actionType: `${target}_updated`, targetType: target, targetId: seg[2] };
   if (method === "POST") return id ? { actionType: `${target}_updated`, targetType: target, targetId: id } : { actionType: `${target}_created`, targetType: target, targetId: null };
+  if (method === "PATCH") return id ? { actionType: `${target}_updated`, targetType: target, targetId: id } : null;
   if (method === "DELETE") return { actionType: `${target}_deleted`, targetType: target, targetId: id };
   return null;
 }

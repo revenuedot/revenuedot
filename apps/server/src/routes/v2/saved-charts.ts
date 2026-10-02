@@ -1,20 +1,22 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { chartDef, newId } from "@revenuedot/core";
+import { CHART_TYPES, chartDef, newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { body, notFound, paginate, paramError, scope, V2Error, type V2Context, type V2Router } from "./common.js";
 
 /**
  * Saved charts (RevenueDot extension, prd/paywalls/PRD.md §6): a named chart view from the Charts page. `view` holds the
- * page's URL state: range, start, end, res, segment, filters, sel, env and compare. Scopes: charts_metrics:charts:read to
+ * page's URL state: range, start, end, res, segment, filters, sel, env, compare, type and m. Scopes: charts_metrics:charts:read to
  * list, charts_metrics:charts:read_write to change.
  */
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be a date such as 2026-01-31");
-const View = z.object({
+export const View = z.object({
   range: z.string().max(20).optional(), start: Day.optional(), end: Day.optional(), res: z.string().max(20).optional(),
   segment: z.string().max(60).optional(), filters: z.string().max(4000).optional(), sel: z.string().max(2000).optional(),
   env: z.enum(["production", "sandbox"]).optional(), compare: z.boolean().optional(),
+  // The chart type and the plotted measure group (prd/charts/PRD.md "Chart type").
+  type: z.enum(CHART_TYPES).optional(), m: z.string().regex(/^\d{1,2}$/).optional(),
 }).strict();
 const Create = z.object({ name: z.string().trim().min(1).max(120), chart_name: z.string().min(1).max(80), view: View.optional() }).strict();
 const Update = z.object({ name: z.string().trim().min(1).max(120).optional(), view: View.optional() }).strict();
