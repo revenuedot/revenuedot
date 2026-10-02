@@ -111,7 +111,7 @@ pnpm tsx scripts/forks/e2e/purchases-js.e2e.ts            # web SDK against the 
 - **Leak scan:** clean on all 10 forks.
 - **Idempotency:** a second `apply.ts --all` run changes nothing, on `revenuedot/main-patches` and on every release branch.
 - **Pin check:** passes on all 10 forks; a pin moved to a version with no fork branch (tested with hybrid-common 19.9.9 in Cordova) fails with the command that creates the branch.
-- **README banners:** no fork README says "pre-alpha"; the banner says publishing to package registries is in progress.
+- **README banners:** no fork README says "pre-alpha"; the banner says the fork is published and gives its install line.
 - **Web SDK end to end** (`e2e/purchases-js.e2e.ts`): the built fork bundle defaults to `https://api.revenuedot.app` with no RevenueCat host; against the real server (own process, in-memory PGlite, production signing key) it configures with `proxyURL`, reads customer info, reads offerings, buys through the Test Store modal, sees the `pro` entitlement active, and the server's state agrees. Every SDK call, including analytics events, went to the proxy URL, and a nonce-signed response verified with the key baked into the forks.
 - Per-repo checks and what is skipped for missing toolchains: [docs/STATUS.md](../../docs/STATUS.md).
 
