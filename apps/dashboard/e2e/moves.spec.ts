@@ -134,7 +134,7 @@ test("receive on Cloud: an unverified account cannot create a token; after the e
   await expect(page.getByText("Copy the token now: it is shown once")).toBeVisible();
   token = (await page.locator("[data-token]").textContent())!.trim();
   expect(token).toMatch(/^rdi_[0-9a-f]{64}$/);
-  await expect(page.getByLabel("From a terminal")).toContainText(`--to ${CLOUD}`);
+  await expect(page.locator("pre").filter({ hasText: "npx revenuedot move" })).toContainText(`--to ${CLOUD}`);
   await fits(page, "receive");
   // A reload never shows it again.
   await page.reload();
@@ -180,7 +180,7 @@ test("move to Cloud: check (nothing written), copy and verify, finish; the old s
   await page.getByRole("dialog").getByRole("button", { name: "Finish move" }).click();
   await expect(page.getByText("Moved", { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText("Next steps")).toBeVisible();
-  await expect(page.getByText("This project moved to")).toBeVisible();
+  await expect(page.locator(".banner.ok").filter({ hasText: "This project moved to" })).toBeVisible();
   await expect(page.locator(".move-banner")).toContainText(CLOUD);
 
   // The old server forwards the app's SDK calls; a purchase lands on Cloud and unlocks pro.

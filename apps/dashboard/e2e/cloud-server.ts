@@ -22,7 +22,7 @@ import { FAKE_BILLING_KEY, FAKE_BILLING_PRICE, FAKE_BILLING_WEBHOOK_SECRET, Fake
 
 const CLOUD_KEY = "Y2xvdWQtZTJlLWtleS1mb3ItdGVzdHMtb25seS0xMjM=";
 
-export async function startCloud(port: number, dist: string, mail: Mailer) {
+export async function startCloud(port: number, dist: string, mail: Mailer & { sent: { to: string }[] }) {
   const { db } = await openDb("pglite://memory");
   const base = `http://localhost:${port}`;
   const stripe = new FakeBillingStripe();
@@ -43,6 +43,8 @@ export async function startCloud(port: number, dist: string, mail: Mailer) {
   const page = (title: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>body{font:15px/1.5 system-ui,sans-serif;max-width:440px;margin:40px auto;padding:0 20px}button{font:inherit;width:100%;padding:12px;margin:6px 0;background:#635bff;color:#fff;border:0;cursor:pointer}</style></head><body><h1>${title}</h1><p>Test only. Stripe is never called.</p>${body}</body></html>`;
 
   const web = new Hono();
+  // The same in-memory mailer as the main e2e server: GET /__mail?to=<address>.
+  web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
   web.get("/__billing/checkout/:id", (c) => {
     const s = stripe.sessions.get(c.req.param("id"));
     if (!s) return c.text("No such checkout session", 404);
