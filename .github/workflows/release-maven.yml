@@ -34,6 +34,33 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key is on a public keyserver
+        env:
+          KEY: ${{ secrets.MAVEN_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          fpr=$(printf '%s\n' "$KEY" | gpg --show-keys --with-colons 2>/dev/null | awk -F: '/^fpr:/ {print $10; exit}')
+          [ -n "$fpr" ] || { echo "::error::MAVEN_SIGNING_KEY is not an OpenPGP key gpg can read"; exit 1; }
+          echo "Signing key fingerprint: $fpr"
+          found=""
+          for ks in "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$fpr" "https://keys.openpgp.org/vks/v1/by-fingerprint/$fpr"; do
+            if curl -fsS "$ks" 2>/dev/null | grep -q "BEGIN PGP PUBLIC KEY BLOCK"; then echo "found on $ks"; found=1; fi
+          done
+          # Central checks signatures against these keyservers and rejects the deployment when the key is missing.
+          # Upload the public half when it is missing (the private key never leaves the runner), then wait for it.
+          if [ -z "$found" ]; then
+            printf '%s\n' "$KEY" | gpg --batch --import 2>/dev/null
+            gpg --armor --export "$fpr" > "$RUNNER_TEMP/public.asc"
+            grep -q "BEGIN PGP PUBLIC KEY BLOCK" "$RUNNER_TEMP/public.asc"
+            curl -fsS --data-urlencode "keytext@$RUNNER_TEMP/public.asc" https://keyserver.ubuntu.com/pks/add >/dev/null
+            echo "uploaded public key $fpr to keyserver.ubuntu.com"
+            for i in $(seq 1 30); do
+              curl -fsS "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$fpr" 2>/dev/null | grep -q "BEGIN PGP PUBLIC KEY BLOCK" && { found=1; break; }
+              sleep 10
+            done
+          fi
+          [ -n "$found" ] || { echo "::error::Public key $fpr is on no keyserver Central reads (keyserver.ubuntu.com, keys.openpgp.org)."; exit 1; }
+
       - name: Publish and release
         working-directory: ${{ inputs.directory }}
         env:
@@ -42,5 +69,25 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_SIGNING_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSWORD }}
           TAG: ${{ inputs.tag }}
-        # The release version is the tag without its -revenuedot suffix.
-        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache -PVERSION_NAME="${TAG%-revenuedot}"
+        # The release version is the tag without its -revenuedot suffix. The forks' gradle.properties say
+        # RELEASE_SIGNING_ENABLED=false, and Central rejects unsigned uploads after Gradle reports success.
+        run: |
+          set -o pipefail
+          ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache --info -PVERSION_NAME="${TAG%-revenuedot}" -PRELEASE_SIGNING_ENABLED=true 2>&1 | tee "$RUNNER_TEMP/gradle.log" | grep -vE '^(Resource missing|Found locally available|Cached resource|Skipping|Caching disabled|Up-to-date check|The input changes)'
+          # Every POM the plugin staged, as its Maven Central URL (the plugin uploads them as one bundle at the end).
+          sed -nE 's#^Uploading [^ ]+\.pom to .*/staging/[^/]+/(.+)$#https://repo1.maven.org/maven2/\1#p' "$RUNNER_TEMP/gradle.log" | sort -u > "$RUNNER_TEMP/poms.txt"
+          echo "Staged:"; cat "$RUNNER_TEMP/poms.txt"
+
+      # Gradle succeeds as soon as the upload is accepted; Central validates afterwards and silently drops a bundle it
+      # rejects (for example a signature it cannot check). Wait until every staged POM is downloadable.
+      - name: Central published every artifact
+        run: |
+          set -euo pipefail
+          [ -s "$RUNNER_TEMP/poms.txt" ] || { echo "::error::No staged POM found in the Gradle log"; exit 1; }
+          for i in $(seq 1 80); do
+            missing=0
+            while read -r url; do curl -fsI -o /dev/null "$url" || missing=$((missing + 1)); done < "$RUNNER_TEMP/poms.txt"
+            [ "$missing" -eq 0 ] && { echo "All $(wc -l < "$RUNNER_TEMP/poms.txt") artifacts are on Maven Central."; exit 0; }
+            echo "$missing artifact(s) not on Maven Central yet ($((i * 30))s)"; sleep 30
+          done
+          echo "::error::Not on Maven Central after 40 minutes. Central probably rejected the deployment: see https://central.sonatype.com/publishing/deployments"; exit 1

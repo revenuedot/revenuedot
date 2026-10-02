@@ -186,7 +186,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
 | **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 64 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
 | **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · built, tested against a fake Stripe; switched on when the Stripe keys are set |
-| **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
+| **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · all ten released on npm, CocoaPods, Maven Central, OpenUPM and as git tags |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
 | **Paywalls** | Native paywalls the RevenueCat SDKs render (all 17 component types): a gallery of ten templates built on 2026 conversion research, a visual editor (layers, properties, undo, light and dark, translations, versions), "Generate with AI" (Workers AI on Cloud, your OpenAI or Anthropic key on self-host), and a cached asset CDN. Every published paywall is checked to decode in the SDK ([guide](https://revenuedot.app/docs/guides/paywalls)) | Tier 2 · built, tested; renders in RevenueCatUI on the iOS simulator |
@@ -237,18 +237,20 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 
 Keep the RevenueCat SDK you already ship, or switch to our MIT forks. They keep RevenueCat's class and method names (`Purchases`, `CustomerInfo`, `Offerings`), so the swap is a package change.
 
-| Platform | Language | Repository | Proxy-URL migration |
+| Platform | Repository | Install the fork | Proxy-URL migration |
 |---|---|---|---|
-| iOS, macOS, tvOS, watchOS, visionOS | Swift | [revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios) | Yes |
-| Android | Kotlin | [revenuedot/purchases-android](https://github.com/revenuedot/purchases-android) | Yes |
-| React Native and Expo | TypeScript | [revenuedot/react-native-purchases](https://github.com/revenuedot/react-native-purchases) | Yes |
-| Flutter | Dart | [revenuedot/purchases-flutter](https://github.com/revenuedot/purchases-flutter) | Yes on mobile |
-| Web | TypeScript | [revenuedot/purchases-js](https://github.com/revenuedot/purchases-js) | Yes |
-| Capacitor and Ionic | TypeScript | [revenuedot/purchases-capacitor](https://github.com/revenuedot/purchases-capacitor) | Yes on native |
-| Kotlin Multiplatform | Kotlin | [revenuedot/purchases-kmp](https://github.com/revenuedot/purchases-kmp) | Yes |
-| Unity | C# | [revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity) | Yes |
-| Cordova | TypeScript | [revenuedot/cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases) | Yes |
-| Shared layer for the cross-platform SDKs | Kotlin, Swift | [revenuedot/purchases-hybrid-common](https://github.com/revenuedot/purchases-hybrid-common) | n/a |
+| iOS, macOS, tvOS, watchOS, visionOS | [revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios) | CocoaPods `pod 'RevenueDotPurchases', '5.91.0'` (and `RevenueDotPurchasesUI`), or Swift Package Manager `https://github.com/revenuedot/purchases-ios` at `5.91.0-revenuedot` | Yes |
+| Android | [revenuedot/purchases-android](https://github.com/revenuedot/purchases-android) | `implementation("app.revenuedot.purchases:purchases:10.23.3")` | Yes |
+| React Native and Expo | [revenuedot/react-native-purchases](https://github.com/revenuedot/react-native-purchases) | `"react-native-purchases": "npm:@revenuedot/react-native-purchases@10.10.2"` | Yes |
+| Flutter | [revenuedot/purchases-flutter](https://github.com/revenuedot/purchases-flutter) | `purchases_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, ref: 10.13.2-revenuedot } }` | Yes, web included |
+| Web | [revenuedot/purchases-js](https://github.com/revenuedot/purchases-js) | `"@revenuecat/purchases-js": "npm:@revenuedot/purchases-js@1.67.0"` | Yes |
+| Capacitor and Ionic | [revenuedot/purchases-capacitor](https://github.com/revenuedot/purchases-capacitor) | `"@revenuecat/purchases-capacitor": "npm:@revenuedot/purchases-capacitor@13.6.1"` | Yes on native |
+| Kotlin Multiplatform | [revenuedot/purchases-kmp](https://github.com/revenuedot/purchases-kmp) | `implementation("app.revenuedot.purchases:purchases-kmp-core:3.10.1")` | Yes |
+| Unity | [revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity) | OpenUPM `openupm add com.revenuedot.purchases-unity` (9.11.1), or the git URL `https://github.com/revenuedot/purchases-unity.git?path=RevenueCat#9.11.1-revenuedot` | Yes |
+| Cordova | [revenuedot/cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases) | `cordova plugin add @revenuedot/cordova-plugin-purchases@8.2.3` | Yes |
+| Shared layer for the cross-platform SDKs | [revenuedot/purchases-hybrid-common](https://github.com/revenuedot/purchases-hybrid-common) | Pulled in by the wrappers: pods `RevenueDotPurchasesHybridCommon` 19.4.1, Maven `app.revenuedot.purchases:purchases-hybrid-common:19.4.1`, npm `@revenuedot/purchases-typescript-internal@19.4.1` | n/a |
+
+Every import stays the same (`import RevenueCat`, `com.revenuecat.purchases.*`, `package:purchases_flutter`, `react-native-purchases`). The forks talk to `https://api.revenuedot.app` by default and trust RevenueDot's response signatures; `setProxyURL` still points them at a self-hosted server. Release status per package: [docs/STATUS.md](docs/STATUS.md) row 1.13.
 
 ## Compatibility
 
