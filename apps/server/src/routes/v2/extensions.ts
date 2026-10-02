@@ -8,7 +8,7 @@ import { createSecretKey } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { recordDueExpirations } from "../../services/tick.js";
 import { TEST_SCENARIOS, testStoreScenario } from "../../stores/test-store.js";
-import { retryDelivery } from "../../services/webhooks.js";
+import { ATTEMPT_LOG_DAYS, retryDelivery, webhookRequest } from "../../services/webhooks.js";
 import { HISTORY_METRICS, metricHistory, type HistoryMetric } from "../../services/metric-history.js";
 import { customerSummary } from "../../services/customer-summary.js";
 import { sdkVersionsOf } from "../../services/sdk-versions.js";
@@ -24,6 +24,7 @@ import { requestOrigin } from "../../services/account-email.js";
  *   GET    /v2/projects/{project_id}/events                                    event log (?type=&customer=&environment=)
  *   GET    /v2/projects/{project_id}/webhooks                                  whether each webhook integration is enabled
  *   GET    /v2/projects/{project_id}/webhooks/{webhook_id}/deliveries          delivery log (?status=)
+ *   GET    /v2/projects/{project_id}/webhooks/{webhook_id}/deliveries/{id}         one delivery: request, every attempt, cURL
  *   POST   /v2/projects/{project_id}/webhooks/{webhook_id}/deliveries/{id}/retry
  *   GET    /v2/projects/{project_id}/setup_health                              store notifications, credentials, webhook health
  *   GET    /v2/projects/{project_id}/api_keys                                  secret keys (never the key itself)
@@ -161,6 +162,22 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
       .where(and(...conds)).orderBy(desc(D.createdAt), desc(D.id)).limit(limit + 1);
     const page = rows.slice(0, limit);
     return c.json(listOf(c, page.map((x) => deliveryShape(x.d, x.type)), rows.length > limit ? page[page.length - 1]!.d.id : null));
+  });
+
+  // One delivery with what was sent and every attempt's answer. Bodies can hold customer data, so Admins and Developers only.
+  r.get(`${P}/webhooks/:webhook_id/deliveries/:delivery_id`, scope("project_configuration:integrations:read_write"), async (c) => {
+    const w = await findHook(c);
+    const D = schema.webhookDeliveries;
+    const [row] = await db.select({ d: D, e: schema.events }).from(D).innerJoin(schema.events, eq(schema.events.id, D.eventId))
+      .where(and(eq(D.webhookId, w.id), eq(D.id, c.req.param("delivery_id")))).limit(1);
+    if (!row) throw notFound("Webhook delivery");
+    const log = row.d.attemptLog ?? [];
+    const { curl, ...request } = webhookRequest(w, row.e.payload, log.at(-1)?.signature ?? null);
+    return c.json({
+      ...deliveryShape(row.d, row.e.type), request, curl,
+      attempt_log: log.map((a) => ({ attempted_at: a.at, response_status: a.status, response_ms: a.ms, error: a.error, response_body: a.response_body, signature: a.signature ?? null })),
+      attempt_log_kept_days: ATTEMPT_LOG_DAYS,
+    });
   });
 
   r.post(`${P}/webhooks/:webhook_id/deliveries/:delivery_id/retry`, scope("project_configuration:integrations:read_write"), async (c) => {
