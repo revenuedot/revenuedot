@@ -5,13 +5,21 @@ import { api, ApiError } from "../lib/api";
 import { useMe, type Me } from "../components/Shell";
 import { Mark } from "../components/icons";
 
+// Browsers read "/\host" and "/<tab>/host" as another site, so the path is checked by resolving it.
+function sameSitePath(raw: string | null): string | null {
+  if (!raw?.startsWith("/")) return null;
+  try {
+    const u = new URL(raw, window.location.origin);
+    return u.origin === window.location.origin ? u.pathname + u.search + u.hash : null;
+  } catch { return null; }
+}
+
 export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const nav = useNavigate();
   const qc = useQueryClient();
   // Where to go after signing in (the invite page sends people here and back). Only paths on this site.
   const [params] = useSearchParams();
-  const nextRaw = params.get("next");
-  const next = nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : null;
+  const next = sameSitePath(params.get("next"));
   const [form, setForm] = useState({ email: params.get("email") ?? "", password: "", name: "", project_name: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
