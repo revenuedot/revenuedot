@@ -22,6 +22,9 @@ import { memoryMailer } from "@revenuedot/server/mail/index.js";
 import { getOrCreateCustomer, touch } from "@revenuedot/server/repo/customers.js";
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
 import { tick } from "@revenuedot/server/services/tick.js";
+import { runBenchmarkJob } from "@revenuedot/server/services/benchmarks.js";
+import { runInsightsDigest } from "@revenuedot/server/services/insights/digest.js";
+import { seedAttribution, seedPeers } from "./seed-insights.ts";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
@@ -105,7 +108,12 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
 // RevenueDot AI answers from a scripted fake model (services/assistant/fake-model.ts): "how is revenue doing" calls
 // get-metrics, "grant pro to <user>" asks for approval, then grants. Conversations stream over SSE from the database.
 const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantModel(undefined, { delayMs: 15 });
-const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY });
+// Benchmarks and the weekly insights digest are Cloud features (prd/attribution-benchmarks-insights); the e2e server runs
+// them like Cloud, with the default k = 10 and small minimum samples so the demo projects qualify. The nightly job and
+// the digest run only when a spec asks (POST /__jobs/benchmarks, /__jobs/insights), never on the 5-second tick.
+const BENCH_MIN = { initial_conversion: 5, trial_conversion: 3, conversion_to_paying: 5, churn: 3, refund_rate: 5, ltv_per_customer: 5, ltv_per_paying_customer: 3, arpu: 5, price_monthly: 3, price_annual: 3 };
+const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY,
+  benchmarks: process.env.E2E_BENCHMARKS !== "off", benchmarkOptions: { minSample: BENCH_MIN }, insightsDigest: true });
 
 let ready = false;
 const web = new Hono();
@@ -118,6 +126,18 @@ web.post("/__stripe/seed", async (c) => {
   for (const p of b.products ?? []) webStripe.products.set(String(p.id), { object: "product", active: true, livemode: false, default_price: null, metadata: {}, ...p });
   for (const p of b.prices ?? []) webStripe.prices.set(String(p.id), { object: "price", active: true, livemode: false, billing_scheme: "per_unit", metadata: {}, ...p });
   return c.json({ ok: true });
+});
+// The nightly benchmark job, run to the end now (today's run is redone), and one pass of the weekly digest.
+web.post("/__jobs/benchmarks", async (c) => {
+  await db.delete(schema.benchmarkRuns);
+  let r = { computed: 0, aggregated: false, groups: 0 }, computed = 0;
+  for (let i = 0; i < 100 && !r.aggregated; i++) { r = await runBenchmarkJob(api.deps, now(), { force: true, minSample: BENCH_MIN }); computed += r.computed; }
+  return c.json({ ...r, computed });
+});
+web.post("/__jobs/insights", async (c) => {
+  const done: unknown[] = [];
+  for (let i = 0; i < 20; i++) { const r = await runInsightsDigest(api.deps, now(), { force: true }); if (!r.project) break; done.push(r); }
+  return c.json({ runs: done });
 });
 web.post("/__dns", async (c) => { const b = await c.req.json() as { name: string; CNAME?: string[]; TXT?: string[] }; dns[b.name] = { CNAME: b.CNAME, TXT: b.TXT }; return c.json({ ok: true }); });
 // A minimal stand-in for Stripe's hosted Checkout page (never Stripe itself).
@@ -246,6 +266,8 @@ for (const [user, country, o] of people) {
 }
 await seedLifecycle();
 await seedAds();
+await seedAttribution(call, P);
+if (process.env.E2E_BENCHMARKS !== "off") await seedPeers(db, base);
 ready = true;
 console.log(`E2E server ready on ${base} (project ${projectId})`);
 

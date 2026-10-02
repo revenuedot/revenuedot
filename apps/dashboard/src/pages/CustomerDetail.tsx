@@ -238,6 +238,29 @@ function Timeline({ pid, id, entName, productName }: { pid: string; id: string; 
   );
 }
 
+interface AttributionRow { media_source: string | null; campaign: string | null; campaign_id: string | null; ad_group: string | null; ad_group_id: string | null; ad: string | null; keyword: string | null; creative: string | null; claim_type: string | null; attribution_country: string | null; partner_ids: Record<string, string> }
+
+/** Where the customer came from (prd/attribution-benchmarks-insights §1): the first-class attribution row, names resolved. */
+function AttributionPanel({ pid, id, version }: { pid: string; id: string; version: string }) {
+  const q = useQuery({ queryKey: ["customer_attribution", pid, id, version], queryFn: () => api<{ attribution: AttributionRow | null }>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/attribution`) });
+  const a = q.data?.attribution;
+  if (!a) return null;
+  const rows: [string, string | null][] = [
+    ["Media source", a.media_source], ["Campaign", a.campaign && a.campaign_id && a.campaign !== a.campaign_id ? `${a.campaign} (${a.campaign_id})` : a.campaign],
+    ["Ad group", a.ad_group && a.ad_group_id && a.ad_group !== a.ad_group_id ? `${a.ad_group} (${a.ad_group_id})` : a.ad_group], ["Keyword", a.keyword], ["Ad", a.ad], ["Creative", a.creative],
+    ["Claim type", a.claim_type], ["Country (ad)", a.attribution_country],
+    ...Object.entries(a.partner_ids).map(([k, v]) => [k.replace(/_id$|_device_id$/, "").replace(/^\w/, (c) => c.toUpperCase()) + " id", v] as [string, string]),
+  ];
+  const media = a.media_source ? `&media_source=${encodeURIComponent(a.media_source)}` : "";
+  return (
+    <Panel title="Attribution" link={<Link to={`/projects/${pid}/attribution?group_by=campaign${media}`}>Revenue by campaign →</Link>} flush>
+      <div className="attrs"><dl>
+        {rows.filter(([, v]) => v).map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}
+      </dl></div>
+    </Panel>
+  );
+}
+
 function Attributes({ attrs, onEdit, onAdd }: { attrs: Attribute[]; onEdit: (a: Attribute) => void; onAdd: () => void }) {
   const groups = useMemo(() => {
     const order = ["Contact", "Attribution", "Device", "Integrations", "Custom"];
@@ -527,6 +550,8 @@ export function CustomerDetail() {
             </Panel>
 
             {c && <Currencies pid={pid} id={id} onDone={(m) => void refresh(m)} />}
+
+            {c && <AttributionPanel pid={pid} id={id} version={(c.attributes?.items ?? []).map((x) => `${x.name}=${x.value}`).join("|")} />}
 
             {c && <Attributes attrs={c.attributes?.items ?? []} onEdit={(a) => setDialog({ kind: "attr", attr: a })} onAdd={() => setDialog({ kind: "attr" })} />}
 

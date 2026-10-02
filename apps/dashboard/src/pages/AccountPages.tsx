@@ -241,6 +241,13 @@ export function AccountPage() {
         <Switch checked={u.alert_emails} onChange={(v) => save({ alert_emails: v }, v ? "Alert emails are on." : "Alert emails are off.")} label="Email me about problems with my projects" />
         <span className="hint">For projects where you are an admin: store notifications failing, a webhook that keeps failing, or store credentials that Apple or Google rejected. At most one email a day per problem, and one when it is fixed. Password resets and invites always arrive.</span>
       </div>
+      {me.data.account?.features?.insights_digest && (
+        <div className="field" role="group" aria-labelledby="digest-h">
+          <span className="flabel" id="digest-h">Weekly growth insights</span>
+          <Switch checked={u.insights_emails ?? true} onChange={(v) => save({ insights_emails: v }, v ? "The weekly digest is on." : "The weekly digest is off.")} label="Email me the weekly growth insights digest" />
+          <span className="hint">Every Monday, for projects where you are an admin: 3 to 5 things to act on, written by RevenueDot AI from your own charts, with the numbers behind them.</span>
+        </div>
+      )}
       <Link className="btn btn-dark btn-lg" to={home}>Back to the dashboard</Link>
     </Card>
   );

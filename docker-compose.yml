@@ -27,6 +27,8 @@ services:
       REVENUEDOT_AI_MODEL: ${REVENUEDOT_AI_MODEL:-}
       REVENUEDOT_ASSISTANT_MODEL: ${REVENUEDOT_ASSISTANT_MODEL:-}
       REVENUEDOT_ASSISTANT_CAPS: ${REVENUEDOT_ASSISTANT_CAPS:-}
+      # "on" writes and emails the weekly AI growth insights digest with the model key above (see .env.example).
+      REVENUEDOT_INSIGHTS_DIGEST: ${REVENUEDOT_INSIGHTS_DIGEST:-}
       # Google OAuth client for "Connect AdMob"; unset lets each project enter its own (see .env.example).
       REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID:-}
       REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET:-}

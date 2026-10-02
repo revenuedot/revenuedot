@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { DataTable, Dialog, EmptyState, Field, PageHead, Tag, useProjectId, useToast, type Column } from "../components/ui";
-import { ConditionBuilder, describeRules, incomplete, toRules, type Condition, type Groups, type Rules } from "../components/conditions";
+import { ConditionBuilder, describeRules, incomplete, toRules, useFieldSuggestions, type Condition, type Groups, type Rules } from "../components/conditions";
 import { api, fmt, type List } from "../lib/api";
 import { isAnonymous, money, relative, shortId, storeLabel, type Customer } from "../lib/customers";
 import { errMsg, v2 } from "./catalog/lib";
@@ -61,9 +61,12 @@ export function Customers() {
   const q = sp.get("q")?.trim() ?? "";
   const after = sp.get("after");
   const [draft, setDraft] = useState(q);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [groups, setGroups] = useState<Groups>([]);
-  const [applied, setApplied] = useState<Rules>({ groups: [] });
+  const [filterOpen, setFilterOpen] = useState(() => !!sp.get("filter"));
+  const suggestions = useFieldSuggestions(pid);
+  // `?filter=<rules JSON>` opens the list already filtered (links from the Attribution page).
+  const linked = (() => { try { const r = JSON.parse(sp.get("filter") ?? "null") as Rules | null; return r && Array.isArray(r.groups) ? r : null; } catch { return null; } })();
+  const [groups, setGroups] = useState<Groups>(() => (linked ? linked.groups.map((g) => g.conditions.map((c) => ({ ...c }))) : []));
+  const [applied, setApplied] = useState<Rules>(() => linked ?? { groups: [] });
   const [saving, setSaving] = useState(false);
   const [filterErr, setFilterErr] = useState<string | null>(null);
   // Cursors of the pages before this one, so "Previous" works without the API paging backwards.
@@ -198,7 +201,7 @@ export function Customers() {
             </div>
             {filterOpen && (
               <div id="cust-filter" className="panel pb filter-panel stack tight">
-                <ConditionBuilder value={groups} onChange={setGroups} emptyText="No conditions yet. Add one to narrow the list." />
+                <ConditionBuilder value={groups} onChange={setGroups} emptyText="No conditions yet. Add one to narrow the list." suggestions={suggestions.data} />
                 {filterErr && <div className="banner err" role="alert">{filterErr}</div>}
                 <div className="hrow">
                   <button type="button" className="btn btn-dark" onClick={apply}>Apply filter</button>
