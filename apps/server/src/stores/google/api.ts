@@ -96,6 +96,33 @@ export interface VoidedPurchase {
   refundType?: number;
 }
 
+/** monetization.subscriptions resource (the fields the product import reads). */
+export interface PlaySubscription {
+  productId: string;
+  listings?: Array<{ languageCode?: string; title?: string }>;
+  basePlans?: Array<{
+    basePlanId: string;
+    state?: string;
+    autoRenewingBasePlanType?: { billingPeriodDuration?: string; legacyCompatible?: boolean };
+    prepaidBasePlanType?: { billingPeriodDuration?: string };
+    installmentsBasePlanType?: { billingPeriodDuration?: string };
+  }>;
+  archived?: boolean;
+}
+
+/** monetization.onetimeproducts resource (the fields the product import reads). */
+export interface PlayOneTimeProduct {
+  productId: string;
+  listings?: Array<{ languageCode?: string; title?: string }>;
+  purchaseOptions?: Array<{ purchaseOptionId?: string; state?: string; buyOption?: { legacyCompatible?: boolean }; rentOption?: object }>;
+}
+
+/** inappproducts resource (legacy API; still lists one-time products made before Play's 2025 purchase options). */
+export interface PlayInAppProduct {
+  sku: string; status?: string; purchaseType?: string; defaultLanguage?: string;
+  listings?: Record<string, { title?: string }>;
+}
+
 /** Whether the app has a service account configured at all (either field name). */
 export const hasServiceAccount = (app: Pick<AppRow, "credentials">) => {
   const raw = app.credentials?.play_service_account_credentials_json ?? app.credentials?.service_account;
@@ -322,5 +349,33 @@ export class GooglePlayClient {
   createSubscription(app: AppRow, productId: string, listing: { languageCode: string; title: string }) {
     const q = new URLSearchParams({ productId, "regionsVersion.version": "2022/02" });
     return this.call<{ productId?: string; listings?: { title?: string }[] }>(app, "POST", `/subscriptions?${q}`, { packageName: packageNameOf(app), productId, listings: [listing] });
+  }
+
+  /** Pages through a Play list: `pageToken`/`nextPageToken` (monetization) or `token`/`tokenPagination` (inappproducts). */
+  private async listPages<T>(app: AppRow, path: string, field: string, params: Record<string, string>, legacy: boolean, maxPages: number): Promise<{ items: T[]; truncated: boolean }> {
+    const items: T[] = [];
+    let token: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const q = new URLSearchParams(params);
+      if (token) q.set(legacy ? "token" : "pageToken", token);
+      const r = await this.call<Record<string, unknown> & { nextPageToken?: string; tokenPagination?: { nextPageToken?: string } }>(app, "GET", `${path}?${q}`);
+      items.push(...((r[field] as T[] | undefined) ?? []));
+      token = legacy ? r.tokenPagination?.nextPageToken : r.nextPageToken;
+      if (!token) return { items, truncated: false };
+    }
+    return { items, truncated: true };
+  }
+
+  /** monetization.subscriptions.list: every subscription with its base plans (archived ones left out). */
+  listSubscriptions(app: AppRow, maxPages = 25) {
+    return this.listPages<PlaySubscription>(app, "/subscriptions", "subscriptions", { pageSize: "100" }, false, maxPages);
+  }
+  /** monetization.onetimeproducts.list: one-time products with their purchase options. */
+  listOneTimeProducts(app: AppRow, maxPages = 25) {
+    return this.listPages<PlayOneTimeProduct>(app, "/oneTimeProducts", "oneTimeProducts", { pageSize: "100" }, false, maxPages);
+  }
+  /** inappproducts.list (legacy): managed products and, before base plans, subscriptions. */
+  listInAppProducts(app: AppRow, maxPages = 25) {
+    return this.listPages<PlayInAppProduct>(app, "/inappproducts", "inappproduct", { maxResults: "100" }, true, maxPages);
   }
 }

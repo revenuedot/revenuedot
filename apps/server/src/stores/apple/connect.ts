@@ -1,6 +1,7 @@
 import { SignJWT, importPKCS8 } from "jose";
 import type { AppRow } from "../types.js";
 import type { FetchFn } from "./api.js";
+import { outboundUrlProblem } from "../../services/outbound.js";
 
 /**
  * App Store Connect API (https://developer.apple.com/documentation/appstoreconnectapi), used to create products in the
@@ -27,7 +28,7 @@ export class ConnectError extends Error {
   constructor(public kind: "credentials" | "conflict" | "invalid" | "unavailable", message: string, public status = 0) { super(message); }
 }
 
-interface Resource { id: string; type: string; attributes?: Record<string, unknown> }
+export interface Resource { id: string; type: string; attributes?: Record<string, unknown> }
 
 export class AppStoreConnectApi {
   private token: Promise<string> | null = null;
@@ -47,10 +48,14 @@ export class AppStoreConnectApi {
     return this.token;
   }
 
+  /** `path` is a path on App Store Connect, or a full URL there (the `links.next` of a list). */
   async send<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+    const url = path.startsWith("/") ? `${ASC_HOST}${path}` : path;
+    // A paging link comes from Apple's answer: it must stay on App Store Connect, which gets the bearer token.
+    if (!url.startsWith(`${ASC_HOST}/`) || outboundUrlProblem(url, true)) throw new ConnectError("invalid", "App Store Connect answered with a link to another host, which is not followed.");
     let res: Response;
     try {
-      res = await this.fetchFn(`${ASC_HOST}${path}`, {
+      res = await this.fetchFn(url, {
         method, headers: { Authorization: `Bearer ${await this.jwt()}`, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
         body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(TIMEOUT_MS),
       });
@@ -100,5 +105,39 @@ export class AppStoreConnectApi {
     return this.send<{ data: Resource }>("POST", "/v2/inAppPurchases", {
       data: { type: "inAppPurchases", attributes: a, relationships: { app: { data: { type: "apps", id: appId } } } },
     });
+  }
+
+  /**
+   * Every page of a list (`limit=200`, following `links.next`), up to `maxPages`. `truncated` is true when more pages
+   * were left unread.
+   */
+  async listAll(path: string, maxPages = 25): Promise<{ data: Resource[]; truncated: boolean }> {
+    const data: Resource[] = [];
+    let next: string | undefined = path;
+    for (let page = 0; next; page++) {
+      if (page >= maxPages) return { data, truncated: true };
+      const r: { data?: Resource[]; links?: { next?: string } } = await this.send("GET", next);
+      data.push(...(r.data ?? []));
+      next = r.links?.next || undefined;
+    }
+    return { data, truncated: false };
+  }
+
+  /** The app's in-app purchases (consumable, non-consumable, non-renewing), from the in-app purchases v2 API. */
+  inAppPurchases(appId: string) {
+    const q = new URLSearchParams({ limit: "200", "fields[inAppPurchases]": "name,productId,inAppPurchaseType,state" });
+    return this.listAll(`/v1/apps/${encodeURIComponent(appId)}/inAppPurchasesV2?${q}`);
+  }
+
+  /** The app's subscription groups. */
+  subscriptionGroups(appId: string) {
+    const q = new URLSearchParams({ limit: "200", "fields[subscriptionGroups]": "referenceName" });
+    return this.listAll(`/v1/apps/${encodeURIComponent(appId)}/subscriptionGroups?${q}`);
+  }
+
+  /** The auto-renewable subscriptions in one group. */
+  subscriptions(groupId: string) {
+    const q = new URLSearchParams({ limit: "200", "fields[subscriptions]": "name,productId,subscriptionPeriod,state,groupLevel" });
+    return this.listAll(`/v1/subscriptionGroups/${encodeURIComponent(groupId)}/subscriptions?${q}`);
   }
 }
