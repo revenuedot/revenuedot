@@ -195,7 +195,7 @@ function ScreenPanel({ meta, screen, update, sel, setSel, problems }: { meta: (t
   const titleProblem = problems.find((p) => p.startsWith(`screens.${key}.title`));
   return (
     <section className="panel" aria-label={meta.title}>
-      <div className="ph"><b>{meta.title}</b><span className="subtle cc-ph-sub">{key}</span></div>
+      <div className="ph"><b>{meta.title}</b><span className="subtle cc-ph-tag">{key}</span></div>
       <div className="pb stack">
         <p className="section-sub">{meta.sub}</p>
         <div className="form-grid">
@@ -265,7 +265,7 @@ function PathPanel({ screenKey, index, path, onChange, onDelete, offers, problem
   const trigger = path.type === "CANCEL" ? "cancel" : path.type === "REFUND_REQUEST" ? "refund" : null;
   return (
     <section className="panel cc-detail" aria-label="Path settings">
-      <div className="ph"><b>{info?.label ?? path.type}</b><span className="subtle cc-ph-sub">{screenKey === "MANAGEMENT" ? "Active subscriptions" : "No active subscriptions"}</span></div>
+      <div className="ph"><b>{info?.label ?? path.type}</b><span className="subtle cc-ph-tag">{screenKey === "MANAGEMENT" ? "Active subscriptions" : "No active subscriptions"}</span></div>
       <div className="pb stack">
         <p className="section-sub">{info?.description}</p>
         <Field label="Button text" htmlFor="cc-path-title" error={problemOf("title")}

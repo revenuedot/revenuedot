@@ -138,7 +138,7 @@ export function AppearanceTab({ cfg, update, offers }: { cfg: CcConfig; update: 
                   <div key={k} className="field cc-color">
                     <label className="label" htmlFor={`cc-${m}-${k}`}>{COLOR_LABEL[k]}</label>
                     <div className="inline-row">
-                      <input type="color" className="cc-swatch" aria-label={`${m === "light" ? "Light" : "Dark"} ${COLOR_LABEL[k]} colour picker`} value={HEX.test(v) ? v.slice(0, 7) : "#000000"} onChange={(e) => set(e.target.value.toUpperCase())} />
+                      <input type="color" className={`cc-swatch${HEX.test(v) ? "" : " empty"}`} aria-label={`${m === "light" ? "Light" : "Dark"} ${COLOR_LABEL[k]} colour picker`} value={HEX.test(v) ? v.slice(0, 7) : "#000000"} onChange={(e) => set(e.target.value.toUpperCase())} />
                       <input id={`cc-${m}-${k}`} className="input mono" placeholder="System default" value={v} onChange={(e) => set(e.target.value.trim())} aria-invalid={bad} />
                       <button type="button" className="ib" aria-label={`Clear ${m} ${COLOR_LABEL[k]}`} disabled={!v} onClick={() => set("")}><Icon name="close" /></button>
                     </div>
@@ -151,7 +151,7 @@ export function AppearanceTab({ cfg, update, offers }: { cfg: CcConfig; update: 
         ))}
       </div>
       <div className="cc-side stack tight">
-        <Segmented label="Preview mode" value={mode} onChange={setMode} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} />
+        <div><Segmented label="Preview mode" value={mode} onChange={setMode} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></div>
         <CcPhone cfg={cfg} offers={offers} dark={mode === "dark"} screen="MANAGEMENT" lang="en" width={280} />
       </div>
     </div>
@@ -179,7 +179,7 @@ export function LocalizationTab({ cfg, update }: { cfg: CcConfig; update: Update
   return (
     <div className="stack">
       <p className="section-sub">The Customer Center comes translated into {CC_LANGUAGES.length} languages and follows the customer's device language. Override any predefined text per language with a custom string.</p>
-      <div className="inline-row">
+      <div className="inline-row" style={{ maxWidth: 360 }}>
         <Field label="Language" htmlFor="cc-lang">
           <select id="cc-lang" className="select" value={lang} onChange={(e) => setLang(e.target.value)}>
             {CC_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name}{counts[l.code] ? ` (${counts[l.code]} custom)` : ""}</option>)}
@@ -191,7 +191,7 @@ export function LocalizationTab({ cfg, update }: { cfg: CcConfig; update: Update
           <button type="button" className="btn btn-line" disabled={!picked.size} onClick={() => { for (const k of picked) setCustom(k, null); setPicked(new Set()); }}>Delete selected{picked.size ? ` (${picked.size})` : ""}</button>
         </div>
         {Object.keys(custom).length === 0 ? <div className="pb subtle" style={{ fontSize: 13 }}>No custom strings for {LANG_NAME[lang]}. Override a predefined string below.</div> : (
-          <div className="tbl"><table>
+          <div className="tbl cc-strings"><table>
             <thead><tr><th style={{ width: 32 }}><span className="sr">Select</span></th><th>Key</th><th>Text</th></tr></thead>
             <tbody>
               {Object.entries(custom).map(([k, v]) => (
@@ -207,7 +207,7 @@ export function LocalizationTab({ cfg, update }: { cfg: CcConfig; update: Update
       </section>
       <section className="panel" aria-label="Predefined strings">
         <div className="ph"><b>Predefined strings</b><input className="input cc-search" aria-label="Search strings" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-        <div className="tbl"><table>
+        <div className="tbl cc-strings"><table>
           <thead><tr><th>Key</th><th>{LANG_NAME[lang]} text</th><th /></tr></thead>
           <tbody>
             {list.map((k) => {
@@ -326,7 +326,7 @@ export function PreviewDialog({ cfg, offers, onClose }: { cfg: CcConfig; offers:
           </select>
         </div>
         <p className="subtle" style={{ margin: 0, fontSize: 12 }}>Shows the unsaved configuration as the SDK would receive it. Tap a path to follow it; the store's own sheets are not shown.</p>
-        <div className="cc-preview-stage"><CcPhone cfg={cfg} offers={offers} dark={mode === "dark"} screen={screen} lang={lang} width={300} /></div>
+        <div className="cc-preview-stage"><CcPhone cfg={cfg} offers={offers} dark={mode === "dark"} screen={screen} lang={lang} width={260} /></div>
       </div>
     </Dialog>
   );

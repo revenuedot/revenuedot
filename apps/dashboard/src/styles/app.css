@@ -852,7 +852,7 @@ button.ask{width:100%;text-align:left;cursor:pointer}
 /* Customer Center editor (pages/lifecycle/CustomerCenter.tsx) */
 .cc-two{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
 .cc-side{position:sticky;top:72px;min-width:0}
-.cc-ph-sub{font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.cc-ph-tag{font:600 11px/16px var(--font);letter-spacing:.06em;text-transform:uppercase}
 .cc-problems{margin:6px 0 0;padding-left:18px;font-size:12px;font-family:var(--mono);color:var(--fg-2)}
 .cc-paths{list-style:none;margin:0;padding:0}
 .cc-path .policy-h{border-bottom:0;padding:6px 8px;gap:6px}
@@ -863,7 +863,10 @@ button.ask{width:100%;text-align:left;cursor:pointer}
 .cc-options{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .cc-option{border:1px solid var(--border-2);padding:8px}
 .cc-option .inline-row{flex-wrap:nowrap;align-items:center}
-.cc-option-b{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.cc-option-b{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px}
+.cc-option-b .stack{align-self:stretch}
+.cc-strings td{white-space:normal;vertical-align:middle}
+.cc-strings td.mono{word-break:break-all;width:30%}
 .cc-offer{border-left:1px solid var(--border);padding-left:12px}
 .cc-danger{color:var(--down)}
 .cc-trans{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
@@ -882,5 +885,6 @@ button.ask{width:100%;text-align:left;cursor:pointer}
 .cc-ph-btn{height:52px;border-radius:14px;font-size:17px;font-weight:600;flex:none}
 .cc-ph-btn.plain{background:none;height:40px}
 .cc-ph-back{align-self:flex-start;font-size:17px;padding:4px 0}
-@media (max-width:1180px){.cc-side{position:static}}
+@media (max-width:1180px){.cc-two{grid-template-columns:1fr}.cc-side{position:static}}
 @media (max-width:640px){.cc-colors{grid-template-columns:1fr}.cc-trans-row{grid-template-columns:1fr}}
+.cc-swatch.empty{opacity:.25}

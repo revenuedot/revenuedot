@@ -228,6 +228,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
   <img alt="RevenueDot Refund Control: refund rate, refund request amount and refund requests over the last 28 days, the four policy templates and an ordered refund policy with its conditions" src="docs/assets/lifecycle/refund-control.png" width="100%">
 </picture>
 
+<p><img alt="RevenueDot Customer Center editor: support settings, the active-subscription screen's ordered paths, and the Manage path with its button text, promotional offer and a feedback survey whose first answer shows a Retention offer" src="docs/assets/lifecycle/customer-center-editor.png" width="100%"></p>
+
 ## SDKs
 
 Keep the RevenueCat SDK you already ship, or switch to our MIT forks. They keep RevenueCat's class and method names (`Purchases`, `CustomerInfo`, `Offerings`), so the swap is a package change.
