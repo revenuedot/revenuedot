@@ -14,6 +14,23 @@ function sameSitePath(raw: string | null): string | null {
   } catch { return null; }
 }
 
+/**
+ * What a failed single sign-on says (the enterprise extension sends a code back, ee/server/sso/routes.ts). Only these
+ * texts are shown, so a link cannot put words of its choosing on the sign-in page.
+ */
+const SSO_ERRORS: Record<string, string> = {
+  failed: "Single sign-on failed. Try again, or ask your administrator to check the connection.",
+  connection_off: "This single sign-on connection is turned off.",
+  rate_limited: "Too many sign-in attempts. Try again in a minute.",
+  not_set_up: "Single sign-on is not set up for this email address.",
+  domain_not_verified: "Your email address is not on a domain this organization verified.",
+  access_removed: "Your access to this organization was removed. Ask your administrator.",
+  not_a_member: "Ask your administrator to add you to the organization before you sign in with SSO.",
+  other_browser: "This sign-in was started in another browser or has expired. Start it again here.",
+  idp_error: "Your identity provider did not complete the sign-in.",
+};
+const ssoErrorText = (code: string | null) => (code === null ? null : SSO_ERRORS[code] ?? SSO_ERRORS.failed!);
+
 export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -28,7 +45,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   // `sso` is only present when an enterprise extension offers single sign-on (src/extensions.tsx); `sso_error` comes back from it.
   const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ edition: string; signup: "open" | "closed"; signed_in?: boolean; sso?: boolean }>("/auth/config"), retry: false });
   const [ssoUrl, setSsoUrl] = useState<string | null>(null);
-  const ssoError = params.get("sso_error");
+  const ssoError = ssoErrorText(params.get("sso_error"));
   const closed = config.data?.signup === "closed";
   const cloud = config.data?.edition === "cloud";
   const me = useMe(config.data?.signed_in === true);

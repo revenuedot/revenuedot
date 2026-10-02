@@ -12,7 +12,7 @@
 //   GET  /sso/saml/{id}/metadata             SP metadata (also the SP entity id)
 //   POST /sso/saml/{id}/acs                  assertion consumer (HTTP-POST binding)
 //   GET  /sso/oidc/{id}/callback             OpenID Connect redirect URI
-// Failures redirect (303) to /login?sso_error=<message>; the precise reason goes to the organization's audit log.
+// Failures redirect (303) to /login?sso_error=<code>; the precise reason goes to the organization's audit log.
 import { Hono, type Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -53,8 +53,13 @@ const ConnUpdate = z.object({ name: Name.optional(), enabled: z.boolean().option
 const Lookup = z.object({ email: z.string().trim().max(320), next: z.string().max(2000).optional() });
 
 type ConnRow = typeof eeSsoConnections.$inferSelect;
-const GENERIC = "Single sign-on failed. Try again, or ask your administrator to check the connection.";
-const OFF = "This single sign-on connection is turned off.";
+/**
+ * Failures go back to the sign-in page as a code, never as text: the page shows its own message for each code
+ * (apps/dashboard/src/pages/Auth.tsx), so a link cannot put words of its choosing on the sign-in page.
+ */
+type FailCode = "failed" | "connection_off" | "rate_limited" | "not_set_up" | "domain_not_verified" | "access_removed" | "not_a_member" | "other_browser" | "idp_error";
+const GENERIC: FailCode = "failed";
+const OFF: FailCode = "connection_off";
 const COOKIE_MAX_AGE = 30 * 86400;
 const BIND_COOKIE = "rd_sso";
 
@@ -224,7 +229,7 @@ export function ssoRoutes(ctx: EeCtx) {
 
   // ---- Public sign-in ----------------------------------------------------------------------------------------------
 
-  const fail = (c: Context, message: string) => c.redirect(`/login?sso_error=${encodeURIComponent(message)}`, 303);
+  const fail = (c: Context, code: FailCode) => c.redirect(`/login?sso_error=${code}`, 303);
   const auditFail = (conn: ConnRow, reason: string, email?: string) =>
     orgAudit(db, deps.now(), { orgId: conn.orgId, action: "sso_sign_in_failed", actor: { type: "sso", id: conn.id }, target: { type: "sso_connection", id: conn.id }, data: { reason, kind: conn.kind, ...(email ? { email } : {}) } });
   const connection = async (connId: string) => {
@@ -244,8 +249,8 @@ export function ssoRoutes(ctx: EeCtx) {
 
   const start = async (c: Context, conn: ConnRow | null, nextRaw: unknown, email: string | null) => {
     const now = deps.now();
-    if (!(await hit(db, `sso-start:ip:${clientIp((n) => c.req.header(n))}`, 30, 60_000, now))) return fail(c, "Too many sign-in attempts. Try again in a minute.");
-    if (!conn) return fail(c, "Single sign-on is not set up for this email address.");
+    if (!(await hit(db, `sso-start:ip:${clientIp((n) => c.req.header(n))}`, 30, 60_000, now))) return fail(c, "rate_limited");
+    if (!conn) return fail(c, "not_set_up");
     if (!conn.enabled) return fail(c, OFF);
     const next = safeNext(nextRaw);
     const base = publicBase(deps, c);
@@ -280,17 +285,17 @@ export function ssoRoutes(ctx: EeCtx) {
     const email = normEmail(identity.email);
     if (!(await domainVerifiedFor(db, conn.orgId, email))) {
       await auditFail(conn, `email domain ${emailDomain(email)} is not verified by this organization`, email);
-      return fail(c, "Your email address is not on a domain this organization verified.");
+      return fail(c, "domain_not_verified");
     }
     const [existing] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, email)).limit(1);
     const [member] = existing ? await db.select().from(eeOrgMembers).where(and(eq(eeOrgMembers.orgId, conn.orgId), eq(eeOrgMembers.userId, existing.id))).limit(1) : [];
     if (member && !member.active) {
       await auditFail(conn, "the person was deactivated in this organization", email);
-      return fail(c, "Your access to this organization was removed. Ask your administrator.");
+      return fail(c, "access_removed");
     }
     if (!conn.jit && !member) {
       await auditFail(conn, "just-in-time provisioning is off and the person is not an organization member", email);
-      return fail(c, "Ask your administrator to add you to the organization before you sign in with SSO.");
+      return fail(c, "not_a_member");
     }
     const { user, created } = await ensureUser(db, email, identity.name, now, conn.orgId);
     await ensureOrgMember(db, conn.orgId, user.id, "sso", { ssoGroups: identity.groups, now });
@@ -335,7 +340,7 @@ export function ssoRoutes(ctx: EeCtx) {
     const claimed = responseInResponseTo(samlResponse);
     if (claimed && !bound(c, claimed)) {
       await auditFail(conn, "the sign-in was started in another browser (login CSRF defence)");
-      return fail(c, "This sign-in was started in another browser or has expired. Start it again here.");
+      return fail(c, "other_browser");
     }
     const res = await samlConsume(db, deps.now, publicBase(deps, c), conn.id, conn.config as SamlConfig, { SAMLResponse: samlResponse, RelayState: typeof relayState === "string" ? relayState : undefined });
     if (!res.ok) {
@@ -344,7 +349,7 @@ export function ssoRoutes(ctx: EeCtx) {
     }
     if (!res.idpInitiated && !bound(c, res.requestId)) {
       await auditFail(conn, "the sign-in was started in another browser (login CSRF defence)");
-      return fail(c, "This sign-in was started in another browser or has expired. Start it again here.");
+      return fail(c, "other_browser");
     }
     return finish(c, conn, res.identity, res.idpInitiated ? safeNext(relayState) : safeNext(res.next), { idp_initiated: res.idpInitiated, assertion_id: res.assertionId });
   });
@@ -356,7 +361,7 @@ export function ssoRoutes(ctx: EeCtx) {
     const now = deps.now();
     if (!bound(c, c.req.query("state") ?? null)) {
       await auditFail(conn, "the sign-in was started in another browser (login CSRF defence)");
-      return fail(c, "This sign-in was started in another browser or has expired. Start it again here.");
+      return fail(c, "other_browser");
     }
     const st = await takeState(db, conn.id, c.req.query("state") ?? "", now);
     if (!st) {
@@ -366,7 +371,7 @@ export function ssoRoutes(ctx: EeCtx) {
     const error = c.req.query("error");
     if (error) {
       await auditFail(conn, `the identity provider returned error ${error.slice(0, 100)}`);
-      return fail(c, "Your identity provider did not complete the sign-in.");
+      return fail(c, "idp_error");
     }
     const code = c.req.query("code");
     if (!code) {

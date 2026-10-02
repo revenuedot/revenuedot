@@ -18,6 +18,11 @@ test("the sign-in page offers single sign-on when the server has it", async ({ p
   const w = watch(page);
   await page.goto("/login");
   await expect(page.getByRole("button", { name: "Continue with SSO" })).toBeVisible();
+  // A failed sign-in comes back as a code; the page shows its own text, never words from the link.
+  await page.goto(`/login?sso_error=${encodeURIComponent("Your account is locked. Call +1 555 0100.")}`);
+  await expect(page.getByRole("alert")).toHaveText("Single sign-on failed. Try again, or ask your administrator to check the connection.");
+  await page.goto("/login?sso_error=other_browser");
+  await expect(page.getByRole("alert")).toHaveText("This sign-in was started in another browser or has expired. Start it again here.");
   w.expectClean();
 });
 

@@ -46,7 +46,8 @@ async function lastFailure(orgId: string): Promise<string> {
 
 function expectRefused(r: { status: number; headers: Headers; cookie: string | null }) {
   expect(r.status).toBe(303);
-  expect(r.headers.get("location")).toMatch(/^\/login\?sso_error=/);
+  // A code the sign-in page turns into its own text, never free text.
+  expect(r.headers.get("location")).toMatch(/^\/login\?sso_error=[a-z_]+$/);
   expect(r.cookie ?? "").not.toMatch(/rd_session=[^;]/);
 }
 
