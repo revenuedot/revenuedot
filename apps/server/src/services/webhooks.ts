@@ -127,48 +127,64 @@ export async function attempt(db: DB, deliveryId: string, fetchImpl: typeof fetc
 /** How long a claimed delivery is held by the job that claimed it: longer than one attempt's 60-second timeout. */
 export const DELIVERY_LEASE_MS = 2 * 60_000;
 
+/** Webhooks sent to at once by one job run (deliveries to the same webhook stay one at a time). */
+const WEBHOOK_CONCURRENCY = 8;
+
 /**
- * Sends every due delivery, in batches of `limit` for up to `budgetMs`. Retries for a disabled webhook wait until it is
- * enabled again. Deliveries to one webhook go out one at a time, oldest first; different webhooks are sent to in parallel.
- * Each delivery is claimed first (its next attempt moved 2 minutes ahead, only if it is still due), so two jobs running at
- * once (several self-hosted replicas, or the Worker's cron and a request-kicked run) never send it twice. A job that dies
- * mid-attempt leaves the claim to lapse, and the delivery is sent again after it (at least once, as RevenueCat does).
- * `signal` (a replica draining on SIGTERM) stops it after the attempts in flight.
+ * Sends every due delivery, in batches of `limit`, claiming no more after `budgetMs`. Retries for a disabled webhook
+ * wait until it is enabled again. Deliveries to one webhook go out one at a time, oldest first; different webhooks are
+ * sent to in parallel. Each delivery is claimed first (its next attempt moved 2 minutes past the claim, only if it is
+ * still due), so two jobs running at once (several self-hosted replicas, or the Worker's cron and a request-kicked run)
+ * never send it twice. A job that dies mid-attempt leaves the claim to lapse, and the delivery is sent again after it
+ * (at least once, as RevenueCat does). `signal` (a replica draining on SIGTERM) stops it after the attempts in flight.
  */
 export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50, budgetMs = 20_000, signal?: AbortSignal) {
   const started = Date.now();
+  const stop = () => signal?.aborted === true || Date.now() - started >= budgetMs;
+  // `now` is when the job run started, possibly a while ago; a lease counts from the claim itself.
+  const lease = () => new Date(Math.max(now.getTime(), Date.now()) + DELIVERY_LEASE_MS);
+  // A webhook whose send broke off with an error (not an HTTP failure, which schedules a retry) gets nothing more in this
+  // run, so its later deliveries do not overtake the one whose result is unknown.
+  const broken = new Set<string>();
   let sent = 0;
   for (;;) {
     const due = await db.select({ id: webhookDeliveries.id, webhookId: webhookDeliveries.webhookId }).from(webhookDeliveries)
-      .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId))
-      .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
+      .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId)).innerJoin(events, eq(events.id, webhookDeliveries.eventId))
+      .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId)))
+      // Events recorded at the same instant (one store notification can make two) keep the order they were recorded in.
+      .orderBy(asc(webhookDeliveries.nextAttemptAt), asc(events.createdAt)).limit(limit);
     const byHook = new Map<string, string[]>();
-    for (const d of due) byHook.set(d.webhookId, [...(byHook.get(d.webhookId) ?? []), d.id]);
+    for (const d of due) if (!broken.has(d.webhookId)) byHook.set(d.webhookId, [...(byHook.get(d.webhookId) ?? []), d.id]);
     let claimedAny = false;
-    const queues = [...byHook.values()];
+    const queues = [...byHook];
     const worker = async () => {
       for (let q = queues.shift(); q; q = queues.shift()) {
-        for (const id of q) {
-          // A replica that is shutting down finishes the attempt in flight and claims no more.
-          if (signal?.aborted) return;
-          const [claimed] = await db.update(webhookDeliveries).set({ nextAttemptAt: new Date(now.getTime() + DELIVERY_LEASE_MS) })
-            .where(and(eq(webhookDeliveries.id, id), eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now))).returning({ id: webhookDeliveries.id });
-          if (!claimed) continue;
-          claimedAny = true;
-          await attempt(db, id, fetchImpl, now);
-          sent++;
+        const [webhookId, ids] = q;
+        for (const id of ids) {
+          // A replica that is shutting down, or a run out of time, finishes the attempts in flight and claims no more.
+          if (stop()) return;
+          try {
+            const [claimed] = await db.update(webhookDeliveries).set({ nextAttemptAt: lease() })
+              .where(and(eq(webhookDeliveries.id, id), eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now))).returning({ id: webhookDeliveries.id });
+            if (!claimed) continue;
+            claimedAny = true;
+            await attempt(db, id, fetchImpl, now);
+            sent++;
+          } catch (e) {
+            // The claim stays and lapses, so the delivery is tried again later.
+            console.error(`webhook delivery ${id} failed`, e);
+            broken.add(webhookId);
+            break;
+          }
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(WEBHOOK_CONCURRENCY, queues.length) }, worker));
     // Another full batch may be waiting (a burst of purchases); stop when the batch was short, nothing could be claimed
     // (another job holds them), or the time is up.
-    if (due.length < limit || !claimedAny || Date.now() - started >= budgetMs || signal?.aborted) return sent;
+    if (due.length < limit || !claimedAny || stop()) return sent;
   }
 }
-
-/** Webhooks sent to at once by one job run (deliveries to the same webhook stay one at a time). */
-const WEBHOOK_CONCURRENCY = 8;
 
 /** Manual retry from the dashboard or API: queue immediately. */
 export async function retryDelivery(db: DB, deliveryId: string, now: Date) {

@@ -36,7 +36,9 @@ describe("background work run twice at once", () => {
       { id: "wh1", projectId: h.ids.project, name: "A", url: "https://a.example.com/rc", signingSecret: "whsec_a" },
       { id: "wh2", projectId: h.ids.project, name: "B", url: "https://b.example.com/rc", signingSecret: "whsec_b" },
     ]);
-    for (let i = 0; i < 5; i++) await buy(`cl_burst_${i}`, "pro_monthly", new Date("2026-09-01T11:00:00Z"));
+    // One purchase per millisecond, as separate requests arrive.
+    const t0 = h.now().getTime();
+    for (let i = 0; i < 5; i++) { h.setNow(new Date(t0 + i)); await buy(`cl_burst_${i}`, "pro_monthly", new Date("2026-09-01T11:00:00Z")); }
     const seen: Record<string, string[]> = {};
     let inFlight = 0, maxInFlight = 0;
     const slow: typeof fetch = async (u, init) => {
@@ -75,6 +77,53 @@ describe("background work run twice at once", () => {
     expect(await deliverDue(h.db, ok, new Date(h.now().getTime() + DELIVERY_LEASE_MS))).toBe(1);
     const [after] = await h.db.select().from(schema.webhookDeliveries);
     expect(after!.status).toBe("delivered");
+  });
+
+  it("events recorded at the same instant go out in the order they were recorded", async () => {
+    await h.db.insert(schema.webhooks).values({ id: "wh1", projectId: h.ids.project, name: "Backend", url: "https://hooks.example.com/rc", signingSecret: "whsec_test" });
+    await buy("cl_same", "pro_monthly", new Date("2026-09-01T11:00:00Z"));
+    const [first] = await h.db.select().from(schema.events);
+    const [firstDelivery] = await h.db.select().from(schema.webhookDeliveries);
+    // A second event for the same customer at the same instant (a store notification can record two), one millisecond
+    // later in recording order, and its delivery stored ahead of the first one's.
+    await h.db.insert(schema.events).values({ ...first!, id: "EV-SECOND", type: "CANCELLATION", payload: { api_version: "1.0", event: { id: "EV-SECOND", type: "CANCELLATION" } }, createdAt: new Date(first!.createdAt.getTime() + 1) });
+    await h.db.delete(schema.webhookDeliveries);
+    await h.db.insert(schema.webhookDeliveries).values({ id: "d-second", webhookId: "wh1", eventId: "EV-SECOND", nextAttemptAt: h.now(), createdAt: h.now() });
+    await h.db.insert(schema.webhookDeliveries).values({ ...firstDelivery!, id: "d-first" });
+    const types: string[] = [];
+    await deliverDue(h.db, async (_u, init) => { types.push(JSON.parse(String(init!.body)).event.type); return new Response("ok"); }, h.now());
+    expect(types).toEqual(["INITIAL_PURCHASE", "CANCELLATION"]);
+  });
+
+  it("a send that breaks off with an error stops that webhook for this run; the others go on, and its claim lapses later", async () => {
+    // An empty signing secret makes the signature step throw, standing in for any error that is not an HTTP failure.
+    await h.db.insert(schema.webhooks).values([
+      { id: "wh_bad", projectId: h.ids.project, name: "Broken", url: "https://broken.example.com/rc", signingSecret: "" },
+      { id: "wh_ok", projectId: h.ids.project, name: "Backend", url: "https://ok.example.com/rc", signingSecret: "whsec_ok" },
+    ]);
+    const t0 = h.now().getTime();
+    for (let i = 0; i < 3; i++) { h.setNow(new Date(t0 + i)); await buy(`cl_err_${i}`, "pro_monthly", new Date("2026-09-01T11:00:00Z")); }
+    const hosts: string[] = [];
+    const before = Date.now();
+    const sent = await deliverDue(h.db, async (u) => { hosts.push(new URL(String(u)).host); return new Response("ok"); }, h.now());
+    expect(sent).toBe(3);
+    expect(hosts).toEqual(["ok.example.com", "ok.example.com", "ok.example.com"]);
+    const bad = await h.db.select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.webhookId, "wh_bad"));
+    expect(bad.every((d) => d.status === "pending" && d.attempts === 0)).toBe(true);
+    // Only the first was claimed; its lease runs from the claim (this run's clock is a month behind the real one).
+    const leased = bad.filter((d) => d.nextAttemptAt > h.now());
+    expect(leased).toHaveLength(1);
+    expect(leased[0]!.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before + DELIVERY_LEASE_MS);
+  });
+
+  it("a run out of time finishes the send in flight, claims no more and leaves the rest due", async () => {
+    await h.db.insert(schema.webhooks).values({ id: "wh1", projectId: h.ids.project, name: "Backend", url: "https://hooks.example.com/rc", signingSecret: "whsec_test" });
+    for (let i = 0; i < 5; i++) await buy(`cl_budget_${i}`, "pro_monthly", new Date("2026-09-01T11:00:00Z"));
+    const slow: typeof fetch = async () => { await new Promise((r) => setTimeout(r, 40)); return new Response("ok"); };
+    expect(await deliverDue(h.db, slow, h.now(), 50, 60)).toBe(2);
+    const rows = await h.db.select().from(schema.webhookDeliveries);
+    expect(rows.filter((d) => d.status === "delivered")).toHaveLength(2);
+    expect(rows.filter((d) => d.status === "pending" && d.nextAttemptAt <= h.now())).toHaveLength(3);
   });
 
   it("records one EXPIRATION per subscription when two scans run at once", async () => {
