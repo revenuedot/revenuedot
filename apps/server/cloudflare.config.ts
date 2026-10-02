@@ -46,6 +46,10 @@ export default defineConfig({
       AssistantAgent: bindings.durableObject({ worker: "revenuedot", exportName: "AssistantAgent" }),
       // Local `cf dev` only: REVENUEDOT_ASSISTANT_FAKE=1 in the shell answers with the scripted fake model (no model call).
       ...(process.env.REVENUEDOT_ASSISTANT_FAKE === "1" ? { REVENUEDOT_ASSISTANT_FAKE: bindings.text("1") } : {}),
+      // Local `cf dev` only: REVENUEDOT_API_URL / REVENUEDOT_PUBLIC_URL in the shell (e.g. http://localhost:5615) make SDK
+      // snippets, asset, pay and email links point at the local server instead of api. and app.revenuedot.app.
+      ...(process.env.REVENUEDOT_API_URL ? { REVENUEDOT_API_URL: bindings.text(process.env.REVENUEDOT_API_URL) } : {}),
+      ...(process.env.REVENUEDOT_PUBLIC_URL ? { REVENUEDOT_PUBLIC_URL: bindings.text(process.env.REVENUEDOT_PUBLIC_URL) } : {}),
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
     },
   },

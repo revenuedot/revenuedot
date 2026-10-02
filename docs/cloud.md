@@ -52,6 +52,10 @@ node ../../scripts/smoke-cloud.mjs http://localhost:5173
 ```
 
 - `cf dev` connects the `HYPERDRIVE` binding to `REVENUEDOT_LOCAL_DATABASE_URL`.
+- Set `REVENUEDOT_API_URL` and `REVENUEDOT_PUBLIC_URL` to the local URL in the shell that runs `cf dev` (for example
+  `REVENUEDOT_API_URL=http://localhost:5615 REVENUEDOT_PUBLIC_URL=http://localhost:5615 pnpm exec cf dev --port 5615`).
+  Without them, SDK snippets, paywall assets, web pay pages and email links point at api. and app.revenuedot.app.
+  `.dev.vars` only fills secrets declared in `cloudflare.config.ts`, so these do not work from there.
 - To test response signing, put `REVENUEDOT_SIGNING_KEY=...` (from `pnpm tsx scripts/signing-keygen.ts`) in
   `apps/server/.dev.vars` (gitignored) and restart `cf dev`.
 - The smoke test signs up, creates a Test Store app, a product and a secret key, makes a test purchase, reads the
