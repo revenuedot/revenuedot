@@ -2,10 +2,12 @@
  * Products: /projects/:projectId/product-catalog/products and /products/:productId
  * Grouped by app like RevenueCat: display name over the store identifier, type, duration, entitlements, status, created.
  *
+ * "Import products" (page head, and "Import" on each App Store, Google Play and Stripe app group) opens ImportProductsDialog.
+ *
  * GAPS versus RevenueCat's dashboard (later tiers):
- * - Import from App Store Connect / Google Play and the "Product editor" (store-side price and metadata editing) are Tier 2;
- *   products are added by store identifier and a muted note says so.
- * - Price labels ("$9.99/week") come from the store APIs in RevenueCat; we show the duration until store import exists.
+ * - The "Product editor" (store-side price and metadata editing) is Tier 2.
+ * - Price labels ("$9.99/week") come from the store APIs in RevenueCat; the import does not read Apple or Google prices yet,
+ *   so we show the duration.
  *   Test Store products have a price set here (the detail page shows it; the SDK reads it).
  * - RevenueCat's "…" menu on each app group (app shortcuts) is left out; the Apps page owns app settings.
  */
@@ -15,6 +17,7 @@ import { api, fmt } from "../../lib/api";
 import { Copy, Shell } from "../../components/Shell";
 import { ConfirmDialog, Dialog, EmptyState, Field, KeyValue, Menu, PageHead, Panel, Segmented, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
+import { IMPORT_STORES, ImportProductsDialog } from "./ImportProducts";
 import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog, ProductCell } from "./parts";
 import { count, durationLabel, errMsg, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, v2, type Entitlement, type Offering, type Product } from "./lib";
 
@@ -78,6 +81,8 @@ export function ProductsPage() {
   const [filter, setFilter] = useState<Filter>("active");
   const [q, setQ] = useState("");
   const [newFor, setNewFor] = useState<string | null | undefined>(undefined);
+  const [importFor, setImportFor] = useState<string | null | undefined>(undefined);
+  const canImport = (apps.data ?? []).some((a) => IMPORT_STORES.has(a.type) && a.type !== "amazon");
   const base = `/projects/${pid}/product-catalog`;
   const all = products.data ?? [];
   const needle = q.trim().toLowerCase();
@@ -92,8 +97,8 @@ export function ProductsPage() {
       action={<Link className="btn btn-dark" to={`/projects/${pid}/apps`}><Icon name="plus" />Add an app</Link>} />
   );
   else if (!all.length) body = (
-    <EmptyState title="No products yet" text="Create your first product with its store identifier, then attach it to an entitlement and group products into an offering."
-      action={<button type="button" className="btn btn-dark" onClick={() => setNewFor(null)}><Icon name="plus" />New product</button>} />
+    <EmptyState title="No products yet" text={canImport ? "Import the products you already set up in App Store Connect, Google Play or Stripe, or create one by its store identifier. Then attach them to an entitlement and group them into an offering." : "Create your first product with its store identifier, then attach it to an entitlement and group products into an offering."}
+      action={<div className="hrow">{canImport && <button type="button" className="btn btn-dark" onClick={() => setImportFor(null)}><Icon name="download" />Import products</button>}<button type="button" className={canImport ? "btn btn-line" : "btn btn-dark"} onClick={() => setNewFor(null)}><Icon name="plus" />New product</button></div>} />
   );
   else body = (
     <>
@@ -106,7 +111,7 @@ export function ProductsPage() {
         const total = all.filter((p) => p.app_id === a.id).length;
         return (
           <section className="panel" key={a.id} aria-label={`${a.name} products`}>
-            <div className="ph"><AppName app={a} sub /><button type="button" className="btn btn-ghost" onClick={() => setNewFor(a.id)}><Icon name="plus" />New</button></div>
+            <div className="ph"><AppName app={a} sub /><span className="hrow">{IMPORT_STORES.has(a.type) && a.type !== "amazon" && <button type="button" className="btn btn-ghost" aria-label={`Import products into ${a.name}`} onClick={() => setImportFor(a.id)}><Icon name="download" />Import</button>}<button type="button" className="btn btn-ghost" onClick={() => setNewFor(a.id)}><Icon name="plus" />New</button></span></div>
             {!rows.length ? (
               <div className="pb cat-note">{total ? (needle ? "No products match your search." : `No ${filter} products for this app.`) : <>No products for this app yet. <button type="button" className="cat-lnk" onClick={() => setNewFor(a.id)}>Add one</button>.</>}</div>
             ) : (
@@ -143,10 +148,10 @@ export function ProductsPage() {
     <Shell title="Products" crumbs={<CatalogCrumbs pid={pid} section="Products" />}>
       <div className="page">
         <PageHead title="Products" sub="The in-app purchases you set up in each store. Attach them to entitlements to unlock access, and add them to offerings to sell them."
-          actions={apps.data?.length ? <button type="button" className="btn btn-dark" onClick={() => setNewFor(null)}><Icon name="plus" />New product</button> : undefined} />
-        <p className="cat-note" style={{ margin: 0 }}><Icon name="docs" /><span><b>Import from store</b> comes in a later release. For now, add each product by its store identifier.</span></p>
+          actions={apps.data?.length ? <>{canImport && <button type="button" className="btn btn-line" onClick={() => setImportFor(null)}><Icon name="download" />Import products</button>}<button type="button" className="btn btn-dark" onClick={() => setNewFor(null)}><Icon name="plus" />New product</button></> : undefined} />
         {body}
       </div>
+      {importFor !== undefined && apps.data && <ImportProductsDialog pid={pid} apps={apps.data} appId={importFor ?? undefined} onClose={() => setImportFor(undefined)} />}
       {newFor !== undefined && apps.data && <NewProductDialog pid={pid} apps={apps.data} appId={newFor ?? undefined} onClose={() => setNewFor(undefined)} onCreated={() => setFilter((f) => (f === "inactive" ? "active" : f))} />}
       {actions.dialog}
     </Shell>

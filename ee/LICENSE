@@ -1,48 +1,27 @@
-RevenueDot Enterprise License (the "Enterprise License")
-Copyright (c) 2026 Circo, Inc.
+The RevenueDot Enterprise License (the “Enterprise License”)
 
-With regard to the software in this "ee/" directory, and any file whose name
-contains ".ee." (the "Software"):
+Copyright (c) 2026-present Circo, Inc.
 
-1. This Software may be used in production only if you (and any entity you
-   represent) have agreed to the RevenueDot Subscription Terms available at
-   https://revenuedot.app/terms, or another agreement with Circo, Inc.
-   governing the use of the Software, and hold a valid RevenueDot Enterprise
-   subscription for the correct number of instances or organizations.
+With regard to the RevenueDot Software:
 
-2. Subject to the above, you may modify this Software and publish patches to
-   it. You agree that Circo, Inc. and/or its licensors (as applicable) retain
-   all right, title and interest in and to all such modifications and
-   patches, and that they may be used, copied, modified, displayed,
-   distributed or otherwise exploited only together with a valid RevenueDot
-   Enterprise subscription.
+This software and associated documentation files (the "Software") may only be used in production, if
+you (and any entity that you represent) hold a valid RevenueDot Enterprise license corresponding to your
+usage. Subject to the foregoing sentence, you are free to modify this Software and publish patches
+to the Software. You agree that Circo, Inc. and/or its licensors (as applicable) retain all right, title and
+interest in and to all such modifications and/or patches, and all such modifications and/or patches
+may only be used, copied, modified, displayed, distributed, or otherwise exploited with a valid RevenueDot
+Enterprise license for the corresponding usage. Notwithstanding the foregoing, you may copy and
+modify the Software for development and testing purposes, without requiring a subscription. You
+agree that Circo, Inc. and/or its licensors (as applicable) retain all right, title and interest in and to
+all such modifications. You are not granted any other rights beyond what is expressly stated herein.
+Subject to the foregoing, it is forbidden to copy, merge, publish, distribute, sublicense, and/or
+sell the Software.
 
-3. Notwithstanding the above, you may copy and modify the Software for
-   development and testing purposes, without a subscription.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-4. You may not use the Software to offer a hosted or managed service to third
-   parties that competes with RevenueDot Cloud.
-
-5. You may not move, change, disable or circumvent the license key
-   functionality in the Software, and you may not remove or obscure any
-   functionality in the Software that is protected by the license key.
-
-6. You are not granted any other rights beyond what is expressly stated
-   herein. Subject to the foregoing, it is forbidden to copy, merge, publish,
-   distribute, sublicense and/or sell the Software.
-
-This Enterprise License applies only to the part of this repository covered by
-it. The full terms for all other parts are in the LICENSE file at the root of
-this repository.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-For all third-party components incorporated into the Software, those
-components are licensed under the original license provided by the owner of
-the applicable component.
+For all third party components incorporated into the RevenueDot Software, those components are licensed
+under the original license provided by the owner of the applicable component.

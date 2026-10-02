@@ -14,7 +14,7 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 
 ## Index
 - `prd/ecosystem/PRD.md`: the plan for examples, cookbook and public docs. Every example and docs page follows its format and comment standard (header comment with links to revenuedot.app/docs). Training future LLMs on our public repos is a goal.
-- `LICENSING.md`: AGPL-3.0 core, `ee/` under the Enterprise License, MIT for SDKs and CLI; `TRADEMARKS.md`; CLA in `.github/CLA.md`. Never import `ee/` code from outside `ee/`.
+- `LICENSING.md`: AGPL-3.0 core, `ee/` under the Enterprise License, MIT for SDKs and CLI; `TRADEMARKS.md`; CLA in `.github/CLA.md` (individual) and `.github/CLA-entity.md`. Never import `ee/` code from outside `ee/`. **Never draft legal text.** `ee/LICENSE` is the n8n Enterprise License, the CLAs are the Harmony CLAs 1.0 and `TRADEMARKS.md` is the Model Trademark Guidelines, each with only names, contacts and template blanks filled in. Change them only by adopting a newer version of the same source; the sources and every change are recorded in the private `company/legal/`.
 - Website and API domain: `revenuedot.app` (Cloudflare, Circo account). Live hosts: `revenuedot.app` (site, docs, blog), `api.revenuedot.app`, `app.revenuedot.app`, `mcp.revenuedot.app`. Runbook: `docs/cloud.md`.
 - `prd/SCOPE.md`: tiers and build order.
 - `docs/STATUS.md`: current phase, feature table, blockers.
@@ -23,7 +23,7 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - Sibling repos and the org map: `../AGENTS.md` (= `company/WORKSPACE.md`, private).
 
 ## Databases
-Use the Railway Postgres, never a local one. Development: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL` (Railway environment `development`); each task creates its own database on it (`CREATE DATABASE rd_<task>`). Production credentials are never on disk: CI deploys on every push to `main` with the GitHub `production` environment's secrets. Details are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print either URL.
+Use the Railway Postgres, never a local one. Development: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL` (Railway environment `development`); each task creates its own database on it (`CREATE DATABASE rd_<task>`). CI deploys on every push to `main` with the GitHub `production` environment's secrets. On a maintainer's machine, production, store and registry secrets are in `~/.config/revenuedot/prod.env` (outside every repo): load them by name with `set -a; source ~/.config/revenuedot/prod.env; set +a` and never print, cat or commit a value. Details are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print either URL.
 
 ## Toolchain
 Node 24 (`.nvmrc`, `engines`), also in CI. Deploys use the `cf` CLI, not wrangler (`cf` needs Node 22.18 or newer). pnpm for the monorepo.
