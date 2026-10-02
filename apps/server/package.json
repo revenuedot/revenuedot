@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "REVENUEDOT_ALLOW_SIGNUP=${REVENUEDOT_ALLOW_SIGNUP:-true} tsx watch src/entry.node.ts",
+    "dev": "REVENUEDOT_ALLOW_SIGNUP=${REVENUEDOT_ALLOW_SIGNUP:-true} REVENUEDOT_SHUTDOWN_DELAY_MS=${REVENUEDOT_SHUTDOWN_DELAY_MS:-0} tsx watch src/entry.node.ts",
     "start": "tsx src/entry.node.ts",
     "dev:worker": "cf dev",
     "build:worker": "cf build",

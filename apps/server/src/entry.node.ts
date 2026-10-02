@@ -55,17 +55,20 @@ const edition = process.env.REVENUEDOT_EDITION === "cloud" ? "cloud" as const : 
 const billing = edition ? billingConfigFromEnv(process.env) : undefined;
 // The background job: every REVENUEDOT_TICK_INTERVAL_MS on every replica, and shortly after a request queues work. Only
 // the replica holding the cluster lock runs it; the others skip that turn. A request-kicked run that finds the lock held
-// tries again every second for up to 10 seconds, so a queued webhook still leaves within seconds.
+// by another replica tries again every second for up to 10 seconds; one that arrives while this replica's own run is
+// going makes that run go once more when it ends. Either way a queued webhook leaves within seconds.
 const lock = pg ? advisoryLock(pg) : localLock();
 const tickLog = process.env.REVENUEDOT_TICK_LOG === "1";
-let current: Promise<unknown> | null = null;
+let current: Promise<boolean> | null = null;
+let rerun = false;
 let draining = false;
 // Aborted on SIGTERM: a running job stops after the webhooks in flight and skips its long steps.
 const stopping = new AbortController();
+/** Runs the job once; false only when another replica holds the lock. */
 const runTick = async (): Promise<boolean> => {
   if (draining || !cluster.backgroundJobs) return true;
-  if (current) return false;
-  const run = (async () => {
+  if (current) { rerun = true; return true; }
+  current = (async () => {
     try {
       const r = await lock.tryRun(async () => {
         const started = Date.now();
@@ -77,17 +80,19 @@ const runTick = async (): Promise<boolean> => {
       return r.ran;
     } catch (e) { console.error("tick failed", e); return true; }
   })();
-  current = run;
-  try { return await run; } finally { current = null; }
+  try { return await current; } finally {
+    current = null;
+    if (rerun) { rerun = false; kick(); }
+  }
 };
 let kickTimer: ReturnType<typeof setTimeout> | null = null;
-const kick = (tries = 10) => {
-  if (kickTimer || draining) return;
+function kick(tries = 10) {
+  if (kickTimer || draining || !cluster.backgroundJobs) return;
   kickTimer = setTimeout(async () => {
     kickTimer = null;
     if (!(await runTick()) && tries > 1) kick(tries - 1);
   }, tries === 10 ? 250 : 1000);
-};
+}
 const interval = setInterval(() => { void runTick(); }, cluster.tickIntervalMs);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
@@ -135,7 +140,8 @@ console.log(mailer.driver === "smtp" ? "Email: SMTP (REVENUEDOT_SMTP_URL)." : "E
 // closes. REVENUEDOT_SHUTDOWN_DELAY_MS and REVENUEDOT_SHUTDOWN_TIMEOUT_MS fit it inside the platform's grace period.
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shutdown = async (signal: string) => {
-  if (draining) return;
+  // A second Ctrl-C (or signal) does not wait for the drain.
+  if (draining) { console.error(`${signal} again: stopping now.`); process.exit(1); }
   draining = true;
   stopping.abort();
   console.log(`${signal}: draining (replica ${replica})`);
@@ -151,10 +157,13 @@ const shutdown = async (signal: string) => {
     Promise.all([timed("requests", closed), timed("job", current), timed("forwards", Promise.all([flushStoreForwards(), flushGoogleForwards()]))]).then(() => true),
     sleep(cluster.shutdownTimeoutMs).then(() => false),
   ]);
-  if (!done) console.error(`Shutdown timed out after ${cluster.shutdownTimeoutMs} ms; closing open connections.`);
-  else console.log(`Drained (ms): ${JSON.stringify(waited)}`);
   server.closeAllConnections?.();
-  await closeDb().catch(() => {});
+  // After a timeout the job may still hold connections; exiting closes them (and its lock) without waiting more.
+  if (!done) console.error(`Shutdown timed out after ${cluster.shutdownTimeoutMs} ms; closing open connections.`);
+  else {
+    console.log(`Drained (ms): ${JSON.stringify(waited)}`);
+    await closeDb().catch(() => {});
+  }
   console.log("Stopped.");
   process.exit(0);
 };
