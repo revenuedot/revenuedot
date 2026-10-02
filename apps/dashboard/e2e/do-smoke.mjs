@@ -39,6 +39,19 @@ const ent = await (await p.request.get(base + P + "/customers/do_user_1/active_e
 console.log("granted:", ent.items?.length);
 const logs = await (await p.request.get(base + P + "/audit_logs")).json();
 console.log("audit:", logs.items.filter((l) => l.actor_type === "assistant").map((l) => `${l.action_type} ${l.additional_data.actor_display}`));
+// A read and a write in one step: the read's result arrives after the approval request and must still be stored, or
+// the approved write never runs (agent.ts captureApprovalSignatures).
+await p.getByRole("button", { name: "Stop" }).waitFor({ state: "detached", timeout: 15000 }).catch(() => {});
+await box.fill("look up do_user_2 and grant pro to do_user_2"); await box.press("Enter");
+const card2 = p.getByTestId("approval-card").nth(1);
+await card2.getByRole("button", { name: "Approve" }).waitFor({ timeout: 30000 });
+const stored = await (await p.request.get(`${base}/agents/assistant-agent/${conv}/get-messages`)).json();
+const lookup = stored.flatMap((m) => m.parts).filter((x) => x.type === "tool-get-customer").pop();
+console.log("stored read tool before approval:", lookup?.state);
+if (lookup?.state !== "output-available" && lookup?.state !== "output-error") throw new Error(`the read tool was stored as ${lookup?.state}`);
+await card2.getByRole("button", { name: "Approve" }).click();
+await p.getByText(/^Done\./).nth(1).waitFor({ timeout: 30000 });
+console.log("read + write in one step: granted:", (await (await p.request.get(base + P + "/customers/do_user_2/active_entitlements")).json()).items?.length);
 // Another user cannot open this conversation's socket.
 const other = await b.newPage();
 await other.request.post(base + "/auth/signup", { data: { email: `do2-${stamp}@revenuedot.test`, password: `do-${stamp}-pw-y`, project_name: "Other" } });

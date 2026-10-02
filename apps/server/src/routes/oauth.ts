@@ -7,6 +7,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { createSecretKey, sha256Hex } from "../services/auth.js";
 import { SESSION_COOKIE, projectsForUser, sessionUser } from "../services/sessions.js";
+import { requestOrigin } from "../services/account-email.js";
 
 /**
  * OAuth 2.1 authorization server for MCP clients (MCP authorization spec, 2025-06-18):
@@ -56,8 +57,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "
 
 /** The public origin, honouring a reverse proxy's X-Forwarded-Host / -Proto (as setup_health does). */
 export function publicOrigin(c: Context) {
-  const host = c.req.header("x-forwarded-host");
-  return host ? `${c.req.header("x-forwarded-proto") ?? "https"}://${host}` : new URL(c.req.url).origin;
+  return requestOrigin(c.req.url, (n) => c.req.header(n));
 }
 
 /** Redirect URIs: https, http on a loopback host (desktop clients), or a custom app scheme such as cursor://. */
