@@ -125,7 +125,7 @@ export function sortRows(rows: ListRow[], key: SortKey, direction: "asc" | "desc
   }).map((x) => x.r);
 }
 
-const csvCell = (v: unknown) => {
+export const csvCell = (v: unknown) => {
   const s = v === null || v === undefined ? "" : String(v);
   if (/^-?\d+(\.\d+)?$/.test(s)) return s;
   // A text cell that starts with = + - @ (also after spaces or control characters, or as full-width ＝＋－＠) would run as

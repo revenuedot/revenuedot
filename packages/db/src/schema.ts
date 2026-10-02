@@ -627,6 +627,38 @@ export const savedCharts = pgTable("saved_charts", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("saved_charts_project").on(t.projectId)]);
 
+/**
+ * A note on a day or a date range that every chart of the project shows (prd/charts/PRD.md "Annotations", migration 0028).
+ * Days are UTC, YYYY-MM-DD; a single day has `end_date` = `start_date`.
+ */
+export const chartAnnotations = pgTable("chart_annotations", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  createdBy: text("created_by"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("chart_annotations_project").on(t.projectId, t.startDate)]);
+
+/**
+ * A public, revocable link to a picture of one chart view (prd/charts/PRD.md "Share preview", migration 0028). `id` is the
+ * unguessable token in the URL. `snapshot` holds the numbers computed when the link was made: series, labels and summary
+ * values, never customer data.
+ */
+export const chartShares = pgTable("chart_shares", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  chartName: text("chart_name").notNull(),
+  view: jsonb("view").$type<Record<string, unknown>>().notNull().default({}),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+  createdBy: text("created_by"),
+  createdAt: created(),
+  revokedAt: ts("revoked_at"),
+}, (t) => [index("chart_shares_project").on(t.projectId, t.createdAt)]);
+
 /** A saved set of conditions on customers (RevenueCat's audience rules: groups OR-ed, conditions in a group AND-ed). */
 export const audiences = pgTable("audiences", {
   id: text("id").primaryKey(),

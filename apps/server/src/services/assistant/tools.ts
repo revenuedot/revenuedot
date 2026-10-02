@@ -148,12 +148,14 @@ export const tools: ToolDefinition[] = [
       end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Last day (default today)."),
       resolution: z.enum(["day", "week", "month", "quarter", "year"]).optional(),
       segment: z.string().optional().describe("Split by app, store, product, product_duration, offering, country, platform or app_version."),
+      filters: z.string().max(2000).optional().describe('JSON filters, e.g. [{"name":"country","values":["US"]}]: values OR-ed, filters AND-ed.'),
+      selectors: z.string().max(1000).optional().describe('JSON selectors from the chart\'s options, e.g. {"revenue_type":"proceeds"}.'),
       environment,
       currency: z.string().length(3).optional().describe("ISO 4217 display currency, default USD."),
     },
     annotations: READ, scopes: ["charts_metrics:charts:read"],
     run: async (c, a) => compactChart(await c.request<Record<string, unknown>>("GET", `${await P(c)}/charts/${enc(a.chart)}`, {
-      query: { start_date: a.start_date, end_date: a.end_date, resolution: a.resolution, segment: a.segment, environment: a.environment, currency: a.currency, limit_num_segments: a.segment ? 6 : undefined },
+      query: { start_date: a.start_date, end_date: a.end_date, resolution: a.resolution, segment: a.segment, filters: a.filters, selectors: a.selectors, environment: a.environment, currency: a.currency, limit_num_segments: a.segment ? 6 : undefined },
     })),
   }),
 

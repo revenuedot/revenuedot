@@ -71,7 +71,8 @@ export function coalesce(chunks: UIMessageChunk[]): UIMessageChunk[] {
 /** Answers being written in this process, so Stop can cancel the model call (Node; Workers use the Durable Object). */
 const running = new Map<string, AbortController>();
 
-const Mention = z.object({ type: z.enum(["customer", "offering", "chart"]), id: z.string().min(1).max(200), label: z.string().max(200).optional() });
+// A chart mention may carry the chart page's view (prd/charts/PRD.md "Ask AI"); agent.ts keeps only the keys it knows.
+const Mention = z.object({ type: z.enum(["customer", "offering", "chart"]), id: z.string().min(1).max(200), label: z.string().max(200).optional(), params: z.record(z.string(), z.string().max(4000)).optional() });
 const IncomingPart = z.union([
   z.object({ type: z.literal("text"), text: z.string().max(20_000) }),
   z.object({ type: z.literal("file"), url: z.string().max(500), mediaType: z.string().max(100), filename: z.string().max(255).optional() }),

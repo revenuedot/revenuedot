@@ -754,3 +754,9 @@ export function computeChart(def: ChartDef, data: Prepared, frame: Frame, select
 }
 
 export const hasComputation = (name: string) => name in SERIES || name in COHORTS;
+
+/** Helpers the Customers tab (contributors.ts) shares with the charts above, so both count the same things the same way. */
+export const chartHelpers = {
+  within, atOf, trialStarters, oncePerCustomer, pairs, paidInWindow, revenueIn, lastOptOut, billingIssueInTrial, cohortMembers,
+  windowEnd, conversionDays, lifetimeDays, proceedsFactor, statusAt, PAID_KINDS, CONVERSION_KINDS,
+};
