@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../../components/Shell";
+import { DeliveryDrawer } from "../../components/DeliveryDrawer";
 import { Icon } from "../../components/icons";
 import {
   Check, CodeBlock, ConfirmDialog, Dialog, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Switch, Tag, useProjectId, useToast,
@@ -264,6 +265,7 @@ export function WebhookDetail() {
   const [deleting, setDeleting] = useState(false);
   const [sending, setSending] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [openDelivery, setOpenDelivery] = useState<Delivery | null>(null);
   const deliveries = useInfiniteQuery({
     queryKey: ["deliveries", pid, webhookId, status],
     queryFn: ({ pageParam }) => api<List<Delivery>>(pageParam ?? `${base(pid)}/webhooks/${encodeURIComponent(webhookId)}/deliveries?limit=25${status === "all" ? "" : `&status=${status}`}`),
@@ -347,14 +349,17 @@ export function WebhookDetail() {
                   <table>
                     <thead><tr><th>Event</th><th>Status</th><th>Attempts</th><th>Response</th><th>Next attempt</th><th>Created</th><th aria-label="Actions" /></tr></thead>
                     <tbody>{rows.map((d) => (
-                      <tr key={d.id}>
+                      <tr key={d.id} className="row" tabIndex={0} onClick={() => setOpenDelivery(d)} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setOpenDelivery(d); }}>
                         <td><Tag tone={EVENT_TONE[d.event_type] ?? "muted"}>{d.event_type}</Tag><span className="cellsub mono" title={d.event_id}>{d.event_id.slice(0, 8)}…</span></td>
                         <td><Tag tone={STATUS_TONE[d.status]}>{d.status}</Tag>{d.last_error && d.status !== "delivered" && <span className="cellsub">{d.last_error}</span>}</td>
                         <td className="num">{d.attempts}</td>
                         <td className="num">{d.response_status !== null ? `${d.response_status}` : d.attempts ? "No answer" : "—"}{d.response_ms !== null && <span className="subtle"> · {d.response_ms} ms</span>}</td>
                         <td>{d.next_attempt_at && d.status === "pending" ? (d.next_attempt_at <= Date.now() ? "Now" : fmt.dateTime(d.next_attempt_at)) : "—"}</td>
                         <td title={fmt.dateTime(d.created_at)}>{fmt.ago(d.created_at)}</td>
-                        <td className="amt">{d.status !== "delivered" && <button type="button" className="btn btn-line" disabled={retrying === d.id} onClick={() => retry(d)}>{retrying === d.id ? "Retrying…" : "Retry"}</button>}</td>
+                        <td className="amt"><span className="hrow" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                          <button type="button" className="btn btn-ghost" onClick={() => setOpenDelivery(d)}>Details</button>
+                          {d.status !== "delivered" && <button type="button" className="btn btn-line" disabled={retrying === d.id} onClick={() => retry(d)}>{retrying === d.id ? "Retrying…" : "Retry"}</button>}
+                        </span></td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -369,6 +374,11 @@ export function WebhookDetail() {
         <ConfirmDialog title={`Delete ${w.name}?`} confirmLabel="Delete webhook" danger onConfirm={del} onClose={() => setDeleting(false)}>
           <p>RevenueDot stops sending events to <span className="mono">{w.url}</span> right away, and pending retries are dropped. This cannot be undone.</p>
         </ConfirmDialog>
+      )}
+      {openDelivery && (
+        <DeliveryDrawer path={`${base(pid)}/webhooks/${encodeURIComponent(webhookId)}/deliveries/${openDelivery.id}`} title={`${openDelivery.event_type} · ${openDelivery.event_id.slice(0, 8)}…`}
+          onClose={() => setOpenDelivery(null)} onRetry={() => retry(openDelivery)}
+          canRetry={(x) => x.status !== "delivered" && !(x.status === "pending" && (x.next_attempt_at ?? 0) <= Date.now())} />
       )}
     </Shell>
   );

@@ -376,6 +376,19 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await expect(page.getByRole("row", { name: /TEST/ })).toContainText("delivered", { timeout: 20_000 });
     const log = await api("GET", `${P}/webhooks/${flakyId}/deliveries`);
     expect(log.body.items[0]).toMatchObject({ status: "delivered", attempts: 2, response_status: 200 });
+    // Delivery details: the request, both attempts with their answers, Copy as cURL.
+    await page.getByRole("row", { name: /TEST/ }).click();
+    const drawer = page.getByRole("dialog", { name: "Delivery details" });
+    await expect(drawer.getByText(`POST http://127.0.0.1:${port}/flaky`)).toBeVisible();
+    await expect(drawer.getByText("Attempt 2")).toBeVisible();
+    await expect(drawer.locator(".tag", { hasText: "HTTP 500" })).toBeVisible();
+    await expect(drawer.locator(".tag", { hasText: "HTTP 200" })).toBeVisible();
+    await expect(drawer.getByText(/X-RevenueCat-Webhook-Signature: t=\d+,v1=[0-9a-f]+/).first()).toBeVisible();
+    await drawer.getByRole("button", { name: "Copy as cURL" }).click();
+    expect(await clipboard()).toContain(`curl -X POST 'http://127.0.0.1:${port}/flaky'`);
+    await shot("webhook-delivery-details");
+    await drawer.getByRole("button", { name: "Done" }).click();
+    await expect(drawer).toBeHidden();
 
     // Edit keeps the secret and filters; delete asks first.
     await page.getByRole("link", { name: "Edit" }).click();
