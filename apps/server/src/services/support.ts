@@ -124,12 +124,22 @@ export async function supportSummary(db: DB, projectId: string, customer: Custom
   };
 }
 
-/** Customers whose `$email` attribute is this address (case-insensitive), at most 10. */
+/**
+ * Customers with this address (case-insensitive), at most 10: first those whose `$email` attribute is it, then those who
+ * gave it on a Customer Center ticket. Help desks look people up by the address they wrote from, which apps often never
+ * save as `$email`.
+ */
 export async function customersByEmail(db: DB, projectId: string, email: string): Promise<CustomerRow[]> {
-  const rows = await db.select({ c: schema.customerAttributes.customerId }).from(schema.customerAttributes)
+  const address = email.toLowerCase();
+  const byAttribute = await db.select({ c: schema.customerAttributes.customerId }).from(schema.customerAttributes)
     .innerJoin(schema.customers, eq(schema.customers.id, schema.customerAttributes.customerId))
-    .where(and(eq(schema.customers.projectId, projectId), eq(schema.customerAttributes.key, "$email"), sql`lower(${schema.customerAttributes.value}) = ${email.toLowerCase()}`)).limit(10);
-  const ids = rows.map((r) => r.c);
-  return ids.length ? db.select().from(schema.customers).where(inArray(schema.customers.id, ids)) : [];
+    .where(and(eq(schema.customers.projectId, projectId), eq(schema.customerAttributes.key, "$email"), sql`lower(${schema.customerAttributes.value}) = ${address}`)).limit(10);
+  const byTicket = await db.select({ c: schema.supportTickets.customerId }).from(schema.supportTickets)
+    .where(and(eq(schema.supportTickets.projectId, projectId), sql`lower(${schema.supportTickets.customerEmail}) = ${address}`, sql`${schema.supportTickets.customerId} is not null`))
+    .orderBy(desc(schema.supportTickets.createdAt)).limit(10);
+  const ids = [...new Set([...byAttribute, ...byTicket].map((r) => r.c!))].slice(0, 10);
+  if (!ids.length) return [];
+  const rows = await db.select().from(schema.customers).where(inArray(schema.customers.id, ids));
+  return ids.map((id) => rows.find((r) => r.id === id)).filter((r): r is CustomerRow => !!r);
 }
 

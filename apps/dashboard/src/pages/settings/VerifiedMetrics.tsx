@@ -90,7 +90,7 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
         <section className="panel">
           <div className="ph"><b>Verified Metrics</b><span className={`vm-status${live ? " live" : ""}`}><i />{STATUS[s.status]}</span></div>
           <div className="pb stack">
-            <p className="section-sub">A public page with your production numbers, computed by RevenueDot from store receipts and notifications. It shows totals only: no customers, no sandbox data.</p>
+            <p className="section-sub">A public page with your production numbers, computed by RevenueDot from store receipts and notifications. It shows totals only: no customers and no sandbox purchases.</p>
             {live && <div className="hrow"><a className="btn btn-line" href={s.url} target="_blank" rel="noreferrer"><Icon name="link" />Open page</a><CopyButton value={s.url} label="Copy page URL" /></div>}
             <Field label="Share URL" htmlFor="vm-slug" hint={slugCheck && !slugCheck.available ? undefined : "3 to 40 characters: a-z, 0-9 and dashes."} error={error?.param === "slug" ? error.message : slugCheck && !slugCheck.available ? slugCheck.reason : null}>
               <div className="vm-url"><span>{host}</span><input id="vm-slug" value={d.slug} maxLength={40} spellCheck={false} onChange={(e) => set({ slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })} /></div>

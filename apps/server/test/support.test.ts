@@ -146,4 +146,12 @@ describe("tickets and the help desk summary in API v2", () => {
     expect((await v2("/customers/nobody/support_summary")).status).toBe(404);
     expect((await v2("/support_summaries")).status).toBe(400);
   });
+
+  it("finds a customer by the address on their ticket when the app never saved $email", async () => {
+    await h.fetch("/v1/subscribers/kit");
+    await ticket({ app_user_id: "kit", customer_email: "Kit@Example.org", issue_description: "Pro did not unlock" });
+    const found = await (await v2("/support_summaries?email=kit%40example.org")).json() as any;
+    expect(found.items.map((x: any) => [x.app_user_id, x.email])).toEqual([["kit", null]]);
+    expect(found.items[0].open_tickets.map((t: any) => t.description)).toEqual(["Pro did not unlock"]);
+  });
 });

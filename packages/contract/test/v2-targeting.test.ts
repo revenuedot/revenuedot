@@ -127,6 +127,59 @@ describe("targeting rules", () => {
   });
 });
 
+describe("the customer page's current offering", () => {
+  const summary = async (id: string) => (await call("GET", "/v2/projects/{project_id}/customer_summaries", {}, { ext: true, query: `ids=${id}` })).body.items[0].current_offering;
+  it("names the override, experiment, targeting rule or default behind it, without enrolling anyone", async () => {
+    const promo = await offering("promo");
+    const aud = (await call("POST", AUD, {}, { json: { name: "Gold", rules: gold } })).body.id;
+    await customer("g1", { plan: "gold" });
+    await customer("s1", { plan: "silver" });
+    expect(await summary("s1")).toMatchObject({ lookup_key: "default", source: "default" });
+    const rule = await call("POST", RULES, {}, { ext: true, json: { name: "Gold gets promo", audience_id: aud, offering_id: promo, state: "active" } });
+    expect(await summary("g1")).toMatchObject({ lookup_key: "promo", source: "targeting", rule_id: rule.body.id, rule_name: "Gold gets promo" });
+    expect((await sdk("g1")).current_offering_id).toBe("promo");
+
+    const exp = await call("POST", EXP, {}, { ext: true, json: { name: "Promo test", offering_a: "ofr_default", offering_b: promo } });
+    await call("POST", `${EXP}/{experiment_id}/actions/start`, { experiment_id: exp.body.id }, { ext: true });
+    const shown = await summary("s1");
+    expect(shown).toMatchObject({ source: "experiment", experiment_id: exp.body.id, experiment_name: "Promo test" });
+    // Looking at the page enrolls nobody; the SDK's next request enrolls them into the variant the page showed.
+    expect(await h.db.select().from(schema.experimentEnrollments)).toHaveLength(0);
+    expect((await sdk("s1")).current_offering_id).toBe(shown.lookup_key);
+    expect(await h.db.select().from(schema.experimentEnrollments)).toHaveLength(1);
+
+    await call("POST", "/v2/projects/{project_id}/customers/{customer_id}/actions/assign_offering", { customer_id: "g1" }, { json: { offering_id: "ofr_default" } });
+    expect(await summary("g1")).toMatchObject({ lookup_key: "default", source: "override" });
+  });
+
+  it("matches the SDK for rules on the SDK flavor, OS version and storefront of their last request", async () => {
+    const promo = await offering("promo");
+    const rules = { groups: [{ conditions: [
+      { field: "sdkFlavor", operator: "is", value: "flutter" }, { field: "platformVersion", operator: "greaterThanOrEqual", value: "17" }, { field: "storefront", operator: "is", value: "DEU" },
+    ] }] };
+    const aud = (await call("POST", AUD, {}, { json: { name: "Flutter in Germany", rules } })).body.id;
+    await call("POST", RULES, {}, { ext: true, json: { name: "Flutter promo", audience_id: aud, offering_id: promo, state: "active" } });
+    const device = { "x-platform": "iOS", "x-platform-flavor": "flutter", "x-platform-version": "17.4", "x-storefront": "DEU" };
+    await h.fetch("/v1/subscribers/f1", { key: h.ids.testKey, headers: device });
+    expect((await sdk("f1", device)).current_offering_id).toBe("promo");
+    expect(await summary("f1")).toMatchObject({ lookup_key: "promo", source: "targeting", rule_name: "Flutter promo" });
+  });
+
+  it("shows a paused experiment only to customers already in it", async () => {
+    const promo = await offering("promo");
+    const exp = await call("POST", EXP, {}, { ext: true, json: { name: "Promo test", offering_a: "ofr_default", offering_b: promo } });
+    await call("POST", `${EXP}/{experiment_id}/actions/start`, { experiment_id: exp.body.id }, { ext: true });
+    await customer("in1");
+    await sdk("in1");
+    await call("POST", `${EXP}/{experiment_id}/actions/pause`, { experiment_id: exp.body.id }, { ext: true });
+    await customer("new1");
+    expect(await summary("in1")).toMatchObject({ source: "experiment", experiment_id: exp.body.id });
+    expect(await summary("new1")).toMatchObject({ lookup_key: "default", source: "default" });
+    expect((await sdk("new1")).current_offering_id).toBe("default");
+    expect(await h.db.select().from(schema.experimentEnrollments)).toHaveLength(1);
+  });
+});
+
 describe("experiments", () => {
   it("enrolls customers into two variants for good, sends EXPERIMENT_ENROLLMENT once, tags their webhooks, and reports results", async () => {
     const promo = await offering("promo");
