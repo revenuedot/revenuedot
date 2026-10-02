@@ -78,7 +78,9 @@ function NewMapping({ org, groups, onClose }: { org: Overview; groups: Group[]; 
           <input id="map-group" className="input" list="scim-groups" autoFocus value={group} onChange={(e) => setGroup(e.target.value)} placeholder="e.g. RevenueDot Support" />
           <datalist id="scim-groups">{groups.map((g) => <option key={g.id} value={g.display_name} />)}</datalist>
         </Field>
-        <Field label="Project" htmlFor="map-project"><select id="map-project" className="select" value={pid} onChange={(e) => setProject(e.target.value)}>{projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+        <Field label="Project" htmlFor="map-project" error={projects.data && !projects.data.length ? "Move a project into the organization first (Projects tab)." : null}>
+          <select id="map-project" className="select" value={pid} disabled={!projects.data?.length} onChange={(e) => setProject(e.target.value)}>{projects.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        </Field>
         <Field label="Role" htmlFor="map-role" hint="Someone in several mapped groups gets the highest role: Admin, Developer, custom roles, then Viewer.">
           <select id="map-role" className="select" value={role} onChange={(e) => setRole(e.target.value)}>{roleOptions(roles.data, pid).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
         </Field>

@@ -15,6 +15,7 @@ import { tick } from "../../apps/server/src/services/tick.js";
 import { loadExtensions } from "../../apps/server/src/extensions.js";
 import { generateSigningKeyPair } from "../../apps/server/src/services/signing.js";
 import { testIdp } from "./test-idp.js";
+import { eeJobRuns } from "../server/schema.js";
 
 const PORT = Number(process.env.PORT ?? 5460);
 const IDP_PORT = Number(process.env.IDP_PORT ?? 5461);
@@ -52,7 +53,8 @@ const web = new Hono();
 web.get("/__ready", (c) => c.text("ready"));
 web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
 web.post("/__dns", async (c) => { const b = await c.req.json() as { name: string; TXT: string[] }; dns[b.name] = b.TXT; return c.json({ ok: true }); });
-web.post("/__tick", async (c) => { await runTick(); return c.json({ ok: true }); });
+// Runs the tick now, with the hourly enterprise jobs (audit retention) due again.
+web.post("/__tick", async (c) => { await db.delete(eeJobRuns); while (ticking) await new Promise((r) => setTimeout(r, 50)); await runTick(); return c.json({ ok: true }); });
 const TYPES: Record<string, string> = { ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".json": "application/json", ".webmanifest": "application/manifest+json" };
 web.all("/*", async (c) => {
   const path = new URL(c.req.url).pathname;
