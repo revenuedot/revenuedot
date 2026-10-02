@@ -7,7 +7,8 @@ import { parseCsv } from "@revenuedot/server/services/exports/files.js";
 import { applyRows } from "@revenuedot/server/services/archive/import.js";
 import { createSecretKey } from "@revenuedot/server/services/auth.js";
 import { harness, type Harness } from "../src/harness.js";
-import { buy, v2 } from "./v2-helpers.js";
+import { buy, signup, v2 } from "./v2-helpers.js";
+import { RESULTS_SAMPLE } from "@revenuedot/server/routes/v2/experiments.js";
 
 /** Experiments v2 (prd/experiments/PRD.md): variants, enrollment modes, priority, audiences, results, CSV, helpers. */
 
@@ -209,6 +210,48 @@ describe("enrollment", () => {
     expect(rows.every((r) => ids.has(r.customerId))).toBe(true);
   });
 
+  it("the first offerings request makes the customer, so a new customer is enrolled before customer info arrives", async () => {
+    const o2 = await offering("o2");
+    const id = (await create({ name: "First launch", variants: [{ offering_id: "ofr_default" }, { offering_id: o2 }] })).body.id;
+    await act(id, "start"); later(1);
+    const first = await sdk("first_launch");
+    const [row] = await enrollments(id);
+    expect(row).toBeDefined();
+    expect(first.current_offering_id).toBe(row!.variant === "a" ? "default" : "o2");
+    // Customer info right after finds the same customer (no second row), and offerings stay on the variant.
+    await newCustomer("first_launch");
+    expect((await h.db.select().from(schema.customerAliases).where(eq(schema.customerAliases.appUserId, "first_launch"))).length).toBe(1);
+    expect((await sdk("first_launch")).current_offering_id).toBe(first.current_offering_id);
+    const ev = (await h.db.select().from(schema.events).where(eq(schema.events.type, "EXPERIMENT_ENROLLMENT")))[0]!;
+    expect((ev.payload as any).event.app_user_id).toBe("first_launch");
+  });
+
+  it("an anonymous customer keeps their variant after logging in, also when merged into an existing customer", async () => {
+    const o2 = await offering("o2");
+    const id = (await create({ name: "Alias", enrollment: "new_and_existing", variants: [{ offering_id: "ofr_default" }, { offering_id: o2 }] })).body.id;
+    await act(id, "start"); later(1);
+    const login = async (anon: string, user: string) => h.fetch("/v1/subscribers/identify", { method: "POST", key: h.ids.testKey, json: { app_user_id: anon, new_app_user_id: user } });
+    // A new app user id becomes an alias of the anonymous customer.
+    for (let i = 0; i < 6; i++) {
+      const anon = `$RCAnonymousID:${"a".repeat(31)}${i}`;
+      const shown = (await sdk(anon)).current_offering_id;
+      expect((await login(anon, `fresh${i}`)).status).toBeLessThan(300);
+      expect((await sdk(`fresh${i}`)).current_offering_id).toBe(shown);
+    }
+    // An existing identified customer who was never enrolled: the anonymous customer is merged in with their variant.
+    for (let i = 0; i < 6; i++) {
+      await newCustomer(`known${i}`);
+      const anon = `$RCAnonymousID:${"b".repeat(31)}${i}`;
+      const shown = (await sdk(anon)).current_offering_id;
+      expect((await login(anon, `known${i}`)).status).toBeLessThan(300);
+      expect((await sdk(`known${i}`)).current_offering_id).toBe(shown);
+      expect((await sdk(anon)).current_offering_id).toBe(shown);
+    }
+    const rows = await enrollments(id);
+    expect(rows.length).toBe(12);
+    expect(new Set(rows.map((r) => r.customerId)).size).toBe(12);
+  });
+
   it("migration 0028 turns an A/B experiment into variants a and b without moving anyone", async () => {
     const o2 = await offering("o2");
     const now = h.now();
@@ -262,6 +305,31 @@ describe("archived offerings", () => {
     const res = await h.fetch("/v2/projects/proj1/experiments/actions/estimate", { method: "POST", key, json: {} });
     expect(res.status).toBe(403);
     expect((await res.json()).message).toMatch(/audiences:audiences:read/);
+  });
+});
+
+describe("permissions", () => {
+  it("viewers and read-only keys see experiments and results but cannot create, change, start, stop or reorder them", async () => {
+    const o2 = await offering("o2");
+    const id = (await create({ name: "Locked out", variants: [{ offering_id: "ofr_default" }, { offering_id: o2 }] })).body.id;
+    const cookie = await signup(h, "viewer@example.com", "Own project");
+    const [m] = await h.db.select().from(schema.memberships).limit(1);
+    await h.db.insert(schema.memberships).values({ userId: m!.userId, projectId: "proj1", role: "viewer" });
+    const { key } = await createSecretKey(h.db, "proj1", "read only", ["project_configuration:offerings:read"]);
+    for (const auth of [{ cookie }, { key }]) {
+      expect((await call("GET", EXP, {}, { ext: true, ...auth })).status).toBe(200);
+      expect((await call("GET", `${ONE}/results`, { experiment_id: id }, { ext: true, ...auth })).status).toBe(200);
+      const writes = [
+        ["POST", EXP, { name: "x", variants: [{ offering_id: "ofr_default" }, { offering_id: o2 }] }], ["POST", ONE, { name: "Renamed" }], ["DELETE", ONE, undefined],
+        ["POST", `${ONE}/actions/start`, undefined], ["POST", `${ONE}/actions/pause`, undefined], ["POST", `${ONE}/actions/stop`, undefined],
+        ["POST", `${EXP}/actions/reorder`, { experiment_ids: [id] }], ["POST", "/v2/projects/{project_id}/offerings/{offering_id}/actions/duplicate", { lookup_key: "v", display_name: "v" }],
+      ] as const;
+      for (const [method, path, json] of writes) {
+        const r = await call(method, path, { experiment_id: id, offering_id: o2 }, { ext: true, json, ...auth });
+        expect(r.status, `${method} ${path}`).toBe(403);
+      }
+    }
+    expect((await call("GET", ONE, { experiment_id: id }, ext())).body).toMatchObject({ name: "Locked out", status: "draft" });
   });
 });
 
@@ -362,8 +430,8 @@ describe("results, CSV and the estimate", () => {
     expect(r.guidance).toMatchObject({ enough_data: false, min_customers: 100, min_events: 10 });
     expect(r.series.days.length).toBeGreaterThanOrEqual(1);
     expect(r.series.values.realized_ltv.a.length).toBe(r.series.days.length);
-    // Production: no purchases.
-    expect((await call("GET", `${ONE}/results`, { experiment_id: id }, ext())).body.variants.items.every((v: any) => v.metrics.initial_conversions.value === 0)).toBe(true);
+    // Production: customers enrolled from the Test Store (test devices) are left out.
+    expect((await call("GET", `${ONE}/results`, { experiment_id: id }, ext())).body.variants.items.map((v: any) => v.customers)).toEqual([0, 0]);
     // Tracked paywall views: the default counts viewers only.
     const viewed = (await call("GET", `${ONE}/results`, { experiment_id: id }, ext(undefined, "environment=sandbox"))).body;
     expect(viewed.filters.paywall).toBe("viewed");
@@ -383,6 +451,39 @@ describe("results, CSV and the estimate", () => {
     expect(daily[0]!.slice(0, 4)).toEqual(["date", "variant_id", "variant_name", "initial_conversion_rate"]);
     expect(daily.length - 1).toBe(viewed.series.days.length * 2);
     expect((await h.fetch(`/v2/projects/proj1/experiments/${id}/results/export?kind=pdf`, { key: h.ids.secretKey })).status).toBe(400);
+  });
+
+  it("reads a fixed random sample of a very large experiment and says so", async () => {
+    const o2 = await offering("o2");
+    const id = (await create({ name: "Huge", variants: [{ offering_id: "ofr_default" }, { offering_id: o2 }] })).body.id;
+    await act(id, "start");
+    const n = RESULTS_SAMPLE + 40, at = h.now().toISOString();
+    await h.db.execute(sql`insert into customers (id, project_id, original_app_user_id, first_seen, last_seen)
+      select 'cus_big' || g, 'proj1', 'big' || g, ${at}::timestamptz, ${at}::timestamptz from generate_series(1, ${n}) g`);
+    await h.db.execute(sql`insert into experiment_enrollments (experiment_id, customer_id, variant, enrolled_at)
+      select ${id}, 'cus_big' || g, case when g % 2 = 0 then 'a' else 'b' end, ${at}::timestamptz from generate_series(1, ${n}) g`);
+    const first = (await call("GET", `${ONE}/results`, { experiment_id: id }, ext())).body;
+    expect(first.sample).toEqual({ customers: RESULTS_SAMPLE, enrolled_customers: n, enrolled_by_variant: { a: n / 2, b: n / 2 } });
+    expect(first.variants.items.reduce((s: number, v: any) => s + v.customers, 0)).toBe(RESULTS_SAMPLE);
+    expect(first.guidance.message).toMatch(new RegExp(`^From a random ${RESULTS_SAMPLE.toLocaleString("en-US")} of the ${n.toLocaleString("en-US")} enrolled customers\\.`));
+    // The same sample on every load.
+    const again = (await call("GET", `${ONE}/results`, { experiment_id: id }, ext())).body;
+    expect(again.variants.items.map((v: any) => v.customers)).toEqual(first.variants.items.map((v: any) => v.customers));
+  }, 300_000);
+
+  it("production results count customers enrolled from production apps only; sandbox results count everyone", async () => {
+    const o2 = await offering("o2");
+    const id = (await create({ name: "Envs", enrollment: "new_and_existing", track_paywall_views: true, variants: [{ offering_id: "ofr_default" }, { offering_id: o2 }] })).body.id;
+    await act(id, "start"); later(1);
+    const ios = (user: string, headers: Record<string, string> = {}) => h.fetch(`/v1/subscribers/${user}/offerings`, { key: h.ids.iosKey, headers });
+    for (let i = 0; i < 4; i++) await ios(`prod${i}`);
+    for (let i = 0; i < 3; i++) await ios(`tf${i}`, { "x-is-sandbox": "true" });
+    for (let i = 0; i < 2; i++) await sdk(`ts${i}`);
+    const rows = await enrollments(id);
+    expect(rows.filter((r) => r.isSandbox).length).toBe(5);
+    const total = async (env: string) => (await call("GET", `${ONE}/results`, { experiment_id: id }, ext(undefined, `environment=${env}&paywall=all`))).body.variants.items.reduce((s: number, v: any) => s + v.customers, 0);
+    expect(await total("production")).toBe(4);
+    expect(await total("sandbox")).toBe(9);
   });
 
   it("estimates matching customers in the last 7 days", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assignVariant, chanceMeanBeats, chanceRateBeats, computeExperimentResults, csvCell, dailyCsv, EXPERIMENT_METRICS, hash16, liftInterval, logGamma,
-  meanInterval, normalCdf, normalQuantile, PRIMARY_METRIC_IDS, rateSe, sampleSizeMean, sampleSizeRate, summarize, summaryCsv, TYPE_DEFAULTS, variantIndex,
+  meanInterval, normalCdf, normalQuantile, PRIMARY_METRIC_IDS, rateLift, rateSe, sampleSizeMean, sampleSizeRate, summarize, summaryCsv, TYPE_DEFAULTS, variantIndex,
   variantSignature, wilson, type ChartTx, type ResultsInput,
 } from "../src/index.js";
 
@@ -42,6 +42,29 @@ describe("experiment statistics", () => {
     expect(big).toBeGreaterThan(0.98);
     expect(big).toBeLessThan(1);
     expect(chanceRateBeats(10, 100, 10, 100)).toBeCloseTo(0.5, 6);
+  });
+
+  it("edge cases: rates near 100% stay exact, 0% and 100% rates get a lift interval, one customer gives no interval", () => {
+    // Exact by summing over failures (scipy 1.17 quadrature).
+    expect(chanceRateBeats(30000, 30000, 29999, 30000)).toBeCloseTo(0.750004166597, 9);
+    expect(chanceRateBeats(21000, 21000, 21000, 21002)).toBeCloseTo(0.874991072066, 9);
+    expect(chanceRateBeats(25000, 25001, 24999, 25001)).toBeCloseTo(0.687507499775, 9);
+    expect(chanceRateBeats(999000, 1000000, 998900, 1000000)).toBeCloseTo(0.985486948123, 9);
+    // Katz's log interval; Haldane's half counts when a rate is 0 or 100%.
+    expect(rateLift(60, 1000, 50, 1000)).toMatchObject({ lift: expect.closeTo(0.2, 10), lower: expect.closeTo(-0.1669019, 6), upper: expect.closeTo(0.7284879, 6) });
+    const zero = rateLift(0, 100, 20, 100)!;
+    expect(zero.lift).toBe(-1);
+    expect(zero.upper).toBeCloseTo(-0.6021801, 6);
+    const full = rateLift(3, 3, 2, 2)!;
+    expect(full.lift).toBe(0);
+    expect(full.lower).toBeLessThan(-0.4);
+    expect(full.upper).toBeGreaterThan(0.9);
+    expect(rateLift(5, 10, 0, 10)).toBeNull();
+    expect(meanInterval(summarize([5.99]))).toBeNull();
+    expect(chanceMeanBeats(summarize([5.99]), summarize([4.99]))).toBeNull();
+    // Zeros counted without listing them: [3, 0, 0] has mean 1 and sd √3.
+    expect(summarize([3], 2)).toMatchObject({ n: 3, mean: 1, sd: expect.closeTo(Math.sqrt(3), 10) });
+    expect(Number.isNaN(normalCdf(NaN))).toBe(true);
   });
 
   it("means: normal interval, chance, lift by the delta method, sample sizes", () => {
@@ -225,6 +248,37 @@ describe("experiment results from a ledger", () => {
     const trial = computeExperimentResults({ ...input(), enrollments, txs, paywallViews: [], primaryMetric: "trial_conversion_rate" });
     expect(trial.guidance.enough_data).toBe(false);
     expect(trial.guidance.message).toMatch(/10 completed trials for Trial conversion rate/);
+  });
+
+  it("one trial through a product change made during it; a $0 period is not a churned payer; payers' means scale the sample size", () => {
+    const base0 = input();
+    const r = computeExperimentResults({
+      ...base0,
+      enrollments: [{ customerId: "z1", variant: "a", enrolledAt: d(0) }, { customerId: "z2", variant: "b", enrolledAt: d(0) }],
+      txs: [
+        // z1: a monthly trial, changed on day 3 to an annual trial, which converts on day 10.
+        tx("z1", "trial", d(1), 0, { storeTransactionId: "zm", expiresAt: d(8) }),
+        tx("z1", "trial", d(3), 0, { storeTransactionId: "za", productId: "annual", expiresAt: d(10) }),
+        tx("z1", "renewal", d(10), 50, { storeTransactionId: "za2", productId: "annual", expiresAt: d(375) }),
+        // z2: a free month that ended.
+        tx("z2", "purchase", d(1), 0, { storeTransactionId: "zf", expiresAt: d(5) }),
+      ],
+      paywallViews: [],
+    });
+    const a = r.variants[0]!.metrics, b = r.variants[1]!.metrics;
+    expect([a.trials_started!.value, a.trials_completed!.value, a.trials_converted!.value]).toEqual([1, 1, 1]);
+    expect(a.initial_conversions!.value).toBe(1);
+    expect([b.paid_customers!.value, b.churned_subscribers!.value]).toEqual([0, 0]);
+
+    // 1,000 customers and 100 payers per arm: the payers' mean needs ~133 payers, so ~1,330 customers.
+    const enrollments: ResultsInput["enrollments"] = [], txs: ChartTx[] = [];
+    for (let i = 0; i < 2000; i++) {
+      enrollments.push({ customerId: `w${i}`, variant: i % 2 ? "b" : "a", enrolledAt: d(0) });
+      if (i % 20 < 2) txs.push(tx(`w${i}`, "one_time", d(1), i % 40 < 2 ? 5 : 15, { productId: "lifetime" }));
+    }
+    const paying = computeExperimentResults({ ...base0, enrollments, txs, paywallViews: [], primaryMetric: "realized_ltv_per_paying_customer" });
+    const perPayer = computeExperimentResults({ ...base0, enrollments: enrollments.filter((e) => txs.some((t) => t.customerId === e.customerId)), txs, paywallViews: [], primaryMetric: "realized_ltv_per_paying_customer" });
+    expect(paying.guidance.customers_needed_per_variant).toBe(Math.ceil(perPayer.guidance.customers_needed_per_variant! * 10));
   });
 
   it("calls a winner with enough data", () => {

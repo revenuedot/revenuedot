@@ -14,6 +14,7 @@ export const Z80 = 0.8416212335729143;
 
 /** Standard normal CDF, via erfc (W. J. Cody's rational approximations as in Numerical Recipes' erfc, |error| < 1.2e-7). */
 export function normalCdf(z: number): number {
+  if (Number.isNaN(z)) return NaN;
   if (!Number.isFinite(z)) return z > 0 ? 1 : 0;
   const x = Math.abs(z) / Math.SQRT2;
   const t = 1 / (1 + 0.5 * x);
@@ -80,6 +81,9 @@ export function chanceRateBeats(kB: number, nB: number, kA: number, nA: number):
   if (Math.min(aA, aB) <= EXACT_TERMS) {
     // The sum runs over the first argument's alpha; swap when the other is shorter (P(B > A) = 1 − P(A > B)).
     p = aB <= aA ? betaWinExact(aA, bA, aB, bB) : 1 - betaWinExact(aB, bB, aA, bA);
+  } else if (Math.min(bA, bB) <= EXACT_TERMS) {
+    // Rates near 100%: the same sum over failures. 1 − p ~ Beta(β, α), and P(p_B > p_A) = P(1 − p_A > 1 − p_B).
+    p = bA <= bB ? betaWinExact(bB, aB, bA, aA) : 1 - betaWinExact(bA, aA, bB, aB);
   } else {
     const m = (a: number, b: number) => a / (a + b);
     const v = (a: number, b: number) => (a * b) / ((a + b) ** 2 * (a + b + 1));
@@ -89,28 +93,32 @@ export function chanceRateBeats(kB: number, nB: number, kA: number, nA: number):
 }
 
 export interface Summary { n: number; mean: number; sd: number; se: number }
-export function summarize(values: number[]): Summary {
-  const n = values.length;
+/** Mean, sample standard deviation and standard error of `values` plus `zeros` more values of 0. */
+export function summarize(values: number[], zeros = 0): Summary {
+  const n = values.length + zeros;
   if (!n) return { n: 0, mean: 0, sd: 0, se: 0 };
   let sum = 0;
   for (const v of values) sum += v;
   const mean = sum / n;
-  let ss = 0;
+  let ss = zeros * mean * mean;
   for (const v of values) ss += (v - mean) ** 2;
   const sd = n > 1 ? Math.sqrt(ss / (n - 1)) : 0;
   return { n, mean, sd, se: sd / Math.sqrt(n) };
 }
 
-/** Normal interval for a mean (lower bound at 0: revenue and MRR per customer cannot be negative on average here). */
+/**
+ * Normal interval for a mean, from two customers on (one customer has no spread to measure). The lower bound stops at 0
+ * when the mean is not negative: revenue and MRR per customer cannot be negative on average here.
+ */
 export function meanInterval(s: Summary, z = Z95, floorAtZero = true): Interval | null {
-  if (!s.n) return null;
+  if (s.n < 2) return null;
   const lower = s.mean - z * s.se;
-  return { lower: floorAtZero ? Math.max(0, lower) : lower, upper: s.mean + z * s.se };
+  return { lower: floorAtZero && s.mean >= 0 ? Math.max(0, lower) : lower, upper: s.mean + z * s.se };
 }
 
-/** P(mean of b > mean of a), normal approximation of the difference. */
+/** P(mean of b > mean of a), normal approximation of the difference; null below two customers on either side. */
 export function chanceMeanBeats(b: Summary, a: Summary): number | null {
-  if (!a.n || !b.n) return null;
+  if (a.n < 2 || b.n < 2) return null;
   const se = Math.sqrt(a.se ** 2 + b.se ** 2);
   if (se === 0) return b.mean > a.mean ? 1 : b.mean < a.mean ? 0 : 0.5;
   return normalCdf((b.mean - a.mean) / se);
@@ -128,6 +136,22 @@ export function liftInterval(b: { value: number; se: number }, a: { value: numbe
   return { lift: b.value / a.value - 1, lower: Math.exp(lr - h) - 1, upper: Math.exp(lr + h) - 1 };
 }
 export const rateSe = (k: number, n: number) => (n > 0 ? Math.sqrt(((k / n) * (1 - k / n)) / n) : 0);
+
+/**
+ * Relative lift of rate kB/nB over kA/nA with Katz's log interval (the delta method on log of the ratio, as
+ * `liftInterval`). When a count is 0 or all of n, half a success and half a failure are added on both sides (Haldane),
+ * so 0 of 100 against 20 of 100 gets −100% with an interval, and 3 of 3 against 2 of 2 is not certain. Null when the
+ * control's rate is 0 (the ratio is undefined).
+ */
+export function rateLift(kB: number, nB: number, kA: number, nA: number, z = Z95): { lift: number; lower: number; upper: number } | null {
+  if (!(nA > 0) || !(nB > 0) || !(kA > 0)) return null;
+  const lift = kB / nB / (kA / nA) - 1;
+  const fix = kB === 0 || kB === nB || kA === nA;
+  const a = fix ? kB + 0.5 : kB, n1 = fix ? nB + 1 : nB, c = fix ? kA + 0.5 : kA, n2 = fix ? nA + 1 : nA;
+  const lr = Math.log(a / n1 / (c / n2));
+  const h = z * Math.sqrt(Math.max(0, 1 / a - 1 / n1 + 1 / c - 1 / n2));
+  return { lift, lower: Math.min(lift, Math.exp(lr - h) - 1), upper: Math.max(lift, Math.exp(lr + h) - 1) };
+}
 
 /** Customers per variant to detect a relative lift `mde` on a rate `p` (two-sided α = 0.05, power 0.8). */
 export function sampleSizeRate(p: number, mde = 0.2, zA = Z95, zB = Z80): number | null {

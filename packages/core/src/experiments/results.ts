@@ -1,7 +1,7 @@
 import { buildSubscriptions, paidAt, refundTimes, type ChartLifecycle, type ChartProduct, type ChartSubState, type ChartTx, type Sub } from "../charts/model.js";
 import { DAY, dayStart } from "../charts/time.js";
 import { EXPERIMENT_METRICS, metricDef, type MetricDef } from "./catalog.js";
-import { chanceMeanBeats, chanceRateBeats, liftInterval, meanInterval, rateSe, sampleSizeMean, sampleSizeRate, summarize, wilson, type Summary } from "./stats.js";
+import { chanceMeanBeats, chanceRateBeats, liftInterval, meanInterval, rateLift, sampleSizeMean, sampleSizeRate, summarize, wilson, type Summary } from "./stats.js";
 
 /**
  * Experiment results from the ledger (prd/experiments/PRD.md §4). Pure: the server loads the enrolled customers' rows
@@ -107,6 +107,9 @@ function factsOf(input: ResultsInput, included: Set<string>, startAt: Map<string
     const next = (successors.get(s) ?? []).map((x) => x.paidStart).filter((x): x is number => x !== null);
     return next.length ? Math.min(...next) : null;
   };
+  // A product change made during a trial continues that trial: one trial, which ends when the last product's trial does.
+  const continuesTrial = (s: Sub) => s.origin === "product_change" && s.trialStart !== null && !!s.predecessor && s.predecessor.trialStart !== null && s.predecessor.paidStart === null;
+  const lastTrialLink = (s: Sub): Sub => { const next = (successors.get(s) ?? []).find(continuesTrial); return next ? lastTrialLink(next) : s; };
 
   const out = new Map<string, Facts>();
   for (const [id, e] of enr) out.set(id, { id, variant: e.variant, enrolledAt: e.enrolledAt, convAt: Infinity, trials: [], firstPaidAt: Infinity, firstRefundAt: Infinity, money: [], subs: [], firstPaidSubAt: Infinity });
@@ -119,9 +122,10 @@ function factsOf(input: ResultsInput, included: Set<string>, startAt: Map<string
     f.subs.push(s);
     f.convAt = Math.min(f.convAt, s.start);
     if (s.paidStart !== null) f.firstPaidSubAt = Math.min(f.firstPaidSubAt, s.paidStart);
-    if (s.trialStart !== null) {
-      const conv = conversionAt(s);
-      f.trials.push({ start: s.trialStart, completeAt: Math.min(s.trialEnd ?? Infinity, conv ?? Infinity), convertedAt: conv });
+    if (s.trialStart !== null && !continuesTrial(s)) {
+      const last = lastTrialLink(s);
+      const conv = conversionAt(last);
+      f.trials.push({ start: s.trialStart, completeAt: Math.min(last.trialEnd ?? Infinity, conv ?? Infinity), convertedAt: conv });
     }
     for (const p of s.periods) keys.add(txKey(s.store, p.storeTransactionId));
   }
@@ -146,17 +150,40 @@ function factsOf(input: ResultsInput, included: Set<string>, startAt: Map<string
 
 interface Measured {
   counts: Record<string, number>;
+  /** Revenue and MRR of the customers with any purchase; `idle` more customers have none (0 each). */
   revenue: number[];
   revenuePaying: number[];
   mrr: number[];
   mrrPaying: number[];
+  idle: number;
+}
+
+/**
+ * One variant's customers: those with a purchase or trial after joining, and when each of the others joined (sorted).
+ * Most enrolled customers never buy, so the daily series only walks the first list.
+ */
+interface Group { active: Facts[]; idleJoined: number[] }
+const isIdle = (f: Facts) => !f.subs.length && !f.money.length && !f.trials.length && f.convAt === Infinity && f.firstPaidAt === Infinity && f.firstRefundAt === Infinity;
+function groupOf(list: Facts[]): Group {
+  const active: Facts[] = [], idleJoined: number[] = [];
+  for (const f of list) if (isIdle(f)) idleJoined.push(f.enrolledAt); else active.push(f);
+  idleJoined.sort((a, b) => a - b);
+  return { active, idleJoined };
+}
+/** How many of the sorted values are at most `t`. */
+function countAtMost(sorted: number[], t: number) {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid]! <= t) lo = mid + 1; else hi = mid; }
+  return lo;
 }
 
 /** Every metric's raw ingredients for one variant as of `t`. */
-function measure(list: Facts[], t: number): Measured {
+function measure(g: Group, t: number): Measured {
   const c = { customers: 0, initial_conversions: 0, trials_started: 0, trials_completed: 0, trials_converted: 0, paid_customers: 0, active_subscribers: 0, churned_subscribers: 0, refunded_customers: 0 };
   const revenue: number[] = [], revenuePaying: number[] = [], mrr: number[] = [], mrrPaying: number[] = [];
-  for (const f of list) {
+  const idle = countAtMost(g.idleJoined, t);
+  c.customers = idle;
+  for (const f of g.active) {
     if (f.enrolledAt > t) continue;
     c.customers++;
     if (f.convAt <= t) c.initial_conversions++;
@@ -170,14 +197,15 @@ function measure(list: Facts[], t: number): Measured {
     let m = 0, active = false;
     for (const s of f.subs) { const p = t < stateEnd(s) ? paidAt(s, t) : null; if (p) { active = true; m += p.monthly; } }
     if (active) c.active_subscribers++;
-    if (f.firstPaidSubAt <= t && !active) c.churned_subscribers++;
+    // Churned: paid for a subscription (a $0 period is not paying) and has none active now.
+    if (paid && f.firstPaidSubAt <= t && !active) c.churned_subscribers++;
     if (f.firstRefundAt <= t) c.refunded_customers++;
     let r = 0;
     for (const x of f.money) { if (x.at > t) break; r += x.usd; }
     revenue.push(r); mrr.push(m);
     if (paid) { revenuePaying.push(r); mrrPaying.push(m); }
   }
-  return { counts: c, revenue, revenuePaying, mrr, mrrPaying };
+  return { counts: c, revenue, revenuePaying, mrr, mrrPaying, idle };
 }
 
 const RATES: Record<string, [string, string]> = {
@@ -186,16 +214,18 @@ const RATES: Record<string, [string, string]> = {
   conversion_to_paying: ["paid_customers", "customers"],
   refund_rate: ["refunded_customers", "paid_customers"],
 };
-const MEANS: Record<string, keyof Omit<Measured, "counts">> = {
+const MEANS: Record<string, "revenue" | "revenuePaying" | "mrr" | "mrrPaying"> = {
   realized_ltv_per_customer: "revenue", realized_ltv_per_paying_customer: "revenuePaying", mrr_per_customer: "mrr", mrr_per_paying_customer: "mrrPaying",
 };
+/** A per-customer mean's values: per customer, idle customers (0) included; per paying customer, payers only. */
+const meanOf = (m: Measured, id: string): Summary => { const k = MEANS[id]!; return summarize(m[k], k === "revenue" || k === "mrr" ? m.idle : 0); };
 const round = (x: number, d: number) => Math.round(x * 10 ** d) / 10 ** d;
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0);
 
 /** A metric's value from what was measured (no intervals): used for the series. */
 function plainValue(id: string, m: Measured): number | null {
   if (RATES[id]) { const [k, n] = RATES[id]!; return m.counts[n]! > 0 ? m.counts[k]! / m.counts[n]! : null; }
-  if (MEANS[id]) { const xs = m[MEANS[id]!]; return xs.length ? sum(xs) / xs.length : null; }
+  if (MEANS[id]) { const k = MEANS[id]!; const n = m[k].length + (k === "revenue" || k === "mrr" ? m.idle : 0); return n ? sum(m[k]) / n : null; }
   if (id === "realized_ltv") return sum(m.revenue);
   if (id === "mrr") return sum(m.mrr);
   return m.counts[id] ?? null;
@@ -210,19 +240,21 @@ function withStats(def: MetricDef, m: Measured, control: Measured | null): Metri
     const out: MetricValue = { value: n ? r(k / n) : null, numerator: k, denominator: n, lower: r(ci?.lower), upper: r(ci?.upper) };
     if (control) {
       const kc = control.counts[kk]!, nc = control.counts[nn]!;
-      const lift = n && nc ? liftInterval({ value: k / n, se: rateSe(k, n) }, { value: kc / nc, se: rateSe(kc, nc) }) : null;
+      const lift = rateLift(k, n, kc, nc);
       const chance = n && nc ? (def.better === "higher" ? chanceRateBeats(k, n, kc, nc) : chanceRateBeats(kc, nc, k, n)) : null;
       Object.assign(out, { lift: r(lift?.lift), lift_lower: r(lift?.lower), lift_upper: r(lift?.upper), chance_to_beat_control: r(chance, 4) });
     }
     return out;
   }
   if (def.kind === "mean") {
-    const s: Summary = summarize(m[MEANS[def.id]!]);
+    const s = meanOf(m, def.id);
     const ci = meanInterval(s);
     const out: MetricValue = { value: s.n ? r(s.mean, 4) : null, denominator: s.n, lower: r(ci?.lower, 4), upper: r(ci?.upper, 4) };
     if (control) {
-      const sc = summarize(control[MEANS[def.id]!]);
-      const lift = s.n && sc.n ? liftInterval({ value: s.mean, se: s.se }, { value: sc.mean, se: sc.se }) : null;
+      const sc = meanOf(control, def.id);
+      // An interval needs two customers on each side; with one, only the lift itself.
+      const lift = s.n >= 2 && sc.n >= 2 ? liftInterval({ value: s.mean, se: s.se }, { value: sc.mean, se: sc.se })
+        : s.n && sc.n && sc.mean > 0 ? { lift: s.mean / sc.mean - 1, lower: null, upper: null } : null;
       Object.assign(out, { lift: r(lift?.lift), lift_lower: r(lift?.lower), lift_upper: r(lift?.upper), chance_to_beat_control: r(chanceMeanBeats(s, sc), 4) });
     }
     return out;
@@ -246,11 +278,11 @@ function guidanceOf(input: ResultsInput, variants: VariantResult[], measured: Ma
   let needed: number | null = null;
   if (control) {
     if (def.kind === "rate") { const [k, n] = RATES[def.id]!; needed = control.counts[n]! ? sampleSizeRate(control.counts[k]! / control.counts[n]!) : null; }
-    else { const s = summarize(control[MEANS[def.id]!]); needed = s.n > 1 ? sampleSizeMean(s.mean, s.sd) : null; }
-    // A rate measured on a sub-population (trials, payers) needs that many of them, not customers: scale back up.
-    if (needed !== null && def.kind === "rate") {
-      const [, n] = RATES[def.id]!;
-      if (n !== "customers" && control.counts[n]! > 0 && control.counts.customers! > 0) needed = Math.ceil(needed * (control.counts.customers! / control.counts[n]!));
+    else { const s = meanOf(control, def.id); needed = s.n > 1 ? sampleSizeMean(s.mean, s.sd) : null; }
+    // A metric measured on a sub-population (trials, payers) needs that many of them, not customers: scale back up.
+    const population = def.kind === "rate" ? RATES[def.id]![1] : MEANS[def.id] === "revenuePaying" || MEANS[def.id] === "mrrPaying" ? "paid_customers" : "customers";
+    if (needed !== null && population !== "customers" && control.counts[population]! > 0 && control.counts.customers! > 0) {
+      needed = Math.ceil(needed * (control.counts.customers! / control.counts[population]!));
     }
   }
   const treatments = variants.filter((v) => v.id !== input.controlId);
@@ -287,9 +319,10 @@ export function computeExperimentResults(input: ResultsInput): ExperimentResults
   const facts = factsOf(input, included, input.paywall === "viewed" ? viewed : new Map());
   const byVariant = new Map<string, Facts[]>(input.variants.map((v) => [v.id, []]));
   for (const f of facts.values()) byVariant.get(f.variant)?.push(f);
+  const groups = new Map(input.variants.map((v) => [v.id, groupOf(byVariant.get(v.id)!)]));
 
   // As of now, plus a minute of grace for store clocks a little ahead of ours.
-  const measured = new Map(input.variants.map((v) => [v.id, measure(byVariant.get(v.id)!, input.now + GRACE)]));
+  const measured = new Map(input.variants.map((v) => [v.id, measure(groups.get(v.id)!, input.now + GRACE)]));
   const control = measured.get(input.controlId) ?? null;
   const variants: VariantResult[] = input.variants.map((v) => {
     const m = measured.get(v.id)!;
@@ -302,7 +335,9 @@ export function computeExperimentResults(input: ResultsInput): ExperimentResults
   });
 
   // Series: each metric as of the end of each day.
-  const firstEnroll = input.enrollments.length ? Math.min(...input.enrollments.map((e) => e.enrolledAt)) : null;
+  // A loop, not Math.min(...): spreading 100,000+ values overflows the call stack.
+  let firstEnroll: number | null = null;
+  for (const e of input.enrollments) if (firstEnroll === null || e.enrolledAt < firstEnroll) firstEnroll = e.enrolledAt;
   const fromRaw = input.seriesFrom ?? firstEnroll;
   const to = Math.min(input.seriesTo ?? input.now, input.now);
   const days: number[] = [];
@@ -315,7 +350,7 @@ export function computeExperimentResults(input: ResultsInput): ExperimentResults
   for (const day of days) {
     const t = Math.min(day + DAY - 1, input.now + GRACE);
     for (const v of input.variants) {
-      const m = measure(byVariant.get(v.id)!, t);
+      const m = measure(groups.get(v.id)!, t);
       for (const d of EXPERIMENT_METRICS) {
         const x = plainValue(d.id, m);
         values[d.id]![v.id]!.push(x === null ? null : round(x, d.unit === "%" ? 6 : d.unit === "$" ? 4 : 0));

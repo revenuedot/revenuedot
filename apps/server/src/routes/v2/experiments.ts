@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   computeExperimentResults, dailyCsv, EXPERIMENT_METRICS, EXPERIMENT_TYPE_IDS, METRIC_IDS, newId, PLACEMENT_ID, PRIMARY_METRIC_IDS, summaryCsv, TYPE_DEFAULTS,
@@ -52,6 +52,8 @@ const Estimate = z.object({
 type Row = typeof schema.experiments.$inferSelect;
 const CHUNK = 500;
 const ESTIMATE_LIMIT = 5000;
+/** The most enrolled customers one results request reads (see `results`). */
+export const RESULTS_SAMPLE = 25_000;
 const DAY = 86_400_000;
 
 export function experimentRoutes(r: V2Router, deps: Deps) {
@@ -171,7 +173,11 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
     }
     const stopped = rows.filter((x) => x.status === "stopped").sort((a, z2) => a.priority - z2.priority || a.createdAt.getTime() - z2.createdAt.getTime());
     const order = [...b.experiment_ids, ...stopped.map((x) => x.id)];
-    for (const [i, id] of order.entries()) await db.update(schema.experiments).set({ priority: i + 1 }).where(and(eq(schema.experiments.projectId, projectId), eq(schema.experiments.id, id)));
+    // One transaction: an order half written would enroll customers by a mix of the old and the new priorities.
+    await db.transaction(async (raw) => {
+      const tx = raw as unknown as typeof db;
+      for (const [i, id] of order.entries()) await tx.update(schema.experiments).set({ priority: i + 1 }).where(and(eq(schema.experiments.projectId, projectId), eq(schema.experiments.id, id)));
+    });
     const out = (await db.select().from(schema.experiments).where(eq(schema.experiments.projectId, projectId)).orderBy(asc(schema.experiments.priority)));
     const n = await counts(out.map((x) => x.id));
     return c.json(listOf(c, out.map((x) => shape(x, n.get(x.id) ?? 0)), null, `/v2/projects/${projectId}/experiments`));
@@ -254,12 +260,14 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
       if (vs.length < 2 || missing.length) throw new V2Error(422, "unprocessable_entity_error", missing.length ? "An offering of this experiment was deleted or archived. Pick another offering in each variant first." : "An experiment needs a control and at least one treatment.");
     }
     const now = deps.now();
+    // Only from the status just checked: a concurrent stop cannot be undone by a start that read the row before it.
     const [out] = await db.update(schema.experiments).set({
       status: to, updatedAt: now,
       ...(action === "start" && !x.startedAt ? { startedAt: now } : {}), ...(action === "start" ? { pausedAt: null } : {}),
       ...(action === "pause" ? { pausedAt: now } : {}), ...(action === "stop" ? { stoppedAt: now } : {}),
-    }).where(eq(schema.experiments.id, x.id)).returning();
-    return c.json(await one(out!));
+    }).where(and(eq(schema.experiments.id, x.id), eq(schema.experiments.status, x.status))).returning();
+    if (!out) throw new V2Error(409, "resource_locked_error", "The experiment changed while this request ran. Reload it and try again.");
+    return c.json(await one(out));
   };
   r.post(`${E}/:experiment_id/actions/start`, scope(WRITE), transition("start", ["draft", "paused"], "running"));
   r.post(`${E}/:experiment_id/actions/pause`, scope(WRITE), transition("pause", ["running"], "paused"));
@@ -274,18 +282,36 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
     const platform = c.req.query("platform")?.trim() || null, country = c.req.query("country")?.trim() || null;
     const sandbox = env === "sandbox";
     const now = deps.now();
-    const enrolls = await db.select().from(schema.experimentEnrollments).where(eq(schema.experimentEnrollments.experimentId, x.id));
+    const EN = schema.experimentEnrollments;
+    // Production results leave out customers enrolled from test devices; sandbox results show everyone's test purchases.
+    const who = sandbox ? eq(EN.experimentId, x.id) : and(eq(EN.experimentId, x.id), eq(EN.isSandbox, false));
+    // Every enrolled customer per variant; above RESULTS_SAMPLE the results come from a fixed random sample of them, so one
+    // large experiment stays within the Worker's CPU and memory limits (rates, means, intervals and chances are estimated
+    // from the sample; counts and totals are the sample's).
+    const enrolledByVariant = new Map((await db.select({ v: EN.variant, n: sql<number>`count(*)::int` }).from(EN).where(who).groupBy(EN.variant)).map((r) => [r.v, Number(r.n)]));
+    const enrolledTotal = [...enrolledByVariant.values()].reduce((a, b) => a + b, 0);
+    const sampled = enrolledTotal > RESULTS_SAMPLE;
+    const enrolls = sampled
+      ? await db.select().from(EN).where(who).orderBy(sql`md5(${EN.customerId})`, EN.customerId).limit(RESULTS_SAMPLE)
+      : await db.select().from(EN).where(who);
     const ids = enrolls.map((e) => e.customerId);
     const C = schema.customers, T = schema.transactions, S = schema.subscriptions, X = schema.sdkEvents, A = schema.customerAliases, EV = schema.events;
     const chunks = <T>(load: (part: string[]) => Promise<T[]>) => (async () => { const out: T[] = []; for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await load(ids.slice(i, i + CHUNK)))); return out; })();
-    const [custs, txs, subs, products, views, billing] = await Promise.all([
+    // Paywall views from a minute before joining (results take the first one after it). Events stored before the app user
+    // id was known have no customer_id: they are few, found through the aliases once.
+    const viewTypes = and(eq(X.projectId, x.projectId), eq(X.isSandbox, sandbox), inArray(X.type, PAYWALL_VIEW_TYPES));
+    const since = new Date((x.startedAt?.getTime() ?? 0) - 60_000);
+    const loadViews = x.trackPaywallViews || c.req.query("paywall");
+    const [custs, txs, subs, products, views, orphanViews, billing] = await Promise.all([
       chunks((p) => db.select({ id: C.id, platform: C.lastSeenPlatform, country: C.lastSeenCountry }).from(C).where(inArray(C.id, p))),
       chunks((p) => db.select().from(T).where(and(inArray(T.customerId, p), eq(T.isSandbox, sandbox)))),
       chunks((p) => db.select().from(S).where(and(inArray(S.customerId, p), eq(S.isSandbox, sandbox)))),
       db.select().from(schema.products).where(eq(schema.products.projectId, x.projectId)),
-      x.trackPaywallViews || c.req.query("paywall") ? chunks((p) => db.select({ customerId: sql<string | null>`coalesce(${X.customerId}, ${A.customerId})`, at: X.occurredAt }).from(X)
-        .leftJoin(A, and(eq(A.projectId, X.projectId), eq(A.appUserId, X.appUserId)))
-        .where(and(eq(X.projectId, x.projectId), eq(X.isSandbox, sandbox), inArray(X.type, PAYWALL_VIEW_TYPES), inArray(sql`coalesce(${X.customerId}, ${A.customerId})`, p)))) : Promise.resolve([]),
+      loadViews ? chunks((p) => db.select({ customerId: X.customerId, at: sql<number>`(extract(epoch from min(${X.occurredAt})) * 1000)::float8`.mapWith(Number) }).from(X)
+        .innerJoin(EN, and(eq(EN.experimentId, x.id), eq(EN.customerId, X.customerId)))
+        .where(and(inArray(X.customerId, p), viewTypes, sql`${X.occurredAt} >= ${EN.enrolledAt} - interval '1 minute'`)).groupBy(X.customerId)) : Promise.resolve([]),
+      loadViews ? db.select({ customerId: A.customerId, at: X.occurredAt }).from(X).innerJoin(A, and(eq(A.projectId, X.projectId), eq(A.appUserId, X.appUserId)))
+        .where(and(viewTypes, isNull(X.customerId), gte(X.occurredAt, since))) : Promise.resolve([]),
       chunks((p) => db.select({ customerId: EV.customerId, at: EV.eventTimestampMs, store: sql<string | null>`${EV.payload}->'event'->>'store'`, productId: sql<string | null>`${EV.payload}->'event'->>'product_id'` })
         .from(EV).where(and(inArray(EV.customerId, p), eq(EV.environment, env), eq(EV.type, "BILLING_ISSUE")))),
     ]);
@@ -306,24 +332,31 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
         cancelSurveyReason: s.cancelSurveyReason, unsubscribeAt: s.unsubscribeDetectedAt?.getTime() ?? null,
       })),
       lifecycle: billing.filter((e) => e.customerId).map((e): ChartLifecycle => ({ customerId: e.customerId!, store: (e.store ?? "").toLowerCase(), productId: e.productId ?? "", type: "BILLING_ISSUE", at: Number(e.at) })),
-      paywallViews: views.filter((v) => v.customerId).map((v) => ({ customerId: v.customerId!, at: v.at.getTime() })),
+      paywallViews: [...views.map((v) => ({ customerId: v.customerId, at: v.at })), ...orphanViews.map((v) => ({ customerId: v.customerId, at: v.at.getTime() }))]
+        .filter((v): v is { customerId: string; at: number } => !!v.customerId && keep.has(v.customerId)),
       paywall: paywall as "all" | "viewed" | "not_viewed",
       seriesFrom: x.startedAt?.getTime() ?? null,
     });
     const options = (k: "platform" | "country") => [...new Set(custs.map((cu) => cu[k]).filter((v): v is string => !!v))].sort();
-    return { computed, env, paywall, platform, country, filterOptions: { platforms: options("platform"), countries: options("country") } };
+    return {
+      computed, env, paywall, platform, country, filterOptions: { platforms: options("platform"), countries: options("country") },
+      sample: sampled ? { customers: enrolls.length, enrolled_customers: enrolledTotal, enrolled_by_variant: Object.fromEntries(vs.map((v) => [v.id, enrolledByVariant.get(v.id) ?? 0])) } : null,
+    };
   };
 
   r.get(`${E}/:experiment_id/results`, scope(READ), async (c) => {
     const x = await find(c);
-    const { computed, env, paywall, platform, country, filterOptions } = await results(c, x);
+    const { computed, env, paywall, platform, country, filterOptions, sample } = await results(c, x);
     const url = `/v2/projects/${x.projectId}/experiments/${x.id}/results`;
+    const guidance = sample ? { ...computed.guidance, message: `From a random ${sample.customers.toLocaleString("en-US")} of the ${sample.enrolled_customers.toLocaleString("en-US")} enrolled customers. ${computed.guidance.message}` } : computed.guidance;
     const val = (v: (typeof computed.variants)[number], id: string) => v.metrics[id]?.value ?? 0;
     const b = computed.variants[1];
     return c.json({
       object: "experiment_results", experiment_id: x.id, environment: env, currency: "USD", computed_at: deps.now().getTime(),
       primary_metric: x.primaryMetric, secondary_metrics: x.secondaryMetrics, control_variant_id: computed.variants[0]?.id ?? "a",
       filters: { platform, country, paywall }, filter_options: filterOptions,
+      // Null when every enrolled customer is counted; otherwise the size of the random sample the numbers come from.
+      sample,
       metrics: EXPERIMENT_METRICS.map((m) => ({ id: m.id, display_name: m.name, kind: m.kind, unit: m.unit, better: m.better, description: m.description })),
       variants: embeddedList(url, computed.variants.map((v) => ({
         ...v,
@@ -332,7 +365,7 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
         paying_customers: val(v, "paid_customers"), revenue: Math.round((val(v, "realized_ltv") as number) * 100) / 100,
         revenue_per_customer: Math.round((val(v, "realized_ltv_per_customer") as number) * 100) / 100,
       }))),
-      guidance: computed.guidance,
+      guidance,
       series: computed.series,
       chance_b_beats_a: b?.metrics.initial_conversion_rate?.chance_to_beat_control ?? 0.5,
       enough_data: computed.guidance.enough_data,

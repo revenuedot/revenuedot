@@ -195,7 +195,11 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, Order);
     const rows = await db.select().from(schema.targetingRules).where(eq(schema.targetingRules.projectId, projectId));
     if (b.rule_ids.length !== rows.length || !rows.every((x) => b.rule_ids.includes(x.id))) throw paramError("rule_ids must list every targeting rule of the project once.", "rule_ids");
-    for (const [i, id] of b.rule_ids.entries()) await db.update(schema.targetingRules).set({ position: i }).where(eq(schema.targetingRules.id, id));
+    // One transaction: an order half written would match customers by a mix of the old and the new positions.
+    await db.transaction(async (raw) => {
+      const tx = raw as unknown as typeof db;
+      for (const [i, id] of b.rule_ids.entries()) await tx.update(schema.targetingRules).set({ position: i }).where(eq(schema.targetingRules.id, id));
+    });
     const out = await db.select().from(schema.targetingRules).where(eq(schema.targetingRules.projectId, projectId)).orderBy(asc(schema.targetingRules.position));
     return c.json(listOf(c, out.map(ruleShape), null, `/v2/projects/${projectId}/targeting_rules`));
   });
