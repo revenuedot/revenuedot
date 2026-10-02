@@ -50,6 +50,16 @@ describe("validate", () => {
     const v = validate({ ...good, role: "", needs: [], platforms: [], website: "", message: "" });
     expect(v.ok).toBe(true);
   });
+  it("asks which tool when the vendor is Other, and labels it in the email", () => {
+    const missing = validate({ ...good, current: "other", currentOther: " " });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.errors.currentOther).toMatch(/which tool/);
+    const v = validate({ ...good, current: "other", currentOther: "Glassfy" });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(leadEmail(v.lead, "warm", { country: "US", referrer: "", userAgent: "" }).subject).toContain("uses Other (Glassfy)");
+    expect(validate({ ...good, currentOther: "ignored" }).ok && (validate({ ...good, currentOther: "ignored" }) as { lead: Lead }).lead.currentOther).toBe("");
+  });
   it("accepts Prefer not to say for revenue", () => {
     expect(validate({ ...good, revenue: "undisclosed" }).ok).toBe(true);
   });

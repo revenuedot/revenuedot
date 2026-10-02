@@ -3,7 +3,7 @@
 //   POST /api/contact-sales  the contact-sales form: validate, store in D1 (LEADS), email sales (EMAIL to SALES_TO)
 //   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
-import { isEmail, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
+import { isEmail, vendorLabel, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
 
 interface D1 { prepare(sql: string): { bind(...v: unknown[]): { run(): Promise<unknown> }; run(): Promise<unknown> } }
 interface SendEmail { send(m: { to: string; from: { email: string; name?: string }; subject: string; text: string; html: string; replyTo?: string }): Promise<unknown> }
@@ -29,6 +29,7 @@ const DRAFTS = `CREATE TABLE IF NOT EXISTS sales_lead_drafts (
   id TEXT PRIMARY KEY, email TEXT NOT NULL, answers TEXT NOT NULL, step INTEGER NOT NULL,
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, country TEXT)`;
 let schemaReady = false;
+const ADD_OTHER = "ALTER TABLE sales_leads ADD COLUMN current_other TEXT";
 let draftsReady = false;
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -68,7 +69,7 @@ async function saveDraft(request: Request, env: Env): Promise<Response> {
   const email = typeof d.email === "string" ? d.email.trim().toLowerCase() : "";
   if (!id || !isEmail(email) || typeof d.fax === "string" && d.fax.trim()) return json({ ok: false }, 400);
   const step = Math.max(0, Math.min(20, Number(d.step) || 0));
-  const keep = ["revenue", "current", "needs", "timeline", "name", "company", "role", "phone", "phoneCountry", "platforms", "website", "message"];
+  const keep = ["revenue", "current", "currentOther", "needs", "timeline", "name", "company", "role", "phone", "phoneCountry", "platforms", "website", "message"];
   const answers = JSON.stringify(Object.fromEntries(keep.filter((k) => d[k] !== undefined).map((k) => [k, typeof d[k] === "string" ? (d[k] as string).slice(0, 2000) : d[k]])));
   if (!env.LEADS) return json({ ok: true });
   try {
@@ -132,10 +133,15 @@ async function contactSales(request: Request, env: Env): Promise<Response> {
   let stored = false;
   if (env.LEADS) {
     try {
-      if (!schemaReady) { await env.LEADS.prepare(SCHEMA).run(); schemaReady = true; }
-      await env.LEADS.prepare(`INSERT INTO sales_leads (id, created_at, score, name, email, company, role, phone, phone_country, revenue, current_vendor, needs, timeline, platforms, website, message, country, referrer, user_agent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-        id, new Date().toISOString(), s, lead.name, lead.email, lead.company, lead.role, lead.phone, lead.phoneCountry, lead.revenue, lead.current,
+      if (!schemaReady) {
+        await env.LEADS.prepare(SCHEMA).run();
+        // Tables created before current_other existed get the column; "duplicate column" means it is already there.
+        await env.LEADS.prepare(ADD_OTHER).run().catch(() => {});
+        schemaReady = true;
+      }
+      await env.LEADS.prepare(`INSERT INTO sales_leads (id, created_at, score, name, email, company, role, phone, phone_country, revenue, current_vendor, current_other, needs, timeline, platforms, website, message, country, referrer, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+        id, new Date().toISOString(), s, lead.name, lead.email, lead.company, lead.role, lead.phone, lead.phoneCountry, lead.revenue, lead.current, lead.currentOther || null,
         JSON.stringify(lead.needs), lead.timeline, JSON.stringify(lead.platforms), lead.website || null, lead.message || null, meta.country, meta.referrer || null, meta.userAgent || null,
       ).run();
       stored = true;
@@ -160,13 +166,13 @@ async function contactSales(request: Request, env: Env): Promise<Response> {
 export function leadEmail(l: Lead, s: Score, meta: { country: string | null; referrer: string; userAgent: string }) {
   const rows: [string, string][] = [
     ["Name", l.name], ["Email", l.email], ["Phone", `${parsePhoneNumberFromString(l.phone)?.formatInternational() ?? l.phone} (dial ${l.phone})`], ["Company", l.company], ["Role", l.role ? label(ROLES, l.role) : "Not given"],
-    ["Monthly in-app revenue", label(REVENUE, l.revenue)], ["Uses today", label(CURRENT, l.current)],
+    ["Monthly in-app revenue", label(REVENUE, l.revenue)], ["Uses today", vendorLabel(l)],
     ["Needs", l.needs.map((n) => label(NEEDS, n)).join(", ") || "None chosen"], ["Timeline", label(TIMELINE, l.timeline)],
     ["Platforms", l.platforms.map((p) => label(PLATFORMS, p)).join(", ") || "Not given"], ["Website", l.website || "Not given"],
     ["Visitor country", meta.country ?? "Unknown"], ["Came from", meta.referrer || "Direct"],
   ];
   const revenue = l.revenue === "undisclosed" ? "revenue not shared" : label(REVENUE, l.revenue).replace(" a month", "/mo");
-  const subject = `[${SCORE_LABEL[s]}] Sales lead: ${l.company} (${l.name}), ${revenue}, uses ${label(CURRENT, l.current)}`.replace(/[\r\n]+/g, " ").slice(0, 200);
+  const subject = `[${SCORE_LABEL[s]}] Sales lead: ${l.company} (${l.name}), ${revenue}, uses ${vendorLabel(l)}`.replace(/[\r\n]+/g, " ").slice(0, 200);
   const text = `${SCORE_LABEL[s]} lead from revenuedot.app/contact-sales\n\n${rows.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nMessage:\n${l.message || "(none)"}\n\nReply to this email to answer ${l.name} directly.`;
   const html = `<div style="font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0A0A0A"><p style="font-weight:700">${esc(SCORE_LABEL[s])} lead from revenuedot.app/contact-sales</p><table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#525252;vertical-align:top">${esc(k)}</td><td style="padding:4px 0">${k === "Phone" ? `<a href="tel:${esc(l.phone)}">${esc(v)}</a>` : k === "Email" ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : esc(v)}</td></tr>`).join("")}</table><p style="color:#525252;margin-top:16px">Message</p><p style="white-space:pre-wrap">${esc(l.message || "(none)")}</p><p style="color:#737373">Reply to this email to answer ${esc(l.name)} directly.</p></div>`;
   return { subject, text, html };

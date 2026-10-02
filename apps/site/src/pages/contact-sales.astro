@@ -46,12 +46,17 @@ const KEYS = "ABCDEFGHIJ";
               <p class="err" id="err-revenue" hidden></p>
             </fieldset>
 
-            <fieldset class="step" data-step="3" data-fields="current" data-auto>
+            <fieldset class="step" data-step="3" data-fields="current currentOther" data-auto>
               <legend class="q">What do you use for in-app purchases today?</legend>
               <div class="opts">
                 {CURRENT.map(([v, l], i) => <label class="opt"><input type="radio" name="current" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
               </div>
               <p class="err" id="err-current" hidden></p>
+              <div class="fld" id="other-wrap">
+                <label for="currentOther">If Other, which one?</label>
+                <input id="currentOther" name="currentOther" type="text" maxlength="80" placeholder="e.g. Glassfy, Purchasely, Stripe" aria-describedby="err-currentOther" />
+                <p class="err" id="err-currentOther" hidden></p>
+              </div>
             </fieldset>
 
 
@@ -279,7 +284,7 @@ const KEYS = "ABCDEFGHIJ";
     const el = document.getElementById(field);
     if (el) el.setAttribute("aria-invalid", msg ? "true" : "false");
     const step = steps.find((s) => fieldsOf(steps.indexOf(s)).includes(field));
-    if (step && step.querySelector("input[type=radio]")) { if (msg) step.setAttribute("data-invalid", ""); else step.removeAttribute("data-invalid"); }
+    if (step && step.querySelector(`input[type=radio][name="${field}"]`)) { if (msg) step.setAttribute("data-invalid", ""); else step.removeAttribute("data-invalid"); }
   };
   const stepErrors = (i: number) => { const v = validate(data()); return v.ok ? {} : Object.fromEntries(Object.entries(v.errors).filter(([k]) => fieldsOf(i).includes(k))); };
 
@@ -302,7 +307,8 @@ const KEYS = "ABCDEFGHIJ";
     status.hidden = true;
     // Text fields first (the phone number, not its country picker), then a picker, then the chosen or first option.
     const s = steps[at]!;
-    const first = s.querySelector<HTMLElement>("input[type=email], input[type=text], input[type=tel], textarea") ?? s.querySelector<HTMLElement>("select") ?? s.querySelector<HTMLElement>("input:checked") ?? s.querySelector<HTMLElement>("input[type=radio], input[type=checkbox]");
+    const visible = (sel: string) => [...s.querySelectorAll<HTMLElement>(sel)].find((el) => !el.closest("[hidden]"));
+    const first = visible("input[type=email], input[type=text], input[type=tel], textarea") ?? visible("select") ?? visible("input:checked") ?? visible("input[type=radio], input[type=checkbox]");
     if (!focus) return;
     first?.focus({ preventScroll: true });
     const top = form.closest(".cs-card")!.getBoundingClientRect().top;
@@ -321,11 +327,20 @@ const KEYS = "ABCDEFGHIJ";
     if (at < steps.length - 1) go(at + 1); else submit();
   };
 
-  // Single-choice steps move on as soon as an answer is picked.
+  // "Other" asks which tool; without JavaScript the field is always visible.
+  const otherWrap = document.getElementById("other-wrap") as HTMLDivElement;
+  const otherInput = document.getElementById("currentOther") as HTMLInputElement;
+  const syncOther = () => { otherWrap.hidden = new FormData(form).get("current") !== "other"; };
+  syncOther();
+  otherWrap.querySelector("label")!.textContent = "Which one?";
+
+  // Single-choice steps move on as soon as an answer is picked, except Other, which asks which one first.
   for (const s of steps.filter((s) => "auto" in s.dataset)) {
     s.addEventListener("change", (e) => {
-      if ((e.target as HTMLInputElement).type !== "radio") return;
+      const t = e.target as HTMLInputElement;
+      if (t.type !== "radio") return;
       for (const f of fieldsOf(steps.indexOf(s))) show(f);
+      if (t.name === "current") { syncOther(); if (t.value === "other") { window.setTimeout(() => otherInput.focus(), 50); return; } }
       window.setTimeout(() => { if (steps[at] === s) advance(); }, 280);
     });
   }
