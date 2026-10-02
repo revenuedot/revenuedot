@@ -252,7 +252,7 @@ const journey: Journey = {
       const post = await fetch(unsub!, { method: "POST" });
       const [u] = await sql<{ on: boolean }[]>`SELECT insights_emails AS on FROM users WHERE email = ${dev.email}`;
       c.check("POST turns the digest off on the real server (SQL)", post.status === 200 && u?.on === false, { status: post.status, u });
-      c.check("the migration 0027 is recorded in drizzle's journal on this database", JSON.parse(readFileSync(join(ROOT, "packages/db/migrations/meta/_journal.json"), "utf8")).entries.some((e: any) => e.tag === "0027_attribution_benchmarks_insights"));
+      c.check("the migration 0028 is recorded in drizzle's journal on this database", JSON.parse(readFileSync(join(ROOT, "packages/db/migrations/meta/_journal.json"), "utf8")).entries.some((e: any) => e.tag === "0028_attribution_benchmarks_insights"));
     } finally {
       await close();
     }

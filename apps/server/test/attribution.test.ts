@@ -133,7 +133,7 @@ describe("audiences and the Customers lists", () => {
 
 describe("the migration's backfill", () => {
   it("reads attributes exactly like attributionFromAttributes", async () => {
-    const m = readFileSync(new URL("../../../packages/db/migrations/0027_attribution_benchmarks_insights.sql", import.meta.url), "utf8");
+    const m = readFileSync(new URL("../../../packages/db/migrations/0028_attribution_benchmarks_insights.sql", import.meta.url), "utf8");
     const backfill = m.slice(m.indexOf("-- Backfill"));
     const cases: Record<string, Record<string, string>> = {
       plain: { $mediaSource: " Meta ", $campaign: "Spring", $adGroup: "A", $ad: "Ad 1", $keyword: "kw", $creative: "c", $email: "nope@example.com" },
