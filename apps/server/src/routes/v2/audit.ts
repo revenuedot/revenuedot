@@ -22,7 +22,7 @@ const SINGULAR: Record<string, string> = {
 /** One object per project: a POST without an id updates it. */
 const SINGLETONS = new Set(["brand", "verified_metrics", "auth_settings"]);
 /** Writes that change nothing worth auditing. */
-const QUIET = new Set(["verify_credentials", "preview", "test", "check"]);
+const QUIET = new Set(["verify_credentials", "preview", "test", "check", "advance"]);
 
 interface Parsed { actionType: string; targetType: string; targetId: string | null }
 

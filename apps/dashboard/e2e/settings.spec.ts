@@ -55,7 +55,7 @@ test("general: sandbox testing access is enforced on receipts; ownership goes to
   const req = page.request;
   await page.goto(`/projects/${pid}/settings/general`);
   await expect(page.getByRole("tab", { name: "Verified Metrics" })).toBeVisible();
-  await expect(page.getByRole("tab")).toHaveText(["General", /AI features/, "Brand", "Audit logs", "Blocked customers", "Collaborators", "Verified Metrics", "Domains"]);
+  await expect(page.getByRole("tab")).toHaveText(["General", /AI features/, "Brand", "Audit logs", "Blocked customers", "Collaborators", "Verified Metrics", "Domains", "Export and move"]);
   await expect(page.getByText(/The owner is/)).toContainText("Settings Owner");
 
   // Allowlist two testers through the form.

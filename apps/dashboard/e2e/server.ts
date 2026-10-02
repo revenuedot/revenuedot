@@ -26,6 +26,7 @@ import { tick } from "@revenuedot/server/services/tick.js";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
+import { startCloud } from "./cloud-server.ts";
 import { fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
 import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 import { fakeAssistantModel } from "@revenuedot/server/services/assistant/fake-model.js";
@@ -108,7 +109,7 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
 // RevenueDot AI answers from a scripted fake model (services/assistant/fake-model.ts): "how is revenue doing" calls
 // get-metrics, "grant pro to <user>" asks for approval, then grants. Conversations stream over SSE from the database.
 const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantModel(undefined, { delayMs: 15 });
-const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, extensions });
+const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, moveDrainSeconds: 1, extensions });
 
 let ready = false;
 const web = new Hono();
@@ -161,6 +162,8 @@ web.all("/*", async (c) => {
 if (!existsSync(join(DIST, "index.html"))) { console.error(`No dashboard build at ${DIST}. Run vite build first.`); process.exit(1); }
 serve({ fetch: web.fetch, port: PORT });
 const base = `http://localhost:${PORT}`;
+// RevenueDot Cloud for the Move and Billing specs (e2e/cloud-server.ts): E2E_PORT + 1.
+await startCloud(PORT + 1, DIST, mail);
 webStripe.checkoutUrl = `${base}/__stripe/checkout/{id}`;
 
 // E2E_SEED=off (manual checks on a Railway database, which keeps its data across restarts): no demo data. The module

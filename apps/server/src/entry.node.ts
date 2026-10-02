@@ -12,10 +12,14 @@ import { modelFromEnv } from "./services/paywall-ai.js";
 import { assistantModelFromEnv } from "./services/assistant/models.js";
 import { capsFromEnv } from "./services/assistant/limits.js";
 import { loadExtensions } from "./extensions.js";
+import { diskStore } from "./services/archive/disk-store.js";
+import { billingConfigFromEnv } from "./services/billing/stripe.js";
+import { dbStore, s3ConfigFromEnv, s3Store } from "./services/archive/store.js";
 
 const { db } = await openDb(process.env.DATABASE_URL ?? "pglite://./.data/dev");
 // Enterprise features (ee/, extensions.ts): only with REVENUEDOT_LICENSE_KEY (or REVENUEDOT_EE_DEV=true for development).
-const extensions = await loadExtensions(process.env, { edition: "self-hosted" });
+// A Node server run as Cloud (REVENUEDOT_EDITION=cloud) is Cloud here too, so development mode stays off there.
+const extensions = await loadExtensions(process.env, { edition: process.env.REVENUEDOT_EDITION === "cloud" ? "cloud" : "self-hosted" });
 const stores = defaultStores();
 // Email: SMTP when REVENUEDOT_SMTP_URL is set, else every email (links included) is printed to this log.
 const publicUrl = process.env.REVENUEDOT_PUBLIC_URL?.trim() || undefined;
@@ -25,16 +29,24 @@ if (process.env.REVENUEDOT_SMTP_URL?.trim()) {
   const { smtpMailer } = await import("./mail/smtp.js");
   mailer = smtpMailer(process.env.REVENUEDOT_SMTP_URL.trim(), process.env.REVENUEDOT_MAIL_FROM?.trim() || "RevenueDot <no-reply@localhost>", { replyTo: process.env.REVENUEDOT_MAIL_REPLY_TO?.trim() || undefined });
 }
+// Full-export archives (prd/moves-export/PRD.md): an S3-compatible bucket when REVENUEDOT_ARCHIVE_S3_BUCKET is set, else a
+// folder (REVENUEDOT_ARCHIVE_DIR, default .data/archives; the Docker image keeps it on a volume). "db" keeps them in Postgres.
+const s3 = s3ConfigFromEnv(process.env);
+const archiveStore = s3 ? s3Store(s3) : process.env.REVENUEDOT_ARCHIVE_DIR === "db" ? dbStore(db) : diskStore(process.env.REVENUEDOT_ARCHIVE_DIR?.trim() || ".data/archives");
+// RevenueDot Cloud runs on Workers (entry.worker.ts). REVENUEDOT_EDITION=cloud runs this Node entry as Cloud, for the
+// billing journeys and local tests of Cloud-only behaviour; billing then reads REVENUEDOT_BILLING_* (prd/cloud-billing).
+const edition = process.env.REVENUEDOT_EDITION === "cloud" ? "cloud" as const : undefined;
+const billing = edition ? billingConfigFromEnv(process.env) : undefined;
 let running = false;
 const runTick = async () => {
   if (running) return;
   running = true;
-  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, extensions }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
+  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing, extensions }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
-const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250), signup, mailer, publicUrl, encryptionKey: process.env.REVENUEDOT_ENCRYPTION_KEY?.trim() || undefined,
+const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeout(runTick, 250), signup, mailer, publicUrl, archiveStore, edition, billing, encryptionKey: process.env.REVENUEDOT_ENCRYPTION_KEY?.trim() || undefined,
   // "Generate with AI" on paywalls: OPENAI_API_KEY or ANTHROPIC_API_KEY (REVENUEDOT_AI_MODEL to pick the model); off without either.
   ai: modelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
   // Hosted web pages (purchase links, funnels): REVENUEDOT_PAY_URL, else <this server>/pay; custom domains CNAME to the pay host.

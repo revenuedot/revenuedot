@@ -1,0 +1,70 @@
+# Cloud billing: plans and metering (Tier 2, batch G)
+
+**Status:** built on branch `tier2-moves-billing` (migration `0022_moves_billing`), tested against a fake Stripe only. RevenueDot Cloud meters tracked revenue per project per month and bills it through RevenueDot's own Stripe account (Circo). Self-host stays free and unmetered: none of this runs there. **The live Stripe keys, price id and meter are Kai's to create**; until they are set, Cloud behaves as before billing existed: no usage emails and no Billing link in the dashboard (`/auth/me` answers `billing_ready: false`); metering still runs, and `/account/billing` opened directly shows the plan and usage and says billing is not set up yet.
+
+## Users and jobs
+- **A developer on Cloud** sees which plan they are on, how much revenue their apps tracked this month, what that will cost, and their invoices; upgrades with Stripe Checkout and manages the card or cancels in Stripe's Customer Portal.
+- **The same developer when a payment fails** gets an email and a banner with a link to fix the card; their apps keep working.
+- **RevenueDot** gets paid 0.5% of tracked revenue above $10,000 a month, never more than $999 a month per account.
+
+## Prices (decided 2026-09-30, `company/docs/business-model.md`; working assumptions, untested)
+| Plan | Price | Limit |
+|---|---|---|
+| Free (`free`) | $0 | $10,000 tracked revenue a month |
+| Standard (`standard`) | 0.5% of tracked revenue above $10,000 a month, capped at $999 a month; the rate never rises | apps up to $1,000,000 a month |
+| Enterprise (`enterprise`) | from $50,000 a year, standard terms | none; set by RevenueDot staff, no self-serve checkout |
+
+The table lives in code (`apps/server/src/services/billing/plans.ts`) and can be replaced without a deploy with `REVENUEDOT_BILLING_PLANS` (JSON). **Open for Kai:** the cap is $999 in `business-model.md` and on the live pricing page, but `company/docs/STATUS.md` says $499 (updated the same day). The code uses $999.
+
+## Definitions
+- **Tracked revenue** of a month: the sum of `revenue_usd` (USD at the purchase-date rate) of the project's production transactions that earned money (`purchase`, `renewal`, `one_time`) and were purchased in that calendar month (UTC). Sandbox, trials, refunds and refund reversals do not count, and refunds are not subtracted (a refunded purchase still counted when it was made). Transactions copied in by a move into Cloud (recorded before the project's `moved_in_at`) do not count, so revenue tracked by another server is never billed.
+- **An account** is a user; it is billed for every project it owns (`projects.owner_user_id`). Usage rows keep the owner at the time they were computed.
+- **The bill** for a month: Free: $0. Standard: `min(999, 0.005 × max(0, tracked − 10,000))`, rounded to the cent. Enterprise: invoiced outside this system (shown as "By contract").
+
+## Essential now and later
+Essential (this batch)
+- Metering in the Cloud tick (cron only), at most once an hour per month: tracked revenue per project into `billing_usage`; the first two days of a month also recompute the month before.
+- Stripe on RevenueDot's own account, through plain HTTPS (Workers and Node): Checkout (`mode=subscription`, the Standard price, billing anchored to the 1st of next month with no proration), Customer Portal, a Billing Meter (`default_aggregation.formula = last`) that receives the month's bill in cents (`value`) for the account's Stripe customer every hour it changes, with a unique identifier per report (Stripe refuses a repeated identifier for 24 hours, and "last" never double-counts). Stripe multiplies by the price ($0.01 a unit), so the invoice equals our bill.
+- Webhook `POST /v2/billing/stripe/webhook` (signature checked with `REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET`): `checkout.session.completed`, `customer.subscription.created|updated|deleted`, `invoice.created|finalized|paid|payment_failed|voided|marked_uncollectible`.
+- Dunning states on the account: `active`, `past_due` (a payment failed; Stripe retries), `unpaid` (retries ran out), `canceled`. Payment failure emails the owner once per invoice; `unpaid` and `canceled` put the account back on Free. **Apps never stop working**: no SDK, REST or webhook behaviour depends on the plan or the payment status.
+- Usage alert emails, once per account, month and threshold: Free at 80% and 100% of $10,000 (with the upgrade link); Standard when the bill reaches the $999 cap ("you will not pay more this month") and at 80% and 100% of $1,000,000 (Enterprise).
+- Billing page `/account/billing` (Cloud only): plan and status, this month's tracked revenue (total, per project, against the limit), the bill so far, the three plans with Upgrade (Checkout), Manage billing (Portal) or Contact us (Enterprise), invoices with links to Stripe's hosted page and PDF, and banners for past due, unpaid, over the Free limit and over the Standard ceiling.
+- Guard: a live key (`sk_live_` / `rk_live_`) is refused unless `REVENUEDOT_BILLING_LIVE=true`, so a development machine can never charge anyone.
+
+Later
+- Outcome add-ons (a share of recovered revenue, `business-model.md`): needs the revenue recovery features first.
+- Annual prepay, Enterprise self-serve checkout, tax (Stripe Tax) and VAT ids.
+- **Plan gates:** `business-model.md` says Standard does not include an SLA, SSO, audit logs or region choice. SSO, SLA and regions do not exist yet. The audit log already ships to everyone as v2 parity (`prd/SCOPE.md` Tier 2) while the Tier 3 `ee/` folder has "long audit retention", so nothing is gated today; each plan carries `features` for when Kai decides.
+- **What happens when a Free account passes $10,000:** today a banner and two emails, never a block. Kai to decide whether a grace period ends in something stronger.
+
+## RevenueCat behaviour we match
+RevenueCat bills on monthly tracked revenue too: free up to $2,500 a month, then 1% of all of it ([pricing](https://www.revenuecat.com/pricing)). We measure the same thing (gross USD revenue of production purchases in the month) and charge less: only the part above $10,000, at half the rate, with a cap.
+
+## Endpoints and screens
+- `GET /v2/billing` (session): `{ edition, account: { plan, status, cancel_at, current_period_end }, plans, usage: { month, tracked_revenue_usd, projects[], bill_usd, free_limit_usd, ceiling_usd, cap_usd }, invoices[], stripe_ready }`. Self-host answers 404 "Billing is only on RevenueDot Cloud."
+- `POST /v2/billing/checkout { plan: "standard" }` → `{ url }` (Stripe Checkout).
+- `POST /v2/billing/portal` → `{ url }` (Customer Portal).
+- `POST /v2/billing/stripe/webhook` (Stripe only).
+- `GET /auth/me` keeps `account.plan` and adds `account.billing_status`.
+
+## Configuration (Cloud Worker secrets and vars)
+| Name | What |
+|---|---|
+| `REVENUEDOT_BILLING_STRIPE_SECRET_KEY` | RevenueDot's own Stripe secret or restricted key (Circo). Test mode until launch |
+| `REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET` | `whsec_…` of the endpoint `https://api.revenuedot.app/v2/billing/stripe/webhook` |
+| `REVENUEDOT_BILLING_PRICE_STANDARD` | The metered price (`price_…`, $0.01 per unit, on the meter below) |
+| `REVENUEDOT_BILLING_METER_EVENT` | The meter's event name (default `revenuedot_cloud_bill_cents`) |
+| `REVENUEDOT_BILLING_LIVE` | `true` only in production, with live keys |
+| `REVENUEDOT_BILLING_PLANS` | Optional JSON plan table |
+
+Stripe setup (test mode first, then live): a meter `revenuedot_cloud_bill_cents` (aggregation `last`, customer mapping `stripe_customer_id`, value key `value`); a product "RevenueDot Cloud Standard" with a monthly metered price of $0.01 per unit on that meter; the Customer Portal with cancellation at period end and payment method updates on; the webhook endpoint above with the events listed. Steps: `docs/cloud.md`.
+
+## Tests that prove it
+- `apps/server/test/billing.test.ts` against `packages/contract/src/fake-billing-stripe.ts`: the bill at $0, $9,999.99, $10,000, $10,001, $50,000, $209,800 (cap) and $2M; tracked revenue skips sandbox, trials, refunds and moved-in history; metering per owner across projects; Checkout and Portal requests; every webhook (signed, wrong signature refused, replay safe); dunning `past_due` → `active`, `unpaid` → Free; meter events only when the bill changes, identifier per value; alert emails once per threshold; self-host has no billing; a live key is refused without `REVENUEDOT_BILLING_LIVE`.
+- Journey `scripts/e2e/journeys/billing.ts`: a Cloud-edition server, real sign-up, a production Stripe purchase above the free limit, metering, the upgrade through the fake Checkout page, the signed webhooks, the meter event, a failed payment, the email and recovery.
+- Playwright `apps/dashboard/e2e/billing.spec.ts`: the Billing page in each state, Upgrade to the fake Checkout and back, Manage billing.
+
+## Known gaps
+- No Stripe test-mode run yet (no test keys on this machine); every Stripe call is tested against the fake, which follows Stripe's API reference for the fields we use.
+- Metering reads the month's transactions of every project in one query per tick; fine for now, a rollup later.
+- Enterprise accounts are set by hand (`billing_accounts.plan = 'enterprise'`).

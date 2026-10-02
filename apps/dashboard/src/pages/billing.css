@@ -1,0 +1,20 @@
+/* Billing (prd/cloud-billing) and Receive a project (prd/moves-export). DESIGN.md tokens only. */
+.bl-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);background:var(--panel);position:relative}
+.bl-grid>div{display:flex;flex-direction:column;gap:6px;padding:16px;border-right:1px solid var(--border);min-width:0}
+.bl-grid>div:last-child{border-right:0}
+.bl-grid .l,.bl-plan .l{font:600 11px/16px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);display:flex;gap:8px;align-items:center}
+.bl-grid .v{font:600 26px/32px var(--font);letter-spacing:-.035em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bl-grid .v.name{white-space:normal;overflow:visible;text-wrap:balance}
+.bl-grid .d{font-size:12.5px;color:var(--fg-2)}
+.bl-meter{height:6px;background:var(--hover);border:1px solid var(--border)}
+.bl-meter span{display:block;height:100%;background:var(--fg)}
+.bl-meter span.over{background:var(--down)}
+.bl-plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap)}
+.bl-plan{border:1px solid var(--border);background:var(--panel);padding:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;min-width:0}
+.bl-plan.current{border-color:var(--fg);box-shadow:inset 2px 0 0 var(--accent)}
+.bl-plan .v{font:600 20px/26px var(--font);letter-spacing:-.02em}
+.bl-plan p{margin:0;font-size:13px;color:var(--fg-2);flex:1}
+.auth-card.wide{max-width:640px}
+.token-box{display:block;flex:1;min-width:0;padding:8px 10px;border:1px solid var(--border);background:var(--panel);font-size:12px;word-break:break-all}
+@media (max-width:900px){.bl-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bl-grid>div:nth-child(2n){border-right:0}.bl-grid>div:nth-child(-n+2){border-bottom:1px solid var(--border)}.bl-plans{grid-template-columns:1fr}}
+@media (max-width:480px){.bl-grid .v{font-size:20px;line-height:26px;white-space:normal;overflow-wrap:anywhere}}

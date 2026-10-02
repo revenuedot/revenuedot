@@ -10,6 +10,7 @@ import {
 } from "../services/account-email.js";
 import { acceptInvite, inviteByToken, normEmail } from "../services/members.js";
 import { clientIp, hit } from "../services/rate-limit.js";
+import { stripeProblem } from "../services/billing/stripe.js";
 
 const Password = z.string().min(8, "Use at least 8 characters for your password.").max(200, "Use at most 200 characters for your password.");
 const Email = z.string().trim().toLowerCase().email("Enter a valid email address.");
@@ -129,8 +130,12 @@ export function authRoutes(deps: Deps) {
     if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
     return c.json({
       user: { id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails },
-      // Every cloud account is on the free plan until billing plans ship; self-hosted servers have no plan.
-      account: { edition: deps.edition ?? "self-hosted", plan: u.plan, email_verification_required: needsVerification(deps, u) },
+      // Cloud: the plan and billing status (prd/cloud-billing/PRD.md); self-hosted servers have no plan. `billing_ready`:
+      // RevenueDot's Stripe is set up; until then the dashboard links no Billing page, as before billing existed.
+      account: {
+        edition: deps.edition ?? "self-hosted", plan: u.plan, billing_ready: deps.edition === "cloud" && !stripeProblem(deps.billing),
+        billing_status: deps.edition === "cloud" ? (await deps.db.select({ s: schema.billingAccounts.status }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)))[0]?.s ?? "none" : null, email_verification_required: needsVerification(deps, u),
+      },
       projects: await projectsForUser(deps.db, u.id),
       ...(await meExtras(c, u.id)),
     });
