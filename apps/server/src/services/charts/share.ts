@@ -257,7 +257,8 @@ function cohortSvg(s: ChartSnapshot, w: number, h: number, css: boolean): string
     out.push(`<line x1="0" x2="${w}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${p.border2}"/>`);
     out.push(text(0, y + rh / 2, r.label, "start"));
     r.cells.slice(0, cols).forEach((v, k) => {
-      if (k > 0 && v !== null && max > 0) out.push(`<rect x="${(labelW + cw * k).toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${rh.toFixed(1)}" fill="${p.fg}" fill-opacity="${(0.04 + 0.32 * (v / max)).toFixed(3)}"/>`);
+      // Shades for positive values only (a refund month can be negative), as on the chart page.
+      if (k > 0 && v !== null && v > 0 && max > 0) out.push(`<rect x="${(labelW + cw * k).toFixed(1)}" y="${y.toFixed(1)}" width="${cw.toFixed(1)}" height="${rh.toFixed(1)}" fill="${p.fg}" fill-opacity="${(0.04 + 0.32 * (v / max)).toFixed(3)}"/>`);
       out.push(text(labelW + cw * (k + 1) - 8, y + rh / 2, v === null ? "" : formatValue(v, c.columns[k]!.unit, s.currency, c.columns[k]!.precision)));
     });
   });
@@ -329,7 +330,8 @@ export async function cardPng(s: ChartSnapshot): Promise<Uint8Array> {
     const max = Math.max(0, ...vals);
     const cw = (right - left) / Math.max(1, cols), rh = (bottom - top - 8) / Math.max(1, rows.length);
     rows.forEach((row, i) => row.cells.slice(0, cols).forEach((v, k) => {
-      if (k === 0 || v === null || max <= 0) return;
+      // Negative cells (a refund month) get no shade: a negative t made a channel above 255, which wrapped to a grey.
+      if (k === 0 || v === null || v <= 0 || max <= 0) return;
       const t = 0.08 + 0.7 * (v / max);
       r.rect(left + cw * k + 1, top + 4 + rh * i + 1, cw - 2, rh - 2, [Math.round(255 - (255 - 10) * t), Math.round(255 - (255 - 10) * t), Math.round(255 - (255 - 10) * t)]);
     }));
