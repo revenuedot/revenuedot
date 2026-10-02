@@ -97,7 +97,7 @@ export function BenchmarkSharing({ pid, compact }: { pid: string; compact?: bool
         {!compact && <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)" }}>Compare trial conversion, churn, refunds, LTV, ARPU and prices with apps like yours. Only projects that share see peer numbers.</p>}
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: "22px", color: "var(--fg-2)" }}>
           <li>Off by default. Nothing about this project is shared until an admin turns this on.</li>
-          <li>RevenueDot shares only percentiles of groups with at least 10 apps. No app, customer or exact count is ever shown to anyone.</li>
+          <li>RevenueDot shares only percentiles of groups with at least 10 apps from 10 different accounts. No app, customer or exact count is ever shown to anyone.</li>
           <li>Turning it off removes this project's values from every group at once.</li>
           <li>Only RevenueDot Cloud computes benchmarks; self-hosted servers never share.</li>
         </ul>
@@ -231,7 +231,7 @@ export function BenchmarksPage() {
               </div>
               <div className="bm-key" aria-hidden><span><i className="band" />Middle half of apps (25th to 75th percentile)</span><span><i className="med" />Median</span><span><i className="you" />You</span></div>
             </section>
-            <p className="fn">Benchmarks use the same definitions as Charts, over the last 12 complete months, with sandbox purchases excluded. Groups need at least {b.k_anonymity ?? 10} apps; app counts are rounded down to a multiple of 5. <Link className="link-u" to={`/projects/${pid}/settings/benchmarks`}>Sharing settings</Link></p>
+            <p className="fn">Benchmarks use the same definitions as Charts, over the last 12 complete months, with sandbox purchases excluded. Groups need at least {b.k_anonymity ?? 10} apps from as many different accounts; app counts are rounded down to a multiple of 5. <Link className="link-u" to={`/projects/${pid}/settings/benchmarks`}>Sharing settings</Link></p>
           </>
         )}
       </div>
