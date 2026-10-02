@@ -59,10 +59,11 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
     db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox))),
     db.select().from(S).where(and(eq(S.projectId, projectId), eq(S.isSandbox, sandbox))),
     db.select({ store: N.store, tx: N.storeTransactionId, offering: N.presentedOfferingId }).from(N).where(and(eq(N.projectId, projectId), eq(N.isSandbox, sandbox))),
+    // project_id in the join lets Postgres read only this project's attribution rows (customer_attribution_media index).
     db.select({
       id: C.id, firstSeen: C.firstSeen, lastSeen: C.lastSeen, country: C.lastSeenCountry, platform: C.lastSeenPlatform, appVersion: C.lastSeenAppVersion,
       mediaSource: CAT.mediaSource, campaign: CAT.campaign, adGroup: CAT.adGroup, keyword: CAT.keyword, ad: CAT.ad, creative: CAT.creative,
-    }).from(C).leftJoin(CAT, eq(CAT.customerId, C.id)).where(eq(C.projectId, projectId)),
+    }).from(C).leftJoin(CAT, and(eq(CAT.customerId, C.id), eq(CAT.projectId, projectId))).where(eq(C.projectId, projectId)),
     db.select().from(schema.products).where(eq(schema.products.projectId, projectId)),
     db.select({ customerId: E.customerId, type: E.type, at: E.eventTimestampMs, store: sql<string | null>`${E.payload}->'event'->>'store'`, productId: sql<string | null>`${E.payload}->'event'->>'product_id'`, cancelReason: sql<string | null>`${E.payload}->'event'->>'cancel_reason'` }).from(E)
       .where(and(eq(E.projectId, projectId), eq(E.environment, env), inArray(E.type, ["CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE"]))),
