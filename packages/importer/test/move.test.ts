@@ -76,7 +76,7 @@ describe("npx revenuedot move", () => {
 
     const copy = await cli(base, env);
     expect(copy.code, copy.err).toBe(0);
-    expect(copy.out).toMatch(/All 67 tables match/);
+    expect(copy.out).toMatch(/All 69 tables match/);
     expect(copy.out).toMatch(/still serves the project/);
     const [incoming] = await dst.db.select().from(schema.projects);
     expect(incoming!.moveState).toBe("incoming");
@@ -139,7 +139,7 @@ describe("npx revenuedot move", () => {
     const token = (await createImportToken(dst.db, "usr_t", src.now())).token;
     const right = await cli(["move", "--from", "http://source.test", "--to", "http://target.test", "--state", join(dir, "s.json")], { REVENUEDOT_FROM_KEY: src.ids.secretKey, REVENUEDOT_TO_TOKEN: token });
     expect(right.code, right.err).toBe(0);
-    expect(right.out).toMatch(/All 67 tables match/);
+    expect(right.out).toMatch(/All 69 tables match/);
   });
 });
 
@@ -153,7 +153,7 @@ describe("npx revenuedot export", () => {
     const token = (await createImportToken(third.db, "usr_t", src.now())).token;
     const m = await cli(["move", "--from-archive", out, "--to", "http://third.test", "--state", join(dir, "a.json")], { REVENUEDOT_TO_TOKEN: token });
     expect(m.code, m.err).toBe(0);
-    expect(m.out).toMatch(/All 67 tables match/);
+    expect(m.out).toMatch(/All 69 tables match/);
     expect(await third.db.select().from(schema.customerAliases)).toHaveLength(2);
     // Without secrets the webhook's signing secret is not in the archive.
     const [hook] = await third.db.select().from(schema.webhooks);
