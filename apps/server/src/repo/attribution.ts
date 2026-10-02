@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { ATTRIBUTION_SOURCE_KEYS, attributionFromAttributes, type AppleAdsNames, type CustomerAttributionFields } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 
@@ -37,6 +37,38 @@ export async function syncCustomerAttribution(db: DB, customerId: string, now = 
   return row;
 }
 
+/** Customers per round of a batch rebuild: one read of their attributes, one multi-row upsert, one delete. */
+const BATCH = 500;
+
+/**
+ * Rebuilds the attribution rows of many customers of one project with a fixed number of statements per BATCH customers
+ * (the importer's pages and the Apple Search Ads name sync run on Workers, where every statement is a round trip).
+ */
+export async function syncAttributionBatch(db: DB, projectId: string, customerIds: string[], now = new Date(), names?: AppleAdsNames) {
+  const ids = [...new Set(customerIds)];
+  if (!ids.length) return 0;
+  const n = names ?? await appleAdsNames(db, projectId);
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const part = ids.slice(i, i + BATCH);
+    const rows = await db.select({ customerId: schema.customerAttributes.customerId, key: schema.customerAttributes.key, value: schema.customerAttributes.value })
+      .from(schema.customerAttributes).where(and(inArray(schema.customerAttributes.customerId, part), inArray(schema.customerAttributes.key, ATTRIBUTION_SOURCE_KEYS)));
+    const by = new Map<string, Record<string, string | null>>(part.map((id) => [id, {}]));
+    for (const r of rows) by.get(r.customerId)![r.key] = r.value;
+    const keep: (typeof CA.$inferInsert)[] = [], drop: string[] = [];
+    for (const id of part) {
+      const row = attributionFromAttributes(by.get(id)!, n);
+      if (row) keep.push({ customerId: id, projectId, ...row, updatedAt: now }); else drop.push(id);
+    }
+    if (keep.length) {
+      const cols = ["projectId", "mediaSource", "campaign", "campaignId", "adGroup", "adGroupId", "ad", "adId", "keyword", "keywordId", "creative", "claimType",
+        "conversionType", "attributionCountry", "partnerIds", "updatedAt"] as const;
+      await db.insert(CA).values(keep).onConflictDoUpdate({ target: CA.customerId, set: Object.fromEntries(cols.map((c) => [c, sql.raw(`excluded."${CA[c].name}"`)])) });
+    }
+    if (drop.length) await db.delete(CA).where(inArray(CA.customerId, drop));
+  }
+  return ids.length;
+}
+
 /**
  * After Apple Search Ads names were loaded: every customer of the project with an Apple Search Ads campaign or ad group
  * id gets the names. Returns how many rows were rebuilt.
@@ -44,16 +76,7 @@ export async function syncCustomerAttribution(db: DB, customerId: string, now = 
 export async function resyncAppleAdsNames(db: DB, projectId: string, now = new Date()): Promise<number> {
   const names = await appleAdsNames(db, projectId);
   const ids = (await db.select({ id: CA.customerId }).from(CA).where(and(eq(CA.projectId, projectId), or(isNotNull(CA.campaignId), isNotNull(CA.adGroupId))))).map((r) => r.id);
-  // 500 customers per round: one read of their attributes, one write per customer.
-  for (let i = 0; i < ids.length; i += 500) {
-    const part = ids.slice(i, i + 500);
-    const rows = await db.select().from(schema.customerAttributes)
-      .where(and(inArray(schema.customerAttributes.customerId, part), inArray(schema.customerAttributes.key, ATTRIBUTION_SOURCE_KEYS)));
-    const by = new Map<string, Record<string, string | null>>(part.map((id) => [id, {}]));
-    for (const r of rows) by.get(r.customerId)![r.key] = r.value;
-    for (const id of part) await write(db, id, projectId, attributionFromAttributes(by.get(id)!, names), now);
-  }
-  return ids.length;
+  return syncAttributionBatch(db, projectId, ids, now, names);
 }
 
 export type CustomerAttributionRow = typeof CA.$inferSelect;

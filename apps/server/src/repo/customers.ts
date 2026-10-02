@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { isAnonymous, isAttributionKey, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
+import { ATTRIBUTION_KEYS, isAnonymous, isAttributionKey, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { accessOf } from "./access.js";
 import { syncCustomerAttribution } from "./attribution.js";
@@ -69,14 +69,23 @@ export async function backdateFirstSeen(db: DB, customerId: string, earliest: Da
   await db.update(customers).set({ firstSeen: earliest }).where(and(eq(customers.id, customerId), sql`${customers.firstSeen} > ${earliest.toISOString()}::timestamptz`));
 }
 
-/** Upserts attributes; a newer `updated_at_ms` wins. Empty string or null deletes the value (iOS sends "", Android null). */
-export async function setAttributes(db: DB, customerId: string, attrs: Record<string, { value: unknown; updated_at_ms?: number }>, now: Date) {
+const WRITE_ONCE = new Set<string>(ATTRIBUTION_KEYS);
+
+/**
+ * Upserts attributes; a newer `updated_at_ms` wins. Empty string or null deletes the value (iOS sends "", Android null).
+ * `attributionOnce` (the SDK endpoints): attribution attributes ($mediaSource, $campaign … $appleAds*) are write-once,
+ * as RevenueCat documents ("Once attribution data is set for a subscriber, it can't be changed"), so a reinstall or a
+ * partner resending conversion data never overwrites the original install's attribution. The REST API v2 (a developer
+ * with a secret key, the dashboard) can still correct or clear them.
+ */
+export async function setAttributes(db: DB, customerId: string, attrs: Record<string, { value: unknown; updated_at_ms?: number }>, now: Date, o: { attributionOnce?: boolean } = {}) {
   let attribution = false;
   for (const [key, raw] of Object.entries(attrs ?? {})) {
     const value = raw?.value === null || raw?.value === undefined || raw.value === "" ? null : String(raw.value);
     const updatedAtMs = Number(raw?.updated_at_ms ?? now.getTime());
     const [cur] = await db.select().from(customerAttributes).where(and(eq(customerAttributes.customerId, customerId), eq(customerAttributes.key, key))).limit(1);
     if (cur && cur.updatedAtMs > updatedAtMs) continue;
+    if (o.attributionOnce && cur && cur.value !== null && cur.value !== value && WRITE_ONCE.has(key)) continue;
     if (cur) await db.update(customerAttributes).set({ value, updatedAtMs }).where(and(eq(customerAttributes.customerId, customerId), eq(customerAttributes.key, key)));
     else await db.insert(customerAttributes).values({ customerId, key, value, updatedAtMs });
     if (isAttributionKey(key)) attribution = true;

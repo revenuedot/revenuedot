@@ -66,6 +66,48 @@ describe("keeping customer_attribution in step", () => {
   });
 });
 
+describe("write semantics", () => {
+  it("keeps the first attribution the SDK sent, like RevenueCat; other attributes and the REST API v2 still change", async () => {
+    const ios = (await ada.browser.call("POST", `${P}/apps`, { name: "Scanner iOS", type: "app_store", app_store: { bundle_id: "com.example.attr" } })).body;
+    const key = (await ada.browser.call("GET", `${P}/apps/${ios.id}/public_api_keys`)).body.items[0].key;
+    const sdk = (attributes: Record<string, unknown>) => s.client().call("POST", "/v1/subscribers/sdk_once/attributes", { attributes }, { authorization: `Bearer ${key}`, "x-platform": "iOS" });
+    const t = s.now().getTime();
+    expect((await sdk({ $mediaSource: { value: "Meta", updated_at_ms: t }, $campaign: { value: "Install", updated_at_ms: t }, $email: { value: "a@x.io", updated_at_ms: t } })).status).toBe(200);
+    // A reinstall or a partner resending conversion data: newer values, and a clear.
+    expect((await sdk({ $mediaSource: { value: "TikTok", updated_at_ms: t + 1000 }, $campaign: { value: "", updated_at_ms: t + 1000 }, $adGroup: { value: "Late", updated_at_ms: t + 1000 }, $email: { value: "b@x.io", updated_at_ms: t + 1000 } })).status).toBe(200);
+    const c = await customer("sdk_once");
+    expect(await row(c.id)).toMatchObject({ mediaSource: "Meta", campaign: "Install", adGroup: "Late" });
+    const attrs = Object.fromEntries((await s.db.select().from(schema.customerAttributes).where(eq(schema.customerAttributes.customerId, c.id))).map((a) => [a.key, a.value]));
+    expect(attrs).toMatchObject({ $mediaSource: "Meta", $campaign: "Install", $email: "b@x.io" });
+    // The developer corrects it with a secret key (REST API v2), then clears it so later tests start clean.
+    s.advance(1000);
+    await ada.browser.call("POST", `${P}/customers/sdk_once/attributes`, { attributes: [{ name: "$mediaSource", value: "Google Ads" }] });
+    expect(await row(c.id)).toMatchObject({ mediaSource: "Google Ads", campaign: "Install" });
+    s.advance(1000);
+    await ada.browser.call("POST", `${P}/customers/sdk_once/attributes`, { attributes: [{ name: "$mediaSource", value: null }, { name: "$campaign", value: null }, { name: "$adGroup", value: null }] });
+    expect(await row(c.id)).toBeNull();
+  });
+
+  it("follows the attributes an import writes, Apple Search Ads names included", async () => {
+    const t = s.now().getTime();
+    const imp = (customers: unknown[]) => ada.browser.call("POST", `${P}/import/customers`, { customers });
+    const r = await imp([
+      { id: "imp_meta", attributes: [{ name: "$mediaSource", value: "Meta", updated_at: t }, { name: "$campaign", value: "Imported", updated_at: t }, { name: "$adjustId", value: "adj-9", updated_at: t }] },
+      { id: "imp_asa", attributes: [{ name: "$mediaSource", value: "Apple Search Ads", updated_at: t }, { name: "$campaign", value: "111", updated_at: t }, { name: "$appleAdsCampaignId", value: "111", updated_at: t }] },
+      { id: "imp_plain", attributes: [{ name: "$email", value: "p@example.com", updated_at: t }] },
+    ]);
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(await row((await customer("imp_meta")).id)).toMatchObject({ projectId: ada.projectId, mediaSource: "Meta", campaign: "Imported", partnerIds: { adjust_id: "adj-9" } });
+    expect(await row((await customer("imp_asa")).id)).toMatchObject({ mediaSource: "Apple Search Ads", campaign: "Brand US", campaignId: "111" });
+    expect(await row((await customer("imp_plain")).id)).toBeNull();
+    // A later import that clears them drops the rows.
+    const cleared = await imp(["imp_meta", "imp_asa"].map((id) => ({ id, attributes: ["$mediaSource", "$campaign", "$adjustId", "$appleAdsCampaignId"].map((name) => ({ name, value: null, updated_at: t + 1000 })) })));
+    expect(cleared.status, JSON.stringify(cleared.body)).toBe(200);
+    expect(await row((await customer("imp_meta")).id)).toBeNull();
+    expect(await row((await customer("imp_asa")).id)).toBeNull();
+  });
+});
+
 describe("audiences and the Customers lists", () => {
   it("filter by campaign name, media source and the other attribution fields", async () => {
     const d = await customer("tiktok_1");

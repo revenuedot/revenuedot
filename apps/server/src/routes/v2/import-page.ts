@@ -3,9 +3,10 @@
 // Docs: https://revenuedot.app/docs/migrate
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
-import { accessEndsAt, newId, type Store } from "@revenuedot/core";
+import { accessEndsAt, isAttributionKey, newId, type AppleAdsNames, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { mergeCustomers, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
+import { appleAdsNames, syncAttributionBatch } from "../../repo/attribution.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { importedAppleChainKey } from "../../services/imported-chains.js";
 import type { VerifiedOneTime, VerifiedSubscription } from "../../stores/types.js";
@@ -102,7 +103,10 @@ class WorkingSet {
   private txns = new Map<string, TxnRow>();
   private owners = new Map<string, { store: string; tx: string; customerId: string }>();
 
-  constructor(readonly db: DB, private projectId: string) {}
+  /** The project's Apple Search Ads names, loaded once per page when an imported customer has attribution. */
+  private names?: AppleAdsNames;
+
+  constructor(readonly db: DB, private projectId: string, private now = new Date()) {}
 
   /** Loads what `customers` can read: 3 to 5 queries for a page. */
   async load(customers: ImportCustomer[], keys: Map<ImportSub, KeyInfo>) {
@@ -195,6 +199,9 @@ class WorkingSet {
     for (const part of rowChunks(this.newAliases)) await db.insert(A).values(part).onConflictDoNothing();
     const attrRows = [...this.changedAttrs].map(([k, { customerId, key }]) => ({ customerId, key, ...this.attrs.get(k)! }));
     for (const part of rowChunks(attrRows)) await db.insert(CA).values(part).onConflictDoUpdate({ target: [CA.customerId, CA.key], set: excluded(CA, ["value", "updatedAtMs"]) });
+    // Imported attribution attributes ($mediaSource, $campaign …) also become the customers' first-class attribution rows.
+    const attributed = attrRows.filter((r) => isAttributionKey(r.key)).map((r) => r.customerId);
+    if (attributed.length) await syncAttributionBatch(db, projectId, attributed, this.now, this.names ??= await appleAdsNames(db, projectId));
     for (const part of chunks([...this.goneSubs], IN_CHUNK)) await db.delete(S).where(inArray(S.id, part));
     // Existing rows before new ones: a placeholder key one row gives up may be taken by a new row.
     for (const g of byColumns(this.changedSubs, (id) => this.subs.get(id)!)) {
@@ -218,7 +225,7 @@ class WorkingSet {
 
 /** Imports one page in order. Call it inside a transaction: the page is written whole or not at all. */
 export async function importPage(db: DB, ctx: Ctx, customers: ImportCustomer[]): Promise<Report[]> {
-  const ws = new WorkingSet(db, ctx.projectId);
+  const ws = new WorkingSet(db, ctx.projectId, ctx.now);
   await ws.load(customers, ctx.keys);
   const out: Report[] = [];
   for (let i = 0; i < customers.length; i++) {
