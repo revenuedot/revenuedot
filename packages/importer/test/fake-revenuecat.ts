@@ -36,6 +36,8 @@ export class FakeRevenueCat {
   hooks: Hook[] = [];
   /** Largest page served, whatever `limit` asks for (small values exercise pagination). */
   maxPage = 100;
+  /** Called after each list page is served (a test can reorder the model the way live activity does). */
+  onList?: (template: string, items: Obj[]) => void;
 
   constructor(public model: RcModel, public key: string, private spec: Spec | null) {}
 
@@ -75,6 +77,7 @@ export class FakeRevenueCat {
       q.set("starting_after", key(items[items.length - 1]!));
       next = `${this.url}${req.path}?${q}`;
     }
+    this.onList?.(req.template, items);
     return { object: "list", items, next_page: next, url: `${this.url}${url}` };
   }
 

@@ -93,7 +93,7 @@ describe("revenuedot import", () => {
 
     const v = await verify(e);
     expect(v.mismatches).toEqual([]);
-    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14 });
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0 });
     expect(v.activeSubscriptions).toEqual({ revenuecat: 8, revenuedot: 8 });
     expect(v.activeEntitlements).toEqual({ revenuecat: 9, revenuedot: 9 });
   });
@@ -161,6 +161,8 @@ describe("revenuedot import", () => {
     find("user_expired").subscriptions[0]!.gives_access = true;
     find("user_apple").active = [{ object: "customer.active_entitlement", entitlement_id: "entl_pro", expires_at: T0 + 55 * DAY }];
     m.customers.push({ ...find("user_plain_1"), id: "user_late", aliases: [] });
+    // Deleted in RevenueCat after the import: RevenueDot keeps it, and verify names it.
+    m.customers = m.customers.filter((c) => c.id !== "user_plain_1");
     const v = await verify(e);
     expect(v.mismatchedCustomers).toBe(3);
     expect(v.mismatches.map((x) => [x.customer, x.kind])).toEqual([
@@ -169,7 +171,54 @@ describe("revenuedot import", () => {
       ["user_expired", "entitlement_only_in_revenuecat"],
       ["user_late", "missing_customer"],
     ]);
-    expect(v.customers).toMatchObject({ revenuecat: 15, revenuedot: 14 });
+    expect(v.customers).toMatchObject({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 1, onlyInRevenueDot: 1 });
+    expect(v.onlyInRevenueDot).toEqual(["user_plain_1"]);
+  });
+
+  it("verify checks each customer once while RevenueCat's list order shifts under it", async () => {
+    e = await setup();
+    await e.run();
+    const m = e.rc.model;
+    e.rc.maxPage = 3;
+    // Live activity: the first customer of each page served becomes the most recent and moves to the end of the list,
+    // so a walk with starting_after meets it again.
+    let shifts = 0;
+    e.rc.onList = (template, items) => {
+      if (!template.endsWith("/customers") || shifts++ >= 4 || !items.length) return;
+      const i = m.customers.findIndex((c) => c.id === items[0]!.id);
+      m.customers.push(...m.customers.splice(i, 1));
+    };
+    const reads = () => e!.rc.requests.filter((r) => /\/customers\/[^/]+$/.test(r.path)).length;
+    const before = reads();
+    const v = await verify(e);
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0 });
+    expect(v.mismatches).toEqual([]);
+    expect(shifts).toBeGreaterThan(1);
+    // One read per customer, though the walk met some of them twice.
+    expect(reads() - before).toBe(14);
+  });
+
+  it("a customer RevenueCat's list order moves behind the cursor during the walk is imported by the catch-up", async () => {
+    e = await setup();
+    const m = e.rc.model;
+    e.rc.maxPage = 4;
+    const last = m.customers[m.customers.length - 1]!.id;
+    let moved = false;
+    e.rc.onList = (template) => {
+      if (moved || !template.endsWith("/customers")) return;
+      moved = true;
+      m.customers.unshift(...m.customers.splice(m.customers.length - 1, 1));
+    };
+    const r = await e.run();
+    expect(r.customers).toMatchObject({ pass: 1, imported: 14, caughtUp: 1, complete: true });
+    expect(formatReport(r)).toContain("1 of them imported at the end");
+    const [a] = await e.h.db.select().from(schema.customerAliases).where(eq(schema.customerAliases.appUserId, last));
+    expect(a).toBeDefined();
+    expect((await verify(e)).mismatches).toEqual([]);
+    // The next pass finds nothing to catch up.
+    const again = await e.run();
+    expect(again.customers).toMatchObject({ pass: 2, imported: 14, complete: true });
+    expect(again.customers.caughtUp ?? 0).toBe(0);
   });
 
   it("plan prints the cutover steps with this project's notification URLs and missing credentials", async () => {

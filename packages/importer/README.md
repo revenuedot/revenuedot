@@ -69,7 +69,7 @@ Both matter: they are how RevenueDot recognises the imported subscription when t
 npx revenuedot import verify --rc-project proj... --to http://localhost:8787
 ```
 
-For every customer it compares the active entitlements, their expiry dates and the number of subscriptions that give access. It prints the totals and every difference, and exits with code 1 when there is one. Purchases made since the import show up as differences: run the import again, then verify again.
+It first lists every customer id on both sides, so each customer is checked once even while RevenueCat's list order changes, and it names customers missing in RevenueDot and customers only RevenueDot has. For every customer it compares the active entitlements, their expiry dates and the number of subscriptions that give access. It prints the totals and every difference, and exits with code 1 when there is one. Purchases made since the import show up as differences: run the import again, then verify again.
 
 ## Step 5: cut over
 

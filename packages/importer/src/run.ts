@@ -99,6 +99,7 @@ export function formatReport(r: ImportReport): string {
   const merged = r.customers.merged ? `, ${r.customers.merged} of them merged from several RevenueDot customers` : "";
   out.push(`  ${r.customers.imported} customers ${r.dryRun ? "read" : "imported"}${r.dryRun ? "" : ` (${r.customers.created} new, ${existing} already in RevenueDot${merged})`}`);
   out.push(`  ${r.customers.subscriptions} subscriptions, ${r.customers.purchases} one-time purchases`);
+  if (r.customers.caughtUp) out.push(`  ${r.customers.caughtUp} of them imported at the end: RevenueCat's list order moved them past the walk while they were active`);
   if (r.dryRun && r.googleWithoutToken) out.push(`  ${r.googleWithoutToken} Google Play subscriptions have no purchase token in the export; RevenueDot looks them up with the app's service account, or marks them needs_token_refresh`);
   if (!r.dryRun && r.customers.needsTokenRefresh) out.push(`  ${r.customers.needsTokenRefresh} Google Play subscriptions need a purchase token (add the service account and run again; see "revenuedot import plan")`);
   const by = (k: Problem["kind"]) => r.problems.filter((p) => p.kind === k);
