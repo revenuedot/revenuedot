@@ -22,3 +22,9 @@ scripts/e2e/journeys/build/
 
 # High-availability runs (scripts/e2e/cluster): one server log per replica
 scripts/e2e/cluster/build/
+
+# Terraform reference setups (deploy/terraform): local state, plugins and filled-in variables never get committed
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

@@ -69,7 +69,8 @@ secrets:
   # ANTHROPIC_API_KEY / OPENAI_API_KEY: RevenueDot AI and "Generate with AI". Off without one.
   anthropicApiKey: ""
   openaiApiKey: ""
-  # REVENUEDOT_ARCHIVE_S3_ACCESS_KEY_ID / _SECRET_ACCESS_KEY: only when not using a service account role (IRSA, Workload Identity).
+  # REVENUEDOT_ARCHIVE_S3_ACCESS_KEY_ID / _SECRET_ACCESS_KEY: an access key for archives.s3.bucket. Role credentials
+  # (IRSA, Workload Identity) are not read yet.
   archiveS3AccessKeyId: ""
   archiveS3SecretAccessKey: ""
 
@@ -157,7 +158,6 @@ securityContext:
 serviceAccount:
   create: true
   name: ""
-  # e.g. eks.amazonaws.com/role-arn for an S3 archive bucket through IRSA.
   annotations: {}
   automountServiceAccountToken: false
 

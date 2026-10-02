@@ -1,4 +1,4 @@
-# Production shape: external Postgres through a Secret, hook Job migrations, Ingress with TLS, S3 archives through IRSA.
+# Production shape: external Postgres through a Secret, hook Job migrations, Ingress with TLS, S3 archives (keys in the Secret).
 publicUrl: https://revenuedot.example.com
 database:
   existingSecret: revenuedot-db
@@ -21,9 +21,6 @@ archives:
   s3:
     bucket: revenuedot-archives
     region: us-east-1
-serviceAccount:
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/revenuedot-archives
 networkPolicy:
   enabled: true
   ingressFrom:
