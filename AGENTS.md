@@ -23,7 +23,7 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - Sibling repos and the org map: `../AGENTS.md` (= `company/WORKSPACE.md`, private).
 
 ## Databases
-Use the Railway Postgres, never a local one. Development: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL` (Railway environment `development`); each task creates its own database on it (`CREATE DATABASE rd_<task>`). Production credentials are never on disk: CI deploys on every push to `main` with the GitHub `production` environment's secrets. Details are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print either URL.
+Use the Railway Postgres, never a local one. Development: `source ~/.config/revenuedot/dev.env` sets `REVENUEDOT_DEV_DATABASE_URL` (Railway environment `development`); each task creates its own database on it (`CREATE DATABASE rd_<task>`). CI deploys on every push to `main` with the GitHub `production` environment's secrets. On a maintainer's machine, production, store and registry secrets are in `~/.config/revenuedot/prod.env` (outside every repo): load them by name with `set -a; source ~/.config/revenuedot/prod.env; set +a` and never print, cat or commit a value. Details are in the workspace `AGENTS.md` (`company/WORKSPACE.md`, private). Unit tests use in-memory PGlite. Never commit or print either URL.
 
 ## Toolchain
 Node 24 (`.nvmrc`, `engines`), also in CI. Deploys use the `cf` CLI, not wrangler (`cf` needs Node 22.18 or newer). pnpm for the monorepo.

@@ -75,7 +75,7 @@ test("product catalog: products, entitlement, offerings, default offering and th
   await test.step("create app-scoped products; a duplicate store identifier is a 409 shown inline", async () => {
     await page.goto(`${base}/products`);
     await expect(page.getByRole("heading", { name: "No products yet" })).toBeVisible();
-    await expect(page.getByText("Import from store")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import products", exact: true }).first()).toBeVisible();
     await expect((await newProduct("Scanner iOS (App Store)", "pro_monthly", "Subscription", "P1M", "Pro monthly"))).toBeHidden();
     await expect(page.getByText("Product pro_monthly created")).toBeVisible();
     const dup = await newProduct("Scanner iOS (App Store)", "pro_monthly", "Subscription", "P1M", "Again");

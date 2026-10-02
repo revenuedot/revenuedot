@@ -4,10 +4,10 @@
 # domains, the every-minute cron). Steps and background: docs/cloud.md.
 #
 # Needs: Node 22.18 or newer (cf loads cloudflare.config.ts), `cf auth login` with access to the Circo account, and the
-# production Postgres URL in CLOUD_DATABASE_URL (default: read from 1Password, op://RevenueDot/Railway production Postgres/url).
+# production Postgres URL in CLOUD_DATABASE_URL (CI sets it; a manual run loads it from ~/.config/revenuedot/prod.env).
 # Run it from a clean checkout of main: it deploys and migrates whatever is in the working tree.
 #
-# Usage: pnpm deploy:cloud [--dry-run] [--secrets-file ~/.config/revenuedot/signing-root.key]
+# Usage: pnpm deploy:cloud [--dry-run] [--secrets-file "$REVENUEDOT_SIGNING_KEY_FILE"]
 #   --secrets-file  .env file with REVENUEDOT_SIGNING_KEY=..., uploaded with the version. Needed on the first deploy
 #                   only; later versions keep the secret.
 set -euo pipefail
@@ -43,12 +43,14 @@ if ! node_ok node; then
 fi
 node_ok node || { echo "cf needs Node 22.18 or newer to load cloudflare.config.ts (this is $(node -v))." >&2; exit 1; }
 
-# CI passes CLOUD_DATABASE_URL from the GitHub "production" environment. A manual deploy reads it from 1Password.
-if [[ -z "${CLOUD_DATABASE_URL:-}" && -z "$DRY_RUN" ]] && command -v op >/dev/null; then
-  CLOUD_DATABASE_URL=$(op read "op://RevenueDot/Railway production Postgres/url" | tr -d '\n')
+# CI passes CLOUD_DATABASE_URL from the GitHub "production" environment. A manual deploy loads the local env file
+# (REVENUEDOT_ENV_FILE overrides the path). The value is never printed.
+ENV_FILE="${REVENUEDOT_ENV_FILE:-$HOME/.config/revenuedot/prod.env}"
+if [[ -z "${CLOUD_DATABASE_URL:-}" && -z "$DRY_RUN" && -f "$ENV_FILE" ]]; then
+  set -a; source "$ENV_FILE"; set +a
 fi
 if [[ -z "$DRY_RUN" && -z "${CLOUD_DATABASE_URL:-}" ]]; then
-  echo "Set CLOUD_DATABASE_URL to the production Postgres URL (the one Hyperdrive points at)." >&2
+  echo "Set CLOUD_DATABASE_URL to the production Postgres URL (the one Hyperdrive points at), or put it in $ENV_FILE." >&2
   exit 1
 fi
 
