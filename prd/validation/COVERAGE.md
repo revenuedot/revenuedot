@@ -22,7 +22,7 @@ Every row names the journey or test that proves it and its status: **passed (dat
 | `lifecycle` | Lifecycle: renewal, cancellation, billing issue, expiration, refunds; webhooks key-checked; charts | passed 2026-10-02 (64 checks, run 202610020513165600) |
 | `stores` | Stores through real entry points with network fakes: Stripe webhooks, Amazon RVS + SNS, Google Play API + RTDN | passed 2026-10-02 (143 checks, run 202610020513165600) |
 | `identity` | Identity: anonymous → logIn → merge → alias → restore under each transfer behaviour; currency survives merges | passed 2026-10-02 (44 checks, run 202610020513165600) |
-| `targeting` | Targeting: audience from SDK attributes, rule with placements, two-offering experiment, enrollment, results | passed 2026-10-02 (26 checks, run 202610020513165600) |
+| `targeting` | Targeting: audience from SDK attributes, rule with placements, two-offering experiment, enrollment, results | passed 2026-10-02 (26 checks, run 202610020927295553) |
 | `experiments` | Experiments v2: duplicate offerings, a 4-variant (new US iOS customers, placements) and a 2-variant (new and existing) experiment, priority and reorder, 430 customers through the SDK's calls, purchases, trials, lapses and refunds, results against SQL, CSV, webhooks, the results page and an AI draft in Chromium | passed 2026-10-02 (53 checks, run 202610020914025553) |
 | `web-billing` | Web billing (fake Stripe): purchase link, discount, checkout, redemption email and SDK redeem, webhook once, funnel | passed 2026-10-02 (47 checks, run 202610020546045600) |
 | `lifecycle-tools` | Lifecycle tools: Refund Control, Retention, Win-back (SMTP, clicks, unsubscribe, reactivation), Support tickets, Customer lists and CSV | passed 2026-10-02 (201 checks, run 202610020513165600) |
@@ -31,7 +31,7 @@ Every row names the journey or test that proves it and its status: **passed (dat
 | `importer` | Moving from RevenueCat: the real CLI imports catalog, customers and history, idempotent, no webhooks | passed 2026-10-02 (70 checks, run 202610020513165600) |
 | `assistant` | RevenueDot AI: read with a tool, approve and deny a write, audit, viewer, read only, disabled | passed 2026-10-02 (34 checks, run 202610020513165600) |
 | `settings-auth` | Auth (OIDC sign-in, refresh, revoke), blocked customers, sandbox testing access, ownership transfer, brand, Verified Metrics | passed 2026-10-02 (156 checks, run 202610020513165600) |
-| `dashboard-ui` | The dashboard in a real browser: every page, every object created, edited and deleted, phone width, dark mode | passed 2026-10-02 (411 checks, run 202610020547185600) |
+| `dashboard-ui` | The dashboard in a real browser: every page, every object created, edited and deleted, phone width, dark mode | passed 2026-10-02 (411 checks, run 202610020927295553, on the Experiments v2 and Targeting pages) |
 | `import` | Import customers from RevenueCat: a 100-customer page in under 5 s, idempotent re-run, merges, the CLI end to end | passed 2026-10-02 (45 checks, run 202610020513165600) |
 | `connect-recovery` | Connect with Stripe (OAuth, sealed account, checkout, refund, disconnect, deauthorization) and payment recovery (Stripe, Google Play, Test Store) in a real browser | passed 2026-10-02 (66 checks, run 202610020546045600) |
 | `move` | Self-hosted to Cloud with npx revenuedot move: purchases-js before and after, webhooks keep their secret | passed 2026-10-02 (56 checks, run 202610020807295600) |

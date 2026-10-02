@@ -30,7 +30,7 @@
   "targeting": {
     "title": "Targeting: audience from SDK attributes, rule with placements, two-offering experiment, enrollment, results",
     "date": "2026-10-02",
-    "run": "202610020513165600",
+    "run": "202610020927295553",
     "passed": 26,
     "failed": 0
   },
@@ -79,7 +79,7 @@
   "dashboard-ui": {
     "title": "The dashboard in a real browser: every page, every object created, edited and deleted, phone width, dark mode",
     "date": "2026-10-02",
-    "run": "202610020547185600",
+    "run": "202610020927295553",
     "passed": 411,
     "failed": 0
   },
