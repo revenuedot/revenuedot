@@ -7,6 +7,8 @@ import type { Access } from "../../repo/access.js";
 import { embeddedList, ms, round2 } from "./common.js";
 import { storeSecretSet } from "../../services/store-secrets.js";
 import { hasServiceAccount } from "../../stores/google/api.js";
+import { indicativePriceOf, storeDetailsOf, type ListingRow, type SyncRow } from "../../services/store-prices.js";
+import { fromMinor } from "../../stores/stripe/map.js";
 
 /** Serializers from our rows to RevenueCat API v2 objects. */
 
@@ -83,16 +85,39 @@ export function appShape(a: AppRow) {
 }
 
 /**
- * `expand=indicative_price` (RevenueCat's name): the Test Store price when the product has one. RevenueDot has no
- * App Store or Google Play price source yet, so every other product reports null.
+ * Store prices for product answers (prd/catalog/PRD.md "Store prices and status"): the cached store listing of each
+ * product, each app's last refresh, and Stripe web product prices. `details` adds `store_details` (extension).
  */
-export function indicativePrice(p: ProductRow) {
-  return p.testStorePriceMicros !== null && p.testStorePriceCurrency
-    ? { object: "indicative_price" as const, currency: p.testStorePriceCurrency, country: null, amount_micros: p.testStorePriceMicros }
-    : null;
+export interface PriceContext { listings: Map<string, ListingRow>; syncs: Map<string, SyncRow>; web: Map<string, { amountMinorMicros: number; currency: string }>; details: boolean }
+
+/** Loads the price context for these products (one query per table). */
+export async function priceContext(db: DB, projectId: string, products: ProductRow[], details: boolean): Promise<PriceContext> {
+  const appIds = [...new Set(products.map((p) => p.appId))];
+  const ids = products.map((p) => p.id);
+  const listings = new Map<string, ListingRow>();
+  const syncs = new Map<string, SyncRow>();
+  const web = new Map<string, { amountMinorMicros: number; currency: string }>();
+  if (appIds.length) {
+    for (const r of await db.select().from(schema.storeListings).where(and(eq(schema.storeListings.projectId, projectId), inArray(schema.storeListings.appId, appIds)))) listings.set(`${r.appId}|${r.storeIdentifier}`, r);
+    for (const r of await db.select().from(schema.storeListingSyncs).where(and(eq(schema.storeListingSyncs.projectId, projectId), inArray(schema.storeListingSyncs.appId, appIds)))) syncs.set(r.appId, r);
+  }
+  if (ids.length) {
+    for (const w of await db.select().from(schema.webProducts).where(and(eq(schema.webProducts.projectId, projectId), inArray(schema.webProducts.productId, ids)))) {
+      web.set(w.productId, { amountMinorMicros: Math.round(fromMinor(w.amountMinor, w.currency) * 1_000_000), currency: w.currency });
+    }
+  }
+  return { listings, syncs, web, details };
 }
 
-export function productShape(p: ProductRow, app?: AppRow | null, withPrice = false) {
+/**
+ * `expand=indicative_price` (RevenueCat's name): the Test Store price, else the store's price in the United States (or
+ * its base territory) from the last price refresh, else the Stripe web product's price (services/store-prices.ts).
+ */
+export function indicativePrice(p: ProductRow, ctx?: PriceContext | null) {
+  return indicativePriceOf(p, ctx?.listings.get(`${p.appId}|${p.storeIdentifier}`), ctx?.web.get(p.id));
+}
+
+export function productShape(p: ProductRow, app?: AppRow | null, withPrice = false, ctx?: PriceContext | null) {
   const isSub = p.type === "subscription";
   const oneTime = p.type === "consumable" || p.type === "non_consumable" || p.type === "one_time" || p.type === "non_renewing_subscription";
   return {
@@ -100,7 +125,8 @@ export function productShape(p: ProductRow, app?: AppRow | null, withPrice = fal
     ...(isSub ? { subscription: { duration: p.duration ?? null, grace_period_duration: null, trial_duration: null } } : {}),
     ...(oneTime ? { one_time: { is_consumable: p.type === "consumable" ? true : p.type === "non_consumable" ? false : null } } : {}),
     created_at: p.createdAt.getTime(), app_id: p.appId, display_name: p.displayName ?? null,
-    ...(withPrice ? { indicative_price: indicativePrice(p) } : {}),
+    ...(withPrice ? { indicative_price: indicativePrice(p, ctx) } : {}),
+    ...(ctx?.details ? { store_details: storeDetailsOf(ctx.listings.get(`${p.appId}|${p.storeIdentifier}`), ctx.syncs.get(p.appId)) } : {}),
     ...(app ? { app: appShape(app) } : {}),
   };
 }

@@ -13,6 +13,7 @@ export const TOOL_TITLES: Record<string, string> = {
   "get-experiment-results": "Experiment results", "get-project-health": "Setup health", "list-webhook-integrations": "Webhooks",
   "list-webhook-deliveries": "Webhook deliveries", "list-integrations": "Integrations", "get-import-status": "Import status",
   "grant-customer-entitlement": "Grant entitlement", "revoke-customer-entitlement": "Revoke entitlement", "create-product": "Create product",
+  "create-products": "Create products", "create-offering": "Create offering",
   "attach-products-to-entitlement": "Attach products to entitlement", "attach-products-to-package": "Attach products to package",
   "set-current-offering": "Set current offering", "import-storekit-products": "Import StoreKit products", "start-experiment": "Start experiment",
   "pause-experiment": "Pause experiment", "retry-webhook-delivery": "Retry webhook delivery", "replay-failed-webhook-deliveries": "Replay failed deliveries",
@@ -40,6 +41,15 @@ export function describeWrite(name: string, a: Input): string {
     case "grant-customer-entitlement": return `Grant ${s(a.entitlement_id)} to ${s(a.customer_id)} ${until(a.expires_at)}`.trim();
     case "revoke-customer-entitlement": return `Revoke the granted ${s(a.entitlement_id)} from ${s(a.customer_id)}`;
     case "create-product": return `Create the ${s(a.type).replace(/_/g, " ")} product ${s(a.store_identifier)}${a.subscription_duration ? ` (${s(a.subscription_duration)})` : ""}`;
+    case "create-products": {
+      const list = (a.products as Input[] | undefined) ?? [];
+      const ent = a.entitlement as Input | undefined;
+      return `Create ${list.length} product${list.length === 1 ? "" : "s"}${ent ? ` and attach ${list.length === 1 ? "it" : "them"} to ${s(ent.lookup_key)}` : ""}`;
+    }
+    case "create-offering": {
+      const pk = (a.packages as Input[] | undefined) ?? [];
+      return `Create the offering ${s(a.lookup_key)} with ${pk.length} package${pk.length === 1 ? "" : "s"}${a.make_current ? " and make it current" : ""}`;
+    }
     case "attach-products-to-entitlement": return `Attach ${(a.product_ids as unknown[] | undefined)?.length ?? 0} product(s) to ${s(a.entitlement_id)}`;
     case "attach-products-to-package": return `Put ${(a.product_ids as unknown[] | undefined)?.length ?? 0} product(s) in package ${s(a.package_id)}`;
     case "set-current-offering": return `Make ${s(a.offering_id)} the current offering`;
@@ -64,5 +74,5 @@ export function describeRead(name: string, a: Input): string {
   }
 }
 
-export const WRITE_TOOLS = new Set(["grant-customer-entitlement", "revoke-customer-entitlement", "create-product", "attach-products-to-entitlement", "attach-products-to-package",
+export const WRITE_TOOLS = new Set(["grant-customer-entitlement", "revoke-customer-entitlement", "create-product", "create-products", "create-offering", "attach-products-to-entitlement", "attach-products-to-package",
   "set-current-offering", "import-storekit-products", "start-experiment", "pause-experiment", "retry-webhook-delivery", "replay-failed-webhook-deliveries"]);

@@ -68,6 +68,7 @@ export function instructionsFor(ctx: AssistantContext, now: Date): string {
       : ctx.scope.role === "viewer"
         ? "- You cannot change anything: the user's role is Viewer, which can only read, in the dashboard too. If asked, say so and say that an Admin or Developer of this project can make the change; only an Admin can invite people or change roles (Project settings → Collaborators shows who). Project roles are Admin, Developer and Viewer; there are no others."
         : `- You cannot change anything in this project (${ctx.scope.reason}). If asked, say so and tell the user the dashboard page where they can do it themselves, e.g. a customer's page has Grant entitlement.`,
+    "- Creating catalog objects (\"Create with AI\" on the Products and Offerings pages): read list-apps, list-products and list-entitlements first, then draft everything in one create-products or create-offering call, so the user approves one card that lists it all. Use each store's identifier rules (App Store product ids such as com.example.pro.monthly, Google Play subscription_id:base_plan_id, any id on the Test Store) and RevenueCat's package ids ($rc_monthly, $rc_annual …). Products are created in RevenueDot's catalog, not in the stores; prices are set in the stores (the Product editor changes App Store and Google Play prices).",
     "",
     "Safety:",
     "- Never reveal or ask for API keys, secrets, passwords, store credentials or tokens. Tool results hide them; do not try to work around that.",

@@ -85,8 +85,8 @@ test("Products at 1200px: nothing cut; Attach creates an entitlement in place, r
   await page.goto(`/projects/${ids.sleep}/product-catalog/products`);
   const table = page.locator("table.cat-ptable");
   await expect(table.getByRole("row")).toHaveCount(3);
-  // Entitlements and Created are fully visible: no cell of those columns is cut.
-  const cut = await table.evaluate((t) => [...t.querySelectorAll("tbody td:nth-child(4), tbody td:nth-child(5)")].filter((td) => td.scrollWidth > td.clientWidth).map((td) => td.textContent));
+  // Status, Entitlements and Created are fully visible: no cell of those columns is cut.
+  const cut = await table.evaluate((t) => [...t.querySelectorAll("tbody td:nth-child(n+4):nth-child(-n+6)")].filter((td) => td.scrollWidth > td.clientWidth).map((td) => td.textContent));
   expect(cut).toEqual([]);
   await expect(table.getByText("None").first()).toBeVisible();
   await expect(table.locator("..").evaluate((d) => d.scrollWidth <= d.clientWidth)).resolves.toBe(true);

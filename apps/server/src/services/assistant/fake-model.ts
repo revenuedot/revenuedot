@@ -31,10 +31,67 @@ function trailingToolResults(prompt: Prompt): { toolName: string; output: unknow
 
 const money = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : String(v));
 
+/**
+ * "Create with AI" drafts (prd/catalog/PRD.md): from "Draft products … : Pro $9.99 monthly, $59.99 yearly and a $99.99
+ * lifetime unlock on the Test Store" the products per period with the price written next to it, on the apps the text
+ * names (iOS, Android, Test Store; all when none), attached to `pro` when the text says Pro.
+ */
+const PERIODS: [RegExp, string | null, string][] = [[/\bweekly|\bweek\b/i, "P1W", "weekly"], [/\bmonthly|\bmonth\b/i, "P1M", "monthly"], [/\b(yearly|annual|year)\b/i, "P1Y", "annual"], [/\blifetime\b/i, null, "lifetime"]];
+export function draftProducts(text: string, apps: { id: string; type: string }[]) {
+  const name = /\b(pro|premium|plus|gold)\b/i.exec(text)?.[1]?.toLowerCase() ?? "pro";
+  const wanted = apps.filter((a) => (/\b(ios|app store|iphone)\b/i.test(text) && a.type === "app_store") || (/\b(android|play)\b/i.test(text) && a.type === "play_store") || (/test store/i.test(text) && a.type === "test_store"));
+  const targets = wanted.length ? wanted : apps.filter((a) => ["app_store", "play_store", "test_store"].includes(a.type));
+  const products: Record<string, unknown>[] = [];
+  for (const [re, duration, word] of PERIODS) {
+    const m = re.exec(text);
+    if (!m) continue;
+    // The price written closest before the period word ("$9.99 monthly"), else right after it ("monthly at $9.99").
+    const before = [...text.slice(0, m.index).matchAll(/\$\s?(\d+(?:\.\d{1,2})?)/g)].pop()?.[1];
+    const after = /\$\s?(\d+(?:\.\d{1,2})?)/.exec(text.slice(m.index))?.[1];
+    const amount = Number(before ?? after ?? 0);
+    for (const app of targets) {
+      const id = app.type === "play_store" ? (duration ? `${name}:${word}` : `${name}_${word}`) : app.type === "app_store" ? `com.example.${name}.${word}` : `${name}_${word}`;
+      products.push({
+        app_id: app.id, store_identifier: id, type: duration ? "subscription" : "non_consumable", display_name: `${name[0]!.toUpperCase()}${name.slice(1)} ${word[0]!.toUpperCase()}${word.slice(1)}`,
+        ...(duration ? { subscription_duration: duration } : {}), ...(app.type === "test_store" && amount > 0 ? { test_store_price: { amount, currency: "USD" } } : {}),
+      });
+    }
+  }
+  return { products, entitlement: { lookup_key: name, display_name: `${name[0]!.toUpperCase()}${name.slice(1)} access` } };
+}
+const PACKAGE_FOR: Record<string, string> = { P1W: "$rc_weekly", P1M: "$rc_monthly", P2M: "$rc_two_month", P3M: "$rc_three_month", P6M: "$rc_six_month", P1Y: "$rc_annual" };
+export function draftOffering(text: string, products: { id: string; type: string; store_identifier: string; subscription?: { duration?: string | null } }[]) {
+  const key = /\b(?:called|named|key)\s+["'`]?([\w-]+)/i.exec(text)?.[1] ?? "ai_offering";
+  const packages = new Map<string, { lookup_key: string; display_name: string; products: string[] }>();
+  for (const p of products) {
+    const pk = p.type === "subscription" ? PACKAGE_FOR[p.subscription?.duration ?? ""] : p.type === "non_consumable" ? "$rc_lifetime" : undefined;
+    if (!pk) continue;
+    const x = packages.get(pk) ?? { lookup_key: pk, display_name: pk.replace("$rc_", "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), products: [] };
+    x.products.push(p.id);
+    packages.set(pk, x);
+  }
+  // In the order RevenueCat's New Offering form lists the package types.
+  const order = ["$rc_monthly", "$rc_annual", "$rc_six_month", "$rc_three_month", "$rc_two_month", "$rc_weekly", "$rc_lifetime"];
+  const sorted = [...packages.values()].sort((a, b) => order.indexOf(a.lookup_key) - order.indexOf(b.lookup_key));
+  return { lookup_key: key, display_name: key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), packages: sorted, make_current: /\b(current|default)\b/i.test(text) };
+}
+
 /** The default script: enough intelligence for the demo flows, nothing more. */
 export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, lastToolResults }) => {
   const sys = prompt.find((m) => m.role === "system");
   const base = /\/projects\/[A-Za-z0-9_]+/.exec(typeof sys?.content === "string" ? sys.content : "")?.[0] ?? "";
+  const drafting = /^draft (products|an offering)/i.exec(text.trim())?.[1]?.toLowerCase();
+  if (drafting && lastToolResults.length === 1 && ["list-apps", "list-products"].includes(lastToolResults[0]!.toolName)) {
+    const out = lastToolResults[0]!.output as { items?: Record<string, any>[] };
+    if (drafting === "products") {
+      const d = draftProducts(text, (out.items ?? []) as { id: string; type: string }[]);
+      if (!d.products.length) return { text: "I could not tell which products to create. Name the periods and prices, such as \"$9.99 monthly and $59.99 yearly\"." };
+      return { text: `Here is the draft: ${d.products.length} products, attached to ${d.entitlement.lookup_key}. Approve to create them.`, toolCalls: [{ toolName: "create-products", input: d }] };
+    }
+    const d = draftOffering(text, (out.items ?? []) as never);
+    if (!d.packages.length) return { text: "There are no subscription or lifetime products to put in an offering yet. Create products first." };
+    return { text: `Here is the draft offering ${d.lookup_key} with ${d.packages.length} packages. Approve to create it.`, toolCalls: [{ toolName: "create-offering", input: d }] };
+  }
   if (typeof sys?.content === "string" && sys.content.includes("this week's growth insights")) return insightsStep(prompt, tools, lastToolResults);
   if (lastToolResults.length) {
     const r = lastToolResults.find((x) => x.toolName === "grant-customer-entitlement") ?? lastToolResults[0]!;
@@ -46,11 +103,18 @@ export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, l
       return { text: `**MRR is ${money(by.mrr)}** with ${by.active_subscriptions ?? 0} active subscriptions and ${by.active_trials ?? 0} trials. Revenue in the last 28 days was ${money(by.revenue)}.\n\n- New customers (28 days): ${by.new_customers ?? 0}\n- Active customers (28 days): ${by.active_users ?? 0}\n\nSee the [MRR chart](${base}/charts/mrr) for the trend.` };
     }
     if (r.toolName === "grant-customer-entitlement") return { text: `Done. The customer has the entitlement until ${out?.entitlements?.active?.[0]?.expires_at ? new Date(out.entitlements.active[0].expires_at).toDateString() : "the date you chose"}.` };
+    if (r.toolName === "create-products") return { text: `Created ${out?.created?.length ?? 0} products${out?.skipped?.length ? `, skipped ${out.skipped.length} that already existed` : ""}${out?.entitlement ? ` and attached them to ${out.entitlement.lookup_key}` : ""}. See [products](${base}/product-catalog/products).` };
+    if (r.toolName === "create-offering") return { text: `Created the offering ${out?.lookup_key} with ${out?.packages?.length ?? 0} packages${out?.is_current ? "; it is now the current offering" : ""}. See [offerings](${base}/product-catalog/offerings).` };
     if (r.toolName === "get-project-health") return { text: `Setup health: ${out?.apps?.length ?? 0} apps checked, webhooks delivered ${out?.webhooks?.delivered_percent_24h ?? "n/a"}% in the last 24 hours.` };
     return { text: `${r.toolName} returned ${JSON.stringify(out).slice(0, 200)}` };
   }
   const t = text.toLowerCase();
   const has = (name: string) => tools.includes(name);
+  if (drafting) {
+    const write = drafting === "products" ? "create-products" : "create-offering";
+    if (!has(write)) return { text: "I can't change anything in this project: RevenueDot AI is read only here." };
+    return { toolCalls: [{ toolName: drafting === "products" ? "list-apps" : "list-products", input: {} }] };
+  }
   const grant = /grant\s+(\w+)\s+(?:to|for)\s+([\w.@:-]+)/i.exec(text);
   if (grant) {
     if (!has("grant-customer-entitlement")) return { text: "I can't change anything in this project: RevenueDot AI is read only here." };

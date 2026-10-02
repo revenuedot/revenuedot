@@ -164,7 +164,7 @@ export interface MenuItem { label: string; onSelect: () => void; icon?: string; 
  * button when the page scrolls, closes on Escape or an outside click, and supports arrow-key navigation. Clicks and
  * keys never reach the row underneath.
  */
-export function Menu({ label, items, text, icon = "plus" }: { label: string; items: (MenuItem | "-")[]; /** A text button ("+ Add path") instead of "…". */ text?: string; icon?: string }) {
+export function Menu({ label, items, text, icon = "plus", variant = "line" }: { label: string; items: (MenuItem | "-")[]; /** A text button ("+ Add path") instead of "…". */ text?: string; icon?: string; /** The text button's style: hairline (default) or the dark primary. */ variant?: "line" | "dark" }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -194,7 +194,7 @@ export function Menu({ label, items, text, icon = "plus" }: { label: string; ite
   return (
     <span className="rmenu" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       {text
-        ? <button ref={btn} type="button" className="btn btn-line" aria-haspopup="menu" aria-expanded={!!pos} onClick={() => (pos ? close() : open())}><Icon name={icon} />{text}</button>
+        ? <button ref={btn} type="button" className={`btn btn-${variant}`} aria-haspopup="menu" aria-expanded={!!pos} onClick={() => (pos ? close() : open())}><Icon name={icon} />{text}</button>
         : <button ref={btn} type="button" className="ib" aria-label={label} aria-haspopup="menu" aria-expanded={!!pos} onClick={() => (pos ? close() : open())}><Icon name="more" /></button>}
       {pos && (
         <div ref={menu} className="menu float" role="menu" aria-label={label} style={{ top: pos.top, left: pos.left }} onKeyDown={(e) => arrowFocus(e, "button", ["ArrowUp", "ArrowDown"])}>

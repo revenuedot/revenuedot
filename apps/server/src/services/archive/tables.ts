@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0030_account_settings";
+export const ARCHIVE_SCHEMA = "0031_account_settings";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -147,6 +147,10 @@ export const NOT_EXPORTED: Record<string, string> = {
   notification_prefs: "Each person's email choices stay with their account; they choose again on the target.",
   notification_sends: "Which summary and alert emails this server already sent.",
   anomaly_checks: "Daily revenue anomaly results of this server; the target checks again.",
+  store_listings: "A cache of App Store and Google Play prices; the target reads them from the stores again.",
+  store_listing_syncs: "When this server last read each app's store prices.",
+  product_edits: "Product editor files describe changes already made in the stores; the audit log, which is exported, records every store write.",
+  product_edit_rows: "Part of product editor files.",
   benchmark_project_values: "Benchmarks are computed on RevenueDot Cloud from projects that share there; rebuilt nightly.",
   benchmark_aggregates: "Peer percentiles across projects, not one project's data.",
   benchmark_runs: "Runs of this server's nightly benchmark job.",

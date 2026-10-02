@@ -87,7 +87,7 @@ Not matched: RevenueCat's "Experiment Performance Alerts" column (alerts while a
 - **Start week on** (Sunday … Saturday, default Monday, as the charts always were): `POST /auth/me { week_start: 0..6 }`. Charts send it as `week_start` (a RevenueDot extension to `GET …/charts/{name}`; weekly buckets start on that day), the date pickers (Charts custom range, Audit logs, purchase link and discount expiry) start their weeks on it, and the weekly summary uses it.
 - **Display currency**: `POST /auth/me { display_currency }`, one of the charts' 14 currencies (USD, EUR, GBP, AUD, CAD, JPY, BRL, KRW, CNY, MXN, SEK, PLN, NZD, CHF). Charts ask the API for that currency (per-day rates, as before). Every other USD amount in the dashboard (Overview cards, customers, transactions, ads, experiments, Verified Metrics preview) is converted in the browser at the latest ECB rate from `GET /auth/fx?currency=EUR` (`services/fx.ts`, cached rates, bundled fallback), with the rate date shown on the Date and region page. Store prices and purchase amounts in their own currency stay as they are. The API stays USD. RevenueDot Cloud bills and invoices stay in USD (that is what Stripe charges).
 
-### 7. Data model (migration 0030_account_settings)
+### 7. Data model (migration 0031_account_settings)
 - `users`: `theme`, `tint`, `week_start`, `display_currency`, `totp_secret` (sealed), `totp_enabled_at`, `totp_last_step`, `password_changed_at`.
 - `sessions`: `created_at`, `last_seen_at`, `user_agent`, `ip`, `method` (all defaulted, so `ee/` SSO sessions created through `createSession` keep working).
 - `auth_tokens`: `new_email` (email change).

@@ -52,7 +52,7 @@ async function runTick(env: Env, db: DB, why: string) {
     // Credential re-checks call Apple and Google; only the cron does them, not the ticks kicked by requests.
     // Data exports (file uploads) run on the cron only, never in a tick kicked by a request.
     const r = await tick(db, new Date(), fetch, {
-      stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron", winback: why === "cron", consumption: why === "cron",
+      stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", storePrices: why === "cron", exports: why === "cron", winback: why === "cron", consumption: why === "cron",
       // Weekly summaries, experiment results and anomaly alerts (chart computations) from the cron only.
       accountNotifications: why === "cron",
       encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true, googleOAuth: googleOAuthFor(env), admob: why === "cron", recovery: why === "cron", pruneDeliveryLogs: why === "cron", stripeConnect: stripeConnectFor(env),
@@ -61,7 +61,7 @@ async function runTick(env: Env, db: DB, why: string) {
       archives: why === "cron", archiveStore: archiveStoreFor(env), edition: why === "cron" ? "cloud" : undefined,
       billing: billingConfigFromEnv(env as unknown as Record<string, string | undefined>),
     });
-    if (r.expired || r.voided || r.consumption || r.winback || r.recovery.sent || r.recovery.closed || r.sent || r.integrations || r.exports || r.credentialsChecked || r.admob || r.archives || r.moves || r.billing || r.attemptLogsPruned || r.notifications || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
+    if (r.expired || r.voided || r.consumption || r.winback || r.recovery.sent || r.recovery.closed || r.sent || r.integrations || r.exports || r.credentialsChecked || r.storePrices || r.notifications || r.admob || r.archives || r.moves || r.billing || r.attemptLogsPruned || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
     return r;
   } catch (e) {
     console.error(`tick (${why}) failed`, e);
