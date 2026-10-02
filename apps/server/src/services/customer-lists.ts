@@ -95,6 +95,30 @@ export async function queryCustomerList(db: DB, projectId: string, q: ListQuery,
   };
 }
 
+export const SORT_KEYS = ["id", "subscription_status", "auto_renewal_status", "first_seen_at", "last_seen_at", "spent_in_usd"] as const;
+export type SortKey = (typeof SORT_KEYS)[number];
+const STATUS_RANK: Record<ListRow["subscription_status"], number> = { active: 0, trialing: 1, grace_period: 2, billing_issue: 3, expired: 4, none: 5 };
+const RENEW_RANK = { on: 0, off: 1 } as const;
+
+/** Sorts rows by one column. Ties, and customers with no auto-renewal value, keep the default order (newest last seen first). */
+export function sortRows(rows: ListRow[], key: SortKey, direction: "asc" | "desc"): ListRow[] {
+  const sign = direction === "asc" ? 1 : -1;
+  const value = (r: ListRow): number | string | null => {
+    switch (key) {
+      case "id": return r.id.toLowerCase();
+      case "subscription_status": return STATUS_RANK[r.subscription_status];
+      case "auto_renewal_status": return r.auto_renewal_status ? RENEW_RANK[r.auto_renewal_status] : null;
+      default: return r[key];
+    }
+  };
+  return rows.map((r, i) => ({ r, i, v: value(r) })).sort((a, b) => {
+    if (a.v === b.v) return a.i - b.i;
+    if (a.v === null) return 1;
+    if (b.v === null) return -1;
+    return (a.v < b.v ? -1 : 1) * sign;
+  }).map((x) => x.r);
+}
+
 const csvCell = (v: unknown) => {
   const s = v === null || v === undefined ? "" : String(v);
   if (/^-?\d+(\.\d+)?$/.test(s)) return s;

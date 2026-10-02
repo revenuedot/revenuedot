@@ -150,6 +150,47 @@ test("customers: list, pagination, exact search and the top-bar search", async (
   await expect(page).toHaveURL(/customers\/pbg6xs2d$/);
 });
 
+test("customers: sort by a column header, page in that order, hide app user IDs", async ({ page }) => {
+  const pid = await signIn(page);
+  await page.goto(`/projects/${pid}/customers`);
+  const rows = page.locator("table tbody tr");
+  await expect(rows).toHaveCount(25);
+  const spent = async () => (await rows.locator("td:nth-child(6)").allInnerTexts()).map((t) => Number(t.replace(/[^0-9.]/g, "")));
+
+  // Spent: the first click puts the biggest spenders first, the second flips it.
+  await page.getByRole("button", { name: "Spent" }).click();
+  await expect(page).toHaveURL(/sort=spent_in_usd&direction=desc/);
+  await expect(page.getByRole("columnheader", { name: "Spent" })).toHaveAttribute("aria-sort", "descending");
+  await expect.poll(async () => { const v = await spent(); return v.length === 25 && v.every((x, i) => i === 0 || v[i - 1]! >= x); }).toBe(true);
+  const top = (await spent())[0]!;
+  expect(top).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Next →" }).click();
+  await expect(page.getByText("Page 2")).toBeVisible();
+  await expect.poll(async () => Math.max(...(await spent()))).toBeLessThanOrEqual(top);
+  await page.getByRole("button", { name: "Spent" }).click();
+  await expect(page).toHaveURL(/sort=spent_in_usd&direction=asc/);
+  await expect(page).not.toHaveURL(/after=/);
+  await expect(page.getByText("Page 1")).toBeVisible();
+  await expect.poll(async () => { const v = await spent(); return v.every((x, i) => i === 0 || v[i - 1]! <= x); }).toBe(true);
+
+  // Customer: A to Z by app user ID.
+  await page.getByRole("button", { name: "Customer", exact: true }).click();
+  await expect(page).toHaveURL(/sort=id&direction=asc/);
+  await expect.poll(async () => { const ids = (await rows.locator("td:first-child a").evaluateAll((as) => as.map((a) => a.getAttribute("title") ?? ""))).map((x) => x.toLowerCase()); return ids.every((x, i) => i === 0 || ids[i - 1]! <= x); }).toBe(true);
+
+  // Hide app user IDs masks IDs and emails, keeps rows clickable, and is remembered after a reload.
+  await page.getByRole("button", { name: "Hide app user IDs" }).click();
+  await expect(rows.first().locator("td").first()).toHaveText("••••••••••");
+  await expect(page.locator("table tbody")).not.toContainText("@example.com");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Show app user IDs" })).toHaveAttribute("aria-pressed", "true");
+  await expect(rows.first().locator("td").first()).toHaveText("••••••••••");
+  await page.getByRole("button", { name: "Show app user IDs" }).click();
+  await expect(rows.first().locator("td").first()).not.toHaveText("••••••••••");
+  await rows.first().locator("a").first().click();
+  await expect(page).toHaveURL(/\/customers\/[^/?]+$/);
+});
+
 test("customer page: history labels, grant and revoke, offering override, attribute, delete", async ({ page }) => {
   const pid = await signIn(page);
   await page.goto(`/projects/${pid}/customers/pbg6xs2d`);

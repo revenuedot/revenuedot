@@ -32,14 +32,36 @@ export function Tag({ tone = "muted", children }: { tone?: "up" | "down" | "info
   return <span className={`tag ${tone}`}>{children}</span>;
 }
 
-export interface Column<T> { key: string; header: string; align?: "right"; render: (row: T) => ReactNode; className?: string }
+export interface Column<T> {
+  key: string; header: string; align?: "right"; render: (row: T) => ReactNode; className?: string;
+  /** Makes the header a sort button: the current direction (null = not sorted by this column) and what a click does. */
+  sort?: { direction: "asc" | "desc" | null; onSort: () => void };
+  /** A control shown after the header text, such as a toggle. */
+  headerExtra?: ReactNode;
+}
+
+function HeaderCell<T>({ c }: { c: Column<T> }) {
+  const d = c.sort?.direction ?? null;
+  return (
+    <th className={c.align === "right" ? "amt" : undefined} aria-sort={c.sort ? (d === "asc" ? "ascending" : d === "desc" ? "descending" : "none") : undefined}>
+      <span className="th-in">
+        {c.sort ? (
+          <button type="button" className={`th-sort${d ? " on" : ""}`} onClick={c.sort.onSort} title={`Sort by ${c.header.toLowerCase()}`}>
+            {c.header}<Icon name={d === "desc" ? "down" : "up"} className="i th-arrow" />
+          </button>
+        ) : c.header}
+        {c.headerExtra}
+      </span>
+    </th>
+  );
+}
 
 export function DataTable<T>({ columns, rows, onRowClick, rowKey, empty }: { columns: Column<T>[]; rows: T[]; onRowClick?: (r: T) => void; rowKey: (r: T) => string; empty?: ReactNode }) {
   if (!rows.length && empty) return <>{empty}</>;
   return (
     <div className="panel tbl">
       <table>
-        <thead><tr>{columns.map((c) => <th key={c.key} className={c.align === "right" ? "amt" : undefined}>{c.header}</th>)}</tr></thead>
+        <thead><tr>{columns.map((c) => <HeaderCell key={c.key} c={c} />)}</tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={rowKey(r)} className={onRowClick ? "row" : undefined} onClick={onRowClick ? () => onRowClick(r) : undefined} tabIndex={onRowClick ? 0 : undefined}

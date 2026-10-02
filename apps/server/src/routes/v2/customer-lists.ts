@@ -1,5 +1,5 @@
 import type { Deps } from "../../context.js";
-import { queryCustomerList, toCsv } from "../../services/customer-lists.js";
+import { queryCustomerList, SORT_KEYS, sortRows, toCsv, type SortKey } from "../../services/customer-lists.js";
 import type { Rules } from "../../services/targeting.js";
 import { checkRules, RulesIn } from "./refund-control.js";
 import { listOf, notFound, pageParams, paramError, scope, type V2Context, type V2Router } from "./common.js";
@@ -21,12 +21,21 @@ export function customerListRoutes(r: V2Router, deps: Deps) {
       checkRules(p.data);
       rules = p.data.groups.length ? p.data : null;
     }
-    return { list, rules, search: c.req.query("search") ?? null };
+    const sort = c.req.query("sort") || null;
+    if (sort && !(SORT_KEYS as readonly string[]).includes(sort)) throw paramError(`sort must be one of ${SORT_KEYS.join(", ")}.`, "sort");
+    const direction = c.req.query("direction") || "asc";
+    if (direction !== "asc" && direction !== "desc") throw paramError("direction must be asc or desc.", "direction");
+    return { list, rules, search: c.req.query("search") ?? null, sort: sort as SortKey | null, direction: direction as "asc" | "desc" };
+  };
+  const load = async (c: V2Context, q: ReturnType<typeof parse>) => {
+    const res = await queryCustomerList(db, c.get("projectId"), q, deps.now());
+    if (res && q.sort) res.rows = sortRows(res.rows, q.sort, q.direction);
+    return res;
   };
 
   r.get(P, scope("customer_information:customers:read"), async (c) => {
     const q = parse(c);
-    const res = await queryCustomerList(db, c.get("projectId"), q, deps.now());
+    const res = await load(c, q);
     if (!res) throw notFound("Audience");
     const { limit, startingAfter } = pageParams(c);
     let start = 0;
@@ -41,7 +50,7 @@ export function customerListRoutes(r: V2Router, deps: Deps) {
 
   r.get(`${P}/export`, scope("customer_information:customers:read"), async (c) => {
     const q = parse(c);
-    const res = await queryCustomerList(db, c.get("projectId"), q, deps.now());
+    const res = await load(c, q);
     if (!res) throw notFound("Audience");
     const day = deps.now().toISOString().slice(0, 10);
     return c.body(toCsv(res.rows), 200, {
