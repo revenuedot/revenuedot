@@ -17,8 +17,10 @@ export interface VerifyReport {
     revenuecat: number; revenuedot: number; checked: number;
     /** RevenueCat customers RevenueDot does not know, by id or alias. */
     missingInRevenueDot: number;
-    /** RevenueDot customers whose id RevenueCat does not list (merged or deleted there, or created by live traffic since). */
+    /** RevenueDot customers RevenueCat does not know by id (merged or deleted there, or created by live traffic since). */
     onlyInRevenueDot: number;
+    /** RevenueCat customers its list left out, found by id from RevenueDot's side (counted in `revenuecat` and checked). */
+    notListedByRevenueCat: number;
   };
   /** Ids behind `onlyInRevenueDot` (the RevenueCat side is in `mismatches` as missing_customer). Empty with --limit. */
   onlyInRevenueDot: string[];
@@ -75,7 +77,7 @@ export async function verifyImport(rc: RevenueCatClient, rd: RevenueDotClient, o
   const rcIds = await revenueCatIds(rc, (n) => o.progress?.(`verify: listing RevenueCat customers, ${n} so far`));
   const rdIds = await revenueDotIds(rd, (n) => o.progress?.(`verify: listing RevenueDot customers, ${n} so far`));
   const report: VerifyReport = {
-    customers: { revenuecat: rcIds.size, revenuedot: rdIds.size, checked: 0, missingInRevenueDot: 0, onlyInRevenueDot: 0 },
+    customers: { revenuecat: rcIds.size, revenuedot: rdIds.size, checked: 0, missingInRevenueDot: 0, onlyInRevenueDot: 0, notListedByRevenueCat: 0 },
     onlyInRevenueDot: [],
     activeSubscriptions: { revenuecat: 0, revenuedot: 0 },
     activeEntitlements: { revenuecat: 0, revenuedot: 0 }, mismatches: [], mismatchedCustomers: 0,
@@ -88,8 +90,8 @@ export async function verifyImport(rc: RevenueCatClient, rd: RevenueDotClient, o
   const all = [...rcIds];
   const todo = o.limit === undefined ? all : all.slice(0, Math.max(0, o.limit));
   const PAGE = 100;
-  for (let i = 0; i < todo.length; i += PAGE) {
-    await pool(todo.slice(i, i + PAGE), o.concurrency, async (id) => {
+  /** Compares one customer; "no_revenuecat" when RevenueCat answers 404 for the id. */
+  const checkOne = async (id: string): Promise<"ok" | "no_revenuecat" | "no_revenuedot"> => {
       let rdCustomer: Awaited<ReturnType<RevenueDotClient["customer"]>>;
       let rdSubs: Awaited<ReturnType<RevenueDotClient["subscriptions"]>>;
       try {
@@ -100,7 +102,7 @@ export async function verifyImport(rc: RevenueCatClient, rd: RevenueDotClient, o
         if (e instanceof HttpError && e.status === 404) {
           report.customers.missingInRevenueDot++;
           add({ customer: id, kind: "missing_customer", detail: "not found in RevenueDot" });
-          return;
+          return "no_revenuedot";
         }
         throw e;
       }
@@ -110,7 +112,7 @@ export async function verifyImport(rc: RevenueCatClient, rd: RevenueDotClient, o
         [rcCustomer, rcSubs] = await Promise.all([rc.customer(id), rc.subscriptions(id)]);
       } catch (e) {
         // Deleted or merged in RevenueCat after it was listed: nothing to compare.
-        if (e instanceof HttpError && e.status === 404) return;
+        if (e instanceof HttpError && e.status === 404) return "no_revenuecat";
         throw e;
       }
       const a = new Map((rcCustomer.active_entitlements?.items ?? []).map((x) => [rcEnts.get(x.entitlement_id) ?? x.entitlement_id, x.expires_at]));
@@ -132,13 +134,28 @@ export async function verifyImport(rc: RevenueCatClient, rd: RevenueDotClient, o
       report.activeSubscriptions.revenuecat += rcActive;
       report.activeSubscriptions.revenuedot += rdActive;
       if (rcActive !== rdActive) add({ customer: id, kind: "active_subscriptions", detail: `${rcActive} subscription(s) give access in RevenueCat, ${rdActive} in RevenueDot` });
-    });
+      return "ok";
+  };
+  for (let i = 0; i < todo.length; i += PAGE) {
+    await pool(todo.slice(i, i + PAGE), o.concurrency, checkOne);
     report.customers.checked = Math.min(todo.length, i + PAGE);
     o.progress?.(`verify: ${report.customers.checked} of ${todo.length} customers checked, ${bad.size} with differences`);
   }
   if (o.limit === undefined) {
-    report.onlyInRevenueDot = [...rdIds].filter((id) => !rcIds.has(id) && !matched.has(id)).sort();
-    report.customers.onlyInRevenueDot = report.onlyInRevenueDot.length;
+    // RevenueCat's list does not return every customer (SuperScan, 2026-10-02: 32,045 listed, thousands more found by
+    // id). A RevenueDot customer RevenueCat does not list is looked up by id there and, when it exists, checked too.
+    const extra = [...rdIds].filter((id) => !rcIds.has(id) && !matched.has(id));
+    const only: string[] = [];
+    for (let i = 0; i < extra.length; i += PAGE) {
+      const part = extra.slice(i, i + PAGE);
+      const res = await pool(part, o.concurrency, checkOne);
+      res.forEach((r, j) => { if (r === "no_revenuecat") only.push(part[j]!); else report.customers.notListedByRevenueCat++; });
+      o.progress?.(`verify: ${Math.min(extra.length, i + PAGE)} of ${extra.length} customers RevenueCat does not list checked by id`);
+    }
+    report.customers.checked += report.customers.notListedByRevenueCat;
+    report.customers.revenuecat += report.customers.notListedByRevenueCat;
+    report.onlyInRevenueDot = only.sort();
+    report.customers.onlyInRevenueDot = only.length;
   }
   report.mismatchedCustomers = bad.size;
   report.mismatches.sort((x, y) => x.customer.localeCompare(y.customer) || x.kind.localeCompare(y.kind));

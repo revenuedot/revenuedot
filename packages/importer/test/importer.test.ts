@@ -93,7 +93,7 @@ describe("revenuedot import", () => {
 
     const v = await verify(e);
     expect(v.mismatches).toEqual([]);
-    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0 });
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0, notListedByRevenueCat: 0 });
     expect(v.activeSubscriptions).toEqual({ revenuecat: 8, revenuedot: 8 });
     expect(v.activeEntitlements).toEqual({ revenuecat: 9, revenuedot: 9 });
   });
@@ -191,11 +191,22 @@ describe("revenuedot import", () => {
     const reads = () => e!.rc.requests.filter((r) => /\/customers\/[^/]+$/.test(r.path)).length;
     const before = reads();
     const v = await verify(e);
-    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0 });
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0, notListedByRevenueCat: 0 });
     expect(v.mismatches).toEqual([]);
     expect(shifts).toBeGreaterThan(1);
     // One read per customer, though the walk met some of them twice.
     expect(reads() - before).toBe(14);
+  });
+
+  it("verify checks a RevenueDot customer RevenueCat's list leaves out by id, and counts it as RevenueCat's", async () => {
+    e = await setup();
+    await e.run();
+    const m = e.rc.model;
+    e.rc.unlisted.add("user_apple");
+    m.customers.find((c) => c.id === "user_apple")!.active = [{ object: "customer.active_entitlement", entitlement_id: "entl_pro", expires_at: T0 + 55 * DAY }];
+    const v = await verify(e);
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0, notListedByRevenueCat: 1 });
+    expect(v.mismatches.map((x) => [x.customer, x.kind])).toEqual([["user_apple", "entitlement_expiry"]]);
   });
 
   it("a customer RevenueCat's list order moves behind the cursor during the walk is imported by the catch-up", async () => {
