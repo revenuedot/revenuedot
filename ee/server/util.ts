@@ -26,6 +26,8 @@ export interface EeCtx {
   features: Set<Feature>;
   /** Where the data of each region is served (region.ts); empty on self-hosted servers. */
   regions: import("./region.js").RegionConfig;
+  /** Organizations the licence allows on this server (null: any number). */
+  maxOrgs?: number | null;
 }
 
 export function needFeature(ctx: EeCtx, f: Feature) {

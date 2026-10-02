@@ -35,7 +35,7 @@ export function enterpriseExtension(license: LicenseState, regions: RegionConfig
     status,
 
     mount(app, deps) {
-      ctx = { deps, features, regions };
+      ctx = { deps, features, regions, maxOrgs: license.maxOrgs };
       const statusRoute = new Hono();
       statusRoute.onError((e, c) => v2ErrorResponse(c, e));
       // The licence state for the dashboard (any signed-in user).

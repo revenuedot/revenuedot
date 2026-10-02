@@ -120,6 +120,10 @@ export function orgRoutes(ctx: EeCtx) {
   r.post("/v2/organizations", async (c) => {
     const { user } = await signedIn(c, deps);
     const b = await body(c, OrgCreate);
+    if (ctx.maxOrgs) {
+      const [n] = await db.select({ n: count() }).from(eeOrganizations);
+      if (Number(n?.n ?? 0) >= ctx.maxOrgs) throw new V2Error(403, "authorization_error", `Your RevenueDot Enterprise licence covers ${ctx.maxOrgs} organization${ctx.maxOrgs === 1 ? "" : "s"} on this server.`);
+    }
     const now = deps.now();
     const orgId = id("org_");
     await db.insert(eeOrganizations).values({ id: orgId, name: b.name, region: b.region ?? ctx.regions.current, createdBy: user.id, createdAt: now, updatedAt: now });
