@@ -120,6 +120,10 @@ describe("results the model sees", () => {
     expect(JSON.stringify(c).length).toBeLessThanOrEqual(12_000);
     expect(c.items[c.items.length - 1]).toMatchObject({ omitted: expect.any(Number) });
   });
+  it("gives the model timestamps as ISO dates, leaving other numbers alone", () => {
+    expect(compactResult({ subscriptions: [{ ends_at: 1793576152443, expires_date: 1793576152443, starts_at: null, total: 1793576152443, gross: 9.99 }] }))
+      .toEqual({ subscriptions: [{ ends_at: "2026-11-01T23:35:52.443Z", expires_date: "2026-11-01T23:35:52.443Z", starts_at: null, total: 1793576152443, gross: 9.99 }] });
+  });
   it("compactChart turns segments into one row per date", () => {
     const body = { display_name: "Revenue", measures: [{ display_name: "Revenue", unit: "$" }], segments: [{ display_name: "US" }, { display_name: "Total" }],
       values: [{ cohort: 1759276800, segment: 0, measure: 0, value: 5 }, { cohort: 1759276800, segment: 1, measure: 0, value: 9 }] };

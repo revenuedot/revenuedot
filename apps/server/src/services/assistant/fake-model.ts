@@ -36,7 +36,7 @@ export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, l
   const sys = prompt.find((m) => m.role === "system");
   const base = /\/projects\/[A-Za-z0-9_]+/.exec(typeof sys?.content === "string" ? sys.content : "")?.[0] ?? "";
   if (lastToolResults.length) {
-    const r = lastToolResults[0]!;
+    const r = lastToolResults.find((x) => x.toolName === "grant-customer-entitlement") ?? lastToolResults[0]!;
     const out = r.output as Record<string, any>;
     if (out?.denied) return { text: "OK, I did not change anything." };
     if (typeof out === "string" || out?.error) return { text: `That did not work: ${typeof out === "string" ? out : out.error}` };
@@ -53,7 +53,10 @@ export const defaultScript: FakeScript = ({ prompt, tools, lastUserText: text, l
   const grant = /grant\s+(\w+)\s+(?:to|for)\s+([\w.@:-]+)/i.exec(text);
   if (grant) {
     if (!has("grant-customer-entitlement")) return { text: "I can't change anything in this project: RevenueDot AI is read only here." };
-    return { text: "I'll grant it for 7 days once you approve.", toolCalls: [{ toolName: "grant-customer-entitlement", input: { customer_id: grant[2]!, entitlement_id: grant[1]!.toLowerCase(), expires_at: "7d" } }] };
+    const write = { toolName: "grant-customer-entitlement", input: { customer_id: grant[2]!, entitlement_id: grant[1]!.toLowerCase(), expires_at: "7d" } };
+    // "look up <user> and grant …": a read and a write in one step, the read finishing after the approval request.
+    const read = /\blook\s*up\b/i.test(text) && has("get-customer") ? [{ toolName: "get-customer", input: { customer_id: grant[2]! } }] : [];
+    return { text: "I'll grant it for 7 days once you approve.", toolCalls: [...read, write] };
   }
   if (/(revenue|mrr|insight|growth|doing|subscri)/.test(t) && has("get-metrics")) return { toolCalls: [{ toolName: "get-metrics", input: {} }] };
   if (/(health|webhook|notification)/.test(t) && has("get-project-health")) return { toolCalls: [{ toolName: "get-project-health", input: {} }] };

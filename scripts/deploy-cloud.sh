@@ -25,6 +25,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # The Circo account (also the default in apps/server/cloudflare.config.ts). Every cf call below targets it.
+# Local `cf dev` settings that cloudflare.config.ts turns into bindings when set in the shell; a deploy from a laptop
+# shell that still has them would ship them to production.
+unset REVENUEDOT_API_URL REVENUEDOT_PUBLIC_URL REVENUEDOT_ASSISTANT_FAKE
 export CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-5a8f4d72ace5f438725e1dfd1b0380ff}"
 # The worker has no containers. Without this, the build waits on `docker image ls` when Docker is installed but not running.
 export WRANGLER_DOCKER_BIN="${WRANGLER_DOCKER_BIN:-false}"

@@ -5,6 +5,7 @@ import { isSubscriberToken, resolveKey } from "../services/auth.js";
 import { AuthRefused, AuthUnavailable, identityJwks, refresh, revoke, signIn } from "../services/identity/sessions.js";
 import { KeysUnavailable, TokenInvalid } from "../services/identity/verify.js";
 import { OutboundRefused } from "../services/outbound.js";
+import { requestOrigin } from "../services/account-email.js";
 
 /**
  * Auth sign-in for apps (prd/auth), in the wire format of the SDKs' token login:
@@ -24,8 +25,7 @@ export function identityRoutes(deps: Deps) {
 
   const issuerOf = (c: Context) => {
     if (deps.apiUrl) return deps.apiUrl.replace(/\/+$/, "");
-    const fwd = c.req.header("x-forwarded-host");
-    return fwd ? `${c.req.header("x-forwarded-proto") ?? "https"}://${fwd}` : new URL(c.req.url).origin;
+    return requestOrigin(c.req.url, (n) => c.req.header(n));
   };
   const bearer = (c: Context) => (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
 

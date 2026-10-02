@@ -75,8 +75,7 @@ export function projectSettingsShape(p: ProjectRow, owner: { id: string; email: 
 
 /** The public origin the stores should call: the forwarded host behind a proxy, else the request's own origin. */
 export function publicOrigin(c: V2Context) {
-  const fwdHost = c.req.header("x-forwarded-host");
-  return fwdHost ? `${c.req.header("x-forwarded-proto") ?? "https"}://${fwdHost}` : new URL(c.req.url).origin;
+  return requestOrigin(c.req.url, (n) => c.req.header(n));
 }
 
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);

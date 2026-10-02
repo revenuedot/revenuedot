@@ -275,14 +275,28 @@ export interface IssuedApproval { approvalId: string; signature: string }
 /**
  * Passes a UI message stream through, handing every signed approval request to `save` first. The Durable Object builds
  * its stored copy of an answer itself and keeps no signature (agents 0.24), so the server records them here.
+ *
+ * Approval requests are also held back until their step ends. @cloudflare/ai-chat 0.12 saves the answer the moment an
+ * approval request arrives and then skips the final save when its in-memory copy looks unchanged, but that copy shares
+ * the part objects it keeps mutating. A read tool that finishes after the approval request in the same step (the model
+ * asked to look up a customer and grant them access at once) stayed "input-available" in storage, and after the user
+ * approved, the agent waited for that result forever.
  */
 export function captureApprovalSignatures(stream: ReadableStream<UIMessageChunk>, save: (toolCallId: string, a: IssuedApproval) => Promise<void>): ReadableStream<UIMessageChunk> {
+  const held: UIMessageChunk[] = [];
+  const release = (c: TransformStreamDefaultController<UIMessageChunk>) => { for (const h of held.splice(0)) c.enqueue(h); };
   return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
     async transform(chunk, c) {
       const ch = chunk as { type: string; toolCallId?: string; approvalId?: string; signature?: string };
-      if (ch.type === "tool-approval-request" && ch.toolCallId && ch.approvalId && ch.signature) await save(ch.toolCallId, { approvalId: ch.approvalId, signature: ch.signature });
+      if (ch.type === "tool-approval-request") {
+        if (ch.toolCallId && ch.approvalId && ch.signature) await save(ch.toolCallId, { approvalId: ch.approvalId, signature: ch.signature });
+        held.push(chunk);
+        return;
+      }
+      if (ch.type === "finish-step" || ch.type === "finish" || ch.type === "error" || ch.type === "abort") release(c);
       c.enqueue(chunk);
     },
+    flush(c) { release(c); },
   }));
 }
 
