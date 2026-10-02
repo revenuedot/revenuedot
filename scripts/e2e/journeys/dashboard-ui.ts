@@ -97,7 +97,7 @@ const journey: Journey = {
       products: ["apps"], entitlements: ["apps", "products"], offerings: ["apps", "web", "products"], paywalls: ["apps", "web", "products", "offerings"],
       targeting: ["apps", "web", "products", "offerings"], experiments: ["apps", "web", "products", "offerings"], "customer-actions": ["apps", "web", "products", "offerings"],
       retention: ["apps", "products"], funnel: ["apps", "web", "products", "offerings"], "web-discount": ["web"], "invite-flow": [], roles: ["apps", "products", "invite-flow"], validation: ["apps", "products"],
-      "customer-page": ["apps", "web", "products", "offerings", "targeting", "experiments", "customer-actions"], "customer-center": [], support: [], "ads-rewards": ["customer-page"], "empty-states": [], pages: ["*"], "desktop-dark": ["*"], "desktop-light": ["*"], "phone-light": ["*"], "phone-dark": ["*"], theme: [],
+      "customer-page": ["apps", "web", "products", "offerings", "targeting", "experiments", "customer-actions"], "customer-center": [], support: [], "ads-rewards": ["customer-page"], "store-import": ["apps", "web"], "empty-states": [], pages: ["*"], "desktop-dark": ["*"], "desktop-light": ["*"], "phone-light": ["*"], "phone-dark": ["*"], theme: [],
     };
     const wanted = new Set(only.flatMap((n) => [n, ...(NEEDS[n] ?? [])]));
     const runs = (name: string) => !only.length || wanted.has("*") || wanted.has(name);
@@ -1331,6 +1331,43 @@ const journey: Journey = {
         c.check("v2: Day pass switched off, then deleted; Gold for level ends stays", r.length === 1 && r[0].name === "Gold for level ends", r.map((x) => x.name));
         await page.reload(); await settle();
         await expect(page.getByRole("list", { name: "Reward rules in priority order" })).toContainText("Gold for level ends");
+      });
+
+      await step("store-import: products made in Stripe's dashboard imported in the browser (fake Stripe)", async () => {
+        // A product with a monthly and a yearly price, made "in Stripe's dashboard" (the capture server's Stripe account).
+        const st = ctx.capture.stripe;
+        const sid = ctx.stamp.slice(-8);
+        const now = Math.floor(Date.now() / 1000);
+        const prodId = `prod_plus_${sid}`, m = `price_plus_m_${sid}`, y = `price_plus_y_${sid}`;
+        st.products.set(prodId, { id: prodId, object: "product", active: true, created: now, livemode: false, name: "Pocket Scanner Plus", description: null, metadata: {}, default_price: y });
+        for (const [id, amount, interval] of [[m, 499, "month"], [y, 3999, "year"]] as const) {
+          st.prices.set(id, { id, object: "price", active: true, created: now, livemode: false, currency: "usd", product: prodId, unit_amount: amount, type: "recurring", lookup_key: null, metadata: {}, billing_scheme: "per_unit", recurring: { interval, interval_count: 1, trial_period_days: null, usage_type: "licensed" } });
+        }
+        // The dialog opens on the first app, the App Store app with no App Store Connect key: the server answers 422 and the
+        // dialog says what is missing.
+        allow(/^GET \/v2\/projects\/[^/]+\/apps\/[^/]+\/store_products$/, 422);
+        await go(`${B}/product-catalog/products`);
+        await page.getByRole("button", { name: "Import products", exact: true }).click();
+        const d = page.getByRole("dialog", { name: /Import products/ });
+        await expect(d.getByRole("alert").first()).toBeVisible({ timeout: 20_000 });
+        c.check("an app without store credentials explains what to add", /key|credential|service account/i.test(await d.getByRole("alert").first().innerText()), await d.getByRole("alert").first().innerText());
+        await selectByText(d.getByLabel("App", { exact: true }), /Pocket Scanner Web/);
+        await expect(d.getByRole("row", { name: new RegExp(m) })).toBeVisible({ timeout: 20_000 });
+        await d.getByPlaceholder("Search store products").fill("Plus");
+        await expect(d.locator("tbody tr")).toHaveCount(2);
+        await d.getByLabel("Select all").check();
+        await d.getByRole("button", { name: "Import 2 products" }).click();
+        await expect(d.getByText("Imported 2 products from Stripe.")).toBeVisible();
+        await d.getByRole("button", { name: "Done" }).click();
+        await expect(d).toBeHidden();
+        const prods = (await v2("GET", `/products?app_id=${ids.stripeApp}&limit=100`)).items as any[];
+        const pm = prods.find((p) => p.store_identifier === m), py = prods.find((p) => p.store_identifier === y);
+        c.check("v2: both Stripe prices are subscription products of the Stripe app, monthly and yearly", pm?.type === "subscription" && pm.subscription?.duration === "P1M" && py?.type === "subscription" && py.subscription?.duration === "P1Y", { pm, py });
+        await page.getByRole("button", { name: "Import products", exact: true }).click();
+        await selectByText(d.getByLabel("App", { exact: true }), /Pocket Scanner Web/);
+        await expect(d.getByRole("row", { name: new RegExp(m) })).toContainText("In catalog");
+        c.check("opened again, the imported prices show In catalog and cannot be picked", await d.getByLabel(`Select ${m}`).isDisabled());
+        await d.getByRole("button", { name: "Cancel" }).click();
       });
 
       await step("customer-center: the editor saves what the SDK receives, refuses bad values, and resets", async () => {
