@@ -9,6 +9,7 @@ import { createEnterprise, enterpriseExtension } from "../server/index.js";
 import { generateSigningKeyPair } from "../../apps/server/src/services/signing.js";
 import { eeOrgAuditLogs } from "../server/schema.js";
 import { toCsv, verifyExport } from "../server/exports.js";
+import { PURGE_BATCH, purgeAuditLogs } from "../server/retention.js";
 
 let s: EeServer | undefined;
 afterEach(async () => { await s?.close(); s = undefined; });
@@ -95,6 +96,29 @@ describe("audit retention", () => {
     expect(left.find((x) => x.action === "audit_logs_purged")?.data).toMatchObject({ rows: 2, retention_days: 365 });
     // At most once an hour.
     expect((await s.tick()).extensions).toEqual({});
+  });
+
+  it("deletes at most one batch per tick and carries on at the next tick until the backlog is gone", async () => {
+    s = await eeServer();
+    const o = await s.signup("owner@acme.test");
+    const orgId = await s.createOrg(o.browser, "Acme", [o.projectId]);
+    const other = await s.signup("solo@other.test");
+    const old = new Date(s.now().getTime() - 400 * DAY);
+    const rows = (n: number, prefix: string, projectId: string) => Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, projectId, actionType: "product_updated", targetType: "product", targetIdentifier: "p", actorType: "user", actorIdentifier: o.userId, occurredAt: old }));
+    const backlog = PURGE_BATCH + 7;
+    for (let i = 0; i < backlog; i += 1000) await s.db.insert(schema.auditLogs).values(rows(Math.min(1000, backlog - i), `b${i}_`, o.projectId));
+    await s.db.insert(schema.auditLogs).values(rows(3, "x", other.projectId));
+    // The function itself stops at its budget.
+    expect(await purgeAuditLogs(s.db, s.now(), 5)).toEqual({ deleted: 0, more: false });
+    expect((await o.browser.call("POST", `/v2/organizations/${orgId}`, { audit_retention_days: 30 })).status).toBe(200);
+    expect(await purgeAuditLogs(s.db, s.now(), 5)).toEqual({ deleted: 5, more: true });
+    s.advance(2 * 3_600_000);
+    expect((await s.tick()).extensions).toEqual({ audit_rows_purged: PURGE_BATCH });
+    // No hour's wait while rows are left.
+    expect((await s.tick()).extensions).toEqual({ audit_rows_purged: 2 });
+    expect((await s.tick()).extensions).toEqual({});
+    // A project outside the organization keeps its history.
+    expect((await s.db.select().from(schema.auditLogs)).map((r) => r.id).sort()).toEqual(["x0", "x1", "x2"]);
   });
 });
 
