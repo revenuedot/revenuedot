@@ -40,6 +40,7 @@
 .pe-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pe-table th:first-child,.pe-table td:first-child{width:56px}
 .pe-table th:first-child .th-in{font-size:0}
+.pe-table .pe-w-stat{width:184px}
 .pe-table .pe-off,.pe-table .pe-off .cat-t{color:var(--fg-3)}
 .pe-table input[type=checkbox]{width:16px;height:16px;accent-color:var(--fg);vertical-align:middle}
 .pe-upload{display:flex;flex-direction:column;gap:10px}

@@ -124,7 +124,7 @@ export function ProductsPage() {
               <div className="pb cat-note">{total ? (needle ? "No products match your search." : `No ${filter} products for this app.`) : <>No products for this app yet. <button type="button" className="cat-lnk" onClick={() => setNewFor(a.id)}>Add one</button>.</>}</div>
             ) : (
               <div className="tbl">
-                {/* Product takes what is left; the other columns are sized for their longest value. Below 1100px type and duration move under the name, so the product keeps room; phones keep product, status and actions. */}
+                {/* Product takes what is left; the other columns are sized for their longest value. Below 1320px (the store Status column takes 168px) type and duration move under the name, so the product keeps room; phones keep product, status and actions. */}
                 <table className="cat-ptable">
                   <thead><tr><th>Product</th><th className="cat-w-type cat-hide-md">Type</th><th className="cat-w-dur cat-hide-md">Duration</th><th className="cat-w-stat">Status</th><th className="cat-w-ent cat-hide-sm">Entitlements</th><th className="cat-w-date cat-hide-sm">Created</th><th className="cat-w-act amt"><span className="sr">Actions</span></th></tr></thead>
                   <tbody>

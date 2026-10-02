@@ -218,7 +218,7 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
     { key: "type", header: "Type", className: "cat-hide-sm", render: (i) => <span className={off(i)}>{typeLabel(i.type)}{i.duration ? <span className="subtle"> · {durationLabel(i.duration)}</span> : null}</span> },
     { key: "price", header: "Price", sort: sorter.of("price"), render: (i) => <span className={`mono ${off(i)}`}>{i.price ? priceLabel(i.price) : <span className="subtle">No price</span>}{i.price?.territory && <span className="subtle"> {i.price.territory}</span>}</span> },
     { key: "terr", header: "Territories", align: "right", className: "cat-hide-sm", render: (i) => <span className="num">{i.prices.length}</span> },
-    { key: "status", header: "Status", sort: sorter.of("status"), className: "cat-hide-sm", render: (i) => { const st = storeStatus(i.status); return st ? <Tag tone={st.tone}>{st.label}</Tag> : "—"; } },
+    { key: "status", header: "Status", sort: sorter.of("status"), className: "cat-hide-sm pe-w-stat", render: (i) => { const st = storeStatus(i.status); return st ? <Tag tone={st.tone}>{st.label}</Tag> : "—"; } },
   ];
   const ordered = [...items].sort(sorter.sort.key === "product" ? sorter.cmp((i: StoreListing) => i.display_name ?? i.store_identifier)
     // Prices group by currency first, then by amount: micros of different currencies are not comparable.
@@ -366,7 +366,8 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
         {reviewing && canEdit && <button type="button" className="btn btn-ghost" onClick={() => setDiscard(true)}><Icon name="trash" />Discard file</button>}
         <span className="grow" />
         {e.status === "ready" && canEdit && (
-          <button type="button" className="btn btn-dark" disabled={running} onClick={() => setConfirm(true)}><Icon name="send" />Commit {committable} {committable === 1 ? "change" : "changes"} to {store}</button>
+          // Not while the subscriber option is saving: the commit uses the option the server has when it starts.
+          <button type="button" className="btn btn-dark" disabled={running || preserveShown !== null} onClick={() => setConfirm(true)}><Icon name="send" />Commit {committable} {committable === 1 ? "change" : "changes"} to {store}</button>
         )}
         {(e.status === "partially_committed" || e.status === "failed") && canEdit && (
           <button type="button" className="btn btn-dark" disabled={running} onClick={() => void run("retry")}><Icon name="refresh" />{running ? "Retrying…" : `Retry ${e.results?.failed ?? rows.filter((r) => r.status === "failed").length} failed`}</button>
