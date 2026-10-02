@@ -7,6 +7,7 @@ import { createApp } from "./app.js";
 import { defaultStores } from "./stores/index.js";
 
 import { tick } from "./services/tick.js";
+import { runScheduledJobs } from "./services/scheduled.js";
 import { logMailer, type Mailer } from "./mail/index.js";
 import { modelFromEnv } from "./services/paywall-ai.js";
 import { assistantModelFromEnv } from "./services/assistant/models.js";
@@ -26,7 +27,11 @@ let running = false;
 const runTick = async () => {
   if (running) return;
   running = true;
-  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
+  try {
+    await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth });
+    // The weekly insights digest when REVENUEDOT_INSIGHTS_DIGEST=on (benchmarks are Cloud only and stay off here).
+    await runScheduledJobs(app.deps, new Date());
+  } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
@@ -38,7 +43,9 @@ const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeou
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
   // RevenueDot AI (prd/ai-assistant/PRD.md): ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to
   // pick another; hidden without either. Conversations and their streams live in Postgres; caps from REVENUEDOT_ASSISTANT_CAPS.
-  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS) });
+  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS),
+  // The weekly AI growth insights digest spends the owner's model key, so self-host runs it only when asked.
+  insightsDigest: process.env.REVENUEDOT_INSIGHTS_DIGEST === "on" });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 if (existsSync(`${dist}/index.html`)) {

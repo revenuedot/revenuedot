@@ -81,15 +81,17 @@ export async function runBenchmarkJob(d: { db: DB; benchmarks?: boolean }, now: 
       .orderBy(asc(PV.computedAt), asc(P.id)).limit(1);
     if (!due) break;
     if (Date.now() - started > budget && out.computed > 0) return out;
+    // Mark the project attempted today first: if this computation is cut off (the Worker's CPU limit), the next tick
+    // moves on to the next project instead of retrying this one forever. It then counts with no values today.
+    await db.transaction(async (tx) => {
+      await tx.delete(PV).where(eq(PV.projectId, due.id));
+      await tx.insert(PV).values({ projectId: due.id, platform: ALL, country: ALL, category: due.category!, metrics: {}, computedOn: day, computedAt: now });
+    });
     try {
       await computeProjectBenchmarks(db, due.id, due.category!, now, o);
     } catch (e) {
-      // One project's failure must not stop the night: mark it done today with no values, so the job moves on.
+      // One project's failure must not stop the night: it keeps the empty row written above.
       console.error(`benchmarks: project ${due.id} failed`, e);
-      await db.transaction(async (tx) => {
-        await tx.delete(PV).where(eq(PV.projectId, due.id));
-        await tx.insert(PV).values({ projectId: due.id, platform: ALL, country: ALL, category: due.category!, metrics: {}, computedOn: day, computedAt: now });
-      });
     }
     out.computed++;
   }

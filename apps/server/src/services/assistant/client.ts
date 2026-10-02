@@ -11,6 +11,8 @@ export interface AssistantActor {
   email: string;
   projectId: string;
   conversationId: string;
+  /** AI growth insights: reads only. The API refuses any other method from this actor, whatever the project allows. */
+  readOnly?: boolean;
 }
 
 /** Marks requests made by the assistant. A WeakMap keyed by the Request object, so no header can forge it. */

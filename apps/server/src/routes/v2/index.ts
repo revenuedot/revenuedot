@@ -101,7 +101,9 @@ export function v2Routes(deps: Deps) {
       if (!m) throw new V2Error(404, "resource_missing", "Project not found.");
       if (p.via === "assistant") {
         // The assistant works in its conversation's project only, and writes only where the project allows it.
-        if (ASSISTANT_CTX.get(c.req.raw)?.projectId !== projectId) throw new V2Error(404, "resource_missing", "Project not found.");
+        const actor = ASSISTANT_CTX.get(c.req.raw);
+        if (actor?.projectId !== projectId) throw new V2Error(404, "resource_missing", "Project not found.");
+        if (actor.readOnly && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) throw new V2Error(403, "authorization_error", "AI growth insights can only read.");
         const [proj] = await deps.db.select({ aiAccess: schema.projects.aiAccess }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
         const s = assistantScope(proj?.aiAccess ?? "disabled", m.role);
         const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
