@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-02",
+  "run": "202610021746535760",
+  "replicas": 3,
+  "purchases": 300,
+  "passed": 24,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "start three replicas at once on an empty database: all three replicas started and answer /v1/health",
+      "ok": true
+    },
+    {
+      "name": "start three replicas at once on an empty database: each migration was applied exactly once",
+      "ok": true
+    },
+    {
+      "name": "start three replicas at once on an empty database: replica 1: /healthz 200 and /readyz 200",
+      "ok": true
+    },
+    {
+      "name": "start three replicas at once on an empty database: replica 2: /healthz 200 and /readyz 200",
+      "ok": true
+    },
+    {
+      "name": "start three replicas at once on an empty database: replica 3: /healthz 200 and /readyz 200",
+      "ok": true
+    },
+    {
+      "name": "a developer, a catalog and two webhooks, through the load balancer: both webhooks were created",
+      "ok": true
+    },
+    {
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: the stopped replica answers /readyz 503 while it drains",
+      "ok": true
+    },
+    {
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: the stopped replica exited 0 after draining",
+      "ok": true
+    },
+    {
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: its log shows the drain and the stop",
+      "ok": true
+    },
+    {
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: it exited within its delay plus timeout (1.5 s + 20 s)",
+      "ok": true
+    },
+    {
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: replica 2 started again on the migrated database",
+      "ok": true
+    },
+    {
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: all 300 purchases succeeded through the load balancer",
+      "ok": true
+    },
+    {
+      "name": "every event delivered once: events: one INITIAL_PURCHASE per purchase and one EXPIRATION per expired subscription",
+      "ok": true
+    },
+    {
+      "name": "every event delivered once: the working webhook received every event",
+      "ok": true
+    },
+    {
+      "name": "every event delivered once: no event reached it twice",
+      "ok": true
+    },
+    {
+      "name": "every event delivered once: its deliveries are all delivered on the first attempt",
+      "ok": true
+    },
+    {
+      "name": "every event delivered once: the failing webhook got one call per recorded attempt, and every event was tried",
+      "ok": true
+    },
+    {
+      "name": "every event delivered once: one alert email for the failing webhook, not one per replica",
+      "ok": true
+    },
+    {
+      "name": "every event delivered once: the alert links to the load balancer address",
+      "ok": true
+    },
+    {
+      "name": "one background job run at a time: no two runs overlapped (from the replicas' job logs)",
+      "ok": true
+    },
+    {
+      "name": "one background job run at a time: runs moved between replicas (no fixed leader to lose)",
+      "ok": true
+    },
+    {
+      "name": "one background job run at a time: attempts sent by the job runs add up to the attempts recorded",
+      "ok": true
+    },
+    {
+      "name": "one background job run at a time: expirations recorded by the job runs add up",
+      "ok": true
+    },
+    {
+      "name": "the load balancer saw no failed request: failed requests",
+      "ok": true
+    }
+  ]
+}

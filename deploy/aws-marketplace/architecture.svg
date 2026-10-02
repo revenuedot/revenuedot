@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 700" width="1100" height="700" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+  <title>RevenueDot high-availability architecture on AWS</title>
+  <desc>Apps and the stores reach an Application Load Balancer through Route 53. The load balancer sends requests to two or more RevenueDot replicas on ECS Fargate or EKS in private subnets across three Availability Zones. The replicas share an RDS PostgreSQL Multi-AZ database and read secrets from Secrets Manager. NAT gateways carry calls out to the App Store, Google Play and customer webhooks. CloudWatch collects logs and alarms.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3f3f46"/>
+    </marker>
+    <style>
+      .box { fill: #ffffff; stroke: #d4d4d8; stroke-width: 1.5; }
+      .zone { fill: #fafafa; stroke: #a1a1aa; stroke-width: 1; stroke-dasharray: 5 4; }
+      .vpc { fill: none; stroke: #52525b; stroke-width: 1.5; }
+      .tier-public { fill: #f4f4f5; stroke: none; }
+      .tier-private { fill: #f4f4f5; stroke: none; }
+      .tier-db { fill: #f4f4f5; stroke: none; }
+      .task { fill: #18181b; }
+      .task-text { fill: #ffffff; font-size: 12px; font-weight: 600; }
+      .accent { fill: #c8a24a; }
+      .h { font-size: 13px; font-weight: 700; fill: #18181b; }
+      .t { font-size: 12px; fill: #3f3f46; }
+      .s { font-size: 11px; fill: #71717a; }
+      .label { font-size: 11px; font-weight: 600; fill: #52525b; letter-spacing: 0.04em; }
+      .line { stroke: #3f3f46; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #71717a; stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1100" height="700" fill="#ffffff"/>
+  <text x="40" y="40" font-size="20" font-weight="700" fill="#18181b">RevenueDot on AWS: high-availability reference architecture</text>
+  <text x="40" y="62" class="t">Two or more replicas in three Availability Zones share one Postgres. Migrations and background work run once, under Postgres locks.</text>
+
+  <!-- Outside -->
+  <rect x="40" y="110" width="170" height="74" rx="8" class="box"/>
+  <text x="56" y="134" class="h">Apps with the</text>
+  <text x="56" y="151" class="h">RevenueCat SDKs</text>
+  <text x="56" y="170" class="s">iOS, Android, RN, Flutter, web</text>
+  <rect x="40" y="200" width="170" height="60" rx="8" class="box"/>
+  <text x="56" y="224" class="h">App Store, Google Play</text>
+  <text x="56" y="243" class="s">server notifications</text>
+  <rect x="40" y="276" width="170" height="60" rx="8" class="box"/>
+  <text x="56" y="300" class="h">Your team</text>
+  <text x="56" y="319" class="s">dashboard in the browser</text>
+
+  <rect x="40" y="524" width="178" height="74" rx="8" class="box"/>
+  <text x="56" y="544" class="h">Outbound</text>
+  <text x="56" y="562" class="s">App Store Server API, Play API,</text>
+  <text x="56" y="578" class="s">your webhooks and integrations</text>
+
+  <!-- Route 53 + ALB -->
+  <rect x="250" y="170" width="120" height="56" rx="8" class="box"/>
+  <text x="264" y="194" class="h">Route 53</text>
+  <text x="264" y="212" class="s">your host name</text>
+  <path d="M210 147 L250 190" class="line"/>
+  <path d="M210 230 L250 204" class="line"/>
+  <path d="M210 306 L250 214" class="line"/>
+
+  <!-- VPC -->
+  <rect x="400" y="90" width="660" height="560" rx="12" class="vpc"/>
+  <text x="416" y="112" class="label">VPC (Terraform: deploy/terraform/aws · Helm: deploy/helm/revenuedot)</text>
+
+  <!-- Zones -->
+  <rect x="420" y="124" width="200" height="510" rx="8" class="zone"/>
+  <rect x="640" y="124" width="200" height="510" rx="8" class="zone"/>
+  <rect x="860" y="124" width="180" height="510" rx="8" class="zone"/>
+  <text x="432" y="144" class="label">AVAILABILITY ZONE A</text>
+  <text x="652" y="144" class="label">AVAILABILITY ZONE B</text>
+  <text x="872" y="144" class="label">AVAILABILITY ZONE C</text>
+
+  <!-- Public tier: ALB spanning -->
+  <rect x="430" y="156" width="600" height="96" rx="6" class="tier-public"/>
+  <text x="440" y="172" class="s">public subnets</text>
+  <rect x="470" y="180" width="520" height="56" rx="8" class="box"/>
+  <rect x="470" y="180" width="6" height="56" rx="3" class="accent"/>
+  <text x="490" y="203" class="h">Application Load Balancer (HTTPS, ACM certificate, TLS 1.2 and 1.3)</text>
+  <text x="490" y="222" class="s">health check /healthz · a task leaves the target group, then drains on SIGTERM · idle timeout 120 s</text>
+  <path d="M370 198 L470 206" class="line"/>
+
+  <!-- Private tier: replicas -->
+  <rect x="430" y="268" width="600" height="150" rx="6" class="tier-private"/>
+  <text x="440" y="284" class="s">private subnets · ECS on Fargate or EKS · 2 to 10 replicas, autoscaled, spread over zones</text>
+  <rect x="445" y="296" width="160" height="104" rx="8" class="task"/>
+  <text x="459" y="320" class="task-text">RevenueDot replica</text>
+  <text x="459" y="340" fill="#d4d4d8" font-size="11">SDK API · REST API</text>
+  <text x="459" y="356" fill="#d4d4d8" font-size="11">notifications · dashboard</text>
+  <text x="459" y="380" fill="#c8a24a" font-size="11" font-weight="600">runs the background job</text>
+  <text x="459" y="394" fill="#a1a1aa" font-size="10">(holds the lock this turn)</text>
+  <rect x="665" y="296" width="160" height="104" rx="8" class="task"/>
+  <text x="679" y="320" class="task-text">RevenueDot replica</text>
+  <text x="679" y="340" fill="#d4d4d8" font-size="11">SDK API · REST API</text>
+  <text x="679" y="356" fill="#d4d4d8" font-size="11">notifications · dashboard</text>
+  <text x="679" y="380" fill="#a1a1aa" font-size="11">skips the job this turn</text>
+  <rect x="875" y="296" width="150" height="104" rx="8" class="task"/>
+  <text x="889" y="320" class="task-text">RevenueDot replica</text>
+  <text x="889" y="340" fill="#d4d4d8" font-size="11">same image, uid 1000,</text>
+  <text x="889" y="356" fill="#d4d4d8" font-size="11">read-only filesystem</text>
+  <text x="889" y="380" fill="#a1a1aa" font-size="11">takes over if A fails</text>
+  <path d="M560 236 L525 296" class="line"/>
+  <path d="M730 236 L745 296" class="line"/>
+  <path d="M900 236 L950 296" class="line"/>
+
+  <!-- Database tier -->
+  <rect x="430" y="434" width="600" height="120" rx="6" class="tier-db"/>
+  <text x="440" y="450" class="s">database subnets (no route out)</text>
+  <rect x="445" y="462" width="160" height="78" rx="8" class="box"/>
+  <rect x="445" y="462" width="6" height="78" rx="3" class="accent"/>
+  <text x="461" y="486" class="h">RDS PostgreSQL</text>
+  <text x="461" y="504" class="t">primary</text>
+  <text x="461" y="524" class="s">KMS-encrypted, TLS only</text>
+  <rect x="665" y="462" width="160" height="78" rx="8" class="box"/>
+  <text x="681" y="486" class="h">RDS PostgreSQL</text>
+  <text x="681" y="504" class="t">standby (Multi-AZ)</text>
+  <text x="681" y="524" class="s">sync replica, auto failover</text>
+  <path d="M605 501 L665 501" class="dash"/>
+  <text x="611" y="494" class="s">sync</text>
+  <path d="M525 400 L525 462" class="line"/>
+  <path d="M745 400 L560 462" class="line"/>
+  <path d="M950 400 L600 470" class="line"/>
+  <text x="870" y="480" class="s">every replica: one pool,</text>
+  <text x="870" y="496" class="s">migration lock, job lock,</text>
+  <text x="870" y="512" class="s">claimed webhook rows</text>
+
+  <!-- NAT -->
+  <rect x="430" y="566" width="600" height="56" rx="6" class="tier-public"/>
+  <text x="446" y="590" class="h">NAT gateway per zone</text>
+  <text x="446" y="608" class="s">replicas call the stores, webhooks and integrations through it</text>
+  <path d="M430 594 L210 560" class="line"/>
+
+  <!-- Managed services -->
+  <rect x="40" y="380" width="178" height="130" rx="8" class="box"/>
+  <text x="56" y="404" class="h">Regional services</text>
+  <text x="56" y="426" class="t">Secrets Manager</text>
+  <text x="56" y="442" class="s">database URL, encryption key</text>
+  <text x="56" y="464" class="t">CloudWatch</text>
+  <text x="56" y="480" class="s">logs, 9 alarms to SNS</text>
+  <text x="56" y="496" class="t">KMS · ACM</text>
+  <path d="M445 360 L210 430" class="dash"/>
+
+  <text x="40" y="680" class="s">Postgres can also be Aurora PostgreSQL or any PostgreSQL 16+ reached directly, through RDS Proxy or PgBouncer in session mode. revenuedot.app/docs/guides/high-availability</text>
+</svg>

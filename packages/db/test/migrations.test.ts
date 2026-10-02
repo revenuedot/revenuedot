@@ -35,6 +35,18 @@ describe("migrations", () => {
     await expect(openDb(url)).rejects.toThrow(new RegExp(`${prev.tag}.*would be skipped`));
   });
 
+  it("a server started without migrating refuses a database missing a migration, and accepts one that has them all", async () => {
+    dir = mkdtempSync(join(tmpdir(), "rd-migrations-"));
+    const url = `pglite://${dir}`;
+    await expect(openDb(url, { migrate: false })).rejects.toThrow(/missing \d+ migrations .*REVENUEDOT_MIGRATE=skip/);
+    await (await openDb(url)).close();
+    const skipping = await openDb(url, { migrate: false });
+    const last = journal.entries[journal.entries.length - 1]!;
+    await skipping.db.execute(sql`delete from drizzle.__drizzle_migrations where created_at = ${last.when}`);
+    await skipping.close();
+    await expect(openDb(url, { migrate: false })).rejects.toThrow(new RegExp(`missing 1 migration \\(${last.tag}\\)`));
+  });
+
   it("starts normally on a database that applied every migration", async () => {
     dir = mkdtempSync(join(tmpdir(), "rd-migrations-"));
     const url = `pglite://${dir}`;

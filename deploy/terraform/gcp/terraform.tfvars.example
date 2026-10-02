@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and edit. Never commit terraform.tfvars or the state: they hold secrets.
+project_id  = "my-project"
+region      = "us-central1"
+image       = "us-central1-docker.pkg.dev/my-project/revenuedot/revenuedot:0.1.0"
+alert_email = "oncall@example.com"
+
+# Optional
+# public_url = "https://revenuedot.example.com"
+# environment = { REVENUEDOT_MAIL_FROM = "RevenueDot <no-reply@example.com>" }
+# secret_ids  = { REVENUEDOT_SMTP_URL = "revenuedot-smtp-url" }
