@@ -14,7 +14,6 @@
 //   - AI growth insights on the real server with the Anthropic provider (the scripted Messages API on the capture server):
 //     Refresh writes 3 to 5 cited insights with read tools only; the weekly digest (in-process, Cloud configuration) emails
 //     the admin; the one-click opt-out on the real server turns it off.
-import { and, eq, inArray } from "drizzle-orm";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Journey } from "./run.ts";
@@ -22,7 +21,7 @@ import { until } from "./lib/check.ts";
 import { type Ctx, signUp } from "./lib/context.ts";
 import { fakeModelCalls } from "./lib/fake-anthropic.ts";
 import { ROOT } from "./lib/stack.ts";
-import { openDb, schema } from "../../../packages/db/src/index.ts";
+import { openDb } from "../../../packages/db/src/index.ts";
 import { createApp } from "../../../apps/server/src/app.ts";
 import { defaultStores } from "../../../apps/server/src/stores/index.ts";
 import { getOrCreateCustomer } from "../../../apps/server/src/repo/customers.ts";
@@ -182,7 +181,7 @@ const journey: Journey = {
       const mine = await cloudCall(dev.cookie, "POST", `/v2/projects/${dev.projectId}/benchmarks/settings`, { share: true, category: "health_fitness" });
       c.check("the journey project shares as Health & Fitness", mine.body.share === true, mine);
       // The nightly run, step by step as the cron makes it (one project per step).
-      await db.delete(schema.benchmarkRuns);
+      await sql`DELETE FROM benchmark_runs`;
       let job = { computed: 0, aggregated: false, groups: 0 }, computed = 0, steps = 0;
       for (; steps < 40 && !job.aggregated; steps++) { job = await runBenchmarkJob({ db, benchmarks: true }, new Date(), { force: true, minSample: MIN, budgetMs: 0 }); computed += job.computed; }
       c.check(`the job finished in steps and published groups (${steps} steps, ${job.groups} groups)`, job.aggregated && job.groups > 0, job);
@@ -190,26 +189,37 @@ const journey: Journey = {
       c.eq("no published group has fewer than 10 projects (SQL)", small[0]!.n, 0);
       const cols = await sql<{ column_name: string }[]>`SELECT column_name FROM information_schema.columns WHERE table_name = 'benchmark_aggregates' ORDER BY ordinal_position`;
       c.check("the aggregates table has no project column", !cols.some((x) => /project_id/.test(x.column_name)), cols.map((x) => x.column_name));
-      const [median] = await sql<{ p50: number; n: number }[]>`
-        SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY (v.metrics->'price_annual'->>'value')::float8) AS p50, count(*)::int AS n
+      // Postgres's own percentile_cont over the shared values of each metric: groups with 10+ values must match it,
+      // groups with fewer must not exist.
+      const medianOf = (metric: string) => sql<{ p50: number; n: number }[]>`
+        SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY (v.metrics->${metric}->>'value')::float8) AS p50, count(*)::int AS n
         FROM benchmark_project_values v JOIN projects p ON p.id = v.project_id
-        WHERE p.benchmarks_share AND v.platform = 'all' AND v.country = 'all' AND v.metrics->'price_annual'->>'value' IS NOT NULL`;
-      const [stored] = await sql<{ p50: number; projects: number; p10: number | null }[]>`SELECT p50, projects, p10 FROM benchmark_aggregates WHERE category = 'all' AND platform = 'all' AND country = 'all' AND metric = 'price_annual'`;
-      c.check(`the published annual-price median equals Postgres's percentile_cont over ${median!.n} shared values`, stored && Math.abs(stored.p50 - median!.p50) < 1e-9, { stored, median });
-      c.check("the app count is rounded down to a multiple of 5", stored && stored.projects === Math.floor(median!.n / 5) * 5, { stored, n: median!.n });
+        WHERE p.benchmarks_share AND v.platform = 'all' AND v.country = 'all' AND v.metrics->${metric}->>'value' IS NOT NULL`;
+      const storedOf = (metric: string) => sql<{ p50: number; projects: number; p10: number | null }[]>`SELECT p50, projects, p10 FROM benchmark_aggregates WHERE category = 'all' AND platform = 'all' AND country = 'all' AND metric = ${metric}`;
+      const counts: Record<string, number> = {};
+      let checked = "";
+      for (const metric of ["price_monthly", "initial_conversion", "refund_rate", "churn", "price_annual", "trial_conversion", "arpu", "ltv_per_customer"]) {
+        const [m] = await medianOf(metric);
+        const [st] = await storedOf(metric);
+        counts[metric] = m!.n;
+        if (m!.n >= 10) {
+          c.check(`${metric}: the published median equals Postgres's percentile_cont over ${m!.n} shared values`, st && Math.abs(st.p50 - m!.p50) < 1e-9, { st, m });
+          c.check(`${metric}: the app count ${st?.projects} is ${m!.n} rounded down to a multiple of 5, without deciles under 20`, st && st.projects === Math.floor(m!.n / 5) * 5 && (m!.n >= 20 || st.p10 === null), { st, n: m!.n });
+          if (!checked) checked = metric;
+        } else c.check(`${metric}: only ${m!.n} projects have enough data, so no group is published`, !st, st);
+      }
+      c.must("at least one metric has 10 or more sharing projects", checked, counts);
       const peerView = await cloudCall(dev.cookie, "GET", `/v2/projects/${dev.projectId}/benchmarks?category=health_fitness`);
       c.check("the journey project sees Health & Fitness peers (12 projects share)", peerView.body.peer_group?.projects >= 10 && peerView.body.metrics.some((m: any) => m.peers), peerView.body.peer_group);
       c.check("its own value equals the stored value, and no other project's value is returned", JSON.stringify(peerView.body).indexOf(peers[0]!.projectId) === -1, "found a peer id");
       const travel = await cloudCall(dev.cookie, "GET", `/v2/projects/${dev.projectId}/benchmarks?category=travel`);
       c.check("a category with no sharing apps shows no peers", travel.body.metrics.every((m: any) => m.peers === null), travel.body.peer_group);
       const off = await cloudCall(peers[0]!.cookie, "POST", `/v2/projects/${peers[0]!.projectId}/benchmarks/settings`, { share: false, category: "health_fitness" });
-      const left = await db.select().from(schema.benchmarkProjectValues).where(eq(schema.benchmarkProjectValues.projectId, peers[0]!.projectId));
+      const left = await sql`SELECT 1 FROM benchmark_project_values WHERE project_id = ${peers[0]!.projectId}`;
       c.check("stopping sharing deletes that project's values at once", off.body.share === false && left.length === 0, { off, left: left.length });
-      const [after] = await sql<{ projects: number; p50: number }[]>`SELECT projects, p50 FROM benchmark_aggregates WHERE category = 'all' AND platform = 'all' AND country = 'all' AND metric = 'price_annual'`;
-      const [median2] = await sql<{ p50: number }[]>`
-        SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY (v.metrics->'price_annual'->>'value')::float8) AS p50 FROM benchmark_project_values v JOIN projects p ON p.id = v.project_id
-        WHERE p.benchmarks_share AND v.platform = 'all' AND v.country = 'all' AND v.metrics->'price_annual'->>'value' IS NOT NULL`;
-      c.check("the groups are rebuilt without it", after && Math.abs(after.p50 - median2!.p50) < 1e-9, { after, median2 });
+      const [after] = await storedOf(checked);
+      const [median2] = await medianOf(checked);
+      c.check(`the groups are rebuilt without it (${checked}: ${median2!.n} values)`, median2!.n >= 10 ? !!after && Math.abs(after.p50 - median2!.p50) < 1e-9 : !after, { after, median2 });
 
       // ---------------------------------------------------------------- AI growth insights
       c.begin("AI growth insights on the real server (Anthropic provider, scripted Messages API)");
@@ -221,8 +231,8 @@ const journey: Journey = {
       c.check("every insight cites pack items and carries their numbers and a project link", ins.every((i: any) => i.metric_ids.length && i.numbers.length && i.link.startsWith(`/projects/${dev.projectId}/`)), ins);
       const modelCalls = fakeModelCalls.slice(calls0);
       c.check("the model was offered read tools only and called a tool before answering", modelCalls.length >= 2 && modelCalls.every((m) => m.tools.every((t) => /^(get|list)-/.test(t))) && modelCalls[0]!.tools.includes("get-attribution-report"), modelCalls.map((m) => m.tools.length));
-      const [row] = await db.select().from(schema.aiInsights).where(eq(schema.aiInsights.projectId, dev.projectId));
-      c.has("ai_insights holds the week's row (SQL)", row, { status: "ready", provider: "Anthropic", generatedBy: me.body.user.id });
+      const [row] = await sql<{ status: string; provider: string; generated_by: string }[]>`SELECT status, provider, generated_by FROM ai_insights WHERE project_id = ${dev.projectId}`;
+      c.has("ai_insights holds the week's row (SQL)", row, { status: "ready", provider: "Anthropic", generated_by: me.body.user.id });
       const again = await dev.v2r("POST", "/ai/insights/refresh");
       c.check("a second Refresh within the hour is refused (429)", again.status === 429, again.status);
 
@@ -233,7 +243,7 @@ const journey: Journey = {
       c.check("the admin gets the digest once", sent.length === 1, mail.sent.map((m) => `${m.to}: ${m.subject}`));
       const m = sent[0];
       c.check("it lists the insights with their numbers and chart links, and no customer ids", !!m && m.text.includes(ins[0]?.title) && m.text.includes(`${ctx.base}/projects/${dev.projectId}/`) && !/meta_1|asa_1|organic_/.test(m.text), m?.text.slice(0, 600));
-      const [emailed] = await db.select({ at: schema.aiInsights.emailedAt }).from(schema.aiInsights).where(and(eq(schema.aiInsights.projectId, dev.projectId), inArray(schema.aiInsights.status, ["ready"])));
+      const [emailed] = await sql<{ at: Date | null }[]>`SELECT emailed_at AS at FROM ai_insights WHERE project_id = ${dev.projectId} AND status = 'ready'`;
       c.check("ai_insights.emailed_at is set (SQL)", !!emailed?.at, emailed);
       const unsub = /https?:\/\/\S+\/auth\/insights\/unsubscribe\?token=\S+/.exec(m?.text ?? "")?.[0];
       c.must("the email has a one-click opt-out link", unsub);
