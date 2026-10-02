@@ -39,7 +39,11 @@ export async function customerCenterProblems(db: DB, projectId: string, override
   const refs = ccOfferRefs(merged);
   if (refs.length) {
     const ids = new Set((await retentionOffersOf(db, projectId)).map((o) => o.id));
-    for (const r of refs) if (!ids.has(r.id)) problems.push(`${r.at}.retention_offer_id: no Retention offer "${r.id}" in this project.`);
+    // A reference that is already stored stays allowed after its offer is deleted (the SDK gets "no offer"), so saving
+    // other settings (the Support page, the support email) never fails on it; only new references must exist.
+    const stored = await storedOf(db, projectId);
+    const kept = new Set(stored ? ccOfferRefs(stored).map((r) => r.id) : []);
+    for (const r of refs) if (!ids.has(r.id) && !kept.has(r.id)) problems.push(`${r.at}.retention_offer_id: no Retention offer "${r.id}" in this project.`);
   }
   return problems;
 }
