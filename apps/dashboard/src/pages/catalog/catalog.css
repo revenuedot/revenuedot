@@ -96,7 +96,7 @@ a.cat-lnk:hover{text-decoration-color:var(--fg)}
 /* Anchored to the top, so the dialog does not jump while the list grows or shrinks with the search. */
 .scrim:has(.imp){align-items:start;padding-top:max(16px,6vh)}
 .imp{display:flex;flex-direction:column;gap:14px;min-width:0}
-.imp-list{max-height:min(46vh,440px);overflow:auto;border:1px solid var(--border)}
+.imp-list{max-height:min(46vh,440px);overflow:hidden auto;border:1px solid var(--border)}
 .imp-table{width:100%;table-layout:fixed}
 .imp-table thead th{position:sticky;top:0;background:var(--panel);z-index:1}
 .imp-table .imp-c{width:36px;padding-right:0}
