@@ -33,7 +33,8 @@ const PORT = Number(process.env.PORT ?? 5199);
 const DIST = new URL("../dist", import.meta.url).pathname;
 const DAY = 86400_000;
 
-const { db } = await openDb("pglite://memory");
+// E2E_DATABASE_URL runs the same server on a real Postgres (a Railway development database) for manual browser checks.
+const { db } = await openDb(process.env.E2E_DATABASE_URL ?? "pglite://memory");
 // The run never reaches Apple, Google or any other outside host: only this machine (fake partners, buckets) answers.
 // A credential a spec saves (a made-up Google service account) then fails like an outage instead of calling Google.
 // Custom domain verification asks Cloudflare's DNS-over-HTTPS resolver; here it answers from records set with POST /__dns.
@@ -44,6 +45,13 @@ const localFetch: typeof fetch = async (input, init) => {
   // Store import (store-import.spec.ts): App Store Connect and Google Play answer from fakes for the e2e credentials only.
   const store = await storeCatalogFetch(url.href, init ?? {});
   if (store) return store;
+  // E2E_REAL_STORES=1, for a manual check with real sandbox keys: App Store Connect and Google Play are called for real,
+  // read-only. Anything but a GET (and Google's OAuth token request) is refused, so nothing in a store can change.
+  if (process.env.E2E_REAL_STORES === "1" && ["api.appstoreconnect.apple.com", "androidpublisher.googleapis.com", "oauth2.googleapis.com"].includes(url.hostname)) {
+    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (method === "GET" || url.href === "https://oauth2.googleapis.com/token") return fetch(input, init);
+    return new Response(JSON.stringify({ error: `The e2e server is read-only against real stores (${method} ${url.host} refused).` }), { status: 403, headers: { "content-type": "application/json" } });
+  }
   if (url.href.startsWith("https://cloudflare-dns.com/dns-query")) {
     const name = url.searchParams.get("name")!, type = url.searchParams.get("type") as "CNAME" | "TXT";
     const data = dns[name]?.[type] ?? [];
@@ -151,6 +159,14 @@ if (!existsSync(join(DIST, "index.html"))) { console.error(`No dashboard build a
 serve({ fetch: web.fetch, port: PORT });
 const base = `http://localhost:${PORT}`;
 webStripe.checkoutUrl = `${base}/__stripe/checkout/{id}`;
+
+// E2E_SEED=off (manual checks on a Railway database, which keeps its data across restarts): no demo data. The module
+// then waits forever here while the server and the tick keep running.
+if (process.env.E2E_SEED === "off") {
+  ready = true;
+  console.log(`E2E server ready on ${base} (no demo data)`);
+  await new Promise(() => {});
+}
 
 // 1. API-made demo data.
 const cookie = await session(base, "e2e@revenuedot.test", "e2e-password-1", "Scanner");

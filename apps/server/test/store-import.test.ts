@@ -146,6 +146,13 @@ describe("import from App Store Connect", () => {
       expect(refused).toMatchObject({ status: 422, body: { type: "unprocessable_entity_error" } });
       expect(refused.body.message).toMatch(/App Manager role/);
     }
+    // The In-App Purchase key saved as the App Store Connect key too: App Store Connect answers 401, and the message says why.
+    const iap = await ascCreds();
+    await h.db.update(schema.apps).set({ credentials: { ...iap, subscription_key_id: "ASCKEY1" } }).where(eq(schema.apps.id, APP_ID));
+    asc.setMode("401");
+    const sameKey = await v2("GET", LIST);
+    expect(sameKey).toMatchObject({ status: 422, body: { type: "unprocessable_entity_error" } });
+    expect(sameKey.body.message).toMatch(/is its In-App Purchase key \(key ID ASCKEY1\), and App Store Connect does not accept In-App Purchase keys/);
     asc.setMode("503");
     expect(await v2("GET", LIST)).toMatchObject({ status: 422, body: { type: "store_error", retryable: true } });
     expect(await v2("POST", IMPORT, { store_identifiers: ["pro_weekly"] })).toMatchObject({ status: 422, body: { type: "store_error", retryable: true } });

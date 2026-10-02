@@ -9,7 +9,7 @@
 import { createAmazonStore } from "@revenuedot/server/stores/amazon/index.js";
 import { createStripeStore } from "@revenuedot/server/stores/stripe/index.js";
 
-import { E2E_AMAZON_SECRET, E2E_ASC_FORBIDDEN_KEY_ID, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_EMAIL, E2E_STRIPE_KEY, E2E_STRIPE_SUB } from "./store-values.ts";
+import { E2E_AMAZON_SECRET, E2E_ASC_EMPTY_KEY_ID, E2E_ASC_FORBIDDEN_KEY_ID, E2E_PLAY_DENIED_EMAIL, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_EMAIL, E2E_STRIPE_KEY, E2E_STRIPE_SUB } from "./store-values.ts";
 import { FAKE_STRIPE_KEY, FakeStripeAccount } from "../../../packages/contract/src/fake-stripe.ts";
 
 /** The web billing Stripe account (FAKE_STRIPE_KEY). server.ts points its checkout URL at its own fake Checkout page. */
@@ -75,7 +75,8 @@ function ascFetch(url: string, init: RequestInit): Response | null {
   const token = (new Headers(init.headers).get("authorization") ?? "").replace(/^Bearer /, "");
   const kid = b64json(token.split(".")[0]).kid;
   if (kid === E2E_ASC_FORBIDDEN_KEY_ID) return json(403, { errors: [{ status: "403", code: "FORBIDDEN_ERROR", title: "This request is forbidden for security reasons", detail: "The API key in use does not allow this request" }] });
-  if (kid !== E2E_ASC_KEY_ID) return null;
+  if (kid !== E2E_ASC_KEY_ID && kid !== E2E_ASC_EMPTY_KEY_ID) return null;
+  const empty = kid === E2E_ASC_EMPTY_KEY_ID;
   const u = new URL(url);
   const page = (all: unknown[], size: number) => {
     const cursor = Number(u.searchParams.get("cursor") ?? 0);
@@ -83,24 +84,35 @@ function ascFetch(url: string, init: RequestInit): Response | null {
     return json(200, { data: all.slice(cursor, cursor + size), links: { self: url, ...(cursor + size < all.length ? { next: `${u.origin}${u.pathname}?${q}` } : {}) } });
   };
   if (u.pathname === "/v1/apps") return json(200, { data: u.searchParams.get("filter[bundleId]") === E2E_IMPORT_BUNDLE ? [res("6400000099", "apps", { bundleId: E2E_IMPORT_BUNDLE, name: "Focus" })] : [] });
-  if (u.pathname === "/v1/apps/6400000099/subscriptionGroups") return page(ASC_GROUPS, 200);
+  if (u.pathname === "/v1/apps/6400000099/subscriptionGroups") return page(empty ? [] : ASC_GROUPS, 200);
   if (u.pathname === "/v1/subscriptionGroups/21000001/subscriptions") return page(ASC_SUBS, 200);
-  if (u.pathname === "/v1/apps/6400000099/inAppPurchasesV2") return page(ASC_IAPS, 2);
+  if (u.pathname === "/v1/apps/6400000099/inAppPurchasesV2") return page(empty ? [] : ASC_IAPS, 2);
   return json(404, { errors: [{ status: "404", title: "The specified resource does not exist" }] });
 }
 
 const PLAY_TOKEN = "ya29.e2e-import-only";
+const PLAY_DENIED_TOKEN = "ya29.e2e-import-denied";
 async function playFetch(url: string, init: RequestInit): Promise<Response | null> {
   if (url === "https://oauth2.googleapis.com/token") {
     const assertion = new URLSearchParams(typeof init.body === "string" ? init.body : "").get("assertion") ?? "";
-    if (b64json(assertion.split(".")[1]).iss !== E2E_PLAY_EMAIL) return null;
-    return json(200, { access_token: PLAY_TOKEN, expires_in: 3599, token_type: "Bearer" });
+    const iss = b64json(assertion.split(".")[1]).iss;
+    if (iss !== E2E_PLAY_EMAIL && iss !== E2E_PLAY_DENIED_EMAIL) return null;
+    return json(200, { access_token: iss === E2E_PLAY_EMAIL ? PLAY_TOKEN : PLAY_DENIED_TOKEN, expires_in: 3599, token_type: "Bearer" });
   }
   const base = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${E2E_IMPORT_BUNDLE}`;
-  if (!url.startsWith(base) || new Headers(init.headers).get("authorization") !== `Bearer ${PLAY_TOKEN}`) return null;
-  const path = new URL(url).pathname.slice(new URL(base).pathname.length);
+  const auth = new Headers(init.headers).get("authorization");
+  if (!url.startsWith(base) || (auth !== `Bearer ${PLAY_TOKEN}` && auth !== `Bearer ${PLAY_DENIED_TOKEN}`)) return null;
+  const u = new URL(url);
+  const path = u.pathname.slice(new URL(base).pathname.length);
+  if (auth === `Bearer ${PLAY_DENIED_TOKEN}`) return json(403, { error: { code: 403, message: "The caller does not have permission", status: "PERMISSION_DENIED", errors: [{ reason: "permissionDenied" }] } });
   if (path === "/subscriptions") {
-    return json(200, { subscriptions: [{ packageName: E2E_IMPORT_BUNDLE, productId: "focus_premium", listings: [{ languageCode: "en-US", title: "Focus Premium" }], basePlans: [
+    // Two pages, like Google's nextPageToken paging.
+    if (u.searchParams.get("pageToken") === "page-2") {
+      return json(200, { subscriptions: [{ packageName: E2E_IMPORT_BUNDLE, productId: "focus_family", listings: [{ languageCode: "en-US", title: "Focus Family" }], basePlans: [
+        { basePlanId: "yearly", state: "ACTIVE", autoRenewingBasePlanType: { billingPeriodDuration: "P1Y" } },
+      ] }] });
+    }
+    return json(200, { nextPageToken: "page-2", subscriptions: [{ packageName: E2E_IMPORT_BUNDLE, productId: "focus_premium", listings: [{ languageCode: "en-US", title: "Focus Premium" }], basePlans: [
       { basePlanId: "monthly", state: "ACTIVE", autoRenewingBasePlanType: { billingPeriodDuration: "P1M", legacyCompatible: true } },
       { basePlanId: "annual", state: "ACTIVE", autoRenewingBasePlanType: { billingPeriodDuration: "P1Y" } },
     ] }] });

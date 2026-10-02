@@ -10,7 +10,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { generateKeyPairSync } from "node:crypto";
 import { FAKE_STRIPE_KEY } from "../../../packages/contract/src/fake-stripe.ts";
-import { E2E_ASC_FORBIDDEN_KEY_ID, E2E_ASC_ISSUER, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_EMAIL } from "./store-values.ts";
+import { E2E_ASC_EMPTY_KEY_ID, E2E_ASC_FORBIDDEN_KEY_ID, E2E_ASC_ISSUER, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_DENIED_EMAIL, E2E_PLAY_EMAIL } from "./store-values.ts";
 
 test.describe.configure({ mode: "serial" });
 
@@ -22,10 +22,10 @@ function watchConsole(page: Page) {
 }
 
 const p8 = () => generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
-const serviceAccount = () => JSON.stringify({
+const serviceAccount = (email = E2E_PLAY_EMAIL) => JSON.stringify({
   type: "service_account", project_id: "e2e-project", private_key_id: "e2e-kid",
   private_key: generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
-  client_email: E2E_PLAY_EMAIL, token_uri: "https://oauth2.googleapis.com/token",
+  client_email: email, token_uri: "https://oauth2.googleapis.com/token",
 });
 
 test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({ page, baseURL }) => {
@@ -54,6 +54,9 @@ test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({
   const android = await app({ name: "Focus Android", type: "play_store", play_store: { package_name: E2E_IMPORT_BUNDLE, play_service_account_credentials_json: serviceAccount() } });
   await app({ name: "Focus Web", type: "stripe", stripe: { stripe_secret_key: FAKE_STRIPE_KEY } });
   await app({ name: "Focus Fire", type: "amazon", amazon: { package_name: E2E_IMPORT_BUNDLE } });
+  await app({ name: "Empty iOS", type: "app_store", app_store: { bundle_id: E2E_IMPORT_BUNDLE, app_store_connect_api_key: p8(), app_store_connect_api_key_id: E2E_ASC_EMPTY_KEY_ID, app_store_connect_api_key_issuer: E2E_ASC_ISSUER } });
+  await app({ name: "No key iOS", type: "app_store", app_store: { bundle_id: E2E_IMPORT_BUNDLE } });
+  await app({ name: "Denied Android", type: "play_store", play_store: { package_name: E2E_IMPORT_BUNDLE, play_service_account_credentials_json: serviceAccount(E2E_PLAY_DENIED_EMAIL) } });
   await app({ name: "Denied iOS", type: "app_store", app_store: { bundle_id: E2E_IMPORT_BUNDLE, app_store_connect_api_key: p8(), app_store_connect_api_key_id: E2E_ASC_FORBIDDEN_KEY_ID, app_store_connect_api_key_issuer: E2E_ASC_ISSUER } });
   // One product is already in the catalog, and the entitlement to attach imports to.
   expect((await api("POST", `${P}/products`, { app_id: ios, store_identifier: "focus_pro_monthly", type: "subscription", subscription: { duration: "P1M" } })).status).toBe(201);
@@ -117,6 +120,12 @@ test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({
     expect(by.focus_season).toBeUndefined();
     const attached = (await api<{ items: any[] }>("GET", `${P}/entitlements/${ent.body.id}/products`)).body.items.map((p) => p.store_identifier).sort();
     expect(attached).toEqual(["focus_coins_100", "focus_lifetime", "focus_pro_annual", "focus_pro_weekly"]);
+    // What the SDK receives: the imported products unlock pro (consumables never do).
+    const key = (await api<{ items: { key: string }[] }>("GET", `${P}/apps/${ios}/public_api_keys`)).body.items[0]!.key;
+    const sdk = await page.request.get(`${WEB}/v1/product_entitlement_mapping`, { headers: { authorization: `Bearer ${key}` } });
+    const mapping = (await sdk.json()).product_entitlement_mapping;
+    for (const id of ["focus_pro_annual", "focus_pro_weekly", "focus_lifetime"]) expect(mapping[id]).toMatchObject({ product_identifier: id, entitlements: ["pro"] });
+    expect(mapping.focus_coins_100).toBeUndefined();
 
     // Opened again from the app group: only the season pass is left to import.
     await panel.getByRole("button", { name: "Import products into Focus iOS" }).click();
@@ -126,19 +135,20 @@ test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({
     await dialog.getByRole("button", { name: "Cancel" }).click();
   });
 
-  await test.step("Google Play from the app page: base plans as subscription:base_plan", async () => {
+  await test.step("Google Play from the app page: base plans as subscription:base_plan, over two pages", async () => {
     await page.goto(`${WEB}/projects/${pid}/apps/${android}`);
     await page.getByRole("button", { name: "Import products", exact: true }).click();
     const d = page.getByRole("dialog", { name: "Import products into Focus Android" });
-    await expect(d.locator("tbody tr")).toHaveCount(3);
+    await expect(d.locator("tbody tr")).toHaveCount(4);
+    await expect(d.getByRole("row", { name: /focus_family:yearly/ })).toContainText("Focus Family");
     await expect(d.getByRole("row", { name: /focus_premium:annual/ })).toContainText("1 year");
     await expect(d.getByRole("row", { name: /focus_unlock/ })).toContainText("One-time");
     await d.getByLabel("Select all").check();
-    await d.getByRole("button", { name: "Import 3 products" }).click();
-    await expect(d.getByText("Imported 3 products from Google Play.")).toBeVisible();
+    await d.getByRole("button", { name: "Import 4 products" }).click();
+    await expect(d.getByText("Imported 4 products from Google Play.")).toBeVisible();
     await d.getByRole("button", { name: "Done" }).click();
     const ids = (await api<{ items: any[] }>("GET", `${P}/products?app_id=${android}`)).body.items.map((p) => p.store_identifier).sort();
-    expect(ids).toEqual(["focus_premium:annual", "focus_premium:monthly", "focus_unlock"]);
+    expect(ids).toEqual(["focus_family:yearly", "focus_premium:annual", "focus_premium:monthly", "focus_unlock"]);
   });
 
   await test.step("Stripe: one row per price, with the price", async () => {
@@ -155,13 +165,21 @@ test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({
     await expect(yearly).toContainText("In catalog");
   });
 
-  await test.step("Amazon explains why it cannot import; a refused App Store Connect key names the role", async () => {
+  await test.step("Amazon explains why it cannot import; a missing key, a refused key and an empty store each say so", async () => {
     await dialog.getByLabel("App", { exact: true }).selectOption({ label: "Focus Fire (Amazon)" });
     await expect(dialog.getByRole("note")).toContainText("Amazon has no API");
     await dialog.getByLabel("App", { exact: true }).selectOption({ label: "Denied iOS (App Store)" });
     const alert = dialog.getByRole("alert");
     await expect(alert).toContainText("App Manager role");
     await expect(alert.getByRole("link", { name: "Open app settings" })).toBeVisible();
+    await dialog.getByLabel("App", { exact: true }).selectOption({ label: "No key iOS (App Store)" });
+    await expect(dialog.getByRole("alert")).toContainText("needs the app's App Store Connect API key");
+    await expect(dialog.getByRole("alert")).toContainText("The In-App Purchase key cannot read the product list");
+    await dialog.getByLabel("App", { exact: true }).selectOption({ label: "Denied Android (Google Play)" });
+    await expect(dialog.getByRole("alert")).toContainText("View app information and download bulk reports (read-only)");
+    await dialog.getByLabel("App", { exact: true }).selectOption({ label: "Empty iOS (App Store)" });
+    await expect(dialog.getByText("App Store Connect has no products for this app yet.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Import", exact: true })).toBeDisabled();
     await dialog.getByRole("button", { name: "Cancel" }).click();
   });
 
@@ -173,7 +191,24 @@ test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({
     const box = await dialog.boundingBox();
     expect(box!.width).toBeLessThanOrEqual(390);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    // The table fits too: type and duration move under the product name, nothing scrolls sideways.
+    expect(await dialog.locator(".imp-list").evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    await expect(dialog.getByRole("row", { name: /Focus Pro Annual/ })).toContainText("Subscription · 1 year");
     await dialog.getByRole("button", { name: "Cancel" }).click();
+  });
+
+  await test.step("dark theme: the dialog uses the dark tokens", async () => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.reload();
+    await page.getByRole("button", { name: "Import products", exact: true }).click();
+    await dialog.getByLabel("App", { exact: true }).selectOption({ label: "Focus iOS (App Store)" });
+    await expect(dialog.locator("tbody tr")).toHaveCount(6);
+    const bg = await dialog.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe("rgb(17, 17, 17)");
+    if (process.env.SHOTS) await dialog.screenshot({ path: `${process.env.SHOTS}/import-dark.png` });
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await page.emulateMedia({ colorScheme: "light" });
   });
 
   // The 422s the test provokes (Amazon, the refused key) are logged by the browser as failed requests; nothing else.

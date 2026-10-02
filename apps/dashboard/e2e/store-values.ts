@@ -9,3 +9,6 @@ export const E2E_ASC_FORBIDDEN_KEY_ID = "E2EASCDENY";
 export const E2E_ASC_ISSUER = "e2e00000-0000-4000-8000-000000000001";
 export const E2E_IMPORT_BUNDLE = "com.example.e2e.import";
 export const E2E_PLAY_EMAIL = "e2e-import@e2e-project.iam.gserviceaccount.com";
+/** An App Store Connect key whose app has no products yet, and a Play service account without "View app information". */
+export const E2E_ASC_EMPTY_KEY_ID = "E2EASCNONE";
+export const E2E_PLAY_DENIED_EMAIL = "e2e-denied@e2e-project.iam.gserviceaccount.com";

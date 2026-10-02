@@ -68,7 +68,8 @@ export class AppStoreConnectApi {
     if (text) { try { json = JSON.parse(text); } catch { json = {}; } }
     if (res.ok) return json as T;
     const first = json?.errors?.[0] ?? {};
-    const detail = [first.title, first.detail].filter(Boolean).join(": ") || `App Store Connect answered ${res.status}`;
+    const title = typeof first.title === "string" ? first.title.trim() : "";
+    const detail = (title && first.detail ? `${title}${/[.!?]$/.test(title) ? " " : ": "}${first.detail}` : title || first.detail) || `App Store Connect answered ${res.status}`;
     if (res.status === 401 || res.status === 403) throw new ConnectError("credentials", `App Store Connect refused the API key (${detail}). It needs the App Manager role.`, res.status);
     if (res.status === 429 || res.status >= 500) throw new ConnectError("unavailable", `App Store Connect is not responding (${detail}). Try again later.`, res.status);
     // 409 is App Store Connect's answer for any entity rule, a duplicate product id among them.

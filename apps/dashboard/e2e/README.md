@@ -26,6 +26,8 @@ pnpm --filter @revenuedot/dashboard build && pnpm --filter @revenuedot/dashboard
 pnpm --filter @revenuedot/dashboard seed    # or: fill the dev server (localhost:8787) with the API-made demo data
 ```
 
+Manual checks on a real Postgres: `E2E_DATABASE_URL=<a database of your own on the Railway development server>` runs the same server there instead of PGlite; add `E2E_SEED=off` to skip the demo data (a persistent database keeps it across restarts, and seeding twice fails). `E2E_REAL_STORES=1` lets App Store Connect and Google Play be called for real with credentials you save on an app, read-only: anything but a GET (and Google's OAuth token request) is refused, so nothing in the store can change.
+
 ## Specs
 
 | File | Covers |

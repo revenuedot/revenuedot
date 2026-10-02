@@ -55,6 +55,15 @@ What RevenueDot does (`apps/server/src/services/store-import.ts`, `routes/v2/sto
 - Errors: 422 `unprocessable_entity_error` naming the missing credential or permission (App Manager role; "View app information and download bulk reports (read-only)"; Stripe "Products" Read), 422 `store_error` with `retryable: true` while the store cannot be reached, 404 for another project's app, 400 for an unknown entitlement id.
 - Dashboard: "Import products" on the Products page (and "Import" on each app group) and on each app's page opens a dialog: app picker, the store's products with search, select all, rows already in the catalog disabled, store notes, an optional entitlement picker, and a summary of what was created, skipped and failed.
 
+## Import from store: validation (2026-10-01)
+| Case | Proven by | Status |
+|---|---|---|
+| Listing and import against fake App Store Connect, Play and Stripe APIs: paging, types, durations, `in_catalog`, entitlements, idempotency, missing key, refused key (401 and 403, and the In-App Purchase key saved as the App Store Connect key), outages, a paging link to another host, Amazon, Test Store, key permissions | `apps/server/test/store-import.test.ts` (8 tests) | passed |
+| The dialog in Chromium against the e2e server's fakes: Products page and app page, search, select all, a row already in the catalog, entitlement picker, result summary, re-opening, Play paging, Stripe prices, Amazon, missing key, refused App Store Connect key, Play service account without permission, empty store, the SDK's product-to-entitlement mapping, 390px, dark theme, console | `apps/dashboard/e2e/store-import.spec.ts` (`E2E_PORT=5450`) | passed |
+| The same flow clicked through by hand in the Browser pane, with the worktree's server on a fresh Railway development database (`E2E_DATABASE_URL`, `E2E_SEED=off`): App Store (4 imported and attached to `pro`), Play from the app page (4, two pages), Stripe (2, attached to `coins`), re-import answers 200 with everything in `existing`, every error state, 375px dark | v2 API (`products`, `entitlements`), `/v1/product_entitlement_mapping` and `/v1/subscribers/{id}/offerings` with each app's public key | passed. Found and fixed: the dialog jumped while searching (now anchored to the top), columns overlapped at phone width (type and duration move under the name), the Amazon app showed the App Store Connect hint, Apple's and Google's refusal text was repeated |
+| **Real Google Play** (read-only, `E2E_REAL_STORES=1`, which refuses anything but GET and Google's token request): "RevenueDot Sandbox Android" `app.revenuedot.sandbox` with the service account from 1Password | Listing returned `pro_monthly:monthly` (P1M, "Pro Monthly") and `pro_annual:yearly` (P1Y, "Pro yearly"), no one-time products; imported both into the local catalog, attached to `pro`; the SDK mapping and offerings list them with their base plans | passed |
+| **Real App Store Connect** (read-only): "RevenueDot Sandbox" `app.revenuedot.sandbox` with the In-App Purchase key from 1Password (`SubscriptionKey_….p8`) saved as the App Store Connect API key | App Store Connect answers 401: In-App Purchase keys only work with the App Store Server API. The dialog now says so and asks for a team key with the App Manager role | blocked: listing needs a separate App Store Connect API team key, which the vault does not have yet |
+
 ## Tests that prove it
 - `packages/contract/test/v2-catalog.test.ts`: projects, apps (pagination, validation, delete cascades), products, the entitlement lifecycle, offering lifecycle with current switching and expansion, packages with eligibility criteria, and OpenAPI coverage of every catalog operation.
 - `packages/contract/test/sdk.test.ts` ("offerings and mapping"): offerings per calling app decode with the SDK schemas; archived products drop out of packages; the mapping lists both Google ids.
@@ -64,7 +73,7 @@ What RevenueDot does (`apps/server/src/services/store-import.ts`, `routes/v2/sto
 
 ## Known gaps
 - Price labels such as "$9.99/week" need Apple and Google prices (Tier 2); the pages show the duration instead. The import does not read App Store or Play prices yet.
-- Store import has not run against a real App Store Connect, Play Console or Stripe account yet; it is tested against fakes built from the APIs' documented shapes.
+- Store import has run against the real Play Console (sandbox app). App Store Connect needs a team API key (App Manager role) that the vault does not have yet; Stripe has not run against a real account (no Stripe key in the vault).
 - The offering Paywall tab is disabled, and "Create with AI" is not offered.
 - Google Play eligibility is kept and shown but can only be changed through `attach_products` in the API.
 - The dashboard's "…" menu on each app group in Products is left out; the Apps page owns app settings.

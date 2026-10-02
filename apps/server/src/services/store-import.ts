@@ -94,7 +94,13 @@ async function listAppStore(deps: Deps, app: App): Promise<StoreListingResult> {
   } catch (e) {
     if (e instanceof ConnectError) {
       if (e.kind === "credentials") {
-        throw new StoreOpError("credentials", `App Store Connect refused the API key (${e.status || "no answer"}). Reading in-app purchases and subscriptions needs a team key with the App Manager role (Users and Access → Integrations → App Store Connect API); a Developer or Finance key is not enough. ${e.message}`);
+        const c = app.credentials ?? {};
+        const iapKeyId = typeof c.subscription_key_id === "string" ? c.subscription_key_id : typeof c.key_id === "string" ? c.key_id : null;
+        if (e.status === 401 && iapKeyId && iapKeyId.trim() === creds.keyId) {
+          throw new StoreOpError("credentials", `The App Store Connect API key saved for this app is its In-App Purchase key (key ID ${creds.keyId}), and App Store Connect does not accept In-App Purchase keys. Create a team key with the App Manager role under Users and Access → Integrations → App Store Connect API, and save it in the app's App Store Connect API key section.`);
+        }
+        const said = e.message.replace(/^App Store Connect refused the API key \((.*)\)\. It needs the App Manager role\.$/s, "$1");
+        throw new StoreOpError("credentials", `App Store Connect refused the API key (${e.status || "no answer"}). Reading in-app purchases and subscriptions needs a team key with the App Manager role (Users and Access → Integrations → App Store Connect API); a Developer or Finance key is not enough.${e.status === 401 ? " An In-App Purchase key (a SubscriptionKey_….p8 file) only works with the App Store Server API and cannot read the product list." : ""} Apple said: ${said.replace(/[^.]$/, "$&.")}`);
       }
       throw new StoreOpError(e.kind === "conflict" ? "invalid" : e.kind, e.message);
     }
@@ -138,7 +144,7 @@ function playTitle(listings: Array<{ languageCode?: string; title?: string }> | 
 function fromPlay(e: unknown): unknown {
   if (!(e instanceof GoogleApiError)) return e;
   if (e.kind === "credentials" && e.status === 403) {
-    return new StoreOpError("credentials", `Google Play refused the service account (403). Listing products needs the ${PLAY_READ_PERMISSION} permission for this app: Play Console → Users and permissions → the service account → App permissions. Google said: ${e.message}`);
+    return new StoreOpError("credentials", `Google Play refused the service account (403). Listing products needs the ${PLAY_READ_PERMISSION} permission for this app: Play Console → Users and permissions → the service account → App permissions. Google said: ${e.message.replace(/\. Grant the service account access to this app in Play Console\.$/, ".")}`);
   }
   if (e.kind === "credentials") return new StoreOpError("credentials", `Google Play refused the service account: ${e.message}`);
   if (e.kind === "transient") return new StoreOpError("unavailable", `Google Play could not be reached: ${e.message}`);

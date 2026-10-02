@@ -29,6 +29,8 @@ interface ImportResult {
 export const IMPORT_STORES = new Set(["app_store", "mac_app_store", "play_store", "stripe", "amazon"]);
 const SOURCE: Record<string, string> = { app_store: "App Store Connect", mac_app_store: "App Store Connect", play_store: "Google Play", stripe: "Stripe", amazon: "Amazon" };
 
+const CREDENTIAL: Record<string, string> = { app_store: "App Store Connect API key", mac_app_store: "App Store Connect API key", play_store: "service account", stripe: "restricted key" };
+
 const storeProductsKey = (pid: string, appId: string) => ["store-products", pid, appId] as const;
 
 function SelectBox({ checked, indeterminate, disabled, onChange, label }: { checked: boolean; indeterminate?: boolean; disabled?: boolean; onChange: (v: boolean) => void; label: string }) {
@@ -129,6 +131,7 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
         </div>
         <div className="imp-list tbl">
           <table className="imp-table">
+            <colgroup><col style={{ width: 40 }} /><col className="imp-prod" style={{ width: "34%" }} /><col className="imp-hide" style={{ width: "15%" }} /><col className="imp-hide" style={{ width: "13%" }} /><col className="imp-hide" style={{ width: "16%" }} /><col className="imp-stat" /></colgroup>
             <thead><tr>
               <th className="imp-c"><SelectBox checked={allOn} indeterminate={someOn} disabled={!selectable.length} onChange={toggleAll} label="Select all" /></th>
               <th>Product</th><th>Type</th><th>Duration</th><th>{current?.type === "stripe" ? "Price" : "Group"}</th><th>Status</th>
@@ -144,6 +147,7 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
                       <span className="cat-cell">
                         <span className="cat-t">{i.display_name || i.store_identifier}</span>
                         {i.display_name && <span className="cat-s">{i.store_identifier}</span>}
+                        <span className="imp-meta">{typeLabel(i.type)}{i.type === "subscription" && i.duration ? ` · ${durationLabel(i.duration)}` : ""}{current?.type === "stripe" && i.price ? ` · ${priceLabel(i.price)}` : ""}</span>
                         {i.note && <span className="imp-note">{i.note}</span>}
                       </span>
                     </td>
@@ -172,7 +176,7 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
     content = (
       <>
         {!appId && choices.length > 1 && (
-          <Field label="App" htmlFor="imp-app" hint={`Products are read with the app's stored ${current?.type === "stripe" ? "restricted key" : current?.type === "play_store" ? "service account" : "App Store Connect API key"}. Nothing is changed in the store.`}>
+          <Field label="App" htmlFor="imp-app" hint={CREDENTIAL[current?.type ?? ""] ? `Products are read with the app's stored ${CREDENTIAL[current!.type]}. Nothing is changed in the store.` : undefined}>
             <select id="imp-app" className="select" value={app} onChange={(e) => setApp(e.target.value)}>
               {choices.map((a) => <option key={a.id} value={a.id}>{a.name} ({STORE_LABEL[a.type] ?? a.type})</option>)}
             </select>
