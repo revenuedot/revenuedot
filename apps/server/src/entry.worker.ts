@@ -8,6 +8,8 @@ import { createApp } from "./app.js";
 import { API_PATH } from "./api-paths.js";
 import { tick } from "./services/tick.js";
 import { routeAssistantAgent } from "./assistant-agent.worker.js";
+import { loadExtensions } from "./extensions.js";
+import type { ServerExtension } from "./extensions.js";
 import { archiveStoreFor, baseDeps, googleOAuthFor, mailerFor, publicUrlFor, stores, type Env, type ExecutionContext, type ScheduledController } from "./worker-deps.js";
 import { billingConfigFromEnv } from "./services/billing/stripe.js";
 export { AssistantAgent } from "./assistant-agent.worker.js";
@@ -31,8 +33,12 @@ const db = new Proxy({} as DB, {
 });
 
 let app: ReturnType<typeof createApp> | undefined;
-const appFor = (env: Env) => (app ??= createApp({
+// Enterprise features (ee/, extensions.ts): loaded once per isolate, only when REVENUEDOT_LICENSE_KEY is set.
+let extensions: Promise<ServerExtension[]> | undefined;
+const extensionsFor = (env: Env) => (extensions ??= loadExtensions(env as unknown as Record<string, string | undefined>, { edition: "cloud" }));
+const appFor = (env: Env, ext: ServerExtension[]) => (app ??= createApp({
   ...baseDeps(env),
+  extensions: ext,
   db,
   // Send new webhook deliveries after the response, on the request's own connection.
   kick: () => { const s = scope.getStore(); if (s) s.pending.push(runTick(env, s.db, "kick")); },
@@ -47,6 +53,7 @@ async function runTick(env: Env, db: DB, why: string) {
     const r = await tick(db, new Date(), fetch, {
       stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", exports: why === "cron", winback: why === "cron", consumption: why === "cron",
       encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true, googleOAuth: googleOAuthFor(env), admob: why === "cron",
+      extensions: why === "cron" ? await extensionsFor(env) : [],
       // Full exports, server-run moves and billing run from the cron only.
       archives: why === "cron", archiveStore: archiveStoreFor(env), edition: why === "cron" ? "cloud" : undefined,
       billing: billingConfigFromEnv(env as unknown as Record<string, string | undefined>),
@@ -73,7 +80,8 @@ export default {
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
     const s: RequestScope = { db: conn.db, pending: [] };
     try {
-      return await scope.run(s, () => appFor(env).fetch(req, env, ctx));
+      const ext = await extensionsFor(env);
+      return await scope.run(s, () => appFor(env, ext).fetch(req, env, ctx));
     } finally {
       // Close the connection once the response and any kicked tick have finished.
       ctx.waitUntil((async () => {

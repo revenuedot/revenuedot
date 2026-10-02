@@ -11,11 +11,15 @@ import { logMailer, type Mailer } from "./mail/index.js";
 import { modelFromEnv } from "./services/paywall-ai.js";
 import { assistantModelFromEnv } from "./services/assistant/models.js";
 import { capsFromEnv } from "./services/assistant/limits.js";
+import { loadExtensions } from "./extensions.js";
 import { diskStore } from "./services/archive/disk-store.js";
 import { billingConfigFromEnv } from "./services/billing/stripe.js";
 import { dbStore, s3ConfigFromEnv, s3Store } from "./services/archive/store.js";
 
 const { db } = await openDb(process.env.DATABASE_URL ?? "pglite://./.data/dev");
+// Enterprise features (ee/, extensions.ts): only with REVENUEDOT_LICENSE_KEY (or REVENUEDOT_EE_DEV=true for development).
+// A Node server run as Cloud (REVENUEDOT_EDITION=cloud) is Cloud here too, so development mode stays off there.
+const extensions = await loadExtensions(process.env, { edition: process.env.REVENUEDOT_EDITION === "cloud" ? "cloud" : "self-hosted" });
 const stores = defaultStores();
 // Email: SMTP when REVENUEDOT_SMTP_URL is set, else every email (links included) is printed to this log.
 const publicUrl = process.env.REVENUEDOT_PUBLIC_URL?.trim() || undefined;
@@ -37,7 +41,7 @@ let running = false;
 const runTick = async () => {
   if (running) return;
   running = true;
-  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
+  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing, extensions }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
@@ -49,13 +53,13 @@ const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeou
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
   // RevenueDot AI (prd/ai-assistant/PRD.md): ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to
   // pick another; hidden without either. Conversations and their streams live in Postgres; caps from REVENUEDOT_ASSISTANT_CAPS.
-  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS) });
+  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS), extensions });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 if (existsSync(`${dist}/index.html`)) {
   const html = readFileSync(`${dist}/index.html`, "utf8");
   app.use("/*", serveStatic({ root: relative(process.cwd(), dist) || ".", rewriteRequestPath: (p) => p }));
-  app.get("*", (c) => (/^\/(v1|v2|auth|rcbilling|share)\//.test(c.req.path) ? c.notFound() : c.html(html)));
+  app.get("*", (c) => (/^\/(v1|v2|auth|rcbilling|share|sso|scim)\//.test(c.req.path) ? c.notFound() : c.html(html)));
 }
 const port = Number(process.env.PORT ?? 8787);
 // REVENUEDOT_REQUEST_LOG=<file>: one JSON line per request (method, path, status, whether a route answered). The device

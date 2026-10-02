@@ -6,6 +6,8 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
+# The enterprise folder (ee/LICENSE) is in the image but stays off unless REVENUEDOT_LICENSE_KEY is set.
+COPY ee ./ee
 COPY design ./design
 COPY brand ./brand
 RUN pnpm install --frozen-lockfile && pnpm --filter @revenuedot/dashboard build

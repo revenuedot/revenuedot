@@ -11,6 +11,8 @@ export interface AssistantActor {
   email: string;
   projectId: string;
   conversationId: string;
+  /** The dashboard session the turn came from, for access checks bound to it (an organization that requires SSO). */
+  sessionId?: string | null;
 }
 
 /** Marks requests made by the assistant. A WeakMap keyed by the Request object, so no header can forge it. */

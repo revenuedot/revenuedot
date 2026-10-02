@@ -40,7 +40,7 @@ export const paramError = (message: string, param?: string) => new V2Error(400, 
 /** Who is calling: a secret API key (bound to one project) or a dashboard user (session cookie). */
 export type Principal =
   | { kind: "key"; projectId: string; keyId: string; permissions: string[] }
-  | { kind: "user"; userId: string; role?: string; via?: "assistant"; email?: string; conversationId?: string };
+  | { kind: "user"; userId: string; role?: string; via?: "assistant"; email?: string; conversationId?: string; permissions?: string[] };
 
 export type V2Vars = { principal: Principal; projectId: string; deps: Deps };
 export type V2Context = Context<{ Variables: V2Vars }>;
@@ -50,15 +50,17 @@ export type V2Router = Hono<{ Variables: V2Vars }>;
  * Scope check. Scopes use RevenueCat's names (`project_configuration:apps:read` ...). A key's permissions may hold
  * `*`, an exact scope, a `read_write` scope (implies `read`), or a prefix wildcard such as `customer_information:*`.
  * Dashboard users: `viewer` gets read scopes only; `developer` gets everything except creating or revoking secret API
- * keys (RevenueCat's Developer role cannot generate them); `admin` gets everything.
+ * keys (RevenueCat's Developer role cannot generate them); `admin` gets everything. A user principal with an explicit
+ * `permissions` list (a custom role, set by an extension in routes/v2/index.ts) is checked like a key. Any other role
+ * gets nothing.
  */
 export function allows(p: Principal, scope: string): boolean {
-  if (p.kind === "user") {
+  if (p.kind === "user" && !p.permissions) {
     if (p.role === "viewer") return scope.endsWith(":read");
     if (p.role === "developer") return scope !== "project_configuration:api_keys:read_write";
-    return true;
+    return p.role === "admin" || p.role === undefined;
   }
-  const perms = p.permissions;
+  const perms = p.permissions ?? [];
   if (perms.includes("*") || perms.includes(scope)) return true;
   if (scope.endsWith(":read") && perms.includes(`${scope.slice(0, -5)}:read_write`)) return true;
   return perms.some((x) => x.endsWith(":*") && scope.startsWith(x.slice(0, -1)));
@@ -68,7 +70,7 @@ export const scope = (...scopes: string[]): MiddlewareHandler<{ Variables: V2Var
   const p = c.get("principal");
   const missing = scopes.filter((s) => !allows(p, s));
   if (missing.length) {
-    if (p.kind === "user") throw new V2Error(403, "authorization_error", `Your role in this project (${p.role ?? "member"}) does not allow this. Ask a project admin.`);
+    if (p.kind === "user") throw new V2Error(403, "authorization_error", `Your role in this project (${p.permissions ? "a custom role" : p.role ?? "member"}) does not allow this. Ask a project admin.`);
     throw new V2Error(403, "authorization_error", `This API key is missing the permission(s): ${missing.join(", ")}.`);
   }
   await next();

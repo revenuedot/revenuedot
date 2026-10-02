@@ -15,6 +15,8 @@ import { firstSaleCard } from "../../services/assistant/first-sale.js";
 import { allows, body, notFound, paramError, V2Error, type V2Context, type V2Router } from "./common.js";
 import { publicOrigin } from "./setup.js";
 import { hit } from "../../services/rate-limit.js";
+import { getCookie } from "hono/cookie";
+import { SESSION_COOKIE } from "../../services/sessions.js";
 
 /**
  * RevenueDot AI (prd/ai-assistant/PRD.md §6):
@@ -139,7 +141,7 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
   };
   const context = async (c: V2Context, conversationId: string): Promise<AssistantContext> => {
     const p = user(c);
-    const ctx = await loadAssistantContext(deps, model(), p.userId, c.get("projectId"), conversationId);
+    const ctx = await loadAssistantContext(deps, model(), p.userId, c.get("projectId"), conversationId, getCookie(c, SESSION_COOKIE) ?? null);
     if (!ctx) throw notFound("Project");
     return ctx;
   };
