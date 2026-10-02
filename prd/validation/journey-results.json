@@ -2,7 +2,7 @@
   "move": {
     "title": "Self-hosted to Cloud with npx revenuedot move: purchases-js before and after, webhooks keep their secret",
     "date": "2026-10-02",
-    "run": "202610020236465420",
+    "run": "202610020341335690",
     "passed": 48,
     "failed": 0
   },
@@ -16,7 +16,7 @@
   "connect-recovery": {
     "title": "Connect with Stripe (OAuth, sealed account, checkout, refund, disconnect, deauthorization) and payment recovery (Stripe, Google Play, Test Store) in a real browser",
     "date": "2026-10-02",
-    "run": "202610020325045690",
+    "run": "202610020341335690",
     "passed": 54,
     "failed": 0
   }
