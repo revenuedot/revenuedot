@@ -60,6 +60,7 @@ export class FakePaddleAccount {
   subscriptions = new Map<string, Obj>();
   transactions = new Map<string, Obj>();
   adjustments = new Map<string, Obj>();
+  notificationSettings = new Map<string, Obj>();
   calls: Array<{ method: string; url: string; auth: string | null }> = [];
   /** Answer every API call with this status (Paddle down, rate limited). */
   outage: number | null = null;
@@ -351,6 +352,25 @@ export class FakePaddleAccount {
       const body = JSON.parse(typeof init.body === "string" ? init.body : "{}") as { subscription_ids?: string[] };
       const base = `https://${this.environment === "sandbox" ? "sandbox-" : ""}customer-portal.paddle.com/cpl_01fake`;
       return json(201, { data: { id: paddleId("cpls"), customer_id: parts[1], urls: { general: { overview: `${base}?action=overview&token=pga_fake` }, subscriptions: (body.subscription_ids ?? []).map((id) => ({ id, cancel_subscription: `${base}?action=cancel_subscription&subscription_id=${id}&token=pga_fake`, update_subscription_payment_method: `${base}?action=update_subscription_payment_method&subscription_id=${id}&token=pga_fake` })) }, created_at: iso(this.now()) }, meta: { request_id: reqId() } });
+    }
+    if (parts[0] === "notification-settings") {
+      const body = JSON.parse(typeof init.body === "string" && init.body ? init.body : "{}") as Obj;
+      if (method === "GET" && !parts[1]) return json(200, { data: [...this.notificationSettings.values()], meta: { request_id: reqId() } });
+      if (method === "POST" && !parts[1]) {
+        if (typeof body.destination !== "string" || !Array.isArray(body.subscribed_events)) return err(400, "request_error", "bad_request", "destination and subscribed_events are required.");
+        const ns = { id: paddleId("ntfset"), description: body.description ?? "", type: body.type ?? "url", destination: body.destination, active: true, api_version: body.api_version ?? 1,
+          include_sensitive_fields: !!body.include_sensitive_fields, traffic_source: body.traffic_source ?? "platform", subscribed_events: body.subscribed_events.map((name: string) => ({ name, description: name, group: name.split(".")[0], available_versions: [1] })),
+          endpoint_secret_key: `pdl_ntfset_01${paddleId("x").slice(4)}_${Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[b % 62]).join("")}` };
+        this.notificationSettings.set(ns.id, ns);
+        this.secret = ns.endpoint_secret_key;
+        return json(201, { data: ns, meta: { request_id: reqId() } });
+      }
+      if (method === "PATCH" && parts[1]) {
+        const ns = this.notificationSettings.get(parts[1]);
+        if (!ns) return err(404, "request_error", "not_found", `Notification setting ${parts[1]} not found.`);
+        Object.assign(ns, body.destination ? { destination: body.destination } : {}, body.active !== undefined ? { active: body.active } : {}, Array.isArray(body.subscribed_events) ? { subscribed_events: body.subscribed_events.map((name: string) => ({ name })) } : {});
+        return json(200, { data: ns, meta: { request_id: reqId() } });
+      }
     }
     return err(404, "request_error", "not_found", `${method} ${u.pathname} is not a Paddle endpoint this fake serves.`);
   }) as typeof fetch;

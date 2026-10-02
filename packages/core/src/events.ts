@@ -85,7 +85,8 @@ export function diffSubscription(prev: Subscription | null, next: Subscription, 
     if (newPeriod) out.push(renewal);
   } else if (newPeriod) {
     out.push(renewal);
-  } else if (next.expiresDate && prev.expiresDate && next.expiresDate > prev.expiresDate && t(next.purchaseDate) === t(prev.purchaseDate)) {
+  } else if (next.expiresDate && prev.expiresDate && next.expiresDate > prev.expiresDate && t(next.purchaseDate) === t(prev.purchaseDate) && !(prev.refundedAt && !next.refundedAt)) {
+    // (A refund taken back restores the period's own end: REFUND_REVERSED below, not an extension.)
     out.push({ type: "SUBSCRIPTION_EXTENDED" });
   }
   // A downgrade or crossgrade scheduled for the next renewal (App Store DOWNGRADE, deferred Google Play replacement).
@@ -107,7 +108,8 @@ export function diffSubscription(prev: Subscription | null, next: Subscription, 
   }
   if (!prev.autoResumeDate && next.autoResumeDate) out.push({ type: "SUBSCRIPTION_PAUSED" });
   out.push(...priceIncreaseEvents(prev.priceIncreaseStatus, next.priceIncreaseStatus));
-  const prevLive = prev.expiresDate === null || prev.expiresDate > now;
+  // Access during a grace period is access too: a chain that ends while in grace expires then.
+  const prevLive = prev.expiresDate === null || prev.expiresDate > now || (prev.gracePeriodExpiresDate ?? null) !== null && prev.gracePeriodExpiresDate! > now;
   const nextLive = next.expiresDate === null || next.expiresDate > now || (next.gracePeriodExpiresDate ?? null) !== null && next.gracePeriodExpiresDate! > now;
   if (prevLive && !nextLive && !next.refundedAt) out.push({ type: "EXPIRATION", expirationReason: expirationReasonOf(next) });
   return out;
