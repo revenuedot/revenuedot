@@ -170,7 +170,9 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
   const download = async () => {
     setBusy("download");
     try {
-      const res = await fetch(`${v2(pid)}/apps/${encodeURIComponent(app.id)}/store_products/export.csv?store_identifiers=${encodeURIComponent([...sel].join(","))}`, { credentials: "same-origin" });
+      // Only products that can be chosen: a link's ?products= may name one that is gone or cannot be edited.
+      const ids = choosable.filter((c) => sel.has(c.store_identifier)).map((c) => c.store_identifier);
+      const res = await fetch(`${v2(pid)}/apps/${encodeURIComponent(app.id)}/store_products/export.csv?store_identifiers=${encodeURIComponent(ids.join(","))}`, { credentials: "same-origin" });
       if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? `Download failed (${res.status})`);
       const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "products.csv";
       const url = URL.createObjectURL(await res.blob());
@@ -195,7 +197,7 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
     } catch (e) { setUploadError(errMsg(e)); setBusy(null); }
   };
   const allOn = choosable.length > 0 && choosable.every((i) => sel.has(i.store_identifier));
-  const picked = [...sel].filter((x) => choosable.some((c) => c.store_identifier === x)).length;
+  const picked = choosable.filter((c) => sel.has(c.store_identifier)).length;
   const toggle = (i: StoreListing) => {
     if (!i.editable) return;
     const n = new Set(sel);
@@ -205,7 +207,7 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
   const off = (i: StoreListing) => (i.editable ? "" : "pe-off");
   const columns: Column<StoreListing>[] = [
     {
-      key: "pick", header: "Select", className: "pe-w-check",
+      key: "pick", header: "Select",
       headerExtra: <input type="checkbox" aria-label="Select all products" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(choosable.map((c) => c.store_identifier)))} disabled={!choosable.length} />,
       render: (i) => <input type="checkbox" aria-label={`Select ${i.store_identifier}`} checked={sel.has(i.store_identifier)} disabled={!i.editable} onChange={() => toggle(i)} onClick={(e) => e.stopPropagation()} />,
     },
@@ -213,10 +215,10 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
       key: "product", header: "Product", sort: sorter.of("product"),
       render: (i) => <span className={`cat-cell ${off(i)}`} title={i.editable ? undefined : play && i.type === "one_time" ? "Play Store one-time purchases aren't supported yet." : i.note ?? "This product cannot be edited here."}><span className="cat-t">{i.display_name ?? i.store_identifier}</span><span className="cat-s">{i.store_identifier}</span></span>,
     },
-    { key: "type", header: "Type", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (i) => <span className={off(i)}>{typeLabel(i.type)}{i.duration ? <span className="subtle"> · {durationLabel(i.duration)}</span> : null}</span> },
+    { key: "type", header: "Type", className: "cat-hide-sm", render: (i) => <span className={off(i)}>{typeLabel(i.type)}{i.duration ? <span className="subtle"> · {durationLabel(i.duration)}</span> : null}</span> },
     { key: "price", header: "Price", sort: sorter.of("price"), render: (i) => <span className={`mono ${off(i)}`}>{i.price ? priceLabel(i.price) : <span className="subtle">No price</span>}{i.price?.territory && <span className="subtle"> {i.price.territory}</span>}</span> },
-    { key: "terr", header: "Territories", align: "right", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (i) => <span className="num">{i.prices.length}</span> },
-    { key: "status", header: "Status", sort: sorter.of("status"), className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (i) => { const st = storeStatus(i.status); return st ? <Tag tone={st.tone}>{st.label}</Tag> : "—"; } },
+    { key: "terr", header: "Territories", align: "right", className: "cat-hide-sm", render: (i) => <span className="num">{i.prices.length}</span> },
+    { key: "status", header: "Status", sort: sorter.of("status"), className: "cat-hide-sm", render: (i) => { const st = storeStatus(i.status); return st ? <Tag tone={st.tone}>{st.label}</Tag> : "—"; } },
   ];
   const ordered = [...items].sort(sorter.sort.key === "product" ? sorter.cmp((i: StoreListing) => i.display_name ?? i.store_identifier)
     // Prices group by currency first, then by amount: micros of different currencies are not comparable.
@@ -262,10 +264,10 @@ function FilesTab({ files, onOpen }: { files: ReturnType<typeof useQuery<Edit[]>
   const ordered = [...list].sort(sorter.sort.key === "uploaded" ? sorter.cmp((f: Edit) => f.created_at) : sorter.sort.key === "status" ? sorter.cmp((f: Edit) => STATUS_TAG[f.status]?.[0] ?? f.status) : sorter.cmp((f: Edit) => f.file_name));
   const columns: Column<Edit>[] = [
     { key: "file", header: "File", sort: sorter.of("file"), render: (f) => <span className="cat-cell"><span className="cat-lnk cat-t">{f.file_name}</span><span className="cat-s">{f.id}</span></span> },
-    { key: "uploaded", header: "Uploaded", sort: sorter.of("uploaded"), className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (f) => <span className="cat-cell"><span>{fmt.dateTime(f.created_at)}</span><span className="cat-s">{f.created_by_email ?? "API key"}</span></span> },
+    { key: "uploaded", header: "Uploaded", sort: sorter.of("uploaded"), className: "cat-hide-sm", render: (f) => <span className="cat-cell"><span>{fmt.dateTime(f.created_at)}</span><span className="cat-s">{f.created_by_email ?? "API key"}</span></span> },
     { key: "status", header: "Status", sort: sorter.of("status"), render: (f) => { const [label, tone] = STATUS_TAG[f.status] ?? [f.status, "muted"]; return <Tag tone={tone}>{label}</Tag>; } },
-    { key: "changes", header: "Changes", align: "right", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (f) => <span className="num">{f.status === "invalid" ? `${f.errors.length} ${f.errors.length === 1 ? "error" : "errors"}` : (f.summary.price_changes ?? 0) + (f.summary.new_product_prices ?? 0)}</span> },
-    { key: "results", header: "Results", align: "right", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (f) => <span className="num">{f.results && (f.results.succeeded || f.results.failed) ? <>{f.results.succeeded} ok{f.results.failed ? <span className="down"> · {f.results.failed} failed</span> : null}</> : "—"}</span> },
+    { key: "changes", header: "Changes", align: "right", className: "cat-hide-sm", render: (f) => <span className="num">{f.status === "invalid" ? `${f.errors.length} ${f.errors.length === 1 ? "error" : "errors"}` : (f.summary.price_changes ?? 0) + (f.summary.new_product_prices ?? 0)}</span> },
+    { key: "results", header: "Results", align: "right", className: "cat-hide-sm", render: (f) => <span className="num">{f.results && (f.results.succeeded || f.results.failed) ? <>{f.results.succeeded} ok{f.results.failed ? <span className="down"> · {f.results.failed} failed</span> : null}</> : "—"}</span> },
   ];
   return <div className="pe-files"><DataTable columns={columns} rows={ordered} rowKey={(f) => f.id} onRowClick={(f) => onOpen(f.id)} /></div>;
 }
@@ -282,6 +284,7 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
     queryKey: key, queryFn: () => api<Edit>(`${v2(pid)}/product_edits/${encodeURIComponent(editId)}`),
     refetchInterval: (q) => (q.state.data?.status === "committing" && !running ? 3000 : false),
   });
+  const listings = useStorePrices(pid);
   const [confirm, setConfirm] = useState(false);
   const [discard, setDiscard] = useState(false);
   // The checkbox follows the click at once; the server's copy is the truth after the save.
@@ -315,7 +318,9 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
   const rows = e.rows ?? [];
   const reviewing = e.status === "ready" || e.status === "invalid";
   const committable = rows.length;
-  const hasSubChanges = storeOf(app) === "app_store" && rows.some((r) => r.kind === "price_change");
+  // Apple's preserveCurrentPrice concerns price changes of existing subscriptions (in-app purchases have no subscribers).
+  const typeOf = (id: string) => listings.data?.items.find((l) => l.app_id === app.id && l.store_identifier === id)?.type;
+  const hasSubChanges = storeOf(app) === "app_store" && rows.some((r) => r.kind === "price_change" && (typeOf(r.store_identifier) ?? "subscription") === "subscription");
   const setPreserve = async (v: boolean) => {
     setPreserveShown(v);
     try { qc.setQueryData(key, await api<Edit>(`${v2(pid)}/product_edits/${encodeURIComponent(editId)}`, { method: "POST", json: { preserve_current_price: v } })); }
