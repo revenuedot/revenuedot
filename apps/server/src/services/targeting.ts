@@ -192,7 +192,7 @@ export interface Resolution {
 
 type ExperimentRow = typeof schema.experiments.$inferSelect;
 
-/** An experiment's variants; rows written before migration 0032 (or archives from older servers) only have offering_a/b. */
+/** An experiment's variants; rows written before migration 0028 (or archives from older servers) only have offering_a/b. */
 export function variantsOf(e: Pick<ExperimentRow, "variants" | "offeringA" | "offeringB">): ExperimentVariant[] {
   if (Array.isArray(e.variants) && e.variants.length) return e.variants;
   return [

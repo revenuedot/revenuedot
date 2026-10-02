@@ -663,7 +663,7 @@ export interface ExperimentVariant { id: string; name: string; offering_id: stri
 
 /**
  * Offering experiments (prd/experiments/PRD.md): a control (`a`) and up to three treatments (`b`, `c`, `d`) in `variants`.
- * `offeringA` and `offeringB` mirror the first two variants for older readers and archives written before migration 0032.
+ * `offeringA` and `offeringB` mirror the first two variants for older readers and archives written before migration 0028.
  */
 export const experiments = pgTable("experiments", {
   id: text("id").primaryKey(),
@@ -678,7 +678,7 @@ export const experiments = pgTable("experiments", {
   notes: text("notes").notNull().default(""),
   /**
    * "new": customers first seen after the start; "new_and_existing": anyone who asks while it runs. The column default is
-   * the pre-0032 behaviour (for rows an older server writes); the API always sets it, "new" unless asked otherwise.
+   * the pre-0028 behaviour (for rows an older server writes); the API always sets it, "new" unless asked otherwise.
    */
   enrollment: text("enrollment").notNull().default("new_and_existing"),
   trackPaywallViews: boolean("track_paywall_views").notNull().default(false),

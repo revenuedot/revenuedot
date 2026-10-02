@@ -1,6 +1,6 @@
 {
-  "id": "87528cde-ffa7-4901-a96d-bb25016294cd",
-  "prevId": "803b5d6d-f897-43d9-b5e8-aafe5a6dedb9",
+  "id": "b57a42d5-0822-46d9-a92f-3c4d9f0a1da1",
+  "prevId": "da643a1d-ac25-48b4-a631-f35584c6e982",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4952,6 +4952,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "attempt_log": {
+          "name": "attempt_log",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4961,6 +4968,22 @@
         }
       },
       "indexes": {
+        "integration_deliveries_attempt_log_age": {
+          "name": "integration_deliveries_attempt_log_age",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"integration_deliveries\".\"attempt_log\" <> '[]'::jsonb",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "integration_deliveries_due": {
           "name": "integration_deliveries_due",
           "columns": [
@@ -11362,6 +11385,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "attempt_log": {
+          "name": "attempt_log",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -11409,6 +11439,22 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "deliveries_attempt_log_age": {
+          "name": "deliveries_attempt_log_age",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"webhook_deliveries\".\"attempt_log\" <> '[]'::jsonb",
           "concurrently": false,
           "method": "btree",
           "with": {}

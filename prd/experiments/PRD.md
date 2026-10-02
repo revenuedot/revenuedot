@@ -1,6 +1,6 @@
 # Experiments and Targeting (Tier 2, parity pass)
 
-**Status:** spec for branch `experiments-v2` (2026-10-02, migration 0032). Before this branch an experiment compared exactly two offerings (A and B) for everyone who asked, with an audience and an enrollment share, and its results showed customers, conversions, trials, revenue and the chance that B converts better. "New experiment" stayed disabled until a project had two offerings. Targeting was one table of rules.
+**Status:** spec for branch `experiments-v2` (2026-10-02, migration 0028). Before this branch an experiment compared exactly two offerings (A and B) for everyone who asked, with an audience and an enrollment share, and its results showed customers, conversions, trials, revenue and the chance that B converts better. "New experiment" stayed disabled until a project had two offerings. Targeting was one table of rules.
 
 This spec brings both pages to what RevenueCat's dashboard does today (observed live, 2026-10-01) and to its documentation ([configuring experiments](https://www.revenuecat.com/docs/tools/experiments-v1/configuring-experiments-v1), [interpreting results](https://www.revenuecat.com/docs/tools/experiments-v1/experiments-results-v1)), in `DESIGN.md`'s look. Nothing here copies RevenueCat's wording.
 
@@ -56,7 +56,7 @@ On `GET /v1/subscribers/{id}/offerings` the server resolves, in order: a custome
 3. **What the SDK receives:** `current_offering_id` = the variant's offering; `placements.offering_ids_by_placement` = the matching targeting rule's placements overlaid with the variant's; `EXPERIMENT_ENROLLMENT` once (unique row per experiment and customer); lifecycle webhooks carry `experiments: [{ experiment_id, experiment_variant, enrolled_at_ms }]`.
 4. **Pause** stops new enrollments only. **Stop** sends enrolled customers back to targeting or the current offering on their next request.
 5. **Priority:** new experiments are created at the bottom (highest number). `POST /experiments/actions/reorder { experiment_ids }` takes every draft, running and paused experiment once; stopped ones keep their place after them.
-6. **Migration 0032** turns each A/B experiment into variants `a` (Control, `offering_a`) and `b` (Treatment B, `offering_b`), keeps every enrollment row (so nobody changes variant), sets `enrollment = new_and_existing` (what they did), and numbers `priority` by start time per project (the old enrollment order). `offering_a` and `offering_b` stay as the first two variants' offerings for older readers and archives; their foreign keys become `ON DELETE SET NULL`.
+6. **Migration 0028** turns each A/B experiment into variants `a` (Control, `offering_a`) and `b` (Treatment B, `offering_b`), keeps every enrollment row (so nobody changes variant), sets `enrollment = new_and_existing` (what they did), and numbers `priority` by start time per project (the old enrollment order). `offering_a` and `offering_b` stay as the first two variants' offerings for older readers and archives; their foreign keys become `ON DELETE SET NULL`.
 
 ## 3. The create form (`/experiments/new`, `/experiments/{id}/edit` for drafts)
 A full page, not a dialog, in this order:
