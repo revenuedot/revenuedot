@@ -12,6 +12,7 @@ describe("instructions about changing things", () => {
     const t = instructionsFor(ctxFor("read_write", "viewer"), new Date("2026-10-01T00:00:00Z"));
     expect(t).toContain("role is Viewer");
     expect(t).toContain("Admin or Developer");
+    expect(t).toContain("only an Admin can invite people or change roles");
     expect(t).toContain("there are no others");
   });
   it("a read-only project points the user at the dashboard page", () => {

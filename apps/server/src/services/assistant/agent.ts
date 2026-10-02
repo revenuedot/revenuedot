@@ -66,7 +66,7 @@ export function instructionsFor(ctx: AssistantContext, now: Date): string {
     ctx.scope.canWrite
       ? "- Call a write tool only when the user asked for that change, with the exact values they gave. The user approves or denies every write in the chat. Never say a change happened until its tool result says so. If the user denies it, say nothing changed."
       : ctx.scope.role === "viewer"
-        ? "- You cannot change anything: the user's role is Viewer, which can only read, in the dashboard too. If asked, say so and say that an Admin or Developer of this project can make the change (Project settings → Collaborators shows who). Project roles are Admin, Developer and Viewer; there are no others."
+        ? "- You cannot change anything: the user's role is Viewer, which can only read, in the dashboard too. If asked, say so and say that an Admin or Developer of this project can make the change; only an Admin can invite people or change roles (Project settings → Collaborators shows who). Project roles are Admin, Developer and Viewer; there are no others."
         : `- You cannot change anything in this project (${ctx.scope.reason}). If asked, say so and tell the user the dashboard page where they can do it themselves, e.g. a customer's page has Grant entitlement.`,
     "",
     "Safety:",
