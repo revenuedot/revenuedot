@@ -187,7 +187,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
 | **Paywalls** | Native paywalls the RevenueCat SDKs render (all 17 component types): a gallery of ten templates built on 2026 conversion research, a visual editor (layers, properties, undo, light and dark, translations, versions), "Generate with AI" (Workers AI on Cloud, your OpenAI or Anthropic key on self-host), and a cached asset CDN. Every published paywall is checked to decode in the SDK ([guide](https://revenuedot.app/docs/guides/paywalls)) | Tier 2 · built, tested; renders in RevenueCatUI on the iOS simulator |
-| **Growth** | Experiments, targeting, virtual currencies, Customer Center | Tier 2 · built and tested |
+| **Growth** | Experiments, targeting, virtual currencies, Customer Center (dashboard editor: paths, cancel survey with offers, colours, 33 languages, preview) | Tier 2 · built and tested |
 | **Lifecycle** | **Refund Control**: ordered policies answer Apple's refund requests with [consumption information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) inside the 12-hour window, Google refunds and chargebacks recorded, refund rate and amounts. **Retention**: cancel and refund offers in the in-app Customer Center, and Apple's [Retention Messaging API](https://developer.apple.com/documentation/retentionmessaging) on Apple's cancel screen. **Win-back campaigns**: email churned subscribers an offer, with click tracking, one-click unsubscribe and reactivations. **Support**: Customer Center tickets by email and a help desk summary for Intercom or Zendesk ([guides](https://revenuedot.app/docs/guides/refund-control)) | Tier 2/3 · built, tested against a mocked App Store and an in-memory mailer; Apple's Retention Messaging API needs Apple's approval |
 | **Project settings** | RevenueCat's tabs: sandbox testing access enforced on the server (anybody, allowlisted app user IDs, nobody), ownership transfer to an admin, brand colour and gradient presets and fonts in the paywall editor and the SDK's named colours, blocked customers who lose paid features on every platform, and a public **Verified Metrics** page with production totals, sparklines and a link-preview image ([guide](https://revenuedot.app/docs/guides/project-settings)) | Tier 2 · built, tested and browser-validated |
 | **Auth (beta)** | Sign users in with Firebase or any OpenID Connect provider (Auth0, Clerk, Supabase, Cognito, Google, Apple): ID tokens verified with the provider's keys, logIn semantics, an access token that reads customer info, attributes and in-app currency balances without a backend, refresh and sign-out, balances by identity for your server, in the RevenueCat SDKs' token-login wire format ([guide](https://revenuedot.app/docs/guides/auth)) | Tier 2 · built, tested with keys generated in the tests; no real Firebase project or provider called yet |
@@ -227,6 +227,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/lifecycle/refund-control-dark.png">
   <img alt="RevenueDot Refund Control: refund rate, refund request amount and refund requests over the last 28 days, the four policy templates and an ordered refund policy with its conditions" src="docs/assets/lifecycle/refund-control.png" width="100%">
 </picture>
+
+<p><img alt="RevenueDot Customer Center editor: support settings, the active-subscription screen's ordered paths, and the Manage path with its button text, promotional offer and a feedback survey whose first answer shows a Retention offer" src="docs/assets/lifecycle/customer-center-editor.png" width="100%"></p>
 
 ## SDKs
 
@@ -465,6 +467,11 @@ Yes. When a customer asks Apple for a refund, Apple sends a `CONSUMPTION_REQUEST
 <details><summary><b>How do I win back churned subscribers?</b></summary>
 
 Three ways, all built: Apple's [win-back offers](https://revenuedot.app/docs/guides/win-back-offers) work with the RevenueCat SDK unchanged; a Customer Center offer catches customers as they cancel ([retention offers](https://revenuedot.app/docs/guides/retention)); and win-back campaigns email lapsed subscribers a link back to the store, once each, with clicks, unsubscribes and reactivations counted ([win-back campaigns](https://revenuedot.app/docs/guides/win-back-campaigns)).
+</details>
+
+<details><summary><b>Can I change the in-app Customer Center without releasing an app update?</b></summary>
+
+Yes. The SDK's `CustomerCenterView` loads its configuration from your server each time it opens. Under **Lifecycle > Customer Center** you choose the paths on each screen and their order (restore, change plans, cancel, refund, a web page, an action in your app), ask why customers cancel with an offer per answer, set colours for light and dark mode and override any text in 33 languages, with a phone preview. Saved changes reach every app the next time the screen opens ([guide](https://revenuedot.app/docs/guides/customer-center)).
 </details>
 
 <details><summary><b>Where do Customer Center support requests go?</b></summary>

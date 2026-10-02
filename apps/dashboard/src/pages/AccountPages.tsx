@@ -176,7 +176,7 @@ export function InvitePage() {
       return (
         <Card title={`Join ${i.project.name}`} sub={sub}>
           <div className="banner warn" role="status">You are signed in as {signedIn.email}. This invite is for {i.email}.</div>
-          <button type="button" className="btn btn-dark btn-lg" onClick={() => { void signOut(qc, `/login?next=${encodeURIComponent(here)}`); }}>Sign in as {i.email}</button>
+          <button type="button" className="btn btn-dark btn-lg" onClick={() => { void signOut(qc, i.account_exists ? `/login?next=${encodeURIComponent(here)}&email=${encodeURIComponent(i.email)}` : here); }}>Sign in as {i.email}</button>
         </Card>
       );
     }
@@ -191,7 +191,7 @@ export function InvitePage() {
     return (
       <Card title={`Join ${i.project.name}`} sub={sub}>
         <p className="section-sub">You already have a RevenueDot account. Sign in as {i.email} to accept.</p>
-        <Link className="btn btn-dark btn-lg" to={`/login?next=${encodeURIComponent(here)}`}>Sign in to accept</Link>
+        <Link className="btn btn-dark btn-lg" to={`/login?next=${encodeURIComponent(here)}&email=${encodeURIComponent(i.email)}`}>Sign in to accept</Link>
       </Card>
     );
   }

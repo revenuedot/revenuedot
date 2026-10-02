@@ -58,7 +58,8 @@ describe("POST /v1/customercenter/support/create-ticket", () => {
   it("the SDK reads the ticket settings from the Customer Center config", async () => {
     await settings({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "active", customer_details: { appUserId: true, totalSpent: true } } });
     const cc = (await (await h.fetch("/v1/customercenter/anyone", { key: h.ids.testKey })).json() as any).customer_center;
-    expect(cc.support).toMatchObject({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "active", customer_details: { appUserId: true, totalSpent: true } } });
+    // The SDKs decode snake_case detail keys (purchases-android CustomerDetails, purchases-ios with convertFromSnakeCase).
+    expect(cc.support).toMatchObject({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "active", customer_details: { app_user_id: true, total_spent: true } } });
   });
 
   it("stores the ticket without email when the project has no support address of its own", async () => {
@@ -145,5 +146,13 @@ describe("tickets and the help desk summary in API v2", () => {
     expect((await (await v2("/support_summaries?email=nobody%40example.com")).json() as any).items).toEqual([]);
     expect((await v2("/customers/nobody/support_summary")).status).toBe(404);
     expect((await v2("/support_summaries")).status).toBe(400);
+  });
+
+  it("finds a customer by the address on their ticket when the app never saved $email", async () => {
+    await h.fetch("/v1/subscribers/kit");
+    await ticket({ app_user_id: "kit", customer_email: "Kit@Example.org", issue_description: "Pro did not unlock" });
+    const found = await (await v2("/support_summaries?email=kit%40example.org")).json() as any;
+    expect(found.items.map((x: any) => [x.app_user_id, x.email])).toEqual([["kit", null]]);
+    expect(found.items[0].open_tickets.map((t: any) => t.description)).toEqual(["Pro did not unlock"]);
   });
 });

@@ -194,9 +194,10 @@ async function bucket(seed: string): Promise<number> {
 
 /**
  * The offering for this request: a running experiment the customer is (or now gets) enrolled in wins, then the first live
- * targeting rule that matches, then the project's current offering. Enrolling records EXPERIMENT_ENROLLMENT once.
+ * targeting rule that matches, then the project's current offering. Enrolling records EXPERIMENT_ENROLLMENT once;
+ * `enroll: false` resolves the same way without enrolling anyone.
  */
-export async function resolveOfferings(db: DB, projectId: string, customer: CustomerRow | null, ctx: CustomerContext, now: Date, defaultOfferingId: string | null): Promise<Resolution> {
+export async function resolveOfferings(db: DB, projectId: string, customer: CustomerRow | null, ctx: CustomerContext, now: Date, defaultOfferingId: string | null, opts: { enroll?: boolean } = {}): Promise<Resolution> {
   const out: Resolution = { currentOfferingId: defaultOfferingId, placements: {}, rule: null, experiment: null };
   const audienceIds = new Set<string>();
   const rules = (await db.select().from(schema.targetingRules).where(and(eq(schema.targetingRules.projectId, projectId), eq(schema.targetingRules.state, "active"))).orderBy(asc(schema.targetingRules.position)))
@@ -235,7 +236,8 @@ export async function resolveOfferings(db: DB, projectId: string, customer: Cust
       const offeringId = chosen.variant === "a" ? chosen.e.offeringA : chosen.e.offeringB;
       out.currentOfferingId = offeringId;
       out.experiment = { id: chosen.e.id, variant: chosen.variant, offeringId };
-      if (chosen.isNew) {
+      // A preview (the dashboard's customer page) shows the experiment the next SDK request would enroll them in, without enrolling.
+      if (chosen.isNew && opts.enroll !== false) {
         const inserted = await db.insert(schema.experimentEnrollments).values({ experimentId: chosen.e.id, customerId: customer.id, variant: chosen.variant, enrolledAt: now }).onConflictDoNothing().returning();
         if (inserted.length) {
           const [o] = await db.select({ key: schema.offerings.lookupKey }).from(schema.offerings).where(eq(schema.offerings.id, offeringId));
