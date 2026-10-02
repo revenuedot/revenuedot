@@ -572,7 +572,7 @@ App Store, Google Play, the Amazon Appstore, the Samsung Galaxy Store, Roku, and
 
 Yes. Create a Paddle app in RevenueDot with a Paddle API key, click Apply in Paddle so Paddle sends its notifications to RevenueDot, import your prices, and post each `sub_…` or `txn_…` from your backend to `POST /v1/receipts` with `X-Platform: paddle`. Products are Paddle price ids, as in [RevenueCat's Paddle integration](https://www.revenuecat.com/docs/web/integrations/paddle).
 
-![Paddle API key and notifications](docs/assets/paddle-setup.png)
+![The Paddle API key on the app page, checked with Paddle](docs/assets/paddle-setup.png)
 </details>
 
 <details><summary><b>Does RevenueDot work with RevenueCat's Roku SDK?</b></summary>

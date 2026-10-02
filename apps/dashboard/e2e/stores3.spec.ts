@@ -33,7 +33,12 @@ test("stores: Paddle, Roku and Samsung Galaxy Store apps", async ({ page, baseUR
   };
   const toast = (text: string | RegExp) => expect(page.getByRole("status").filter({ hasText: text }).first()).toBeVisible();
   const stamp = Date.now();
-  const shot = async (selector: string, name: string) => { if (process.env.SHOTS) await page.locator(selector).first().screenshot({ path: `${process.env.SHOTS}/${name}.png` }); };
+  const shot = async (selector: string, name: string) => {
+    if (!process.env.SHOTS) return;
+    // The customer page keeps updating, so it is captured as the viewport rather than waiting for <main> to stand still.
+    if (selector === "viewport") await page.screenshot({ path: `${process.env.SHOTS}/${name}.png` });
+    else await page.locator(selector).first().screenshot({ path: `${process.env.SHOTS}/${name}.png` });
+  };
   const values = (await api("GET", "/__store3/values")).body;
   const noOverflow = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
 
@@ -159,7 +164,7 @@ test("stores: Paddle, Roku and Samsung Galaxy Store apps", async ({ page, baseUR
     await historyOf(paddleUser);
     for (const t of ["Started a subscription", "Renewed", "Had a billing issue", "Opted out of renewal", "Was issued a refund"]) await expect(page.getByText(t, { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Paddle").first()).toBeVisible();
-    await shot("main", "paddle-customer");
+    await shot("viewport", "paddle-customer");
     // The refund ended access: the SDK sees pro expired at the refund.
     const ci = await api("GET", `/v1/subscribers/${paddleUser}`, undefined, { authorization: `Bearer ${paddleKey}` });
     expect(new Date(ci.body.subscriber.entitlements.pro.expires_date).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
