@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
-import { schema, type StorePrice } from "@revenuedot/db";
+import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import type { AppRow } from "../stores/types.js";
 import { appleHttpFor } from "../stores/apple/index.js";
@@ -755,6 +755,3 @@ export function rowShape(r: EditLineRow) {
     product: r.product ?? null, status: r.status, error: r.error, attempts: r.attempts, updated_at: r.updatedAt?.getTime() ?? null,
   };
 }
-
-/** Prices of a cached listing as CSV-ready text (the dashboard's territory table uses the same formatting). */
-export const priceText = (p: StorePrice) => microsText(p.amount_micros, p.currency);

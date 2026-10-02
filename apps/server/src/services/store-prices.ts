@@ -190,16 +190,6 @@ export async function cachedListings(deps: Deps, projectId: string, appId?: stri
   return { rows: rows.sort((a, b) => a.appId.localeCompare(b.appId) || a.storeIdentifier.localeCompare(b.storeIdentifier)), syncs };
 }
 
-/** The listing of each catalog product, keyed `appId|storeIdentifier`. */
-export async function listingsFor(deps: Deps, projectId: string, products: { appId: string; storeIdentifier: string }[]) {
-  const out = new Map<string, ListingRow>();
-  const appIds = [...new Set(products.map((p) => p.appId))];
-  if (!appIds.length) return out;
-  const rows = await deps.db.select().from(schema.storeListings).where(and(eq(schema.storeListings.projectId, projectId), inArray(schema.storeListings.appId, appIds)));
-  for (const r of rows) out.set(`${r.appId}|${r.storeIdentifier}`, r);
-  return out;
-}
-
 /**
  * RevenueCat's `indicative_price` ("in the default currency/country (USD / US)"): the Test Store price; else the store's
  * price in the United States, or its base territory; else a Stripe web product's price. Null when none is known.
