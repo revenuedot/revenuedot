@@ -28,6 +28,8 @@ export interface CustomerRunOptions {
   pageSize?: number;
   /** Stop after this many customers (for a trial run). */
   limit?: number;
+  /** Import exactly these RevenueCat customer ids, looked up by id, instead of walking the list. */
+  ids?: string[];
   tokens?: TokenBook;
   emitEvents?: boolean;
   save: () => void;
@@ -52,7 +54,7 @@ export async function importCustomers(rc: RevenueCatClient, rd: RevenueDotClient
         bundle = await fetchBundle(rc, id);
       } catch (e) {
         // Listed, then deleted or merged in RevenueCat before it was read: nothing to import.
-        if (e instanceof HttpError && e.status === 404) return null;
+        if (e instanceof HttpError && e.status === 404) { addProblem(state.problems, { kind: "skipped", message: `${id}: not found in RevenueCat` }); return null; }
         throw e;
       }
       const out = toImportCustomer(bundle, map, o.tokens);
@@ -86,6 +88,13 @@ export async function importCustomers(rc: RevenueCatClient, rd: RevenueDotClient
   };
   const report = () => o.progress(`customers: ${s.imported} ${o.dryRun ? "read" : "imported"} (${s.subscriptions} subscriptions, ${s.purchases} purchases), page ${s.pages}`);
 
+  if (o.ids) {
+    // RevenueCat's list leaves some customers out, so a known id list is imported by id; pages stay idempotent.
+    const ids = [...new Set(o.ids)];
+    const size = o.pageSize ?? DEFAULT_PAGE_SIZE;
+    for (let i = 0; i < ids.length; i += size) { await importIds(ids.slice(i, i + size)); report(); }
+    return { googleWithoutToken };
+  }
   if (!s.walked) {
     for (;;) {
       const page = await rc.customersPage(s.after, o.pageSize ?? DEFAULT_PAGE_SIZE);
