@@ -12,7 +12,6 @@ const countries = getCountries()
   .map((cc) => ({ cc, name: names.of(cc) ?? cc, code: getCountryCallingCode(cc) }))
   .sort((a, b) => a.name.localeCompare(b.name));
 const KEYS = "ABCDEFGHIJ";
-const STEPS = 8;
 ---
 <Base
   title="Contact sales"
@@ -29,17 +28,17 @@ const STEPS = 8;
         <div class="cs-card">
           <div class="cs-progress" aria-hidden="true"><span id="cs-bar"></span></div>
           <form id="cs-form" class="cs-form" method="post" action="/api/contact-sales" novalidate>
-            <p class="cs-count tiny" id="cs-count" aria-live="polite"></p>
+            <p class="cs-count" id="cs-count" aria-live="polite"></p>
 
             <section class="step" data-step="1" data-fields="email">
-              <label class="q" for="email"><span class="qn">1</span> What is your work email?</label>
+              <label class="q" for="email">What is your work email?</label>
               <p class="qh">We will send your quote here.</p>
               <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required maxlength="254" placeholder="you@company.com" aria-describedby="err-email" />
               <p class="err" id="err-email" hidden></p>
             </section>
 
             <fieldset class="step" data-step="2" data-fields="revenue" data-auto>
-              <legend class="q"><span class="qn">2</span> How much do your apps make in the stores each month?</legend>
+              <legend class="q">How much do your apps make in the stores each month?</legend>
               <p class="qh">Across all your apps, before Apple and Google take their fees. Our pricing is based on it.</p>
               <div class="opts">
                 {REVENUE.map(([v, l], i) => <label class="opt"><input type="radio" name="revenue" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
@@ -48,31 +47,25 @@ const STEPS = 8;
             </fieldset>
 
             <fieldset class="step" data-step="3" data-fields="current" data-auto>
-              <legend class="q"><span class="qn">3</span> What do you use for in-app purchases today?</legend>
+              <legend class="q">What do you use for in-app purchases today?</legend>
               <div class="opts">
                 {CURRENT.map(([v, l], i) => <label class="opt"><input type="radio" name="current" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
               </div>
               <p class="err" id="err-current" hidden></p>
             </fieldset>
 
-            <fieldset class="step" data-step="4" data-fields="">
-              <legend class="q"><span class="qn">4</span> What do you need from Enterprise?</legend>
-              <p class="qh">Choose as many as you like, or skip.</p>
-              <div class="opts">
-                {NEEDS.map(([v, l], i) => <label class="opt"><input type="checkbox" name="needs" value={v} /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
-              </div>
-            </fieldset>
 
-            <fieldset class="step" data-step="5" data-fields="timeline" data-auto>
-              <legend class="q"><span class="qn">5</span> When do you want to start?</legend>
+            <fieldset class="step" data-step="4" data-fields="timeline" data-auto>
+              <legend class="q">When do you want to start?</legend>
               <div class="opts">
                 {TIMELINE.map(([v, l], i) => <label class="opt"><input type="radio" name="timeline" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
               </div>
               <p class="err" id="err-timeline" hidden></p>
             </fieldset>
 
-            <fieldset class="step" data-step="6" data-fields="name company role">
-              <legend class="q"><span class="qn">6</span> Who should we talk to?</legend>
+            <fieldset class="step" data-step="5" data-fields="name company phone">
+              <legend class="q">How do we reach you?</legend>
+              <p class="qh">We call to set up a 30-minute call about your quote.</p>
               <div class="pair">
                 <div class="fld">
                   <label for="name">Full name</label>
@@ -85,46 +78,18 @@ const STEPS = 8;
                   <p class="err" id="err-company" hidden></p>
                 </div>
               </div>
-              <div class="fld" role="radiogroup" aria-labelledby="role-label">
-                <span class="sub" id="role-label">Your role</span>
-                <div class="opts">
-                  {ROLES.map(([v, l], i) => <label class="opt"><input type="radio" name="role" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
+              <div class="fld">
+                <label for="phone">Phone number</label>
+                <div class="phone">
+                  <select id="phoneCountry" name="phoneCountry" autocomplete="tel-country-code" aria-label="Country calling code">
+                    {countries.map((c) => <option value={c.cc} selected={c.cc === "US"}>{`${flag(c.cc)} +${c.code} ${c.name}`}</option>)}
+                  </select>
+                  <input id="phone" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" required maxlength="40" placeholder="201 555 0123" aria-describedby="err-phone" />
                 </div>
-                <p class="err" id="err-role" hidden></p>
+                <p class="err" id="err-phone" hidden></p>
               </div>
             </fieldset>
 
-            <section class="step" data-step="7" data-fields="phone">
-              <label class="q" for="phone"><span class="qn">7</span> What is the best number to reach you?</label>
-              <p class="qh">We call to set up a 30-minute call about your quote. Pick the country, then type the number.</p>
-              <div class="phone">
-                <select id="phoneCountry" name="phoneCountry" autocomplete="tel-country-code" aria-label="Country calling code">
-                  {countries.map((c) => <option value={c.cc} selected={c.cc === "US"}>{`${flag(c.cc)} +${c.code} ${c.name}`}</option>)}
-                </select>
-                <input id="phone" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" required maxlength="40" placeholder="201 555 0123" aria-describedby="err-phone" />
-              </div>
-              <p class="err" id="err-phone" hidden></p>
-            </section>
-
-            <fieldset class="step" data-step="8" data-fields="website">
-              <legend class="q"><span class="qn">8</span> Anything else we should know?</legend>
-              <p class="qh">All optional.</p>
-              <div class="fld">
-                <span class="sub">Platforms</span>
-                <div class="opts compact">
-                  {PLATFORMS.map(([v, l]) => <label class="opt"><input type="checkbox" name="platforms" value={v} /><span>{l}</span></label>)}
-                </div>
-              </div>
-              <div class="fld">
-                <label for="website">Company website</label>
-                <input id="website" name="website" type="text" autocomplete="url" inputmode="url" maxlength="200" placeholder="company.com" aria-describedby="err-website" />
-                <p class="err" id="err-website" hidden></p>
-              </div>
-              <div class="fld">
-                <label for="message">Message</label>
-                <textarea id="message" name="message" rows="3" maxlength="4000" placeholder="Number of apps, compliance requirements, deadlines"></textarea>
-              </div>
-            </fieldset>
 
             <div class="hp" aria-hidden="true"><label for="fax">Fax</label><input id="fax" name="fax" type="text" tabindex="-1" autocomplete="off" /></div>
             <input type="hidden" name="started" id="started" value="" />
@@ -187,12 +152,13 @@ const STEPS = 8;
   .cs-card { border: 1px solid var(--border); background: var(--panel); position: relative; min-width: 0; }
   .cs-progress { height: 3px; background: var(--border-2); }
   .cs-progress span { display: block; height: 100%; width: 0; background: var(--fg); transition: width var(--base) var(--ease); }
-  .cs-form { padding: 36px 40px 32px; display: grid; gap: 32px; }
-  .cs-count { margin: 0 0 -16px; font-family: var(--mono); }
-  .step { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 14px; }
-  .q { display: block; font-size: clamp(21px, 2.4vw, 27px); line-height: 1.25; font-weight: 700; letter-spacing: -0.025em; padding: 0; text-wrap: balance; }
-  .qn { font: 500 13px var(--mono); color: var(--fg-3); margin-right: 8px; vertical-align: 3px; }
-  .qh { margin: -6px 0 2px; font-size: 14px; color: var(--fg-3); max-width: 60ch; }
+  .cs-form { padding: 32px 40px 36px; display: grid; gap: 28px; }
+  .cs-count { margin: 0; font: 500 12px var(--mono); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-3); }
+  .step { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 20px; }
+  /* A floated legend becomes an ordinary grid item, so the step's gap spaces it like the other questions. */
+  .q { display: block; float: left; width: 100%; margin: 0; font-size: clamp(22px, 2.4vw, 28px); line-height: 1.25; font-weight: 700; letter-spacing: -0.025em; padding: 0; text-wrap: balance; }
+  label.q { float: none; }
+  .qh { margin: -10px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--fg-3); max-width: 60ch; }
   .sub, .fld > label { font-size: 13px; font-weight: 600; color: var(--fg-2); }
   .fld { display: grid; gap: 8px; min-width: 0; }
   .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
@@ -208,7 +174,7 @@ const STEPS = 8;
   [aria-invalid="true"] { border-color: var(--down) !important; }
   .phone { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr); }
   .phone select { border-right: 0; }
-  .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .opts.compact { display: flex; flex-wrap: wrap; }
   .opt { position: relative; display: flex; cursor: pointer; min-width: 0; }
   .opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -222,7 +188,7 @@ const STEPS = 8;
   .step[data-invalid] .opt span { border-color: var(--down); }
   .err { margin: 0; font-size: 13px; font-weight: 600; color: var(--down); }
   .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-  .nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
   .nav .btn { cursor: pointer; }
   .nav .btn[disabled] { opacity: .6; cursor: progress; }
   .enter kbd { margin-left: 4px; }
@@ -246,7 +212,10 @@ const STEPS = 8;
   }
   @media (max-width: 560px) {
     .cs { padding: 24px 0 64px; }
-    .cs-form { padding: 24px 16px 20px; gap: 26px; }
+    .cs-form { padding: 24px 16px 24px; gap: 22px; }
+    .step { gap: 16px; }
+    .q { font-size: 21px; }
+    .qh { margin-top: -8px; font-size: 14px; }
     .cs-done { padding: 32px 16px; }
     .opts, .pair { grid-template-columns: minmax(0, 1fr); }
     .phone { grid-template-columns: minmax(0, 120px) minmax(0, 1fr); }
@@ -328,7 +297,7 @@ const STEPS = 8;
     next.textContent = last ? "Send to sales" : "Continue";
     back.hidden = at === 0;
     enter.hidden = !!steps[at]!.querySelector("textarea") || "auto" in steps[at]!.dataset;
-    count.textContent = `${at + 1} of ${steps.length}`;
+    count.textContent = `Question ${at + 1} of ${steps.length}`;
     bar.style.width = `${(at / steps.length) * 100}%`;
     status.hidden = true;
     // Text fields first (the phone number, not its country picker), then a picker, then the chosen or first option.

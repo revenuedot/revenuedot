@@ -119,7 +119,7 @@ export function validate(input: Record<string, unknown>): Result {
   if (!name) errors.name = "Enter your name.";
   if (!isEmail(email)) errors.email = "Enter a valid work email, like you@company.com.";
   if (!company) errors.company = "Enter your company name.";
-  if (!keys(ROLES).has(role)) errors.role = "Choose your role.";
+  if (role && !keys(ROLES).has(role)) errors.role = "Choose your role from the list.";
   if (!phone) errors.phone = "Enter a valid phone number for the country you chose.";
   if (!keys(REVENUE).has(revenue)) errors.revenue = "Choose a revenue range, or Prefer not to say.";
   if (!keys(CURRENT).has(current)) errors.current = "Choose what you use today.";

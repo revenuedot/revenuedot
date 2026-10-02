@@ -44,7 +44,11 @@ describe("validate", () => {
     const v = validate({ name: "", email: "nope", phone: "12", phoneCountry: "US", revenue: "lots", website: "not a site" });
     expect(v.ok).toBe(false);
     if (v.ok) return;
-    expect(Object.keys(v.errors).sort()).toEqual(["company", "current", "email", "name", "phone", "revenue", "role", "timeline", "website"]);
+    expect(Object.keys(v.errors).sort()).toEqual(["company", "current", "email", "name", "phone", "revenue", "timeline", "website"]);
+  });
+  it("treats role, needs, platforms, website and message as optional", () => {
+    const v = validate({ ...good, role: "", needs: [], platforms: [], website: "", message: "" });
+    expect(v.ok).toBe(true);
   });
   it("accepts Prefer not to say for revenue", () => {
     expect(validate({ ...good, revenue: "undisclosed" }).ok).toBe(true);

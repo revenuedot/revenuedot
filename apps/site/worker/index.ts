@@ -159,7 +159,7 @@ async function contactSales(request: Request, env: Env): Promise<Response> {
 
 export function leadEmail(l: Lead, s: Score, meta: { country: string | null; referrer: string; userAgent: string }) {
   const rows: [string, string][] = [
-    ["Name", l.name], ["Email", l.email], ["Phone", `${parsePhoneNumberFromString(l.phone)?.formatInternational() ?? l.phone} (dial ${l.phone})`], ["Company", l.company], ["Role", label(ROLES, l.role)],
+    ["Name", l.name], ["Email", l.email], ["Phone", `${parsePhoneNumberFromString(l.phone)?.formatInternational() ?? l.phone} (dial ${l.phone})`], ["Company", l.company], ["Role", l.role ? label(ROLES, l.role) : "Not given"],
     ["Monthly in-app revenue", label(REVENUE, l.revenue)], ["Uses today", label(CURRENT, l.current)],
     ["Needs", l.needs.map((n) => label(NEEDS, n)).join(", ") || "None chosen"], ["Timeline", label(TIMELINE, l.timeline)],
     ["Platforms", l.platforms.map((p) => label(PLATFORMS, p)).join(", ") || "Not given"], ["Website", l.website || "Not given"],
