@@ -60,7 +60,8 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
-  useEffect(() => { setPicked(new Set()); setQ(""); setError(null); }, [app]);
+  // Another app starts clean: a selection, or entitlements picked for the last import, must not carry over unseen.
+  useEffect(() => { setPicked(new Set()); setEntIds(new Set()); setQ(""); setError(null); }, [app]);
 
   const items = listing.data?.items ?? [];
   const needle = q.trim().toLowerCase();
@@ -189,7 +190,7 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
   }
 
   const footer = result
-    ? <><button type="button" className="btn btn-line" onClick={() => setResult(null)}>Import more</button><button type="button" className="btn btn-dark" onClick={onClose}>Done</button></>
+    ? <><button type="button" className="btn btn-line" onClick={() => { setResult(null); setEntIds(new Set()); }}>Import more</button><button type="button" className="btn btn-dark" onClick={onClose}>Done</button></>
     : <><button type="button" className="btn btn-line" onClick={onClose}>Cancel</button>
       <button type="button" className="btn btn-dark" disabled={busy || !picked.size} onClick={() => void run()}>{busy ? "Importing…" : picked.size ? `Import ${count(picked.size, "product")}` : "Import"}</button></>;
 

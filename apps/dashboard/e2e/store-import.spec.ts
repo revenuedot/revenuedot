@@ -154,7 +154,11 @@ test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({
   await test.step("Stripe: one row per price, with the price", async () => {
     await page.goto(`${WEB}/projects/${pid}/product-catalog/products`);
     await page.getByRole("button", { name: "Import products", exact: true }).click();
+    // Entitlements picked for one app do not carry over to another app's import.
+    await dialog.getByRole("checkbox", { name: /^pro/ }).check();
     await dialog.getByLabel("App", { exact: true }).selectOption({ label: "Focus Web (Stripe)" });
+    await expect(dialog.getByRole("checkbox", { name: /^pro/ })).not.toBeChecked();
+    await dialog.getByRole("checkbox", { name: /^pro/ }).check();
     const yearly = dialog.getByRole("row", { name: /Focus Plus \(yearly\)/ });
     await expect(yearly).toContainText("$39.99");
     await expect(dialog.getByRole("row", { name: /Focus Plus \(monthly\)/ })).toContainText("1 month");
@@ -163,6 +167,7 @@ test("store import: App Store Connect, Google Play, Stripe and Amazon", async ({
     await expect(dialog.getByText("Imported 1 product from Stripe.")).toBeVisible();
     await dialog.getByRole("button", { name: "Import more" }).click();
     await expect(yearly).toContainText("In catalog");
+    await expect(dialog.getByRole("checkbox", { name: /^pro/ })).not.toBeChecked();
   });
 
   await test.step("Amazon explains why it cannot import; a missing key, a refused key and an empty store each say so", async () => {
