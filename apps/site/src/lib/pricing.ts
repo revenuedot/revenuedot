@@ -1,4 +1,5 @@
 // Plans and the price maths. Source of the numbers: company/docs/business-model.md (private repo), decided 2026-09-30.
+import { SITE } from "../site";
 export type Plan = {
   id: string;
   name: string;
@@ -69,7 +70,7 @@ export const PLANS: Plan[] = [
     id: "enterprise",
     name: "Enterprise",
     price: "$50K",
-    priceNote: "a year, on standard terms",
+    priceNote: "a year to start, custom pricing",
     summary: "Cloud with a support promise, or a commercial license to self-host in your own account, with single sign-on, audit logs and data-location controls.",
     available: false,
     features: [
@@ -77,9 +78,9 @@ export const PLANS: Plan[] = [
       "EU and US data regions, or your own cloud",
       "High-availability self-host and an SLA",
       "Commercial license for the ee/ folder",
-      "Self-serve, standard terms",
+      "Custom pricing for your scale",
     ],
-    cta: { label: "Contact us", href: "mailto:hello@revenuedot.app?subject=RevenueDot%20Enterprise" },
+    cta: { label: "Contact sales", href: `mailto:${SITE.email.sales}?subject=RevenueDot%20Enterprise` },
   },
 ];
 
