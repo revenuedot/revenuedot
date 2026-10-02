@@ -199,6 +199,7 @@ Already built (prd/paywalls/PRD.md §6): "Saved" on top of the rail, opening one
 - `apps/dashboard/e2e/charts-page-extras.spec.ts`: every chart type, the Customers tab and export, annotations across charts, share link in a signed-out context and revoke, Ask AI handoff, phone width, dark mode, no console errors.
 
 ## Known gaps
+- **Ad revenue in purchase segments:** ad revenue has no product, store or offering, so segmenting Revenue by one of them counts it in every segment (and the Customers tab lists the customer once per segment). Segments by customer dimensions are not affected. The published SQL counts ad revenue reported in USD only; the API converts other currencies.
 - **Taxes:** stores do not report tax, so "revenue net of taxes" equals revenue, and proceeds subtract only the store commission (as `/metrics/revenue` does).
 - **Paid introductory offers** are not told apart from regular paid periods (the ledger has no offer type), so Paid Subscriptions shows them as direct purchases.
 - **Renewal cycle, offer type, first purchase month, install month, attribution and custom-attribute dimensions** are not offered yet.
