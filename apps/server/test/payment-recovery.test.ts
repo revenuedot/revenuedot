@@ -352,3 +352,39 @@ describe("Test Store and sandbox", () => {
     expect((await cases())[0].next_message_at).toBeNull();
   });
 });
+
+describe("tick fairness", () => {
+  /** A project with recovery on and `n` open App Store cases due now, each with an address. */
+  async function projectWithDueCases(db: WebEnv["h"]["db"], projectId: string, n: number, now: Date, o: { linkBase?: string | null } = {}) {
+    const [base] = await db.select().from(schema.projects).limit(1);
+    await db.insert(schema.projects).values({ ...base!, id: projectId, name: `Project ${projectId}`, recoverySettings: { ...settings(), link_base: o.linkBase === undefined ? "https://api.example.com" : o.linkBase } }).onConflictDoNothing();
+    for (let i = 0; i < n; i++) {
+      const cid = `cus_${projectId}_${i}`, sid = `sub_${projectId}_${i}`;
+      await db.insert(schema.customers).values({ id: cid, projectId, originalAppUserId: `u_${projectId}_${i}` });
+      await db.insert(schema.customerAttributes).values({ customerId: cid, key: "$email", value: `u${i}@${projectId.replace(/_/g, "-")}.example.com`, updatedAtMs: now.getTime() });
+      await db.insert(schema.subscriptions).values({ id: sid, projectId, customerId: cid, store: "app_store", storeKey: `otx_${projectId}_${i}`, productIdentifier: "pro.monthly", storeTransactionId: `tx_${projectId}_${i}`, purchaseDate: new Date(now.getTime() - 31 * DAY), originalPurchaseDate: new Date(now.getTime() - 31 * DAY), expiresDate: new Date(now.getTime() - DAY), billingIssuesDetectedAt: new Date(now.getTime() - 60_000) } as typeof schema.subscriptions.$inferInsert);
+      await db.insert(schema.recoveryCases).values({ id: `rcv_${projectId}_${i}`, projectId, customerId: cid, subscriptionId: sid, store: "app_store", storeKey: `otx_${projectId}_${i}`, productId: "pro.monthly", detectedAt: new Date(now.getTime() - 60_000 - i), nextStepAt: new Date(now.getTime() - 60_000 - i), token: `tok_${projectId}_${i}_000000000000` });
+    }
+  }
+
+  it("a project at its daily cap, or without a link base, does not hold back other projects' emails", async () => {
+    web = await webEnv({});
+    const { db } = web.h;
+    const now = web.h.now();
+    // Project A has hit its daily cap (2,000 emails in the last 24 hours) and has the oldest due cases.
+    await projectWithDueCases(db, "proj_capped", 3, new Date(now.getTime() - 3_600_000));
+    await db.insert(schema.recoveryCases).values({ id: "rcv_capped_sent", projectId: "proj_capped", customerId: "cus_proj_capped_0", store: "app_store", storeKey: "otx_old", productId: "pro.monthly", status: "lost", detectedAt: new Date(now.getTime() - 2 * DAY), token: "tok_capped_sent_000000000000" });
+    await db.insert(schema.recoveryMessages).values(Array.from({ length: 2_000 }, (_, i) => ({ id: `rcm_cap_${i}`, caseId: "rcv_capped_sent", projectId: "proj_capped", step: 0, email: "x@example.com", sentAt: new Date(now.getTime() - 3_600_000) })));
+    // Project B (self-hosted server, no public URL) never saved its settings from the dashboard: no link base.
+    await projectWithDueCases(db, "proj_nobase", 3, new Date(now.getTime() - 3_000_000), { linkBase: null });
+    // Project C has one due case, newer than all of them.
+    await projectWithDueCases(db, "proj_ok", 1, now);
+    const mail = memoryMailer();
+    const r = await runPaymentRecovery({ db, mailer: mail, now: () => now }, { limit: 2 });
+    expect(r.sent).toBe(1);
+    expect(mail.sent.map((m) => m.to)).toEqual(["u0@proj-ok.example.com"]);
+    // The capped project's cases stay due for when its cap frees up.
+    const [capped] = await db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.id, "rcv_proj_capped_0"));
+    expect(capped).toMatchObject({ status: "open", stepsSent: 0 });
+  });
+});

@@ -215,8 +215,13 @@ export async function runPaymentRecovery(d: RecoveryDeps, o: { onlyProject?: str
     RETURNING c.id`);
   const closedCount = (Array.isArray(closed) ? closed : (closed as { rows: unknown[] }).rows).length;
   const limit = o.limit ?? SENDS_PER_TICK;
+  // Cases that cannot go out now (their project hit its daily cap, or has no address for links) stay due but are not picked,
+  // so they never fill the batch and hold back other projects' emails.
+  const dayAgo = new Date(now.getTime() - DAY).toISOString();
+  const underCap = sql`(SELECT count(*) FROM recovery_messages m WHERE m.project_id = "recovery_cases"."project_id" AND m.sent_at >= ${dayAgo}::timestamptz AND m.error IS NULL) < ${PROJECT_DAILY_MAX}`;
+  const hasBase = d.publicUrl ? sql`TRUE` : sql`coalesce(${Pj.recoverySettings}->>'link_base', '') <> ''`;
   const due = await db.select({ c: C, s: Pj.recoverySettings, name: Pj.name }).from(C).innerJoin(Pj, eq(Pj.id, C.projectId))
-    .where(and(eq(C.status, "open"), lte(C.nextStepAt, now), sql`(${Pj.recoverySettings}->>'enabled')::boolean IS TRUE`,
+    .where(and(eq(C.status, "open"), lte(C.nextStepAt, now), sql`(${Pj.recoverySettings}->>'enabled')::boolean IS TRUE`, underCap, hasBase,
       or(eq(C.isSandbox, false), sql`(${Pj.recoverySettings}->>'include_sandbox')::boolean IS TRUE`),
       ...(o.onlyProject ? [eq(C.projectId, o.onlyProject)] : [])))
     .orderBy(asc(C.nextStepAt)).limit(limit);
