@@ -22,8 +22,11 @@ let dst: { db: DB; close: () => Promise<void> };
 let third: { db: DB; close: () => Promise<void> };
 let apps: Record<string, ReturnType<typeof createApp>>;
 let dir: string;
+/** Tests: file uploads to target.test fail (the network drops during a copy). */
+let targetDown = false;
 const net = ((url: string | URL | Request, init?: RequestInit) => {
   const u = new URL(String(url instanceof Request ? url.url : url));
+  if (targetDown && u.host === "target.test" && init?.method === "PUT") return Promise.reject(new Error("network down"));
   return Promise.resolve(apps[u.host]!.fetch(new Request(u, init)));
 }) as typeof fetch;
 
@@ -46,6 +49,7 @@ beforeEach(async () => {
     "third.test": createApp({ db: third.db, now: src.now, stores: defaultStores(), encryptionKey: K2, fetch: net, apiUrl: "http://third.test" }),
   };
   dir = mkdtempSync(join(tmpdir(), "rd-move-"));
+  targetDown = false;
 });
 afterEach(async () => { await src.close(); await dst.close(); await third.close(); });
 
@@ -101,6 +105,27 @@ describe("npx revenuedot move", () => {
     const viaOld = await net("http://source.test/v1/subscribers/carol", { headers: { authorization: `Bearer ${src.ids.testKey}` } });
     expect(viaOld.headers.get("x-revenuedot-moved-to")).toBe("http://target.test");
     expect(((await viaOld.json()) as { subscriber: { entitlements: Record<string, unknown> } }).subscriber.entitlements.pro).toBeTruthy();
+  });
+
+  it("--finish that fails before the new server is live gives the old server its writes back; running again finishes", async () => {
+    const token = (await createImportToken(dst.db, "usr_t", src.now())).token;
+    const env = { REVENUEDOT_FROM_KEY: src.ids.secretKey, REVENUEDOT_TO_TOKEN: token };
+    const base = ["move", "--from", "http://source.test", "--to", "http://target.test", "--state", join(dir, "state.json")];
+    expect((await cli(base, env)).code).toBe(0);
+    targetDown = true;
+    const failed = await cli([...base, "--finish"], env);
+    expect(failed.code).toBe(1);
+    expect(failed.err).toMatch(/network down/);
+    expect(failed.err).toMatch(/http:\/\/source\.test serves the project again/);
+    const [old] = await src.db.select().from(schema.projects);
+    expect(old!.moveState).toBeNull();
+    const buy = await src.fetch("/v1/receipts", { method: "POST", key: src.ids.testKey, json: { app_user_id: "dave", fetch_token: `test_${src.now().getTime()}_${crypto.randomUUID()}`, product_id: "pro_monthly", price: 9.99, currency: "USD" } });
+    expect(buy.status).toBe(200);
+    targetDown = false;
+    const fin = await cli([...base, "--finish"], env);
+    expect(fin.code, fin.err).toBe(0);
+    expect((await src.db.select().from(schema.projects))[0]).toMatchObject({ moveState: "forwarded", movedToUrl: "http://target.test" });
+    expect(await dst.db.select().from(schema.customerAliases).where(eq(schema.customerAliases.appUserId, "dave"))).toHaveLength(1);
   });
 
   it("refuses bad keys before doing anything, and a wrong token is a clear error", async () => {

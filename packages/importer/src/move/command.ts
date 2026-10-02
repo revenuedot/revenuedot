@@ -96,7 +96,19 @@ export async function moveCommand(v: MoveOptions, io: MoveIO): Promise<number> {
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // --finish paused writes on the old server. If the switch fails before the new server went live, the old one must not
+    // stay paused (purchases would wait until someone notices): give it back its writes, and pause again on the next run.
+    let unpaused = false;
+    if (s.mode === "finish" && s.pausedAt && !s.report && s.phase !== "finish" && s.phase !== "done") {
+      try {
+        await source.cancel();
+        s = { ...s, phase: "paused", pausedAt: undefined, exportId: undefined };
+        save(s);
+        unpaused = true;
+      } catch { /* still paused: the message below says to run again */ }
+    }
     if (/still has the copy of .* moved away/.test(msg) && !v.replace) io.err(`Failed: ${msg}\nRun again with --replace to replace that old copy.`);
+    else if (unpaused) io.err(`Failed: ${msg}\n${source.label} serves the project again (writes are no longer paused). Run the same command to try the switch again.`);
     else io.err(`Failed: ${msg}\nThe state file (${statePath}) keeps the progress: run the same command again to resume.`);
     return 1;
   }
