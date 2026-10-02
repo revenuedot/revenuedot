@@ -9,7 +9,7 @@ import { CONVERTIBLE_CURRENCIES } from "../../services/fx.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { recordDueExpirations } from "../../services/tick.js";
 import { TEST_SCENARIOS, testStoreScenario } from "../../stores/test-store.js";
-import { ATTEMPT_LOG_DAYS, retryDelivery, webhookRequest } from "../../services/webhooks.js";
+import { apiDeliveryStatus, ATTEMPT_LOG_DAYS, retryDelivery, webhookRequest } from "../../services/webhooks.js";
 import { HISTORY_METRICS, metricHistory, type HistoryMetric } from "../../services/metric-history.js";
 import { customerSummary } from "../../services/customer-summary.js";
 import { sdkVersionsOf } from "../../services/sdk-versions.js";
@@ -132,8 +132,8 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     return w;
   };
   const deliveryShape = (d: typeof schema.webhookDeliveries.$inferSelect, eventType: string) => ({
-    object: "webhook_delivery", id: d.id, webhook_integration_id: d.webhookId, event_id: d.eventId, event_type: eventType, status: d.status,
-    attempts: d.attempts, next_attempt_at: d.status === "pending" ? d.nextAttemptAt.getTime() : null, response_status: d.responseStatus,
+    object: "webhook_delivery", id: d.id, webhook_integration_id: d.webhookId, event_id: d.eventId, event_type: eventType, status: apiDeliveryStatus(d.status),
+    attempts: d.attempts, next_attempt_at: d.status === "pending" || d.status === "sending" ? d.nextAttemptAt.getTime() : null, response_status: d.responseStatus,
     response_ms: d.responseMs, last_error: d.lastError, created_at: d.createdAt.getTime(),
   });
 
@@ -153,7 +153,8 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const status = c.req.query("status");
     if (status) {
       if (!["pending", "delivered", "failed"].includes(status)) throw paramError("status must be pending, delivered or failed.", "status");
-      conds.push(eq(D.status, status));
+      // A delivery being sent right now ("sending", claimed by a job run) is still pending to the API.
+      conds.push(status === "pending" ? inArray(D.status, ["pending", "sending"]) : eq(D.status, status));
     }
     if (startingAfter) {
       const [cur] = await db.select().from(D).where(and(eq(D.webhookId, w.id), eq(D.id, startingAfter))).limit(1);
@@ -187,7 +188,9 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const D = schema.webhookDeliveries;
     const [d] = await db.select().from(D).where(and(eq(D.webhookId, w.id), eq(D.id, c.req.param("delivery_id")))).limit(1);
     if (!d) throw notFound("Webhook delivery");
-    await retryDelivery(db, d.id, deps.now());
+    if (!(await retryDelivery(db, d.id, deps.now()))) {
+      throw new V2Error(409, "resource_locked_error", "This delivery is being sent right now. Try again in a minute.", undefined, true);
+    }
     deps.kick?.();
     const [row] = await db.select({ d: D, type: schema.events.type }).from(D).innerJoin(schema.events, eq(schema.events.id, D.eventId)).where(eq(D.id, d.id));
     return c.json(deliveryShape(row!.d, row!.type));
@@ -221,7 +224,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     for (const h of hooks) {
       const [last] = await db.select().from(D).where(and(eq(D.webhookId, h.id), sql`${D.attempts} > 0`)).orderBy(desc(D.nextAttemptAt), desc(D.createdAt)).limit(1);
       if (last && last.status !== "delivered") {
-        failing.push({ id: h.id, name: h.name, url: h.url, last_status: last.responseStatus, last_error: last.lastError, last_attempt_at: last.nextAttemptAt.getTime(), delivery_status: last.status });
+        failing.push({ id: h.id, name: h.name, url: h.url, last_status: last.responseStatus, last_error: last.lastError, last_attempt_at: last.nextAttemptAt.getTime(), delivery_status: apiDeliveryStatus(last.status) });
       }
     }
     return c.json({
@@ -229,7 +232,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
       apps: appItems,
       webhooks: {
         total: hooks.length, attempted_24h: attempted.length, delivered_24h: delivered, failed_24h: attempted.filter((d) => d.status === "failed").length,
-        pending: recent.filter((d) => d.status === "pending").length,
+        pending: recent.filter((d) => d.status === "pending" || d.status === "sending").length,
         delivered_percent_24h: attempted.length ? Math.round((delivered / attempted.length) * 1000) / 10 : null,
         failing,
       },

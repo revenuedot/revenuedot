@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
 import { schema, type DB, type DeliveryAttempt } from "@revenuedot/db";
 import { notMoving } from "./archive/moving.js";
 
@@ -130,13 +130,21 @@ export const DELIVERY_LEASE_MS = 2 * 60_000;
 /** Webhooks sent to at once by one job run (deliveries to the same webhook stay one at a time). */
 const WEBHOOK_CONCURRENCY = 8;
 
+const D = webhookDeliveries;
+/** "sending": claimed by a job run, its lease in next_attempt_at; once the lease lapses (the run died) it is due again. */
+const sendable = inArray(D.status, ["pending", "sending"]);
+/** No other delivery to the same webhook is being sent under a live lease (by any run, on any replica). */
+const webhookIdle = (now: Date) =>
+  sql`not exists (select 1 from ${D} s where s.webhook_id = ${D.webhookId} and s.status = 'sending' and s.next_attempt_at > ${now.toISOString()}::timestamptz)`;
+
 /**
  * Sends every due delivery, in batches of `limit`, claiming no more after `budgetMs`. Retries for a disabled webhook
- * wait until it is enabled again. Deliveries to one webhook go out one at a time, oldest first; different webhooks are
- * sent to in parallel. Each delivery is claimed first (its next attempt moved 2 minutes past the claim, only if it is
- * still due), so two jobs running at once (several self-hosted replicas, or the Worker's cron and a request-kicked run)
- * never send it twice. A job that dies mid-attempt leaves the claim to lapse, and the delivery is sent again after it
- * (at least once, as RevenueCat does). `signal` (a replica draining on SIGTERM) stops it after the attempts in flight.
+ * wait until it is enabled again. Deliveries to one webhook go out one at a time, oldest first, even across job runs
+ * (several self-hosted replicas, or the Worker's cron and request-kicked runs): a delivery is claimed (status "sending",
+ * its lease 2 minutes past the claim) only while it is due and no other delivery to its webhook is being sent, so it is
+ * never sent twice and never overtakes an earlier one in flight. Different webhooks are sent to in parallel. A run that
+ * dies mid-attempt leaves the claim to lapse, and the delivery is sent again after it (at least once, as RevenueCat
+ * does). `signal` (a replica draining on SIGTERM) stops it after the attempts in flight.
  */
 export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50, budgetMs = 20_000, signal?: AbortSignal) {
   const started = Date.now();
@@ -148,11 +156,12 @@ export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, lim
   const broken = new Set<string>();
   let sent = 0;
   for (;;) {
-    const due = await db.select({ id: webhookDeliveries.id, webhookId: webhookDeliveries.webhookId }).from(webhookDeliveries)
-      .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId)).innerJoin(events, eq(events.id, webhookDeliveries.eventId))
-      .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId)))
+    const due = await db.select({ id: D.id, webhookId: D.webhookId }).from(D)
+      .innerJoin(webhooks, eq(webhooks.id, D.webhookId)).innerJoin(events, eq(events.id, D.eventId))
+      .where(and(sendable, lte(D.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId), webhookIdle(now)))
+      // A claim whose run died goes first: its lease moved its next attempt behind newer deliveries to the same webhook.
       // Events recorded at the same instant (one store notification can make two) keep the order they were recorded in.
-      .orderBy(asc(webhookDeliveries.nextAttemptAt), asc(events.createdAt)).limit(limit);
+      .orderBy(desc(sql`${D.status} = 'sending'`), asc(D.nextAttemptAt), asc(events.createdAt)).limit(limit);
     const byHook = new Map<string, string[]>();
     for (const d of due) if (!broken.has(d.webhookId)) byHook.set(d.webhookId, [...(byHook.get(d.webhookId) ?? []), d.id]);
     let claimedAny = false;
@@ -164,9 +173,10 @@ export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, lim
           // A replica that is shutting down, or a run out of time, finishes the attempts in flight and claims no more.
           if (stop()) return;
           try {
-            const [claimed] = await db.update(webhookDeliveries).set({ nextAttemptAt: lease() })
-              .where(and(eq(webhookDeliveries.id, id), eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now))).returning({ id: webhookDeliveries.id });
-            if (!claimed) continue;
+            const [claimed] = await db.update(D).set({ status: "sending", nextAttemptAt: lease() })
+              .where(and(eq(D.id, id), sendable, lte(D.nextAttemptAt, now), webhookIdle(now))).returning({ id: D.id });
+            // Sent or being sent by another run, or its webhook is busy: the rest of this webhook waits for a later run.
+            if (!claimed) break;
             claimedAny = true;
             await attempt(db, id, fetchImpl, now);
             sent++;
@@ -181,14 +191,19 @@ export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, lim
     };
     await Promise.all(Array.from({ length: Math.min(WEBHOOK_CONCURRENCY, queues.length) }, worker));
     // Another full batch may be waiting (a burst of purchases); stop when the batch was short, nothing could be claimed
-    // (another job holds them), or the time is up.
+    // (another run holds them), or the time is up.
     if (due.length < limit || !claimedAny || stop()) return sent;
   }
 }
 
-/** Manual retry from the dashboard or API: queue immediately. */
-export async function retryDelivery(db: DB, deliveryId: string, now: Date) {
-  await db.update(webhookDeliveries).set({ status: "pending", nextAttemptAt: now }).where(eq(webhookDeliveries.id, deliveryId));
+/**
+ * Manual retry from the dashboard or API: queue it now, also when it waits for a scheduled retry. False while a job run
+ * is sending it (its lease is live).
+ */
+export async function retryDelivery(db: DB, deliveryId: string, now: Date): Promise<boolean> {
+  const rows = await db.update(D).set({ status: "pending", nextAttemptAt: now })
+    .where(and(eq(D.id, deliveryId), or(ne(D.status, "sending"), lte(D.nextAttemptAt, now)))).returning({ id: D.id });
+  return rows.length > 0;
 }
 
 const DAY = 86400_000;
@@ -246,3 +261,6 @@ export function webhookRequest(w: { url: string; authorizationHeader: string | n
   const curlHeaders = headers.map((h) => (h.name === "Authorization" ? { name: h.name, value: "<your Authorization header value>" } : h));
   return { method: "POST", url: w.url, headers, body, curl: curlFor("POST", w.url, curlHeaders, body) };
 }
+
+/** The status the API shows: a delivery being sent is still pending. */
+export const apiDeliveryStatus = (status: string) => (status === "sending" ? "pending" : status);
