@@ -3,7 +3,8 @@ import { newId, type DerivedEvent } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { isEmailAddress, trySend, type Mailer } from "../mail/index.js";
-import { recoveryEmail } from "../mail/templates.js";
+import { portalLinkEmail, recoveryEmail } from "../mail/templates.js";
+import { hit } from "./rate-limit.js";
 import { supportSettingsFor } from "./customer-center.js";
 import { withStoreSecrets } from "./store-secrets.js";
 import type { StripeConnectConfig } from "./stripe-connect-config.js";
@@ -104,7 +105,7 @@ export async function trackRecovery(db: DB, o: {
       await db.insert(schema.recoveryCases).values({
         id: newId("rcv_", 16), projectId: o.projectId, customerId: o.customerId, subscriptionId: o.subscriptionId, appId: o.appId, store: o.store, storeKey: o.storeKey,
         productId: o.productId, isSandbox: o.isSandbox, status: "open", detectedAt: detected, graceExpiresAt: o.gracePeriodExpiresAt, atRiskUsd: o.priceUsd,
-        nextStepAt: dueAt(detected, settings, 0), token: token(), createdAt: o.now, updatedAt: o.now,
+        nextStepAt: dueAt(detected, settings, 0), token: token(), centerToken: token(), createdAt: o.now, updatedAt: o.now,
       }).onConflictDoNothing();
     } else if (open && !types.has("RENEWAL") && !refund && o.gracePeriodExpiresAt && (!open.graceExpiresAt || open.graceExpiresAt.getTime() !== o.gracePeriodExpiresAt.getTime())) {
       await db.update(schema.recoveryCases).set({ graceExpiresAt: o.gracePeriodExpiresAt, updatedAt: o.now }).where(eq(schema.recoveryCases.id, open.id));
@@ -131,7 +132,7 @@ export interface RecoveryDeps {
 }
 
 /** The customer's address: the case's, the `$email` attribute, or (Stripe) the Stripe customer's. */
-async function emailFor(d: RecoveryDeps, c: CaseRow): Promise<string | null> {
+export async function emailFor(d: RecoveryDeps, c: CaseRow): Promise<string | null> {
   if (c.email && isEmailAddress(c.email)) return c.email;
   const [a] = await d.db.select({ v: schema.customerAttributes.value }).from(schema.customerAttributes)
     .where(and(eq(schema.customerAttributes.customerId, c.customerId), eq(schema.customerAttributes.key, "$email"))).limit(1);
@@ -296,6 +297,60 @@ export async function destinationFor(d: Pick<Deps, "db" | "stores" | "fetch" | "
     }
   }
   return { kind: "page", title: "Update your payment method", body: "Open the store you subscribed in and update your payment method there." };
+}
+
+export async function caseByCenterToken(db: DB, tok: string) {
+  if (!/^[A-Za-z0-9_-]{16,80}$/.test(tok)) return null;
+  const [c] = await db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.centerToken, tok)).limit(1);
+  return c ?? null;
+}
+
+// ---------- Customer Center: emailed one-time portal links ----------
+// Customer info (and so `management_url`) is readable with the app's public SDK key and an app user id. A Stripe portal
+// session shows the customer's card, invoices and billing address, so the Customer Center link never opens one: it emails
+// a one-time link to the address on file, and the portal session is made only when that link is used.
+
+/** How long an emailed portal link works. */
+export const PORTAL_LINK_TTL_MS = 30 * 60_000;
+/** Emailed portal links per customer and per IP address in an hour. */
+export const PORTAL_LINKS_PER_CUSTOMER = 3;
+export const PORTAL_LINKS_PER_IP = 10;
+
+const sha256hex = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, "0")).join("");
+
+/** Emails a one-time portal link for an open Stripe case, asked for from the Customer Center. */
+export async function sendPortalLink(d: RecoveryDeps, c: CaseRow, o: { base: string; ip: string }): Promise<"sent" | "no_email" | "limited" | "failed"> {
+  const email = await emailFor(d, c);
+  if (!email) return "no_email";
+  const now = d.now();
+  if (!(await hit(d.db, `recovery-portal:ip:${o.ip}`, PORTAL_LINKS_PER_IP, 3600_000, now))) return "limited";
+  if (!(await hit(d.db, `recovery-portal:cus:${c.customerId}`, PORTAL_LINKS_PER_CUSTOMER, 3600_000, now))) return "limited";
+  const tok = token();
+  await d.db.insert(schema.recoveryPortalLinks).values({ id: newId("rpl_", 16), caseId: c.id, projectId: c.projectId, tokenHash: await sha256hex(tok), email, expiresAt: new Date(now.getTime() + PORTAL_LINK_TTL_MS), createdAt: now });
+  const { settings, projectName } = await projectSettings(d.db, c.projectId);
+  const appName = settings.sender_name ?? projectName;
+  const support = await supportSettingsFor(d.db, c.projectId);
+  const replyTo = isEmailAddress(support.email) && !support.email.endsWith("@example.com") ? support.email : undefined;
+  const mail = portalLinkEmail({ appName, linkUrl: `${o.base}/v1/recovery/p/${tok}`, unsubscribeUrl: `${o.base}/v1/recovery/u/${c.token}`, minutes: PORTAL_LINK_TTL_MS / 60_000 });
+  const ok = await trySend(d.mailer, { to: email, ...mail, replyTo, fromName: appName });
+  return ok ? "sent" : "failed";
+}
+
+/** Looks up an emailed portal link; `consume` spends it (once: of two requests, one gets it). */
+export async function portalLink(db: DB, tok: string, now: Date, consume: boolean): Promise<{ status: "invalid" | "used" | "expired" | "ok"; case?: CaseRow }> {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(tok)) return { status: "invalid" };
+  const L = schema.recoveryPortalLinks;
+  const hash = await sha256hex(tok);
+  const [row] = await db.select().from(L).where(eq(L.tokenHash, hash)).limit(1);
+  if (!row) return { status: "invalid" };
+  const [rc] = await db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.id, row.caseId)).limit(1);
+  if (row.usedAt) return { status: "used", case: rc };
+  if (row.expiresAt <= now) return { status: "expired", case: rc };
+  if (consume) {
+    const spent = await db.update(L).set({ usedAt: now }).where(and(eq(L.id, row.id), isNull(L.usedAt))).returning({ id: L.id });
+    if (!spent.length) return { status: "used", case: rc };
+  }
+  return { status: "ok", case: rc };
 }
 
 export async function markClicked(db: DB, c: CaseRow, now: Date) {

@@ -6,7 +6,8 @@ import { FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stri
 import { CustomerInfoSchema } from "../../../packages/contract/src/sdk-schemas.js";
 import { memoryMailer } from "../src/mail/index.js";
 import { tick } from "../src/services/tick.js";
-import { DEFAULT_STEPS, runPaymentRecovery, trackRecovery } from "../src/services/payment-recovery.js";
+import { DEFAULT_STEPS, PORTAL_LINK_TTL_MS, runPaymentRecovery, trackRecovery } from "../src/services/payment-recovery.js";
+import { hit } from "../src/services/rate-limit.js";
 import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
 import { appleHarness, makePki, notificationBody, renewalInfo, signJws, T0, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
 import { env as googleEnv, makeKeys, sub as playSub, type Env as GoogleEnv, type Keys } from "./google-helpers.js";
@@ -74,7 +75,7 @@ describe("Stripe", () => {
     // The SDK's Customer Center gets the recovery link as management_url while the case is open.
     const ci = await web!.h.fetch("/v1/subscribers/pay_user", { key: "strp_webtest123" });
     const info = CustomerInfoSchema.parse(await ci.json());
-    expect(info.subscriber.management_url).toMatch(/^http:\/\/localhost\/v1\/recovery\/l\/[A-Za-z0-9_-]{32}\?via=customer_center$/);
+    expect(info.subscriber.management_url).toMatch(/^http:\/\/localhost\/v1\/recovery\/c\/[A-Za-z0-9_-]{32,80}$/);
 
     // Day 0: one email, to the Stripe customer's address, from the app, with the link and an unsubscribe link.
     expect(await run()).toMatchObject({ sent: 1, failed: 0 });
@@ -178,6 +179,85 @@ describe("Stripe", () => {
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("This link has expired");
     expect(acct.calls.filter((c) => c.path === "/v1/billing_portal/sessions").length).toBe(before);
+  });
+
+  it("Customer Center: the public link never opens the portal; it emails a one-time 30-minute link, rate limited", async () => {
+    const { acct, subId, hook } = await stripeSubscriber();
+    const h = web!.h;
+    h.setNow(new Date(h.now().getTime() + 366 * DAY));
+    await hook(acct.event("invoice.payment_failed", acct.failRenewal(subId)));
+    const info = await (await h.fetch("/v1/subscribers/pay_user", { key: "strp_webtest123" })).json() as any;
+    const center = new URL(info.subscriber.management_url);
+    const ct = center.pathname.split("/").pop()!;
+    const portals = () => acct.calls.filter((c) => c.path === "/v1/billing_portal/sessions").length;
+    const mails = () => web!.mail.sent.filter((m) => m.subject.startsWith("Your link to update your payment"));
+    // The Customer Center token is not the emailed one: it neither opens the email link nor unsubscribes.
+    expect((await web!.raw(`/v1/recovery/l/${ct}`, { redirect: "manual" })).status).toBe(404);
+    expect((await web!.raw(`/v1/recovery/u/${ct}`, { method: "POST" })).status).toBe(404);
+    // GET explains and offers a button; nothing is sent and no portal session is made.
+    const get = await web!.raw(center.pathname, { redirect: "manual" });
+    expect(get.status).toBe(200);
+    expect(await get.text()).toContain("We&#39;ll email you a secure link");
+    expect(mails()).toHaveLength(0);
+    expect(portals()).toBe(0);
+    // POST emails a one-time link to the address on file.
+    const ip = { "cf-connecting-ip": "203.0.113.7" };
+    const post = await web!.raw(center.pathname, { method: "POST", headers: ip });
+    expect(await post.text()).toContain("Check your email");
+    expect(mails()).toEqual([expect.objectContaining({ to: "buyer@example.com" })]);
+    expect(portals()).toBe(0);
+    const link = new URL(/https?:\/\/\S+\/v1\/recovery\/p\/[A-Za-z0-9_-]+/.exec(mails()[0]!.text)![0]);
+    const [stored] = await h.db.select().from(schema.recoveryPortalLinks);
+    expect(stored!.tokenHash).not.toContain(link.pathname.split("/").pop());
+    // Opening the emailed link shows a button (a mail scanner's GET does not spend it); the button makes the portal session.
+    expect(await (await web!.raw(link.pathname)).text()).toContain("Update payment method");
+    expect(portals()).toBe(0);
+    const use = await web!.raw(link.pathname, { method: "POST", redirect: "manual" });
+    expect(use.status).toBe(303);
+    expect(use.headers.get("location")).toMatch(/\/__stripe\/portal\/|billing\.stripe\.com|portal/);
+    expect(portals()).toBe(1);
+    // Used once: a second use is refused without a new session.
+    const again = await web!.raw(link.pathname, { method: "POST", redirect: "manual" });
+    expect(await again.text()).toContain("already used");
+    expect(portals()).toBe(1);
+    // A second link expires after 30 minutes.
+    await web!.raw(center.pathname, { method: "POST", headers: ip });
+    const link2 = new URL(/https?:\/\/\S+\/v1\/recovery\/p\/[A-Za-z0-9_-]+/.exec(mails()[1]!.text)![0]);
+    h.setNow(new Date(h.now().getTime() + PORTAL_LINK_TTL_MS + 1000));
+    expect(await (await web!.raw(link2.pathname)).text()).toContain("This link has expired");
+    expect(await (await web!.raw(link2.pathname, { method: "POST", redirect: "manual" })).text()).toContain("This link has expired");
+    expect(portals()).toBe(1);
+    // Three links an hour per customer: the fourth request is refused.
+    expect((await web!.raw(center.pathname, { method: "POST", headers: { "cf-connecting-ip": "203.0.113.8" } })).status).toBe(200);
+    const limited = await web!.raw(center.pathname, { method: "POST", headers: { "cf-connecting-ip": "203.0.113.9" } });
+    expect(limited.status).toBe(429);
+    expect(mails()).toHaveLength(3);
+    // Ten requests an hour per IP address, whichever customer they are for.
+    for (let i = 0; i < 10; i++) await hit(h.db, "recovery-portal:ip:198.51.100.1", 10, 3600_000, h.now());
+    h.setNow(new Date(h.now().getTime() + 2 * 3600_000));
+    for (let i = 0; i < 10; i++) await hit(h.db, "recovery-portal:ip:198.51.100.1", 10, 3600_000, h.now());
+    expect((await web!.raw(center.pathname, { method: "POST", headers: { "cf-connecting-ip": "198.51.100.1" } })).status).toBe(429);
+    expect((await web!.raw(center.pathname, { method: "POST", headers: { "cf-connecting-ip": "198.51.100.2" } })).status).toBe(200);
+    // Paid: the Customer Center link says so; the old emailed link too.
+    const inv = [...acct.invoices.values()].find((i) => i.status === "open")!;
+    acct.payInvoice(inv.id);
+    await hook(acct.event("invoice.paid", acct.invoices.get(inv.id)!));
+    expect(await (await web!.raw(center.pathname)).text()).toContain("Your payment went through");
+  });
+
+  it("Customer Center without an email on file explains where to update the payment instead", async () => {
+    const { acct, subId, hook } = await stripeSubscriber();
+    await web!.h.db.delete(schema.customerAttributes).where(eq(schema.customerAttributes.key, "$email"));
+    for (const c of acct.customers.values()) c.email = null;
+    web!.h.setNow(new Date(web!.h.now().getTime() + 366 * DAY));
+    await hook(acct.event("invoice.payment_failed", acct.failRenewal(subId)));
+    const info = await (await web!.h.fetch("/v1/subscribers/pay_user", { key: "strp_webtest123" })).json() as any;
+    const path = new URL(info.subscriber.management_url).pathname;
+    expect(await (await web!.raw(path)).text()).toContain("We have no email address for your subscription");
+    const post = await web!.raw(path, { method: "POST" });
+    expect(await post.text()).toContain("We have no email address for your subscription");
+    expect(web!.mail.sent.filter((m) => m.subject.startsWith("Your link"))).toHaveLength(0);
+    expect(acct.calls.some((c) => c.path === "/v1/billing_portal/sessions")).toBe(false);
   });
 
   it("unsubscribe stops the steps and suppresses the address for win-back too; GET never unsubscribes", async () => {
@@ -402,6 +482,17 @@ describe("tick fairness", () => {
     // The capped project's cases stay due for when its cap frees up.
     const [capped] = await db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.id, "rcv_proj_capped_0"));
     expect(capped).toMatchObject({ status: "open", stepsSent: 0 });
+  });
+
+  it("the Customer Center link of a store purchase opens the store's own page directly", async () => {
+    web = await webEnv({});
+    await projectWithDueCases(web.h.db, "proj_cc", 1, web.h.now());
+    const [c] = await web.h.db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.projectId, "proj_cc"));
+    expect(c!.centerToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(c!.centerToken).not.toBe(c!.token);
+    const r = await web.raw(`/v1/recovery/c/${c!.centerToken}`, { redirect: "manual" });
+    expect(r.status).toBe(303);
+    expect(r.headers.get("location")).toBe("https://apps.apple.com/account/billing");
   });
 
   it("an imported chain whose billing issue is older than the recovery window opens no case", async () => {

@@ -6,7 +6,8 @@ import { esc } from "../mail/templates.js";
 import { JwsError, verifyAppleJws } from "../stores/apple/jws.js";
 import { messagingOf, realtimeAnswer, type RealtimeRequest } from "../services/retention.js";
 import { markClicked, markOpened, sendByToken, unsubscribe } from "../services/winback.js";
-import { caseByToken, destinationFor, markClicked as markRecoveryClicked, unsubscribeCase } from "../services/payment-recovery.js";
+import { caseByCenterToken, caseByToken, destinationFor, emailFor, markClicked as markRecoveryClicked, portalLink, PORTAL_LINK_TTL_MS, sendPortalLink, unsubscribeCase } from "../services/payment-recovery.js";
+import { clientIp } from "../services/rate-limit.js";
 import { publicOrigin } from "./oauth.js";
 
 /**
@@ -74,6 +75,63 @@ export function lifecyclePublicRoutes(deps: Deps) {
   r.get("/v1/winback/o/:token", async (c) => {
     await markOpened(db, c.req.param("token"), deps.now());
     return c.body(GIF, 200, { "content-type": "image/gif", "cache-control": "no-store, max-age=0" });
+  });
+  // The Customer Center link (customer info's management_url, readable with the app's public key). Store purchases go
+  // straight to the store's own signed-in page; a web (Stripe) purchase gets a one-time portal link by email instead,
+  // so nobody holding the public key and an app user id can open the customer's billing portal.
+  const PAID = () => page("Your payment went through", "Your subscription is active again. There is nothing else to do.");
+  const NO_EMAIL = () => page("Update your payment method", "We have no email address for your subscription, so we cannot send you a secure link. Update your payment method in the account where you subscribed on the web, or contact the app's support team.");
+  const CLOSED = () => page("This link has expired", "Open the app to manage your subscription, or contact the app's support team.");
+  const minutes = PORTAL_LINK_TTL_MS / 60_000;
+  r.get("/v1/recovery/c/:token", async (c) => {
+    const rc = await caseByCenterToken(db, c.req.param("token"));
+    if (!rc) return c.html(page("Link not found", "This link is not valid."), 404);
+    if (rc.status === "recovered") return c.html(PAID());
+    if (rc.store !== "stripe") {
+      await markRecoveryClicked(db, rc, deps.now());
+      const to = await destinationFor(deps, rc, `${deps.apiUrl ?? publicOrigin(c)}/v1/recovery/done/${rc.token}`);
+      if (to.kind === "redirect") return c.redirect(to.url, 303);
+      return c.html(page(to.title, to.body));
+    }
+    if (rc.status !== "open") return c.html(CLOSED());
+    if (!(await emailFor(deps, rc))) return c.html(NO_EMAIL());
+    // A GET never sends email (link previews and prefetching open links); the button does.
+    return c.html(page("We'll email you a secure link", `To keep your payment details safe, we send a link to the email address we have for your subscription. It opens the payment page once and works for ${minutes} minutes.`,
+      `<form method="post"><button type="submit">Email me the link</button></form>`));
+  });
+  r.post("/v1/recovery/c/:token", async (c) => {
+    const rc = await caseByCenterToken(db, c.req.param("token"));
+    if (!rc) return c.html(page("Link not found", "This link is not valid."), 404);
+    if (rc.status === "recovered") return c.html(PAID());
+    if (rc.store !== "stripe" || rc.status !== "open") return c.html(CLOSED());
+    const sent = await sendPortalLink(deps, rc, { base: deps.apiUrl ?? publicOrigin(c), ip: clientIp((h) => c.req.header(h)) });
+    if (sent === "no_email") return c.html(NO_EMAIL());
+    if (sent === "limited") return c.html(page("Too many requests", "We already sent you several links. Check your email, or try again in an hour."), 429);
+    if (sent === "failed") return c.html(page("Try again in a minute", "We could not send the email right now. Try again in a minute."), 503);
+    return c.html(page("Check your email", `We sent a secure link to the email address we have for your subscription. It works once, for ${minutes} minutes.`));
+  });
+  // The emailed one-time link. GET only shows a button (mail scanners open links, which must not spend it); POST spends it
+  // and makes the Stripe portal session.
+  const linkPage = (status: "invalid" | "used" | "expired" | "ok", open: boolean) =>
+    status === "invalid" ? page("Link not found", "This link is not valid.")
+    : status === "used" ? page("This link was already used", "Each link works once. Open the app and ask for a new one.")
+    : status === "expired" || !open ? page("This link has expired", "Links work for 30 minutes. Open the app and ask for a new one.")
+    : page("Update your payment method", "Continue to the secure payment page to update your card.", `<form method="post"><button type="submit">Update payment method</button></form>`);
+  r.get("/v1/recovery/p/:token", async (c) => {
+    const l = await portalLink(db, c.req.param("token"), deps.now(), false);
+    if (l.case?.status === "recovered") return c.html(PAID());
+    return c.html(linkPage(l.status, l.case?.status === "open"), l.status === "invalid" ? 404 : 200);
+  });
+  r.post("/v1/recovery/p/:token", async (c) => {
+    const peek = await portalLink(db, c.req.param("token"), deps.now(), false);
+    if (peek.case?.status === "recovered") return c.html(PAID());
+    if (peek.status !== "ok" || peek.case?.status !== "open") return c.html(linkPage(peek.status, peek.case?.status === "open"), peek.status === "invalid" ? 404 : 200);
+    const l = await portalLink(db, c.req.param("token"), deps.now(), true);
+    if (l.status !== "ok" || !l.case) return c.html(linkPage(l.status, true));
+    await markRecoveryClicked(db, l.case, deps.now());
+    const to = await destinationFor(deps, l.case, `${deps.apiUrl ?? publicOrigin(c)}/v1/recovery/done/${l.case.token}`);
+    if (to.kind === "redirect") return c.redirect(to.url, 303);
+    return c.html(page(to.title, to.body));
   });
   // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also RFC 8058 one-click.
   r.get("/v1/winback/u/:token", async (c) => {

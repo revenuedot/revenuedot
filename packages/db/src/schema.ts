@@ -1401,6 +1401,11 @@ export const recoveryCases = pgTable("recovery_cases", {
   /** Why the last due step sent nothing (no_email, unsubscribed, mailer_failed, disabled). */
   skipReason: text("skip_reason"),
   token: text("token").notNull(),
+  /**
+   * The random id in the Customer Center link (customer info's `management_url`). Customer info is readable with the app's
+   * public key, so this token never opens a Stripe portal by itself: for web purchases it only offers to email a link.
+   */
+  centerToken: text("center_token").notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
   clickedAt: ts("clicked_at"),
   unsubscribedAt: ts("unsubscribed_at"),
   resolvedAt: ts("resolved_at"),
@@ -1413,11 +1418,27 @@ export const recoveryCases = pgTable("recovery_cases", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("recovery_cases_token").on(t.token),
+  uniqueIndex("recovery_cases_center_token").on(t.centerToken),
   uniqueIndex("recovery_cases_one_open").on(t.projectId, t.store, t.storeKey).where(sql`status = 'open'`),
   index("recovery_cases_project").on(t.projectId, t.detectedAt),
   index("recovery_cases_due").on(t.status, t.nextStepAt),
   index("recovery_cases_customer").on(t.customerId),
 ]);
+
+/**
+ * A one-time link to the Stripe customer portal, emailed when a customer asks for it from the Customer Center. Only the
+ * SHA-256 of the token is kept; it works once, for 30 minutes.
+ */
+export const recoveryPortalLinks = pgTable("recovery_portal_links", {
+  id: text("id").primaryKey(),
+  caseId: text("case_id").notNull().references(() => recoveryCases.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  email: text("email").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("recovery_portal_links_token").on(t.tokenHash), index("recovery_portal_links_case").on(t.caseId)]);
 
 /** One recovery email (or a step that could not be sent, with `error`). */
 export const recoveryMessages = pgTable("recovery_messages", {

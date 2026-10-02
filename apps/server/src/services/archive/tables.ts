@@ -136,6 +136,7 @@ export const NOT_EXPORTED: Record<string, string> = {
   billing_meter_reports: "RevenueDot Cloud billing is per account and server.",
   billing_invoices: "RevenueDot Cloud billing is per account and server.",
   billing_notices: "RevenueDot Cloud billing is per account and server.",
+  recovery_portal_links: "One-time payment links that last 30 minutes.",
 };
 
 export interface TableInfo extends ArchiveTable {

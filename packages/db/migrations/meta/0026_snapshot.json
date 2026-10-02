@@ -7348,6 +7348,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "center_token": {
+          "name": "center_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')"
+        },
         "clicked_at": {
           "name": "clicked_at",
           "type": "timestamp with time zone",
@@ -7412,6 +7419,21 @@
           "columns": [
             {
               "expression": "token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "recovery_cases_center_token": {
+          "name": "recovery_cases_center_token",
+          "columns": [
+            {
+              "expression": "center_token",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7664,6 +7686,126 @@
         "recovery_messages_project_id_projects_id_fk": {
           "name": "recovery_messages_project_id_projects_id_fk",
           "tableFrom": "recovery_messages",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.recovery_portal_links": {
+      "name": "recovery_portal_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "recovery_portal_links_token": {
+          "name": "recovery_portal_links_token",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "recovery_portal_links_case": {
+          "name": "recovery_portal_links_case",
+          "columns": [
+            {
+              "expression": "case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "recovery_portal_links_case_id_recovery_cases_id_fk": {
+          "name": "recovery_portal_links_case_id_recovery_cases_id_fk",
+          "tableFrom": "recovery_portal_links",
+          "tableTo": "recovery_cases",
+          "columnsFrom": [
+            "case_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "recovery_portal_links_project_id_projects_id_fk": {
+          "name": "recovery_portal_links_project_id_projects_id_fk",
+          "tableFrom": "recovery_portal_links",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"

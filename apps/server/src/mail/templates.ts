@@ -237,6 +237,19 @@ export function recoveryEmail(o: { appName: string; subject: string; heading: st
   });
 }
 
+/**
+ * The one-time link a customer asked for from the Customer Center to update their payment (prd/payment-recovery/PRD.md,
+ * "Customer Center path"). From the app, in the win-back layout.
+ */
+export function portalLinkEmail(o: { appName: string; linkUrl: string; unsubscribeUrl: string; minutes: number }): Rendered {
+  return winbackEmail({
+    appName: o.appName, subject: `Your link to update your payment for ${o.appName}`, heading: "Update your payment method",
+    body: `You asked to update your payment method for ${o.appName}. Use the button below within ${o.minutes} minutes. It works once.\n\nIf you did not ask for this, you can ignore this email. Nothing changes.`,
+    buttonLabel: "Update payment", offerUrl: o.linkUrl, unsubscribeUrl: o.unsubscribeUrl,
+    reason: `You received this because you asked for it in ${o.appName}.`,
+  });
+}
+
 /* ---- RevenueDot Cloud billing (prd/cloud-billing/PRD.md) ---- */
 
 export const billingUrl = (base: string) => `${base}/account/billing`;

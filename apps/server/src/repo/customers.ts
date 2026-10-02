@@ -104,7 +104,7 @@ export function nonSubRowToDomain(r: typeof nonSubscriptions.$inferSelect): NonS
 
 /**
  * Everything customer info is built from. With `recoveryBase` (the API origin), a customer with an open payment recovery
- * case gets `management_url` (top level and on that subscription): the case's "Update payment" link, which the SDKs'
+ * case gets `management_url` (top level and on that subscription): the case's Customer Center link, which the SDKs'
  * Customer Center opens from "Manage subscription" (prd/payment-recovery/PRD.md). Otherwise it stays null.
  */
 export async function loadState(db: DB, customer: CustomerRow, opts: { recoveryBase?: string } = {}): Promise<CustomerState> {
@@ -113,12 +113,13 @@ export async function loadState(db: DB, customer: CustomerRow, opts: { recoveryB
     db.select().from(nonSubscriptions).where(eq(nonSubscriptions.customerId, customer.id)),
     db.select().from(customerAttributes).where(eq(customerAttributes.customerId, customer.id)),
     accessOf(db, customer),
-    opts.recoveryBase ? db.select({ subscriptionId: schema.recoveryCases.subscriptionId, token: schema.recoveryCases.token }).from(schema.recoveryCases)
+    opts.recoveryBase ? db.select({ subscriptionId: schema.recoveryCases.subscriptionId, token: schema.recoveryCases.centerToken }).from(schema.recoveryCases)
       .where(and(eq(schema.recoveryCases.customerId, customer.id), eq(schema.recoveryCases.status, "open"))).orderBy(desc(schema.recoveryCases.detectedAt)) : Promise.resolve([]),
   ]);
   const attributes: CustomerState["attributes"] = {};
   for (const a of attrs) attributes[a.key] = { value: a.value, updatedAtMs: a.updatedAtMs };
-  const link = (token: string) => `${opts.recoveryBase}/v1/recovery/l/${token}?via=customer_center`;
+  // The Customer Center token, never the emailed one: for web purchases it only offers to email a one-time link.
+  const link = (token: string) => `${opts.recoveryBase}/v1/recovery/c/${token}`;
   const bySub = new Map(cases.filter((x) => x.subscriptionId).map((x) => [x.subscriptionId!, x.token]));
   return {
     originalAppUserId: customer.originalAppUserId, firstSeen: customer.firstSeen, lastSeen: customer.lastSeen,
