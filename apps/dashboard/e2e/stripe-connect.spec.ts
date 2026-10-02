@@ -107,6 +107,23 @@ test("Connect with Stripe: unavailable, cancel, connect, sell, refund, disconnec
       await shot("connect-connected");
     });
 
+    await test.step("an OAuth account that cannot take payments yet points to the Stripe Dashboard; Check credentials never takes another account", async () => {
+      expect((await ok("POST", "/__stripe/account_updated", { charges_enabled: false })).delivered).toMatchObject({ status: 200, body: { status: "processed" } });
+      await page.goto(appUrl);
+      const banner = box().getByRole("status").filter({ hasText: "cannot take payments yet" });
+      await expect(banner).toBeVisible();
+      // Stripe makes onboarding links only for accounts the platform created: this one finishes in its own dashboard.
+      await expect(banner.getByRole("link", { name: "Open the Stripe Dashboard" })).toHaveAttribute("href", "https://dashboard.stripe.com/account/onboarding");
+      await expect(banner.getByRole("button", { name: "Finish setup in Stripe" })).toHaveCount(0);
+      await ok("POST", "/__stripe/account_updated", { charges_enabled: true });
+      await page.reload();
+      await expect(box().getByRole("status").filter({ hasText: "cannot take payments yet" })).toHaveCount(0);
+      // The platform key is never sent with an account id from the request body.
+      const r = await api("POST", `${P}/apps/${app.id}/actions/verify_credentials`, { stripe: { stripe_account_id: "acct_1Someoneelse0000" } });
+      expect(r.status).toBe(409);
+      expect((r.body as any).message).toMatch(/connected with Stripe Connect/);
+    });
+
     let link = "";
     await test.step("Web page: the provider row and step 1; a purchase link paid on the connected account", async () => {
       await page.goto(`${WEB}/projects/${pid}/web`);

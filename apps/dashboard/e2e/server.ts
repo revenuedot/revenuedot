@@ -250,6 +250,13 @@ web.post("/__stripe/refund", async (c) => {
   const delivered = await deliverConnect(connectPlatform.connectEvent(hit.account.connect.accountId, "charge.refunded", { id: `ch_${crypto.randomUUID().slice(0, 8)}`, object: "charge", amount: inv?.amount_paid ?? 0, amount_refunded: inv?.amount_paid ?? 0, refunded: true, currency: inv?.currency ?? "usd", invoice: inv?.id, livemode: false, refunds: { data: [{ created: Math.floor(Date.now() / 1000) }] } }));
   return c.json({ delivered });
 });
+// Onboarding progress of a connected account (account.updated through the Connect endpoint).
+web.post("/__stripe/account_updated", async (c) => {
+  const b = await c.req.json() as { account?: string; charges_enabled: boolean };
+  const account = b.account ?? [...connectPlatform.accounts.keys()].at(-1);
+  if (!account) return c.json({ error: "no account" }, 404);
+  return c.json({ account, delivered: await deliverConnect(connectPlatform.connectEvent(account, "account.updated", { id: account, object: "account", charges_enabled: b.charges_enabled, details_submitted: b.charges_enabled })) });
+});
 web.post("/__stripe/deauthorize", async (c) => {
   const b = await c.req.json() as { account?: string };
   const account = b.account ?? [...connectPlatform.accounts.keys()].at(-1);

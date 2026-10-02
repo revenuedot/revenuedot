@@ -63,7 +63,10 @@ export function StripeConnectPanel({ pid, appId, email, onChange }: { pid: strin
         {onboarding && (
           <div className="banner warn" role="status">
             <span style={{ flex: 1 }}>Your Stripe account cannot take payments yet. Finish setting it up in Stripe.</span>
-            <button type="button" className="btn btn-dark" disabled={!!busy || !s.available} onClick={() => go("account_link")}>{busy === "account_link" ? "Opening Stripe…" : "Finish setup in Stripe"}</button>
+            {/* Stripe makes onboarding links only for accounts created through the platform; an account linked with OAuth finishes in its own dashboard. */}
+            {s.method === "account_link"
+              ? <button type="button" className="btn btn-dark" disabled={!!busy || !s.available} onClick={() => go("account_link")}>{busy === "account_link" ? "Opening Stripe…" : "Finish setup in Stripe"}</button>
+              : <a className="btn btn-dark" href="https://dashboard.stripe.com/account/onboarding" target="_blank" rel="noreferrer">Open the Stripe Dashboard</a>}
           </div>
         )}
         {!s.available && <p className="banner err" role="alert">{s.unavailable_reason} Until then, Stripe calls for this app fail.</p>}
