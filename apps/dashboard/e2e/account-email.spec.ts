@@ -169,6 +169,14 @@ test("invites and members: invite, accept as a new and an existing user, roles, 
   // 2. An existing account signs in from the invite page and accepts.
   const other = await newPage(browser);
   await signupUi(other, existing, "Eli Existing", "Eli's project");
+  // Signed in as someone else, switching to an address that has an account goes to sign-in with that address filled in.
+  const sam = `switch-${stamp}@revenuedot.test`;
+  const switcher = await newPage(browser);
+  await signupUi(switcher, sam, "Sam Switch", "Sam's project");
+  await switcher.goto(await linkFor(page, existing, "/invite?token="));
+  await switcher.getByRole("button", { name: `Sign in as ${existing}` }).click();
+  await expect(switcher.getByRole("heading", { name: "Sign in to RevenueDot" })).toBeVisible();
+  await expect(switcher.getByLabel("Email", { exact: true })).toHaveValue(existing);
   await other.request.post("/auth/logout");
   await other.context().clearCookies();
   await other.goto(await linkFor(page, existing, "/invite?token="));
@@ -184,8 +192,7 @@ test("invites and members: invite, accept as a new and an existing user, roles, 
 
   // 2b. An invite opened while signed in as someone else: switching accounts lands on the invite's own sign-up form,
   // which joins the project without creating an empty one of its own.
-  const switcher = await newPage(browser);
-  await signupUi(switcher, `switch+${Date.now()}@revenuedot.test`, "Sam Switch", "Sam's project");
+  expect((await switcher.request.post("/auth/login", { data: { email: sam, password: PW } })).ok()).toBe(true);
   await switcher.goto(await linkFor(page, pending, "/invite?token="));
   await switcher.getByRole("button", { name: `Sign in as ${pending}` }).click();
   await expect(switcher.getByRole("button", { name: "Create account and join" })).toBeVisible();
