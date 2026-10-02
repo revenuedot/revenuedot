@@ -35,7 +35,7 @@ Status and per-repo results: [docs/STATUS.md](../../docs/STATUS.md) row 1.13. Re
 **Behaviour patches (small, each one closes a proxy-mode leak):**
 1. Android: diagnostics, paywall events and ad events honour `proxyURL` (upstream sends them to RevenueCat hosts even behind a proxy).
 2. purchases-js: analytics events honour `httpConfig.proxyURL` (upstream sends them to `e.revenue.cat`).
-3. Flutter web: `Purchases.setProxyURL` works (the web plugin only handled `setProxyURL`, the Dart API sends `setProxyURLString`).
+3. Flutter web: `Purchases.setProxyURL` works. Two rules: the web plugin only handled `setProxyURL` while the Dart API sends `setProxyURLString`, and the handler awaited the result of hybrid-mappings' `setProxyUrl` as a promise although it returns `void`, so every call threw (found by the 2026-10-02 release check).
 4. purchases-js UI: "Secure checkout by RevenueCat" reads "Secure checkout by RevenueDot" in all 34 locales.
 
 **Packaging.** Registry names (section 1), dependency pins between forks (hybrid-common → our iOS and Android; wrappers → our hybrid-common; hybrid-mappings → our purchases-js through an npm alias; the Flutter UI package → our Flutter core over git; KMP's iOS submodule → our purchases-ios), POM/podspec/package metadata (homepage, repository, author, description with the disclaimer).
@@ -66,14 +66,16 @@ Status and per-repo results: [docs/STATUS.md](../../docs/STATUS.md) row 1.13. Re
 
 **The pin check fails when a pin names a version no fork provides.** Every pinned version must exist in the dependency fork as branch `revenuedot/release-<v>` or tag `<v>-revenuedot`; a pin on the same repo must equal its own version. The check follows each release branch and checks its pins too (wrapper → hybrid-common 19.4.1 → Android 10.23.0). It runs in `apply.ts` (reported), `apply.ts --pins` (exit 1), `check.ts` (a failing check) and `sync-upstream.sh` (fails the repo). Its message names the command that creates the missing branch.
 
-Current pins and the release branches they need (all pushed; no tags yet):
+Current pins and the release branches they need (all pushed). Releases are tagged `<version>-revenuedot` on these branches; [docs/STATUS.md](../../docs/STATUS.md) row 1.13 lists what is on each registry.
 
 | Pin | Version | Fork branch |
 |---|---|---|
 | hybrid-common `main-patches` → iOS, Android, purchases-js | 5.91.0, 10.23.3, 1.67.0 | `purchases-ios` `revenuedot/release-5.91.0`, `purchases-android` `revenuedot/release-10.23.3`, `purchases-js` `revenuedot/release-1.67.0` |
 | hybrid-common release 19.4.1 → iOS, Android, purchases-js | 5.91.0, 10.23.0, 1.67.0 | the same iOS and purchases-js branches, `purchases-android` `revenuedot/release-10.23.0` |
 | Wrappers (React Native, Flutter, Capacitor, Unity, Cordova) → hybrid-common | 19.4.1 | `purchases-hybrid-common` `revenuedot/release-19.4.1` |
-| KMP → Android, iOS submodule | 10.22.1, 5.91.0 | `purchases-android` `revenuedot/release-10.22.1`, `purchases-ios` `revenuedot/release-5.91.0` |
+| KMP `main-patches` → Android, iOS submodule | 10.22.1, 5.91.0 | `purchases-android` `revenuedot/release-10.22.1`, `purchases-ios` `revenuedot/release-5.91.0` |
+| KMP release 3.10.1 → Android, iOS submodule | 10.22.1, 5.90.2 | `purchases-android` `revenuedot/release-10.22.1`, `purchases-ios` `revenuedot/release-5.90.2` |
+| Wrapper releases | React Native 10.10.2, Capacitor 13.6.1, Cordova 8.2.3, Flutter 10.13.2, Unity 9.11.1, KMP 3.10.1 | `revenuedot/release-<version>` in each fork |
 
 **Branches in each fork:**
 - `main`: upstream `main` at fork time plus the one-line fork notice. The pipeline never pushes to it.
@@ -116,8 +118,8 @@ pnpm tsx scripts/forks/e2e/purchases-js.e2e.ts            # web SDK against the 
 ## 6. Not done yet, and what each needs
 
 1. **Counsel sign-off** on keeping `RevenueCat` module/package identifiers (section 1) and on the copyright line naming "RevenueDot" rather than Circo, Inc.
-2. **Publishing credentials:** npm org `@revenuedot` with an automation token; CocoaPods trunk session; Maven Central namespace `app.revenuedot` (DNS TXT verification on `revenuedot.app`) plus a GPG signing key; OpenUPM listing; GitHub release permissions for the fork repos.
-3. **Release job:** cut `<tag>-revenuedot` tags from the release branches (the branches the current pins need exist) in dependency order (iOS, Android → hybrid-common → purchases-js → hybrid-mappings → wrappers), publish, then rebuild Flutter's vendored `assets/web/purchases_js_hybrid_mappings.js` from our purchases-js instead of string-patching it.
+2. **npm first publishes:** npm accepts a trusted publisher only on a package that exists, so each new `@revenuedot` package needs one manual publish with Kai's 2FA, then `npm trust github <package> --repo revenuedot/<repo> --file revenuedot-release.yml --env production`. After that the fork's `revenuedot-release.yml` publishes on every `<version>-revenuedot` tag. Dry runs of that workflow upload the exact tarballs of packages not on npm yet (artifact `npm-tarballs`). CocoaPods trunk, Maven Central (`release-maven.yml` here, or each Android-based fork's own workflow) and the OpenUPM listing (in review) are set up.
+3. **Release order:** iOS, Android → hybrid-common → purchases-js → hybrid-mappings → wrappers. Flutter's vendored `assets/web/purchases_js_hybrid_mappings.js` is replaced at release time by `dist/index.umd.js` from `@revenuedot/purchases-js-hybrid-mappings` of the pinned hybrid-common version (the same file upstream's fastlane downloads from its own package); the string-patch rules stay as a fallback and count as applied when the file already carries our host.
 4. **CI:** a daily GitHub Actions job in this repo running `sync-upstream.sh --all`, with JDK 17 + Android SDK (Android, KMP), Xcode (iOS `swift build`/tests), Flutter, and Unity where licensable.
 5. **Infrastructure:** `api.revenuedot.app` is live with `REVENUEDOT_SIGNING_KEY` (done 2026-09-30); `assets.revenuedot.app` serving checkout branding assets is not set up.
 6. **Paywall renderer for web:** fork `@revenuecat/purchases-ui-js` from its npm tarball (its source repo is private) so purchases-js stops pulling RevenueCat's package at build time.
