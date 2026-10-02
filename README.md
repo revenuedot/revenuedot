@@ -246,7 +246,7 @@ Keep the RevenueCat SDK you already ship, or switch to our MIT forks. They keep 
 | Web | [revenuedot/purchases-js](https://github.com/revenuedot/purchases-js) | `"@revenuecat/purchases-js": "npm:@revenuedot/purchases-js@1.67.0"` | Yes |
 | Capacitor and Ionic | [revenuedot/purchases-capacitor](https://github.com/revenuedot/purchases-capacitor) | `"@revenuecat/purchases-capacitor": "npm:@revenuedot/purchases-capacitor@13.6.1"` (npm release pending) | Yes on native |
 | Kotlin Multiplatform | [revenuedot/purchases-kmp](https://github.com/revenuedot/purchases-kmp) | `implementation("app.revenuedot.purchases:purchases-kmp-core:3.10.1")` | Yes |
-| Unity | [revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity) | Package Manager git URL `https://github.com/revenuedot/purchases-unity.git?path=RevenueCat#9.11.1-revenuedot` (OpenUPM listing in review) | Yes |
+| Unity | [revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity) | OpenUPM `openupm add com.revenuedot.purchases-unity` (9.11.1), or the git URL `https://github.com/revenuedot/purchases-unity.git?path=RevenueCat#9.11.1-revenuedot` | Yes |
 | Cordova | [revenuedot/cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases) | `cordova plugin add @revenuedot/cordova-plugin-purchases@8.2.3` (npm release pending) | Yes |
 | Shared layer for the cross-platform SDKs | [revenuedot/purchases-hybrid-common](https://github.com/revenuedot/purchases-hybrid-common) | Pulled in by the wrappers: pods `RevenueDotPurchasesHybridCommon` 19.4.1, Maven `app.revenuedot.purchases:purchases-hybrid-common:19.4.1`, npm `@revenuedot/purchases-typescript-internal@19.4.1` | n/a |
 
