@@ -127,6 +127,32 @@ describe("targeting rules", () => {
   });
 });
 
+describe("the customer page's current offering", () => {
+  const summary = async (id: string) => (await call("GET", "/v2/projects/{project_id}/customer_summaries", {}, { ext: true, query: `ids=${id}` })).body.items[0].current_offering;
+  it("names the override, experiment, targeting rule or default behind it, without enrolling anyone", async () => {
+    const promo = await offering("promo");
+    const aud = (await call("POST", AUD, {}, { json: { name: "Gold", rules: gold } })).body.id;
+    await customer("g1", { plan: "gold" });
+    await customer("s1", { plan: "silver" });
+    expect(await summary("s1")).toMatchObject({ lookup_key: "default", source: "default" });
+    const rule = await call("POST", RULES, {}, { ext: true, json: { name: "Gold gets promo", audience_id: aud, offering_id: promo, state: "active" } });
+    expect(await summary("g1")).toMatchObject({ lookup_key: "promo", source: "targeting", rule_id: rule.body.id, rule_name: "Gold gets promo" });
+    expect((await sdk("g1")).current_offering_id).toBe("promo");
+
+    const exp = await call("POST", EXP, {}, { ext: true, json: { name: "Promo test", offering_a: "ofr_default", offering_b: promo } });
+    await call("POST", `${EXP}/{experiment_id}/actions/start`, { experiment_id: exp.body.id }, { ext: true });
+    const shown = await summary("s1");
+    expect(shown).toMatchObject({ source: "experiment", experiment_id: exp.body.id, experiment_name: "Promo test" });
+    // Looking at the page enrolls nobody; the SDK's next request enrolls them into the variant the page showed.
+    expect(await h.db.select().from(schema.experimentEnrollments)).toHaveLength(0);
+    expect((await sdk("s1")).current_offering_id).toBe(shown.lookup_key);
+    expect(await h.db.select().from(schema.experimentEnrollments)).toHaveLength(1);
+
+    await call("POST", "/v2/projects/{project_id}/customers/{customer_id}/actions/assign_offering", { customer_id: "g1" }, { json: { offering_id: "ofr_default" } });
+    expect(await summary("g1")).toMatchObject({ lookup_key: "default", source: "override" });
+  });
+});
+
 describe("experiments", () => {
   it("enrolls customers into two variants for good, sends EXPERIMENT_ENROLLMENT once, tags their webhooks, and reports results", async () => {
     const promo = await offering("promo");

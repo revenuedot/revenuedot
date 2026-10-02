@@ -3,6 +3,7 @@ import { computeEntitlements, isActive } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../repo/catalog.js";
 import { aliasesOf, loadState, type CustomerRow } from "../repo/customers.js";
+import { contextFor, resolveOfferings } from "./targeting.js";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -28,6 +29,7 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
     ? await db.select().from(schema.offerings).where(eq(schema.offerings.id, cust.offeringOverrideId)).limit(1) : [];
 
   const active = computeEntitlements(state, map).filter((e) => isActive(e, now));
+  const offeringNow = await currentOfferingFor(db, cust, override ?? null, active.map((e) => e.identifier), now);
   const entRow = (lookupKey: string) => ents.find((e) => e.lookupKey === lookupKey);
   const lastTxn = [...txns].sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime()).find((t) => t.countryCode);
   const revenue = (sandbox: boolean) => round2(txns.filter((t) => t.isSandbox === sandbox).reduce((s, t) => s + t.revenueUsd, 0));
@@ -43,6 +45,8 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
     platform: cust.lastSeenPlatform ?? null,
     stores: [...new Set([...subs.map((s) => s.store), ...ones.map((p) => p.store)])].sort(),
     offering_override: override ? { id: override.id, lookup_key: override.lookupKey, display_name: override.displayName } : null,
+    /** What the SDK's current offering is for this customer now, and why: override, experiment, targeting rule or the default. */
+    current_offering: offeringNow,
     /** One of the customer's app user ids is on the block list: no entitlements anywhere (prd/project-settings §3). */
     blocked: !!state.access?.blocked,
     active_entitlements: active.flatMap((e) => {
@@ -74,4 +78,28 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
       };
     }),
   };
+}
+
+/**
+ * The customer's current offering as the SDK would resolve it, read-only: an override wins, then a running experiment, then
+ * the first live targeting rule, then the project's current offering. Uses the platform and app version they last used.
+ */
+async function currentOfferingFor(db: DB, cust: CustomerRow, override: typeof schema.offerings.$inferSelect | null, activeEntitlements: string[], now: Date) {
+  const offs = await db.select().from(schema.offerings).where(eq(schema.offerings.projectId, cust.projectId));
+  const shape = (o: typeof offs[number] | undefined | null, source: "override" | "experiment" | "targeting" | "default", extra: Record<string, unknown> = {}) =>
+    o ? { id: o.id, lookup_key: o.lookupKey, display_name: o.displayName, source, ...extra } : null;
+  if (override) return shape(override, "override");
+  const headers = { "x-platform": cust.lastSeenPlatform ?? undefined, "x-client-version": cust.lastSeenAppVersion ?? undefined };
+  const ctx = await contextFor(db, cust, headers, now, activeEntitlements);
+  const r = await resolveOfferings(db, cust.projectId, cust, ctx, now, offs.find((o) => o.isCurrent)?.id ?? null, { enroll: false });
+  const o = offs.find((x) => x.id === r.currentOfferingId);
+  if (r.experiment) {
+    const [e] = await db.select({ name: schema.experiments.name }).from(schema.experiments).where(eq(schema.experiments.id, r.experiment.id)).limit(1);
+    return shape(o, "experiment", { experiment_id: r.experiment.id, experiment_name: e?.name ?? null, variant: r.experiment.variant });
+  }
+  if (r.rule) {
+    const [t] = await db.select({ name: schema.targetingRules.name }).from(schema.targetingRules).where(eq(schema.targetingRules.id, r.rule.id)).limit(1);
+    return shape(o, "targeting", { rule_id: r.rule.id, rule_name: t?.name ?? null });
+  }
+  return shape(o, "default");
 }

@@ -462,6 +462,12 @@ export function CustomerDetail() {
             <Panel title="Current offering" link={<button type="button" className="linkbtn" onClick={() => setDialog({ kind: "offering" })}>Change →</button>} flush>
               {!s ? <Loading lines={1} /> : s.offering_override ? (
                 <div className="erow"><div><b>{s.offering_override.display_name}</b> <span className="mono subtle" style={{ fontSize: 12 }}>{s.offering_override.lookup_key}</span><span className="dt">Override for this customer only</span></div><Tag tone="gold">Override</Tag></div>
+              ) : s.current_offering && s.current_offering.source !== "default" ? (
+                <div className="erow"><div><b>{s.current_offering.display_name}</b> <span className="mono subtle" style={{ fontSize: 12 }}>{s.current_offering.lookup_key}</span>
+                  <span className="dt">{s.current_offering.source === "experiment"
+                    ? <>Variant {s.current_offering.variant?.toUpperCase()} of the experiment <Link className="ul" to={`/projects/${pid}/experiments/${s.current_offering.experiment_id}`}>{s.current_offering.experiment_name ?? s.current_offering.experiment_id}</Link></>
+                    : <>From the targeting rule <Link className="ul" to={`/projects/${pid}/targeting`}>{s.current_offering.rule_name ?? s.current_offering.rule_id}</Link></>}</span></div>
+                  <Tag tone="gold">{s.current_offering.source === "experiment" ? "Experiment" : "Targeting"}</Tag></div>
               ) : (
                 <div className="erow"><div><b>{currentOffering?.display_name ?? "No current offering"}</b>{currentOffering && <> <span className="mono subtle" style={{ fontSize: 12 }}>{currentOffering.lookup_key}</span></>}<span className="dt">The project's current offering</span></div><Tag>Default</Tag></div>
               )}
