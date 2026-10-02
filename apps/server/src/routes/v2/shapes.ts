@@ -37,11 +37,22 @@ export const googleKeyConfigured = (cr: Record<string, unknown>) => hasServiceAc
 export const amazonKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "shared_secret");
 /** A Stripe app can reach Stripe: a restricted key, or "Connect with Stripe" (prd/web-billing/PRD.md §8). */
 export const stripeKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "stripe_secret_key") || storeSecretSet(a, "stripe_connect_account_id");
+export const paddleKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "paddle_api_key");
+export const rokuKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "roku_api_key");
+export const galaxyKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) =>
+  storeSecretSet(a, "galaxy_service_account_private_key") && typeof a.credentials?.galaxy_service_account_id === "string" && !!a.credentials.galaxy_service_account_id;
+/** Whether a Paddle app is on the sandbox: the key's prefix, else (keys from before 2025-05-06) `paddle_is_sandbox`. */
+export const paddleIsSandbox = (a: Pick<AppRow, "credentials" | "secretHints">) => {
+  const hint = a.secretHints?.paddle_api_key ?? null;
+  if (hint?.startsWith("pdl_sdbx_")) return true;
+  if (hint?.startsWith("pdl_live_")) return false;
+  return a.credentials?.paddle_is_sandbox === true;
+};
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 
 /** The store segment of an app's notification URL (`/v1/notifications/{store}/{app_id}`), or null when it has none. */
 export const notificationStoreOf = (type: string) =>
-  type === "app_store" || type === "mac_app_store" ? "apple" : type === "play_store" ? "google" : type === "amazon" ? "amazon" : type === "stripe" ? "stripe" : null;
+  type === "app_store" || type === "mac_app_store" ? "apple" : type === "play_store" ? "google" : ["amazon", "stripe", "paddle", "roku", "galaxy"].includes(type) ? type : null;
 
 /** Whether the credentials RevenueDot needs to check purchases are saved. */
 export function storeCredentialsConfigured(a: Pick<AppRow, "type" | "credentials" | "secretHints">): boolean {
@@ -51,6 +62,9 @@ export function storeCredentialsConfigured(a: Pick<AppRow, "type" | "credentials
     case "google": return googleKeyConfigured(cr);
     case "amazon": return amazonKeyConfigured(a);
     case "stripe": return stripeKeyConfigured(a);
+    case "paddle": return paddleKeyConfigured(a);
+    case "roku": return rokuKeyConfigured(a);
+    case "galaxy": return galaxyKeyConfigured(a);
     default: return a.type === "test_store" || Object.keys(cr).length > 0;
   }
 }
@@ -76,7 +90,10 @@ export function appShape(a: AppRow) {
     case "roku":
       return { ...common, roku: { roku_channel_id: str(cr.roku_channel_id), roku_channel_name: str(cr.roku_channel_name) } };
     case "paddle":
-      return { ...common, paddle: { paddle_is_sandbox: cr.paddle_is_sandbox === true, paddle_api_key: null } };
+      // RevenueCat's PaddleApp: the key is never returned.
+      return { ...common, paddle: { paddle_is_sandbox: paddleIsSandbox(a), paddle_api_key: null } };
+    case "galaxy":
+      return { ...common, galaxy: { package_name: a.bundleId ?? "" } };
     default:
       return common;
   }

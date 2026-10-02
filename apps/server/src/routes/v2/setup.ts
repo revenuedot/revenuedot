@@ -8,11 +8,15 @@ import { AppleApiClientError } from "../../stores/apple/api.js";
 import { appleApiFor } from "../../stores/apple/index.js";
 import { serviceAccountOf } from "../../stores/google/api.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
-import { amazonKeyConfigured, appleKeyConfigured, googleKeyConfigured, notificationStoreOf, projectShape, stripeKeyConfigured } from "./shapes.js";
+import { amazonKeyConfigured, appleKeyConfigured, galaxyKeyConfigured, googleKeyConfigured, notificationStoreOf, paddleIsSandbox, paddleKeyConfigured, projectShape, rokuKeyConfigured, stripeKeyConfigured } from "./shapes.js";
 import { notificationHealth } from "./notification-health.js";
 import { apiRole } from "../../services/members.js";
 import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
-import { storeSecretHintOf, storeSecretSet, stripeConnected, stripeKeyHintOf, stripeModeOf, withStoreSecrets } from "../../services/store-secrets.js";
+import { paddleKeyHintOf, sealStoreSecrets, storeSecretHintOf, storeSecretSet, stripeConnected, stripeKeyHintOf, stripeModeOf, withStoreSecrets } from "../../services/store-secrets.js";
+import { depsSecretKey } from "../../services/secrets.js";
+import { PaddleApiError } from "../../stores/paddle/api.js";
+import { paddleClientFor } from "../../stores/paddle/index.js";
+import { PADDLE_EVENTS } from "../../stores/paddle/sync.js";
 import { SANDBOX_ACCESS } from "../../repo/access.js";
 import { ownershipEmail } from "../../mail/templates.js";
 import { trySend } from "../../mail/index.js";
@@ -26,7 +30,8 @@ import { linkBase, requestOrigin } from "../../services/account-email.js";
  *   DELETE /v2/projects/{project_id}                                             delete the project and everything in it (extension; admins, dashboard only)
  *   GET    /v2/projects/{project_id}/collaborators                               RevenueCat's collaborator list
  *   GET    /v2/projects/{project_id}/apps/{app_id}/store_settings                non-secret store setup state (extension)
- *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/verify_credentials    ask Apple, Google, Amazon or Stripe whether the credentials work (extension)
+ *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/verify_credentials    ask the store whether the credentials work (extension)
+ *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/apply_notification_settings  Paddle: create or update the notification destination (extension)
  *   POST   /v2/projects/{project_id}/integrations/webhooks/{id}/test             queue a TEST event to one webhook (extension)
  *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/mass_extend           App Store: extend every active subscriber of a product (extension)
  *   GET    /v2/projects/{project_id}/apps/{app_id}/mass_extensions/{request_id}  status of a mass extension (?product_id=&environment=) (extension)
@@ -50,6 +55,9 @@ const Verify = z.object({
   play_store: z.object({ package_name: str, play_service_account_credentials_json: z.union([z.string().max(20_000), z.record(z.unknown())]).nullable().optional() }).optional(),
   amazon: z.object({ package_name: str, shared_secret: str }).optional(),
   stripe: z.object({ stripe_secret_key: str, stripe_account_id: str }).optional(),
+  paddle: z.object({ paddle_api_key: str, paddle_is_sandbox: z.boolean().nullable().optional() }).optional(),
+  roku: z.object({ roku_api_key: str }).optional(),
+  galaxy: z.object({ package_name: str, galaxy_service_account_id: str, galaxy_service_account_private_key: str }).optional(),
 });
 
 const Reason = z.enum(["undeclared", "customer_satisfaction", "other", "service_issue_or_outage"]);
@@ -211,6 +219,12 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         amazon_shared_secret: { configured: amazonKeyConfigured(a) },
         stripe_secret_key: stripeKeyHintOf(storeSecretHintOf(a, "stripe_secret_key")),
         stripe_webhook_secret: { configured: storeSecretSet(a, "stripe_webhook_secret") },
+        // Paddle, Roku and Galaxy secrets are sealed too: the Paddle key's environment and last four, the rest whether set.
+        paddle_api_key: paddleKeyHintOf(storeSecretHintOf(a, "paddle_api_key")),
+        paddle_webhook_secret: { configured: storeSecretSet(a, "paddle_webhook_secret") },
+        roku_api_key: { configured: rokuKeyConfigured(a) },
+        galaxy_service_account: { configured: galaxyKeyConfigured(a), service_account_id: s(cr.galaxy_service_account_id) },
+        galaxy_iap_public_key: { configured: !!s(cr.galaxy_iap_public_key) },
       },
       // Amazon: the SNS topic notifications must come from (optional).
       sns_topic_arn: a.type === "amazon" ? s(cr.sns_topic_arn) : null,
@@ -222,6 +236,17 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         // "Connect with Stripe" (prd/web-billing/PRD.md §8): its events arrive at the platform's endpoint, not this app's.
         connection: stripeConnected(a) ? "stripe_connect" : storeSecretSet(a, "stripe_secret_key") ? "restricted_key" : null,
         connected_account: stripeConnected(a) ? storeSecretHintOf(a, "stripe_connect_account_id") : null, mode: stripeModeOf(a),
+      } : null,
+      // Paddle: the environment, how purchases first seen in a notification find their customer, and the destination Apply in Paddle made.
+      paddle: a.type === "paddle" ? {
+        environment: paddleIsSandbox(a) ? "sandbox" : "live", paddle_is_sandbox: cr.paddle_is_sandbox === true,
+        app_user_id_source: cr.app_user_id_source === "anonymous" ? "anonymous" : "custom_data", app_user_id_custom_data_key: s(cr.app_user_id_custom_data_key) ?? "app_user_id",
+        notification_setting_id: s(cr.paddle_notification_setting_id), events: PADDLE_EVENTS, configured: paddleKeyConfigured(a),
+      } : null,
+      roku: a.type === "roku" ? { roku_channel_id: s(cr.roku_channel_id), roku_channel_name: s(cr.roku_channel_name), configured: rokuKeyConfigured(a) } : null,
+      galaxy: a.type === "galaxy" ? {
+        package_name: a.bundleId ?? null, service_account_id: s(cr.galaxy_service_account_id), configured: galaxyKeyConfigured(a),
+        iap_public_key_configured: !!s(cr.galaxy_iap_public_key),
       } : null,
     });
   });
@@ -262,8 +287,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       const over = b.amazon;
       overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
       app = { ...a, bundleId: s(over?.package_name) ?? a.bundleId, credentials: merged({ shared_secret: over?.shared_secret }) };
-    } else if (a.type === "stripe") {
-      const over = b.stripe;
+    } else if (a.type === "stripe" || a.type === "paddle" || a.type === "roku") {
+      const over = b[a.type];
       overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
       // A connected app's opened credentials hold the Connect platform's secret key: a body value must never be checked
       // with it (a stripe_account_id from the body would send that key with another developer's account).
@@ -271,15 +296,57 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         throw new V2Error(409, "resource_already_exists", "This app is connected with Stripe Connect. Disconnect it before checking a restricted key or another account.", "stripe");
       }
       app = { ...a, credentials: merged(over) };
+    } else if (a.type === "galaxy") {
+      const over = b.galaxy;
+      overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
+      app = { ...a, bundleId: s(over?.package_name) ?? a.bundleId, credentials: merged({ galaxy_service_account_id: over?.galaxy_service_account_id, galaxy_service_account_private_key: over?.galaxy_service_account_private_key }) };
     } else {
       throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");
     }
-    const newSecret = a.type === "amazon" ? s(b.amazon?.shared_secret) : a.type === "stripe" ? s(b.stripe?.stripe_secret_key) : null;
+    const newSecret = a.type === "amazon" ? s(b.amazon?.shared_secret) : a.type === "stripe" ? s(b.stripe?.stripe_secret_key) : a.type === "paddle" ? s(b.paddle?.paddle_api_key)
+      : a.type === "roku" ? s(b.roku?.roku_api_key) : a.type === "galaxy" ? s(b.galaxy?.galaxy_service_account_private_key) : null;
     if (unopened && !newSecret) return out("invalid", unopened);
     const r = await checkStoreCredentials(deps, app);
     // A check of what is stored also updates the app's credential health (and the alert it drives).
     if (!overrides) await recordCredentialCheck(db, a.id, r, deps.now());
     return out(r.status, r.message, r.extra);
+  });
+
+  // Paddle's "Apply in Paddle": a notification destination in the developer's Paddle account pointing at this app's
+  // notification URL, subscribed to the events RevenueDot reads; its secret key is sealed with the app. A second call updates
+  // the same destination (its id is kept in the credentials).
+  r.post(`${P}/apps/:app_id/actions/apply_notification_settings`, scope("project_configuration:apps:read_write"), async (c) => {
+    const row = await findApp(c);
+    if (row.type !== "paddle") throw new V2Error(422, "unprocessable_entity_error", "Only Paddle apps can apply notification settings through the store's API.", "app_id");
+    let a: typeof row;
+    try { a = await withStoreSecrets(deps, row); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
+    if (!paddleKeyConfigured(row)) throw new V2Error(422, "store_error", "Save the Paddle API key first.", "paddle_api_key");
+    const { client } = paddleClientFor(deps.stores, deps.fetch);
+    const url = `${publicOrigin(c)}/v1/notifications/paddle/${a.id}`;
+    const body = { description: `RevenueDot ${a.name}`.slice(0, 100), type: "url", destination: url, subscribed_events: PADDLE_EVENTS, api_version: 1, include_sensitive_fields: false, traffic_source: "all" };
+    const cr = a.credentials ?? {};
+    const existing = s(cr.paddle_notification_setting_id);
+    let setting;
+    try {
+      try { setting = await client.notificationSetting(a, existing ? { ...body, type: undefined, active: true } : body, existing); } catch (e) {
+        // The saved destination was deleted in Paddle: make a new one.
+        if (!(existing && e instanceof PaddleApiError && e.kind === "not_found")) throw e;
+        setting = await client.notificationSetting(a, body, null);
+      }
+    } catch (e) {
+      if (e instanceof PaddleApiError) {
+        const msg = e.kind === "credentials"
+          ? `Paddle refused (${e.code ?? e.status}): ${e.message}. The API key needs write access to Notification settings.`
+          : e.kind === "transient" ? `Paddle could not be reached: ${e.message}` : `Paddle refused the destination: ${e.message}`;
+        throw new V2Error(422, "store_error", msg, undefined, e.kind === "transient");
+      }
+      throw e;
+    }
+    const credentials: Record<string, unknown> = { ...(row.credentials ?? {}), paddle_notification_setting_id: setting.id };
+    const update: Record<string, string | null> = typeof setting.endpoint_secret_key === "string" && setting.endpoint_secret_key ? { paddle_webhook_secret: setting.endpoint_secret_key } : {};
+    const sealed = await sealStoreSecrets({ type: row.type, credentials, secrets: row.secrets }, update, await depsSecretKey(deps));
+    await db.update(schema.apps).set({ credentials: sealed.credentials, secrets: sealed.secrets, secretHints: sealed.secretHints }).where(eq(schema.apps.id, row.id));
+    return c.json({ object: "notification_settings", app_id: row.id, store: "paddle", notification_setting_id: setting.id, destination: url, subscribed_events: PADDLE_EVENTS, secret_saved: !!update.paddle_webhook_secret });
   });
 
   // App Store mass extension (Extend Subscription Renewal Dates for All Active Subscribers). Apple then sends a

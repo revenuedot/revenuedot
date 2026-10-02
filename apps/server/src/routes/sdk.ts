@@ -210,9 +210,11 @@ export function sdkRoutes(deps: Deps) {
       fetchToken: b.fetch_token ?? null, appTransaction: b.app_transaction ?? null, transactionId: b.transaction_id ?? null,
       productIds: Array.isArray(b.product_ids) ? b.product_ids : b.product_id ? [b.product_id] : [],
       platformProducts: Array.isArray(b.platform_product_ids) ? b.platform_product_ids.map((p: any) => ({ productId: p.product_id, basePlanId: p.base_plan_id, offerId: p.offer_id })) : [],
-      price: b.price !== undefined && b.price !== null ? Number(b.price) : null, currency: b.currency ?? null,
+      // The Roku SDK posts a formatted price ("$4.99") and no currency; Roku's own price is used for it.
+      price: b.price !== undefined && b.price !== null && Number.isFinite(Number(b.price)) ? Number(b.price) : null, currency: b.currency ?? null,
       storeCountry: b.store_country ?? null, normalDuration: b.normal_duration ?? null, isRestore: !!b.is_restore,
       isSandboxHeader: c.req.header("x-is-sandbox") === "true", storeUserId: b.store_user_id ?? null,
+      trialDuration: typeof b.trial_duration === "string" ? b.trial_duration : null, introDuration: typeof b.intro_duration === "string" ? b.intro_duration : null,
     };
     let { customer, created } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
     if (b.attributes) await setAttributes(deps.db, customer.id, resolveDeviceAttributes(b.attributes, c), now);

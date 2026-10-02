@@ -75,6 +75,9 @@ export interface ReceiptInput {
   isRestore: boolean;
   isSandboxHeader: boolean;
   storeUserId: string | null;
+  /** Roku SDK: the free trial and intro price lengths of the product bought ("1 Days", "1 Years"), when it has them. */
+  trialDuration?: string | null;
+  introDuration?: string | null;
 }
 
 /** What a store adapter may look up about chains already stored (Stripe keeps an unpaid renewal's paid period). */

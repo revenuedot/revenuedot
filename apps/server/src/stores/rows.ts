@@ -82,10 +82,10 @@ export function mergeSnapshot(next: VerifiedSubscription, row: SubRow, now: Date
 }
 
 /** Stores whose receipt re-posts are merged with the stored chain (their receipts carry no refund or first-seen history). */
-const MERGED_ON_RECEIPT = new Set<string>(["amazon", "stripe"]);
+const MERGED_ON_RECEIPT = new Set<string>(["amazon", "stripe", "paddle", "roku", "galaxy"]);
 
 /**
- * Receipt posts for Amazon and Stripe: a purchase posted again keeps what notifications recorded. Without this a
+ * Receipt posts for Amazon, Stripe, Paddle, Roku and the Galaxy Store: a purchase posted again keeps what notifications recorded. Without this a
  * re-post after a refund would clear the refund (a false REFUND_REVERSED), and every post would move the first time a
  * billing issue or cancellation was seen. Other stores are returned unchanged.
  */

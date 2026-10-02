@@ -8,6 +8,7 @@ import { customerCenterConfigOf, customerCenterFor, customerCenterProblems } fro
 import { recordEvent } from "../../services/events.js";
 import { V2Error, body, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { customerShape } from "./shapes.js";
+import { paddleManagementUrl } from "../../stores/paddle/index.js";
 
 /** Customer transfer, Customer Center configuration, StoreKit configuration files and subscription management URLs. */
 
@@ -140,7 +141,8 @@ export function customerExtraRoutes(r: V2Router, deps: Deps) {
     return c.json({ object: "store_kit_config_file", contents });
   });
 
-  // Where a customer manages one subscription. Apple and Google have fixed pages; stores that need a signed link are not supported here.
+  // Where a customer manages one subscription. Apple, Google, Samsung and Roku have fixed pages; Paddle gets a short-lived
+  // authenticated customer portal link (RevenueCat's v2 behaviour), else the subscription's own cancel page.
   r.get(`${P}/subscriptions/:subscription_id/authenticated_management_url`, scope("customer_information:subscriptions:read"), async (c: V2Context) => {
     const projectId = c.get("projectId");
     const id = c.req.param("subscription_id")!;
@@ -151,6 +153,11 @@ export function customerExtraRoutes(r: V2Router, deps: Deps) {
     else if (sub.store === "play_store") {
       const [app] = sub.appId ? await db.select().from(schema.apps).where(eq(schema.apps.id, sub.appId)).limit(1) : [];
       url = `https://play.google.com/store/account/subscriptions?sku=${encodeURIComponent(sub.productIdentifier)}${app?.bundleId ? `&package=${encodeURIComponent(app.bundleId)}` : ""}`;
+    } else if (sub.store === "galaxy") url = "samsungapps://SubscriptionList/";
+    else if (sub.store === "roku") url = "https://my.roku.com/account/subscriptions";
+    else if (sub.store === "paddle" && sub.appId) {
+      const [row] = await db.select().from(schema.apps).where(eq(schema.apps.id, sub.appId)).limit(1);
+      if (row) url = await paddleManagementUrl(deps, row, sub.storeKey);
     }
     return c.json({ object: "authenticated_management_url", management_url: url });
   });

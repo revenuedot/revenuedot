@@ -124,8 +124,14 @@ export function diffNonSubscription(prev: NonSubscription | null, next: NonSubsc
 /** Store names in webhook payloads are upper case (APP_STORE, PLAY_STORE ...). */
 export const webhookStore = (s: Store) => s.toUpperCase();
 
-/** Approximate store commission used for take-home estimates (RevenueCat reports 0.7 / 0.85 / 1.0 similarly). */
+/**
+ * Approximate store commission used for take-home estimates (RevenueCat reports 0.7 / 0.85 / 1.0 similarly). The Galaxy
+ * Store keeps 30%, Roku Pay 20% and Paddle about 5% (its fee also has 50 cents per transaction, not modelled); RevenueCat
+ * publishes no rate for these three, so they are estimates.
+ */
 export function commission(store: Store, smallBusiness = false): number {
-  if (store === "app_store" || store === "mac_app_store" || store === "play_store" || store === "amazon") return smallBusiness ? 0.15 : 0.3;
+  if (store === "app_store" || store === "mac_app_store" || store === "play_store" || store === "amazon" || store === "galaxy") return smallBusiness ? 0.15 : 0.3;
+  if (store === "roku") return 0.2;
+  if (store === "paddle") return 0.05;
   return 0;
 }

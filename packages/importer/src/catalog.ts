@@ -68,6 +68,10 @@ export async function importCatalog(rc: RevenueCatClient, rd: RevenueDotClient, 
     else {
       const body: Record<string, unknown> = { name: a.name, type: a.type };
       if (identifier) body[a.type] = { [ID_FIELD[a.type]!]: identifier };
+      // Roku's channel id and name and Paddle's sandbox flag are not secret, so they come over too.
+      const block = (a[a.type] ?? {}) as Record<string, unknown>;
+      if (a.type === "roku") body.roku = Object.fromEntries(["roku_channel_id", "roku_channel_name"].filter((k) => typeof block[k] === "string" && block[k]).map((k) => [k, block[k]]));
+      if (a.type === "paddle" && block.paddle_is_sandbox === true) body.paddle = { paddle_is_sandbox: true };
       hit = (await write(() => rd.post<RcApp>("/apps", body))) ?? undefined;
       if (hit) ours.push(hit);
       report.apps.created++;

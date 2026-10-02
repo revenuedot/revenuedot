@@ -17,7 +17,7 @@ const DAY = 86_400_000;
 export const CURRENCIES = ["USD", "EUR", "GBP", "AUD", "CAD", "JPY", "BRL", "KRW", "CNY", "MXN", "SEK", "PLN", "NZD", "CHF"];
 const MAX_PERIODS = 1000;
 const DOCS = "https://revenuedot.app/docs/guides/charts";
-const STORE_LABEL: Record<string, string> = { app_store: "App Store", mac_app_store: "Mac App Store", play_store: "Google Play", amazon: "Amazon", stripe: "Stripe", rc_billing: "Web", test_store: "Test Store", paddle: "Paddle", roku: "Roku", external: "External" };
+const STORE_LABEL: Record<string, string> = { app_store: "App Store", mac_app_store: "Mac App Store", play_store: "Google Play", amazon: "Amazon", stripe: "Stripe", rc_billing: "Web", test_store: "Test Store", paddle: "Paddle", roku: "Roku", galaxy: "Galaxy Store", external: "External" };
 
 function chart(c: V2Context): ChartDef {
   const def = chartDef(c.req.param("chart_name") ?? "");

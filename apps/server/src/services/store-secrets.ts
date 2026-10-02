@@ -3,15 +3,19 @@ import { depsSecretKey, seal, unseal, type SecretKey, type SecretMap } from "./s
 import { platformKeyFor, type StripeConnectConfig } from "./stripe-connect-config.js";
 
 /**
- * Amazon and Stripe store secrets live sealed in `apps.secrets` (AES-256-GCM, services/secrets.ts), never in
+ * Amazon, Stripe, Paddle, Roku and Galaxy Store secrets live sealed in `apps.secrets` (AES-256-GCM, services/secrets.ts), never in
  * `apps.credentials` and never in an API answer. `apps.secret_hints` holds what the dashboard may show: that a secret
- * is set, and for a Stripe key its mode, kind and last four characters ("rk_test_…abcd").
+ * is set, for a Stripe key its mode, kind and last four characters ("rk_test_…abcd"), for a Paddle key its environment and
+ * last four ("pdl_sdbx_apikey_…abcd").
  * Apple and Google credentials are unchanged (they stay in `apps.credentials`).
  */
 export const STORE_SECRET_FIELDS: Record<string, readonly string[]> = {
   amazon: ["shared_secret"],
   // `stripe_connect_account_id`: the account "Connect with Stripe" linked (prd/web-billing/PRD.md §8).
   stripe: ["stripe_secret_key", "stripe_webhook_secret", "stripe_connect_account_id"],
+  paddle: ["paddle_api_key", "paddle_webhook_secret"],
+  roku: ["roku_api_key"],
+  galaxy: ["galaxy_service_account_private_key"],
 };
 
 export const storeSecretFields = (type: string): readonly string[] => STORE_SECRET_FIELDS[type] ?? [];
@@ -23,6 +27,10 @@ export function storeSecretHint(field: string, value: string): string {
     return `${prefix}…${value.slice(-4)}`;
   }
   if (field === "stripe_connect_account_id") return `acct_…${value.slice(-4)}`;
+  if (field === "paddle_api_key") {
+    const prefix = /^pdl_(live|sdbx)_apikey_/.exec(value)?.[0] ?? "";
+    return `${prefix}…${value.slice(-4)}`;
+  }
   return "set";
 }
 
@@ -35,6 +43,12 @@ export function stripeKeyHintOf(hint: string | null | undefined) {
     kind: hint.startsWith("rk_") ? "restricted" as const : hint.startsWith("sk_") ? "secret" as const : "other" as const,
     last4: hint.slice(-4),
   };
+}
+
+/** The dashboard's view of a Paddle key from its hint: environment (null for keys from before 2025-05-06) and last four. */
+export function paddleKeyHintOf(hint: string | null | undefined) {
+  if (!hint) return { configured: false, environment: null, last4: null } as const;
+  return { configured: true, environment: hint.startsWith("pdl_sdbx_") ? "sandbox" as const : hint.startsWith("pdl_live_") ? "live" as const : null, last4: hint.slice(-4) };
 }
 
 interface SecretApp { type: string; credentials: Record<string, unknown> | null; secrets?: string | null; secretHints?: Record<string, string> | null }
