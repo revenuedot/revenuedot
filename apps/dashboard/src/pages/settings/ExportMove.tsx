@@ -212,7 +212,7 @@ function MovePanel({ pid, state }: { pid: string; state: MoveState }) {
                 <div className="tbl"><table><thead><tr><th>App</th><th>New URL</th><th className="hide-sm">Where</th></tr></thead>
                   <tbody>{m.report.notification_urls.map((n) => <tr key={n.app_id}><td>{n.app_name}</td><td className="mono">{n.url}</td><td className="hide-sm subtle">{n.where}</td></tr>)}</tbody></table></div>
                 {m.report.members_to_invite.length > 0 && <p className="section-sub">Invite on the new server: {m.report.members_to_invite.map((x) => `${x.email} (${x.role})`).join(", ")}.</p>}
-                {(m.report.domains_to_verify?.length ?? 0) > 0 && <p className="section-sub">Verify your custom domain again on the new server (Web → Domains shows its TXT value; point the CNAME there): {m.report.domains_to_verify!.join(", ")}.</p>}
+                {(m.report.domains_to_verify?.length ?? 0) > 0 && <p className="section-sub">Verify your custom domain again on the new server (Project settings → Domains shows its TXT value; point the CNAME there): {m.report.domains_to_verify!.join(", ")}.</p>}
               </div>
             )}
           </div>
