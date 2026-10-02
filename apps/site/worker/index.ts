@@ -3,7 +3,7 @@
 //   POST /api/contact-sales  the contact-sales form: validate, store in D1 (LEADS), email sales (EMAIL to SALES_TO)
 //   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
 //   /api/agent/*             the ElevenLabs sales voice agent (worker/agent.ts): init, lookup, meeting, send_info, docs,
-//                            postcall. A new hot or warm lead who ticked "Call me about this" gets a call within seconds.
+//                            postcall. A new hot or warm lead gets a call from the agent within seconds (8am to 8pm their time).
 // Scheduled (daily, cloudflare.config.ts): one email to sales listing people who started the form and did not finish.
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
 import { agent, esc, json, later, outboundPlan, startOutboundCall, type AgentEnv, type Ctx } from "./agent";
@@ -30,7 +30,6 @@ let schemaReady = false;
 // Columns added after the table was first created; "duplicate column" means they are already there.
 const ADD_COLUMNS = [
   "ALTER TABLE sales_leads ADD COLUMN current_other TEXT",
-  "ALTER TABLE sales_leads ADD COLUMN consent_call INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE sales_leads ADD COLUMN outbound_conversation_id TEXT",
 ];
 let draftsReady = false;
@@ -143,10 +142,10 @@ async function contactSales(request: Request, env: Env, ctx?: Ctx): Promise<Resp
         for (const sql of ADD_COLUMNS) await env.LEADS.prepare(sql).run().catch(() => {});
         schemaReady = true;
       }
-      await env.LEADS.prepare(`INSERT INTO sales_leads (id, created_at, score, name, email, company, role, phone, phone_country, revenue, current_vendor, current_other, needs, timeline, platforms, website, message, country, referrer, user_agent, consent_call)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      await env.LEADS.prepare(`INSERT INTO sales_leads (id, created_at, score, name, email, company, role, phone, phone_country, revenue, current_vendor, current_other, needs, timeline, platforms, website, message, country, referrer, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
         id, new Date().toISOString(), s, lead.name, lead.email, lead.company, lead.role, lead.phone, lead.phoneCountry, lead.revenue, lead.current, lead.currentOther || null,
-        JSON.stringify(lead.needs), lead.timeline, JSON.stringify(lead.platforms), lead.website || null, lead.message || null, meta.country, meta.referrer || null, meta.userAgent || null, lead.consentCall ? 1 : 0,
+        JSON.stringify(lead.needs), lead.timeline, JSON.stringify(lead.platforms), lead.website || null, lead.message || null, meta.country, meta.referrer || null, meta.userAgent || null,
       ).run();
       stored = true;
     } catch (e) { console.error("contact-sales: storing the lead failed", e); }
@@ -177,7 +176,7 @@ export function leadEmail(l: Lead, s: Score, meta: { country: string | null; ref
     ["Needs", l.needs.map((n) => label(NEEDS, n)).join(", ") || "None chosen"], ["Timeline", label(TIMELINE, l.timeline)],
     ["Platforms", l.platforms.map((p) => label(PLATFORMS, p)).join(", ") || "Not given"], ["Website", l.website || "Not given"],
     ["Visitor country", meta.country ?? "Unknown"], ["Came from", meta.referrer || "Direct"],
-    ["Agreed to a call", l.consentCall ? "Yes" : "No"], ...(call ? [["Voice agent", call] as [string, string]] : []),
+    ...(call ? [["Voice agent", call] as [string, string]] : []),
   ];
   const revenue = l.revenue === "undisclosed" ? "revenue not shared" : label(REVENUE, l.revenue).replace(" a month", "/mo");
   const subject = `[${SCORE_LABEL[s]}] Sales lead: ${l.company} (${l.name}), ${revenue}, uses ${vendorLabel(l)}`.replace(/[\r\n]+/g, " ").slice(0, 200);

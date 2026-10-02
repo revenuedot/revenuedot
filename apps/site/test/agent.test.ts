@@ -237,12 +237,11 @@ describe("agent postcall", () => {
 describe("outbound speed to lead", () => {
   const keys = { ELEVENLABS_API_KEY: "xi", ELEVENLABS_AGENT_ID: "agent_x", ELEVENLABS_PHONE_ID: "phnum_x" };
   const noon = new Date("2026-10-02T19:00:00Z"); // noon in California, 3pm in New York
-  it("calls only consenting hot or warm leads, set up, inside 8am to 8pm their time", () => {
-    const yes = lead({ consentCall: true });
+  it("calls only hot or warm leads, when set up, inside 8am to 8pm their time", () => {
+    const yes = lead();
     expect(outboundPlan(yes, "hot", keys as never, noon).call).toBe(true);
     expect(outboundPlan(yes, "warm", keys as never, noon).call).toBe(true);
     expect(outboundPlan(yes, "hot", { ...keys, ELEVENLABS_API_KEY: undefined } as never, noon)).toEqual({ call: false, note: "Not called: the voice agent is not set up." });
-    expect(outboundPlan(lead(), "hot", keys as never, noon).note).toMatch(/did not tick/);
     expect(outboundPlan(yes, "nurture", keys as never, noon).note).toMatch(/Nurture leads/);
     expect(outboundPlan(yes, "self_serve", keys as never, noon).call).toBe(false);
     // 7am in California is outside the window even though it is 10am in New York.
@@ -250,7 +249,7 @@ describe("outbound speed to lead", () => {
     expect(early.call).toBe(false);
     expect(early.note).toContain("America/Los_Angeles");
     // 9pm in London.
-    expect(outboundPlan(lead({ consentCall: true, phone: "+447400123456" }), "hot", keys as never, noon).call).toBe(false);
+    expect(outboundPlan(lead({ phone: "+447400123456" }), "hot", keys as never, noon).call).toBe(false);
   });
   it("starts the call from the contact-sales form and records the conversation id", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -262,28 +261,17 @@ describe("outbound speed to lead", () => {
     });
     const env = makeEnv(() => [], keys);
     const form = (b: unknown) => worker.fetch(new Request("https://revenuedot.app/api/contact-sales", { method: "POST", headers: { "content-type": "application/json", origin: "https://revenuedot.app" }, body: JSON.stringify(b) }), env as never);
-    expect((await form({ ...good, consent_call: true })).status).toBe(200);
+    expect((await form(good)).status).toBe(200);
     expect(fetches).toHaveLength(1);
     expect(fetches[0]!.url).toBe("https://api.elevenlabs.io/v1/convai/twilio/outbound-call");
     expect(fetches[0]!.key).toBe("xi");
     expect(fetches[0]!.body).toMatchObject({ agent_id: "agent_x", agent_phone_number_id: "phnum_x", to_number: "+14155550132" });
     expect((fetches[0]!.body.conversation_initiation_client_data as { dynamic_variables: Record<string, string> }).dynamic_variables).toMatchObject({ name: "Maya", lead_known: "yes", email: "maya@habitly.app", local_time: "Friday 3:00 PM" });
     expect(env.sql.find((s) => s.q.startsWith("UPDATE sales_leads SET outbound_conversation_id"))!.v[0]).toBe("conv_out");
-    expect(env.sql.find((s) => s.q.startsWith("INSERT INTO sales_leads"))!.v.at(-1)).toBe(1);
     expect(env.sent[0]!.text).toContain("Voice agent: The voice agent is calling them now");
-    // Without consent: no call, and the sales email says why.
-    expect((await form({ ...good })).status).toBe(200);
+    // A self-serve lead is not called, and the sales email says why.
+    expect((await form({ ...good, revenue: "under_100k", needs: [] })).status).toBe(200);
     expect(fetches).toHaveLength(1);
-    expect(env.sent[1]!.text).toContain("Agreed to a call: No");
-    expect(env.sent[1]!.text).toContain("did not tick the box");
-  });
-});
-
-describe("consent_call", () => {
-  it("is false unless ticked", () => {
-    expect((validate(good) as { lead: Lead }).lead.consentCall).toBe(false);
-    expect((validate({ ...good, consent_call: "on" }) as { lead: Lead }).lead.consentCall).toBe(true);
-    expect((validate({ ...good, consent_call: true }) as { lead: Lead }).lead.consentCall).toBe(true);
-    expect((validate({ ...good, consent_call: "no" }) as { lead: Lead }).lead.consentCall).toBe(false);
+    expect(env.sent[1]!.text).toContain("Voice agent: Not called: Self-serve leads are not called automatically.");
   });
 });

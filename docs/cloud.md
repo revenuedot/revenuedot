@@ -131,11 +131,10 @@ The sales voice agent runs on ElevenLabs (agent `agent_0801m3xdj6pqffnshp716p97j
 
 - **Secrets** on worker `revenuedot-site`: `AGENT_TOKEN`, `ELEVENLABS_WEBHOOK_SECRET`, `ELEVENLABS_API_KEY`. They are not
   declared in `cloudflare.config.ts`, so deploys keep them. Without them the routes answer 503 and no calls go out.
-- **Outbound calls:** a contact-sales lead scored hot or warm who ticked "Call me about this" is called at once, only
+- **Outbound calls:** a contact-sales lead scored hot or warm, with a valid phone number, is called at once, only
   between 8am and 8pm in their time zone (from the phone number's country). The sales email says when and why a lead
   was not called.
-- **Data** (D1 `revenuedot-leads`): `sales_meetings`, `agent_calls`, and `sales_leads.consent_call` and
-  `outbound_conversation_id`.
+- **Data** (D1 `revenuedot-leads`): `sales_meetings`, `agent_calls`, and `sales_leads.outbound_conversation_id`.
 
 ## Zone settings
 

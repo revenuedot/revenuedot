@@ -501,10 +501,9 @@ export function callEmail(p: PostCall) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Outbound "speed to lead": the agent calls a new hot or warm lead right after the form, if they agreed to a call.
+// Outbound "speed to lead": the agent calls a new hot or warm lead right after the form, during their day.
 export function outboundPlan(l: Lead, s: Score, env: AgentEnv, now = new Date()): { call: boolean; note: string } {
   if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_AGENT_ID || !env.ELEVENLABS_PHONE_ID) return { call: false, note: "Not called: the voice agent is not set up." };
-  if (!l.consentCall) return { call: false, note: "Not called: they did not tick the box agreeing to a call." };
   if (s !== "hot" && s !== "warm") return { call: false, note: `Not called: ${SCORE_LABEL[s]} leads are not called automatically.` };
   const zones = zonesFor(l.phone);
   if (!zones.length) return { call: false, note: "Not called: we could not tell their time zone from the phone number. Call them during their day." };
