@@ -63,16 +63,18 @@ node ../../scripts/smoke-cloud.mjs http://localhost:5173
   explorer (`POST /cdn-cgi/local/explorer/api/local/scheduled?worker=revenuedot`). Drop your database when you are done.
 
 ### RevenueDot AI locally
-Each conversation is a Cloudflare Agents Durable Object (`AssistantAgent`, prd/ai-assistant/PRD.md). Workers AI needs a
-remote binding, so locally run the scripted fake model instead:
+Each conversation is a Cloudflare Agents Durable Object (`AssistantAgent`, prd/ai-assistant/PRD.md). Workers AI has no
+local simulation, so `cf dev` calls the real model (billed to the Circo account). To test without model calls, run the
+scripted fake model instead:
 
 ```sh
 cd apps/server && REVENUEDOT_ASSISTANT_FAKE=1 WRANGLER_DOCKER_BIN=false pnpm exec cf dev --port 5409
 cd apps/dashboard && node e2e/do-smoke.mjs http://localhost:5409
 ```
 
-The smoke test asks a question, reloads (the transcript comes back from the Durable Object), approves a grant, checks
-the audit log, checks that another user and a signed-out browser cannot open the conversation's socket, and deletes it.
+The smoke test asks a question, reloads (the transcript comes back from the Durable Object), approves a grant, approves
+a grant asked together with a customer lookup (the lookup's result must be stored before the approval), checks the audit
+log, checks that another user and a signed-out browser cannot open the conversation's socket, and deletes it.
 `REVENUEDOT_ASSISTANT_FAKE` is read only when set in the shell that runs `cf dev`; never set it for a deploy.
 Approval cards are signed with `REVENUEDOT_ENCRYPTION_KEY` (else `REVENUEDOT_SIGNING_KEY`). The Durable Object keeps
 the transcript the browser sends, so without either key it offers no write tools: put `REVENUEDOT_SIGNING_KEY` in
