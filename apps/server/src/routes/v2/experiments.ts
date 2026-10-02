@@ -239,8 +239,10 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
       ...(audienceChange ? { audienceId: b.audience_id ?? null, audienceRules: b.audience_id ? null : b.audience_rules ?? null } : {}),
       ...(variants ? { variants, offeringA: variants[0]!.offering_id, offeringB: variants[1]!.offering_id } : {}),
       updatedAt: deps.now(),
-    }).where(eq(schema.experiments.id, x.id)).returning();
-    return c.json(await one(out!));
+    }).where(and(eq(schema.experiments.id, x.id), eq(schema.experiments.status, x.status))).returning();
+    // Only from the status just checked: a start or stop that landed meanwhile must not be mixed with a draft-only edit.
+    if (!out) throw new V2Error(409, "resource_locked_error", "The experiment changed while this request ran. Reload it and try again.");
+    return c.json(await one(out));
   });
 
   r.delete(`${E}/:experiment_id`, scope(WRITE), async (c) => {
@@ -311,6 +313,7 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
         .innerJoin(EN, and(eq(EN.experimentId, x.id), eq(EN.customerId, X.customerId)))
         .where(and(inArray(X.customerId, p), viewTypes, sql`${X.occurredAt} >= ${EN.enrolledAt} - interval '1 minute'`)).groupBy(X.customerId)) : Promise.resolve([]),
       loadViews ? db.select({ customerId: A.customerId, at: X.occurredAt }).from(X).innerJoin(A, and(eq(A.projectId, X.projectId), eq(A.appUserId, X.appUserId)))
+        .innerJoin(EN, and(eq(EN.experimentId, x.id), eq(EN.customerId, A.customerId)))
         .where(and(viewTypes, isNull(X.customerId), gte(X.occurredAt, since))) : Promise.resolve([]),
       chunks((p) => db.select({ customerId: EV.customerId, at: EV.eventTimestampMs, store: sql<string | null>`${EV.payload}->'event'->>'store'`, productId: sql<string | null>`${EV.payload}->'event'->>'product_id'` })
         .from(EV).where(and(inArray(EV.customerId, p), eq(EV.environment, env), eq(EV.type, "BILLING_ISSUE")))),

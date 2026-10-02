@@ -274,7 +274,7 @@ export async function resolveOfferings(db: DB, projectId: string, customer: Cust
         if (inserted.length) {
           const [o] = await db.select({ key: schema.offerings.lookupKey }).from(schema.offerings).where(eq(schema.offerings.id, v.offering_id));
           await recordRawEvent(db, {
-            projectId, appId: null, customer, appUserId: opts.appUserId ?? ctx.appUserIds[0] ?? customer.originalAppUserId, type: "EXPERIMENT_ENROLLMENT", sandbox: false, now,
+            projectId, appId: null, customer, appUserId: opts.appUserId ?? ctx.appUserIds[0] ?? customer.originalAppUserId, type: "EXPERIMENT_ENROLLMENT", sandbox: !!opts.sandbox, now,
             shape: "experiment",
             fields: { original_app_user_id: customer.originalAppUserId, experiment_id: chosen.e.id, experiment_variant: chosen.variant, offering_id: o?.key ?? null, experiment_enrolled_at_ms: now.getTime() },
           });
