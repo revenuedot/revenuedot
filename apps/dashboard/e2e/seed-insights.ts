@@ -1,8 +1,9 @@
 /**
  * Attribution, benchmarks and insights demo data for the e2e server (prd/attribution-benchmarks-insights):
  * - attribution on the demo project's App Store customers, set through the REST API like a backend or MMP would;
- * - 11 peer projects (one account, bench@revenuedot.test) with 12 months of App Store history written straight to the
- *   tables, all sharing benchmarks as Health & Fitness apps. The demo project does not share: insights.spec.ts turns it on.
+ * - 11 peer projects, each of its own account (bench1…bench11@revenuedot.test: k counts owners too), with 12 months of
+ *   App Store history written straight to the tables, all sharing benchmarks as Health & Fitness apps. The demo project
+ *   does not share: insights.spec.ts turns it on.
  * Deterministic: every run makes the same rows.
  */
 import { newId } from "@revenuedot/core";
@@ -26,14 +27,13 @@ export async function seedAttribution(call: ReturnType<typeof client>, P: string
 
 /** 11 peer projects that share benchmarks (Health & Fitness), each with its own conversion, churn and prices. */
 export async function seedPeers(db: DB, base: string) {
-  const cookie = await session(base, "bench@revenuedot.test", "e2e-password-1", "Peer app 1");
-  const call = client(base, cookie);
   const projects: string[] = [];
-  const me = await call<{ projects: { id: string }[] }>("GET", "/auth/me");
-  projects.push(me.projects[0]!.id);
-  for (let n = 2; n <= 11; n++) projects.push((await call<{ id: string }>("POST", "/v2/projects", { name: `Peer app ${n}` })).id);
   const now = Date.now();
-  for (const [n, projectId] of projects.entries()) {
+  for (let n = 0; n < 11; n++) {
+    const call = client(base, await session(base, `bench${n + 1}@revenuedot.test`, "e2e-password-1", `Peer app ${n + 1}`));
+    const me = await call<{ projects: { id: string }[] }>("GET", "/auth/me");
+    const projectId = me.projects[0]!.id;
+    projects.push(projectId);
     await ledger(db, projectId, now, { perMonth: 14 + n * 2, trialEvery: 2 + (n % 3), convertEvery: 1 + (n % 2), monthly: 6 + n, annual: 30 + 4 * n, annualEvery: 3, refundEvery: 4 + (n % 3), android: n % 2 === 0 });
     await call("POST", `/v2/projects/${projectId}/benchmarks/settings`, { share: true, category: "health_fitness" });
   }

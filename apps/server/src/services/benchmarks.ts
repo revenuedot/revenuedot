@@ -68,9 +68,10 @@ export async function rebuildAggregates(db: DB, now: Date, o: BenchmarkOptions =
   // started before an opt-out cannot overwrite the opt-out's rebuild with the departed project's values.
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${AGGREGATE_LOCK})`);
-    const rows = await tx.select({ projectId: PV.projectId, platform: PV.platform, country: PV.country, metrics: PV.metrics, category: P.benchmarksCategory })
+    const rows = await tx.select({ projectId: PV.projectId, owner: P.ownerUserId, platform: PV.platform, country: PV.country, metrics: PV.metrics, category: P.benchmarksCategory })
       .from(PV).innerJoin(P, eq(P.id, PV.projectId)).where(and(eq(P.benchmarksShare, true), isNotNull(P.benchmarksCategory)));
-    const contributions: BenchmarkContribution[] = rows.map((r) => ({ projectId: r.projectId, category: r.category!, platform: r.platform, country: r.country, metrics: r.metrics as MetricValues }));
+    // k counts owner accounts as well as projects (a project without an owner counts as its own).
+    const contributions: BenchmarkContribution[] = rows.map((r) => ({ projectId: r.projectId, owner: r.owner ? `user:${r.owner}` : undefined, category: r.category!, platform: r.platform, country: r.country, metrics: r.metrics as MetricValues }));
     const groups = aggregateBenchmarks(contributions, { k: o.k, kDeciles: o.kDeciles });
     await tx.delete(AG);
     for (let i = 0; i < groups.length; i += 500) await tx.insert(AG).values(groups.slice(i, i + 500).map((g) => ({ ...g, computedOn: day })));

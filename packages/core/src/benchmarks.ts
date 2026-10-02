@@ -9,8 +9,9 @@ import { addMonths, floorTo } from "./charts/time.js";
  * - `projectBenchmarkSlices`: one project's own values, for the whole project and per platform and country slice,
  *   computed with the chart definitions (trailing 12 complete months, production, USD).
  * - `aggregateBenchmarks`: peer percentiles with k-anonymity: a group (category × platform × country × metric) is
- *   published only when at least K_ANONYMITY projects contributed a value; the 10th and 90th percentiles need
- *   K_DECILES. App counts are rounded down to a multiple of 5. No mean, minimum, maximum or project id is produced.
+ *   published only when at least K_ANONYMITY projects of K_ANONYMITY different owners contributed a value; the 10th and
+ *   90th percentiles need K_DECILES. App counts are rounded down to a multiple of 5. No mean, minimum, maximum or
+ *   project id is produced.
  * - `compareToPeers`: where a project stands against a published group, and its biggest opportunity.
  */
 
@@ -156,7 +157,15 @@ export function projectBenchmarkSlices(input: ChartInput, o: { minSample?: Parti
   return out.filter((s, i) => i === 0 || Object.values(s.metrics).some((m) => m?.value !== null && m?.value !== undefined));
 }
 
-export interface BenchmarkContribution { projectId: string; category: string; platform: string; country: string; metrics: MetricValues }
+export interface BenchmarkContribution {
+  projectId: string;
+  /**
+   * The account that owns the project (default: the project itself). k counts owners too: one account sharing nine
+   * made-up projects next to a real one would otherwise read the real one's value off the median.
+   */
+  owner?: string;
+  category: string; platform: string; country: string; metrics: MetricValues;
+}
 export interface BenchmarkAggregate {
   category: string; platform: string; country: string; metric: BenchmarkMetricId;
   /** Contributing projects, rounded down to a multiple of 5. */
@@ -173,28 +182,30 @@ export function percentile(sorted: number[], p: number): number {
 export const roundedCount = (n: number) => Math.floor(n / 5) * 5;
 
 /**
- * Peer percentiles for every group with at least `k` projects. Each project counts once per group and metric, in its own
- * category and in "all" categories. Values under a project's minimum sample (null) do not count.
+ * Peer percentiles for every group with at least `k` projects from at least `k` owners. Each project counts once per
+ * group and metric, in its own category and in "all" categories. Values under a project's minimum sample (null) do not
+ * count.
  */
 export function aggregateBenchmarks(rows: BenchmarkContribution[], o: { k?: number; kDeciles?: number } = {}): BenchmarkAggregate[] {
   const k = Math.max(o.k ?? K_ANONYMITY, 2), kd = Math.max(o.kDeciles ?? K_DECILES, k);
-  const groups = new Map<string, Map<string, number>>();
+  const groups = new Map<string, { values: Map<string, number>; owners: Set<string> }>();
   for (const r of rows) {
     for (const category of new Set([r.category, ALL])) {
       for (const [metric, v] of Object.entries(r.metrics)) {
         if (!v || v.value === null || !Number.isFinite(v.value) || !benchmarkMetric(metric)) continue;
         const key = `${category}\u0000${r.platform}\u0000${r.country}\u0000${metric}`;
-        const g = groups.get(key) ?? groups.set(key, new Map()).get(key)!;
-        g.set(r.projectId, v.value);
+        const g = groups.get(key) ?? groups.set(key, { values: new Map(), owners: new Set() }).get(key)!;
+        g.values.set(r.projectId, v.value);
+        g.owners.add(r.owner ?? `project:${r.projectId}`);
       }
     }
   }
   const out: BenchmarkAggregate[] = [];
-  for (const [key, byProject] of groups) {
-    if (byProject.size < k) continue;
+  for (const [key, { values: byProject, owners }] of groups) {
+    if (byProject.size < k || owners.size < k) continue;
     const [category, platform, country, metric] = key.split("\u0000") as [string, string, string, BenchmarkMetricId];
     const s = [...byProject.values()].sort((a, b) => a - b);
-    const deciles = s.length >= kd;
+    const deciles = s.length >= kd && owners.size >= kd;
     out.push({
       category, platform, country, metric, projects: roundedCount(s.length),
       p10: deciles ? percentile(s, 0.1) : null, p25: percentile(s, 0.25), p50: percentile(s, 0.5), p75: percentile(s, 0.75), p90: deciles ? percentile(s, 0.9) : null,

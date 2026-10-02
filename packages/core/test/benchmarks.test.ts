@@ -111,6 +111,15 @@ describe("aggregateBenchmarks (k-anonymity)", () => {
     expect(r.p90).toBeCloseTo(19.8, 6);
   });
 
+  it("needs 10 different owners: nine made-up projects of one account next to a real one publish nothing", () => {
+    // One account's nine projects placed around the target would put its value at the median.
+    const sock = Array.from({ length: 9 }, (_, i) => contrib(i, i < 4 ? 1 : 99, { owner: "user:mallory" }));
+    expect(aggregateBenchmarks([...sock, contrib(9, 42, { owner: "user:victim" })])).toEqual([]);
+    // Ten owners publish; the deciles need 20 owners as well as 20 projects.
+    const ten = Array.from({ length: 20 }, (_, i) => contrib(i, i, { owner: `user:${i % 10}` }));
+    expect(aggregateBenchmarks(ten)[0]).toMatchObject({ projects: 20, p10: null, p90: null });
+  });
+
   it("counts only projects with enough data, each once", () => {
     const rows = [...Array.from({ length: 9 }, (_, i) => contrib(i, 40)), contrib(9, null), contrib(0, 99)];
     expect(aggregateBenchmarks(rows)).toEqual([]);
