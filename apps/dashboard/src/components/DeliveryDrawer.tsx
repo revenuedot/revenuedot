@@ -37,7 +37,9 @@ export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { pa
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const [retrying, setRetrying] = useState(false);
-  const q = useQuery({ queryKey: ["delivery", path], queryFn: () => api<DeliveryDetail>(path), retry: false, refetchInterval: (x) => (x.state.data?.status === "pending" ? 5000 : false) });
+  // While pending: every 2 s when the attempt is due (just retried), else every 5 s.
+  const q = useQuery({ queryKey: ["delivery", path], queryFn: () => api<DeliveryDetail>(path), retry: false,
+    refetchInterval: (x) => (x.state.data?.status !== "pending" ? false : (x.state.data.next_attempt_at ?? 0) <= Date.now() ? 2000 : 5000) });
   // Focus moves in once on open and back to where it was on close; the parent re-rendering (its list refreshes every few
   // seconds) must not pull focus to the close button again.
   useEffect(() => {
