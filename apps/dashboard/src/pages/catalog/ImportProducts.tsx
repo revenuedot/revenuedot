@@ -31,7 +31,9 @@ export const IMPORT_STORES = new Set(["app_store", "mac_app_store", "play_store"
 export const NO_CATALOG_API = new Set(["amazon", "roku"]);
 const SOURCE: Record<string, string> = { app_store: "App Store Connect", mac_app_store: "App Store Connect", play_store: "Google Play", stripe: "Stripe", paddle: "Paddle", galaxy: "the Galaxy Store", amazon: "Amazon", roku: "Roku" };
 
-const CREDENTIAL: Record<string, string> = { app_store: "App Store Connect API key", mac_app_store: "App Store Connect API key", play_store: "service account", stripe: "restricted key" };
+const CREDENTIAL: Record<string, string> = { app_store: "App Store Connect API key", mac_app_store: "App Store Connect API key", play_store: "service account", stripe: "restricted key", paddle: "API key", galaxy: "service account" };
+/** Stores whose listing carries a price per row (Stripe and Paddle list prices; the Galaxy Store gives a USD price per item). */
+const PRICED = new Set(["stripe", "paddle", "galaxy"]);
 
 const storeProductsKey = (pid: string, appId: string) => ["store-products", pid, appId] as const;
 
@@ -137,7 +139,7 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
             <colgroup><col style={{ width: 40 }} /><col className="imp-prod" style={{ width: "34%" }} /><col className="imp-hide" style={{ width: "15%" }} /><col className="imp-hide" style={{ width: "13%" }} /><col className="imp-hide" style={{ width: "16%" }} /><col className="imp-stat" /></colgroup>
             <thead><tr>
               <th className="imp-c"><SelectBox checked={allOn} indeterminate={someOn} disabled={!selectable.length} onChange={toggleAll} label="Select all" /></th>
-              <th>Product</th><th>Type</th><th>Duration</th><th>{current?.type === "stripe" ? "Price" : "Group"}</th><th>Status</th>
+              <th>Product</th><th>Type</th><th>Duration</th><th>{current && PRICED.has(current.type) ? "Price" : "Group"}</th><th>Status</th>
             </tr></thead>
             <tbody>
               {shown.map((i) => {
@@ -150,13 +152,13 @@ export function ImportProductsDialog({ pid, apps, appId, onClose }: { pid: strin
                       <span className="cat-cell">
                         <span className="cat-t">{i.display_name || i.store_identifier}</span>
                         {i.display_name && <span className="cat-s">{i.store_identifier}</span>}
-                        <span className="imp-meta">{typeLabel(i.type)}{i.type === "subscription" && i.duration ? ` · ${durationLabel(i.duration)}` : ""}{current?.type === "stripe" && i.price ? ` · ${priceLabel(i.price)}` : ""}</span>
+                        <span className="imp-meta">{typeLabel(i.type)}{i.type === "subscription" && i.duration ? ` · ${durationLabel(i.duration)}` : ""}{current && PRICED.has(current.type) && i.price ? ` · ${priceLabel(i.price)}` : ""}</span>
                         {i.note && <span className="imp-note">{i.note}</span>}
                       </span>
                     </td>
                     <td>{typeLabel(i.type)}</td>
                     <td className="num">{i.type === "subscription" ? durationLabel(i.duration) : "—"}</td>
-                    <td>{current?.type === "stripe" ? <span className="mono">{priceLabel(i.price)}</span> : i.group?.name ?? <span className="subtle">—</span>}</td>
+                    <td>{current && PRICED.has(current.type) ? <span className="mono">{priceLabel(i.price)}</span> : i.group?.name ?? <span className="subtle">—</span>}</td>
                     <td>{i.in_catalog ? <Tag tone="up">In catalog</Tag> : !i.importable ? <Tag>Not importable</Tag> : <span className="imp-state">{i.store_state ? i.store_state.replace(/_/g, " ").toLowerCase() : "—"}</span>}</td>
                   </tr>
                 );

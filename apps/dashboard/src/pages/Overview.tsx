@@ -220,13 +220,13 @@ function SetupHealthPanel({ pid }: { pid: string }) {
           key: `${a.id}-n`, tone: "bad", title: label, detail: `The last notification failed ${fmt.ago(err.at)}: ${err.message}`, right: <Link className="r" to={appLink(a.id)}>Fix →</Link>,
         } : {
           key: `${a.id}-n`, tone: at === null ? "idle" : recent ? "ok" : "bad", title: label,
-          detail: at === null ? `None received yet. Add the notification URL in ${a.type === "play_store" ? "Google Play Console" : "App Store Connect"}.`
+          detail: at === null ? `None received yet. Add the notification URL in ${NOTIFY_WHERE[a.type] ?? "App Store Connect"}.`
             : <>{recent && <i className="live" aria-hidden />}Last received {fmt.ago(at).replace(" ago", "")} ago</>,
           right: at === null ? <Link className="r" to={appLink(a.id)}>Set up →</Link> : undefined,
         });
       }
       if (!a.credentials_configured) {
-        const what = a.type === "app_store" ? "In-app purchase key missing" : a.type === "play_store" ? "Service account credentials missing" : "Store credentials missing";
+        const what = a.type === "app_store" ? "In-app purchase key missing" : a.type === "play_store" || a.type === "galaxy" ? "Service account credentials missing" : a.type === "paddle" ? "Paddle API key missing" : a.type === "roku" ? "Roku Pay API key missing" : "Store credentials missing";
         rows.push({ key: `${a.id}-c`, tone: "bad", title: `${a.name}: ${what}`, detail: "Purchases from this app cannot be verified until you add them.", right: <Link className="r" to={appLink(a.id)}>Fix →</Link> });
       }
     }
@@ -482,6 +482,11 @@ function useProductsOf(ids: string[]) {
   return useMemo(() => q.flatMap((x) => x.data ?? []), [q]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+/** Where each store's notification URL is set, for the setup health rows. */
+const NOTIFY_WHERE: Record<string, string> = {
+  play_store: "Google Play Console", amazon: "the Amazon Appstore Console", stripe: "the Stripe Dashboard", paddle: "Paddle (or click Apply in Paddle)",
+  roku: "the Roku developer dashboard", galaxy: "Samsung Seller Portal",
+};
 export function Overview() {
   const pid = useProjectId();
   const [sp, setSp] = useSearchParams();

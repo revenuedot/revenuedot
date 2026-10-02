@@ -53,6 +53,7 @@ function sdkPackage(v: Pick<SdkVersion, "platform" | "platform_flavor">): string
   };
   if (byFlavor[flavor]) return byFlavor[flavor]!;
   if (/^(android|amazon)$/i.test(v.platform)) return "purchases-android";
+  if (/^roku$/i.test(v.platform)) return "purchases-roku";
   if (/^(ios|watchos|tvos|macos|uikitformac|visionos)$/i.test(v.platform)) return "purchases-ios";
   return flavor === "native" ? v.platform : v.platform_flavor;
 }
@@ -94,7 +95,7 @@ export function sdkGroups(list: SdkVersion[]): SdkGroup[] {
   }).sort((a, b) => a.platform.localeCompare(b.platform) || a.pkg.localeCompare(b.pkg));
 }
 
-const PLATFORMS: Record<string, string> = { ios: "iOS", android: "Android", amazon: "Amazon", macos: "macOS", tvos: "tvOS", watchos: "watchOS", visionos: "visionOS", uikitformac: "Mac Catalyst", web: "Web" };
+const PLATFORMS: Record<string, string> = { ios: "iOS", android: "Android", amazon: "Amazon", macos: "macOS", tvos: "tvOS", watchos: "watchOS", visionos: "visionOS", uikitformac: "Mac Catalyst", web: "Web", roku: "Roku" };
 const platformLabel = (p: string) => PLATFORMS[p.toLowerCase()] ?? p;
 
 const pct = (x: number) => `${(x * 100).toFixed(x === 1 ? 0 : 1)}%`;
