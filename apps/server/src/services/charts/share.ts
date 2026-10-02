@@ -287,15 +287,17 @@ ${legend}
 /** The 1200×630 link preview as PNG (no fonts on Workers: the pixel font of og-png.ts). */
 export async function cardPng(s: ChartSnapshot): Promise<Uint8Array> {
   const W = 1200, H = 630, M = 64;
+  // The 5×7 font has no en dash, middle dot or minus sign.
+  const px = (t: string) => t.replace(/[–—\u2212]/g, "-").replace(/ · /g, " / ").replace(/·/g, "/");
   const ink = hex("#0A0A0A"), fg3 = hex("#737373"), border = hex("#E5E5E5"), gold = hex("#F7B500"), white = hex("#FFFFFF");
   const r = new Raster(W, H, white);
   r.rect(M, M - 8, 14, 14, gold);
-  r.text(M + 28, M - 8, Raster.fit(s.project.toUpperCase(), 2, 640), 2, fg3);
-  r.text(M, M + 24, Raster.fit(s.title.toUpperCase(), 6, 700), 6, ink);
-  r.text(M, M + 82, Raster.fit(`${rangeText(s)}${s.context.length ? ` · ${s.context.join(" · ")}` : ""}${s.environment === "sandbox" ? " · SANDBOX" : ""}`.toUpperCase(), 2, W - 2 * M), 2, fg3);
+  r.text(M + 28, M - 8, Raster.fit(px(s.project).toUpperCase(), 2, 640), 2, fg3);
+  r.text(M, M + 24, Raster.fit(px(s.title).toUpperCase(), 6, 700), 6, ink);
+  r.text(M, M + 82, Raster.fit(px(`${rangeText(s)}${s.context.length ? ` · ${s.context.join(" · ")}` : ""}${s.environment === "sandbox" ? " · SANDBOX" : ""}`).toUpperCase(), 2, W - 2 * M), 2, fg3);
   const st = headline(s);
   if (st) {
-    const label = Raster.fit(`${st.label} · ${st.kind}`.toUpperCase(), 2, 360);
+    const label = Raster.fit(px(`${st.label} · ${st.kind}`).toUpperCase(), 2, 360);
     r.text(W - M - Raster.textWidth(label, 2), M - 8, label, 2, fg3);
     const v = formatValue(st.value, st.unit, s.currency, st.precision).replace(/−/g, "-");
     const scale = Raster.textWidth(v, 6) <= 380 ? 6 : 4;
@@ -355,7 +357,7 @@ export async function cardPng(s: ChartSnapshot): Promise<Uint8Array> {
     if (s.series.length > 1) {
       let lx = M;
       s.series.slice(0, 6).forEach((x, si) => {
-        const label = Raster.fit(x.label.toUpperCase(), 2, 150);
+        const label = Raster.fit(px(x.label).toUpperCase(), 2, 150);
         r.rect(lx, H - M - 4, 12, 12, colorOf(si));
         r.text(lx + 20, H - M - 3, label, 2, fg3);
         lx += 20 + Raster.textWidth(label, 2) + 28;
@@ -374,7 +376,9 @@ export function shareHtml(s: ChartSnapshot, url: string): string {
   const desc = `${st ? `${st.label}: ${formatValue(st.value, st.unit, s.currency, st.precision)}. ` : ""}${contextLine(s)}.`;
   const stats = s.stats.map((x) => `<div class="stat"><span class="label">${esc(x.label)} · ${x.kind}</span><b>${esc(formatValue(x.value, x.unit, s.currency, x.precision))}</b></div>`).join("");
   const legend = s.series.length > 1 ? `<ul class="legend">${s.series.map((x, i) => `<li><i style="background:${x.other ? "var(--fg-3)" : `var(--series-${(i % 5) + 1})`}"></i>${esc(x.label)}</li>`).join("")}</ul>` : "";
-  const plot = s.type === "cohort" ? cohortSvg(s, 1040, Math.min(460, 34 * (Math.min(12, s.cohort!.rows.length) + 1) + 4), true) : plotSvg(s, 1040, 320, true);
+  // Two drawings of the plot: one for wide screens, one narrow enough for a phone to read without scrolling.
+  const plot = s.type === "cohort" ? cohortSvg(s, 1040, Math.min(460, 34 * (Math.min(12, s.cohort!.rows.length) + 1) + 4), true)
+    : `<div class="wide">${plotSvg(s, 1040, 320, true)}</div><div class="narrow">${plotSvg(s, 400, 280, true)}</div>`;
   const fmt = (v: number | null) => formatValue(v, s.measure.unit, s.currency, s.measure.precision);
   const table = s.type === "cohort"
     ? `<table><thead><tr><th>Cohort</th>${s.cohort!.columns.map((c) => `<th class="n">${esc(c.name)}</th>`).join("")}</tr></thead><tbody>${s.cohort!.rows.map((r) => `<tr><th>${esc(r.label)}</th>${r.cells.map((v, k) => `<td class="n">${v === null ? "" : esc(formatValue(v, s.cohort!.columns[k]!.unit, s.currency, s.cohort!.columns[k]!.precision))}</td>`).join("")}</tr>`).join("")}</tbody></table>`
@@ -398,11 +402,11 @@ h1{margin:8px 0 4px;font-size:28px;line-height:34px;font-weight:600;letter-spaci
 .stats{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--border)}.stat{padding:14px 16px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px;min-width:180px}.stat:last-child{border-right:0}
 .label{font:600 11px/16px Manrope,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-3)}.stat b{font:600 22px/30px Manrope,system-ui,sans-serif;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .legend{display:flex;flex-wrap:wrap;gap:14px;list-style:none;margin:0;padding:12px 16px 0;font-size:12px;color:var(--fg-2)}.legend li{display:inline-flex;align-items:center;gap:6px}.legend i{width:10px;height:10px;display:inline-block}
-.plot{overflow-x:auto;padding:8px 0}.plot svg{display:block;width:100%;min-width:600px;height:auto}
+.plot{overflow-x:auto;padding:8px 0}.plot svg{display:block;width:100%;height:auto}.plot>svg{min-width:600px}.narrow{display:none}
 .tbl{overflow-x:auto;border-top:1px solid var(--border)}table{border-collapse:collapse;width:100%;font-size:12px}th,td{padding:8px 12px;border-bottom:1px solid var(--border-2);text-align:left;white-space:nowrap}
 thead th{font:600 11px/16px Manrope,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--fg-3)}td.n,th.n{text-align:right;font-family:"Geist Mono",ui-monospace,monospace}tbody th{font-weight:500}
 footer{margin-top:20px;color:var(--fg-3);font:400 12px/18px "Geist Mono",ui-monospace,monospace;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}footer a{color:var(--fg-2)}
-@media (max-width:640px){.stat{min-width:50%;border-right:0;border-bottom:1px solid var(--border-2)}h1{font-size:24px;line-height:30px}}
+@media (max-width:640px){.stat{min-width:50%;border-right:0;border-bottom:1px solid var(--border-2)}h1{font-size:24px;line-height:30px}.wide{display:none}.narrow{display:block}}
 </style></head><body><main>
 <div class="badge"><span class="dot"></span>Shared from RevenueDot</div>
 <h1>${esc(s.title)}</h1><p class="ctx">${esc(contextLine(s))}</p>

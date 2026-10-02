@@ -103,7 +103,8 @@ test("charts: rail, MRR against the API and the Overview, controls in the URL, s
   await page.getByRole("switch", { name: "Sandbox data" }).click();
 
   // CSV of what the table shows.
-  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV" }).click()]);
+  await page.getByRole("button", { name: "More chart actions" }).click();
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: "Export CSV" }).click()]);
   expect(download.suggestedFilename()).toMatch(/^mrr-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = readFileSync((await download.path())!, "utf8").trim().split("\n");
   expect(csv[0]).toBe("period,MRR,incomplete");

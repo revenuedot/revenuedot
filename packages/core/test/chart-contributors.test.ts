@@ -101,7 +101,7 @@ describe("chart contributors", () => {
       expect(c.measure, def.name).not.toBeNull();
       if (c.rows.length) nonEmpty++;
       const out = runChart(def, inp, r).output;
-      expect(total(c.rows), def.name).toBeCloseTo(expected(def, out), 6);
+      expect(total(c.rows) + c.unattributed, def.name).toBeCloseTo(expected(def, out), 6);
       // Most recent first, each customer once.
       expect(c.rows.map((x) => x.at), def.name).toEqual([...c.rows.map((x) => x.at)].sort((a, b) => b - a));
       expect(new Set(c.rows.map((x) => x.customerId)).size, def.name).toBe(c.rows.length);
@@ -149,6 +149,15 @@ describe("chart contributors", () => {
       expect(total(mine), s.id).toBeCloseTo(expected(def, s.output), 6);
     }
     expect(seg.rows.some((r) => r.segmentOther && r.segment === "Other")).toBe(true);
+  });
+
+  it("ad revenue from an app user id with no customer is counted as unattributed, not dropped", () => {
+    const inp = input();
+    inp.sdkEvents.push({ customerId: null, appId: "ios", type: "rc_ads_ad_revenue", at: T("2026-05-20T10:00:00Z"), revenueUsd: 0.5 });
+    const def = chartDef("revenue")!;
+    const c = chartContributors(def, inp, req());
+    expect(c.unattributed).toBeCloseTo(0.5, 6);
+    expect(total(c.rows) + c.unattributed).toBeCloseTo(expected(def, runChart(def, inp, req()).output), 6);
   });
 
   it("subscription status follows its measure selector; cohort explorer lists the cohort", () => {

@@ -28,16 +28,19 @@ export interface ContributorsResult {
   /** What `at` is, in the chart's words: "Purchased", "First seen", "Trial started" … */
   dateLabel: string;
   rows: Contributor[];
+  /** The part of the chart that belongs to no customer: ad events from app user ids the server never saw (`sum: "total"`). */
+  unattributed: number;
 }
 
 type Win = [number, number];
-interface Acc { add(customerId: string | null, at: number, value: number, store?: string | null, productId?: string | null): void; rows(): Contributor[] }
+interface Acc { add(customerId: string | null, at: number, value: number, store?: string | null, productId?: string | null): void; rows(): Contributor[]; unattributed(): number }
 
 function acc(): Acc {
   const m = new Map<string, Contributor>();
+  let none = 0;
   return {
     add(customerId, at, value, store = null, productId = null) {
-      if (!customerId) return;
+      if (!customerId) { none += value; return; }
       const c = m.get(customerId);
       if (!c) { m.set(customerId, { customerId, at, value, store, productId }); return; }
       c.value += value;
@@ -46,6 +49,7 @@ function acc(): Acc {
       else if (!c.store && !c.productId) { c.store = store; c.productId = productId; }
     },
     rows: () => [...m.values()],
+    unattributed: () => none,
   };
 }
 
@@ -288,7 +292,8 @@ export function chartContributors(def: ChartDef, input: ChartInput, req: ChartRe
   const { measure, sum, dateLabel } = contributorsMeasure(def, req.selectors);
   const sel = { ...Object.fromEntries(def.selectors.map((s) => [s.id, s.default])), ...req.selectors };
   const frame = new Frame(req, input.now);
-  const compute = (inp: ChartInput) => { const a = acc(); spec.run(new Prepared(inp), frame, sel, a); return a.rows(); };
+  let unattributed = 0;
+  const compute = (inp: ChartInput) => { const a = acc(); spec.run(new Prepared(inp), frame, sel, a); unattributed += a.unattributed(); return a.rows(); };
   const filtered = restrict(input, opts.filters ?? []);
   let rows: Contributor[];
   if (!opts.segment) rows = compute(filtered);
@@ -300,5 +305,5 @@ export function chartContributors(def: ChartDef, input: ChartInput, req: ChartRe
       .map((r) => ({ ...r, segment: s.id, ...(s.isOther ? { segmentOther: true } : {}) })));
   }
   rows.sort((x, y) => y.at - x.at || (x.customerId < y.customerId ? -1 : x.customerId > y.customerId ? 1 : 0));
-  return { measure, sum, dateLabel, rows };
+  return { measure, sum, dateLabel, rows, unattributed };
 }

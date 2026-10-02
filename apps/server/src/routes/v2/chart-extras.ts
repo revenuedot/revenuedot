@@ -150,7 +150,7 @@ export function chartExtraRoutes(r: V2Router, deps: Deps) {
       const page = res.rows.slice(0, limit);
       const info = await customerInfo(db, projectId, [...new Set(page.map((x) => x.customerId))], p.sandbox, now);
       return c.json({
-        object: "chart_customers", chart_name: p.def.name, total_count: res.rows.length, value: measure, sum: res.sum, date_label: res.dateLabel,
+        object: "chart_customers", chart_name: p.def.name, total_count: res.rows.length, value: measure, sum: res.sum, unattributed_value: Math.round(res.unattributed * 1e6) / 1e6, date_label: res.dateLabel,
         currency: p.currency, segment: p.segment, items: page.map((x) => item(x, info.get(x.customerId))),
       });
     }

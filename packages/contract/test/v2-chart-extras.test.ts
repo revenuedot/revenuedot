@@ -62,7 +62,7 @@ describe("chart customers", () => {
       expect(r.status, c.name).toBe(200);
       expect(r.body).toMatchObject({ object: "chart_customers", chart_name: c.name, total_count: r.body.items.length });
       if (c.name === "app_store_save_outcomes") { expect(r.body.items).toEqual([]); continue; }
-      const sum = r.body.items.reduce((s: number, x: any) => s + x.value, 0);
+      const sum = r.body.items.reduce((s: number, x: any) => s + x.value, 0) + r.body.unattributed_value;
       const target = c.name === "ad_monetized_customers" || c.name === "ad_arpdau" ? chartTotal("ad_revenue", (await chart("ad_revenue")).body) : chartTotal(c.name, (await chart(c.name, q)).body);
       expect(sum, c.name).toBeCloseTo(target, 2);
     }
@@ -73,7 +73,7 @@ describe("chart customers", () => {
     const by = Object.fromEntries(r.body.items.map((x: any) => [x.app_user_id, x]));
     expect(Object.fromEntries(Object.entries(by).map(([k, x]: [string, any]) => [k, x.value]))).toEqual({ u_a: 40.02, u_b: 20, u_d: 0, u_e: 20, u_g: 5, u_p: 10 });
     expect(r.body.value).toEqual({ id: "revenue", display_name: "Revenue", unit: "$" });
-    expect(r.body).toMatchObject({ sum: "total", date_label: "Latest purchase", currency: "USD", segment: null });
+    expect(r.body).toMatchObject({ sum: "total", unattributed_value: 0, date_label: "Latest purchase", currency: "USD", segment: null });
     expect(by.u_a).toMatchObject({ object: "chart_customer", status: "active", store: "app_store", product_id: "pro_monthly", segment: null });
     expect(by.u_e.status).toBe("expired");
     expect(by.u_g).toMatchObject({ product_id: "coins_100", contributed_at: Date.parse("2026-08-20T00:00:00Z") });
