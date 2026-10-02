@@ -201,3 +201,14 @@ describe("Customer Center documents stored before the editor", () => {
     expect((await post({ customer_center: cfg })).status).toBe(400);
   });
 });
+
+describe("Customer Center document size", () => {
+  it("refuses a document over 1 MB and stores nothing", async () => {
+    const config = await customerCenterConfigOf(h.db, "proj1") as any;
+    config.localization.custom_strings = Object.fromEntries(["de", "fr", "es"].map((l) => [l, Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`k${i}`, "x".repeat(1000)]))]));
+    const res = await post({ customer_center: config });
+    expect(res.status).toBe(400);
+    expect((await res.json() as any).message).toMatch(/at most 1 MB/);
+    expect(await stored()).toBeNull();
+  });
+});

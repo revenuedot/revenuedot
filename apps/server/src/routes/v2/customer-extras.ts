@@ -18,6 +18,9 @@ const Transfer = z.object({
 
 const ISO_TO_STOREKIT: Record<string, string> = { P1W: "P1W", P1M: "P1M", P2M: "P2M", P3M: "P3M", P6M: "P6M", P1Y: "P1Y" };
 
+/** The largest Customer Center document `POST /customer_center_config` stores (JSON characters). */
+const CC_MAX_BYTES = 1_000_000;
+
 export function customerExtraRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
   const P = "/v2/projects/:project_id";
@@ -96,6 +99,9 @@ export function customerExtraRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, z.object({ customer_center: z.record(z.unknown()).nullable() }).strict());
     const projectId = c.get("projectId");
     if (b.customer_center) {
+      // Every Customer Center open reads and converts the whole document: keep it small (a full translation of every
+      // string into every language is about 400 KB).
+      if (JSON.stringify(b.customer_center).length > CC_MAX_BYTES) throw paramError("customer_center: the configuration can be at most 1 MB.", "customer_center");
       const problems = await customerCenterProblems(db, projectId, b.customer_center);
       if (problems.length) throw paramError(`customer_center: ${problems.slice(0, 5).join(" ")}${problems.length > 5 ? ` (${problems.length - 5} more)` : ""}`, "customer_center");
     }
