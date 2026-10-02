@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { CHARTS, contributorsMeasure } from "@revenuedot/core";
-import { schema } from "@revenuedot/db";
-import { createSecretKey } from "@revenuedot/server/services/auth.js";
+import { schema, type DB } from "@revenuedot/db";
+import { createApp, defaultStores } from "@revenuedot/server";
+import { createSecretKey, sha256Hex } from "@revenuedot/server/services/auth.js";
 import { fillReferenceSql, REFERENCE_CUSTOMER_SQL } from "@revenuedot/server/services/charts/reference-sql.js";
 import { harness, type Harness } from "../src/harness.js";
 import { otherProject, signup, v2 } from "./v2-helpers.js";
@@ -238,10 +239,17 @@ describe("chart share links", () => {
     const made = await call("POST", S, {}, { cookie: dev.cookie, ext: true, json: { chart_name: "revenue", view } });
     expect(made.status).toBe(201);
     expect(made.body).toMatchObject({ object: "chart_share", chart_name: "revenue", title: "Revenue", start_date: "2026-05-01", end_date: "2026-08-31", view, created_by: { email: "dev-share@example.com" }, revoked_at: null });
-    expect(made.body.id).toMatch(/^cs_[A-Za-z0-9_-]{32}$/);
-    expect(made.body.url).toMatch(new RegExp(`/share/charts/${made.body.id}$`));
+    // The id names the link in the API and the audit log; the URL's token (192 random bits) is a different string, kept
+    // with its SHA-256, which is what the public pages look up.
+    expect(made.body.id).toMatch(/^chartshare[a-z0-9]{12}$/);
+    const token = /\/share\/charts\/(cs_[A-Za-z0-9_-]{32})$/.exec(made.body.url)?.[1];
+    expect(token).toBeTruthy();
     expect(made.body.image_url).toBe(`${made.body.url}/og.png`);
-    const path = `/share/charts/${made.body.id}`;
+    const [stored] = await h.db.select().from(schema.chartShares).where(eq(schema.chartShares.id, made.body.id));
+    expect(stored).toMatchObject({ token, tokenHash: await sha256Hex(token!) });
+    // The PNG preview is drawn once, when the link is made.
+    expect(Buffer.from(stored!.image!, "base64").subarray(1, 4).toString()).toBe("PNG");
+    const path = `/share/charts/${token}`;
 
     const page = await h.fetch(path, { key: "" });
     expect(page.status).toBe(200);
@@ -260,7 +268,9 @@ describe("chart share links", () => {
 
     const png = await h.fetch(`${path}/og.png`, { key: "" });
     expect(png.headers.get("content-type")).toBe("image/png");
-    expect([...new Uint8Array(await png.arrayBuffer()).slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    const pngBytes = new Uint8Array(await png.arrayBuffer());
+    expect([...pngBytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(Buffer.from(pngBytes).toString("base64")).toBe(stored!.image);
     const svg = await h.fetch(`${path}/chart.svg`, { key: "" });
     expect(svg.headers.get("content-type")).toMatch(/image\/svg\+xml/);
     expect(await svg.text()).toContain("Revenue");
@@ -284,15 +294,21 @@ describe("chart share links", () => {
     expect((await call("GET", S, {}, { ext: true })).body.items.map((x: any) => x.id)).not.toContain(made.body.id);
     expect((await call("DELETE", `${S}/{share_id}`, { share_id: made.body.id }, { ext: true })).status).toBe(404);
     expect((await h.fetch("/share/charts/cs_nope", { key: "" })).status).toBe(404);
+    // A well-formed token that was never issued, and the link's id in place of its token.
+    expect((await h.fetch(`/share/charts/cs_${"A".repeat(32)}`, { key: "" })).status).toBe(404);
+    expect((await h.fetch(`/share/charts/${made.body.id}`, { key: "" })).status).toBe(404);
 
     const log = await call("GET", "/v2/projects/{project_id}/audit_logs", {}, { query: "limit=100" });
-    expect(log.body.items.filter((x: any) => x.target_type === "chart_share").map((x: any) => x.action_type).sort()).toEqual(["chart_share_created", "chart_share_deleted"]);
+    const shares = log.body.items.filter((x: any) => x.target_type === "chart_share");
+    expect(shares.map((x: any) => x.action_type).sort()).toEqual(["chart_share_created", "chart_share_deleted"]);
+    expect(shares.map((x: any) => x.target_identifier)).toEqual([made.body.id, made.body.id]);
+    expect(JSON.stringify(log.body)).not.toContain(token);
   });
 
   it("snapshots cohort tables and the chart type; refuses a view the chart API refuses", async () => {
     const cohort = await call("POST", S, {}, { ext: true, json: { chart_name: "subscription_retention", view: { range: "custom", start: "2026-05-01", end: "2026-08-31" } } });
     expect(cohort.status).toBe(201);
-    const html = await (await h.fetch(`/share/charts/${cohort.body.id}`, { key: "" })).text();
+    const html = await (await h.fetch(new URL(cohort.body.url).pathname, { key: "" })).text();
     expect(html).toContain("Subscription Retention");
     expect(html).toContain("Period 0");
     const [row] = await h.db.select().from(schema.chartShares).where(eq(schema.chartShares.id, cohort.body.id));

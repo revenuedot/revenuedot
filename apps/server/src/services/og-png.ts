@@ -34,13 +34,16 @@ const glyph = (ch: string) => GLYPHS[ch.toUpperCase()] ?? GLYPHS[ch] ?? (/[\p{L}
 export class Raster {
   readonly px: Uint8Array;
   constructor(readonly w: number, readonly h: number, bg: RGB) {
-    this.px = new Uint8Array(w * h * 3);
-    for (let i = 0; i < w * h; i++) this.px.set(bg, i * 3);
+    const px = (this.px = new Uint8Array(w * h * 3));
+    // One row by hand, then copies that double the filled part (a set() per pixel took hundreds of milliseconds).
+    for (let i = 0; i < w * 3; i += 3) { px[i] = bg[0]; px[i + 1] = bg[1]; px[i + 2] = bg[2]; }
+    for (let filled = w * 3; filled < px.length; filled *= 2) px.copyWithin(filled, 0, Math.min(filled, px.length - filled));
   }
   rect(x: number, y: number, w: number, h: number, c: RGB) {
     const x0 = Math.max(0, Math.round(x)), y0 = Math.max(0, Math.round(y));
     const x1 = Math.min(this.w, Math.round(x + w)), y1 = Math.min(this.h, Math.round(y + h));
-    for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) this.px.set(c, (yy * this.w + xx) * 3);
+    const px = this.px, [r, g, b] = c;
+    for (let yy = y0; yy < y1; yy++) for (let i = (yy * this.w + x0) * 3, end = (yy * this.w + x1) * 3; i < end; i += 3) { px[i] = r; px[i + 1] = g; px[i + 2] = b; }
   }
   /** A line `t` pixels thick (square brush). */
   line(ax: number, ay: number, bx: number, by: number, t: number, c: RGB) {

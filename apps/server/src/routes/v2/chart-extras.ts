@@ -7,7 +7,8 @@ import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { chartSources, loadChartInput } from "../../services/charts/load.js";
 import { annotationsBetween, authors, MAX_ANNOTATIONS } from "../../services/charts/annotations.js";
-import { buildSnapshot, type ChartBody, type ChartOptionsBody, type ChartSnapshot } from "../../services/charts/share.js";
+import { buildSnapshot, cardPngBase64, type ChartBody, type ChartOptionsBody, type ChartSnapshot } from "../../services/charts/share.js";
+import { sha256Hex } from "../../services/auth.js";
 import { csvCell } from "../../services/customer-lists.js";
 import { chartRoutes, dimLabels, parseChartQuery } from "./charts.js";
 import { View } from "./saved-charts.js";
@@ -90,6 +91,7 @@ const annotationShape = (x: AnnotationRow, who: Map<string, Author>) => ({
 // ---- Share links ----------------------------------------------------------------------------------------------------------
 const ShareCreate = z.object({ chart_name: z.string().min(1).max(80), view: View.optional() }).strict();
 type ShareRow = typeof schema.chartShares.$inferSelect;
+/** The public URL's token: `cs_` and 32 base64url characters (192 random bits). Only its SHA-256 is looked up. */
 export const shareToken = () => {
   const b = crypto.getRandomValues(new Uint8Array(24));
   return `cs_${btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
@@ -98,7 +100,7 @@ const shareOrigin = (deps: Deps, c: V2Context) => (deps.apiUrl ?? deps.publicUrl
 const shareShape = (x: ShareRow, origin: string, who: Map<string, Author>) => {
   const snap = x.snapshot as unknown as ChartSnapshot;
   return {
-    object: "chart_share" as const, id: x.id, chart_name: x.chartName, title: snap.title, url: `${origin}/share/charts/${x.id}`, image_url: `${origin}/share/charts/${x.id}/og.png`,
+    object: "chart_share" as const, id: x.id, chart_name: x.chartName, title: snap.title, url: `${origin}/share/charts/${x.token}`, image_url: `${origin}/share/charts/${x.token}/og.png`,
     view: x.view, start_date: snap.start_date, end_date: snap.end_date,
     created_by: x.createdBy ? who.get(x.createdBy) ?? { id: x.createdBy, email: null, name: null } : null, created_at: x.createdAt.getTime(), revoked_at: x.revokedAt ? x.revokedAt.getTime() : null,
   };
@@ -267,14 +269,20 @@ export function chartExtraRoutes(r: V2Router, deps: Deps) {
       db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1),
     ]);
     const snapshot = buildSnapshot(def, chart, options, view, project[0]?.name ?? "", now.getTime());
-    const [row] = await db.insert(S).values({ id: shareToken(), projectId, chartName: def.name, view: view as Record<string, unknown>, snapshot: snapshot as unknown as Record<string, unknown>, createdBy: user(c), createdAt: now }).returning();
+    // The PNG preview is drawn once, here: the public og.png then serves it without drawing anything.
+    const image = await cardPngBase64(snapshot);
+    const token = shareToken();
+    const [row] = await db.insert(S).values({
+      id: newId("chartshare", 12), projectId, token, tokenHash: await sha256Hex(token), chartName: def.name, view: view as Record<string, unknown>,
+      snapshot: snapshot as unknown as Record<string, unknown>, image, createdBy: user(c), createdAt: now,
+    }).returning();
     return c.json(shareShape(row!, shareOrigin(deps, c), await authors(db, [row!.createdBy])), 201);
   });
   r.delete(`${P}/chart_shares/:share_id`, scope(WRITE), async (c) => {
     const [row] = await db.select().from(S).where(and(eq(S.projectId, c.get("projectId")), eq(S.id, c.req.param("share_id")!), isNull(S.revokedAt))).limit(1);
     if (!row) throw notFound("Share link");
     const now = deps.now();
-    await db.update(S).set({ revokedAt: now }).where(eq(S.id, row.id));
+    await db.update(S).set({ revokedAt: now }).where(and(eq(S.id, row.id), isNull(S.revokedAt)));
     return c.json({ object: "chart_share", id: row.id, deleted_at: now.getTime() });
   });
 }

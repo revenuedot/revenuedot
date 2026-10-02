@@ -1,5 +1,5 @@
 {
-  "id": "433a2534-4efa-41f9-a6fa-a002db37665f",
+  "id": "7746efdc-4797-4324-98c1-3fa51587cfbc",
   "prevId": "da643a1d-ac25-48b4-a631-f35584c6e982",
   "version": "7",
   "dialect": "postgresql",
@@ -2566,6 +2566,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "chart_name": {
           "name": "chart_name",
           "type": "text",
@@ -2584,6 +2596,12 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_by": {
           "name": "created_by",
@@ -2623,6 +2641,21 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chart_shares_token_hash": {
+          "name": "chart_shares_token_hash",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}

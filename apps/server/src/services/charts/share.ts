@@ -119,13 +119,20 @@ export function buildSnapshot(def: ChartDef, body: ChartBody, options: ChartOpti
 }
 
 // ---- Formatting ------------------------------------------------------------------------------------------------------
+// One Intl.NumberFormat per format: building one per value made a 1,000-period table take half a second.
+const formats = new Map<string, Intl.NumberFormat>();
+const numberFormat = (key: string, o: Intl.NumberFormatOptions) => {
+  let f = formats.get(key);
+  if (!f) { f = new Intl.NumberFormat("en-US", o); formats.set(key, f); }
+  return f;
+};
 export function formatValue(v: number | null, unit: string, currency: string, precision = 2): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
   if (unit === "$") {
-    try { return v.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: Math.min(precision, 2), maximumFractionDigits: Math.max(2, precision) }); } catch { return `${v.toFixed(2)} ${currency}`; }
+    try { return numberFormat(`$${currency}|${precision}`, { style: "currency", currency, minimumFractionDigits: Math.min(precision, 2), maximumFractionDigits: Math.max(2, precision) }).format(v); } catch { return `${v.toFixed(2)} ${currency}`; }
   }
-  if (unit === "%") return `${v.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
-  return v.toLocaleString("en-US", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 });
+  if (unit === "%") return `${numberFormat("%", { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(v)}%`;
+  return numberFormat(Number.isInteger(v) ? "#0" : "#2", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 }).format(v);
 }
 export function formatTick(v: number, unit: string, currency: string): string {
   const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`;
@@ -282,6 +289,14 @@ ${legend}
 <text x="1136" y="590" text-anchor="end" font-size="18" font-weight="600" letter-spacing="-0.5" fill="${LIGHT.fg}">RevenueDot</text>
 </g>
 </svg>`;
+}
+
+/** The PNG preview as base64, the way chart_shares.image keeps it (drawn once, when a link is made). */
+export async function cardPngBase64(s: ChartSnapshot): Promise<string> {
+  const bytes = await cardPng(s);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 /** The 1200×630 link preview as PNG (no fonts on Workers: the pixel font of og-png.ts). */
