@@ -1,6 +1,6 @@
 # Attribution, benchmarks and AI growth insights (Tier 3, batch H)
 
-**Status:** spec 2026-10-01, built on branch `tier3-insights`. Scope row: `prd/SCOPE.md` Tier 3, "More stores and tools: … attribution; benchmarks (cloud only, anonymized); AI growth insights". Migration `0027_attribution_benchmarks_insights` (0022, 0025 and 0026 are taken by open pull requests; its journal `when` is later than all of theirs).
+**Status:** built on branch `tier3-insights` (2026-10-02): unit, server and contract tests, a 70-check journey on a Railway development database, Playwright in the browser, and one real Workers AI (Kimi K2.6) run under `cf dev` against Railway (insights written and the digest emailed from the Worker's cron). Scope row: `prd/SCOPE.md` Tier 3, "More stores and tools: … attribution; benchmarks (cloud only, anonymized); AI growth insights". Migration `0027_attribution_benchmarks_insights` (0022, 0025 and 0026 are taken by open pull requests; its journal `when` is later than all of theirs).
 
 ## Users and jobs
 - **Jordan, the growth operator** (company `docs/marketing/positioning.md`, avatar 2) buys installs on Meta and Apple Search Ads. He wants revenue, trial conversion and lifetime value per campaign, so he can move budget to the campaigns that pay back, and he wants the same split on every chart.
@@ -24,7 +24,7 @@
 
 **Revenue by campaign** (Analytics → Attribution, `/projects/:id/attribution`): new customers cohorted by their cohort date in a date range, grouped by media source, campaign, ad group or keyword (one media source can be picked first). Columns: new customers, trial starts, paying customers, conversion to paying, revenue on day 0, by day 7, by day 30 and to date (production, USD, net of refunds, ads excluded), revenue per customer, revenue per paying customer. Cohort windows are counted from each customer's cohort date; a window that has not closed for the whole cohort is marked incomplete. A **Spend** column takes the money spent per row (typed in, kept in this browser) and shows ROAS (revenue to date ÷ spend, plus day-7 and day-30 ROAS); the CSV download includes spend and ROAS. Each row links to the Revenue chart and to Customers, filtered to that row. API: `GET /v2/projects/{id}/attribution/report`.
 
-**Customers and audiences.** The condition builder offers media source, campaign, ad group, keyword, ad and creative, with the values the project has as suggestions (`GET …/audiences/filter_options`, now read from `customer_attribution`). Conditions on these fields read the first-class row, so an Apple Search Ads campaign matches by its name (and by its id). The customer page shows an Attribution panel.
+**Customers and audiences.** The condition builder offers media source, campaign, ad group, keyword, ad and creative, with the values the project has as suggestions (`GET …/audiences/filter_options`, now read from `customer_attribution`). Conditions on these fields read the first-class row, so an Apple Search Ads campaign matches by its name once names are loaded (by its id before). The customer page shows an Attribution panel.
 
 ### 2. Benchmarks (RevenueDot Cloud only)
 **Privacy decisions.**
@@ -65,6 +65,8 @@
 - **Read-only, always.** The insights actor is marked read-only: the in-process API refuses any non-GET request from it, whatever the project's AI setting. Usage counts against the project's and the server's daily caps.
 
 ## Data (migration 0027)
+Full exports and moves (prd/moves-export) carry `customer_attribution`; the benchmark tables and `ai_insights` stay on their server, and benchmark sharing is local to a server (a moved project starts not sharing).
+
 `customer_attribution`; `projects.benchmarks_share`, `projects.benchmarks_category`, `projects.benchmarks_shared_at`; `benchmark_project_values`, `benchmark_aggregates`, `benchmark_runs`; `ai_insights`; `users.insights_emails`.
 
 ## Endpoints
@@ -77,7 +79,7 @@
 | `GET /v2/projects/{id}/ai/insights` | This week's cached insights |
 | `POST /v2/projects/{id}/ai/insights/refresh` | Generate them again now |
 | `GET /insights/unsubscribe?token=` | One-click digest opt-out |
-| `PATCH /auth/me` `{ insights_emails }` | Digest on or off for this person |
+| `POST /auth/me` `{ insights_emails }` | Digest on or off for this person (`GET /auth/me` adds `account.features`: `benchmarks`, `insights_digest`) |
 
 RevenueDot AI gets two read tools: `get-benchmarks` and `get-attribution-report`.
 
@@ -91,9 +93,17 @@ RevenueDot AI gets two read tools: `get-benchmarks` and `get-attribution-report`
 - `scripts/e2e/insights-journey.ts`: on a Railway development database of its own (dropped after), 12 projects seeded through the API and the purchase pipeline; the benchmark job, the attribution report and the insights digest, checked through the API and SQL.
 - `apps/dashboard/e2e/insights.spec.ts`: the Attribution page, chart segments by campaign, Customers filter, Benchmarks (not sharing, sharing, below 10, full), the Overview insights panel and refresh, the digest switch, phone width and dark mode, no console errors.
 
+## Verification (2026-10-02)
+- `npx vitest run --maxWorkers=2 --minWorkers=1`: the whole suite, including `packages/core/test/attribution.test.ts` (10), `benchmarks.test.ts` (15), `apps/server/test/attribution.test.ts` (6), `benchmarks.test.ts` (10), `insights.test.ts` (17) and `packages/contract/test/v2-charts-attribution.test.ts` (7).
+- `JOURNEY_PORT_BASE=5505 pnpm tsx scripts/e2e/journeys/run.ts insights`: 70 checks on the real Node server and a fresh Railway database (dropped after): SDK attributes and an AdServices token answered by the capture server; Revenue by campaign and the report equal to independent SQL; self-host refuses benchmarks; 12 sharing projects in the Cloud configuration; every published median equal to Postgres's `percentile_cont`, no group under 10 projects (annual price had 8 and was not published); opt-out removes a project at once; Refresh through the Anthropic provider (scripted Messages API) with read tools only; the digest email and its one-click opt-out on the real server.
+- `E2E_PORT=5503 pnpm --filter @revenuedot/dashboard e2e -- insights` (4 tests) and the whole Playwright suite with one worker.
+- Real model: `cf dev` with the remote `AI` binding against a Railway database: Refresh wrote 4 cited insights in 90 seconds; the Worker cron computed 12 projects' benchmarks, published 58 groups and emailed the digest. Kimi K2.6 sometimes ends a step with reasoning and no text; the no-tools retry then answers. It also once misread "below the median" for a lower-is-better metric, so the instructions now point it at `standing`, and the UI always shows the server's numbers.
+
 ## Known gaps
 - Apple Search Ads keyword names are not loaded (Apple's keyword report needs one call per ad group); keywords show Apple's id unless the app sets `$keyword`.
 - Ad spend is typed in on the Attribution page; it is not imported from Apple Search Ads, Meta or the attribution partners yet.
 - Attribution attributes keep RevenueDot's attribute rule (the newest write wins) except the AdServices and legacy iAd paths, which stay write-once; RevenueCat documents attribution as write-once.
 - Benchmarks start empty: a group shows numbers only once 10 sharing projects have enough data in it.
 - The weekly digest is in English only and has no per-project schedule.
+- In an organization that requires single sign-on (`ee/`), the scheduled run has no session, so its in-process reads are refused and that project's week is skipped; Refresh from the dashboard works (it carries the caller's session).
+- The nightly job computes each project inside the Worker's CPU limit; a very large project may be cut off, which marks it done for the day without values (it does not block the others). Precomputed daily rollups would fix both charts and benchmarks.

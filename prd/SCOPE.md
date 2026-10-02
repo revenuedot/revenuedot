@@ -67,7 +67,7 @@ Goal: the obvious default, including for regulated and very large apps.
 - **Web billing:** hosted checkout on our own Stripe Connect platform, web-to-app funnels, redemption links. Built on the developer's own Stripe app (restricted key) on branch `tier3-web-billing`: web providers and checklist, hosted checkout, purchase links, redemption links, funnels with builder and analytics, web discounts, domains (`prd/web-billing/PRD.md`); Connect OAuth is still to do.
 - **Revenue recovery:** failed-payment recovery, refund defense (Apple consumption info), win-back flows. These are priced as a share of the money recovered.
 - **AI extras:** composer mentions (`@RevenueDot`), a `.storekit` file viewer that imports products, a shareable first-sale card, tools that write to App Store Connect and Google Play.
-- **More stores and tools:** Paddle, Roku, Galaxy; attribution; benchmarks (cloud only, anonymized); AI growth insights.
+- **More stores and tools:** Paddle, Roku, Galaxy; attribution; benchmarks (cloud only, anonymized); AI growth insights. Attribution, opt-in benchmarks and weekly growth insights are built on branch `tier3-insights` (`prd/attribution-benchmarks-insights/PRD.md`).
 
 ## Where the value is, in build order
 1. **Contract test harness** from the upstream fixtures and a real-SDK sample app. Everything else is measured against it.
