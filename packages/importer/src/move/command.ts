@@ -80,7 +80,8 @@ export async function moveCommand(v: MoveOptions, io: MoveIO): Promise<number> {
   if (!s || s.phase === "done" || s.dryRun || v["dry-run"]) s = newMoveState(source.label, target.url, mode, !!v["dry-run"]);
   else if (s.mode !== mode) s = { ...s, ...newMoveState(source.label, target.url, mode), importId: s.importId };
   // The passphrase lives in memory only. A copy whose export has not reached the target yet starts a new export with a new one.
-  if (s.phase === "export" || s.phase === "plan") s.exportId = undefined;
+  // A run that stopped at the plan (a wrong token, the target down) starts over at the export, which needs a new one.
+  if (s.phase === "export" || s.phase === "plan") s = { ...s, phase: "export", exportId: undefined };
   const passphrase = randomPassphrase();
   const save = (st: MoveState) => saveState(statePath, st);
   let lastProgress = "";

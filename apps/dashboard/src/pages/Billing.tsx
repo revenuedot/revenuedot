@@ -76,9 +76,9 @@ export function BillingPage() {
           <div className="stack">
             {b.flags.includes("past_due") && <div className="banner err" role="alert">Your last payment failed. Stripe tries again over the next days; your apps keep working. <button type="button" className="link-u" onClick={() => go("portal")}>Update your card</button>.</div>}
             {b.flags.includes("unpaid") && <div className="banner err" role="alert">We could not collect your payment, so your account is back on Cloud Free. Your apps keep working. Upgrade again below.</div>}
-            {b.flags.includes("over_free_limit") && <div className="banner warn" role="status">Your apps tracked {fmt.usd(b.usage.tracked_revenue_usd)} this month, above Cloud Free's {fmt.usd(b.usage.free_limit_usd)}. Nothing stops working; upgrade to Cloud Standard ({fmt.usd(b.usage.standard_bill_usd, true)} this month so far).</div>}
+            {b.flags.includes("over_free_limit") && b.stripe_ready && <div className="banner warn" role="status">Your apps tracked {fmt.usd(b.usage.tracked_revenue_usd)} this month, above Cloud Free's {fmt.usd(b.usage.free_limit_usd)}. Nothing stops working; upgrade to Cloud Standard ({fmt.usd(b.usage.standard_bill_usd, true)} this month so far).</div>}
             {b.flags.includes("over_standard_limit") && <div className="banner warn" role="status">Your apps tracked more than {fmt.usd(b.usage.ceiling_usd)} this month. Write to <a href="mailto:hello@revenuedot.app">hello@revenuedot.app</a> to move to Enterprise.</div>}
-            {!b.stripe_ready && <div className="banner" role="status">{b.stripe_problem}</div>}
+            {!b.stripe_ready && <div className="banner" role="status">Billing is not switched on yet: RevenueDot Cloud is free for every account until it is.</div>}
             {error && <div className="banner err" role="alert">{error}</div>}
 
             <section className="bl-grid" aria-label="This month">

@@ -208,9 +208,9 @@ function MovePanel({ pid, state }: { pid: string; state: MoveState }) {
             {m.report && (
               <div className="stack">
                 <b>Next steps</b>
-                <p className="section-sub">Point your app at <span className="mono">{m.target_url}</span> in your next release (Purchases.proxyURL). Until then this server forwards. Change these store notification URLs; this server forwards notifications in the meantime:</p>
-                <div className="tbl"><table><thead><tr><th>App</th><th>New URL</th><th className="hide-sm">Where</th></tr></thead>
-                  <tbody>{m.report.notification_urls.map((n) => <tr key={n.app_id}><td>{n.app_name}</td><td className="mono">{n.url}</td><td className="hide-sm subtle">{n.where}</td></tr>)}</tbody></table></div>
+                <p className="section-sub">Point your app at <span className="mono">{m.target_url}</span> in your next release (Purchases.proxyURL). Until then this server forwards.{m.report.notification_urls.length > 0 && " Change these store notification URLs; this server forwards notifications in the meantime:"}</p>
+                {m.report.notification_urls.length > 0 && <div className="tbl"><table><thead><tr><th>App</th><th>New URL</th><th className="hide-sm">Where</th></tr></thead>
+                  <tbody>{m.report.notification_urls.map((n) => <tr key={n.app_id}><td>{n.app_name}</td><td className="mono">{n.url}</td><td className="hide-sm subtle">{n.where}</td></tr>)}</tbody></table></div>}
                 {m.report.members_to_invite.length > 0 && <p className="section-sub">Invite on the new server: {m.report.members_to_invite.map((x) => `${x.email} (${x.role})`).join(", ")}.</p>}
                 {(m.report.domains_to_verify?.length ?? 0) > 0 && <p className="section-sub">Verify your custom domain again on the new server (Project settings → Domains shows its TXT value; point the CNAME there): {m.report.domains_to_verify!.join(", ")}.</p>}
               </div>

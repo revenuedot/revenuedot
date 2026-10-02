@@ -135,6 +135,11 @@ describe("npx revenuedot move", () => {
     const wrong = await cli(["move", "--from", "http://source.test", "--to", "http://target.test", "--state", join(dir, "s.json")], { REVENUEDOT_FROM_KEY: src.ids.secretKey, REVENUEDOT_TO_TOKEN: `rdi_${"0".repeat(64)}` });
     expect(wrong.code).toBe(1);
     expect(wrong.err).toMatch(/import token/);
+    // The same command with the right token, same state file: it exports again and moves.
+    const token = (await createImportToken(dst.db, "usr_t", src.now())).token;
+    const right = await cli(["move", "--from", "http://source.test", "--to", "http://target.test", "--state", join(dir, "s.json")], { REVENUEDOT_FROM_KEY: src.ids.secretKey, REVENUEDOT_TO_TOKEN: token });
+    expect(right.code, right.err).toBe(0);
+    expect(right.out).toMatch(/All 64 tables match/);
   });
 });
 

@@ -61,7 +61,7 @@ export function ReceiveProject() {
             {live.map((i) => (
               <div key={i.id} className="hrow" data-import={i.id}>
                 <span className="mono">{i.project_id ?? "…"}</span>
-                {i.status === "finished" ? <Tag tone="up">Live</Tag> : i.status === "importing" ? <Tag tone="info">Copying {Object.keys(i.files_done).length}/{i.files_total}</Tag> : <Tag>{i.status}</Tag>}
+                {i.status === "finished" ? <Tag tone="up">Live</Tag> : i.status === "importing" ? <Tag tone="info">{i.files_total && Object.keys(i.files_done).length >= i.files_total ? "Copied, not live yet" : `Copying ${Object.keys(i.files_done).length}/${i.files_total}`}</Tag> : <Tag>{i.status}</Tag>}
                 {i.source_url && <span className="subtle">from {i.source_url}</span>}
                 {i.project_id && (i.status === "finished" || i.status === "importing") && <Link to={`/projects/${i.project_id}/overview`} onClick={() => qc.invalidateQueries({ queryKey: ["me"] })}>Open</Link>}
               </div>
