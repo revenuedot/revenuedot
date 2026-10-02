@@ -100,7 +100,7 @@ npx revenuedot move --from http://old-server:8787 --to https://api.revenuedot.ap
 - `--from-archive <file.tar>` reads an archive downloaded with `npx revenuedot export` instead of a server.
 - Exit codes: 0 done, 1 failed or verification found differences, 2 usage error, 130 cancelled.
 
-`npx revenuedot export --from <url> [--out file.tar] [--passphrase-prompt]` creates an export, waits, and saves the archive.
+`npx revenuedot export --from <url> [--out file.tar] [--include-secrets]` (the passphrase is asked with hidden input, or `REVENUEDOT_EXPORT_PASSPHRASE`) creates an export, waits, and saves the archive.
 
 ## 5. Store notification URLs
 The paths keep the app id, so only the host changes: `<new server>/v1/notifications/{apple|google|amazon|stripe}/{app_id}`. The finish answer and the CLI print, per app, where to change it: App Store Connect → App Information → App Store Server Notifications (production and sandbox URL), Play Console → Monetize → Monetization setup → Real-time developer notifications (the Pub/Sub push subscription's endpoint), Amazon Developer Console → Real-time Notifications (SNS subscription), Stripe Dashboard → Developers → Webhooks. Until they change, the old server forwards each notification (forwarded state), so nothing is lost.
@@ -112,7 +112,8 @@ The paths keep the app id, so only the host changes: `<new server>/v1/notificati
 
 ## Tests that prove it
 - `apps/server/test/archive.test.ts`: a project seeded with every table exports and imports into a fresh database; every table's rows compare equal (secrets with a passphrase; without one the secret columns are empty and webhooks get new signing secrets); checksums match on both sides; resume after a part; a wrong passphrase is refused; a newer schema is refused.
-- `apps/server/test/move.test.ts`: two in-process servers on two databases; `revenuedot move` (dry run diff, copy, verify, finish); the source forwards SDK calls and notifications; paused answers 503; the tick skips moving projects; cancel restores the source.
+- `apps/server/test/archive.test.ts` (move states): finish pauses the source, puts the target live and forwards SDK calls, notifications and REST calls; a forwarding loop answers 508; the dashboard's server-run move (dry run, copy, verify, finish).
+- `packages/importer/test/move.test.ts`: two in-process servers on two databases; `revenuedot move` (dry run diff, copy, verify, finish with forwarding), bad keys and tokens refused before any work, `revenuedot export` to a tar that then moves into another server.
 - Journey `scripts/e2e/journeys/move.ts`: two real Node servers on two Railway development databases; the unmodified purchases-js buys in Chromium before the move, `npx revenuedot move` moves the project, the old app build (still pointing at the old server) and a new build (pointing at the new one) both see the entitlement, a second purchase on the new server delivers a webhook signed with the original secret.
 - Playwright `apps/dashboard/e2e/moves.spec.ts`: export and download, receive token, move with dry run, copy, verify and finish between two projects on the e2e server.
 

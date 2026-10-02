@@ -28,6 +28,8 @@ function watch(page: Page) {
   return errors;
 }
 async function fits(page: Page, name: string) {
+  // SHOTS=<dir> also saves the page at desktop width (README and docs screenshots).
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${name}.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(150);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name} fits 390px`).toBe(true);

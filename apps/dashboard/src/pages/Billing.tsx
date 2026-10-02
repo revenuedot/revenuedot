@@ -82,7 +82,7 @@ export function BillingPage() {
             {error && <div className="banner err" role="alert">{error}</div>}
 
             <section className="bl-grid" aria-label="This month">
-              <div><span className="l">Plan</span><span className="v">{current?.name ?? "Cloud Free"}</span><span className="d"><Tag tone={STATUS[b.account.status]?.tone ?? "muted"}>{STATUS[b.account.status]?.label ?? b.account.status}</Tag>{b.account.cancel_at && <span className="subtle"> Ends {fmt.date(b.account.cancel_at)}</span>}</span></div>
+              <div><span className="l">Plan</span><span className="v name">{current?.name ?? "Cloud Free"}</span><span className="d"><Tag tone={STATUS[b.account.status]?.tone ?? "muted"}>{STATUS[b.account.status]?.label ?? b.account.status}</Tag>{b.account.cancel_at && <span className="subtle"> Ends {fmt.date(b.account.cancel_at)}</span>}</span></div>
               <div><span className="l">Tracked revenue, {monthName(b.usage.month)}</span><span className="v" data-tracked>{fmt.usd(b.usage.tracked_revenue_usd, true)}</span>
                 {limit ? <><Meter value={b.usage.tracked_revenue_usd} max={limit} label="Tracked revenue against the plan's limit" /><span className="d mono">{Math.round((b.usage.tracked_revenue_usd / limit) * 100)}% of {fmt.usd(limit)}</span></> : <span className="d">No limit</span>}</div>
               <div><span className="l">Bill so far</span><span className="v" data-bill>{b.account.plan === "enterprise" ? "By contract" : fmt.usd(b.usage.bill_usd, true)}</span><span className="d">{b.account.plan === "standard" ? `0.5% above ${fmt.usd(b.usage.free_limit_usd)}, at most ${fmt.usd(b.usage.cap_usd)}` : b.account.plan === "free" ? `${fmt.usd(b.usage.standard_bill_usd, true)} on Cloud Standard` : ""}</span></div>

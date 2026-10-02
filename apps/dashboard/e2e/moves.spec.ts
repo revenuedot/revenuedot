@@ -30,6 +30,8 @@ function watch(page: Page) {
   return errors;
 }
 async function fits(page: Page, name: string) {
+  // SHOTS=<dir> also saves the page at desktop width (README and docs screenshots).
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${name}.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(150);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name} fits 390px`).toBe(true);
@@ -169,6 +171,7 @@ test("move to Cloud: check (nothing written), copy and verify, finish; the old s
   await page.getByRole("button", { name: "Copy data" }).click();
   await expect(page.getByText("Copied", { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText(/Verified: all 64 tables and [\d,]+ rows match/)).toBeVisible();
+  await fits(page, "move-copied");
   // On Cloud the copy exists but is held: the project is incoming, and its dashboard says so.
   const cloudProjects = (await json(cloudReq, "GET", "/auth/me")).projects;
   expect(cloudProjects.map((p: { id: string }) => p.id)).toContain(pid);
