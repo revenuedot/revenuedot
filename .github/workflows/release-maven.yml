@@ -47,7 +47,19 @@ jobs:
             if curl -fsS "$ks" 2>/dev/null | grep -q "BEGIN PGP PUBLIC KEY BLOCK"; then echo "found on $ks"; found=1; fi
           done
           # Central checks signatures against these keyservers and rejects the deployment when the key is missing.
-          [ -n "$found" ] || { echo "::error::Public key $fpr is on no keyserver Central reads (keyserver.ubuntu.com, keys.openpgp.org). Upload it, then rerun."; exit 1; }
+          # Upload the public half when it is missing (the private key never leaves the runner), then wait for it.
+          if [ -z "$found" ]; then
+            printf '%s\n' "$KEY" | gpg --batch --import 2>/dev/null
+            gpg --armor --export "$fpr" > "$RUNNER_TEMP/public.asc"
+            grep -q "BEGIN PGP PUBLIC KEY BLOCK" "$RUNNER_TEMP/public.asc"
+            curl -fsS --data-urlencode "keytext@$RUNNER_TEMP/public.asc" https://keyserver.ubuntu.com/pks/add >/dev/null
+            echo "uploaded public key $fpr to keyserver.ubuntu.com"
+            for i in $(seq 1 30); do
+              curl -fsS "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$fpr" 2>/dev/null | grep -q "BEGIN PGP PUBLIC KEY BLOCK" && { found=1; break; }
+              sleep 10
+            done
+          fi
+          [ -n "$found" ] || { echo "::error::Public key $fpr is on no keyserver Central reads (keyserver.ubuntu.com, keys.openpgp.org)."; exit 1; }
 
       - name: Publish and release
         working-directory: ${{ inputs.directory }}
