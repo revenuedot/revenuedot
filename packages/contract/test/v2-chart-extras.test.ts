@@ -46,6 +46,8 @@ function chartTotal(name: string, body: any, selectors: Record<string, string> =
     for (const v of body.values) if (v.period === 0) cohorts.set(v.cohort, v.value ?? 0);
     return [...cohorts.values()].reduce((s, v) => s + v, 0);
   }
+  // One measure (daily monetized customers): its daily values add up to the monetized days the tab lists.
+  if (name === "ad_monetized_customers") return body.values.reduce((s: number, v: any) => s + (v.value ?? 0), 0);
   if (name === "subscription_status") {
     const last = Math.max(...body.values.map((v: any) => v.cohort));
     return body.values.filter((v: any) => v.cohort === last).reduce((s: number, v: any) => s + (v.value ?? 0), 0);
@@ -65,7 +67,9 @@ describe("chart customers", () => {
       expect(r.body).toMatchObject({ object: "chart_customers", chart_name: c.name, total_count: r.body.items.length });
       if (c.name === "app_store_save_outcomes") { expect(r.body.items).toEqual([]); continue; }
       const sum = r.body.items.reduce((s: number, x: any) => s + x.value, 0) + r.body.unattributed_value;
-      const target = c.name === "ad_monetized_customers" || c.name === "ad_arpdau" ? chartTotal("ad_revenue", (await chart("ad_revenue")).body) : chartTotal(c.name, (await chart(c.name, q)).body);
+      // Ad Monetized Customers lists monetized days, which add up to the daily chart; ARPDAU (a ratio) lists its numerator.
+      const target = c.name === "ad_monetized_customers" ? chartTotal(c.name, (await chart(c.name, "resolution=0&start_date=2026-05-01&end_date=2026-09-01")).body)
+        : c.name === "ad_arpdau" ? chartTotal("ad_revenue", (await chart("ad_revenue")).body) : chartTotal(c.name, (await chart(c.name, q)).body);
       expect(sum, c.name).toBeCloseTo(target, 2);
     }
   });

@@ -76,12 +76,17 @@ function input(): ChartInput {
 }
 const req = (o: Partial<ChartRequest> = {}): ChartRequest => ({ resolution: "month", rangeStart: T("2026-01-01"), rangeEnd: T("2026-07-01"), expand: false, selectors: {}, ...o });
 
+/** The sum of a time series' first measure over its periods. */
+const sumOfFirst = (o: ChartOutput) => (o.kind === "series" ? o.points.reduce((s, p) => s + (p.values[0] ?? 0), 0) : NaN);
+
 /** What the listed values must add up to, read from the chart's own output. */
 function expected(def: ChartDef, out: ChartOutput, selectors: Record<string, string> = {}): number {
   const { measure, sum } = contributorsMeasure(def, selectors);
   if (out.kind === "cohort") return out.rows.reduce((s, r) => s + (r.cells[0]?.value ?? 0), 0);
   if (def.name === "subscription_status") { const last = out.points[out.points.length - 1]!; return last.values.reduce<number>((s, v) => s + (v ?? 0), 0); }
-  if (def.name === "ad_monetized_customers" || def.name === "ad_arpdau") return expected(chartDef("ad_revenue")!, runChart(chartDef("ad_revenue")!, input(), req()).output);
+  // Ad Monetized Customers: monetized days add up to the daily chart's sum. ARPDAU (a ratio) lists its numerator.
+  if (def.name === "ad_monetized_customers") return sumOfFirst(runChart(def, input(), req({ resolution: "day" })).output);
+  if (def.name === "ad_arpdau") return expected(chartDef("ad_revenue")!, runChart(chartDef("ad_revenue")!, input(), req()).output);
   const j = out.measures.findIndex((m) => m.id === measure!.id);
   expect(j, `${def.name}: the chart has the measure ${measure!.id}`).toBeGreaterThanOrEqual(0);
   const vals = out.points.map((p) => p.values[j] ?? 0);
@@ -158,6 +163,24 @@ describe("chart contributors", () => {
     const c = chartContributors(def, inp, req());
     expect(c.unattributed).toBeCloseTo(0.5, 6);
     expect(total(c.rows) + c.unattributed).toBeCloseTo(expected(def, runChart(def, inp, req()).output), 6);
+    // Segmented by a purchase dimension, ad events pass every segment: the amount is still the Total's, counted once.
+    const byProduct = chartContributors(def, inp, req(), { segment: "product" });
+    expect(new Set(byProduct.rows.map((r) => r.segment)).size).toBeGreaterThan(1);
+    expect(byProduct.unattributed).toBeCloseTo(0.5, 6);
+  });
+
+  it("Ad Monetized Customers lists each customer's days with ad revenue, once per day", () => {
+    const inp = input();
+    inp.sdkEvents.push({ customerId: "A", appId: "ios", type: "rc_ads_ad_revenue", at: T("2026-05-15T18:00:00Z"), revenueUsd: 0.01 });
+    inp.sdkEvents.push({ customerId: "A", appId: "ios", type: "rc_ads_ad_revenue", at: T("2026-05-17T09:00:00Z"), revenueUsd: 0.01 });
+    inp.sdkEvents.push({ customerId: null, appId: "ios", type: "rc_ads_ad_revenue", at: T("2026-05-17T09:00:00Z"), revenueUsd: 0.5 });
+    const def = chartDef("ad_monetized_customers")!;
+    const c = chartContributors(def, inp, req());
+    expect(c.measure).toMatchObject({ id: "monetized_days", unit: "#" });
+    expect(Object.fromEntries(c.rows.map((r) => [r.customerId, r.value]))).toEqual({ A: 2, H: 1 });
+    expect(c.rows.find((r) => r.customerId === "A")!.at).toBe(T("2026-05-17T09:00:00Z"));
+    expect(c.unattributed).toBe(0);
+    expect(total(c.rows)).toBeCloseTo(sumOfFirst(runChart(def, inp, req({ resolution: "day" })).output), 6);
   });
 
   it("subscription status follows its measure selector; cohort explorer lists the cohort", () => {

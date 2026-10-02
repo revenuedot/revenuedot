@@ -80,13 +80,27 @@ const adTypes: Record<string, string[]> = {
 const adValue = (chart: string, type: string, revenue: number) =>
   chart === "ad_impressions" ? 1 : chart === "ad_clicks" || chart === "ad_ctr" ? (type === "rc_ads_ad_opened" ? 1 : 0) : chart === "ad_fill_rate" ? 1 : type === "rc_ads_ad_revenue" ? revenue : 0;
 const AD_REVENUE = synthetic("ad_revenue", "Ad Revenue", "$", "Ad revenue the SDK reported for the customer.");
+// Ad Monetized Customers averages, over each period's days, the customers with ad revenue that day: a customer's part
+// is the days they had some, which add up to the sum of the daily counts (the chart's value × the period's days).
+const MONETIZED_DAYS = synthetic("monetized_days", "Monetized Days", "#", "Days with at least one ad revenue event. The chart's value for a period is the sum of these over its days, divided by the number of days.");
 const ads = (chart: string): Spec => ({
-  measure: (def) => ({ ad_revenue: byId("ad_revenue")(def), ad_rpm: byId("ad_revenue")(def), ad_impressions: byId("impressions")(def), ad_clicks: byId("clicks")(def), ad_ctr: byId("clicks")(def), ad_fill_rate: byId("requests")(def) } as Record<string, MeasureDef | null>)[chart] ?? AD_REVENUE,
+  // ARPDAU is a ratio with no measure that adds up: its tab lists ad revenue, the ratio's numerator.
+  measure: (def) => ({ ad_revenue: byId("ad_revenue")(def), ad_rpm: byId("ad_revenue")(def), ad_impressions: byId("impressions")(def), ad_clicks: byId("clicks")(def), ad_ctr: byId("clicks")(def), ad_fill_rate: byId("requests")(def), ad_monetized_customers: MONETIZED_DAYS } as Record<string, MeasureDef | null>)[chart] ?? AD_REVENUE,
   sum: "total", dateLabel: "Latest ad event",
   run: (d, f, _sel, a) => {
     const types = new Set(adTypes[chart]);
-    for (const w of windows(f)) for (const e of H.within(d.sdkByTime, H.atOf, w)) {
-      if (types.has(e.type)) a.add(e.customerId, e.at, adValue(chart, e.type, (e.revenueUsd ?? 0) * d.input.fx(e.at)));
+    for (const w of windows(f)) {
+      // compute.ts counts a customer once per UTC day with ad revenue; events without a customer are not counted.
+      const days = new Set<string>();
+      for (const e of H.within(d.sdkByTime, H.atOf, w)) {
+        if (!types.has(e.type)) continue;
+        if (chart === "ad_monetized_customers") {
+          if (!e.customerId) continue;
+          const k = `${e.customerId}|${dayStart(e.at)}`;
+          a.add(e.customerId, e.at, days.has(k) ? 0 : 1);
+          days.add(k);
+        } else a.add(e.customerId, e.at, adValue(chart, e.type, (e.revenueUsd ?? 0) * d.input.fx(e.at)));
+      }
     }
   },
 });
@@ -292,17 +306,20 @@ export function chartContributors(def: ChartDef, input: ChartInput, req: ChartRe
   const { measure, sum, dateLabel } = contributorsMeasure(def, req.selectors);
   const sel = { ...Object.fromEntries(def.selectors.map((s) => [s.id, s.default])), ...req.selectors };
   const frame = new Frame(req, input.now);
-  let unattributed = 0;
-  const compute = (inp: ChartInput) => { const a = acc(); spec.run(new Prepared(inp), frame, sel, a); unattributed += a.unattributed(); return a.rows(); };
+  const compute = (inp: ChartInput) => { const a = acc(); spec.run(new Prepared(inp), frame, sel, a); return { rows: a.rows(), unattributed: a.unattributed() }; };
   const filtered = restrict(input, opts.filters ?? []);
   let rows: Contributor[];
-  if (!opts.segment) rows = compute(filtered);
+  let unattributed: number;
+  if (!opts.segment) ({ rows, unattributed } = compute(filtered));
   else {
     const dim = opts.segment;
     const segs = runChart(def, input, req, opts).segments ?? [];
     const top = segs.filter((s) => !s.isOther).map((s) => s.id);
-    rows = segs.flatMap((s) => compute(restrict(filtered, [s.isOther ? { name: dim, values: top, exclude: true } : { name: dim, values: [s.id] }]))
+    rows = segs.flatMap((s) => compute(restrict(filtered, [s.isOther ? { name: dim, values: top, exclude: true } : { name: dim, values: [s.id] }])).rows
       .map((r) => ({ ...r, segment: s.id, ...(s.isOther ? { segmentOther: true } : {}) })));
+    // What belongs to no customer in the chart's Total. Summing it over segments counted ad revenue once per segment
+    // when the segment is a purchase dimension (store, product, offering), which ad events pass in every segment.
+    unattributed = compute(filtered).unattributed;
   }
   rows.sort((x, y) => y.at - x.at || (x.customerId < y.customerId ? -1 : x.customerId > y.customerId ? 1 : 0));
   return { measure, sum, dateLabel, rows, unattributed };
