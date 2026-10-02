@@ -1,15 +1,14 @@
 /**
  * Products: /projects/:projectId/product-catalog/products and /products/:productId
- * Grouped by app like RevenueCat: display name over the store identifier (an Archived tag when archived), type, duration,
- * entitlements, created.
+ * Grouped by app like RevenueCat: the price or display name over the store identifier (an Archived tag when archived), type,
+ * duration, store status, entitlements, created.
  *
  * "Import products" (page head, and "Import" on each App Store, Google Play and Stripe app group) opens ImportProductsDialog.
+ * Rows lead with the store price and period ("$89.99/year", prd/catalog/PRD.md "Store prices and status") over the
+ * identifier, with the store's status; each App Store and Google Play group says where its prices come from, with
+ * Refresh. "Product editor" opens the CSV editor; "New product" offers Create from scratch and Create with AI.
  *
- * GAPS versus RevenueCat's dashboard (later tiers):
- * - The "Product editor" (store-side price and metadata editing) is Tier 2.
- * - Price labels ("$9.99/week") come from the store APIs in RevenueCat; the import does not read Apple or Google prices yet,
- *   so we show the duration.
- *   Test Store products have a price set here (the detail page shows it; the SDK reads it).
+ * GAPS versus RevenueCat's dashboard:
  * - RevenueCat's "…" menu on each app group (app shortcuts) is left out; the Apps page owns app settings.
  */
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
@@ -19,8 +18,11 @@ import { Copy, Shell } from "../../components/Shell";
 import { ConfirmDialog, Dialog, EmptyState, Field, KeyValue, Menu, PageHead, Panel, Segmented, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { IMPORT_STORES, ImportProductsDialog } from "./ImportProducts";
-import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog, ProductCell } from "./parts";
-import { count, durationLabel, errMsg, isConflict, lookupKeyError, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, v2, type Entitlement, type Offering, type Product } from "./lib";
+import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog } from "./parts";
+import { PRICE_STORES, count, durationLabel, errMsg, isConflict, lookupKeyError, priceAndPeriod, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, useStorePrices, v2, type Entitlement, type Offering, type Product } from "./lib";
+import { NewMenu, PriceCell, PriceSource, StoreStatus, useCanEdit } from "./store-parts";
+import { CreateWithAiDialog } from "./CreateWithAi";
+import { StorePricesPanel } from "./StorePrices";
 
 type Filter = "all" | "active" | "inactive";
 
@@ -83,6 +85,10 @@ export function ProductsPage() {
   const [q, setQ] = useState("");
   const [newFor, setNewFor] = useState<string | null | undefined>(undefined);
   const [importFor, setImportFor] = useState<string | null | undefined>(undefined);
+  const [withAi, setWithAi] = useState(false);
+  const prices = useStorePrices(pid);
+  const canEdit = useCanEdit(pid);
+  const canEditStore = (apps.data ?? []).some((a) => PRICE_STORES.has(a.type));
   const canImport = (apps.data ?? []).some((a) => IMPORT_STORES.has(a.type) && a.type !== "amazon");
   const base = `/projects/${pid}/product-catalog`;
   const all = products.data ?? [];
@@ -99,7 +105,7 @@ export function ProductsPage() {
   );
   else if (!all.length) body = (
     <EmptyState title="No products yet" text={canImport ? "Import the products you already set up in App Store Connect, Google Play or Stripe, or create one by its store identifier. Then attach them to an entitlement and group them into an offering." : "Create your first product with its store identifier, then attach it to an entitlement and group products into an offering."}
-      action={<div className="hrow">{canImport && <button type="button" className="btn btn-dark" onClick={() => setImportFor(null)}><Icon name="download" />Import products</button>}<button type="button" className={canImport ? "btn btn-line" : "btn btn-dark"} onClick={() => setNewFor(null)}><Icon name="plus" />New product</button></div>} />
+      action={<div className="hrow">{canImport && <button type="button" className="btn btn-dark" onClick={() => setImportFor(null)}><Icon name="download" />Import products</button>}<NewMenu pid={pid} what="product" variant={canImport ? "line" : "dark"} onScratch={() => setNewFor(null)} onAi={() => setWithAi(true)} /></div>} />
   );
   else body = (
     <>
@@ -113,13 +119,14 @@ export function ProductsPage() {
         return (
           <section className="panel" key={a.id} aria-label={`${a.name} products`}>
             <div className="ph"><AppName app={a} sub /><span className="hrow">{IMPORT_STORES.has(a.type) && a.type !== "amazon" && <button type="button" className="btn btn-ghost" aria-label={`Import products into ${a.name}`} onClick={() => setImportFor(a.id)}><Icon name="download" />Import</button>}<button type="button" className="btn btn-ghost" onClick={() => setNewFor(a.id)}><Icon name="plus" />New</button></span></div>
+            {PRICE_STORES.has(a.type) && <PriceSource pid={pid} app={a} sync={prices.data?.apps.find((x) => x.app_id === a.id)} canEdit={canEdit} />}
             {!rows.length ? (
               <div className="pb cat-note">{total ? (needle ? "No products match your search." : `No ${filter} products for this app.`) : <>No products for this app yet. <button type="button" className="cat-lnk" onClick={() => setNewFor(a.id)}>Add one</button>.</>}</div>
             ) : (
               <div className="tbl">
-                {/* Product takes what is left; the other columns are sized for their longest value. Below 1100px type and duration move under the name, so the product keeps room; phones also drop Created. */}
+                {/* Product takes what is left; the other columns are sized for their longest value. Below 1100px type and duration move under the name, so the product keeps room; phones keep product, status and actions. */}
                 <table className="cat-ptable">
-                  <thead><tr><th>Product</th><th className="cat-w-type cat-hide-md">Type</th><th className="cat-w-dur cat-hide-md">Duration</th><th className="cat-w-ent">Entitlements</th><th className="cat-w-date cat-hide-sm">Created</th><th className="cat-w-act amt"><span className="sr">Actions</span></th></tr></thead>
+                  <thead><tr><th>Product</th><th className="cat-w-type cat-hide-md">Type</th><th className="cat-w-dur cat-hide-md">Duration</th><th className="cat-w-stat">Status</th><th className="cat-w-ent cat-hide-sm">Entitlements</th><th className="cat-w-date cat-hide-sm">Created</th><th className="cat-w-act amt"><span className="sr">Actions</span></th></tr></thead>
                   <tbody>
                     {rows.map((p) => {
                       const ents = usage.entsBy.get(p.id) ?? [];
@@ -127,12 +134,13 @@ export function ProductsPage() {
                       return (
                         <tr key={p.id} className="row" tabIndex={0} onClick={() => nav(`${base}/products/${p.id}`)} onKeyDown={(e) => { if (e.key === "Enter") nav(`${base}/products/${p.id}`); }}>
                           <td>
-                            <span className="cat-prodcell"><ProductCell p={p} to={`${base}/products/${p.id}`} />{p.state !== "active" && <Tag>Archived</Tag>}</span>
+                            <PriceCell p={p} to={`${base}/products/${p.id}`} archived={p.state !== "active"} />
                             <span className="cat-show-md cat-s">{typeLabel(p.type)}{p.type === "subscription" ? ` · ${dur}` : ""}</span>
                           </td>
                           <td className="cat-hide-md">{typeLabel(p.type)}</td>
                           <td className="num cat-hide-md">{dur}</td>
-                          <td className={`cat-ents${ents.length ? "" : " subtle"}`} title={ents.length ? ents.map((e) => e.lookup_key).join(", ") : "Buying this product unlocks nothing yet"}>
+                          <td><StoreStatus p={p} app={a} /></td>
+                          <td className={`cat-ents cat-hide-sm${ents.length ? "" : " subtle"}`} title={ents.length ? ents.map((e) => e.lookup_key).join(", ") : "Buying this product unlocks nothing yet"}>
                             {!usage.loaded ? "…" : !ents.length ? "None" : <span className="cat-entkey"><span className="mono">{ents[0]!.lookup_key}</span>{ents.length > 1 && <span className="subtle"> +{ents.length - 1}</span>}</span>}
                           </td>
                           <td className="num cat-hide-sm">{fmt.date(p.created_at)}</td>
@@ -154,11 +162,16 @@ export function ProductsPage() {
     <Shell title="Products" crumbs={<CatalogCrumbs pid={pid} section="Products" />}>
       <div className="page">
         <PageHead title="Products" sub="The in-app purchases you set up in each store. Attach them to entitlements to unlock access, and add them to offerings to sell them."
-          actions={apps.data?.length ? <>{canImport && <button type="button" className="btn btn-line" onClick={() => setImportFor(null)}><Icon name="download" />Import products</button>}<button type="button" className="btn btn-dark" onClick={() => setNewFor(null)}><Icon name="plus" />New product</button></> : undefined} />
+          actions={apps.data?.length ? <>
+            {canEditStore && <Link className="btn btn-line" to={`${base}/product-editor`}><Icon name="edit" />Product editor<span className="cat-beta">Beta</span></Link>}
+            {canImport && <button type="button" className="btn btn-line" onClick={() => setImportFor(null)}><Icon name="download" />Import products</button>}
+            <NewMenu pid={pid} what="product" onScratch={() => setNewFor(null)} onAi={() => setWithAi(true)} />
+          </> : undefined} />
         {body}
       </div>
       {importFor !== undefined && apps.data && <ImportProductsDialog pid={pid} apps={apps.data} appId={importFor ?? undefined} onClose={() => setImportFor(undefined)} />}
       {newFor !== undefined && apps.data && <NewProductDialog pid={pid} apps={apps.data} appId={newFor ?? undefined} onClose={() => setNewFor(undefined)} onCreated={() => setFilter((f) => (f === "inactive" ? "active" : f))} />}
+      {withAi && apps.data && <CreateWithAiDialog pid={pid} what="product" apps={apps.data} onClose={() => setWithAi(false)} />}
       {actions.dialog}
     </Shell>
   );
@@ -202,10 +215,15 @@ export function ProductDetail() {
         ["Type", typeLabel(p.type)],
         ...(p.type === "subscription" ? [["Duration", p.subscription?.duration ? <span key="d">{durationLabel(p.subscription.duration)} <span className="mono subtle">{p.subscription.duration}</span></span> : <span key="d" className="subtle">Not set. Edit the product to set it; MRR uses it.</span>] as [string, ReactNode]] : []),
         ...(app?.type === "test_store" ? [["Test Store price", p.indicative_price ? <span key="tp" className="mono">{priceLabel(p.indicative_price)}</span> : <span key="tp" className="subtle">None. The SDK shows USD 0.00; edit the product to set a price.</span>] as [string, ReactNode]] : []),
+        ...(app && PRICE_STORES.has(app.type) ? [
+          ["Store price", priceAndPeriod(p) ? <span key="sp" className="mono">{priceAndPeriod(p)}{p.store_details?.price?.territory ? <span className="subtle"> · {p.store_details.price.territory}</span> : null}</span> : <span key="sp" className="subtle">{p.store_details ? "No price in the store yet." : "Not read from the store yet."}</span>] as [string, ReactNode],
+          ["Store status", <StoreStatus key="ss" p={p} app={app} />] as [string, ReactNode],
+        ] : []),
         ["Display name", p.display_name || <span key="n" className="subtle">None</span>],
         ["Status", p.state === "active" ? <Tag tone="up">Active</Tag> : <Tag>Archived</Tag>],
         ["Created", <span key="c" className="mono">{fmt.dateTime(p.created_at)}</span>],
       ]} />
+      {app && PRICE_STORES.has(app.type) && <StorePricesPanel pid={pid} app={app} product={p} />}
       <Panel flush title="Entitlements" link={<button type="button" className="btn btn-ghost" onClick={() => setAttach(true)}><Icon name="link" />Attach</button>}>
         {!ents.length ? <div className="pb cat-note">This product unlocks no entitlement yet, so buying it grants no access. Attach it to one, such as <code>pro</code>.</div> : (
           <div className="tbl"><table>

@@ -170,8 +170,30 @@ function ApprovalArgs({ input }: { input: Record<string, unknown> }) {
   if (!rows.length) return null;
   return (
     <dl className="ai-args" data-testid="approval-args">
-      {rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{typeof v === "string" ? v : JSON.stringify(v)}</dd></div>)}
+      {rows.map(([k, v]) => <div key={k} className={isRows(v) ? "ai-args-rows" : undefined}><dt>{k}</dt><dd>{isRows(v) ? <ArgRows rows={v} /> : argText(v)}</dd></div>)}
     </dl>
+  );
+}
+
+type ArgRow = Record<string, unknown>;
+const isRows = (v: unknown): v is ArgRow[] => Array.isArray(v) && v.length > 0 && v.every((x) => !!x && typeof x === "object" && !Array.isArray(x));
+/** One argument as text: lists joined, `{ amount, currency }` as "9.99 USD", other objects as JSON. */
+function argText(v: unknown): string {
+  if (v === undefined || v === null || v === "") return "—";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v) && v.every((x) => typeof x !== "object" || x === null)) return v.join(", ");
+  const o = v as Record<string, unknown>;
+  if (typeof o.amount === "number" && typeof o.currency === "string") return `${o.amount} ${o.currency}`;
+  return JSON.stringify(v);
+}
+/** A list of objects (the products of create-products, the packages of create-offering) as a small table. */
+function ArgRows({ rows }: { rows: ArgRow[] }) {
+  const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  return (
+    <div className="ai-argtable-wrap"><table className="ai-argtable" data-testid="approval-rows">
+      <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+      <tbody>{rows.map((r, i) => <tr key={i}>{cols.map((c) => <td key={c}>{argText(r[c])}</td>)}</tr>)}</tbody>
+    </table></div>
   );
 }
 

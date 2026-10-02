@@ -810,6 +810,12 @@ tr.sel td{background:var(--active)}
 .ai-args>div{display:grid;grid-template-columns:minmax(110px,max-content) 1fr;gap:12px}
 .ai-args dt{color:var(--fg-3)}
 .ai-args dd{margin:0;color:var(--fg);overflow-wrap:anywhere}
+.ai-args>div.ai-args-rows{grid-template-columns:1fr;gap:4px}
+.ai-argtable-wrap{overflow-x:auto;border:1px solid var(--border-2)}
+.ai-argtable{border-collapse:collapse;width:100%;font:500 12px/16px var(--mono)}
+.ai-argtable th{text-align:left;font:600 10.5px/14px var(--font);letter-spacing:.04em;text-transform:uppercase;color:var(--fg-3);padding:6px 8px;border-bottom:1px solid var(--border-2);white-space:nowrap}
+.ai-argtable td{padding:5px 8px;border-bottom:1px solid var(--border-2);white-space:nowrap}
+.ai-argtable tr:last-child td{border-bottom:0}
 .ai-approval .done{margin:0;display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg-2)}
 .ai-approval button{height:32px!important;padding:0 14px!important;font:600 12px/16px var(--font)!important;letter-spacing:var(--tracking-label)!important;text-transform:uppercase}
 .ai-image img{max-width:320px;max-height:240px;border:1px solid var(--border)}
