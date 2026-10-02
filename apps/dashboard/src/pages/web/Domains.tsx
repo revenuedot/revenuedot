@@ -34,7 +34,12 @@ function DomainForms({ pid, d }: { pid: string; d: Domain }) {
       qc.setQueryData([...webKey(pid), "domain"], r);
       await refresh();
       toast(what === "slug" ? "Address saved. Existing links now use it." : what === "remove" ? "Custom domain removed." : "Custom domain saved. Add the DNS records, then verify.");
-    } catch (e) { setErr({ [what === "slug" ? "slug" : "custom"]: apiError(e).message }); }
+    } catch (e) {
+      // The API names the field ("slug: must be …"); under the field, say which value is wrong in words.
+      const { message, param } = apiError(e);
+      const bare = param && message.startsWith(`${param}: `) ? message.slice(param.length + 2) : null;
+      setErr({ [what === "slug" ? "slug" : "custom"]: bare ? `${what === "slug" ? "The address" : "The domain"} ${bare}.`.replace(/\.\.$/, ".") : message });
+    }
     setBusy(null);
   };
   const verify = async () => {

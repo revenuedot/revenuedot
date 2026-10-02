@@ -260,7 +260,7 @@ export function AuthPage() {
         <section className="panel" id="backend">
           <div className="ph"><b>Recent sign-ins</b><a className="link" href={`${DOCS}#backend`} target="_blank" rel="noreferrer">Backend API →</a></div>
           {identities.isLoading ? <div className="pb subtle">Loading…</div> : !(identities.data ?? []).length ? (
-            <div className="pb"><p className="subtle">No one has signed in yet. Your backend can read a user's balances with <code>GET /v2/projects/{pid}/auth/identities/{"{provider_id}"}/{"{subject}"}</code> and a secret key.</p></div>
+            <div className="pb"><p className="subtle">No one has signed in with a provider yet. Anonymous sign-ins are not listed here. Your backend can read a user's balances with <code>GET /v2/projects/{pid}/auth/identities/{"{provider_id}"}/{"{subject}"}</code> and a secret key.</p></div>
           ) : (
             <div className="tbl">
               <table>

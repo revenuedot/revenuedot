@@ -60,6 +60,7 @@ const LABELS: Record<string, string> = {
   "docs/guides/win-back-offers": "Win-back offers",
   "docs/guides/offline-entitlements": "Offline entitlements",
   "docs/guides/refund-control": "Refund Control",
+  "docs/guides/customer-center": "Customer Center",
   "docs/guides/retention": "Retention offers",
   "docs/guides/win-back-campaigns": "Win-back campaigns",
   "docs/guides/support-integrations": "Support",

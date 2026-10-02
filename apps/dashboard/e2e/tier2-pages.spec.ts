@@ -56,6 +56,27 @@ test("in-app currencies, Customer Center and audit logs", async ({ page }) => {
   const bal = await json(req, "GET", `${P}/customers/gamer_1/virtual_currencies`);
   expect(bal.items[0]).toMatchObject({ currency_code: "GLD", balance: 100 });
 
+  // The customer page shows the balance and adjusts it by hand; a debit below zero is refused.
+  await page.goto(`/projects/${pid}/customers/gamer_1`);
+  const panel = page.locator("section, .panel").filter({ has: page.getByText("In-app currencies", { exact: true }) }).last();
+  await expect(panel).toContainText("100");
+  await page.getByRole("button", { name: "Adjust →" }).click();
+  await page.getByLabel("Amount").fill("-150");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("cannot go below zero");
+  await page.getByLabel("Amount").fill("25");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(panel).toContainText("125");
+  expect((await json(req, "GET", `${P}/customers/gamer_1/virtual_currencies`)).items[0]).toMatchObject({ currency_code: "GLD", balance: 125 });
+  // Back to the currencies page without a reload: both pages share the currency list in the query cache.
+  await page.evaluate((to) => { history.pushState({}, "", to); dispatchEvent(new PopStateEvent("popstate")); }, `/projects/${pid}/product-catalog/virtual-currencies`);
+  await expect(page.getByRole("cell", { name: "GLD", exact: true })).toBeVisible();
+  // And back to the customer page, which reads the list that page cached.
+  await page.evaluate((to) => { history.pushState({}, "", to); dispatchEvent(new PopStateEvent("popstate")); }, `/projects/${pid}/customers/gamer_1`);
+  await expect(panel).toContainText("125");
+  await page.evaluate((to) => { history.pushState({}, "", to); dispatchEvent(new PopStateEvent("popstate")); }, `/projects/${pid}/product-catalog/virtual-currencies`);
+
   // Edit, archive, unarchive, delete from the row menu.
   await page.getByRole("button", { name: "Actions for GLD" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
@@ -77,19 +98,19 @@ test("in-app currencies, Customer Center and audit logs", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Customer Center", exact: true })).toBeVisible();
   await expect(page.getByLabel("Support email")).toHaveValue(/@/);
   await page.getByLabel("Support email").fill("not an email");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("alert")).toContainText("email address");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("alert")).toContainText("support.email");
   await page.getByLabel("Support email").fill("help@scanner.app");
-  await page.getByLabel("Management title").fill("Your plan");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.locator("#cc-MANAGEMENT-title").fill("Your plan");
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Customer Center saved")).toBeVisible();
   const sdk = await req.fetch("/v1/customercenter/gamer_1", { headers: { authorization: `Bearer ${key}` } });
   const cfg = (await sdk.json()).customer_center;
   expect(cfg.support.email).toBe("help@scanner.app");
   expect(cfg.screens.MANAGEMENT.title).toBe("Your plan");
-  await page.getByRole("button", { name: "Reset to default" }).click();
-  await page.getByRole("button", { name: "Reset" }).last().click();
-  await expect(page.getByText("Back to the default")).toBeVisible();
+  await page.getByRole("button", { name: "Reset configuration" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Reset configuration" }).click();
+  await expect(page.getByText("Customer Center reset to the default")).toBeVisible();
   expect((await (await req.fetch("/v1/customercenter/gamer_1", { headers: { authorization: `Bearer ${key}` } })).json()).customer_center.screens.MANAGEMENT.title).toBe("Manage subscription");
 
   // ---- Audit logs ----

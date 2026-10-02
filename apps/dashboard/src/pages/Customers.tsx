@@ -220,14 +220,16 @@ export function Customers() {
                   <DataTable columns={cols} rows={res.data.items} rowKey={(r) => r.customer_uuid} onRowClick={(r) => nav(to(r))}
                     empty={q ? (
                       exact.data ? (
-                        <EmptyState title={`"${q}" belongs to ${exact.data.id}`} text="No app user ID or email in this list contains it, but it is a whole store transaction ID or alias of this customer." action={<Link className="btn btn-dark" to={`/projects/${pid}/customers/${encodeURIComponent(exact.data.id)}`}>Open customer</Link>} />
+                        <EmptyState title={`"${q}" belongs to ${exact.data.id}`} text="This customer is not in the current list, but the search matches their app user ID, an alias, their email or a whole store transaction ID." action={<Link className="btn btn-dark" to={`/projects/${pid}/customers/${encodeURIComponent(exact.data.id)}`}>Open customer</Link>} />
                       ) : (
                         <EmptyState title={`No customer matches "${q}"`} text="Search matches part of an app user ID or an email saved as $email, or a whole store transaction ID." action={<button type="button" className="btn btn-line" onClick={() => setParams({ q: null })}>Clear search</button>} />
                       )
                     ) : after ? (
                       <EmptyState title="No more customers" text="You reached the end of the list." action={<button type="button" className="btn btn-line" onClick={() => setParams({})}>Back to the first page</button>} />
                     ) : applied.groups.length || list !== "all" ? (
-                      <EmptyState title="Nobody in this list" text={applied.groups.length ? "No customer matches the filter. Change or clear it." : "No customer matches this list yet."} />
+                      <EmptyState title="Nobody in this list" text={applied.groups.length ? "No customer matches the filter. Change or clear it."
+                        : list === "active" || list === "expired" || list === "non_subscription" ? "This list counts production purchases only. Test Store and other sandbox buyers are in the Sandbox list."
+                        : "No customer matches this list yet."} />
                     ) : (
                       <EmptyState title="No customers yet" text="A customer appears the first time your app calls RevenueDot through the SDK, or when you make a test purchase from the Overview." action={<Link className="btn btn-dark" to={`/projects/${pid}/overview`}>Open the setup checklist</Link>} />
                     )} />
