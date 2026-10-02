@@ -7,6 +7,7 @@
 //                       listed and not allowed.
 //   RD_JOURNEY_ALLOW    comma-separated hosts that may be called for real (public, read-only or validation endpoints).
 //   RD_JOURNEY_BLOCK    comma-separated host suffixes that are never called (Apple, Google Play): 503 instead.
+//   RD_JOURNEY_FAKED    comma-separated hosts routed to the capture server even under a blocked suffix.
 //   RD_JOURNEY_OUTBOUND_LOG  file: one JSON line per outbound call (method, host, path, routed to, status); no headers,
 //                       and bodies only for Google Analytics validation hits (which carry no secret).
 // Google Analytics: Measurement Protocol hits (`/mp/collect`) go to Google's validation server (`/debug/mp/collect`), which
@@ -17,6 +18,8 @@ import { appendFileSync } from "node:fs";
 const routes = JSON.parse(process.env.RD_JOURNEY_ROUTES || "{}");
 const allow = new Set((process.env.RD_JOURNEY_ALLOW || "").split(",").map((s) => s.trim()).filter(Boolean));
 const block = (process.env.RD_JOURNEY_BLOCK || "").split(",").map((s) => s.trim()).filter(Boolean);
+// Hosts answered by fakes on the capture server even when a blocked suffix covers them (Apple's public AdServices API).
+const faked = new Set((process.env.RD_JOURNEY_FAKED || "").split(",").map((s) => s.trim()).filter(Boolean));
 const log = process.env.RD_JOURNEY_OUTBOUND_LOG;
 const realFetch = globalThis.fetch;
 const LOCAL = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
@@ -31,7 +34,7 @@ globalThis.fetch = async function journeyFetch(input, init) {
   const method = (init?.method ?? req?.method ?? "GET").toUpperCase();
   const host = url.hostname.toLowerCase();
   if (LOCAL.has(host)) return realFetch(input, init);
-  if (block.some((b) => host === b || host.endsWith(`.${b}`))) {
+  if (!faked.has(host) && block.some((b) => host === b || host.endsWith(`.${b}`))) {
     record({ method, host, path: url.pathname, routed: "blocked", status: 503 });
     return new Response(JSON.stringify({ error: `journey run: ${host} is never called` }), { status: 503, headers: { "content-type": "application/json" } });
   }

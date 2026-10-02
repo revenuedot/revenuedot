@@ -40,7 +40,7 @@ export async function seedPeers(db: DB, base: string) {
   return projects;
 }
 
-async function ledger(db: DB, projectId: string, nowMs: number, o: { perMonth: number; trialEvery: number; convertEvery: number; monthly: number; annual: number; annualEvery: number; refundEvery: number; android: boolean }) {
+export async function ledger(db: DB, projectId: string, nowMs: number, o: { perMonth: number; trialEvery: number; convertEvery: number; monthly: number; annual: number; annualEvery: number; refundEvery: number; android: boolean }) {
   const appId = newId("app_", 10);
   await db.insert(schema.apps).values({ id: appId, projectId, name: "iOS", type: "app_store", bundleId: `com.example.peer.${appId}`, publicKey: `appl_${appId}` });
   await db.insert(schema.products).values([

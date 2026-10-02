@@ -209,8 +209,11 @@ export interface ServerOpts { databaseUrl: string; port: number; smtpPort: numbe
  * subscriptionsv2, products, acknowledge, voided purchases). Like every host not allowed, they are routed to the capture
  * server, so nothing ever reaches Google; a call no journey fakes gets the capture server's generic answer.
  */
-export const OUTBOUND_FAKED = ["androidpublisher.googleapis.com"];
-/** Never called, not even a fake: Apple (the real server trusts only Apple's root certificate) and Google Play's other APIs. */
+export const OUTBOUND_FAKED = ["androidpublisher.googleapis.com", "api-adservices.apple.com"];
+/**
+ * Never called, not even a fake: Apple (the real server trusts only Apple's root certificate) and Google Play's other APIs.
+ * Apple's public AdServices attribution API (no credentials) is the exception: the insights journey fakes its answer.
+ */
 export const OUTBOUND_BLOCK = ["apple.com", "itunes.apple.com", "storekit.itunes.apple.com", "api.storekit.itunes.apple.com", "androidpublisher.googleapis.com", "playdeveloperreporting.googleapis.com", "pubsub.googleapis.com", "appstoreconnect.apple.com"]
   .filter((h) => !OUTBOUND_FAKED.includes(h));
 /** Public endpoints the server may call for real: exchange rates, Google's Measurement Protocol validation server. */
@@ -238,7 +241,7 @@ export class RdServer {
       REVENUEDOT_PUBLIC_URL: this.base, REVENUEDOT_API_URL: this.base, REVENUEDOT_REQUEST_LOG: this.requestLog,
       REVENUEDOT_SIGNING_KEY: this.signingKey, REVENUEDOT_ENCRYPTION_KEY: this.encryptionKey,
       RD_JOURNEY_ROUTES: JSON.stringify({ "*": `http://127.0.0.1:${this.o.capturePort}` }),
-      RD_JOURNEY_ALLOW: OUTBOUND_ALLOW.join(","), RD_JOURNEY_BLOCK: OUTBOUND_BLOCK.join(","), RD_JOURNEY_OUTBOUND_LOG: this.outboundLog,
+      RD_JOURNEY_ALLOW: OUTBOUND_ALLOW.join(","), RD_JOURNEY_BLOCK: OUTBOUND_BLOCK.join(","), RD_JOURNEY_FAKED: OUTBOUND_FAKED.join(","), RD_JOURNEY_OUTBOUND_LOG: this.outboundLog,
       DASHBOARD_DIST: join(ROOT, "apps/dashboard/dist"),
       // A made-up Anthropic key: model calls go to the scripted Messages API (fake-anthropic.ts); no real model is called.
       ANTHROPIC_API_KEY: "sk-ant-journey-fake-model", OPENAI_API_KEY: "",
