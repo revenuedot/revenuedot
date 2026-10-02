@@ -350,7 +350,7 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
             </>
           ) : (
             <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching || (canCompare && prev.isFetching)} prev={canCompare ? prev.data ?? null : null}
-              groups={groups} gi={gi} onPick={(i) => set({ m: i ? String(i) : null })} kind={chartType} rangeStart={start} rangeEnd={end}
+              groups={groups} gi={gi} onPick={(i) => set({ m: i ? String(i) : null })} kind={chartType}
               annotations={annotations.data ?? []} onAnnotation={(id) => { setHighlight(id); set({ tab: "annotations" }); }}
               onAdd={canWrite ? addAt : undefined} tabBar={tabBar} tabBody={tabBody} />
           )}
@@ -366,9 +366,9 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
 }
 
 /** Time series: the measure picker, summary values, legend, plot with annotations, then the tabs (Summary is the table). */
-function SeriesChart({ def, body, currency, fetching, prev, groups, gi, onPick, kind, rangeStart, rangeEnd, annotations, onAnnotation, onAdd, tabBar, tabBody }: {
+function SeriesChart({ def, body, currency, fetching, prev, groups, gi, onPick, kind, annotations, onAnnotation, onAdd, tabBar, tabBody }: {
   def: ChartDef; body: ChartData; currency: string; fetching: boolean; prev?: ChartData | null; groups: number[][]; gi: number; onPick: (i: number) => void; kind: ChartType;
-  rangeStart: string; rangeEnd: string; annotations: Annotation[]; onAnnotation: (id: string) => void; onAdd?: (from: string, to: string) => void; tabBar: ReactNode; tabBody: ReactNode;
+  annotations: Annotation[]; onAnnotation: (id: string) => void; onAdd?: (from: string, to: string) => void; tabBar: ReactNode; tabBody: ReactNode;
 }) {
   const starts = useMemo(() => [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b), [body]);
   const incomplete = useMemo(() => { const inc = new Set(body.values.filter((v) => v.incomplete).map((v) => v.cohort)); return starts.map((s) => inc.has(s)); }, [body, starts]);
@@ -392,6 +392,7 @@ function SeriesChart({ def, body, currency, fetching, prev, groups, gi, onPick, 
     ? body.segments!.map((s, i) => ({ key: `s${i}`, label: s.display_name, color: s.is_total ? undefined : seriesColor(i, { key: "", label: "", values: [], other: s.is_other }), values: at(i, sel), format: plotFmt }))
     : body.measures.map((m, j) => ({ key: `m${j}`, label: m.display_name, color: series.length > 1 ? (() => { const k = series.findIndex((s) => s.key === `m${j}`); return k >= 0 ? seriesColor(k, series[k]!) : undefined; })() : undefined, values: at(undefined, j), format: fmt(m) }));
   const total = body.summary?.total ?? {};
+  const totalSeg = segmented ? body.segments!.findIndex((s) => s.is_total) : -1;
   const avg = body.summary?.average ?? {};
   // The previous period of the plotted measure, by position (segmented charts compare their total).
   const prevStarts = prev ? [...new Set(prev.values.map((v) => v.cohort))].sort((a, b) => a - b) : [];
@@ -423,8 +424,11 @@ function SeriesChart({ def, body, currency, fetching, prev, groups, gi, onPick, 
   const plotNotes: PlotAnnotation[] = annotations.map((a) => ({ id: a.id, title: a.title, when: whenText(a), from: indexOf(a.start_date), to: indexOf(a.end_date) }))
     .map((a) => ({ ...a, from: Math.max(0, a.from), to: Math.min(periods.length - 1, a.to) })).filter((a) => a.to >= 0 && a.from <= a.to && a.from < periods.length);
   const add = onAdd ? (from: number, to: number) => {
-    const s = iso(Math.max(periods[from]!.start, Date.parse(`${rangeStart}T00:00:00Z`)));
-    const e = iso(Math.min(ends[to]! - DAY, Date.parse(`${rangeEnd}T00:00:00Z`)));
+    // The days of the periods drawn, clipped to the range of the data drawn (body's, not the page's: while a new range
+    // loads, the plot still shows the previous answer).
+    if (!periods[from] || ends[to] === undefined) return;
+    const s = iso(Math.max(periods[from]!.start, body.start_date));
+    const e = iso(Math.min(ends[to]! - DAY, body.end_date));
     onAdd(s, e < s ? s : e);
   } : undefined;
   return (
@@ -436,7 +440,8 @@ function SeriesChart({ def, body, currency, fetching, prev, groups, gi, onPick, 
         {body.measures.filter((m) => m.tabulable).slice(0, 4).map((m) => {
           // Snapshots show the latest value, flows their total, rates their average.
           const j = body.measures.indexOf(m);
-          const latest = def.shape === "stock" ? [...at(undefined, j)].reverse().find((x) => x !== null) ?? null : null;
+          // A segmented chart's latest value is its Total segment's (values carry a segment index there).
+          const latest = def.shape === "stock" ? [...at(totalSeg >= 0 ? totalSeg : undefined, j)].reverse().find((x) => x !== null) ?? null : null;
           const kind = def.shape === "stock" ? "latest" : m.display_name in total && m.unit !== "%" ? "total" : "average";
           const v = kind === "latest" ? latest : kind === "total" ? total[m.display_name] ?? null : avg[m.display_name] ?? null;
           const pv = prevStat(m, kind);

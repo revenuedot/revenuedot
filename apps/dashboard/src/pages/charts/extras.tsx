@@ -48,9 +48,9 @@ export function CustomersTab({ pid, chart, query, format }: { pid: string; chart
   return (
     <div className="ctab" aria-busy={q.isFetching}>
       <div className="ctab-h">
-        <p className="subtle">This is a sample of customers contributing to this chart{d ? <>: <b className="mono">{Math.min(100, d.total_count).toLocaleString("en-US")}</b> of <b className="mono">{d.total_count.toLocaleString("en-US")}</b>, most recent first.</> : "."}
+        <p className="subtle">This is a sample of customers contributing to this chart{d ? <>: <b className="mono">{d.items.length.toLocaleString("en-US")}</b> of <b className="mono">{d.total_count.toLocaleString("en-US")}</b>, most recent first.</> : "."}
           {d?.value && <> {d.value.display_name} {d.sum === "last" ? "at the end of the last period" : "over the range"}.</>}
-          {d && Math.abs(d.unattributed_value) >= 0.005 && value && <> {value(d.unattributed_value)} of it is ad revenue from app users with no customer record, so no one is listed for it.</>}</p>
+          {d && Math.abs(d.unattributed_value) >= 0.005 && value && <> {value(d.unattributed_value)} of it {d.value?.unit === "$" ? "is ad revenue" : "comes"} from app users with no customer record, so no one is listed for it.</>}</p>
         <button type="button" className="btn btn-line" disabled={busy || !d?.total_count} onClick={exportAll}><Icon name="download" />{busy ? "Exporting…" : "Export all"}</button>
       </div>
       {!d ? <div className="sk" style={{ height: 160, margin: 16 }} /> : !d.items.length ? (
@@ -152,6 +152,8 @@ export function AnnotationDialog({ pid, initial, onClose }: { pid: string; initi
   const [err, setErr] = useState<string | null>(null);
   const editing = !!initial.id;
   const save = async () => {
+    // Enter in the title field can arrive again while the first save is still on its way.
+    if (busy) return;
     if (!title.trim()) { setErr("Give the annotation a title."); return; }
     if (end && end < start) { setErr("The end date is before the start date."); return; }
     setBusy(true); setErr(null);
@@ -224,7 +226,7 @@ export function ShareDialog({ pid, chart, title, view, describe, canWrite, onClo
               <li key={s.id}>
                 <div><b>{s.title}</b> <span className="subtle mono">{dayText(s.start_date)} – {dayText(s.end_date)}</span><br /><span className="subtle">By {s.created_by?.name || s.created_by?.email || "an API key"} · {fmt.dateTime(s.created_at)}</span></div>
                 <span className="aact">
-                  <CopyButton value={s.url} label={`Copy link ${s.id.slice(0, 8)}`} />
+                  <CopyButton value={s.url} label={`Copy link from ${fmt.dateTime(s.created_at)}`} />
                   <a className="ib" href={s.url} target="_blank" rel="noreferrer" aria-label="Open link" title="Open"><Icon name="link" /></a>
                   {canWrite && <button type="button" className="ib" aria-label={`Revoke link from ${fmt.dateTime(s.created_at)}`} title="Revoke" onClick={() => setRevoking(s)}><Icon name="trash" /></button>}
                 </span>

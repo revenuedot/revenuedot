@@ -79,7 +79,11 @@ export function Plot({ periods, series, kind, format, formatTick, ariaLabel, int
   const percent = kind === "percent_column";
   const single = series.length === 1;
   // A selection that no longer fits (fewer periods after a range change) is dropped.
-  useEffect(() => { setSel((s) => (s && s[1] < n ? s : null)); }, [n]);
+  // The anchor goes with it: a Shift+click must not extend from a period the plot no longer has.
+  useEffect(() => {
+    setSel((s) => (s && s[1] < n ? s : null));
+    if (anchor.current !== null && anchor.current >= n) anchor.current = null;
+  }, [n]);
 
   const stacks = useMemo(() => (stacked ? periods.map((_, i) => stackPeriod(series.map((s) => s.values[i]), percent)) : null), [stacked, percent, periods, series]);
   const { ticks, y } = useMemo(() => {
@@ -121,7 +125,7 @@ export function Plot({ periods, series, kind, format, formatTick, ariaLabel, int
     if (e.target !== e.currentTarget) return;
     if (e.key === "ArrowRight") { e.preventDefault(); setHover((h) => (h === null ? 0 : Math.min(n - 1, h + 1))); }
     if (e.key === "ArrowLeft") { e.preventDefault(); setHover((h) => (h === null ? n - 1 : Math.max(0, h - 1))); }
-    if (e.key === "Escape") { setHover(null); setSel(null); }
+    if (e.key === "Escape") { setHover(null); setSel(null); anchor.current = null; }
     if ((e.key === "Enter" || e.key === " ") && onAddAnnotation && hover !== null) { e.preventDefault(); selectTo(hover, e.shiftKey); }
   };
   const zero = y(0);
@@ -214,7 +218,9 @@ export function Plot({ periods, series, kind, format, formatTick, ariaLabel, int
   const shares = percent && hover !== null ? stacks![hover]!.map((r) => (r ? r[1] - r[0] : null)) : null;
   const selLabel = sel ? (sel[0] === sel[1] ? periods[sel[0]]?.long : `${periods[sel[0]]?.long} – ${periods[sel[1]]?.long}`) : "";
   return (
-    <div className={`plot${onAddAnnotation ? " can-select" : ""}`} ref={ref} tabIndex={0} role="img" aria-label={ariaLabel} onKeyDown={onKey} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setHover(null); }}>
+    // A group, not an img: an img's children are presentational, which would hide the annotation markers and "+" (buttons)
+    // from screen readers.
+    <div className={`plot${onAddAnnotation ? " can-select" : ""}`} ref={ref} tabIndex={0} role="group" aria-roledescription="chart" aria-label={ariaLabel} onKeyDown={onKey} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setHover(null); }}>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         {sel && <rect x={cx(sel[0]) - band / 2} y={T} width={band * (sel[1] - sel[0] + 1)} height={ph} fill="var(--active)" data-testid="selection" />}
         {bands}

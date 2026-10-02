@@ -44,12 +44,12 @@ test("chart types: five types, stacked ones need two series; the type is in the 
   await type.selectOption("stacked_area");
   await expect(page).toHaveURL(/type=stacked_area/);
   await expect(chart.getByTestId("area")).toHaveCount(5);
-  await expect(chart.getByRole("img", { name: /drawn as stacked area/ })).toBeVisible();
+  await expect(chart.getByRole("group", { name: /drawn as stacked area/ })).toBeVisible();
   await type.selectOption("line");
   await expect(chart.getByTestId("area")).toHaveCount(0);
-  await expect(chart.getByRole("img", { name: /drawn as line/ })).toBeVisible();
+  await expect(chart.getByRole("group", { name: /drawn as line/ })).toBeVisible();
   await type.selectOption("column");
-  await expect(chart.getByRole("img", { name: /drawn as column/ })).toBeVisible();
+  await expect(chart.getByRole("group", { name: /drawn as column/ })).toBeVisible();
   await type.selectOption("percent_column");
   await expect(chart.locator(".plot text.ax").filter({ hasText: /^100%$/ })).toHaveCount(1);
   // The table keeps the real values.
@@ -213,7 +213,15 @@ async function viewer(page: Page, browser: Browser, pid: string) {
   await guest.getByLabel("Password").fill(PW);
   await guest.getByRole("button", { name: "Create account and join" }).click();
   await guest.waitForURL(new RegExp(`/projects/${pid}/overview`));
-  return guest;
+  // Specs share the demo project: the Viewer leaves it again, so later specs (layout.spec.ts) see it as seeded.
+  const remove = async () => {
+    const members = (await json<{ items: { id: string; email: string }[] }>(page.request, `/v2/projects/${pid}/collaborators`)).items;
+    const me = members.find((m) => m.email === email);
+    expect(me).toBeTruthy();
+    expect((await page.request.delete(`/v2/projects/${pid}/collaborators/${me!.id}`)).ok()).toBe(true);
+    await ctx.close();
+  };
+  return { guest, remove };
 }
 
 test("share preview: a link anyone can open signed out, numbers only; revoke stops it; a Viewer reads only", async ({ page, browser }) => {
@@ -256,7 +264,7 @@ test("share preview: a link anyone can open signed out, numbers only; revoke sto
   expect(await pub.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(10, 10, 10)");
 
   // A Viewer sees the link but cannot make or revoke one, and cannot annotate.
-  const guest = await viewer(page, browser, pid);
+  const { guest, remove } = await viewer(page, browser, pid);
   const guestErrors = watchConsole(guest);
   await guest.goto(`/projects/${pid}/charts/revenue?range=90d&res=month&tab=annotations`);
   await expect(guest.getByRole("region", { name: "Revenue chart" })).toBeVisible();
@@ -282,6 +290,7 @@ test("share preview: a link anyone can open signed out, numbers only; revoke sto
   await expect(pub.getByRole("heading", { name: "This link was revoked." })).toBeVisible();
   expect((await pub.request.get(`${url}/og.png`)).status()).toBe(410);
   await anon.close();
+  await remove();
   expect(errors).toEqual([]);
 });
 
