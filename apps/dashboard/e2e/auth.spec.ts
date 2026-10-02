@@ -49,3 +49,23 @@ test("signed out: a deep link asks for sign-in first, with no refused API calls,
   await page.waitForURL(new RegExp(`/projects/${pid}/customers$`));
   await expect(page.getByRole("heading", { name: "Customers" })).toBeVisible();
 });
+
+test("sign out from a busy Overview: no request answers 401 (found by the dashboard-ui journey)", async ({ page }) => {
+  const failed: string[] = [];
+  page.on("response", (r) => { if (r.status() === 401 && new URL(r.url()).pathname.startsWith("/v2/")) failed.push(`${r.status()} ${new URL(r.url()).pathname}`); });
+  await page.request.post("/auth/login", { data: { email: "e2e@revenuedot.test", password: "e2e-password-1" } });
+  // Keep the Overview's history requests in flight so sign-out has to wait for them, and the page refetches on its own.
+  await page.route("**/metrics/history**", async (route) => { await new Promise((r) => setTimeout(r, 400)); await route.continue(); });
+  const pid = ((await (await page.request.get("/auth/me")).json()) as any).projects[0].id;
+  for (let round = 0; round < 3; round++) {
+    if (round) await page.request.post("/auth/login", { data: { email: "e2e@revenuedot.test", password: "e2e-password-1" } });
+    await page.goto(`/projects/${pid}/overview`);
+    await expect(page.locator('[aria-label="Key metrics"]')).toBeVisible();
+    await page.waitForTimeout(round * 250);
+    await page.locator("button.proj").first().click();
+    await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await page.waitForURL(/\/login/);
+    await page.waitForTimeout(1500);
+  }
+  expect(failed).toEqual([]);
+});

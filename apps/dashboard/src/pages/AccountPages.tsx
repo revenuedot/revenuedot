@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
@@ -177,7 +176,7 @@ export function InvitePage() {
       return (
         <Card title={`Join ${i.project.name}`} sub={sub}>
           <div className="banner warn" role="status">You are signed in as {signedIn.email}. This invite is for {i.email}.</div>
-          <button type="button" className="btn btn-dark btn-lg" onClick={() => { void signOut(qc, () => flushSync(() => nav(`/login?next=${encodeURIComponent(here)}`))); }}>Sign in as {i.email}</button>
+          <button type="button" className="btn btn-dark btn-lg" onClick={() => { void signOut(qc, `/login?next=${encodeURIComponent(here)}`); }}>Sign in as {i.email}</button>
         </Card>
       );
     }
