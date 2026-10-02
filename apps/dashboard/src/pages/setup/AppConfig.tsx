@@ -6,7 +6,7 @@ import { Icon } from "../../components/icons";
 import {
   Check, ConfirmDialog, CopyButton, CopyField, Disclosure, Field, FileDrop, KeyValue, SecretText, StatusLine, Switch, useProjectId, useToast,
 } from "../../components/ui";
-import { api, ApiError, fmt } from "../../lib/api";
+import { api, fmt } from "../../lib/api";
 import {
   STORES, apiOrigin, base, errMsg, storeId, useApp, useProducts, usePublicKey, useStoreSettings,
   type App, type CredentialsCheck, type Product, type StoreSettings,
@@ -14,7 +14,7 @@ import {
 import { SdkSetup } from "./sdk";
 import { StripeConnectPanel } from "./StripeConnect";
 import { ImportProductsDialog } from "../catalog/ImportProducts";
-import { errParam, priceLabel, testStorePrice, type App as CatalogApp } from "../catalog/lib";
+import { catalogKey, errParam, isConflict, priceLabel, testStorePrice, type App as CatalogApp } from "../catalog/lib";
 import { TestStorePriceField } from "../catalog/parts";
 
 /**
@@ -217,7 +217,7 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
     if (!id) er.id = "Enter the product identifier your app asks the store for.";
     else if (/\s/.test(id)) er.id = "Product identifiers cannot contain spaces. Use underscores instead, e.g. pro_monthly.";
     const price = testStorePrice(draft.price, draft.currency, true);
-    if ("error" in price) er.price = price.error;
+    if ("error" in price) er[price.field === "currency" ? "currency" : "price"] = price.error;
     setErrors(er);
     if (Object.keys(er).length || "error" in price) return;
     setBusy(true); setError(null);
@@ -227,14 +227,13 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
         store_identifier: id, app_id: app.id, type: sub ? "subscription" : draft.kind, display_name: id,
         ...(sub ? { subscription: { duration: draft.kind } } : {}), test_store_price: price.value,
       } });
-      await qc.invalidateQueries({ queryKey: ["products", pid] });
-      await qc.invalidateQueries({ queryKey: ["catalog", pid] });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["products", pid] }), qc.invalidateQueries({ queryKey: catalogKey(pid) })]);
       setProduct(p.id);
       toast(`Product ${p.store_identifier} created at ${priceLabel(p.indicative_price)}.`);
     } catch (err) {
       const param = errParam(err);
-      if (err instanceof ApiError && err.status === 409) setErrors({ id: "This app already has a product with this identifier." });
-      else if (param?.startsWith("test_store_price")) setErrors({ price: errMsg(err) });
+      if (isConflict(err)) setErrors({ id: "This app already has a product with this identifier." });
+      else if (param?.startsWith("test_store_price")) setErrors({ [param === "test_store_price.currency" ? "currency" : "price"]: errMsg(err) });
       else if (param === "store_identifier") setErrors({ id: errMsg(err) });
       else setError(errMsg(err));
     } finally { setBusy(false); }
@@ -244,10 +243,9 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
     if (!user.trim()) { setError("Enter an app user ID, as your app would send it."); return; }
     setBusy(true); setError(null); setDone(null);
     const p = chosenProduct;
-    // The product's Test Store price is what the SDK shows, so the purchase records it (servers before 2026-10 recorded $0 without it).
-    const price = p?.indicative_price ? { price: p.indicative_price.amount_micros / 1_000_000, currency: p.indicative_price.currency } : {};
     try {
-      const r = await api<{ customer: { id: string; active_entitlements?: { items: unknown[] } } }>(`${base(pid)}/test_purchases`, { method: "POST", json: { app_user_id: user.trim(), product_id: chosen, app_id: app.id, ...price } });
+      // No price in the body: the server records the product's current Test Store price, what the SDK shows.
+      const r = await api<{ customer: { id: string; active_entitlements?: { items: unknown[] } } }>(`${base(pid)}/test_purchases`, { method: "POST", json: { app_user_id: user.trim(), product_id: chosen, app_id: app.id } });
       setDone({ user: r.customer.id, product: p?.store_identifier ?? chosen, entitlements: r.customer.active_entitlements?.items.length ?? 0, price: p?.indicative_price ? priceLabel(p.indicative_price) : null });
       toast("Test purchase recorded.");
       await qc.invalidateQueries();
@@ -269,7 +267,7 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
             </select>
           </Field>
         </div>
-        <TestStorePriceField id="tp-new-price" required amount={draft.price} currency={draft.currency} onAmount={(price) => edit({ price })} onCurrency={(currency) => edit({ currency })} error={errors.price} />
+        <TestStorePriceField id="tp-new-price" required amount={draft.price} currency={draft.currency} onAmount={(price) => edit({ price })} onCurrency={(currency) => edit({ currency })} error={errors.price ?? errors.currency} invalid={errors.currency ? "currency" : "amount"} />
         {error && <div className="banner err" role="alert">{error}</div>}
         <div><button type="submit" className="btn btn-line" disabled={busy}>{busy ? "Creating…" : "Create product"}</button></div>
       </form>

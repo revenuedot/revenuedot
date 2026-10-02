@@ -1,6 +1,7 @@
 /**
  * Products: /projects/:projectId/product-catalog/products and /products/:productId
- * Grouped by app like RevenueCat: display name over the store identifier, type, duration, entitlements, status, created.
+ * Grouped by app like RevenueCat: display name over the store identifier (an Archived tag when archived), type, duration,
+ * entitlements, created.
  *
  * "Import products" (page head, and "Import" on each App Store, Google Play and Stripe app group) opens ImportProductsDialog.
  *
@@ -132,7 +133,7 @@ export function ProductsPage() {
                           <td className="cat-hide-sm">{typeLabel(p.type)}</td>
                           <td className="num cat-hide-sm">{dur}</td>
                           <td className={`cat-ents${ents.length ? "" : " subtle"}`} title={ents.length ? ents.map((e) => e.lookup_key).join(", ") : "Buying this product unlocks nothing yet"}>
-                            {!usage.loaded ? "…" : !ents.length ? "None" : <span className="mono">{ents[0]!.lookup_key}{ents.length > 1 && <span className="subtle"> +{ents.length - 1}</span>}</span>}
+                            {!usage.loaded ? "…" : !ents.length ? "None" : <span className="cat-entkey"><span className="mono">{ents[0]!.lookup_key}</span>{ents.length > 1 && <span className="subtle"> +{ents.length - 1}</span>}</span>}
                           </td>
                           <td className="num cat-hide-sm">{fmt.date(p.created_at)}</td>
                           <td className="amt"><Menu label={`Actions for ${p.store_identifier}`} items={actions.items(p)} /></td>
@@ -240,7 +241,7 @@ export function ProductDetail() {
     <Shell title={p ? productName(p) : "Product"} crumbs={<CatalogCrumbs pid={pid} section="Products" sectionTo="products" current={p?.store_identifier ?? "…"} />}>
       <div className="page cat-detail">{body}</div>
       {actions.dialog}
-      {attach && p && <AttachToEntitlement pid={pid} product={p} ents={usage.ents.filter((e) => !ents.some((x) => x.id === e.id))} onClose={() => setAttach(false)} />}
+      {attach && p && usage.loaded && <AttachToEntitlement pid={pid} product={p} all={usage.ents} ents={usage.ents.filter((e) => !ents.some((x) => x.id === e.id))} onClose={() => setAttach(false)} />}
       {detach && p && (
         <ConfirmDialog title="Detach from this entitlement?" confirmLabel="Detach" danger onClose={() => setDetach(null)} onConfirm={async () => {
           await api(`${v2(pid)}/entitlements/${detach.id}/actions/detach_products`, { method: "POST", json: { product_ids: [p.id] } }); await refresh(); toast(`Detached from ${detach.lookup_key}`);
@@ -256,7 +257,7 @@ export function ProductDetail() {
  * Attach a product to an entitlement: pick an existing one, or create one here (identifier + display name) and attach in
  * one step, as RevenueCat's dialog does. With no other entitlement the dialog opens on "New entitlement".
  */
-function AttachToEntitlement({ pid, product, ents, onClose }: { pid: string; product: Product; ents: Entitlement[]; onClose: () => void }) {
+function AttachToEntitlement({ pid, product, all, ents, onClose }: { pid: string; product: Product; all: Entitlement[]; ents: Entitlement[]; onClose: () => void }) {
   const toast = useToast();
   const refresh = useRefreshCatalog(pid);
   const [mode, setMode] = useState<"existing" | "new">(ents.length ? "existing" : "new");
@@ -276,7 +277,7 @@ function AttachToEntitlement({ pid, product, ents, onClose }: { pid: string; pro
   const go = async (ev: FormEvent) => {
     ev.preventDefault();
     if (mode === "existing") {
-      const e = ents.find((x) => x.id === sel);
+      const e = ents.find((x) => x.id === (sel || ents[0]?.id));
       if (!e) { setErrors({ sel: "Choose an entitlement." }); return; }
       setBusy(true); setErrors({});
       try { await attach(e); } catch (err) { setErrors({ form: errMsg(err) }); setBusy(false); }
@@ -284,8 +285,15 @@ function AttachToEntitlement({ pid, product, ents, onClose }: { pid: string; pro
     }
     const er: Record<string, string> = {};
     if (!created) {
-      const ke = lookupKeyError(key.trim(), "entitlement");
+      const k = key.trim();
+      const ke = lookupKeyError(k, "entitlement");
+      // Identifiers are compared exactly, as the server does.
+      const taken = all.find((x) => x.lookup_key === k);
       if (ke) er.key = ke;
+      else if (taken && ents.some((x) => x.id === taken.id)) {
+        setMode("existing"); setSel(taken.id); setErrors({ sel: `${k} already exists and is now selected. Choose Attach.` });
+        return;
+      } else if (taken) er.key = `This product already unlocks ${k}.`;
       if (!name.trim()) er.name = "Enter a display name, such as Pro access.";
     }
     setErrors(er);
@@ -298,20 +306,22 @@ function AttachToEntitlement({ pid, product, ents, onClose }: { pid: string; pro
         setCreated(e);
       }
     } catch (err) {
+      // Created meanwhile (another tab, or a request that timed out after it went through): reload so Existing lists it.
+      if (isConflict(err)) await refresh();
       setErrors(isConflict(err) ? { key: "An entitlement with this identifier already exists. Choose it under Existing entitlement, or use another identifier." } : { form: errMsg(err) });
       setBusy(false);
       return;
     }
     try { await attach(e); } catch (err) {
       await refresh();
-      setErrors({ form: `Entitlement ${e.lookup_key} was created, but attaching failed: ${errMsg(err)} Try again.` });
+      setErrors({ form: `Entitlement ${e.lookup_key} was created, but attaching failed: ${errMsg(err).replace(/\.?$/, ".")} Try again.` });
       setBusy(false);
     }
   };
   return (
     <Dialog title="Attach to entitlement" onClose={onClose} footer={<>
       <button type="button" className="btn btn-line" onClick={onClose}>Cancel</button>
-      <button type="submit" form="att-form" className="btn btn-dark" disabled={busy}>{busy ? (mode === "new" && !created ? "Creating…" : "Attaching…") : mode === "new" ? "Create and attach" : "Attach"}</button>
+      <button type="submit" form="att-form" className="btn btn-dark" disabled={busy}>{busy ? (mode === "new" && !created ? "Creating…" : "Attaching…") : mode === "new" && !created ? "Create and attach" : "Attach"}</button>
     </>}>
       <form id="att-form" onSubmit={go} noValidate style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <p className="cat-lead">Customers who buy <code>{product.store_identifier}</code> get this entitlement, including past purchasers.</p>
@@ -320,7 +330,7 @@ function AttachToEntitlement({ pid, product, ents, onClose }: { pid: string; pro
         ) : <p className="cat-note" style={{ margin: 0 }}>This project has no other entitlement yet. Create one here; the product is attached to it.</p>}
         {mode === "existing" ? (
           <Field label="Entitlement" htmlFor="att-ent" error={errors.sel}>
-            <select id="att-ent" className="select" autoFocus value={sel} onChange={(e) => setSel(e.target.value)}>
+            <select id="att-ent" className="select" autoFocus value={sel || ents[0]?.id || ""} onChange={(e) => { setSel(e.target.value); setErrors({}); }}>
               {ents.map((e) => <option key={e.id} value={e.id}>{e.lookup_key} · {e.display_name}{e.state === "inactive" ? " (archived)" : ""}</option>)}
             </select>
           </Field>
