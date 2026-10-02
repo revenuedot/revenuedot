@@ -143,7 +143,7 @@ export function orgRoutes(ctx: EeCtx) {
     if (b.name !== undefined) { set.name = b.name; changed.name = b.name; }
     if (b.region !== undefined) {
       needFeature(ctx, "data_location");
-      if (!selectableRegions(ctx.regions).includes(b.region)) throw paramError(`The ${REGION_NAMES[b.region]} region is not available on this server yet.`, "region");
+      if (!selectableRegions(ctx.regions).includes(b.region)) throw paramError(`New projects of this organization are created in the ${REGION_NAMES[ctx.regions.current]} region on this server. Use the ${REGION_NAMES[b.region]} dashboard for projects stored there.`, "region");
       set.region = b.region; changed.region = b.region;
     }
     if (b.audit_retention_days !== undefined) {
@@ -304,11 +304,11 @@ export function orgRoutes(ctx: EeCtx) {
     const p = await orgProject(m.org.id, c.req.param("project_id")!);
     const b = await body(c, RegionSet);
     if (b.region === p.region) return c.json({ object: "organization_project", id: p.projectId, region: p.region });
-    if (!selectableRegions(ctx.regions).includes(b.region)) throw paramError(`The ${REGION_NAMES[b.region]} region is not available on this server yet.`, "region");
-    if (Object.keys(ctx.regions.regions).length > 1) {
-      // On Cloud, data already stored stays where it is until support moves it (docs/data-location.md): only an empty project moves at once.
-      const [cust] = await db.select({ n: count() }).from(schema.customers).where(eq(schema.customers.projectId, p.projectId));
-      if (Number(cust?.n ?? 0) > 0) throw new V2Error(422, "unprocessable_entity_error", "This project already has customers. Moving stored data to another region is done by RevenueDot support; email support@revenuedot.app.", "region");
+    if (!selectableRegions(ctx.regions).includes(b.region)) {
+      const there = ctx.regions.regions[b.region];
+      throw new V2Error(422, "unprocessable_entity_error", there
+        ? `A project's data stays in the region where it was created. Create projects for the ${REGION_NAMES[b.region]} region at ${there.app}, or ask RevenueDot support (support@revenuedot.app) to move this one.`
+        : `The ${REGION_NAMES[b.region]} region is not available yet.`, "region");
     }
     await db.update(eeOrgProjects).set({ region: b.region }).where(eq(eeOrgProjects.projectId, p.projectId));
     forgetProjectRegion(p.projectId);

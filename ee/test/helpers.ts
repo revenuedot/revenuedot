@@ -50,11 +50,17 @@ export async function eeServer(o: { deps?: Partial<Deps>; extension?: ServerExte
         }));
       },
     };
+    // A cookie jar like a browser's (rd_session and the SSO request binding rd_sso), ignoring paths.
+    const jar = new Map<string, string>();
     const send = async (req: Request): Promise<Res> => {
       const res = await app.fetch(req);
       const set = res.headers.get("set-cookie");
-      const m = set ? /rd_session=([^;]*)/.exec(set) : null;
-      if (m) b.cookie = m[1] ? `rd_session=${m[1]}` : null;
+      for (const sc of res.headers.getSetCookie()) {
+        const pair = sc.split(";")[0]!, i = pair.indexOf("=");
+        const name = pair.slice(0, i).trim(), value = pair.slice(i + 1).trim();
+        if (!value || /max-age=0\b/i.test(sc)) jar.delete(name); else jar.set(name, value);
+      }
+      b.cookie = jar.size ? [...jar].map(([k, v]) => `${k}=${v}`).join("; ") : null;
       const text = await res.text();
       let body: any = null;
       try { body = text ? JSON.parse(text) : null; } catch { body = text; }

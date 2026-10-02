@@ -45,8 +45,12 @@ export function regionConfigFrom(env: Record<string, string | undefined>): Regio
 /** Whether the server routes by region: more than one region has a deployment. */
 export const enforced = (cfg: RegionConfig) => Object.keys(cfg.regions).length > 1;
 
-/** Regions a project may be set to here: every configured region on Cloud, both on a self-hosted server (recorded only). */
-export const selectableRegions = (cfg: RegionConfig): Region[] => (enforced(cfg) ? REGIONS.filter((r) => cfg.regions[r]) : [...REGIONS]);
+/**
+ * Regions a project or organization may be set to here. Self-hosted: either (recorded only). Cloud with several regions:
+ * only this deployment's, because a region is where the rows physically are; a project in another region is created on
+ * that region's dashboard, and moving stored data is a support job (docs/data-location.md).
+ */
+export const selectableRegions = (cfg: RegionConfig): Region[] => (enforced(cfg) ? [cfg.current] : [...REGIONS]);
 
 const cache = new Map<string, { at: number; region: Region | null }>();
 const CACHE_MS = 60_000;

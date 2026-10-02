@@ -6,6 +6,7 @@ import { schema } from "@revenuedot/db";
 import { eeServer, type EeServer } from "./helpers.js";
 import { ensureOrgMember } from "../server/provision.js";
 import { eeMembershipSources, eeOrgMembers, eeOrgProjects } from "../server/schema.js";
+import { forgetProjectRegion } from "../server/region.js";
 
 let s: EeServer | undefined;
 afterEach(async () => { await s?.close(); s = undefined; });
@@ -191,7 +192,13 @@ describe("data location", () => {
     const app = await owner.browser.call("POST", `${P}/apps`, { name: "Test", type: "test_store" });
     expect(app.status).toBe(201);
     const [a] = await s.db.select().from(schema.apps).where(eq(schema.apps.projectId, owner.projectId));
-    expect((await owner.browser.call("POST", `${O}/projects/${owner.projectId}/region`, { region: "eu" })).status).toBe(200);
+    // A project's region is where its rows are: the dashboard cannot move it to a region this deployment does not serve.
+    const refused = await owner.browser.call("POST", `${O}/projects/${owner.projectId}/region`, { region: "eu" });
+    expect(refused.status).toBe(422);
+    expect(refused.body.message).toContain("https://app.eu.example.com");
+    // Support moved it (the row says EU), so this US deployment refuses its traffic.
+    await s.db.update(eeOrgProjects).set({ region: "eu" }).where(eq(eeOrgProjects.projectId, owner.projectId));
+    forgetProjectRegion(owner.projectId);
     const dash = await owner.browser.call("GET", `${P}/products`);
     expect(dash.status).toBe(421);
     expect(dash.body).toMatchObject({ region: "eu", app_url: "https://app.eu.example.com" });
@@ -200,16 +207,8 @@ describe("data location", () => {
     expect(sdk.headers.get("retry-after")).toBe("60");
     const [row] = await s.db.select().from(eeOrgProjects).where(eq(eeOrgProjects.projectId, owner.projectId));
     expect(row?.region).toBe("eu");
-    // Organization routes (not project data) still answer here, so the setting can be changed back.
-    expect((await owner.browser.call("POST", `${O}/projects/${owner.projectId}/region`, { region: "us" })).status).toBe(200);
-    expect((await owner.browser.call("GET", `${P}/products`)).status).toBe(200);
-  });
-
-  it("refuses moving a project that already has customers to another region", async () => {
-    s = await eeServer({ regions: { current: "us", regions: { us: { api: "https://api.example.com", app: "https://app.example.com" }, eu: { api: "https://api.eu.example.com", app: "https://app.eu.example.com" } } } });
-    const owner = await s.signup("owner@acme.test");
-    const O = `/v2/organizations/${await s.createOrg(owner.browser, "Acme", [owner.projectId])}`;
-    await s.db.insert(schema.customers).values({ id: "cus_1", projectId: owner.projectId, originalAppUserId: "u1" } as never);
-    expect((await owner.browser.call("POST", `${O}/projects/${owner.projectId}/region`, { region: "eu" })).status).toBe(422);
+    // Organization routes still answer here (they hold no project data).
+    expect((await owner.browser.call("GET", O)).body).toMatchObject({ region_enforced: true, selectable_regions: ["us"] });
+    expect((await owner.browser.call("POST", O, { region: "eu" })).status).toBe(400);
   });
 });

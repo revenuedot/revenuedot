@@ -13,9 +13,15 @@
     "@node-saml/node-saml": "5.1.0",
     "@revenuedot/core": "workspace:^",
     "@revenuedot/db": "workspace:^",
+    "@xmldom/xmldom": "^0.8.10",
     "drizzle-orm": "^0.38.3",
     "hono": "^4.6.14",
     "jose": "^5.9.6",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@playwright/test": "1.58.2",
+    "xml-crypto": "^6.1.2"
   }
 }

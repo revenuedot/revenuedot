@@ -235,6 +235,9 @@ importers:
       '@revenuedot/db':
         specifier: workspace:^
         version: link:../packages/db
+      '@xmldom/xmldom':
+        specifier: ^0.8.10
+        version: 0.8.15
       drizzle-orm:
         specifier: ^0.38.3
         version: 0.38.4(@electric-sql/pglite@0.2.17)(@types/react@19.3.0)(postgres@3.4.9)(react@19.3.0)
@@ -247,6 +250,16 @@ importers:
       zod:
         specifier: ^3.25.76
         version: 3.25.76
+    devDependencies:
+      '@hono/node-server':
+        specifier: ^1.13.7
+        version: 1.19.17(hono@4.13.11)
+      '@playwright/test':
+        specifier: 1.58.2
+        version: 1.58.2
+      xml-crypto:
+        specifier: ^6.1.2
+        version: 6.3.2
 
   packages/contract:
     dependencies:
