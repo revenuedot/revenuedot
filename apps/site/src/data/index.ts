@@ -12,6 +12,7 @@ import { COMPARE, ALTERNATIVE_PAGE } from "./compare";
 import { ALTERNATIVES, ALTERNATIVES_INTRO } from "./alternatives";
 import { GLOSSARY } from "./glossary";
 import { ERRORS } from "./errors";
+import { GUIDES } from "./guides";
 import { CHARTS as CATALOG, GROUPS, type ChartDef } from "../../../../packages/core/src/charts/catalog";
 
 export { ALTERNATIVE_PAGE, ALTERNATIVES, ALTERNATIVES_INTRO, GROUPS };
@@ -73,6 +74,7 @@ const STATIC: Record<string, Entry> = {
   "/tools": { title: "Free tools", card: "Free calculators for RevenueCat fees, store commission and subscription revenue.", label: "Hub" },
 };
 for (const t of TOOLS) STATIC[t.path] = { title: t.title, card: t.card, label: "Free tool" };
+for (const g of GUIDES) STATIC[g.path] = { title: g.name, card: g.card, label: "Guide" };
 
 export function entry(path: string): Entry | undefined {
   if (STATIC[path]) return STATIC[path];

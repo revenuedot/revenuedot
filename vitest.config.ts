@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 const realPg = Boolean(process.env.REVENUEDOT_TEST_PG_URL?.trim());
 export default defineConfig({
   test: {
-    include: ["packages/*/test/**/*.test.ts", "apps/*/test/**/*.test.ts"],
+    include: ["packages/*/test/**/*.test.ts", "apps/*/test/**/*.test.ts", "ee/test/**/*.test.ts"],
     testTimeout: realPg ? 180_000 : 30_000,
     hookTimeout: realPg ? 180_000 : 10_000,
     globalSetup: ["./packages/contract/src/pg-global-setup.ts"],

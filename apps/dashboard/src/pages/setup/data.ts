@@ -35,7 +35,11 @@ export interface StoreSettings {
   /** Amazon: the SNS topic notifications must come from (optional). */
   sns_topic_arn?: string | null;
   /** Stripe: how purchases first seen in a webhook find their customer, and when a subscription counts. */
-  stripe?: { stripe_account_id: string | null; app_user_id_source: "metadata" | "customer_id" | "anonymous"; app_user_id_metadata_key: string; register_on: "invoice_paid" | "invoice_created"; configured: boolean } | null;
+  stripe?: {
+    stripe_account_id: string | null; app_user_id_source: "metadata" | "customer_id" | "anonymous"; app_user_id_metadata_key: string; register_on: "invoice_paid" | "invoice_created"; configured: boolean;
+    /** How the app reaches Stripe: "Connect with Stripe", a restricted key, or not yet. */
+    connection?: "stripe_connect" | "restricted_key" | null; connected_account?: string | null; mode?: "live" | "test" | null;
+  } | null;
 }
 
 export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string; mode?: "live" | "test" }

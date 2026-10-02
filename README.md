@@ -174,7 +174,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
 | **Amazon Appstore** | Receipts checked with Amazon's Receipt Verification Service, the SDK's Amazon receipt route, Real-time Notifications through Amazon SNS with signature checks, grace periods, tier changes, one-time refunds, Live App Testing and App Tester as sandbox | Tier 2 · built, tested against a mocked Amazon and a test SNS certificate; no real Amazon purchase yet. [Guide](https://revenuedot.app/docs/guides/amazon-appstore) |
 | **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
-| **Web billing** | Sell your app's subscriptions on the web through your own Stripe account: the Web page's four-step checklist, web products created in Stripe, a hosted checkout, purchase links per offering, redemption links that unlock web purchases in the app (`redeemWebPurchase`, PURCHASE_REDEEMED), no-code web-to-app funnels with a builder, live preview, Build with AI and analytics, web discount codes as Stripe coupons, and your own domain ([guide](https://revenuedot.app/docs/guides/web-billing)) | Tier 3 · built, tested against an in-memory Stripe; no real Stripe account yet |
+| **Web billing** | Sell your app's subscriptions on the web through your own Stripe account, linked with **Connect with Stripe** (no keys to copy, no webhook to set up, no fee from RevenueDot) or a restricted key: the Web page's four-step checklist, web products created in Stripe, a hosted checkout, purchase links per offering, redemption links that unlock web purchases in the app (`redeemWebPurchase`, PURCHASE_REDEEMED), no-code web-to-app funnels with a builder, live preview, Build with AI and analytics, web discount codes as Stripe coupons, and your own domain ([guide](https://revenuedot.app/docs/guides/web-billing), [Connect with Stripe](https://revenuedot.app/docs/guides/stripe-connect)) | Tier 3 · built, tested against an in-memory Stripe and a fake Connect platform; no real Stripe account yet, and Connect waits for RevenueDot's platform account |
 | **Product import** | "Import products" lists what App Store Connect (subscription groups and in-app purchases), Google Play (each base plan as `subscription:base_plan`, one-time products) and your Stripe account (each active price) already have, marks what the catalog has, and creates the chosen products with their type, duration and name, optionally attached to entitlements. Amazon has no product API, so its products are added by SKU ([guide](https://revenuedot.app/docs/guides/import-products)) | Tier 1/2 · built, tested against fake store APIs; not yet run against a real store account |
 | **Access** | Entitlements, offerings, packages, anonymous IDs, `logIn`/`logOut`, aliasing, restore and transfer rules, promotional access, grace periods, billing retry, refunds, upgrades and downgrades | Tier 1 · built and tested |
 | **Backend** | RevenueCat-compatible REST API v1, and every one of the 128 REST API v2 operations (126 doing the real work, discounts included; the 2 invoice operations exist only for RevenueCat's own Web Billing and answer on purpose); restore a purchase by its Google Play or App Store order id; create products in App Store Connect and Google Play; subscriber access tokens for the SDK endpoints; webhooks with the same payloads for 19 of the 21 event types ([why not the other 2](https://revenuedot.app/docs/guides/webhooks)), signed deliveries, retries and replay | Tier 1 core, Tier 2 rest · built and tested; store operations tested against fake stores |
@@ -184,19 +184,20 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
-| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 64 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
+| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 67 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
 | **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · built, tested against a fake Stripe; switched on when the Stripe keys are set |
-| **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
+| **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · all ten released on npm, CocoaPods, Maven Central, OpenUPM and as git tags |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
 | **Paywalls** | Native paywalls the RevenueCat SDKs render (all 17 component types): a gallery of ten templates built on 2026 conversion research, a visual editor (layers, properties, undo, light and dark, translations, versions), "Generate with AI" (Workers AI on Cloud, your OpenAI or Anthropic key on self-host), and a cached asset CDN. Every published paywall is checked to decode in the SDK ([guide](https://revenuedot.app/docs/guides/paywalls)) | Tier 2 · built, tested; renders in RevenueCatUI on the iOS simulator |
 | **Growth** | Experiments, targeting, virtual currencies, Customer Center (dashboard editor: paths, cancel survey with offers, colours, 33 languages, preview) | Tier 2 · built and tested |
+| **Payment recovery** | When a renewal fails on any store (App Store billing retry, Google Play grace period or account hold, Stripe past due, Amazon grace), the subscriber gets emails from your app on your schedule (day 0, 3 and 7 by default) with one link that opens the right place to fix the payment: Apple's payment page, the Play Store subscription, or your Stripe customer portal. The in-app Customer Center opens the same link. Unsubscribe in one click. The page shows what is at risk, the emails sent, and the revenue recovered after an email ([guide](https://revenuedot.app/docs/guides/payment-recovery)) | Tier 3 · built, tested against fake stores, the SMTP driver and a real browser; no real failed payment recovered yet |
 | **Lifecycle** | **Refund Control**: ordered policies answer Apple's refund requests with [consumption information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) inside the 12-hour window, Google refunds and chargebacks recorded, refund rate and amounts. **Retention**: cancel and refund offers in the in-app Customer Center, and Apple's [Retention Messaging API](https://developer.apple.com/documentation/retentionmessaging) on Apple's cancel screen. **Win-back campaigns**: email churned subscribers an offer, with click tracking, one-click unsubscribe and reactivations. **Support**: Customer Center tickets by email and a help desk summary for Intercom or Zendesk ([guides](https://revenuedot.app/docs/guides/refund-control)) | Tier 2/3 · built, tested against a mocked App Store and an in-memory mailer; Apple's Retention Messaging API needs Apple's approval |
 | **Project settings** | RevenueCat's tabs: sandbox testing access enforced on the server (anybody, allowlisted app user IDs, nobody), ownership transfer to an admin, brand colour and gradient presets and fonts in the paywall editor and the SDK's named colours, blocked customers who lose paid features on every platform, and a public **Verified Metrics** page with production totals, sparklines and a link-preview image ([guide](https://revenuedot.app/docs/guides/project-settings)) | Tier 2 · built, tested and browser-validated |
 | **Auth (beta)** | Sign users in with Firebase or any OpenID Connect provider (Auth0, Clerk, Supabase, Cognito, Google, Apple): ID tokens verified with the provider's keys, logIn semantics, an access token that reads customer info, attributes and in-app currency balances without a backend, refresh and sign-out, balances by identity for your server, in the RevenueCat SDKs' token-login wire format ([guide](https://revenuedot.app/docs/guides/auth)) | Tier 2 · built, tested with keys generated in the tests; no real Firebase project or provider called yet |
 | **Customers** | Customer lists (all, active, sandbox, non-subscription, expired), saved audiences, filters from the audience builder, summary cards, CSV export ([guide](https://revenuedot.app/docs/guides/customer-lists)) | Tier 1/2 · built and tested |
 | **RevenueDot AI** | An assistant in the dashboard that answers from your own metrics, 43 charts, customers, catalog, experiments and webhook health, and makes small changes (grant access, create products, set the current offering, pause experiments, replay webhooks) only after you approve each one, audited as "RevenueDot AI on behalf of" you. A full-page chat with history, screenshots, `@` mentions and a `.storekit` importer; an Ask bar on the Overview; a read and write / read only / off setting per project; a shareable first-sale card. Its tools have the MCP server's names ([guide](https://revenuedot.app/docs/guides/revenuedot-ai)) | Tier 2 · built, tested with a scripted model; Cloud (Workers AI, Durable Objects) and self-host (your Anthropic or OpenAI key) |
-| **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
+| **Enterprise** (`ee/`, licence key) | **Organizations** that own projects, with owner, admin and member roles and seat counts; **custom roles** built from the 33 API v2 scopes and enforced on every route; **SSO** with SAML 2.0 (SP- and IdP-initiated, signature-wrapping, replay and condition checks) and OpenID Connect, DNS-verified domains, enforced SSO with an owner break-glass and just-in-time accounts; **SCIM 2.0** users and groups (Okta and Entra request forms) mapped to project roles, where deactivation removes access and sessions at once; **data location** per project (US, EU) enforced per Cloud region; **audit retention** from 30 days to 10 years; **signed compliance exports** (audit log and access review, CSV or JSON, Ed25519). Without a licence key the open-source build is unchanged ([spec](prd/enterprise/PRD.md), [guide](https://revenuedot.app/docs/guides/enterprise)) | Tier 3 · built on branch `tier3-ee` · 113 unit tests, 33 browser tests on Railway Postgres with a local test identity provider; no EU Cloud region yet. High-availability self-host and SLA: planned |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/paywalls-editor-dark.png">
@@ -231,24 +232,31 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
   <img alt="RevenueDot Refund Control: refund rate, refund request amount and refund requests over the last 28 days, the four policy templates and an ordered refund policy with its conditions" src="docs/assets/lifecycle/refund-control.png" width="100%">
 </picture>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/payment-recovery/dark.png">
+  <img alt="RevenueDot Payment recovery: subscribers whose renewal failed, the recovery emails sent, the subscriptions recovered and the revenue they brought back" src="docs/assets/payment-recovery/recovered.png" width="100%">
+</picture>
+
 <p><img alt="RevenueDot Customer Center editor: support settings, the active-subscription screen's ordered paths, and the Manage path with its button text, promotional offer and a feedback survey whose first answer shows a Retention offer" src="docs/assets/lifecycle/customer-center-editor.png" width="100%"></p>
 
 ## SDKs
 
 Keep the RevenueCat SDK you already ship, or switch to our MIT forks. They keep RevenueCat's class and method names (`Purchases`, `CustomerInfo`, `Offerings`), so the swap is a package change.
 
-| Platform | Language | Repository | Proxy-URL migration |
+| Platform | Repository | Install the fork | Proxy-URL migration |
 |---|---|---|---|
-| iOS, macOS, tvOS, watchOS, visionOS | Swift | [revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios) | Yes |
-| Android | Kotlin | [revenuedot/purchases-android](https://github.com/revenuedot/purchases-android) | Yes |
-| React Native and Expo | TypeScript | [revenuedot/react-native-purchases](https://github.com/revenuedot/react-native-purchases) | Yes |
-| Flutter | Dart | [revenuedot/purchases-flutter](https://github.com/revenuedot/purchases-flutter) | Yes on mobile |
-| Web | TypeScript | [revenuedot/purchases-js](https://github.com/revenuedot/purchases-js) | Yes |
-| Capacitor and Ionic | TypeScript | [revenuedot/purchases-capacitor](https://github.com/revenuedot/purchases-capacitor) | Yes on native |
-| Kotlin Multiplatform | Kotlin | [revenuedot/purchases-kmp](https://github.com/revenuedot/purchases-kmp) | Yes |
-| Unity | C# | [revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity) | Yes |
-| Cordova | TypeScript | [revenuedot/cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases) | Yes |
-| Shared layer for the cross-platform SDKs | Kotlin, Swift | [revenuedot/purchases-hybrid-common](https://github.com/revenuedot/purchases-hybrid-common) | n/a |
+| iOS, macOS, tvOS, watchOS, visionOS | [revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios) | CocoaPods `pod 'RevenueDotPurchases', '5.91.0'` (and `RevenueDotPurchasesUI`), or Swift Package Manager `https://github.com/revenuedot/purchases-ios` at `5.91.0-revenuedot` | Yes |
+| Android | [revenuedot/purchases-android](https://github.com/revenuedot/purchases-android) | `implementation("app.revenuedot.purchases:purchases:10.23.3")` | Yes |
+| React Native and Expo | [revenuedot/react-native-purchases](https://github.com/revenuedot/react-native-purchases) | `"react-native-purchases": "npm:@revenuedot/react-native-purchases@10.10.2"` | Yes |
+| Flutter | [revenuedot/purchases-flutter](https://github.com/revenuedot/purchases-flutter) | `purchases_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, ref: 10.13.2-revenuedot } }` | Yes, web included |
+| Web | [revenuedot/purchases-js](https://github.com/revenuedot/purchases-js) | `"@revenuecat/purchases-js": "npm:@revenuedot/purchases-js@1.67.0"` | Yes |
+| Capacitor and Ionic | [revenuedot/purchases-capacitor](https://github.com/revenuedot/purchases-capacitor) | `"@revenuecat/purchases-capacitor": "npm:@revenuedot/purchases-capacitor@13.6.1"` | Yes on native |
+| Kotlin Multiplatform | [revenuedot/purchases-kmp](https://github.com/revenuedot/purchases-kmp) | `implementation("app.revenuedot.purchases:purchases-kmp-core:3.10.1")` | Yes |
+| Unity | [revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity) | OpenUPM `openupm add com.revenuedot.purchases-unity` (9.11.1), or the git URL `https://github.com/revenuedot/purchases-unity.git?path=RevenueCat#9.11.1-revenuedot` | Yes |
+| Cordova | [revenuedot/cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases) | `cordova plugin add @revenuedot/cordova-plugin-purchases@8.2.3` | Yes |
+| Shared layer for the cross-platform SDKs | [revenuedot/purchases-hybrid-common](https://github.com/revenuedot/purchases-hybrid-common) | Pulled in by the wrappers: pods `RevenueDotPurchasesHybridCommon` 19.4.1, Maven `app.revenuedot.purchases:purchases-hybrid-common:19.4.1`, npm `@revenuedot/purchases-typescript-internal@19.4.1` | n/a |
+
+Every import stays the same (`import RevenueCat`, `com.revenuecat.purchases.*`, `package:purchases_flutter`, `react-native-purchases`). The forks talk to `https://api.revenuedot.app` by default and trust RevenueDot's response signatures; `setProxyURL` still points them at a self-hosted server. Release status per package: [docs/STATUS.md](docs/STATUS.md) row 1.13.
 
 ## Compatibility
 
@@ -360,7 +368,7 @@ revenuedot/
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
 - **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
-- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
+- **Tier 3 · enterprise:** organizations, custom roles, SSO (SAML and OpenID Connect), SCIM, data location, audit retention and signed compliance exports are built in `ee/`; still planned: high-availability self-host, an SLA, an EU Cloud region, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -370,6 +378,11 @@ Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/S
 </picture>
 
 <p><img alt="A public RevenueDot Verified Metrics page: MRR, revenue, active subscriptions and active trials with 28-day sparklines" src="docs/assets/settings/verified-page.png" width="100%"></p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/enterprise/sso-tab-dark.png">
+  <img alt="RevenueDot Enterprise, Organization settings, Single sign-on: a SAML connection that is on, a verified email domain, and the switch that requires single sign-on" src="docs/assets/enterprise/sso-tab.png" width="100%">
+</picture>
 
 ## FAQ
 
@@ -478,6 +491,16 @@ RevenueDot serves the same API the RevenueCat SDKs call, so it supports what the
 Yes. When a customer asks Apple for a refund, Apple sends a `CONSUMPTION_REQUEST` and waits up to 12 hours for consumption information. RevenueDot's Refund Control answers it for you with Apple's [Send Consumption Information](https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information-v1) endpoint: account age, spend, refunds, whether the purchase was used, and your refund preference from ordered policies (for example "prefer no refund for customers who renewed in the last 24 hours"). See the [Refund Control guide](https://revenuedot.app/docs/guides/refund-control).
 </details>
 
+<details><summary><b>Can RevenueDot win back subscribers whose card was declined?</b></summary>
+
+Yes. When a renewal fails on the App Store, Google Play, Amazon or Stripe, **Lifecycle > Payment recovery** emails the subscriber from your app's name on your schedule (day 0, 3 and 7 by default) with one link to fix the payment: Apple's payment page, the Play Store subscription page, or a fresh Stripe customer portal session. When the store renews the subscription within the recovery window, the page counts that revenue as recovered. Webhooks still get the `BILLING_ISSUE` event as before. See the [Payment recovery guide](https://revenuedot.app/docs/guides/payment-recovery).
+</details>
+
+<details><summary><b>Do I have to paste a Stripe key to sell on the web?</b></summary>
+
+No. Click **Connect with Stripe** on your Stripe app and allow RevenueDot in Stripe. Payments go straight to your own Stripe account, RevenueDot takes no fee on them, and your account's events reach RevenueDot without a webhook to set up. A restricted key still works if you prefer it. See [Connect with Stripe](https://revenuedot.app/docs/guides/stripe-connect).
+</details>
+
 <details><summary><b>How do I win back churned subscribers?</b></summary>
 
 Three ways, all built: Apple's [win-back offers](https://revenuedot.app/docs/guides/win-back-offers) work with the RevenueCat SDK unchanged; a Customer Center offer catches customers as they cancel ([retention offers](https://revenuedot.app/docs/guides/retention)); and win-back campaigns email lapsed subscribers a link back to the store, once each, with clicks, unsubscribes and reactivations counted ([win-back campaigns](https://revenuedot.app/docs/guides/win-back-campaigns)).
@@ -495,7 +518,22 @@ To your support email, with the customer's subscription details and Reply-To set
 
 <details><summary><b>How much does RevenueDot cost?</b></summary>
 
-Self-hosting is free, with no revenue share and no limits. RevenueDot Cloud is free up to $10,000 of tracked revenue a month. Cloud Standard is 0.5% of the tracked revenue above $10,000, never more than $999 a month; it is built and starts when billing is switched on ([Cloud billing](https://revenuedot.app/docs/guides/cloud-billing)). RevenueCat charges 1% of all tracked revenue once an app passes $2,500 a month ([pricing](https://www.revenuecat.com/pricing)). Enterprise starts at $50,000 a year.
+Self-hosting is free, with no revenue share and no limits. RevenueDot Cloud is free up to $10,000 of tracked revenue a month. Cloud Standard is 0.5% of the tracked revenue above $10,000, never more than $999 a month; it is built and starts when billing is switched on ([Cloud billing](https://revenuedot.app/docs/guides/cloud-billing)). RevenueCat charges 1% of all tracked revenue once an app passes $2,500 a month ([pricing](https://www.revenuecat.com/pricing)). Enterprise starts at $50,000 a year. Enterprise licences cover SSO, SCIM, custom roles, organizations, data location, audit retention, compliance exports and support.
+</details>
+
+<details><summary><b>Does RevenueDot support SAML single sign-on and SCIM provisioning?</b></summary>
+
+Yes, with an Enterprise licence. Connect Okta, Microsoft Entra ID, Google Workspace or any SAML 2.0 or OpenID Connect provider, verify your email domain with a DNS TXT record, and optionally require single sign-on for that domain (owners keep a password for emergencies). SCIM 2.0 creates, updates and deactivates people from your identity provider and maps its groups to project roles; deactivating someone removes their access and signs them out at once. RevenueCat offers SSO and SCIM on its Enterprise plan through WorkOS ([RevenueCat SSO](https://www.revenuecat.com/docs/projects/sso)). See [Single sign-on](https://revenuedot.app/docs/guides/single-sign-on) and [SCIM](https://revenuedot.app/docs/guides/scim).
+</details>
+
+<details><summary><b>Can I create custom roles, for example a support agent who can refund but not edit the catalog?</b></summary>
+
+Yes, with an Enterprise licence. A custom role is any set of the 33 API v2 permission scopes, for one project or every project of an organization, and the server checks it on every request, from the dashboard, RevenueDot AI and the API alike. RevenueCat has six fixed roles ([collaborators](https://www.revenuecat.com/docs/projects/collaborators)). See [Enterprise](https://revenuedot.app/docs/guides/enterprise).
+</details>
+
+<details><summary><b>Can I keep my customers' purchase data in the EU?</b></summary>
+
+Self-hosted: yes, it stays wherever you run RevenueDot and its Postgres. RevenueDot Cloud records a region on each project and refuses requests that reach the wrong region, but it runs in the US today; an EU region is planned ([data location](https://revenuedot.app/docs/guides/data-location)). RevenueCat stores all data in the US ([DPA](https://www.revenuecat.com/dpa)).
 </details>
 
 <details><summary><b>Is it safe to validate purchases on my own server?</b></summary>

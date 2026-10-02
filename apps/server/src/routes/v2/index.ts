@@ -37,6 +37,8 @@ import { refundControlRoutes } from "./refund-control.js";
 import { retentionRoutes } from "./retention.js";
 import { supportRoutes } from "./support.js";
 import { winbackRoutes } from "./winback.js";
+import { stripeConnectRoutes } from "./stripe-connect.js";
+import { paymentRecoveryRoutes } from "./payment-recovery.js";
 import { customerListRoutes } from "./customer-lists.js";
 import { projectSettingsRoutes } from "./project-settings.js";
 import { authRoutes as authConfigRoutes } from "./auth.js";
@@ -106,7 +108,16 @@ export function v2Routes(deps: Deps) {
         const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
         if (!s.canRead || (write && !s.canWrite)) throw new V2Error(403, "authorization_error", s.reason ?? "RevenueDot AI cannot do this here.");
       }
-      c.set("principal", { ...p, role: m.role });
+      // Enterprise extensions may deny access (enforced single sign-on) or give a custom role's permissions.
+      let permissions: string[] | undefined;
+      for (const x of deps.extensions ?? []) {
+        // RevenueDot AI's in-process calls carry no cookie: they act with the session the turn came from.
+        const sessionId = p.via === "assistant" ? ASSISTANT_CTX.get(c.req.raw)?.sessionId ?? null : getCookie(c, SESSION_COOKIE) ?? null;
+        const a = await x.projectAccess?.({ deps, userId: p.userId, sessionId, projectId, role: m.role });
+        if (a?.deny) throw new V2Error(a.deny.status, a.deny.status === 404 ? "resource_missing" : "authorization_error", a.deny.message);
+        if (a?.permissions) permissions = a.permissions;
+      }
+      c.set("principal", { ...p, role: m.role, ...(permissions ? { permissions } : {}) });
     }
     c.set("projectId", projectId);
     await next();
@@ -121,6 +132,8 @@ export function v2Routes(deps: Deps) {
   retentionRoutes(r, deps);
   supportRoutes(r, deps);
   winbackRoutes(r, deps);
+  paymentRecoveryRoutes(r, deps);
+  stripeConnectRoutes(r, deps);
   customerListRoutes(r, deps);
   adsRoutes(r, deps);
   productRoutes(r, deps);

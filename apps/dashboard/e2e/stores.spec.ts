@@ -103,7 +103,7 @@ test("stores: Amazon Appstore and Stripe apps", async ({ page, baseURL }) => {
     await d.getByRole("button", { name: "Add app" }).click();
     await page.waitForURL(/\/apps\/app/);
     stripeId = page.url().split("/").pop()!;
-    const keySection = page.getByRole("region", { name: "Stripe API key" });
+    const keySection = page.getByRole("region", { name: "Stripe account" });
     await keySection.getByLabel("Restricted key").fill("pk_test_123");
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("This is a publishable key (pk_…). Paste a restricted key (rk_…) instead.")).toBeVisible();
@@ -169,7 +169,7 @@ test("stores: Amazon Appstore and Stripe apps", async ({ page, baseURL }) => {
   await test.step("phone width: the Stripe page has no horizontal scroll", async () => {
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(`${WEB}/projects/${pid}/apps/${stripeId}`);
-    await expect(page.getByRole("region", { name: "Stripe API key" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Stripe account" })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(1);
   });

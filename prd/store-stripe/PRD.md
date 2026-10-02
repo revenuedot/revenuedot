@@ -15,7 +15,7 @@ Essential (Tier 2)
 - Answer 5xx for every temporary failure on `POST /v1/receipts` (Stripe down, rate limited, an unpaid first invoice), 4xx only for what will never succeed.
 
 Later (Tier 3, with RevenueDot's own Stripe platform)
-- Stripe Connect OAuth ("Connect with Stripe" button) instead of pasting a restricted key. (Hosted checkout, purchase links, funnels, redemption links and web discounts are built on this Stripe app: `prd/web-billing/PRD.md`. They need the key to have write access to Products, Prices, Checkout Sessions, Coupons and Promotion Codes.)
+- ~~Stripe Connect OAuth ("Connect with Stripe" button) instead of pasting a restricted key.~~ Built: `prd/web-billing/PRD.md` §8. (Hosted checkout, purchase links, funnels, redemption links and web discounts are built on this Stripe app: `prd/web-billing/PRD.md`. They need the key to have write access to Products, Prices, Checkout Sessions, Coupons and Promotion Codes.)
 - Subscription schedules (a downgrade scheduled for the next period through a schedule), metered and tiered prices, multi-item subscriptions.
 - A periodic re-check of active subscriptions without webhooks.
 
@@ -122,5 +122,5 @@ Live and test mode: a key's mode decides the environment. Objects with `livemode
 
 ## Known gaps
 - No real Stripe account has been used; every call is checked against mocks built from Stripe's documented shapes.
-- Connect OAuth, subscription schedules, multi-item and metered subscriptions are not supported (see Later).
+- Subscription schedules, multi-item and metered subscriptions are not supported (see Later). Connect OAuth is built (`prd/web-billing/PRD.md` §8).
 - There is no scheduled re-check without webhooks; a cancellation shows when its webhook arrives or the backend posts the subscription again.

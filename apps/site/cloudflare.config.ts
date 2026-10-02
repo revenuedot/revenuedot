@@ -2,7 +2,7 @@
 // except /api/*, which the Worker script handles (worker/index.ts: the contact-sales form and the visitor's country).
 // Deploy only after approval: pnpm --filter site run deploy. vite.config.ts hands the Astro build (dist/) to cf as the
 // Worker's static assets. www.revenuedot.app redirects to the apex with a zone redirect rule (docs/cloud.md).
-import { bindings, defineConfig } from "cf/config";
+import { bindings, defineConfig, triggers } from "cf/config";
 
 export default defineConfig({
   // The Circo account. Every `cf` command run from this folder targets it unless CLOUDFLARE_ACCOUNT_ID says otherwise.
@@ -14,6 +14,8 @@ export default defineConfig({
     assets: { htmlHandling: "drop-trailing-slash", notFoundHandling: "404-page", runWorkerFirst: ["/api/*"] },
     domains: ["revenuedot.app", "www.revenuedot.app"],
     observability: { enabled: true },
+    // Daily at 15:00 UTC (8am in California): the email listing people who started the contact-sales form and did not send it.
+    triggers: [triggers.scheduled({ schedule: "0 15 * * *" })],
     env: {
       ASSETS: bindings.assets(),
       // Contact-sales leads (table sales_leads, created by the Worker on first use). D1 database "revenuedot-leads".

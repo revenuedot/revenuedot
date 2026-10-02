@@ -183,3 +183,15 @@ export type ErrorPage = {
   faq: Faq[];
   related: string[];
 };
+
+/** A top-level guide page (/in-app-purchases, /add-in-app-purchases, /do-i-need-revenuecat): a Landing without a section. */
+export type Guide = Omit<Landing, "section" | "slug"> & {
+  /** The page's URL path, e.g. "/in-app-purchases". */
+  path: string;
+  /** Breadcrumbs between Home and this page, if any. The page itself is added last. */
+  parents?: { name: string; path: string }[];
+  /** Second button under the answer. Defaults to the first docs link. */
+  secondary?: { href: string; label: string };
+  /** Small line under the buttons. */
+  note?: string;
+};

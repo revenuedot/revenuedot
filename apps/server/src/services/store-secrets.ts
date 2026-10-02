@@ -1,5 +1,6 @@
 import { Codes, RCError } from "../errors.js";
 import { depsSecretKey, seal, unseal, type SecretKey, type SecretMap } from "./secrets.js";
+import { platformKeyFor, type StripeConnectConfig } from "./stripe-connect-config.js";
 
 /**
  * Amazon and Stripe store secrets live sealed in `apps.secrets` (AES-256-GCM, services/secrets.ts), never in
@@ -9,7 +10,8 @@ import { depsSecretKey, seal, unseal, type SecretKey, type SecretMap } from "./s
  */
 export const STORE_SECRET_FIELDS: Record<string, readonly string[]> = {
   amazon: ["shared_secret"],
-  stripe: ["stripe_secret_key", "stripe_webhook_secret"],
+  // `stripe_connect_account_id`: the account "Connect with Stripe" linked (prd/web-billing/PRD.md §8).
+  stripe: ["stripe_secret_key", "stripe_webhook_secret", "stripe_connect_account_id"],
 };
 
 export const storeSecretFields = (type: string): readonly string[] => STORE_SECRET_FIELDS[type] ?? [];
@@ -20,6 +22,7 @@ export function storeSecretHint(field: string, value: string): string {
     const prefix = /^(rk|sk)_(live|test)_/.exec(value)?.[0] ?? "";
     return `${prefix}…${value.slice(-4)}`;
   }
+  if (field === "stripe_connect_account_id") return `acct_…${value.slice(-4)}`;
   return "set";
 }
 
@@ -58,6 +61,7 @@ export function storeSecretHintOf(app: SecretApp, field: string): string | null 
 export function takeStoreSecrets(type: string, rest: Record<string, unknown>): Record<string, string | null> {
   const out: Record<string, string | null> = {};
   for (const f of storeSecretFields(type)) {
+    if (f === "stripe_connect_account_id") { delete rest[f]; continue; }
     if (!(f in rest)) continue;
     const v = rest[f];
     delete rest[f];
@@ -89,11 +93,26 @@ export async function sealStoreSecrets(app: SecretApp, update: Record<string, st
   return { secrets: await seal(current, key), secretHints: hints, credentials };
 }
 
+/** Whether a Stripe app is linked through "Connect with Stripe" (its account id is sealed). */
+export const stripeConnected = (app: SecretApp) => storeSecretSet(app, "stripe_connect_account_id");
+
+/** A Stripe app's mode: a connection's mode, else the restricted key's (from its hint); null without either. */
+export function stripeModeOf(app: SecretApp): "live" | "test" | null {
+  if (stripeConnected(app)) return app.credentials?.stripe_connect_mode === "test" ? "test" : "live";
+  return stripeKeyHintOf(storeSecretHintOf(app, "stripe_secret_key")).mode;
+}
+
+/** Whether a Stripe app can reach Stripe: a restricted key, or a connection. */
+export const stripeReachable = (app: SecretApp) => storeSecretSet(app, "stripe_secret_key") || stripeConnected(app);
+
 /**
  * The app with its sealed store secrets opened into `credentials`, in memory only, for the store clients. Apps of other
  * stores come back unchanged. A key that cannot open them is a server problem: RCError 500 (never a 4xx on receipts).
+ * A Stripe app linked with "Connect with Stripe" gets the platform's secret key of the connection's mode as its key and
+ * the connected account as `stripe_account_id` (sent as `Stripe-Account`), so every Stripe path acts on the developer's
+ * account unchanged. Without the platform keys (removed from the environment) it has no key at all.
  */
-export async function withStoreSecrets<T extends SecretApp>(deps: { encryptionKey?: string; signingKey?: string }, app: T): Promise<T> {
+export async function withStoreSecrets<T extends SecretApp>(deps: { encryptionKey?: string; signingKey?: string; stripeConnect?: StripeConnectConfig }, app: T): Promise<T> {
   if (!storeSecretFields(app.type).length || !app.secrets) return app;
   let opened: SecretMap;
   try {
@@ -101,5 +120,14 @@ export async function withStoreSecrets<T extends SecretApp>(deps: { encryptionKe
   } catch (e) {
     throw new RCError(500, Codes.STORE_PROBLEM, `The app's store credentials could not be opened: ${e instanceof Error ? e.message : String(e)}`);
   }
-  return { ...app, credentials: { ...(app.credentials ?? {}), ...opened } };
+  const { stripe_connect_account_id: account, ...rest } = opened;
+  if (app.type === "stripe" && account) {
+    const mode = app.credentials?.stripe_connect_mode === "test" ? "test" : "live";
+    const key = platformKeyFor(deps.stripeConnect, mode);
+    const credentials: Record<string, unknown> = { ...(app.credentials ?? {}), ...rest, stripe_account_id: account, stripe_connected: true };
+    delete credentials.stripe_secret_key;
+    if (key) credentials.stripe_secret_key = key;
+    return { ...app, credentials };
+  }
+  return { ...app, credentials: { ...(app.credentials ?? {}), ...rest } };
 }

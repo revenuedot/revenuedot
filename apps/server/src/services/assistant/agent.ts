@@ -29,7 +29,7 @@ export interface AssistantContext {
 export interface MessageMetadata { mentions?: { type: "customer" | "offering" | "chart"; id: string; label?: string }[] }
 
 /** Reads who is asking, their role and the project's AI setting. Null when the user is not a member. */
-export async function loadAssistantContext(deps: Deps, model: AssistantModel, userId: string, projectId: string, conversationId: string): Promise<AssistantContext | null> {
+export async function loadAssistantContext(deps: Deps, model: AssistantModel, userId: string, projectId: string, conversationId: string, sessionId: string | null = null): Promise<AssistantContext | null> {
   const { db } = deps;
   const [row] = await db.select({ role: schema.memberships.role, email: schema.users.email, name: schema.users.name, projectName: schema.projects.name, aiAccess: schema.projects.aiAccess })
     .from(schema.memberships)
@@ -39,7 +39,7 @@ export async function loadAssistantContext(deps: Deps, model: AssistantModel, us
   if (!row) return null;
   return {
     deps, model, userName: row.name,
-    actor: { userId, email: row.email, projectId, conversationId },
+    actor: { userId, email: row.email, projectId, conversationId, sessionId },
     project: { id: projectId, name: row.projectName },
     scope: assistantScope(row.aiAccess, row.role),
     caps: deps.assistantCaps ?? DEFAULT_CAPS,

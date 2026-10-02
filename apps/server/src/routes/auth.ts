@@ -44,6 +44,11 @@ export function authRoutes(deps: Deps) {
   const json = async (c: Context) => c.req.json().catch(() => ({}));
   const bad = (c: Context, message: string) => c.json({ type: "invalid_request", message }, 400);
   const me = (c: Context) => sessionUser(deps.db, getCookie(c, SESSION_COOKIE), deps.now());
+  const meExtras = async (c: Context, userId: string) => {
+    const extra: Record<string, unknown> = {};
+    for (const x of deps.extensions ?? []) Object.assign(extra, await x.me?.({ deps, userId, sessionId: getCookie(c, SESSION_COOKIE) ?? null }));
+    return extra;
+  };
   r.use("/auth/*", async (c, next) => { rememberOrigin(origin(c)); await next(); });
 
   // Self-hosted servers default to one owner account; the cloud edition takes sign-ups from anyone.
@@ -55,7 +60,17 @@ export function authRoutes(deps: Deps) {
 
   // What the sign-in pages need before showing a form. No session required.
   // signed_in lets the sign-in pages skip their form without probing /auth/me, which answers 401 when signed out.
-  r.get("/auth/config", async (c) => c.json({ edition: deps.edition ?? "self-hosted", signup: (await signupOpen()) ? "open" : "closed", signed_in: !!(await me(c)) }));
+  r.get("/auth/config", async (c) => {
+    const extra: Record<string, unknown> = {};
+    for (const x of deps.extensions ?? []) Object.assign(extra, await x.config?.(deps));
+    return c.json({ edition: deps.edition ?? "self-hosted", signup: (await signupOpen()) ? "open" : "closed", signed_in: !!(await me(c)), ...extra });
+  });
+  // Enterprise extensions may refuse password sign-in, sign-up and reset for an address (enforced single sign-on).
+  const passwordRefusal = async (email: string) => {
+    for (const x of deps.extensions ?? []) { const r = await x.passwordPolicy?.({ deps, email: normEmail(email) }); if (r) return r; }
+    return null;
+  };
+  const ssoRequired = (c: Context, r: { message: string; sso_url?: string }) => c.json({ type: "sso_required", message: r.message, ...(r.sso_url ? { sso_url: r.sso_url } : {}) }, 403);
 
   r.post("/auth/signup", async (c) => {
     const p = Signup.safeParse(await json(c));
@@ -71,6 +86,8 @@ export function authRoutes(deps: Deps) {
       return c.json({ type: "signup_closed", message: "Sign-up is closed on this server: it has an owner account already. The owner can open it by setting REVENUEDOT_ALLOW_SIGNUP=true, or invite you to a project." }, 403);
     }
     if (!p.success) return bad(c, p.error.issues[0]?.message ?? "Invalid request.");
+    const refusal = await passwordRefusal(p.data.email);
+    if (refusal) return ssoRequired(c, refusal);
     const now = deps.now();
     const res = await signup(deps.db, {
       email: p.data.email, password: p.data.password, name: p.data.name,
@@ -93,6 +110,8 @@ export function authRoutes(deps: Deps) {
   r.post("/auth/login", async (c) => {
     const p = Login.safeParse(await json(c));
     if (!p.success) return c.json({ type: "invalid_request", message: "Enter your email and password." }, 400);
+    const refusal = await passwordRefusal(p.data.email);
+    if (refusal) return ssoRequired(c, refusal);
     const u = await login(deps.db, p.data.email, p.data.password);
     if (!u) return c.json({ type: "authentication_error", message: "Email or password is incorrect." }, 401);
     await startSession(c, u.id);
@@ -118,6 +137,7 @@ export function authRoutes(deps: Deps) {
         billing_status: deps.edition === "cloud" ? (await deps.db.select({ s: schema.billingAccounts.status }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)))[0]?.s ?? "none" : null, email_verification_required: needsVerification(deps, u),
       },
       projects: await projectsForUser(deps.db, u.id),
+      ...(await meExtras(c, u.id)),
     });
   });
 
@@ -147,6 +167,7 @@ export function authRoutes(deps: Deps) {
     const b = base(c);
     defer(deps, async () => {
       if (!(await hit(deps.db, `pwreset:email:${email}`, RESET_LIMITS.perEmail, RESET_LIMITS.emailWindowMs, now))) return;
+      if (await passwordRefusal(email)) return;
       const [u] = await deps.db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
       if (u) await sendPasswordReset(deps, u, b);
     });
@@ -168,6 +189,8 @@ export function authRoutes(deps: Deps) {
     const now = deps.now();
     const t = await consumeToken(deps.db, "password_reset", p.data.token, now);
     if (!t.ok) return c.json({ type: "token_invalid", reason: t.reason, message: TOKEN_ERRORS[t.reason] }, 400);
+    const refusal = await passwordRefusal(t.user.email);
+    if (refusal) return ssoRequired(c, refusal);
     await deps.db.update(schema.users).set({ passwordHash: await hashPassword(p.data.password), emailVerifiedAt: t.user.emailVerifiedAt ?? now }).where(eq(schema.users.id, t.user.id));
     await deps.db.delete(schema.sessions).where(eq(schema.sessions.userId, t.user.id));
     await retireTokens(deps.db, "password_reset", t.user.id, now);
