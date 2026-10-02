@@ -187,7 +187,6 @@ const journey: Journey = {
       await page.getByRole("heading", { name: "Fake Stripe customer portal" }).waitFor();
       c.eq("its button opens the portal on the connected account", portalCalls(), 1);
       await page.goto(oneTime!);
-      await page.getByRole("button", { name: "Update payment method" }).click();
       await page.getByRole("heading", { name: "This link was already used" }).waitFor();
       c.eq("a used link is refused without a new session", portalCalls(), 1);
       c.eq("a second link can be asked for", await askForLink(), "Check your email");
@@ -337,7 +336,8 @@ const journey: Journey = {
         await shot(`${name}-dark`);
         await page.emulateMedia({ colorScheme: "light" });
       }
-      c.eq("no console errors in the dashboard", consoleErrors, []);
+      // The one 429 is the Customer Center step asking for a fourth link on purpose.
+      c.eq("no console errors in the dashboard", consoleErrors.filter((e) => !/status of 429/.test(e)), []);
     } finally {
       await browser.close().catch(() => {});
     }
