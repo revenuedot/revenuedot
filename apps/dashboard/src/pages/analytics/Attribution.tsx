@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { Segmented, Tag, useProjectId } from "../../components/ui";
-import { api, fmt } from "../../lib/api";
+import { api, ApiError, fmt } from "../../lib/api";
 import "./analytics.css";
 
 /**
@@ -86,14 +86,19 @@ export function AttributionPage() {
   const range = (RANGES.find((r) => r.value === sp.get("range"))?.value ?? (sp.get("start") ? "custom" : "30d")) as RangeId;
   const today = Math.floor(Date.now() / DAY) * DAY;
   const preset = RANGES.find((r) => r.value === range)!;
-  const end = range === "custom" ? sp.get("end") ?? iso(today) : iso(today);
-  const start = range === "custom" ? sp.get("start") ?? iso(today - 29 * DAY) : iso(today - (preset.days - 1) * DAY);
+  // A hand-edited link can carry any text: a date that is not a real YYYY-MM-DD day falls back to the default.
+  const validDay = (d: string | null) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && iso(Date.parse(`${d}T00:00:00Z`)) === d ? d : null);
+  const badRange = range === "custom" && ((sp.get("end") !== null && !validDay(sp.get("end"))) || (sp.get("start") !== null && !validDay(sp.get("start"))));
+  const end = range === "custom" ? validDay(sp.get("end")) ?? iso(today) : iso(today);
+  const start = range === "custom" ? validDay(sp.get("start")) ?? iso(today - 29 * DAY) : iso(today - (preset.days - 1) * DAY);
   const media = sp.get("media_source");
   const set = (patch: Record<string, string | null>) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(patch)) { if (v === null || v === "") n.delete(k); else n.set(k, v); } setSp(n, { replace: true }); };
 
   const query = new URLSearchParams({ group_by: groupBy, start_date: start, end_date: end });
   if (media !== null) query.set("media_source", media);
-  const q = useQuery({ queryKey: ["attribution", pid, query.toString()], enabled: !!pid, placeholderData: keepPreviousData, queryFn: () => api<Report>(`/v2/projects/${pid}/attribution/report?${query}`) });
+  const q = useQuery({ queryKey: ["attribution", pid, query.toString()], enabled: !!pid, placeholderData: keepPreviousData, queryFn: () => api<Report>(`/v2/projects/${pid}/attribution/report?${query}`),
+    // A refused request (a range too long, an end before the start) is shown at once, not retried.
+    retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2 });
   const [spend, setSpend] = useSpend(`rd-attr-spend:${pid}:${groupBy}:${media ?? ""}:${start}:${end}`);
   const r = q.data;
   // ROAS in the totals compares spend with the revenue of the rows that have spend (organic customers cost nothing).
@@ -156,6 +161,7 @@ export function AttributionPage() {
           )}
         </div>
 
+        {badRange && <div className="banner warn" role="status">That date in the link is not a real day, so the range starts from the default.</div>}
         {q.isError && <div className="banner err" role="alert" style={{ alignItems: "center" }}><span style={{ flex: 1 }}>The report could not be loaded: {(q.error as Error).message}</span><button type="button" className="btn btn-line" onClick={() => q.refetch()}>Retry</button></div>}
         {q.isLoading && <div className="panel pb" aria-busy="true"><span className="sk line" /></div>}
         {noAttribution && (

@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { Shell, useMe } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { Tag, useProjectId, useToast } from "../../components/ui";
-import { api, fmt } from "../../lib/api";
+import { api, ApiError, fmt } from "../../lib/api";
 import { aiBase, useAiStatus, type Conversation, type PendingMessage } from "../ai/data";
 import "./analytics.css";
 
@@ -133,7 +133,8 @@ export function BenchmarksPage() {
   for (const k of ["category", "platform", "country"]) { const v = sp.get(k); if (v) query.set(k, v); }
   const q = useQuery({ queryKey: ["benchmarks", pid, query.toString()], enabled: !!pid, placeholderData: keepPreviousData, queryFn: () => api<Benchmarks>(`/v2/projects/${pid}/benchmarks?${query}`),
     // Right after turning sharing on, the project's own numbers are being computed: look again shortly.
-    refetchInterval: (x) => (x.state.data?.settings?.share && !x.state.data.own_computed_at ? 3000 : false) });
+    refetchInterval: (x) => (x.state.data?.settings?.share && !x.state.data.own_computed_at ? 3000 : false),
+    retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2 });
   const b = q.data;
   const share = !!b?.settings?.share;
   const group = b?.peer_group;
