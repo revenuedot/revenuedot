@@ -6,6 +6,8 @@ import { and, eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { assistantServer, textOf } from "./assistant-helpers.js";
 import { draftOffering, draftProducts } from "../src/services/assistant/fake-model.js";
+import { inProcessClient } from "../src/services/assistant/client.js";
+import { toolsByName } from "../src/services/assistant/tools.js";
 
 type S = Awaited<ReturnType<typeof assistantServer>>;
 
@@ -87,5 +89,17 @@ describe("Create with AI", () => {
     expect(d.entitlement.lookup_key).toBe("premium");
     const o = draftOffering("draft an offering", [{ id: "p1", type: "subscription", store_identifier: "w", subscription: { duration: "P1W" } }, { id: "p2", type: "consumable", store_identifier: "c" }]);
     expect(o).toEqual({ lookup_key: "ai_offering", display_name: "Ai offering", packages: [{ lookup_key: "$rc_weekly", display_name: "Weekly", products: ["p1"] }], make_current: false });
+  });
+
+  it("a refused step after the first write is reported with what was created, not thrown", async () => {
+    const s = await assistantServer();
+    const c = inProcessClient(s.deps.dispatch, { userId: s.admin.userId, email: "ada@example.com", projectId: s.pid, conversationId: "aic_partial" });
+    // The entitlement's lookup key is refused (blank once trimmed): the products stay created and the result says what failed.
+    const p = await toolsByName.get("create-products")!.run(c, { products: [{ app_id: s.appId, store_identifier: "plus_monthly", type: "subscription", subscription_duration: "P1M", test_store_price: { amount: 4.99, currency: "USD" } }], entitlement: { lookup_key: "  " } } as never) as any;
+    expect(p).toMatchObject({ created: [{ store_identifier: "plus_monthly" }], entitlement: null, entitlement_error: expect.stringMatching(/^The products were created, but attaching them to .* failed: /) });
+    // The second package repeats the first one's lookup key: the offering and the first package are reported.
+    const o = await toolsByName.get("create-offering")!.run(c, { lookup_key: "partial", display_name: "Partial", packages: [{ lookup_key: "$rc_monthly", display_name: "Monthly", products: ["plus_monthly"] }, { lookup_key: "$rc_monthly", display_name: "Again", products: [] }], make_current: false } as never) as any;
+    expect(o).toMatchObject({ object: "offering_created", lookup_key: "partial", packages: [{ lookup_key: "$rc_monthly", product_ids: [p.created[0].id] }], error: expect.stringMatching(/^Package \$rc_monthly: /) });
+    expect((await s.admin.browser.call("GET", `${s.P}/offerings/${o.id}?expand=package`)).status).toBe(200);
   });
 });

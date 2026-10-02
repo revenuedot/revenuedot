@@ -440,9 +440,11 @@ export const tools: ToolDefinition[] = [
       const base = await P(c);
       const all = await allItems<{ id: string; store_identifier: string; app_id: string }>(c, `${base}/products`);
       const offering = await c.request<{ id: string; lookup_key: string }>("POST", `${base}/offerings`, { body: { lookup_key: a.lookup_key, display_name: a.display_name, ...(a.metadata ? { metadata: a.metadata } : {}) } });
-      const packages: { id: string; lookup_key: string; product_ids: string[]; unknown: string[] }[] = [];
+      const packages: { id: string; lookup_key: string; product_ids: string[]; unknown: string[]; error?: string }[] = [];
+      // The offering exists from here on: a refused package or attach is reported with what was created, not thrown.
+      let error: string | null = null;
       for (const [i, pk] of a.packages.entries()) {
-        const made = await c.request<{ id: string; lookup_key: string }>("POST", `${base}/offerings/${enc(offering.id)}/packages`, { body: { lookup_key: pk.lookup_key, display_name: pk.display_name, position: i } });
+        let made: { id: string; lookup_key: string } | undefined;
         const unknown: string[] = [];
         const byApp = new Map<string, string>();
         for (const ref of pk.products) {
@@ -451,11 +453,23 @@ export const tools: ToolDefinition[] = [
           for (const h of hits) if (!byApp.has(h.app_id)) byApp.set(h.app_id, h.id);
         }
         const ids = [...byApp.values()];
-        if (ids.length) await c.request("POST", `${base}/packages/${enc(made.id)}/actions/attach_products`, { body: { products: ids.map((product_id) => ({ product_id, eligibility_criteria: "all" })) } });
-        packages.push({ id: made.id, lookup_key: made.lookup_key, product_ids: ids, unknown });
+        try {
+          made = await c.request<{ id: string; lookup_key: string }>("POST", `${base}/offerings/${enc(offering.id)}/packages`, { body: { lookup_key: pk.lookup_key, display_name: pk.display_name, position: i } });
+          if (ids.length) await c.request("POST", `${base}/packages/${enc(made.id)}/actions/attach_products`, { body: { products: ids.map((product_id) => ({ product_id, eligibility_criteria: "all" })) } });
+          packages.push({ id: made.id, lookup_key: made.lookup_key, product_ids: ids, unknown });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          error ??= `Package ${pk.lookup_key}: ${msg}`;
+          if (made) packages.push({ id: made.id, lookup_key: made.lookup_key, product_ids: [], unknown, error: `Its products were not attached: ${msg}` });
+        }
       }
-      if (a.make_current) await c.request("POST", `${base}/offerings/${enc(offering.id)}`, { body: { is_current: true } });
-      return { object: "offering_created", id: offering.id, lookup_key: offering.lookup_key, is_current: !!a.make_current, packages };
+      let current = false;
+      if (a.make_current) {
+        try { await c.request("POST", `${base}/offerings/${enc(offering.id)}`, { body: { is_current: true } }); current = true; } catch (e) {
+          error ??= `The offering was created but not made current: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
+      return { object: "offering_created", id: offering.id, lookup_key: offering.lookup_key, is_current: current, packages, ...(error ? { error } : {}) };
     },
   }),
   define({
