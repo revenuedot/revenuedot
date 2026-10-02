@@ -98,19 +98,19 @@ test("in-app currencies, Customer Center and audit logs", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Customer Center", exact: true })).toBeVisible();
   await expect(page.getByLabel("Support email")).toHaveValue(/@/);
   await page.getByLabel("Support email").fill("not an email");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("alert")).toContainText("email address");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("alert")).toContainText("support.email");
   await page.getByLabel("Support email").fill("help@scanner.app");
-  await page.getByLabel("Management title").fill("Your plan");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.locator("#cc-MANAGEMENT-title").fill("Your plan");
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Customer Center saved")).toBeVisible();
   const sdk = await req.fetch("/v1/customercenter/gamer_1", { headers: { authorization: `Bearer ${key}` } });
   const cfg = (await sdk.json()).customer_center;
   expect(cfg.support.email).toBe("help@scanner.app");
   expect(cfg.screens.MANAGEMENT.title).toBe("Your plan");
-  await page.getByRole("button", { name: "Reset to default" }).click();
-  await page.getByRole("button", { name: "Reset" }).last().click();
-  await expect(page.getByText("Back to the default")).toBeVisible();
+  await page.getByRole("button", { name: "Reset configuration" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Reset configuration" }).click();
+  await expect(page.getByText("Customer Center reset to the default")).toBeVisible();
   expect((await (await req.fetch("/v1/customercenter/gamer_1", { headers: { authorization: `Bearer ${key}` } })).json()).customer_center.screens.MANAGEMENT.title).toBe("Manage subscription");
 
   // ---- Audit logs ----

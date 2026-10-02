@@ -58,7 +58,8 @@ describe("POST /v1/customercenter/support/create-ticket", () => {
   it("the SDK reads the ticket settings from the Customer Center config", async () => {
     await settings({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "active", customer_details: { appUserId: true, totalSpent: true } } });
     const cc = (await (await h.fetch("/v1/customercenter/anyone", { key: h.ids.testKey })).json() as any).customer_center;
-    expect(cc.support).toMatchObject({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "active", customer_details: { appUserId: true, totalSpent: true } } });
+    // The SDKs decode snake_case detail keys (purchases-android CustomerDetails, purchases-ios with convertFromSnakeCase).
+    expect(cc.support).toMatchObject({ email: "help@scanner.app", support_tickets: { allow_creation: true, customer_type: "active", customer_details: { app_user_id: true, total_spent: true } } });
   });
 
   it("stores the ticket without email when the project has no support address of its own", async () => {

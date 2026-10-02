@@ -1043,7 +1043,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
       {
         h2: "How do you present the Customer Center in your app?",
         paras: [
-          "Present the SDK's view as usual. The configuration it reads is `GET /v1/customercenter/{app_user_id}`, served by RevenueDot. Without changes, a built-in default is used, and your overrides are merged over it key by key.",
+          "Present the SDK's view as usual. The configuration it reads is `GET /v1/customercenter/{app_user_id}`, served by RevenueDot. Edit it under Lifecycle, then Customer Center: the paths on each screen and their order, Custom URL and Custom Action paths, a cancel feedback survey with an offer per answer, colours for light and dark mode, and custom strings in 33 languages, with a live preview. Without changes, a built-in default is used.",
         ],
         code: {
           title: "SettingsView.swift",
@@ -1082,7 +1082,6 @@ struct SettingsView: View {
       {
         h2: "What is not built yet?",
         bullets: [
-          "A dashboard editor for the whole Customer Center layout. Retention offers and support settings have pages. The rest of the configuration is set through `POST /v2/projects/{project_id}/customer_center_config`.",
           "Apple's Retention Messaging API needs Apple's approval, which RevenueDot cannot grant for you.",
           "App Store Save Outcomes in Charts is always zero until Apple's Retention Messaging API is in use.",
         ],

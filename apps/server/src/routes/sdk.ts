@@ -394,8 +394,8 @@ export function sdkRoutes(deps: Deps) {
   // 14. Product → entitlement mapping (offline entitlements)
   r.get("/v1/product_entitlement_mapping", async (c) => c.json(await productEntitlementMappingJSON(deps.db, c.get("app").projectId, c.get("app").id ?? null)));
 
-  // 15-16. Customer Center (Tier 2): no config yet, so the SDK hides the UI.
-  r.get("/v1/customercenter/:id", async (c) => c.json({ customer_center: await customerCenterFor(deps.db, c.get("app").projectId) }));
+  // 15-16. Customer Center: the project's configuration in the customer's language (prd/customer-center/PRD.md).
+  r.get("/v1/customercenter/:id", async (c) => c.json({ customer_center: await customerCenterFor(deps.db, c.get("app").projectId, { preferredLocales: c.req.header("x-preferred-locales") ?? null }) }));
   // Customer Center tickets (body: app_user_id, customer_email, issue_description): stored, emailed to the support address,
   // listed under Lifecycle > Support (services/support.ts).
   r.post("/v1/customercenter/support/create-ticket", async (c) => {

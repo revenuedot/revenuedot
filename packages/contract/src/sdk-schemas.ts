@@ -105,3 +105,43 @@ export const WebhookEventSchema = z.object({
     takehome_percentage: z.number(), commission_percentage: z.number(), tax_percentage: z.number(), country_code: z.string().nullable(),
   }),
 });
+
+/**
+ * `GET /v1/customercenter/{id}`, as each SDK decodes it. iOS: `CustomerCenterConfigResponse` (Codable, snake_case keys,
+ * unknown keys ignored; unknown screen, path and open-method values become `.unknown`). Android: `CustomerCenterConfigData`
+ * (kotlinx.serialization with ignoreUnknownKeys; enums are strict). Colours go through `RCColor(stringRepresentation:)`
+ * and `PaywallColor`, which read #RRGGBB or #RRGGBBAA.
+ */
+const ccColor = z.string().regex(/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
+const ccColors = z.object({ accent_color: ccColor.optional(), text_color: ccColor.optional(), background_color: ccColor.optional(), button_text_color: ccColor.optional(), button_background_color: ccColor.optional() });
+const ccPathType = z.enum(["MISSING_PURCHASE", "REFUND_REQUEST", "CHANGE_PLANS", "CANCEL", "CUSTOM_URL", "CUSTOM_ACTION"]);
+const ccCross = z.record(z.object({ store_offer_identifier: z.string(), target_product_id: z.string() }));
+function ccSchema(platform: "ios" | "android") {
+  const offerId: z.ZodRawShape = platform === "ios" ? { ios_offer_id: z.string() } : { android_offer_id: z.string() };
+  const offer = z.object({ ...offerId, eligible: z.boolean(), title: z.string(), subtitle: z.string(), product_mapping: z.record(z.string()), cross_product_promotions: ccCross.optional() });
+  const path = z.object({
+    id: z.string(), title: z.string(), type: ccPathType, url: z.string().optional(), open_method: z.enum(["IN_APP", "EXTERNAL"]).optional(),
+    action_identifier: z.string().optional(), refund_window: z.string().optional(), promotional_offer: offer.optional(),
+    feedback_survey: z.object({ title: z.string(), options: z.array(z.object({ id: z.string(), title: z.string(), promotional_offer: offer.optional() })) }).optional(),
+  });
+  const screen = z.object({
+    type: z.enum(["MANAGEMENT", "NO_ACTIVE"]), title: z.string(), subtitle: z.string().optional(), paths: z.array(path),
+    offering: z.object({ type: z.enum(["CURRENT", "SPECIFIC"]), offering_id: z.string().optional(), button_text: z.string().optional() }).optional(),
+  });
+  const tickets = z.object({ allow_creation: z.boolean(), customer_type: z.enum(["not_active", "none", "all", "active"]), customer_details: z.record(z.boolean()).optional() });
+  const support = platform === "ios"
+    ? z.object({ email: z.string(), should_warn_customer_to_update: z.boolean().optional(), display_purchase_history_link: z.boolean().optional(), display_user_details_section: z.boolean().optional(), display_virtual_currencies: z.boolean().optional(), support_tickets: tickets.optional() })
+    : z.object({ email: z.string().optional(), should_warn_customer_to_update: z.boolean().optional(), display_purchase_history_link: z.boolean().optional(), display_virtual_currencies: z.boolean().optional(), support_tickets: tickets.partial().optional() });
+  const changePlans = z.array(z.object({ group_id: z.string(), group_name: z.string(), products: z.array(z.object({ product_id: z.string(), selected: z.boolean() })) }));
+  return z.object({
+    customer_center: z.object({
+      appearance: platform === "ios" ? z.object({ light: ccColors, dark: ccColors }) : z.object({ light: ccColors.optional(), dark: ccColors.optional() }),
+      screens: z.record(z.enum(["MANAGEMENT", "NO_ACTIVE"]), screen),
+      localization: z.object({ locale: z.string(), localized_strings: z.record(z.string()) }),
+      support,
+      ...(platform === "ios" ? { change_plans: changePlans } : {}),
+    }),
+  });
+}
+export const CustomerCenterIosSchema = ccSchema("ios");
+export const CustomerCenterAndroidSchema = ccSchema("android");
