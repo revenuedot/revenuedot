@@ -153,8 +153,10 @@ const journey: Journey = {
     await rokuPush(roku.resubscribe(tx));
     const up = roku.upgrade(tx, "scanner_yearly", 49.99);
     await rokuPush(up.pushes);
-    c.eq("events: initial, renewal, cancellation, uncancellation, upgrade (new chain, old cancelled and expired)", await typesOf("ROKU"),
-      ["INITIAL_PURCHASE", "RENEWAL", "CANCELLATION", "UNCANCELLATION", "INITIAL_PURCHASE", "CANCELLATION", "EXPIRATION"]);
+    // The upgrade's three events share one moment, so their order in the table is not fixed.
+    const rokuTypes = await typesOf("ROKU");
+    c.eq("events: initial, renewal, cancellation, uncancellation, upgrade (new chain, old cancelled and expired)", [...rokuTypes.slice(0, 4), ...rokuTypes.slice(4).sort()],
+      ["INITIAL_PURCHASE", "RENEWAL", "CANCELLATION", "UNCANCELLATION", "CANCELLATION", "EXPIRATION", "INITIAL_PURCHASE"]);
     c.check("the upgrade belongs to the same customer", (await ci(rokuKey, rUser)).subscriber.entitlements.pro.product_identifier === "scanner_yearly");
     await rokuPush(roku.refund(up.transaction.transactionId));
     c.eq("a refund: CANCELLATION (CUSTOMER_SUPPORT)", (await eventsOf("ROKU")).at(-1)?.cancel_reason, "CUSTOMER_SUPPORT");
@@ -192,8 +194,9 @@ const journey: Journey = {
     await gxPush(galaxy.renew(gs.purchaseId, "ARS_OUT_GRACE_PERIOD").notifications);
     const change = galaxy.upDowngrade(gs.purchaseId, "premium_yearly", { amount: 49.99 });
     await gxPush(change.notifications);
-    c.eq("events: initial, renewal, cancellation, uncancellation, billing issue, renewal, product change", (await typesOf("GALAXY")).filter((t: string) => t !== "NON_RENEWING_PURCHASE"),
-      ["INITIAL_PURCHASE", "RENEWAL", "CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE", "RENEWAL", "PRODUCT_CHANGE", "EXPIRATION", "INITIAL_PURCHASE"]);
+    const gxTypes = (await typesOf("GALAXY")).filter((t: string) => t !== "NON_RENEWING_PURCHASE");
+    c.eq("events: initial, renewal, cancellation, uncancellation, billing issue, renewal, then the plan change (product change, expiration, the new plan)", [...gxTypes.slice(0, 6), ...gxTypes.slice(6).sort()],
+      ["INITIAL_PURCHASE", "RENEWAL", "CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE", "RENEWAL", "EXPIRATION", "INITIAL_PURCHASE", "PRODUCT_CHANGE"]);
     const refundRow = await ctx.sql`SELECT id, store_transaction_id FROM subscriptions WHERE project_id = ${dev.projectId} AND store = 'galaxy' AND product_identifier = 'premium_yearly'`;
     const refund = await dev.v2r("POST", `/subscriptions/${refundRow[0]!.id}/transactions/${refundRow[0]!.store_transaction_id}/actions/refund`);
     c.eq("v2 refund of a Galaxy transaction goes through Samsung", [refund.status, galaxy.actions.at(-1)?.action], [200, "refund"]);

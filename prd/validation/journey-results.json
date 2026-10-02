@@ -145,5 +145,12 @@
     "run": "202610020546045600",
     "passed": 66,
     "failed": 0
+  },
+  "stores3": {
+    "title": "Paddle, Roku and Galaxy Store: setup, SDK purchases, every lifecycle notification, webhooks out and charts",
+    "date": "2026-10-02",
+    "run": "202610020531445510",
+    "passed": 42,
+    "failed": 0
   }
 }
