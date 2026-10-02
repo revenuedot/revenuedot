@@ -12,7 +12,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const [params] = useSearchParams();
   const nextRaw = params.get("next");
   const next = nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : null;
-  const [form, setForm] = useState({ email: "", password: "", name: "", project_name: "" });
+  const [form, setForm] = useState({ email: params.get("email") ?? "", password: "", name: "", project_name: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const signup = mode === "signup";
@@ -35,6 +35,8 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
     } finally { setBusy(false); }
   }
+  // Invited people create their account on the invite page, which joins the project instead of creating an empty one.
+  if (signup && next?.startsWith("/invite?")) return <Navigate to={next} replace />;
   // Already signed in: go where they were headed instead of showing the form again.
   if (me.data) return <Navigate to={next ?? (me.data.projects[0] ? `/projects/${me.data.projects[0].id}/overview` : "/projects/new")} replace />;
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });

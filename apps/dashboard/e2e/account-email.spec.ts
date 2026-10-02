@@ -174,13 +174,25 @@ test("invites and members: invite, accept as a new and an existing user, roles, 
   await other.goto(await linkFor(page, existing, "/invite?token="));
   await expect(other.getByText("You already have a RevenueDot account.")).toBeVisible();
   await other.getByRole("link", { name: "Sign in to accept" }).click();
-  await other.getByLabel("Email", { exact: true }).fill(existing);
+  await expect(other.getByLabel("Email", { exact: true })).toHaveValue(existing);
   await other.getByLabel("Password").fill(PW);
   await other.getByRole("button", { name: "Sign in" }).click();
   await expect(other.getByRole("heading", { name: "Join Team project" })).toBeVisible();
   await shot(other, "invite-existing");
   await other.getByRole("button", { name: "Accept invite" }).click();
   await other.waitForURL(new RegExp(`/projects/${pid}/overview`));
+
+  // 2b. An invite opened while signed in as someone else: switching accounts lands on the invite's own sign-up form,
+  // which joins the project without creating an empty one of its own.
+  const switcher = await newPage(browser);
+  await signupUi(switcher, `switch+${Date.now()}@revenuedot.test`, "Sam Switch", "Sam's project");
+  await switcher.goto(await linkFor(page, pending, "/invite?token="));
+  await switcher.getByRole("button", { name: `Sign in as ${pending}` }).click();
+  await expect(switcher.getByRole("button", { name: "Create account and join" })).toBeVisible();
+  await expect(switcher.getByLabel("Email")).toHaveValue(pending);
+  // The generic sign-up page sends invited people to the same form.
+  await switcher.goto(`/signup?next=${encodeURIComponent(await linkFor(page, pending, "/invite?token="))}`);
+  await expect(switcher.getByRole("button", { name: "Create account and join" })).toBeVisible();
 
   // 3. The owner sees both, changes a role, resends and revokes the pending invite, removes a member.
   await page.reload();
