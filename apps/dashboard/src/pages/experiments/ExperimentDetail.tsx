@@ -100,7 +100,7 @@ export function ExperimentDetail() {
             {e.notes.trim() && <Panel title="Notes"><Markdown text={e.notes} /></Panel>}
             {e.status === "draft" ? (
               <div className="banner" role="status"><Icon name="experiments" /><span>Results appear once the experiment starts and customers join. <Link className="ul" to={`/projects/${pid}/experiments/${e.id}/edit`}>Review the setup</Link> or start it.</span></div>
-            ) : <ResultsPanel pid={pid} e={e} />}
+            ) : <ResultsPanel pid={pid} e={e} offName={offName} />}
           </>
         )}
       </div>
@@ -109,7 +109,7 @@ export function ExperimentDetail() {
   );
 }
 
-function ResultsPanel({ pid, e }: { pid: string; e: Experiment }) {
+function ResultsPanel({ pid, e, offName }: { pid: string; e: Experiment; offName: (id: string | null) => string }) {
   const [env, setEnv] = useState<"production" | "sandbox">("production");
   const [platform, setPlatform] = useState("");
   const [country, setCountry] = useState("");
@@ -152,7 +152,7 @@ function ResultsPanel({ pid, e }: { pid: string; e: Experiment }) {
                 <div key={v.id} className="kpi">
                   <div className="lab"><span><i className="key" style={{ background: `var(--series-${i + 1})` }} /> {v.id.toUpperCase()} · {v.name}</span></div>
                   <div className="v">{fmt.int(v.customers)}</div>
-                  <div className="meta">customers{e.track_paywall_views ? ` · ${fmt.int(v.paywall_viewers)} viewed a paywall` : ""} · <code>{v.offering_id ?? "—"}</code></div>
+                  <div className="meta">customers{e.track_paywall_views ? ` · ${fmt.int(v.paywall_viewers)} viewed a paywall` : ""} · <code>{offName(v.offering_id)}</code></div>
                 </div>
               ))}
             </div>

@@ -245,12 +245,27 @@ export async function applyRows(db: DB, projectId: string, table: string, column
     const res = await db.execute(sql`INSERT INTO ${ident(table)} (${target}${fillCols}) SELECT ${source}${fillVals} FROM json_populate_recordset(NULL::${ident(table)}, ${json}::json) r WHERE ${inScope} ON CONFLICT (${pk}) ${onConflict}`);
     written += Number((res as { rowCount?: number; count?: number }).rowCount ?? (res as { count?: number }).count ?? 0);
   }
+  // Experiments from an archive written before migration 0032 (no variants column): upgrade them as the migration did,
+  // so they keep enrolling everyone who asks and keep their old enrollment order.
+  if (table === "experiments" && !columns.includes("variants")) await upgradeArchivedExperiments(db, projectId);
   if (table === "projects") {
     // The project's own columns on this server: who owns it here, and that it is being copied in.
     await db.update(schema.projects).set({ ownerUserId: o.userId, moveState: "incoming", movedInAt: o.now, movedInFrom: o.from, moveUpdatedAt: o.now }).where(eq(schema.projects.id, projectId));
     await db.insert(schema.memberships).values({ userId: o.userId, projectId, role: "admin" }).onConflictDoUpdate({ target: [schema.memberships.userId, schema.memberships.projectId], set: { role: "admin" } });
   }
   return { rows: written, skipped };
+}
+
+/** Migration 0032's data steps for one project's experiments (prd/experiments/PRD.md §2). */
+export async function upgradeArchivedExperiments(db: DB, projectId: string) {
+  await db.execute(sql`UPDATE experiments SET variants = jsonb_build_array(
+      jsonb_build_object('id', 'a', 'name', 'Control', 'offering_id', offering_a, 'placements', '{}'::jsonb),
+      jsonb_build_object('id', 'b', 'name', 'Treatment B', 'offering_id', offering_b, 'placements', '{}'::jsonb)),
+    enrollment = 'new_and_existing'
+    WHERE project_id = ${projectId} AND variants = '[]'::jsonb AND offering_a IS NOT NULL AND offering_b IS NOT NULL`);
+  await db.execute(sql`UPDATE experiments AS e SET priority = o.n FROM (
+    SELECT id, row_number() OVER (ORDER BY started_at NULLS LAST, created_at, id) AS n FROM experiments WHERE project_id = ${projectId}) AS o
+    WHERE o.id = e.id AND e.project_id = ${projectId}`);
 }
 
 function idsInTarget(parent: string, projectId: string): ReturnType<typeof sql> {

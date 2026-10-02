@@ -700,8 +700,10 @@ const journey: Journey = {
         const gold = `gold_gina_${ctx.stamp}`;
         await sdk.customerInfo(gold);
         await call("POST", `${P}/customers/${gold}/attributes`, { attributes: [{ name: "plan", value: "gold" }] });
-        await page.getByRole("tab", { name: "Rules" }).click();
+        // Rules are cards on the Live, Scheduled and Inactive tabs; a new rule starts off, in Inactive.
+        await page.getByRole("tab", { name: /^Live/ }).click();
         await page.getByRole("button", { name: "New rule" }).click();
+        await page.getByRole("menuitem", { name: "Create from scratch" }).click();
         await page.getByLabel("Name", { exact: true }).fill("Gold sees spring");
         await page.getByLabel("Audience").selectOption({ label: "Gold plan customers" });
         await page.getByLabel("Current offering").selectOption({ label: "Spring plans (spring)" });
@@ -709,10 +711,14 @@ const journey: Journey = {
         await page.getByLabel("Placement 1", { exact: true }).fill("onboarding_end");
         await page.getByLabel("Placement offering 1").selectOption({ label: "winback" });
         await page.getByRole("button", { name: "Save" }).click();
-        await expect(page.getByRole("cell", { name: "Gold sees spring", exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Actions for Gold sees spring" }).click();
+        await page.getByRole("tab", { name: /^Inactive/ }).click();
+        const ruleCard = page.getByRole("listitem", { name: "Rule Gold sees spring" });
+        await expect(ruleCard).toContainText("If customer matches Gold plan customers then show");
+        await expect(ruleCard).toContainText("winback for onboarding_end");
+        await ruleCard.getByRole("button", { name: "Actions for Gold sees spring" }).click();
         await page.getByRole("menuitem", { name: "Turn on" }).click();
-        await expect(page.getByText("Live", { exact: true })).toBeVisible();
+        await page.getByRole("tab", { name: /^Live/ }).click();
+        await expect(page.getByRole("listitem", { name: "Rule Gold sees spring" }).getByText("Live", { exact: true })).toBeVisible();
         const rule = (await v2("GET", "/targeting_rules")).items.find((r: any) => r.name === "Gold sees spring");
         c.has("v2 rule is live with its placement", rule, { state: "active", offering_id: ids.offering });
         const v = (await sdk.offerings(gold)).body;
@@ -722,18 +728,20 @@ const journey: Journey = {
         await page.getByRole("menuitem", { name: "Edit" }).click();
         await page.getByLabel("Name", { exact: true }).fill("Gold customers see spring");
         await page.getByRole("button", { name: "Save" }).click();
-        await expect(page.getByRole("cell", { name: "Gold customers see spring", exact: true })).toBeVisible();
+        await expect(page.getByRole("listitem", { name: "Rule Gold customers see spring" })).toBeVisible();
         c.check("v2 rule renamed", (await v2("GET", "/targeting_rules")).items.some((r: any) => r.name === "Gold customers see spring"));
         await page.reload(); await settle();
-        await expect(page.getByRole("cell", { name: "Gold customers see spring", exact: true })).toBeVisible();
-        // A rule and an audience to delete.
+        await expect(page.getByRole("listitem", { name: "Rule Gold customers see spring" })).toBeVisible();
+        // A rule to delete.
         await page.getByRole("button", { name: "New rule" }).click();
+        await page.getByRole("menuitem", { name: "Create from scratch" }).click();
         await page.getByLabel("Name", { exact: true }).fill("Doomed rule");
         await page.getByRole("button", { name: "Save" }).click();
+        await page.getByRole("tab", { name: /^Inactive/ }).click();
         await page.getByRole("button", { name: "Actions for Doomed rule" }).click();
         await page.getByRole("menuitem", { name: "Delete" }).click();
         await dialog("Delete this rule?").getByRole("button", { name: "Delete rule" }).click();
-        await expect(page.getByRole("cell", { name: "Doomed rule", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("listitem", { name: "Rule Doomed rule" })).toHaveCount(0);
         c.check("v2 rule deleted", !(await v2("GET", "/targeting_rules")).items.some((r: any) => r.name === "Doomed rule"));
         await page.getByRole("tab", { name: "Audiences" }).click();
         await page.getByRole("button", { name: "New audience" }).click();
@@ -751,10 +759,12 @@ const journey: Journey = {
       await step("experiments: create, start, stop", async () => {
         await go(`${B}/experiments`);
         await page.getByRole("button", { name: "New experiment" }).click();
+        await page.getByRole("menuitem", { name: "Create from scratch" }).click();
         await page.getByLabel("Name", { exact: true }).fill("Spring vs default");
-        await page.getByLabel("Control (a)").selectOption({ label: "default" });
-        await page.getByLabel("Treatment (b)").selectOption({ label: "spring" });
-        await page.getByRole("button", { name: "Create" }).click();
+        const offs = (await v2("GET", "/offerings?limit=100")).items;
+        await page.locator("#xp-off-0").selectOption(offs.find((o: any) => o.lookup_key === "default").id);
+        await page.locator("#xp-off-1").selectOption(ids.offering);
+        await page.getByRole("button", { name: "Save as draft" }).click();
         await page.waitForURL(/\/experiments\/prexp/);
         ids.experiment = page.url().split("/").pop()!;
         c.eq("v2 experiment created as a draft", (await v2("GET", `/experiments/${ids.experiment}`)).status, "draft");
@@ -763,12 +773,13 @@ const journey: Journey = {
         c.eq("v2 experiment running", (await v2("GET", `/experiments/${ids.experiment}`)).status, "running");
         const sdk = sdkClient(ctx, seed.testKey);
         for (let i = 0; i < 6; i++) { await sdk.customerInfo(`exp_${ctx.stamp}_${i}`); await sdk.offerings(`exp_${ctx.stamp}_${i}`); }
+        await page.reload(); await settle();
         await page.getByLabel("Environment").selectOption("sandbox");
-        await expect(page.getByRole("cell", { name: /Control/ })).toBeVisible();
+        await expect(page.locator('tr[data-metric="initial_conversion_rate"]')).toBeVisible();
         const res = await v2("GET", `/experiments/${ids.experiment}/results?environment=sandbox`);
         c.check("results count the six enrolled customers", res.variants.items.reduce((s: number, x: any) => s + x.customers, 0) >= 6, res.variants);
         await page.getByRole("button", { name: "Stop" }).click();
-        await dialog("Stop this experiment?").getByRole("button", { name: "Stop" }).click();
+        await dialog("Stop this experiment?").getByRole("button", { name: "Stop experiment" }).click();
         await expect(page.getByText("Stopped", { exact: true })).toBeVisible();
         c.eq("v2 experiment stopped", (await v2("GET", `/experiments/${ids.experiment}`)).status, "stopped");
         await page.reload(); await settle();
@@ -1463,7 +1474,7 @@ const journey: Journey = {
           const err = await page.locator(".banner.err").count();
           const bad = /Could not load|could not be loaded|Something went wrong/i;
           if (!h1 || err || bad.test(body) || /loading…/i.test(body)) broken.push({ l, h1, err, error: bad.exec(body)?.[0] });
-          if (l !== "overview" && !(await page.locator(".empty, .pw-empty, .wb-empty").count())) noEmpty.push(l);
+          if (l !== "overview" && !(await page.locator(".empty, .pw-empty, .wb-empty, .xp-empty").count())) noEmpty.push(l);
         }
         c.check("every page of the empty project opens with its heading, no error and no endless loading", broken.length === 0, broken);
         c.check("every list page of the empty project says it is empty and what to do", noEmpty.length === 0, noEmpty);

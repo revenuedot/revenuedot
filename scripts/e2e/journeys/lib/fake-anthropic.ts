@@ -15,6 +15,17 @@ type Block = { type: "text"; text: string } | { type: "tool_use"; id: string; na
 const money = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : String(v));
 const textOf = (content: unknown): string => typeof content === "string" ? content : Array.isArray(content) ? content.map((b: any) => (b.type === "text" ? b.text : typeof b.content === "string" ? b.content : Array.isArray(b.content) ? textOf(b.content) : "")).join("\n") : "";
 
+/** The user's own words: the last user message's text, skipping messages that only carry tool results. */
+function requestText(messages: any[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role !== "user") continue;
+    const text = typeof m.content === "string" ? m.content : (m.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+    if (text.trim()) return text;
+  }
+  return "";
+}
+
 function script(body: any): Block[] {
   const tools: string[] = (body.tools ?? []).map((t: any) => t.name);
   const messages: any[] = body.messages ?? [];
@@ -38,6 +49,28 @@ function script(body: any): Block[] {
       return [{ type: "text", text: `**MRR is ${money(by.mrr)}** with ${by.active_subscriptions ?? 0} active subscriptions. Revenue in the last 28 days was ${money(by.revenue)}.` }];
     }
     if (use?.name === "grant-customer-entitlement") return [{ type: "text", text: "Done. The customer has the entitlement for 7 days." }];
+    // Drafting an experiment or a targeting rule: read the offerings, then propose the draft (an approval card).
+    const request = requestText(messages);
+    const base = /\/projects\/[A-Za-z0-9_]+/.exec(system)?.[0] ?? "";
+    if (use?.name === "list-offerings" && Array.isArray(json?.items)) {
+      const items = json.items as { lookup_key: string; is_current: boolean }[];
+      const control = items.find((o) => o.is_current) ?? items[0];
+      const named = items.filter((o) => o !== control && new RegExp(`\\b${o.lookup_key.replace(/[^\w]/g, ".")}\\b`, "i").test(request));
+      const pick = named.length ? named : items.filter((o) => o !== control).slice(0, 1);
+      const toolId = `toolu_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
+      if (!control || !pick.length) return [{ type: "text", text: "There is only one offering, so there is nothing to test against it yet." }];
+      if (/targeting rule/i.test(request)) {
+        if (!tools.includes("create-targeting-rule")) return [{ type: "text", text: "I can't change anything in this project." }];
+        return [{ type: "text", text: `I'll draft a rule that shows ${pick[0]!.lookup_key}. It stays off until you turn it on.` }, { type: "tool_use", id: toolId, name: "create-targeting-rule", input: { name: `Show ${pick[0]!.lookup_key}`, offering: pick[0]!.lookup_key } }];
+      }
+      if (!tools.includes("create-experiment")) return [{ type: "text", text: "I can't change anything in this project." }];
+      const type = /trial/i.test(request) ? "free_trial_offer" : /price/i.test(request) ? "price_point" : "other";
+      return [{ type: "text", text: `I'll draft it with ${control.lookup_key} as the control. Nobody joins until you start it.` }, { type: "tool_use", id: toolId, name: "create-experiment", input: {
+        name: `${control.lookup_key} vs ${pick.map((o) => o.lookup_key).join(" vs ")}`, type, control_offering: control.lookup_key, treatment_offerings: pick.map((o) => o.lookup_key), notes: `Hypothesis: ${request.slice(0, 300)}`,
+      } }];
+    }
+    if (use?.name === "create-experiment" && json?.id) return [{ type: "text", text: `Done: [${json.name}](${base}/experiments/${json.id}) is saved as a draft with ${json.variants?.length ?? 2} variants.` }];
+    if (use?.name === "create-targeting-rule" && json?.id) return [{ type: "text", text: `Done: the rule "${json.name}" is saved and turned off. Turn it on from [Targeting](${base}/targeting).` }];
     return [{ type: "text", text: `${use?.name ?? "The tool"} returned ${out.slice(0, 200)}` }];
   }
   if (/Funnel request: /.test(lastUserText) || /Funnel request: /.test(system)) {
@@ -72,6 +105,9 @@ function script(body: any): Block[] {
   if (grant) {
     if (!tools.includes("grant-customer-entitlement")) return [{ type: "text", text: "I can't change anything in this project: RevenueDot AI is read only here." }];
     return [{ type: "text", text: "I'll grant it for 7 days once you approve." }, { type: "tool_use", id: `toolu_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`, name: "grant-customer-entitlement", input: { customer_id: grant[2]!, entitlement_id: grant[1]!.toLowerCase(), expires_at: "7d" } }];
+  }
+  if (/(draft|create|set up).*(experiment|targeting rule)/i.test(lastUserText) && tools.includes("list-offerings")) {
+    return [{ type: "tool_use", id: `toolu_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`, name: "list-offerings", input: {} }];
   }
   if (/(revenue|mrr|insight|growth|doing|subscri)/i.test(lastUserText) && tools.includes("get-metrics")) {
     return [{ type: "tool_use", id: `toolu_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`, name: "get-metrics", input: {} }];

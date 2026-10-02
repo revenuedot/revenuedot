@@ -101,7 +101,7 @@ export function ExperimentsPage() {
                         <b>{x.name}</b>
                         <small>{typeName(x.type)} · <code>{variantsText(x)}</code> · {x.enrollment === "new" ? "new customers" : "new and existing"} · {x.enrollment_percent}%</small>
                       </Link>
-                      <span className="mono xp-count" title="Enrolled customers">{fmt.int(x.enrolled_customers ?? 0)}</span>
+                      <span className="mono xp-count">{fmt.int(x.enrolled_customers ?? 0)} customers</span>
                       <Tag tone={STATUS_TONE[x.status]}>{statusLabel(x.status)}</Tag>
                       <Menu label={`Actions for ${x.name}`} items={[
                         { label: "Open", icon: "arrow", onSelect: () => nav(`/projects/${pid}/experiments/${x.id}`) },

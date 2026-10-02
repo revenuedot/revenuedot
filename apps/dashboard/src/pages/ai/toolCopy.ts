@@ -9,13 +9,13 @@ const s = (v: unknown) => (typeof v === "string" || typeof v === "number" ? Stri
 export const TOOL_TITLES: Record<string, string> = {
   "get-metrics": "Revenue metrics", "list-charts": "Charts", "get-chart": "Chart", "list-customers": "Find customers", "get-customer": "Customer",
   "list-events": "Event history", "list-transactions": "Transactions", "list-apps": "Apps", "list-products": "Products", "list-entitlements": "Entitlements",
-  "list-offerings": "Offerings", "list-paywalls": "Paywalls", "list-targeting-rules": "Targeting rules", "list-experiments": "Experiments",
+  "list-offerings": "Offerings", "list-paywalls": "Paywalls", "list-targeting-rules": "Targeting rules", "list-audiences": "Audiences", "list-experiments": "Experiments",
   "get-experiment-results": "Experiment results", "get-project-health": "Setup health", "list-webhook-integrations": "Webhooks",
   "list-webhook-deliveries": "Webhook deliveries", "list-integrations": "Integrations", "get-import-status": "Import status",
   "grant-customer-entitlement": "Grant entitlement", "revoke-customer-entitlement": "Revoke entitlement", "create-product": "Create product",
   "attach-products-to-entitlement": "Attach products to entitlement", "attach-products-to-package": "Attach products to package",
-  "set-current-offering": "Set current offering", "import-storekit-products": "Import StoreKit products", "start-experiment": "Start experiment",
-  "pause-experiment": "Pause experiment", "retry-webhook-delivery": "Retry webhook delivery", "replay-failed-webhook-deliveries": "Replay failed deliveries",
+  "set-current-offering": "Set current offering", "import-storekit-products": "Import StoreKit products", "create-experiment": "Create experiment draft",
+  "create-targeting-rule": "Create targeting rule", "start-experiment": "Start experiment", "pause-experiment": "Pause experiment", "stop-experiment": "Stop experiment", "retry-webhook-delivery": "Retry webhook delivery", "replay-failed-webhook-deliveries": "Replay failed deliveries",
 };
 
 export const toolTitle = (name: string) => TOOL_TITLES[name] ?? name.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -44,6 +44,9 @@ export function describeWrite(name: string, a: Input): string {
     case "attach-products-to-package": return `Put ${(a.product_ids as unknown[] | undefined)?.length ?? 0} product(s) in package ${s(a.package_id)}`;
     case "set-current-offering": return `Make ${s(a.offering_id)} the current offering`;
     case "import-storekit-products": return `Import ${(a.product_ids as unknown[] | undefined)?.length ? `${(a.product_ids as unknown[]).length} products` : "the StoreKit products"} into app ${s(a.app_id)}`;
+    case "create-experiment": return `Save the draft experiment "${s(a.name)}": ${s(a.control_offering)} against ${Array.isArray(a.treatment_offerings) ? (a.treatment_offerings as unknown[]).map(s).join(", ") : ""}. Nobody joins until you start it`;
+    case "create-targeting-rule": return `Create the targeting rule "${s(a.name)}" showing ${s(a.offering)}${a.audience_id ? ` to audience ${s(a.audience_id)}` : " to everyone"}, turned off`;
+    case "stop-experiment": return `Stop experiment ${s(a.experiment_id)} for good`;
     case "start-experiment": return `Start experiment ${s(a.experiment_id)}`;
     case "pause-experiment": return `Pause experiment ${s(a.experiment_id)}`;
     case "retry-webhook-delivery": return `Send webhook delivery ${s(a.delivery_id)} again`;
@@ -65,4 +68,4 @@ export function describeRead(name: string, a: Input): string {
 }
 
 export const WRITE_TOOLS = new Set(["grant-customer-entitlement", "revoke-customer-entitlement", "create-product", "attach-products-to-entitlement", "attach-products-to-package",
-  "set-current-offering", "import-storekit-products", "start-experiment", "pause-experiment", "retry-webhook-delivery", "replay-failed-webhook-deliveries"]);
+  "set-current-offering", "import-storekit-products", "create-experiment", "create-targeting-rule", "start-experiment", "pause-experiment", "stop-experiment", "retry-webhook-delivery", "replay-failed-webhook-deliveries"]);

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { eq, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { parseCsv } from "@revenuedot/server/services/exports/files.js";
+import { applyRows } from "@revenuedot/server/services/archive/import.js";
 import { harness, type Harness } from "../src/harness.js";
 import { buy, v2 } from "./v2-helpers.js";
 
@@ -226,6 +227,26 @@ describe("enrollment", () => {
     expect(got).toMatchObject({ enrollment: "new_and_existing", priority: 1, enrolled_customers: 2, variants: [{ id: "a", name: "Control", offering_id: "ofr_default", placements: {} }, { id: "b", name: "Treatment B", offering_id: o2, placements: {} }] });
     expect((await sdk("la")).current_offering_id).toBe("default");
     expect((await sdk("lb")).current_offering_id).toBe("o2");
+  });
+});
+
+describe("archives from before migration 0032", () => {
+  it("an imported A/B experiment gets variants a and b, enrolls new and existing customers, and keeps its order", async () => {
+    const o2 = await offering("o2");
+    const t = h.now().toISOString();
+    const row = (id: string, startedAt: string | null) => JSON.stringify({ id, project_id: "proj1", name: id, status: startedAt ? "running" : "draft", audience_id: null, enrollment_percent: 100, offering_a: "ofr_default", offering_b: o2, started_at: startedAt, stopped_at: null, created_at: t });
+    const oldColumns = ["id", "project_id", "name", "status", "audience_id", "enrollment_percent", "offering_a", "offering_b", "started_at", "stopped_at", "created_at"];
+    const later = new Date(h.now().getTime() - 60_000).toISOString(), earlier = new Date(h.now().getTime() - 120_000).toISOString();
+    const res = await applyRows(h.db, "proj1", "experiments", oldColumns, [row("prexp_old_b", later), row("prexp_old_a", earlier), row("prexp_old_draft", null)], { userId: "u1", now: h.now(), from: null });
+    expect(res.skipped).toEqual([]);
+    const got = Object.fromEntries((await h.db.select().from(schema.experiments)).map((x) => [x.id, x]));
+    expect(got.prexp_old_a).toMatchObject({ enrollment: "new_and_existing", priority: 1, variants: [{ id: "a", offering_id: "ofr_default" }, { id: "b", offering_id: o2 }] });
+    expect(got.prexp_old_b!.priority).toBe(2);
+    expect(got.prexp_old_draft!.priority).toBe(3);
+    // Customers who existed before it started are enrolled (as before 0032).
+    await newCustomer("before_import");
+    expect(["default", "o2"]).toContain((await sdk("before_import")).current_offering_id);
+    expect((await enrollments("prexp_old_a")).length).toBe(1);
   });
 });
 

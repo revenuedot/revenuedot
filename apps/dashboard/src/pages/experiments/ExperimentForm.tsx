@@ -84,7 +84,11 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
     if (primary === was.primary) setPrimary(TYPE_DEFAULTS[t].primary);
     if (JSON.stringify(secondary) === JSON.stringify(was.secondary)) setSecondary(TYPE_DEFAULTS[t].secondary);
   };
-  const setVariant = (i: number, patch: Partial<VariantDraft>) => setVariants(variants.map((v, j) => (j === i ? { ...v, ...patch } : v)));
+  const setVariant = (i: number, patch: Partial<VariantDraft>) => {
+    setVariants((vs) => vs.map((v, j) => (j === i ? { ...v, ...patch } : v)));
+    // A changed variant may now be valid: drop its errors until the next save.
+    setErrors((e) => (e[`v${i}`] || e[`vn${i}`] ? Object.fromEntries(Object.entries(e).filter(([k]) => k !== `v${i}` && k !== `vn${i}`)) : e));
+  };
   const addVariant = () => {
     const id = VARIANT_IDS[variants.length]!;
     setVariants([...variants, { name: variantDefaultName(id), offering: "", placements: Object.fromEntries(placementKeys.map((k) => [k, variants[0]!.placements[k] ?? NONE])) }]);
@@ -165,6 +169,7 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
 
   const metricOptions = EXPERIMENT_METRICS.filter((m) => PRIMARY_METRIC_IDS.includes(m.id));
   return (
+    <>
     <form onSubmit={submit} noValidate>
       <PageHead title={existing ? `Edit ${existing.name}` : "New experiment"} sub={locked
         ? "This experiment has started: its variants, enrollment and audience are fixed. Name, type, metrics, notes and the share of customers can still change."
@@ -196,7 +201,7 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
               ? <textarea id="xp-notes-text" aria-label="Notes" className="textarea xp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={20_000}
                 placeholder={"## Hypothesis\nShowing the annual plan first raises realized LTV per customer by 10%, because…\n\n- What we change\n- What we expect"} />
               : <div className="xp-notes-prev" role="tabpanel" aria-label="Notes preview">{notes.trim() ? <Markdown text={notes} /> : <p className="subtle">Nothing to preview yet.</p>}</div>}
-            <span className="hint">Markdown: headings, lists, **bold**, *italic*, `code` and links.</span>
+            <span className="subtle xp-hint">Markdown: headings, lists, **bold**, *italic*, `code` and links.</span>
           </div>
         </div>
       </section>
@@ -315,11 +320,12 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
         <button type="submit" className="btn btn-line" disabled={!!busy}>{busy === "draft" ? "Saving…" : locked ? "Save changes" : "Save as draft"}</button>
         {(!existing || existing.status === "draft") && <button type="button" className="btn btn-dark" disabled={!!busy} onClick={() => void save("start")}>{busy === "start" ? "Starting…" : "Start experiment"}</button>}
       </div>
+    </form>
 
       {dup !== null && variants[0]!.offering && offerings.find((o) => o.id === variants[0]!.offering) && (
         <DuplicateOfferingDialog pid={pid} type={type} source={offerings.find((o) => o.id === variants[0]!.offering)!} taken={offerings.map((o) => o.lookup_key)}
           onClose={() => setDup(null)} onCreated={(o) => { setVariant(dup, { offering: o.id, placements: Object.fromEntries(placementKeys.map((k) => [k, variants[dup]!.placements[k] || o.id])) }); setDup(null); toast(`Created ${o.lookup_key}`); }} />
       )}
-    </form>
+    </>
   );
 }

@@ -221,8 +221,8 @@ export function TargetingPage() {
               ]} />
             : <button type="button" className="btn btn-dark" onClick={() => setDialog(<AudienceDialog pid={pid} onClose={close} onSaved={() => refresh()} />)}><Icon name="plus" />New audience</button>} />
         <Tabs label="Targeting" idBase="targeting" value={tab} onChange={setTab} tabs={[
-          { value: "live", label: `Live · ${byPhase.live.length}` }, { value: "scheduled", label: `Scheduled · ${byPhase.scheduled.length}` },
-          { value: "inactive", label: `Inactive · ${byPhase.inactive.length}` }, { value: "audiences", label: "Audiences" },
+          { value: "live", label: rules.data ? `Live · ${byPhase.live.length}` : "Live" }, { value: "scheduled", label: rules.data ? `Scheduled · ${byPhase.scheduled.length}` : "Scheduled" },
+          { value: "inactive", label: rules.data ? `Inactive · ${byPhase.inactive.length}` : "Inactive" }, { value: "audiences", label: "Audiences" },
         ]} />
         {tab !== "audiences" ? (rules.isLoading || offs.isLoading ? <div className="panel pb subtle">Loading…</div> : (
           <div role="tabpanel" id={`targeting-${tab}-panel`} aria-labelledby={`targeting-${tab}`} className="tg-stack">
