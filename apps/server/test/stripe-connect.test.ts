@@ -225,6 +225,24 @@ describe("using the connection", () => {
     expect(env.stripe.writes("/v1/products").at(-1)).toMatchObject({ auth: `Bearer ${FAKE_STRIPE_KEY}`, account: null });
   });
 
+  it("Check credentials never sends the platform key with another account (no Stripe values in the body while connected)", async () => {
+    env = await webEnv({ connect: FAKE_CONNECT_CONFIG });
+    const { account } = await connect();
+    const victim = "acct_1Victim000000";
+    const before = env.platform.calls.length;
+    for (const stripe of [{ stripe_account_id: victim }, { stripe_secret_key: "rk_live_51Mine0000", stripe_account_id: victim }, { stripe_secret_key: "rk_live_51Mine0000" }]) {
+      const r = await env.api("POST", `${P()}/apps/${CONN_APP_ID}/actions/verify_credentials`, { stripe });
+      expect(r.status, JSON.stringify(r.body)).toBe(409);
+      expect(r.body.message).toMatch(/connected with Stripe Connect/);
+    }
+    const acctCalls = [...env.platform.accounts.values()].flatMap((a) => a.calls);
+    expect(acctCalls.some((c) => c.account === victim)).toBe(false);
+    expect(env.platform.calls.slice(before).some((c) => c.account === victim)).toBe(false);
+    // The stored connection is still checked as before.
+    expect((await env.api("POST", `${P()}/apps/${CONN_APP_ID}/actions/verify_credentials`, {})).body).toMatchObject({ status: "valid" });
+    expect(acctCalls.every((c) => !c.account || c.account === account)).toBe(true);
+  });
+
   it("the platform endpoint checks the signature and answers unknown accounts and platform events with 200", async () => {
     env = await webEnv({ connect: FAKE_CONNECT_CONFIG });
     const { account } = await connect();

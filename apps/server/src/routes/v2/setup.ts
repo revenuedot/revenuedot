@@ -265,6 +265,11 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     } else if (a.type === "stripe") {
       const over = b.stripe;
       overrides = Object.values(over ?? {}).some((v) => v !== undefined && v !== null && v !== "");
+      // A connected app's opened credentials hold the Connect platform's secret key: a body value must never be checked
+      // with it (a stripe_account_id from the body would send that key with another developer's account).
+      if (overrides && stripeConnected(row)) {
+        throw new V2Error(409, "resource_already_exists", "This app is connected with Stripe Connect. Disconnect it before checking a restricted key or another account.", "stripe");
+      }
       app = { ...a, credentials: merged(over) };
     } else {
       throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");

@@ -627,7 +627,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           </>}
           {connected && (
             <div className="hrow">
-              <button type="button" className="btn btn-line" disabled={check.busy} onClick={() => runCheck(true)}><Icon name="refresh" />Check connection</button>
+              <button type="button" className="btn btn-line" disabled={check.busy} onClick={() => runCheck(false)}><Icon name="refresh" />Check connection</button>
               <CheckResult state={check} />
             </div>
           )}
