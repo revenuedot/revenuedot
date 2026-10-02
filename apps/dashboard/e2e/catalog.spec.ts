@@ -62,6 +62,7 @@ test("product catalog: products, entitlement, offerings, default offering and th
 
   const newProduct = async (app: string, sid: string, type: "Subscription" | "Consumable" | "Non-consumable", duration: string | null, name: string) => {
     await page.getByRole("button", { name: "New product" }).first().click();
+    await page.getByRole("menuitem", { name: "Create from scratch" }).click();
     const d = page.getByRole("dialog", { name: "New product" });
     await d.getByLabel("App", { exact: true }).selectOption({ label: app });
     await d.getByLabel("Store identifier").fill(sid);
@@ -143,7 +144,8 @@ test("product catalog: products, entitlement, offerings, default offering and th
 
   await test.step("new offering with packages, per-app products, inline new product and metadata validation", async () => {
     await page.goto(`${base}/offerings`);
-    await page.getByRole("link", { name: "New offering" }).first().click();
+    await page.getByRole("button", { name: "New offering" }).first().click();
+    await page.getByRole("menuitem", { name: "Create from scratch" }).click();
     await expect(page.getByRole("heading", { name: "New offering" })).toBeVisible();
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Enter an identifier for the offering.")).toBeVisible();
