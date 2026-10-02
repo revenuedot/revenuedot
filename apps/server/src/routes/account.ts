@@ -411,9 +411,15 @@ export function accountRoutes(deps: Deps) {
       else if (p.role === "admin" && !others.some((x) => x.role === "admin")) blocking.push({ id: p.id, name: p.name, reason: "last_admin", members: people.length });
     }
     if (blocking.length) {
-      return (c) => err(c, 409, "ownership_transfer_required",
-        `Transfer ownership first: you own ${blocking.length === 1 ? "a project" : `${blocking.length} projects`} that other people use (${blocking.map((p) => p.name).join(", ")}). Transfer it in Project settings → General, or remove the other members.`,
-        { projects: blocking });
+      // What to do depends on why: an owned project needs a new owner, a project with no other admin needs one.
+      const some = (n: number) => (n === 1 ? "a project" : `${n} projects`);
+      const names = (r: string) => blocking.filter((p) => p.reason === r).map((p) => p.name).join(", ");
+      const owned = blocking.filter((p) => p.reason === "owner").length, admin = blocking.length - owned;
+      const parts = [
+        ...(owned ? [`Transfer ownership first: you own ${some(owned)} that other people use (${names("owner")}). Transfer it in Project settings → General, or remove the other members.`] : []),
+        ...(admin ? [`Make someone else an admin first: you are the only admin of ${some(admin)} that other people use (${names("last_admin")}). Change their role in Project settings → Collaborators.`] : []),
+      ];
+      return (c) => err(c, 409, "ownership_transfer_required", parts.join(" "), { projects: blocking });
     }
     if (deps.edition === "cloud") {
       const [acct] = await db.select().from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)).limit(1);

@@ -408,7 +408,10 @@ describe("account deletion", () => {
     await s.db.update(schema.projects).set({ ownerUserId: null }).where(eq(schema.projects.id, b.projectId!));
     await s.db.update(schema.memberships).set({ role: "viewer" }).where(eq(schema.memberships.userId, b.userId));
     await s.db.insert(schema.memberships).values({ userId: a.userId, projectId: b.projectId!, role: "admin" });
-    expect((await a.browser.call("POST", "/auth/account/delete", { email: "rae@example.com", password: PW })).body).toMatchObject({ type: "ownership_transfer_required", projects: [{ id: b.projectId, reason: "last_admin" }] });
+    const refused = (await a.browser.call("POST", "/auth/account/delete", { email: "rae@example.com", password: PW })).body;
+    expect(refused).toMatchObject({ type: "ownership_transfer_required", projects: [{ id: b.projectId, reason: "last_admin" }] });
+    // Rae does not own it: the message asks for another admin, not an ownership transfer.
+    expect(refused.message).toBe("Make someone else an admin first: you are the only admin of a project that other people use (Scanner). Change their role in Project settings → Collaborators.");
     await s.db.update(schema.memberships).set({ role: "admin" }).where(eq(schema.memberships.userId, b.userId));
     const { secret } = await enable2fa(a.browser);
     expect((await a.browser.call("POST", "/auth/account/delete", { email: "rae@example.com", password: PW })).body).toMatchObject({ type: "invalid_code" });
