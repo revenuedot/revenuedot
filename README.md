@@ -411,7 +411,7 @@ Yes. RevenueDot keeps the attribution the RevenueCat SDK already sends (`$mediaS
 
 <details><summary><b>Does RevenueDot have benchmarks against other apps, and is my data shared?</b></summary>
 
-On RevenueDot Cloud, yes, and only if an admin turns sharing on: nothing is shared by default, and only sharing projects see peer numbers. RevenueDot publishes percentiles of groups of at least 10 apps from 10 different accounts (category, platform, country) and never shows an app, a customer, a mean or an exact count. A self-hosted server shares nothing. RevenueCat's Benchmarks include every eligible app ([RevenueCat docs](https://www.revenuecat.com/docs/dashboard-and-metrics/benchmarks)). See [Benchmarks](https://revenuedot.app/docs/guides/benchmarks).
+On RevenueDot Cloud, yes, and only if an admin turns sharing on: nothing is shared by default, and only sharing projects see peer numbers. RevenueDot publishes percentiles of groups of at least 10 apps from 10 different accounts (category, platform, country) and never shows an app, a customer, a mean or an exact count. A self-hosted server shares nothing. RevenueCat shows a benchmark group when it has enough apps to stay anonymous and does not publish the minimum ([RevenueCat docs](https://www.revenuecat.com/docs/dashboard-and-metrics/benchmarks)). See [Benchmarks](https://revenuedot.app/docs/guides/benchmarks).
 </details>
 
 <details><summary><b>Is RevenueDot an open-source alternative to RevenueCat?</b></summary>
