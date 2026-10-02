@@ -157,7 +157,7 @@ test("stores: Paddle, Roku and Samsung Galaxy Store apps", async ({ page, baseUR
     // A refund of the period being used (the recovered renewal).
     await deliver({ action: "refund", transaction_id: failed.transaction_id });
     await historyOf(paddleUser);
-    for (const t of [/Initial purchase/i, /Renewal/i, /Billing issue/i, /Cancellation/i]) await expect(page.getByText(t).first()).toBeVisible();
+    for (const t of ["Started a subscription", "Renewed", "Had a billing issue", "Opted out of renewal", "Was issued a refund"]) await expect(page.getByText(t, { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Paddle").first()).toBeVisible();
     await shot("main", "paddle-customer");
     // The refund ended access: the SDK sees pro expired at the refund.
@@ -209,7 +209,7 @@ test("stores: Paddle, Roku and Samsung Galaxy Store apps", async ({ page, baseUR
     const cancel = (await api("POST", "/__store3/roku/do", { action: "cancel", chain: tx })).body;
     await api("POST", "/__store3/roku/deliver", { app_id: rokuId, events: cancel.events });
     await historyOf(rokuUser);
-    await expect(page.getByText(/Cancellation/i).first()).toBeVisible();
+    await expect(page.getByText("Opted out of renewal", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Roku").first()).toBeVisible();
   });
 
@@ -263,7 +263,7 @@ test("stores: Paddle, Roku and Samsung Galaxy Store apps", async ({ page, baseUR
     const renew = (await api("POST", "/__store3/galaxy/do", { action: "renew", purchase_id: s.purchase_id })).body;
     expect((await api("POST", "/__store3/galaxy/deliver", { app_id: galaxyId, events: renew.events })).body.results[0].status).toBe(200);
     await historyOf(galaxyUser);
-    await expect(page.getByText(/Renewal/i).first()).toBeVisible();
+    await expect(page.getByText("Renewed", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Galaxy Store").first()).toBeVisible();
   });
 
