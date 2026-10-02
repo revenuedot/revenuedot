@@ -52,6 +52,14 @@ export interface StoreSettings {
   paddle?: { environment: "live" | "sandbox"; paddle_is_sandbox: boolean; app_user_id_source: "custom_data" | "anonymous"; app_user_id_custom_data_key: string; notification_setting_id: string | null; events: string[]; configured: boolean } | null;
   roku?: { roku_channel_id: string | null; roku_channel_name: string | null; configured: boolean } | null;
   galaxy?: { package_name: string | null; service_account_id: string | null; configured: boolean; iap_public_key_configured: boolean } | null;
+  /** App Store Small Business Program or Amazon Small Business Accelerator: the dates, and other apps' dates to reuse. */
+  small_business_program?: ProgramState | null;
+}
+
+export interface ProgramPeriod { entry_date: string; exit_date: string | null }
+export interface ProgramState {
+  program: "app_store_small_business_program" | "amazon_small_business_accelerator"; rate: number; standard_rate: number;
+  enrolled: boolean; periods: ProgramPeriod[]; other_apps: { app_id: string; name: string; enrolled: boolean; periods: ProgramPeriod[] }[];
 }
 
 export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string; mode?: "live" | "test"; environment?: "live" | "sandbox"; service_account_id?: string }

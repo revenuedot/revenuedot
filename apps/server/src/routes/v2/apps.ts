@@ -82,6 +82,30 @@ function checkStoreFields(type: string, rest: Record<string, unknown>) {
     if (reg !== null && reg !== "invoice_paid" && reg !== "invoice_created") bad("register_on", "must be invoice_paid or invoice_created.");
     bool("track_new_purchases");
   }
+  // Store commission programs (services/commission.ts): App Store Small Business Program and Amazon Small Business
+  // Accelerator, as RevenueCat's entry and exit dates (an exit needs an entry; exit after entry; periods do not overlap).
+  const programField = type === "app_store" || type === "mac_app_store" ? "small_business_program" : type === "amazon" ? "small_business_accelerator" : null;
+  if (programField && rest[programField] !== undefined && rest[programField] !== null) {
+    const v = rest[programField] as Record<string, unknown>;
+    if (typeof v !== "object" || Array.isArray(v)) bad(programField, "must be an object { enrolled, periods }.");
+    if (v.enrolled !== undefined && typeof v.enrolled !== "boolean") bad(`${programField}.enrolled`, "must be true or false.");
+    const periods = v.periods === undefined ? [] : v.periods;
+    if (!Array.isArray(periods) || periods.length > 10) bad(`${programField}.periods`, "must be a list of at most 10 { entry_date, exit_date } periods.");
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    const parsed = (periods as Array<Record<string, unknown>>).map((x, i) => {
+      if (!x || typeof x !== "object") bad(`${programField}.periods[${i}]`, "must be { entry_date, exit_date }.");
+      const entry = x.entry_date, exit = x.exit_date ?? null;
+      if (typeof entry !== "string" || !day.test(entry) || Number.isNaN(Date.parse(entry))) bad(`${programField}.periods[${i}].entry_date`, "is required: a date such as 2024-01-01 (needed for an exit date too).");
+      if (exit !== null && (typeof exit !== "string" || !day.test(exit) || Number.isNaN(Date.parse(exit)))) bad(`${programField}.periods[${i}].exit_date`, "must be a date such as 2025-06-30, or null while still enrolled.");
+      if (exit !== null && (exit as string) <= (entry as string)) bad(`${programField}.periods[${i}].exit_date`, "must be after the entry date.");
+      return { entry_date: entry as string, exit_date: exit as string | null };
+    }).sort((a, b) => (a.entry_date < b.entry_date ? -1 : 1));
+    for (let i = 1; i < parsed.length; i++) {
+      const prev = parsed[i - 1]!;
+      if (prev.exit_date === null || prev.exit_date > parsed[i]!.entry_date) bad(`${programField}.periods`, "must not overlap: each period must end before the next one starts.");
+    }
+    rest[programField] = { enrolled: v.enrolled !== false && parsed.length > 0, periods: parsed };
+  }
   if (type === "paddle") {
     const key = text("paddle_api_key", 200);
     if (key && /^(live|test)_[a-z0-9]+$/.test(key)) bad("paddle_api_key", "is a client-side token (live_… or test_…). Use a server-side API key (pdl_live_apikey_… or pdl_sdbx_apikey_…) from Paddle → Developer tools → Authentication.");
@@ -189,7 +213,7 @@ export function appRoutes(r: V2Router, deps: Deps) {
       sealed = { secrets: s.secrets, secretHints: s.secretHints };
     }
     // New credentials (or package name) are checked with the store on the next tick; a failing alert resolves only once the store accepts them.
-    const recheck = bundleId || Object.keys(rest).length || Object.keys(secretUpdate).length ? { credentialsCheckedAt: null } : {};
+    const recheck = bundleId || Object.keys(rest).some((k) => !k.startsWith("small_business_")) || Object.keys(secretUpdate).length ? { credentialsCheckedAt: null } : {};
     const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials, ...(sealed ?? {}), ...recheck })
       .where(and(eq(schema.apps.projectId, a.projectId), eq(schema.apps.id, a.id))).returning();
     return c.json(appShape(row!));

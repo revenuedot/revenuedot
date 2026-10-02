@@ -1,3 +1,4 @@
+import { commissionRate } from "./commission.js";
 import type { NonSubscription, Store, Subscription } from "./types.js";
 
 export type EventType =
@@ -127,13 +128,11 @@ export function diffNonSubscription(prev: NonSubscription | null, next: NonSubsc
 export const webhookStore = (s: Store) => s.toUpperCase();
 
 /**
- * Approximate store commission used for take-home estimates (RevenueCat reports 0.7 / 0.85 / 1.0 similarly). The Galaxy
- * Store keeps 30%, Roku Pay 20% and Paddle about 5% (its fee also has 50 cents per transaction, not modelled); RevenueCat
- * publishes no rate for these three, so they are estimates.
+ * The store's commission rate without transaction context (no program dates, under Google Play's $1M tier): App Store,
+ * Amazon and Galaxy Store 30% (15% with `smallBusiness`), Google Play 15%, Roku 20%, Paddle 5%. Per-transaction rates,
+ * with the Small Business Program dates and Google Play's yearly tier, come from `commissionRate` (commission.ts).
  */
 export function commission(store: Store, smallBusiness = false): number {
-  if (store === "app_store" || store === "mac_app_store" || store === "play_store" || store === "amazon" || store === "galaxy") return smallBusiness ? 0.15 : 0.3;
-  if (store === "roku") return 0.2;
-  if (store === "paddle") return 0.05;
-  return 0;
+  if (smallBusiness && (store === "app_store" || store === "mac_app_store" || store === "play_store" || store === "amazon" || store === "galaxy")) return 0.15;
+  return commissionRate({ store, appId: null, at: 0, kind: "purchase" });
 }

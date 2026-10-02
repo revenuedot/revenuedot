@@ -9,7 +9,7 @@ import {
 import { api, fmt } from "../../lib/api";
 import {
   STORES, apiOrigin, base, errMsg, storeId, useApp, useProducts, usePublicKey, useStoreSettings,
-  type App, type CredentialsCheck, type Product, type StoreSettings,
+  type App, type CredentialsCheck, type Product, type ProgramPeriod, type StoreSettings,
 } from "./data";
 import { SdkSetup } from "./sdk";
 import { StripeConnectPanel } from "./StripeConnect";
@@ -34,8 +34,8 @@ import { TestStorePriceField } from "../catalog/parts";
  * GAPS vs RevenueCat (later tiers; each shows as a note in its collapsed section):
  * - "Apply in App Store Connect" (setting the notification URL through Apple's API) and Apple's "request a test
  *   notification": the developer pastes the URL by hand.
- * - Refund request handling (answering Apple's consumption requests), Retention Messaging API, StoreKit
- *   subscription offer key (signing promotional offers) and the Small Business Program commission dates.
+ * - Refund request handling (answering Apple's consumption requests), Retention Messaging API and StoreKit
+ *   subscription offer key (signing promotional offers) link to their own pages.
  * - A live check for the App Store Connect API key (product import uses it; errors show in the import dialog).
  * - "Download sample app" banner.
  */
@@ -52,6 +52,7 @@ type Draft = {
   paddleKey: string; paddleSecret: string; paddleSandbox: boolean; paddleUserSource: "custom_data" | "anonymous"; paddleUserKey: string;
   rokuKey: string; rokuChannelId: string; rokuChannelName: string;
   galaxyAccount: string; galaxyKey: { name: string; text: string } | null; galaxyIapKey: string;
+  program: { enrolled: boolean; periods: ProgramPeriod[] };
 };
 
 const initial = (a: App, s: StoreSettings): Draft => ({
@@ -68,6 +69,7 @@ const initial = (a: App, s: StoreSettings): Draft => ({
   paddleUserKey: s.paddle?.app_user_id_custom_data_key ?? "app_user_id",
   rokuKey: "", rokuChannelId: s.roku?.roku_channel_id ?? "", rokuChannelName: s.roku?.roku_channel_name ?? "",
   galaxyAccount: s.galaxy?.service_account_id ?? "", galaxyKey: null, galaxyIapKey: "",
+  program: { enrolled: s.small_business_program?.enrolled ?? false, periods: s.small_business_program?.periods ?? [] },
 });
 
 type StoreName = "Apple" | "Google" | "Amazon" | "Stripe" | "Paddle" | "Roku" | "Samsung";
@@ -154,6 +156,15 @@ function validate(type: App["type"], d: Draft, s: StoreSettings, origin: string)
     if (d.galaxyAccount.trim() && !/^[\w.@:-]{4,100}$/.test(d.galaxyAccount.trim())) e.galaxyAccount = "Use the service account id shown in Seller Portal.";
     if (d.galaxyKey && !/PRIVATE KEY-----/.test(d.galaxyKey.text) && !/^[A-Za-z0-9+/=\s]{100,}$/.test(d.galaxyKey.text.trim())) e.galaxyKey = "This is not a private key file. Upload the key Seller Portal gave you when you created the service account.";
     if (d.galaxyIapKey.trim() && !/PUBLIC KEY-----/.test(d.galaxyIapKey) && !/^[A-Za-z0-9+/=\s]{100,}$/.test(d.galaxyIapKey.trim())) e.galaxyIapKey = "Paste the IAP public key from Seller Portal → Assistance → API Service.";
+  }
+  if (d.program.enrolled) {
+    if (!d.program.periods.length) e.program = "Add the date you joined the program.";
+    const sorted = [...d.program.periods].sort((a, b) => (a.entry_date < b.entry_date ? -1 : 1));
+    sorted.forEach((p, i) => {
+      if (!p.entry_date) e.program = "Every period needs an entry date.";
+      else if (p.exit_date && p.exit_date <= p.entry_date) e.program = "An exit date must be after its entry date.";
+      else if (i > 0 && (!sorted[i - 1]!.exit_date || sorted[i - 1]!.exit_date! > p.entry_date)) e.program = "Periods must not overlap: end one before the next starts.";
+    });
   }
   const f = d.forwardUrl.trim();
   if (f) {
@@ -332,6 +343,51 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
   );
 }
 
+/**
+ * Small Business Program (App Store) or Small Business Accelerator (Amazon) dates, RevenueCat's entry and exit dates:
+ * transactions inside a period use the program's rate in charts, metrics, exports and new webhook events. "Use existing
+ * dates" copies the dates already saved on another app of the same store in this project.
+ */
+function ProgramEditor({ d, set, s, error }: { d: Draft; set: (p: Partial<Draft>) => void; s: StoreSettings; error?: string }) {
+  const sp = s.small_business_program;
+  const amazonProgram = sp?.program === "amazon_small_business_accelerator";
+  const rate = Math.round((sp?.rate ?? (amazonProgram ? 0.2 : 0.15)) * 100);
+  const update = (i: number, p: Partial<ProgramPeriod>) => set({ program: { ...d.program, periods: d.program.periods.map((x, k) => (k === i ? { ...x, ...p } : x)) } });
+  return (
+    <div className="stack tight">
+      <p>{amazonProgram
+        ? <>Amazon takes 20% instead of 30% from members of its <a href="https://developer.amazon.com/apps-and-games/blogs/2021/06/small-business-accelerator-program" target="_blank" rel="noreferrer">Small Business Accelerator Program</a>.</>
+        : <>Apple takes 15% instead of 30% from members of the <a href="https://developer.apple.com/app-store/small-business-program/" target="_blank" rel="noreferrer">App Store Small Business Program</a>.</>}
+        {" "}Enter the dates you joined (and left) the program. Past dates recompute proceeds in charts, metrics and exports; webhooks and integration events already sent keep the old rate.</p>
+      <Switch checked={d.program.enrolled} onChange={(v) => set({ program: { enrolled: v, periods: v && !d.program.periods.length ? [{ entry_date: new Date().toISOString().slice(0, 10), exit_date: null }] : d.program.periods } })} label={`Enrolled (${rate}% commission)`} />
+      {d.program.enrolled && (
+        <>
+          {d.program.periods.map((p, i) => (
+            <div className="cols" key={i}>
+              <Field label="Entry date" htmlFor={`f-program-entry-${i}`}>
+                <input id={`f-program-entry-${i}`} className="input" type="date" value={p.entry_date} onChange={(e) => update(i, { entry_date: e.target.value })} />
+              </Field>
+              <Field label="Exit date" htmlFor={`f-program-exit-${i}`} hint="Leave empty while you are still in the program.">
+                <div className="hrow">
+                  <input id={`f-program-exit-${i}`} className="input" type="date" value={p.exit_date ?? ""} onChange={(e) => update(i, { exit_date: e.target.value || null })} />
+                  {d.program.periods.length > 1 && <button type="button" className="btn btn-line" aria-label={`Remove period ${i + 1}`} onClick={() => set({ program: { ...d.program, periods: d.program.periods.filter((_, k) => k !== i) } })}><Icon name="trash" /></button>}
+                </div>
+              </Field>
+            </div>
+          ))}
+          {error && <div className="banner err" role="alert">{error}</div>}
+          <div className="hrow">
+            <button type="button" className="btn btn-line" onClick={() => set({ program: { ...d.program, periods: [...d.program.periods, { entry_date: "", exit_date: null }] } })}><Icon name="plus" />Add period</button>
+            {(sp?.other_apps ?? []).map((o) => (
+              <button key={o.app_id} type="button" className="btn btn-line" onClick={() => set({ program: { enrolled: true, periods: o.periods } })}><Icon name="copy" />Use existing dates from {o.name}</button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const pid = useProjectId();
   const nav = useNavigate();
@@ -448,6 +504,9 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
       if (d.galaxyAccount.trim() !== start.galaxyAccount) { details.galaxy_service_account_id = d.galaxyAccount.trim() || null; credsChanged = true; }
       if (d.galaxyKey) { details.galaxy_service_account_private_key = d.galaxyKey.text.trim(); credsChanged = true; }
       if (d.galaxyIapKey.trim()) details.galaxy_iap_public_key = d.galaxyIapKey.trim();
+    }
+    if ((apple || amazon) && JSON.stringify(d.program) !== JSON.stringify(start.program)) {
+      details[amazon ? "small_business_accelerator" : "small_business_program"] = d.program.enrolled ? { enrolled: true, periods: d.program.periods } : null;
     }
     if (!test) {
       put("notification_forward_url", d.forwardUrl.trim() || null, start.forwardUrl || null);
@@ -993,8 +1052,8 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
                 {d.allowUnsigned && <div className="banner warn" role="alert">Anyone can then send a made-up receipt and unlock paid features. Only turn this on for a development server, never in production.</div>}
               </div>
             </Disclosure>
-            <Disclosure title="Apple Small Business Program" sub="Later release">
-              <p>Revenue estimates use Apple's standard 30% commission. Entering your Small Business Program dates, so proceeds use 15%, comes in a later release.</p>
+            <Disclosure title="Apple Small Business Program" sub={d.program.enrolled ? "Enrolled: 15% commission in these dates" : "Not enrolled: 30% commission"} defaultOpen={!!errors.program}>
+              <ProgramEditor d={d} set={set} s={s} error={errors.program} />
             </Disclosure>
             <Disclosure title="App-specific shared secret (legacy)" sub={cr.shared_secret.configured ? "Saved" : "Only for old StoreKit 1 receipts"}>
               <p>Only needed for StoreKit 1 receipts from old app versions. Find it in App Store Connect → your app → App Information → App-Specific Shared Secret → Manage.</p>
@@ -1007,6 +1066,16 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
                 )}
             </Disclosure>
           </>
+        )}
+        {amazon && (
+          <Disclosure title="Amazon Small Business Accelerator Program" sub={d.program.enrolled ? "Enrolled: 20% commission in these dates" : "Not enrolled: 30% commission"} defaultOpen={!!errors.program}>
+            <ProgramEditor d={d} set={set} s={s} error={errors.program} />
+          </Disclosure>
+        )}
+        {google && (
+          <Disclosure title="Google Play service fee" sub="15% subscriptions · 15% on the first $1M a year">
+            <p>Proceeds use Google Play's reduced service fee, as RevenueCat assumes: 15% on every subscription, and 15% on one-time purchases until this app's sales reach $1M in a calendar year, then 30% for the rest of that year. Under Google's 2026 fees, a one-time purchase above $1M from a customer who first installed the app after the new fees started in their region is 25%. Nothing to set up; to get the 15% tier from Google, link your account group in Play Console.</p>
+          </Disclosure>
         )}
         <Disclosure title="Public API key" sub="The key your app passes to the SDK" defaultOpen={test}>
           {key ? <SecretText value={key} label="public SDK key" /> : <span className="subtle">Loading…</span>}

@@ -181,6 +181,20 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     })), null));
   });
 
+  const programOf = async (a: AppRow) => {
+    const field = a.type === "amazon" ? "small_business_accelerator" : "small_business_program";
+    const read = (x: AppRow) => {
+      const v = (x.credentials ?? {})[field] as { enrolled?: boolean; periods?: Array<{ entry_date: string; exit_date: string | null }> } | undefined;
+      return { enrolled: !!v && v.enrolled !== false && !!v.periods?.length, periods: v?.periods ?? [] };
+    };
+    const siblings = (await db.select().from(schema.apps).where(eq(schema.apps.projectId, a.projectId)))
+      .filter((x) => x.id !== a.id && (a.type === "amazon" ? x.type === "amazon" : x.type === "app_store" || x.type === "mac_app_store"));
+    return {
+      program: a.type === "amazon" ? "amazon_small_business_accelerator" : "app_store_small_business_program", rate: a.type === "amazon" ? 0.2 : 0.15, standard_rate: 0.3,
+      ...read(a), other_apps: siblings.map((x) => ({ app_id: x.id, name: x.name, ...read(x) })).filter((x) => x.periods.length),
+    };
+  };
+
   // What the app configuration page shows: never a secret, only whether it is set and the non-secret ids around it.
   r.get(`${P}/apps/:app_id/store_settings`, scope("project_configuration:apps:read"), async (c) => {
     const a = await findApp(c);
@@ -237,6 +251,9 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         connection: stripeConnected(a) ? "stripe_connect" : storeSecretSet(a, "stripe_secret_key") ? "restricted_key" : null,
         connected_account: stripeConnected(a) ? storeSecretHintOf(a, "stripe_connect_account_id") : null, mode: stripeModeOf(a),
       } : null,
+      // Store commission programs (services/commission.ts): App Store Small Business Program, Amazon Small Business
+      // Accelerator. `other_apps` are the dates saved on the project's other apps of the store ("Use existing dates").
+      small_business_program: a.type === "app_store" || a.type === "mac_app_store" || a.type === "amazon" ? await programOf(a) : null,
       // Paddle: the environment, how purchases first seen in a notification find their customer, and the destination Apply in Paddle made.
       paddle: a.type === "paddle" ? {
         environment: paddleIsSandbox(a) ? "sandbox" : "live", paddle_is_sandbox: cr.paddle_is_sandbox === true,

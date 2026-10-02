@@ -92,6 +92,16 @@ describe("POST /v1/receipts with an Amazon receipt", () => {
     expect(e.a.rvsCalls()[0]!.url).toContain(`/user/${encodeURIComponent(AMZ_USER)}/receiptId/`);
   });
 
+  it("an app in the Small Business Accelerator sends 20% commission from its entry date", async () => {
+    const res = await e.call(`/v2/projects/${e.h.ids.project}/apps/${e.appId}`, { method: "POST", key: e.h.ids.secretKey,
+      json: { amazon: { small_business_accelerator: { enrolled: true, periods: [{ entry_date: "2026-01-01", exit_date: null }] } } } });
+    expect(res.status).toBe(200);
+    e.a.put(receipt());
+    expect((await buy()).status).toBe(200);
+    const [ev] = await e.events("INITIAL_PURCHASE");
+    expect(ev).toMatchObject({ commission_percentage: 0.2, takehome_percentage: 0.8 });
+  });
+
   it("a free trial is TRIAL at price 0; an introductory promotion is INTRO", async () => {
     e.a.put(receipt({ freeTrialEndDate: at(7).getTime(), renewalDate: at(7).getTime() }));
     let ci = CustomerInfoSchema.parse(await (await buy()).json());

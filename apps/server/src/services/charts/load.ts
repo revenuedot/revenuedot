@@ -1,5 +1,6 @@
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
-import type { ChartInput, ChartLifecycle, ChartRefundEvent, TxKind } from "@revenuedot/core";
+import { commissionRates, type ChartInput, type ChartLifecycle, type ChartRefundEvent, type TxKind } from "@revenuedot/core";
+import { commissionSettingsOf } from "../commission.js";
 import { schema, type DB } from "@revenuedot/db";
 import { ensureEcbRange, fxLookup, type FxFetch } from "../fx.js";
 
@@ -117,10 +118,14 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
     }
   }
 
+  // Each transaction's store commission: program dates per app and Google Play's yearly tier (core commission.ts).
+  const firstSeenOf = new Map(customers.map((c) => [c.id, c.firstSeen.getTime()]));
+  const rates = commissionRates(txs.map((t) => ({ id: t.id, store: t.store, appId: t.appId, at: t.purchasedAt.getTime(), usd: t.revenueUsd, kind: t.kind, country: t.countryCode, firstSeen: firstSeenOf.get(t.customerId) ?? null })),
+    await commissionSettingsOf(db, projectId));
   return {
     now: opts.now.getTime(),
     fx: toDisplay,
-    txs: txs.filter((t) => KINDS.has(t.kind as TxKind)).map((t) => ({
+    txs: txs.filter((t) => KINDS.has(t.kind as TxKind)).map((t) => ({ commission: rates.get(t.id),
       id: t.id, customerId: t.customerId, appId: t.appId, store: t.store, storeTransactionId: t.storeTransactionId, productId: t.productIdentifier,
       kind: t.kind as TxKind, at: t.purchasedAt.getTime(), expiresAt: t.expiresAt ? t.expiresAt.getTime() : null, usd: t.revenueUsd, country: t.countryCode,
       offering: t.kind === "one_time" || oneOffering.has(`${t.store}|${t.storeTransactionId}`) ? oneOffering.get(`${t.store}|${t.storeTransactionId}`) ?? null : subOffering.get(`${t.customerId}|${t.store}|${t.productIdentifier}`) ?? null,

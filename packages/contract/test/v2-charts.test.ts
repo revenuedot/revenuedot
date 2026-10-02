@@ -88,7 +88,8 @@ describe("charts: numbers by hand", () => {
     // May u_a; Jun u_a + u_e + u_d 120 − 120 refunded; Jul u_a u_b u_e; Aug u_a u_b u_p + u_g $5 + $0.02 of ads.
     expect(r).toEqual({ "2026-05": [10, 1], "2026-06": [20, 3], "2026-07": [30, 3], "2026-08": [35.02, 4], "2026-09": [0, 0] });
     const proceeds = table((await get("revenue", `${MONTHS}&selectors=${encodeURIComponent('{"revenue_type":"proceeds"}')}`)).body);
-    expect(proceeds["2026-08"]![0]).toBe(24.52);
+    // Google Play subscriptions pay 15% (u_p $10 → $8.50); App Store 30%; ads keep 100%.
+    expect(proceeds["2026-08"]![0]).toBe(26.02);
     const sandbox = table((await get("revenue", `${MONTHS}&environment=sandbox`)).body);
     expect(sandbox["2026-08"]).toEqual([9.99, 1]);
   });
@@ -293,6 +294,49 @@ describe("SDK events and activity behind the charts", () => {
       if (v.segment !== total) sum.set(`${v.cohort}|${v.measure}`, (sum.get(`${v.cohort}|${v.measure}`) ?? 0) + (v.value ?? 0));
     }
     for (const v of r.body.values.filter((x: any) => x.segment === total)) expect(sum.get(`${v.cohort}|${v.measure}`) ?? 0).toBe(v.value);
+  });
+});
+
+describe("Small Business Program: proceeds follow the app's program dates", () => {
+  const proceedsAug = async () => table((await get("revenue", `${MONTHS}&selectors=${encodeURIComponent('{"revenue_type":"proceeds"}')}`)).body);
+  const app = (json: unknown) => call("POST", "/v2/projects/{project_id}/apps/{app_id}", { app_id: "app_ios" }, { json });
+  const settings = async (app_id: string) => (await call("GET", "/v2/projects/{project_id}/apps/{app_id}/store_settings", { app_id }, { ext: true })).body.small_business_program;
+
+  it("validates the dates", async () => {
+    const bad = async (periods: unknown, param: string) => {
+      const r = await app({ app_store: { small_business_program: { enrolled: true, periods } } });
+      expect(r.status).toBe(400);
+      expect(r.body.param).toBe(`app_store.${param}`);
+    };
+    await bad([{ exit_date: "2026-01-01" }], "small_business_program.periods[0].entry_date");
+    await bad([{ entry_date: "2026-03-01", exit_date: "2026-02-01" }], "small_business_program.periods[0].exit_date");
+    await bad([{ entry_date: "2026-01-01", exit_date: null }, { entry_date: "2026-03-01", exit_date: null }], "small_business_program.periods");
+    expect((await call("POST", "/v2/projects/{project_id}/apps/{app_id}", { app_id: "app_play" }, { json: { play_store: { small_business_program: { enrolled: true } } } })).status).toBe(200);
+    expect(await settings("app_play")).toBeNull();
+  });
+
+  it("recomputes past proceeds when dates change, and offers them to the project's other App Store apps", async () => {
+    const before = await proceedsAug();
+    // App Store in August: u_a $10 + u_b $10 + u_g $5 = $25 at 30% → $17.50; Google Play u_p $10 at 15% → $8.50; ads $0.02.
+    expect(before["2026-08"]![0]).toBe(26.02);
+    expect(await settings("app_ios")).toMatchObject({ program: "app_store_small_business_program", rate: 0.15, standard_rate: 0.3, enrolled: false, periods: [], other_apps: [] });
+    const r = await app({ app_store: { small_business_program: { enrolled: true, periods: [{ entry_date: "2026-08-09", exit_date: null }, { entry_date: "2026-05-01", exit_date: "2026-06-01" }] } } });
+    expect(r.status).toBe(200);
+    expect(await settings("app_ios")).toMatchObject({ enrolled: true, periods: [{ entry_date: "2026-05-01", exit_date: "2026-06-01" }, { entry_date: "2026-08-09", exit_date: null }] });
+    const after = await proceedsAug();
+    // From Aug 9 the App Store keeps 15%: u_a (Aug 10) and u_g (Aug 20) gain 15%; u_b renewed Aug 8 and stays at 30%.
+    expect(after["2026-08"]![0]).toBe(28.27);
+    // May: u_a $10 at 15% instead of 30%. June and July are outside both periods.
+    expect(after["2026-05"]![0]).toBe(8.5);
+    expect(after["2026-06"]![0]).toBe(before["2026-06"]![0]);
+    expect(after["2026-07"]![0]).toBe(before["2026-07"]![0]);
+    // A second App Store app sees these dates under "Use existing dates".
+    const created = await call("POST", "/v2/projects/{project_id}/apps", {}, { json: { name: "iPad", type: "app_store", app_store: { bundle_id: "com.example.ipad" } } });
+    expect(created.status).toBe(201);
+    expect((await settings(created.body.id)).other_apps).toEqual([{ app_id: "app_ios", name: expect.any(String), enrolled: true, periods: [{ entry_date: "2026-05-01", exit_date: "2026-06-01" }, { entry_date: "2026-08-09", exit_date: null }] }]);
+    // Switching the program off puts every past transaction back at 30%.
+    expect((await app({ app_store: { small_business_program: null } })).status).toBe(200);
+    expect((await proceedsAug())["2026-08"]![0]).toBe(26.02);
   });
 });
 

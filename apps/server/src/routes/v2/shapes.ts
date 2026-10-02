@@ -7,6 +7,7 @@ import type { Access } from "../../repo/access.js";
 import { embeddedList, ms, round2 } from "./common.js";
 import { storeSecretSet } from "../../services/store-secrets.js";
 import { hasServiceAccount } from "../../stores/google/api.js";
+import { commissionModel } from "../../services/commission.js";
 
 /** Serializers from our rows to RevenueCat API v2 objects. */
 
@@ -195,12 +196,14 @@ export async function loadCatalog(db: DB, projectId: string) {
   };
   /** The SDK sends the offering's identifier (lookup key); REST objects carry the offering id, or the identifier when it is gone. */
   const offeringId = (identifier: string | null | undefined) => (identifier ? offers.find((o) => o.lookupKey === identifier)?.id ?? identifier : null);
-  return { products, ents, links, findProduct, entitlementsFor, productIdsFor, offeringId };
+  // Proceeds use each transaction's store commission (Small Business Program dates, Google Play's yearly tier).
+  const commissionOf = await commissionModel(db, projectId);
+  return { products, ents, links, findProduct, entitlementsFor, productIdsFor, offeringId, commission: commissionOf };
 }
 export type Catalog = Awaited<ReturnType<typeof loadCatalog>>;
 
-export function monetary(gross: number, store: string) {
-  const comm = round2(gross * commission(store as Store));
+export function monetary(gross: number, store: string, rate?: number) {
+  const comm = round2(gross * (rate ?? commission(store as Store)));
   return { currency: "USD", gross: round2(gross), commission: comm, tax: 0, proceeds: round2(gross - comm) };
 }
 
@@ -236,7 +239,7 @@ export function subscriptionShape(s: SubRow, customerAppUserId: string, cat: Cat
     current_period_ends_at: ms(s.expiresDate), ends_at: ms(s.expiresDate),
     gives_access: st.access && !access?.blocked && (access?.sandbox !== false || !s.isSandbox),
     pending_payment: st.status === "in_billing_retry" || st.status === "in_grace_period", auto_renewal_status: st.renewal, status: st.status,
-    total_revenue_in_usd: monetary(revenueUsd, s.store), presented_offering_id: cat.offeringId(s.presentedOfferingId),
+    total_revenue_in_usd: monetary(revenueUsd, s.store, cat.commission.rate({ store: s.store, appId: s.appId, at: s.purchaseDate, kind: "renewal", isSandbox: s.isSandbox, country: s.countryCode })), presented_offering_id: cat.offeringId(s.presentedOfferingId),
     entitlements: embeddedList(`/v2/projects/${s.projectId}/subscriptions/${s.id}/entitlements`, ents.map((e) => entitlementShape(e))),
     environment: s.isSandbox ? "sandbox" : "production", store: s.store, store_subscription_identifier: s.storeTransactionId ?? s.storeKey,
     ownership: s.ownershipType === "FAMILY_SHARED" ? "family_shared" : "purchased",
@@ -250,7 +253,7 @@ export function purchaseShape(p: NonSubRow, customerAppUserId: string, cat: Cata
   const gross = p.priceUsd ?? (p.priceCurrency === "USD" ? p.priceAmount ?? 0 : 0);
   return {
     object: "purchase" as const, id: p.id, customer_id: customerAppUserId, original_customer_id: customerAppUserId,
-    product_id: prod?.id ?? p.productIdentifier, purchased_at: p.purchaseDate.getTime(), revenue_in_usd: monetary(gross, p.store),
+    product_id: prod?.id ?? p.productIdentifier, purchased_at: p.purchaseDate.getTime(), revenue_in_usd: monetary(gross, p.store, cat.commission.rate({ store: p.store, appId: p.appId, at: p.purchaseDate, kind: "one_time", isSandbox: p.isSandbox, country: p.countryCode })),
     quantity: 1, status: p.refundedAt ? "refunded" : "owned", presented_offering_id: cat.offeringId(p.presentedOfferingId),
     entitlements: embeddedList(`/v2/projects/${p.projectId}/purchases/${p.id}/entitlements`, ents.map((e) => entitlementShape(e))),
     environment: p.isSandbox ? "sandbox" : "production", store: p.store, store_purchase_identifier: p.storeTransactionId, ownership: "purchased",
