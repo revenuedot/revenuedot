@@ -115,6 +115,12 @@ test("Connect with Stripe: unavailable, cancel, connect, sell, refund, disconnec
       // Stripe makes onboarding links only for accounts the platform created: this one finishes in its own dashboard.
       await expect(banner.getByRole("link", { name: "Open the Stripe Dashboard" })).toHaveAttribute("href", "https://dashboard.stripe.com/account/onboarding");
       await expect(banner.getByRole("button", { name: "Finish setup in Stripe" })).toHaveCount(0);
+      // At phone width the button wraps under the text and stays inside the banner.
+      await page.setViewportSize({ width: 390, height: 844 });
+      const [bb, lb] = [await banner.boundingBox(), await banner.getByRole("link", { name: "Open the Stripe Dashboard" }).boundingBox()];
+      expect(lb!.x + lb!.width).toBeLessThanOrEqual(bb!.x + bb!.width);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+      await page.setViewportSize({ width: 1440, height: 900 });
       await ok("POST", "/__stripe/account_updated", { charges_enabled: true });
       await page.reload();
       await expect(box().getByRole("status").filter({ hasText: "cannot take payments yet" })).toHaveCount(0);
