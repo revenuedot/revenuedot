@@ -77,6 +77,32 @@ describe("SAML sign-in", () => {
     expectRefused(await post(s!.browser(), x, samlResponse({ acsUrl: x.acs, audience: x.entity, email: "alice@acme.test", inResponseTo: req.id })));
   });
 
+  it("an unverified account someone registered in advance loses its password and sessions when the real owner signs in", async () => {
+    const x = await setup();
+    // Someone signs up with the CEO's address before the organization sets up SSO; the address is never verified.
+    const squatter = await s!.signup("ceo@acme.test", "Squat");
+    expect((await squatter.browser.call("GET", "/auth/me")).status).toBe(200);
+    const b = s!.browser();
+    const req = await spStart(b, "ceo@acme.test");
+    const res = await post(b, x, samlResponse({ acsUrl: x.acs, audience: x.entity, email: "ceo@acme.test", inResponseTo: req.id }), req.relayState!);
+    expect(res.status).toBe(303);
+    expect((await b.call("GET", "/auth/me")).body.user.email).toBe("ceo@acme.test");
+    // The squatter's session ended and their password no longer signs in.
+    expect((await squatter.browser.call("GET", "/auth/me")).status).toBe(401);
+    expect((await s!.browser().call("POST", "/auth/login", { email: "ceo@acme.test", password: "correct horse battery" })).status).toBe(401);
+    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "ceo@acme.test"));
+    expect(u!.passwordHash).toBeNull();
+  });
+
+  it("an organization owner whose address was never verified keeps the password (break-glass) after signing in with SSO", async () => {
+    const x = await setup();
+    const b = s!.browser();
+    const req = await spStart(b, "owner@acme.test");
+    expect((await post(b, x, samlResponse({ acsUrl: x.acs, audience: x.entity, email: "owner@acme.test", inResponseTo: req.id }), req.relayState!)).status).toBe(303);
+    expect((await x.owner.call("GET", "/auth/me")).status).toBe(200);
+    expect((await s!.browser().call("POST", "/auth/login", { email: "owner@acme.test", password: "correct horse battery" })).status).toBe(200);
+  });
+
   it("serves SP metadata at the entity id", async () => {
     const x = await setup();
     const r = await s!.browser().call("GET", `/sso/saml/${x.connId}/metadata`);

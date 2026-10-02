@@ -280,7 +280,7 @@ export function scimRoutes(ctx: EeCtx) {
     if (await userNameTaken(orgId, key)) throw new ScimError(409, `A user with userName "${input.userName}" already exists in this organization.`, "uniqueness");
     const email = await verifiedEmail(orgId, input);
     const now = deps.now();
-    const { user, created } = await ensureUser(db, email, displayNameOf(input), now);
+    const { user, created } = await ensureUser(db, email, displayNameOf(input), now, orgId);
     const [linked] = await db.select({ id: eeScimUsers.id }).from(eeScimUsers).where(and(eq(eeScimUsers.orgId, orgId), eq(eeScimUsers.userId, user.id))).limit(1);
     if (linked) throw new ScimError(409, `Another SCIM user in this organization (${linked.id}) already uses ${email}.`, "uniqueness");
     if (!input.active) await guardLastOwner(orgId, user.id);

@@ -23,14 +23,27 @@ export async function domainVerifiedFor(db: DB, orgId: string, email: string): P
 /**
  * The account for an address, created without a password when there is none (it signs in with single sign-on).
  * The address counts as verified: the organization proved it owns the domain and its identity provider vouched for it.
+ *
+ * An existing account whose address was never verified may have been registered in advance by someone else (sign-up
+ * is open on Cloud): that person never proved they read the inbox, so its password and sessions end before the real
+ * owner is signed in, or they would share the account. Owners and admins of `orgId` keep theirs: the organization's
+ * own admins put them there (a self-hosted server's first account is never verified).
  */
-export async function ensureUser(db: DB, emailRaw: string, name: string | null, now: Date): Promise<{ user: typeof schema.users.$inferSelect; created: boolean }> {
+export async function ensureUser(db: DB, emailRaw: string, name: string | null, now: Date, orgId: string): Promise<{ user: typeof schema.users.$inferSelect; created: boolean }> {
   const email = normEmail(emailRaw);
   const [found] = await db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
   if (found) {
-    if (!found.emailVerifiedAt) await db.update(schema.users).set({ emailVerifiedAt: now }).where(eq(schema.users.id, found.id));
+    const [m] = found.emailVerifiedAt ? [] : await db.select({ role: eeOrgMembers.role, active: eeOrgMembers.active }).from(eeOrgMembers)
+      .where(and(eq(eeOrgMembers.orgId, orgId), eq(eeOrgMembers.userId, found.id))).limit(1);
+    const trusted = !!m?.active && (m.role === "owner" || m.role === "admin");
+    if (!found.emailVerifiedAt && !trusted) {
+      await db.update(schema.users).set({ emailVerifiedAt: now, passwordHash: null }).where(eq(schema.users.id, found.id));
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, found.id));
+    } else if (!found.emailVerifiedAt) {
+      await db.update(schema.users).set({ emailVerifiedAt: now }).where(eq(schema.users.id, found.id));
+    }
     if (!found.name && name) await db.update(schema.users).set({ name }).where(eq(schema.users.id, found.id));
-    return { user: { ...found, emailVerifiedAt: found.emailVerifiedAt ?? now, name: found.name ?? name }, created: false };
+    return { user: { ...found, emailVerifiedAt: found.emailVerifiedAt ?? now, passwordHash: found.emailVerifiedAt || trusted ? found.passwordHash : null, name: found.name ?? name }, created: false };
   }
   const [user] = await db.insert(schema.users).values({ id: newId("usr_", 16), email, name, passwordHash: null, emailVerifiedAt: now }).onConflictDoNothing().returning();
   if (user) return { user, created: true };

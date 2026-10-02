@@ -292,7 +292,7 @@ export function ssoRoutes(ctx: EeCtx) {
       await auditFail(conn, "just-in-time provisioning is off and the person is not an organization member", email);
       return fail(c, "Ask your administrator to add you to the organization before you sign in with SSO.");
     }
-    const { user, created } = await ensureUser(db, email, identity.name, now);
+    const { user, created } = await ensureUser(db, email, identity.name, now, conn.orgId);
     await ensureOrgMember(db, conn.orgId, user.id, "sso", { ssoGroups: identity.groups, now });
     const sid = await createSession(db, user.id, now);
     await db.insert(eeSsoSessions).values({ sessionId: sid, orgId: conn.orgId, connectionId: conn.id, userId: user.id, createdAt: now });
