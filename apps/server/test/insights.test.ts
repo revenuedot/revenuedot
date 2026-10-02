@@ -9,6 +9,8 @@ import { inProcessClient, RevenueDotApiError } from "../src/services/assistant/c
 import { buildInsightPack } from "../src/services/insights/pack.js";
 import { extractJson, generateInsights, validateInsights, weekOf } from "../src/services/insights/generate.js";
 import { digestOpen, digestToken, numberLine, runInsightsDigest, verifyDigestToken } from "../src/services/insights/digest.js";
+import { DEFAULT_CAPS } from "../src/services/assistant/limits.js";
+import { createSecretKey } from "../src/services/auth.js";
 
 /**
  * AI growth insights (prd/attribution-benchmarks-insights §3) with the scripted fake model: the numbers pack, read tools
@@ -65,6 +67,13 @@ describe("validation", () => {
     const md = { title: "**Churn** is up", finding: "See the [churn chart](/projects/p/charts/churn) for `details`.", recommendation: "Launch a [win-back campaign](https://x.example).", metric_ids: ["a"] };
     const r = validateInsights(JSON.stringify({ insights: [md, one(["b"]), one(["c"])] }), pack);
     expect("insights" in r && r.insights[0]).toMatchObject({ title: "Churn is up", finding: "See the churn chart for details.", recommendation: "Launch a win-back campaign." });
+  });
+  it("keeps web addresses out of the text it emails (campaign names come from app users)", () => {
+    const bad = { title: "Visit https://evil.example/login now", finding: "Your account at www.evil.example is locked, see http://evil.example?x=1.", recommendation: "Do one concrete thing now.", metric_ids: ["a"] };
+    const r = validateInsights(JSON.stringify({ insights: [bad, one(["b"]), one(["c"])] }), pack);
+    expect("insights" in r && r.insights[0]).toMatchObject({ title: "Visit now", finding: "Your account at is locked, see" });
+    expect(numberLine({ id: "campaign_1", label: 'Campaign "go to https://evil.example": revenue per new customer (3 customers)', unit: "$", value: 2, previous: 1, change_pct: 100, window: "w" }))
+      .toBe('Campaign "go to ": revenue per new customer $2.00 (+100.0%)');
   });
   it("refuses fewer than 3 cited insights, no JSON, or the wrong shape", () => {
     expect(validateInsights(JSON.stringify({ insights: [one(["a"]), one(["x"])] }), pack)).toMatchObject({ error: expect.stringContaining("Only 1") });
@@ -162,6 +171,16 @@ describe("Overview insights and Refresh", () => {
     s.setNow(NOW);
   });
 
+  it("needs the Charts permission: a secret key or custom role without it reads nothing", async () => {
+    const narrow = await createSecretKey(s.db, ada.projectId!, "customers only", ["customer_information:customers:read"]);
+    const charts = await createSecretKey(s.db, ada.projectId!, "charts", ["charts_metrics:charts:read"]);
+    const get = (key: string) => s.app.fetch(new Request(`http://localhost${P}/ai/insights`, { headers: { authorization: `Bearer ${key}` } }));
+    expect((await get(narrow.key)).status).toBe(403);
+    const ok = await get(charts.key);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ object: "ai_insights", can_refresh: false });
+  });
+
   it("refuses any write from the insights actor at the API, whatever the project allows", async () => {
     const client = inProcessClient((req) => Promise.resolve(s.app.fetch(req)), { userId: ada.userId, email: "ada@example.com", projectId: ada.projectId!, conversationId: "insights:x", readOnly: true });
     await expect(client.request("GET", `${P}/apps`)).resolves.toBeTruthy();
@@ -210,6 +229,17 @@ describe("the weekly digest", () => {
     const [row] = await s.db.select().from(schema.aiInsights).where(and(eq(schema.aiInsights.projectId, tom.projectId!), eq(schema.aiInsights.week, "2026-10-12")));
     expect(row).toMatchObject({ status: "ready", generatedBy: "schedule" });
     expect(row!.emailedAt).not.toBeNull();
+  });
+
+  it("waits for tomorrow when the server's daily AI allowance is used up, without skipping the week", async () => {
+    const week = new Date("2026-10-26T06:30:00Z");
+    const capped = { ...s.app.deps, assistantCaps: { ...DEFAULT_CAPS, serverTokensPerDay: 0 } };
+    const r = await runInsightsDigest(capped, week);
+    expect(r).toMatchObject({ generated: 0, failed: 0 });
+    expect(await s.db.select().from(schema.aiInsights).where(eq(schema.aiInsights.week, "2026-10-26"))).toEqual([]);
+    // With the allowance back, the same project is written and emailed.
+    const next = await runInsightsDigest(s.app.deps, new Date(week.getTime() + 86_400_000));
+    expect(next).toMatchObject({ generated: 1, project: r.project });
   });
 
   it("is off where the deployment does not run it", async () => {

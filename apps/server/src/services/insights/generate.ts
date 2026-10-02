@@ -83,11 +83,17 @@ export function validateInsights(text: string, pack: InsightPack): { insights: I
   if (out.length < MIN_INSIGHTS) return { error: `Only ${out.length} recommendations cite items of the data pack; ${MIN_INSIGHTS} to ${MAX_INSIGHTS} are needed, each with metric_ids from the pack.` };
   return { insights: out };
 }
-/** One plain line: markdown links become their text, emphasis marks go, whitespace collapses, and long text is cut. */
+/**
+ * One plain line: markdown links become their text, web addresses go (the model reads campaign names any app user can
+ * set, and this text is emailed from RevenueDot), emphasis marks go, whitespace collapses, and long text is cut.
+ */
 const oneLine = (s: string, max: number) => {
-  const t = s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/(\*\*|__|`)/g, "").replace(/\s+/g, " ").trim();
+  const t = noUrls(s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")).replace(/(\*\*|__|`)/g, "").replace(/\s+/g, " ").trim();
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 };
+
+/** Removes web addresses (http://, https://, www.) from text that ends up in an email. */
+export const noUrls = (s: string) => s.replace(/\b(?:https?:\/\/|www\.)[^\s"'<>)]*/gi, "").replace(/[ \t]{2,}/g, " ");
 
 export function insightInstructions(project: string): string {
   return [
@@ -113,7 +119,8 @@ export interface GenerateOptions {
 }
 
 export class InsightsError extends Error {
-  constructor(public status: 400 | 403 | 409 | 429 | 503, message: string) { super(message); }
+  /** `server_cap`: the whole server used today's RevenueDot AI tokens (nothing runs for any project until tomorrow). */
+  constructor(public status: 400 | 403 | 409 | 429 | 503, message: string, public code?: "server_cap") { super(message); }
 }
 
 /** The person the read-only actor acts as: the asker, or for the schedule the project's owner (else its first admin). */
@@ -151,7 +158,7 @@ export async function generateInsights(deps: Deps, projectId: string, o: Generat
   const usageKey = o.by === "schedule" ? "insights-schedule" : user.id;
   const today = await usageToday(db, usageKey, projectId, now);
   if (today.project.tokens >= caps.projectTokensPerDay) throw new InsightsError(429, "This project has used today's RevenueDot AI allowance. It resets at midnight UTC.");
-  if (today.server.tokens >= caps.serverTokensPerDay) throw new InsightsError(429, "RevenueDot AI is busy today. Try again tomorrow.");
+  if (today.server.tokens >= caps.serverTokensPerDay) throw new InsightsError(429, "RevenueDot AI is busy today. Try again tomorrow.", "server_cap");
   const week = weekOf(now);
   if (!(await claim(db, projectId, week, now))) throw new InsightsError(409, "This week's insights are being written right now.");
 

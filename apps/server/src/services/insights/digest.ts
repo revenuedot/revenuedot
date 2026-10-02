@@ -4,7 +4,7 @@ import type { Deps } from "../../context.js";
 import { trySend } from "../../mail/index.js";
 import { insightsDigestEmail } from "../../mail/templates.js";
 import { linkBase } from "../account-email.js";
-import { generateInsights, InsightsError, weekOf, type Insight } from "./generate.js";
+import { generateInsights, InsightsError, noUrls, weekOf, type Insight } from "./generate.js";
 
 /**
  * The weekly digest (prd/attribution-benchmarks-insights §3). From Monday DIGEST_HOUR UTC, each call (the tick) handles
@@ -30,7 +30,8 @@ const fmtNumber = (v: number | null, unit: string) => {
 /** "MRR $4,210 (−8.2% vs today vs 28 days ago)" for the email. */
 export function numberLine(n: Insight["numbers"][number]): string {
   const ch = n.change_pct === null ? "" : ` (${n.change_pct > 0 ? "+" : n.change_pct < 0 ? "−" : ""}${Math.abs(n.change_pct).toFixed(1)}%)`;
-  const label = n.label.replace(/\s*\(.*\)$/, "");
+  // Labels can hold campaign names an app's users set: no web addresses in the email.
+  const label = noUrls(n.label.replace(/\s*\(.*\)$/, "")).trim();
   return `${label} ${fmtNumber(n.value, n.unit)}${ch}`;
 }
 
@@ -120,6 +121,9 @@ export async function runInsightsDigest(deps: Deps, now: Date, o: { force?: bool
     out.generated = 1;
     out.emailed = await emailDigest({ ...deps, now: () => now }, due.id, week);
   } catch (e) {
+    // The server's daily AI allowance is used up: every project would be refused, so none is marked. The digest
+    // continues with this project tomorrow instead of skipping the week for every project the cap reached.
+    if (e instanceof InsightsError && e.code === "server_cap") return out;
     // The row is marked "error" (or another run holds it); this week's digest for the project is skipped.
     out.failed = 1;
     if (!(e instanceof InsightsError && e.status === 409)) console.error(`insights digest: project ${due.id}`, e instanceof Error ? e.message : e);

@@ -13,7 +13,7 @@ import {
   loadMessages, readChunks, saveMessages, startStream, streamStatus, touchConversation,
 } from "../../services/assistant/store.js";
 import { firstSaleCard } from "../../services/assistant/first-sale.js";
-import { allows, body, notFound, paramError, V2Error, type V2Context, type V2Router } from "./common.js";
+import { allows, body, notFound, paramError, scope as needs, V2Error, type V2Context, type V2Router } from "./common.js";
 import { publicOrigin } from "./setup.js";
 import { hit } from "../../services/rate-limit.js";
 import { getCookie } from "hono/cookie";
@@ -486,8 +486,10 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
       digest: { available: !!deps.insightsDigest && !!deps.assistant, subscribed },
     };
   };
-  r.get(`${A}/insights`, async (c) => c.json(await insightsOut(c)));
-  r.post(`${A}/insights/refresh`, async (c) => {
+  // Insights carry revenue, MRR and conversion numbers: the same permission as Charts (an API key or custom role without
+  // it reads nothing here).
+  r.get(`${A}/insights`, needs("charts_metrics:charts:read"), async (c) => c.json(await insightsOut(c)));
+  r.post(`${A}/insights/refresh`, needs("charts_metrics:charts:read"), async (c) => {
     const p = user(c);
     if (p.role === "viewer") throw new V2Error(403, "authorization_error", "Your role in this project (viewer) does not allow this. Ask a project admin.");
     model();
