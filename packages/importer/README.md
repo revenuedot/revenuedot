@@ -71,6 +71,13 @@ npx revenuedot import verify --rc-project proj... --to http://localhost:8787
 
 It first lists every customer id on both sides, so each customer is checked once even while RevenueCat's list order changes, and it names customers missing in RevenueDot and customers only RevenueDot has. For every customer it compares the active entitlements, their expiry dates and the number of subscriptions that give access. It prints the totals and every difference, and exits with code 1 when there is one. Purchases made since the import show up as differences: run the import again, then verify again.
 
+To re-import only the customers that differ, save the report as JSON and pass it to `--ids`. It imports the customers that are missing or whose access differs, and leaves customers only RevenueDot has alone:
+
+```sh
+npx revenuedot import verify --rc-project proj... --to http://localhost:8787 --json > verify.json
+npx revenuedot import --from-revenuecat --rc-project proj... --to http://localhost:8787 --ids verify.json
+```
+
 ## Step 5: cut over
 
 ```sh
