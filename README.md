@@ -184,6 +184,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
+| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 64 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
+| **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · built, tested against a fake Stripe; switched on when the Stripe keys are set |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
@@ -194,7 +196,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Auth (beta)** | Sign users in with Firebase or any OpenID Connect provider (Auth0, Clerk, Supabase, Cognito, Google, Apple): ID tokens verified with the provider's keys, logIn semantics, an access token that reads customer info, attributes and in-app currency balances without a backend, refresh and sign-out, balances by identity for your server, in the RevenueCat SDKs' token-login wire format ([guide](https://revenuedot.app/docs/guides/auth)) | Tier 2 · built, tested with keys generated in the tests; no real Firebase project or provider called yet |
 | **Customers** | Customer lists (all, active, sandbox, non-subscription, expired), saved audiences, filters from the audience builder, summary cards, CSV export ([guide](https://revenuedot.app/docs/guides/customer-lists)) | Tier 1/2 · built and tested |
 | **RevenueDot AI** | An assistant in the dashboard that answers from your own metrics, 43 charts, customers, catalog, experiments and webhook health, and makes small changes (grant access, create products, set the current offering, pause experiments, replay webhooks) only after you approve each one, audited as "RevenueDot AI on behalf of" you. A full-page chat with history, screenshots, `@` mentions and a `.storekit` importer; an Ask bar on the Overview; a read and write / read only / off setting per project; a shareable first-sale card. Its tools have the MCP server's names ([guide](https://revenuedot.app/docs/guides/revenuedot-ai)) | Tier 2 · built, tested with a scripted model; Cloud (Workers AI, Durable Objects) and self-host (your Anthropic or OpenAI key) |
-| **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
+| **Enterprise** (`ee/`, licence key) | **Organizations** that own projects, with owner, admin and member roles and seat counts; **custom roles** built from the 33 API v2 scopes and enforced on every route; **SSO** with SAML 2.0 (SP- and IdP-initiated, signature-wrapping, replay and condition checks) and OpenID Connect, DNS-verified domains, enforced SSO with an owner break-glass and just-in-time accounts; **SCIM 2.0** users and groups (Okta and Entra request forms) mapped to project roles, where deactivation removes access and sessions at once; **data location** per project (US, EU) enforced per Cloud region; **audit retention** from 30 days to 10 years; **signed compliance exports** (audit log and access review, CSV or JSON, Ed25519). Without a licence key the open-source build is unchanged ([spec](prd/enterprise/PRD.md), [guide](https://revenuedot.app/docs/guides/enterprise)) | Tier 3 · built on branch `tier3-ee` · 113 unit tests, 33 browser tests on Railway Postgres with a local test identity provider; no EU Cloud region yet. High-availability self-host and SLA: planned |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/paywalls-editor-dark.png">
@@ -312,7 +314,11 @@ docker compose up -d        # API, dashboard and Postgres
 
 ## RevenueDot Cloud
 
-RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan.
+RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan. Cloud Free covers up to $10,000 of tracked revenue a month; the Billing page shows each project's usage. Moving between Cloud and your own server is one command either way: `npx revenuedot move` ([guide](https://revenuedot.app/docs/guides/move-projects)).
+
+<img alt="RevenueDot Project settings, Export and move: the export list with Download, and a move to another server copied and verified (all 64 tables match by count and checksum)" src="docs/assets/export-move-light.png" width="100%">
+
+<img alt="RevenueDot Cloud Billing page: Cloud Standard, $12,000 tracked this month, a $10.00 bill, revenue per project, the three plans and invoices" src="docs/assets/billing-light.png" width="100%">
 
 | Host | What it is |
 |---|---|
@@ -354,7 +360,7 @@ revenuedot/
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
 - **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
-- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
+- **Tier 3 · enterprise:** organizations, custom roles, SSO (SAML and OpenID Connect), SCIM, data location, audit retention and signed compliance exports are built in `ee/`; still planned: high-availability self-host, an SLA, an EU Cloud region, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -364,6 +370,11 @@ Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/S
 </picture>
 
 <p><img alt="A public RevenueDot Verified Metrics page: MRR, revenue, active subscriptions and active trials with 28-day sparklines" src="docs/assets/settings/verified-page.png" width="100%"></p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/enterprise/sso-tab-dark.png">
+  <img alt="RevenueDot Enterprise, Organization settings, Single sign-on: a SAML connection that is on, a verified email domain, and the switch that requires single sign-on" src="docs/assets/enterprise/sso-tab.png" width="100%">
+</picture>
 
 ## FAQ
 
@@ -489,7 +500,22 @@ To your support email, with the customer's subscription details and Reply-To set
 
 <details><summary><b>How much does RevenueDot cost?</b></summary>
 
-Self-hosting is free. RevenueDot Cloud is live with a free plan on every account; paid plans have not shipped. Enterprise licenses cover SSO, audit logs, data regions and support.
+Self-hosting is free, with no revenue share and no limits. RevenueDot Cloud is free up to $10,000 of tracked revenue a month. Cloud Standard is 0.5% of the tracked revenue above $10,000, never more than $999 a month; it is built and starts when billing is switched on ([Cloud billing](https://revenuedot.app/docs/guides/cloud-billing)). RevenueCat charges 1% of all tracked revenue once an app passes $2,500 a month ([pricing](https://www.revenuecat.com/pricing)). Enterprise starts at $50,000 a year. Enterprise licences cover SSO, SCIM, custom roles, organizations, data location, audit retention, compliance exports and support.
+</details>
+
+<details><summary><b>Does RevenueDot support SAML single sign-on and SCIM provisioning?</b></summary>
+
+Yes, with an Enterprise licence. Connect Okta, Microsoft Entra ID, Google Workspace or any SAML 2.0 or OpenID Connect provider, verify your email domain with a DNS TXT record, and optionally require single sign-on for that domain (owners keep a password for emergencies). SCIM 2.0 creates, updates and deactivates people from your identity provider and maps its groups to project roles; deactivating someone removes their access and signs them out at once. RevenueCat offers SSO and SCIM on its Enterprise plan through WorkOS ([RevenueCat SSO](https://www.revenuecat.com/docs/projects/sso)). See [Single sign-on](https://revenuedot.app/docs/guides/single-sign-on) and [SCIM](https://revenuedot.app/docs/guides/scim).
+</details>
+
+<details><summary><b>Can I create custom roles, for example a support agent who can refund but not edit the catalog?</b></summary>
+
+Yes, with an Enterprise licence. A custom role is any set of the 33 API v2 permission scopes, for one project or every project of an organization, and the server checks it on every request, from the dashboard, RevenueDot AI and the API alike. RevenueCat has six fixed roles ([collaborators](https://www.revenuecat.com/docs/projects/collaborators)). See [Enterprise](https://revenuedot.app/docs/guides/enterprise).
+</details>
+
+<details><summary><b>Can I keep my customers' purchase data in the EU?</b></summary>
+
+Self-hosted: yes, it stays wherever you run RevenueDot and its Postgres. RevenueDot Cloud records a region on each project and refuses requests that reach the wrong region, but it runs in the US today; an EU region is planned ([data location](https://revenuedot.app/docs/guides/data-location)). RevenueCat stores all data in the US ([DPA](https://www.revenuecat.com/dpa)).
 </details>
 
 <details><summary><b>Is it safe to validate purchases on my own server?</b></summary>
@@ -500,6 +526,16 @@ RevenueDot verifies every App Store transaction against Apple's signed JWS and t
 <details><summary><b>Does RevenueDot work with Amplitude, Mixpanel, Segment, AppsFlyer or Firebase like RevenueCat does?</b></summary>
 
 Yes. Connect Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust or Meta under Integrations, and each purchase, trial, renewal, cancellation and refund is sent with the event names RevenueCat's integrations use (`rc_initial_purchase_event`, `rc_trial_started_event` ...) and the same reserved attributes (`$amplitudeDeviceId`, `$mixpanelDistinctId`, `$appsflyerId`, `$adjustId`, `$fbAnonId`). Dashboards built on RevenueCat's events keep working. See [the integrations guide](https://revenuedot.app/docs/guides/integrations).
+</details>
+
+<details><summary><b>Can I move from self-hosted RevenueDot to RevenueDot Cloud, or back?</b></summary>
+
+Yes, with one command: `npx revenuedot move --from <old server> --to <new server>`, or **Project settings → Export and move** in the dashboard. The project keeps its ids, public SDK keys, secret API keys and webhook signing secrets, so apps and backends keep working. A dry run shows the rows per table first, the copy resumes if it stops, and every table's row count and checksum are verified before the switch. After it, the old server forwards SDK calls and store notifications to the new one until you update the proxy URL and the store notification URLs ([guide](https://revenuedot.app/docs/guides/move-projects)). RevenueCat has no way to move a project to another server.
+</details>
+
+<details><summary><b>Can I export all of a project's data?</b></summary>
+
+Yes. **Export project** (or `npx revenuedot export`) writes every table the project owns, 64 in all, as JSON Lines with a manifest of row counts and checksums, and keeps it for 7 days. Store keys and webhook secrets are included only if you give a passphrase, and then they are encrypted with it. RevenueCat's scheduled exports cover transactions only ([scheduled data exports](https://www.revenuecat.com/docs/integrations/scheduled-data-exports)).
 </details>
 
 <details><summary><b>Can I export my subscription data to S3, BigQuery or my warehouse?</b></summary>

@@ -34,6 +34,16 @@ export const projects = pgTable("projects", {
   /** The app's category for its benchmark peer group ("health_fitness" …), chosen by an admin. */
   benchmarksCategory: text("benchmarks_category"),
   benchmarksSharedAt: ts("benchmarks_shared_at"),
+  /**
+   * A move between servers (prd/moves-export/PRD.md): "incoming" (target, being copied in), "paused" (source, writes wait
+   * during the last copy), "forwarded" (source, every request goes to `movedToUrl`), or null.
+   */
+  moveState: text("move_state"),
+  movedToUrl: text("moved_to_url"),
+  moveUpdatedAt: ts("move_updated_at"),
+  /** When this project was copied in from another RevenueDot server; Cloud billing ignores revenue recorded before it. */
+  movedInAt: ts("moved_in_at"),
+  movedInFrom: text("moved_in_from"),
   createdAt: created(),
 });
 
@@ -1425,3 +1435,146 @@ export const aiInsights = pgTable("ai_insights", {
   emailedAt: ts("emailed_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.projectId, t.week] })]);
+/* ---- Full export, moves and Cloud billing (prd/moves-export, prd/cloud-billing, migration 0022) ---- */
+
+export interface ArchiveFileEntry { name: string; rows: number; bytes: number; sha256: string }
+export interface ArchiveTableEntry { name: string; columns: string[]; rows: number; checksum: string; files: ArchiveFileEntry[]; secretFiles?: ArchiveFileEntry[] }
+/** Where an unfinished export stopped: the table index, the primary-key cursor in it, the last part, running sums. */
+export interface ArchiveProgress { table: number; cursor: unknown[] | null; part: number; rows: number; sum: string }
+
+/** One full export of a project (an archive). `secretKey` holds the passphrase-derived key, sealed, until the job ends. */
+export const projectExports = pgTable("project_exports", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  /** queued, running, succeeded, failed, expired. */
+  status: text("status").notNull().default("queued"),
+  /** download (the dashboard or `revenuedot export`), move (`revenuedot move`), verify (checksums only, no files). */
+  purpose: text("purpose").notNull().default("download"),
+  includeSecrets: boolean("include_secrets").notNull().default(false),
+  secretKey: text("secret_key"),
+  /** PBKDF2 salt (base64) for the secrets files. */
+  secretSalt: text("secret_salt"),
+  /** r2, disk, s3 or db: where the files are. */
+  storage: text("storage").notNull(),
+  tables: jsonb("tables").$type<ArchiveTableEntry[]>().notNull().default([]),
+  progress: jsonb("progress").$type<ArchiveProgress | null>(),
+  manifest: jsonb("manifest").$type<Record<string, unknown> | null>(),
+  rows: integer("rows").notNull().default(0),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: ts("next_attempt_at").notNull().defaultNow(),
+  error: text("error"),
+  requestedBy: text("requested_by"),
+  createdAt: created(),
+  startedAt: ts("started_at"),
+  finishedAt: ts("finished_at"),
+  expiresAt: ts("expires_at"),
+}, (t) => [index("project_exports_project").on(t.projectId, t.createdAt), index("project_exports_due").on(t.status, t.nextAttemptAt)]);
+
+/** Archive files when no bucket or disk is configured (and in tests). */
+export const archiveBlobs = pgTable("archive_blobs", {
+  key: text("key").primaryKey(),
+  dataBase64: text("data_base64").notNull(),
+  size: integer("size").notNull(),
+  createdAt: created(),
+});
+
+/**
+ * The target side of a move. Created from an import token (`rdi_`, only its hash is kept); the manifest arrives with
+ * the first call, then each file. `filesDone` maps a file name to its SHA-256, so a re-sent file is skipped.
+ */
+export const projectImports = pgTable("project_imports", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  /** open (token issued), importing, finished, cancelled. */
+  status: text("status").notNull().default("open"),
+  projectId: text("project_id"),
+  sourceUrl: text("source_url"),
+  manifest: jsonb("manifest").$type<Record<string, unknown> | null>(),
+  filesDone: jsonb("files_done").$type<Record<string, string>>().notNull().default({}),
+  /** The passphrase-derived key for this import's secrets files, sealed; dropped at finish. */
+  secretKey: text("secret_key"),
+  report: jsonb("report").$type<Record<string, unknown>>().notNull().default({}),
+  verify: jsonb("verify").$type<Record<string, unknown> | null>(),
+  expiresAt: ts("expires_at").notNull(),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  finishedAt: ts("finished_at"),
+}, (t) => [uniqueIndex("project_imports_token").on(t.tokenHash), index("project_imports_project").on(t.projectId)]);
+
+/** A move this server runs for one of its projects (the dashboard's "Move this project"): a step machine over ticks. */
+export const projectMoves = pgTable("project_moves", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  targetUrl: text("target_url").notNull(),
+  /** The target's import token and the move's passphrase, sealed with this server's key. */
+  secrets: text("secrets").notNull(),
+  /** checking, ready (dry run done), copying, copied, finishing, finished, failed, cancelled. */
+  status: text("status").notNull(),
+  state: jsonb("state").$type<Record<string, unknown>>().notNull().default({}),
+  error: text("error"),
+  leaseUntil: ts("lease_until"),
+  requestedBy: text("requested_by"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("project_moves_project").on(t.projectId, t.createdAt)]);
+
+/** RevenueDot Cloud billing per account (a user who owns projects). No row: Free with no Stripe customer. */
+export const billingAccounts = pgTable("billing_accounts", {
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  /** free, standard, enterprise. */
+  plan: text("plan").notNull().default("free"),
+  /** none, active, past_due, unpaid, canceled. */
+  status: text("status").notNull().default("none"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  currentPeriodEnd: ts("current_period_end"),
+  cancelAt: ts("cancel_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  createdAt: created(),
+}, (t) => [uniqueIndex("billing_accounts_customer").on(t.stripeCustomerId)]);
+
+/** Tracked revenue per project and calendar month (UTC, "YYYY-MM"), with the owner it is billed to. */
+export const billingUsage = pgTable("billing_usage", {
+  projectId: text("project_id").notNull(),
+  month: text("month").notNull(),
+  ownerUserId: text("owner_user_id"),
+  projectName: text("project_name"),
+  trackedRevenueUsd: doublePrecision("tracked_revenue_usd").notNull().default(0),
+  transactions: integer("transactions").notNull().default(0),
+  computedAt: ts("computed_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.month] }), index("billing_usage_owner").on(t.ownerUserId, t.month)]);
+
+/** The last bill (in cents) reported to Stripe's meter per account and month. */
+export const billingMeterReports = pgTable("billing_meter_reports", {
+  userId: text("user_id").notNull(),
+  month: text("month").notNull(),
+  cents: integer("cents").notNull(),
+  identifier: text("identifier").notNull(),
+  reportedAt: ts("reported_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.month] })]);
+
+/** Stripe invoices of RevenueDot Cloud accounts, kept from webhooks for the Billing page. */
+export const billingInvoices = pgTable("billing_invoices", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  number: text("number"),
+  status: text("status").notNull(),
+  amountDue: integer("amount_due").notNull().default(0),
+  amountPaid: integer("amount_paid").notNull().default(0),
+  currency: text("currency").notNull().default("usd"),
+  periodStart: ts("period_start"),
+  periodEnd: ts("period_end"),
+  hostedInvoiceUrl: text("hosted_invoice_url"),
+  invoicePdf: text("invoice_pdf"),
+  createdAt: ts("created_at").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("billing_invoices_user").on(t.userId, t.createdAt)]);
+
+/** Billing emails sent once: usage thresholds per month ("free_80"…) and dunning per invoice ("payment_failed:<invoice>"). */
+export const billingNotices = pgTable("billing_notices", {
+  userId: text("user_id").notNull(),
+  key: text("key").notNull(),
+  sentAt: ts("sent_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.key] })]);

@@ -18,6 +18,9 @@ import { identityRoutes } from "./routes/identity.js";
 import { verifiedRoutes } from "./routes/verified.js";
 import { shareRoutes } from "./routes/share.js";
 import { insightsPublicRoutes } from "./routes/insights-public.js";
+import { importRoutes } from "./routes/imports.js";
+import { billingRoutes } from "./routes/billing.js";
+import { moveGate } from "./services/archive/gate.js";
 
 export function createApp(input: Deps): Hono & { deps: Deps } {
   // Receipt checks that the store answers with a credentials error mark the app failing (the credentials alert).
@@ -59,12 +62,18 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
   const sdkCors = cors({ origin: "*", allowHeaders: ["*"], exposeHeaders: ["X-RevenueCat-Request-Time", "X-RevenueCat-ETag", "X-Signature"] });
   app.use("/v1/*", sdkCors);
   app.use("/rcbilling/*", sdkCors);
+  // A project that is moving to another server (prd/moves-export/PRD.md §3): forwarded requests go there with their
+  // answer (signature included) coming back, and writes wait while it is paused. Before signing, so a forwarded answer
+  // keeps the new server's signature.
+  app.use("*", moveGate(deps));
   // Trusted Entitlements: sign SDK responses when REVENUEDOT_SIGNING_KEY (or deps.signingKey) is set.
   const signer = resolveSigner(deps.signingKey, deps.now);
   app.use("/v1/*", responseSigning(signer, deps.now));
   app.use("/rcbilling/*", responseSigning(signer, deps.now));
   app.get(SIGNING_KEY_PATH, signingKeyHandler(signer));
   app.get("/", (c) => c.json({ name: "RevenueDot", docs: "https://revenuedot.app/docs" }));
+  // Enterprise extensions (extensions.ts): their middleware and routes come before every core route. None in the open-source build.
+  for (const x of deps.extensions ?? []) x.mount?.(app, deps);
   // Store notifications are mounted before the SDK routes, which require an SDK API key.
   app.route("/", notificationRoutes(deps));
   // Apple's Retention Messaging call and the win-back email links (no API key).
@@ -85,6 +94,10 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
   app.route("/", oauthRoutes(deps));
   // REST API v2 (secret key or dashboard session); mounted before the SDK routes.
   app.route("/", assetRoutes(deps));
+  // Imports into this server (an account-level rdi_ token) and archive downloads: before v2, whose auth is per project.
+  app.route("/", importRoutes(deps));
+  // RevenueDot Cloud billing (session auth; 404 on self-host).
+  app.route("/", billingRoutes(deps));
   app.route("/", v2Routes(deps));
   app.route("/pay", pay);
   app.route("/", sdkRoutes(deps));

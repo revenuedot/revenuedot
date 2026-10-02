@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
+import { notMoving } from "./archive/moving.js";
 import { isEmailAddress, trySend, type Mailer } from "../mail/index.js";
 import { winbackEmail } from "../mail/templates.js";
 import { projectContexts, subActive, type LoadedContext } from "./customer-context.js";
@@ -163,7 +164,7 @@ export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string, 
 export async function runDueCampaigns(deps: SendDeps, publicUrl?: string): Promise<number> {
   const { db } = deps;
   const now = deps.now();
-  const active = await db.select().from(schema.winbackCampaigns).where(eq(schema.winbackCampaigns.status, "active"))
+  const active = await db.select().from(schema.winbackCampaigns).where(and(eq(schema.winbackCampaigns.status, "active"), notMoving(schema.winbackCampaigns.projectId)))
     .orderBy(sql`${schema.winbackCampaigns.lastRunAt} asc nulls first`, asc(schema.winbackCampaigns.id));
   let total = 0, budget = SENDS_PER_TICK, looked = 0;
   for (const c of active) {

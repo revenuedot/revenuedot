@@ -13,6 +13,8 @@ export interface AssistantActor {
   conversationId: string;
   /** AI growth insights: reads only. The API refuses any other method from this actor, whatever the project allows. */
   readOnly?: boolean;
+  /** The dashboard session the turn came from, for access checks bound to it (an organization that requires SSO). */
+  sessionId?: string | null;
 }
 
 /** Marks requests made by the assistant. A WeakMap keyed by the Request object, so no header can forge it. */

@@ -157,6 +157,20 @@
       "breakpoints": true
     },
     {
+      "idx": 22,
+      "version": "7",
+      "when": 1790902000000,
+      "tag": "0022_moves_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790905000000,
+      "tag": "0025_enterprise",
+      "breakpoints": true
+    },
+    {
       "idx": 27,
       "version": "7",
       "when": 1791412000000,

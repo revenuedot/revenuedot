@@ -248,6 +248,7 @@ export function AccountPage() {
           <span className="hint">Every Monday, for projects where you are an admin: 3 to 5 things to act on, written by RevenueDot AI from your own charts, with the numbers behind them.</span>
         </div>
       )}
+      {me.data.account?.edition === "cloud" && me.data.account.billing_ready && <p><Link className="link-u" to="/account/billing">Billing: plan, usage and invoices</Link></p>}
       <Link className="btn btn-dark btn-lg" to={home}>Back to the dashboard</Link>
     </Card>
   );

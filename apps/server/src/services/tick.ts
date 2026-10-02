@@ -8,6 +8,11 @@ import { refreshDueAdMob } from "./ads/admob.js";
 import { purgeFunnelClientContext } from "./web/funnels.js";
 import { processExportRuns, queueDueExports } from "./exports/run.js";
 import { depsSecretKey } from "./secrets.js";
+import { notMoving } from "./archive/moving.js";
+import { processExports } from "./archive/export.js";
+import { dbStore } from "./archive/store.js";
+import { processServerMoves } from "./archive/server-move.js";
+import { runBilling } from "./billing/meter.js";
 import { runAlerts } from "./alerts.js";
 import { retryDueConsumption } from "./refunds.js";
 import { runDueCampaigns } from "./winback.js";
@@ -53,6 +58,14 @@ export interface TickOptions {
   googleOAuth?: { clientId?: string; clientSecret?: string };
   /** Remove funnel visitors' IP addresses and user agents older than 7 days now (default: at minute 7 of each hour). */
   purgeFunnelClients?: boolean;
+  /** Enterprise extensions (extensions.ts) whose own periodic work runs last. None in the open-source build. */
+  extensions?: import("../extensions.js").ServerExtension[];
+  /** Full exports and the dashboard's moves run here unless false (prd/moves-export/PRD.md). */
+  archives?: boolean;
+  archiveStore?: import("./archive/store.js").ArchiveStore;
+  edition?: "cloud" | "self-hosted";
+  /** RevenueDot Cloud billing (prd/cloud-billing/PRD.md): metering, the Stripe meter and usage emails. Cloud only. */
+  billing?: import("./billing/stripe.js").BillingConfig | null;
 }
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
@@ -104,7 +117,23 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     lastFunnelPurgeHour = hour;
     try { funnelClientsPurged = await purgeFunnelClientContext(db, now); } catch (e) { console.error("tick: funnel visitor purge failed", e); }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, admob, funnelClientsPurged, firstSales };
+  // Full exports and server-run moves (bounded; the rest waits for the next tick), then Cloud billing.
+  let archives = 0, moves = 0, billing = 0;
+  if (opts.archives !== false) {
+    const deps = { db, now: () => now, fetch: fetchImpl, stores: opts.stores ?? {}, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey, edition: opts.edition, archiveStore: opts.archiveStore };
+    try {
+      archives = await processExports({ db, store: opts.archiveStore ?? dbStore(db), now, serverKey: secretKey.ok ? secretKey.k : null, budgetMs: 15_000 });
+      moves = await processServerMoves(deps, 10_000);
+    } catch (e) { console.error("tick: exports and moves failed", e); }
+  }
+  if (opts.edition === "cloud") {
+    try { billing = await runBilling({ db, now, fetch: fetchImpl, mailer: opts.mailer, publicUrl: opts.publicUrl, config: opts.billing ?? null }); } catch (e) { console.error("tick: billing failed", e); }
+  }
+  const extensions: Record<string, number> = {};
+  for (const x of opts.extensions ?? []) {
+    try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
+  }
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, admob, funnelClientsPurged, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;
@@ -114,6 +143,8 @@ export async function recordDueExpirations(db: DB, now: Date, only?: { projectId
   const expired = await db.select().from(subscriptions).where(and(
     isNull(subscriptions.expiredEventAt), isNotNull(subscriptions.expiresDate), lte(subscriptions.expiresDate, now),
     or(isNull(subscriptions.gracePeriodExpiresDate), lte(subscriptions.gracePeriodExpiresDate, now)),
+    // A moving project's expirations are recorded by the server that serves it when the move ends.
+    ...(only ? [] : [notMoving(subscriptions.projectId)]),
     ...(only ? [eq(subscriptions.projectId, only.projectId), eq(subscriptions.store, only.store), eq(subscriptions.storeKey, only.storeKey)] : []),
   )).limit(500);
   for (const s of expired) {

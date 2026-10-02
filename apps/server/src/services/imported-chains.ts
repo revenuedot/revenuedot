@@ -122,11 +122,15 @@ async function adoptApple(db: DB, projectId: string, p: ChainIds, ownerId: strin
 /**
  * The import side of the same problem: an Apple chain the store already re-keyed (a receipt arrived after the first
  * import) is found again by its transactions, so running the import a second time updates it instead of adding a row.
+ * `rows` are the subscriptions the import has in hand for the page (it loads every row of its customers up front).
  */
-export async function importedAppleChainKey(db: DB, projectId: string, store: string, customerId: string, txIds: string[]): Promise<string | null> {
-  if (!txIds.length) return null;
-  const S = subscriptions;
-  const [row] = await db.select({ key: S.storeKey }).from(S).where(and(
-    eq(S.projectId, projectId), eq(S.store, store), eq(S.customerId, customerId), inArray(S.storeTransactionId, txIds))).limit(1);
-  return row?.key ?? null;
+export function importedAppleChainKey(rows: Iterable<Pick<SubRow, "id" | "store" | "customerId" | "storeTransactionId" | "storeKey" | "purchaseDate">>, store: string, customerId: string, txIds: string[]): string | null {
+  const want = new Set(txIds);
+  // Several rows can match (two chains sharing a transaction id): the newest period wins, then the id, so every run picks the same one.
+  let best: Pick<SubRow, "id" | "storeKey" | "purchaseDate"> | null = null;
+  for (const r of rows) {
+    if (r.store !== store || r.customerId !== customerId || r.storeTransactionId === null || !want.has(r.storeTransactionId)) continue;
+    if (!best || r.purchaseDate > best.purchaseDate || (r.purchaseDate.getTime() === best.purchaseDate.getTime() && r.id < best.id)) best = r;
+  }
+  return best?.storeKey ?? null;
 }

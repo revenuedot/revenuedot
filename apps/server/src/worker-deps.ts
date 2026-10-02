@@ -7,6 +7,8 @@ import { assistantModelFromEnv, workersAiAssistantModel, type WorkersAiBinding }
 import { capsFromEnv } from "./services/assistant/limits.js";
 import { fakeAssistantModel } from "./services/assistant/fake-model.js";
 import type { Deps } from "./context.js";
+import { r2Store } from "./services/archive/store.js";
+import { billingConfigFromEnv } from "./services/billing/stripe.js";
 
 /** A Durable Object namespace, typed only as far as we use it (the shared tsconfig has no Workers types). */
 export interface DurableObjectNamespaceLike { idFromName(name: string): unknown; get(id: unknown): unknown }
@@ -48,8 +50,25 @@ export interface Env {
   REVENUEDOT_ASSISTANT_MODEL?: string;
   /** JSON caps for RevenueDot AI (services/assistant/limits.ts). */
   REVENUEDOT_ASSISTANT_CAPS?: string;
+  /**
+   * Optional R2 bucket for full-export archives (prd/moves-export/PRD.md). Unset: archives are kept in Postgres. Add the
+   * binding in cloudflare.config.ts once the bucket exists (docs/cloud.md).
+   */
+  EXPORTS?: import("./services/archive/store.js").R2BucketLike;
+  /** RevenueDot Cloud billing on RevenueDot's own Stripe account (prd/cloud-billing/PRD.md). Unset: billing is not set up. */
+  REVENUEDOT_BILLING_STRIPE_SECRET_KEY?: string;
+  REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET?: string;
+  REVENUEDOT_BILLING_PRICE_STANDARD?: string;
+  REVENUEDOT_BILLING_METER_EVENT?: string;
+  REVENUEDOT_BILLING_LIVE?: string;
+  REVENUEDOT_BILLING_PLANS?: string;
   /** Local `cf dev` only: "1" answers with the scripted fake model, so the Durable Object runtime can be tried without a model call. Never set in production. */
   REVENUEDOT_ASSISTANT_FAKE?: string;
+  /** Optional secret: the RevenueDot Enterprise licence key that turns on the `ee/` features (extensions.ts). Unset: off. */
+  REVENUEDOT_LICENSE_KEY?: string;
+  /** Data location (ee/server/region.ts): this deployment's region ("us" or "eu") and JSON of every region's API and dashboard origins. */
+  REVENUEDOT_REGION?: string;
+  REVENUEDOT_REGIONS?: string;
 }
 
 export const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
@@ -86,6 +105,8 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
     : assistantModelFromEnv(env as unknown as Record<string, string | undefined>) ?? (env.AI ? workersAiAssistantModel(env.AI as unknown as WorkersAiBinding) : undefined),
   assistantRuntime: env.AssistantAgent ? "durable_object" : "sse",
   assistantCaps: capsFromEnv(env.REVENUEDOT_ASSISTANT_CAPS),
+  archiveStore: archiveStoreFor(env),
+  billing: billingConfigFromEnv(env as unknown as Record<string, string | undefined>),
   destroyConversation: env.AssistantAgent ? async (id: string) => {
     const { getAgentByName } = await import("agents");
     const stub = await getAgentByName(env.AssistantAgent as never, id);
@@ -95,3 +116,6 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   };
 }
 
+
+/** R2 when the EXPORTS bucket is bound; otherwise undefined (the app keeps archives in Postgres, per request connection). */
+export const archiveStoreFor = (env: Env) => (env.EXPORTS ? r2Store(env.EXPORTS) : undefined);

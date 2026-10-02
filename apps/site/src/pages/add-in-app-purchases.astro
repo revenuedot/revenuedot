@@ -1,0 +1,80 @@
+---
+// "New to in-app purchases?": the path for first-time builders. Copy in src/data/guides.ts; this file adds the AI prompt.
+import GuidePage from "../templates/GuidePage.astro";
+import { guideByPath } from "../data/guides";
+
+const connect = [
+  { name: "Claude Code", code: "claude mcp add --transport http revenuedot https://mcp.revenuedot.app/mcp\n/mcp" },
+  { name: "Claude Code plugin with skills", code: "/plugin marketplace add revenuedot/agent-skills\n/plugin install revenuedot@revenuedot" },
+  { name: "Cursor and other tools", code: "Add an MCP server of type streamable HTTP:\nhttps://mcp.revenuedot.app/mcp" },
+];
+const prompt = `Add subscriptions to this app with RevenueDot as the backend.
+
+Use the RevenueDot MCP server (https://mcp.revenuedot.app/mcp) for every RevenueDot step, and follow the add-subscriptions skill from https://github.com/revenuedot/agent-skills. The docs are at https://revenuedot.app/llms.txt.
+
+1. Create a Test Store app, plus an iOS app and an Android app if this project ships to those stores.
+2. Create monthly and yearly products, a "pro" entitlement that they unlock, and a "default" offering with both.
+3. Install the RevenueCat SDK for this framework. Set its proxy URL to https://api.revenuedot.app before configure, and use the public SDK key RevenueDot gives each app.
+4. Show the current offering on a paywall, unlock premium features only when "pro" is active, and add a Restore purchases button.
+5. Test with the Test Store key first.
+
+Never ask me to paste a store key or a secret key into the chat. I will add store keys in the RevenueDot dashboard.`;
+---
+<GuidePage page={guideByPath("/add-in-app-purchases")}>
+  <section class="section" id="ai-prompt">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Claude Code and Cursor</p>
+        <h2 class="h2 sm">Let your AI coding tool set it up</h2>
+        <p class="lede">Connect your tool to RevenueDot once, sign in, and paste the prompt. The RevenueDot tools create your products and plan, and the assistant writes the SDK code. It never needs your store keys or a secret key.</p>
+      </div>
+      <div class="ai">
+        <ol class="connect">
+          {connect.map((c, i) => (
+            <li>
+              <p class="h3"><span class="num">{String(i + 1).padStart(2, "0")}</span> {c.name}</p>
+              <div class="code"><pre tabindex="0" aria-label={`${c.name} setup`}><code>{c.code}</code></pre></div>
+            </li>
+          ))}
+        </ol>
+        <div class="code prompt">
+          <div class="code-head"><span class="label">Copy-paste prompt</span><button type="button" class="copy" data-copy="ai-prompt-text">Copy</button></div>
+          <pre tabindex="0" aria-label="Prompt for your AI coding tool"><code id="ai-prompt-text">{prompt}</code></pre>
+        </div>
+      </div>
+      <p class="small more">How the connection works and what the assistant may do: <a href="/docs/guides/connect-ai-assistants">Connect AI assistants</a> · <a href="/features/ai-connectors">AI connectors</a> · <a href="/llms.txt">llms.txt</a></p>
+    </div>
+  </section>
+</GuidePage>
+<script is:inline>
+  document.querySelectorAll("button[data-copy]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const el = document.getElementById(b.dataset.copy);
+      let ok = false;
+      try { await navigator.clipboard.writeText(el.textContent); ok = true; } catch {
+        // Older browsers and embedded views: select the text and use the legacy copy command.
+        const range = document.createRange(); range.selectNodeContents(el);
+        const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        try { ok = document.execCommand("copy"); } catch {}
+      }
+      b.textContent = ok ? "Copied" : "Selected, press Ctrl+C";
+      setTimeout(() => (b.textContent = "Copy"), 2500);
+    });
+  });
+</script>
+<style>
+  .ai { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px; align-items: start; }
+  .connect { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; }
+  .connect li { display: grid; gap: 10px; min-width: 0; }
+  .connect .h3 { font-size: 16px; margin: 0; }
+  .connect .num { color: var(--fg-3); font-family: var(--mono); font-size: 13px; margin-right: 6px; }
+  .connect pre, .prompt pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .prompt pre { font-size: 13.5px; }
+  .copy { font: 600 12px/1 var(--font); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg); background: var(--panel); border: 1px solid var(--border); height: 28px; padding: 0 12px; cursor: pointer; }
+  .copy:hover { background: var(--hover); }
+  .more { margin-top: 20px; color: var(--fg-2); }
+  .more a { color: var(--fg); }
+  .lede { max-width: 760px; }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  @media (max-width: 900px) { .ai { grid-template-columns: minmax(0, 1fr); } }
+</style>

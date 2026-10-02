@@ -75,8 +75,19 @@ export interface Deps {
   benchmarkOptions?: import("./services/benchmarks.js").BenchmarkOptions;
   /** Generate and email the weekly AI growth insights digest (Cloud: always; self-host: REVENUEDOT_INSIGHTS_DIGEST=on). */
   insightsDigest?: boolean;
+  /**
+   * Where full-export archives are kept (prd/moves-export/PRD.md): R2 on Cloud, a folder or bucket on self-host. Unset:
+   * Postgres (`archive_blobs`).
+   */
+  archiveStore?: import("./services/archive/store.js").ArchiveStore;
+  /** Seconds a server-run move waits after pausing the source before the last copy (default 10; tests use 0). */
+  moveDrainSeconds?: number;
+  /** RevenueDot Cloud billing through RevenueDot's own Stripe account (prd/cloud-billing/PRD.md). Unset: not set up yet. */
+  billing?: import("./services/billing/stripe.js").BillingConfig;
   /** The app's own fetch. Set by createApp; RevenueDot AI's tools call the REST API v2 through it in-process. */
   dispatch?: (req: Request) => Promise<Response>;
+  /** Enterprise extensions (extensions.ts). Empty or unset in the open-source build. */
+  extensions?: import("./extensions.js").ServerExtension[];
 }
 
 export type AppRecord = typeof schema.apps.$inferSelect;

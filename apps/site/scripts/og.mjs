@@ -181,6 +181,11 @@ for (const [p, label, title, s] of [
   ["/changelog", "Changelog", "What shipped in RevenueDot", "charts-light.png"],
 ]) add(p, page(`${chrome(label, title)}<div class="crop"><img src="${shotFile(s)}"></div>`));
 
+// Guides (src/data/guides.ts)
+add("/in-app-purchases", page(`${chrome("Guide", "In-app purchases: how they work")}<div class="vis" data-og-safe><div><p class="cap">What the store keeps</p><div class="cols"><div><span>App Store, first year</span><b>30%</b></div><div><span>App Store, after a year</span><b>15%</b></div><div><span>Small Business Program</span><b>15%</b></div><div><span>Google Play subscriptions</span><b>15%</b></div></div></div></div>`));
+add("/add-in-app-purchases", page(`${chrome("New to in-app purchases", "Add subscriptions free until $10K a month")}<div class="vis" data-og-safe><div style="display:grid;grid-template-columns:repeat(3,120px);gap:14px">${["apple.svg", "android-icon.svg", "react.svg", "flutter.svg", "expo-icon.svg", "javascript.svg"].map((f) => logoFile(f)).filter(Boolean).map((u) => `<div class="tile" style="width:120px;height:120px"><img src="${u}" style="width:60px;height:60px"></div>`).join("")}</div></div>`));
+add("/do-i-need-revenuecat", page(`${chrome("Honest answer", "Do you need RevenueCat for an iOS-only app?")}<div class="vis" data-og-safe><div><p class="cap">You need a backend when</p><div class="cols"><div><span>iOS only</span><b>StoreKit 2</b></div><div><span>+ Android or web</span><b>Backend</b></div><div><span>Webhooks, charts</span><b>Backend</b></div><div class="rd"><span>RevenueDot Cloud</span><b>$0 to $10K</b></div></div></div></div>`));
+
 // Glossary
 const srcLogos = (t) => [/apple\.com/.test(t.sources.map((x) => x.url).join()) && "apple.svg", /android\.com|google\.com/.test(t.sources.map((x) => x.url).join()) && "google-play.svg"].filter(Boolean);
 for (const t of GLOSSARY) {

@@ -13,13 +13,14 @@ import { BrandTab } from "../settings/Brand";
 import { BlockedCustomersTab } from "../settings/BlockedCustomers";
 import { VerifiedMetricsTab } from "../settings/VerifiedMetrics";
 import { BenchmarkSharing } from "../analytics/Benchmarks";
+import { ExportMoveTab } from "../settings/ExportMove";
 
 /**
  * Project settings (/projects/:projectId/settings/:tab), tabs in RevenueCat's order (frame 28, prd/project-settings):
  * General (name, project ID, transfer behaviour with an optional sandbox behaviour, sandbox testing access enforced on the
  * server, transfer ownership to an admin, delete), AI features (what RevenueDot AI may do here, pages/ai/AiFeaturesTab.tsx), Brand (colour, gradient and font presets for
  * the paywall editor), Audit logs, Blocked customers, Collaborators (roles, invites; prd/account-email), Verified Metrics
- * (the public page) and Domains (pages/web/Domains.tsx).
+ * (the public page), Domains (pages/web/Domains.tsx) and Export and move (pages/settings/ExportMove.tsx, prd/moves-export).
  * GAPS vs RevenueCat: the Operations, Growth and Support roles.
  */
 
@@ -30,11 +31,11 @@ const BEHAVIORS: { value: TransferBehavior; label: string; text: string }[] = [
   { value: "share", label: "Share between App User IDs (legacy)", text: "Both app user IDs are merged into one customer and share access. Only for apps that relied on this older behaviour." },
 ];
 
-type Tab = "general" | "ai" | "benchmarks" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains";
+type Tab = "general" | "ai" | "benchmarks" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains" | "export";
 const TABS: { value: Tab; label: string; badge?: string }[] = [
   { value: "general", label: "General" }, { value: "ai", label: "AI features" }, { value: "benchmarks", label: "Benchmarks" }, { value: "brand", label: "Brand" },
   { value: "audit-logs", label: "Audit logs" }, { value: "blocked-customers", label: "Blocked customers" }, { value: "collaborators", label: "Collaborators" },
-  { value: "verified-metrics", label: "Verified Metrics" }, { value: "domains", label: "Domains" },
+  { value: "verified-metrics", label: "Verified Metrics" }, { value: "domains", label: "Domains" }, { value: "export", label: "Export and move" },
 ];
 const ACCESS: { value: SandboxAccess; label: string; text: string }[] = [
   { value: "anybody", label: "Anybody", text: "Every sandbox and Test Store purchase unlocks entitlements and in-app currency. The default." },
@@ -259,7 +260,9 @@ const ROLES: { value: Role; label: string; text: string }[] = [
 ];
 /** API v2 names the viewer role read_only, as RevenueCat does. */
 const roleOf = (apiRole: string): Role => (apiRole === "read_only" || apiRole === "viewer" ? "viewer" : apiRole === "developer" ? "developer" : "admin");
-const roleLabel = (r: string) => ROLES.find((x) => x.value === roleOf(r))?.label ?? r;
+/** Any other role is a custom role from an enterprise organization, managed in Organization settings. */
+const builtinRole = (apiRole: string) => ["admin", "developer", "viewer", "read_only"].includes(apiRole);
+const roleLabel = (r: string) => (builtinRole(r) ? ROLES.find((x) => x.value === roleOf(r))?.label ?? r : "Custom role");
 
 function InviteDialog({ pid, onClose }: { pid: string; onClose: () => void }) {
   const qc = useQueryClient();
@@ -362,9 +365,9 @@ function Collaborators({ pid }: { pid: string }) {
                   <tr key={c.id}>
                     <td><b>{c.name ?? c.email}</b>{self && <span className="subtle"> (you)</span>}</td>
                     <td className="hide-sm">{c.email}</td>
-                    <td>{isAdmin
+                    <td>{isAdmin && builtinRole(c.role)
                       ? <select className="select" aria-label={`Role of ${c.email}`} value={roleOf(c.role)} onChange={(e) => void setRole(c, e.target.value as Role)}>{ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select>
-                      : <Tag tone={roleOf(c.role) === "admin" ? "gold" : "muted"}>{roleLabel(c.role)}</Tag>}</td>
+                      : <Tag tone={builtinRole(c.role) && roleOf(c.role) === "admin" ? "gold" : "muted"}>{roleLabel(c.role)}</Tag>}</td>
                     <td className="hide-sm">{fmt.date(c.accepted_at)}</td>
                     <td className="actions-cell">{(isAdmin || self) && <Menu label={`Actions for ${c.email}`} items={[{ label: self ? "Leave project" : "Remove from project", icon: "trash", danger: true, onSelect: () => remove(c) }]} />}</td>
                   </tr>
@@ -442,6 +445,7 @@ export function ProjectSettingsPage() {
           {t === "verified-metrics" && <VerifiedMetricsTab pid={pid} />}
           {t === "ai" && <AiFeaturesTab pid={pid} />}
           {t === "benchmarks" && <BenchmarkSharing pid={pid} />}
+          {t === "export" && <ExportMoveTab pid={pid} />}
         </div>
       </div>
     </Shell>

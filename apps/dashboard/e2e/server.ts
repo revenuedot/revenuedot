@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { openDb, schema } from "@revenuedot/db";
 import { createApp, defaultStores } from "@revenuedot/server";
+import { loadExtensions } from "@revenuedot/server/extensions.js";
 import { memoryMailer } from "@revenuedot/server/mail/index.js";
 import { getOrCreateCustomer, touch } from "@revenuedot/server/repo/customers.js";
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
@@ -28,6 +29,7 @@ import { seedAttribution, seedPeers } from "./seed-insights.ts";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
+import { startCloud } from "./cloud-server.ts";
 import { fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
 import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 import { fakeAssistantModel } from "@revenuedot/server/services/assistant/fake-model.js";
@@ -38,6 +40,8 @@ const DAY = 86400_000;
 
 // E2E_DATABASE_URL runs the same server on a real Postgres (a Railway development database) for manual browser checks.
 const { db } = await openDb(process.env.E2E_DATABASE_URL ?? "pglite://memory");
+// Enterprise features (src/extensions.ts) only when the run asks for them: REVENUEDOT_EE_DEV=true (ee/e2e specs).
+const extensions = await loadExtensions(process.env);
 // The run never reaches Apple, Google or any other outside host: only this machine (fake partners, buckets) answers.
 // A credential a spec saves (a made-up Google service account) then fails like an outage instead of calling Google.
 // Custom domain verification asks Cloudflare's DNS-over-HTTPS resolver; here it answers from records set with POST /__dns.
@@ -72,7 +76,7 @@ const SEALING_KEY = "ZTJlLWlkZW50aXR5LWtleS1mb3ItdGVzdHMtb25seSE=";
 const runTick = async () => {
   if (!ready || ticking) return;
   ticking = true;
-  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
+  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY, extensions }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
 };
 setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
@@ -113,7 +117,8 @@ const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantMo
 // the digest run only when a spec asks (POST /__jobs/benchmarks, /__jobs/insights), never on the 5-second tick.
 const BENCH_MIN = { initial_conversion: 5, trial_conversion: 3, conversion_to_paying: 5, churn: 3, refund_rate: 5, ltv_per_customer: 5, ltv_per_paying_customer: 3, arpu: 5, price_monthly: 3, price_annual: 3 };
 const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY,
-  benchmarks: process.env.E2E_BENCHMARKS !== "off", benchmarkOptions: { minSample: BENCH_MIN }, insightsDigest: true });
+  benchmarks: process.env.E2E_BENCHMARKS !== "off", benchmarkOptions: { minSample: BENCH_MIN }, insightsDigest: true,
+  moveDrainSeconds: 1, extensions });
 
 let ready = false;
 const web = new Hono();
@@ -165,7 +170,7 @@ web.post("/__stripe/checkout/:id", async (c) => {
 });
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share|verified|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share|verified|sso|scim|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
   // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
   if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);
@@ -178,6 +183,8 @@ web.all("/*", async (c) => {
 if (!existsSync(join(DIST, "index.html"))) { console.error(`No dashboard build at ${DIST}. Run vite build first.`); process.exit(1); }
 serve({ fetch: web.fetch, port: PORT });
 const base = `http://localhost:${PORT}`;
+// RevenueDot Cloud for the Move and Billing specs (e2e/cloud-server.ts): E2E_PORT + 1.
+await startCloud(PORT + 1, DIST, mail);
 webStripe.checkoutUrl = `${base}/__stripe/checkout/{id}`;
 
 // E2E_SEED=off (manual checks on a Railway database, which keeps its data across restarts): no demo data. The module
