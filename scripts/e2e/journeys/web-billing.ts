@@ -162,6 +162,38 @@ const journey: Journey = {
         return got.includes("FUNNEL_PURCHASE") ? got : null;
       }, { timeoutMs: 45_000, everyMs: 1000 });
       c.check("opt-in webhook got FUNNEL_VIEWED, FUNNEL_STEP_COMPLETED, FUNNEL_PURCHASE, PURCHASE_REDEEMED and INITIAL_PURCHASE", ["FUNNEL_VIEWED", "FUNNEL_STEP_COMPLETED", "FUNNEL_PURCHASE", "PURCHASE_REDEEMED", "INITIAL_PURCHASE"].every((t) => funnelEvents?.includes(t)), funnelEvents);
+      c.begin("the iOS paywall's web checkout (the SDK's hosted checkout)");
+      const hcUser = `ios_web_${ctx.stamp}`;
+      const hc = await iosSdk.call("POST", "/rcbilling/v1/hosted-checkout", { app_user_id: hcUser, presented_offering_identifier: "web", package_id: "$rc_monthly" });
+      const payRoot = `${ctx.base}/pay/`;
+      c.check("POST /rcbilling/v1/hosted-checkout answers a Stripe Checkout URL and this server's _/success and _/cancel pages", hc.status === 200 && /\/__stripe\/checkout\/cs_/.test(hc.body.checkout_url ?? "") && String(hc.body.success_url).startsWith(payRoot) && /\/_\/success$/.test(hc.body.success_url) && /\/_\/cancel$/.test(hc.body.cancel_url ?? ""), hc.body);
+      const hp = await browser.newPage();
+      hp.on("pageerror", (e) => errors.push(String(e)));
+      await hp.goto(hc.body.cancel_url);
+      c.check("the buyer backs out: the cancel page says nothing was charged", await hp.getByRole("heading", { name: "Checkout cancelled" }).waitFor({ timeout: 10_000 }).then(() => true, () => false) && (await hp.locator("body").innerText()).includes("Nothing was charged"));
+      c.eq("SQL: the cancelled checkout stays open (no purchase)", (await ctx.sql`SELECT count(*)::int AS n FROM web_checkouts WHERE project_id = ${dev.projectId} AND app_user_id = ${hcUser} AND status LIKE 'complete%'`)[0]!.n, 0);
+      await hp.goto(hc.body.checkout_url);
+      const hcEmail = hp.locator("input[name=email]");
+      if (await hcEmail.isVisible().catch(() => false)) await hcEmail.fill(`ios-web-${ctx.stamp}@example.com`);
+      await hp.getByRole("button", { name: "Pay" }).click();
+      await hp.waitForURL(/\/_\/success\?/, { timeout: 20_000 }).catch(() => {});
+      c.check("paying lands on _/success: Purchase complete", /\/_\/success\?/.test(hp.url()) && await hp.getByRole("heading", { name: "Purchase complete" }).waitFor({ timeout: 10_000 }).then(() => true, () => false), hp.url());
+      const hcRows = await ctx.sql`SELECT source_type, status, anonymous FROM web_checkouts WHERE project_id = ${dev.projectId} AND app_user_id = ${hcUser}`;
+      c.check("SQL: one sdk checkout, completed, not anonymous", hcRows.length === 1 && hcRows[0]!.source_type === "sdk" && hcRows[0]!.status === "completed" && hcRows[0]!.anonymous === false, hcRows);
+      const hcInfo = await iosSdk.call("GET", `/v1/subscribers/${hcUser}`);
+      c.check("the iOS app user has pro at once (bought for that app user id, no redemption step)", Date.parse(hcInfo.body.subscriber?.entitlements?.pro?.expires_date) > Date.now(), hcInfo.body.subscriber?.entitlements);
+      c.has("the purchase event: Stripe, for the iOS app user", (await eventsOf(ctx, dev.projectId, { type: "INITIAL_PURCHASE", appUserId: hcUser }))[0], { store: "STRIPE", app_user_id: hcUser, presented_offering_id: "web" });
+
+      c.begin("cancel page, funnel and link clean-up");
+      const cancelUrl = session?.cancel_url as string | undefined;
+      const cancelPage = cancelUrl ? await fetch(cancelUrl) : null;
+      c.check("the purchase link checkout's cancel URL returns to the purchase link page (?canceled=1) and answers", cancelUrl?.startsWith(link.url) && /canceled=1/.test(cancelUrl) && cancelPage?.ok, { cancelUrl, status: cancelPage?.status });
+      c.eq("GET the funnel reads it back published", (await dev.v2("GET", `/funnels/${funnel.id}`)).status, "published");
+      await dev.v2("DELETE", `/funnels/${funnel.id}`);
+      c.eq("a deleted funnel is gone from the API", (await dev.v2r("GET", `/funnels/${funnel.id}`)).status, 404);
+      c.eq("and its public page answers 404", (await fetch(funnel.url)).status, 404);
+      await dev.v2("DELETE", `/purchase_links/${link.id}`);
+      c.eq("a deleted purchase link's page answers 404", (await fetch(link.url)).status, 404);
       c.check("no page errors on the hosted pages", errors.length === 0, errors);
     } finally {
       await browser.close();

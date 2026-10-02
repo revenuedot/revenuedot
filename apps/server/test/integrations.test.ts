@@ -282,10 +282,12 @@ describe("delivery under load and misconfiguration", () => {
     expect(d!.lastError).toMatch(/redirect, which is not followed/);
     expect(d!.responseBody ?? "").toBe("");
 
-    // A tick holds the lease: Retry answers 409 instead of queueing a second send.
-    await h.db.update(D).set({ status: "pending", nextAttemptAt: new Date(h.now().getTime() + 10 * MIN) }).where(eq(D.id, d!.id));
+    // A tick holds the lease (status "sending" until its lease runs out): Retry answers 409 instead of a second send.
+    await h.db.update(D).set({ status: "sending", nextAttemptAt: new Date(h.now().getTime() + 10 * MIN) }).where(eq(D.id, d!.id));
     const locked = await call("POST", `/integrations/partners/${slack.id}/deliveries/${d!.id}/retry`);
     expect([locked.status, locked.body.type]).toEqual([409, "resource_locked_error"]);
+    // The API still calls it pending.
+    expect((await call("GET", `/integrations/partners/${slack.id}/deliveries?status=pending`)).body.items.map((x: any) => [x.id, x.status])).toEqual([[d!.id, "pending"]]);
 
     // Claimed once more than the retry schedule allows (each earlier claim died with the tick): failed without sending.
     await h.db.update(D).set({ status: "pending", nextAttemptAt: h.now(), attempts: 6 }).where(eq(D.id, d!.id));
@@ -294,6 +296,25 @@ describe("delivery under load and misconfiguration", () => {
     [d] = await h.db.select().from(D);
     expect([d!.status, seen.length - before]).toEqual(["failed", 0]);
     expect(d!.lastError).toMatch(/Gave up/);
+  });
+
+  it("Retry sends a delivery that is waiting for its scheduled retry after a 500 now (found by the integrations journey)", async () => {
+    const call = api();
+    const slack = (await call("POST", "/integrations/partners", { type: "slack", settings: { webhook_url: "https://hooks.slack.com/services/T/B/x" } })).body;
+    await purchase("w1");
+    let answer = 500;
+    const { f, seen } = fake(() => new Response(answer === 200 ? "ok" : "busy", { status: answer }));
+    await run(f);
+    const D = schema.integrationDeliveries;
+    let [d] = await h.db.select().from(D);
+    expect([d!.status, d!.attempts, d!.nextAttemptAt.getTime() - h.now().getTime()]).toEqual(["pending", 1, 5 * MIN]);
+    const retried = await call("POST", `/integrations/partners/${slack.id}/deliveries/${d!.id}/retry`);
+    expect(retried.status).toBe(200);
+    expect(retried.body).toMatchObject({ status: "pending", attempts: 0, next_attempt_at: h.now().getTime() });
+    answer = 200;
+    await run(f);
+    [d] = await h.db.select().from(D);
+    expect([d!.status, seen.length]).toEqual(["delivered", 2]);
   });
 
   it("two overlapping ticks send each delivery once", async () => {

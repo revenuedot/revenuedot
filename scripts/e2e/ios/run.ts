@@ -22,11 +22,14 @@ import { ADDABLE_TYPES, applyOp, blankPaywall, locate, newComponent } from "../.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
 const BUILD = join(HERE, "build");
-const PORT = Number(process.env.HARNESS_PORT ?? 8871);
+// RD_SERVER_URL: use a server that is already running (the journey runner's, scripts/e2e/journeys/ios.ts and android.ts)
+// instead of starting one; RD_REQUEST_LOG is that server's request log.
+const EXTERNAL = process.env.RD_SERVER_URL?.trim().replace(/\/+$/, "") || null;
+const PORT = EXTERNAL ? Number(new URL(EXTERNAL).port) : Number(process.env.HARNESS_PORT ?? 8871);
 const BASE = `http://localhost:${PORT}`;
 const DEVICE = process.env.IOS_DEVICE ?? "iPhone 17 Pro";
 const LOGIN_ID = `ios_harness_${Date.now()}`;
-const REQUEST_LOG = join(BUILD, "requests.jsonl");
+const REQUEST_LOG = process.env.RD_REQUEST_LOG ?? join(BUILD, "requests.jsonl");
 // The Postgres client lives in packages/db (pnpm keeps dependencies per package).
 const postgres = createRequire(join(ROOT, "packages/db/package.json"))("postgres") as typeof import("postgres").default;
 
@@ -224,7 +227,7 @@ try {
     mkdirSync(BUILD, { recursive: true });
     spawnSync("cp", ["-R", cache, join(BUILD, "SourcePackages")]);
   }
-  server = await startServer(await database());
+  if (!EXTERNAL) server = await startServer(await database());
   const cookie = await session(BASE, "ios-harness@revenuedot.test", "ios-harness-password", "iOS harness");
   const me = await (await fetch(`${BASE}/auth/me`, { headers: { cookie } })).json() as { projects: { id: string }[] };
   const projectId = me.projects[0]!.id;

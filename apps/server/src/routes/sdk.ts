@@ -14,6 +14,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
 import { attributionDataToAttributes, inBackground, resolveAdServicesToken, resolveDeviceAttributes, setAttributionOnce } from "../services/attribution.js";
 import { appleCredentials } from "../stores/apple/api.js";
+import { alpha2 } from "../stores/apple/map.js";
 import { appAccountTokenFor, signOffer } from "../services/promo-offers.js";
 import { customerCenterFor } from "../services/customer-center.js";
 import { publicOrigin } from "./oauth.js";
@@ -171,7 +172,8 @@ export function sdkRoutes(deps: Deps) {
   const reqInfo = (c: { req: { header: (k: string) => string | undefined } }) => {
     const s = sdkHeaders(c.req);
     return {
-      appVersion: s.appVersion, platform: s.platform, country: c.req.header("x-storefront") ?? null,
+      // The App Store storefront is alpha-3 (USA); customers keep alpha-2 (US), as RevenueCat and the importer store it.
+      appVersion: s.appVersion, platform: s.platform, country: alpha2(c.req.header("x-storefront")),
       sdkVersion: s.sdkVersion, sdkFlavor: s.platformFlavor, platformVersion: s.platformVersion, appBuild: s.appBuild,
     };
   };
@@ -410,7 +412,7 @@ export function sdkRoutes(deps: Deps) {
     // A subscriber token speaks for its own app user id only.
     const sub = c.get("auth")?.subscriber as { appUserId: string } | undefined;
     if (sub) b.app_user_id = sub.appUserId;
-    return c.json(await createTicket(deps, { id: app.id ?? null, projectId: app.projectId, name: app.name ?? null }, b, publicOrigin(c), clientIp((n) => c.req.header(n))));
+    return c.json(await createTicket(deps, { id: app.id ?? null, projectId: app.projectId, name: app.name ?? null }, b, publicOrigin(c), clientIp((n) => c.req.header(n), c.env)));
   });
 
   // 17-18. Virtual currencies (Tier 2): empty balances.

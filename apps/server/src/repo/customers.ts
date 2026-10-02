@@ -83,11 +83,16 @@ export async function setAttributes(db: DB, customerId: string, attrs: Record<st
   for (const [key, raw] of Object.entries(attrs ?? {})) {
     const value = raw?.value === null || raw?.value === undefined || raw.value === "" ? null : String(raw.value);
     const updatedAtMs = Number(raw?.updated_at_ms ?? now.getTime());
-    const [cur] = await db.select().from(customerAttributes).where(and(eq(customerAttributes.customerId, customerId), eq(customerAttributes.key, key))).limit(1);
-    if (cur && cur.updatedAtMs > updatedAtMs) continue;
-    if (o.attributionOnce && cur && cur.value !== null && cur.value !== value && WRITE_ONCE.has(key)) continue;
-    if (cur) await db.update(customerAttributes).set({ value, updatedAtMs }).where(and(eq(customerAttributes.customerId, customerId), eq(customerAttributes.key, key)));
-    else await db.insert(customerAttributes).values({ customerId, key, value, updatedAtMs });
+    // One upsert, newest timestamp wins: a read-then-insert let two concurrent writes of a new key (the SDK's attribute
+    // sync next to a receipt carrying attributes) collide on the primary key on Postgres and answer 500.
+    // Write-once attribution (SDK): a stored value is kept unless it is empty or the same.
+    const once = o.attributionOnce && WRITE_ONCE.has(key);
+    await db.insert(customerAttributes).values({ customerId, key, value, updatedAtMs }).onConflictDoUpdate({
+      target: [customerAttributes.customerId, customerAttributes.key], set: { value, updatedAtMs },
+      setWhere: once
+        ? sql`${customerAttributes.updatedAtMs} <= ${updatedAtMs} and (${customerAttributes.value} is null or ${customerAttributes.value} = ${value})`
+        : sql`${customerAttributes.updatedAtMs} <= ${updatedAtMs}`,
+    });
     if (isAttributionKey(key)) attribution = true;
   }
   // Attribution attributes also live as one first-class row (prd/attribution-benchmarks-insights §1).

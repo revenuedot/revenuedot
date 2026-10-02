@@ -172,6 +172,9 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
     refetchInterval: (s) => (s.state.data?.pages.some((p) => p.items.some((d) => d.status === "pending")) ? 2000 : 15_000),
   });
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
+  // The Status line above (last delivered, failing) comes from the integration: reload it when the newest delivery changes.
+  const newest = rows[0] ? `${rows[0].id}:${rows[0].status}` : "";
+  useEffect(() => { if (newest) void qc.invalidateQueries({ queryKey: ["integrations", pid] }); }, [newest, pid, qc]);
   const refresh = () => qc.invalidateQueries({ queryKey: ["integration_deliveries", pid, id] });
   const retry = async (d: IntegrationDelivery) => {
     setBusy(d.id);

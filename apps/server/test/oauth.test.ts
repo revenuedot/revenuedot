@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { openDb, schema, type DB } from "@revenuedot/db";
+import { schema, type DB } from "@revenuedot/db";
 import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
 import { OAUTH_SCOPES, clientDocUrlOk } from "../src/routes/oauth.js";
+import { openTestDb } from "../../../packages/contract/src/test-db.js";
 
 /** OAuth 2.1 for MCP clients: metadata, dynamic client registration, consent with the dashboard session, PKCE code exchange. */
 
@@ -19,7 +20,7 @@ async function pkce() {
 }
 
 async function setup(fetchImpl?: typeof fetch) {
-  const opened = await openDb("pglite://memory");
+  const opened = await openTestDb();
   close = opened.close;
   const db: DB = opened.db;
   let clock = new Date("2026-09-30T12:00:00Z");

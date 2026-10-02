@@ -124,7 +124,13 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   };
   const subId = existing?.id ?? newId("sub_", 16);
   if (existing) await db.update(subscriptions).set(values).where(eq(subscriptions.id, existing.id));
-  else await db.insert(subscriptions).values({ id: subId, ...values });
+  else {
+    const [inserted] = await db.insert(subscriptions).values({ id: subId, ...values })
+      .onConflictDoNothing({ target: [subscriptions.projectId, subscriptions.store, subscriptions.storeKey] }).returning({ id: subscriptions.id });
+    // Another request stored this chain between the read and the insert (a web checkout's success page and Stripe's
+    // webhook at once, two receipt posts): apply over its row, so the purchase is recorded and announced once.
+    if (!inserted) return applySubscription(db, customer, p, ctx);
+  }
   if (existing && existing.storeTransactionId === p.storeTransactionId && existing.priceAmount === 0 && (p.price?.amount ?? 0) > 0
     && existing.periodType !== "trial" && p.periodType !== "trial") {
     // The period was first recorded at a placeholder price of 0 (a Stripe invoice counted while still open); its revenue

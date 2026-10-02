@@ -89,6 +89,51 @@ describe("customer lists", () => {
     expect(p2.body.items.map((r: any) => r.id)).toEqual(["lapsed", "tester", "buyer"]);
   });
 
+  it("sorts by any column, pages in that order and exports in that order", async () => {
+    await seed();
+    const ids = async (query: string) => (await get(`list=all&${query}`)).body.items.map((r: any) => r.id);
+    expect(await ids("sort=id&direction=asc")).toEqual(["browser", "buyer", "cancelled", "lapsed", "paying", "tester", "trialing"]);
+    expect(await ids("sort=id&direction=desc")).toEqual(["trialing", "tester", "paying", "lapsed", "cancelled", "buyer", "browser"]);
+    // Ties keep the default order: newest last seen first.
+    expect(await ids("sort=spent_in_usd&direction=desc")).toEqual(["buyer", "paying", "cancelled", "lapsed", "trialing", "tester", "browser"]);
+    expect(await ids("sort=spent_in_usd")).toEqual(["trialing", "tester", "browser", "paying", "cancelled", "lapsed", "buyer"]);
+    expect(await ids("sort=last_seen_at&direction=asc")).toEqual(["browser", "buyer", "tester", "lapsed", "cancelled", "trialing", "paying"]);
+    expect(await ids("sort=first_seen_at&direction=desc")).toHaveLength(7);
+    const status = (await get("list=all&sort=subscription_status")).body.items.map((r: any) => r.subscription_status);
+    expect(status.indexOf("none")).toBeGreaterThan(status.lastIndexOf("expired"));
+    expect(status.lastIndexOf("active")).toBeLessThan(status.indexOf("trialing"));
+    // Customers with no auto-renewal value stay last in both directions.
+    for (const d of ["asc", "desc"]) expect((await ids(`sort=auto_renewal_status&direction=${d}`)).slice(-3)).toEqual(["lapsed", "buyer", "browser"]);
+    expect((await ids("sort=auto_renewal_status&direction=desc"))[0]).toBe("cancelled");
+
+    const p1 = await get("list=all&sort=id&limit=3");
+    expect(p1.body.items.map((r: any) => r.id)).toEqual(["browser", "buyer", "cancelled"]);
+    const after = new URL(p1.body.next_page, "http://x").searchParams.get("starting_after");
+    expect((await get(`list=all&sort=id&limit=3&starting_after=${after}`)).body.items.map((r: any) => r.id)).toEqual(["lapsed", "paying", "tester"]);
+
+    expect((await get("list=all&sort=email")).status).toBe(400);
+    expect((await get("list=all&sort=id&direction=up")).status).toBe(400);
+
+    const csv = await (await h.fetch("/v2/projects/proj1/customer_lists/export?list=all&sort=spent_in_usd&direction=desc", { key: h.ids.secretKey })).text();
+    expect(csv.trim().split("\r\n").slice(1).map((l) => l.split(",")[0])).toEqual(["buyer", "paying", "cancelled", "lapsed", "trialing", "tester", "browser"]);
+  });
+
+  it("sorts anonymous IDs after named IDs in both directions", async () => {
+    await person("$RCAnonymousID:f00d", { seenDaysAgo: 1 });
+    await person("Zed", { seenDaysAgo: 2 });
+    await person("$RCAnonymousID:0abc", { seenDaysAgo: 3 });
+    await person("amy", { seenDaysAgo: 4 });
+    const ids = async (query: string) => (await get(`list=all&${query}`)).body.items.map((r: any) => r.id);
+    expect(await ids("sort=id&direction=asc")).toEqual(["amy", "Zed", "$RCAnonymousID:0abc", "$RCAnonymousID:f00d"]);
+    expect(await ids("sort=id&direction=desc")).toEqual(["Zed", "amy", "$RCAnonymousID:f00d", "$RCAnonymousID:0abc"]);
+
+    const p1 = await get("list=all&sort=id&limit=2");
+    expect(p1.body.items.map((r: any) => r.id)).toEqual(["amy", "Zed"]);
+    const p2 = await get(`list=all&sort=id&limit=2&starting_after=${new URL(p1.body.next_page, "http://x").searchParams.get("starting_after")}`);
+    expect(p2.body.items.map((r: any) => r.id)).toEqual(["$RCAnonymousID:0abc", "$RCAnonymousID:f00d"]);
+    expect(p2.body.next_page).toBeNull();
+  });
+
   it("exports the list as CSV", async () => {
     await seed();
     const res = await h.fetch("/v2/projects/proj1/customer_lists/export?list=active", { key: h.ids.secretKey });

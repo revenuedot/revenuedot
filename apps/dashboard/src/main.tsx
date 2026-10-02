@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import "./styles/index.css";
 import { AuthPage } from "./pages/Auth";
 import { AccountPage, ForgotPasswordPage, InvitePage, ResetPasswordPage, VerifyEmailPage } from "./pages/AccountPages";
@@ -29,6 +29,21 @@ function Home() {
   return <Navigate to={me.data.projects[0] ? `/projects/${me.data.projects[0].id}/overview` : "/projects/new"} replace />;
 }
 
+/**
+ * Signed-in pages. A signed-out visitor (an old bookmark, a link in an email) goes to sign in and comes back here,
+ * before any page asks the API for data it would refuse with 401, which the browser logs as console errors.
+ */
+function RequireAuth() {
+  const loc = useLocation();
+  const qc = useQueryClient();
+  const known = qc.getQueryData(["me"]) !== undefined;
+  const config = useQuery({ queryKey: ["auth-gate"], queryFn: () => api<{ signed_in?: boolean }>("/auth/config"), retry: false, enabled: !known, staleTime: 0, gcTime: 0 });
+  if (known || config.isError) return <Outlet />;
+  if (config.isPending) return null;
+  if (!config.data?.signed_in) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  return <Outlet />;
+}
+
 const SOON: [string, string, string][] = [
   ["benchmarks", "Benchmarks", "How your conversion and retention compare with apps like yours."],
 ];
@@ -45,13 +60,15 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/invite" element={<InvitePage />} />
-          <Route path="/account" element={<AccountPage />} />
-          <Route path="/connect/stripe" element={<StripeConnectCallback />} />
-          <Route path="/account/billing" element={<BillingPage />} />
-          <Route path="/projects/receive" element={<ReceiveProject />} />
-          {routes}
-          <Route path="/organizations/*" element={<EnterpriseRoutes />} />
-          {SOON.map(([p, t, w]) => <Route key={p} path={`/projects/:projectId/${p}`} element={<Soon title={t} what={w} />} />)}
+          <Route element={<RequireAuth />}>
+            <Route path="/account" element={<AccountPage />} />
+            <Route path="/connect/stripe" element={<StripeConnectCallback />} />
+            <Route path="/account/billing" element={<BillingPage />} />
+            <Route path="/projects/receive" element={<ReceiveProject />} />
+            {routes}
+            <Route path="/organizations/*" element={<EnterpriseRoutes />} />
+            {SOON.map(([p, t, w]) => <Route key={p} path={`/projects/:projectId/${p}`} element={<Soon title={t} what={w} />} />)}
+          </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter></ToastProvider>

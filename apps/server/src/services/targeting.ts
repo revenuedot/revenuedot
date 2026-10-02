@@ -5,6 +5,7 @@ import { entitlementMap } from "../repo/catalog.js";
 import { loadState, type CustomerRow } from "../repo/customers.js";
 import { buildContext, loadCustomerData } from "./customer-context.js";
 import { recordRawEvent } from "./events.js";
+import { alpha2 } from "../stores/apple/map.js";
 
 /**
  * Targeting and experiments: which offering a customer gets. Audience rules follow RevenueCat's shape: condition groups
@@ -148,11 +149,14 @@ export function conditionMatches(ctx: CustomerContext, c: Condition, now: number
     const d = compareVersions(s, want);
     return c.operator === "greaterThan" ? d > 0 : c.operator === "greaterThanOrEqual" ? d >= 0 : c.operator === "lessThan" ? d < 0 : d <= 0;
   }
+  // A storefront is a country: "DEU" (the iOS SDK's storefront) and "DE" (what is stored as the customer's last country,
+  // and what Android reports) are the same, so the customer page and the SDK agree on a storefront rule.
+  const n = c.field === "storefront" ? (x: string) => lc(alpha2(x) ?? x) : lc;
   switch (c.operator) {
-    case "is": case "equal": return lc(s) === lc(want);
-    case "isNot": case "notEqual": return lc(s) !== lc(want);
-    case "isAnyOf": return values.some((x) => lc(x) === lc(s));
-    case "isNotAnyOf": return !values.some((x) => lc(x) === lc(s));
+    case "is": case "equal": return n(s) === n(want);
+    case "isNot": case "notEqual": return n(s) !== n(want);
+    case "isAnyOf": return values.some((x) => n(x) === n(s));
+    case "isNotAnyOf": return !values.some((x) => n(x) === n(s));
     case "contains": return lc(s).includes(lc(want));
     case "doesNotContain": return !lc(s).includes(lc(want));
     case "containsAnyOf": return values.some((x) => lc(s).includes(lc(x)));
@@ -178,7 +182,8 @@ export async function contextFor(db: DB, customer: CustomerRow | null, headers: 
     sdkFlavor: headers["x-platform-flavor"] ?? null, platformVersion: headers["x-platform-version"] ?? null, storefront: headers["x-storefront"] ?? null,
     locale: headers["x-preferred-locales"]?.split(",")[0]?.trim() ?? null,
   };
-  h.country = h.storefront ?? null;
+  // Country conditions use two-letter codes; the iOS SDK sends the App Store storefront as alpha-3 (USA).
+  h.country = alpha2(h.storefront);
   if (!customer) return { ...emptyContext(), ...Object.fromEntries(Object.entries(h).filter(([, v]) => v !== null)) };
   const data = (await loadCustomerData(db, [customer])).get(customer.id)!;
   return buildContext(data, now, entitlementsActive, h);

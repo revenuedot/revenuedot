@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { ADMOB_KEYS_URL } from "@revenuedot/core/ads";
 import { schema } from "@revenuedot/db";
@@ -322,6 +322,33 @@ describe("ads overview", () => {
     expect(sandbox.totals).toMatchObject({ ad_revenue: 9, impressions: 1 });
     expect(sandbox.totals.subscription_revenue).toBe(1);
     expect((await v2("/ads/overview?range=3d")).status).toBe(400);
+  });
+});
+
+describe("ads overview exchange rates", () => {
+  // Regression (journey ads-rewards): with no injected HTTP client (Node and Workers in production) the overview never
+  // asked the ECB, so EUR ad revenue was converted at the bundled rates instead of the rate of the event's day.
+  afterEach(() => { vi.unstubAllGlobals(); });
+  it("loads the ECB's rates for the period when the server has no injected fetch", async () => {
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input instanceof Request ? input.url : input);
+      asked.push(url);
+      if (url.startsWith("https://data-api.ecb.europa.eu/")) {
+        return new Response("KEY,FREQ,CURRENCY,CURRENCY_DENOM,EXR_TYPE,EXR_SUFFIX,TIME_PERIOD,OBS_VALUE\nEXR.D.USD.EUR.SP00.A,D,USD,EUR,SP00,A,2026-09-01,1.5\n", { headers: { "content-type": "text/csv" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const plain = await harness();
+    try {
+      const at = plain.now().getTime() - 3_600_000;
+      const res = await plain.fetch("/v1/events", { method: "POST", json: { events: [{ id: "eur-1", type: "rc_ads_ad_revenue", app_user_id: "wren", timestamp_ms: at, revenue_micros: 2_000_000, currency: "EUR", network_name: "AppLovin", ad_format: "interstitial" }] } });
+      expect(res.status).toBe(200);
+      const o = await (await plain.fetch("/v2/projects/proj1/ads/overview?range=7d", { key: plain.ids.secretKey })).json() as any;
+      expect(asked.some((u) => u.startsWith("https://data-api.ecb.europa.eu/"))).toBe(true);
+      // 2 EUR at the event day's 1.5 USD per EUR, not the bundled rate.
+      expect(o.totals.ad_revenue).toBe(3);
+    } finally { await plain.close(); }
   });
 });
 

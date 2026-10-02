@@ -1,10 +1,11 @@
 // Test server for the account email features: in-memory Postgres, an in-memory mailer, a clock the test moves, and
 // background work (deferred sends) the test can wait for. Spec: prd/account-email/PRD.md
-import { openDb, type DB } from "@revenuedot/db";
+import { type DB } from "@revenuedot/db";
 import { createApp } from "../src/app.js";
 import type { Deps } from "../src/context.js";
 import { memoryMailer } from "../src/mail/index.js";
 import { defaultStores } from "../src/stores/index.js";
+import { openTestDb } from "../../../packages/contract/src/test-db.js";
 
 export interface Client {
   call: (method: string, path: string, json?: unknown, headers?: Record<string, string>) => Promise<{ status: number; body: any; cookie: string | null }>;
@@ -12,7 +13,7 @@ export interface Client {
 }
 
 export async function accountServer(over: Partial<Deps> = {}) {
-  const o = await openDb("pglite://memory");
+  const o = await openTestDb();
   const mail = memoryMailer();
   let clock = new Date("2026-09-30T12:00:00Z");
   const pending: Promise<unknown>[] = [];

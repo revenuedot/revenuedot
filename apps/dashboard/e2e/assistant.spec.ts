@@ -151,8 +151,8 @@ test("Project settings → AI features: read only hides writes, disabled turns i
   await expect(page.getByText("AI features saved.")).toBeVisible();
   await page.goto(`/projects/${pid}/ai`);
   await expect(page.getByTestId("ai-unavailable")).toContainText("An admin turned RevenueDot AI off for this project.");
-  // The Overview shows the ask bar once the project has a customer (before that it is the setup checklist only).
-  await json(page, "POST", `${P}/customers`, { id: "ai_settings_customer" });
+  // The Overview's ask bar shows the reason (it appears once the project has a customer; a first-run Overview shows setup instead).
+  await json(page, "POST", `${P}/test_purchases`, { app_user_id: "ai_buyer", product_id: "pro_monthly" });
   await page.goto(`/projects/${pid}/overview`);
   await expect(page.getByRole("button", { name: "RevenueDot AI" }).first()).toContainText("An admin turned RevenueDot AI off for this project.");
 });

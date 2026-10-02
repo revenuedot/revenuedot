@@ -90,6 +90,8 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
       await expect.poll(() => slackHits().length, { timeout: 20_000 }).toBe(1);
       expect(slackHits()[0].text).toMatch(/is a test customer: Slack is connected to RevenueDot/);
       await expect(page.getByRole("row", { name: /TEST.*delivered/ })).toBeVisible({ timeout: 20_000 });
+      // The Status line follows the delivery log without a reload.
+      await expect(page.locator(".kv").filter({ hasText: "Integration ID" })).toContainText(/Delivered \d+s ago/);
     });
 
     await test.step("a Test Store purchase arrives in Slack, and the log shows the request", async () => {

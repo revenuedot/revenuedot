@@ -7,13 +7,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
-import { main } from "../src/cli.js";
+import { main, readIds } from "../src/cli.js";
 import { PromptCancelled } from "../src/prompt.js";
 import { buildPlan, formatPlan } from "../src/plan.js";
 import { RevenueCatClient } from "../src/revenuecat.js";
 import { RevenueDotClient } from "../src/revenuedot.js";
 import { loadState } from "../src/state.js";
 import { verifyImport } from "../src/verify.js";
+import { formatReport } from "../src/run.js";
 import { ANON, DAY, PROJECT, T0, TOKENS_CSV } from "./fixtures.js";
 import { RC_KEY, TARGET, bridge, dump, serveHarness, setup, spec, type Env } from "./helpers.js";
 
@@ -54,6 +55,8 @@ describe("revenuedot import", () => {
     expect(r.catalog.entitlements).toMatchObject({ created: 1, matched: 1 });
     expect(r.catalog.offerings).toMatchObject({ created: 1, matched: 1 });
     expect(r.customers).toMatchObject({ pass: 1, complete: true, imported: 14, created: 13, subscriptions: 9, purchases: 2, needsTokenRefresh: 1, pages: 4 });
+    // The customer a device created before the import is counted, not lost from the report.
+    expect(formatReport(r)).toContain("14 customers imported (13 new, 1 already in RevenueDot)");
 
     const db = e.h.db;
     const apps = await db.select().from(schema.apps);
@@ -90,7 +93,7 @@ describe("revenuedot import", () => {
 
     const v = await verify(e);
     expect(v.mismatches).toEqual([]);
-    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14 });
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0, notListedByRevenueCat: 0 });
     expect(v.activeSubscriptions).toEqual({ revenuecat: 8, revenuedot: 8 });
     expect(v.activeEntitlements).toEqual({ revenuecat: 9, revenuedot: 9 });
   });
@@ -101,6 +104,7 @@ describe("revenuedot import", () => {
     const before = await dump(e.h.db);
     const again = await e.run();
     expect(again.customers).toMatchObject({ pass: 2, complete: true, imported: 14, created: 0 });
+    expect(formatReport(again)).toContain("14 customers imported (0 new, 14 already in RevenueDot)");
     expect(await dump(e.h.db)).toEqual(before);
     await e.run({ restart: true });
     expect(await dump(e.h.db)).toEqual(before);
@@ -157,6 +161,8 @@ describe("revenuedot import", () => {
     find("user_expired").subscriptions[0]!.gives_access = true;
     find("user_apple").active = [{ object: "customer.active_entitlement", entitlement_id: "entl_pro", expires_at: T0 + 55 * DAY }];
     m.customers.push({ ...find("user_plain_1"), id: "user_late", aliases: [] });
+    // Deleted in RevenueCat after the import: RevenueDot keeps it, and verify names it.
+    m.customers = m.customers.filter((c) => c.id !== "user_plain_1");
     const v = await verify(e);
     expect(v.mismatchedCustomers).toBe(3);
     expect(v.mismatches.map((x) => [x.customer, x.kind])).toEqual([
@@ -165,7 +171,90 @@ describe("revenuedot import", () => {
       ["user_expired", "entitlement_only_in_revenuecat"],
       ["user_late", "missing_customer"],
     ]);
-    expect(v.customers).toMatchObject({ revenuecat: 15, revenuedot: 14 });
+    expect(v.customers).toMatchObject({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 1, onlyInRevenueDot: 1 });
+    expect(v.onlyInRevenueDot).toEqual(["user_plain_1"]);
+  });
+
+  it("verify checks each customer once while RevenueCat's list order shifts under it", async () => {
+    e = await setup();
+    await e.run();
+    const m = e.rc.model;
+    e.rc.maxPage = 3;
+    // Live activity: the first customer of each page served becomes the most recent and moves to the end of the list,
+    // so a walk with starting_after meets it again.
+    let shifts = 0;
+    e.rc.onList = (template, items) => {
+      if (!template.endsWith("/customers") || shifts++ >= 4 || !items.length) return;
+      const i = m.customers.findIndex((c) => c.id === items[0]!.id);
+      m.customers.push(...m.customers.splice(i, 1));
+    };
+    const reads = () => e!.rc.requests.filter((r) => /\/customers\/[^/]+$/.test(r.path)).length;
+    const before = reads();
+    const v = await verify(e);
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0, notListedByRevenueCat: 0 });
+    expect(v.mismatches).toEqual([]);
+    expect(shifts).toBeGreaterThan(1);
+    // One read per customer, though the walk met some of them twice.
+    expect(reads() - before).toBe(14);
+  });
+
+  it("verify checks a RevenueDot customer RevenueCat's list leaves out by id, and counts it as RevenueCat's", async () => {
+    e = await setup();
+    await e.run();
+    const m = e.rc.model;
+    e.rc.unlisted.add("user_apple");
+    m.customers.find((c) => c.id === "user_apple")!.active = [{ object: "customer.active_entitlement", entitlement_id: "entl_pro", expires_at: T0 + 55 * DAY }];
+    const v = await verify(e);
+    expect(v.customers).toEqual({ revenuecat: 14, revenuedot: 14, checked: 14, missingInRevenueDot: 0, onlyInRevenueDot: 0, notListedByRevenueCat: 1 });
+    expect(v.mismatches.map((x) => [x.customer, x.kind])).toEqual([["user_apple", "entitlement_expiry"]]);
+  });
+
+  it("a customer RevenueCat's list order moves behind the cursor during the walk is imported by the catch-up", async () => {
+    e = await setup();
+    const m = e.rc.model;
+    e.rc.maxPage = 4;
+    const last = m.customers[m.customers.length - 1]!.id;
+    let moved = false;
+    e.rc.onList = (template) => {
+      if (moved || !template.endsWith("/customers")) return;
+      moved = true;
+      m.customers.unshift(...m.customers.splice(m.customers.length - 1, 1));
+    };
+    const r = await e.run();
+    expect(r.customers).toMatchObject({ pass: 1, imported: 14, caughtUp: 1, complete: true });
+    expect(formatReport(r)).toContain("1 of them imported at the end");
+    const [a] = await e.h.db.select().from(schema.customerAliases).where(eq(schema.customerAliases.appUserId, last));
+    expect(a).toBeDefined();
+    expect((await verify(e)).mismatches).toEqual([]);
+    // The next pass finds nothing to catch up.
+    const again = await e.run();
+    expect(again.customers).toMatchObject({ pass: 2, imported: 14, complete: true });
+    expect(again.customers.caughtUp ?? 0).toBe(0);
+  });
+
+  it("--ids imports exactly the given customers by id, even ones RevenueCat's list leaves out, without touching the state file", async () => {
+    e = await setup();
+    e.rc.unlisted.add("user_apple");
+    e.rc.unlisted.add("user_grace");
+    const r = await e.run({ ids: ["user_apple", "user_grace", "user_apple", "nobody"] });
+    expect(r.requestedIds).toBe(3);
+    expect(r.customers).toMatchObject({ imported: 2 });
+    expect(r.problems).toContainEqual({ kind: "skipped", message: "nobody: not found in RevenueCat" });
+    expect(formatReport(r)).toContain("Customers (by id: 3 requested)");
+    expect(existsSync(e.statePath)).toBe(false);
+    const ids = (await e.h.db.select().from(schema.customerAliases)).map((a) => a.appUserId);
+    expect(ids).toEqual(expect.arrayContaining(["user_apple", "user_grace"]));
+    expect(await e.h.db.select().from(schema.customers)).toHaveLength(2);
+    // Running it again changes nothing.
+    const before = await dump(e.h.db);
+    await e.run({ ids: ["user_apple", "user_grace"] });
+    expect(await dump(e.h.db)).toEqual(before);
+  });
+
+  it("readIds takes a JSON id array, verify's mismatches, or one id per line", () => {
+    expect(readIds('["a","b"]')).toEqual(["a", "b"]);
+    expect(readIds('[{"customer":"a","kind":"missing_customer"},{"id":"b"}]')).toEqual(["a", "b"]);
+    expect(readIds("a\n\n b \r\nc\n")).toEqual(["a", "b", "c"]);
   });
 
   it("plan prints the cutover steps with this project's notification URLs and missing credentials", async () => {
@@ -243,7 +332,7 @@ describe("the revenuedot command", () => {
       expect(await main(["import", "--from-revenuecat", ...common, "--state", join(dir, "s.json"), "--google-tokens", csv], io)).toBe(0);
       const report = out.join("\n");
       expect(report).toContain("Import finished");
-      expect(report).toContain("14 customers imported (14 new, 0 merged with existing ones)");
+      expect(report).toContain("14 customers imported (14 new, 0 already in RevenueDot)");
       expect(report).toContain("Store credentials to re-enter in RevenueDot");
       expect(report).toContain("1 Google Play subscriptions need a purchase token");
       expect(err.some((l) => l.startsWith("customers: 14 imported"))).toBe(true);

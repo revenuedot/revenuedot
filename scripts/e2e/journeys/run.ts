@@ -20,7 +20,23 @@ import { BUILD, Capture, DB_PREFIX, PORTS, RdServer, ROOT, createDatabase, dropD
 export interface Journey { name: string; title: string; heavy?: boolean; needsDashboard?: boolean; run: (ctx: Ctx) => Promise<void> }
 
 const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
+  onboarding: () => import("./onboarding.ts"),
+  "web-sdk": () => import("./web-sdk.ts"),
+  lifecycle: () => import("./lifecycle.ts"),
+  identity: () => import("./identity.ts"),
+  targeting: () => import("./targeting.ts"),
+  "web-billing": () => import("./web-billing.ts"),
+  "lifecycle-tools": () => import("./lifecycle-tools.ts"),
+  integrations: () => import("./integrations.ts"),
+  "ads-rewards": () => import("./ads-rewards.ts"),
+  stores: () => import("./stores.ts"),
+  importer: () => import("./importer.ts"),
+  "dashboard-ui": () => import("./dashboard-ui.ts"),
+  assistant: () => import("./assistant.ts"),
+  ios: () => import("./ios.ts"),
+  android: () => import("./android.ts"),
   "settings-auth": () => import("./settings-auth.ts"),
+  "self-host": () => import("./self-host.ts"),
   "connect-recovery": () => import("./connect-recovery.ts"),
   move: () => import("./move.ts"),
   billing: () => import("./billing.ts"),

@@ -164,7 +164,7 @@ export function authRoutes(deps: Deps) {
     const email = p.success ? normEmail(p.data.email) : "";
     if (!email || !z.string().email().safeParse(email).success) return bad(c, "Enter a valid email address.");
     const now = deps.now();
-    if (!(await hit(deps.db, `pwreset:ip:${clientIp((n) => c.req.header(n))}`, RESET_LIMITS.perIp, RESET_LIMITS.ipWindowMs, now))) {
+    if (!(await hit(deps.db, `pwreset:ip:${clientIp((n) => c.req.header(n), c.env)}`, RESET_LIMITS.perIp, RESET_LIMITS.ipWindowMs, now))) {
       return c.json({ type: "rate_limit_error", message: "Too many password reset requests. Try again in 15 minutes." }, 429);
     }
     const b = base(c);

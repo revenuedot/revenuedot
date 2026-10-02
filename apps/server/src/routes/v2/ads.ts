@@ -75,7 +75,7 @@ export function adsRoutes(r: V2Router, deps: Deps) {
     const env = c.req.query("environment") ?? "production";
     if (env !== "production" && env !== "sandbox") throw paramError("environment must be production or sandbox.", "environment");
     const appId = c.req.query("app_id") || null;
-    return c.json(await loadAdsOverview(db, { projectId: c.get("projectId"), range, sandbox: env === "sandbox", appId, now: deps.now(), fetch: deps.fetch ?? null }));
+    return c.json(await loadAdsOverview(db, { projectId: c.get("projectId"), range, sandbox: env === "sandbox", appId, now: deps.now(), fetch: deps.fetch }));
   });
 
   /** The merged rule must name what it grants, and that currency or entitlement must exist in the project. */

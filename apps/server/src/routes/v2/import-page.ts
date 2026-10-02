@@ -31,7 +31,11 @@ export interface Ctx {
   emit: boolean;
 }
 /** `original` is null for an Apple chain keyed by a guess (its first known transaction): store traffic may re-key it later. */
-export interface KeyInfo { key: string; placeholder: string | null; original: string | null; note?: string }
+export interface KeyInfo {
+  key: string; placeholder: string | null; original: string | null; note?: string;
+  /** Apple: the guessed key the chain had before Apple confirmed `original`; an earlier run may have stored the chain under it. */
+  guess?: string;
+}
 export interface Report { id: string; status: "created" | "updated" | "merged"; subscriptions: number; purchases: number; needs_token_refresh: number; notes: string[] }
 
 const C = schema.customers, A = schema.customerAliases, CA = schema.customerAttributes, S = schema.subscriptions, N = schema.nonSubscriptions, T = schema.transactions;
@@ -102,6 +106,8 @@ class WorkingSet {
   private changedNonSubs = new Set<string>();
   private txns = new Map<string, TxnRow>();
   private owners = new Map<string, { store: string; tx: string; customerId: string }>();
+  /** Store transactions whose first-or-renewal kind is now known for sure (a confirmed Apple chain); rows of the other kind go. */
+  private settledKinds = new Map<string, { store: string; tx: string; renewal: boolean }>();
 
   /** The project's Apple Search Ads names, loaded once per page when an imported customer has attribution. */
   private names?: AppleAdsNames;
@@ -129,7 +135,7 @@ class WorkingSet {
     const subs = customers.flatMap((c) => c.subscriptions ?? []);
     const chainKeys = uniq(subs.flatMap((s) => {
       const k = keys.get(s)!;
-      return [k.key, ...(k.placeholder ? [k.placeholder] : []), ...(s.store === "promotional" ? (s.entitlement_lookup_keys ?? []).slice(1).map((e) => `${k.key}:${e}`) : [])];
+      return [k.key, ...(k.placeholder ? [k.placeholder] : []), ...(k.guess ? [k.guess] : []), ...(s.store === "promotional" ? (s.entitlement_lookup_keys ?? []).slice(1).map((e) => `${k.key}:${e}`) : [])];
     }));
     const stores = uniq(subs.map((s) => s.store));
     const addSub = (r: SubRow) => { this.subs.set(r.id, r); this.subKeys.set(K(r.store, r.storeKey), r.id); };
@@ -188,6 +194,7 @@ class WorkingSet {
   addTxn(row: TxnRow) { const k = K(row.store, row.storeTransactionId, row.kind); if (!this.txns.has(k)) this.txns.set(k, row); }
   /** Every revenue row of a store transaction belongs to the customer that last imported it. */
   ownTxn(store: string, tx: string, customerId: string) { this.owners.set(K(store, tx), { store, tx, customerId }); }
+  settleKind(store: string, tx: string, renewal: boolean) { this.settledKinds.set(K(store, tx), { store, tx, renewal }); }
 
   /** Writes every change: one statement per table (more only past the parameter limit). */
   async flush() {
@@ -212,6 +219,13 @@ class WorkingSet {
     for (const part of rowChunks(nonSubRows)) {
       await db.insert(N).values(part).onConflictDoUpdate({ target: [N.projectId, N.store, N.storeTransactionId], set: excluded(N, NON_SUB_COLS) });
     }
+    // A run that keyed a chain by a guessed original recorded its transactions with guessed kinds: drop those once confirmed.
+    for (const part of chunks([...this.settledKinds.values()], 5000)) {
+      const rows = sql.join(part.map((o) => sql`(${o.store}::text, ${o.tx}::text, ${o.renewal}::boolean)`), sql`, `);
+      await db.execute(sql`DELETE FROM transactions AS t USING (VALUES ${rows}) AS v(store, tx, renewal)
+        WHERE t.project_id = ${projectId} AND t.store = v.store AND t.store_transaction_id = v.tx
+          AND CASE WHEN v.renewal THEN t.kind IN ('purchase', 'trial') ELSE t.kind = 'renewal' END`);
+    }
     for (const part of rowChunks([...this.txns.values()])) await db.insert(T).values(part).onConflictDoNothing();
     for (const part of chunks([...this.owners.values()], 5000)) {
       const rows = sql.join(part.map((o) => sql`(${o.store}::text, ${o.tx}::text, ${o.customerId}::text)`), sql`, `);
@@ -219,7 +233,7 @@ class WorkingSet {
         WHERE t.project_id = ${projectId} AND t.store = v.store AND t.store_transaction_id = v.tx AND t.customer_id <> v.cid`);
     }
     this.newCustomers.clear(); this.changedCustomers.clear(); this.newAliases = []; this.changedAttrs.clear();
-    this.newSubs.clear(); this.changedSubs.clear(); this.goneSubs.clear(); this.changedNonSubs.clear(); this.txns.clear(); this.owners.clear();
+    this.newSubs.clear(); this.changedSubs.clear(); this.goneSubs.clear(); this.changedNonSubs.clear(); this.txns.clear(); this.owners.clear(); this.settledKinds.clear();
   }
 }
 
@@ -318,15 +332,28 @@ function toVerified(s: ImportSub, k: KeyInfo, notes: string[]): VerifiedSubscrip
   const billing = s.status === "in_grace_period" || s.status === "in_billing_retry";
   let expiresDate: Date | null = periodEnd;
   if (!expiresDate && !promo) expiresDate = periodStart; // paused until an indefinite date: no access now
+  const lastTx = [...(s.transactions ?? [])].sort((a, b) => b.purchased_at - a.purchased_at)[0];
+  const lastTxEnd = d(lastTx?.expires_at ?? null);
+  // The store already renewed (RevenueCat: has_already_renewed): its newest transaction starts at or after the period
+  // end and runs past it, so access lasts to that transaction's expiry, as RevenueCat's ends_at says.
+  if (expiresDate && lastTx && lastTxEnd && lastTxEnd > expiresDate && lastTx.purchased_at >= expiresDate.getTime() - 86_400_000
+    && s.status !== "expired" && s.status !== "in_grace_period") {
+    expiresDate = lastTxEnd;
+  }
   let grace: Date | null = null;
   if (s.status === "in_grace_period") {
-    grace = d(s.grace_period_expires_at) ?? d(Math.max(...(s.transactions ?? []).map((t) => t.expires_at ?? 0), 0) || null);
-    if (!grace || (expiresDate && grace <= expiresDate)) {
+    const latestTxEnd = d(Math.max(...(s.transactions ?? []).map((t) => t.expires_at ?? 0), 0) || null);
+    grace = d(s.grace_period_expires_at) ?? latestTxEnd;
+    if (expiresDate && latestTxEnd && latestTxEnd < expiresDate && !(grace && grace > expiresDate)) {
+      // RevenueCat reports a subscription in its grace period with the grace end as the period end; the paid period
+      // ended at the newest transaction's expiry.
+      grace = expiresDate;
+      expiresDate = latestTxEnd;
+    } else if (!grace || (expiresDate && grace <= expiresDate)) {
       grace = new Date((expiresDate ?? periodStart).getTime() + 7 * 86_400_000);
       notes.push(`${s.store_subscription_identifier}: grace period end unknown; assumed 7 days after the period end.`);
     }
   }
-  const lastTx = [...(s.transactions ?? [])].sort((a, b) => b.purchased_at - a.purchased_at)[0];
   const price = s.price ?? lastTx?.price ?? null;
   return {
     kind: "subscription", store: s.store as Store, storeKey: k.key, productIdentifier: product, productPlanIdentifier: plan,
@@ -334,7 +361,7 @@ function toVerified(s: ImportSub, k: KeyInfo, notes: string[]): VerifiedSubscrip
     periodType: s.period_type ?? (promo ? "promotional" : s.status === "trialing" ? "trial" : "normal"),
     ownershipType: s.ownership === "family_shared" ? "FAMILY_SHARED" : "PURCHASED",
     unsubscribeDetectedAt: d(s.unsubscribe_detected_at) ?? (!promo && (renewalOff || billing || s.status === "expired") ? periodStart : null),
-    billingIssuesDetectedAt: d(s.billing_issues_detected_at) ?? (billing ? periodEnd ?? periodStart : null),
+    billingIssuesDetectedAt: d(s.billing_issues_detected_at) ?? (billing ? expiresDate ?? periodStart : null),
     gracePeriodExpiresDate: grace, refundedAt: d(s.refunded_at),
     autoResumeDate: s.status === "paused" ? d(s.auto_resume_at) ?? periodEnd ?? periodStart : d(s.auto_resume_at),
     storeTransactionId: s.store_subscription_identifier, originalTransactionId: k.original,
@@ -354,6 +381,15 @@ async function importSubscription(ws: WorkingSet, ctx: Ctx, customerId: string, 
     const real = ws.sub(s.store, k.key);
     if (ph && !real) ws.patchSub(ph.id, { storeKey: k.key });
     else if (ph && real) ws.deleteSub(ph.id);
+  }
+  // Apple confirmed an original id that differs from the guess an earlier run keyed the chain by: move that row to it,
+  // or drop it when the confirmed chain already has a row (the two were halves of one chain).
+  if (k.guess && k.guess !== k.key) {
+    const guessed = ws.sub(s.store, k.guess);
+    if (guessed && guessed.customerId === customerId) {
+      if (!ws.sub(s.store, k.key)) ws.patchSub(guessed.id, { storeKey: k.key });
+      else ws.deleteSub(guessed.id);
+    }
   }
   // An Apple chain the store already re-keyed (a receipt came after an earlier run) is found again by its transactions.
   if (isApple(s.store) && !k.original) {
@@ -430,6 +466,7 @@ function importTransactions(ws: WorkingSet, ctx: Ctx, customerId: string, s: Imp
       productIdentifier: v.productIdentifier, kind, isSandbox: v.isSandbox, purchasedAt: new Date(t.purchased_at), expiresAt: d(t.expires_at),
       revenueUsd: revenue, priceAmount: t.price?.amount ?? null, priceCurrency: t.price?.currency ?? null, countryCode: v.countryCode,
     });
+    if (isApple(s.store) && v.originalTransactionId) ws.settleKind(s.store, t.id, kind === "renewal");
   }
   // A transaction moved to another customer by a merge or transfer follows its chain.
   for (const t of txs) ws.ownTxn(s.store, t.id, customerId);

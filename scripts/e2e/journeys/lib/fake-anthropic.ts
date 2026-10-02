@@ -3,7 +3,7 @@
 // the capture server for api.anthropic.com. The journey server runs with ANTHROPIC_API_KEY set to a made-up key, so the
 // real model path runs end to end (AI SDK Anthropic provider, SSE streaming, tool calls, approvals) and only the model's
 // words come from this script: "revenue/MRR" questions call get-metrics, "grant <entitlement> to <user>" calls
-// grant-customer-entitlement, tool results get a one-line summary, and the paywall and funnel generators get valid JSON.
+// grant-customer-entitlement, "look up X and grant pro to X" calls get-customer and the grant in one step, tool results get a one-line summary, and the paywall and funnel generators get valid JSON.
 import type { ServerResponse } from "node:http";
 import type { Captured } from "./stack.ts";
 
@@ -27,7 +27,9 @@ function script(body: any): Block[] {
   if (toolResults.length) {
     // The tool that produced the result: the previous assistant message's tool_use with that id.
     const prev = messages[messages.length - 2];
-    const r = toolResults[0];
+    // When a read and a write ran in one step, the write's result decides the answer.
+    const uses = (prev?.content ?? []).filter((b: any) => b.type === "tool_use");
+    const r = toolResults.find((t: any) => uses.find((b: any) => b.id === t.tool_use_id)?.name === "grant-customer-entitlement") ?? toolResults[0];
     const use = (prev?.content ?? []).find((b: any) => b.type === "tool_use" && b.id === r.tool_use_id);
     const out = textOf(r.content);
     if (/denied/i.test(out)) return [{ type: "text", text: "OK, I did not change anything." }];
@@ -59,6 +61,14 @@ function script(body: any): Block[] {
       components: [{ type: "title", text: `AI: ${ask}`, color: "#ffffff" }, { type: "features", items: ["No ads", "Backup and sync"] }, { type: "packages" }],
       footer: [{ type: "cta", text: "Start free trial" }, { type: "button", action: "restore" }],
     }) + "\n```" }];
+  }
+  // "look up X and grant pro to X": a read tool and a write tool in the same step (PR #22 fixed a hang after Approve here).
+  const both = /look up\s+([\w.@:-]+)\s+and\s+grant\s+(\w+)\s+(?:to|for)\s+([\w.@:-]+)/i.exec(lastUserText);
+  if (both && tools.includes("grant-customer-entitlement")) {
+    const tid = () => `toolu_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
+    return [{ type: "text", text: "I'll look them up and grant it once you approve." },
+      { type: "tool_use", id: tid(), name: "get-customer", input: { customer_id: both[1]! } },
+      { type: "tool_use", id: tid(), name: "grant-customer-entitlement", input: { customer_id: both[3]!, entitlement_id: both[2]!.toLowerCase(), expires_at: "7d" } }];
   }
   const grant = /grant\s+(\w+)\s+(?:to|for)\s+([\w.@:-]+)/i.exec(lastUserText);
   if (grant) {

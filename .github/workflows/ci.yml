@@ -24,6 +24,32 @@ jobs:
       - run: npx tsc -b
       - run: pnpm vitest run
 
+  # The same contract and server suites on a real Postgres 16 (PGlite above): driver result shapes, concurrent
+  # transactions, deadlocks and timestamp handling only show up here. One database per test file, made by the suite.
+  test-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run --maxWorkers=4 --minWorkers=1
+        env:
+          REVENUEDOT_TEST_PG_URL: postgres://postgres:ci@localhost:5432/postgres
+
   site:
     runs-on: ubuntu-latest
     timeout-minutes: 15

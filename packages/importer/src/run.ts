@@ -23,6 +23,8 @@ export interface ImportOptions {
   concurrency?: number;
   pageSize?: number;
   limit?: number;
+  /** Import exactly these RevenueCat customer ids (by id) instead of walking the list; the state file is not used. */
+  ids?: string[];
   publicKeys?: boolean;
   emitEvents?: boolean;
   tokens?: TokenBook;
@@ -42,6 +44,8 @@ export interface ImportReport {
   googleWithoutToken: number;
   problems: Problem[];
   statePath: string | null;
+  /** How many ids --ids asked for (null for a normal pass). */
+  requestedIds?: number | null;
 }
 
 export async function runImport(o: ImportOptions): Promise<ImportReport> {
@@ -54,7 +58,7 @@ export async function runImport(o: ImportOptions): Promise<ImportReport> {
   const project = await rd.project();
   const target = { url: o.to.replace(/\/+$/, ""), project: project.id };
 
-  let state = o.restart ? null : loadState(o.statePath);
+  let state = o.restart || o.ids ? null : loadState(o.statePath);
   if (state && (state.source.project !== o.rcProject || state.target.project !== target.project)) {
     throw new Error(`${o.statePath} belongs to RevenueCat project ${state.source.project} -> RevenueDot project ${state.target.project}. Pass --state with another file, or --restart.`);
   }
@@ -65,7 +69,7 @@ export async function runImport(o: ImportOptions): Promise<ImportReport> {
     state.customers = { pass, after: null, complete: false, pages: 0, imported: 0, created: 0, merged: 0, subscriptions: 0, purchases: 0, needsTokenRefresh: 0 };
     state.problems = [];
   }
-  const save = () => { if (!dryRun) saveState(o.statePath, state!); };
+  const save = () => { if (!dryRun && !o.ids) saveState(o.statePath, state!); };
   if (state.customers.after) log(`Resuming pass ${state.customers.pass} after customer ${state.customers.after} (${state.customers.imported} already imported).`);
 
   // The catalog is cheap and always re-synced, so products or offerings added since the last run come along.
@@ -78,9 +82,9 @@ export async function runImport(o: ImportOptions): Promise<ImportReport> {
   progress(`catalog: ${c.apps.created + c.apps.matched} apps, ${c.products.created + c.products.matched} products, ${c.entitlements.created + c.entitlements.matched} entitlements, ${c.offerings.created + c.offerings.matched} offerings`);
 
   const { googleWithoutToken } = await importCustomers(rc, rd, catalog.map, state, {
-    dryRun, concurrency: o.concurrency ?? 4, pageSize: o.pageSize, limit: o.limit, tokens: o.tokens, emitEvents: o.emitEvents, save, log, progress,
+    dryRun, concurrency: o.concurrency ?? 4, pageSize: o.pageSize, limit: o.limit, ids: o.ids, tokens: o.tokens, emitEvents: o.emitEvents, save, log, progress,
   });
-  return { dryRun, source: o.rcProject, target, catalog: catalog.report, customers: state.customers, googleWithoutToken, problems: state.problems, statePath: dryRun ? null : o.statePath };
+  return { dryRun, source: o.rcProject, target, catalog: catalog.report, customers: state.customers, googleWithoutToken, problems: state.problems, statePath: dryRun || o.ids ? null : o.statePath, requestedIds: o.ids ? new Set(o.ids).size : null };
 }
 
 export function formatReport(r: ImportReport): string {
@@ -93,9 +97,13 @@ export function formatReport(r: ImportReport): string {
   out.push(line("Apps", r.catalog.apps), line("Products", r.catalog.products), line("Entitlements", r.catalog.entitlements), line("Offerings", r.catalog.offerings), line("Packages", r.catalog.packages));
   out.push(`  ${"SDK keys".padEnd(14)} ${r.catalog.publicKeys.updated} kept (existing app builds keep working with RevenueDot)`);
   out.push("");
-  out.push(`Customers (pass ${r.customers.pass}${r.customers.complete ? ", complete" : ", incomplete: run again to continue"})`);
-  out.push(`  ${r.customers.imported} customers ${r.dryRun ? "read" : "imported"}${r.dryRun ? "" : ` (${r.customers.created} new, ${r.customers.merged} merged with existing ones)`}`);
+  out.push(r.requestedIds != null ? `Customers (by id: ${r.requestedIds} requested)` : `Customers (pass ${r.customers.pass}${r.customers.complete ? ", complete" : ", incomplete: run again to continue"})`);
+  // Every imported customer is new or joins one RevenueDot already had (from live traffic, or from an earlier pass).
+  const existing = r.customers.imported - r.customers.created;
+  const merged = r.customers.merged ? `, ${r.customers.merged} of them merged from several RevenueDot customers` : "";
+  out.push(`  ${r.customers.imported} customers ${r.dryRun ? "read" : "imported"}${r.dryRun ? "" : ` (${r.customers.created} new, ${existing} already in RevenueDot${merged})`}`);
   out.push(`  ${r.customers.subscriptions} subscriptions, ${r.customers.purchases} one-time purchases`);
+  if (r.customers.caughtUp) out.push(`  ${r.customers.caughtUp} of them imported at the end: RevenueCat's list order moved them past the walk while they were active`);
   if (r.dryRun && r.googleWithoutToken) out.push(`  ${r.googleWithoutToken} Google Play subscriptions have no purchase token in the export; RevenueDot looks them up with the app's service account, or marks them needs_token_refresh`);
   if (!r.dryRun && r.customers.needsTokenRefresh) out.push(`  ${r.customers.needsTokenRefresh} Google Play subscriptions need a purchase token (add the service account and run again; see "revenuedot import plan")`);
   const by = (k: Problem["kind"]) => r.problems.filter((p) => p.kind === k);
