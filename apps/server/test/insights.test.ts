@@ -61,6 +61,11 @@ describe("validation", () => {
     expect(r.insights[0]).toMatchObject({ metric_ids: ["a"], link: "/projects/p/charts/a", numbers: [{ id: "a", value: 1, previous: 2, change_pct: -50 }] });
     expect(r.insights.map((i) => i.metric_ids[0])).toEqual(["a", "b", "c", "d", "a"]);
   });
+  it("keeps the text plain: markdown links become their text, emphasis marks go", () => {
+    const md = { title: "**Churn** is up", finding: "See the [churn chart](/projects/p/charts/churn) for `details`.", recommendation: "Launch a [win-back campaign](https://x.example).", metric_ids: ["a"] };
+    const r = validateInsights(JSON.stringify({ insights: [md, one(["b"]), one(["c"])] }), pack);
+    expect("insights" in r && r.insights[0]).toMatchObject({ title: "Churn is up", finding: "See the churn chart for details.", recommendation: "Launch a win-back campaign." });
+  });
   it("refuses fewer than 3 cited insights, no JSON, or the wrong shape", () => {
     expect(validateInsights(JSON.stringify({ insights: [one(["a"]), one(["x"])] }), pack)).toMatchObject({ error: expect.stringContaining("Only 1") });
     expect(validateInsights("no json here", pack)).toMatchObject({ error: expect.stringContaining("no JSON") });

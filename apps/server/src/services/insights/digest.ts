@@ -103,11 +103,12 @@ export async function runInsightsDigest(deps: Deps, now: Date, o: { force?: bool
     out.emailed = await emailDigest({ ...deps, now: () => now }, ready.projectId, week);
     return out;
   }
+  // An ISO string, not a Date: raw SQL parameters reach the Workers Postgres driver as they are.
   const since = new Date(now.getTime() - 90 * 86_400_000);
   const rows = await db.execute(sql`
     select p.id from projects p
     where p.ai_access <> 'disabled'
-      and exists (select 1 from transactions t where t.project_id = p.id and t.is_sandbox = false and t.revenue_usd > 0 and t.purchased_at > ${since})
+      and exists (select 1 from transactions t where t.project_id = p.id and t.is_sandbox = false and t.revenue_usd > 0 and t.purchased_at > ${since.toISOString()}::timestamptz)
       and not exists (select 1 from ai_insights i where i.project_id = p.id and i.week = ${week})
     order by p.id limit 1`);
   const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { id: string }[];

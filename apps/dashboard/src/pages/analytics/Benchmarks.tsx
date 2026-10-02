@@ -194,7 +194,7 @@ export function BenchmarksPage() {
             {opp && opp.peers && (
               <div className="bm-opp" data-testid="opportunity">
                 <span className="dot" aria-hidden />
-                <span className="t"><b>Your biggest opportunity: {opp.definition.display_name.toLowerCase()}.</b> You are at {fmtValue(opp.value, opp.definition.unit)}; the median app is at {fmtValue(opp.peers.p50, opp.definition.unit)} (about the {ordinal(opp.percentile ?? 50)} percentile).</span>
+                <span className="t"><b>Your biggest opportunity: {opp.definition.display_name.toLowerCase()}.</b> You are at {fmtValue(opp.value, opp.definition.unit)}; the median app is at {fmtValue(opp.peers.p50, opp.definition.unit)}{opp.definition.better === "lower" ? ` (higher than about ${opp.percentile ?? 50}% of apps; lower is better)` : ` (about the ${ordinal(opp.percentile ?? 50)} percentile)`}.</span>
                 {chartHref(pid, opp.definition, b.window) && <Link className="btn btn-line" to={chartHref(pid, opp.definition, b.window)!}>Open the chart</Link>}
                 {ai.data?.available && <button type="button" className="btn btn-dark" onClick={() => askAi(`My ${opp.definition.display_name.toLowerCase()} is ${fmtValue(opp.value, opp.definition.unit)} while the median of similar apps is ${fmtValue(opp.peers!.p50, opp.definition.unit)}. Use get-benchmarks and my charts to suggest how to improve it.`)}><Icon name="spark" />Ask RevenueDot AI</button>}
               </div>

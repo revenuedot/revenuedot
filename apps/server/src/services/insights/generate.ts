@@ -56,7 +56,8 @@ export function extractJson(text: string): unknown {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)?.[1];
   const candidates = [fenced, text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)].filter((x): x is string => !!x && x.trim().startsWith("{"));
   for (const c of candidates) { try { return JSON.parse(c); } catch { /* next */ } }
-  throw new Error("The answer has no JSON object.");
+  const start = text.replace(/\s+/g, " ").trim().slice(0, 120);
+  throw new Error(start ? `The answer has no JSON object (it began: "${start}").` : "The model gave no answer.");
 }
 
 /** Checks a model answer against the pack. Returns the insights, or why they cannot be used. */
@@ -82,7 +83,11 @@ export function validateInsights(text: string, pack: InsightPack): { insights: I
   if (out.length < MIN_INSIGHTS) return { error: `Only ${out.length} recommendations cite items of the data pack; ${MIN_INSIGHTS} to ${MAX_INSIGHTS} are needed, each with metric_ids from the pack.` };
   return { insights: out };
 }
-const oneLine = (s: string, max: number) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t; };
+/** One plain line: markdown links become their text, emphasis marks go, whitespace collapses, and long text is cut. */
+const oneLine = (s: string, max: number) => {
+  const t = s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/(\*\*|__|`)/g, "").replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+};
 
 export function insightInstructions(project: string): string {
   return [
@@ -92,6 +97,8 @@ export function insightInstructions(project: string): string {
     "- Each finding quotes numbers from the pack (with their units) and says what changed or how the project compares. Never invent a number.",
     "- Each recommendation is one concrete action in RevenueDot or the app: for example an experiment on trial length or price, moving ad budget to a campaign with higher revenue per customer, a win-back campaign, Refund Control, a paywall change.",
     "- metric_ids lists the pack ids the insight rests on (at least one, from the pack only).",
+    "- For benchmark_ items, `previous` is the peer median and `standing` says where the project is (top_quarter, above_median, below_median, bottom_quarter, already in the better direction); use it rather than comparing the numbers yourself. lower_is_better marks metrics such as churn and refunds.",
+    "- Plain sentences only: no markdown, no links (the dashboard links each insight to its chart).",
     "- Prefer big changes, gaps to peer medians and campaign differences. If the data is thin, one insight may say what to collect first (for example attribution or more trial data).",
     "- You may call read tools (get-chart, get-attribution-report, get-benchmarks) to look closer; you cannot change anything.",
     'Answer with JSON only, no other text: {"insights":[{"title":"at most 80 characters","finding":"…","recommendation":"…","metric_ids":["…"]}]}',
@@ -163,9 +170,9 @@ export async function generateInsights(deps: Deps, projectId: string, o: Generat
     let result = await ask(ctx, system, messages, tools, usageKey);
     let checked = validateInsights(result, pack);
     if ("error" in checked) {
-      // One repair attempt with the reason.
+      // One repair attempt with the reason, without tools, so the model answers in text.
       messages.push({ role: "assistant", content: result || "(no answer)" }, { role: "user", content: `That answer could not be used: ${checked.error} Answer again with the JSON only.` });
-      result = await ask(ctx, system, messages, tools, usageKey);
+      result = await ask(ctx, system, messages, {}, usageKey);
       checked = validateInsights(result, pack);
     }
     if ("error" in checked) throw new Error(checked.error);
@@ -190,16 +197,26 @@ async function ask(ctx: AssistantContext, system: string, messages: ModelMessage
     messages,
     tools,
     stopWhen: isStepCount(6),
+    // After three steps of looking, the model must write the answer (a model that keeps calling tools would end
+    // without one).
+    prepareStep: ({ stepNumber }: { stepNumber: number }) => (stepNumber >= 3 ? { toolChoice: "none" } : undefined),
     maxOutputTokens: 4096,
     onError: ({ error }: { error: unknown }) => { failure = error; },
     onStepEnd: async (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
       try { await addUsage(db, usageKey, ctx.project.id, ctx.deps.now(), { inputTokens: step.usage?.inputTokens ?? 0, outputTokens: step.usage?.outputTokens ?? 0 }); } catch (e) { console.error("insights usage", e); }
     },
-  } as never) as unknown as { consumeStream(): PromiseLike<void>; text: PromiseLike<string> };
+  } as never) as unknown as { consumeStream(): PromiseLike<void>; steps: PromiseLike<StepLike[]> };
   await result.consumeStream();
   if (failure) throw failure instanceof Error ? failure : new Error(String(failure));
-  return (await result.text) ?? "";
+  // The answer is the last step's text, unless the model wrote its JSON in an earlier step next to a tool call.
+  const steps = await result.steps;
+  const texts = steps.map((x) => x.text ?? "").filter((t) => t.trim());
+  const answer = [...texts].reverse().find((t) => t.includes("{")) ?? texts[texts.length - 1] ?? "";
+  // Logged (never the content) when there is no answer: which step ended how, and how long the reasoning ran.
+  if (!answer.includes("{")) console.warn("insights: no JSON from the model", JSON.stringify(steps.map((x) => ({ finish: x.finishReason, text: x.text?.length ?? 0, reasoning: x.reasoningText?.length ?? 0, tools: x.toolCalls?.length ?? 0, out: x.usage?.outputTokens }))));
+  return answer;
 }
+interface StepLike { text?: string; finishReason?: string; reasoningText?: string; toolCalls?: unknown[]; usage?: { outputTokens?: number } }
 
 /** A ready row of an earlier week stays visible while this week's is written or failed. */
 export async function displayInsights(db: DB, projectId: string, now: Date) {
