@@ -53,7 +53,7 @@ export function DataLocationTab({ org }: { org: Overview }) {
             </table>
           </div>
         )}
-        {org.region_enforced && <div className="pb"><p className="section-sub">A project that already has customers moves between regions through support, so nothing is copied without a plan: email support@revenuedot.app.</p></div>}
+        {org.region_enforced && <div className="pb"><p className="section-sub">A project stays in the region where it was created. To keep a new project in another region, create it on that region's dashboard; to move an existing one, email support@revenuedot.app, who move it with a plan so no purchase is lost.</p></div>}
       </section>
     </div>
   );

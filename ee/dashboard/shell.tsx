@@ -78,7 +78,7 @@ export function OrgShell({ org, title, children }: { org?: Overview; title: stri
         <header className="top">
           <button type="button" className="ib menu-btn" aria-label="Menu" aria-controls="sidebar" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="menu" /></button>
           <nav className="crumb" aria-label="Breadcrumb"><span>{org?.name ?? "Organizations"}</span> <span>/</span> <b>{title}</b></nav>
-          <div className="top-r"><a className="ib" href="https://revenuedot.app/docs/enterprise" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a></div>
+          <div className="top-r"><a className="ib" href="https://revenuedot.app/docs/guides/enterprise" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a></div>
         </header>
         {ent.data && ent.data.mode !== "licensed" && (
           <div className="verify-banner" role="status">

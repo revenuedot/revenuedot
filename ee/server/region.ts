@@ -95,6 +95,6 @@ export function regionGuard(db: DB, cfg: RegionConfig, now: () => Date): Middlew
     const there = cfg.regions[region];
     const message = `This project's data is stored in the ${REGION_NAMES[region]} region${there ? `; use ${sdk ? there.api : there.app}` : ""}. This server does not process it.`;
     if (sdk) return c.json({ code: 7110, message }, 503, { "Retry-After": "60" });
-    return c.json({ object: "error", type: "invalid_request", message, region, ...(there ? { api_url: there.api, app_url: there.app } : {}), doc_url: "https://revenuedot.app/docs/enterprise/data-location", retryable: false }, 421);
+    return c.json({ object: "error", type: "invalid_request", message, region, ...(there ? { api_url: there.api, app_url: there.app } : {}), doc_url: "https://revenuedot.app/docs/guides/data-location", retryable: false }, 421);
   };
 }

@@ -193,7 +193,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Auth (beta)** | Sign users in with Firebase or any OpenID Connect provider (Auth0, Clerk, Supabase, Cognito, Google, Apple): ID tokens verified with the provider's keys, logIn semantics, an access token that reads customer info, attributes and in-app currency balances without a backend, refresh and sign-out, balances by identity for your server, in the RevenueCat SDKs' token-login wire format ([guide](https://revenuedot.app/docs/guides/auth)) | Tier 2 · built, tested with keys generated in the tests; no real Firebase project or provider called yet |
 | **Customers** | Customer lists (all, active, sandbox, non-subscription, expired), saved audiences, filters from the audience builder, summary cards, CSV export ([guide](https://revenuedot.app/docs/guides/customer-lists)) | Tier 1/2 · built and tested |
 | **RevenueDot AI** | An assistant in the dashboard that answers from your own metrics, 43 charts, customers, catalog, experiments and webhook health, and makes small changes (grant access, create products, set the current offering, pause experiments, replay webhooks) only after you approve each one, audited as "RevenueDot AI on behalf of" you. A full-page chat with history, screenshots, `@` mentions and a `.storekit` importer; an Ask bar on the Overview; a read and write / read only / off setting per project; a shareable first-sale card. Its tools have the MCP server's names ([guide](https://revenuedot.app/docs/guides/revenuedot-ai)) | Tier 2 · built, tested with a scripted model; Cloud (Workers AI, Durable Objects) and self-host (your Anthropic or OpenAI key) |
-| **Enterprise** | SSO/SAML, SCIM, audit logs, EU and US data regions, high-availability self-host, SLA | Tier 3 · planned |
+| **Enterprise** (`ee/`, licence key) | **Organizations** that own projects, with owner, admin and member roles and seat counts; **custom roles** built from the 33 API v2 scopes and enforced on every route; **SSO** with SAML 2.0 (SP- and IdP-initiated, signature-wrapping, replay and condition checks) and OpenID Connect, DNS-verified domains, enforced SSO with an owner break-glass and just-in-time accounts; **SCIM 2.0** users and groups (Okta and Entra request forms) mapped to project roles, where deactivation removes access and sessions at once; **data location** per project (US, EU) enforced per Cloud region; **audit retention** from 30 days to 10 years; **signed compliance exports** (audit log and access review, CSV or JSON, Ed25519). Without a licence key the open-source build is unchanged ([spec](prd/enterprise/PRD.md), [guide](https://revenuedot.app/docs/guides/enterprise)) | Tier 3 · built on branch `tier3-ee` · 113 unit tests, 33 browser tests on Railway Postgres with a local test identity provider; no EU Cloud region yet. High-availability self-host and SLA: planned |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/paywalls-editor-dark.png">
@@ -351,7 +351,7 @@ revenuedot/
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
 - **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
-- **Tier 3 · enterprise:** SSO, SCIM, data regions, high-availability self-host, SLA, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
+- **Tier 3 · enterprise:** organizations, custom roles, SSO (SAML and OpenID Connect), SCIM, data location, audit retention and signed compliance exports are built in `ee/`; still planned: high-availability self-host, an SLA, an EU Cloud region, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
 
@@ -361,6 +361,11 @@ Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/S
 </picture>
 
 <p><img alt="A public RevenueDot Verified Metrics page: MRR, revenue, active subscriptions and active trials with 28-day sparklines" src="docs/assets/settings/verified-page.png" width="100%"></p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/enterprise/sso-tab-dark.png">
+  <img alt="RevenueDot Enterprise, Organization settings, Single sign-on: a SAML connection that is on, a verified email domain, and the switch that requires single sign-on" src="docs/assets/enterprise/sso-tab.png" width="100%">
+</picture>
 
 ## FAQ
 
@@ -474,7 +479,22 @@ To your support email, with the customer's subscription details and Reply-To set
 
 <details><summary><b>How much does RevenueDot cost?</b></summary>
 
-Self-hosting is free. RevenueDot Cloud is live with a free plan on every account; paid plans have not shipped. Enterprise licenses cover SSO, audit logs, data regions and support.
+Self-hosting is free. RevenueDot Cloud is live with a free plan on every account; paid plans have not shipped. Enterprise licenses cover SSO, SCIM, custom roles, organizations, data location, audit retention, compliance exports and support.
+</details>
+
+<details><summary><b>Does RevenueDot support SAML single sign-on and SCIM provisioning?</b></summary>
+
+Yes, with an Enterprise licence. Connect Okta, Microsoft Entra ID, Google Workspace or any SAML 2.0 or OpenID Connect provider, verify your email domain with a DNS TXT record, and optionally require single sign-on for that domain (owners keep a password for emergencies). SCIM 2.0 creates, updates and deactivates people from your identity provider and maps its groups to project roles; deactivating someone removes their access and signs them out at once. RevenueCat offers SSO and SCIM on its Enterprise plan through WorkOS ([RevenueCat SSO](https://www.revenuecat.com/docs/projects/sso)). See [Single sign-on](https://revenuedot.app/docs/guides/single-sign-on) and [SCIM](https://revenuedot.app/docs/guides/scim).
+</details>
+
+<details><summary><b>Can I create custom roles, for example a support agent who can refund but not edit the catalog?</b></summary>
+
+Yes, with an Enterprise licence. A custom role is any set of the 33 API v2 permission scopes, for one project or every project of an organization, and the server checks it on every request, from the dashboard, RevenueDot AI and the API alike. RevenueCat has six fixed roles ([collaborators](https://www.revenuecat.com/docs/projects/collaborators)). See [Enterprise](https://revenuedot.app/docs/guides/enterprise).
+</details>
+
+<details><summary><b>Can I keep my customers' purchase data in the EU?</b></summary>
+
+Self-hosted: yes, it stays wherever you run RevenueDot and its Postgres. RevenueDot Cloud records a region on each project and refuses requests that reach the wrong region, but it runs in the US today; an EU region is planned ([data location](https://revenuedot.app/docs/guides/data-location)). RevenueCat stores all data in the US ([DPA](https://www.revenuecat.com/dpa)).
 </details>
 
 <details><summary><b>Is it safe to validate purchases on my own server?</b></summary>

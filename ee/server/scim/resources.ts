@@ -11,7 +11,7 @@ export const ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error";
 export const SPC_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig";
 export const RT_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType";
 export const SCHEMA_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Schema";
-export const DOCS = "https://revenuedot.app/docs/enterprise/scim";
+export const DOCS = "https://revenuedot.app/docs/guides/scim";
 export const MAX_RESULTS = 200;
 
 export type ScimType = "uniqueness" | "invalidFilter" | "invalidValue" | "invalidSyntax" | "invalidPath" | "noTarget" | "mutability" | "tooMany";
