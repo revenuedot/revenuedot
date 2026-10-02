@@ -8,6 +8,7 @@ import type { DB } from "./index.js";
  * connection, without PGlite, migrations or node:fs. Migrations run from Node before a deploy (`scripts/migrate.ts`).
  */
 export { schema };
+export { LOCK_KEYS } from "./locks.js";
 export type { DB };
 
 /** One short-lived connection pool per request, as Cloudflare recommends with Hyperdrive (Hyperdrive does the pooling). */

@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0027_delivery_attempts";
+export const ARCHIVE_SCHEMA = "0028_attribution_benchmarks_insights";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -32,7 +32,8 @@ export interface ArchiveTable {
 }
 
 export const ARCHIVE_TABLES: ArchiveTable[] = [
-  { name: "projects", scope: { project: "id" }, local: ["owner_user_id", "move_state", "moved_to_url", "move_updated_at", "moved_in_at", "moved_in_from"] },
+  // Benchmark sharing is consent given on one server (RevenueDot Cloud): a moved project starts not sharing.
+  { name: "projects", scope: { project: "id" }, local: ["owner_user_id", "move_state", "moved_to_url", "move_updated_at", "moved_in_at", "moved_in_from", "benchmarks_share", "benchmarks_category", "benchmarks_shared_at"] },
   { name: "apps", scope: { project: "project_id" }, secrets: { credentials: { empty: {} }, secrets: { empty: null, sealed: true }, secret_hints: { empty: {} } } },
   { name: "api_keys", scope: { project: "project_id" } },
   { name: "products", scope: { project: "project_id" } },
@@ -44,6 +45,7 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
   { name: "customers", scope: { project: "project_id" } },
   { name: "customer_aliases", scope: { project: "project_id" } },
   { name: "customer_attributes", scope: { via: "customer_id", parent: "customers" } },
+  { name: "customer_attribution", scope: { project: "project_id" } },
   { name: "subscriptions", scope: { project: "project_id" } },
   { name: "non_subscriptions", scope: { project: "project_id" } },
   { name: "transactions", scope: { project: "project_id" } },
@@ -137,6 +139,10 @@ export const NOT_EXPORTED: Record<string, string> = {
   billing_invoices: "RevenueDot Cloud billing is per account and server.",
   billing_notices: "RevenueDot Cloud billing is per account and server.",
   recovery_portal_links: "One-time payment links that last 30 minutes.",
+  benchmark_project_values: "Benchmarks are computed on RevenueDot Cloud from projects that share there; rebuilt nightly.",
+  benchmark_aggregates: "Peer percentiles across projects, not one project's data.",
+  benchmark_runs: "Runs of this server's nightly benchmark job.",
+  ai_insights: "This week's growth insights are written again by the target (they are a cache of the project's numbers).",
 };
 
 export interface TableInfo extends ArchiveTable {

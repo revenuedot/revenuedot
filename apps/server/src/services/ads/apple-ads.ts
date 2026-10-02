@@ -2,6 +2,7 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { guardedFetch, OutboundRefused } from "../outbound.js";
 import { unseal, type SecretKey } from "../secrets.js";
+import { resyncAppleAdsNames } from "../../repo/attribution.js";
 
 /**
  * Apple Search Ads (prd/integrations/PRD.md, "Apple Search Ads"). Attribution needs no setup: the SDK's AdServices token
@@ -96,6 +97,8 @@ export async function syncAppleAdsNames(d: { db: DB; fetch: typeof fetch; now: (
       for (const g of (groups?.data ?? []) as { id?: number; name?: string }[]) if (g.id !== undefined && g.name) adGroups[String(g.id)] = g.name;
     }
     await d.db.update(I).set({ settings: { ...row.settings, names: { campaigns, ad_groups: adGroups }, last_sync_at: now.getTime(), last_sync_error: null }, lastError: null, consecutiveFailures: 0, lastDeliveredAt: now }).where(eq(I.id, row.id));
+    // Customers attributed to these campaigns now carry the names (customer_attribution, charts, audiences).
+    await resyncAppleAdsNames(d.db, projectId, now);
     return Object.keys(campaigns).length;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

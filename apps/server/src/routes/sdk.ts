@@ -217,7 +217,7 @@ export function sdkRoutes(deps: Deps) {
       trialDuration: typeof b.trial_duration === "string" ? b.trial_duration : null, introDuration: typeof b.intro_duration === "string" ? b.intro_duration : null,
     };
     let { customer, created } = await getOrCreateCustomer(deps.db, app.projectId, appUserId, now);
-    if (b.attributes) await setAttributes(deps.db, customer.id, resolveDeviceAttributes(b.attributes, c), now);
+    if (b.attributes) await setAttributes(deps.db, customer.id, resolveDeviceAttributes(b.attributes, c), now, { attributionOnce: true });
     // iOS sends the AdServices token with the first receipt when attribution collection is on.
     if (typeof b.aad_attribution_token === "string" && b.aad_attribution_token) {
       const id = customer.id, token = b.aad_attribution_token;
@@ -339,7 +339,7 @@ export function sdkRoutes(deps: Deps) {
     const attrs = resolveDeviceAttributes(b.attributes ?? {}, c);
     const errors = Object.keys(attrs).filter((k) => k === "$email" && attrs[k]?.value && !/^\S+@\S+\.\S+$/.test(String(attrs[k].value)))
       .map((k) => ({ key_name: k, message: "Email address is not a valid email." }));
-    await setAttributes(deps.db, customer.id, Object.fromEntries(Object.entries(attrs).filter(([k]) => !errors.some((e) => e.key_name === k))) as any, now);
+    await setAttributes(deps.db, customer.id, Object.fromEntries(Object.entries(attrs).filter(([k]) => !errors.some((e) => e.key_name === k))) as any, now, { attributionOnce: true });
     if (errors.length) throw new RCError(400, Codes.INVALID_SUBSCRIBER_ATTRIBUTES, "Some subscriber attributes keys were unable to be saved.", { attribute_errors: errors });
     return c.json({});
   });

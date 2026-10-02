@@ -13,7 +13,7 @@
  * - Currency is USD only (the API refuses other currencies rather than mislabel them).
  */
 import { useEffect, useMemo, useState } from "react";
-import { AskBar, FirstSaleCard } from "./ai/OverviewBits";
+import { AskBar, FirstSaleCard, GrowthInsights } from "./ai/OverviewBits";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell, useMe } from "../components/Shell";
@@ -572,6 +572,7 @@ export function Overview() {
                   </div>
                 )}
                 <MetricGrid pid={pid} env={env} period={period} />
+                <GrowthInsights pid={pid} />
               </>
             )}
 

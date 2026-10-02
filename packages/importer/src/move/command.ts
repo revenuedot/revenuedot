@@ -12,6 +12,11 @@ export interface MoveIO {
   prompt?: Prompt; http?: HttpOptions; isTTY?: boolean;
   /** Tests: no real waiting. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Tests: the clock `--finish` reads while it waits for the pause to reach every server process. A `sleep` that
+   * returns at once needs a clock it moves, or the wait would spin on the real clock for 10 seconds.
+   */
+  now?: () => number;
   /** Tests: reads an archive file. */
   readFile?: (path: string) => Uint8Array;
 }
@@ -91,7 +96,7 @@ export async function moveCommand(v: MoveOptions, io: MoveIO): Promise<number> {
   if (mode === "finish") log(`Finishing the move: writes on ${source.label} pause (the SDKs and the stores retry them), the project is copied again and verified, goes live on ${target.url}, and ${source.label} forwards everything there.`);
   try {
     for (;;) {
-      const r = await runMove({ source, target, passphrase, replace: v.replace, log, progress, save }, s);
+      const r = await runMove({ source, target, passphrase, replace: v.replace, log, progress, save, now: io.now }, s);
       if (r === "done") break;
       if (r === "waiting") { progress("Waiting 10 seconds for every server process to see the pause…"); await sleep(1000); }
     }

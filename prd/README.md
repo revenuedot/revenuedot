@@ -43,3 +43,4 @@ Each PRD is short and has the same sections: users and jobs, essential now and l
 | Scope | Feature | PRD |
 |---|---|---|
 | Tier 3 | Web billing: web providers, hosted checkout, purchase links, redemption links, funnels, web discounts, domains | [web-billing](web-billing/PRD.md) |
+| Tier 3 | Attribution, benchmarks (Cloud only, anonymized) and AI growth insights | [attribution-benchmarks-insights](attribution-benchmarks-insights/PRD.md) |

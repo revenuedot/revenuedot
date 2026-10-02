@@ -11,6 +11,8 @@ export interface AssistantActor {
   email: string;
   projectId: string;
   conversationId: string;
+  /** AI growth insights: reads only. The API refuses any other method from this actor, whatever the project allows. */
+  readOnly?: boolean;
   /** The dashboard session the turn came from, for access checks bound to it (an organization that requires SSO). */
   sessionId?: string | null;
 }
