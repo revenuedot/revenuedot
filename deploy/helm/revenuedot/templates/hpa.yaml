@@ -1,0 +1,43 @@
+{{- if .Values.autoscaling.enabled }}
+{{- if lt (int .Values.autoscaling.minReplicas) 2 }}
+{{- fail "autoscaling.minReplicas must be at least 2 for high availability (set autoscaling.enabled=false and replicaCount=1 for a single replica)." }}
+{{- end }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "revenuedot.fullname" . }}
+  labels:
+    {{- include "revenuedot.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "revenuedot.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    {{- with .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- with .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+  behavior:
+    scaleDown:
+      # Slow to shrink: one pod every 2 minutes after 5 quiet minutes.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+{{- end }}

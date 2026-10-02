@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and edit. Never commit terraform.tfvars or the state: they hold secrets.
+name            = "revenuedot"
+region          = "us-east-1"
+domain_name     = "revenuedot.example.com"
+route53_zone_id = "Z0123456789ABCDEFGHIJ"
+image           = "123456789012.dkr.ecr.us-east-1.amazonaws.com/revenuedot:0.1.0"
+alarm_email     = "oncall@example.com"
+
+# Optional
+# environment = { REVENUEDOT_MAIL_FROM = "RevenueDot <no-reply@example.com>" }
+# secret_arns = {
+#   REVENUEDOT_SMTP_URL    = "arn:aws:secretsmanager:us-east-1:123456789012:secret:revenuedot/smtp-url-AbCdEf"
+#   REVENUEDOT_SIGNING_KEY = "arn:aws:secretsmanager:us-east-1:123456789012:secret:revenuedot/signing-key-AbCdEf"
+# }

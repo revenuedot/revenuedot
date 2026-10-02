@@ -1,0 +1,70 @@
+{{- if eq (include "revenuedot.migrationMode" .) "job" }}
+# Runs pending migrations once before install and before every upgrade; the replicas then start with
+# REVENUEDOT_MIGRATE=skip. It takes the same advisory lock as a replica migrating on start, so a manual run cannot collide.
+# Migrations must keep the previous version working (add, then remove in a later release): old replicas keep serving
+# until the rollout replaces them.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "revenuedot.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "revenuedot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "revenuedot.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "revenuedot.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "--import", "tsx", "src/migrate.node.ts"]
+          env:
+            {{- include "revenuedot.databaseEnv" . | nindent 12 }}
+            {{- /* The chart's ConfigMap does not exist yet at pre-install, so env values go in directly. */}}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | toString | quote }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
