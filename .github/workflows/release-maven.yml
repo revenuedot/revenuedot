@@ -42,5 +42,6 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_SIGNING_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSWORD }}
           TAG: ${{ inputs.tag }}
-        # The release version is the tag without its -revenuedot suffix.
-        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache -PVERSION_NAME="${TAG%-revenuedot}"
+        # The release version is the tag without its -revenuedot suffix. The forks' gradle.properties say
+        # RELEASE_SIGNING_ENABLED=false, and Central rejects unsigned uploads after Gradle reports success.
+        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache -PVERSION_NAME="${TAG%-revenuedot}" -PRELEASE_SIGNING_ENABLED=true
