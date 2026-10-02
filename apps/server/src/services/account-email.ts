@@ -27,10 +27,20 @@ export function linkBase(deps: Pick<Deps, "publicUrl">, requestOrigin?: string):
   return (deps.publicUrl ?? requestOrigin ?? lastOrigin ?? "http://localhost:8787").replace(/\/+$/, "");
 }
 
-/** The origin the browser used, behind a proxy too (X-Forwarded-Host / -Proto). */
+/** Loopback hosts (`localhost:5615`, `127.0.0.1`, `[::1]`, `*.localhost`): local development, never behind TLS. */
+const LOOPBACK = /^(localhost|[^:/]+\.localhost|127(\.\d{1,3}){3}|\[::1\])(:\d+)?$/i;
+
+/**
+ * The origin the browser used, behind a proxy too (X-Forwarded-Host / -Proto, first value of each). A proxy that sends
+ * X-Forwarded-Host without X-Forwarded-Proto is taken to terminate TLS (https), unless the host is a loopback one on a
+ * plain-http request: local dev (`cf dev`) then keeps http instead of handing out https links that cannot load.
+ */
 export function requestOrigin(url: string, header: (n: string) => string | undefined): string {
-  const host = header("x-forwarded-host");
-  return host ? `${header("x-forwarded-proto") ?? "https"}://${host}` : new URL(url).origin;
+  const host = header("x-forwarded-host")?.split(",")[0]!.trim();
+  if (!host) return new URL(url).origin;
+  const fwdProto = header("x-forwarded-proto")?.split(",")[0]!.trim().toLowerCase();
+  const proto = fwdProto || (new URL(url).protocol === "http:" && LOOPBACK.test(host) ? "http" : "https");
+  return `${proto === "http" ? "http" : "https"}://${host}`;
 }
 
 export async function issueToken(db: DB, kind: TokenKind, user: { id: string; email: string }, now: Date): Promise<string> {

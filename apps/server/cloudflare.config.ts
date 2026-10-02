@@ -35,16 +35,21 @@ export default defineConfig({
       // Base64 Ed25519 seed for response signing (Trusted Entitlements). Set by scripts/deploy-cloud.sh from
       // ~/.config/revenuedot/signing-root.key; locally from apps/server/.dev.vars (gitignored).
       REVENUEDOT_SIGNING_KEY: bindings.secret(),
-      // Cloudflare Email Sending: password resets, verification, invites and alerts (prd/account-email/PRD.md). The
-      // sending domain mail.revenuedot.app is onboarded on the Circo account; the binding may only send as no-reply@.
-      // `cf dev` simulates it (emails are logged) unless REVENUEDOT_EMAIL_REMOTE=1, which sends real email.
       // Workers AI for "Generate with AI" on paywalls (prd/paywalls/PRD.md §3). No API key; billed to the Circo account.
-      AI: bindings.ai(),
+      // `dev.remote`: Workers AI has no local simulation, so `cf dev` calls the real model (billed to the account).
+      AI: bindings.ai({ dev: { remote: true } }),
       // RevenueDot AI conversations (prd/ai-assistant/PRD.md); the model is Workers AI through `AI` unless a provider key
       // (ANTHROPIC_API_KEY or OPENAI_API_KEY) is set as a secret.
       AssistantAgent: bindings.durableObject({ worker: "revenuedot", exportName: "AssistantAgent" }),
       // Local `cf dev` only: REVENUEDOT_ASSISTANT_FAKE=1 in the shell answers with the scripted fake model (no model call).
       ...(process.env.REVENUEDOT_ASSISTANT_FAKE === "1" ? { REVENUEDOT_ASSISTANT_FAKE: bindings.text("1") } : {}),
+      // Local `cf dev` only: REVENUEDOT_API_URL / REVENUEDOT_PUBLIC_URL in the shell (e.g. http://localhost:5615) make SDK
+      // snippets, asset, pay and email links point at the local server instead of api. and app.revenuedot.app.
+      ...(process.env.REVENUEDOT_API_URL ? { REVENUEDOT_API_URL: bindings.text(process.env.REVENUEDOT_API_URL) } : {}),
+      ...(process.env.REVENUEDOT_PUBLIC_URL ? { REVENUEDOT_PUBLIC_URL: bindings.text(process.env.REVENUEDOT_PUBLIC_URL) } : {}),
+      // Cloudflare Email Sending: password resets, verification, invites and alerts (prd/account-email/PRD.md). The
+      // sending domain mail.revenuedot.app is onboarded on the Circo account; the binding may only send as no-reply@.
+      // `cf dev` simulates it (emails are logged) unless REVENUEDOT_EMAIL_REMOTE=1, which sends real email.
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
     },
   },

@@ -115,7 +115,9 @@ for (const file of htmlFiles) {
         if (!node.mainEntity?.length) fail(route, "FAQPage without questions");
         for (const q of node.mainEntity ?? []) if (q["@type"] !== "Question" || !q.name || q.acceptedAnswer?.["@type"] !== "Answer" || !q.acceptedAnswer.text) fail(route, `bad FAQ entry: ${q.name}`);
         // Every FAQ question in JSON-LD must also be visible on the page.
-        for (const q of node.mainEntity ?? []) if (!html.includes(`<summary>${q.name.replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/"/g, "&quot;")}</summary>`) && !html.includes(`<summary>${q.name}</summary>`)) fail(route, `FAQ question not visible: ${q.name}`);
+        // Site FAQs render as <summary>; blog FAQs are "### Question" headings.
+        const headings = [...html.matchAll(/<h[2-4][^>]*>([\s\S]*?)<\/h[2-4]>/g)].map((m) => m[1].replace(/<[^>]+>/g, "").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/#$/, "").trim());
+        for (const q of node.mainEntity ?? []) if (!html.includes(`<summary>${q.name.replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/"/g, "&quot;")}</summary>`) && !html.includes(`<summary>${q.name}</summary>`) && !headings.includes(q.name)) fail(route, `FAQ question not visible: ${q.name}`);
       }
       if (node["@type"] === "BreadcrumbList") {
         node.itemListElement.forEach((it, i) => {

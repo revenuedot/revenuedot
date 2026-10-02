@@ -11,6 +11,7 @@ import { CHARTS_B } from "./charts-b";
 import { COMPARE, ALTERNATIVE_PAGE } from "./compare";
 import { ALTERNATIVES, ALTERNATIVES_INTRO } from "./alternatives";
 import { GLOSSARY } from "./glossary";
+import { ERRORS } from "./errors";
 import { CHARTS as CATALOG, GROUPS, type ChartDef } from "../../../../packages/core/src/charts/catalog";
 
 export { ALTERNATIVE_PAGE, ALTERNATIVES, ALTERNATIVES_INTRO, GROUPS };
@@ -67,6 +68,7 @@ const STATIC: Record<string, Entry> = {
   "/charts": { title: "Subscription charts", card: "All 43 subscription charts, from MRR to trial conversion, defined and explained.", label: "Hub" },
   "/compare": { title: "Comparisons", card: "RevenueDot next to RevenueCat, Adapty, Superwall, Qonversion and Apphud.", label: "Hub" },
   "/features": { title: "Features", card: "Everything RevenueDot does, from receipts to paywalls and web checkout.", label: "Hub" },
+  "/errors": { title: "RevenueCat SDK error codes", card: "Every SDK error code with causes, fixes and how to handle it in code.", label: "Hub" },
   "/glossary": { title: "Subscription app glossary", card: "In-app purchase and subscription terms explained, with Apple's and Google's sources.", label: "Hub" },
   "/tools": { title: "Free tools", card: "Free calculators for RevenueCat fees, store commission and subscription revenue.", label: "Hub" },
 };
@@ -82,6 +84,8 @@ export function entry(path: string): Entry | undefined {
   if (c) return { title: c.def.display_name, card: c.answer.split(". ")[0] + ".", label: "Chart" };
   const g = GLOSSARY.find((x) => `/glossary/${x.slug}` === path);
   if (g) return { title: g.term, card: g.short, label: "Glossary" };
+  const er = ERRORS.find((x) => `/errors/${x.slug}` === path);
+  if (er) return { title: er.swift, card: er.name, label: `SDK error ${er.code}` };
   const v = COMPARISONS.find((x) => comparePath(x) === path);
   if (v) return { title: v.columns.slice(0, 2).join(" vs "), card: v.card, label: "Comparison" };
   return undefined;
@@ -106,5 +110,6 @@ export function seoPaths(): { path: string; title: string; card: string }[] {
     ...CHART_PAGES.map((c) => ({ path: chartPath(c), title: c.title, card: c.answer })),
     ...COMPARISONS.map((c) => ({ path: comparePath(c), title: c.title, card: c.card })),
     ...GLOSSARY.map((g) => ({ path: `/glossary/${g.slug}`, title: g.term, card: g.short })),
+    ...ERRORS.map((e) => ({ path: `/errors/${e.slug}`, title: `${e.swift} (code ${e.code})`, card: e.name })),
   ];
 }

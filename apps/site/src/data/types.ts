@@ -154,3 +154,32 @@ export type Alternative = {
   /** Our own comparison page, if any. */
   compare?: string;
 };
+
+/** /errors/x: one RevenueCat SDK error code (PurchasesErrorCode), explained for apps on RevenueDot or RevenueCat. */
+export type ErrorPage = {
+  /** The numeric code, e.g. 7. */
+  code: number;
+  slug: string;
+  /** Swift case name, e.g. "receiptAlreadyInUseError". */
+  swift: string;
+  /** Kotlin enum name, e.g. "RECEIPT_ALREADY_IN_USE_ERROR" or as the Android SDK spells it. */
+  android: string;
+  /** Short human name, e.g. "Receipt already in use". */
+  name: string;
+  metaTitle: string;
+  metaDescription: string;
+  /** 40 to 70 words: what the error means and the most common fix. */
+  answer: string;
+  /** When the SDK raises it, from the SDK source: which StoreKit/Play errors or backend codes map to it. */
+  causes: string[];
+  /** Ordered fixes. */
+  fixes: Step[];
+  /** Is it safe to retry, should the user see a message, should the app grant access? */
+  handling: string[];
+  /** Backend error codes (7xxx) that map to this error, with what they mean, when relevant. */
+  backend?: { code: number; meaning: string }[];
+  /** How RevenueDot's server behaves for this case (only what the code does). */
+  revenuedot?: string;
+  faq: Faq[];
+  related: string[];
+};

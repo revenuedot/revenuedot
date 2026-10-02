@@ -6,6 +6,7 @@ import { publicPage, type PublicMetric, type PublicPage } from "../services/veri
 import { Raster, encodePng, hex } from "../services/og-png.js";
 import { sha256Hex } from "../services/auth.js";
 import { b64decode } from "../services/paywalls.js";
+import { requestOrigin } from "../services/account-email.js";
 
 /**
  * Public Verified Metrics pages (prd/project-settings §4), on the API host:
@@ -126,8 +127,7 @@ export function verifiedRoutes(deps: Deps) {
   const notFound = (c: Context) => c.json({ object: "error", type: "resource_missing", message: "This verified metrics page does not exist or is not published." }, 404, { "cache-control": "no-store" });
   const originOf = (c: Context) => {
     if (deps.apiUrl) return deps.apiUrl.replace(/\/+$/, "");
-    const fwd = c.req.header("x-forwarded-host");
-    return fwd ? `${c.req.header("x-forwarded-proto") ?? "https"}://${fwd}` : new URL(c.req.url).origin;
+    return requestOrigin(c.req.url, (n) => c.req.header(n));
   };
 
   /**

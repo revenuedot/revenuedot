@@ -154,7 +154,7 @@ export function Shell({ title, crumbs, children, actions, projectId: pinned }: {
               <Icon name="search" /><input aria-label="Search customers" placeholder="Search customers, transactions, IDs" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>⌘K</kbd>
             </form>
             <NavLink className={({ isActive }) => `ib ai-top${isActive ? " on" : ""}`} to={`${base}/ai`} aria-label="RevenueDot AI" title="RevenueDot AI"><Icon name="spark" /></NavLink>
-            <a className="ib" href="https://github.com/revenuedot/revenuedot#readme" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a>
+            <a className="ib" href="https://revenuedot.app/docs" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a>
             <button className="ib" type="button" aria-label="Toggle light and dark" onClick={toggleTheme}><Icon name="moon" /></button>
             {actions}
           </div>

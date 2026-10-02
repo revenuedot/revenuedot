@@ -34,6 +34,23 @@ async function grantedConversation(s: Awaited<ReturnType<typeof assistantServer>
 const grants = async (s: Awaited<ReturnType<typeof assistantServer>>) =>
   (await s.db.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.projectId, s.pid), eq(schema.auditLogs.actionType, "customer_grant_entitlement")))).length;
 
+describe("approval requests on RevenueDot Cloud", () => {
+  it("are held until their step ends, so a read tool in the same step is saved finished", async () => {
+    const chunks = [
+      { type: "start" }, { type: "start-step" },
+      { type: "tool-input-available", toolCallId: "read", toolName: "get-customer", input: {} },
+      { type: "tool-input-available", toolCallId: "write", toolName: "grant-customer-entitlement", input: {} },
+      { type: "tool-approval-request", toolCallId: "write", approvalId: "ap1", signature: "sig" },
+      { type: "tool-output-available", toolCallId: "read", output: {} },
+      { type: "finish-step" }, { type: "finish" },
+    ] as unknown as UIMessageChunk[];
+    const saved: string[] = [];
+    const out = await drain(captureApprovalSignatures(new ReadableStream({ start(c) { chunks.forEach((x) => c.enqueue(x)); c.close(); } }), async (id, a) => { saved.push(`${id}:${a.approvalId}`); }));
+    expect(saved).toEqual(["write:ap1"]);
+    expect(out.map((c) => c.type)).toEqual(["start", "start-step", "tool-input-available", "tool-input-available", "tool-output-available", "tool-approval-request", "finish-step", "finish"]);
+  });
+});
+
 describe("an approval runs once", () => {
   it("two tabs sending the same approval at once: the write runs once", async () => {
     const s = await assistantServer();

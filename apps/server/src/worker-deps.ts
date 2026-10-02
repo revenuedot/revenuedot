@@ -29,6 +29,8 @@ export interface Env {
   EMAIL?: SendEmailBinding;
   /** Dashboard origin for links in emails; defaults to https://app.revenuedot.app. */
   REVENUEDOT_PUBLIC_URL?: string;
+  /** The API host apps call; defaults to https://api.revenuedot.app. Local `cf dev` sets it to its own origin. */
+  REVENUEDOT_API_URL?: string;
   /** Optional secret: base64 of 32 bytes that seals integration and export credentials. Unset: derived from the signing key. */
   REVENUEDOT_ENCRYPTION_KEY?: string;
   /** Workers AI, for "Generate with AI" on paywalls. No key needed. */
@@ -86,9 +88,9 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   publicUrl: publicUrlFor(env),
   ai: env.AI ? workersAiModel(env.AI) : undefined,
   // Apps reach the API host; paywall images and icons are served from it.
-  apiUrl: "https://api.revenuedot.app",
+  apiUrl: env.REVENUEDOT_API_URL || "https://api.revenuedot.app",
   googleOAuth: googleOAuthFor(env),
-  payUrl: env.REVENUEDOT_PAY_URL || "https://api.revenuedot.app/pay",
+  payUrl: env.REVENUEDOT_PAY_URL || `${env.REVENUEDOT_API_URL || "https://api.revenuedot.app"}/pay`,
   customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
   // RevenueDot AI: a provider key set as a secret wins; otherwise Workers AI (Kimi K2.6). Conversations run in Durable Objects.
   assistant: env.REVENUEDOT_ASSISTANT_FAKE === "1" ? fakeAssistantModel(undefined, { delayMs: 20 })
