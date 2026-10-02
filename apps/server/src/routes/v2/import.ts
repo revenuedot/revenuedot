@@ -8,7 +8,7 @@ import type { Deps } from "../../context.js";
 import { NEEDS_TOKEN } from "../../services/imported-chains.js";
 import { googleClientFor, purchaseTokensForOrders } from "../../stores/google/index.js";
 import { baseOrderId } from "../../stores/google/map.js";
-import { AppStoreServerApi, appleCredentials } from "../../stores/apple/api.js";
+import { AppStoreServerApi, AppleApiClientError, AppleRateLimitError, appleCredentials, type AppleEnv } from "../../stores/apple/api.js";
 import { expectedBundleId, verifyTransactionJws, xcodeRootsOf } from "../../stores/apple/index.js";
 import { body, conflict, notFound, paramError, scope, type V2Router } from "./common.js";
 import { importPage, type KeyInfo } from "./import-page.js";
@@ -189,7 +189,15 @@ export function importRoutes(r: V2Router, deps: Deps) {
   });
 }
 
-const APPLE_LOOKUPS_IN_FLIGHT = 6;
+/**
+ * Apple lookups per page: 4 at a time, starting at most every 25 ms (40 a second at most). A Worker request keeps at
+ * most 6 connections open and Postgres holds one or more, so more in flight only queue; the spacing keeps a large page
+ * from bursting into Apple's rate limit.
+ */
+const APPLE_LOOKUPS_IN_FLIGHT = 4;
+const APPLE_LOOKUP_SPACING_MS = 25;
+/** On HTTP 429, wait as Retry-After asks (up to 5 s, twice) before giving up on the lookup. */
+const APPLE_RATE_LIMIT = { retries: 2, maxWaitMs: 5_000 };
 const chainOriginal = (s: ImportSub) => s.original_transaction_id ?? [...(s.transactions ?? [])].sort((a, b) => a.purchased_at - b.purchased_at)[0]?.id ?? null;
 
 /**
@@ -199,23 +207,14 @@ const chainOriginal = (s: ImportSub) => s.original_transaction_id ?? [...(s.tran
 async function resolveStoreKeys(deps: Deps, apps: Map<string, AppRec>, customers: ImportCustomer[], resolve: boolean): Promise<Map<ImportSub, KeyInfo>> {
   const out = new Map<ImportSub, KeyInfo>();
   const googleByApp = new Map<string, ImportSub[]>();
-  const appleLookups: (() => Promise<void>)[] = [];
+  const appleLookups: { s: ImportSub; app: AppRec }[] = [];
   for (const cu of customers) for (const s of cu.subscriptions ?? []) {
     if (isApple(s.store)) {
       const original = chainOriginal(s) ?? s.store_subscription_identifier;
       const confirmed = !!s.original_transaction_id_confirmed;
       out.set(s, { key: original, placeholder: null, original: confirmed ? original : null });
       const app = s.app_id ? apps.get(s.app_id) : undefined;
-      if (resolve && !confirmed && app) {
-        appleLookups.push(async () => {
-          try {
-            const fromApple = await appleOriginal(deps, app, s.store_subscription_identifier, s.environment);
-            if (fromApple) out.set(s, { key: fromApple, placeholder: null, original: fromApple });
-          } catch (e) {
-            out.get(s)!.note = `Apple lookup failed for ${s.store_subscription_identifier}: ${e instanceof Error ? e.message : e}`;
-          }
-        });
-      }
+      if (resolve && !confirmed && app) appleLookups.push({ s, app });
     } else if (s.store === "play_store") {
       const original = s.original_transaction_id ?? baseOrderId(s.store_subscription_identifier);
       const placeholder = `${NEEDS_TOKEN}${original}`;
@@ -228,11 +227,7 @@ async function resolveStoreKeys(deps: Deps, apps: Map<string, AppRec>, customers
       out.set(s, { key: s.store_subscription_identifier, placeholder: null, original: s.original_transaction_id ?? s.store_subscription_identifier });
     }
   }
-  // Apple lookups run a few at a time (one HTTP call each), not one after another.
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(APPLE_LOOKUPS_IN_FLIGHT, appleLookups.length) }, async () => {
-    while (next < appleLookups.length) await appleLookups[next++]!();
-  }));
+  await resolveAppleOriginals(deps, appleLookups, out);
   if (resolve) {
     for (const [appId, subs] of googleByApp) {
       const app = apps.get(appId)!;
@@ -257,12 +252,62 @@ const hasGoogleCredentials = (app: AppRec) => {
   return !!(cr.play_service_account_credentials_json || cr.service_account);
 };
 
-/** Apple's original_transaction_id for any transaction of a chain (Get Transaction Info), or null without credentials. */
-async function appleOriginal(deps: Deps, app: AppRec, transactionId: string, env: "production" | "sandbox"): Promise<string | null> {
-  const creds = appleCredentials(app);
-  if (!creds) return null;
-  const api = new AppStoreServerApi(creds, deps.fetch ?? fetch, deps.now);
-  const res = await api.get<{ signedTransactionInfo?: string }>(env, `/inApps/v1/transactions/${encodeURIComponent(transactionId)}`);
+/**
+ * Confirms each Apple chain's original_transaction_id with Get Transaction Info. A chain that cannot be confirmed keeps
+ * its guessed key and gets a note; running the import again retries it (pages are idempotent).
+ */
+async function resolveAppleOriginals(deps: Deps, lookups: { s: ImportSub; app: AppRec }[], out: Map<ImportSub, KeyInfo>) {
+  // One client (one signed token) per app for the page.
+  const clients = new Map<string, AppStoreServerApi | null>();
+  const clientFor = (app: AppRec) => {
+    if (!clients.has(app.id)) {
+      const creds = appleCredentials(app);
+      // Wrapped: Workers' global fetch must not be called as a method of another object.
+      const f = deps.fetch ?? ((u: string, i?: RequestInit) => fetch(u, i));
+      clients.set(app.id, creds ? new AppStoreServerApi(creds, f, deps.now, APPLE_RATE_LIMIT) : null);
+    }
+    return clients.get(app.id)!;
+  };
+  let rateLimited: AppleRateLimitError | null = null;
+  let next = 0;
+  let lastStart = 0;
+  const one = async ({ s, app }: { s: ImportSub; app: AppRec }) => {
+    const k = out.get(s)!;
+    const id = s.store_subscription_identifier;
+    // After Apple's rate limit stops one lookup, the rest of the page skips Apple instead of adding to it.
+    if (rateLimited) { k.note = `Apple lookup skipped for ${id}: ${rateLimited.message} Run the import again to confirm this chain.`; return; }
+    try {
+      const api = clientFor(app);
+      if (!api) return;
+      const original = await appleOriginal(deps, api, app, id, s.environment);
+      if (original) out.set(s, { key: original, placeholder: null, original, guess: k.key });
+    } catch (e) {
+      if (e instanceof AppleRateLimitError) rateLimited = e;
+      k.note = e instanceof AppleApiClientError
+        ? `Apple rejected the lookup for ${id}: ${e.message} (HTTP ${e.status}${e.errorCode ? `, error ${e.errorCode}` : ""}).`
+        : `Apple lookup failed for ${id}: ${e instanceof Error ? e.message : e}`;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(APPLE_LOOKUPS_IN_FLIGHT, lookups.length) }, async () => {
+    while (next < lookups.length) {
+      const item = lookups[next++]!;
+      const wait = lastStart + APPLE_LOOKUP_SPACING_MS - Date.now();
+      lastStart = Math.max(Date.now(), lastStart + APPLE_LOOKUP_SPACING_MS);
+      if (wait > 0 && !rateLimited) await new Promise((r) => setTimeout(r, wait));
+      await one(item);
+    }
+  }));
+}
+
+const otherEnv = (env: AppleEnv): AppleEnv => (env === "production" ? "sandbox" : "production");
+
+/**
+ * Apple's original_transaction_id for any transaction of a chain (Get Transaction Info), or null when neither environment
+ * knows it. Apple answers 404 (4040010, transaction not found) from the wrong environment, so a miss tries the other one.
+ */
+async function appleOriginal(deps: Deps, api: AppStoreServerApi, app: AppRec, transactionId: string, env: AppleEnv): Promise<string | null> {
+  const path = `/inApps/v1/transactions/${encodeURIComponent(transactionId)}`;
+  const res = await api.get<{ signedTransactionInfo?: string }>(env, path) ?? await api.get<{ signedTransactionInfo?: string }>(otherEnv(env), path);
   if (!res?.signedTransactionInfo) return null;
   const tx = await verifyTransactionJws(res.signedTransactionInfo, { bundleId: expectedBundleId(app), xcodeRoots: xcodeRootsOf(app), now: deps.now(), source: "apple" });
   return tx.originalTransactionId;

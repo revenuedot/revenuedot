@@ -30,7 +30,11 @@ export interface Ctx {
   emit: boolean;
 }
 /** `original` is null for an Apple chain keyed by a guess (its first known transaction): store traffic may re-key it later. */
-export interface KeyInfo { key: string; placeholder: string | null; original: string | null; note?: string }
+export interface KeyInfo {
+  key: string; placeholder: string | null; original: string | null; note?: string;
+  /** Apple: the guessed key the chain had before Apple confirmed `original`; an earlier run may have stored the chain under it. */
+  guess?: string;
+}
 export interface Report { id: string; status: "created" | "updated" | "merged"; subscriptions: number; purchases: number; needs_token_refresh: number; notes: string[] }
 
 const C = schema.customers, A = schema.customerAliases, CA = schema.customerAttributes, S = schema.subscriptions, N = schema.nonSubscriptions, T = schema.transactions;
@@ -101,6 +105,8 @@ class WorkingSet {
   private changedNonSubs = new Set<string>();
   private txns = new Map<string, TxnRow>();
   private owners = new Map<string, { store: string; tx: string; customerId: string }>();
+  /** Store transactions whose first-or-renewal kind is now known for sure (a confirmed Apple chain); rows of the other kind go. */
+  private settledKinds = new Map<string, { store: string; tx: string; renewal: boolean }>();
 
   constructor(readonly db: DB, private projectId: string) {}
 
@@ -125,7 +131,7 @@ class WorkingSet {
     const subs = customers.flatMap((c) => c.subscriptions ?? []);
     const chainKeys = uniq(subs.flatMap((s) => {
       const k = keys.get(s)!;
-      return [k.key, ...(k.placeholder ? [k.placeholder] : []), ...(s.store === "promotional" ? (s.entitlement_lookup_keys ?? []).slice(1).map((e) => `${k.key}:${e}`) : [])];
+      return [k.key, ...(k.placeholder ? [k.placeholder] : []), ...(k.guess ? [k.guess] : []), ...(s.store === "promotional" ? (s.entitlement_lookup_keys ?? []).slice(1).map((e) => `${k.key}:${e}`) : [])];
     }));
     const stores = uniq(subs.map((s) => s.store));
     const addSub = (r: SubRow) => { this.subs.set(r.id, r); this.subKeys.set(K(r.store, r.storeKey), r.id); };
@@ -184,6 +190,7 @@ class WorkingSet {
   addTxn(row: TxnRow) { const k = K(row.store, row.storeTransactionId, row.kind); if (!this.txns.has(k)) this.txns.set(k, row); }
   /** Every revenue row of a store transaction belongs to the customer that last imported it. */
   ownTxn(store: string, tx: string, customerId: string) { this.owners.set(K(store, tx), { store, tx, customerId }); }
+  settleKind(store: string, tx: string, renewal: boolean) { this.settledKinds.set(K(store, tx), { store, tx, renewal }); }
 
   /** Writes every change: one statement per table (more only past the parameter limit). */
   async flush() {
@@ -205,6 +212,13 @@ class WorkingSet {
     for (const part of rowChunks(nonSubRows)) {
       await db.insert(N).values(part).onConflictDoUpdate({ target: [N.projectId, N.store, N.storeTransactionId], set: excluded(N, NON_SUB_COLS) });
     }
+    // A run that keyed a chain by a guessed original recorded its transactions with guessed kinds: drop those once confirmed.
+    for (const part of chunks([...this.settledKinds.values()], 5000)) {
+      const rows = sql.join(part.map((o) => sql`(${o.store}::text, ${o.tx}::text, ${o.renewal}::boolean)`), sql`, `);
+      await db.execute(sql`DELETE FROM transactions AS t USING (VALUES ${rows}) AS v(store, tx, renewal)
+        WHERE t.project_id = ${projectId} AND t.store = v.store AND t.store_transaction_id = v.tx
+          AND CASE WHEN v.renewal THEN t.kind IN ('purchase', 'trial') ELSE t.kind = 'renewal' END`);
+    }
     for (const part of rowChunks([...this.txns.values()])) await db.insert(T).values(part).onConflictDoNothing();
     for (const part of chunks([...this.owners.values()], 5000)) {
       const rows = sql.join(part.map((o) => sql`(${o.store}::text, ${o.tx}::text, ${o.customerId}::text)`), sql`, `);
@@ -212,7 +226,7 @@ class WorkingSet {
         WHERE t.project_id = ${projectId} AND t.store = v.store AND t.store_transaction_id = v.tx AND t.customer_id <> v.cid`);
     }
     this.newCustomers.clear(); this.changedCustomers.clear(); this.newAliases = []; this.changedAttrs.clear();
-    this.newSubs.clear(); this.changedSubs.clear(); this.goneSubs.clear(); this.changedNonSubs.clear(); this.txns.clear(); this.owners.clear();
+    this.newSubs.clear(); this.changedSubs.clear(); this.goneSubs.clear(); this.changedNonSubs.clear(); this.txns.clear(); this.owners.clear(); this.settledKinds.clear();
   }
 }
 
@@ -348,6 +362,15 @@ async function importSubscription(ws: WorkingSet, ctx: Ctx, customerId: string, 
     if (ph && !real) ws.patchSub(ph.id, { storeKey: k.key });
     else if (ph && real) ws.deleteSub(ph.id);
   }
+  // Apple confirmed an original id that differs from the guess an earlier run keyed the chain by: move that row to it,
+  // or drop it when the confirmed chain already has a row (the two were halves of one chain).
+  if (k.guess && k.guess !== k.key) {
+    const guessed = ws.sub(s.store, k.guess);
+    if (guessed && guessed.customerId === customerId) {
+      if (!ws.sub(s.store, k.key)) ws.patchSub(guessed.id, { storeKey: k.key });
+      else ws.deleteSub(guessed.id);
+    }
+  }
   // An Apple chain the store already re-keyed (a receipt came after an earlier run) is found again by its transactions.
   if (isApple(s.store) && !k.original) {
     const same = ws.sub(s.store, k.key);
@@ -423,6 +446,7 @@ function importTransactions(ws: WorkingSet, ctx: Ctx, customerId: string, s: Imp
       productIdentifier: v.productIdentifier, kind, isSandbox: v.isSandbox, purchasedAt: new Date(t.purchased_at), expiresAt: d(t.expires_at),
       revenueUsd: revenue, priceAmount: t.price?.amount ?? null, priceCurrency: t.price?.currency ?? null, countryCode: v.countryCode,
     });
+    if (isApple(s.store) && v.originalTransactionId) ws.settleKind(s.store, t.id, kind === "renewal");
   }
   // A transaction moved to another customer by a merge or transfer follows its chain.
   for (const t of txs) ws.ownTxn(s.store, t.id, customerId);
