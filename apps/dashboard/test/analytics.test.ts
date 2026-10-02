@@ -69,3 +69,11 @@ describe("sending to DataFast", () => {
     expect(JSON.stringify(calls)).not.toContain("Secret Name");
   });
 });
+
+describe("inEurope: Europeans get the cookieless script", () => {
+  it("matches European and Atlantic-island time zones only", async () => {
+    const { inEurope } = await import("../src/lib/analytics");
+    for (const tz of ["Europe/Berlin", "Europe/London", "Atlantic/Reykjavik", "Atlantic/Canary"]) expect(inEurope(tz), tz).toBe(true);
+    for (const tz of ["America/Los_Angeles", "Asia/Tokyo", "Atlantic/Bermuda", "Australia/Sydney", undefined]) expect(inEurope(tz as string | undefined), String(tz)).toBe(false);
+  });
+});

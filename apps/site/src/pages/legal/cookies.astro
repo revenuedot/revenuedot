@@ -5,13 +5,24 @@ import { SITE } from "../../site";
 ---
 <Legal
   title="Cookie policy"
-  description="revenuedot.app sets no cookies. The RevenueDot dashboard uses one strictly necessary session cookie to keep you signed in."
+  description="revenuedot.app and the RevenueDot dashboard set three analytics cookies outside Europe and none in the EEA, the UK and Switzerland. The dashboard also uses one strictly necessary session cookie."
   path="/legal/cookies"
-  updated="2026-09-30"
-  lede="This website sets no cookies, so there is no cookie banner. The dashboard uses one cookie, only to keep you signed in."
+  updated="2026-10-02"
+  lede="Outside the EEA, the UK and Switzerland, our website and dashboard set three first-party analytics cookies from DataFast. Inside those regions they set none, so there is no cookie banner. The dashboard also uses one cookie to keep you signed in."
 >
   <h2>This website</h2>
-  <p>revenuedot.app sets no cookies and uses no local storage for tracking. Page views are counted, when analytics is on, with Cloudflare Web Analytics, which works without cookies. See the <a href="/legal/privacy">Privacy policy</a>.</p>
+  <p>revenuedot.app and app.revenuedot.app use DataFast (datafa.st) to count visits, see which channel brought a visitor, and credit a paid plan to that channel. Visitors in the EEA, the UK and Switzerland, as Cloudflare detects them, get DataFast's cookieless script: it sets no cookies and uses no local storage for tracking. Everyone else gets these first-party cookies, set on revenuedot.app and its subdomains:</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Name</th><th scope="col">Purpose</th><th scope="col">Duration</th><th scope="col">Type</th></tr></thead>
+      <tbody>
+        <tr><td class="num-cell">datafast_visitor_id</td><td>A random id that recognizes a returning browser, so a signup and a payment can be credited to the channel of the first visit.</td><td>365 days</td><td>Analytics, first party</td></tr>
+        <tr><td class="num-cell">datafast_session_id</td><td>A random id for the current visit.</td><td>30 minutes</td><td>Analytics, first party</td></tr>
+        <tr><td class="num-cell">datafast_visitor_session_count</td><td>How many visits this browser has made.</td><td>365 days</td><td>Analytics, first party</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>When you sign in or send the contact-sales form, your email address and name are sent to DataFast so the visit, the signup and the payment show as one profile. See the <a href="/legal/privacy">Privacy policy</a>. To stop the cookies, block datafa.st or clear the cookies for revenuedot.app.</p>
 
   <h2>The RevenueDot dashboard</h2>
   <p>The dashboard, in RevenueDot Cloud and in self-hosted installs, sets one strictly necessary cookie:</p>

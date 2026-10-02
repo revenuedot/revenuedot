@@ -26,6 +26,9 @@ Add a goal: dashboard step, one line in `STEPS` in `analytics.ts` (with a test i
 3. Cloud Standard is billed monthly at the end of the month, so the first payment shows then; `subscription_started` shows at checkout.
 
 
+## Cookies and Europe
+DataFast's default script sets three first-party cookies (`datafast_visitor_id` 365 days, `datafast_session_id` 30 minutes, `datafast_visitor_session_count` 365 days); the Stripe attribution above depends on them. Visitors in the EEA, the UK and Switzerland get the cookieless script instead, so no consent banner is needed: the site Worker swaps the script address from Cloudflare's country (`apps/site/worker/consent.ts`), and the dashboard uses the browser time zone (`inEurope` in `analytics.ts`). Cookieless mode has no user profiles and no stored payment identity, so European payments are attributed less completely. The Privacy and Cookie policies (`apps/site/src/pages/legal/`) describe exactly this; change them in the same pull request as any change to it.
+
 ## Checking it works
 ```bash
 datafast analytics realtime --website <websiteId>

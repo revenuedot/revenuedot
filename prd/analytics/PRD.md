@@ -10,6 +10,8 @@ Goal: know which channel brings each visitor, signup and paying Cloud customer, 
 5. **Goals** for each step toward paying (site clicks, contact-sales form, signup, first project, app, API key, checkout), and scroll goals on the home and pricing sections.
 6. **Bot traffic**: the site Worker reports AI, search and training crawlers to DataFast, server side.
 
+7. **Consent by region**: EEA, UK and Swiss visitors get DataFast's cookieless script (no cookies, no banner); everyone else gets the cookie script. The Privacy and Cookie policies say so.
+
 ## Rules
 - The website id (`dfid_…`) is public. No API key is needed: goals and identify come from the browser, revenue from Stripe, bots from the public bot endpoint.
 - Never send a project name, a password, a token or a card detail to DataFast. Goal parameters are short labels (a plan, a location on the page).

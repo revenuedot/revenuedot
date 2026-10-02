@@ -8,6 +8,7 @@
 // Scheduled (daily, cloudflare.config.ts): one email to sales listing people who started the form and did not finish.
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
 import { trackCrawler } from "./bots";
+import { applyConsent } from "./consent";
 import { agent, esc, json, later, outboundPlan, startOutboundCall, type AgentEnv, type Ctx } from "./agent";
 import { isEmail, vendorLabel, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
 
@@ -61,7 +62,7 @@ export default {
     if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Not found." }, 404);
     const res = await env.ASSETS.fetch(request);
     trackCrawler(request, res, ctx);
-    return res;
+    return applyConsent(request, res);
   },
 };
 

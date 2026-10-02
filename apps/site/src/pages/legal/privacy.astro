@@ -6,10 +6,10 @@ import { SITE } from "../../site";
 ---
 <Legal
   title="Privacy policy"
-  description="How RevenueDot handles personal data: cookieless analytics, no ad trackers on revenuedot.app, and nothing collected from self-hosted servers."
+  description="How RevenueDot handles personal data: DataFast analytics (cookieless in the EEA, UK and Switzerland), no ad trackers on revenuedot.app, and nothing collected from self-hosted servers."
   path="/legal/privacy"
-  updated="2026-09-30"
-  lede="We collect as little as we can. This website sets no cookies and runs no advertising trackers, and self-hosted RevenueDot never sends us anything."
+  updated="2026-10-02"
+  lede="We collect as little as we can. We run no advertising trackers, we set analytics cookies only outside the EEA, the UK and Switzerland, and self-hosted RevenueDot never sends us anything."
 >
   <h2>Who is responsible</h2>
   <p>RevenueDot is operated by <strong>Circo, Inc.</strong> For this website and for RevenueDot Cloud account data, Circo, Inc. is the controller. For the purchase data your apps send to RevenueDot Cloud, you are the controller and we act as your processor (see the <a href="/legal/dpa">DPA summary</a>). Contact: <a href={`mailto:${SITE.email.legal}`}>{SITE.email.legal}</a>.</p>
@@ -19,9 +19,9 @@ import { SITE } from "../../site";
 
   <h2>This website</h2>
   <ul>
-    <li><strong>Analytics.</strong> We may use Cloudflare Web Analytics to count page views. It sets no cookies, does not use local storage, and does not fingerprint or track visitors across sites. It records the page, referrer, browser type, country and performance timings in aggregate. When it is switched off, no analytics script loads at all.</li>
+    <li><strong>Analytics.</strong> We use DataFast (datafa.st) on revenuedot.app and in the RevenueDot Cloud dashboard to count visits and see which channel (referrer, campaign, search, social post) brought a visitor and which paid plans that channel produced. It records the page, referrer, UTM tags, browser, device, country and region, and the actions we track as goals, such as clicking Sign up. Outside the EEA, the UK and Switzerland it sets three first-party cookies (see the <a href="/legal/cookies">Cookie policy</a>). Inside them it runs in cookieless mode: no cookies, and a visitor id that is hashed from the IP address and browser and changes daily. In the dashboard, and when you send the contact-sales form, we also send your email address and name to DataFast, plus your plan and project count, and Stripe payment details (amount, plan, customer email) reach DataFast through our Stripe connection. We do not send project names, passwords or card numbers. We also use Cloudflare Web Analytics, which sets no cookies, where it is switched on. DataFast also tells us when search and AI crawlers request our pages.</li>
     <li><strong>Hosting logs.</strong> The site is served by Cloudflare, which processes IP addresses and request details to deliver pages and block attacks. We do not use these logs to identify visitors.</li>
-    <li><strong>No cookies, no ad trackers.</strong> This website sets no cookies and loads no advertising or social-media trackers. Fonts are served from our own domain.</li>
+    <li><strong>No ad trackers.</strong> This website loads no advertising or social-media trackers. Fonts are served from our own domain.</li>
     <li><strong>Email.</strong> If you email us, we keep your message and address to reply and to keep a record of the conversation.</li>
   </ul>
 
@@ -38,12 +38,12 @@ import { SITE } from "../../site";
   <h2>Legal bases (EEA and UK)</h2>
   <ul>
     <li>Performing our contract with you: running your account and the Service.</li>
-    <li>Legitimate interests: securing the Service, preventing abuse, counting page views without cookies, and answering your messages.</li>
+    <li>Legitimate interests: securing the Service, preventing abuse, measuring which marketing channels bring customers, and answering your messages. You can object to analytics at any time by emailing us or blocking datafa.st.</li>
     <li>Legal obligations: tax and accounting records.</li>
   </ul>
 
   <h2>Who we share data with</h2>
-  <p>We share personal data only with providers who help us run the Service, under contracts that limit their use of it, and when the law requires. Current providers: <strong>Cloudflare, Inc.</strong> (hosting, network, database connectivity, web analytics). We list any new provider on the <a href="/legal/dpa">DPA summary</a> before it starts processing Customer Data.</p>
+  <p>We share personal data only with providers who help us run the Service, under contracts that limit their use of it, and when the law requires. Current providers: <strong>Cloudflare, Inc.</strong> (hosting, network, database connectivity, web analytics); <strong>DataFast</strong> (web analytics and marketing attribution, datafa.st). We list any new provider on the <a href="/legal/dpa">DPA summary</a> before it starts processing Customer Data.</p>
 
   <h2>International transfers</h2>
   <p>Our providers may process data in the United States and other countries. Where the law requires, we rely on the EU Standard Contractual Clauses or an equivalent safeguard.</p>

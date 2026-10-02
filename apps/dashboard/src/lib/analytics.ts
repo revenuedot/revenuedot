@@ -20,6 +20,14 @@ const df = (): Df | undefined => {
   return location.hostname === CLOUD_HOST || w.__rdAnalyticsTest === true ? w.datafast : undefined;
 };
 
+/**
+ * People in Europe get the cookieless script (no cookies, no profile): the Cookie policy promises no analytics cookies in the EEA, the
+ * UK and Switzerland. The dashboard has no country, so the browser's time zone stands in for it; the site decides from Cloudflare's country.
+ */
+export function inEurope(timeZone: string | undefined = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })()): boolean {
+  return !!timeZone && /^(Europe|Atlantic\/(Reykjavik|Canary|Madeira|Faroe|Azores))(\/|$)/.test(timeZone);
+}
+
 /** Loads the tracking script on RevenueDot Cloud. */
 export function initAnalytics(): void {
   if (typeof document === "undefined" || location.hostname !== CLOUD_HOST) return;
@@ -27,7 +35,7 @@ export function initAnalytics(): void {
   w.datafast = w.datafast || function (...a: unknown[]) { (w.datafast!.q = w.datafast!.q || []).push(a); };
   const s = document.createElement("script");
   s.defer = true;
-  s.src = "https://datafa.st/js/script.js";
+  s.src = inEurope() ? "https://datafa.st/js/script.cookieless.js" : "https://datafa.st/js/script.js";
   s.dataset.websiteId = DATAFAST.websiteId;
   s.dataset.domain = DATAFAST.domain;
   document.head.appendChild(s);
