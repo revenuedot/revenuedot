@@ -23,12 +23,14 @@ describe("self-host configuration", () => {
     }
   });
 
-  it("the image's start command finds pnpm without downloading it (corepack install in the final stage)", () => {
+  it("the image starts Node itself: no package manager to download at start, and SIGTERM reaches the server", () => {
     const final = read("Dockerfile").split(/^FROM /m).pop()!;
-    expect(final).toMatch(/^CMD \["pnpm",/m);
-    expect(final).toMatch(/^RUN corepack install$/m);
-    expect(final.indexOf("RUN corepack install")).toBeGreaterThan(final.indexOf("COPY --from=build /app /app"));
-    expect(JSON.parse(read("package.json")).packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
+    const lines = final.split("\n").filter((l) => !l.startsWith("#"));
+    expect(final).toMatch(/^WORKDIR \/app\/apps\/server$/m);
+    expect(final).toMatch(/^CMD \["node", "--import", "tsx", "src\/entry\.node\.ts"\]$/m);
+    expect(lines.join("\n")).not.toMatch(/pnpm|corepack/);
+    // tsx is installed at the repository root, which Node resolves from apps/server.
+    expect(JSON.parse(read("package.json")).devDependencies.tsx).toBeTruthy();
   });
 });
 
