@@ -252,9 +252,10 @@ function withStats(def: MetricDef, m: Measured, control: Measured | null): Metri
     const out: MetricValue = { value: s.n ? r(s.mean, 4) : null, denominator: s.n, lower: r(ci?.lower, 4), upper: r(ci?.upper, 4) };
     if (control) {
       const sc = meanOf(control, def.id);
-      // An interval needs two customers on each side; with one, only the lift itself.
-      const lift = s.n >= 2 && sc.n >= 2 ? liftInterval({ value: s.mean, se: s.se }, { value: sc.mean, se: sc.se })
-        : s.n && sc.n && sc.mean > 0 ? { lift: s.mean / sc.mean - 1, lower: null, upper: null } : null;
+      // The lift needs a positive control mean; its interval also needs two customers on each side and a positive mean here.
+      const lift = s.n && sc.n && sc.mean > 0
+        ? (s.n >= 2 && sc.n >= 2 ? liftInterval({ value: s.mean, se: s.se }, { value: sc.mean, se: sc.se }) : null) ?? { lift: s.mean / sc.mean - 1, lower: null, upper: null }
+        : null;
       Object.assign(out, { lift: r(lift?.lift), lift_lower: r(lift?.lower), lift_upper: r(lift?.upper), chance_to_beat_control: r(chanceMeanBeats(s, sc), 4) });
     }
     return out;
