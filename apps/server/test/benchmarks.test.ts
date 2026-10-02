@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { accountServer } from "./account-helpers.js";
 import { seedLedger } from "./ledger-helpers.js";
-import { runBenchmarkJob, START_HOUR } from "../src/services/benchmarks.js";
+import { computeProjectBenchmarks, runBenchmarkJob, START_HOUR } from "../src/services/benchmarks.js";
 import { runScheduledJobs } from "../src/services/scheduled.js";
 
 /**
@@ -139,6 +139,12 @@ describe("the nightly job", () => {
     expect(after.find((g) => g.category === "all" && g.platform === "all")!.p25).not.toBe(before.find((g) => g.category === "all" && g.platform === "all")!.p25);
     const peers = await owner.call("GET", `/v2/projects/${projects[0]}/benchmarks?category=all`);
     expect(peers.body.metrics).toEqual([]);
+  });
+
+  it("keeps no values from a computation that ends after the project stopped sharing", async () => {
+    // Project 0 stopped sharing above; its opt-in computation (or a nightly one) finishing now stores nothing.
+    expect(await computeProjectBenchmarks(s.db, projects[0]!, "health_fitness", new Date("2026-10-03T04:00:00Z"), { minSample })).toBe(0);
+    expect(await s.db.select().from(schema.benchmarkProjectValues).where(eq(schema.benchmarkProjectValues.projectId, projects[0]!))).toHaveLength(0);
   });
 
   it("runs from the scheduled jobs only where benchmarks are on", async () => {

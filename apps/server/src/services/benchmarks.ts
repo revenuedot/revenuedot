@@ -39,25 +39,43 @@ export async function computeProjectBenchmarks(db: DB, projectId: string, catego
   });
   const slices = projectBenchmarkSlices(input, { minSample: o.minSample });
   const day = isoDay(now.getTime());
-  await db.transaction(async (tx) => {
+  const stored = await db.transaction(async (tx) => {
     await tx.delete(PV).where(eq(PV.projectId, projectId));
+    // The computation took a while: a project that stopped sharing meanwhile keeps no values.
+    if (!(await stillSharing(tx as unknown as DB, projectId))) return false;
     await tx.insert(PV).values(slices.map((s) => ({ projectId, platform: s.platform, country: s.country, category, metrics: s.metrics as Record<string, { value: number | null; sample: number }>, computedOn: day, computedAt: now })));
+    return true;
   });
-  return slices.length;
+  return stored ? slices.length : 0;
 }
+
+/**
+ * Whether the project shares, holding its row until the transaction ends: an opt-out (which updates the row, then
+ * deletes the values) either happened before and is seen here, or waits and deletes what this transaction writes.
+ */
+async function stillSharing(tx: DB, projectId: string) {
+  const [p] = await tx.select({ share: P.benchmarksShare }).from(P).where(eq(P.id, projectId)).for("share");
+  return !!p?.share;
+}
+
+/** One rebuild of the aggregates at a time (the nightly job and an opt-out), so a slower one never publishes stale values. */
+const AGGREGATE_LOCK = 7_342_027;
 
 /** Rebuilds every published group from the values of projects that share now. Returns how many groups were published. */
 export async function rebuildAggregates(db: DB, now: Date, o: BenchmarkOptions = {}): Promise<number> {
-  const rows = await db.select({ projectId: PV.projectId, platform: PV.platform, country: PV.country, metrics: PV.metrics, category: P.benchmarksCategory })
-    .from(PV).innerJoin(P, eq(P.id, PV.projectId)).where(and(eq(P.benchmarksShare, true), isNotNull(P.benchmarksCategory)));
-  const contributions: BenchmarkContribution[] = rows.map((r) => ({ projectId: r.projectId, category: r.category!, platform: r.platform, country: r.country, metrics: r.metrics as MetricValues }));
-  const groups = aggregateBenchmarks(contributions, { k: o.k, kDeciles: o.kDeciles });
   const day = isoDay(now.getTime());
-  await db.transaction(async (tx) => {
+  // The values are read after taking the lock, inside the transaction that replaces the aggregates: a rebuild that
+  // started before an opt-out cannot overwrite the opt-out's rebuild with the departed project's values.
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${AGGREGATE_LOCK})`);
+    const rows = await tx.select({ projectId: PV.projectId, platform: PV.platform, country: PV.country, metrics: PV.metrics, category: P.benchmarksCategory })
+      .from(PV).innerJoin(P, eq(P.id, PV.projectId)).where(and(eq(P.benchmarksShare, true), isNotNull(P.benchmarksCategory)));
+    const contributions: BenchmarkContribution[] = rows.map((r) => ({ projectId: r.projectId, category: r.category!, platform: r.platform, country: r.country, metrics: r.metrics as MetricValues }));
+    const groups = aggregateBenchmarks(contributions, { k: o.k, kDeciles: o.kDeciles });
     await tx.delete(AG);
     for (let i = 0; i < groups.length; i += 500) await tx.insert(AG).values(groups.slice(i, i + 500).map((g) => ({ ...g, computedOn: day })));
+    return groups.length;
   });
-  return groups.length;
 }
 
 /**
@@ -85,7 +103,7 @@ export async function runBenchmarkJob(d: { db: DB; benchmarks?: boolean }, now: 
     // moves on to the next project instead of retrying this one forever. It then counts with no values today.
     await db.transaction(async (tx) => {
       await tx.delete(PV).where(eq(PV.projectId, due.id));
-      await tx.insert(PV).values({ projectId: due.id, platform: ALL, country: ALL, category: due.category!, metrics: {}, computedOn: day, computedAt: now });
+      if (await stillSharing(tx as unknown as DB, due.id)) await tx.insert(PV).values({ projectId: due.id, platform: ALL, country: ALL, category: due.category!, metrics: {}, computedOn: day, computedAt: now });
     });
     try {
       await computeProjectBenchmarks(db, due.id, due.category!, now, o);
