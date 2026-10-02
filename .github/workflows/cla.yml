@@ -1,0 +1,31 @@
+# Asks every outside contributor to sign the Contributor License Agreement (.github/CLA.md, Harmony Individual CLA 1.0)
+# on their first pull request. Signatures are stored in signatures/cla.json on the `cla-signatures` branch.
+name: CLA
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+    steps:
+      - uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/revenuedot/revenuedot/blob/main/.github/CLA.md
+          path-to-signatures: signatures/cla.json
+          branch: cla-signatures
+          allowlist: ShadowWalker2014,dependabot[bot],github-actions[bot],renovate[bot],claude[bot]
+          custom-notsigned-prcomment: Thank you for your pull request. Before we can merge it, please sign our [Contributor License Agreement](https://github.com/revenuedot/revenuedot/blob/main/.github/CLA.md) (Harmony Individual CLA 1.0). Contributing for a company? Use the [Entity CLA](https://github.com/revenuedot/revenuedot/blob/main/.github/CLA-entity.md). To sign as an individual, post the comment below.
+          custom-allsigned-prcomment: All contributors have signed the CLA. Thank you!

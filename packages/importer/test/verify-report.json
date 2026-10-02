@@ -1,0 +1,59 @@
+{
+  "customers": {
+    "revenuecat": 36124,
+    "revenuedot": 35437,
+    "checked": 36124,
+    "missingInRevenueDot": 3,
+    "onlyInRevenueDot": 1,
+    "notListedByRevenueCat": 65
+  },
+  "onlyInRevenueDot": [
+    "merged-in-revenuecat"
+  ],
+  "activeSubscriptions": {
+    "revenuecat": 115,
+    "revenuedot": 114
+  },
+  "activeEntitlements": {
+    "revenuecat": 115,
+    "revenuedot": 114
+  },
+  "mismatches": [
+    {
+      "customer": "13QLxxxxxxxxxxxxxxxxxxxxxx32",
+      "kind": "missing_customer",
+      "detail": "not found in RevenueDot"
+    },
+    {
+      "customer": "328BE39F-0000-4E84-9D99-000000000000",
+      "kind": "missing_customer",
+      "detail": "not found in RevenueDot"
+    },
+    {
+      "customer": "$RCAnonymousID:00000000000000000000000000000001",
+      "kind": "missing_customer",
+      "detail": "not found in RevenueDot"
+    },
+    {
+      "customer": "late-renewal",
+      "kind": "active_subscriptions",
+      "detail": "1 subscription(s) give access in RevenueCat, 0 in RevenueDot"
+    },
+    {
+      "customer": "late-renewal",
+      "kind": "entitlement_only_in_revenuecat",
+      "detail": "pro active until 2026-11-02T00:00:00.000Z in RevenueCat, not active in RevenueDot"
+    },
+    {
+      "customer": "renewed-further",
+      "kind": "entitlement_expiry",
+      "detail": "pro expires 2026-11-02T00:00:00.000Z in RevenueCat, 2026-10-02T00:00:00.000Z in RevenueDot"
+    },
+    {
+      "customer": "refunded-in-revenuecat",
+      "kind": "entitlement_only_in_revenuedot",
+      "detail": "pro active until 2026-10-30T00:00:00.000Z in RevenueDot, not active in RevenueCat"
+    }
+  ],
+  "mismatchedCustomers": 6
+}

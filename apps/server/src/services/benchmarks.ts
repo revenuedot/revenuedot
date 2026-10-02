@@ -3,7 +3,7 @@ import {
   aggregateBenchmarks, ALL, BENCHMARK_CATEGORIES, BENCHMARK_METRICS, benchmarkWindow, compareToPeers, isoDay, K_ANONYMITY, projectBenchmarkSlices,
   type BenchmarkAggregate, type BenchmarkContribution, type BenchmarkMetricId, type MetricValues,
 } from "@revenuedot/core";
-import { schema, type DB } from "@revenuedot/db";
+import { LOCK_KEYS, schema, type DB } from "@revenuedot/db";
 import { loadChartInput } from "./charts/load.js";
 
 /**
@@ -58,8 +58,6 @@ async function stillSharing(tx: DB, projectId: string) {
   return !!p?.share;
 }
 
-/** One rebuild of the aggregates at a time (the nightly job and an opt-out), so a slower one never publishes stale values. */
-const AGGREGATE_LOCK = 7_342_027;
 
 /** Rebuilds every published group from the values of projects that share now. Returns how many groups were published. */
 export async function rebuildAggregates(db: DB, now: Date, o: BenchmarkOptions = {}): Promise<number> {
@@ -67,7 +65,8 @@ export async function rebuildAggregates(db: DB, now: Date, o: BenchmarkOptions =
   // The values are read after taking the lock, inside the transaction that replaces the aggregates: a rebuild that
   // started before an opt-out cannot overwrite the opt-out's rebuild with the departed project's values.
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${AGGREGATE_LOCK})`);
+    // One rebuild at a time (the nightly job and an opt-out), so a slower one never publishes stale values.
+    await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_KEYS.benchmarkAggregates}::bigint)`);
     const rows = await tx.select({ projectId: PV.projectId, owner: P.ownerUserId, platform: PV.platform, country: PV.country, metrics: PV.metrics, category: P.benchmarksCategory })
       .from(PV).innerJoin(P, eq(P.id, PV.projectId)).where(and(eq(P.benchmarksShare, true), isNotNull(P.benchmarksCategory)));
     // k counts owner accounts as well as projects (a project without an owner counts as its own).

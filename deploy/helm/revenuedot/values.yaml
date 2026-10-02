@@ -1,0 +1,198 @@
+# RevenueDot Helm chart: the API and dashboard as N replicas behind a Service (and optional Ingress), on an external
+# Postgres. Guide: https://revenuedot.app/docs/guides/high-availability  Spec: prd/ha-self-host/PRD.md
+#
+# Minimal production install:
+#   kubectl create secret generic revenuedot-db --from-literal=DATABASE_URL='postgres://…?sslmode=require'
+#   kubectl create secret generic revenuedot-secrets \
+#     --from-literal=REVENUEDOT_ENCRYPTION_KEY="$(openssl rand -base64 32)" --from-literal=REVENUEDOT_SMTP_URL='smtps://…'
+#   helm install revenuedot deploy/helm/revenuedot --set publicUrl=https://revenuedot.example.com \
+#     --set database.existingSecret=revenuedot-db --set secrets.existingSecret=revenuedot-secrets --set ingress.enabled=true …
+
+# Replicas when autoscaling is off. Two or more gives a rolling upgrade and a node loss without downtime.
+replicaCount: 2
+
+image:
+  # Required: there is no published image yet. Build and push your own from the repository root
+  # (docker build -t <registry>/revenuedot:<tag> .) and set repository and tag.
+  repository: ""
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# The address people and the stores reach RevenueDot at (dashboard links, emails, store notification URLs). Required,
+# unless the Ingress is enabled: then https://<first ingress host> is used.
+publicUrl: ""
+# API address for SDKs and paywall assets when it differs from publicUrl.
+apiUrl: ""
+# Only the first account (the owner) can sign up unless this is true.
+allowSignup: false
+
+database:
+  # Production: a Secret holding the Postgres URL (RDS, Cloud SQL, Aurora, Crunchy, CloudNativePG…). Use a direct
+  # connection, RDS Proxy or PgBouncer in session mode: the cluster locks are session advisory locks.
+  existingSecret: ""
+  existingSecretKey: DATABASE_URL
+  # Or the URL itself (the chart puts it in a Secret). Prefer existingSecret: values end up in the release history.
+  url: ""
+  # Connections per replica (at least 2). Replicas x poolMax must stay under the server's max_connections.
+  poolMax: 10
+
+migrations:
+  # auto: a pre-install/pre-upgrade hook Job when database.existingSecret is set (replicas then skip migrating), else each
+  #       replica migrates on start under a Postgres advisory lock (the first one migrates, the rest find nothing to do).
+  # job: always the hook Job (needs database.existingSecret, which must exist before install).
+  # startup: always on replica start.
+  mode: auto
+  backoffLimit: 2
+  # Helm waits 5 minutes for a hook by default: pass --timeout 15m to helm install/upgrade for long migrations.
+  activeDeadlineSeconds: 900
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+# Run the background job (expirations, webhooks, alerts, exports…) on these replicas. Only one replica runs it at a time;
+# turn it off only when a separate release with backgroundJobs=true serves the same database.
+backgroundJobs: true
+
+# Secrets read by the server. Either a Secret you manage (keys named as below) or values the chart puts in a Secret.
+secrets:
+  existingSecret: ""
+  # REVENUEDOT_ENCRYPTION_KEY: seals integration and export credentials at rest (openssl rand -base64 32). Keep it stable.
+  encryptionKey: ""
+  # REVENUEDOT_SIGNING_KEY: signs SDK responses for Trusted Entitlements.
+  signingKey: ""
+  # REVENUEDOT_SMTP_URL: smtp:// or smtps:// URL. Without it, emails are printed to the log.
+  smtpUrl: ""
+  # REVENUEDOT_LICENSE_KEY: turns on the enterprise features in ee/.
+  licenseKey: ""
+  # ANTHROPIC_API_KEY / OPENAI_API_KEY: RevenueDot AI and "Generate with AI". Off without one.
+  anthropicApiKey: ""
+  openaiApiKey: ""
+  # REVENUEDOT_ARCHIVE_S3_ACCESS_KEY_ID / _SECRET_ACCESS_KEY: an access key for archives.s3.bucket. Role credentials
+  # (IRSA, Workload Identity) are not read yet.
+  archiveS3AccessKeyId: ""
+  archiveS3SecretAccessKey: ""
+
+mail:
+  from: ""
+  replyTo: ""
+
+# Full-export archives. Without a bucket they are kept in Postgres (never on a pod's disk, which goes with the pod).
+archives:
+  s3:
+    bucket: ""
+    region: ""
+    endpoint: ""
+    prefix: ""
+
+# Extra plain environment variables (see .env.example), and extra sources (ConfigMaps, Secrets).
+env: {}
+extraEnvFrom: []
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  # Answers stream (RevenueDot AI) over server-sent events: turn off proxy buffering, e.g. for ingress-nginx:
+  #   nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+  annotations: {}
+  hosts:
+    - host: revenuedot.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: revenuedot-tls
+  #    hosts: [revenuedot.example.com]
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 384Mi
+  limits:
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  # Off by default: Node rarely returns memory, so scaling on it only adds replicas (and Postgres connections).
+  targetMemoryUtilizationPercentage: null
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Kubernetes sends SIGTERM, then waits this long. The server turns /readyz 503, waits shutdown.delayMs for the load
+# balancer to notice, then drains for up to shutdown.timeoutMs; delay + timeout must stay under the grace period (the chart
+# refuses to render otherwise).
+terminationGracePeriodSeconds: 30
+shutdown:
+  delayMs: 5000
+  timeoutMs: 20000
+
+probes:
+  startup: { periodSeconds: 5, failureThreshold: 120, timeoutSeconds: 3 }
+  liveness: { periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 3 }
+  readiness: { periodSeconds: 5, failureThreshold: 2, timeoutSeconds: 3 }
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+# Spread replicas over zones and nodes (best effort). Replace with [] to let the scheduler decide.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+
+networkPolicy:
+  # Allows traffic in on the HTTP port (from ingressFrom, or from anywhere when empty) and everything out (stores, webhooks).
+  enabled: false
+  ingressFrom: []
+
+# Evaluation only: one Postgres pod with a volume. No failover, no backups, no point-in-time recovery. Use an external,
+# managed Postgres (database.existingSecret) for anything you would mind losing.
+postgresql:
+  enabled: false
+  image: postgres:16
+  storage: 8Gi
+  storageClass: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }

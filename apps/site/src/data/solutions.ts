@@ -88,7 +88,7 @@ export const SOLUTIONS: Landing[] = [
         label: "Tradeoffs",
         bullets: [
           "**Age.** RevenueCat has years of production use at far larger scale. RevenueDot launched in 2026. Run it side by side with RevenueCat during the migration and compare both before you switch.",
-          "**Fork packages** are not on any registry yet, so you use the stock SDK with a proxy URL for now.",
+          "**Fork packages are new.** RevenueDot's SDK forks are published (CocoaPods, Maven Central, npm, OpenUPM and git tags), and were first released in October 2026. You can keep the stock RevenueCat SDK with a proxy URL instead.",
           "**Some RevenueCat features are not copied.** [What differs from RevenueCat](/docs/migrate/what-differs) lists them, and the [comparison](/compare/revenuedot-vs-revenuecat) shows both sides.",
           "You can run both in parallel for as long as you like, so the switch is reversible.",
         ],
@@ -442,7 +442,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           "**The stores.** The server calls Apple, Google, Amazon or Stripe for the apps you connect. They process purchase data under their own terms.",
           "**Integrations you turn on.** Segment, Amplitude, Mixpanel, Meta, Slack and the other integrations send events to those vendors. Webhooks send events to your own endpoints. Turn on only what fits your policy.",
           "**Emails.** Password resets, invites and alerts leave through the SMTP provider you configure.",
-          "**Your app.** The stock Android SDK still sends diagnostics, paywall events and ad events to RevenueCat's hosts. The planned fork sends them to your server. See [the Android SDK page](/sdks/android).",
+          "**Your app.** The stock Android SDK still sends diagnostics, paywall events and ad events to RevenueCat's hosts. The RevenueDot fork (`app.revenuedot.purchases:purchases` on Maven Central) sends them to your server. See [the Android SDK page](/sdks/android).",
         ],
       },
       {

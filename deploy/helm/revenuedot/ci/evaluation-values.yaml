@@ -1,0 +1,14 @@
+# Evaluation shape: bundled Postgres, migrations on replica start, fixed replicas, chart-made Secret.
+image:
+  repository: registry.example.com/revenuedot
+  tag: ci
+publicUrl: http://revenuedot.localhost
+postgresql:
+  enabled: true
+autoscaling:
+  enabled: false
+replicaCount: 2
+allowSignup: true
+secrets:
+  # 32 bytes, as the server requires; for rendering in CI only.
+  encryptionKey: Y2ktcmVuZGVyLW9ubHktbm90LWEtcmVhbC1rZXktMzI=

@@ -19,6 +19,7 @@ export const SITE = {
   login: "https://app.revenuedot.app/login",
   email: {
     hello: "hello@revenuedot.app",
+    sales: "sales@revenuedot.app",
     security: "security@revenuedot.app",
     legal: "legal@revenuedot.app",
   },

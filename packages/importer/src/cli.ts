@@ -37,8 +37,8 @@ Options
   --restart               Ignore the state file and start from the first customer
   --concurrency <n>       Customers fetched in parallel (default 4; RevenueCat allows 480 requests a minute)
   --limit <n>             Import only the first n customers (a trial run)
-  --ids <file>            Import only these RevenueCat customer ids, looked up by id (a JSON array, or one id per
-                          line); for customers RevenueCat's list leaves out, such as verify's missing_customer ids
+  --ids <file>            Import only these RevenueCat customer ids, looked up by id: the report from import verify --json
+                          (its missing and mismatched customers), a JSON array of ids, or one id per line
   --page-size <n>         Customers per page and per import call (default 50, at most 100)
   --google-tokens <csv>   Google purchase tokens (columns purchase_token and order_id, or app_user_id and product_id)
   --no-public-keys        Keep RevenueDot's own SDK keys instead of RevenueCat's
@@ -169,6 +169,17 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
     return n;
   };
 
+  let ids: string[] | undefined;
+  if (v.ids && !sub) {
+    try {
+      ids = readIds(readFileSync(v.ids, "utf8"));
+    } catch (e) {
+      io.err(e instanceof Error ? e.message : String(e));
+      return 2;
+    }
+    if (!ids.length) { io.err(`--ids: ${v.ids} lists no customers to import.`); return 0; }
+  }
+
   // Progress goes to stderr (one updating line on a terminal); the report goes to stdout.
   let lastProgress = "";
   const progress = (m: string) => {
@@ -197,7 +208,7 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
     const report = await runImport({
       rcKey: rcKey!, rcProject: rcProject!, rcBaseUrl: v["rc-url"], to: to!, toKey: toKey!, toProject: v["to-project"],
       statePath: v.state ?? `revenuedot-import-${rcProject!.replace(/[^\w-]/g, "_")}.json`, dryRun: v["dry-run"], restart: v.restart,
-      concurrency: int("--concurrency", v.concurrency), limit: int("--limit", v.limit), ids: v.ids ? readIds(readFileSync(v.ids, "utf8")) : undefined, pageSize: pageSize(int("--page-size", v["page-size"])),
+      concurrency: int("--concurrency", v.concurrency), limit: int("--limit", v.limit), ids, pageSize: pageSize(int("--page-size", v["page-size"])),
       publicKeys: !v["no-public-keys"], emitEvents: v["emit-events"], tokens, http: io.http, targetHttp: io.targetHttp, log, progress,
     });
     done();
@@ -262,12 +273,35 @@ async function admin(sub: string | undefined, args: string[], v: { password?: st
   }
 }
 
-/** Customer ids from a file: a JSON array of ids (or of objects with `customer` or `id`, as verify's mismatches), or one id per line. */
+/** Mismatch kinds a fresh import from RevenueCat can fix. entitlement_only_in_revenuedot is left out: an import adds purchases, it never removes them. */
+const REIMPORT_KINDS = new Set(["missing_customer", "entitlement_only_in_revenuecat", "entitlement_expiry", "active_subscriptions"]);
+
+/**
+ * Customer ids from a file: the report `import verify --json` writes (its re-importable mismatches; onlyInRevenueDot is ignored),
+ * a JSON array of ids or of objects with `customer` or `id` (such as verify's mismatches), or one id per line.
+ * A file that looks like JSON but does not parse is an error, never a list of ids.
+ */
 export function readIds(text: string): string[] {
   const t = text.trim();
-  if (t.startsWith("[")) {
-    const arr = JSON.parse(t) as unknown[];
-    return arr.map((x) => (typeof x === "string" ? x : (x as { customer?: string; id?: string }).customer ?? (x as { id?: string }).id ?? "")).filter(Boolean);
+  if (t.startsWith("[") || t.startsWith("{")) {
+    let data: unknown;
+    try {
+      data = JSON.parse(t);
+    } catch (e) {
+      throw new Error(`--ids: the file is not valid JSON (${e instanceof Error ? e.message : String(e)})`);
+    }
+    if (Array.isArray(data)) return unique(data.map(idOf).filter(Boolean));
+    const mismatches = (data as { mismatches?: unknown }).mismatches;
+    if (!Array.isArray(mismatches)) throw new Error("--ids: a JSON object must be the report from `revenuedot import verify --json` (no mismatches array found)");
+    return unique(mismatches.filter((m) => REIMPORT_KINDS.has((m as { kind?: string })?.kind ?? "")).map(idOf).filter(Boolean));
   }
-  return t.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  return unique(t.split(/\r?\n/).map((x) => x.trim()).filter(Boolean));
 }
+
+function idOf(x: unknown): string {
+  if (typeof x === "string") return x;
+  const o = (x ?? {}) as { customer?: unknown; id?: unknown };
+  return typeof o.customer === "string" ? o.customer : typeof o.id === "string" ? o.id : "";
+}
+
+const unique = (ids: string[]) => [...new Set(ids)];
