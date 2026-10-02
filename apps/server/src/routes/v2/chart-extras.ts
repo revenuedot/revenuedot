@@ -157,33 +157,37 @@ export function chartExtraRoutes(r: V2Router, deps: Deps) {
       });
     }
 
-    // CSV: every contributor, streamed in pages of 500 so a large chart never builds the whole file in memory.
+    // CSV: every contributor, written in pages of 500 as the client reads them, so a big chart never builds the whole file
+    // in memory. The writer runs in this request (on Workers the database is the request's own connection, found through
+    // the request's async context) and is handed to deps.defer, which keeps that connection open until the last row is
+    // written: the response returns before the rows are read, and the connection would otherwise close under the export.
     const rows = res.rows.slice(0, CSV_MAX);
     const unitLabel = measure ? (measure.unit === "$" ? ` (${p.currency})` : measure.unit === "%" ? " (%)" : "") : "";
     const head = ["App User ID", "Customer ID", "Status", "Store", "Product", res.dateLabel, "First seen", ...(measure ? [`${measure.display_name}${unitLabel}`] : []), ...(p.segment ? ["Segment"] : [])];
     const enc = new TextEncoder();
-    let i = 0;
-    const stream = new ReadableStream<Uint8Array>({
-      start(ctl) { ctl.enqueue(enc.encode(`${head.map(csvCell).join(",")}\r\n`)); },
-      async pull(ctl) {
-        try {
-          if (i >= rows.length) {
-            if (res.rows.length > rows.length) ctl.enqueue(enc.encode(`${csvCell(`Export cut at ${CSV_MAX.toLocaleString("en-US")} of ${res.rows.length.toLocaleString("en-US")} customers.`)}\r\n`));
-            ctl.close();
-            return;
-          }
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+    const out = writable.getWriter();
+    const written = (async () => {
+      try {
+        await out.write(enc.encode(`${head.map(csvCell).join(",")}\r\n`));
+        for (let i = 0; i < rows.length; i += 500) {
           const chunk = rows.slice(i, i + 500);
-          i += chunk.length;
           const info = await customerInfo(db, projectId, [...new Set(chunk.map((x) => x.customerId))], p.sandbox, now);
-          ctl.enqueue(enc.encode(chunk.map((x) => {
+          await out.write(enc.encode(chunk.map((x) => {
             const it = item(x, info.get(x.customerId));
             return [it.app_user_id, it.customer_id, STATUS_LABEL[it.status], it.store, it.product_id, iso(it.contributed_at), iso(it.first_seen_at), ...(measure ? [it.value] : []), ...(p.segment ? [it.segment] : [])].map(csvCell).join(",");
           }).join("\r\n") + "\r\n"));
-        } catch (e) { ctl.error(e); }
-      },
-    });
+        }
+        if (res.rows.length > rows.length) await out.write(enc.encode(`${csvCell(`Export cut at ${CSV_MAX.toLocaleString("en-US")} of ${res.rows.length.toLocaleString("en-US")} customers.`)}\r\n`));
+        await out.close();
+      } catch (e) {
+        // The client went away, or a query failed: the download ends with an error instead of a silently short file.
+        await out.abort(e).catch(() => {});
+      }
+    })();
+    if (deps.defer) deps.defer(() => written); else void written;
     const day = now.toISOString().slice(0, 10);
-    return c.body(stream, 200, {
+    return c.body(readable, 200, {
       "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${p.def.name}-customers-${day}.csv"`, "cache-control": "no-store",
       "x-revenuedot-total-count": String(res.rows.length), ...(res.rows.length > CSV_MAX ? { "x-revenuedot-truncated": "true" } : {}),
     });

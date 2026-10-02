@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { CHARTS, contributorsMeasure } from "@revenuedot/core";
@@ -156,6 +157,39 @@ describe("chart customers", () => {
         if (r.resolution === "month") expect(Object.keys(fromSql).length, q.chart).toBeGreaterThan(0);
       }
     }
+  });
+  it("exports more than one page of rows on the Workers request model (the connection stays open until the last row)", async () => {
+    // 1,200 new customers in another project: the export reads their details in three pages of 500.
+    await h.db.insert(schema.projects).values({ id: "projBulk", name: "Bulk" });
+    await h.db.insert(schema.customers).values(Array.from({ length: 1200 }, (_, i) => ({ id: `bulk${i}`, projectId: "projBulk", originalAppUserId: `bulk_user_${i}`, firstSeen: new Date(Date.UTC(2026, 6, 1, 0, i)) })));
+    const key = (await createSecretKey(h.db, "projBulk", "bulk export")).key;
+    // entry.worker.ts: the database is the request's own connection, found through the request's async context, and it
+    // closes once the response is returned and the work handed to defer has finished.
+    const scope = new AsyncLocalStorage<{ pending: Promise<unknown>[]; closed: boolean }>();
+    const db = new Proxy({} as DB, {
+      get(_t, prop) {
+        const s = scope.getStore();
+        if (!s) throw new Error("database used outside a request");
+        if (s.closed) throw new Error("CONNECTION_ENDED");
+        const v = (h.db as unknown as Record<PropertyKey, unknown>)[prop];
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(h.db) : v;
+      },
+    });
+    const app = createApp({ db, now: h.now, stores: defaultStores(), defer: (task) => { const s = scope.getStore(); if (s) s.pending.push(task()); else void task(); } });
+    const req = new Request("http://localhost/v2/projects/projBulk/charts/customers_new/customers?resolution=month&start_date=2026-07-01&end_date=2026-07-31&format=csv", { headers: { authorization: `Bearer ${key}` } });
+    const s = { pending: [] as Promise<unknown>[], closed: false };
+    const res = await scope.run(s, () => app.fetch(req));
+    const closing = (async () => { for (let i = 0; i < s.pending.length; i++) await s.pending[i]; s.closed = true; })();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-revenuedot-total-count")).toBe("1200");
+    // The body is read after the handler returned, outside the request's async context, as the runtime does.
+    const lines = (await new Response(res.body).text()).trim().split("\r\n");
+    await closing;
+    expect(s.closed).toBe(true);
+    expect(lines).toHaveLength(1201);
+    expect(lines[0]).toBe("App User ID,Customer ID,Status,Store,Product,First seen,First seen,New Customers");
+    expect(new Set(lines.slice(1).map((l) => l.split(",")[0])).size).toBe(1200);
+    expect(lines.slice(1).every((l) => /^bulk_user_\d+,bulk\d+,No subscription,,,2026-07-01T/.test(l))).toBe(true);
   });
 });
 
