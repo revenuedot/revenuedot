@@ -117,9 +117,9 @@ export function ProductsPage() {
               <div className="pb cat-note">{total ? (needle ? "No products match your search." : `No ${filter} products for this app.`) : <>No products for this app yet. <button type="button" className="cat-lnk" onClick={() => setNewFor(a.id)}>Add one</button>.</>}</div>
             ) : (
               <div className="tbl">
-                {/* Product takes what is left; the other columns are sized for their longest value, so nothing is cut at 1100px and up. Phones keep product, entitlements and actions (type and duration move under the name). */}
+                {/* Product takes what is left; the other columns are sized for their longest value. Below 1100px type and duration move under the name, so the product keeps room; phones also drop Created. */}
                 <table className="cat-ptable">
-                  <thead><tr><th>Product</th><th className="cat-w-type cat-hide-sm">Type</th><th className="cat-w-dur cat-hide-sm">Duration</th><th className="cat-w-ent">Entitlements</th><th className="cat-w-date cat-hide-sm">Created</th><th className="cat-w-act amt"><span className="sr">Actions</span></th></tr></thead>
+                  <thead><tr><th>Product</th><th className="cat-w-type cat-hide-md">Type</th><th className="cat-w-dur cat-hide-md">Duration</th><th className="cat-w-ent">Entitlements</th><th className="cat-w-date cat-hide-sm">Created</th><th className="cat-w-act amt"><span className="sr">Actions</span></th></tr></thead>
                   <tbody>
                     {rows.map((p) => {
                       const ents = usage.entsBy.get(p.id) ?? [];
@@ -128,10 +128,10 @@ export function ProductsPage() {
                         <tr key={p.id} className="row" tabIndex={0} onClick={() => nav(`${base}/products/${p.id}`)} onKeyDown={(e) => { if (e.key === "Enter") nav(`${base}/products/${p.id}`); }}>
                           <td>
                             <span className="cat-prodcell"><ProductCell p={p} to={`${base}/products/${p.id}`} />{p.state !== "active" && <Tag>Archived</Tag>}</span>
-                            <span className="cat-show-sm cat-s">{typeLabel(p.type)}{p.type === "subscription" ? ` · ${dur}` : ""}</span>
+                            <span className="cat-show-md cat-s">{typeLabel(p.type)}{p.type === "subscription" ? ` · ${dur}` : ""}</span>
                           </td>
-                          <td className="cat-hide-sm">{typeLabel(p.type)}</td>
-                          <td className="num cat-hide-sm">{dur}</td>
+                          <td className="cat-hide-md">{typeLabel(p.type)}</td>
+                          <td className="num cat-hide-md">{dur}</td>
                           <td className={`cat-ents${ents.length ? "" : " subtle"}`} title={ents.length ? ents.map((e) => e.lookup_key).join(", ") : "Buying this product unlocks nothing yet"}>
                             {!usage.loaded ? "…" : !ents.length ? "None" : <span className="cat-entkey"><span className="mono">{ents[0]!.lookup_key}</span>{ents.length > 1 && <span className="subtle"> +{ents.length - 1}</span>}</span>}
                           </td>

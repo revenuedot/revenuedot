@@ -226,7 +226,7 @@ test("Overview → All projects lists a project it leaves out, and why", async (
     await route.fulfill({ response: res, json: body });
   });
   await page.goto(`/projects/${ids.sleep}/overview?projects=all`);
-  await expect(page.getByTestId("left-out")).toContainText("Not included: Closed project (This organization requires single sign-on.)");
+  await expect(page.getByTestId("left-out")).toContainText("Left out of the cards: Closed project (This organization requires single sign-on.)");
 });
 
 test("phone width and dark theme: chips wrap, the dialogs fit, no page scrolls sideways", async ({ page }) => {
@@ -241,7 +241,7 @@ test("phone width and dark theme: chips wrap, the dialogs fit, no page scrolls s
     expect(over, path).toBeLessThanOrEqual(0);
   }
   await page.goto(`/projects/${ids.sleep}/product-catalog/products`);
-  await expect(page.locator("table.cat-ptable .cat-show-sm").first()).toBeVisible();
+  await expect(page.locator("table.cat-ptable .cat-show-md").first()).toBeVisible();
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(bg).toBe("rgb(10, 10, 10)");
 });

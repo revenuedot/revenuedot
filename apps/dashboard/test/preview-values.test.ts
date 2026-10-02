@@ -120,7 +120,7 @@ describe("Test Store price field", () => {
     expect(testStorePrice("", "USD", true)).toEqual({ error: expect.stringContaining("Enter the price"), field: "amount" });
     expect(testStorePrice("0", "USD", true)).toEqual({ error: expect.stringContaining("above 0"), field: "amount" });
     expect(testStorePrice("9.99", "usd", true)).toEqual({ value: { amount_micros: 9_990_000, currency: "USD" } });
-    expect(testStorePrice("-1", "USD", true)).toMatchObject({ field: "amount" });
+    expect(testStorePrice("-1", "USD", true)).toEqual({ error: "A price cannot be negative.", field: "amount" });
     expect(testStorePrice("9.99", "US", true)).toEqual({ error: expect.stringContaining("three-letter"), field: "currency" });
   });
   it("reads a decimal comma, refuses an ambiguous one, and checks the currency's decimals and code", () => {

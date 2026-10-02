@@ -131,7 +131,7 @@ function minorUnits(code: string): number {
 export function testStorePrice(amount: string, currency: string, required = false): { value: { amount_micros: number; currency: string } | null } | { error: string; field: "amount" | "currency" } {
   const micros = parseMicros(amount);
   if (micros === null) return required ? { error: "Enter the price, such as 9.99. Test purchases record it as revenue.", field: "amount" } : { value: null };
-  if (Number.isNaN(micros)) return { error: "Enter an amount such as 9.99, with a dot for decimals.", field: "amount" };
+  if (Number.isNaN(micros)) return { error: /^\s*-/.test(amount) ? "A price cannot be negative." : "Enter an amount such as 9.99, with a dot for decimals.", field: "amount" };
   if (required && micros === 0) return { error: "Enter a price above 0, such as 9.99.", field: "amount" };
   if (micros > 1e15) return { error: "Enter an amount of 1,000,000,000 or less.", field: "amount" };
   const code = currency.trim().toUpperCase();

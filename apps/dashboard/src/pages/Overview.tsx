@@ -143,8 +143,10 @@ function RecentTransactions({ pid, env, products, entitlements, projects }: { pi
   const all = !!projects;
   const tx = useQuery({
     queryKey: all ? ["tx-all", env] : ["tx", pid, env], refetchInterval: 30_000,
-    queryFn: () => api<List<Transaction>>(all ? `/v2/overview/transactions?limit=8&environment=${env}` : `/v2/projects/${pid}/transactions?limit=8&environment=${env}`),
+    queryFn: () => api<List<Transaction> & { projects?: AccountOverview["projects"] }>(all ? `/v2/overview/transactions?limit=8&environment=${env}` : `/v2/projects/${pid}/transactions?limit=8&environment=${env}`),
   });
+  // All projects: the transactions have their own access check (purchases), so they can leave out other projects than the cards.
+  const leftOut = (tx.data?.projects ?? []).filter((x) => !x.included);
   const [more, setMore] = useState<Transaction[]>([]);
   const [next, setNext] = useState<string | null>(null);
   useEffect(() => { setMore([]); setNext(null); }, [pid, env, all]);
@@ -163,13 +165,15 @@ function RecentTransactions({ pid, env, products, entitlements, projects }: { pi
   return (
     <section className="panel" aria-label="Recent transactions">
       <div className="ph"><span className="hrow"><b>Recent transactions</b>{all && <span className="subtle" style={{ fontSize: 12 }}>All projects</span>}</span>{env === "sandbox" && <Tag tone="info">Sandbox</Tag>}</div>
+      {leftOut.length > 0 && <div className="pnote" data-testid="tx-left-out">Left out of this list: {leftOut.map((x, i) => <span key={x.id}>{i ? "; " : ""}<b>{x.name}</b> ({x.reason ?? "no access"})</span>)}</div>}
       {tx.isError ? <div className="pb"><ErrorBanner error={tx.error} retry={() => tx.refetch()} what="transactions" /></div>
         : tx.isLoading ? <div className="pb" style={{ display: "grid", gap: 14 }}>{[0, 1, 2, 3].map((i) => <span key={i} className="sk line" style={{ width: `${90 - i * 12}%` }} />)}</div>
         : !rows.length ? <div className="pnote">{env === "sandbox" ? "No sandbox purchases yet. Make a test purchase with a Test Store key to see it here." : "No production purchases yet. They appear here seconds after a store confirms them."}</div>
         : (
           <>
             <div className="tbl"><table className="compact">
-              <thead><tr><th>Customer</th>{all && <th>Project</th>}<th>Type</th><th>Product</th><th>Store</th><th>When</th><th>Expires</th><th className="amt">Revenue</th></tr></thead>
+              {/* All projects adds a Project column; the store then moves under the product so the table still fits at 1024px. */}
+              <thead><tr><th>Customer</th>{all && <th>Project</th>}<th>Type</th><th>Product</th>{!all && <th>Store</th>}<th>When</th><th>Expires</th><th className="amt">Revenue</th></tr></thead>
               <tbody>
                 {rows.map((t) => {
                   const promo = t.store === "promotional";
@@ -179,8 +183,8 @@ function RecentTransactions({ pid, env, products, entitlements, projects }: { pi
                       <td className="id"><span className="idcell">{t.country && <span className="flag" role="img" aria-label={t.country}>{flag(t.country)}</span>}<Link to={`/projects/${t.project_id ?? pid}/customers/${encodeURIComponent(t.customer_id)}`} title={t.customer_id}>{shortId(t.customer_id)}</Link></span></td>
                       {all && <td className="subtle w2">{projects.get(t.project_id ?? "") ?? t.project_id}</td>}
                       <td><Tag tone={tag.tone}>{tag.label}</Tag></td>
-                      <td className="w2">{promo ? (() => { const k = t.product_identifier.replace(/^rc_promo_(.+)_\w+$/, "$1"); return entitlements.find((e) => e.lookup_key === k)?.display_name ?? k; })() : name(t)}</td>
-                      <td className="subtle">{storeLabel(t.store)}</td>
+                      <td className="w2">{promo ? (() => { const k = t.product_identifier.replace(/^rc_promo_(.+)_\w+$/, "$1"); return entitlements.find((e) => e.lookup_key === k)?.display_name ?? k; })() : name(t)}{all && <span className="cellsub">{storeLabel(t.store)}</span>}</td>
+                      {!all && <td className="subtle">{storeLabel(t.store)}</td>}
                       <td className="subtle" title={fmt.dateTime(t.purchased_at)}>{relative(t.purchased_at)}</td>
                       <td className="subtle" title={t.expires_at ? fmt.dateTime(t.expires_at) : undefined}>{t.kind === "refund" ? "—" : t.expires_at ? relative(t.expires_at) : "Never"}</td>
                       <td className={`amt${t.revenue_in_usd < 0 ? " down" : ""}`}>{t.kind === "trial" || promo ? "—" : money(t.revenue_in_usd)}</td>
@@ -538,7 +542,7 @@ export function Overview() {
           <>
             {left.length > 0 && (
               <div className="banner" role="status" data-testid="left-out">
-                <span>Not included: {left.map((x, i) => <span key={x.id}>{i ? "; " : ""}<b>{x.name}</b> ({x.reason ?? "no access"})</span>)}</span>
+                <span>Left out of the cards: {left.map((x, i) => <span key={x.id}>{i ? "; " : ""}<b>{x.name}</b> ({x.reason ?? "no access"})</span>)}</span>
               </div>
             )}
             <MetricGrid pid={pid} env={env} period={period} all />
