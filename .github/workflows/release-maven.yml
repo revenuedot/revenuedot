@@ -34,6 +34,21 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key is on a public keyserver
+        env:
+          KEY: ${{ secrets.MAVEN_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          fpr=$(printf '%s\n' "$KEY" | gpg --show-keys --with-colons 2>/dev/null | awk -F: '/^fpr:/ {print $10; exit}')
+          [ -n "$fpr" ] || { echo "::error::MAVEN_SIGNING_KEY is not an OpenPGP key gpg can read"; exit 1; }
+          echo "Signing key fingerprint: $fpr"
+          found=""
+          for ks in "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$fpr" "https://keys.openpgp.org/vks/v1/by-fingerprint/$fpr"; do
+            if curl -fsS "$ks" 2>/dev/null | grep -q "BEGIN PGP PUBLIC KEY BLOCK"; then echo "found on $ks"; found=1; fi
+          done
+          # Central checks signatures against these keyservers and rejects the deployment when the key is missing.
+          [ -n "$found" ] || { echo "::error::Public key $fpr is on no keyserver Central reads (keyserver.ubuntu.com, keys.openpgp.org). Upload it, then rerun."; exit 1; }
+
       - name: Publish and release
         working-directory: ${{ inputs.directory }}
         env:
@@ -44,4 +59,30 @@ jobs:
           TAG: ${{ inputs.tag }}
         # The release version is the tag without its -revenuedot suffix. The forks' gradle.properties say
         # RELEASE_SIGNING_ENABLED=false, and Central rejects unsigned uploads after Gradle reports success.
-        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache -PVERSION_NAME="${TAG%-revenuedot}" -PRELEASE_SIGNING_ENABLED=true
+        run: |
+          set -o pipefail
+          ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache --info -PVERSION_NAME="${TAG%-revenuedot}" -PRELEASE_SIGNING_ENABLED=true 2>&1 | tee "$RUNNER_TEMP/gradle.log" | grep -vE '^(Resource missing|Found locally available|Cached resource|Skipping|Caching disabled|Up-to-date check|The input changes)'
+          grep -oiE 'deployment[^a-z0-9]{1,20}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$RUNNER_TEMP/gradle.log" | grep -oE '[0-9a-f]{8}-[0-9a-f-]{27}' | sort -u > "$RUNNER_TEMP/deployments.txt" || true
+          echo "Central deployments:"; cat "$RUNNER_TEMP/deployments.txt"
+
+      # Gradle succeeds as soon as the upload is accepted; Central validates afterwards. Wait for the verdict.
+      - name: Central accepted the deployment
+        env:
+          USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -s "$RUNNER_TEMP/deployments.txt" ] || { echo "::warning::No deployment id in the Gradle log; check https://central.sonatype.com/publishing/deployments"; exit 0; }
+          auth="Authorization: Bearer $(printf '%s:%s' "$USERNAME" "$PASSWORD" | base64 -w0)"
+          for id in $(cat "$RUNNER_TEMP/deployments.txt"); do
+            for i in $(seq 1 60); do
+              body=$(curl -fsS -X POST -H "$auth" "https://central.sonatype.com/api/v1/publisher/status?id=$id")
+              state=$(echo "$body" | jq -r .deploymentState)
+              echo "$id: $state"
+              case "$state" in
+                PUBLISHING|PUBLISHED) break ;;
+                FAILED) echo "$body" | jq .; echo "::error::Central rejected deployment $id"; exit 1 ;;
+              esac
+              sleep 30
+            done
+          done
