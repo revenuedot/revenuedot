@@ -108,7 +108,9 @@ export function v2Routes(deps: Deps) {
       // Enterprise extensions may deny access (enforced single sign-on) or give a custom role's permissions.
       let permissions: string[] | undefined;
       for (const x of deps.extensions ?? []) {
-        const a = await x.projectAccess?.({ deps, userId: p.userId, sessionId: getCookie(c, SESSION_COOKIE) ?? null, projectId, role: m.role });
+        // RevenueDot AI's in-process calls carry no cookie: they act with the session the turn came from.
+        const sessionId = p.via === "assistant" ? ASSISTANT_CTX.get(c.req.raw)?.sessionId ?? null : getCookie(c, SESSION_COOKIE) ?? null;
+        const a = await x.projectAccess?.({ deps, userId: p.userId, sessionId, projectId, role: m.role });
         if (a?.deny) throw new V2Error(a.deny.status, a.deny.status === 404 ? "resource_missing" : "authorization_error", a.deny.message);
         if (a?.permissions) permissions = a.permissions;
       }
