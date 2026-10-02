@@ -27,6 +27,8 @@ export interface ArchiveTable {
   secrets?: Record<string, SecretColumn>;
   /** Columns that stay with the server they are on (move state, the owner). */
   local?: string[];
+  /** Local columns a new row needs on the target: SQL over the archive row `r`. */
+  fill?: Record<string, string>;
 }
 
 export const ARCHIVE_TABLES: ArchiveTable[] = [
@@ -78,7 +80,10 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
   { name: "email_suppressions", scope: { project: "project_id" } },
   { name: "web_configs", scope: { project: "project_id" } },
   { name: "web_products", scope: { project: "project_id" } },
-  { name: "web_domains", scope: { project: "project_id" } },
+  // A custom domain is proven per server (its TXT record names this server's token, its CNAME points here): the target
+  // never takes "verified" from an archive. It gets its own token, and the domain waits for Verify there.
+  { name: "web_domains", scope: { project: "project_id" }, local: ["verification_token", "status", "verified_at", "checked_at", "error"],
+    fill: { verification_token: "replace(gen_random_uuid()::text, '-', '')", status: "CASE WHEN r.custom_domain IS NULL THEN 'none' ELSE 'pending' END" } },
   { name: "purchase_links", scope: { project: "project_id" } },
   { name: "funnels", scope: { project: "project_id" }, page: 100 },
   { name: "funnel_events", scope: { project: "project_id" } },

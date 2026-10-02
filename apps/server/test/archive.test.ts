@@ -9,7 +9,9 @@ import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
 import { secretKeyFrom, unseal, type SecretKey } from "../src/services/secrets.js";
 import { ARCHIVE_SCHEMA, ARCHIVE_TABLES, NOT_EXPORTED, allSchemaTables, ident, rowsOf, scopeWhere, tableInfos } from "../src/services/archive/tables.js";
-import { createImportToken } from "../src/services/archive/import.js";
+import { applyRows, createImportToken } from "../src/services/archive/import.js";
+import { createSession } from "../src/services/sessions.js";
+import { projectForHost } from "../src/services/web/domains.js";
 import { gunzip, sha256Hex, untar } from "../src/services/archive/format.js";
 import { tick } from "../src/services/tick.js";
 import { moveStateChanged } from "../src/services/archive/gate.js";
@@ -133,8 +135,10 @@ describe("export and import round trip", () => {
     expect(report.apps_needing_credentials.map((a) => a.id).sort()).toEqual(["app_ios", "app_play", "app_stripe"]);
     expect(report.notification_urls).toContainEqual(expect.objectContaining({ app_id: "app_ios", url: "http://target.test/v1/notifications/apple/app_ios" }));
     expect(report.notification_urls).toContainEqual(expect.objectContaining({ app_id: "app_play", url: "http://target.test/v1/notifications/google/app_play" }));
-    // Collaborators by email: the source owner has an account here and joins as Admin.
-    expect(report.members_added).toEqual([{ email: "owner@example.com", role: "admin" }]);
+    // Collaborators by email are listed to invite, never added: the account owner@example.com has here is not touched.
+    expect(report.members_added).toEqual([]);
+    expect(report.members_to_invite).toEqual([{ email: "owner@example.com", role: "admin" }]);
+    expect(await dst.db.select().from(schema.memberships).where(eq(schema.memberships.userId, "usr_owner_t"))).toEqual([]);
     const [p] = await dst.db.select().from(schema.projects);
     expect(p!.moveState).toBeNull();
   });
@@ -298,3 +302,92 @@ describe("move states", () => {
   });
 });
 
+
+describe("import safety (an archive and its members.json are client input)", () => {
+  it("rows whose primary key belongs to another project here are neither overwritten nor pulled into the import", async () => {
+    await dst.db.insert(schema.projects).values({ id: "victim", name: "Victim" });
+    await dst.db.insert(schema.offerings).values({ id: "ofr_v", projectId: "victim", lookupKey: "default", displayName: "Victim offering" });
+    await dst.db.insert(schema.packages).values({ id: "pkg_v", offeringId: "ofr_v", lookupKey: "$rc_monthly", displayName: "Victim monthly", position: 0 });
+    await dst.db.insert(schema.customers).values({ id: "cus_v", projectId: "victim", originalAppUserId: "victim-user" });
+    await dst.db.insert(schema.webhooks).values({ id: "wh_v", projectId: "victim", name: "Victim hook", url: "https://victim.example/hook", signingSecret: "whsec_v" });
+    await dst.db.insert(schema.events).values({ id: "evt_v", projectId: "victim", type: "TEST", environment: "PRODUCTION", payload: {}, eventTimestampMs: 1 });
+    await dst.db.insert(schema.webhookDeliveries).values({ id: "del_v", webhookId: "wh_v", eventId: "evt_v", status: "pending", nextAttemptAt: src.now() });
+    const before = { pkg: await rowsIn(dst.db, "packages", "victim"), del: await rowsIn(dst.db, "webhook_deliveries", "victim"), cus: await rowsIn(dst.db, "customers", "victim") };
+    await move(PASS);
+    const o = { userId: "usr_target", now: src.now(), from: null };
+    // The same keys, re-parented into the importing project (its offering, its webhook) or carrying its project id.
+    const pkg = { ...before.pkg[0]!, offering_id: "ofr_default", display_name: "Stolen" };
+    await applyRows(dst.db, "proj1", "packages", Object.keys(pkg), [JSON.stringify(pkg)], o);
+    const del = { ...before.del[0]!, webhook_id: "wh_1", status: "delivered" };
+    await applyRows(dst.db, "proj1", "webhook_deliveries", Object.keys(del), [JSON.stringify(del)], o);
+    const cus = { ...before.cus[0]!, project_id: "proj1", original_app_user_id: "stolen" };
+    await applyRows(dst.db, "proj1", "customers", Object.keys(cus), [JSON.stringify(cus)], o);
+    expect({ pkg: await rowsIn(dst.db, "packages", "victim"), del: await rowsIn(dst.db, "webhook_deliveries", "victim"), cus: await rowsIn(dst.db, "customers", "victim") }).toEqual(before);
+  });
+
+  it("a dry run shows another account's project only as a conflict, without its row counts or state", async () => {
+    await dst.db.insert(schema.projects).values({ id: "proj1", name: "Someone else's", moveState: null });
+    await dst.db.insert(schema.customers).values({ id: "cus_x", projectId: "proj1", originalAppUserId: "x" });
+    const token = (await createImportToken(dst.db, "usr_target", src.now())).token;
+    const source = new HttpSource("http://source.test", src.ids.secretKey, { fetch: net, sleep: async () => {} });
+    const e = await source.startExport(null);
+    let x = e;
+    while (x.status !== "succeeded") x = await source.advanceExport(e.id);
+    const manifest = JSON.parse(new TextDecoder().decode(await source.readFile(e.id, "manifest.json"))) as Manifest;
+    const target = new HttpTarget("http://target.test", token, { fetch: net, sleep: async () => {} });
+    let { plan } = await target.plan(manifest);
+    expect(plan.project).toMatchObject({ exists: true, state: null });
+    expect(plan.conflicts.join(" ")).toMatch(/already exists/);
+    expect(plan.tables.every((t) => t.target_rows === 0)).toBe(true);
+    // An admin of that project sees what is there.
+    await dst.db.insert(schema.memberships).values({ userId: "usr_target", projectId: "proj1", role: "admin" });
+    ({ plan } = await target.plan(manifest));
+    expect(plan.tables.find((t) => t.name === "customers")!.target_rows).toBe(1);
+  });
+
+  it("a verified custom domain arrives unverified, with this server's own token, and the report says to verify it", async () => {
+    await src.db.update(schema.webDomains).set({ customDomain: "pay.scanner.example", status: "verified", verifiedAt: src.now() }).where(eq(schema.webDomains.projectId, "proj1"));
+    const { state, target } = await move(PASS);
+    expect(state.verify!.every((t) => t.match)).toBe(true);
+    const [d] = await dst.db.select().from(schema.webDomains);
+    expect(d).toMatchObject({ customDomain: "pay.scanner.example", status: "pending", verifiedAt: null });
+    expect(d!.verificationToken).not.toBe("verify-me");
+    expect(d!.verificationToken).toMatch(/^[0-9a-f]{32}$/);
+    expect(await projectForHost(dst.db, "pay.scanner.example", src.now().getTime())).toBeNull();
+    const report = await target.finish(state.importId!);
+    expect(report.domains_to_verify).toEqual(["pay.scanner.example"]);
+  });
+
+  it("members.json cannot add accounts of this server to the project, and nothing changes after finish", async () => {
+    const { state, token } = await move(null);
+    const call = (path: string, body: unknown) => net(`http://target.test${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+    const r = await (await call(`/v2/imports/${state.importId}/members`, { members: [{ email: "owner@example.com", role: "admin" }, { email: "MOVER@example.com", role: "admin" }] })).json() as { added: unknown[]; invite: unknown[] };
+    expect(r).toMatchObject({ added: [], invite: [{ email: "owner@example.com", role: "admin" }] });
+    expect(await dst.db.select().from(schema.memberships).where(eq(schema.memberships.userId, "usr_owner_t"))).toEqual([]);
+    expect((await call(`/v2/imports/${state.importId}/finish`, {})).status).toBe(200);
+    expect((await call(`/v2/imports/${state.importId}/members`, { members: [{ email: "owner@example.com", role: "admin" }] })).status).toBe(409);
+  });
+
+  it("a copy that never finished can be deleted by its admin; other writes still wait", async () => {
+    await move(PASS);
+    const cookie = `rd_session=${await createSession(dst.db, "usr_target", src.now())}`;
+    const req = (method: string, path: string, body?: unknown) => dstApp.fetch(new Request(`http://target.test${path}`, { method, headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }));
+    expect((await req("PATCH", "/v2/projects/proj1", { name: "Renamed" })).status).toBe(423);
+    expect((await req("DELETE", "/v2/projects/proj1/webhooks/wh_1")).status).toBe(423);
+    const del = await req("DELETE", "/v2/projects/proj1");
+    expect(del.status, await del.clone().text()).toBe(200);
+    expect(await dst.db.select().from(schema.projects)).toEqual([]);
+    // A new token can bring the project in again.
+    const again = await move(PASS);
+    expect(again.state.phase).toBe("done");
+  });
+
+  it("a download link stops working when the export expires, even before the cleanup runs", async () => {
+    const H = { authorization: `Bearer ${src.ids.secretKey}`, "content-type": "application/json" };
+    let e = await (await srcApp.fetch(new Request("http://source.test/v2/projects/proj1/exports", { method: "POST", headers: H, body: "{}" }))).json() as { id: string; status: string; download_url?: string };
+    while (e.status !== "succeeded") e = await (await srcApp.fetch(new Request(`http://source.test/v2/projects/proj1/exports/${e.id}/actions/advance`, { method: "POST", headers: H }))).json() as typeof e;
+    expect((await srcApp.fetch(new Request(e.download_url!))).status).toBe(200);
+    await src.db.update(schema.projectExports).set({ expiresAt: new Date(src.now().getTime() - 1000) }).where(eq(schema.projectExports.id, e.id));
+    expect((await srcApp.fetch(new Request(e.download_url!))).status).toBe(404);
+  });
+});

@@ -26,7 +26,7 @@ interface NoteUrl { app_id: string; app_name: string; store: string; url: string
 interface Move {
   object: "project_move"; id: string; status: "running" | "ready" | "copied" | "finished" | "failed" | "cancelled"; target_url: string; mode: "copy" | "finish"; dry_run: boolean;
   phase: string; files_copied: number; plan: { conflicts: string[]; tables: PlanTable[]; project: { exists: boolean } } | null; verify: VerifyTable[] | null;
-  report: { notification_urls: NoteUrl[]; apps_needing_credentials: { name: string }[]; webhooks_with_new_secrets: { name: string }[]; members_to_invite: { email: string; role: string }[] } | null; error: string | null;
+  report: { notification_urls: NoteUrl[]; apps_needing_credentials: { name: string }[]; webhooks_with_new_secrets: { name: string }[]; members_to_invite: { email: string; role: string }[]; domains_to_verify?: string[] } | null; error: string | null;
 }
 export interface MoveState { state: "incoming" | "paused" | "forwarded" | null; moved_to_url: string | null; moved_in_from: string | null; move: Move | null }
 
@@ -211,6 +211,7 @@ function MovePanel({ pid, state }: { pid: string; state: MoveState }) {
                 <div className="tbl"><table><thead><tr><th>App</th><th>New URL</th><th className="hide-sm">Where</th></tr></thead>
                   <tbody>{m.report.notification_urls.map((n) => <tr key={n.app_id}><td>{n.app_name}</td><td className="mono">{n.url}</td><td className="hide-sm subtle">{n.where}</td></tr>)}</tbody></table></div>
                 {m.report.members_to_invite.length > 0 && <p className="section-sub">Invite on the new server: {m.report.members_to_invite.map((x) => `${x.email} (${x.role})`).join(", ")}.</p>}
+                {(m.report.domains_to_verify?.length ?? 0) > 0 && <p className="section-sub">Verify your custom domain again on the new server (Web → Domains shows its TXT value; point the CNAME there): {m.report.domains_to_verify!.join(", ")}.</p>}
               </div>
             )}
           </div>

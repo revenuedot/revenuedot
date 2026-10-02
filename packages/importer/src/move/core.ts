@@ -28,6 +28,8 @@ export interface FinishReport {
   members_added: { email: string; role: string }[];
   members_to_invite: { email: string; role: string }[];
   notification_urls: NotificationUrl[];
+  /** Custom domains to verify again on the new server (a new TXT value, the CNAME pointing there). */
+  domains_to_verify?: string[];
 }
 
 /** The server the project leaves (or a downloaded archive). */
@@ -250,5 +252,6 @@ export function formatFinish(r: FinishReport, source: string, target: string): s
   if (r.apps_needing_credentials.length) out.push(`  - Enter the store credentials again for: ${r.apps_needing_credentials.map((a) => a.name).join(", ")}.`);
   if (r.webhooks_with_new_secrets.length) out.push(`  - These webhooks have new signing secrets (copy them from the dashboard): ${r.webhooks_with_new_secrets.map((w) => w.name).join(", ")}.`);
   if (r.members_to_invite.length) out.push(`  - Invite these collaborators on the new server: ${r.members_to_invite.map((m) => `${m.email} (${m.role})`).join(", ")}.`);
+  if (r.domains_to_verify?.length) out.push(`  - Verify your custom domain again on the new server (Web → Domains shows its TXT value; point the CNAME there): ${r.domains_to_verify.join(", ")}.`);
   return out.join("\n");
 }

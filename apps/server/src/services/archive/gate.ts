@@ -60,6 +60,8 @@ export function moveGate(deps: Deps): MiddlewareHandler {
     const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
     // The move's own controls always answer (cancel, the state, exports for the last copy).
     if (v2 && /^\/v2\/projects\/[^/]+\/(move|exports?)(\/|$)/.test(path)) return next();
+    // A copy that never finished (a lost import token, a move given up) can still be deleted here by an admin.
+    if (v2 && m.state === "incoming" && c.req.method === "DELETE" && /^\/v2\/projects\/[^/]+\/?$/.test(path)) return next();
 
     if (m.state === "forwarded" && m.url && (sdk || viaKey)) {
       if (c.req.header(FORWARDED_HEADER)) return c.json({ code: 7110, message: "This project was forwarded in a loop between servers. Check where it moved." }, 508);

@@ -84,7 +84,7 @@ export function importRoutes(deps: Deps) {
     if (!b.manifest) return err(c, 400, "parameter_error", "Send the archive's manifest.json as manifest.");
     try {
       if (imp.status === "finished") throw new ImportError("This import is finished. Create a new import token to move the project again.", "state");
-      if (b.dry_run) return c.json({ object: "import_plan", import_id: imp.id, plan: await planImport(db, b.manifest, { importId: imp.id }) });
+      if (b.dry_run) return c.json({ object: "import_plan", import_id: imp.id, plan: await planImport(db, b.manifest, { importId: imp.id, userId: imp.userId }) });
       const row = await beginImport(db, imp, b.manifest, { passphrase: b.passphrase ?? null, replace: !!b.replace, serverKey: (await archiveRuntime(deps)).serverKey, now: deps.now() });
       return c.json(shape(row), 201);
     } catch (e) { return importErr(c, e); }
@@ -157,7 +157,7 @@ export function importRoutes(deps: Deps) {
     const id = await checkDownloadToken(c.req.param("token"), deps.now(), linkMaterial(deps));
     if (!id) return err(c, 404, "resource_missing", "This download link has expired or is not valid. Open the export again for a new link.");
     const [e] = await db.select().from(schema.projectExports).where(eq(schema.projectExports.id, id));
-    if (!e || e.status !== "succeeded") return err(c, 404, "resource_missing", "This export is no longer available (exports are kept for 7 days).");
+    if (!e || e.status !== "succeeded" || e.purpose === "verify" || (e.expiresAt && e.expiresAt <= deps.now())) return err(c, 404, "resource_missing", "This export is no longer available (exports are kept for 7 days).");
     const rt = await archiveRuntime(deps);
     const day = (e.finishedAt ?? e.createdAt).toISOString().slice(0, 10);
     return new Response(exportTar(rt.store, e), { headers: { "content-type": "application/x-tar", "content-disposition": `attachment; filename="revenuedot-${e.projectId}-${day}.tar"`, "cache-control": "no-store" } });

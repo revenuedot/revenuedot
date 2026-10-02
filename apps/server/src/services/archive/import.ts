@@ -57,8 +57,12 @@ export interface Plan {
   secrets_included: boolean;
 }
 
-/** What loading this archive would do: conflicts with other projects here, and rows per table now against the archive. */
-export async function planImport(db: DB, m: Manifest, o: { importId?: string } = {}): Promise<Plan> {
+/**
+ * What loading this archive would do: conflicts with other projects here, and rows per table now against the archive.
+ * Row counts and the move state of a project that already exists are shown only to someone who may see it (this import
+ * created it, or `userId` is one of its admins): an import token must not reveal another account's project.
+ */
+export async function planImport(db: DB, m: Manifest, o: { importId?: string; userId?: string } = {}): Promise<Plan> {
   checkManifest(m);
   const pid = m.project.id;
   const [existing] = await db.select().from(schema.projects).where(eq(schema.projects.id, pid));
@@ -68,12 +72,17 @@ export async function planImport(db: DB, m: Manifest, o: { importId?: string } =
     const [imp] = await db.select().from(I).where(and(eq(I.id, o.importId), eq(I.projectId, pid)));
     mine = !!imp;
   }
+  let visible = mine;
+  if (existing && !visible && o.userId) {
+    const [admin] = await db.select().from(schema.memberships).where(and(eq(schema.memberships.projectId, pid), eq(schema.memberships.userId, o.userId), eq(schema.memberships.role, "admin")));
+    visible = !!admin;
+  }
   const needsReplace = !!existing && !mine;
   if (existing && !mine && existing.moveState !== "forwarded") conflicts.push(`A project with id ${pid} already exists on this server and is not a moved-away copy. Delete it first, or move into another server.`);
   const keys = (m.summary?.apps ?? []).map((a) => a.public_key).filter(Boolean);
   if (keys.length) {
-    const taken = await db.select({ key: schema.apps.publicKey, project: schema.apps.projectId }).from(schema.apps).where(and(inArray(schema.apps.publicKey, keys), ne(schema.apps.projectId, pid)));
-    for (const k of taken) conflicts.push(`The SDK key ${k.key.slice(0, 12)}… is used by another project on this server (${k.project}).`);
+    const taken = await db.select({ key: schema.apps.publicKey }).from(schema.apps).where(and(inArray(schema.apps.publicKey, keys), ne(schema.apps.projectId, pid)));
+    for (const k of taken) conflicts.push(`The SDK key ${k.key.slice(0, 12)}… is used by another project on this server.`);
   }
   if (m.summary?.web_slug) {
     const [s] = await db.select({ p: schema.webDomains.projectId }).from(schema.webDomains).where(and(eq(schema.webDomains.slug, m.summary.web_slug), ne(schema.webDomains.projectId, pid)));
@@ -86,18 +95,18 @@ export async function planImport(db: DB, m: Manifest, o: { importId?: string } =
   const tables: Plan["tables"] = [];
   for (const t of m.tables) {
     let target = 0;
-    if (existing) {
+    if (existing && visible) {
       const r = rowsOf<{ n: number }>(await db.execute(sql`SELECT count(*)::int AS n FROM ${ident(t.name)} t WHERE ${scopeWhere(t.name, pid)}`));
       target = Number(r[0]?.n ?? 0);
     }
     tables.push({ name: t.name, archive_rows: t.rows, target_rows: target });
   }
-  return { project: { id: pid, name: m.project.name, exists: !!existing, state: existing?.moveState ?? null }, conflicts, needs_replace: needsReplace && existing?.moveState === "forwarded", tables, secrets_included: !!m.secrets?.included };
+  return { project: { id: pid, name: m.project.name, exists: !!existing, state: visible ? existing?.moveState ?? null : null }, conflicts, needs_replace: needsReplace && existing?.moveState === "forwarded", tables, secrets_included: !!m.secrets?.included };
 }
 
 /** Starts (or resumes) loading an archive into this server for `userId`. */
 export async function beginImport(db: DB, imp: ImportRow, m: Manifest, o: { passphrase?: string | null; replace?: boolean; serverKey: SecretKey | null; now: Date }): Promise<ImportRow> {
-  const plan = await planImport(db, m, { importId: imp.id });
+  const plan = await planImport(db, m, { importId: imp.id, userId: imp.userId });
   if (imp.projectId && imp.projectId !== m.project.id) throw new ImportError(`This import token is already loading project ${imp.projectId}. Create a new token for another project.`, "state");
   if (plan.needs_replace && !o.replace) throw new ImportError(`This server still has the copy of ${m.project.id} that moved away from here. Send replace: true (the CLI asks) to replace it with the archive.`, "conflict");
   const blocking = plan.conflicts.filter((c) => !(plan.needs_replace && o.replace && c.includes("already exists")));
@@ -181,13 +190,22 @@ export async function applyRows(db: DB, projectId: string, table: string, column
   const inScope = "project" in t.scope
     ? sql`r.${ident(t.scope.project)} = ${projectId}`
     : sql`r.${ident(t.scope.via)} IN (${idsInTarget(t.scope.parent, projectId)})`;
+  // A primary key that is already taken updates the row only when that row is this project's: an archive is client input,
+  // and a row of another project with the same key (a package, a delivery) must never be overwritten or pulled over.
+  const ownRow = "project" in t.scope
+    ? sql`${ident(table)}.${ident(t.scope.project)} = ${projectId}`
+    : sql`${ident(table)}.${ident(t.scope.via)} IN (${idsInTarget(t.scope.parent, projectId)})`;
   const onConflict = updatable.length
-    ? sql`DO UPDATE SET ${sql.join(updatable.map((c) => sql`${ident(c)} = EXCLUDED.${ident(c)}`), sql`, `)}${"project" in t.scope ? sql` WHERE ${ident(table)}.${ident(t.scope.project)} = ${projectId}` : sql``}`
+    ? sql`DO UPDATE SET ${sql.join(updatable.map((c) => sql`${ident(c)} = EXCLUDED.${ident(c)}`), sql`, `)} WHERE ${ownRow}`
     : sql`DO NOTHING`;
+  // Columns that stay with this server but need a value on a new row (a web domain's verification token).
+  const fill = Object.entries(t.fill ?? {});
+  const fillCols = fill.length ? sql`, ${sql.join(fill.map(([c]) => ident(c)), sql`, `)}` : sql``;
+  const fillVals = fill.length ? sql`, ${sql.join(fill.map(([, v]) => sql.raw(v)), sql`, `)}` : sql``;
   let written = 0;
   for (let i = 0; i < lines.length; i += BATCH) {
     const json = `[${lines.slice(i, i + BATCH).join(",")}]`;
-    const res = await db.execute(sql`INSERT INTO ${ident(table)} (${target}) SELECT ${source} FROM json_populate_recordset(NULL::${ident(table)}, ${json}::json) r WHERE ${inScope} ON CONFLICT (${pk}) ${onConflict}`);
+    const res = await db.execute(sql`INSERT INTO ${ident(table)} (${target}${fillCols}) SELECT ${source}${fillVals} FROM json_populate_recordset(NULL::${ident(table)}, ${json}::json) r WHERE ${inScope} ON CONFLICT (${pk}) ${onConflict}`);
     written += Number((res as { rowCount?: number; count?: number }).rowCount ?? (res as { count?: number }).count ?? 0);
   }
   if (table === "projects") {
@@ -236,6 +254,8 @@ export interface FinishReport {
   members_added: { email: string; role: string }[];
   members_to_invite: { email: string; role: string }[];
   notification_urls: { app_id: string; app_name: string; store: string; url: string; where: string }[];
+  /** Custom domains for hosted pages: verified per server, so they need Verify here (with this server's TXT value). */
+  domains_to_verify: string[];
 }
 
 const STORE_OF: Record<string, { path: string; where: string }> = {
@@ -251,17 +271,20 @@ export function notificationUrls(apps: { id: string; name: string; type: string 
   return apps.filter((a) => STORE_OF[a.type]).map((a) => ({ app_id: a.id, app_name: a.name, store: a.type, url: `${b}/v1/notifications/${STORE_OF[a.type]!.path}/${a.id}`, where: STORE_OF[a.type]!.where }));
 }
 
-/** Members from members.json: people with an account here join with their role; the rest are listed to invite. */
+/**
+ * Members from members.json, listed to invite on this server. Nobody is added directly: members.json comes from whoever
+ * holds the import token, so adding the accounts it names would put people into a project without their consent and tell
+ * the token holder which emails have an account here. The person who imports owns the project and invites the rest.
+ */
 export async function applyMembers(db: DB, imp: ImportRow, members: { email: string; role: string }[]) {
-  if (!imp.projectId) throw new ImportError("Send the manifest first.", "state");
+  if (!imp.projectId || imp.status !== "importing") throw new ImportError(imp.status === "finished" ? "This import is already finished." : "Send the manifest first.", "state");
+  const [me] = await db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, imp.userId));
   const added: { email: string; role: string }[] = [], invite: { email: string; role: string }[] = [];
-  for (const m of members) {
-    const role = ["admin", "developer", "viewer"].includes(m.role) ? m.role : "viewer";
-    const [u] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, String(m.email).toLowerCase().trim()));
-    if (!u) { invite.push({ email: m.email, role }); continue; }
-    if (u.id === imp.userId) continue;
-    await db.insert(schema.memberships).values({ userId: u.id, projectId: imp.projectId, role }).onConflictDoNothing();
-    added.push({ email: m.email, role });
+  for (const m of members.slice(0, 500)) {
+    if (typeof m?.email !== "string" || !m.email.includes("@")) continue;
+    const email = m.email.toLowerCase().trim();
+    if (email === me?.email.toLowerCase()) continue;
+    invite.push({ email, role: ["admin", "developer", "viewer"].includes(m.role) ? m.role : "viewer" });
   }
   await db.update(I).set({ report: { ...imp.report, members_added: added, members_to_invite: invite } }).where(eq(I.id, imp.id));
   return { added, invite };
@@ -279,6 +302,7 @@ export async function finishImport(db: DB, imp: ImportRow, o: { now: Date; baseU
   const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, pid));
   const storeApps = apps.filter((a) => ["app_store", "mac_app_store", "play_store", "amazon", "stripe"].includes(a.type));
   const needCreds = storeApps.filter((a) => Object.keys(a.credentials ?? {}).length === 0 && !a.secrets);
+  const domains = await db.select({ d: schema.webDomains.customDomain }).from(schema.webDomains).where(eq(schema.webDomains.projectId, pid));
   await db.update(schema.projects).set({ moveState: null, moveUpdatedAt: o.now }).where(eq(schema.projects.id, pid));
   const report: FinishReport = {
     project_id: pid,
@@ -287,6 +311,7 @@ export async function finishImport(db: DB, imp: ImportRow, o: { now: Date; baseU
     members_added: (imp.report.members_added as FinishReport["members_added"]) ?? [],
     members_to_invite: (imp.report.members_to_invite as FinishReport["members_to_invite"]) ?? [],
     notification_urls: notificationUrls(apps, o.baseUrl),
+    domains_to_verify: domains.map((x) => x.d).filter((d): d is string => !!d),
   };
   await db.update(I).set({ status: "finished", secretKey: null, finishedAt: o.now, updatedAt: o.now, report: report as unknown as Record<string, unknown> }).where(eq(I.id, imp.id));
   return report;
