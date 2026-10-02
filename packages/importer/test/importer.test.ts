@@ -2,7 +2,7 @@
 // This file: end-to-end tests of `revenuedot import` against a fake RevenueCat and the real RevenueDot server.
 // Docs: https://revenuedot.app/docs/migrate
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -255,6 +255,87 @@ describe("revenuedot import", () => {
     expect(readIds('["a","b"]')).toEqual(["a", "b"]);
     expect(readIds('[{"customer":"a","kind":"missing_customer"},{"id":"b"}]')).toEqual(["a", "b"]);
     expect(readIds("a\n\n b \r\nc\n")).toEqual(["a", "b", "c"]);
+  });
+
+  it("readIds takes the report `import verify --json` writes: the customers a re-import fixes, never onlyInRevenueDot", () => {
+    // Same shape and pretty-printing as the real SuperScan report of 2026-10-02, with made-up ids.
+    const text = readFileSync(new URL("./verify-report.json", import.meta.url), "utf8");
+    expect(readIds(text)).toEqual([
+      "13QLxxxxxxxxxxxxxxxxxxxxxx32",
+      "328BE39F-0000-4E84-9D99-000000000000",
+      "$RCAnonymousID:00000000000000000000000000000001",
+      "late-renewal",
+      "renewed-further",
+    ]);
+    expect(readIds(JSON.stringify({ ...JSON.parse(text), mismatches: [] }))).toEqual([]);
+  });
+
+  it("readIds rejects JSON it cannot read instead of treating each line as an id", () => {
+    expect(() => readIds('{\n  "customers": {\n')).toThrow(/--ids: the file is not valid JSON/);
+    expect(() => readIds('[\n  "a",\n')).toThrow(/--ids: the file is not valid JSON/);
+    expect(() => readIds('{"customers": {}}')).toThrow(/no mismatches array/);
+  });
+
+  it("import --ids takes the file import verify --json wrote and fixes every re-importable mismatch", async () => {
+    e = await setup();
+    const server = await serveHarness(e.h);
+    const dir = mkdtempSync(join(tmpdir(), "rd-cli-"));
+    const out: string[] = [];
+    const err: string[] = [];
+    const io = { out: (s: string) => out.push(s), err: (s: string) => err.push(s), env: { REVENUEDOT_API_KEY: e.h.ids.secretKey } };
+    const common = ["--rc-key", RC_KEY, "--rc-project", PROJECT, "--rc-url", e.rc.url, "--to", server.url];
+    try {
+      expect(await main(["import", "--from-revenuecat", ...common, "--state", join(dir, "s.json")], io)).toBe(0);
+      const m = e.rc.model;
+      const find = (id: string) => m.customers.find((c) => c.id === id)!;
+      // user_expired resubscribed in RevenueCat after the import; user_late is new; user_plain_1 was deleted there.
+      const until = T0 + 10 * DAY;
+      const s = find("user_expired").subscriptions[0]!;
+      find("user_expired").active = [{ object: "customer.active_entitlement", entitlement_id: "entl_pro", expires_at: until }];
+      Object.assign(s, { gives_access: true, status: "active", auto_renewal_status: "will_renew", current_period_starts_at: T0 - 20 * DAY, current_period_ends_at: until, ends_at: until });
+      s.transactions!.push({ ...s.transactions![0]!, id: "3000000002", purchased_at: T0 - 20 * DAY, expiration_date: until, effective_expiration_date: until });
+      m.customers.push({ ...find("user_plain_2"), id: "user_late", aliases: [] });
+      m.customers = m.customers.filter((c) => c.id !== "user_plain_1");
+
+      out.length = 0;
+      expect(await main(["import", "verify", ...common, "--json"], io)).toBe(1);
+      const file = join(dir, "verify.json");
+      writeFileSync(file, out.join("\n"));
+      const written = JSON.parse(readFileSync(file, "utf8"));
+      expect(written.mismatches.map((x: { customer: string; kind: string }) => [x.customer, x.kind])).toEqual([
+        ["user_expired", "active_subscriptions"],
+        ["user_expired", "entitlement_only_in_revenuecat"],
+        ["user_late", "missing_customer"],
+      ]);
+      expect(written.onlyInRevenueDot).toEqual(["user_plain_1"]);
+      expect(readIds(readFileSync(file, "utf8"))).toEqual(["user_expired", "user_late"]);
+
+      out.length = 0;
+      expect(await main(["import", "--from-revenuecat", ...common, "--ids", file, "--json"], io)).toBe(0);
+      const r = JSON.parse(out[out.length - 1]!);
+      expect(r.requestedIds).toBe(2);
+      expect(r.customers).toMatchObject({ imported: 2 });
+      expect(r.problems.filter((p: { kind: string }) => p.kind === "skipped")).toEqual([]);
+
+      out.length = 0;
+      const code = await main(["import", "verify", ...common, "--json"], io);
+      expect(JSON.parse(out.join("\n")).mismatches).toEqual([]);
+      expect(code).toBe(0);
+
+      const bad = join(dir, "bad.json");
+      writeFileSync(bad, '{\n  "customers": {\n');
+      err.length = 0;
+      expect(await main(["import", "--from-revenuecat", ...common, "--ids", bad], io)).toBe(2);
+      expect(err.join("\n")).toContain("--ids: the file is not valid JSON");
+
+      const clean = join(dir, "clean.json");
+      writeFileSync(clean, out.join("\n"));
+      err.length = 0;
+      expect(await main(["import", "--from-revenuecat", ...common, "--ids", clean], io)).toBe(0);
+      expect(err.join("\n")).toContain("lists no customers to import");
+    } finally {
+      await server.close();
+    }
   });
 
   it("plan prints the cutover steps with this project's notification URLs and missing credentials", async () => {
