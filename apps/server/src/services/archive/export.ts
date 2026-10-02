@@ -58,9 +58,11 @@ export async function createExport(rt: ArchiveRuntime, o: CreateExport): Promise
     secretKey = await seal({ k: toBase64(raw) }, rt.serverKey);
     secretSalt = kdf.salt;
   }
-  // One export at a time per project and purpose: a second request returns the one already running.
+  // A second request without secrets returns the plain export already running. With a passphrase it never does: the
+  // running one is encrypted with another passphrase (a CLI run that stopped during the export, an earlier dashboard move),
+  // and handing it back would make every secrets file fail to decrypt on the target.
   const [open] = await rt.db.select().from(E).where(and(eq(E.projectId, o.projectId), eq(E.purpose, purpose), inArray(E.status, ["queued", "running"]))).limit(1);
-  if (open && purpose !== "verify" && open.includeSecrets === !!o.passphrase) return open;
+  if (open && purpose !== "verify" && !o.passphrase && !open.includeSecrets) return open;
   const [row] = await rt.db.insert(E).values({
     id: newId("exp_", 16), projectId: o.projectId, purpose, status: "queued", includeSecrets: !!o.passphrase, secretKey, secretSalt,
     storage: rt.store.kind, nextAttemptAt: rt.now, requestedBy: o.requestedBy ?? null, createdAt: rt.now,

@@ -382,6 +382,16 @@ describe("import safety (an archive and its members.json are client input)", () 
     expect(again.state.phase).toBe("done");
   });
 
+  it("a move whose earlier export (another passphrase) is still running gets its own export, so the secrets decrypt", async () => {
+    const source = new HttpSource("http://source.test", src.ids.secretKey, { fetch: net, sleep: async () => {} });
+    const stale = await source.startExport("the passphrase of a run that stopped");
+    const { state } = await move(PASS);
+    expect(state.phase).toBe("done");
+    expect(state.exportId).not.toBe(stale.id);
+    const [app] = await dst.db.select().from(schema.apps).where(eq(schema.apps.id, "app_stripe"));
+    expect(await unseal(app!.secrets, k2)).toMatchObject({ stripe_secret_key: "rk_test_seedSecretKeyValue1234" });
+  });
+
   it("a download link stops working when the export expires, even before the cleanup runs", async () => {
     const H = { authorization: `Bearer ${src.ids.secretKey}`, "content-type": "application/json" };
     let e = await (await srcApp.fetch(new Request("http://source.test/v2/projects/proj1/exports", { method: "POST", headers: H, body: "{}" }))).json() as { id: string; status: string; download_url?: string };
