@@ -19,7 +19,7 @@ Status and per-repo results: [docs/STATUS.md](../../docs/STATUS.md) row 1.13. Re
 | Web | npm `@revenuedot/purchases-js`, `@revenuedot/purchases-js-vega` | `"@revenuecat/purchases-js": "npm:@revenuedot/purchases-js@<v>"` keeps imports | npm alias |
 | Capacitor | npm `@revenuedot/purchases-capacitor`, `-ui` | install through the alias `@revenuecat/purchases-capacitor`, so Capacitor's generated pod and SPM names (derived from the package name) stay `RevenuecatPurchasesCapacitor` | a direct scoped install would change the generated native names; not supported until verified |
 | KMP | Maven `app.revenuedot.purchases:purchases-kmp-*` | Kotlin packages `com.revenuecat.purchases.kmp.*` | same as Android |
-| Unity | OpenUPM `com.revenuedot.purchases-unity`, `com.revenuedot.purchases-ui-unity` | C# namespaces, assembly names | `using RevenueCat;` stays |
+| Unity | OpenUPM `com.revenuedot.purchases-unity` (built from tags `upm/<version>`); the UI package installs from git, as upstream | C# namespaces, assembly names | `using RevenueCat;` stays |
 | Cordova | npm `@revenuedot/cordova-plugin-purchases` | plugin id `cordova-plugin-purchases`, global `Purchases` | config.xml and app code refer to the id and global |
 
 **Versions:** registries get the upstream version number unchanged (npm `@revenuedot/purchases-js@1.67.0` is RevenueCat 1.67.0 plus our patches). Git-resolved ecosystems (SPM, Flutter git deps, the KMP submodule, podspec `:tag`) use tags `<upstream version>-revenuedot`, because the forks also carry RevenueCat's own tags. Hotfixes between upstream releases: `-revenuedot.2`.
