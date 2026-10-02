@@ -24,6 +24,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { openDb, schema } from "@revenuedot/db";
 import { createApp, defaultStores } from "@revenuedot/server";
+import { loadExtensions } from "@revenuedot/server/extensions.js";
 import { memoryMailer } from "@revenuedot/server/mail/index.js";
 import { getOrCreateCustomer, touch } from "@revenuedot/server/repo/customers.js";
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
@@ -45,6 +46,8 @@ const DAY = 86400_000;
 
 // E2E_DATABASE_URL runs the same server on a real Postgres (a Railway development database) for manual browser checks.
 const { db } = await openDb(process.env.E2E_DATABASE_URL ?? "pglite://memory");
+// Enterprise features (src/extensions.ts) only when the run asks for them: REVENUEDOT_EE_DEV=true (ee/e2e specs).
+const extensions = await loadExtensions(process.env);
 // The run never reaches Apple, Google or any other outside host: only this machine (fake partners, buckets) answers.
 // A credential a spec saves (a made-up Google service account) then fails like an outage instead of calling Google.
 // Custom domain verification asks Cloudflare's DNS-over-HTTPS resolver; here it answers from records set with POST /__dns.
@@ -80,7 +83,7 @@ const SEALING_KEY = "ZTJlLWlkZW50aXR5LWtleS1mb3ItdGVzdHMtb25seSE=";
 const runTick = async () => {
   if (!ready || ticking) return;
   ticking = true;
-  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY, stores, stripeConnect: connectConfig }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
+  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY, extensions, stores, stripeConnect: connectConfig }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
 };
 setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
@@ -120,7 +123,7 @@ const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantMo
 const CONNECT_ON: StripeConnectConfig = { clientId: FAKE_CONNECT_CLIENT_ID, secretKey: FAKE_PLATFORM_KEY, testSecretKey: FAKE_PLATFORM_TEST_KEY, webhookSecrets: [FAKE_CONNECT_WHSEC] };
 const connectConfig: StripeConnectConfig = process.env.E2E_STRIPE_CONNECT === "off" ? { webhookSecrets: [] } : { ...CONNECT_ON, webhookSecrets: [...CONNECT_ON.webhookSecrets] };
 const stores = { ...defaultStores(), ...fakeStores() };
-const api = createApp({ db, now, fetch: localFetch, stores, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, stripeConnect: connectConfig, moveDrainSeconds: 1 });
+const api = createApp({ db, now, fetch: localFetch, stores, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, stripeConnect: connectConfig, moveDrainSeconds: 1, extensions });
 
 let ready = false;
 const web = new Hono();
@@ -299,7 +302,7 @@ web.post("/__stripe/checkout/:id", async (c) => {
 });
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share|verified|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share|verified|sso|scim|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
   // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
   if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);

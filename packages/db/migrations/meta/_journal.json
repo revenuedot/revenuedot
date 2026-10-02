@@ -164,9 +164,16 @@
       "breakpoints": true
     },
     {
+      "idx": 25,
+      "version": "7",
+      "when": 1790905000000,
+      "tag": "0025_enterprise",
+      "breakpoints": true
+    },
+    {
       "idx": 26,
       "version": "7",
-      "when": 1791325270230,
+      "when": 1790915215289,
       "tag": "0026_connect_recovery",
       "breakpoints": true
     }

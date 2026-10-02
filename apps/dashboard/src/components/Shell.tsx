@@ -3,11 +3,14 @@ import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Icon, Mark } from "./icons";
+import { enterpriseAvailable } from "../extensions";
 
 export interface Me {
   user: { id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean };
   account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean };
   projects: { id: string; name: string; role: string }[];
+  /** Only with an enterprise licence (src/extensions.tsx). */
+  enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
 }
 export const useMe = (enabled = true) => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
 
@@ -85,6 +88,7 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
           <hr />
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/new"); }}><Icon name="plus" />New project</button>
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/receive"); }}><Icon name="arrow" />Receive a project</button>
+          {me.enterprise?.features.includes("organizations") && enterpriseAvailable && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/organizations"); }}><Icon name="layers" />Organization settings</button>}
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account"); }}><Icon name="settings" />Account settings</button>
           {me.account?.edition === "cloud" && me.account.billing_ready && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account/billing"); }}><Icon name="dollar" />Billing</button>}
           <button role="menuitem" type="button" onClick={async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav("/login"); }}><Icon name="logout" />Sign out</button>
