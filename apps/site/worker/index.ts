@@ -2,10 +2,12 @@
 //   GET  /api/geo            the visitor's country (Cloudflare's guess), so the phone picker starts on the right country
 //   POST /api/contact-sales  the contact-sales form: validate, store in D1 (LEADS), email sales (EMAIL to SALES_TO)
 //   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
+// Scheduled (daily, cloudflare.config.ts): one email to sales listing people who started the form and did not finish.
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
 import { isEmail, vendorLabel, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
 
-interface D1 { prepare(sql: string): { bind(...v: unknown[]): { run(): Promise<unknown> }; run(): Promise<unknown> } }
+interface D1Stmt { run(): Promise<unknown>; all<T = Record<string, unknown>>(): Promise<{ results: T[] }> }
+interface D1 { prepare(sql: string): D1Stmt & { bind(...v: unknown[]): D1Stmt } }
 interface SendEmail { send(m: { to: string; from: { email: string; name?: string }; subject: string; text: string; html: string; replyTo?: string }): Promise<unknown> }
 interface RateLimit { limit(o: { key: string }): Promise<{ success: boolean }> }
 interface Env {
@@ -38,6 +40,9 @@ const page = (title: string, body: string, status = 200) => new Response(`<!doct
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export default {
+  async scheduled(_controller: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
+    ctx.waitUntil(sendDigest(env).catch((e) => console.error("contact-sales: digest failed", e)));
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/geo" && request.method === "GET") {
@@ -175,5 +180,53 @@ export function leadEmail(l: Lead, s: Score, meta: { country: string | null; ref
   const subject = `[${SCORE_LABEL[s]}] Sales lead: ${l.company} (${l.name}), ${revenue}, uses ${vendorLabel(l)}`.replace(/[\r\n]+/g, " ").slice(0, 200);
   const text = `${SCORE_LABEL[s]} lead from revenuedot.app/contact-sales\n\n${rows.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nMessage:\n${l.message || "(none)"}\n\nReply to this email to answer ${l.name} directly.`;
   const html = `<div style="font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0A0A0A"><p style="font-weight:700">${esc(SCORE_LABEL[s])} lead from revenuedot.app/contact-sales</p><table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#525252;vertical-align:top">${esc(k)}</td><td style="padding:4px 0">${k === "Phone" ? `<a href="tel:${esc(l.phone)}">${esc(v)}</a>` : k === "Email" ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : esc(v)}</td></tr>`).join("")}</table><p style="color:#525252;margin-top:16px">Message</p><p style="white-space:pre-wrap">${esc(l.message || "(none)")}</p><p style="color:#737373">Reply to this email to answer ${esc(l.name)} directly.</p></div>`;
+  return { subject, text, html };
+}
+
+export interface DraftRow { id: string; email: string; answers: string; step: number; updated_at: string; country: string | null }
+
+/** Partial leads: people who gave an email but did not send the form, idle for at least 30 minutes, not reported before. */
+export async function sendDigest(env: Env, now = new Date()): Promise<number> {
+  if (!env.LEADS || !env.EMAIL || !env.SALES_TO) return 0;
+  await env.LEADS.prepare(SCHEMA).run();
+  await env.LEADS.prepare(DRAFTS).run();
+  await env.LEADS.prepare("ALTER TABLE sales_lead_drafts ADD COLUMN digested INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+  const cutoff = new Date(now.getTime() - 30 * 60_000).toISOString();
+  const { results } = await env.LEADS.prepare(`SELECT d.id, d.email, d.answers, d.step, d.updated_at, d.country FROM sales_lead_drafts d
+    WHERE d.completed = 0 AND d.digested = 0 AND d.updated_at < ?
+      AND NOT EXISTS (SELECT 1 FROM sales_leads l WHERE l.email = d.email)
+    ORDER BY d.step DESC, d.updated_at DESC LIMIT 200`).bind(cutoff).all<DraftRow>();
+  if (results.length) {
+    await env.EMAIL.send({ to: env.SALES_TO, from: FROM, ...digestEmail(results) });
+  }
+  // Drafts that finished as leads, or were just reported, are not reported again.
+  await env.LEADS.prepare(`UPDATE sales_lead_drafts SET digested = 1 WHERE digested = 0 AND updated_at < ?
+    AND (completed = 1 OR EXISTS (SELECT 1 FROM sales_leads l WHERE l.email = sales_lead_drafts.email) OR id IN (SELECT value FROM json_each(?)))`)
+    .bind(cutoff, JSON.stringify(results.map((r) => r.id))).run();
+  console.log(JSON.stringify({ event: "contact_sales_digest", partial: results.length }));
+  return results.length;
+}
+
+const STEP_NAMES = ["", "work email", "revenue", "current tool", "timeline", "contact details"];
+
+export function digestEmail(rows: DraftRow[]) {
+  const line = (r: DraftRow) => {
+    let a: Record<string, unknown> = {};
+    try { a = JSON.parse(r.answers) as Record<string, unknown>; } catch { /* keep empty */ }
+    const parts = [
+      typeof a.revenue === "string" && a.revenue ? (a.revenue === "undisclosed" ? "revenue not shared" : label(REVENUE, a.revenue)) : "",
+      typeof a.current === "string" && a.current ? `uses ${vendorLabel({ current: a.current, currentOther: typeof a.currentOther === "string" ? a.currentOther : "" })}` : "",
+      typeof a.timeline === "string" && a.timeline ? label(TIMELINE, a.timeline) : "",
+      typeof a.name === "string" && a.name ? String(a.name) : "",
+      typeof a.company === "string" && a.company ? String(a.company) : "",
+      typeof a.phone === "string" && a.phone ? String(a.phone) : "",
+    ].filter(Boolean);
+    return { email: r.email, reached: `stopped at ${STEP_NAMES[Math.min(r.step + 1, 5)] ?? `step ${r.step + 1}`}`, parts, when: r.updated_at.slice(0, 16).replace("T", " ") + " UTC", country: r.country ?? "" };
+  };
+  const items = rows.map(line);
+  const n = rows.length;
+  const subject = `[Partial] ${n} ${n === 1 ? "person" : "people"} started the contact-sales form but did not send it`;
+  const text = `${subject}\n\n${items.map((i) => `${i.email} (${i.reached}${i.country ? `, ${i.country}` : ""}, ${i.when})${i.parts.length ? `\n  ${i.parts.join(" · ")}` : ""}`).join("\n\n")}\n\nThey gave a work email, so you can follow up. Each person is listed once.`;
+  const html = `<div style="font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0A0A0A"><p style="font-weight:700">${esc(subject)}</p><table style="border-collapse:collapse">${items.map((i) => `<tr><td style="padding:8px 16px 8px 0;vertical-align:top"><a href="mailto:${esc(i.email)}">${esc(i.email)}</a><br><span style="color:#737373">${esc(i.reached)}${i.country ? ` · ${esc(i.country)}` : ""} · ${esc(i.when)}</span></td><td style="padding:8px 0;vertical-align:top;color:#525252">${esc(i.parts.join(" · ") || "No answers yet")}</td></tr>`).join("")}</table><p style="color:#737373">They gave a work email, so you can follow up. Each person is listed once.</p></div>`;
   return { subject, text, html };
 }

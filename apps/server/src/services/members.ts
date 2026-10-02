@@ -17,8 +17,8 @@ export const ROLES = ["admin", "developer", "viewer"] as const;
 export type Role = (typeof ROLES)[number];
 export const INVITE_TTL_DAYS = 7;
 
-/** RevenueCat's collaborator role names in API v2. */
-export const apiRole = (role: string) => (role === "viewer" ? "read_only" : role === "developer" ? "developer" : "admin");
+/** RevenueCat's collaborator role names in API v2. Any other role (a custom role id from an extension) is returned as it is. */
+export const apiRole = (role: string) => (role === "viewer" ? "read_only" : role);
 
 export const normEmail = (e: string) => e.trim().toLowerCase();
 

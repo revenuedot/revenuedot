@@ -12,6 +12,7 @@ import { routes } from "./routes";
 import { useMe } from "./components/Shell";
 import { ToastProvider } from "./components/ui";
 import { api } from "./lib/api";
+import { EnterpriseRoutes } from "./extensions";
 
 try { const t = localStorage.getItem("rd-theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* ignore */ }
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } } });
@@ -47,6 +48,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/account/billing" element={<BillingPage />} />
           <Route path="/projects/receive" element={<ReceiveProject />} />
           {routes}
+          <Route path="/organizations/*" element={<EnterpriseRoutes />} />
           {SOON.map(([p, t, w]) => <Route key={p} path={`/projects/:projectId/${p}`} element={<Soon title={t} what={w} />} />)}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

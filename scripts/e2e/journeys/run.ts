@@ -23,6 +23,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   "settings-auth": () => import("./settings-auth.ts"),
   move: () => import("./move.ts"),
   billing: () => import("./billing.ts"),
+  import: () => import("./import.ts"),
 };
 
 async function main() {

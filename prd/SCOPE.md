@@ -62,7 +62,7 @@ Goal: nothing a normal RevenueCat customer uses is missing, and we are clearly b
 
 ## Tier 3: dominant, enterprise-ready
 Goal: the obvious default, including for regulated and very large apps.
-- **The paid `ee/` folder:** SSO/SAML, SCIM, custom roles, several organizations, data-location controls (EU and US regions), long audit retention, compliance exports.
+- **The paid `ee/` folder:** SSO/SAML, SCIM, custom roles, several organizations, data-location controls (EU and US regions), long audit retention, compliance exports. Built on branch `tier3-ee` (`prd/enterprise/PRD.md`); an EU Cloud deployment is still to be created (`docs/data-location.md`).
 - **High-availability self-host:** Helm and Terraform reference setups, clustering, an SLA, AWS Marketplace listing.
 - **Web billing:** hosted checkout on our own Stripe Connect platform, web-to-app funnels, redemption links. Built on the developer's own Stripe app (restricted key) on branch `tier3-web-billing`: web providers and checklist, hosted checkout, purchase links, redemption links, funnels with builder and analytics, web discounts, domains (`prd/web-billing/PRD.md`); Connect OAuth is still to do.
 - **Revenue recovery:** failed-payment recovery, refund defense (Apple consumption info), win-back flows. These are priced as a share of the money recovered.

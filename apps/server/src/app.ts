@@ -71,6 +71,8 @@ export function createApp(input: Deps) {
   app.use("/rcbilling/*", responseSigning(signer, deps.now));
   app.get(SIGNING_KEY_PATH, signingKeyHandler(signer));
   app.get("/", (c) => c.json({ name: "RevenueDot", docs: "https://revenuedot.app/docs" }));
+  // Enterprise extensions (extensions.ts): their middleware and routes come before every core route. None in the open-source build.
+  for (const x of deps.extensions ?? []) x.mount?.(app, deps);
   // Store notifications are mounted before the SDK routes, which require an SDK API key.
   app.route("/", notificationRoutes(deps));
   // Apple's Retention Messaging call and the win-back email links (no API key).

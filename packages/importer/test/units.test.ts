@@ -2,7 +2,7 @@
 // This file: unit tests for the importer's HTTP retries, pagination guard and RevenueCat-to-RevenueDot conversion.
 // Docs: https://revenuedot.app/docs/migrate
 import { describe, expect, it } from "vitest";
-import { HttpError, pool, requestJson, retryAfterMs } from "../src/http.js";
+import { HttpError, TimeoutError, pool, requestJson, retryAfterMs } from "../src/http.js";
 import { RevenueCatClient } from "../src/revenuecat.js";
 import { parseTokenCsv, toImportCustomer } from "../src/convert.js";
 import { emptyCatalog } from "../src/state.js";
@@ -31,6 +31,20 @@ describe("requestJson", () => {
     expect(e).toBeInstanceOf(HttpError);
     expect(e.status).toBe(404);
     expect(e.message).toBe("404 from https://x.test/a: Customer not found.");
+  });
+
+  it("retries timeouts like network errors, or `timeoutRetries` times, then throws TimeoutError with the limit in seconds", async () => {
+    let reads = 0;
+    const slowRead = async () => { reads++; throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); };
+    await expect(requestJson("https://x.test/read", {}, { fetch: slowRead, sleep: async () => {}, maxRetries: 3 })).rejects.toBeInstanceOf(TimeoutError);
+    expect(reads).toBe(4);
+    await expect(requestJson("https://x.test/read", {}, { fetch: slowRead, sleep: async () => {}, maxRetries: 0 })).rejects.toBeInstanceOf(TimeoutError);
+    let calls = 0;
+    const slow = async () => { calls++; throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); };
+    const e = await requestJson("https://x.test/import?x=1", {}, { fetch: slow, sleep: async () => {}, timeoutMs: 60_000, timeoutRetries: 1 }).catch((x) => x);
+    expect(e).toBeInstanceOf(TimeoutError);
+    expect(e.message).toBe("No answer from https://x.test/import within 60 s.");
+    expect(calls).toBe(2);
   });
 
   it("pool keeps order and limits concurrency", async () => {
