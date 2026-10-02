@@ -203,9 +203,14 @@ export class GooglePlayClient {
     }
   }
 
-  /** OAuth 2.0 JWT bearer grant with the service account; tokens are cached until a minute before expiry. */
+  /**
+   * OAuth 2.0 JWT bearer grant with the service account; tokens are cached until a minute before expiry. The cache is
+   * keyed by the private key (client_email and private_key_id are not secret: a key file with another project's email
+   * must never pick up that project's token), and the key file's `token_uri` is ignored: the signed assertion always
+   * goes to Google's token endpoint, never to a URL a customer could point at the server's own network.
+   */
   async accessToken(sa: ServiceAccount): Promise<string> {
-    const cacheKey = `${sa.client_email}|${sa.private_key_id ?? ""}`;
+    const cacheKey = `${sa.client_email}|${sa.private_key}`;
     const nowMs = Date.now();
     const cached = this.tokens.get(cacheKey);
     if (cached && cached.expiresAt > nowMs + 60_000) return cached.token;
@@ -217,7 +222,7 @@ export class GooglePlayClient {
       this.keys.set(sa.private_key, key);
     }
     const signingKey: KeyLike = key;
-    const aud = sa.token_uri ?? OAUTH_TOKEN_URL;
+    const aud = OAUTH_TOKEN_URL;
     const iat = Math.floor(nowMs / 1000);
     const assertion = await new SignJWT({ scope: ANDROID_PUBLISHER_SCOPE })
       .setProtectedHeader({ alg: "RS256", typ: "JWT", ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) })
