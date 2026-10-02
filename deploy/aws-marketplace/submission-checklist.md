@@ -22,7 +22,7 @@ Marketplace seller account exists yet. Spec: `prd/ha-self-host/PRD.md`.
    - **Free** (open-source only): discovery only, no revenue through AWS.
    Hourly or per-pod usage pricing does not fit: it needs the AWS Marketplace Metering Service in the image and prices
    the infrastructure rather than the licence.
-2. **Seller registration (Kai).** Register Circo, Inc. as an AWS Marketplace seller in the AWS Marketplace Management
+2. **Seller registration (Kai).** Register the company that sells RevenueDot as an AWS Marketplace seller in the AWS Marketplace Management
    Portal: legal entity, tax interview, and the bank account for disbursement. An agent must not do this step.
 3. **EULA.** Use the Standard Contract for AWS Marketplace with the RevenueDot Enterprise License (`ee/LICENSE`) as the
    addendum for `ee/` features, or attach the order form, MSA and DPA. Legal text is adopted, never drafted.
