@@ -21,8 +21,10 @@ export interface ServerExtension {
   /**
    * A dashboard user's access to a project, after the core found their membership. May deny it (for example when the
    * project's organization requires single sign-on) or give the principal an explicit permission list (custom roles).
+   * `sessionChecked`: the caller has no session but checked this one moments ago (the OAuth token exchange, after the
+   * consent screen), so checks bound to the session are skipped.
    */
-  projectAccess?(a: { deps: Deps; userId: string; sessionId: string | null; projectId: string; role: string }): Promise<ProjectAccess | null>;
+  projectAccess?(a: { deps: Deps; userId: string; sessionId: string | null; projectId: string; role: string; sessionChecked?: boolean }): Promise<ProjectAccess | null>;
   /** Password sign-in, sign-up and reset for an email address. A refusal stops them (enforced single sign-on). */
   passwordPolicy?(a: { deps: Deps; email: string }): Promise<PasswordRefusal | null>;
   /** Extra fields for GET /auth/config (signed out): for example that single sign-on is available. */

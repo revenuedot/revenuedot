@@ -72,10 +72,11 @@ export function enterpriseExtension(license: LicenseState, regions: RegionConfig
 /**
  * Project access for dashboard users (the core calls this after it found the membership):
  * - a project in an organization that enforces single sign-on needs a session that began with that organization's
- *   SSO, for members whose email domain the organization verified (owners may still use a password: break-glass);
+ *   SSO, for members whose email domain the organization verified (owners may still use a password: break-glass),
+ *   unless the caller checked the session already (`sessionChecked`: the OAuth token exchange after its consent screen);
  * - a custom role gives exactly its scopes; a role id that no longer resolves gives none.
  */
-async function projectAccess(db: DB, features: Set<string>, a: { userId: string; sessionId: string | null; projectId: string; role: string }): Promise<ProjectAccess | null> {
+async function projectAccess(db: DB, features: Set<string>, a: { userId: string; sessionId: string | null; projectId: string; role: string; sessionChecked?: boolean }): Promise<ProjectAccess | null> {
   const [row] = await db.select({ orgId: eeOrgProjects.orgId, enforced: eeOrganizations.ssoEnforced }).from(eeOrgProjects)
     .innerJoin(eeOrganizations, eq(eeOrganizations.id, eeOrgProjects.orgId)).where(eq(eeOrgProjects.projectId, a.projectId)).limit(1);
   if (row) {
@@ -86,7 +87,7 @@ async function projectAccess(db: DB, features: Set<string>, a: { userId: string;
     // Someone who joined an organization project through a project invite becomes an organization member, so the
     // organization's member list, seats and access reviews include them.
     if (!member) await db.insert(eeOrgMembers).values({ orgId: row.orgId, userId: a.userId, role: "member", source: "project" }).onConflictDoNothing();
-    if (row.enforced && features.has("sso") && member?.role !== "owner" && (await mustUseSso(db, row.orgId, a.userId))) {
+    if (row.enforced && features.has("sso") && !a.sessionChecked && member?.role !== "owner" && (await mustUseSso(db, row.orgId, a.userId))) {
       const [sso] = a.sessionId ? await db.select({ id: eeSsoSessions.sessionId }).from(eeSsoSessions)
         .where(and(eq(eeSsoSessions.sessionId, a.sessionId), eq(eeSsoSessions.orgId, row.orgId))).limit(1) : [];
       if (!sso) return { deny: { status: 403, message: "This project's organization requires single sign-on. Sign out, then sign in with SSO." } };

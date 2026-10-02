@@ -8,6 +8,7 @@ import type { Deps } from "../context.js";
 import { createSecretKey, sha256Hex } from "../services/auth.js";
 import { SESSION_COOKIE, projectsForUser, sessionUser } from "../services/sessions.js";
 import { requestOrigin } from "../services/account-email.js";
+import { allows, type Principal } from "./v2/common.js";
 
 /**
  * OAuth 2.1 authorization server for MCP clients (MCP authorization spec, 2025-06-18):
@@ -233,6 +234,28 @@ export function oauthRoutes(deps: Deps) {
   };
   const csrfFor = (sessionId: string, clientId: string) => sha256Hex(`${sessionId}:oauth-consent:${clientId}`);
 
+  /**
+   * The scopes an OAuth key for this member may hold, never more than the member's own role allows (allows() in
+   * routes/v2/common.ts): a viewer's or a custom role's key is narrowed to what they can do themselves. Enterprise
+   * extensions (extensions.ts) may deny the project outright (enforced single sign-on, a deprovisioned person) or give a
+   * custom role's scopes. A `read_write` scope the role lacks falls back to its `read` scope when the role has that.
+   */
+  const memberScopes = async (userId: string, projectId: string, role: string, sessionId: string | null, sessionChecked = false): Promise<{ denied: string } | { narrow: (scopes: readonly string[]) => string[] }> => {
+    let permissions: string[] | undefined;
+    for (const x of deps.extensions ?? []) {
+      const a = await x.projectAccess?.({ deps, userId, sessionId, projectId, role, sessionChecked });
+      if (a?.deny) return { denied: a.deny.message };
+      if (a?.permissions) permissions = a.permissions;
+    }
+    const p: Principal = { kind: "user", userId, role, ...(permissions ? { permissions } : {}) };
+    const narrow = (scopes: readonly string[]) => [...new Set(scopes.flatMap((s) => {
+      if (allows(p, s)) return [s];
+      const read = s.endsWith(":read_write") ? `${s.slice(0, -":read_write".length)}:read` : null;
+      return read && allows(p, read) ? [read] : [];
+    }))];
+    return { narrow };
+  };
+
   r.get("/oauth/authorize", async (c) => {
     const a = await authRequest(c.req.query());
     if ("fatal" in a) return c.html(page("Cannot connect", `<p>${esc(a.fatal!)}</p>`), 400);
@@ -243,7 +266,12 @@ export function oauthRoutes(deps: Deps) {
     // Account pages (forgot password, new project) live on the dashboard host, which is not always this host.
     const dash = (deps.publicUrl ?? publicOrigin(c)).replace(/\/+$/, "");
     if (!user) return c.html(page(`Sign in to connect ${req.client.name}`, signInForm(req.client.name, dash)));
-    const projects = await projectsForUser(db, user.id);
+    // Only projects this person may hand some access to (enterprise extensions can deny a project or narrow a role).
+    const projects = [];
+    for (const p of await projectsForUser(db, user.id)) {
+      const a = await memberScopes(user.id, p.id, p.role, sid ?? null);
+      if ("narrow" in a && a.narrow(OAUTH_SCOPES["project:read"]).length) projects.push(p);
+    }
     if (!projects.length) return c.html(page("No project yet", `<p>Create a project in the RevenueDot dashboard first, then come back to ${esc(req.client.name)} and connect again.</p><div class="row"><a class="btn" href="${esc(dash)}/projects/new" target="_blank" rel="noopener">Create a project</a></div>`));
     const q = c.req.query();
     const hidden = ["client_id", "redirect_uri", "state", "scope", "resource", "code_challenge", "code_challenge_method", "response_type"]
@@ -300,10 +328,14 @@ export function oauthRoutes(deps: Deps) {
     // Viewers (and any role other than admin or developer, such as a custom role) can only hand out read access.
     const level: Level = (project.role !== "admin" && project.role !== "developer") || form.access === "project:read" ? "project:read" : "project:write";
     const support = level === "project:write" && form.support === "1";
+    const access = await memberScopes(user.id, project.id, project.role, sid ?? null);
+    if ("denied" in access) return c.html(page("Cannot connect", `<p>${esc(access.denied)}</p>`), 403);
+    const permissions = access.narrow(permissionsFor(level, support));
+    if (!permissions.length) return c.html(page("Cannot connect", "<p>Your role in that project has no access an app can be given.</p>"), 403);
     const code = randomToken();
     await db.insert(schema.oauthCodes).values({
       hash: await sha256Hex(code), clientId: req.client.id, userId: user.id, projectId: project.id, redirectUri: req.redirectUri,
-      codeChallenge: req.codeChallenge, scope: scopeString(level, support), permissions: permissionsFor(level, support), resource: req.resource,
+      codeChallenge: req.codeChallenge, scope: scopeString(level, support), permissions, resource: req.resource,
       expiresAt: new Date(deps.now().getTime() + CODE_TTL_MS),
     });
     return c.redirect(back(req.redirectUri, { code, state: req.state, iss }), 302);
@@ -336,8 +368,13 @@ export function oauthRoutes(deps: Deps) {
     const level: Level = member.role !== "admin" && member.role !== "developer" ? "project:read" : row.scope.startsWith("project:read") ? "project:read" : "project:write";
     const support = level === "project:write" && row.scope.includes(SUPPORT);
     const scope = scopeString(level, support);
+    // The consent screen checked the session; the role (and any enterprise denial) is checked again now.
+    const access = await memberScopes(row.userId, row.projectId, member.role, null, true);
+    if ("denied" in access) return tokenError(c, "invalid_grant", access.denied);
+    const permissions = access.narrow(permissionsFor(level, support)).filter((s) => row.permissions.includes(s));
+    if (!permissions.length) return tokenError(c, "invalid_grant", "The user's role in the project no longer allows this access.");
     const [client] = await db.select().from(schema.oauthClients).where(eq(schema.oauthClients.id, row.clientId)).limit(1);
-    const { key } = await createSecretKey(db, row.projectId, `OAuth: ${client?.name ?? "MCP client"}`.slice(0, 100), permissionsFor(level, support));
+    const { key } = await createSecretKey(db, row.projectId, `OAuth: ${client?.name ?? "MCP client"}`.slice(0, 100), permissions);
     c.header("Cache-Control", "no-store");
     return c.json({ access_token: key, token_type: "Bearer", scope, project_id: row.projectId });
   });
