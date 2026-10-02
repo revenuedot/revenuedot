@@ -153,6 +153,15 @@ describe("import from App Store Connect", () => {
     const sameKey = await v2("GET", LIST);
     expect(sameKey).toMatchObject({ status: 422, body: { type: "unprocessable_entity_error" } });
     expect(sameKey.body.message).toMatch(/is its In-App Purchase key \(key ID ASCKEY1\), and App Store Connect does not accept In-App Purchase keys/);
+    // A .p8 that is not a private key: App Store Connect was never asked, so the message must not say it refused.
+    const callsBefore = asc.calls.length;
+    await h.db.update(schema.apps).set({ credentials: { ...iap, app_store_connect_api_key: "-----BEGIN PRIVATE KEY-----\nnot a key\n-----END PRIVATE KEY-----" } }).where(eq(schema.apps.id, APP_ID));
+    const badP8 = await v2("GET", LIST);
+    expect(badP8).toMatchObject({ status: 422, body: { type: "unprocessable_entity_error" } });
+    expect(badP8.body.message).toMatch(/not a valid \.p8 private key/);
+    expect(badP8.body.message).not.toMatch(/refused|Apple said/);
+    expect(asc.calls).toHaveLength(callsBefore);
+    await h.db.update(schema.apps).set({ credentials: iap }).where(eq(schema.apps.id, APP_ID));
     asc.setMode("503");
     expect(await v2("GET", LIST)).toMatchObject({ status: 422, body: { type: "store_error", retryable: true } });
     expect(await v2("POST", IMPORT, { store_identifiers: ["pro_weekly"] })).toMatchObject({ status: 422, body: { type: "store_error", retryable: true } });

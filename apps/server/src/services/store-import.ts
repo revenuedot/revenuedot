@@ -93,6 +93,8 @@ async function listAppStore(deps: Deps, app: App): Promise<StoreListingResult> {
     for (const p of iaps.data) items.push(appleIap(p));
   } catch (e) {
     if (e instanceof ConnectError) {
+      // Status 0: the saved .p8 could not be read, so App Store Connect was never asked.
+      if (e.kind === "credentials" && !e.status) throw new StoreOpError("credentials", `${e.message} Save the .p8 file of a team key with the App Manager role in the app's App Store Connect API key section.`);
       if (e.kind === "credentials") {
         const c = app.credentials ?? {};
         const iapKeyId = typeof c.subscription_key_id === "string" ? c.subscription_key_id : typeof c.key_id === "string" ? c.key_id : null;
