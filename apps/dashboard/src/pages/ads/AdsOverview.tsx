@@ -101,7 +101,7 @@ function Trend({ o }: { o: Overview }) {
   return (
     <Panel title="Daily" link={<Segmented label="Measure" value={measure} onChange={setMeasure} options={[{ value: "ad_revenue", label: "Ad revenue" }, { value: "impressions", label: "Impressions" }, { value: "ecpm", label: "eCPM" }, { value: "both", label: "With subscriptions" }]} />}>
       <Legend series={series} />
-      <Plot periods={periods} series={series} kind={measure === "both" || measure === "ecpm" ? "line" : "bar"} integer={!money}
+      <Plot periods={periods} series={series} kind={measure === "both" || measure === "ecpm" ? "line" : "column"} integer={!money}
         format={(v) => (v === null ? "—" : money ? usd(v) : fmt.int(v))}
         formatTick={(v) => { const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`; return money ? `$${s}` : s; }}
         ariaLabel={`${series.map((s) => s.label).join(" and ")} by day. The values are in the tables below.`} />

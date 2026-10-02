@@ -28,6 +28,7 @@ import { targetingRoutes } from "./targeting.js";
 import { experimentRoutes } from "./experiments.js";
 import { chartRoutes } from "./charts.js";
 import { savedChartRoutes } from "./saved-charts.js";
+import { chartExtraRoutes } from "./chart-extras.js";
 import { partnerIntegrationRoutes } from "./partner-integrations.js";
 import { dataExportRoutes } from "./data-exports.js";
 import { storeOpRoutes } from "./store-ops.js";
@@ -146,6 +147,7 @@ export function v2Routes(deps: Deps) {
   attributionRoutes(r, deps);
   benchmarkRoutes(r, deps);
   savedChartRoutes(r, deps);
+  chartExtraRoutes(r, deps);
   partnerIntegrationRoutes(r, deps);
   dataExportRoutes(r, deps);
   storeOpRoutes(r, deps);

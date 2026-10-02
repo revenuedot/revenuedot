@@ -6,7 +6,7 @@ import {
   usePromptInputAttachments, usePromptInputController, type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { api } from "../../lib/api";
-import { aiBase, isStoreKitPart, type Mention } from "./data";
+import { aiBase, isStoreKitPart, type Draft, type Mention } from "./data";
 
 /**
  * The RevenueDot AI composer (prd/ai-assistant/PRD.md §3, §4): AI Elements PromptInput with Attach image (and .storekit
@@ -17,7 +17,7 @@ export interface ComposerSubmit { text: string; files: FileUIPart[]; mentions: M
 
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
-export function Composer(props: { pid: string; status?: ChatStatus; onStop?: () => void; onSubmit: (m: ComposerSubmit) => unknown; disabled?: boolean; autoFocus?: boolean; placeholder?: string }) {
+export function Composer(props: { pid: string; status?: ChatStatus; onStop?: () => void; onSubmit: (m: ComposerSubmit) => unknown; disabled?: boolean; autoFocus?: boolean; placeholder?: string; initial?: Draft | null }) {
   return (
     <PromptInputProvider>
       <ComposerInner {...props} />
@@ -31,7 +31,7 @@ export function mentionQuery(value: string, caret: number | null): string | null
   return m ? m[1]! : null;
 }
 
-function ComposerInner({ pid, status, onStop, onSubmit, disabled, autoFocus, placeholder }: Parameters<typeof Composer>[0]) {
+function ComposerInner({ pid, status, onStop, onSubmit, disabled, autoFocus, placeholder, initial }: Parameters<typeof Composer>[0]) {
   const controller = usePromptInputController();
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [options, setOptions] = useState<{ query: string; items: Mention[] }>({ query: "", items: [] });
@@ -43,6 +43,16 @@ function ComposerInner({ pid, status, onStop, onSubmit, disabled, autoFocus, pla
   // The caret after the last edit, read in the change handler (the same event as the text), not in an effect.
   const caret = useRef<number | null>(null);
   const value = controller.textInput.value;
+  // A draft from another page (the chart page's Ask AI): the text with its mention, the caret at the end, not sent.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!initial || seeded.current) return;
+    seeded.current = true;
+    caret.current = initial.text.length;
+    controller.textInput.setInput(initial.text);
+    setMentions(initial.mentions);
+    requestAnimationFrame(() => { const el = ref.current; el?.focus(); el?.setSelectionRange(initial.text.length, initial.text.length); });
+  }, [initial, controller.textInput]);
 
   // The mention list follows the text in render. It used to be state set from an effect on every keystroke: each
   // keystroke's synchronous render then left a second update queued, and when keystrokes arrived faster than React's

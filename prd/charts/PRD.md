@@ -90,7 +90,7 @@ Other sources: `customers` (first seen, last seen country, platform and app vers
 - `selectors`: JSON object of the chart's selectors (`/options` lists them).
 - `aggregate=average,total`: `values` is empty and `summary` holds only those operations.
 - `currency`: one of RevenueCat's 14 codes.
-- `include_annotations=true` adds `annotations: []` (RevenueDot has no annotations yet).
+- `include_annotations=true` adds the project's annotations that overlap the range (see "Annotations" below).
 - RevenueDot extension: `environment=sandbox`.
 - Unknown chart name: 404. Unsupported segment or filter, bad dates, bad selectors: 400 `parameter_error` naming the parameter and listing what is supported.
 
@@ -129,7 +129,8 @@ Customer dimensions filter customers and everything they did; purchase dimension
 - `apps/server/src/routes/v2/charts.ts`: the two endpoints, parameters, errors and response shape.
 - `apps/server/src/services/charts/`: loading rows, FX, filters, segments; `reference-sql.ts`.
 - `packages/core/src/charts/`: periods, subscription building, every chart's computation, the catalog of names, groups, measures, selectors and definitions.
-- Dashboard `/projects/:projectId/charts` and `/projects/:projectId/charts/:chartName` (`pages/charts/Charts.tsx`): grouped chart rail with search, date range, resolution, filters, segment, selectors, sandbox switch, line, bar or stacked chart (cohort charts as a heat table), the data table and CSV download.
+- Dashboard `/projects/:projectId/charts` and `/projects/:projectId/charts/:chartName` (`pages/charts/Charts.tsx`): grouped chart rail with search and saved charts, date range, resolution, filters, segment, selectors, sandbox switch, chart type, the plot with annotation markers (cohort charts as a heat table), the Summary, Customers and Annotations tabs, Save, Refresh, Ask AI and the "…" menu (Export CSV, Share preview).
+- `apps/server/src/routes/v2/chart-extras.ts`: the Customers endpoint, annotations and share links; `apps/server/src/routes/share.ts`: the public share pages.
 
 ## Tests that prove it
 - `packages/core/test/charts.test.ts`: periods, subscription building (refunds, resubscriptions, billing recoveries, product changes, grace), MRR factors and each chart on hand-built ledgers.
@@ -137,7 +138,71 @@ Customer dimensions filter customers and everything they did; purchase dimension
 - `packages/contract/test/charts-sql.test.ts`: the published SQL equals the API.
 - `apps/dashboard/e2e/charts.spec.ts`: the Charts page against the seeded server.
 
+## The chart page: type, Customers, Annotations, Share preview, Refresh, Ask AI
+Reference: RevenueCat's chart page (Charts v3) as observed on 2026-10-01. Under the chart it has three tabs (Summary, Customers, Annotations); the header has a chart type menu, a "…" menu with Export CSV and Share preview, Refresh, Save and Ask AI; the rail lists saved charts on top. RevenueDot already had compare, the Sandbox switch, Save, CSV, ranges, resolution, Filter, Segment and the measure picker. This section closes the rest.
+
+### 1. Chart type
+- **Menu:** Line, Stacked area, Column, Stacked column, 100% stacked column. The default comes from the chart's `display_type`: `line` → Line, `bar` → Column, `stacked_bar` → Stacked column.
+- **Stacked types need two or more series:** a segmented chart, or a chart that plots several measures together (MRR Movement, Active Subscriptions Movement, Trial Conversion Funnel …). With one series they are disabled with the reason "Segment the chart to stack it", and a stacked type left in the URL draws as Line (stacked area) or Column (the column types).
+- **Stacks split by sign:** positive values stack up from zero and negative ones down, so MRR Movement's churn sits below the axis. The 100% stacked column shows each value as its share of the period's total of absolute values (the column spans 100%, negatives below zero); the table and tooltip keep the real values.
+- **URL and saved charts:** `type=line|stacked_area|column|stacked_column|percent_column`; saved charts keep it in `view.type`. Cohort tables have no type menu.
+
+### 2. Customers tab
+- **What it shows:** "This is a sample of customers contributing to this chart." Up to 100 customers for the chart's current range, resolution, filters, selectors, segment and Sandbox switch, most recent contribution first. Columns: App User ID (opens the customer page), Status (Active, Trial, Grace period, Billing issue, Expired, No subscription; from the subscriptions of the chart's environment), Store, Product, the date of the contribution (labelled per chart: Purchased, First seen, Paid start, Trial started …), the customer's value of the chart's measure (Revenue, MRR, New Customers …), and the segment when the chart is segmented. **Export all** downloads every contributor as CSV.
+- **API (RevenueDot extension):** `GET /v2/projects/{project_id}/charts/{chart_name}/customers` takes the chart's own parameters (`resolution`, `start_date`, `end_date`, `expand_periods`, `filters`, `selectors`, `segment`, `limit_num_segments`, `currency`, `environment`) plus `limit` (1–100, default 100). `format=csv` streams every contributor (at most 100,000 rows; past that the last line says the export was cut). Scopes: `charts_metrics:charts:read` and `customer_information:customers:read`, because it lists customers.
+- **Response:** `{ object: "chart_customers", chart_name, total_count, value: { id, display_name, unit } | null, sum: "total" | "last", unattributed_value, date_label, segment, items: [{ object: "chart_customer", customer_id, app_user_id, status, store, product_id, contributed_at, first_seen_at, value, segment }] }`. `customer_id` is the internal id; `segment` is the segment's label (`"Other"` past the limit). `unattributed_value` is the part of the chart's Total that belongs to no customer (ad events from app user ids the server never saw; on a segmented chart it is the Total's, counted once); the listed values plus it add up to the chart, and the tab says so.
+- **Who contributes, chart by chart** (`packages/core/src/charts/contributors.ts`, built from the same rows, filters, segments and helpers as the chart itself):
+
+| Charts | Contributors | Value (the chart's measure) | Adds up to |
+|---|---|---|---|
+| Revenue | Customers with a non-trial ledger row (purchase, renewal, one-time, refund, reversal) or ad revenue in the range | their revenue (or proceeds) in the range | the range's total |
+| MRR, ARR, Active Subscriptions, Active Trials, Subscription Status | Customers with a paid subscription (a trial for Active Trials and the trials status measure) active at the end of any period in the range | their MRR, ARR or count at the end of the last period | the last period's value |
+| MRR Movement, Active Subscriptions Movement | Customers with a paid start, end, lapse, recovery or price change in the range | their net movement | the movement total |
+| Paid Subscriptions | Paid starts in the range | count | the total |
+| Churn | Customers whose paid subscription ended (net of recoveries) | churned actives | churned actives |
+| Non-subscription Purchases, Refund Rate | One-time purchases; paid transactions | count | the total |
+| Refunds | Refunds and reversals by refund date | refunded money | the total |
+| Ad charts | Customers with the chart's ad events | ad revenue, impressions, clicks or requests | that measure's total (ad events without a customer are not listed) |
+| Ad Monetized Customers | Customers with ad revenue | days with ad revenue (one per UTC day) | the sum of the daily counts (each period's value × its days) |
+| ARPDAU | Customers with ad revenue | ad revenue, the ratio's numerator (a ratio has no part per customer) | the Ad Revenue chart |
+| New Customers, Realized LTV, Initial Conversion, Conversion to Paying, Trial Conversion Funnel, Paywall Encounter, Cohort and Prediction Explorer | Customers whose cohort date (or the explorer's cohorting date) is in the range | 1, or their revenue in the lifetime window (LTV), or 1 when they converted (conversion charts, funnel: started a trial) | the cohort measure's total |
+| Active Customers | Customers with SDK activity | periods they were active in | the sum over periods |
+| Trial Conversion Rate, Trial Cancellation Rate | Customers by their first trial start in each period | 1 when converted / cancelled | conversions / cancellations |
+| Paywall Conversion, LTV, Abandonment | Customer–paywall pairs by first impression | initial conversions, revenue, viewers | that measure's total |
+| Subscription Retention | Subscriptions by paid start | count | the cohort sizes |
+| Refund Request Outcomes, Play Store Cancel Reasons, Customer Center Survey Responses | Requests, Google cancellations, survey answers | count | the total |
+| App Store Save Outcomes | none | — | — |
+
+### 3. Annotations
+- **What:** project-level notes on a day or a date range: title (at most 120 characters), optional description (at most 1,000), author, created and updated times. Every time-series chart of the project shows those that overlap its range: a square marker on the x axis for a day, a light band for a range, the title on hover and focus. Cohort tables list them in the tab only.
+- **Create on the chart:** click a period to select its days, drag or Shift+click to select a range; a "+" button appears over the selection and opens the dialog with the dates filled in. The Annotations tab lists the annotations in the chart's range ("Annotations enrich your charts with events or milestones …" when there are none) with New annotation, Edit and Delete.
+- **API (RevenueDot extension):** `GET/POST /v2/projects/{project_id}/chart_annotations` (list filters `start_date`, `end_date`: annotations that overlap), `GET/PATCH/DELETE /v2/projects/{project_id}/chart_annotations/{annotation_id}`. Body: `title`, `description`, `start_date`, `end_date` (YYYY-MM-DD; `end_date` defaults to `start_date`, never before it). Read scope `charts_metrics:charts:read`; write scope `charts_metrics:charts:read_write`, so Viewers are read-only and admins and developers write. Writes are audited (`chart_annotation_created`, `chart_annotation_updated`, `chart_annotation_deleted`); the audit middleware now records `PATCH` as an update for every route. At most 1,000 per project.
+- **On chart data:** `include_annotations=true` returns the annotations that overlap the range in RevenueCat's `ChartAnnotation` shape: `{ object: "chart_annotation", id, description, start_date, end_date }`, `description` being the title and `end_date` null for a single day.
+
+### 4. Share preview
+- **What:** "…" → Share preview makes a public link to a picture of the chart as shown: chart type, range, resolution, filters, segment, selectors and Sandbox. The server computes the numbers when the link is made (from the view, never from numbers the browser sends) and keeps that snapshot with the link: the plotted series, their labels (segment names such as countries, products or apps), the summary values, the measure, currency and dates. No customer data is in it.
+- **Link:** `https://<api host>/share/charts/<token>`: a page with the chart as an SVG, the summary values and Open Graph and Twitter tags; `…/og.png` is the 1200×630 preview image and `…/chart.svg` the chart alone. The token is `cs_` and 24 random bytes (base64url, 192 bits), and pages are `noindex`. The server keeps the token and its SHA-256 and finds a link by the hash, so a lookup's timing says nothing about the token; the link's `id` (`chartshare…`) names it in the API and the audit log, never the token. The PNG is drawn once, when the link is made, and kept with it; the page and SVG are drawn from the snapshot and each server process keeps what it drew (a snapshot never changes), so a public link cannot keep a server busy. Responses carry `cache-control: no-cache` and an ETag: browsers and proxies revalidate every time, and the Worker caches nothing, so a revoke takes effect on the next request everywhere.
+- **Who:** owners, admins and developers create links (`charts_metrics:charts:read_write`); every member sees the project's active links in the menu (who made each, when, which chart) and can open or copy them; whoever can create can revoke. A revoked link answers 410 at once. At most 200 active links per project. Audited as `chart_share_created` and `chart_share_deleted`.
+- **API (RevenueDot extension):** `GET/POST /v2/projects/{project_id}/chart_shares` (`chart_name`, `view`: the saved-chart view fields plus `type`), `DELETE /v2/projects/{project_id}/chart_shares/{share_id}` revokes.
+
+### 5. Refresh and Ask AI
+- **Refresh** recomputes the chart, its options, the Customers and Annotations tabs (charts are computed on request; there is no cache to clear) and shows "Computed hh:mm".
+- **Ask AI** opens RevenueDot AI with the chart mentioned (`@MRR`) and a suggested question in the composer. The mention carries the view (`start_date`, `end_date`, `resolution`, `segment`, `filters`, `environment`), so the assistant reads the numbers on screen; the server accepts only those keys, in their formats.
+
+### 6. Saved charts in the rail
+Already built (prd/paywalls/PRD.md §6): "Saved" on top of the rail, opening one restores the view, rename and delete from its menu. Saved views now keep the chart type.
+
+### Data (migration 0029)
+- `chart_annotations` (id, project, start and end date, title, description, created_by, created and updated time).
+- `chart_shares` (id, the token and its SHA-256 (unique), project, chart, view, snapshot, the PNG preview, created_by, created time, revoked time). Both travel in project exports (prd/moves-export).
+
+### Tests
+- `packages/core/test/chart-contributors.test.ts`: contributors for every chart on hand-built ledgers; values add up to the chart.
+- `packages/contract/test/v2-chart-extras.test.ts`: the Customers endpoint for every chart against the chart's totals on the chart fixture, filters, segments, sandbox, CSV export; the published customers SQL equals the API; annotations CRUD, overlap filter, permissions (Viewer, developer, API key scopes), audit log, `include_annotations` against RevenueCat's schema; share links: create, the public page, PNG and SVG without a session, no customer ids in them, the token only in the URL (not the id or the audit log), revoke, viewer refused; a range named like an Object property; the CSV export of 1,200 customers on the Workers request model (the connection stays open until the last row).
+- `apps/dashboard/e2e/charts-page-extras.spec.ts`: every chart type, the Customers tab and export, annotations across charts, share link in a signed-out context and revoke, Ask AI handoff, phone width, dark mode, no console errors.
+
 ## Known gaps
+- **Ad revenue in purchase segments:** ad revenue has no product, store or offering, so segmenting Revenue by one of them counts it in every segment (and the Customers tab lists the customer once per segment). Segments by customer dimensions are not affected. The published SQL counts ad revenue reported in USD only; the API converts other currencies.
 - **Taxes:** stores do not report tax, so "revenue net of taxes" equals revenue, and proceeds subtract only the store commission (as `/metrics/revenue` does).
 - **Paid introductory offers** are not told apart from regular paid periods (the ledger has no offer type), so Paid Subscriptions shows them as direct purchases.
 - **Renewal cycle, offer type, first purchase month, install month and custom-attribute dimensions** are not offered yet. Attribution dimensions (media source, campaign, ad group, keyword, ad, creative) are customer dimensions read from `customer_attribution` (prd/attribution-benchmarks-insights).

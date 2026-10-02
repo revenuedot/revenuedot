@@ -19,7 +19,7 @@ ALTER TABLE "experiments" ADD COLUMN "updated_at" timestamp with time zone;--> s
 ALTER TABLE "experiments" ADD CONSTRAINT "experiments_offering_a_offerings_id_fk" FOREIGN KEY ("offering_a") REFERENCES "public"."offerings"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "experiments" ADD CONSTRAINT "experiments_offering_b_offerings_id_fk" FOREIGN KEY ("offering_b") REFERENCES "public"."offerings"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "experiments_project_priority" ON "experiments" USING btree ("project_id","priority");--> statement-breakpoint
--- "enrollment" defaults to new_and_existing: before 0029 every customer who asked could be enrolled, so existing
+-- "enrollment" defaults to new_and_existing: before 0030 every customer who asked could be enrolled, so existing
 -- experiments (and rows an older server writes during a deploy) keep doing that. RevenueDot always sends it explicitly.
 -- Every A/B experiment becomes variants a (Control) and b (Treatment B). Enrollment rows keep their variant letters, so
 -- nobody changes variant.
@@ -27,7 +27,7 @@ UPDATE "experiments" SET "variants" = jsonb_build_array(
   jsonb_build_object('id', 'a', 'name', 'Control', 'offering_id', "offering_a", 'placements', '{}'::jsonb),
   jsonb_build_object('id', 'b', 'name', 'Treatment B', 'offering_id', "offering_b", 'placements', '{}'::jsonb)
 ) WHERE "variants" = '[]'::jsonb AND "offering_a" IS NOT NULL AND "offering_b" IS NOT NULL;--> statement-breakpoint
--- Before 0029 the earliest started experiment enrolled first: that order becomes the priority.
+-- Before 0030 the earliest started experiment enrolled first: that order becomes the priority.
 UPDATE "experiments" AS e SET "priority" = o.n FROM (
   SELECT "id", row_number() OVER (PARTITION BY "project_id" ORDER BY "started_at" NULLS LAST, "created_at", "id") AS n FROM "experiments"
 ) AS o WHERE o."id" = e."id";

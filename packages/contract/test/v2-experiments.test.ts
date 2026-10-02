@@ -252,7 +252,7 @@ describe("enrollment", () => {
     expect(new Set(rows.map((r) => r.customerId)).size).toBe(12);
   });
 
-  it("migration 0029 turns an A/B experiment into variants a and b without moving anyone", async () => {
+  it("migration 0030 turns an A/B experiment into variants a and b without moving anyone", async () => {
     const o2 = await offering("o2");
     const now = h.now();
     // A row as the first release wrote it (and as an older server writes during a deploy): the new columns at their defaults.
@@ -265,7 +265,7 @@ describe("enrollment", () => {
     }
     // Even before the data migration runs, the server reads offering_a and offering_b.
     expect((await sdk("lb")).current_offering_id).toBe("o2");
-    const file = readFileSync(fileURLToPath(new URL("../../db/migrations/0029_experiments_v2.sql", import.meta.url)), "utf8");
+    const file = readFileSync(fileURLToPath(new URL("../../db/migrations/0030_experiments_v2.sql", import.meta.url)), "utf8");
     for (const stmt of file.split("--> statement-breakpoint").filter((s) => /^\s*(--.*\n)*\s*UPDATE/m.test(s))) await h.db.execute(sql.raw(stmt));
     const got = (await call("GET", ONE, { experiment_id: "prexp_legacy01" }, ext())).body;
     expect(got).toMatchObject({ enrollment: "new_and_existing", priority: 1, enrolled_customers: 2, variants: [{ id: "a", name: "Control", offering_id: "ofr_default", placements: {} }, { id: "b", name: "Treatment B", offering_id: o2, placements: {} }] });
@@ -333,7 +333,7 @@ describe("permissions", () => {
   });
 });
 
-describe("archives from before migration 0029", () => {
+describe("archives from before migration 0030", () => {
   it("an imported A/B experiment gets variants a and b, enrolls new and existing customers, and keeps its order", async () => {
     const o2 = await offering("o2");
     const t = h.now().toISOString();
@@ -346,7 +346,7 @@ describe("archives from before migration 0029", () => {
     expect(got.prexp_old_a).toMatchObject({ enrollment: "new_and_existing", priority: 1, variants: [{ id: "a", offering_id: "ofr_default" }, { id: "b", offering_id: o2 }] });
     expect(got.prexp_old_b!.priority).toBe(2);
     expect(got.prexp_old_draft!.priority).toBe(3);
-    // Customers who existed before it started are enrolled (as before 0029).
+    // Customers who existed before it started are enrolled (as before 0030).
     await newCustomer("before_import");
     expect(["default", "o2"]).toContain((await sdk("before_import")).current_offering_id);
     expect((await enrollments("prexp_old_a")).length).toBe(1);
