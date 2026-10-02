@@ -144,7 +144,9 @@ describe("chart customers", () => {
       for (const r of ranges) {
         const endExclusive = new Date(Date.parse(`${r.end_date}T00:00:00Z`) + 86_400_000).toISOString();
         const text = fillReferenceSql(q.sql, { project_id: "proj1", resolution: r.resolution, start_date: `${r.start_date}T00:00:00Z`, end_date: endExclusive, now: NOW.toISOString() });
-        const rows = ((await h.db.execute(sql.raw(text))) as unknown as { rows: Record<string, unknown>[] }).rows;
+        // PGlite answers { rows }, postgres.js an array of rows (REVENUEDOT_TEST_PG_URL runs).
+        const res = await h.db.execute(sql.raw(text)) as unknown as { rows: Record<string, unknown>[] } | Record<string, unknown>[];
+        const rows = Array.isArray(res) ? res : res.rows;
         const col = Object.keys(rows[0] ?? { customer_id: 0, v: 0 }).find((k) => k !== "customer_id")!;
         const fromSql = Object.fromEntries(rows.map((x) => [String(x.customer_id), Number(x[col])]));
         const api = await customers(q.chart, `resolution=${r.resolution}&start_date=${r.start_date}&end_date=${r.end_date}&expand_periods=false`);
