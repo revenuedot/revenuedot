@@ -3,7 +3,7 @@
  * attribution set through the REST API on its App Store customers, and 11 peer projects that share benchmarks as
  * Health & Fitness apps (e2e/seed-insights.ts). The fake model writes the insights. Checks every page against the API,
  * the states (not sharing, no run yet, a group under 10 apps, full), phone width, dark mode and the console.
- *   E2E_PORT=5503 pnpm --filter @revenuedot/dashboard e2e -- insights
+ *   cd apps/dashboard && E2E_PORT=5503 npx playwright test -c e2e/playwright.config.ts insights --workers=1
  * SHOTS=<dir> saves screenshots of each page (light and dark).
  */
 import { readFileSync } from "node:fs";
@@ -32,9 +32,12 @@ async function noSideScroll(page: Page) {
 async function shots(page: Page, name: string) {
   if (!SHOTS) return;
   await page.screenshot({ path: `${SHOTS}/${name}-light.png`, fullPage: true });
-  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  // Buttons fade their colours, so wait for the switch to finish before each shot.
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForTimeout(400);
   await page.screenshot({ path: `${SHOTS}/${name}-dark.png`, fullPage: true });
-  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.waitForTimeout(400);
 }
 
 let pid = "";

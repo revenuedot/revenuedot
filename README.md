@@ -226,6 +226,21 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 </picture>
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/insights/overview-insights-dark.png">
+  <img alt="RevenueDot Overview with Growth insights: the ask bar, the six metric cards, and this week's recommendations, each with its numbers, what to do, Open and Ask about this" src="docs/assets/insights/overview-insights-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/insights/attribution-dark.png">
+  <img alt="RevenueDot Revenue by campaign: new customers, revenue to date and ROAS for 90 days, and a table of campaigns with trials, paying customers, day 0, day 7, day 30 and to-date revenue, spend and ROAS" src="docs/assets/insights/attribution-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/insights/benchmarks-dark.png">
+  <img alt="RevenueDot Benchmarks: the biggest opportunity (monthly churn against the median app), and each metric with the app's value, the 25th to 75th percentile band of Health and Fitness apps, the median and where the app stands" src="docs/assets/insights/benchmarks-light.png" width="100%">
+</picture>
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ads/ads-overview-dark.png">
   <img alt="RevenueDot Ads Overview: ad revenue, impressions, eCPM, clicks, ad share of revenue and subscription revenue for the last 28 days, with daily ad revenue" src="docs/assets/ads/ads-overview.png" width="100%">
 </picture>

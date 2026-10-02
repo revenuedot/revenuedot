@@ -50,7 +50,8 @@ beforeEach(async () => {
   };
   dir = mkdtempSync(join(tmpdir(), "rd-move-"));
   targetDown = false;
-});
+  // Three in-memory databases with every migration: slow when the whole suite runs at once.
+}, 60_000);
 afterEach(async () => { await src.close(); await dst.close(); await third.close(); });
 
 async function cli(args: string[], env: Record<string, string>) {
