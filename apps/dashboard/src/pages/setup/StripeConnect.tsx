@@ -116,6 +116,7 @@ export function StripeConnectCallback() {
   const toast = useToast();
   const [msg, setMsg] = useState<{ title: string; text: string; back?: string } | null>(null);
   const ran = useRef(false);
+  useEffect(() => { document.title = "Connect Stripe · RevenueDot"; }, []);
   useEffect(() => {
     if (ran.current) return;
     ran.current = true;

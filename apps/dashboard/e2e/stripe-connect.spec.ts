@@ -101,6 +101,7 @@ test("Connect with Stripe: unavailable, cancel, connect, sell, refund, disconnec
       // The callback cannot be replayed: the state was single use.
       await page.goto(`${WEB}/connect/stripe?code=ac_replay&state=${pid}.${app.id}.00000000000000000000000000000000`);
       await expect(page.getByRole("heading", { name: "Start again from the app's page" })).toBeVisible();
+      await expect(page).toHaveTitle("Connect Stripe · RevenueDot");
       await page.goto(appUrl);
       await page.getByRole("button", { name: "Check connection" }).click();
       await expect(page.getByText("The connected Stripe account answered in test mode.")).toBeVisible();
