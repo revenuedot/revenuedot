@@ -1,5 +1,5 @@
 {
-  "id": "b57a42d5-0822-46d9-a92f-3c4d9f0a1da1",
+  "id": "6489dc82-8d0d-436f-bf8a-15474b89a6c4",
   "prevId": "da643a1d-ac25-48b4-a631-f35584c6e982",
   "version": "7",
   "dialect": "postgresql",
@@ -3546,6 +3546,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "is_sandbox": {
+          "name": "is_sandbox",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         }
       },
       "indexes": {

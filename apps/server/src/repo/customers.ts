@@ -21,6 +21,9 @@ export async function getOrCreateCustomer(db: DB, projectId: string, appUserId: 
   const [customer] = await db.insert(customers).values({ id, projectId, originalAppUserId: appUserId, firstSeen: now, lastSeen: now }).returning();
   await db.insert(customerAliases).values({ projectId, appUserId, customerId: id }).onConflictDoNothing();
   const again = await findCustomer(db, projectId, appUserId);
+  // A concurrent request made the customer first (customer info and offerings on a first launch): drop the row this one
+  // made, which no alias points to, so it is not counted as another customer.
+  if (again && again.id !== id) await db.delete(customers).where(eq(customers.id, id));
   return { customer: again ?? customer!, created: !!again && again.id === id };
 }
 
@@ -134,7 +137,7 @@ export async function loadState(db: DB, customer: CustomerRow, opts: { recoveryB
 
 /**
  * Moves everything from `from` into `into` (aliases, purchases, attributes that `into` lacks, in-app currency, support
- * tickets, refund requests, win-back emails) and deletes `from`.
+ * tickets, refund requests, win-back emails, experiment enrollments) and deletes `from`.
  */
 export async function mergeCustomers(db: DB, fromId: string, intoId: string) {
   if (fromId === intoId) return;
@@ -150,6 +153,10 @@ async function mergeInto(db: DB, fromId: string, intoId: string) {
   await db.update(schema.adRewardVerifications).set({ customerId: intoId }).where(eq(schema.adRewardVerifications.customerId, fromId));
   await db.execute(sql`UPDATE winback_sends SET customer_id = ${intoId} WHERE customer_id = ${fromId}
     AND campaign_id NOT IN (SELECT campaign_id FROM winback_sends WHERE customer_id = ${intoId})`);
+  // Experiment variants follow the person: an anonymous customer who logs in keeps the variant they were shown. Where both
+  // were enrolled in the same experiment, the surviving customer's variant stays.
+  await db.execute(sql`UPDATE experiment_enrollments SET customer_id = ${intoId} WHERE customer_id = ${fromId}
+    AND experiment_id NOT IN (SELECT experiment_id FROM experiment_enrollments WHERE customer_id = ${intoId})`);
   await db.update(customerAliases).set({ customerId: intoId }).where(eq(customerAliases.customerId, fromId));
   await db.update(subscriptions).set({ customerId: intoId }).where(eq(subscriptions.customerId, fromId));
   await db.update(nonSubscriptions).set({ customerId: intoId }).where(eq(nonSubscriptions.customerId, fromId));

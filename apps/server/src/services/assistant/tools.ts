@@ -492,7 +492,7 @@ export const tools: ToolDefinition[] = [
   }),
   define({
     name: "stop-experiment", title: "Stop experiment",
-    description: "Stops an experiment for good: enrolled customers go back to targeting or the current offering on their next request. Results stay. A stopped experiment cannot run again.",
+    description: "Stops an experiment for good: on their next request its customers get what targeting gives them (or join another running experiment that accepts them). Results stay. A stopped experiment cannot run again.",
     inputSchema: { experiment_id: z.string().describe("Experiment id (see list-experiments).") },
     annotations: DESTROY, scopes: ["project_configuration:offerings:read_write"],
     run: async (c, a) => c.request("POST", `${await P(c)}/experiments/${enc(a.experiment_id)}/actions/stop`),

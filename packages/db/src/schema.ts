@@ -704,6 +704,8 @@ export const experimentEnrollments = pgTable("experiment_enrollments", {
   customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
   variant: text("variant").notNull(),
   enrolledAt: ts("enrolled_at").notNull(),
+  /** Enrolled from a test device (the Test Store or an iOS sandbox build): production results leave these customers out. */
+  isSandbox: boolean("is_sandbox").notNull().default(false),
 }, (t) => [primaryKey({ columns: [t.experimentId, t.customerId] }), index("experiment_enrollments_customer").on(t.customerId)]);
 
 /** Content-addressed blobs served to the SDKs' remote configuration (workflows, ui_config). `ref` = base64url(SHA-256(bytes)[0..24]). */

@@ -4,6 +4,7 @@ ALTER TABLE "experiments" DROP CONSTRAINT "experiments_offering_b_offerings_id_f
 --> statement-breakpoint
 ALTER TABLE "experiments" ALTER COLUMN "offering_a" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "experiments" ALTER COLUMN "offering_b" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "experiment_enrollments" ADD COLUMN "is_sandbox" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "experiments" ADD COLUMN "type" text DEFAULT 'other' NOT NULL;--> statement-breakpoint
 ALTER TABLE "experiments" ADD COLUMN "primary_metric" text DEFAULT 'initial_conversion_rate' NOT NULL;--> statement-breakpoint
 ALTER TABLE "experiments" ADD COLUMN "secondary_metrics" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint

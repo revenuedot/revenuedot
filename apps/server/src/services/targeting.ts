@@ -201,8 +201,13 @@ export function variantsOf(e: Pick<ExperimentRow, "variants" | "offeringA" | "of
   ];
 }
 
-/** Running and paused experiments in enrollment order: priority 1 first, then the earliest started. */
-export const byPriority = (a: ExperimentRow, b: ExperimentRow) => a.priority - b.priority || (a.startedAt?.getTime() ?? Infinity) - (b.startedAt?.getTime() ?? Infinity) || a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
+/**
+ * Running and paused experiments in enrollment order: priority 1 first, then the earliest started. Priority 0 is a row an
+ * older server wrote during a deploy (the column default): it goes after the numbered ones, earliest started first, as
+ * that server would have ordered it.
+ */
+const rank = (x: ExperimentRow) => (x.priority > 0 ? x.priority : Number.MAX_SAFE_INTEGER);
+export const byPriority = (a: ExperimentRow, b: ExperimentRow) => rank(a) - rank(b) || (a.startedAt?.getTime() ?? Infinity) - (b.startedAt?.getTime() ?? Infinity) || a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
 
 /**
  * Whether a running experiment may enroll this customer now (prd/experiments/PRD.md §2): the enrollment mode, then the
@@ -220,7 +225,7 @@ export async function admits(e: ExperimentRow, customer: CustomerRow, inAudience
  * current offering. A variant's placements overlay the rule's. Enrolling records EXPERIMENT_ENROLLMENT once;
  * `enroll: false` resolves the same way without enrolling anyone (the dashboard's customer page).
  */
-export async function resolveOfferings(db: DB, projectId: string, customer: CustomerRow | null, ctx: CustomerContext, now: Date, defaultOfferingId: string | null, opts: { enroll?: boolean } = {}): Promise<Resolution> {
+export async function resolveOfferings(db: DB, projectId: string, customer: CustomerRow | null, ctx: CustomerContext, now: Date, defaultOfferingId: string | null, opts: { enroll?: boolean; appUserId?: string | null; sandbox?: boolean } = {}): Promise<Resolution> {
   const out: Resolution = { currentOfferingId: defaultOfferingId, placements: {}, rule: null, experiment: null };
   const audienceIds = new Set<string>();
   const rules = (await db.select().from(schema.targetingRules).where(and(eq(schema.targetingRules.projectId, projectId), eq(schema.targetingRules.state, "active"))).orderBy(asc(schema.targetingRules.position)))
@@ -265,11 +270,11 @@ export async function resolveOfferings(db: DB, projectId: string, customer: Cust
       out.experiment = { id: chosen.e.id, variant: chosen.variant, variantName: v.name, offeringId: v.offering_id };
       // A preview (the dashboard's customer page) shows the experiment the next SDK request would enroll them in, without enrolling.
       if (chosen.isNew && opts.enroll !== false) {
-        const inserted = await db.insert(schema.experimentEnrollments).values({ experimentId: chosen.e.id, customerId: customer.id, variant: chosen.variant, enrolledAt: now }).onConflictDoNothing().returning();
+        const inserted = await db.insert(schema.experimentEnrollments).values({ experimentId: chosen.e.id, customerId: customer.id, variant: chosen.variant, enrolledAt: now, isSandbox: !!opts.sandbox }).onConflictDoNothing().returning();
         if (inserted.length) {
           const [o] = await db.select({ key: schema.offerings.lookupKey }).from(schema.offerings).where(eq(schema.offerings.id, v.offering_id));
           await recordRawEvent(db, {
-            projectId, appId: null, customer, appUserId: ctx.appUserIds[0] ?? customer.originalAppUserId, type: "EXPERIMENT_ENROLLMENT", sandbox: false, now,
+            projectId, appId: null, customer, appUserId: opts.appUserId ?? ctx.appUserIds[0] ?? customer.originalAppUserId, type: "EXPERIMENT_ENROLLMENT", sandbox: false, now,
             shape: "experiment",
             fields: { original_app_user_id: customer.originalAppUserId, experiment_id: chosen.e.id, experiment_variant: chosen.variant, offering_id: o?.key ?? null, experiment_enrolled_at_ms: now.getTime() },
           });
