@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB, type ExportFile, type ExportProgress } from "@revenuedot/db";
 import { SecretsError, unseal, type SecretKey } from "../secrets.js";
+import { notMoving } from "../archive/moving.js";
 import { encodeFile } from "./files.js";
 import { putObject, StorageError, type Destination } from "./storage.js";
 import { COLUMNS, readPage, type ExportTable, type Row, type Window } from "./tables.js";
@@ -45,7 +46,7 @@ export function nextRunAt(job: Pick<Job, "schedule" | "hourUtc" | "weekday">, af
 
 /** Queues a run for every enabled job that is due, and moves the job's next_run_at forward. */
 export async function queueDueExports(db: DB, now: Date) {
-  const due = await db.select().from(J).where(and(eq(J.enabled, true), isNotNull(J.nextRunAt), lte(J.nextRunAt, now))).limit(50);
+  const due = await db.select().from(J).where(and(eq(J.enabled, true), isNotNull(J.nextRunAt), lte(J.nextRunAt, now), notMoving(J.projectId))).limit(50);
   for (const job of due) {
     // Move next_run_at first, only if no other tick did: the tick that wins queues the run.
     const [won] = await db.update(J).set({ nextRunAt: nextRunAt(job, now) }).where(and(eq(J.id, job.id), eq(J.nextRunAt, job.nextRunAt!))).returning({ id: J.id });
@@ -86,8 +87,8 @@ export function objectKey(prefix: string | undefined, table: string, windowEnd: 
 export async function processExportRuns(db: DB, rt: ExportRuntime, limit = 5) {
   const started = Date.now();
   const budget = rt.budgetMs ?? 20_000;
-  const due = await db.select({ id: R.id, status: R.status }).from(R)
-    .where(and(inArray(R.status, ["queued", "running"]), lte(R.nextAttemptAt, rt.now))).orderBy(asc(R.nextAttemptAt)).limit(limit);
+  const due = await db.select({ id: R.id, status: R.status }).from(R).innerJoin(J, eq(J.id, R.jobId))
+    .where(and(inArray(R.status, ["queued", "running"]), lte(R.nextAttemptAt, rt.now), notMoving(J.projectId))).orderBy(asc(R.nextAttemptAt)).limit(limit);
   let worked = 0;
   for (const r of due) {
     const left = budget - (Date.now() - started);

@@ -243,6 +243,7 @@ export function AccountPage() {
         <Switch checked={u.alert_emails} onChange={(v) => save({ alert_emails: v }, v ? "Alert emails are on." : "Alert emails are off.")} label="Email me about problems with my projects" />
         <span className="hint">For projects where you are an admin: store notifications failing, a webhook that keeps failing, or store credentials that Apple or Google rejected. At most one email a day per problem, and one when it is fixed. Password resets and invites always arrive.</span>
       </div>
+      {me.data.account?.edition === "cloud" && me.data.account.billing_ready && <p><Link className="link-u" to="/account/billing">Billing: plan, usage and invoices</Link></p>}
       <Link className="btn btn-dark btn-lg" to={home}>Back to the dashboard</Link>
     </Card>
   );

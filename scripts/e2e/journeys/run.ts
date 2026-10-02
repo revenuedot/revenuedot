@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { Checks } from "./lib/check.ts";
 import type { Ctx } from "./lib/context.ts";
 import { fakeAnthropic } from "./lib/fake-anthropic.ts";
-import { BUILD, Capture, PORTS, RdServer, ROOT, createDatabase, dropDatabase, hideUrls, postgres, startSmtpSink, writeJson } from "./lib/stack.ts";
+import { BUILD, Capture, DB_PREFIX, PORTS, RdServer, ROOT, createDatabase, dropDatabase, hideUrls, postgres, startSmtpSink, writeJson } from "./lib/stack.ts";
 
 export interface Journey { name: string; title: string; heavy?: boolean; needsDashboard?: boolean; run: (ctx: Ctx) => Promise<void> }
 
@@ -37,6 +37,8 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   android: () => import("./android.ts"),
   "settings-auth": () => import("./settings-auth.ts"),
   "self-host": () => import("./self-host.ts"),
+  move: () => import("./move.ts"),
+  billing: () => import("./billing.ts"),
 };
 
 async function main() {
@@ -55,7 +57,7 @@ async function main() {
   if (selected.some((j) => j.needsDashboard) && !existsSync(join(ROOT, "apps/dashboard/dist/index.html"))) {
     console.error("Build the dashboard first: pnpm --filter @revenuedot/dashboard build"); process.exit(2);
   }
-  const dbName = `rd_validate_j_${stamp}`;
+  const dbName = `${DB_PREFIX}${stamp}`;
   console.log(`Journey run ${stamp}: ${selected.map((j) => j.name).join(", ")}\nDatabase ${dbName} on the Railway development Postgres`);
   const databaseUrl = await createDatabase(dbName);
   const smtp = await startSmtpSink(PORTS.smtp);

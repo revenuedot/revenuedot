@@ -1,17 +1,17 @@
 ---
 import Base from "../layouts/Base.astro";
-import PageHead from "../components/PageHead.astro";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js/max";
 import { CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, TIMELINE } from "../../worker/lead";
 import { SITE } from "../site";
 
-// Every country libphonenumber knows, as "🇺🇸 +1 United States", sorted by name. The flag and code come first so a narrow
-// picker still shows them. The Worker's /api/geo answer picks the visitor's country when the page loads.
+// One question per step (the script below turns the steps on). Without JavaScript every step shows and the form posts as
+// one page. Country list: "🇺🇸 +1 United States", sorted by name; /api/geo picks the visitor's country on load.
 const names = new Intl.DisplayNames(["en"], { type: "region" });
 const flag = (cc: string) => String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
 const countries = getCountries()
   .map((cc) => ({ cc, name: names.of(cc) ?? cc, code: getCountryCallingCode(cc) }))
   .sort((a, b) => a.name.localeCompare(b.name));
+const KEYS = "ABCDEFGHIJ";
 ---
 <Base
   title="Contact sales"
@@ -19,12 +19,108 @@ const countries = getCountries()
   path="/contact-sales"
   crumbs={[{ name: "Pricing", path: "/pricing" }, { name: "Contact sales", path: "/contact-sales" }]}
 >
-  <div class="wrap">
-    <PageHead label="Enterprise" title="Talk to sales about RevenueDot Enterprise" lede="Tell us about your apps and what you need, and we will reply within one business day with pricing and a time to talk." />
-  </div>
-
-  <section class="section first cs" aria-label="Contact sales">
+  <section class="cs" aria-labelledby="cs-title">
     <div class="wrap cs-grid">
+      <div class="cs-main">
+        <p class="label cs-eyebrow"><span class="dot"></span> Enterprise · custom pricing from $50K a year</p>
+        <h1 id="cs-title" class="cs-h1">Talk to sales</h1>
+
+        <div class="cs-card">
+          <div class="cs-progress" aria-hidden="true"><span id="cs-bar"></span></div>
+          <form id="cs-form" class="cs-form" method="post" action="/api/contact-sales" novalidate>
+            <p class="cs-count" id="cs-count" aria-live="polite"></p>
+
+            <section class="step" data-step="1" data-fields="email">
+              <label class="q" for="email">What is your work email?</label>
+              <p class="qh">We will send your quote here.</p>
+              <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required maxlength="254" placeholder="you@company.com" aria-describedby="err-email" />
+              <p class="err" id="err-email" hidden></p>
+            </section>
+
+            <fieldset class="step" data-step="2" data-fields="revenue" data-auto>
+              <legend class="q">How much do your apps make in the stores each month?</legend>
+              <p class="qh">Across all your apps, before Apple and Google take their fees. Our pricing is based on it.</p>
+              <div class="opts">
+                {REVENUE.map(([v, l], i) => <label class="opt"><input type="radio" name="revenue" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
+              </div>
+              <p class="err" id="err-revenue" hidden></p>
+            </fieldset>
+
+            <fieldset class="step" data-step="3" data-fields="current currentOther" data-auto>
+              <legend class="q">What do you use for in-app purchases today?</legend>
+              <div class="opts">
+                {CURRENT.map(([v, l], i) => <label class="opt"><input type="radio" name="current" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
+              </div>
+              <p class="err" id="err-current" hidden></p>
+              <div class="fld" id="other-wrap">
+                <label for="currentOther">If Other, which one?</label>
+                <input id="currentOther" name="currentOther" type="text" maxlength="80" placeholder="e.g. Glassfy, Purchasely, Stripe" aria-describedby="err-currentOther" />
+                <p class="err" id="err-currentOther" hidden></p>
+              </div>
+            </fieldset>
+
+
+            <fieldset class="step" data-step="4" data-fields="timeline" data-auto>
+              <legend class="q">When do you want to start?</legend>
+              <div class="opts">
+                {TIMELINE.map(([v, l], i) => <label class="opt"><input type="radio" name="timeline" value={v} required /><span><kbd>{KEYS[i]}</kbd>{l}</span></label>)}
+              </div>
+              <p class="err" id="err-timeline" hidden></p>
+            </fieldset>
+
+            <fieldset class="step" data-step="5" data-fields="name company phone">
+              <legend class="q">How do we reach you?</legend>
+              <p class="qh">We call to set up a 30-minute call about your quote.</p>
+              <div class="pair">
+                <div class="fld">
+                  <label for="name">Full name</label>
+                  <input id="name" name="name" type="text" autocomplete="name" required maxlength="120" aria-describedby="err-name" />
+                  <p class="err" id="err-name" hidden></p>
+                </div>
+                <div class="fld">
+                  <label for="company">Company</label>
+                  <input id="company" name="company" type="text" autocomplete="organization" required maxlength="160" aria-describedby="err-company" />
+                  <p class="err" id="err-company" hidden></p>
+                </div>
+              </div>
+              <div class="fld">
+                <label for="phone">Phone number</label>
+                <div class="phone">
+                  <select id="phoneCountry" name="phoneCountry" autocomplete="tel-country-code" aria-label="Country calling code">
+                    {countries.map((c) => <option value={c.cc} selected={c.cc === "US"}>{`${flag(c.cc)} +${c.code} ${c.name}`}</option>)}
+                  </select>
+                  <input id="phone" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" required maxlength="40" placeholder="201 555 0123" aria-describedby="err-phone" />
+                </div>
+                <p class="err" id="err-phone" hidden></p>
+              </div>
+            </fieldset>
+
+
+            <div class="hp" aria-hidden="true"><label for="fax">Fax</label><input id="fax" name="fax" type="text" tabindex="-1" autocomplete="off" /></div>
+            <input type="hidden" name="started" id="started" value="" />
+            <input type="hidden" name="draftId" id="draftId" value="" />
+
+            <div class="nav">
+              <button type="button" class="btn secondary" id="cs-back" hidden>Back</button>
+              <button type="submit" class="btn" id="cs-next">Contact sales</button>
+              <span class="tiny enter" id="cs-enter" hidden>or press <kbd>Enter ↵</kbd></span>
+            </div>
+            <p class="cs-status" id="cs-status" role="alert" hidden></p>
+          </form>
+
+          <div class="cs-done" id="cs-done" tabindex="-1" hidden>
+            <p class="label"><span class="dot"></span> Request sent</p>
+            <h2 class="h3" id="cs-done-title">Thanks. We will reply within one business day.</h2>
+            <p class="muted" id="cs-done-body"></p>
+            <div class="btns" id="cs-done-cloud" hidden>
+              <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+              <a class="btn secondary" href="/pricing">See pricing</a>
+            </div>
+          </div>
+        </div>
+        <p class="tiny cs-privacy">We use your answers only to reply to you. See our <a href="/legal/privacy">privacy policy</a>.</p>
+      </div>
+
       <aside class="cs-aside">
         <div class="cs-price">
           <p class="label">Enterprise pricing</p>
@@ -43,231 +139,133 @@ const countries = getCountries()
         </div>
         <div>
           <p class="label">Rolling out to Enterprise first</p>
-          <ul class="cs-list">
-            <li>Single sign-on (SAML) and SCIM</li>
-            <li>EU and US data regions</li>
-          </ul>
+          <ul class="cs-list"><li>Single sign-on (SAML) and SCIM</li><li>EU and US data regions</li></ul>
         </div>
-        <div>
-          <p class="label">What happens next</p>
-          <ol class="cs-steps">
-            <li>We read your answers and reply within one business day.</li>
-            <li>A 30-minute call about your apps, your current setup and your requirements.</li>
-            <li>A written quote and a migration plan.</li>
-          </ol>
-        </div>
-        <p class="tiny">Smaller app? <a href={SITE.signup}>RevenueDot Cloud</a> is free up to $10,000 a month, and you can start without talking to us.</p>
+        <p class="tiny">Smaller app? <a href={SITE.signup}>RevenueDot Cloud</a> is free up to $10,000 a month, with no call needed.</p>
       </aside>
-
-      <div class="cs-panel">
-        <form id="cs-form" class="cs-form" method="post" action="/api/contact-sales" novalidate>
-          <fieldset>
-            <legend>About you</legend>
-            <div class="row2">
-              <div class="field" data-field="name">
-                <label for="name">Full name</label>
-                <input id="name" name="name" type="text" autocomplete="name" required maxlength="120" aria-describedby="err-name" />
-                <p class="err" id="err-name" hidden></p>
-              </div>
-              <div class="field" data-field="email">
-                <label for="email">Work email</label>
-                <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required maxlength="254" aria-describedby="err-email" />
-                <p class="err" id="err-email" hidden></p>
-              </div>
-            </div>
-            <div class="field" data-field="phone">
-              <label for="phone">Phone number</label>
-              <div class="phone">
-                <select id="phoneCountry" name="phoneCountry" autocomplete="tel-country-code" aria-label="Country calling code">
-                  {countries.map((c) => <option value={c.cc} selected={c.cc === "US"}>{`${flag(c.cc)} +${c.code} ${c.name}`}</option>)}
-                </select>
-                <input id="phone" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" required maxlength="40" placeholder="201 555 0123" aria-describedby="phone-hint err-phone" />
-              </div>
-              <p class="hint" id="phone-hint">So we can call you about your quote. Pick the country, then type the number.</p>
-              <p class="err" id="err-phone" hidden></p>
-            </div>
-            <div class="row2">
-              <div class="field" data-field="company">
-                <label for="company">Company</label>
-                <input id="company" name="company" type="text" autocomplete="organization" required maxlength="160" aria-describedby="err-company" />
-                <p class="err" id="err-company" hidden></p>
-              </div>
-              <div class="field" data-field="role">
-                <label for="role">Your role</label>
-                <select id="role" name="role" required aria-describedby="err-role">
-                  <option value="" selected disabled>Choose one</option>
-                  {ROLES.map(([v, l]) => <option value={v}>{l}</option>)}
-                </select>
-                <p class="err" id="err-role" hidden></p>
-              </div>
-            </div>
-            <div class="field" data-field="website">
-              <label for="website">Company website <span class="opt">optional</span></label>
-              <input id="website" name="website" type="text" autocomplete="url" inputmode="url" maxlength="200" placeholder="company.com" aria-describedby="err-website" />
-              <p class="err" id="err-website" hidden></p>
-            </div>
-          </fieldset>
-
-          <fieldset class="field" data-field="revenue" aria-describedby="revenue-hint err-revenue">
-            <legend>Monthly in-app revenue</legend>
-            <p class="hint" id="revenue-hint">Across all your apps, before Apple and Google take their fees. It is the number our pricing uses.</p>
-            <div class="chips">
-              {REVENUE.map(([v, l]) => <label class="chip"><input type="radio" name="revenue" value={v} required /><span>{l}</span></label>)}
-            </div>
-            <p class="err" id="err-revenue" hidden></p>
-          </fieldset>
-
-          <div class="field" data-field="current">
-            <label for="current">What do you use for in-app purchases today?</label>
-            <select id="current" name="current" required aria-describedby="err-current">
-              <option value="" selected disabled>Choose one</option>
-              {CURRENT.map(([v, l]) => <option value={v}>{l}</option>)}
-            </select>
-            <p class="err" id="err-current" hidden></p>
-          </div>
-
-          <fieldset class="field" data-field="needs">
-            <legend>What do you need? <span class="opt">choose any</span></legend>
-            <div class="chips">
-              {NEEDS.map(([v, l]) => <label class="chip"><input type="checkbox" name="needs" value={v} /><span>{l}</span></label>)}
-            </div>
-          </fieldset>
-
-          <fieldset class="field" data-field="timeline" aria-describedby="err-timeline">
-            <legend>When do you want to start?</legend>
-            <div class="chips">
-              {TIMELINE.map(([v, l]) => <label class="chip"><input type="radio" name="timeline" value={v} required /><span>{l}</span></label>)}
-            </div>
-            <p class="err" id="err-timeline" hidden></p>
-          </fieldset>
-
-          <fieldset class="field" data-field="platforms">
-            <legend>Platforms <span class="opt">optional</span></legend>
-            <div class="chips">
-              {PLATFORMS.map(([v, l]) => <label class="chip"><input type="checkbox" name="platforms" value={v} /><span>{l}</span></label>)}
-            </div>
-          </fieldset>
-
-          <div class="field" data-field="message">
-            <label for="message">Anything else we should know? <span class="opt">optional</span></label>
-            <textarea id="message" name="message" rows="4" maxlength="4000" placeholder="Number of apps, compliance requirements, deadlines"></textarea>
-          </div>
-
-          <div class="hp" aria-hidden="true"><label for="fax">Fax</label><input id="fax" name="fax" type="text" tabindex="-1" autocomplete="off" /></div>
-          <input type="hidden" name="started" id="started" value="" />
-
-          <div class="cs-submit">
-            <button class="btn" type="submit" id="cs-send">Contact sales</button>
-            <p class="tiny">We use these details only to answer you. See our <a href="/legal/privacy">privacy policy</a>.</p>
-          </div>
-          <p class="cs-status" id="cs-status" role="alert" hidden></p>
-        </form>
-
-        <div class="cs-done" id="cs-done" tabindex="-1" hidden>
-          <p class="label"><span class="dot"></span> Request sent</p>
-          <h2 class="h3" id="cs-done-title">Thanks. We will reply within one business day.</h2>
-          <p class="muted" id="cs-done-body"></p>
-          <div class="btns" id="cs-done-cloud" hidden>
-            <a class="btn" href={SITE.signup}>Start free on Cloud</a>
-            <a class="btn secondary" href="/pricing">See pricing</a>
-          </div>
-        </div>
-      </div>
     </div>
   </section>
 </Base>
 
 <style>
-  .cs { border-top: 0; padding-top: 8px; }
-  .cs-grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 48px; align-items: start; }
-  .cs-aside { display: grid; gap: 28px; position: sticky; top: calc(var(--topbar-h) + 24px + env(safe-area-inset-top, 0px)); }
-  .cs-price { border: 1px solid var(--border); padding: 20px; background: var(--sidebar); display: grid; gap: 6px; }
-  .cs-big { font: 700 clamp(32px, 4vw, 44px)/1.05 var(--font); letter-spacing: var(--tracking-title); }
-  .cs-list, .cs-steps { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; color: var(--fg-2); }
-  .cs-panel { border: 1px solid var(--border); background: var(--panel); min-width: 0; }
-  .cs-form { display: grid; gap: 28px; padding: 32px; }
-  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
-  legend { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 0; margin-bottom: 4px; }
-  .cs-form > fieldset:first-child > legend { font-size: 12px; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-3); }
-  .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
-  .field { display: grid; gap: 8px; min-width: 0; }
-  .field > label { font-size: 13px; font-weight: 600; color: var(--fg-2); }
-  .opt { font-weight: 500; color: var(--fg-3); font-size: 12px; margin-left: 4px; }
-  .hint { font-size: 12.5px; line-height: 1.45; color: var(--fg-3); margin: 0; }
+  /* Component rules set display, which would otherwise override the hidden attribute. */
+  .cs [hidden] { display: none !important; }
+  .cs { padding: 40px 0 96px; }
+  .cs-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 56px; align-items: start; }
+  .cs-eyebrow { display: flex; align-items: center; gap: 10px; }
+  .cs-h1 { font-size: clamp(32px, 4vw, 48px); line-height: 1.05; letter-spacing: var(--tracking-title); margin: 12px 0 24px; }
+  .cs-card { border: 1px solid var(--border); background: var(--panel); position: relative; min-width: 0; }
+  .cs-progress { height: 3px; background: var(--border-2); }
+  .cs-progress span { display: block; height: 100%; width: 0; background: var(--fg); transition: width var(--base) var(--ease); }
+  .cs-form { padding: 32px 40px 36px; display: grid; gap: 28px; }
+  .cs-count { margin: 0; font: 500 12px var(--mono); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-3); }
+  .step { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 20px; }
+  /* A floated legend becomes an ordinary grid item, so the step's gap spaces it like the other questions. */
+  .q { display: block; float: left; width: 100%; margin: 0; font-size: clamp(22px, 2.4vw, 28px); line-height: 1.25; font-weight: 700; letter-spacing: -0.025em; padding: 0; text-wrap: balance; }
+  label.q { float: none; }
+  .qh { margin: -10px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--fg-3); max-width: 60ch; }
+  .sub, .fld > label { font-size: 13px; font-weight: 600; color: var(--fg-2); }
+  .fld { display: grid; gap: 8px; min-width: 0; }
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
   input[type=text], input[type=email], input[type=tel], select, textarea {
-    width: 100%; min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--border); background: var(--panel); color: var(--fg);
-    font: 500 16px var(--font); border-radius: 0; transition: border-color var(--fast) var(--ease); -webkit-appearance: none; appearance: none;
+    width: 100%; min-width: 0; height: 48px; padding: 0 14px; border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+    font: 500 17px var(--font); border-radius: 0; -webkit-appearance: none; appearance: none; transition: border-color var(--fast) var(--ease);
   }
-  select { padding-right: 34px; text-overflow: ellipsis; background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%), linear-gradient(135deg, var(--fg-3) 50%, transparent 50%); background-position: right 16px top 19px, right 11px top 19px; background-size: 5px 5px; background-repeat: no-repeat; }
-  textarea { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+  #email { height: 56px; font-size: 20px; }
+  select { padding-right: 34px; text-overflow: ellipsis; background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%), linear-gradient(135deg, var(--fg-3) 50%, transparent 50%); background-position: right 16px top 21px, right 11px top 21px; background-size: 5px 5px; background-repeat: no-repeat; }
+  textarea { height: auto; padding: 12px 14px; line-height: 1.5; resize: vertical; font-size: 16px; }
   input:hover, select:hover, textarea:hover { border-color: var(--fg-3); }
   input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--fg); }
   [aria-invalid="true"] { border-color: var(--down) !important; }
-  .phone { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); }
+  .phone { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr); }
   .phone select { border-right: 0; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { position: relative; display: inline-flex; cursor: pointer; }
-  .chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-  .chip span { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 14px; border: 1px solid var(--border); background: var(--panel); font-size: 14px; font-weight: 500; color: var(--fg-2); line-height: 1.3; transition: border-color var(--fast) var(--ease); }
-  .chip:hover span { border-color: var(--fg-3); }
-  .chip input:checked + span { border-color: var(--fg); background: var(--fg); color: var(--bg); }
-  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .field[data-invalid] .chip span { border-color: var(--down); }
+  .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .opts.compact { display: flex; flex-wrap: wrap; }
+  .opt { position: relative; display: flex; cursor: pointer; min-width: 0; }
+  .opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .opt span { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 10px 14px; border: 1px solid var(--border); background: var(--panel); font-size: 15px; font-weight: 500; line-height: 1.3; color: var(--fg); transition: border-color var(--fast) var(--ease); }
+  .opts.compact .opt span { min-height: 40px; width: auto; font-size: 14px; color: var(--fg-2); }
+  .opt:hover span { border-color: var(--fg-3); }
+  .opt input:checked + span { border-color: var(--fg); background: var(--fg); color: var(--bg); }
+  .opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+  kbd { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border: 1px solid var(--border); font: 500 11px var(--mono); color: var(--fg-3); background: var(--sidebar); flex: none; }
+  .opt input:checked + span kbd { border-color: var(--bg); color: var(--bg); background: transparent; }
+  .step[data-invalid] .opt span { border-color: var(--down); }
   .err { margin: 0; font-size: 13px; font-weight: 600; color: var(--down); }
   .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-  .cs-submit { display: grid; gap: 10px; justify-items: start; padding-top: 4px; border-top: 1px solid var(--border-2); padding-top: 24px; }
-  .cs-submit .btn { cursor: pointer; }
-  .cs-submit .btn[disabled] { opacity: .6; cursor: progress; }
+  .nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+  .nav .btn { cursor: pointer; }
+  .nav .btn[disabled] { opacity: .6; cursor: progress; }
+  .enter kbd { margin-left: 4px; }
   .cs-status { margin: 0; padding: 12px 14px; border: 1px solid var(--down); color: var(--down); font-size: 14px; font-weight: 600; }
-  .cs-done { padding: 40px 32px; display: grid; gap: 14px; }
+  .cs-done { padding: 48px 40px; display: grid; gap: 14px; }
   .cs-done:focus { outline: none; }
-  @media (max-width: 900px) {
-    .cs-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
-    .cs-aside { position: static; order: 2; }
+  .cs-privacy { margin-top: 14px; }
+  .cs-aside { display: grid; gap: 28px; padding-top: 70px; }
+  .cs-price { border: 1px solid var(--border); padding: 20px; background: var(--sidebar); display: grid; gap: 6px; }
+  .cs-big { font: 700 clamp(30px, 3.4vw, 40px)/1.05 var(--font); letter-spacing: var(--tracking-title); }
+  .cs-list { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; color: var(--fg-2); }
+  /* Step mode (JavaScript on): one step at a time. */
+  .js-steps .step { display: none; }
+  .js-steps .step.on { display: grid; animation: in var(--base) var(--ease); }
+  @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .js-steps .step.on { animation: none; } .cs-progress span { transition: none; } }
+  .cs-count:empty { display: none; }
+  @media (max-width: 960px) {
+    .cs-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+    .cs-aside { padding-top: 0; }
   }
   @media (max-width: 560px) {
-    .cs-form { padding: 20px 16px; gap: 24px; }
-    .cs-done { padding: 28px 16px; }
-    .row2 { grid-template-columns: minmax(0, 1fr); }
-    .phone { grid-template-columns: minmax(0, 116px) minmax(0, 1fr); }
-    .cs-submit { justify-items: stretch; }
-    .cs-submit .btn { justify-content: center; }
-    .chip { flex: 1 1 auto; }
-    .chip span { width: 100%; }
+    .cs { padding: 24px 0 64px; }
+    .cs-form { padding: 24px 16px 24px; gap: 22px; }
+    .step { gap: 16px; }
+    .q { font-size: 21px; }
+    .qh { margin-top: -8px; font-size: 14px; }
+    .cs-done { padding: 32px 16px; }
+    .opts, .pair { grid-template-columns: minmax(0, 1fr); }
+    .phone { grid-template-columns: minmax(0, 120px) minmax(0, 1fr); }
+    .nav { display: grid; grid-template-columns: auto 1fr; }
+    .nav .btn { justify-content: center; }
+    .nav #cs-next:only-of-type, .nav #cs-back[hidden] + #cs-next { grid-column: 1 / -1; }
+    .enter { display: none; }
   }
 </style>
 
 <script>
   import { AsYouType, getExampleNumber, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/max";
   import examples from "libphonenumber-js/mobile/examples";
-  import { parsePhone, validate } from "../../worker/lead";
+  import { isEmail, parsePhone, validate } from "../../worker/lead";
 
   const form = document.getElementById("cs-form") as HTMLFormElement;
+  const steps = [...form.querySelectorAll<HTMLElement>(".step")];
+  const next = document.getElementById("cs-next") as HTMLButtonElement;
+  const back = document.getElementById("cs-back") as HTMLButtonElement;
+  const bar = document.getElementById("cs-bar") as HTMLSpanElement;
+  const count = document.getElementById("cs-count") as HTMLParagraphElement;
+  const enter = document.getElementById("cs-enter") as HTMLSpanElement;
+  const status = document.getElementById("cs-status") as HTMLParagraphElement;
   const country = document.getElementById("phoneCountry") as HTMLSelectElement;
   const phone = document.getElementById("phone") as HTMLInputElement;
-  const send = document.getElementById("cs-send") as HTMLButtonElement;
-  const status = document.getElementById("cs-status") as HTMLParagraphElement;
+  const draftId = document.getElementById("draftId") as HTMLInputElement;
   (document.getElementById("started") as HTMLInputElement).value = String(Date.now());
+  draftId.value = crypto.randomUUID();
+  form.classList.add("js-steps");
+  let at = 0;
 
-  const setPlaceholder = () => {
-    const ex = getExampleNumber(country.value as CountryCode, examples);
-    phone.placeholder = ex ? ex.formatNational() : "";
-  };
+  // Phone: the example number for the chosen country as the placeholder; a number typed with + picks its country.
+  const setPlaceholder = () => { const ex = getExampleNumber(country.value as CountryCode, examples); phone.placeholder = ex ? ex.formatNational() : ""; };
   let countryTouched = false;
-  country.addEventListener("change", () => { countryTouched = true; setPlaceholder(); if (touched.has("phone")) check("phone"); });
+  country.addEventListener("change", () => { countryTouched = true; setPlaceholder(); });
   setPlaceholder();
   fetch("/api/geo").then((r) => (r.ok ? r.json() : null)).then((g) => {
     if (!countryTouched && g?.country && [...country.options].some((o) => o.value === g.country)) { country.value = g.country; setPlaceholder(); }
   }).catch(() => {});
-
-  // A number typed with + picks its own country.
   phone.addEventListener("input", () => {
     if (!phone.value.trim().startsWith("+")) return;
     const t = new AsYouType(); t.input(phone.value);
     const cc = t.getCountry();
     if (cc && cc !== country.value) { country.value = cc; setPlaceholder(); }
   });
-  // On leaving the field, show a valid number in its country's own format.
   phone.addEventListener("blur", () => {
     const p = parsePhone(phone.value, country.value);
     if (p) { country.value = p.country; setPlaceholder(); phone.value = parsePhoneNumberFromString(p.e164)?.formatNational() ?? phone.value; }
@@ -279,42 +277,98 @@ const countries = getCountries()
     for (const k of new Set(fd.keys())) { const all = fd.getAll(k).map(String); o[k] = k === "needs" || k === "platforms" ? all : all[0]; }
     return o;
   };
-  const touched = new Set<string>();
+  const fieldsOf = (i: number) => (steps[i]!.dataset.fields ?? "").split(" ").filter(Boolean);
   const show = (field: string, msg?: string) => {
-    const box = form.querySelector<HTMLElement>(`[data-field="${field}"]`);
     const err = document.getElementById(`err-${field}`);
-    if (!box || !err) return;
-    err.textContent = msg ?? ""; err.hidden = !msg;
-    if (msg) box.setAttribute("data-invalid", ""); else box.removeAttribute("data-invalid");
-    box.querySelectorAll("input:not([type=radio]):not([type=checkbox]), select, textarea").forEach((el) => el.setAttribute("aria-invalid", msg ? "true" : "false"));
+    if (err) { err.textContent = msg ?? ""; err.hidden = !msg; }
+    const el = document.getElementById(field);
+    if (el) el.setAttribute("aria-invalid", msg ? "true" : "false");
+    const step = steps.find((s) => fieldsOf(steps.indexOf(s)).includes(field));
+    if (step && step.querySelector(`input[type=radio][name="${field}"]`)) { if (msg) step.setAttribute("data-invalid", ""); else step.removeAttribute("data-invalid"); }
   };
-  const check = (field: string) => { const v = validate(data()); show(field, v.ok ? undefined : v.errors[field]); };
-  for (const f of ["name", "email", "phone", "company", "role", "website", "current"]) {
-    const el = document.getElementById(f);
-    el?.addEventListener("blur", () => { if ((el as HTMLInputElement).value) touched.add(f); if (touched.has(f)) check(f); });
-    el?.addEventListener("change", () => { touched.add(f); check(f); });
-  }
-  for (const f of ["revenue", "timeline"]) form.querySelectorAll(`input[name=${f}]`).forEach((el) => el.addEventListener("change", () => show(f)));
+  const stepErrors = (i: number) => { const v = validate(data()); return v.ok ? {} : Object.fromEntries(Object.entries(v.errors).filter(([k]) => fieldsOf(i).includes(k))); };
 
-  const showAll = (errors: Record<string, string>) => {
-    for (const f of ["name", "email", "phone", "company", "role", "website", "revenue", "current", "timeline"]) show(f, errors[f]);
-    const first = form.querySelector<HTMLElement>("[data-invalid]");
-    first?.scrollIntoView({ behavior: "smooth", block: "center" });
-    first?.querySelector<HTMLElement>("input, select, textarea")?.focus({ preventScroll: true });
+  // Saves the answers so far once the email is valid, so a buyer who leaves halfway is not lost.
+  const saveDraft = () => {
+    const body = { ...data(), step: at + 1 };
+    if (!isEmail(String(body.email ?? "").trim())) return;
+    fetch("/api/contact-sales/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
   };
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  const go = (i: number, focus = true) => {
+    at = Math.max(0, Math.min(steps.length - 1, i));
+    steps.forEach((s, j) => s.classList.toggle("on", j === at));
+    const last = at === steps.length - 1;
+    next.textContent = last ? "Send to sales" : "Continue";
+    back.hidden = at === 0;
+    enter.hidden = !!steps[at]!.querySelector("textarea") || "auto" in steps[at]!.dataset;
+    count.textContent = `Question ${at + 1} of ${steps.length}`;
+    bar.style.width = `${(at / steps.length) * 100}%`;
     status.hidden = true;
+    // Text fields first (the phone number, not its country picker), then a picker, then the chosen or first option.
+    const s = steps[at]!;
+    const visible = (sel: string) => [...s.querySelectorAll<HTMLElement>(sel)].find((el) => !el.closest("[hidden]"));
+    const first = visible("input[type=email], input[type=text], input[type=tel], textarea") ?? visible("select") ?? visible("input:checked") ?? visible("input[type=radio], input[type=checkbox]");
+    if (!focus) return;
+    first?.focus({ preventScroll: true });
+    const top = form.closest(".cs-card")!.getBoundingClientRect().top;
+    if (top < 0 || top > window.innerHeight * 0.6) form.closest(".cs-card")!.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const advance = () => {
+    const errs = stepErrors(at);
+    for (const f of fieldsOf(at)) show(f, errs[f]);
+    if (Object.keys(errs).length) {
+      const firstBad = Object.keys(errs)[0]!;
+      (document.getElementById(firstBad) ?? steps[at]!.querySelector<HTMLElement>(`input[name="${firstBad}"]`))?.focus();
+      return;
+    }
+    saveDraft();
+    if (at < steps.length - 1) go(at + 1); else submit();
+  };
+
+  // "Other" asks which tool; without JavaScript the field is always visible.
+  const otherWrap = document.getElementById("other-wrap") as HTMLDivElement;
+  const otherInput = document.getElementById("currentOther") as HTMLInputElement;
+  const syncOther = () => { otherWrap.hidden = new FormData(form).get("current") !== "other"; };
+  syncOther();
+  otherWrap.querySelector("label")!.textContent = "Which one?";
+
+  // Single-choice steps move on as soon as an answer is picked, except Other, which asks which one first.
+  for (const s of steps.filter((s) => "auto" in s.dataset)) {
+    s.addEventListener("change", (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.type !== "radio") return;
+      for (const f of fieldsOf(steps.indexOf(s))) show(f);
+      if (t.name === "current") { syncOther(); if (t.value === "other") { window.setTimeout(() => otherInput.focus(), 50); return; } }
+      window.setTimeout(() => { if (steps[at] === s) advance(); }, 280);
+    });
+  }
+  // Letter keys pick options (A, B, C …), like Typeform; Enter continues.
+  form.addEventListener("keydown", (e) => {
+    const step = steps[at]!;
+    const tag = (e.target as HTMLElement).tagName;
+    if (e.key === "Enter" && tag !== "TEXTAREA" && tag !== "BUTTON") { e.preventDefault(); advance(); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey || tag === "INPUT" && !["radio", "checkbox"].includes((e.target as HTMLInputElement).type) || tag === "TEXTAREA" || tag === "SELECT") return;
+    const k = e.key.toUpperCase();
+    if (k.length !== 1 || k < "A" || k > "J") return;
+    const opt = step.querySelectorAll<HTMLInputElement>(".opts:not(.compact) input")[k.charCodeAt(0) - 65];
+    if (opt) { e.preventDefault(); opt.click(); opt.focus(); }
+  });
+  back.addEventListener("click", () => go(at - 1));
+  form.addEventListener("submit", (e) => { e.preventDefault(); advance(); });
+
+  async function submit() {
     const body = data();
     const v = validate(body);
-    if (!v.ok) { showAll(v.errors); return; }
-    send.disabled = true; send.textContent = "Sending…";
+    if (!v.ok) { const i = steps.findIndex((_, j) => fieldsOf(j).some((f) => f in v.errors)); go(i); for (const [f, m] of Object.entries(v.errors)) show(f, m); return; }
+    next.disabled = true; next.textContent = "Sending…";
     try {
       const r = await fetch("/api/contact-sales", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const out = await r.json().catch(() => ({}));
       if (r.ok && out.ok) {
         const lead = v.lead;
+        bar.style.width = "100%";
         form.hidden = true;
         const done = document.getElementById("cs-done")!;
         document.getElementById("cs-done-title")!.textContent = `Thanks, ${lead.name.split(" ")[0]}. We will reply within one business day.`;
@@ -322,15 +376,17 @@ const countries = getCountries()
           ? `We will email ${lead.email}. Your apps fit RevenueDot Cloud, which is free up to $10,000 a month, so you can start now while you wait.`
           : `We will email ${lead.email} or call ${parsePhoneNumberFromString(lead.phone)?.formatInternational() ?? lead.phone} to set up a 30-minute call.`;
         document.getElementById("cs-done-cloud")!.hidden = out.next !== "self_serve";
-        done.hidden = false; done.focus(); done.scrollIntoView({ behavior: "smooth", block: "start" });
+        done.hidden = false; done.focus();
         return;
       }
-      if (r.status === 400 && out.errors) { showAll(out.errors); }
+      if (r.status === 400 && out.errors) { const i = steps.findIndex((_, j) => fieldsOf(j).some((f) => f in out.errors)); go(Math.max(0, i)); for (const [f, m] of Object.entries(out.errors as Record<string, string>)) show(f, m); }
       else { status.textContent = out.error ?? "Something went wrong. Try again, or email hello@revenuedot.app."; status.hidden = false; }
     } catch {
       status.textContent = "We could not reach the server. Check your connection and try again."; status.hidden = false;
     } finally {
-      send.disabled = false; send.textContent = "Contact sales";
+      next.disabled = false; if (!form.hidden) next.textContent = "Send to sales";
     }
-  });
+  }
+
+  go(0, false);
 </script>
