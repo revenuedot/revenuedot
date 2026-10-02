@@ -32,6 +32,7 @@ Options
   --restart               Ignore the state file and start from the first customer
   --concurrency <n>       Customers fetched in parallel (default 4; RevenueCat allows 480 requests a minute)
   --limit <n>             Import only the first n customers (a trial run)
+  --page-size <n>         Customers per page and per import call (default 50, at most 100)
   --google-tokens <csv>   Google purchase tokens (columns purchase_token and order_id, or app_user_id and product_id)
   --no-public-keys        Keep RevenueDot's own SDK keys instead of RevenueCat's
   --emit-events           Record lifecycle events and send webhooks for imported purchases (default: none)
@@ -132,6 +133,11 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
     return n;
   };
 
+  const pageSize = (n: number | undefined) => {
+    if (n !== undefined && n > 100) throw new Error("--page-size must be 100 or less (the import endpoint takes up to 100 customers per call).");
+    return n;
+  };
+
   // Progress goes to stderr (one updating line on a terminal); the report goes to stdout.
   let lastProgress = "";
   const progress = (m: string) => {
@@ -160,7 +166,7 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
     const report = await runImport({
       rcKey: rcKey!, rcProject: rcProject!, rcBaseUrl: v["rc-url"], to: to!, toKey: toKey!, toProject: v["to-project"],
       statePath: v.state ?? `revenuedot-import-${rcProject!.replace(/[^\w-]/g, "_")}.json`, dryRun: v["dry-run"], restart: v.restart,
-      concurrency: int("--concurrency", v.concurrency), limit: int("--limit", v.limit), pageSize: int("--page-size", v["page-size"]),
+      concurrency: int("--concurrency", v.concurrency), limit: int("--limit", v.limit), pageSize: pageSize(int("--page-size", v["page-size"])),
       publicKeys: !v["no-public-keys"], emitEvents: v["emit-events"], tokens, http: io.http, targetHttp: io.targetHttp, log, progress,
     });
     done();

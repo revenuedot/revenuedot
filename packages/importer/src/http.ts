@@ -13,6 +13,8 @@ export interface HttpOptions {
   /** Called before each wait, for progress output. */
   onRetry?: (info: { url: string; status: number | null; waitMs: number; attempt: number }) => void;
   timeoutMs?: number;
+  /** Retries after a request timed out (default 1): a request that took too long once usually does again. */
+  timeoutRetries?: number;
 }
 
 export class HttpError extends Error {
@@ -20,6 +22,15 @@ export class HttpError extends Error {
     super(`${status} from ${redact(url)}: ${body?.message ?? (typeof body === "string" ? body.slice(0, 200) : "request failed")}`);
   }
 }
+
+/** No answer within `timeoutMs`, on every try. */
+export class TimeoutError extends Error {
+  constructor(public url: string, public timeoutMs: number) {
+    super(`No answer from ${redact(url)} within ${Math.round(timeoutMs / 1000)} s.`);
+  }
+}
+
+const isTimeout = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
 
 const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const MAX_RATE_LIMIT_WAITS = 60;
@@ -43,20 +54,24 @@ export function retryAfterMs(res: Response, body: any, now = Date.now()): number
 /**
  * Sends a request and returns the parsed JSON body. 429 waits for Retry-After (then retries, up to 60 times);
  * 5xx and network errors retry with exponential backoff (1s, 2s, 4s ... capped at 30s); other errors throw HttpError.
+ * A request with no answer within `timeoutMs` is tried once more, then throws TimeoutError.
  */
 export async function requestJson<T = any>(url: string, init: RequestInit, o: HttpOptions = {}): Promise<T> {
   const f = o.fetch ?? ((u: string, i?: RequestInit) => fetch(u, i));
   const sleep = o.sleep ?? realSleep;
   const maxRetries = o.maxRetries ?? 5;
+  const timeoutMs = o.timeoutMs ?? 60_000;
   let failures = 0;
+  let timeouts = 0;
   let waits = 0;
   for (;;) {
     let res: Response | null = null;
     let networkError: unknown = null;
     try {
-      res = await f(url, { ...init, signal: AbortSignal.timeout(o.timeoutMs ?? 60_000) });
+      res = await f(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     } catch (e) {
       networkError = e;
+      if (isTimeout(e) && ++timeouts > (o.timeoutRetries ?? 1)) throw new TimeoutError(url, timeoutMs);
     }
     if (res) {
       const text = await res.text();

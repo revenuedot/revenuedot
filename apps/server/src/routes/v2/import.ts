@@ -1,20 +1,17 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
 // This file: the migration import endpoints used by `npx revenuedot import` (bulk customers, public keys, status).
 // Docs: https://revenuedot.app/docs/migrate
-import { and, eq, inArray, like, sql } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { z } from "zod";
-import { accessEndsAt, newId, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { findCustomer, mergeCustomers, setAttributes, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
-import { applyPurchases } from "../../services/purchases.js";
-import { NEEDS_TOKEN, importedAppleChainKey } from "../../services/imported-chains.js";
-import type { VerifiedOneTime, VerifiedSubscription } from "../../stores/types.js";
+import { NEEDS_TOKEN } from "../../services/imported-chains.js";
 import { googleClientFor, purchaseTokensForOrders } from "../../stores/google/index.js";
 import { baseOrderId } from "../../stores/google/map.js";
 import { AppStoreServerApi, appleCredentials } from "../../stores/apple/api.js";
 import { expectedBundleId, verifyTransactionJws, xcodeRootsOf } from "../../stores/apple/index.js";
 import { body, conflict, notFound, paramError, scope, type V2Router } from "./common.js";
+import { importPage, type KeyInfo } from "./import-page.js";
 
 /**
  * RevenueDot extensions for migrating from RevenueCat (not part of RevenueCat's API):
@@ -122,8 +119,8 @@ const ImportBody = z.object({
 const KeyBody = z.object({ public_key: z.string().trim().min(4).max(255) });
 
 export type ImportCustomer = z.infer<typeof Customer>;
-type ImportSub = z.infer<typeof Subscription>;
-type ImportPurchase = z.infer<typeof Purchase>;
+export type ImportSub = z.infer<typeof Subscription>;
+export type ImportPurchase = z.infer<typeof Purchase>;
 type AppRec = typeof schema.apps.$inferSelect;
 
 export { NEEDS_TOKEN };
@@ -133,10 +130,7 @@ const KEY_PREFIXES: Record<string, string[]> = {
   roku: ["roku_"], paddle: ["pdl_"], test_store: ["test_"],
 };
 
-const d = (ms: number | null | undefined) => (typeof ms === "number" ? new Date(ms) : null);
 const isApple = (s: string) => s === "app_store" || s === "mac_app_store";
-
-interface Report { id: string; status: "created" | "updated" | "merged"; subscriptions: number; purchases: number; needs_token_refresh: number; notes: string[] }
 
 export function importRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -154,11 +148,9 @@ export function importRoutes(r: V2Router, deps: Deps) {
       }
     }
     const keys = await resolveStoreKeys(deps, apps, b.customers, b.resolve_store_ids);
-    const results: Report[] = [];
-    for (const cu of b.customers) {
-      // One customer per transaction: a failure leaves earlier customers imported and this one untouched.
-      results.push(await db.transaction(async (tx) => importCustomer(tx as unknown as DB, { projectId, now, apps, products, keys, emit: b.emit_events }, cu)));
-    }
+    // One transaction per page, written in a fixed number of round trips (import-page.ts). A failure leaves the whole
+    // page untouched; the importer then repeats it, which is safe because pages are idempotent.
+    const results = await db.transaction(async (tx) => importPage(tx as unknown as DB, { projectId, now, products, keys, emit: b.emit_events }, b.customers));
     if (b.emit_events) deps.kick?.();
     return c.json({ object: "import_result", emit_events: b.emit_events, customers: results });
   });
@@ -197,10 +189,7 @@ export function importRoutes(r: V2Router, deps: Deps) {
   });
 }
 
-interface Ctx { projectId: string; now: Date; apps: Map<string, AppRec>; products: (typeof schema.products.$inferSelect)[]; keys: Map<ImportSub, KeyInfo>; emit: boolean }
-/** `original` is null for an Apple chain keyed by a guess (its first known transaction): store traffic may re-key it later. */
-interface KeyInfo { key: string; placeholder: string | null; original: string | null; note?: string }
-
+const APPLE_LOOKUPS_IN_FLIGHT = 6;
 const chainOriginal = (s: ImportSub) => s.original_transaction_id ?? [...(s.transactions ?? [])].sort((a, b) => a.purchased_at - b.purchased_at)[0]?.id ?? null;
 
 /**
@@ -210,21 +199,23 @@ const chainOriginal = (s: ImportSub) => s.original_transaction_id ?? [...(s.tran
 async function resolveStoreKeys(deps: Deps, apps: Map<string, AppRec>, customers: ImportCustomer[], resolve: boolean): Promise<Map<ImportSub, KeyInfo>> {
   const out = new Map<ImportSub, KeyInfo>();
   const googleByApp = new Map<string, ImportSub[]>();
+  const appleLookups: (() => Promise<void>)[] = [];
   for (const cu of customers) for (const s of cu.subscriptions ?? []) {
     if (isApple(s.store)) {
-      let original = chainOriginal(s) ?? s.store_subscription_identifier;
-      let confirmed = !!s.original_transaction_id_confirmed;
-      let note: string | undefined;
+      const original = chainOriginal(s) ?? s.store_subscription_identifier;
+      const confirmed = !!s.original_transaction_id_confirmed;
+      out.set(s, { key: original, placeholder: null, original: confirmed ? original : null });
       const app = s.app_id ? apps.get(s.app_id) : undefined;
       if (resolve && !confirmed && app) {
-        try {
-          const fromApple = await appleOriginal(deps, app, s.store_subscription_identifier, s.environment);
-          if (fromApple) { original = fromApple; confirmed = true; }
-        } catch (e) {
-          note = `Apple lookup failed for ${s.store_subscription_identifier}: ${e instanceof Error ? e.message : e}`;
-        }
+        appleLookups.push(async () => {
+          try {
+            const fromApple = await appleOriginal(deps, app, s.store_subscription_identifier, s.environment);
+            if (fromApple) out.set(s, { key: fromApple, placeholder: null, original: fromApple });
+          } catch (e) {
+            out.get(s)!.note = `Apple lookup failed for ${s.store_subscription_identifier}: ${e instanceof Error ? e.message : e}`;
+          }
+        });
       }
-      out.set(s, { key: original, placeholder: null, original: confirmed ? original : null, note });
     } else if (s.store === "play_store") {
       const original = s.original_transaction_id ?? baseOrderId(s.store_subscription_identifier);
       const placeholder = `${NEEDS_TOKEN}${original}`;
@@ -237,6 +228,11 @@ async function resolveStoreKeys(deps: Deps, apps: Map<string, AppRec>, customers
       out.set(s, { key: s.store_subscription_identifier, placeholder: null, original: s.original_transaction_id ?? s.store_subscription_identifier });
     }
   }
+  // Apple lookups run a few at a time (one HTTP call each), not one after another.
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(APPLE_LOOKUPS_IN_FLIGHT, appleLookups.length) }, async () => {
+    while (next < appleLookups.length) await appleLookups[next++]!();
+  }));
   if (resolve) {
     for (const [appId, subs] of googleByApp) {
       const app = apps.get(appId)!;
@@ -271,230 +267,3 @@ async function appleOriginal(deps: Deps, app: AppRec, transactionId: string, env
   const tx = await verifyTransactionJws(res.signedTransactionInfo, { bundleId: expectedBundleId(app), xcodeRoots: xcodeRootsOf(app), now: deps.now(), source: "apple" });
   return tx.originalTransactionId;
 }
-
-async function importCustomer(db: DB, ctx: Ctx, cu: ImportCustomer): Promise<Report> {
-  const { projectId, now } = ctx;
-  const notes: string[] = [];
-  const ids = [...new Set([cu.id, ...(cu.aliases ?? [])])];
-  const firstSeen = d(cu.first_seen_at) ?? now;
-  const lastSeen = d(cu.last_seen_at) ?? firstSeen;
-
-  // Every existing customer that holds one of these ids becomes one customer (RevenueCat already merged them).
-  const found = new Map<string, CustomerRow>();
-  for (const id of ids) { const f = await findCustomer(db, projectId, id); if (f) found.set(f.id, f); }
-  let status: Report["status"] = "updated";
-  let customer: CustomerRow;
-  if (!found.size) {
-    status = "created";
-    [customer] = await db.insert(schema.customers).values({
-      id: newId("cus_", 16), projectId, originalAppUserId: cu.id, firstSeen, lastSeen,
-      lastSeenAppVersion: cu.last_seen_app_version ?? null, lastSeenCountry: cu.last_seen_country ?? null, lastSeenPlatform: cu.last_seen_platform ?? null,
-    }).returning() as [CustomerRow];
-  } else {
-    const all = [...found.values()];
-    const holder = (await findCustomer(db, projectId, cu.id)) ?? all.sort((a, b) => a.firstSeen.getTime() - b.firstSeen.getTime())[0]!;
-    for (const other of all) if (other.id !== holder.id) { await mergeCustomers(db, other.id, holder.id); status = "merged"; }
-    const [row] = await db.select().from(schema.customers).where(eq(schema.customers.id, holder.id));
-    const newer = row!.lastSeen <= lastSeen;
-    [customer] = await db.update(schema.customers).set({
-      firstSeen: row!.firstSeen < firstSeen ? row!.firstSeen : firstSeen,
-      lastSeen: newer ? lastSeen : row!.lastSeen,
-      ...(newer && cu.last_seen_app_version ? { lastSeenAppVersion: cu.last_seen_app_version } : {}),
-      ...(newer && cu.last_seen_country ? { lastSeenCountry: cu.last_seen_country } : {}),
-      ...(newer && cu.last_seen_platform ? { lastSeenPlatform: cu.last_seen_platform } : {}),
-    }).where(eq(schema.customers.id, holder.id)).returning() as [CustomerRow];
-  }
-  for (const id of ids) await db.insert(schema.customerAliases).values({ projectId, appUserId: id, customerId: customer.id, createdAt: firstSeen }).onConflictDoNothing();
-
-  // Attributes keep their source timestamps; a newer value already here wins.
-  if (cu.attributes?.length) {
-    await setAttributes(db, customer.id, Object.fromEntries(cu.attributes.map((a) => [a.name, { value: a.value, updated_at_ms: a.updated_at ?? 0 }])), now);
-  }
-
-  let pending = 0;
-  // Oldest period first: when two source subscriptions share a store chain (an Apple resubscribe), the latest state wins.
-  const subs = [...(cu.subscriptions ?? [])].sort((a, b) => a.current_period_starts_at - b.current_period_starts_at);
-  for (const s of subs) {
-    const k = ctx.keys.get(s)!;
-    if (k.note) notes.push(k.note);
-    if (k.placeholder && k.key === k.placeholder) pending++;
-    await importSubscription(db, ctx, customer, cu, s, k, notes);
-  }
-  for (const p of cu.purchases ?? []) await importPurchase(db, ctx, customer, cu, p, notes);
-
-  return { id: cu.id, status, subscriptions: subs.length, purchases: cu.purchases?.length ?? 0, needs_token_refresh: pending, notes: [...new Set(notes)] };
-}
-
-/** Maps an imported subscription to the stored fields, with deterministic detection times so re-imports change nothing. */
-function toVerified(ctx: Ctx, s: ImportSub, k: KeyInfo, notes: string[]): VerifiedSubscription & { entitlement: string | null } {
-  const google = s.store === "play_store";
-  const [product, plan] = google && s.product_identifier.includes(":") ? s.product_identifier.split(":", 2) as [string, string] : [s.product_identifier, null];
-  const periodStart = new Date(s.current_period_starts_at);
-  const periodEnd = d(s.current_period_ends_at);
-  const promo = s.store === "promotional";
-  const renewalOff = s.auto_renewal_status === "will_not_renew" || s.auto_renewal_status === "requires_price_increase_consent";
-  const billing = s.status === "in_grace_period" || s.status === "in_billing_retry";
-  let expiresDate: Date | null = periodEnd;
-  if (!expiresDate && !promo) expiresDate = periodStart; // paused until an indefinite date: no access now
-  let grace: Date | null = null;
-  if (s.status === "in_grace_period") {
-    grace = d(s.grace_period_expires_at) ?? d(Math.max(...(s.transactions ?? []).map((t) => t.expires_at ?? 0), 0) || null);
-    if (!grace || (expiresDate && grace <= expiresDate)) {
-      grace = new Date((expiresDate ?? periodStart).getTime() + 7 * 86_400_000);
-      notes.push(`${s.store_subscription_identifier}: grace period end unknown; assumed 7 days after the period end.`);
-    }
-  }
-  const lastTx = [...(s.transactions ?? [])].sort((a, b) => b.purchased_at - a.purchased_at)[0];
-  const price = s.price ?? lastTx?.price ?? null;
-  return {
-    kind: "subscription", store: s.store as Store, storeKey: k.key, productIdentifier: product, productPlanIdentifier: plan,
-    isSandbox: s.environment === "sandbox", purchaseDate: periodStart, originalPurchaseDate: new Date(s.starts_at), expiresDate,
-    periodType: s.period_type ?? (promo ? "promotional" : s.status === "trialing" ? "trial" : "normal"),
-    ownershipType: s.ownership === "family_shared" ? "FAMILY_SHARED" : "PURCHASED",
-    unsubscribeDetectedAt: d(s.unsubscribe_detected_at) ?? (!promo && (renewalOff || billing || s.status === "expired") ? periodStart : null),
-    billingIssuesDetectedAt: d(s.billing_issues_detected_at) ?? (billing ? periodEnd ?? periodStart : null),
-    gracePeriodExpiresDate: grace, refundedAt: d(s.refunded_at),
-    autoResumeDate: s.status === "paused" ? d(s.auto_resume_at) ?? periodEnd ?? periodStart : d(s.auto_resume_at),
-    storeTransactionId: s.store_subscription_identifier, originalTransactionId: k.original,
-    price, countryCode: s.country ? s.country.toUpperCase() : null,
-    autoRenewProductId: s.auto_renew_product_identifier ?? null,
-    entitlement: promo ? s.entitlement_lookup_keys?.[0] ?? null : null,
-  };
-}
-
-async function importSubscription(db: DB, ctx: Ctx, customer: CustomerRow, cu: ImportCustomer, s: ImportSub, k: KeyInfo, notes: string[]) {
-  const { projectId, now } = ctx;
-  const S = schema.subscriptions;
-  const where = (key: string) => and(eq(S.projectId, projectId), eq(S.store, s.store), eq(S.storeKey, key));
-  // A token found on a later run upgrades the placeholder row in place.
-  if (k.placeholder && k.key !== k.placeholder) {
-    const [ph] = await db.select({ id: S.id }).from(S).where(where(k.placeholder)).limit(1);
-    const [real] = await db.select({ id: S.id }).from(S).where(where(k.key)).limit(1);
-    if (ph && !real) await db.update(S).set({ storeKey: k.key }).where(eq(S.id, ph.id));
-    else if (ph && real) await db.delete(S).where(eq(S.id, ph.id));
-  }
-  // An Apple chain the store already re-keyed (a receipt came after an earlier run) is found again by its transactions.
-  if (isApple(s.store) && !k.original) {
-    const [same] = await db.select({ id: S.id }).from(S).where(where(k.key)).limit(1);
-    const rekeyed = same ? null : await importedAppleChainKey(db, projectId, s.store, customer.id, [s.store_subscription_identifier, ...(s.transactions ?? []).map((t) => t.id)]);
-    if (rekeyed) k = { ...k, key: rekeyed, original: rekeyed };
-  }
-  const promoKeys = s.store === "promotional" ? (s.entitlement_lookup_keys?.length ? s.entitlement_lookup_keys : [null]) : [null];
-  for (const [i, ent] of promoKeys.entries()) {
-    const v = toVerified(ctx, s, i === 0 ? k : { ...k, key: `${k.key}:${ent}` }, notes);
-    if (ent) v.entitlement = ent;
-    const [existing] = await db.select().from(S).where(where(v.storeKey)).limit(1);
-    if (existing && existing.customerId !== customer.id) notes.push(`${s.store} ${v.storeKey} moved from another customer to ${cu.id}.`);
-    // Live traffic already recorded a newer period: keep it, only fix the owner and the chain's start.
-    if (existing && existing.purchaseDate > v.purchaseDate) {
-      await db.update(S).set({
-        customerId: customer.id,
-        originalPurchaseDate: existing.originalPurchaseDate < v.originalPurchaseDate ? existing.originalPurchaseDate : v.originalPurchaseDate,
-      }).where(eq(S.id, existing.id));
-      continue;
-    }
-    // A detection time already stored stays put while the state it describes is unchanged.
-    const keep = (prev: Date | null | undefined, next: Date | null | undefined) => (next && prev ? prev : next ?? null);
-    const values = {
-      projectId, customerId: customer.id, appId: s.app_id ?? existing?.appId ?? null, store: v.store, storeKey: v.storeKey,
-      productIdentifier: v.productIdentifier, productPlanIdentifier: v.productPlanIdentifier ?? null, isSandbox: v.isSandbox,
-      purchaseDate: v.purchaseDate,
-      originalPurchaseDate: existing && existing.originalPurchaseDate < v.originalPurchaseDate ? existing.originalPurchaseDate : v.originalPurchaseDate,
-      expiresDate: v.expiresDate, periodType: v.periodType, ownershipType: v.ownershipType ?? "PURCHASED",
-      unsubscribeDetectedAt: keep(existing?.unsubscribeDetectedAt, v.unsubscribeDetectedAt),
-      billingIssuesDetectedAt: keep(existing?.billingIssuesDetectedAt, v.billingIssuesDetectedAt),
-      gracePeriodExpiresDate: v.gracePeriodExpiresDate ?? null, refundedAt: v.refundedAt ?? null, autoResumeDate: v.autoResumeDate ?? null,
-      storeTransactionId: v.storeTransactionId, originalTransactionId: v.originalTransactionId ?? null,
-      priceAmount: v.price?.amount ?? null, priceCurrency: v.price?.currency ?? null,
-      priceUsd: v.price ? (v.price.currency === "USD" ? v.price.amount : lastUsd(s)) : null,
-      countryCode: v.countryCode ?? null, autoRenewProductId: v.autoRenewProductId ?? null,
-      entitlementIdentifier: v.entitlement,
-      // Why auto-renew is off, and a pending price increase, as the store adapters record them.
-      cancelReason: !v.unsubscribeDetectedAt ? null : s.auto_renewal_status === "requires_price_increase_consent" ? "PRICE_INCREASE"
-        : v.billingIssuesDetectedAt ? "BILLING_ERROR" : existing?.cancelReason ?? null,
-      priceIncreaseStatus: s.auto_renewal_status === "requires_price_increase_consent" ? "pending" : existing?.priceIncreaseStatus === "accepted" ? "accepted" : null,
-    };
-    // Access that already ended counts as expired, so the expiration job does not send EXPIRATION for old history.
-    const end = accessEndsAt(subRowToDomain({ ...(existing ?? {}), ...values, id: existing?.id ?? "" } as typeof S.$inferSelect));
-    const expiredEventAt = end !== null && end <= now ? existing?.expiredEventAt ?? end : null;
-    if (ctx.emit) {
-      await applyPurchases(db, customer, [v], { projectId, appId: values.appId, appUserId: cu.id, now, fromDevice: false });
-      await db.update(S).set({ appId: values.appId, entitlementIdentifier: v.entitlement, originalPurchaseDate: values.originalPurchaseDate }).where(where(v.storeKey));
-      continue;
-    }
-    const updatedAt = existing && sameState(existing, values) ? existing.updatedAt : now;
-    if (existing) await db.update(S).set({ ...values, expiredEventAt, updatedAt }).where(eq(S.id, existing.id));
-    else await db.insert(S).values({ id: newId("sub_", 16), ...values, expiredEventAt, updatedAt });
-    await importTransactions(db, ctx, customer, s, values);
-  }
-  const [cur] = await db.select().from(schema.customers).where(eq(schema.customers.id, customer.id));
-  const start = new Date(s.starts_at);
-  if (cur && (!cur.originalPurchaseDate || cur.originalPurchaseDate > start)) await db.update(schema.customers).set({ originalPurchaseDate: start }).where(eq(schema.customers.id, customer.id));
-}
-
-const lastUsd = (s: ImportSub) => [...(s.transactions ?? [])].sort((a, b) => b.purchased_at - a.purchased_at)[0]?.revenue_usd ?? null;
-
-function sameState(a: Record<string, unknown>, b: Record<string, unknown>) {
-  for (const [k, v] of Object.entries(b)) {
-    const x = a[k];
-    if (v instanceof Date || x instanceof Date) { if ((x as Date | null)?.getTime?.() !== (v as Date | null)?.getTime?.()) return false; }
-    else if (x !== v) return false;
-  }
-  return true;
-}
-
-/** Revenue history for charts: one row per store transaction (idempotent on the store transaction id). */
-async function importTransactions(db: DB, ctx: Ctx, customer: CustomerRow, s: ImportSub, v: { appId: string | null; storeKey: string; originalTransactionId: string | null; productIdentifier: string; isSandbox: boolean; countryCode: string | null }) {
-  const txs = s.transactions?.length ? s.transactions : [{ id: s.store_subscription_identifier, purchased_at: s.current_period_starts_at, expires_at: s.current_period_ends_at ?? null, revenue_usd: s.total_revenue_usd ?? null, price: s.price ?? null }];
-  const first = v.originalTransactionId ?? v.storeKey;
-  for (const t of txs) {
-    const revenue = t.revenue_usd ?? (t.price?.currency === "USD" ? t.price.amount : 0);
-    const kind = t.id === first || txs.length === 1 && !s.transactions?.length ? (revenue === 0 && s.status === "trialing" ? "trial" : "purchase") : "renewal";
-    await db.insert(schema.transactions).values({
-      id: newId("txn_", 16), projectId: ctx.projectId, customerId: customer.id, appId: v.appId, store: s.store, storeTransactionId: t.id,
-      productIdentifier: v.productIdentifier, kind, isSandbox: v.isSandbox, purchasedAt: new Date(t.purchased_at), expiresAt: d(t.expires_at),
-      revenueUsd: revenue, priceAmount: t.price?.amount ?? null, priceCurrency: t.price?.currency ?? null, countryCode: v.countryCode,
-    }).onConflictDoNothing();
-  }
-  // A transaction moved to another customer by a merge or transfer follows its chain.
-  await db.update(schema.transactions).set({ customerId: customer.id })
-    .where(and(eq(schema.transactions.projectId, ctx.projectId), eq(schema.transactions.store, s.store), inArray(schema.transactions.storeTransactionId, txs.map((t) => t.id))));
-}
-
-async function importPurchase(db: DB, ctx: Ctx, customer: CustomerRow, cu: ImportCustomer, p: ImportPurchase, notes: string[]) {
-  const { projectId, now } = ctx;
-  const N = schema.nonSubscriptions;
-  const product = ctx.products.find((x) => x.storeIdentifier === p.product_identifier && (!p.app_id || x.appId === p.app_id));
-  const refundedAt = p.status === "refunded" ? d(p.refunded_at) ?? new Date(p.purchased_at) : null;
-  const v: VerifiedOneTime = {
-    kind: "non_subscription", store: p.store as Store, productIdentifier: p.product_identifier, storeTransactionId: p.store_purchase_identifier,
-    isSandbox: p.environment === "sandbox", isConsumable: p.consumable ?? product?.type === "consumable", purchaseDate: new Date(p.purchased_at),
-    refundedAt, price: p.price ?? null, countryCode: p.country ? p.country.toUpperCase() : null,
-  };
-  const where = and(eq(N.projectId, projectId), eq(N.store, p.store), eq(N.storeTransactionId, p.store_purchase_identifier));
-  const [existing] = await db.select().from(N).where(where).limit(1);
-  if (existing && existing.customerId !== customer.id) notes.push(`${p.store} purchase ${p.store_purchase_identifier} moved from another customer to ${cu.id}.`);
-  if (ctx.emit) {
-    await applyPurchases(db, customer, [v], { projectId, appId: p.app_id ?? null, appUserId: cu.id, now, fromDevice: false });
-    return;
-  }
-  const revenueUsd = p.revenue_usd ?? (p.price?.currency === "USD" ? p.price.amount : null);
-  const values = {
-    projectId, customerId: customer.id, appId: p.app_id ?? existing?.appId ?? null, store: p.store, productIdentifier: p.product_identifier,
-    storeTransactionId: p.store_purchase_identifier, isSandbox: v.isSandbox, isConsumable: v.isConsumable, purchaseDate: v.purchaseDate,
-    refundedAt: existing?.refundedAt && refundedAt ? existing.refundedAt : refundedAt, priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null,
-    priceUsd: revenueUsd, countryCode: v.countryCode ?? null,
-  };
-  if (existing) await db.update(N).set(values).where(eq(N.id, existing.id));
-  else await db.insert(N).values({ id: newId("", 10), ...values });
-  const T = schema.transactions;
-  const row = (kind: string, sign: number, at: Date) => ({
-    id: newId("txn_", 16), projectId, customerId: customer.id, appId: values.appId, store: p.store, storeTransactionId: p.store_purchase_identifier,
-    productIdentifier: p.product_identifier, kind, isSandbox: v.isSandbox, purchasedAt: at, revenueUsd: sign * (revenueUsd ?? 0),
-    priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: v.countryCode ?? null,
-  });
-  await db.insert(T).values(row("one_time", 1, v.purchaseDate)).onConflictDoNothing();
-  if (values.refundedAt) await db.insert(T).values(row("refund", -1, values.refundedAt)).onConflictDoNothing();
-  await db.update(T).set({ customerId: customer.id }).where(and(eq(T.projectId, projectId), eq(T.store, p.store), eq(T.storeTransactionId, p.store_purchase_identifier)));
-}
-

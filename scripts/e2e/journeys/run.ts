@@ -21,6 +21,7 @@ export interface Journey { name: string; title: string; heavy?: boolean; needsDa
 
 const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   "settings-auth": () => import("./settings-auth.ts"),
+  import: () => import("./import.ts"),
 };
 
 async function main() {

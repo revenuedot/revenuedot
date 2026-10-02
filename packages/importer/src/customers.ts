@@ -1,11 +1,14 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
 // This file: walks RevenueCat's customer list page by page and imports each page into RevenueDot in one batch.
 // Docs: https://revenuedot.app/docs/migrate
-import { pool } from "./http.js";
+import { TimeoutError, pool } from "./http.js";
 import { toImportCustomer, type ImportCustomer, type RcCustomerBundle, type TokenBook } from "./convert.js";
 import type { RevenueCatClient, RcAttribute } from "./revenuecat.js";
 import type { RevenueDotClient } from "./revenuedot.js";
 import { addProblem, type CatalogMap, type ImportState } from "./state.js";
+
+/** Customers per page (RevenueCat list page and one import call). The import endpoint takes up to 100. */
+export const DEFAULT_PAGE_SIZE = 50;
 
 const STORE_TRANSACTIONS = new Set(["app_store", "mac_app_store", "play_store"]);
 
@@ -40,7 +43,7 @@ export async function importCustomers(rc: RevenueCatClient, rd: RevenueDotClient
   let seen = 0;
   let googleWithoutToken = 0;
   for (;;) {
-    const page = await rc.customersPage(s.after, o.pageSize ?? 100);
+    const page = await rc.customersPage(s.after, o.pageSize ?? DEFAULT_PAGE_SIZE);
     let items = page.items;
     if (o.limit !== undefined) items = items.slice(0, Math.max(0, o.limit - seen));
     if (!items.length) break;
@@ -53,7 +56,15 @@ export async function importCustomers(rc: RevenueCatClient, rd: RevenueDotClient
     const subs = converted.reduce((a, c) => a + (c.subscriptions?.length ?? 0), 0);
     const buys = converted.reduce((a, c) => a + (c.purchases?.length ?? 0), 0);
     if (!o.dryRun) {
-      const res = await rd.importCustomers(converted, { emitEvents: o.emitEvents });
+      let res;
+      try {
+        res = await rd.importCustomers(converted, { emitEvents: o.emitEvents });
+      } catch (e) {
+        if (!(e instanceof TimeoutError)) throw e;
+        const smaller = Math.max(1, Math.floor(items.length / 2));
+        throw new Error(`RevenueDot did not finish importing a page of ${items.length} customers within ${Math.round(e.timeoutMs / 1000)} s.`
+          + (items.length > 1 ? ` Run the same command again with --page-size ${smaller}: it resumes at this page.` : " Run the same command again: it resumes at this page."));
+      }
       for (const r of res.customers) {
         if (r.status === "created") s.created++;
         if (r.status === "merged") s.merged++;

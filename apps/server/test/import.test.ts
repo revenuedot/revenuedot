@@ -238,11 +238,49 @@ describe("POST /v2/projects/{id}/import/customers (App Store)", () => {
     });
   });
 
+  it("a page whose customers touch each other's rows is imported in order, as one customer after another would be", async () => {
+    h = await appleHarness();
+    await h.customerInfo("anonA");
+    await h.customerInfo("loginA");
+    const rest = await restFor(h.db, h.now);
+    const chain = { store_subscription_identifier: "7000000002", original_transaction_id: "7000000001", transactions: [{ id: "7000000001", purchased_at: T0 - 30 * DAY, revenue_usd: 9.99 }, { id: "7000000002", purchased_at: T0, revenue_usd: 9.99 }] };
+    const page = [
+      appleCustomer({ id: "u1", aliases: ["anonA"], attributes: [{ name: "plan", value: "a", updated_at: T0 - 5 * DAY }, { name: "plan", value: "b", updated_at: T0 - 4 * DAY }] }, chain),
+      // Holds u1 (imported just before) and loginA (another existing customer): the two become one.
+      { id: "u2", aliases: ["loginA", "u1"], first_seen_at: T0 - 200 * DAY, attributes: [{ name: "plan", value: "older", updated_at: T0 - 9 * DAY }] },
+      // The same store chain as u1's: it moves to u3.
+      appleCustomer({ id: "u3", attributes: [] }, chain),
+      { id: "u4", aliases: ["anonA"] },
+    ];
+    const out = await rest.importCustomers(page);
+    expect(out.customers.map((c: any) => c.status)).toEqual(["updated", "merged", "created", "updated"]);
+    expect(out.customers[2].notes).toEqual(["app_store 7000000001 moved from another customer to u3."]);
+    const owner = async (appUserId: string) => (await h!.db.select().from(schema.customerAliases).where(eq(schema.customerAliases.appUserId, appUserId)))[0]!.customerId;
+    const one = await owner("u1");
+    for (const id of ["anonA", "loginA", "u2", "u4"]) expect(await owner(id)).toBe(one);
+    expect(await owner("u3")).not.toBe(one);
+    expect(await h.db.select().from(schema.customers)).toHaveLength(2);
+    const [merged] = await h.db.select().from(schema.customers).where(eq(schema.customers.id, one));
+    expect(merged!.firstSeen).toEqual(new Date(T0 - 200 * DAY));
+    const attrs = await h.db.select().from(schema.customerAttributes).where(eq(schema.customerAttributes.customerId, one));
+    expect(attrs.map((a) => [a.key, a.value])).toEqual([["plan", "b"]]);
+    const subs = await h.db.select().from(schema.subscriptions);
+    expect(subs.map((x) => [x.storeKey, x.customerId])).toEqual([["7000000001", await owner("u3")]]);
+    const txns = await h.db.select().from(schema.transactions);
+    expect(txns.map((t) => t.customerId)).toEqual([await owner("u3"), await owner("u3")]);
+    // Running the page again changes nothing.
+    const before = await dump(h.db);
+    const again = await rest.importCustomers(page);
+    expect(again.customers.map((c: any) => c.status)).toEqual(["updated", "updated", "updated", "updated"]);
+    expect(await dump(h.db)).toEqual(before);
+  });
+
   it("emit_events: true records lifecycle events as if the purchase had just arrived", async () => {
     h = await appleHarness();
     const rest = await restFor(h.db, h.now);
-    await rest.importCustomers([appleCustomer()], { emit_events: true });
-    expect((await h.newEvents()).map((x) => x.type)).toEqual(["INITIAL_PURCHASE"]);
+    const buyer = { id: "user2", purchases: [{ app_id: "app_ios", store: "app_store", product_identifier: "lifetime", purchased_at: T0 - DAY, store_purchase_identifier: "4000000009", price: { amount: 49.99, currency: "USD" } }] };
+    await rest.importCustomers([appleCustomer(), buyer], { emit_events: true });
+    expect((await h.newEvents()).map((x) => [x.type, x.app_user_id])).toEqual([["INITIAL_PURCHASE", "user1"], ["NON_RENEWING_PURCHASE", "user2"]]);
   });
 
   it("rejects apps from another project and oversized batches", async () => {

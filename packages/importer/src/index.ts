@@ -7,5 +7,5 @@ export { buildPlan, formatPlan, type PlanStep } from "./plan.js";
 export { toImportCustomer, parseTokenCsv, type ImportCustomer, type ImportSubscription, type ImportPurchase, type RcCustomerBundle, type TokenBook } from "./convert.js";
 export { RevenueCatClient } from "./revenuecat.js";
 export { RevenueDotClient } from "./revenuedot.js";
-export { requestJson, HttpError, type HttpOptions } from "./http.js";
+export { requestJson, HttpError, TimeoutError, type HttpOptions } from "./http.js";
 export { main } from "./cli.js";
