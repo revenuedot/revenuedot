@@ -11,6 +11,8 @@
  *   npx playwright test -c e2e/playwright.config.ts e2e/setup.spec.ts         (the self-contained e2e server)
  * Every run signs up a fresh account. SHOTS=<dir> saves screenshots of each dialog and state.
  */
+import { readFileSync } from "node:fs";
+import { unzip } from "../../server/src/services/sample-apps/zip.ts";
 import { expect, test, type Page } from "@playwright/test";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import http from "node:http";
@@ -186,6 +188,35 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await expect(page.getByText(/The last notification from Apple could not be processed/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Last forward: HTTP 200/)).toBeVisible({ timeout: 15_000 });
     await shot("app-store-live-status");
+  });
+
+  await test.step("Apple Small Business Program dates, then the sample app download with this app's key", async () => {
+    await page.getByRole("button", { name: /Apple Small Business Program/ }).click();
+    await page.getByRole("switch", { name: "Enrolled (15% commission)" }).click();
+    await page.getByLabel("Entry date").first().fill("2026-01-01");
+    await page.getByRole("button", { name: "Add period" }).click();
+    await page.getByLabel("Entry date").nth(1).fill("2025-03-01");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Periods must not overlap" })).toBeVisible();
+    await page.getByLabel("Exit date").nth(1).fill("2025-09-01");
+    await shot("app-store-small-business-program");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await toast("Changes saved.");
+    const sp = (await api("GET", `${P}/apps/${iosId}/store_settings`)).body.small_business_program;
+    expect(sp).toMatchObject({ enrolled: true, periods: [{ entry_date: "2025-03-01", exit_date: "2025-09-01" }, { entry_date: "2026-01-01", exit_date: null }] });
+    await page.reload();
+    await expect(page.getByRole("button", { name: /Apple Small Business Program/ })).toContainText("Enrolled: 15% commission");
+
+    const sample = page.getByRole("region", { name: "Test your setup with the sample app" });
+    await expect(sample.getByRole("button")).toHaveText(["iOS (SwiftUI)", "Flutter", "React Native (Expo)"]);
+    const [download] = await Promise.all([page.waitForEvent("download"), sample.getByRole("button", { name: "iOS (SwiftUI)" }).click()]);
+    expect(download.suggestedFilename()).toMatch(/^revenuedot-ios-swiftui-.+\.zip$/);
+    const buf = readFileSync((await download.path())!);
+    const config = new TextDecoder().decode(unzip(new Uint8Array(buf)).get("ios-swiftui/RevenueDotPaywall/RevenueDotConfig.swift")!.data);
+    const app = (await api("GET", `${P}/apps/${iosId}/public_api_keys`)).body.items[0].key as string;
+    expect(config).toContain(`static let apiKey = "${app}"`);
+    expect(config).toContain(`static let serverURL = URL(string: "${(await api("GET", `${P}/apps/${iosId}/store_settings`)).body.api_origin}")!`);
+    await expect(sample.getByText(/Downloaded revenuedot-ios-swiftui-/)).toBeVisible();
   });
 
   let playId = "";
@@ -427,6 +458,8 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await page.getByLabel("Sandbox behavior").selectOption("transfer");
     await page.getByRole("button", { name: "Save changes" }).click();
     await toast("Project settings saved.");
+    // The toast of the save above can still be showing; wait for this save on a slower (real) database.
+    await expect.poll(async () => (await api("GET", P)).body.sandbox_transfer_behavior).toBe("transfer");
     expect((await api("GET", P)).body).toMatchObject({ transfer_behavior: "keep", sandbox_transfer_behavior: "transfer" });
     expect((await post("dave", t2)).status).toBe(200);
   });

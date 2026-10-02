@@ -316,6 +316,9 @@ const STORE_OF: Record<string, { path: string; where: string }> = {
   play_store: { path: "google", where: "Google Cloud Console → Pub/Sub → Subscriptions → the push subscription of your Real-time developer notifications topic: set the endpoint URL." },
   amazon: { path: "amazon", where: "Amazon Developer Console → your app → Real-time Notifications: subscribe this URL (SNS confirms it automatically)." },
   stripe: { path: "stripe", where: "Stripe Dashboard → Developers → Webhooks → your endpoint: set the URL (the signing secret stays the same)." },
+  paddle: { path: "paddle", where: "Paddle → Developer tools → Notifications → your destination: set the URL, or click Apply in Paddle on the app's page (the secret key stays the same)." },
+  roku: { path: "roku", where: "Roku developer dashboard → Roku Pay web services: set the push notification URL." },
+  galaxy: { path: "galaxy", where: "Samsung Seller Portal → your app → In App Purchase: set the Instant Server Notification URL." },
 };
 
 export function notificationUrls(apps: { id: string; name: string; type: string }[], base: string) {
@@ -352,7 +355,7 @@ export async function finishImport(db: DB, imp: ImportRow, o: { now: Date; baseU
   const hooks = await db.select().from(schema.webhooks).where(and(eq(schema.webhooks.projectId, pid), eq(schema.webhooks.signingSecret, "")));
   for (const h of hooks) await db.update(schema.webhooks).set({ signingSecret: newSecret() }).where(eq(schema.webhooks.id, h.id));
   const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, pid));
-  const storeApps = apps.filter((a) => ["app_store", "mac_app_store", "play_store", "amazon", "stripe"].includes(a.type));
+  const storeApps = apps.filter((a) => ["app_store", "mac_app_store", "play_store", "amazon", "stripe", "paddle", "roku", "galaxy"].includes(a.type));
   const needCreds = storeApps.filter((a) => Object.keys(a.credentials ?? {}).length === 0 && !a.secrets);
   const domains = await db.select({ d: schema.webDomains.customDomain }).from(schema.webDomains).where(eq(schema.webDomains.projectId, pid));
   await db.update(schema.projects).set({ moveState: null, moveUpdatedAt: o.now }).where(eq(schema.projects.id, pid));

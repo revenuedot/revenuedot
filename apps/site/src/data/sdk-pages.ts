@@ -704,7 +704,7 @@ if (rcPackage) {
             ["Test Store (`test_` key)", "Yes", "purchases-js opens a Test Store modal"],
             ["Stripe on your own account", "Yes", "RevenueDot purchase link or funnel, or your own checkout posted to the receipts endpoint"],
             ["RevenueCat Web Billing (`rcb_`)", "No", "RevenueDot answers error 7662. Keep those subscriptions on RevenueCat"],
-            ["Paddle (`pdl_`)", "No", "RevenueDot answers error 7662"],
+            ["Paddle (`pdl_`)", "No", "purchases-js cannot open a Paddle checkout against RevenueDot. Post Paddle purchases from your backend instead"],
           ],
           caption: "Run a Stripe test-mode purchase before you go live.",
         },

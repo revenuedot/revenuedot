@@ -72,7 +72,7 @@ export async function cardByToken(db: DB, id: string) {
 }
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-const STORES: Record<string, string> = { app_store: "App Store", mac_app_store: "Mac App Store", play_store: "Google Play", amazon: "Amazon Appstore", stripe: "Stripe", test_store: "Test Store", promotional: "Promotional", rc_billing: "Web" };
+const STORES: Record<string, string> = { app_store: "App Store", mac_app_store: "Mac App Store", play_store: "Google Play", amazon: "Amazon Appstore", stripe: "Stripe", test_store: "Test Store", promotional: "Promotional", rc_billing: "Web", paddle: "Paddle", roku: "Roku", galaxy: "Galaxy Store" };
 
 export function priceText(d: FirstSale) {
   if (d.amount !== null && d.currency) {

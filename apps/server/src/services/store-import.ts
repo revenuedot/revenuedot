@@ -11,12 +11,17 @@ import { googleClientFor } from "../stores/google/index.js";
 import { StripeApiError, stripeKeyOf } from "../stores/stripe/api.js";
 import { stripeClientFor } from "../stores/stripe/index.js";
 import { fromMinor } from "../stores/stripe/map.js";
+import { PaddleApiError, paddleKeyOf, type PaddlePrice, type PaddleProduct } from "../stores/paddle/api.js";
+import { paddleClientFor } from "../stores/paddle/index.js";
+import { cycleDuration } from "../stores/paddle/map.js";
+import { GalaxyApiError, hasServiceAccount as hasGalaxyAccount, type GalaxyItem } from "../stores/galaxy/api.js";
+import { galaxyClientFor } from "../stores/galaxy/index.js";
 import { StoreOpError } from "./store-ops.js";
 import { withStoreSecrets } from "./store-secrets.js";
 
 /**
- * Import products from the store (prd/catalog/PRD.md, "Import from store"): list what App Store Connect, Google Play or
- * Stripe has for an app, mark what the catalog already has, and create the chosen products with their store type,
+ * Import products from the store (prd/catalog/PRD.md, "Import from store"): list what App Store Connect, Google Play,
+ * Stripe, Paddle (prices) or the Galaxy Store (in-app items) has for an app, mark what the catalog already has, and create the chosen products with their store type,
  * duration and name, optionally attached to entitlements. Uses the app's stored credentials through the existing store
  * clients; nothing is written to the store. Failures are StoreOpErrors (the route maps them to v2 errors).
  */
@@ -70,8 +75,13 @@ export async function listStoreProducts(deps: Deps, app: App): Promise<StoreList
   if (app.type === "amazon") {
     throw new StoreOpError("unsupported", "Amazon has no API that lists an app's in-app items, so they cannot be imported. Add each product with New product: a subscription by its term SKU, a one-time product by its SKU.");
   }
+  if (app.type === "paddle") return listPaddle(deps, app);
+  if (app.type === "galaxy") return listGalaxy(deps, app);
+  if (app.type === "roku") {
+    throw new StoreOpError("unsupported", "Roku has no API that lists a channel's products, so they cannot be imported. Add each product with New product, by its product code from the Roku developer dashboard.");
+  }
   if (app.type === "test_store") throw new StoreOpError("unsupported", "Test Store products exist only in RevenueDot. Create them with New product.");
-  throw new StoreOpError("unsupported", `Products can be imported from App Store Connect, Google Play and Stripe; this is a ${app.type} app.`);
+  throw new StoreOpError("unsupported", `Products can be imported from App Store Connect, Google Play, Stripe, Paddle and the Galaxy Store; this is a ${app.type} app.`);
 }
 
 // ---- App Store Connect --------------------------------------------------------------------------------------------
@@ -317,6 +327,80 @@ async function listStripe(deps: Deps, a: App): Promise<StoreListingResult> {
     }
   }
   return { store: "stripe", items: items.slice(0, MAX_ITEMS), warnings };
+}
+
+// ---- Paddle: one product per price (pri_…), RevenueCat's mapping ------------------------------------------------------
+
+async function listPaddle(deps: Deps, a: App): Promise<StoreListingResult> {
+  const app = await withStoreSecrets(deps, a).catch((e) => { throw new StoreOpError("credentials", e instanceof Error ? e.message : String(e)); });
+  if (!paddleKeyOf(app)) throw new StoreOpError("credentials", "Importing from Paddle needs the app's API key with read access to Products and Prices. Add it in the app's settings.");
+  const { client } = paddleClientFor(deps.stores, deps.fetch);
+  const warnings: string[] = [];
+  const items: StoreListing[] = [];
+  try {
+    const products = await client.listAll<PaddleProduct>(app, "/products", { status: "active", include: "prices" });
+    if (products.truncated) warnings.push("Paddle has more products than RevenueDot reads at once; only the first 5,000 are listed.");
+    for (const prod of products.data) {
+      const prices: PaddlePrice[] = (prod.prices ?? []).filter((p) => (p.status ?? "active") === "active");
+      for (const pr of prices) {
+        const recurring = !!pr.billing_cycle;
+        const label = pr.name || pr.description || (recurring ? cycleDuration(pr.billing_cycle) : "one-time");
+        const amount = /^\d+$/.test(pr.unit_price?.amount ?? "") ? fromMinor(Number(pr.unit_price.amount), pr.unit_price.currency_code) : null;
+        const duration = recurring ? cycleDuration(pr.billing_cycle) : null;
+        const trial = pr.trial_period ? `${pr.trial_period.frequency} ${pr.trial_period.interval}${pr.trial_period.frequency === 1 ? "" : "s"}` : null;
+        items.push({
+          store_identifier: pr.id, type: recurring ? "subscription" : "non_consumable",
+          display_name: prices.length > 1 && label ? `${prod.name} (${label})` : prod.name || label || pr.id,
+          duration, store_state: "ACTIVE", group: { id: prod.id, name: prod.name ?? null },
+          price: amount !== null ? { amount_micros: Math.round(amount * 1_000_000), currency: pr.unit_price.currency_code.toUpperCase() } : null,
+          importable: !recurring || !!duration,
+          note: recurring && !duration ? "Paddle reports a billing cycle RevenueDot does not know." : trial ? `Free trial: ${trial}.` : !recurring ? "One-time price: imported as non-consumable. Change it to consumable after importing if it can be bought again." : null,
+        });
+      }
+    }
+  } catch (e) {
+    if (e instanceof PaddleApiError) {
+      if (e.kind === "credentials") throw new StoreOpError("credentials", `Paddle refused the API key (${e.code ?? e.status}). Listing products needs read access to Products and Prices. Paddle said: ${e.message}`);
+      if (e.kind === "transient") throw new StoreOpError("unavailable", `Paddle could not be reached: ${e.message}`);
+      throw new StoreOpError("invalid", `Paddle refused the request: ${e.message}`);
+    }
+    if (e instanceof RCError) throw new StoreOpError("credentials", e.message);
+    throw e;
+  }
+  return { store: "paddle", items: items.slice(0, MAX_ITEMS), warnings };
+}
+
+// ---- Galaxy Store: in-app items (Samsung's publish API lists no subscriptions) ---------------------------------------
+
+async function listGalaxy(deps: Deps, a: App): Promise<StoreListingResult> {
+  const app = await withStoreSecrets(deps, a).catch((e) => { throw new StoreOpError("credentials", e instanceof Error ? e.message : String(e)); });
+  if (!app.bundleId) throw new StoreOpError("credentials", "The app has no package name. Add it in the app's settings.");
+  if (!hasGalaxyAccount(app)) throw new StoreOpError("credentials", "Importing from the Galaxy Store needs the app's service account (Seller Portal → Assistance → API Service, with the Publishing & Item scope). Add its id and private key in the app's settings.");
+  const { client } = galaxyClientFor(deps.stores, deps.fetch);
+  const warnings = ["Samsung's API lists in-app items only. Add subscriptions with New product, by their item id."];
+  let list: GalaxyItem[];
+  try {
+    const r = await client.items(app);
+    if (r.truncated) warnings.push("The Galaxy Store has more items than RevenueDot reads at once; only the first 5,000 are listed.");
+    list = r.data;
+  } catch (e) {
+    if (e instanceof GalaxyApiError) {
+      if (e.kind === "credentials") throw new StoreOpError("credentials", `Samsung refused the service account (${e.code ?? e.status}). Listing items needs the Publishing & Item scope. Samsung said: ${e.message}`);
+      if (e.kind === "transient") throw new StoreOpError("unavailable", `Samsung could not be reached: ${e.message}`);
+      throw new StoreOpError("invalid", `Samsung refused the request: ${e.message}`);
+    }
+    if (e instanceof RCError) throw new StoreOpError("credentials", e.message);
+    throw e;
+  }
+  const items: StoreListing[] = list.map((i) => {
+    const usd = typeof i.usdPrice === "number" ? i.usdPrice : typeof i.usdPrice === "string" && Number.isFinite(Number(i.usdPrice)) ? Number(i.usdPrice) : null;
+    return {
+      store_identifier: i.id, type: "consumable", display_name: i.title ?? null, duration: null, store_state: i.status ?? null, group: null,
+      price: usd !== null ? { amount_micros: Math.round(usd * 1_000_000), currency: "USD" } : null, importable: true,
+      note: "Samsung does not say whether an item can be bought again: imported as consumable. Change it to non-consumable after importing if it unlocks something for good.",
+    };
+  });
+  return { store: "galaxy", items: items.filter((i) => i.store_identifier).slice(0, MAX_ITEMS), warnings };
 }
 
 // ---- Catalog --------------------------------------------------------------------------------------------------------

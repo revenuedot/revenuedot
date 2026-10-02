@@ -35,7 +35,7 @@ const PAID_KINDS = new Set(["purchase", "renewal", "one_time"]);
 const CONVERSION_KINDS = new Set(["trial", "purchase", "one_time"]);
 const rate = (a: number, b: number) => (b > 0 ? (a / b) * 100 : null);
 const div = (a: number, b: number) => (b > 0 ? a / b : null);
-const proceedsFactor = (store: string) => 1 - commission(store as Store);
+const proceedsFactor = (t: { store: string; commission?: number }) => 1 - (t.commission ?? commission(t.store as Store));
 
 /** Parses "7_days" / "unbounded" selector values into days (Infinity for unbounded). */
 export const selectorDays = (v: string) => (v === "unbounded" ? Infinity : Number(v.split("_")[0]));
@@ -208,7 +208,7 @@ const revenue = flow((d, w, sel) => {
   let money = 0, count = 0;
   for (const t of within(d.txsByTime, atOf, w)) {
     if (t.kind === "trial") continue;
-    money += d.money(t) * (proceeds ? proceedsFactor(t.store) : 1);
+    money += d.money(t) * (proceeds ? proceedsFactor(t) : 1);
     if (PAID_KINDS.has(t.kind)) count++;
   }
   for (const e of within(d.sdkByTime, atOf, w)) if (e.type === "rc_ads_ad_revenue") money += (e.revenueUsd ?? 0) * d.input.fx(e.at);
@@ -410,7 +410,7 @@ const conversionToPaying = cohortSeries(newCustomers(conversionDays), (d, ids, s
 
 /** Revenue of a customer in [from, to): purchases and renewals minus refunds recorded in it. */
 const revenueIn = (d: Prepared, id: string, from: number, to: number, proceeds = false) =>
-  d.txsOf(id).reduce((s, t) => (t.at >= from && t.at < to && t.at <= d.now && t.kind !== "trial" ? s + d.money(t) * (proceeds ? proceedsFactor(t.store) : 1) : s), 0);
+  d.txsOf(id).reduce((s, t) => (t.at >= from && t.at < to && t.at <= d.now && t.kind !== "trial" ? s + d.money(t) * (proceeds ? proceedsFactor(t) : 1) : s), 0);
 
 const ltvPerCustomer = cohortSeries(newCustomers(lifetimeDays), (d, ids, sel) => {
   const days = lifetimeDays(sel);

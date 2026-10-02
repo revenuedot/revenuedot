@@ -127,7 +127,7 @@ export { NEEDS_TOKEN };
 
 const KEY_PREFIXES: Record<string, string[]> = {
   app_store: ["appl_"], mac_app_store: ["mac_", "appl_"], play_store: ["goog_"], amazon: ["amzn_"], stripe: ["strp_"], rc_billing: ["rcb_"],
-  roku: ["roku_"], paddle: ["pdl_"], test_store: ["test_"],
+  roku: ["roku_"], paddle: ["pdl_"], test_store: ["test_"], galaxy: ["galx_"],
 };
 
 const isApple = (s: string) => s === "app_store" || s === "mac_app_store";

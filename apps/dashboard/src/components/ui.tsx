@@ -142,7 +142,7 @@ export function Sparkline({ values }: { values: number[] }) {
 }
 
 /** Store and event labels shared by tables and the customer timeline. */
-export const STORE_LABEL: Record<string, string> = { app_store: "App Store", mac_app_store: "Mac App Store", play_store: "Google Play", amazon: "Amazon", stripe: "Stripe", rc_billing: "Web", promotional: "Promotional", test_store: "Test Store", paddle: "Paddle", roku: "Roku", external: "External" };
+export const STORE_LABEL: Record<string, string> = { app_store: "App Store", mac_app_store: "Mac App Store", play_store: "Google Play", amazon: "Amazon", stripe: "Stripe", rc_billing: "Web", promotional: "Promotional", test_store: "Test Store", paddle: "Paddle", roku: "Roku", galaxy: "Galaxy Store", external: "External" };
 export const EVENT_TONE: Record<string, "up" | "down" | "info" | "gold" | "muted"> = {
   INITIAL_PURCHASE: "gold", RENEWAL: "up", NON_RENEWING_PURCHASE: "gold", UNCANCELLATION: "up", PRODUCT_CHANGE: "info", SUBSCRIPTION_EXTENDED: "up",
   CANCELLATION: "muted", EXPIRATION: "muted", BILLING_ISSUE: "down", REFUND_REVERSED: "up", TRANSFER: "info", SUBSCRIPTION_PAUSED: "muted", TEST: "muted",

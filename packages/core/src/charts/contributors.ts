@@ -150,7 +150,7 @@ const SPECS: Record<string, Spec> = {
       const proceeds = sel.revenue_type === "proceeds";
       for (const w of windows(f)) {
         for (const t of H.within(d.txsByTime, H.atOf, w)) {
-          if (t.kind !== "trial") a.add(t.customerId, t.at, d.money(t) * (proceeds ? H.proceedsFactor(t.store) : 1), t.store, t.productId);
+          if (t.kind !== "trial") a.add(t.customerId, t.at, d.money(t) * (proceeds ? H.proceedsFactor(t) : 1), t.store, t.productId);
         }
         for (const e of H.within(d.sdkByTime, H.atOf, w)) if (e.type === "rc_ads_ad_revenue") a.add(e.customerId, e.at, (e.revenueUsd ?? 0) * d.input.fx(e.at));
       }
