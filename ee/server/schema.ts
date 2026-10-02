@@ -85,6 +85,8 @@ export const eeMembershipSources = pgTable("ee_membership_sources", {
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   source: text("source").notNull(),
+  /** The role provisioning set. If the membership's role differs later, someone changed it by hand and provisioning lets go. */
+  role: text("role"),
 }, (t) => [primaryKey({ columns: [t.projectId, t.userId] })]);
 
 export interface SamlConfig {

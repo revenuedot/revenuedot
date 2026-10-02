@@ -215,8 +215,11 @@ test("enforced SSO: password sign-in is refused with a way to SSO, password sess
   await o2.page.waitForURL(/\/projects\//);
   expect((await o2.page.request.get(`/v2/projects/${projectId}/products`)).status()).toBe(200);
   // The only enabled connection cannot be turned off while SSO is required.
+  const off = page.waitForResponse((r) => r.url().includes(`/sso/connections/${connId}`) && r.request().method() === "POST");
   await page.locator("tr", { hasText: "Test IdP" }).getByRole("switch").click();
-  await expect(page.locator(".toast")).toContainText("required");
+  expect((await off).status()).toBe(422);
+  await expect(page.locator("tr", { hasText: "Test IdP" }).getByRole("switch")).toHaveAttribute("aria-checked", "true");
+  expect((await sql()`select enabled from ee_sso_connections where id = ${connId}`)[0]!.enabled).toBe(true);
   w.expectClean();
   for (const x of [carol, c2, o2]) await x.context.close();
   void PW;

@@ -135,6 +135,7 @@ export function SsoTab({ org }: { org: Overview }) {
   const [addingDomain, setAddingDomain] = useState(false);
   const [confirm, setConfirm] = useState<{ title: string; body: string; label: string; run: () => Promise<unknown> } | null>(null);
   const [checking, setChecking] = useState<string | null>(null);
+  const [enforcing, setEnforcing] = useState(false);
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["sso-connections", org.id] }), qc.invalidateQueries({ queryKey: ["sso-domains", org.id] }), qc.invalidateQueries({ queryKey: ["org", org.id] })]);
   if (!admin) return <EmptyState title="Owners and admins manage single sign-on" text="Ask an organization admin to change it." />;
   const toggle = async (c: Connection, enabled: boolean) => {
@@ -207,7 +208,7 @@ export function SsoTab({ org }: { org: Overview }) {
       </section>
 
       <section className="panel">
-        <div className="ph"><b>Require single sign-on</b><Switch checked={org.sso_enforced} label={org.sso_enforced ? "Required" : "Optional"} onChange={(v) => v ? setConfirm({ title: "Require single sign-on?", body: `Everyone with an address on ${verified.map((d) => d.domain).join(", ") || "your verified domains"} must sign in through your identity provider. Their passwords stop working and password sessions lose access to this organization's projects. Owners keep password sign-in for emergencies.`, label: "Require single sign-on", run: () => enforce(true) }) : void enforce(false)} /></div>
+        <div className="ph"><b>Require single sign-on</b><Switch checked={org.sso_enforced} disabled={!domains.data || !conns.data} label={org.sso_enforced ? "Required" : "Optional"} onChange={(v) => v ? setEnforcing(true) : void enforce(false)} /></div>
         <div className="pb stack">
           <p className="section-sub">{org.sso_enforced ? "Required for addresses on your verified domains. Owners can still use a password if your identity provider is down." : "Members can use a password or single sign-on. Turn this on once a connection works and a domain is verified."}</p>
           <p className="section-sub">People on other domains, such as contractors, keep signing in with a password.</p>
@@ -218,6 +219,11 @@ export function SsoTab({ org }: { org: Overview }) {
       {showing && <SpValues conn={showing} onClose={() => setShowing(null)} />}
       {addingDomain && <AddDomain org={org} onClose={() => setAddingDomain(false)} />}
       {confirm && <ConfirmDialog title={confirm.title} confirmLabel={confirm.label} danger onConfirm={confirm.run} onClose={() => setConfirm(null)}>{confirm.body}</ConfirmDialog>}
+      {enforcing && (
+        <ConfirmDialog title="Require single sign-on?" confirmLabel="Require single sign-on" danger onConfirm={() => enforce(true)} onClose={() => setEnforcing(false)}>
+          Everyone with an address on {verified.map((d) => d.domain).join(", ") || "your verified domains"} must sign in through your identity provider. Their passwords stop working and password sessions lose access to this organization's projects. Owners keep password sign-in for emergencies.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

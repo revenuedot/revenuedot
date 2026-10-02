@@ -18,6 +18,7 @@ CREATE TABLE "ee_membership_sources" (
 	"project_id" text NOT NULL,
 	"user_id" text NOT NULL,
 	"source" text NOT NULL,
+	"role" text,
 	CONSTRAINT "ee_membership_sources_project_id_user_id_pk" PRIMARY KEY("project_id","user_id")
 );
 --> statement-breakpoint

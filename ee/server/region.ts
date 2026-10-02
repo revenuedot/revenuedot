@@ -50,7 +50,7 @@ export const enforced = (cfg: RegionConfig) => Object.keys(cfg.regions).length >
  * only this deployment's, because a region is where the rows physically are; a project in another region is created on
  * that region's dashboard, and moving stored data is a support job (docs/data-location.md).
  */
-export const selectableRegions = (cfg: RegionConfig): Region[] => (enforced(cfg) ? [cfg.current] : [...REGIONS]);
+export const selectableRegions = (cfg: RegionConfig, cloud = false): Region[] => (enforced(cfg) || cloud ? [cfg.current] : [...REGIONS]);
 
 const cache = new Map<string, { at: number; region: Region | null }>();
 const CACHE_MS = 60_000;

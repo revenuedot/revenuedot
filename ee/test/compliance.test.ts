@@ -22,7 +22,8 @@ describe("licence keys", () => {
     const payload = { v: 1 as const, id: "lic_1", licensee: "Acme Inc.", features: ["sso", "scim"], max_orgs: 2, edition: "self-hosted" as const, issued_at: now, expires_at: now + 30 * DAY };
     const key = await issueLicense(issuer.privateKey, payload);
     const ok = await checkLicense({ key, now, publicKeys: [issuer.publicKey], edition: "self-hosted" });
-    expect(ok).toMatchObject({ mode: "licensed", features: ["sso", "scim"], licensee: "Acme Inc.", maxOrgs: 2, message: null });
+    // Every feature lives in an organization, so organizations comes with any of them.
+    expect(ok).toMatchObject({ mode: "licensed", features: ["organizations", "sso", "scim"], licensee: "Acme Inc.", maxOrgs: 2, message: null });
     // Not pinned in this build, signed by someone else, edited, or for the other edition.
     expect((await checkLicense({ key, now })).mode).toBe("invalid");
     expect((await checkLicense({ key: await issueLicense(other.privateKey, payload), now, publicKeys: [issuer.publicKey] })).message).toContain("signature");

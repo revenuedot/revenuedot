@@ -26,7 +26,9 @@ export function DataLocationTab({ org }: { org: Overview }) {
       <section className="panel">
         <div className="ph"><b>Where data is stored</b></div>
         <div className="pb stack">
-          {org.region_enforced
+          {org.cloud && !org.region_enforced
+            ? <p className="section-sub">RevenueDot Cloud stores every project in the United States today. An EU region is planned; when it opens, EU projects are created on its own dashboard.</p>
+            : org.region_enforced
             ? <p className="section-sub">Each region is a separate RevenueDot deployment with its own database. A project's customers, purchases and events are stored and processed only in its region; requests that reach another region are refused. Point an app's SDK at the region's API address.</p>
             : <p className="section-sub">This server runs where you host it, so every project's data is stored there. The region is recorded for your records and for moving to RevenueDot Cloud later; nothing is moved.</p>}
           <Field label="Default for new projects" htmlFor="org-region">

@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { api, ApiError, type List } from "../../apps/dashboard/src/lib/api";
 
 export interface Org {
-  object: string; id: string; name: string; your_role: "owner" | "admin" | "member"; region: string; region_name: string; selectable_regions: string[]; region_enforced: boolean;
+  object: string; id: string; name: string; your_role: "owner" | "admin" | "member"; region: string; region_name: string; selectable_regions: string[]; region_enforced: boolean; cloud: boolean;
   audit_retention_days: number | null; sso_enforced: boolean; seats: { purchased: number | null; used: number }; billing_email: string | null;
   member_count: number; project_count: number; features: string[]; created_at: number;
 }

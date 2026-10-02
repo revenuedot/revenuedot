@@ -166,6 +166,12 @@ describe("group role mappings", () => {
     expect((await memb())[0]?.role).toBe("viewer");
     await ensureOrgMember(s.db, orgId, dev.userId, "sso", { ssoGroups: [], now: s.now() });
     expect(await memb()).toEqual([]);
+    // A role changed by hand in the project's Collaborators settings (core) is left alone by provisioning from then on.
+    await ensureOrgMember(s.db, orgId, dev.userId, "sso", { ssoGroups: ["Everyone"], now: s.now() });
+    expect((await owner.browser.call("POST", `${P}/collaborators/${dev.userId}`, { role: "developer" })).status).toBe(200);
+    await ensureOrgMember(s.db, orgId, dev.userId, "sso", { ssoGroups: [], now: s.now() });
+    expect((await memb())[0]?.role).toBe("developer");
+    await s.db.delete(schema.memberships).where(and(eq(schema.memberships.userId, dev.userId), eq(schema.memberships.projectId, owner.projectId)));
     // A mapping deleted removes what it gave.
     await ensureOrgMember(s.db, orgId, dev.userId, "sso", { ssoGroups: ["Everyone"], now: s.now() });
     const every = mappings.find((m: any) => m.group === "Everyone");

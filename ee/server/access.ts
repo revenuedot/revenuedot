@@ -111,7 +111,15 @@ export async function reconcileMember(db: DB, orgId: string, userId: string): Pr
   if (!projects.length) return 0;
   const [member] = await db.select().from(eeOrgMembers).where(and(eq(eeOrgMembers.orgId, orgId), eq(eeOrgMembers.userId, userId))).limit(1);
   const existing = await db.select().from(schema.memberships).where(and(eq(schema.memberships.userId, userId), inArray(schema.memberships.projectId, projects)));
-  const sources = new Map((await db.select().from(eeMembershipSources).where(and(eq(eeMembershipSources.userId, userId), inArray(eeMembershipSources.projectId, projects)))).map((s) => [s.projectId, s.source]));
+  const sourceRows = await db.select().from(eeMembershipSources).where(and(eq(eeMembershipSources.userId, userId), inArray(eeMembershipSources.projectId, projects)));
+  const sources = new Map<string, string>();
+  for (const s of sourceRows) {
+    const have = existing.find((e) => e.projectId === s.projectId);
+    // A role changed elsewhere (for example in the project's Collaborators settings) since provisioning set it is now a
+    // hand-set role: provisioning lets go of it.
+    if (have && s.role && have.role !== s.role) await db.delete(eeMembershipSources).where(and(eq(eeMembershipSources.userId, userId), eq(eeMembershipSources.projectId, s.projectId)));
+    else sources.set(s.projectId, s.source);
+  }
   let changed = 0;
   if (!member || !member.active) {
     if (existing.length) {
@@ -148,7 +156,7 @@ export async function reconcileMember(db: DB, orgId: string, userId: string): Pr
         await db.update(schema.memberships).set({ role: want.role }).where(and(eq(schema.memberships.userId, userId), eq(schema.memberships.projectId, p)));
         changed++;
       }
-      if (src !== want.source) await db.insert(eeMembershipSources).values({ projectId: p, userId, source: want.source }).onConflictDoUpdate({ target: [eeMembershipSources.projectId, eeMembershipSources.userId], set: { source: want.source } });
+      await db.insert(eeMembershipSources).values({ projectId: p, userId, source: want.source, role: want.role }).onConflictDoUpdate({ target: [eeMembershipSources.projectId, eeMembershipSources.userId], set: { source: want.source, role: want.role } });
     } else if (have && src) {
       await db.delete(schema.memberships).where(and(eq(schema.memberships.userId, userId), eq(schema.memberships.projectId, p)));
       await db.delete(eeMembershipSources).where(and(eq(eeMembershipSources.userId, userId), eq(eeMembershipSources.projectId, p)));

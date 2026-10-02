@@ -20,6 +20,7 @@
 //   GET    /v2/organizations/{org_id}/scopes                        the scopes a custom role can hold
 //   GET|POST /v2/organizations/{org_id}/roles, GET|POST|DELETE .../roles/{role_id}
 //   GET|POST /v2/organizations/{org_id}/role_mappings, DELETE .../role_mappings/{mapping_id}
+//   GET    /v2/organizations/{org_id}/overview                      details plus SSO and SCIM counts (the dashboard)
 //   GET    /v2/organizations/{org_id}/audit_logs                    the organization's own log
 //   GET    /v2/organizations/{org_id}/exports/{audit_logs|access_review}?format=csv|json   signed compliance exports
 //   GET    /v2/organizations/{org_id}/exports/public_key
@@ -101,7 +102,7 @@ export function orgRoutes(ctx: EeCtx) {
     const [members] = await db.select({ n: count() }).from(eeOrgMembers).where(and(eq(eeOrgMembers.orgId, o.id), eq(eeOrgMembers.active, true)));
     return {
       object: "organization", id: o.id, name: o.name, your_role: role, region: o.region, region_name: REGION_NAMES[o.region as Region] ?? o.region,
-      selectable_regions: selectableRegions(ctx.regions), region_enforced: Object.keys(ctx.regions.regions).length > 1,
+      selectable_regions: selectableRegions(ctx.regions, deps.edition === "cloud"), region_enforced: Object.keys(ctx.regions.regions).length > 1, cloud: deps.edition === "cloud",
       audit_retention_days: o.auditRetentionDays, sso_enforced: o.ssoEnforced,
       seats: { purchased: o.seats, used: await seatsUsed(o.id) }, billing_email: o.billingEmail,
       member_count: Number(members?.n ?? 0), project_count: projects.length, features: [...ctx.features],
@@ -143,7 +144,7 @@ export function orgRoutes(ctx: EeCtx) {
     if (b.name !== undefined) { set.name = b.name; changed.name = b.name; }
     if (b.region !== undefined) {
       needFeature(ctx, "data_location");
-      if (!selectableRegions(ctx.regions).includes(b.region)) throw paramError(`New projects of this organization are created in the ${REGION_NAMES[ctx.regions.current]} region on this server. Use the ${REGION_NAMES[b.region]} dashboard for projects stored there.`, "region");
+      if (!selectableRegions(ctx.regions, deps.edition === "cloud").includes(b.region)) throw paramError(`New projects of this organization are created in the ${REGION_NAMES[ctx.regions.current]} region on this server. Use the ${REGION_NAMES[b.region]} dashboard for projects stored there.`, "region");
       set.region = b.region; changed.region = b.region;
     }
     if (b.audit_retention_days !== undefined) {
@@ -304,7 +305,7 @@ export function orgRoutes(ctx: EeCtx) {
     const p = await orgProject(m.org.id, c.req.param("project_id")!);
     const b = await body(c, RegionSet);
     if (b.region === p.region) return c.json({ object: "organization_project", id: p.projectId, region: p.region });
-    if (!selectableRegions(ctx.regions).includes(b.region)) {
+    if (!selectableRegions(ctx.regions, deps.edition === "cloud").includes(b.region)) {
       const there = ctx.regions.regions[b.region];
       throw new V2Error(422, "unprocessable_entity_error", there
         ? `A project's data stays in the region where it was created. Create projects for the ${REGION_NAMES[b.region]} region at ${there.app}, or ask RevenueDot support (support@revenuedot.app) to move this one.`

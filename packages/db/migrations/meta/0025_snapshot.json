@@ -1,5 +1,5 @@
 {
-  "id": "f3201697-9435-4ddf-96d7-7883a664969c",
+  "id": "207f9305-799b-45ad-a8b3-268e6e8d16f6",
   "prevId": "f9dd292c-0df1-4817-8fd6-c308afd11d70",
   "version": "7",
   "dialect": "postgresql",
@@ -10200,6 +10200,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
