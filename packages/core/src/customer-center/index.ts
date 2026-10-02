@@ -450,7 +450,9 @@ function sdkSupport(s: Json): Json {
   for (const k of ["should_warn_customer_to_update", "display_purchase_history_link", "display_user_details_section", "display_virtual_currencies"]) if (typeof s[k] === "boolean") out[k] = s[k];
   const t = s.support_tickets;
   if (isObj(t)) {
-    const details = isObj(t.customer_details) ? Object.fromEntries(Object.entries(t.customer_details).filter(([, v]) => typeof v === "boolean")) : {};
+    // Both SDKs read snake_case keys (app_user_id, ip); the Support page stores camelCase (appUserId).
+    const snake = (k: string) => (k === "ipAddress" ? "ip" : k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`));
+    const details = isObj(t.customer_details) ? Object.fromEntries(Object.entries(t.customer_details).filter(([, v]) => typeof v === "boolean").map(([k, v]) => [snake(k), v])) : {};
     out.support_tickets = {
       allow_creation: t.allow_creation === true,
       customer_type: TICKET_CUSTOMERS.includes(t.customer_type as string) ? t.customer_type : "not_active",

@@ -157,10 +157,10 @@ describe("promotional offer references, tickets and offerings", () => {
 
   it("sends only the support and offering fields the SDKs decode", () => {
     const out = sdkCustomerCenter(mergeConfig(dflt(), {
-      support: { email: "a@b.co", internal_note: "x", display_purchase_history_link: "yes", support_tickets: { allow_creation: true, customer_type: "bogus", customer_details: { idfv: true, email: "x" } } },
+      support: { email: "a@b.co", internal_note: "x", display_purchase_history_link: "yes", support_tickets: { allow_creation: true, customer_type: "bogus", customer_details: { idfv: true, email: "x", appUserId: true, ipAddress: false } } },
       screens: { NO_ACTIVE: { title: "None", paths: [], offering: { type: "CURRENT", button_text: "See plans", extra: 1 } } },
     })) as any;
-    expect(out.support).toEqual({ email: "a@b.co", should_warn_customer_to_update: false, display_user_details_section: true, display_virtual_currencies: false, support_tickets: { allow_creation: true, customer_type: "not_active", customer_details: { idfv: true } } });
+    expect(out.support).toEqual({ email: "a@b.co", should_warn_customer_to_update: false, display_user_details_section: true, display_virtual_currencies: false, support_tickets: { allow_creation: true, customer_type: "not_active", customer_details: { idfv: true, app_user_id: true, ip: false } } });
     expect(out.screens.NO_ACTIVE.offering).toEqual({ type: "CURRENT", button_text: "See plans" });
   });
 });

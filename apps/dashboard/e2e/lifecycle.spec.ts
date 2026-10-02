@@ -243,7 +243,7 @@ test("support: integrations, ticket settings, a Customer Center ticket arrives, 
   await toast(page, "Support settings saved");
   const cc = await json(page, "GET", `${P}/customer_center_config`);
   expect(cc.customer_center.support.email).toBe("help@scanner.test");
-  expect(cc.customer_center.support.support_tickets).toMatchObject({ allow_creation: true, customer_type: "all", customer_details: { idfv: true, appUserId: true } });
+  expect(cc.customer_center.support.support_tickets).toMatchObject({ allow_creation: true, customer_type: "all", customer_details: { idfv: true, app_user_id: true } });
 
   // The SDK's create-ticket call with the Test Store public key.
   const apps = (await json(page, "GET", `${P}/apps?limit=100`)).items;
