@@ -96,7 +96,8 @@ const journey: Journey = {
     const NEEDS: Record<string, string[]> = {
       products: ["apps"], entitlements: ["apps", "products"], offerings: ["apps", "web", "products"], paywalls: ["apps", "web", "products", "offerings"],
       targeting: ["apps", "web", "products", "offerings"], experiments: ["apps", "web", "products", "offerings"], "customer-actions": ["apps", "web", "products", "offerings"],
-      retention: ["apps", "products"], funnel: ["apps", "web", "products", "offerings"], "web-discount": ["web"], pages: ["*"], "desktop-dark": ["*"], "desktop-light": ["*"], "phone-light": ["*"], "phone-dark": ["*"], theme: [],
+      retention: ["apps", "products"], funnel: ["apps", "web", "products", "offerings"], "web-discount": ["web"], "invite-flow": [], roles: ["apps", "products", "invite-flow"], validation: ["apps", "products"],
+      "customer-page": ["apps", "web", "products", "offerings", "targeting", "experiments", "customer-actions"], "customer-center": [], support: [], "ads-rewards": ["customer-page"], "empty-states": [], pages: ["*"], "desktop-dark": ["*"], "desktop-light": ["*"], "phone-light": ["*"], "phone-dark": ["*"], theme: [],
     };
     const wanted = new Set(only.flatMap((n) => [n, ...(NEEDS[n] ?? [])]));
     const runs = (name: string) => !only.length || wanted.has("*") || wanted.has(name);
@@ -1052,6 +1053,393 @@ const journey: Journey = {
         c.eq("the membership row is gone (SQL)", left!.n, 0);
         await page.reload(); await settle();
         await expect(members.getByRole("row", { name: new RegExp(mate) })).toHaveCount(0);
+      });
+
+      // ---------- 3b. edge cases: invites while signed in as someone else, roles, validation, new features, empty states ----------
+      let devCookie = "", viewerCookie = "";
+      const devEmail = `existing-${ctx.stamp}@journeys.test`, devPw = `existing-${ctx.stamp}-pw`;
+      const viewerEmail = `fresh-${ctx.stamp}@journeys.test`, viewerPw = `fresh-${ctx.stamp}-pw`;
+      /** A browser where the owner is signed in with a session of its own (signing out there must not end the main one). */
+      const ownerContext = async () => {
+        const ocx = await newContext();
+        const r = await ocx.request.post(`${ctx.base}/auth/login`, { data: { email, password } });
+        if (!r.ok()) throw new Error(`owner sign-in: ${r.status()}`);
+        return ocx;
+      };
+      const asCookie = async (cxx: BrowserContext) => `rd_session=${(await cxx.cookies()).find((k) => k.name === "rd_session")?.value ?? ""}`;
+      const contextWith = async (ck: string) => { const x = await newContext(); await x.addCookies([{ name: "rd_session", value: ck.split("=")[1]!, url: ctx.base }]); return x; };
+      const inviteLinkFor = async (to: string) => {
+        const m = await until(async () => [...ctx.mails].reverse().find((x) => x.to.includes(to) && linksOf(x).some((l) => /\/invite\?/.test(l))));
+        return m ? linksOf(m).find((l) => /\/invite\?/.test(l))! : "";
+      };
+
+      await step("invite-flow: an invite opened while signed in as someone else", async () => {
+        const projectName = (await v2("GET", "")).name;
+        // A person who already has an account is invited as a Developer.
+        const su = await fetch(`${ctx.base}/auth/signup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: devEmail, password: devPw, name: "Eve Existing", project_name: "Eve's app" }) });
+        c.eq("the invited person already has an account (sign-up 201)", su.status, 201);
+        await v2("POST", "/invites", { email: devEmail, role: "developer" });
+        const link = await inviteLinkFor(devEmail);
+        c.must("the invite email arrived with a link", link);
+        const ocx = await ownerContext();
+        const op = await ocx.newPage();
+        await op.goto(link); await op.waitForLoadState("networkidle").catch(() => {});
+        await expect(op.getByText(`You are signed in as ${email}. This invite is for ${devEmail}.`)).toBeVisible();
+        await op.getByRole("button", { name: `Sign in as ${devEmail}` }).click();
+        await op.waitForURL(/\/login\?next=.*email=/, { timeout: 15_000 });
+        c.eq("the sign-in form is filled in with the invited address", await op.getByLabel("Email", { exact: true }).inputValue(), devEmail);
+        await op.getByLabel("Password").fill(devPw);
+        await op.getByRole("button", { name: "Sign in" }).click();
+        await op.waitForURL(/\/invite\?/, { timeout: 15_000 });
+        await expect(op.getByRole("heading", { name: `Join ${projectName}` })).toBeVisible();
+        await op.getByRole("button", { name: "Accept invite" }).click();
+        await op.waitForURL(new RegExp(`/projects/${projectId}/overview`), { timeout: 15_000 });
+        const [m] = await ctx.sql`SELECT m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.email = ${devEmail} AND m.project_id = ${projectId}`;
+        c.eq("SQL: the existing account joined as a developer", m?.role, "developer");
+        devCookie = await asCookie(ocx);
+        c.eq("the owner's own session still works", (await call("GET", "/auth/me")).status, 200);
+        await ocx.close();
+
+        // A person with no account yet: switching accounts goes straight to the invite's sign-up form.
+        await v2("POST", "/invites", { email: viewerEmail, role: "viewer" });
+        const link2 = await inviteLinkFor(viewerEmail);
+        const ocx2 = await ownerContext();
+        const op2 = await ocx2.newPage();
+        await op2.goto(link2); await op2.waitForLoadState("networkidle").catch(() => {});
+        await op2.getByRole("button", { name: `Sign in as ${viewerEmail}` }).click();
+        await op2.waitForURL(/\/invite\?/, { timeout: 15_000 });
+        await expect(op2.getByRole("button", { name: "Create account and join" })).toBeVisible();
+        c.check("signed out, the invite page offers the sign-up form for the invited address", (await op2.locator("body").innerText()).includes(viewerEmail));
+        await op2.getByLabel("Your name").fill("Vic Viewer");
+        await op2.getByLabel("Password").fill(viewerPw);
+        await op2.getByRole("button", { name: "Create account and join" }).click();
+        await op2.waitForURL(new RegExp(`/projects/${projectId}/overview`), { timeout: 15_000 });
+        const [vm] = await ctx.sql`SELECT m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.email = ${viewerEmail} AND m.project_id = ${projectId}`;
+        c.eq("SQL: the new account joined as a viewer", vm?.role, "viewer");
+        viewerCookie = await asCookie(ocx2);
+        await ocx2.close();
+      });
+
+      await step("roles: a Viewer and a Developer are refused what their role does not allow, and told why", async () => {
+        const DENIED = /does not allow this|Only project admins/;
+        // Viewer: reads every page, every write is refused with the reason.
+        allow(/^POST \/v2\/projects\/[^/]+\/products$/, 403);
+        allow(/^POST \/v2\/projects\/[^/]+\/customers\/[^/]+\/actions\/grant_entitlement$/, 403);
+        allow(/^POST \/v2\/projects\/[^/]+\/invites$/, 403);
+        allow(/^POST \/v2\/projects\/[^/]+\/api_keys$/, 403);
+        const vcx = await contextWith(viewerCookie);
+        const vp = await vcx.newPage();
+        await vp.goto(`${ctx.base}${B}/overview`); await vp.waitForLoadState("networkidle").catch(() => {});
+        await expect(vp.getByRole("heading", { name: "Overview" })).toBeVisible();
+        await vp.goto(`${ctx.base}${B}/product-catalog/products`); await vp.waitForLoadState("networkidle").catch(() => {});
+        await vp.getByRole("button", { name: "New product" }).first().click();
+        let d = vp.getByRole("dialog", { name: "New product" });
+        await d.getByLabel("App", { exact: true }).selectOption({ label: "Pocket Scanner for iPhone (App Store)" });
+        await d.getByLabel("Store identifier").fill("viewer.try");
+        await d.getByRole("radio", { name: /^Non-consumable / }).locator("xpath=..").click();
+        await d.getByRole("button", { name: "Create product" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: DENIED })).toBeVisible();
+        c.check("Viewer: New product is refused with the reason in the dialog, nothing created", !(await v2("GET", "/products?limit=100")).items.some((p: any) => p.store_identifier === "viewer.try"));
+        await vp.keyboard.press("Escape");
+        const grants0 = (await v2("GET", `/customer_summaries?ids=${encodeURIComponent(named)}`)).items[0]?.granted_entitlements?.length ?? 0;
+        await vp.goto(`${ctx.base}${B}/customers/${encodeURIComponent(named)}`); await vp.waitForLoadState("networkidle").catch(() => {});
+        await vp.getByRole("button", { name: "Grant entitlement" }).click();
+        d = vp.getByRole("dialog", { name: "Grant an entitlement" });
+        await d.getByLabel("Entitlement").selectOption({ label: "No ads (ad_free)" });
+        await d.getByRole("button", { name: "Grant access" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: DENIED })).toBeVisible();
+        c.eq("Viewer: Grant entitlement is refused, no grant stored", (await v2("GET", `/customer_summaries?ids=${encodeURIComponent(named)}`)).items[0]?.granted_entitlements?.length ?? 0, grants0);
+        await vp.keyboard.press("Escape");
+        await vp.goto(`${ctx.base}${B}/settings/collaborators`); await vp.waitForLoadState("networkidle").catch(() => {});
+        const vInvite = vp.getByRole("button", { name: "Invite", exact: true });
+        c.check("Viewer: Invite is disabled and says only admins can invite", await vInvite.isDisabled() && (await vInvite.getAttribute("title")) === "Only admins can invite people");
+        await vcx.close();
+
+        // Developer: changes the catalog, but cannot make secret API keys or manage people.
+        const dcx = await contextWith(devCookie);
+        const dp = await dcx.newPage();
+        await dp.goto(`${ctx.base}${B}/api-keys`); await dp.waitForLoadState("networkidle").catch(() => {});
+        await dp.getByRole("button", { name: "New secret key" }).click();
+        d = dp.getByRole("dialog", { name: "New secret API key" });
+        await d.getByLabel("Name").fill("Developer try");
+        await d.getByRole("button", { name: "Create key" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: DENIED })).toBeVisible();
+        const [kk] = await ctx.sql`SELECT count(*)::int AS n FROM api_keys WHERE project_id = ${projectId} AND name = 'Developer try'`;
+        c.eq("Developer: New secret key is refused with the reason, no key stored (SQL)", kk!.n, 0);
+        await dp.keyboard.press("Escape");
+        await dp.goto(`${ctx.base}${B}/settings/collaborators`); await dp.waitForLoadState("networkidle").catch(() => {});
+        const dInvite = dp.getByRole("button", { name: "Invite", exact: true });
+        c.check("Developer: Invite is disabled and says only admins can invite", await dInvite.isDisabled() && (await dInvite.getAttribute("title")) === "Only admins can invite people");
+        // The server refuses it too, whatever the page shows.
+        const dInv = await fetch(`${ctx.base}${P}/invites`, { method: "POST", headers: { cookie: devCookie, "content-type": "application/json", "sec-fetch-site": "same-origin" }, body: JSON.stringify({ email: `devnope-${ctx.stamp}@journeys.test`, role: "viewer" }) });
+        c.eq("Developer: POST /invites answers 403 (only admins manage people)", dInv.status, 403);
+        await dp.goto(`${ctx.base}${B}/product-catalog/entitlements`); await dp.waitForLoadState("networkidle").catch(() => {});
+        await dp.getByRole("button", { name: "New entitlement" }).first().click();
+        d = dp.getByRole("dialog", { name: "New entitlement" });
+        await d.getByLabel("Identifier").fill("dev_made");
+        await d.getByLabel("Display name").fill("Made by a developer");
+        await d.getByRole("button", { name: "Create entitlement" }).click();
+        await expect(d).toBeHidden();
+        const made = (await v2("GET", "/entitlements?limit=100")).items.find((e: any) => e.lookup_key === "dev_made");
+        c.check("Developer: New entitlement works (v2)", !!made, made);
+        if (made) await v2("DELETE", `/entitlements/${made.id}`);
+        await dcx.close();
+      });
+
+      await step("validation: forms refuse bad input and say what to fix", async () => {
+        allow(/^POST \/v2\/projects\/[^/]+\/products$/, 409);
+        allow(/^POST \/v2\/projects\/[^/]+\/entitlements$/, 409);
+        const before = (await v2("GET", "/products?limit=100")).items.length;
+        await go(`${B}/product-catalog/products`);
+        await page.getByRole("button", { name: "New product" }).first().click();
+        let d = dialog("New product");
+        await d.getByLabel("App", { exact: true }).selectOption({ label: "Pocket Scanner for iPhone (App Store)" });
+        await d.getByRole("button", { name: "Create product" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "Enter the product's identifier in the store." })).toBeVisible();
+        await d.getByLabel("Store identifier").fill("has space");
+        await d.getByRole("button", { name: "Create product" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "Store identifiers cannot contain spaces." })).toBeVisible();
+        await d.getByLabel("Store identifier").fill("pocket.pro.monthly");
+        await d.getByRole("radio", { name: /^Subscription / }).locator("xpath=..").click();
+        await d.getByLabel("Duration").selectOption("P1M");
+        await d.getByRole("button", { name: "Create product" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "already has a product with this identifier" })).toBeVisible();
+        await d.getByRole("button", { name: "Cancel" }).click();
+        c.eq("products: an empty, a spaced and a duplicate identifier each named the problem; nothing was created", (await v2("GET", "/products?limit=100")).items.length, before);
+        await go(`${B}/product-catalog/entitlements`);
+        await page.getByRole("button", { name: "New entitlement" }).first().click();
+        d = dialog("New entitlement");
+        await d.getByLabel("Identifier").fill("pro");
+        await d.getByRole("button", { name: "Create entitlement" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "Enter a display name" })).toBeVisible();
+        await d.getByLabel("Display name").fill("Pro again");
+        await d.getByRole("button", { name: "Create entitlement" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "An entitlement with this identifier already exists." })).toBeVisible();
+        await d.getByRole("button", { name: "Cancel" }).click();
+        c.eq("entitlements: a missing name and a taken identifier were refused; one pro entitlement", (await v2("GET", "/entitlements?limit=100")).items.filter((e: any) => e.lookup_key === "pro").length, 1);
+        const hooks0 = (await v2("GET", "/integrations/webhooks")).items.length;
+        await go(`${B}/integrations/webhooks/new`);
+        await page.getByLabel("Webhook URL").fill("not a url");
+        await page.getByRole("button", { name: "Add webhook" }).click();
+        await expect(page.getByRole("alert").filter({ hasText: "Name the webhook" })).toBeVisible();
+        await expect(page.getByRole("alert").filter({ hasText: "Enter the full URL of your endpoint" })).toBeVisible();
+        c.eq("webhooks: a missing name and a bad URL were refused, nothing saved", (await v2("GET", "/integrations/webhooks")).items.length, hooks0);
+        await go(`${B}/settings/collaborators`);
+        await page.getByRole("button", { name: "Invite", exact: true }).click();
+        d = dialog("Invite to this project");
+        await d.getByLabel("Email").fill("not-an-email");
+        await d.getByRole("button", { name: "Send invite" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "Enter a valid email address." })).toBeVisible();
+        await d.getByRole("button", { name: "Cancel" }).click();
+        await go("/projects/new");
+        await page.getByRole("button", { name: "Create project" }).click();
+        await expect(page.getByRole("alert").filter({ hasText: "Give the project a name." })).toBeVisible();
+        c.check("invite and new project: an invalid email and an empty name were refused with the reason", true);
+      });
+
+      await step("customer-page: the current offering matches the SDK, and currency balances adjust", async () => {
+        allow(/^POST \/v2\/projects\/[^/]+\/customers\/[^/]+\/virtual_currencies\/transactions$/, 400);
+        allow(/^POST \/v2\/projects\/[^/]+\/customers\/[^/]+\/virtual_currencies\/transactions$/, 409);
+        allow(/^POST \/v2\/projects\/[^/]+\/customers\/[^/]+\/virtual_currencies\/transactions$/, 422);
+        const sdk = sdkClient(ctx, seed.testKey);
+        for (const who of [named, "support_vip_1", "renewing_reader"]) {
+          await go(`${B}/customers/${encodeURIComponent(who)}`);
+          const panel = page.locator("section.panel").filter({ has: page.locator(".ph b", { hasText: /^Current offering$/ }) });
+          await panel.locator(".erow").first().waitFor({ timeout: 15_000 });
+          const shown = (await panel.locator(".erow .mono").first().innerText()).trim();
+          const label = (await panel.locator(".erow .tag").first().innerText()).trim();
+          const sdkCurrent = (await sdk.offerings(who)).body.current_offering_id;
+          c.eq(`${who}: the customer page's current offering (${label}) is the one the SDK serves`, shown, sdkCurrent);
+        }
+        await v2("POST", "/virtual_currencies", { code: "GLD", name: "Gold" });
+        await go(`${B}/customers/${encodeURIComponent(named)}`);
+        const vc = page.locator("section.panel").filter({ has: page.locator(".ph b", { hasText: /^In-app currencies$/ }) });
+        await expect(vc).toContainText("Gold");
+        await vc.getByRole("button", { name: "Adjust →" }).click();
+        const d = dialog("Adjust a balance");
+        await d.getByLabel("Amount").fill("0");
+        await d.getByRole("button", { name: "Save" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "Enter a whole number other than 0" })).toBeVisible();
+        await d.getByLabel("Amount").fill("-5");
+        await d.getByRole("button", { name: "Save" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: /below zero/ })).toBeVisible();
+        await d.getByLabel("Amount").fill("25");
+        await d.getByRole("button", { name: "Save" }).click();
+        await toast("Credited 25 GLD. New balance: 25.");
+        await expect(vc).toContainText("25");
+        const bal = (await v2("GET", `/customers/${encodeURIComponent(named)}/virtual_currencies`)).items.find((b: any) => b.currency_code === "GLD");
+        c.eq("v2 balance after the credit", bal?.balance, 25);
+        const sdkVc = await sdk.call("GET", `/v1/subscribers/${encodeURIComponent(named)}/virtual_currencies`);
+        c.eq("the SDK's balance after the credit", sdkVc.body?.virtual_currencies?.GLD?.balance, 25);
+        await vc.getByRole("button", { name: "Adjust →" }).click();
+        await dialog("Adjust a balance").getByLabel("Amount").fill("-10");
+        await dialog("Adjust a balance").getByRole("button", { name: "Save" }).click();
+        await toast("Debited 10 GLD. New balance: 15.");
+        await page.reload(); await settle();
+        await expect(vc).toContainText("15");
+        c.eq("v2 balance after the debit, and after a reload the page shows it", (await v2("GET", `/customers/${encodeURIComponent(named)}/virtual_currencies`)).items.find((b: any) => b.currency_code === "GLD")?.balance, 15);
+      });
+
+      await step("ads-rewards: reward rules added, edited, reordered, switched off and deleted; a test reward granted, in the browser", async () => {
+        const rules = async () => (await v2("GET", "/ads/reward_rules")).items as any[];
+        await go(`${B}/ads/rewards`);
+        await expect(page.getByText("No reward rules yet")).toBeVisible();
+        await page.getByRole("button", { name: "Add your first rule" }).click();
+        let d = dialog("New reward rule");
+        await d.getByRole("button", { name: "Add rule" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "Name the rule." })).toBeVisible();
+        await d.getByLabel("Name").fill("Gold for level ends");
+        await d.getByLabel("Currency").selectOption("GLD");
+        await d.getByLabel("Amount per reward").fill("5");
+        await d.getByRole("button", { name: "Add rule" }).click();
+        await toast(/Rule added/);
+        await page.getByRole("button", { name: "New rule" }).click();
+        d = dialog("New reward rule");
+        await d.getByLabel("Name").fill("Day pass");
+        await d.getByRole("group", { name: "Grant" }).getByRole("button", { name: "Temporary access" }).click();
+        await d.getByLabel("Entitlement").selectOption("ad_free");
+        await d.getByRole("button", { name: "Add rule" }).click();
+        await expect(dialog("New reward rule")).toBeHidden();
+        await expect.poll(async () => (await rules()).length).toBe(2);
+        let r = await rules();
+        c.check("v2: two rules in the order they were added (currency 5 GLD, then a day of ad_free)", r.length === 2 && r[0].name === "Gold for level ends" && r[0].kind === "virtual_currency" && r[0].amount === 5 && r[0].currency_code === "GLD" && r[1].name === "Day pass" && r[1].kind === "entitlement" && r[1].duration_minutes === 1440, r.map((x) => ({ n: x.name, k: x.kind, a: x.amount, m: x.duration_minutes })));
+        await page.getByRole("button", { name: "Move Day pass up" }).click();
+        await expect.poll(async () => (await rules()).map((x) => x.name)).toEqual(["Day pass", "Gold for level ends"]);
+        await page.getByRole("button", { name: "Edit Gold for level ends" }).click();
+        d = dialog("Edit reward rule");
+        await d.getByLabel("Amount per reward").fill("7");
+        await d.getByRole("button", { name: "Save rule" }).click();
+        await toast("Rule saved.");
+        c.eq("v2: the edited amount", (await rules()).find((x) => x.name === "Gold for level ends")?.amount, 7);
+        // The test reward runs the rules: Day pass is first and matches any reward.
+        await page.getByRole("button", { name: "Send a test reward" }).click();
+        d = dialog("Send a test reward");
+        await d.getByRole("button", { name: "Send test reward" }).click();
+        await expect(d.getByRole("alert").filter({ hasText: "Enter the app user ID" })).toBeVisible();
+        await d.getByLabel("App user ID").fill(named);
+        await d.getByRole("button", { name: "Send test reward" }).click();
+        await toast(new RegExp(`Granted .* to ${named.replace(/[.*+?^${}()|[\]\\$]/g, "\\$&")}\\.`));
+        const sdk = sdkClient(ctx, seed.testKey);
+        c.check("the SDK's customer info has ad_free from the Day pass rule", !!(await sdk.customerInfo(named)).body.subscriber?.entitlements?.ad_free);
+        await expect(page.getByRole("row").filter({ hasText: named }).first()).toBeVisible();
+        await page.getByRole("listitem").filter({ hasText: "Day pass" }).getByRole("switch").click();
+        await expect.poll(async () => (await rules()).find((x) => x.name === "Day pass")?.enabled).toBe(false);
+        await page.getByRole("button", { name: "Delete Day pass" }).click();
+        await dialog("Delete Day pass?").getByRole("button", { name: "Delete rule" }).click();
+        await toast("Rule deleted.");
+        r = await rules();
+        c.check("v2: Day pass switched off, then deleted; Gold for level ends stays", r.length === 1 && r[0].name === "Gold for level ends", r.map((x) => x.name));
+        await page.reload(); await settle();
+        await expect(page.getByRole("list", { name: "Reward rules in priority order" })).toContainText("Gold for level ends");
+      });
+
+      await step("customer-center: the editor saves what the SDK receives, refuses bad values, and resets", async () => {
+        allow(/^(PUT|POST|PATCH) \/v2\/projects\/[^/]+\/customer_center_config$/, 422);
+        allow(/^(PUT|POST|PATCH) \/v2\/projects\/[^/]+\/customer_center_config$/, 400);
+        const sdk = sdkClient(ctx, seed.testKey);
+        const cc = async () => (await sdk.call("GET", `/v1/customercenter/${encodeURIComponent(named)}`)).body?.customer_center;
+        await go(`${B}/lifecycle/customer-center`);
+        await expect(page.getByRole("heading", { name: "Customer Center", exact: true })).toBeVisible();
+        const active = page.getByRole("region", { name: "Customers with active subscriptions" });
+        const list = active.getByRole("list", { name: /paths in order/ });
+        const titles = async () => (await list.locator(".cc-path-b b").allInnerTexts()).map((t) => t.trim());
+        const before = await titles();
+        await active.getByRole("button", { name: "Add path" }).click();
+        await page.getByRole("menuitem", { name: "Custom URL" }).click();
+        await page.getByLabel("Button text", { exact: true }).fill("Help center");
+        await page.getByRole("button", { name: "Save changes" }).click();
+        await expect(page.getByRole("alert").first()).toContainText("needs a full URL");
+        await page.getByLabel("URL", { exact: true }).fill("javascript:alert(1)");
+        await page.getByRole("button", { name: "Save changes" }).click();
+        await expect(page.getByRole("alert").first()).toContainText(/url/i);
+        await page.getByLabel("URL", { exact: true }).fill("https://scanner.example/help");
+        await page.getByRole("tab", { name: "Appearance" }).click();
+        await page.locator("#cc-light-accent_color").fill("#F4A9");
+        await expect(page.getByText("Use a hex colour such as #1A1A1A.")).toBeVisible();
+        await page.locator("#cc-light-accent_color").fill("#F4A900");
+        await expect(page.getByText("Use a hex colour such as #1A1A1A.")).toHaveCount(0);
+        await page.getByRole("button", { name: "Save changes" }).click();
+        await expect(page.getByText("Customer Center saved")).toBeVisible();
+        const saved = await cc();
+        const help = saved?.screens?.MANAGEMENT?.paths?.find((p: any) => p.title === "Help center");
+        c.has("the SDK's Customer Center has the Help center path", help, { type: "CUSTOM_URL", url: "https://scanner.example/help" });
+        c.eq("the SDK's Customer Center has the accent colour", saved?.appearance?.light?.accent_color, "#F4A900");
+        await page.reload(); await settle();
+        await page.getByRole("tab", { name: "Configuration" }).click();
+        await expect.poll(titles).toEqual([...before, "Help center"]);
+        await page.getByRole("button", { name: "Reset configuration" }).click();
+        await page.getByRole("dialog").getByRole("button", { name: "Reset configuration" }).click();
+        await expect(page.getByText("Customer Center reset to the default")).toBeVisible();
+        const reset = await cc();
+        c.check("after Reset the SDK gets the default paths and no accent", !reset?.screens?.MANAGEMENT?.paths?.some((p: any) => p.title === "Help center") && !reset?.appearance?.light?.accent_color, reset?.appearance);
+      });
+
+      await step("support: ticket settings from the form, an SDK ticket opened, closed and reopened in the browser", async () => {
+        const SUP = `help-${ctx.stamp}@scanner-support.test`;
+        const msg = `The scan export button does nothing (${ctx.stamp}).`;
+        await go(`${B}/lifecycle/support?tab=customer_center`);
+        await page.getByLabel("Support email").fill("not-an-address");
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(page.getByRole("alert").filter({ hasText: "Enter the email address tickets should go to." })).toBeVisible();
+        await page.getByLabel("Support email").fill(SUP);
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await toast("Support settings saved");
+        const cfg = await v2("GET", "/customer_center_config");
+        c.eq("v2: tickets go to the saved support address", cfg.config?.support?.email ?? cfg.customer_center?.support?.email, SUP);
+        const sdk = sdkClient(ctx, seed.testKey);
+        const mail0 = ctx.mails.length;
+        const tk = await sdk.call("POST", "/v1/customercenter/support/create-ticket", { app_user_id: named, customer_email: `buyer-${ctx.stamp}@example.com`, issue_description: msg });
+        c.check("the SDK's create-ticket is accepted (sent: true)", tk.status === 200 && tk.body?.sent === true, tk.body);
+        c.must("the ticket was emailed to the support address (SMTP)", await until(async () => ctx.mails.slice(mail0).find((m) => m.to.includes(SUP))));
+        await go(`${B}/lifecycle/support?tab=tickets`);
+        const row = page.getByRole("row").filter({ hasText: msg });
+        await expect(row).toBeVisible();
+        await row.getByText(msg).click();
+        await expect(page.getByLabel("Full message")).toHaveText(msg);
+        await page.getByRole("button", { name: "Close ticket" }).click();
+        await toast("Ticket closed");
+        const st = async () => (await ctx.sql`SELECT status FROM support_tickets WHERE project_id = ${projectId} AND description = ${msg}`)[0]?.status;
+        c.eq("SQL: Close ticket closed it", await st(), "closed");
+        await page.getByRole("button", { name: "Reopen ticket" }).click();
+        await toast("Ticket reopened");
+        c.eq("SQL: Reopen ticket opened it again", await st(), "open");
+      });
+
+      await step("empty-states: a new project made through the UI shows empty states, and deleting it through the UI", async () => {
+        await go("/projects/new");
+        await page.getByLabel("Project name").fill("Empty shelf");
+        await page.getByRole("button", { name: "Create project" }).click();
+        await page.waitForURL(/\/projects\/[^/]+\/overview/, { timeout: 15_000 });
+        const np = /\/projects\/([^/]+)\//.exec(page.url())![1]!;
+        c.check("the new project opens on its Overview", np !== projectId, np);
+        const [prow] = await ctx.sql`SELECT p.name, m.role FROM projects p JOIN memberships m ON m.project_id = p.id JOIN users u ON u.id = m.user_id WHERE p.id = ${np} AND u.email = ${email}`;
+        c.eq("SQL: the project and an admin membership exist", prow && { name: prow.name, role: prow.role }, { name: "Empty shelf", role: "admin" });
+        const NB = `/projects/${np}`;
+        const lists = ["customers", "product-catalog/offerings", "product-catalog/products", "product-catalog/entitlements", "product-catalog/virtual-currencies", "paywalls", "targeting", "experiments", "funnels", "apps", "integrations/webhooks", "integrations/exports", "lifecycle/winback", "web-discounts", "lifecycle/support?tab=tickets"];
+        const noEmpty: string[] = [];
+        const broken: unknown[] = [];
+        for (const l of [ "overview", ...lists]) {
+          await go(`${NB}/${l}`);
+          await page.waitForTimeout(200);
+          const body = await page.locator("body").innerText();
+          const h1 = (await page.locator("h1").first().innerText({ timeout: 5000 }).catch(() => "")).trim();
+          const err = await page.locator(".banner.err").count();
+          const bad = /Could not load|could not be loaded|Something went wrong/i;
+          if (!h1 || err || bad.test(body) || /loading…/i.test(body)) broken.push({ l, h1, err, error: bad.exec(body)?.[0] });
+          if (l !== "overview" && !(await page.locator(".empty, .pw-empty, .wb-empty").count())) noEmpty.push(l);
+        }
+        c.check("every page of the empty project opens with its heading, no error and no endless loading", broken.length === 0, broken);
+        c.check("every list page of the empty project says it is empty and what to do", noEmpty.length === 0, noEmpty);
+        await go(`${NB}/settings`);
+        await page.getByRole("button", { name: "Delete project" }).first().click();
+        const dd = dialog("Delete Empty shelf?");
+        c.check("Delete stays disabled until the name is typed", await dd.getByRole("button", { name: "Delete project" }).isDisabled());
+        await dd.getByLabel("Type Empty shelf to confirm").fill("Empty shelf");
+        await dd.getByRole("button", { name: "Delete project" }).click();
+        await toast("Empty shelf deleted.");
+        await page.waitForURL(/\/projects\/[^/]+\/overview/, { timeout: 15_000 });
+        c.eq("SQL: the project is gone", (await ctx.sql`SELECT count(*)::int AS n FROM projects WHERE id = ${np}`)[0]!.n, 0);
+        c.check("the dashboard returns to the remaining project", page.url().includes(`${B}/overview`), page.url());
       });
 
       await step("account: change name and alert emails", async () => {
