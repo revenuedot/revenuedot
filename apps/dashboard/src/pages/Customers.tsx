@@ -1,12 +1,13 @@
 /*
- * Customers: /projects/:projectId/customers?list=<all|active|sandbox|non_subscription|expired|audience id>&q=<search>
+ * Customers: /projects/:projectId/customers?list=<all|active|sandbox|non_subscription|expired|audience id>&q=<search>&sort=<column>&direction=<asc|desc>
  * RevenueCat's customer lists: a rail of audiences (built-in lists, saved audiences, "New audience"), four summary cards,
  * a filter bar (search, conditions from the audience builder, "Save audience", "Export all") and the customer table.
  * Data: GET /v2/projects/{id}/customer_lists (rows and summary) and /customer_lists/export (CSV), GET/POST /audiences.
  * Lists scan the 10,000 most recently seen customers. Search matches part of an app user ID or email; a whole store
  * transaction ID still finds its customer through RevenueCat's exact search (GET /customers?search=).
+ * Column headers sort the list (the default is last seen, newest first); the eye button masks IDs and emails on screen.
  */
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../components/Shell";
@@ -21,6 +22,8 @@ import type { Audience } from "./lifecycle/lib";
 const LIMIT = 25;
 const SORTABLE = ["id", "subscription_status", "auto_renewal_status", "first_seen_at", "last_seen_at", "spent_in_usd"] as const;
 type SortKey = (typeof SORTABLE)[number];
+/** The API's order without `sort`: last seen, newest first. */
+const DEFAULT_SORT: { key: SortKey; direction: "asc" | "desc" } = { key: "last_seen_at", direction: "desc" };
 const HIDE_KEY = "rd-hide-customer-ids";
 const BUILT_IN: { id: string; label: string; cond: Condition | null; note?: string }[] = [
   { id: "all", label: "All customers", cond: null },
@@ -65,9 +68,15 @@ export function Customers() {
   const after = sp.get("after");
   const sortKey = (SORTABLE as readonly string[]).includes(sp.get("sort") ?? "") ? sp.get("sort") as SortKey : null;
   const direction: "asc" | "desc" = sp.get("direction") === "desc" ? "desc" : "asc";
+  // The order on screen: the URL's sort, else the API's default.
+  const shown = sortKey ? { key: sortKey, direction } : DEFAULT_SORT;
   // Masks app user IDs and emails on screen (for screen sharing and demos); remembered in this browser only.
   const [hideIds, setHideIds] = useState(() => { try { return localStorage.getItem(HIDE_KEY) === "1"; } catch { return false; } });
-  const toggleHide = () => setHideIds((h) => { try { if (h) localStorage.removeItem(HIDE_KEY); else localStorage.setItem(HIDE_KEY, "1"); } catch { /* ignore */ } return !h; });
+  const toggleHide = () => {
+    const next = !hideIds;
+    setHideIds(next);
+    try { if (next) localStorage.setItem(HIDE_KEY, "1"); else localStorage.removeItem(HIDE_KEY); } catch { /* storage blocked: this visit only */ }
+  };
   const [draft, setDraft] = useState(q);
   const [filterOpen, setFilterOpen] = useState(false);
   const [groups, setGroups] = useState<Groups>([]);
@@ -132,14 +141,16 @@ export function Customers() {
     } catch (x) { toast(errMsg(x)); }
     setExporting(false);
   };
-  // First click sorts dates and money newest or largest first, text A to Z; the next click flips it.
+  // First click sorts dates and money newest or largest first, IDs A to Z, statuses active first; the next click flips it.
+  // The default order (last seen, newest first) keeps a clean URL.
   const sortBy = (key: SortKey) => {
     const first = key === "id" || key === "subscription_status" || key === "auto_renewal_status" ? "asc" : "desc";
-    const next = sortKey === key ? (direction === "asc" ? "desc" : "asc") : first;
+    const next = shown.key === key ? (shown.direction === "asc" ? "desc" : "asc") : first;
+    const isDefault = key === DEFAULT_SORT.key && next === DEFAULT_SORT.direction;
     setTrail([]);
-    setParams({ sort: key, direction: next });
+    setParams({ sort: isDefault ? null : key, direction: isDefault ? null : next });
   };
-  const sortOf = (key: SortKey) => ({ direction: sortKey === key ? direction : null, onSort: () => sortBy(key) });
+  const sortOf = (key: SortKey) => ({ direction: shown.key === key ? shown.direction : null, onSort: () => sortBy(key) });
   const go = (cursor: string | null, back = false) => {
     const n = new URLSearchParams(sp);
     if (cursor) n.set("after", cursor); else n.delete("after");
@@ -155,17 +166,21 @@ export function Customers() {
 
   const nextCursor = res.data?.next_page ? new URL(res.data.next_page, window.location.origin).searchParams.get("starting_after") : null;
   const page = trail.length + 1;
-  const to = (r: Row) => `/projects/${pid}/customers/${encodeURIComponent(r.id)}`;
+  const customerUrl = (id: string) => `/projects/${pid}/customers/${encodeURIComponent(id)}`;
+  const to = (r: Row) => customerUrl(r.id);
+  const open = (id: string) => (e: MouseEvent) => { e.stopPropagation(); nav(customerUrl(id)); };
   const s = res.data?.summary;
   const listName = BUILT_IN.find((b) => b.id === list)?.label ?? audiences.data?.find((a) => a.id === list)?.name ?? "Audience";
   const unknownList = res.isError && (res.error as { status?: number }).status === 404;
 
   const cols: Column<Row>[] = [
     { key: "id", header: "Customer", sort: sortOf("id"),
-      headerExtra: <button type="button" className="th-toggle" aria-pressed={hideIds} onClick={toggleHide} title={hideIds ? "Show app user IDs" : "Hide app user IDs"} aria-label={hideIds ? "Show app user IDs" : "Hide app user IDs"}><Icon name={hideIds ? "eyeoff" : "eye"} /></button>,
+      // A toggle button keeps one name; aria-pressed says whether IDs are hidden.
+      headerExtra: <button type="button" className="th-toggle" aria-pressed={hideIds} onClick={toggleHide} title="Hide app user IDs" aria-label="Hide app user IDs"><Icon name={hideIds ? "eyeoff" : "eye"} /></button>,
+      // Hidden: a button, not a link, so the browser's link preview cannot show the ID in the URL.
       render: (r) => hideIds ? (
       <span className="idcell" style={{ maxWidth: 220 }}>
-        <Link to={to(r)} className="mono masked" style={{ fontSize: 12 }} aria-label="Open customer (ID hidden)" onClick={(e) => e.stopPropagation()}>••••••••••</Link>
+        <button type="button" className="masked" aria-label="Open customer (ID hidden)" onClick={open(r.id)}>••••••••••</button>
       </span>
     ) : (
       <span className="idcell" style={{ maxWidth: 220, flexDirection: "column", alignItems: "flex-start" }}>
@@ -243,7 +258,8 @@ export function Customers() {
                   <DataTable columns={cols} rows={res.data.items} rowKey={(r) => r.customer_uuid} onRowClick={(r) => nav(to(r))}
                     empty={q ? (
                       exact.data ? (
-                        <EmptyState title={hideIds ? `"${q}" belongs to a customer` : `"${q}" belongs to ${exact.data.id}`} text="This customer is not in the current list, but the search matches their app user ID, an alias, their email or a whole store transaction ID." action={<Link className="btn btn-dark" to={`/projects/${pid}/customers/${encodeURIComponent(exact.data.id)}`}>Open customer</Link>} />
+                        <EmptyState title={hideIds ? `"${q}" belongs to a customer` : `"${q}" belongs to ${exact.data.id}`} text="This customer is not in the current list, but the search matches their app user ID, an alias, their email or a whole store transaction ID."
+                          action={hideIds ? <button type="button" className="btn btn-dark" onClick={open(exact.data.id)}>Open customer</button> : <Link className="btn btn-dark" to={customerUrl(exact.data.id)}>Open customer</Link>} />
                       ) : (
                         <EmptyState title={`No customer matches "${q}"`} text="Search matches part of an app user ID or an email saved as $email, or a whole store transaction ID." action={<button type="button" className="btn btn-line" onClick={() => setParams({ q: null })}>Clear search</button>} />
                       )

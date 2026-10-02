@@ -42,8 +42,10 @@ export interface Column<T> {
 
 function HeaderCell<T>({ c }: { c: Column<T> }) {
   const d = c.sort?.direction ?? null;
+  const cls = c.align === "right" ? "amt" : undefined;
+  if (!c.sort && !c.headerExtra) return <th className={cls}>{c.header}</th>;
   return (
-    <th className={c.align === "right" ? "amt" : undefined} aria-sort={c.sort ? (d === "asc" ? "ascending" : d === "desc" ? "descending" : "none") : undefined}>
+    <th className={cls} aria-sort={d === "asc" ? "ascending" : d === "desc" ? "descending" : undefined}>
       <span className="th-in">
         {c.sort ? (
           <button type="button" className={`th-sort${d ? " on" : ""}`} onClick={c.sort.onSort} title={`Sort by ${c.header.toLowerCase()}`}>
@@ -65,7 +67,7 @@ export function DataTable<T>({ columns, rows, onRowClick, rowKey, empty }: { col
         <tbody>
           {rows.map((r) => (
             <tr key={rowKey(r)} className={onRowClick ? "row" : undefined} onClick={onRowClick ? () => onRowClick(r) : undefined} tabIndex={onRowClick ? 0 : undefined}
-              onKeyDown={onRowClick ? (e) => { if (e.key === "Enter") onRowClick(r); } : undefined}>
+              onKeyDown={onRowClick ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) onRowClick(r); } : undefined}>
               {columns.map((c) => <td key={c.key} className={`${c.align === "right" ? "amt" : ""} ${c.className ?? ""}`}>{c.render(r)}</td>)}
             </tr>
           ))}
