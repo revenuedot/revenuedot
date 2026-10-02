@@ -15,7 +15,7 @@ export interface CustomerSummary {
   country: string | null; platform: string | null; stores: string[];
   offering_override: { id: string; lookup_key: string; display_name: string } | null;
   /** Older servers leave it out. */
-  current_offering?: { id: string; lookup_key: string; display_name: string; source: "override" | "experiment" | "targeting" | "default"; rule_id?: string; rule_name?: string | null; experiment_id?: string; experiment_name?: string | null; variant?: "a" | "b" } | null;
+  current_offering?: { id: string; lookup_key: string; display_name: string; source: "override" | "experiment" | "targeting" | "default"; rule_id?: string; rule_name?: string | null; experiment_id?: string; experiment_name?: string | null; variant?: string; variant_name?: string } | null;
   /** On the project's block list (through any alias): no entitlements anywhere. */
   blocked?: boolean;
   active_entitlements: { entitlement_id: string; lookup_key: string; display_name: string; expires_at: number | null; source: "purchase" | "promotional"; product_identifier: string | null }[];

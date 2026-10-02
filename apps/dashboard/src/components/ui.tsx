@@ -186,7 +186,7 @@ export function Menu({ label, items, text, icon = "plus", variant = "line" }: { 
     const r = btn.current?.getBoundingClientRect();
     if (!r || r.bottom < 0 || r.top > window.innerHeight) return null;
     const h = items.length * 34 + 12;
-    const left = text ? r.left : r.right - 232;
+    const left = text ? (primary ? r.right - 232 : r.left) : r.right - 232;
     return { top: r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4, left: Math.max(8, Math.min(left, window.innerWidth - 240)) };
   };
   const open = () => setPos(place());

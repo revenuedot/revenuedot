@@ -258,7 +258,10 @@ export function sdkRoutes(deps: Deps) {
     const app = c.get("app");
     const body = await offeringsJSON(deps.db, app.projectId, app.id, { assetBaseUrl: `${publicOrigin(c)}/assets/${app.projectId}` }) as Awaited<ReturnType<typeof offeringsJSON>> & { targeting?: { revision: number; rule_id: string } };
     const id = c.req.param("id");
-    const cust = id ? await findCustomer(deps.db, app.projectId, decodeURIComponent(id)) : null;
+    const appUserId = id ? decodeURIComponent(id) : null;
+    // The SDK asks for customer info and offerings at the same time on a first launch. Offerings make the customer, so the
+    // first paywall already shows their experiment variant (and "new customers" counts them from this request).
+    const cust = appUserId ? (await getOrCreateCustomer(deps.db, app.projectId, appUserId, deps.now())).customer : null;
     const offs = await deps.db.select({ id: schema.offerings.id, key: schema.offerings.lookupKey, current: schema.offerings.isCurrent }).from(schema.offerings).where(eq(schema.offerings.projectId, app.projectId));
     const keyOf = (oid: string | null) => offs.find((o) => o.id === oid)?.key ?? null;
     if (cust?.offeringOverrideId) {
@@ -269,11 +272,16 @@ export function sdkRoutes(deps: Deps) {
     const now = deps.now();
     const headers = Object.fromEntries(["x-platform", "x-client-version", "x-version", "x-platform-flavor", "x-platform-version", "x-storefront", "x-preferred-locales"].map((h) => [h, c.req.header(h)]));
     const ctx = await contextFor(deps.db, cust, headers, now, cust ? await activeEntitlementKeys(deps.db, cust, now) : []);
-    const r = await resolveOfferings(deps.db, app.projectId, cust, ctx, now, offs.find((o) => o.current)?.id ?? null);
-    body.current_offering_id = keyOf(r.currentOfferingId) ?? body.current_offering_id;
+    const sandbox = app.type === "test_store" || c.req.header("x-is-sandbox") === "true";
+    const r = await resolveOfferings(deps.db, app.projectId, cust, ctx, now, offs.find((o) => o.current)?.id ?? null, { appUserId, sandbox });
+    // Only offerings the answer lists can be current or shown at a placement (an archived one is not listed): otherwise
+    // the SDK would get an id it cannot find and Offerings.current would be nil.
+    const served = new Set((body.offerings as { identifier: string }[]).map((o) => o.identifier));
+    const servedKey = (oid: string | null) => { const k = keyOf(oid); return k && served.has(k) ? k : null; };
+    body.current_offering_id = servedKey(r.currentOfferingId) ?? body.current_offering_id;
     body.placements = {
       fallback_offering_id: body.current_offering_id,
-      offering_ids_by_placement: Object.fromEntries(Object.entries(r.placements).map(([p, oid]) => [p, oid ? keyOf(oid) : null])),
+      offering_ids_by_placement: Object.fromEntries(Object.entries(r.placements).flatMap(([p, oid]) => (oid === null ? [[p, null]] : servedKey(oid) ? [[p, servedKey(oid)]] : []))),
     };
     if (r.rule) body.targeting = { revision: r.rule.revision, rule_id: r.rule.id };
     return c.json(body);

@@ -5,6 +5,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { V2Error, body, conflict, expands, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
 import { offeringShape, packageProducts, packageShape, productShape } from "./shapes.js";
+import { variantsOf } from "../../services/targeting.js";
 
 const Metadata = z.record(z.unknown()).nullable().optional();
 const OfferingCreate = z.object({ lookup_key: z.string().trim().min(1).max(200), display_name: z.string().trim().min(1).max(1500), metadata: Metadata });
@@ -15,6 +16,12 @@ const PackageUpdate = z.object({ display_name: z.string().trim().min(1).max(1500
 const ELIGIBILITY = ["all", "google_sdk_lt_6", "google_sdk_ge_6"] as const;
 const Attach = z.object({ products: z.array(z.object({ product_id: z.string().min(1), eligibility_criteria: z.enum(ELIGIBILITY) })).min(1).max(50) });
 const Detach = z.object({ product_ids: z.array(z.string().min(1)).min(1).max(50) });
+const Duplicate = z.object({
+  lookup_key: z.string().trim().min(1).max(200), display_name: z.string().trim().min(1).max(1500), metadata: Metadata,
+  /** Which packages to copy and in what order; `products` replaces a package's products. Omitted: an exact copy. */
+  packages: z.array(z.object({ source_package_id: z.string().min(1), products: z.array(z.object({ product_id: z.string().min(1), eligibility_criteria: z.enum(ELIGIBILITY) })).max(50).optional() }).strict()).max(50).optional(),
+  copy_paywall: z.boolean().optional(),
+}).strict();
 
 /** Two products of the same app can share a package only when their Google SDK eligibility ranges do not overlap. */
 const overlaps = (a: string, b: string) => a === "all" || b === "all" || a === b;
@@ -35,6 +42,13 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
       .where(and(eq(schema.offerings.projectId, projectId), eq(schema.packages.id, id))).limit(1);
     if (!row) throw notFound("Package");
     return row;
+  };
+
+  /** An experiment that may still serve the offering keeps it; stopped ones keep their results and show its id. */
+  const refuseIfExperimentUses = async (o: typeof schema.offerings.$inferSelect, what: "deleted" | "archived") => {
+    const live = await db.select().from(schema.experiments).where(and(eq(schema.experiments.projectId, o.projectId), inArray(schema.experiments.status, ["draft", "running", "paused"])));
+    const user = live.find((e) => variantsOf(e).some((v) => v.offering_id === o.id || Object.values(v.placements).includes(o.id)));
+    if (user) throw new V2Error(409, "resource_already_exists", `The offering is used by the ${user.status} experiment "${user.name}", so it cannot be ${what}. Stop the experiment or pick another offering in it first.`);
   };
 
   /** The paywall attached to each offering, by offering id. */
@@ -97,13 +111,68 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
   // Deletes the offering and its packages (FK cascade).
   r.delete(`${O}/:offering_id`, scope("project_configuration:offerings:read_write"), async (c) => {
     const o = await findOffering(c.get("projectId"), c.req.param("offering_id"));
+    await refuseIfExperimentUses(o, "deleted");
     await db.delete(schema.offerings).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.id, o.id)));
     await db.update(schema.customers).set({ offeringOverrideId: null }).where(and(eq(schema.customers.projectId, o.projectId), eq(schema.customers.offeringOverrideId, o.id)));
     return c.json({ object: "offering", id: o.id, deleted_at: deps.now().getTime() });
   });
 
+  // RevenueDot extension: copy an offering with its packages (optionally reordered, with other products) and its paywall,
+  // for an experiment's treatment (prd/experiments/PRD.md §1).
+  r.post(`${O}/:offering_id/actions/duplicate`, scope("project_configuration:offerings:read_write"), async (c) => {
+    const o = await findOffering(c.get("projectId"), c.req.param("offering_id"));
+    const b = await body(c, Duplicate);
+    const [dup] = await db.select({ id: schema.offerings.id }).from(schema.offerings).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.lookupKey, b.lookup_key))).limit(1);
+    if (dup) throw conflict(`An offering with lookup_key ${b.lookup_key} already exists.`, "lookup_key");
+    const source = (await db.select().from(schema.packages).where(eq(schema.packages.offeringId, o.id)))
+      .sort((a, z2) => a.position - z2.position || a.createdAt.getTime() - z2.createdAt.getTime() || a.id.localeCompare(z2.id));
+    const prods = await packageProducts(db, source.map((p) => p.id));
+    const plan = b.packages ?? source.map((p) => ({ source_package_id: p.id, products: undefined }));
+    if (new Set(plan.map((p) => p.source_package_id)).size !== plan.length) throw paramError("packages: each source package can be copied once.", "packages");
+    const wanted = plan.flatMap((p) => p.products?.map((x) => x.product_id) ?? []);
+    const known = wanted.length ? await db.select().from(schema.products).where(and(eq(schema.products.projectId, o.projectId), inArray(schema.products.id, wanted))) : [];
+    for (const [i, p] of plan.entries()) {
+      if (!source.some((s) => s.id === p.source_package_id)) throw paramError(`packages.${i}.source_package_id: not a package of this offering.`, `packages.${i}.source_package_id`);
+      const ids = p.products?.map((x) => x.product_id) ?? [];
+      if (new Set(ids).size !== ids.length) throw paramError(`packages.${i}.products: each product can only be attached once.`, `packages.${i}.products`);
+      const missing = ids.filter((id) => !known.some((k) => k.id === id));
+      if (missing.length) throw paramError(`packages.${i}.products: products not found in this project: ${missing.join(", ")}.`, `packages.${i}.products`);
+      const rows = (p.products ?? []).map((x) => ({ appId: known.find((k) => k.id === x.product_id)!.appId, eligibility: x.eligibility_criteria as string }));
+      for (let a = 0; a < rows.length; a++) for (let z2 = a + 1; z2 < rows.length; z2++) {
+        if (rows[a]!.appId === rows[z2]!.appId && overlaps(rows[a]!.eligibility, rows[z2]!.eligibility)) throw new V2Error(409, "invalid_request", `packages.${i}.products: two products of the same app need non-overlapping eligibility_criteria.`, `packages.${i}.products`);
+      }
+    }
+    const [pw] = b.copy_paywall ? await db.select().from(schema.paywalls).where(eq(schema.paywalls.offeringId, o.id)).limit(1) : [];
+    if (b.copy_paywall && !pw) throw paramError("copy_paywall: the offering has no paywall to copy.", "copy_paywall");
+    const now = deps.now();
+    // One transaction: a failure leaves no half-made offering behind (a retry would then hit its lookup key).
+    const copy = await db.transaction(async (raw) => {
+      const tx = raw as unknown as typeof db;
+      const [made] = await tx.insert(schema.offerings).values({
+        id: newId("ofrng", 10), projectId: o.projectId, lookupKey: b.lookup_key, displayName: b.display_name, metadata: b.metadata !== undefined ? b.metadata : o.metadata, isCurrent: false, createdAt: now,
+      }).returning();
+      for (const [i, p] of plan.entries()) {
+        const src = source.find((s) => s.id === p.source_package_id)!;
+        const [pkg] = await tx.insert(schema.packages).values({ id: newId("pkge", 10), offeringId: made!.id, lookupKey: src.lookupKey, displayName: src.displayName, position: i, createdAt: now }).returning();
+        const items = p.products ? p.products.map((x) => ({ productId: x.product_id, eligibility: x.eligibility_criteria as string }))
+          : (prods.get(src.id)?.products ?? []).map((x) => ({ productId: x.product.id, eligibility: x.eligibility }));
+        for (const it of items) await tx.insert(schema.packageProducts).values({ packageId: pkg!.id, productId: it.productId, eligibilityCriteria: it.eligibility });
+      }
+      if (pw) {
+        await tx.insert(schema.paywalls).values({
+          id: newId("pw", 14), projectId: o.projectId, name: `${pw.name ?? "Paywall"} (${b.display_name})`, offeringId: made!.id, automaticallyScaleFontSize: pw.automaticallyScaleFontSize,
+          revision: 1, draft: pw.draft ? { ...pw.draft, revision: 1 } : null, published: pw.published ? { ...pw.published, revision: 1 } : null, template: pw.template,
+          publishedAt: pw.published ? now : null, createdAt: now,
+        });
+      }
+      return made!;
+    });
+    return c.json((await shapeOfferings([copy], new Set(["package", "package.product"]), "")).get(copy.id), 201);
+  });
+
   r.post(`${O}/:offering_id/actions/archive`, scope("project_configuration:offerings:read_write"), async (c) => {
     const o = await findOffering(c.get("projectId"), c.req.param("offering_id"));
+    await refuseIfExperimentUses(o, "archived");
     if (o.isCurrent) throw new V2Error(422, "unprocessable_entity_error", "The current offering cannot be archived. Make another offering current first.");
     const [row] = await db.update(schema.offerings).set({ state: "inactive" }).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.id, o.id))).returning();
     return c.json(await shapeOne(row!));
