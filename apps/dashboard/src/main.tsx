@@ -13,8 +13,10 @@ import { routes } from "./routes";
 import { useMe } from "./components/Shell";
 import { ToastProvider } from "./components/ui";
 import { api } from "./lib/api";
+import { initAnalytics } from "./lib/analytics";
 import { EnterpriseRoutes } from "./extensions";
 
+initAnalytics();
 try { const t = localStorage.getItem("rd-theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* ignore */ }
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } } });
 

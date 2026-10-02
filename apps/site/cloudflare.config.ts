@@ -1,5 +1,5 @@
 // revenuedot.app marketing site on Cloudflare Workers, deployed with the `cf` CLI. Static assets answer every request
-// except /api/*, which the Worker script handles (worker/index.ts: the contact-sales form and the visitor's country).
+// except /api/* and pages, which the Worker script handles (worker/index.ts: the contact-sales form, the visitor's country, crawler notes).
 // Deploy only after approval: pnpm --filter site run deploy. vite.config.ts hands the Astro build (dist/) to cf as the
 // Worker's static assets. www.revenuedot.app redirects to the apex with a zone redirect rule (docs/cloud.md).
 import { bindings, defineConfig, triggers } from "cf/config";
@@ -11,7 +11,9 @@ export default defineConfig({
     name: "revenuedot-site",
     compatibilityDate: "2026-09-01",
     entrypoint: "worker/index.ts",
-    assets: { htmlHandling: "drop-trailing-slash", notFoundHandling: "404-page", runWorkerFirst: ["/api/*"] },
+    // Every page goes through the Worker so crawler visits reach DataFast's Bot traffic card (worker/bots.ts); build assets and
+    // media skip it and are served straight from the static assets.
+    assets: { htmlHandling: "drop-trailing-slash", notFoundHandling: "404-page", runWorkerFirst: ["/*", "!/_astro/*", "!/brand/*", "!/clips/*", "!/videos/*", "!/og/*"] },
     domains: ["revenuedot.app", "www.revenuedot.app"],
     observability: { enabled: true },
     // Daily at 15:00 UTC (8am in California): the email listing people who started the contact-sales form and did not send it.

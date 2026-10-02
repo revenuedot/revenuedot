@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import { onlineManager, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { identifyUser } from "../lib/analytics";
 import { Icon, Mark } from "./icons";
 import { enterpriseAvailable } from "../extensions";
 
@@ -12,7 +13,11 @@ export interface Me {
   /** Only with an enterprise licence (src/extensions.tsx). */
   enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
 }
-export const useMe = (enabled = true) => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
+export function useMe(enabled = true) {
+  const q = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
+  useEffect(() => { if (q.data) identifyUser(q.data); }, [q.data]);
+  return q;
+}
 
 type Item = { label: string; to?: string; icon?: string; soon?: boolean; badge?: string; children?: Item[]; feature?: "benchmarks" };
 

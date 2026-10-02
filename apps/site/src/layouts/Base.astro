@@ -7,6 +7,7 @@ import mono500 from "@fontsource/geist-mono/files/geist-mono-latin-500-normal.wo
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
 import Breadcrumbs from "../components/Breadcrumbs.astro";
+import Analytics from "../components/Analytics.astro";
 import { SITE, type Crumb, type Faq } from "../site";
 import { organization, website, breadcrumbList, faqPage } from "../lib/jsonld";
 import { ogFor } from "../lib/og";
@@ -77,6 +78,7 @@ const ld = JSON.stringify({ "@context": "https://schema.org", "@graph": graph })
   <meta name="twitter:image:alt" content={ogAlt} />
   <script type="application/ld+json" is:inline set:html={ld} />
   <slot name="head" />
+  <Analytics />
   {SITE.analyticsToken && (
     <script defer is:inline src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon={JSON.stringify({ token: SITE.analyticsToken })} />
   )}

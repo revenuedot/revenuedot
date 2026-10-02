@@ -16,6 +16,7 @@ RevenueDot is an open-source, self-hostable server for in-app purchases and subs
 - `prd/ecosystem/PRD.md`: the plan for examples, cookbook and public docs. Every example and docs page follows its format and comment standard (header comment with links to revenuedot.app/docs). Training future LLMs on our public repos is a goal.
 - `LICENSING.md`: AGPL-3.0 core, `ee/` under the Enterprise License, MIT for SDKs and CLI; `TRADEMARKS.md`; CLA in `.github/CLA.md` (individual) and `.github/CLA-entity.md`. Never import `ee/` code from outside `ee/`. **Never draft legal text.** `ee/LICENSE` is the n8n Enterprise License, the CLAs are the Harmony CLAs 1.0 and `TRADEMARKS.md` is the Model Trademark Guidelines, each with only names, contacts and template blanks filled in. Change them only by adopting a newer version of the same source; the sources and every change are recorded in the private `company/legal/`.
 - Website and API domain: `revenuedot.app` (Cloudflare, Circo account). Live hosts: `revenuedot.app` (site, docs, blog), `api.revenuedot.app`, `app.revenuedot.app`, `mcp.revenuedot.app`. Runbook: `docs/cloud.md`.
+- `docs/analytics.md` + `prd/analytics/PRD.md`: DataFast web analytics, goals, user profile, Stripe revenue attribution and bot tracking. A new Cloud step or page link gets a goal.
 - `prd/SCOPE.md`: tiers and build order.
 - `docs/STATUS.md`: current phase, feature table, blockers.
 - `docs/architecture.md`: stack and portability rules (to be added).

@@ -2,8 +2,10 @@
 //   GET  /api/geo            the visitor's country (Cloudflare's guess), so the phone picker starts on the right country
 //   POST /api/contact-sales  the contact-sales form: validate, store in D1 (LEADS), email sales (EMAIL to SALES_TO)
 //   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
+// Every other page is the static file, plus a note to DataFast when the visitor is a known crawler (bots.ts).
 // Scheduled (daily, cloudflare.config.ts): one email to sales listing people who started the form and did not finish.
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
+import { trackCrawler } from "./bots";
 import { isEmail, vendorLabel, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
 
 interface D1Stmt { run(): Promise<unknown>; all<T = Record<string, unknown>>(): Promise<{ results: T[] }> }
@@ -43,7 +45,7 @@ export default {
   async scheduled(_controller: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
     ctx.waitUntil(sendDigest(env).catch((e) => console.error("contact-sales: digest failed", e)));
   },
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/geo" && request.method === "GET") {
       const country = (request as Request & { cf?: { country?: string } }).cf?.country ?? null;
@@ -58,7 +60,9 @@ export default {
       return contactSales(request, env);
     }
     if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Not found." }, 404);
-    return env.ASSETS.fetch(request);
+    const res = await env.ASSETS.fetch(request);
+    trackCrawler(request, res, ctx);
+    return res;
   },
 };
 

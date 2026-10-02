@@ -369,6 +369,10 @@ const KEYS = "ABCDEFGHIJ";
       const out = await r.json().catch(() => ({}));
       if (r.ok && out.ok) {
         const lead = v.lead;
+        // DataFast: the goal, and the email as the user id so this lead links to the signup and payment that follow.
+        const df = (window as unknown as { datafast?: (...a: unknown[]) => void }).datafast;
+        df?.("contact_sales_submitted", { revenue: lead.revenue, current: lead.current, next: out.next ?? "sales" });
+        df?.("identify", { user_id: lead.email, name: lead.name, company: lead.company });
         bar.style.width = "100%";
         form.hidden = true;
         const done = document.getElementById("cs-done")!;
@@ -388,6 +392,9 @@ const KEYS = "ABCDEFGHIJ";
       next.disabled = false; if (!form.hidden) next.textContent = "Send to sales";
     }
   }
+
+  // DataFast goal: the form was started (first answer), so drop-off between start and send is visible.
+  form.addEventListener("change", () => (window as unknown as { datafast?: (...a: unknown[]) => void }).datafast?.("contact_sales_started"), { once: true });
 
   go(0, false);
 </script>

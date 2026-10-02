@@ -54,6 +54,24 @@ function form(params: Record<string, unknown>, prefix = ""): string[] {
   return out;
 }
 
+/** The visitor and session ids DataFast's tracking script keeps in cookies; Stripe metadata names them exactly like this. */
+export interface DatafastIds { datafast_visitor_id?: string; datafast_session_id?: string }
+const DATAFAST_ID = /^[A-Za-z0-9-]{8,64}$/;
+
+/** Reads the DataFast cookies from a request's Cookie header. Values that are not plain ids are dropped, so nothing else reaches Stripe. */
+export function datafastIds(cookieHeader: string | null | undefined): DatafastIds | undefined {
+  if (!cookieHeader) return undefined;
+  const out: DatafastIds = {};
+  for (const part of cookieHeader.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    const name = part.slice(0, i).trim();
+    const value = part.slice(i + 1).trim();
+    if ((name === "datafast_visitor_id" || name === "datafast_session_id") && DATAFAST_ID.test(value)) out[name] = value;
+  }
+  return out.datafast_visitor_id || out.datafast_session_id ? out : undefined;
+}
+
 export function billingStripe(c: BillingConfig, f: typeof fetch = fetch) {
   const base = (c.apiBase ?? "https://api.stripe.com").replace(/\/+$/, "");
   const call = async <T = Record<string, any>>(method: string, path: string, params?: Record<string, unknown>, idempotencyKey?: string): Promise<T> => {
@@ -75,12 +93,14 @@ export function billingStripe(c: BillingConfig, f: typeof fetch = fetch) {
     createCustomer: (o: { email: string; name?: string | null; userId: string }) =>
       call<{ id: string }>("POST", "/v1/customers", { email: o.email, name: o.name ?? undefined, metadata: { revenuedot_user_id: o.userId } }, `rd-customer-${o.userId}`),
     /** Checkout for Cloud Standard: monthly, anchored to the 1st of next month (UTC) without proration, so a Stripe period is a calendar month. */
-    createCheckout: (o: { customer: string; userId: string; successUrl: string; cancelUrl: string; anchor: Date }) =>
+    createCheckout: (o: { customer: string; userId: string; successUrl: string; cancelUrl: string; anchor: Date; datafast?: DatafastIds }) =>
       call<{ id: string; url: string }>("POST", "/v1/checkout/sessions", {
         mode: "subscription", customer: o.customer, client_reference_id: o.userId, success_url: o.successUrl, cancel_url: o.cancelUrl,
         line_items: [{ price: c.priceStandard }],
-        subscription_data: { billing_cycle_anchor: Math.floor(o.anchor.getTime() / 1000), proration_behavior: "none", metadata: { revenuedot_user_id: o.userId, plan: "standard" } },
-        metadata: { revenuedot_user_id: o.userId, plan: "standard" },
+        // The DataFast ids on the session (and the subscription, which carries them to its invoices) let DataFast credit the
+        // payment to the channel that brought the visitor (docs/analytics.md).
+        subscription_data: { billing_cycle_anchor: Math.floor(o.anchor.getTime() / 1000), proration_behavior: "none", metadata: { revenuedot_user_id: o.userId, plan: "standard", ...o.datafast } },
+        metadata: { revenuedot_user_id: o.userId, plan: "standard", ...o.datafast },
       }),
     createPortal: (o: { customer: string; returnUrl: string }) => call<{ id: string; url: string }>("POST", "/v1/billing_portal/sessions", { customer: o.customer, return_url: o.returnUrl }),
     /** The month's bill so far, in cents. The meter keeps the last value of the period ("last"). */

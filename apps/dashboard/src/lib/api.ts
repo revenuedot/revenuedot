@@ -1,3 +1,5 @@
+import { trackRequest } from "./analytics";
+
 /** Thin client for the RevenueDot API. The dashboard uses the session cookie; errors surface RevenueCat-style messages. */
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body: unknown) { super(message); }
@@ -14,6 +16,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
     const msg = (data && typeof data === "object" && "message" in data ? String((data as { message: unknown }).message) : null) ?? `Request failed (${res.status})`;
     throw new ApiError(res.status, msg, data);
   }
+  trackRequest(init.method ?? "GET", path);
   return data as T;
 }
 

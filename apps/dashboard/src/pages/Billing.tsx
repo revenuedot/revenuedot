@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell, useMe } from "../components/Shell";
 import { PageHead, Tag, useToast } from "../components/ui";
 import { api, ApiError, fmt } from "../lib/api";
+import { track } from "../lib/analytics";
 import "./billing.css";
 
 /**
@@ -48,6 +49,7 @@ export function BillingPage() {
   const q = useQuery({ queryKey: ["billing"], queryFn: () => api<Billing>("/v2/billing"), enabled: cloud, refetchInterval: params.get("checkout") === "success" ? 3000 : false });
   useEffect(() => {
     const c = params.get("checkout");
+    if (c === "success" || c === "cancelled") track("checkout_returned", { result: c });
     if (c === "success") toast("Thanks. Your plan changes as soon as Stripe confirms the payment.");
     if (c === "cancelled") toast("Checkout cancelled. Nothing changed.");
     if (c) { const t = setTimeout(() => { setParams({}, { replace: true }); void qc.invalidateQueries({ queryKey: ["me"] }); }, 15_000); return () => clearTimeout(t); }

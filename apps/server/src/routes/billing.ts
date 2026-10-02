@@ -7,7 +7,7 @@ import { SESSION_COOKIE, sessionUser } from "../services/sessions.js";
 import { linkBase, requestOrigin } from "../services/account-email.js";
 import { accountOf, accountUsage, reportAccountNow } from "../services/billing/meter.js";
 import { billCents, monthBounds, monthOf, planOf, plansFrom } from "../services/billing/plans.js";
-import { BillingStripeError, billingStripe, stripeProblem } from "../services/billing/stripe.js";
+import { BillingStripeError, billingStripe, datafastIds, stripeProblem } from "../services/billing/stripe.js";
 import { handleBillingEvent } from "../services/billing/webhook.js";
 import { StripeSignatureError, verifyStripeSignature } from "../stores/stripe/signature.js";
 
@@ -90,7 +90,7 @@ export function billingRoutes(deps: Deps) {
       }
       const now = deps.now();
       const anchor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-      const s = await stripe.createCheckout({ customer, userId: u.id, anchor, successUrl: `${base(c)}/account/billing?checkout=success`, cancelUrl: `${base(c)}/account/billing?checkout=cancelled` });
+      const s = await stripe.createCheckout({ customer, userId: u.id, anchor, datafast: datafastIds(c.req.header("cookie")), successUrl: `${base(c)}/account/billing?checkout=success`, cancelUrl: `${base(c)}/account/billing?checkout=cancelled` });
       return c.json({ object: "checkout", url: s.url, id: s.id });
     } catch (e) {
       return err(c, 502, "server_error", e instanceof BillingStripeError ? e.message : "Stripe could not start the checkout.");
