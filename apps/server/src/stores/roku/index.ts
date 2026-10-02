@@ -17,7 +17,7 @@ const minDate = (a: Date, b: Date) => (a < b ? a : b);
 /**
  * The purchases one validated transaction proves: its own period (none while a downgrade is pending: Roku charges it when
  * the current plan ends), plus, for an upgrade, the plans it replaced, whose access ends when the upgrade starts
- * (RevenueCat lists PRODUCT_CHANGE as unsupported for Roku, so the old chain simply expires).
+ * (RevenueCat lists PRODUCT_CHANGE as unsupported for Roku, so the old chain is cancelled and expires).
  */
 export async function purchasesForTransaction(client: RokuClient, app: Pick<AppRow, "credentials">, t: RokuTransaction, ctx: { catalog: Catalog; now: Date; sandbox: boolean; posted?: Posted | null }): Promise<VerifiedPurchase[]> {
   const out: VerifiedPurchase[] = [];
@@ -33,7 +33,8 @@ export async function purchasesForTransaction(client: RokuClient, app: Pick<AppR
     const p = mapTransaction(old, { ...ctx, posted: null });
     if (p.kind !== "subscription") continue;
     if (!isPending(t)) {
-      const s: VerifiedSubscription = { ...p, unsubscribeDetectedAt: null, billingIssuesDetectedAt: null, gracePeriodExpiresDate: null };
+      // The replaced plan was cancelled by the upgrade (Roku's UpgradeCancellation) and its access ends when the upgrade starts.
+      const s: VerifiedSubscription = { ...p, unsubscribeDetectedAt: p.unsubscribeDetectedAt ?? ctx.now, billingIssuesDetectedAt: null, gracePeriodExpiresDate: null };
       if (s.expiresDate) s.expiresDate = minDate(s.expiresDate, minDate(startsAt, ctx.now));
       out.push(s);
     } else {

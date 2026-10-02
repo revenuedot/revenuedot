@@ -34,7 +34,7 @@ export function mapTransaction(t: RokuTransaction, ctx: { catalog: Catalog; now:
   const { now } = ctx;
   if (!t.transactionId || !t.productId) throw new RokuApiError("invalid", "Roku returned a transaction without an id or product.");
   const purchaseDate = rokuDate(t.purchaseDate) ?? now;
-  const expires = rokuDate(t.expirationDate);
+  let expires = rokuDate(t.expirationDate);
   const kind = ctx.catalog.productType(t.productId);
   const price = rokuPrice(t);
   if ((kind && kind !== "subscription") || !expires) {
@@ -43,6 +43,8 @@ export function mapTransaction(t: RokuTransaction, ctx: { catalog: Catalog; now:
       isConsumable: kind === "consumable", purchaseDate, refundedAt: t.cancelled ? now : null, price, countryCode: null,
     };
   }
+  // Roku says the customer has no access now (an upgraded-away or refunded plan): access ends now, not at the expiry.
+  if (t.isEntitled === false && expires > now && (t.cancelled || t.purchaseStatus === "Inactive")) expires = now;
   const chain = chainKeyOf(t);
   const first = chain === t.transactionId;
   const free = (t.total ?? t.amount ?? null) === 0;
