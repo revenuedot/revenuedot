@@ -44,7 +44,21 @@ describe("validate", () => {
     const v = validate({ name: "", email: "nope", phone: "12", phoneCountry: "US", revenue: "lots", website: "not a site" });
     expect(v.ok).toBe(false);
     if (v.ok) return;
-    expect(Object.keys(v.errors).sort()).toEqual(["company", "current", "email", "name", "phone", "revenue", "role", "timeline", "website"]);
+    expect(Object.keys(v.errors).sort()).toEqual(["company", "current", "email", "name", "phone", "revenue", "timeline", "website"]);
+  });
+  it("treats role, needs, platforms, website and message as optional", () => {
+    const v = validate({ ...good, role: "", needs: [], platforms: [], website: "", message: "" });
+    expect(v.ok).toBe(true);
+  });
+  it("asks which tool when the vendor is Other, and labels it in the email", () => {
+    const missing = validate({ ...good, current: "other", currentOther: " " });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.errors.currentOther).toMatch(/which tool/);
+    const v = validate({ ...good, current: "other", currentOther: "Glassfy" });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(leadEmail(v.lead, "warm", { country: "US", referrer: "", userAgent: "" }).subject).toContain("uses Other (Glassfy)");
+    expect(validate({ ...good, currentOther: "ignored" }).ok && (validate({ ...good, currentOther: "ignored" }) as { lead: Lead }).lead.currentOther).toBe("");
   });
   it("accepts Prefer not to say for revenue", () => {
     expect(validate({ ...good, revenue: "undisclosed" }).ok).toBe(true);
@@ -121,6 +135,20 @@ describe("worker", () => {
     expect(r.status).toBe(200);
     expect(await r.text()).toContain("Thanks");
     expect(e.rows[0]).toContain(JSON.stringify(["sso", "sla"]));
+  });
+  it("saves drafts once the email is valid, and marks them completed on submit", async () => {
+    const drafts: unknown[][] = [];
+    const updates: unknown[][] = [];
+    const e = { ...env(), DRAFT_LIMIT: { limit: async () => ({ success: true }) }, LEADS: { prepare: (sql: string) => ({ bind: (...v: unknown[]) => ({ run: async () => { if (sql.includes("sales_lead_drafts (id")) drafts.push(v); if (sql.startsWith("UPDATE sales_lead_drafts")) updates.push(v); } }), run: async () => {} }) } };
+    const draftId = "6f1c2a3b-4d5e-4f60-8a9b-0c1d2e3f4a5b";
+    const draft = (b: unknown) => worker.fetch(new Request("https://revenuedot.app/api/contact-sales/draft", { method: "POST", headers: { "content-type": "application/json", origin: "https://revenuedot.app" }, body: JSON.stringify(b) }), e as never);
+    expect((await draft({ draftId, email: "not-an-email", step: 1 })).status).toBe(400);
+    expect((await draft({ draftId: "nope", email: "maya@habitly.app", step: 1 })).status).toBe(400);
+    expect((await draft({ draftId, email: "Maya@Habitly.app", revenue: "1m_5m", step: 2 })).status).toBe(200);
+    expect(drafts[0]![1]).toBe("maya@habitly.app");
+    expect(JSON.parse(drafts[0]![2] as string)).toEqual({ revenue: "1m_5m" });
+    await worker.fetch(post({ ...good, draftId }), e as never);
+    expect(updates).toEqual([[draftId]]);
   });
   it("serves assets for every other path", async () => {
     expect(await (await worker.fetch(new Request("https://revenuedot.app/pricing"), env() as never)).text()).toBe("asset");

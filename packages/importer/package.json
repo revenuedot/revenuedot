@@ -1,7 +1,7 @@
 {
   "name": "revenuedot",
-  "version": "0.2.1",
-  "description": "RevenueDot CLI: move a project from RevenueCat to RevenueDot (catalog, customers, subscriptions, purchases) and verify the result.",
+  "version": "0.3.0",
+  "description": "RevenueDot CLI: move a project from RevenueCat to RevenueDot, move it between RevenueDot servers (self-host and Cloud), export it, and verify the result.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://revenuedot.app/docs/migrate",

@@ -21,7 +21,7 @@ Since 2026-10-02 a page is written in a fixed number of statements (`apps/server
 | 100 customers, 10 already seen by the app, 5 merged | 73.8 s, 2,948 | 3.9 s, 146 |
 | 25 new customers | 16.8 s, 652 | 0.5 s, 18 |
 
-A merge still costs about 25 statements (the shared `mergeCustomers` plus a reload), roughly 0.6 s each. The CLI (0.2.1) reads pages of 50 by default (`--page-size`, at most 100), tries a timed-out page once more, then stops with the advice to rerun with a smaller `--page-size`; the state file resumes at that page.
+A merge still costs about 25 statements (the shared `mergeCustomers` plus a reload), roughly 0.6 s each. The CLI (0.3.0) reads pages of 50 by default (`--page-size`, at most 100), tries a timed-out page once more, then stops with the advice to rerun with a smaller `--page-size`; the state file resumes at that page.
 
 Validation: journey `import` (`scripts/e2e/journeys/import.ts`) on the real Node server and a fresh Railway development database, 45 checks: a page of 100 in 0.5 to 0.8 s with every row checked in SQL and entitlements read through the SDK wire calls, the re-run with no row changed, the merge page, and the real `revenuedot import` CLI against the fake RevenueCat (126 customers, pages of 50, `import verify`, a second full run that creates nobody).
 

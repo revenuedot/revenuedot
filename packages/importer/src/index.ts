@@ -9,3 +9,5 @@ export { RevenueCatClient } from "./revenuecat.js";
 export { RevenueDotClient } from "./revenuedot.js";
 export { requestJson, HttpError, TimeoutError, type HttpOptions } from "./http.js";
 export { main } from "./cli.js";
+export { runMove, newMoveState, formatPlan as formatMovePlan, formatVerify as formatMoveVerify, formatFinish, type MoveState, type MoveSource, type MoveTarget, type Manifest } from "./move/core.js";
+export { HttpSource, HttpTarget, ArchiveSource, exportArchive } from "./move/clients.js";

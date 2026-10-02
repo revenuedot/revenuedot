@@ -63,6 +63,8 @@ export const PLATFORMS = [
 type Opt = readonly (readonly [string, string])[];
 const keys = (o: Opt) => new Set(o.map(([k]) => k));
 export const label = (o: Opt, k: string) => o.find(([v]) => v === k)?.[1] ?? k;
+/** "RevenueCat", or "Other (Glassfy)" when they named it. */
+export const vendorLabel = (l: { current: string; currentOther?: string }) => (l.current === "other" && l.currentOther ? `Other (${l.currentOther})` : label(CURRENT, l.current));
 
 /** Common consumer mail domains: allowed, but they lower the score. */
 const FREE_MAIL = new Set(["gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com", "me.com", "aol.com", "proton.me", "protonmail.com", "gmx.com", "gmx.de", "mail.ru", "yandex.ru", "qq.com", "163.com"]);
@@ -76,6 +78,8 @@ export interface Lead {
   phoneCountry: string; // ISO 3166-1 alpha-2
   revenue: string;
   current: string;
+  /** What they use when they chose Other. */
+  currentOther: string;
   needs: string[];
   timeline: string;
   platforms: string[];
@@ -111,6 +115,7 @@ export function validate(input: Record<string, unknown>): Result {
   const role = text(input.role, 40);
   const revenue = text(input.revenue, 40);
   const current = text(input.current, 40);
+  const currentOther = current === "other" ? text(input.currentOther, 80) : "";
   const timeline = text(input.timeline, 40);
   const website = text(input.website, 200);
   const message = text(input.message, 4000);
@@ -119,10 +124,11 @@ export function validate(input: Record<string, unknown>): Result {
   if (!name) errors.name = "Enter your name.";
   if (!isEmail(email)) errors.email = "Enter a valid work email, like you@company.com.";
   if (!company) errors.company = "Enter your company name.";
-  if (!keys(ROLES).has(role)) errors.role = "Choose your role.";
+  if (role && !keys(ROLES).has(role)) errors.role = "Choose your role from the list.";
   if (!phone) errors.phone = "Enter a valid phone number for the country you chose.";
   if (!keys(REVENUE).has(revenue)) errors.revenue = "Choose a revenue range, or Prefer not to say.";
   if (!keys(CURRENT).has(current)) errors.current = "Choose what you use today.";
+  else if (current === "other" && !currentOther) errors.currentOther = "Tell us which tool you use.";
   if (!keys(TIMELINE).has(timeline)) errors.timeline = "Choose when you want to start.";
   if (website && !/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(website)) errors.website = "Enter a website like company.com.";
   if (Object.keys(errors).length) return { ok: false, errors };
@@ -130,7 +136,7 @@ export function validate(input: Record<string, unknown>): Result {
   return {
     ok: true,
     lead: {
-      name, email, company, role, revenue, current, timeline, website, message,
+      name, email, company, role, revenue, current, currentOther, timeline, website, message,
       phone: phone!.e164, phoneCountry: phone!.country,
       needs: list(input.needs, keys(NEEDS)),
       platforms: list(input.platforms, keys(PLATFORMS)),

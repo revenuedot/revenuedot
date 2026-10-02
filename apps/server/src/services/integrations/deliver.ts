@@ -3,6 +3,7 @@ import {
   BIGQUERY_SCOPE, bigQueryCreateTable, buildIntegration, responseError, retryableStatus, type EventContext, type IntegrationKind, type OutRequest,
 } from "@revenuedot/core/integrations";
 import { schema, type DB } from "@revenuedot/db";
+import { notMoving } from "../archive/moving.js";
 import { RETRY_MINUTES } from "../webhooks.js";
 import { SecretsError, unseal, type SecretKey } from "../secrets.js";
 import { GoogleAuthError, googleAccessToken, parseServiceAccount } from "../google-sa.js";
@@ -190,7 +191,7 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
   const budget = rt.budgetMs ?? 15_000;
   const ranked = db.select({ id: D.id, at: D.nextAttemptAt, rank: sql<number>`row_number() over (partition by ${D.integrationId} order by ${D.nextAttemptAt}, ${D.id})`.as("rank") })
     .from(D).innerJoin(I, eq(I.id, D.integrationId))
-    .where(and(eq(D.status, "pending"), lte(D.nextAttemptAt, rt.now), eq(I.enabled, true))).as("ranked");
+    .where(and(eq(D.status, "pending"), lte(D.nextAttemptAt, rt.now), eq(I.enabled, true), notMoving(I.projectId))).as("ranked");
   const due = await db.select({ id: ranked.id }).from(ranked).where(lte(ranked.rank, PER_INTEGRATION)).orderBy(ranked.at, ranked.id).limit(limit);
   let next = 0, attempted = 0;
   const lease = new Date(rt.now.getTime() + LEASE_MS);

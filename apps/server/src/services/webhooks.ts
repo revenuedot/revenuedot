@@ -1,5 +1,6 @@
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
+import { notMoving } from "./archive/moving.js";
 
 const { webhookDeliveries, webhooks, events } = schema;
 
@@ -65,7 +66,7 @@ export async function attempt(db: DB, deliveryId: string, fetchImpl: typeof fetc
 export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50) {
   const due = await db.select({ id: webhookDeliveries.id }).from(webhookDeliveries)
     .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId))
-    .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
+    .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
   for (const d of due) await attempt(db, d.id, fetchImpl, now);
   return due.length;
 }
