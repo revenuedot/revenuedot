@@ -205,6 +205,20 @@ describe("where billing does not run", () => {
     expect((await call("GET", "/auth/me", undefined, selfHost)).body.account.billing_status).toBeNull();
   });
 
+  it("Cloud without Stripe keys (production today): usage is measured for the page, but no usage email goes out", async () => {
+    await txn({ usd: 12_000 });
+    await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, publicUrl: "https://app.revenuedot.test", config: null });
+    await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config({ secretKey: "" }), force: true });
+    await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config({ secretKey: "sk_live_abc" }), force: true });
+    expect(mail.sent).toEqual([]);
+    expect(stripe.calls).toEqual([]);
+    expect((await accountUsage(h.db, "usr_1", "2026-10")).tracked_revenue_usd).toBe(12_000);
+    expect(await h.db.select().from(schema.billingNotices)).toEqual([]);
+    // Once Stripe is set up, the first pass sends the email it held back.
+    await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config(), force: true });
+    expect(mail.sent.map((m) => m.subject)).toEqual(["Your apps passed RevenueDot Cloud Free's $10,000 for October 2026"]);
+  });
+
   it("a live key without REVENUEDOT_BILLING_LIVE never reaches Stripe; no key means 'not set up yet'", async () => {
     expect(stripeProblem(config({ secretKey: "sk_live_abc" }))).toMatch(/REVENUEDOT_BILLING_LIVE/);
     expect(stripeProblem(config({ secretKey: "sk_live_abc", live: true }))).toBeNull();

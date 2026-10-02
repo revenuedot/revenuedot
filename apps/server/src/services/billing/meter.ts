@@ -94,6 +94,8 @@ export async function runBilling(rt: BillingRuntime): Promise<number> {
   }
   const months = rt.now.getUTCDate() <= 2 ? [previousMonth(month), month] : [month];
   const plans = plansFrom(rt.config?.plansJson);
+  // Usage emails point at the upgrade: none goes out until Stripe is set up (no key on production means no billing yet).
+  const ready = !stripeProblem(rt.config);
   let work = 0;
   for (const m of months) {
     work += await meterMonth(rt.db, m, rt.now);
@@ -105,7 +107,7 @@ export async function runBilling(rt: BillingRuntime): Promise<number> {
       const plan = planOf(plans, acct?.plan ?? "free");
       const usage = await accountUsage(rt.db, userId, m);
       const cents = billCents(plan, usage.tracked_revenue_usd);
-      if (m === month) await usageNotices(rt, userId, plan, m, usage.tracked_revenue_usd, cents);
+      if (m === month && ready) await usageNotices(rt, userId, plan, m, usage.tracked_revenue_usd, cents);
       await reportMeter(rt, acct, plan, m, cents);
     }
   }
