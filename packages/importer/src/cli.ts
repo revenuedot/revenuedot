@@ -215,7 +215,9 @@ export function formatVerify(r: VerifyReport): string {
   const out = [
     r.mismatches.length ? `Differences found for ${r.mismatchedCustomers} of ${r.customers.checked} customers.` : `No differences: ${r.customers.checked} customers match.`,
     "",
-    `  Customers             RevenueCat ${r.customers.revenuecat}, RevenueDot ${r.customers.revenuedot}${r.customers.revenuedot > r.customers.revenuecat ? " (RevenueDot also has customers created since the import)" : ""}`,
+    `  Customers             RevenueCat ${r.customers.revenuecat}, RevenueDot ${r.customers.revenuedot} (unique ids)`,
+    `  Missing in RevenueDot ${r.customers.missingInRevenueDot} RevenueCat customers${r.customers.missingInRevenueDot ? " (run the import again: its last step imports them)" : ""}`,
+    `  Only in RevenueDot    ${r.customers.onlyInRevenueDot} customers RevenueCat does not list (merged or deleted there since the import, or new from live traffic)`,
     `  Active subscriptions  RevenueCat ${r.activeSubscriptions.revenuecat}, RevenueDot ${r.activeSubscriptions.revenuedot}`,
     `  Active entitlements   RevenueCat ${r.activeEntitlements.revenuecat}, RevenueDot ${r.activeEntitlements.revenuedot}`,
   ];

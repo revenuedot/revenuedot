@@ -37,6 +37,10 @@ export interface ImportState {
     subscriptions: number;
     purchases: number;
     needsTokenRefresh: number;
+    /** The list walk of this pass is done; only the catch-up (RevenueCat ids RevenueDot lacks) is left. */
+    walked?: boolean;
+    /** Customers the catch-up imported (RevenueCat's list order shifted them past the walk). */
+    caughtUp?: number;
   };
   problems: Problem[];
 }
