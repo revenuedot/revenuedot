@@ -22,6 +22,8 @@ function script(body: any): Block[] {
   const system = textOf(body.system);
   const lastUserText = textOf(last?.content);
   const toolResults = Array.isArray(last?.content) ? last.content.filter((b: any) => b.type === "tool_result") : [];
+  // AI growth insights (prd/attribution-benchmarks-insights §3): one read tool, then JSON that cites the data pack.
+  if (/this week's growth insights/.test(system)) return insightBlocks(messages, tools, toolResults.length > 0);
   if (toolResults.length) {
     // The tool that produced the result: the previous assistant message's tool_use with that id.
     const prev = messages[messages.length - 2];
@@ -116,4 +118,21 @@ export async function fakeAnthropic(c: Captured, rs: ServerResponse): Promise<bo
   send("message_stop", { type: "message_stop" });
   rs.end();
   return true;
+}
+
+function insightBlocks(messages: any[], tools: string[], afterTool: boolean): Block[] {
+  const usedTool = messages.some((m) => Array.isArray(m.content) && m.content.some((b: any) => b.type === "tool_result"));
+  if (!afterTool && !usedTool && tools.includes("get-chart")) return [{ type: "tool_use", id: `toolu_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`, name: "get-chart", input: { chart: "revenue", resolution: "week" } }];
+  const pack = /```json\s*([\s\S]*?)```/.exec(textOf(messages[0]?.content))?.[1];
+  let items: { id: string; label: string; unit: string; value: number | null; previous: number | null; window: string }[] = [];
+  try { items = JSON.parse(pack ?? "{}").items ?? []; } catch { /* no pack */ }
+  const fmt = (v: number | null, unit: string) => (v === null ? "n/a" : unit === "$" ? money(v) : unit === "%" ? `${v.toFixed(1)}%` : String(v));
+  const pick = ["revenue", "trial_conversion", "campaign_1", "new_customers", "mrr", "refund_rate", "churn"].map((id) => items.find((i) => i.id === id && i.value !== null)).filter(Boolean).slice(0, 4) as typeof items;
+  const insights = pick.map((i) => ({
+    title: `${i.label.replace(/\s*\(.*$/, "").replace(/:.*$/, "")}: ${fmt(i.value, i.unit)}`.slice(0, 80),
+    finding: `${i.label} is ${fmt(i.value, i.unit)}${i.previous !== null ? ` against ${fmt(i.previous, i.unit)} (${i.window})` : ""}.`,
+    recommendation: i.id.startsWith("campaign_") ? "Move budget toward this campaign and compare day-30 revenue next week." : "Open the chart and find when the change started.",
+    metric_ids: [i.id],
+  }));
+  return [{ type: "text", text: "```json\n" + JSON.stringify({ insights }) + "\n```" }];
 }

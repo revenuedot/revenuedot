@@ -14,7 +14,7 @@ import { Shell } from "../../components/Shell";
 import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, Tabs, Tag, useProjectId, useSandboxParam, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2, type Offering } from "../catalog/lib";
-import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type Groups, type Rules } from "../../components/conditions";
+import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, useFieldSuggestions, type Groups, type Rules } from "../../components/conditions";
 
 interface Audience { id: string; name: string; rules: Rules; created_at: number; stats?: { total_customers: number; active_subscriptions: number; is_approximate: boolean } }
 interface Rule { id: string; name: string; audience_id: string | null; offering_id: string; placements: Record<string, string | null>; position: number; state: "active" | "inactive"; starts_at: number | null; ends_at: number | null }
@@ -33,6 +33,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
   const [preview, setPreview] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const suggestions = useFieldSuggestions(pid);
   const rules = toRules(groups);
   async function check() {
     setErr(null);
@@ -57,7 +58,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
     </>}>
       <form id="aud-form" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Name" htmlFor="aud-name"><input id="aud-name" className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Gold plan in the US" /></Field>
-        <ConditionBuilder value={groups} onChange={setGroups} />
+        <ConditionBuilder value={groups} onChange={setGroups} suggestions={suggestions.data} />
         {preview && <div className="banner" role="status">{preview}</div>}
         {err && <div className="banner err" role="alert">{err}</div>}
       </form>

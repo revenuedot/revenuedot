@@ -29,6 +29,11 @@ export const projects = pgTable("projects", {
   aiAccess: text("ai_access").notNull().default("read_write"),
   /** When an admin hid the first-sale card on the Overview. */
   firstSaleDismissedAt: ts("first_sale_dismissed_at"),
+  /** Benchmarks (prd/attribution-benchmarks-insights, RevenueDot Cloud only): the project shares anonymized values. Off by default. */
+  benchmarksShare: boolean("benchmarks_share").notNull().default(false),
+  /** The app's category for its benchmark peer group ("health_fitness" …), chosen by an admin. */
+  benchmarksCategory: text("benchmarks_category"),
+  benchmarksSharedAt: ts("benchmarks_shared_at"),
   /** Payment recovery settings (prd/payment-recovery/PRD.md): { enabled, steps, window_days, include_sandbox, sender_name }. */
   recoverySettings: jsonb("recovery_settings").$type<Record<string, unknown>>(),
   /**
@@ -193,6 +198,32 @@ export const customerAttributes = pgTable("customer_attributes", {
   value: text("value"),
   updatedAtMs: bigint("updated_at_ms", { mode: "number" }).notNull(),
 }, (t) => [primaryKey({ columns: [t.customerId, t.key] })]);
+
+/**
+ * First-class attribution (prd/attribution-benchmarks-insights §1): one row per customer, rebuilt from the reserved
+ * attribution attributes ($mediaSource, $campaign … $appleAds*, partner ids) whenever one changes. Apple Search Ads ids
+ * are kept in *_id; the names come from the project's Apple Search Ads connection when it has loaded them.
+ */
+export const customerAttribution = pgTable("customer_attribution", {
+  customerId: text("customer_id").primaryKey().references(() => customers.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  mediaSource: text("media_source"),
+  campaign: text("campaign"),
+  campaignId: text("campaign_id"),
+  adGroup: text("ad_group"),
+  adGroupId: text("ad_group_id"),
+  ad: text("ad"),
+  adId: text("ad_id"),
+  keyword: text("keyword"),
+  keywordId: text("keyword_id"),
+  creative: text("creative"),
+  claimType: text("claim_type"),
+  conversionType: text("conversion_type"),
+  attributionCountry: text("attribution_country"),
+  /** Attribution partners' device ids: { appsflyer_id, adjust_id, branch_id, kochava_device_id, singular_device_id, tenjin_id, airbridge_device_id }. */
+  partnerIds: jsonb("partner_ids").$type<Record<string, string>>().notNull().default({}),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("customer_attribution_media").on(t.projectId, t.mediaSource), index("customer_attribution_campaign").on(t.projectId, t.campaign)]);
 
 /** Current state of one subscription chain (Apple original transaction id, Google purchase token). */
 export const subscriptions = pgTable("subscriptions", {
@@ -363,6 +394,8 @@ export const users = pgTable("users", {
   emailVerifiedAt: ts("email_verified_at"),
   /** Alert emails (failing notifications, webhooks, store credentials) for projects this user administers. */
   alertEmails: boolean("alert_emails").notNull().default(true),
+  /** The weekly AI growth insights digest for projects this user administers (prd/attribution-benchmarks-insights). */
+  insightsEmails: boolean("insights_emails").notNull().default(true),
   createdAt: created(),
 }, (t) => [uniqueIndex("users_email").on(t.email)]);
 
@@ -1471,6 +1504,71 @@ export const recoveryMessages = pgTable("recovery_messages", {
   sentAt: ts("sent_at").notNull(),
   error: text("error"),
 }, (t) => [index("recovery_messages_case").on(t.caseId), index("recovery_messages_project").on(t.projectId, t.sentAt)]);
+
+/**
+ * Benchmarks (RevenueDot Cloud only, prd/attribution-benchmarks-insights §2). One project's own values for one slice
+ * (platform × country), computed nightly while it shares. Used to build the aggregates and to show the project its own
+ * value; never returned for another project. Deleted when the project stops sharing.
+ */
+export const benchmarkProjectValues = pgTable("benchmark_project_values", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  platform: text("platform").notNull(),
+  country: text("country").notNull(),
+  category: text("category").notNull(),
+  /** { metric id: { value, sample } }; a metric under its minimum sample has value null. */
+  metrics: jsonb("metrics").$type<Record<string, { value: number | null; sample: number }>>().notNull(),
+  computedOn: text("computed_on").notNull(),
+  computedAt: ts("computed_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.platform, t.country] })]);
+
+/**
+ * Published peer percentiles: no project ids, no means, no extremes. A row exists only when at least 10 projects
+ * contributed (the 10th and 90th percentiles need 20); `projects` is rounded down to a multiple of 5.
+ */
+export const benchmarkAggregates = pgTable("benchmark_aggregates", {
+  category: text("category").notNull(),
+  platform: text("platform").notNull(),
+  country: text("country").notNull(),
+  metric: text("metric").notNull(),
+  projects: integer("projects").notNull(),
+  p10: doublePrecision("p10"),
+  p25: doublePrecision("p25").notNull(),
+  p50: doublePrecision("p50").notNull(),
+  p75: doublePrecision("p75").notNull(),
+  p90: doublePrecision("p90"),
+  computedOn: text("computed_on").notNull(),
+}, (t) => [primaryKey({ columns: [t.category, t.platform, t.country, t.metric] })]);
+
+/** One row per UTC day the benchmark job ran: when it started and when it rebuilt the aggregates. */
+export const benchmarkRuns = pgTable("benchmark_runs", {
+  day: text("day").primaryKey(),
+  startedAt: ts("started_at").notNull().defaultNow(),
+  aggregatedAt: ts("aggregated_at"),
+  projects: integer("projects").notNull().default(0),
+  groups: integer("groups").notNull().default(0),
+});
+
+/**
+ * AI growth insights (prd/attribution-benchmarks-insights §3): one row per project and ISO week (Monday, UTC). The
+ * Overview reads it; the weekly digest emails it.
+ */
+export const aiInsights = pgTable("ai_insights", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  week: text("week").notNull(),
+  /** "running", "ready" or "error". */
+  status: text("status").notNull(),
+  insights: jsonb("insights").$type<Record<string, unknown>[]>().notNull().default([]),
+  /** The numbers pack the insights rest on. */
+  data: jsonb("data").$type<Record<string, unknown>>(),
+  provider: text("provider"),
+  model: text("model"),
+  error: text("error"),
+  /** "schedule" or the id of the person who pressed Refresh. */
+  generatedBy: text("generated_by"),
+  generatedAt: ts("generated_at"),
+  emailedAt: ts("emailed_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.week] })]);
 
 /* ---- Full export, moves and Cloud billing (prd/moves-export, prd/cloud-billing, migration 0022) ---- */
 
