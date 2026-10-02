@@ -239,11 +239,19 @@ test("support: integrations, ticket settings, a Customer Center ticket arrives, 
   await expect(page.getByRole("checkbox", { name: /Let customers create tickets/ })).toBeChecked();
   await page.getByLabel("Who can create tickets").selectOption("all");
   await page.getByRole("checkbox", { name: "IDFV" }).check();
+  await page.getByRole("checkbox", { name: "Total spent" }).uncheck();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await toast(page, "Support settings saved");
   const cc = await json(page, "GET", `${P}/customer_center_config`);
   expect(cc.customer_center.support.email).toBe("help@scanner.test");
-  expect(cc.customer_center.support.support_tickets).toMatchObject({ allow_creation: true, customer_type: "all", customer_details: { idfv: true, appUserId: true } });
+  expect(cc.customer_center.support.support_tickets).toMatchObject({ allow_creation: true, customer_type: "all", customer_details: { idfv: true, app_user_id: true, total_spent: false } });
+  // A reload shows the stored choices (the SDK response renames the keys; the page reads the stored ones).
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "Total spent" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "IDFV" })).toBeChecked();
+  await page.getByRole("checkbox", { name: "Total spent" }).check();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await toast(page, "Support settings saved");
 
   // The SDK's create-ticket call with the Test Store public key.
   const apps = (await json(page, "GET", `${P}/apps?limit=100`)).items;

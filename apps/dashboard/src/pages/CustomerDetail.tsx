@@ -9,7 +9,7 @@
  * - Transfer purchases to another customer, and store actions (refund, cancel, extend or defer a subscription):
  *   need the transfer endpoint and store API calls; later tier.
  * - Per-event detail of which integrations fired: the raw event body is shown instead.
- * - Experiment enrollment and in-app currency balances: those features are Tier 2.
+ * - Experiment enrollment is shown only as the current offering's source.
  * - Total spent is in USD only (no display-currency setting yet).
  */
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
@@ -19,6 +19,7 @@ import { Copy, Shell } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { ConfirmDialog, Dialog, EmptyState, EVENT_TONE, Field, Menu, Panel, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
+import { listAll } from "./catalog/lib";
 import {
   attributeLabel, durationWords, eventLabel, flag, isAnonymous, money, per, PERIOD_TYPE, relative, RENEWAL, storeLabel, SUB_STATUS,
   type Attribute, type Customer, type CustomerEvent, type CustomerSummary, type Entitlement, type Offering, type Product, type Purchase, type Subscription,
@@ -271,6 +272,58 @@ function Attributes({ attrs, onEdit, onAdd }: { attrs: Attribute[]; onEdit: (a: 
 
 /* ---------- Page ---------- */
 
+interface Balance { currency_code: string; balance: number; name: string }
+interface Currency { code: string; name: string; state?: string }
+
+/** In-app currency balances, with a manual credit or debit (support goodwill, corrections), as on RevenueCat's customer page. */
+function Currencies({ pid, id, onDone }: { pid: string; id: string; onDone: (msg: string) => void }) {
+  // Same key and shape (an array) as the In-app currencies page, which shares this cache.
+  const currencies = useQuery({ queryKey: ["virtual-currencies", pid], queryFn: () => listAll<Currency>(`/v2/projects/${pid}/virtual_currencies`) });
+  const balances = useQuery({ queryKey: ["customer-balances", pid, id], queryFn: () => api<List<Balance>>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/virtual_currencies`) });
+  const [open, setOpen] = useState(false);
+  const list = currencies.data ?? [];
+  if (!list.length) return null;
+  const bal = (code: string) => balances.data?.items.find((b) => b.currency_code === code)?.balance ?? 0;
+  return (
+    <Panel title="In-app currencies" link={balances.data ? <button type="button" className="linkbtn" onClick={() => setOpen(true)}>Adjust →</button> : undefined} flush>
+      {balances.isLoading ? <Loading lines={1} /> : balances.isError ? <Failed error={balances.error} retry={() => void balances.refetch()} /> : (
+        <dl className="kvs">
+          {list.map((cur) => <div key={cur.code} style={{ display: "contents" }}><dt>{cur.name} <span className="mono subtle" style={{ fontSize: 12 }}>{cur.code}</span></dt><dd className="mono">{fmt.int(bal(cur.code))}</dd></div>)}
+        </dl>
+      )}
+      {open && <AdjustDialog pid={pid} id={id} currencies={list} balanceOf={bal} onClose={() => setOpen(false)} onDone={(m) => { setOpen(false); onDone(m); }} />}
+    </Panel>
+  );
+}
+
+function AdjustDialog({ pid, id, currencies, balanceOf, onClose, onDone }: { pid: string; id: string; currencies: Currency[]; balanceOf: (code: string) => number; onClose: () => void; onDone: (msg: string) => void }) {
+  const [code, setCode] = useState(currencies[0]?.code ?? "");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const n = Number(amount);
+  const valid = amount.trim() !== "" && Number.isInteger(n) && n !== 0;
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid) { setError("Enter a whole number other than 0: positive to credit, negative to debit."); return; }
+    setBusy(true); setError(null);
+    try {
+      await api(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/virtual_currencies/transactions`, { method: "POST", json: { adjustments: { [code]: n } } });
+      onDone(`${n > 0 ? "Credited" : "Debited"} ${fmt.int(Math.abs(n))} ${code}. New balance: ${fmt.int(balanceOf(code) + n)}.`);
+    } catch (err) { setError(err instanceof ApiError ? err.message : "The adjustment failed."); setBusy(false); }
+  };
+  return (
+    <Dialog title="Adjust a balance" onClose={onClose} footer={<><button type="button" className="btn btn-line" onClick={onClose}>Cancel</button><button type="submit" form="vc-form" className="btn btn-dark" disabled={busy}>{busy ? "Saving…" : "Save"}</button></>}>
+      <form id="vc-form" onSubmit={submit} style={{ display: "contents" }}>
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>Credit or debit this customer's balance by hand, for example as a support goodwill gesture. A balance never goes below zero.</p>
+        <Field label="Currency" htmlFor="vc-code"><select id="vc-code" className="select" value={code} onChange={(e) => setCode(e.target.value)}>{currencies.map((c) => <option key={c.code} value={c.code}>{c.name} ({c.code}): {fmt.int(balanceOf(c.code))}</option>)}</select></Field>
+        <Field label="Amount" htmlFor="vc-amount" hint="Positive credits, negative debits."><input id="vc-amount" className="input mono" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 100 or -50" /></Field>
+        {error && <div className="banner err" role="alert">{error}</div>}
+      </form>
+    </Dialog>
+  );
+}
+
 export function CustomerDetail() {
   const pid = useProjectId();
   const id = useParams().appUserId ?? "";
@@ -462,10 +515,18 @@ export function CustomerDetail() {
             <Panel title="Current offering" link={<button type="button" className="linkbtn" onClick={() => setDialog({ kind: "offering" })}>Change →</button>} flush>
               {!s ? <Loading lines={1} /> : s.offering_override ? (
                 <div className="erow"><div><b>{s.offering_override.display_name}</b> <span className="mono subtle" style={{ fontSize: 12 }}>{s.offering_override.lookup_key}</span><span className="dt">Override for this customer only</span></div><Tag tone="gold">Override</Tag></div>
+              ) : s.current_offering && s.current_offering.source !== "default" ? (
+                <div className="erow"><div><b>{s.current_offering.display_name}</b> <span className="mono subtle" style={{ fontSize: 12 }}>{s.current_offering.lookup_key}</span>
+                  <span className="dt">{s.current_offering.source === "experiment"
+                    ? <>Variant {s.current_offering.variant?.toUpperCase()} of the experiment <Link className="ul" to={`/projects/${pid}/experiments/${s.current_offering.experiment_id}`}>{s.current_offering.experiment_name ?? s.current_offering.experiment_id}</Link></>
+                    : <>From the targeting rule <Link className="ul" to={`/projects/${pid}/targeting`}>{s.current_offering.rule_name ?? s.current_offering.rule_id}</Link></>}</span></div>
+                  <Tag tone="gold">{s.current_offering.source === "experiment" ? "Experiment" : "Targeting"}</Tag></div>
               ) : (
                 <div className="erow"><div><b>{currentOffering?.display_name ?? "No current offering"}</b>{currentOffering && <> <span className="mono subtle" style={{ fontSize: 12 }}>{currentOffering.lookup_key}</span></>}<span className="dt">The project's current offering</span></div><Tag>Default</Tag></div>
               )}
             </Panel>
+
+            {c && <Currencies pid={pid} id={id} onDone={(m) => void refresh(m)} />}
 
             {c && <Attributes attrs={c.attributes?.items ?? []} onEdit={(a) => setDialog({ kind: "attr", attr: a })} onAdd={() => setDialog({ kind: "attr" })} />}
 

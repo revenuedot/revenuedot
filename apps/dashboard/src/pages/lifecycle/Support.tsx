@@ -78,12 +78,15 @@ const DETAILS: [string, string][] = [
 ];
 const DEFAULT_DETAILS: Record<string, boolean> = { appUserId: true, activeEntitlements: true, country: true, lastSeenAppVersion: true, totalSpent: true, userSince: true, lastOpened: true, deviceVersion: true };
 type Cfg = Record<string, any>;
+/** Ticket detail keys as this page stores them (camelCase); documents saved through the API may use the SDKs' snake_case. */
+const camelDetails = (d: unknown): Record<string, boolean> => Object.fromEntries(Object.entries(d && typeof d === "object" ? d : {})
+  .filter(([, v]) => typeof v === "boolean").map(([k, v]) => [k === "ip" ? "ipAddress" : k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()), v]));
 
 function TicketSettings() {
   const pid = useProjectId();
   const toast = useToast();
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["customer-center", pid], enabled: !!pid, queryFn: () => api<{ customer_center: Cfg; overrides: Cfg | null }>(`${v2(pid)}/customer_center_config`) });
+  const q = useQuery({ queryKey: ["customer-center", pid], enabled: !!pid, queryFn: () => api<{ customer_center: Cfg; config?: Cfg; overrides: Cfg | null }>(`${v2(pid)}/customer_center_config`) });
   const [email, setEmail] = useState("");
   const [allow, setAllow] = useState(true);
   const [who, setWho] = useState("all");
@@ -91,13 +94,14 @@ function TicketSettings() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    const s = q.data?.customer_center?.support;
+    // The stored settings (`config`), not the SDK response: that one renames the detail keys to snake_case.
+    const s = q.data?.config?.support ?? q.data?.customer_center?.support;
     if (!s) return;
     setEmail(s.email ?? "");
     const t = s.support_tickets;
     setAllow(t ? t.allow_creation === true : true);
     setWho(t?.customer_type ?? "all");
-    setDetails({ ...DEFAULT_DETAILS, ...(t?.customer_details ?? {}) });
+    setDetails({ ...DEFAULT_DETAILS, ...camelDetails(t?.customer_details) });
   }, [q.data]);
   async function save(e: FormEvent) {
     e.preventDefault();

@@ -26,7 +26,7 @@ import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { startCloud } from "./cloud-server.ts";
-import { fakeStores, webStripe } from "./store-fakes.ts";
+import { fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
 import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 import { fakeAssistantModel } from "@revenuedot/server/services/assistant/fake-model.js";
 
@@ -34,7 +34,8 @@ const PORT = Number(process.env.PORT ?? 5199);
 const DIST = new URL("../dist", import.meta.url).pathname;
 const DAY = 86400_000;
 
-const { db } = await openDb("pglite://memory");
+// E2E_DATABASE_URL runs the same server on a real Postgres (a Railway development database) for manual browser checks.
+const { db } = await openDb(process.env.E2E_DATABASE_URL ?? "pglite://memory");
 // The run never reaches Apple, Google or any other outside host: only this machine (fake partners, buckets) answers.
 // A credential a spec saves (a made-up Google service account) then fails like an outage instead of calling Google.
 // Custom domain verification asks Cloudflare's DNS-over-HTTPS resolver; here it answers from records set with POST /__dns.
@@ -42,6 +43,16 @@ const dns: Record<string, { CNAME?: string[]; TXT?: string[] }> = {};
 const localFetch: typeof fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
   if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return fetch(input, init);
+  // Store import (store-import.spec.ts): App Store Connect and Google Play answer from fakes for the e2e credentials only.
+  const store = await storeCatalogFetch(url.href, init ?? {});
+  if (store) return store;
+  // E2E_REAL_STORES=1, for a manual check with real sandbox keys: App Store Connect and Google Play are called for real,
+  // read-only. Anything but a GET (and Google's OAuth token request) is refused, so nothing in a store can change.
+  if (process.env.E2E_REAL_STORES === "1" && ["api.appstoreconnect.apple.com", "androidpublisher.googleapis.com", "oauth2.googleapis.com"].includes(url.hostname)) {
+    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (method === "GET" || url.href === "https://oauth2.googleapis.com/token") return fetch(input, init);
+    return new Response(JSON.stringify({ error: `The e2e server is read-only against real stores (${method} ${url.host} refused).` }), { status: 403, headers: { "content-type": "application/json" } });
+  }
   if (url.href.startsWith("https://cloudflare-dns.com/dns-query")) {
     const name = url.searchParams.get("name")!, type = url.searchParams.get("type") as "CNAME" | "TXT";
     const data = dns[name]?.[type] ?? [];
@@ -102,6 +113,13 @@ const web = new Hono();
 // Playwright waits for this: 503 while seeding, 200 once the data is in.
 web.get("/__ready", (c) => (ready ? c.text("ready") : c.text("seeding", 503)));
 web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
+// Store import (store-import.spec.ts): products and prices in the in-memory Stripe account, as if made in Stripe's dashboard.
+web.post("/__stripe/seed", async (c) => {
+  const b = await c.req.json() as { products?: Record<string, unknown>[]; prices?: Record<string, unknown>[] };
+  for (const p of b.products ?? []) webStripe.products.set(String(p.id), { object: "product", active: true, livemode: false, default_price: null, metadata: {}, ...p });
+  for (const p of b.prices ?? []) webStripe.prices.set(String(p.id), { object: "price", active: true, livemode: false, billing_scheme: "per_unit", metadata: {}, ...p });
+  return c.json({ ok: true });
+});
 web.post("/__dns", async (c) => { const b = await c.req.json() as { name: string; CNAME?: string[]; TXT?: string[] }; dns[b.name] = { CNAME: b.CNAME, TXT: b.TXT }; return c.json({ ok: true }); });
 // A minimal stand-in for Stripe's hosted Checkout page (never Stripe itself).
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
@@ -144,6 +162,14 @@ const base = `http://localhost:${PORT}`;
 // RevenueDot Cloud for the Move and Billing specs (e2e/cloud-server.ts): E2E_PORT + 1.
 await startCloud(PORT + 1, DIST, mail);
 webStripe.checkoutUrl = `${base}/__stripe/checkout/{id}`;
+
+// E2E_SEED=off (manual checks on a Railway database, which keeps its data across restarts): no demo data. The module
+// then waits forever here while the server and the tick keep running.
+if (process.env.E2E_SEED === "off") {
+  ready = true;
+  console.log(`E2E server ready on ${base} (no demo data)`);
+  await new Promise(() => {});
+}
 
 // 1. API-made demo data.
 const cookie = await session(base, "e2e@revenuedot.test", "e2e-password-1", "Scanner");

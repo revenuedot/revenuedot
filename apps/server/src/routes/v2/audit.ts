@@ -48,6 +48,8 @@ export function parseWrite(method: string, path: string): Parsed | null {
   // An Auth identity is named by provider and subject.
   if (coll === "identities" && tail.length === 1) { id = `${id}/${tail[0]}`; tail = []; }
   if (tail[0] === "actions" && tail[1]) return QUIET.has(tail[1]) ? null : { actionType: `${target}_${tail[1]}`, targetType: target, targetId: id };
+  // A sub-collection's action: POST /v2/projects/p/apps/a/store_products/actions/import is app_store_products_import on a.
+  if (tail.length === 3 && tail[1] === "actions") return method === "POST" && !QUIET.has(tail[2]!) ? { actionType: `${target}_${tail[0]}_${tail[2]}`, targetType: target, targetId: id } : null;
   if (tail.length) return method === "POST" ? { actionType: `${target}_${tail.join("_").replace(/s$/, "")}_created`, targetType: target, targetId: id } : null;
   if (method === "POST" && SINGLETONS.has(target)) return { actionType: `${target}_updated`, targetType: target, targetId: seg[2] };
   if (method === "POST") return id ? { actionType: `${target}_updated`, targetType: target, targetId: id } : { actionType: `${target}_created`, targetType: target, targetId: null };

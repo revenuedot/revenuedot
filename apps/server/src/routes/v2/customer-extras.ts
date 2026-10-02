@@ -4,7 +4,7 @@ import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { findCustomer, getOrCreateCustomer } from "../../repo/customers.js";
-import { customerCenterFor } from "../../services/customer-center.js";
+import { customerCenterConfigOf, customerCenterFor, customerCenterProblems } from "../../services/customer-center.js";
 import { recordEvent } from "../../services/events.js";
 import { V2Error, body, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { customerShape } from "./shapes.js";
@@ -17,6 +17,9 @@ const Transfer = z.object({
 }).strict();
 
 const ISO_TO_STOREKIT: Record<string, string> = { P1W: "P1W", P1M: "P1M", P2M: "P2M", P3M: "P3M", P6M: "P6M", P1Y: "P1Y" };
+
+/** The largest Customer Center document `POST /customer_center_config` stores (JSON characters). */
+const CC_MAX_BYTES = 1_000_000;
 
 export function customerExtraRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -67,26 +70,43 @@ export function customerExtraRoutes(r: V2Router, deps: Deps) {
   });
 
   // The Customer Center configuration the SDK would get for this customer. With no platform: the whole configuration.
+  // `locale` (RevenueDot extension): the language the SDK would get for that locale, as with its X-Preferred-Locales header.
   r.get(`${P}/customers/:customer_id/customer_center`, scope("customer_information:customers:read"), async (c) => {
     const projectId = c.get("projectId");
     const cust = await findCustomer(db, projectId, c.req.param("customer_id")!);
     if (!cust || cust.projectId !== projectId) throw notFound("Customer");
     const platform = c.req.query("platform");
     if (platform !== undefined && !["ios", "android", "macos", "web", "amazon"].includes(platform)) throw paramError("platform must be ios, android, macos, web or amazon.", "platform");
-    return c.json({ object: "customer_center_config", customer_center: await customerCenterFor(db, projectId) });
+    return c.json({ object: "customer_center_config", customer_center: await customerCenterFor(db, projectId, { preferredLocales: c.req.query("locale") ?? null }) });
   });
 
-  // RevenueDot extension: the stored overrides and the configuration they produce (what the dashboard editor shows).
+  // RevenueDot extension: the stored overrides, the editable configuration they make with the default (`config`, what the
+  // dashboard editor shows) and the configuration the SDK receives (`customer_center`, English unless `locale` is given).
   r.get(`${P}/customer_center_config`, scope("project_configuration:projects:read"), async (c) => {
     const [row] = await db.select({ cc: schema.projects.customerCenter }).from(schema.projects).where(eq(schema.projects.id, c.get("projectId"))).limit(1);
-    return c.json({ object: "customer_center_config", customer_center: await customerCenterFor(db, c.get("projectId")), overrides: row?.cc ?? null });
+    const projectId = c.get("projectId");
+    return c.json({
+      object: "customer_center_config",
+      customer_center: await customerCenterFor(db, projectId, { preferredLocales: c.req.query("locale") ?? null }),
+      config: await customerCenterConfigOf(db, projectId),
+      overrides: row?.cc ?? null,
+    });
   });
 
-  // RevenueDot extension: change the stored Customer Center configuration (merged over the default).
+  // RevenueDot extension: replace the stored Customer Center configuration (merged over the default; null resets it).
+  // The result is validated as a whole: paths, survey, promotional offers, colours, translations and custom strings.
   r.post(`${P}/customer_center_config`, scope("project_configuration:projects:read_write"), async (c) => {
     const b = await body(c, z.object({ customer_center: z.record(z.unknown()).nullable() }).strict());
-    await db.update(schema.projects).set({ customerCenter: b.customer_center }).where(eq(schema.projects.id, c.get("projectId")));
-    return c.json({ object: "customer_center_config", customer_center: await customerCenterFor(db, c.get("projectId")) });
+    const projectId = c.get("projectId");
+    if (b.customer_center) {
+      // Every Customer Center open reads and converts the whole document: keep it small (a full translation of every
+      // string into every language is about 400 KB).
+      if (JSON.stringify(b.customer_center).length > CC_MAX_BYTES) throw paramError("customer_center: the configuration can be at most 1 MB.", "customer_center");
+      const problems = await customerCenterProblems(db, projectId, b.customer_center);
+      if (problems.length) throw paramError(`customer_center: ${problems.slice(0, 5).join(" ")}${problems.length > 5 ? ` (${problems.length - 5} more)` : ""}`, "customer_center");
+    }
+    await db.update(schema.projects).set({ customerCenter: b.customer_center }).where(eq(schema.projects.id, projectId));
+    return c.json({ object: "customer_center_config", customer_center: await customerCenterFor(db, projectId), config: await customerCenterConfigOf(db, projectId), overrides: b.customer_center });
   });
 
   // A StoreKit configuration file (Xcode, local testing) for an App Store app's products.

@@ -30,7 +30,7 @@ export function promotionalOfferFor(offers: OfferRow[]): Json | null {
   return { ios_offer_id: first("app_store"), android_offer_id: first("play_store"), eligible: true, title: lead.title, subtitle: lead.subtitle, product_mapping: mapping };
 }
 
-/** Adds the cancel and refund offers to every matching path of the Customer Center configuration (pure; returns a copy). */
+/** Adds the cancel and refund offers to every matching path with no `promotional_offer` key of the Customer Center configuration (pure; returns a copy). */
 export function withRetentionOffers(config: Json, offers: OfferRow[]): Json {
   const cancel = promotionalOfferFor(offers.filter((o) => o.trigger === "cancel"));
   const refund = promotionalOfferFor(offers.filter((o) => o.trigger === "refund"));
@@ -43,7 +43,8 @@ export function withRetentionOffers(config: Json, offers: OfferRow[]): Json {
       ...screen,
       paths: paths.map((p) => {
         const offer = p.type === "CANCEL" ? cancel : p.type === "REFUND_REQUEST" ? refund : null;
-        return offer && !p.promotional_offer ? { ...p, promotional_offer: offer } : p;
+        // A path's own offer, a reference, or null ("no offer", set in the editor) keeps the Retention offers off it.
+        return offer && p.promotional_offer === undefined ? { ...p, promotional_offer: offer } : p;
       }),
     };
   }
