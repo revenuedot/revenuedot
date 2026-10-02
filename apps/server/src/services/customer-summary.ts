@@ -3,7 +3,8 @@ import { computeEntitlements, isActive } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../repo/catalog.js";
 import { aliasesOf, loadState, type CustomerRow } from "../repo/customers.js";
-import { contextFor, resolveOfferings } from "./targeting.js";
+import { buildContext, type CustomerData } from "./customer-context.js";
+import { resolveOfferings } from "./targeting.js";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -29,7 +30,13 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
     ? await db.select().from(schema.offerings).where(eq(schema.offerings.id, cust.offeringOverrideId)).limit(1) : [];
 
   const active = computeEntitlements(state, map).filter((e) => isActive(e, now));
-  const offeringNow = await currentOfferingFor(db, cust, override ?? null, active.map((e) => e.identifier), now);
+  // The targeting context from the rows loaded above, so the preview costs no second read of the customer.
+  const data: CustomerData = {
+    customer: cust, aliases, subs, ones, attributes: Object.fromEntries(Object.entries(state.attributes).map(([k, a]) => [k, a.value])),
+    attributeTimes: Object.fromEntries(Object.entries(state.attributes).map(([k, a]) => [k, a.updatedAtMs])),
+    tx: txns.map((t) => ({ usd: t.revenueUsd, kind: t.kind, sandbox: t.isSandbox, at: t.purchasedAt, product: t.productIdentifier })),
+  };
+  const offeringNow = await currentOfferingFor(db, data, override ?? null, active.map((e) => e.identifier), now);
   const entRow = (lookupKey: string) => ents.find((e) => e.lookupKey === lookupKey);
   const lastTxn = [...txns].sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime()).find((t) => t.countryCode);
   const revenue = (sandbox: boolean) => round2(txns.filter((t) => t.isSandbox === sandbox).reduce((s, t) => s + t.revenueUsd, 0));
@@ -81,16 +88,18 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
 }
 
 /**
- * The customer's current offering as the SDK would resolve it, read-only: an override wins, then a running experiment, then
- * the first live targeting rule, then the project's current offering. Uses the platform and app version they last used.
+ * The customer's current offering as the SDK would resolve it, read-only: an override wins, then an experiment, then the
+ * first live targeting rule, then the project's current offering. The device fields come from their last SDK request
+ * (platform, app and SDK version, SDK flavor, OS version, storefront); the preferred locale is not stored, so a
+ * locale condition never matches here.
  */
-async function currentOfferingFor(db: DB, cust: CustomerRow, override: typeof schema.offerings.$inferSelect | null, activeEntitlements: string[], now: Date) {
-  const offs = await db.select().from(schema.offerings).where(eq(schema.offerings.projectId, cust.projectId));
-  const shape = (o: typeof offs[number] | undefined | null, source: "override" | "experiment" | "targeting" | "default", extra: Record<string, unknown> = {}) =>
+async function currentOfferingFor(db: DB, data: CustomerData, override: typeof schema.offerings.$inferSelect | null, activeEntitlements: string[], now: Date) {
+  const cust = data.customer;
+  const shape = (o: typeof schema.offerings.$inferSelect | undefined | null, source: "override" | "experiment" | "targeting" | "default", extra: Record<string, unknown> = {}) =>
     o ? { id: o.id, lookup_key: o.lookupKey, display_name: o.displayName, source, ...extra } : null;
   if (override) return shape(override, "override");
-  const headers = { "x-platform": cust.lastSeenPlatform ?? undefined, "x-client-version": cust.lastSeenAppVersion ?? undefined };
-  const ctx = await contextFor(db, cust, headers, now, activeEntitlements);
+  const offs = await db.select().from(schema.offerings).where(eq(schema.offerings.projectId, cust.projectId));
+  const ctx = buildContext(data, now, activeEntitlements, { sdkFlavor: cust.lastSeenSdkFlavor, platformVersion: cust.lastSeenPlatformVersion, storefront: cust.lastSeenCountry });
   const r = await resolveOfferings(db, cust.projectId, cust, ctx, now, offs.find((o) => o.isCurrent)?.id ?? null, { enroll: false });
   const o = offs.find((x) => x.id === r.currentOfferingId);
   if (r.experiment) {
