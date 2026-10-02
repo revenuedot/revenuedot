@@ -285,9 +285,9 @@ function Currencies({ pid, id, onDone }: { pid: string; id: string; onDone: (msg
   return (
     <Panel title="In-app currencies" link={<button type="button" className="linkbtn" onClick={() => setOpen(true)}>Adjust →</button>} flush>
       {balances.isLoading ? <Loading lines={1} /> : (
-        <div className="pb"><dl className="kvs">
+        <dl className="kvs">
           {list.map((cur) => <div key={cur.code} style={{ display: "contents" }}><dt>{cur.name} <span className="mono subtle" style={{ fontSize: 12 }}>{cur.code}</span></dt><dd className="mono">{fmt.int(bal(cur.code))}</dd></div>)}
-        </dl></div>
+        </dl>
       )}
       {open && <AdjustDialog pid={pid} id={id} currencies={list} balanceOf={bal} onClose={() => setOpen(false)} onDone={(m) => { setOpen(false); onDone(m); }} />}
     </Panel>
