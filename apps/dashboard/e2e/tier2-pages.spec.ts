@@ -56,6 +56,21 @@ test("in-app currencies, Customer Center and audit logs", async ({ page }) => {
   const bal = await json(req, "GET", `${P}/customers/gamer_1/virtual_currencies`);
   expect(bal.items[0]).toMatchObject({ currency_code: "GLD", balance: 100 });
 
+  // The customer page shows the balance and adjusts it by hand; a debit below zero is refused.
+  await page.goto(`/projects/${pid}/customers/gamer_1`);
+  const panel = page.locator("section, .panel").filter({ has: page.getByText("In-app currencies", { exact: true }) }).last();
+  await expect(panel).toContainText("100");
+  await page.getByRole("button", { name: "Adjust →" }).click();
+  await page.getByLabel("Amount").fill("-150");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("cannot go below zero");
+  await page.getByLabel("Amount").fill("25");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(panel).toContainText("125");
+  expect((await json(req, "GET", `${P}/customers/gamer_1/virtual_currencies`)).items[0]).toMatchObject({ currency_code: "GLD", balance: 125 });
+  await page.goto(`/projects/${pid}/product-catalog/virtual-currencies`);
+
   // Edit, archive, unarchive, delete from the row menu.
   await page.getByRole("button", { name: "Actions for GLD" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
