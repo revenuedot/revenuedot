@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import { HttpTarget } from "revenuedot/src/move/clients.js";
@@ -102,7 +102,13 @@ export async function finishServerMove(deps: Deps, row: MoveRow): Promise<MoveRo
   return r!;
 }
 
-export const latestMove = async (deps: Deps, projectId: string) => (await deps.db.select().from(M).where(eq(M.projectId, projectId)).orderBy(desc(M.createdAt)).limit(1))[0] ?? null;
+/**
+ * The project's latest move. Two moves can share a timestamp (a frozen test clock, or a dry run and its copy started in
+ * the same millisecond), and Postgres returns ties in any order. A move cancels the earlier ones before it is created, so
+ * among equal timestamps the one not cancelled is the newer.
+ */
+export const latestMove = async (deps: Deps, projectId: string) =>
+  (await deps.db.select().from(M).where(eq(M.projectId, projectId)).orderBy(desc(M.createdAt), sql`(${M.status} = 'cancelled')`).limit(1))[0] ?? null;
 
 /** The tick: carries running moves forward. */
 export async function processServerMoves(deps: Deps, budgetMs = 15_000): Promise<number> {
