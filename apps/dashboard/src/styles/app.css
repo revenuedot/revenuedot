@@ -553,6 +553,9 @@ tr.sel td{background:var(--active)}
 .rail .label{padding:12px 10px 4px}
 .integ.cust{grid-template-columns:168px minmax(0,1fr)}
 .integ.cust th,.integ.cust td{padding-left:12px;padding-right:12px}
+/* The Customer column takes what is left and cuts long app user IDs and emails with "…" (the full ID is the link title);
+   without this a 40-character ID pushed the table 31px past its panel. Phones keep the table scrolling inside its panel. */
+@media (min-width:641px){.integ.cust td:first-child,.integ.cust th:first-child{max-width:0;width:30%}.integ.cust td:first-child .idcell{max-width:100%!important;min-width:0}.integ.cust td:first-child a,.integ.cust td:first-child .cellsub{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 @media (max-width:1279px){.integ.cust{grid-template-columns:1fr}.integ.cust .rail{position:static;flex-direction:row;flex-wrap:wrap;border-bottom:1px solid var(--border)}.integ.cust .rail button{flex:none;gap:8px}.integ.cust .rail button[aria-pressed="true"]{box-shadow:inset 0 -2px 0 var(--fg)}.integ.cust .rail .label{display:none}}
 .rail .rail-new{color:var(--fg-2);justify-content:flex-start;gap:8px}
 .beta{margin-left:10px;vertical-align:5px;font:500 10px/16px var(--mono);padding:0 5px;border:1px solid var(--border);color:var(--fg-3);letter-spacing:.04em}

@@ -67,6 +67,32 @@ test("Overview → All projects with long project and product names fits at 1024
   expect(found).toEqual([]);
 });
 
+test("Customers with long app user IDs and emails fit at 1024, 1200 and 1440px", async ({ page }) => {
+  // Found on production 2026-10-03: IDs like qa_storefront_1790930293165 with an email pushed the table 31px past its panel.
+  const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const call = async (method: string, path: string, data?: unknown) => {
+    const res = await page.request.fetch(path, { method, data, headers: data === undefined ? {} : { "content-type": "application/json" } });
+    expect(res.ok(), `${method} ${path}: ${await res.text()}`).toBe(true);
+    return res.json();
+  };
+  await call("POST", "/auth/signup", { email: `layout-cust-${stamp}@revenuedot.test`, password: `e2e-${stamp}-pw`, name: "Layout", project_name: "Customers layout" });
+  const pid = (await call("GET", "/auth/me")).projects[0].id as string;
+  const app = await call("POST", `/v2/projects/${pid}/apps`, { name: "Test Store", type: "test_store" });
+  const prod = await call("POST", `/v2/projects/${pid}/products`, { app_id: app.id, store_identifier: "com.example.premium_annual_subscription_with_trial_v2", type: "subscription", subscription: { duration: "P1Y" }, display_name: "Premium annual", test_store_price: { amount_micros: 59_990_000, currency: "USD" } });
+  for (const i of [1, 2, 3]) {
+    const id = `customer_with_a_very_long_app_user_id_${stamp}_${i}`;
+    await call("POST", `/v2/projects/${pid}/test_purchases`, { app_user_id: id, product_id: prod.id, app_id: app.id });
+    await call("POST", `/v2/projects/${pid}/customers/${id}/attributes`, { attributes: [{ name: "$email", value: `a.really.long.email.address.${i}@a-long-company-domain.example.com` }] });
+  }
+  const found = await measure(page, [`/projects/${pid}/customers`, `/projects/${pid}/customers?environment=sandbox`], `/projects/${pid}`, async () => {
+    await expect(page.locator("table tbody tr").first()).toBeVisible();
+  });
+  expect(found).toEqual([]);
+  // The ID is cut on screen, but stays whole in the link title and in search.
+  const link = page.locator("table tbody tr").first().locator("td").first().locator("a").first();
+  await expect(link).toHaveAttribute("title", /customer_with_a_very_long_app_user_id_/);
+});
+
 /** Opens every route at each width, after its data has loaded, and lists what scrolls sideways. */
 async function measure(page: Page, routes: string[], base: string, ready?: () => Promise<void>): Promise<string[]> {
   const found: string[] = [];
