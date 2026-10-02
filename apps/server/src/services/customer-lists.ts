@@ -95,6 +95,36 @@ export async function queryCustomerList(db: DB, projectId: string, q: ListQuery,
   };
 }
 
+export const SORT_KEYS = ["id", "subscription_status", "auto_renewal_status", "first_seen_at", "last_seen_at", "spent_in_usd"] as const;
+export type SortKey = (typeof SORT_KEYS)[number];
+const STATUS_RANK: Record<ListRow["subscription_status"], number> = { active: 0, trialing: 1, grace_period: 2, billing_issue: 3, expired: 4, none: 5 };
+const RENEW_RANK = { on: 0, off: 1 } as const;
+
+/**
+ * Sorts rows by one column. In both directions, customers with no auto-renewal value stay last, and so do anonymous IDs
+ * when sorting by ID (they have no app user ID of their own). Ties keep the default order (newest last seen first).
+ */
+export function sortRows(rows: ListRow[], key: SortKey, direction: "asc" | "desc"): ListRow[] {
+  const sign = direction === "asc" ? 1 : -1;
+  const value = (r: ListRow): number | string | null => {
+    switch (key) {
+      case "id": return r.id.startsWith("$RCAnonymousID:") ? null : r.id.toLowerCase();
+      case "subscription_status": return STATUS_RANK[r.subscription_status];
+      case "auto_renewal_status": return r.auto_renewal_status ? RENEW_RANK[r.auto_renewal_status] : null;
+      default: return r[key];
+    }
+  };
+  // Anonymous IDs share their prefix, so among themselves they sort by the part the dashboard shows.
+  const lastValue = (r: ListRow) => (key === "id" ? r.id.toLowerCase() : 0);
+  const cmp = (x: number | string, y: number | string) => (x === y ? 0 : (x < y ? -1 : 1) * sign);
+  return rows.map((r, i) => ({ r, i, v: value(r) })).sort((a, b) => {
+    if (a.v === null && b.v === null) return cmp(lastValue(a.r), lastValue(b.r)) || a.i - b.i;
+    if (a.v === null) return 1;
+    if (b.v === null) return -1;
+    return cmp(a.v, b.v) || a.i - b.i;
+  }).map((x) => x.r);
+}
+
 const csvCell = (v: unknown) => {
   const s = v === null || v === undefined ? "" : String(v);
   if (/^-?\d+(\.\d+)?$/.test(s)) return s;

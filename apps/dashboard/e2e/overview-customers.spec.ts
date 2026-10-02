@@ -150,6 +150,111 @@ test("customers: list, pagination, exact search and the top-bar search", async (
   await expect(page).toHaveURL(/customers\/pbg6xs2d$/);
 });
 
+test("customers: sort by a column header, page in that order, hide app user IDs", async ({ page }) => {
+  const pid = await signIn(page);
+  await page.goto(`/projects/${pid}/customers`);
+  const rows = page.locator("table tbody tr");
+  await expect(rows).toHaveCount(25);
+  const header = (name: string) => page.getByRole("columnheader", { name, exact: true });
+  const spent = async () => (await rows.locator("td:nth-child(6)").allInnerTexts()).map((t) => Number(t.replace(/[^0-9.]/g, "")));
+
+  // The default order is last seen, newest first, and the header says so; a click on it flips it, the next returns to a clean URL.
+  await expect(header("Last seen")).toHaveAttribute("aria-sort", "descending");
+  await expect(header("Spent")).not.toHaveAttribute("aria-sort");
+  await expect(header("Latest purchase").getByRole("button")).toHaveCount(0);
+  await page.getByRole("button", { name: "Last seen" }).click();
+  await expect(page).toHaveURL(/sort=last_seen_at&direction=asc/);
+  await expect(header("Last seen")).toHaveAttribute("aria-sort", "ascending");
+  await page.getByRole("button", { name: "Last seen" }).click();
+  await expect(page).not.toHaveURL(/sort=|direction=/);
+  await expect(header("Last seen")).toHaveAttribute("aria-sort", "descending");
+
+  // Spent: the first click puts the biggest spenders first, the second flips it.
+  await page.getByRole("button", { name: "Spent" }).click();
+  await expect(page).toHaveURL(/sort=spent_in_usd&direction=desc/);
+  await expect(header("Spent")).toHaveAttribute("aria-sort", "descending");
+  await expect(header("Last seen")).not.toHaveAttribute("aria-sort");
+  await expect.poll(async () => { const v = await spent(); return v.length === 25 && v.every((x, i) => i === 0 || v[i - 1]! >= x); }).toBe(true);
+  const top = (await spent())[0]!;
+  expect(top).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Next →" }).click();
+  await expect(page.getByText("Page 2")).toBeVisible();
+  await expect.poll(async () => Math.max(...(await spent()))).toBeLessThanOrEqual(top);
+  await page.getByRole("button", { name: "Spent" }).click();
+  await expect(page).toHaveURL(/sort=spent_in_usd&direction=asc/);
+  await expect(page).not.toHaveURL(/after=/);
+  await expect(page.getByText("Page 1")).toBeVisible();
+  await expect.poll(async () => { const v = await spent(); return v.every((x, i) => i === 0 || v[i - 1]! <= x); }).toBe(true);
+
+  // Customer: app user IDs A to Z, then Z to A; anonymous IDs come after the named ones both ways, in the API and on screen.
+  const ANON = "$RCAnonymousID:";
+  const byId = (dir: 1 | -1) => (a: string, b: string) => Number(a.startsWith(ANON)) - Number(b.startsWith(ANON))
+    || (a.toLowerCase() < b.toLowerCase() ? -dir : a.toLowerCase() > b.toLowerCase() ? dir : 0);
+  const shownIds = () => rows.locator("td:first-child a").evaluateAll((as) => as.map((a) => a.getAttribute("title") ?? ""));
+  const allIds: string[] = [];
+  for (let url: string | null = `/v2/projects/${pid}/customer_lists?sort=id&limit=100`; url;) {
+    const r = await json(page, url) as { items: { id: string }[]; next_page: string | null };
+    allIds.push(...r.items.map((x) => x.id));
+    url = r.next_page;
+  }
+  expect(allIds.some((x) => x.startsWith(ANON)) && allIds.some((x) => !x.startsWith(ANON))).toBe(true);
+  expect(allIds).toEqual([...allIds].sort(byId(1)));
+  await page.getByRole("button", { name: "Customer", exact: true }).click();
+  await expect(page).toHaveURL(/sort=id&direction=asc/);
+  await expect.poll(async () => JSON.stringify(await shownIds())).toBe(JSON.stringify(allIds.slice(0, 25)));
+  await page.getByRole("button", { name: "Customer", exact: true }).click();
+  await expect(page).toHaveURL(/sort=id&direction=desc/);
+  await expect.poll(async () => { const ids = await shownIds(); return ids.length === 25 && JSON.stringify(ids) === JSON.stringify([...ids].sort(byId(-1))); }).toBe(true);
+
+  // Hide app user IDs: one button name, aria-pressed for the state. IDs and emails leave the table's text, titles,
+  // labels and links (the masked cell is a button), rows still open the customer, and the choice survives a reload.
+  const before = await shownIds();
+  const eye = page.getByRole("button", { name: "Hide app user IDs" });
+  await expect(eye).toHaveAttribute("aria-pressed", "false");
+  await eye.click();
+  await expect(eye).toHaveAttribute("aria-pressed", "true");
+  const body = page.locator("table tbody");
+  await expect(rows.first().locator("td").first()).toHaveText("••••••••••");
+  await expect(body).not.toContainText("@");
+  await expect(body.locator("a")).toHaveCount(0);
+  const attrs = await body.evaluate((el) => [...el.querySelectorAll("*")].flatMap((n) => [...n.attributes].map((a) => a.value)).join("\n"));
+  for (const id of before) { expect(attrs).not.toContain(id); expect(attrs).not.toContain(encodeURIComponent(id)); }
+  await rows.first().getByRole("button", { name: "Open customer (ID hidden)" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL((u) => u.pathname === `/projects/${pid}/customers/${encodeURIComponent(before[0]!)}`);
+  // One history entry: Enter on the cell's button does not also fire the row's own Enter.
+  await page.goBack();
+  await expect(page).toHaveURL(/sort=id&direction=desc/);
+  await page.reload();
+  await expect(eye).toHaveAttribute("aria-pressed", "true");
+  await expect(rows.first().locator("td").first()).toHaveText("••••••••••");
+
+  // The exact-search answer names nobody while IDs are hidden; its button still opens the customer.
+  const subs = await json(page, `/v2/projects/${pid}/customers/wjqx8kd2rn1/subscriptions`) as { items: { store_subscription_identifier: string }[] };
+  const tx = subs.items[0]!.store_subscription_identifier;
+  await page.getByPlaceholder("App user ID, email or store transaction ID").fill(tx);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("heading", { name: `"${tx}" belongs to a customer` })).toBeVisible();
+  await expect(page.locator(".empty")).not.toContainText("wjqx8kd2rn1");
+  await expect(page.locator(".empty a")).toHaveCount(0);
+  await page.locator(".empty").getByRole("button", { name: "Open customer" }).click();
+  await expect(page).toHaveURL(/\/customers\/wjqx8kd2rn1$/);
+  await page.goBack();
+
+  // Showing IDs again (the toggle lives in the table header, so clear the search first) names the customer again.
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(rows.first().locator("td").first()).toHaveText("••••••••••");
+  await eye.click();
+  await expect(eye).toHaveAttribute("aria-pressed", "false");
+  await expect(rows.first().locator("td").first()).not.toHaveText("••••••••••");
+  await page.getByPlaceholder("App user ID, email or store transaction ID").fill(tx);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("heading", { name: `"${tx}" belongs to wjqx8kd2rn1` })).toBeVisible();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await rows.first().locator("a").first().click();
+  await expect(page).toHaveURL(/\/customers\/[^/?]+$/);
+});
+
 test("customer page: history labels, grant and revoke, offering override, attribute, delete", async ({ page }) => {
   const pid = await signIn(page);
   await page.goto(`/projects/${pid}/customers/pbg6xs2d`);
