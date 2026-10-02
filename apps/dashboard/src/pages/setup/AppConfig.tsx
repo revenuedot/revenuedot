@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../../components/Shell";
@@ -6,7 +6,7 @@ import { Icon } from "../../components/icons";
 import {
   Check, ConfirmDialog, CopyButton, CopyField, Disclosure, Field, FileDrop, KeyValue, SecretText, StatusLine, Switch, useProjectId, useToast,
 } from "../../components/ui";
-import { api, fmt } from "../../lib/api";
+import { api, ApiError, fmt } from "../../lib/api";
 import {
   STORES, apiOrigin, base, errMsg, storeId, useApp, useProducts, usePublicKey, useStoreSettings,
   type App, type CredentialsCheck, type Product, type StoreSettings,
@@ -14,7 +14,8 @@ import {
 import { SdkSetup } from "./sdk";
 import { StripeConnectPanel } from "./StripeConnect";
 import { ImportProductsDialog } from "../catalog/ImportProducts";
-import type { App as CatalogApp } from "../catalog/lib";
+import { errParam, priceLabel, testStorePrice, type App as CatalogApp } from "../catalog/lib";
+import { TestStorePriceField } from "../catalog/parts";
 
 /**
  * App configuration (/projects/:projectId/apps/:appId): RevenueCat's long app form (frames 23-25), one page per store.
@@ -187,6 +188,12 @@ function TrackNew({ d, set, store }: { d: Draft; set: (p: Partial<Draft>) => voi
   return <Check checked={d.trackNew} onChange={(v) => set({ trackNew: v })} label="Track new purchases from server-to-server notifications" hint={TRACK_HINT[store]} />;
 }
 
+/** Sold as in the inline "Create product" form: a subscription period or a one-time type. */
+const NEW_KINDS = [
+  { value: "P1W", label: "Weekly subscription" }, { value: "P1M", label: "Monthly subscription" }, { value: "P1Y", label: "Yearly subscription" },
+  { value: "non_consumable", label: "One-time purchase (lifetime)" }, { value: "consumable", label: "Consumable" },
+] as const;
+
 function TestPurchase({ pid, app }: { pid: string; app: App }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -195,29 +202,53 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
   const [product, setProduct] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ user: string; product: string; entitlements: number } | null>(null);
-  const [newId, setNewId] = useState("pro_monthly");
-  const [newType, setNewType] = useState("subscription");
+  const [done, setDone] = useState<{ user: string; product: string; entitlements: number; price: string | null } | null>(null);
+  const [draft, setDraft] = useState({ id: "pro_monthly", kind: "P1M", price: "9.99", currency: "USD" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const list = products.data ?? [];
   const chosen = product || list[0]?.id || "";
+  const chosenProduct = list.find((x) => x.id === chosen);
+  const edit = (p: Partial<typeof draft>) => { setDraft((d) => ({ ...d, ...p })); setErrors((e) => { const n = { ...e }; for (const k of Object.keys(p)) delete n[k]; return n; }); };
 
-  const createProduct = async () => {
+  const createProduct = async (e: FormEvent) => {
+    e.preventDefault();
+    const id = draft.id.trim();
+    const er: Record<string, string> = {};
+    if (!id) er.id = "Enter the product identifier your app asks the store for.";
+    else if (/\s/.test(id)) er.id = "Product identifiers cannot contain spaces. Use underscores instead, e.g. pro_monthly.";
+    const price = testStorePrice(draft.price, draft.currency, true);
+    if ("error" in price) er.price = price.error;
+    setErrors(er);
+    if (Object.keys(er).length || "error" in price) return;
     setBusy(true); setError(null);
+    const sub = draft.kind.startsWith("P");
     try {
-      const p = await api<Product>(`${base(pid)}/products`, { method: "POST", json: { store_identifier: newId.trim(), app_id: app.id, type: newType, display_name: newId.trim(), ...(newType === "subscription" ? { subscription: { duration: "P1M" } } : {}) } });
+      const p = await api<Product>(`${base(pid)}/products?expand=indicative_price`, { method: "POST", json: {
+        store_identifier: id, app_id: app.id, type: sub ? "subscription" : draft.kind, display_name: id,
+        ...(sub ? { subscription: { duration: draft.kind } } : {}), test_store_price: price.value,
+      } });
       await qc.invalidateQueries({ queryKey: ["products", pid] });
+      await qc.invalidateQueries({ queryKey: ["catalog", pid] });
       setProduct(p.id);
-      toast(`Product ${p.store_identifier} created.`);
-    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+      toast(`Product ${p.store_identifier} created at ${priceLabel(p.indicative_price)}.`);
+    } catch (err) {
+      const param = errParam(err);
+      if (err instanceof ApiError && err.status === 409) setErrors({ id: "This app already has a product with this identifier." });
+      else if (param?.startsWith("test_store_price")) setErrors({ price: errMsg(err) });
+      else if (param === "store_identifier") setErrors({ id: errMsg(err) });
+      else setError(errMsg(err));
+    } finally { setBusy(false); }
   };
 
   const buy = async () => {
     if (!user.trim()) { setError("Enter an app user ID, as your app would send it."); return; }
     setBusy(true); setError(null); setDone(null);
+    const p = chosenProduct;
+    // The product's Test Store price is what the SDK shows, so the purchase records it (servers before 2026-10 recorded $0 without it).
+    const price = p?.indicative_price ? { price: p.indicative_price.amount_micros / 1_000_000, currency: p.indicative_price.currency } : {};
     try {
-      const r = await api<{ customer: { id: string; active_entitlements?: { items: unknown[] } } }>(`${base(pid)}/test_purchases`, { method: "POST", json: { app_user_id: user.trim(), product_id: chosen, app_id: app.id } });
-      const p = list.find((x) => x.id === chosen);
-      setDone({ user: r.customer.id, product: p?.store_identifier ?? chosen, entitlements: r.customer.active_entitlements?.items.length ?? 0 });
+      const r = await api<{ customer: { id: string; active_entitlements?: { items: unknown[] } } }>(`${base(pid)}/test_purchases`, { method: "POST", json: { app_user_id: user.trim(), product_id: chosen, app_id: app.id, ...price } });
+      setDone({ user: r.customer.id, product: p?.store_identifier ?? chosen, entitlements: r.customer.active_entitlements?.items.length ?? 0, price: p?.indicative_price ? priceLabel(p.indicative_price) : null });
       toast("Test purchase recorded.");
       await qc.invalidateQueries();
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
@@ -226,21 +257,22 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
   if (products.isLoading) return <p className="subtle">Loading products…</p>;
   if (!list.length) {
     return (
-      <div className="stack">
-        <p className="section-sub">This app has no products yet. Create one here (you can edit it later in Product catalog), then send a test purchase.</p>
+      <form className="stack" onSubmit={createProduct} noValidate aria-label="Create a Test Store product">
+        <p className="section-sub">This app has no products yet. Create one here with its price (you can edit it later in Product catalog), then send a test purchase.</p>
         <div className="cols">
-          <Field label="Product identifier" htmlFor="tp-new-id" hint="The id your app asks the store for.">
-            <input id="tp-new-id" className="input mono" value={newId} onChange={(e) => setNewId(e.target.value)} />
+          <Field label="Product identifier" htmlFor="tp-new-id" hint="The id your app asks the store for." error={errors.id}>
+            <input id="tp-new-id" className="input mono" autoComplete="off" spellCheck={false} aria-invalid={!!errors.id} value={draft.id} onChange={(e) => edit({ id: e.target.value })} />
           </Field>
           <Field label="Type" htmlFor="tp-new-type">
-            <select id="tp-new-type" className="select" value={newType} onChange={(e) => setNewType(e.target.value)}>
-              <option value="subscription">Monthly subscription</option><option value="non_consumable">One-time purchase (lifetime)</option><option value="consumable">Consumable</option>
+            <select id="tp-new-type" className="select" value={draft.kind} onChange={(e) => edit({ kind: e.target.value })}>
+              {NEW_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
           </Field>
         </div>
+        <TestStorePriceField id="tp-new-price" required amount={draft.price} currency={draft.currency} onAmount={(price) => edit({ price })} onCurrency={(currency) => edit({ currency })} error={errors.price} />
         {error && <div className="banner err" role="alert">{error}</div>}
-        <div><button type="button" className="btn btn-line" disabled={busy || !newId.trim()} onClick={createProduct}>{busy ? "Creating…" : "Create product"}</button></div>
-      </div>
+        <div><button type="submit" className="btn btn-line" disabled={busy}>{busy ? "Creating…" : "Create product"}</button></div>
+      </form>
     );
   }
   return (
@@ -249,14 +281,17 @@ function TestPurchase({ pid, app }: { pid: string; app: App }) {
         <Field label="App user ID" htmlFor="tp-user" hint="Who buys. A new ID creates a new customer.">
           <input id="tp-user" className="input mono" value={user} onChange={(e) => setUser(e.target.value)} />
         </Field>
-        <Field label="Product" htmlFor="tp-product">
+        <Field label="Product" htmlFor="tp-product" hint={chosenProduct?.indicative_price ? `The purchase records ${priceLabel(chosenProduct.indicative_price)}, the product's Test Store price.` : undefined}>
           <select id="tp-product" className="select" value={chosen} onChange={(e) => setProduct(e.target.value)}>
-            {list.map((p) => <option key={p.id} value={p.id}>{p.display_name && p.display_name !== p.store_identifier ? `${p.display_name} (${p.store_identifier})` : p.store_identifier}</option>)}
+            {list.map((p) => <option key={p.id} value={p.id}>{p.display_name && p.display_name !== p.store_identifier ? `${p.display_name} (${p.store_identifier})` : p.store_identifier} · {p.indicative_price ? priceLabel(p.indicative_price) : "no price"}</option>)}
           </select>
         </Field>
       </div>
+      {chosenProduct && !chosenProduct.indicative_price && (
+        <div className="banner warn" role="status"><span>{chosenProduct.store_identifier} has no Test Store price, so this purchase records $0.00. <Link className="linkish" to={`/projects/${pid}/product-catalog/products/${chosenProduct.id}`}>Set a price</Link></span></div>
+      )}
       {error && <div className="banner err" role="alert">{error}</div>}
-      {done && <StatusLine tone="ok">{done.user} bought {done.product}. They now have {done.entitlements} active entitlement{done.entitlements === 1 ? "" : "s"}. <Link className="linkish" to={`/projects/${pid}/customers/${encodeURIComponent(done.user)}`}>View customer</Link></StatusLine>}
+      {done && <StatusLine tone="ok">{done.user} bought {done.product}{done.price ? ` for ${done.price}` : ""}. They now have {done.entitlements} active entitlement{done.entitlements === 1 ? "" : "s"}. <Link className="linkish" to={`/projects/${pid}/customers/${encodeURIComponent(done.user)}`}>View customer</Link></StatusLine>}
       <div><button type="button" className="btn btn-dark" disabled={busy || !chosen} onClick={buy}><Icon name="send" />{busy ? "Sending…" : "Send a test purchase"}</button></div>
     </div>
   );

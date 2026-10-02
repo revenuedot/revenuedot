@@ -11,7 +11,7 @@
  *   Test Store products have a price set here (the detail page shows it; the SDK reads it).
  * - RevenueCat's "…" menu on each app group (app shortcuts) is left out; the Apps page owns app settings.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, fmt } from "../../lib/api";
 import { Copy, Shell } from "../../components/Shell";
@@ -19,7 +19,7 @@ import { ConfirmDialog, Dialog, EmptyState, Field, KeyValue, Menu, PageHead, Pan
 import { Icon } from "../../components/icons";
 import { IMPORT_STORES, ImportProductsDialog } from "./ImportProducts";
 import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog, ProductCell } from "./parts";
-import { count, durationLabel, errMsg, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, v2, type Entitlement, type Offering, type Product } from "./lib";
+import { count, durationLabel, errMsg, isConflict, lookupKeyError, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, v2, type Entitlement, type Offering, type Product } from "./lib";
 
 type Filter = "all" | "active" | "inactive";
 
@@ -94,7 +94,7 @@ export function ProductsPage() {
   else if (apps.isLoading || products.isLoading) body = <LoadingRows label="Loading products" rows={4} />;
   else if (!apps.data!.length) body = (
     <EmptyState title="Add an app first" text="Products belong to an app. Add your App Store, Google Play or Test Store app, then add its products here."
-      action={<Link className="btn btn-dark" to={`/projects/${pid}/apps`}><Icon name="plus" />Add an app</Link>} />
+      action={<Link className="btn btn-dark" to={`/projects/${pid}/apps?add=app_store`}><Icon name="plus" />Add an app</Link>} />
   );
   else if (!all.length) body = (
     <EmptyState title="No products yet" text={canImport ? "Import the products you already set up in App Store Connect, Google Play or Stripe, or create one by its store identifier. Then attach them to an entitlement and group them into an offering." : "Create your first product with its store identifier, then attach it to an entitlement and group products into an offering."}
@@ -116,20 +116,25 @@ export function ProductsPage() {
               <div className="pb cat-note">{total ? (needle ? "No products match your search." : `No ${filter} products for this app.`) : <>No products for this app yet. <button type="button" className="cat-lnk" onClick={() => setNewFor(a.id)}>Add one</button>.</>}</div>
             ) : (
               <div className="tbl">
+                {/* Product takes what is left; the other columns are sized for their longest value, so nothing is cut at 1100px and up. Phones keep product, entitlements and actions (type and duration move under the name). */}
                 <table className="cat-ptable">
-                  <colgroup><col style={{ width: "31%" }} /><col style={{ width: "14%" }} /><col style={{ width: "11%" }} /><col style={{ width: "13%" }} /><col style={{ width: "10%" }} /><col style={{ width: "12%" }} /><col style={{ width: "9%" }} /></colgroup>
-                  <thead><tr><th>Product</th><th>Type</th><th>Duration</th><th>Entitlements</th><th>Status</th><th>Created</th><th className="amt">Actions</th></tr></thead>
+                  <thead><tr><th>Product</th><th className="cat-w-type cat-hide-sm">Type</th><th className="cat-w-dur cat-hide-sm">Duration</th><th className="cat-w-ent">Entitlements</th><th className="cat-w-date cat-hide-sm">Created</th><th className="cat-w-act amt"><span className="sr">Actions</span></th></tr></thead>
                   <tbody>
                     {rows.map((p) => {
                       const ents = usage.entsBy.get(p.id) ?? [];
+                      const dur = p.type === "subscription" ? durationLabel(p.subscription?.duration) : "—";
                       return (
                         <tr key={p.id} className="row" tabIndex={0} onClick={() => nav(`${base}/products/${p.id}`)} onKeyDown={(e) => { if (e.key === "Enter") nav(`${base}/products/${p.id}`); }}>
-                          <td><ProductCell p={p} to={`${base}/products/${p.id}`} /></td>
-                          <td>{typeLabel(p.type)}</td>
-                          <td className="num">{p.type === "subscription" ? durationLabel(p.subscription?.duration) : "—"}</td>
-                          <td className={`num${ents.length ? "" : " subtle"}`} title={ents.length ? ents.map((e) => e.lookup_key).join(", ") : "Buying this product unlocks nothing yet"}>{usage.loaded ? count(ents.length, "entitlement") : "…"}</td>
-                          <td>{p.state === "active" ? <Tag tone="up">Active</Tag> : <Tag>Archived</Tag>}</td>
-                          <td className="num">{fmt.date(p.created_at)}</td>
+                          <td>
+                            <span className="cat-prodcell"><ProductCell p={p} to={`${base}/products/${p.id}`} />{p.state !== "active" && <Tag>Archived</Tag>}</span>
+                            <span className="cat-show-sm cat-s">{typeLabel(p.type)}{p.type === "subscription" ? ` · ${dur}` : ""}</span>
+                          </td>
+                          <td className="cat-hide-sm">{typeLabel(p.type)}</td>
+                          <td className="num cat-hide-sm">{dur}</td>
+                          <td className={`cat-ents${ents.length ? "" : " subtle"}`} title={ents.length ? ents.map((e) => e.lookup_key).join(", ") : "Buying this product unlocks nothing yet"}>
+                            {!usage.loaded ? "…" : !ents.length ? "None" : <span className="mono">{ents[0]!.lookup_key}{ents.length > 1 && <span className="subtle"> +{ents.length - 1}</span>}</span>}
+                          </td>
+                          <td className="num cat-hide-sm">{fmt.date(p.created_at)}</td>
                           <td className="amt"><Menu label={`Actions for ${p.store_identifier}`} items={actions.items(p)} /></td>
                         </tr>
                       );
@@ -247,32 +252,92 @@ export function ProductDetail() {
   );
 }
 
+/**
+ * Attach a product to an entitlement: pick an existing one, or create one here (identifier + display name) and attach in
+ * one step, as RevenueCat's dialog does. With no other entitlement the dialog opens on "New entitlement".
+ */
 function AttachToEntitlement({ pid, product, ents, onClose }: { pid: string; product: Product; ents: Entitlement[]; onClose: () => void }) {
   const toast = useToast();
   const refresh = useRefreshCatalog(pid);
+  const [mode, setMode] = useState<"existing" | "new">(ents.length ? "existing" : "new");
   const [sel, setSel] = useState<string>(ents[0]?.id ?? "");
+  const [key, setKey] = useState("");
+  const [name, setName] = useState("");
+  // Set once the entitlement exists, so a retry after a failed attach does not create it twice.
+  const [created, setCreated] = useState<Entitlement | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const go = async () => {
-    const e = ents.find((x) => x.id === sel);
-    if (!e) return;
-    setBusy(true); setError(null);
-    try { await api(`${v2(pid)}/entitlements/${e.id}/actions/attach_products`, { method: "POST", json: { product_ids: [product.id] } }); await refresh(); toast(`Attached to ${e.lookup_key}`); onClose(); }
-    catch (err) { setError(errMsg(err)); setBusy(false); }
+  const attach = async (e: Entitlement) => {
+    await api(`${v2(pid)}/entitlements/${e.id}/actions/attach_products`, { method: "POST", json: { product_ids: [product.id] } });
+    await refresh();
+    toast(`Attached to ${e.lookup_key}`);
+    onClose();
+  };
+  const go = async (ev: FormEvent) => {
+    ev.preventDefault();
+    if (mode === "existing") {
+      const e = ents.find((x) => x.id === sel);
+      if (!e) { setErrors({ sel: "Choose an entitlement." }); return; }
+      setBusy(true); setErrors({});
+      try { await attach(e); } catch (err) { setErrors({ form: errMsg(err) }); setBusy(false); }
+      return;
+    }
+    const er: Record<string, string> = {};
+    if (!created) {
+      const ke = lookupKeyError(key.trim(), "entitlement");
+      if (ke) er.key = ke;
+      if (!name.trim()) er.name = "Enter a display name, such as Pro access.";
+    }
+    setErrors(er);
+    if (Object.keys(er).length) return;
+    setBusy(true);
+    let e = created;
+    try {
+      if (!e) {
+        e = await api<Entitlement>(`${v2(pid)}/entitlements`, { method: "POST", json: { lookup_key: key.trim(), display_name: name.trim() } });
+        setCreated(e);
+      }
+    } catch (err) {
+      setErrors(isConflict(err) ? { key: "An entitlement with this identifier already exists. Choose it under Existing entitlement, or use another identifier." } : { form: errMsg(err) });
+      setBusy(false);
+      return;
+    }
+    try { await attach(e); } catch (err) {
+      await refresh();
+      setErrors({ form: `Entitlement ${e.lookup_key} was created, but attaching failed: ${errMsg(err)} Try again.` });
+      setBusy(false);
+    }
   };
   return (
     <Dialog title="Attach to entitlement" onClose={onClose} footer={<>
       <button type="button" className="btn btn-line" onClick={onClose}>Cancel</button>
-      <button type="button" className="btn btn-dark" onClick={go} disabled={busy || !sel}>{busy ? "Attaching…" : "Attach"}</button>
+      <button type="submit" form="att-form" className="btn btn-dark" disabled={busy}>{busy ? (mode === "new" && !created ? "Creating…" : "Attaching…") : mode === "new" ? "Create and attach" : "Attach"}</button>
     </>}>
-      {!ents.length ? <p className="cat-lead">No other entitlements. <Link className="cat-lnk" to={`/projects/${pid}/product-catalog/entitlements`}>Create an entitlement</Link> first.</p> : (
-        <Field label="Entitlement" htmlFor="att-ent" hint={`Customers who buy ${product.store_identifier} get this entitlement, including past purchasers.`}>
-          <select id="att-ent" className="select" autoFocus value={sel} onChange={(e) => setSel(e.target.value)}>
-            {ents.map((e) => <option key={e.id} value={e.id}>{e.lookup_key} · {e.display_name}{e.state === "inactive" ? " (archived)" : ""}</option>)}
-          </select>
-        </Field>
-      )}
-      {error && <div className="banner err" role="alert">{error}</div>}
+      <form id="att-form" onSubmit={go} noValidate style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <p className="cat-lead">Customers who buy <code>{product.store_identifier}</code> get this entitlement, including past purchasers.</p>
+        {ents.length > 0 ? (
+          <div style={{ alignSelf: "flex-start" }}><Segmented label="Entitlement to attach" value={mode} onChange={(m) => { setMode(m); setErrors({}); }} options={[{ value: "existing", label: "Existing entitlement" }, { value: "new", label: "New entitlement" }]} /></div>
+        ) : <p className="cat-note" style={{ margin: 0 }}>This project has no other entitlement yet. Create one here; the product is attached to it.</p>}
+        {mode === "existing" ? (
+          <Field label="Entitlement" htmlFor="att-ent" error={errors.sel}>
+            <select id="att-ent" className="select" autoFocus value={sel} onChange={(e) => setSel(e.target.value)}>
+              {ents.map((e) => <option key={e.id} value={e.id}>{e.lookup_key} · {e.display_name}{e.state === "inactive" ? " (archived)" : ""}</option>)}
+            </select>
+          </Field>
+        ) : created ? (
+          <p className="cat-lead">Created <code>{created.lookup_key}</code> ({created.display_name}). Attach the product to it.</p>
+        ) : (
+          <>
+            <Field label="Identifier" htmlFor="att-key" error={errors.key} hint={<>The key your app checks, e.g. <code>customerInfo.entitlements["pro"]</code>. It cannot be changed later.</>}>
+              <input id="att-key" className="input mono" autoFocus spellCheck={false} autoComplete="off" placeholder="pro" aria-invalid={!!errors.key} value={key} onChange={(e) => { setKey(e.target.value); setErrors((x) => ({ ...x, key: "" })); }} />
+            </Field>
+            <Field label="Display name" htmlFor="att-name" error={errors.name} hint="A description for your team.">
+              <input id="att-name" className="input" placeholder="e.g. Pro access" aria-invalid={!!errors.name} value={name} onChange={(e) => { setName(e.target.value); setErrors((x) => ({ ...x, name: "" })); }} />
+            </Field>
+          </>
+        )}
+        {errors.form && <div className="banner err" role="alert">{errors.form}</div>}
+      </form>
     </Dialog>
   );
 }

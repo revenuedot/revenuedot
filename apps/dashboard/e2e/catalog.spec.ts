@@ -67,6 +67,16 @@ test("product catalog: products, entitlement, offerings, default offering and th
     await d.getByLabel("Store identifier").fill(sid);
     await d.getByRole("radio", { name: new RegExp(`^${type} `) }).locator("xpath=..").click();
     if (duration) await d.getByLabel("Duration").selectOption(duration);
+    // Test Store products need a price (amount and currency, USD by default); it is what test purchases record.
+    if (app.startsWith("Test Store")) {
+      await d.getByRole("button", { name: "Create product" }).click();
+      await expect(d.getByText("Enter the price, such as 9.99. Test purchases record it as revenue.")).toBeVisible();
+      await d.getByLabel("Price amount").fill("0");
+      await d.getByRole("button", { name: "Create product" }).click();
+      await expect(d.getByText("Enter a price above 0, such as 9.99.")).toBeVisible();
+      await d.getByLabel("Price amount").fill("79.99");
+      await expect(d.getByLabel("Currency")).toHaveValue("USD");
+    }
     await d.getByLabel("Display name").fill(name);
     await d.getByRole("button", { name: "Create product" }).click();
     return d;
@@ -88,7 +98,7 @@ test("product catalog: products, entitlement, offerings, default offering and th
     const iosPanel = page.getByRole("region", { name: "Scanner iOS products" });
     await expect(iosPanel.getByRole("row")).toHaveCount(3); // header + 2
     await expect(iosPanel.getByText("pro_annual")).toBeVisible();
-    await expect(iosPanel.getByText("1 year")).toBeVisible();
+    await expect(iosPanel.getByText("1 year", { exact: true })).toBeVisible();
     const products = (await json(req, "GET", `${P}/products?limit=100`)).items;
     expect(products).toHaveLength(5);
     expect(products.find((p: any) => p.store_identifier === "pro:annual")).toMatchObject({ app_id: android.id, type: "subscription", subscription: { duration: "P1Y" }, display_name: "Pro annual" });
@@ -157,6 +167,7 @@ test("product catalog: products, entitlement, offerings, default offering and th
     await expect(d.getByLabel("App", { exact: true })).toBeDisabled();
     await d.getByLabel("Store identifier").fill("annual_test");
     await d.getByLabel("Duration").selectOption("P1Y");
+    await d.getByLabel("Price amount").fill("29.99");
     await d.getByRole("button", { name: "Create product" }).click();
     await expect(d).toBeHidden();
     await expect(pkg(2).getByLabel("Product for Test Store")).toHaveValue(/^prod/);

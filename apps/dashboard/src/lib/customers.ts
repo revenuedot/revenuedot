@@ -42,10 +42,16 @@ export interface Transaction {
   id: string; customer_id: string; app_id: string | null; store: string; store_transaction_id: string; product_identifier: string;
   kind: "trial" | "purchase" | "renewal" | "refund" | "one_time" | string; environment: "production" | "sandbox";
   purchased_at: number; expires_at: number | null; revenue_in_usd: number; price: { amount: number; currency: string } | null; country: string | null;
+  /** On the account overview (GET /v2/transactions): the project the transaction belongs to. */
+  project_id?: string;
 }
 export interface Entitlement { id: string; lookup_key: string; display_name: string; state?: string }
 export interface Offering { id: string; lookup_key: string; display_name: string; is_current: boolean; state?: string }
-export interface Product { id: string; store_identifier: string; type: string; display_name: string | null; app_id: string; subscription?: { duration: string | null } }
+export interface Product {
+  id: string; store_identifier: string; type: string; display_name: string | null; app_id: string; subscription?: { duration: string | null };
+  /** With expand=items.indicative_price: the Test Store price, null when there is none. */
+  indicative_price?: { amount_micros: number; currency: string } | null;
+}
 export interface App { id: string; name: string; type: string; created_at: number }
 
 /** A country code as its flag (data, not decoration: DESIGN.md allows flags in customer rows). */

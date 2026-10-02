@@ -14,7 +14,7 @@ import { useMe } from "../../components/Shell";
 import { errMsg, v2 } from "../catalog/lib";
 import { Phone } from "./render";
 import { OfferingField } from "./Paywalls";
-import { packageIds, useOfferingsWithPackages, usePaywalls, useTemplates, type Paywall } from "./lib";
+import { packageIds, useOfferingsWithPackages, usePaywalls, usePreviewProducts, useTemplates, type Paywall } from "./lib";
 
 const PACKAGES = [["any", "Any"], ["1", "1"], ["2", "2"], ["3", "3 or more"]] as const;
 const TIERS = [["any", "Any"], ["1", "1"], ["2", "2 or more"]] as const;
@@ -46,6 +46,7 @@ export function GalleryPage() {
   const free = (offs.data ?? []).filter((o) => !(pws.data ?? []).some((p) => p.offering_id === o.id));
   const previewOff = (offs.data ?? []).find((o) => o.id === f.offering) ?? free.find((o) => o.is_current) ?? free[0] ?? offs.data?.[0];
   const packages = packageIds(previewOff);
+  const preview = usePreviewProducts(pid, previewOff);
   const shown = PAYWALL_TEMPLATES.filter((t) =>
     screens.includes(t.screens > 1 ? "multiple" : "single") && method.includes(t.purchase_method)
     && (pk === "any" || (pk === "3" ? t.packages >= 3 : t.packages === Number(pk))) && (tiers === "any" || (tiers === "2" ? t.tiers >= 2 : t.tiers === 1)));
@@ -94,13 +95,13 @@ export function GalleryPage() {
           <p className="subtle pw-count" aria-live="polite">{shown.length} of {PAYWALL_TEMPLATES.length} templates</p>
         </aside>
         <div className="pw-grid-wrap">
-          <div className="head"><div><h1>Select template</h1><p>Each layout comes from a measured 2026 result. Prices show as sample values here; the app shows the store's local prices.</p></div></div>
+          <div className="head"><div><h1>Select template</h1><p>Each layout comes from a measured 2026 result. {preview.anyReal ? "Prices are your products' Test Store prices, with sample values where a product has none" : "Prices show as sample values here"}; the app shows the store's local prices.</p></div></div>
           {!shown.length ? <div className="empty"><b>No template matches these filters.</b><button type="button" className="btn btn-line" onClick={() => { setF({ ...DEF }); setSp(new URLSearchParams(), { replace: true }); }}>Clear filters</button></div> : (
             <ul className="pw-cards" aria-label="Templates">
               {shown.map((t) => (
                 <li key={t.id} className="pw-card">
                   <button type="button" className="pw-card-prev" aria-label={`Use template ${t.name}`} onClick={() => open(t)}>
-                    <Phone doc={docs.get(t.id)!} width={172} live={false} label={`${t.name} preview`} />
+                    <Phone doc={docs.get(t.id)!} width={172} live={false} label={`${t.name} preview`} prices={preview.prices} />
                     <span className="pw-card-cta">Use template</span>
                   </button>
                   <div className="pw-card-b">

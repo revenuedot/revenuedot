@@ -272,15 +272,14 @@ function Ledger({ pid }: { pid: string }) {
       {!!rows.length && (
         <div className="tbl">
           <table>
-            <thead><tr><th>Customer</th><th>Network</th><th>Ad unit</th><th>Reward</th><th>Status</th><th>Granted</th><th>When</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Network and ad unit</th><th>Reward</th><th>Status</th><th>Granted</th><th>When</th></tr></thead>
             <tbody>{rows.map((v) => (
               <tr key={v.id}>
-                <td><Link className="mono" to={`/projects/${pid}/customers/${encodeURIComponent(v.app_user_id)}`}>{v.app_user_id || "—"}</Link>{v.is_sandbox && <span className="soon" style={{ marginLeft: 6 }}>SANDBOX</span>}</td>
-                <td>{v.network === "admob" ? "AdMob" : v.network === "test" ? "Test" : v.network}<span className="cellsub mono" title={v.network_transaction_id}>{v.network_transaction_id.slice(0, 18)}</span></td>
-                <td className="mono">{v.ad_unit_id ?? "—"}</td>
+                <td className="w2"><Link className="mono" to={`/projects/${pid}/customers/${encodeURIComponent(v.app_user_id)}`}>{v.app_user_id || "—"}</Link>{v.is_sandbox && <span className="soon" style={{ marginLeft: 6 }}>SANDBOX</span>}</td>
+                <td className="w2">{v.network === "admob" ? "AdMob" : v.network === "test" ? "Test" : v.network}<span className="cellsub mono" title={v.network_transaction_id}>{v.ad_unit_id ?? v.network_transaction_id.slice(0, 18)}</span></td>
                 <td className="mono">{v.reward_item ? `${v.reward_amount ?? ""} ${v.reward_item}`.trim() : v.reward_amount ?? "—"}</td>
-                <td><Tag tone={STATUS_TONE[v.status]}>{v.status}</Tag>{v.failure_message && <span className="cellsub">{v.failure_message}</span>}</td>
-                <td>{v.rewards.length ? v.rewards.map(rewardText).join(", ") : <span className="subtle">Nothing</span>}</td>
+                <td className="w2"><Tag tone={STATUS_TONE[v.status]}>{v.status}</Tag>{v.failure_message && <span className="cellsub">{v.failure_message}</span>}</td>
+                <td className="w2">{v.rewards.length ? v.rewards.map(rewardText).join(", ") : <span className="subtle">Nothing</span>}</td>
                 <td title={fmt.dateTime(v.created_at)}>{fmt.ago(v.created_at)}</td>
               </tr>
             ))}</tbody>

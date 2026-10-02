@@ -103,7 +103,25 @@ export function parseMicros(amount: string): number | null {
   return /^\d+(\.\d{1,6})?$/.test(t) ? Math.round(Number(t) * 1_000_000) : NaN;
 }
 
-export const PRODUCT_TYPES: { value: string; label: string; help: string }[] = [
+/** Currencies offered first in the Test Store price field; any ISO 4217 code is accepted. */
+export const COMMON_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "BRL", "MXN", "KRW", "SEK", "NOK", "DKK", "PLN", "TRY", "SGD", "HKD", "NZD"];
+
+/**
+ * The `test_store_price` body field from the form's amount and currency, or an error message. A required price (new
+ * Test Store products, like RevenueCat's form) must be above zero; an optional one may be left empty for no price.
+ */
+export function testStorePrice(amount: string, currency: string, required = false): { value: { amount_micros: number; currency: string } | null } | { error: string } {
+  const micros = parseMicros(amount);
+  if (micros === null) return required ? { error: "Enter the price, such as 9.99. Test purchases record it as revenue." } : { value: null };
+  if (Number.isNaN(micros)) return { error: "Enter an amount such as 9.99, with a dot for decimals." };
+  if (required && micros === 0) return { error: "Enter a price above 0, such as 9.99." };
+  if (micros > 1_000_000 * 1_000_000) return { error: "Enter an amount of 1,000,000 or less." };
+  const code = currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) return { error: "Enter a three-letter currency code such as USD or EUR." };
+  return { value: { amount_micros: micros, currency: code } };
+}
+
+export const PRODUCT_TYPES:{ value: string; label: string; help: string }[] = [
   { value: "subscription", label: "Subscription", help: "Renews automatically every period." },
   { value: "consumable", label: "Consumable", help: "Bought again and again, e.g. coins." },
   { value: "non_consumable", label: "Non-consumable", help: "Bought once, owned forever, e.g. lifetime access." },

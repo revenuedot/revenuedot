@@ -78,11 +78,20 @@ a.cat-lnk:hover{text-decoration-color:var(--fg)}
 .cat-radios label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
 .cat-radios input{position:absolute;opacity:0;pointer-events:none}
 .cat-flabel{font:600 12px/16px var(--font);color:var(--fg-2)}
-.cat-ptable{table-layout:fixed;min-width:820px}
+.cat-ptable{table-layout:fixed}
 .cat-ptable td{overflow:hidden;text-overflow:ellipsis}
+.cat-ptable .cat-w-type{width:136px}.cat-ptable .cat-w-dur{width:108px}.cat-ptable .cat-w-ent{width:144px}.cat-ptable .cat-w-date{width:124px}.cat-ptable .cat-w-act{width:64px}
+.cat-ptable .cat-prodcell{display:flex;align-items:center;gap:8px;min-width:0}
+.cat-ptable .cat-prodcell .cat-cell{min-width:0}
+.cat-ptable .cat-prodcell .cat-cell>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-ptable .cat-ents{font-size:12.5px}
+.cat-show-sm{display:none}
 .cat-row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 @media (max-width:640px){
   .cat-hide-sm{display:none}
+  .cat-show-sm{display:block;padding-bottom:6px;font:400 12px/16px var(--font);color:var(--fg-3)}
+  .cat-ptable th,.cat-ptable td{padding-left:12px;padding-right:12px}
+  .cat-ptable .cat-w-ent{width:104px}.cat-ptable .cat-w-act{width:52px}
   .cat-crumb-up{display:none}
   .cat-pkg-fields,.cat-prow,.cat-pkg-view li,.cat-row2{grid-template-columns:1fr}
   .cat-radios{grid-template-columns:1fr}.cat-radios label{border-right:0;border-bottom:1px solid var(--border)}.cat-radios label:last-child{border-bottom:0}
@@ -117,3 +126,4 @@ a.cat-lnk:hover{text-decoration-color:var(--fg)}
 .imp-result{display:flex;flex-direction:column;gap:10px}
 .imp-ids{margin:6px 0 0;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:2px}
 @media (max-width:640px){.imp-table col.imp-hide{width:0!important}.imp-table col.imp-stat{width:112px!important}.imp-table th,.imp-table td{padding-left:8px;padding-right:8px}.imp-table col.imp-prod{width:auto!important}.imp-table th:nth-child(n+3):nth-child(-n+5),.imp-table td:nth-child(n+3):nth-child(-n+5){padding:0;border:0;overflow:hidden;visibility:hidden}.imp-meta{display:block}}
+.cat-price{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px}

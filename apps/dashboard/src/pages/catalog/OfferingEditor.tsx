@@ -314,7 +314,7 @@ function EditorForm({ pid, base, initial, apps, products, title }: { pid: string
                   <div className="cat-pkg-prods">
                     <div className="cat-lab"><span>Products</span><span>One per app</span></div>
                     {!apps.length ? (
-                      <div className="cat-prow"><span className="cat-none">No apps yet. <Link className="cat-lnk" to={`/projects/${pid}/apps`}>Add an app</Link> to attach products.</span></div>
+                      <div className="cat-prow"><span className="cat-none">No apps yet. <Link className="cat-lnk" to={`/projects/${pid}/apps?add=app_store`}>Add an app</Link> to attach products.</span></div>
                     ) : apps.map((a) => {
                       const list = byApp.get(a.id) ?? [];
                       const locked = d.locked[a.id];

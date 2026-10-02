@@ -6,6 +6,8 @@ import type { Deps } from "../../context.js";
 import { resolveKey } from "../../services/auth.js";
 import { SESSION_COOKIE, sessionUser } from "../../services/sessions.js";
 import { V2Error, v2ErrorResponse, type V2Vars } from "./common.js";
+import { userProjectPrincipal } from "./project-access.js";
+import { accountOverviewRoutes } from "./account-overview.js";
 import { projectRoutes } from "./projects.js";
 import { appRoutes } from "./apps.js";
 import { productRoutes } from "./products.js";
@@ -44,7 +46,6 @@ import { projectSettingsRoutes } from "./project-settings.js";
 import { authRoutes as authConfigRoutes } from "./auth.js";
 import { assistantRoutes } from "./assistant.js";
 import { ASSISTANT_CTX } from "../../services/assistant/client.js";
-import { assistantScope } from "../../services/assistant/access.js";
 import { adsRoutes } from "./ads.js";
 import { moveRoutes } from "./moves.js";
 
@@ -97,33 +98,16 @@ export function v2Routes(deps: Deps) {
     if (p.kind === "key") {
       if (p.projectId !== projectId) throw new V2Error(404, "resource_missing", "Project not found.");
     } else {
-      const [m] = await deps.db.select().from(schema.memberships)
-        .where(and(eq(schema.memberships.userId, p.userId), eq(schema.memberships.projectId, projectId))).limit(1);
-      if (!m) throw new V2Error(404, "resource_missing", "Project not found.");
-      if (p.via === "assistant") {
-        // The assistant works in its conversation's project only, and writes only where the project allows it.
-        if (ASSISTANT_CTX.get(c.req.raw)?.projectId !== projectId) throw new V2Error(404, "resource_missing", "Project not found.");
-        const [proj] = await deps.db.select({ aiAccess: schema.projects.aiAccess }).from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
-        const s = assistantScope(proj?.aiAccess ?? "disabled", m.role);
-        const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
-        if (!s.canRead || (write && !s.canWrite)) throw new V2Error(403, "authorization_error", s.reason ?? "RevenueDot AI cannot do this here.");
-      }
-      // Enterprise extensions may deny access (enforced single sign-on) or give a custom role's permissions.
-      let permissions: string[] | undefined;
-      for (const x of deps.extensions ?? []) {
-        // RevenueDot AI's in-process calls carry no cookie: they act with the session the turn came from.
-        const sessionId = p.via === "assistant" ? ASSISTANT_CTX.get(c.req.raw)?.sessionId ?? null : getCookie(c, SESSION_COOKIE) ?? null;
-        const a = await x.projectAccess?.({ deps, userId: p.userId, sessionId, projectId, role: m.role });
-        if (a?.deny) throw new V2Error(a.deny.status, a.deny.status === 404 ? "resource_missing" : "authorization_error", a.deny.message);
-        if (a?.permissions) permissions = a.permissions;
-      }
-      c.set("principal", { ...p, role: m.role, ...(permissions ? { permissions } : {}) });
+      c.set("principal", await userProjectPrincipal(deps, c, p, projectId));
     }
     c.set("projectId", projectId);
     await next();
   });
 
   r.use("/v2/projects/:project_id/*", auditMiddleware(deps));
+
+  // Across every project the signed-in user can open (Overview → All projects).
+  accountOverviewRoutes(r, deps);
 
   projectRoutes(r, deps);
   appRoutes(r, deps);

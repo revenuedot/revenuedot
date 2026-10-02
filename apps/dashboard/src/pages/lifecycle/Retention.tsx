@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmt, type List } from "../../lib/api";
 import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
-import { ConfirmDialog, CopyField, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, StatusLine, Switch, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
+import { ConfirmDialog, CopyField, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, StatusLine, Switch, Tabs, Tag, useProjectId, useSandboxParam, useToast } from "../../components/ui";
 import { errMsg, productName, useApps, useProducts, v2, type App, type Product } from "../catalog/lib";
 import { MESSAGE_KINDS, type AppleEnv, type Messaging, type RetentionMessage, type RetentionOffer } from "./lib";
 
@@ -24,7 +24,7 @@ const APPROVAL_URL = "https://developer.apple.com/contact/request/retention-mess
 export function RetentionPage() {
   const [sp, setSp] = useSearchParams();
   const tab: Tab = sp.get("tab") === "customer_center" ? "customer_center" : "apple";
-  const [sandbox, setSandbox] = useState(false);
+  const [sandbox, setSandbox] = useSandboxParam();
   return (
     <Shell title="Retention">
       <div className="page">

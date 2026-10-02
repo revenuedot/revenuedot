@@ -227,10 +227,11 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     testId = page.url().split("/").pop()!;
     await expect(page.getByRole("region", { name: "Nothing to configure" })).toBeVisible();
     await page.getByRole("button", { name: "Create product" }).click();
-    await toast("Product pro_monthly created.");
+    // The inline form asks for the price (9.99 USD prefilled), and the purchase records it.
+    await toast("Product pro_monthly created at $9.99.");
     await page.getByLabel("App user ID").fill("e2e_buyer");
     await page.getByRole("button", { name: "Send a test purchase" }).click();
-    await expect(page.getByText(/e2e_buyer bought pro_monthly/)).toBeVisible();
+    await expect(page.getByText(/e2e_buyer bought pro_monthly for \$9\.99/)).toBeVisible();
     await shot("test-store-purchase");
     const c = await api("GET", `${P}/customers/e2e_buyer`);
     expect(c.status).toBe(200);

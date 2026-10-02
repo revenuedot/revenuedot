@@ -1,8 +1,10 @@
 /** Shared data hooks and types for the paywall pages (list, gallery, editor, AI). */
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PaywallDoc } from "@revenuedot/core";
 import { api, type List } from "../../lib/api";
-import { listAll, v2, type Offering } from "../catalog/lib";
+import { listAll, useProducts, v2, type Offering } from "../catalog/lib";
+import { previewProducts, type PreviewProduct } from "./preview-values";
 
 export interface Version { revision: number | null; components_config: Record<string, unknown> | null; components_localizations: Record<string, Record<string, unknown>>; default_locale: string | null }
 export interface Paywall {
@@ -27,8 +29,19 @@ export const usePaywalls = (pid: string) => useQuery({
 });
 export const useOfferingsWithPackages = (pid: string) => useQuery({
   queryKey: ["paywall-offerings", pid], enabled: !!pid,
-  queryFn: async () => (await listAll<Offering>(`${v2(pid)}/offerings?expand=items.package`)).filter((o) => o.state !== "inactive"),
+  queryFn: async () => (await listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`)).filter((o) => o.state !== "inactive"),
 });
+/**
+ * The preview's real products for an offering: each package's Test Store price, duration and name (previewProducts).
+ * Offering expansions carry no price, so prices come from the catalog's product list (expand=items.indicative_price).
+ */
+export function usePreviewProducts(pid: string, offering: Offering | null | undefined): { prices: Record<string, PreviewProduct>; anyReal: boolean } {
+  const products = useProducts(pid);
+  return useMemo(() => {
+    const prices = previewProducts(offering, products.data);
+    return { prices, anyReal: Object.values(prices).some((p) => !!p.price) };
+  }, [offering, products.data]);
+}
 export const useTemplates = (pid: string) => useQuery({
   queryKey: ["paywall-templates", pid], enabled: !!pid, staleTime: Infinity,
   queryFn: () => api<{ items: TemplateMeta[]; icon_base_url: string }>(`${v2(pid)}/paywall_templates`),

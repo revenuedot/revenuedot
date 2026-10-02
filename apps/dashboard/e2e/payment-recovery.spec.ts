@@ -229,7 +229,21 @@ test("payment recovery: off, turn on, billing issues on four stores, emails, por
     await page.getByRole("button", { name: "Unsubscribe" }).click();
     await expect(page.getByRole("heading", { name: "You are unsubscribed" })).toBeVisible();
     await page.goto(pageUrl);
-    await expect(casesPanel().locator("tbody tr").filter({ hasText: "Amazon" }).locator(".tag")).toHaveText("Unsubscribed");
+    // The row keeps its state and adds "Unsubscribed"; the case detail says when.
+    const row = casesPanel().locator("tbody tr").filter({ hasText: "Amazon" });
+    await expect(row.locator(".tag")).toHaveText(["Billing issue", "Unsubscribed"]);
+    await row.click();
+    const detail = page.getByRole("dialog", { name: "Recovery case" });
+    await expect(detail.locator(".tag").filter({ hasText: "Unsubscribed" })).toBeVisible();
+    await expect(detail.getByRole("status")).toContainText(`amazon-${stamp}@example.com gets no more recovery emails`);
+    await detail.getByRole("button", { name: "Done" }).click();
+    // The Sandbox data switch lives in the URL: a reload or a shared link opens the same data.
+    await page.getByRole("switch", { name: "Sandbox data" }).click();
+    await expect(page).toHaveURL(/environment=sandbox/);
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "Sandbox data" })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("switch", { name: "Sandbox data" }).click();
+    await expect(page).not.toHaveURL(/environment=sandbox/);
   });
 
   await test.step("the App Store and Play renewals recover their cases; the 28-day production numbers", async () => {
