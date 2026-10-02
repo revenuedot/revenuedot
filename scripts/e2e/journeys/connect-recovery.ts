@@ -157,17 +157,57 @@ const journey: Journey = {
       c.check("the email has the update link and an unsubscribe link", !!fix && !!unsubA, linksA);
       const [msg] = await sql`SELECT step, error FROM recovery_messages WHERE case_id = ${caseA!.id}`;
       c.has("SQL: the message is recorded", msg, { step: 0, error: null });
-      // Customer Center: management_url is the same link while the case is open.
+      // Customer Center: management_url is a link of its own. Customer info is readable with the public SDK key, so for a
+      // web purchase it never opens the portal: it emails the buyer a one-time 30-minute link.
       const sdk = sdkClient(ctx, (await dev.v2("GET", `/apps/${app.id}/public_api_keys`)).items[0].key, "stripe");
       const info = await sdk.customerInfo(`buyer_a_${S}`);
-      c.check("customer info carries the recovery link as management_url", String(info.body?.subscriber?.management_url ?? "").includes(`/v1/recovery/l/${caseA!.token}?via=customer_center`), info.body?.subscriber?.management_url);
+      const center = String(info.body?.subscriber?.management_url ?? "");
+      c.check("customer info carries the Customer Center link as management_url, not the emailed one", center.includes(`/v1/recovery/c/${caseA!.center_token}`) && !center.includes(caseA!.token), center);
+      const portalCalls = () => acct.calls.filter((x) => x.path === "/v1/billing_portal/sessions").length;
+      const linkMails = () => mailsTo(`buyer-a-${S}@journeys.test`).filter((m) => /Your link to update your payment/.test(m.subject));
+      const askForLink = async () => {
+        await page.goto(center);
+        await page.getByRole("heading", { name: "We'll email you a secure link" }).waitFor();
+        await page.getByRole("button", { name: "Email me the link" }).click();
+        return (await page.getByRole("heading").first().textContent())?.trim();
+      };
+      await page.goto(center);
+      await page.getByRole("heading", { name: "We'll email you a secure link" }).waitFor();
+      c.eq("opening it makes no portal session", portalCalls(), 0);
+      c.eq("asking for the link answers Check your email", await askForLink(), "Check your email");
+      const linkMail = await until(async () => linkMails()[0], { timeoutMs: 30_000 });
+      const oneTime = linkMail ? linksOf(linkMail).find((l) => l.includes("/v1/recovery/p/")) : undefined;
+      c.check("the one-time link arrives at the buyer's address through SMTP", !!oneTime, ctx.mails.map((m) => [m.to, m.subject]));
+      const [pl] = await sql`SELECT token_hash, email, expires_at - created_at AS ttl FROM recovery_portal_links WHERE case_id = ${caseA!.id}`;
+      c.check("SQL: only the token's hash is stored, for 30 minutes", !!pl && !oneTime!.includes(pl.token_hash) && pl.email === `buyer-a-${S}@journeys.test` && String(pl.ttl).startsWith("00:30"), pl);
+      await page.goto(oneTime!);
+      await page.getByRole("heading", { name: "Update your payment method" }).waitFor();
+      c.eq("opening the emailed link (or a mail scanner) makes no portal session yet", portalCalls(), 0);
+      await page.getByRole("button", { name: "Update payment method" }).click();
+      await page.getByRole("heading", { name: "Fake Stripe customer portal" }).waitFor();
+      c.eq("its button opens the portal on the connected account", portalCalls(), 1);
+      await page.goto(oneTime!);
+      await page.getByRole("button", { name: "Update payment method" }).click();
+      await page.getByRole("heading", { name: "This link was already used" }).waitFor();
+      c.eq("a used link is refused without a new session", portalCalls(), 1);
+      c.eq("a second link can be asked for", await askForLink(), "Check your email");
+      const second = await until(async () => linkMails()[1], { timeoutMs: 30_000 });
+      const secondLink = second ? linksOf(second).find((l) => l.includes("/v1/recovery/p/")) : undefined;
+      await sql`UPDATE recovery_portal_links SET expires_at = now() - interval '1 minute' WHERE case_id = ${caseA!.id} AND used_at IS NULL`;
+      await page.goto(secondLink!);
+      await page.getByRole("heading", { name: "This link has expired" }).waitFor();
+      c.eq("an expired link is refused without a new session", portalCalls(), 1);
+      c.eq("a third link in the hour is still sent", await askForLink(), "Check your email");
+      c.eq("a fourth is refused: three links an hour per customer", await askForLink(), "Too many requests");
+      await until(async () => linkMails().length >= 3 || null, { timeoutMs: 30_000 });
+      c.eq("three link emails in all", linkMails().length, 3);
       // A GET of the unsubscribe link never unsubscribes (mail scanners follow links).
       await page.goto(unsubA!);
       await page.getByRole("heading", { name: "Unsubscribe?" }).waitFor();
       c.eq("GET leaves the address subscribed", (await sql`SELECT count(*)::int AS n FROM email_suppressions WHERE project_id = ${P}`)[0]!.n, 0);
       await page.goto(fix!);
       await page.getByRole("heading", { name: "Fake Stripe customer portal" }).waitFor();
-      const portalCall = acct.calls.find((x) => x.path === "/v1/billing_portal/sessions");
+      const portalCall = acct.calls.filter((x) => x.path === "/v1/billing_portal/sessions").at(-1);
       c.check("the portal session was made at the click, on the connected account, for a payment method update", portalCall?.account === account && portalCall?.params?.flow_data?.type === "payment_method_update", portalCall);
       await page.getByRole("button", { name: "Update payment method" }).click();
       await page.getByRole("heading", { name: "Thank you" }).waitFor();
