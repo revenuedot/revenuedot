@@ -26,5 +26,12 @@
     "run": "202610020435595690",
     "passed": 66,
     "failed": 0
+  },
+  "insights": {
+    "title": "Attribution from the SDK and AdServices, charts and the campaign report against SQL, Cloud benchmarks with k-anonymity, AI growth insights and the digest",
+    "date": "2026-10-02",
+    "run": "202610020752185505",
+    "passed": 70,
+    "failed": 0
   }
 }
