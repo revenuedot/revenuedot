@@ -330,6 +330,7 @@ web.post("/__revenue", async (c) => {
 web.post("/__notifications/run", async (c) => {
   const b = await c.req.json().catch(() => ({})) as { at?: string };
   return c.json(await runAccountNotifications({ db, mailer: mail, publicUrl: `http://localhost:${PORT}`, fetch: localFetch }, b.at ? new Date(b.at) : now(), { projects: 50, emails: 200, budgetMs: 60_000 }));
+});
 // The product editor's stateful App Store Connect and Play fakes (product-editor.spec.ts): reset them, make the next
 // matching store calls fail, and read a price back.
 web.post("/__stores/editor/reset", (c) => { resetEditorStores(); return c.json({ ok: true }); });
