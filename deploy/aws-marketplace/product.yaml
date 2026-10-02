@@ -1,0 +1,95 @@
+# AWS Marketplace container product: the fields of the "Create container product" form in the AWS Marketplace
+# Management Portal, filled in. Nothing here has been submitted; see submission-checklist.md.
+# Spec: prd/ha-self-host/PRD.md. Copy rules: company/docs/marketing/positioning.md (private) — this file says only what
+# revenuedot.app already says.
+product:
+  title: RevenueDot - Open-source in-app purchase and subscription server
+  sku: REVENUEDOT-SELFHOST-HA
+  short_description: >-
+    The open-source RevenueCat alternative. Run the in-app purchase and subscription backend for iOS, Android and the
+    web in your own AWS account, on your own Postgres, with the RevenueCat SDKs your apps already use.
+  long_description: |
+    RevenueDot is an open-source server for in-app purchases and subscriptions. It speaks the RevenueCat SDK protocol,
+    so apps switch by changing the SDK's proxy URL. It checks App Store, Google Play, Amazon and Stripe purchases,
+    keeps subscription state and entitlements, sends webhooks in RevenueCat's payload shape, and gives your team a
+    dashboard with charts, paywalls, experiments and customer history.
+
+    This listing deploys RevenueDot for high availability in your own AWS account: two or more replicas of one container
+    behind a load balancer, on Amazon RDS for PostgreSQL. Replicas share all state through Postgres: database migrations
+    run once under a lock, background work (renewals, expirations, webhooks, alert emails) runs on one replica at a time,
+    and each replica drains on shutdown, so rolling upgrades and the loss of a node or an Availability Zone do not drop
+    purchases. Your purchase data never leaves your account.
+
+    Deploy with the Helm chart on Amazon EKS, or on Amazon ECS on Fargate with the Terraform reference setup (VPC, RDS
+    Multi-AZ, Application Load Balancer, ACM, Secrets Manager and CloudWatch alarms).
+  highlights:
+    - Works with the RevenueCat SDKs your apps already ship (iOS, Android, React Native, Flutter, web and more); switch by changing the proxy URL.
+    - Highly available in your own AWS account - replicas across Availability Zones on RDS PostgreSQL Multi-AZ, with zero-downtime rolling upgrades.
+    - Open source under AGPL-3.0, with Enterprise features (SSO, SCIM, custom roles, data location, audit retention) under a commercial licence.
+  categories:
+    - DevOps
+    - Application Development
+    - Monitoring
+  search_keywords:
+    - in-app purchases
+    - subscriptions
+    - RevenueCat alternative
+    - StoreKit
+    - Google Play Billing
+    - receipt validation
+    - paywall
+    - self-hosted
+  logo: https://revenuedot.app/favicon.svg   # upload a 120x120 PNG from brand/kit/ at submission
+  resources:
+    - { title: Documentation, url: https://revenuedot.app/docs }
+    - { title: High-availability guide, url: https://revenuedot.app/docs/guides/high-availability }
+    - { title: Service level agreement, url: https://revenuedot.app/docs/guides/sla }
+    - { title: Source code, url: https://github.com/revenuedot/revenuedot }
+  support:
+    description: >-
+      Enterprise customers get the support response times in the service level agreement (purchases failing in
+      production: 1 hour, at any hour) through a private Slack channel. Everyone else: email hello@revenuedot.app or open
+      a GitHub issue.
+    email: hello@revenuedot.app
+  video: ""   # optional: a demo video URL from company/marketing/videos
+
+version:
+  version_title: "0.1.0"
+  release_notes: >-
+    First Marketplace release: Helm chart for Amazon EKS and Terraform for Amazon ECS on Fargate, replicas that share
+    one Postgres safely (migration and background-job locks, claimed deliveries), /healthz and /readyz endpoints and
+    graceful shutdown.
+  delivery_options:
+    - name: Helm chart on Amazon EKS
+      type: helm
+      chart: deploy/helm/revenuedot           # pushed to the Marketplace ECR repository at submission
+      container_images:
+        - <marketplace-ecr>/revenuedot/revenuedot:0.1.0
+      supported_services: [EKS]
+      usage_instructions: usage-instructions.md#helm-chart-on-amazon-eks
+      override_parameters:                     # what the Marketplace launch form asks for
+        - { key: publicUrl, description: "Public address, e.g. https://revenuedot.example.com" }
+        - { key: database.existingSecret, description: "Kubernetes Secret holding DATABASE_URL for your RDS PostgreSQL" }
+        - { key: secrets.existingSecret, description: "Kubernetes Secret holding REVENUEDOT_ENCRYPTION_KEY and optional keys" }
+    - name: Container image on Amazon ECS (Fargate)
+      type: container_image
+      container_images:
+        - <marketplace-ecr>/revenuedot/revenuedot:0.1.0
+      supported_services: [ECS, EKS]
+      usage_instructions: usage-instructions.md#container-image-on-amazon-ecs
+  architecture_diagram: architecture.svg       # export as a 1100x700 PNG at submission
+
+pricing:
+  # Decision pending (submission-checklist.md, "Pricing"). Public price today: Enterprise from $50,000 a year, contact sales.
+  model: TBD   # options: contract (annual, AWS License Manager) with private offers | BYOL | free (open-source only)
+  refund_policy: >-
+    Annual contracts can be cancelled within 30 days of purchase for a full refund. Email hello@revenuedot.app.
+  eula: standard-contract-for-aws-marketplace   # SCMP, with the RevenueDot Enterprise License as an addendum for ee/
+
+compliance:
+  image_runs_as_root: false        # the chart and the ECS task run it as uid 1000 with a read-only root filesystem
+  outbound_network: >-
+    Calls the App Store Server API, the Google Play Developer API, public exchange-rate feeds (jsDelivr and the
+    European Central Bank), and the webhook URLs and integrations the customer configures. Licence keys are checked
+    offline. Nothing is sent to RevenueDot.
+  data_collected_by_seller: none
