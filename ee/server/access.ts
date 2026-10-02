@@ -166,6 +166,15 @@ export async function reconcileMember(db: DB, orgId: string, userId: string): Pr
   return changed;
 }
 
+/** Removes every membership a person has in the organization's projects, and the provisioning records of them. */
+export async function removeFromOrgProjects(db: DB, orgId: string, userId: string): Promise<number> {
+  const projects = (await db.select({ id: eeOrgProjects.projectId }).from(eeOrgProjects).where(eq(eeOrgProjects.orgId, orgId))).map((p) => p.id);
+  if (!projects.length) return 0;
+  const gone = await db.delete(schema.memberships).where(and(eq(schema.memberships.userId, userId), inArray(schema.memberships.projectId, projects))).returning({ p: schema.memberships.projectId });
+  await db.delete(eeMembershipSources).where(and(eq(eeMembershipSources.userId, userId), inArray(eeMembershipSources.projectId, projects)));
+  return gone.length;
+}
+
 /** Reconciles every member of an organization (after a role mapping, group or project change). */
 export async function reconcileOrg(db: DB, orgId: string): Promise<number> {
   const members = await db.select({ userId: eeOrgMembers.userId }).from(eeOrgMembers).where(eq(eeOrgMembers.orgId, orgId));

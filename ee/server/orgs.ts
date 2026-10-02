@@ -33,7 +33,7 @@ import {
   eeCustomRoles, eeMembershipSources, eeOrgAuditLogs, eeOrgMembers, eeOrgProjects, eeOrganizations, eeRoleMappings, eeScimTokens, eeSsoConnections, eeSsoDomains,
 } from "./schema.js";
 import {
-  ADMIN_ONLY_SCOPES, ALL_SCOPES, SCOPE_GROUPS, demoteRoles, isBuiltin, reconcileMember, reconcileOrg,
+  ADMIN_ONLY_SCOPES, ALL_SCOPES, SCOPE_GROUPS, demoteRoles, isBuiltin, reconcileMember, reconcileOrg, removeFromOrgProjects,
 } from "./access.js";
 import { REGIONS, REGION_NAMES, forgetProjectRegion, selectableRegions, type Region } from "./region.js";
 import { RETENTION_MAX_DAYS, RETENTION_MIN_DAYS } from "./retention.js";
@@ -236,9 +236,10 @@ export function orgRoutes(ctx: EeCtx) {
       if (t.u.id !== m.user.id) requireOwner(m.role);
       if ((await owners(m.org.id)).length <= 1) throw new V2Error(422, "unprocessable_entity_error", "An organization needs at least one owner.");
     }
-    // Leaving the organization ends access to every one of its projects, including memberships added by hand.
+    // Leaving the organization ends access to every one of its projects, including memberships added by hand. The
+    // memberships go first, so a request of theirs running meanwhile cannot make them an organization member again.
+    await removeFromOrgProjects(db, m.org.id, t.u.id);
     await db.delete(eeOrgMembers).where(and(eq(eeOrgMembers.orgId, m.org.id), eq(eeOrgMembers.userId, t.u.id)));
-    await reconcileMember(db, m.org.id, t.u.id);
     await audit(m.org.id, m.user.id, "member_removed", { type: "user", id: t.u.id }, { email: t.u.email });
     return c.json({ object: "organization_member", user_id: t.u.id, deleted_at: deps.now().getTime() });
   });

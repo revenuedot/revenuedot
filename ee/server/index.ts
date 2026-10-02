@@ -1,7 +1,7 @@
 // RevenueDot Enterprise (ee/LICENSE): the server extension the core loads through apps/server/src/extensions.ts.
 // Spec: prd/enterprise/PRD.md.
 import { Hono } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { DB } from "@revenuedot/db";
 import type { ExtensionStatus, PasswordRefusal, ProjectAccess, ServerExtension } from "../../apps/server/src/extensions.js";
 import { v2ErrorResponse } from "../../apps/server/src/routes/v2/common.js";
@@ -85,8 +85,12 @@ async function projectAccess(db: DB, features: Set<string>, a: { userId: string;
     // Deprovisioned people keep no access, even through a membership added later by hand.
     if (member?.active === false) return { deny: { status: 404, message: "Project not found." } };
     // Someone who joined an organization project through a project invite becomes an organization member, so the
-    // organization's member list, seats and access reviews include them.
-    if (!member) await db.insert(eeOrgMembers).values({ orgId: row.orgId, userId: a.userId, role: "member", source: "project" }).onConflictDoNothing();
+    // organization's member list, seats and access reviews include them. Only while the project membership still exists
+    // when the row is written: a request that raced the person's removal must not add them back.
+    if (!member) {
+      await db.execute(sql`insert into ee_org_members (org_id, user_id, role, source) select ${row.orgId}, ${a.userId}, 'member', 'project'
+        where exists (select 1 from memberships where user_id = ${a.userId} and project_id = ${a.projectId}) on conflict do nothing`);
+    }
     if (row.enforced && features.has("sso") && !a.sessionChecked && member?.role !== "owner" && (await mustUseSso(db, row.orgId, a.userId))) {
       const [sso] = a.sessionId ? await db.select({ id: eeSsoSessions.sessionId }).from(eeSsoSessions)
         .where(and(eq(eeSsoSessions.sessionId, a.sessionId), eq(eeSsoSessions.orgId, row.orgId))).limit(1) : [];

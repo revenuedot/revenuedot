@@ -67,6 +67,19 @@ describe("organizations", () => {
     expect(await s.db.select().from(eeOrgMembers).where(eq(eeOrgMembers.orgId, orgId))).toHaveLength(1);
   });
 
+  it("a request that raced a removal does not make the removed person an organization member again", async () => {
+    const x = await setup();
+    await s!.db.insert(schema.memberships).values({ userId: x.dev.userId, projectId: x.owner.projectId, role: "developer" });
+    // Opening the project makes them a member (source "project").
+    expect((await x.dev.browser.call("GET", `/v2/projects/${x.owner.projectId}/apps`)).status).toBe(200);
+    expect((await x.owner.browser.call("DELETE", `/v2/organizations/${x.orgId}/members/${x.dev.userId}`)).status).toBe(200);
+    // A request of theirs that had found the membership before it went now asks for project access.
+    const ext = s!.deps.extensions![0]!;
+    await ext.projectAccess!({ deps: s!.deps, userId: x.dev.userId, sessionId: null, projectId: x.owner.projectId, role: "developer" });
+    expect(await s!.db.select().from(eeOrgMembers).where(and(eq(eeOrgMembers.orgId, x.orgId), eq(eeOrgMembers.userId, x.dev.userId)))).toEqual([]);
+    expect((await x.dev.browser.call("GET", `/v2/projects/${x.owner.projectId}/apps`)).status).toBe(404);
+  });
+
   it("projects: only a project admin moves a project in; its people join; moving out turns custom roles into Viewer", async () => {
     const { s, owner, dev, O } = await setup();
     // dev is not an organization member: moving their project in is refused as not found.
