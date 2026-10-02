@@ -22,6 +22,11 @@ async function apply(ctx: SyncCtx, p: VerifiedPurchase, o: { testPay: boolean; r
   if (p.kind === "subscription") {
     const row = await subRowOf(db, app.projectId, "galaxy", p.storeKey);
     if (row) p = mergeSnapshot(p, row, now);
+    // Samsung ends a subscription whose grace period ran out by cancelling it: the cancellation is a billing error.
+    if (row?.billingIssuesDetectedAt && p.unsubscribeDetectedAt && !p.billingIssuesDetectedAt && p.storeTransactionId === row.storeTransactionId) {
+      p.billingIssuesDetectedAt = row.billingIssuesDetectedAt;
+      p.cancelReason = "BILLING_ERROR";
+    }
     if (o.refundOrderId && o.refundOrderId === p.storeTransactionId) {
       p.refundedAt = row?.refundedAt ?? o.refundAt ?? now;
       if (p.expiresDate && p.expiresDate > p.refundedAt) p.expiresDate = p.refundedAt;
@@ -62,7 +67,8 @@ export async function handleGalaxyNotification(ctx: SyncCtx, n: GalaxyNotificati
       const id = s(d.purchaseId);
       if (!id) return { status: "ignored" };
       const p = await read(id);
-      return done(await apply(ctx, p, { testPay, refundItem: n.event === "ITEM_REFUNDED" && p.kind === "non_subscription" }), p);
+      // A refund Samsung's receipt already shows (`status: cancel`) is in `p`; the notification's word alone counts only when signed.
+      return done(await apply(ctx, p, { testPay, refundItem: n.event === "ITEM_REFUNDED" && p.kind === "non_subscription" && n.verified }), p);
     }
     case "ARS_SUBSCRIBED":
     case "ARS_RESUBSCRIBED":
@@ -76,7 +82,14 @@ export async function handleGalaxyNotification(ctx: SyncCtx, n: GalaxyNotificati
       if (!id) return { status: "ignored" };
       const p = await read(id);
       const refundAt = typeof d.refundedPurchaseDate === "number" ? new Date(d.refundedPurchaseDate * 1000) : now;
-      return done(await apply(ctx, p, { testPay, ...(n.event === "ARS_REFUNDED" ? { refundOrderId: s(d.refundedOrderId), refundAt: minDate(refundAt, now) } : {}) }), p);
+      let refundOrderId = n.event === "ARS_REFUNDED" ? s(d.refundedOrderId) : null;
+      // Unsigned (no IAP public key saved): the refund counts only when Samsung's receipt of that payment says so.
+      if (refundOrderId && !n.verified) {
+        const refundedPurchase = s(d.refundedPurchaseId);
+        const r = refundedPurchase ? await client.receipt(refundedPurchase).catch(() => null) : null;
+        if (r?.status !== "cancel" || r.orderId !== refundOrderId) refundOrderId = null;
+      }
+      return done(await apply(ctx, p, { testPay, ...(refundOrderId ? { refundOrderId, refundAt: minDate(refundAt, now) } : {}) }), p);
     }
     case "ARS_UPDOWNGRADED": {
       const newId = s(d.newPurchaseId), oldId = s(d.oldPurchaseId);
