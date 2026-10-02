@@ -142,11 +142,14 @@ export function conditionMatches(ctx: CustomerContext, c: Condition, now: number
     const d = compareVersions(s, want);
     return c.operator === "greaterThan" ? d > 0 : c.operator === "greaterThanOrEqual" ? d >= 0 : c.operator === "lessThan" ? d < 0 : d <= 0;
   }
+  // A storefront is a country: "DEU" (the iOS SDK's storefront) and "DE" (what is stored as the customer's last country,
+  // and what Android reports) are the same, so the customer page and the SDK agree on a storefront rule.
+  const n = c.field === "storefront" ? (x: string) => lc(alpha2(x) ?? x) : lc;
   switch (c.operator) {
-    case "is": case "equal": return lc(s) === lc(want);
-    case "isNot": case "notEqual": return lc(s) !== lc(want);
-    case "isAnyOf": return values.some((x) => lc(x) === lc(s));
-    case "isNotAnyOf": return !values.some((x) => lc(x) === lc(s));
+    case "is": case "equal": return n(s) === n(want);
+    case "isNot": case "notEqual": return n(s) !== n(want);
+    case "isAnyOf": return values.some((x) => n(x) === n(s));
+    case "isNotAnyOf": return !values.some((x) => n(x) === n(s));
     case "contains": return lc(s).includes(lc(want));
     case "doesNotContain": return !lc(s).includes(lc(want));
     case "containsAnyOf": return values.some((x) => lc(s).includes(lc(x)));
