@@ -193,7 +193,7 @@ test("store prices, the product editor and Create with AI", async ({ page, baseU
     const csv = readFileSync(await dl.path(), "utf8");
     writeFileSync(join(dir, "play.csv"), edited(csv, [["premium:monthly", "US", "10.99"], ["premium:monthly", "GB", "0.10"], ["family:yearly", "US", "84.99"]], ["premium:weekly,Focus Premium,subscription,P1W,,US,USD,2.99,create"]));
     await page.locator("#pe-file").setInputFiles(join(dir, "play.csv"));
-    await expect(page.locator(".pe-warn")).toContainText("premium:monthly in GB changes by -99%");
+    await expect(page.locator(".pe-warn")).toContainText("premium:monthly in GB changes by -98.7% (7.99 → 0.10)");
     await page.getByRole("button", { name: "Commit 4 changes to Google Play" }).click();
     await page.getByRole("dialog", { name: "Commit to Google Play?" }).getByRole("button", { name: "Commit 4 changes" }).click();
     await expect(page.getByTestId("pe-status")).toHaveText("Partly committed", { timeout: 30_000 });

@@ -280,7 +280,7 @@ test("growth insights: write, numbers from the data, ask about one, refresh limi
   await expect(sw).toHaveAttribute("aria-checked", "true");
   await sw.click();
   await expect(sw).toHaveAttribute("aria-checked", "false");
-  await page.goto("/account");
+  await page.goto("/account/notifications");
   const acc = page.getByRole("switch", { name: "Email me the weekly growth insights digest" });
   await expect(acc).toHaveAttribute("aria-checked", "false");
   await acc.click();
