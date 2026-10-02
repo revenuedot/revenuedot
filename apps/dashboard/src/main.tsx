@@ -6,6 +6,7 @@ import "./styles/index.css";
 import { AuthPage } from "./pages/Auth";
 import { AccountPage, ForgotPasswordPage, InvitePage, ResetPasswordPage, VerifyEmailPage } from "./pages/AccountPages";
 import { Soon } from "./pages/Soon";
+import { StripeConnectCallback } from "./pages/setup/StripeConnect";
 import { BillingPage } from "./pages/Billing";
 import { ReceiveProject } from "./pages/ReceiveProject";
 import { routes } from "./routes";
@@ -45,6 +46,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/invite" element={<InvitePage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/connect/stripe" element={<StripeConnectCallback />} />
           <Route path="/account/billing" element={<BillingPage />} />
           <Route path="/projects/receive" element={<ReceiveProject />} />
           {routes}

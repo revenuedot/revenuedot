@@ -92,7 +92,11 @@ export class StripeClient {
 
   async request<T>(app: Pick<AppRow, "credentials">, method: "GET" | "POST" | "DELETE", path: string, query: Record<string, string | string[]> = {}, form?: string, idempotencyKey?: string): Promise<T> {
     const key = stripeKeyOf(app);
-    if (!key) throw new RCError(500, Codes.STORE_PROBLEM, "This Stripe app has no API key yet. Add a restricted key in the app's settings.");
+    if (!key) {
+      throw new RCError(500, Codes.STORE_PROBLEM, (app.credentials ?? {}).stripe_connected === true
+        ? "This app is connected with Stripe Connect, but this server has no Stripe Connect platform key for the connection's mode (REVENUEDOT_STRIPE_CONNECT_SECRET_KEY)."
+        : "This Stripe app has no API key yet. Add a restricted key in the app's settings.");
+    }
     const u = new URL(`${STRIPE_API}${path}`);
     for (const [k, v] of Object.entries(query)) for (const x of Array.isArray(v) ? v : [v]) u.searchParams.append(k, x);
     const headers: Record<string, string> = { authorization: `Bearer ${key}`, accept: "application/json" };

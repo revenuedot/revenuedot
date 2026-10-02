@@ -67,6 +67,11 @@ export interface Deps {
   /** Cloud: wipes a conversation's Durable Object after its row is deleted. */
   destroyConversation?: (conversationId: string) => Promise<void>;
   /**
+   * RevenueDot's Stripe Connect platform for "Connect with Stripe" (REVENUEDOT_STRIPE_CONNECT_*; prd/web-billing/PRD.md §8).
+   * Unset or incomplete: Connect is unavailable and developers paste a restricted key.
+   */
+  stripeConnect?: import("./services/stripe-connect-config.js").StripeConnectConfig;
+  /**
    * Where full-export archives are kept (prd/moves-export/PRD.md): R2 on Cloud, a folder or bucket on self-host. Unset:
    * Postgres (`archive_blobs`).
    */

@@ -11,6 +11,7 @@ import { logMailer, type Mailer } from "./mail/index.js";
 import { modelFromEnv } from "./services/paywall-ai.js";
 import { assistantModelFromEnv } from "./services/assistant/models.js";
 import { capsFromEnv } from "./services/assistant/limits.js";
+import { stripeConnectFromEnv } from "./services/stripe-connect-config.js";
 import { loadExtensions } from "./extensions.js";
 import { diskStore } from "./services/archive/disk-store.js";
 import { billingConfigFromEnv } from "./services/billing/stripe.js";
@@ -23,6 +24,8 @@ const extensions = await loadExtensions(process.env, { edition: process.env.REVE
 const stores = defaultStores();
 // Email: SMTP when REVENUEDOT_SMTP_URL is set, else every email (links included) is printed to this log.
 const publicUrl = process.env.REVENUEDOT_PUBLIC_URL?.trim() || undefined;
+// "Connect with Stripe" (prd/web-billing/PRD.md §8): REVENUEDOT_STRIPE_CONNECT_*; unavailable without them.
+const stripeConnect = stripeConnectFromEnv(process.env);
 const googleOAuth = { clientId: process.env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID?.trim() || undefined, clientSecret: process.env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET?.trim() || undefined };
 let mailer: Mailer = logMailer();
 if (process.env.REVENUEDOT_SMTP_URL?.trim()) {
@@ -41,7 +44,7 @@ let running = false;
 const runTick = async () => {
   if (running) return;
   running = true;
-  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing, extensions }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
+  try { await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing, extensions, stripeConnect }); } catch (e) { console.error("tick failed", e); } finally { running = false; }
 };
 setInterval(runTick, 30_000);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
@@ -53,7 +56,7 @@ const app = createApp({ db, now: () => new Date(), stores, kick: () => setTimeou
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
   // RevenueDot AI (prd/ai-assistant/PRD.md): ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to
   // pick another; hidden without either. Conversations and their streams live in Postgres; caps from REVENUEDOT_ASSISTANT_CAPS.
-  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS), extensions });
+  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS), extensions, stripeConnect });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 if (existsSync(`${dist}/index.html`)) {

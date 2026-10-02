@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { isAnonymous, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { accessOf } from "./access.js";
@@ -102,19 +102,31 @@ export function nonSubRowToDomain(r: typeof nonSubscriptions.$inferSelect): NonS
   };
 }
 
-export async function loadState(db: DB, customer: CustomerRow): Promise<CustomerState> {
-  const [subs, ones, attrs, access] = await Promise.all([
+/**
+ * Everything customer info is built from. With `recoveryBase` (the API origin), a customer with an open payment recovery
+ * case gets `management_url` (top level and on that subscription): the case's Customer Center link, which the SDKs'
+ * Customer Center opens from "Manage subscription" (prd/payment-recovery/PRD.md). Otherwise it stays null.
+ */
+export async function loadState(db: DB, customer: CustomerRow, opts: { recoveryBase?: string } = {}): Promise<CustomerState> {
+  const [subs, ones, attrs, access, cases] = await Promise.all([
     db.select().from(subscriptions).where(eq(subscriptions.customerId, customer.id)),
     db.select().from(nonSubscriptions).where(eq(nonSubscriptions.customerId, customer.id)),
     db.select().from(customerAttributes).where(eq(customerAttributes.customerId, customer.id)),
     accessOf(db, customer),
+    opts.recoveryBase ? db.select({ subscriptionId: schema.recoveryCases.subscriptionId, token: schema.recoveryCases.centerToken }).from(schema.recoveryCases)
+      .where(and(eq(schema.recoveryCases.customerId, customer.id), eq(schema.recoveryCases.status, "open"))).orderBy(desc(schema.recoveryCases.detectedAt)) : Promise.resolve([]),
   ]);
   const attributes: CustomerState["attributes"] = {};
   for (const a of attrs) attributes[a.key] = { value: a.value, updatedAtMs: a.updatedAtMs };
+  // The Customer Center token, never the emailed one: for web purchases it only offers to email a one-time link.
+  const link = (token: string) => `${opts.recoveryBase}/v1/recovery/c/${token}`;
+  const bySub = new Map(cases.filter((x) => x.subscriptionId).map((x) => [x.subscriptionId!, x.token]));
   return {
     originalAppUserId: customer.originalAppUserId, firstSeen: customer.firstSeen, lastSeen: customer.lastSeen,
     originalApplicationVersion: customer.originalApplicationVersion, originalPurchaseDate: customer.originalPurchaseDate,
-    subscriptions: subs.map(subRowToDomain), nonSubscriptions: ones.map(nonSubRowToDomain), attributes, access,
+    subscriptions: subs.map((r) => { const d = subRowToDomain(r); const t = bySub.get(r.id); return t ? { ...d, managementUrl: link(t) } : d; }),
+    nonSubscriptions: ones.map(nonSubRowToDomain), attributes, access,
+    ...(cases.length ? { managementUrl: link(cases[0]!.token) } : {}),
   };
 }
 
@@ -132,6 +144,7 @@ async function mergeInto(db: DB, fromId: string, intoId: string) {
   await mergeCurrency(db, fromId, intoId);
   await db.update(schema.supportTickets).set({ customerId: intoId }).where(eq(schema.supportTickets.customerId, fromId));
   await db.update(schema.refundRequests).set({ customerId: intoId }).where(eq(schema.refundRequests.customerId, fromId));
+  await db.update(schema.recoveryCases).set({ customerId: intoId }).where(eq(schema.recoveryCases.customerId, fromId));
   await db.update(schema.adRewardVerifications).set({ customerId: intoId }).where(eq(schema.adRewardVerifications.customerId, fromId));
   await db.execute(sql`UPDATE winback_sends SET customer_id = ${intoId} WHERE customer_id = ${fromId}
     AND campaign_id NOT IN (SELECT campaign_id FROM winback_sends WHERE customer_id = ${intoId})`);

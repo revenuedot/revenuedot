@@ -11,6 +11,12 @@
  * Web billing (web.spec.ts): Stripe calls with FAKE_STRIPE_KEY go to an in-memory Stripe account whose Checkout Sessions
  * open GET /__stripe/checkout/<id>, a fake "Stripe Checkout" page whose Pay button completes the session and redirects
  * (303) to its success_url. Custom domain checks read DNS from POST /__dns instead of Cloudflare's resolver.
+ * Stripe Connect (stripe-connect.spec.ts, payment-recovery.spec.ts): the server runs with a fake Connect platform
+ * (`connectPlatform`, FAKE_CONNECT_*). Specs route Stripe's authorize page to GET /__stripe/connect/authorize (Connect or
+ * Cancel), onboarding links open /__stripe/connect/onboarding/<account>, portal sessions /__stripe/portal/<id> (Update payment
+ * pays the open invoice and, for a connected account, delivers invoice.paid to the Connect endpoint). POST /__connect
+ * { available } turns the platform keys on or off; POST /__stripe/fail_renewal { subscription } fails a renewal now and,
+ * for a connected account, delivers invoice.payment_failed.
  */
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -24,10 +30,13 @@ import { getOrCreateCustomer, touch } from "@revenuedot/server/repo/customers.js
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
 import { tick } from "@revenuedot/server/services/tick.js";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { startCloud } from "./cloud-server.ts";
-import { fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
+import { connectPlatform, fakeStoreFetch, fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
+import { FAKE_CONNECT_CLIENT_ID, FAKE_CONNECT_WHSEC, FAKE_PLATFORM_KEY, FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stripe.ts";
+import { signStripePayload } from "@revenuedot/server/stores/stripe/signature.js";
+import type { StripeConnectConfig } from "@revenuedot/server/services/stripe-connect-config.js";
 import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 import { fakeAssistantModel } from "@revenuedot/server/services/assistant/fake-model.js";
 
@@ -46,6 +55,7 @@ const dns: Record<string, { CNAME?: string[]; TXT?: string[] }> = {};
 const localFetch: typeof fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
   if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return fetch(input, init);
+  if (url.hostname === "connect.stripe.com") return fakeStoreFetch(url.href, init);
   // Store import (store-import.spec.ts): App Store Connect and Google Play answer from fakes for the e2e credentials only.
   const store = await storeCatalogFetch(url.href, init ?? {});
   if (store) return store;
@@ -73,7 +83,7 @@ const SEALING_KEY = "ZTJlLWlkZW50aXR5LWtleS1mb3ItdGVzdHMtb25seSE=";
 const runTick = async () => {
   if (!ready || ticking) return;
   ticking = true;
-  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY, extensions }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
+  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY, extensions, stores, stripeConnect: connectConfig }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
 };
 setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
@@ -109,13 +119,165 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
 // RevenueDot AI answers from a scripted fake model (services/assistant/fake-model.ts): "how is revenue doing" calls
 // get-metrics, "grant pro to <user>" asks for approval, then grants. Conversations stream over SSE from the database.
 const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantModel(undefined, { delayMs: 15 });
-const api = createApp({ db, now, fetch: localFetch, stores: { ...defaultStores(), ...fakeStores() }, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, moveDrainSeconds: 1, extensions });
+// The Connect platform's keys; POST /__connect { available: false } empties them in place (the app reads them per request).
+const CONNECT_ON: StripeConnectConfig = { clientId: FAKE_CONNECT_CLIENT_ID, secretKey: FAKE_PLATFORM_KEY, testSecretKey: FAKE_PLATFORM_TEST_KEY, webhookSecrets: [FAKE_CONNECT_WHSEC] };
+const connectConfig: StripeConnectConfig = process.env.E2E_STRIPE_CONNECT === "off" ? { webhookSecrets: [] } : { ...CONNECT_ON, webhookSecrets: [...CONNECT_ON.webhookSecrets] };
+const stores = { ...defaultStores(), ...fakeStores() };
+const api = createApp({ db, now, fetch: localFetch, stores, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, stripeConnect: connectConfig, moveDrainSeconds: 1, extensions });
 
 let ready = false;
 const web = new Hono();
 // Playwright waits for this: 503 while seeding, 200 once the data is in.
 web.get("/__ready", (c) => (ready ? c.text("ready") : c.text("seeding", 503)));
 web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
+web.post("/__connect", async (c) => {
+  const b = await c.req.json() as { available: boolean };
+  Object.assign(connectConfig, b.available ? { ...CONNECT_ON, webhookSecrets: [...CONNECT_ON.webhookSecrets] } : { clientId: undefined, secretKey: undefined, testSecretKey: undefined, webhookSecrets: [] });
+  return c.json({ available: b.available });
+});
+/** Signs a Stripe event for a connected account with the platform's secret and posts it to the Connect endpoint. */
+const deliverConnect = async (event: Record<string, unknown>) => {
+  const raw = JSON.stringify(event);
+  const res = await api.fetch(new Request(`http://localhost:${PORT}/v1/notifications/stripe-connect`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": await signStripePayload(FAKE_CONNECT_WHSEC, raw) }, body: raw }));
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+// Stripe's OAuth page: the developer connects their (fake) account or cancels.
+web.get("/__stripe/connect/authorize", (c) => {
+  const q = new URL(c.req.url).search;
+  return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fake Stripe Connect</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:420px;margin:40px auto;padding:0 20px}button{font:inherit;width:100%;padding:12px;margin:6px 0;border:0;cursor:pointer}.go{background:#635bff;color:#fff}</style></head>
+<body><h1>Fake Stripe Connect</h1><p>Test only. Stripe is never called. <b>RevenueDot</b> (${esc(new URLSearchParams(q).get("client_id"))}) asks to connect to your Stripe account.</p>
+<form method="post" action="/__stripe/connect/authorize${esc(q)}"><button class="go" name="choice" value="connect" type="submit">Connect my Stripe account</button><button name="choice" value="cancel" type="submit">Cancel</button></form></body></html>`);
+});
+web.post("/__stripe/connect/authorize", async (c) => {
+  const u = new URL(c.req.url);
+  const form = await c.req.parseBody();
+  const authorize = `https://connect.stripe.com/oauth/authorize${u.search}`;
+  return c.redirect(form.choice === "cancel" ? connectPlatform.deny(authorize) : connectPlatform.approve(authorize).redirect, 303);
+});
+web.get("/__stripe/connect/onboarding/:account", (c) => {
+  const acct = c.req.param("account");
+  return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Fake Stripe onboarding</title></head><body><h1>Fake Stripe onboarding</h1><p>Account ${esc(acct)}</p>
+<form method="post"><button type="submit">Finish setup</button></form></body></html>`);
+});
+web.post("/__stripe/connect/onboarding/:account", (c) => {
+  const acct = c.req.param("account");
+  connectPlatform.finishOnboarding(acct);
+  const link = [...connectPlatform.calls].reverse().find((x) => x.path === "/v1/account_links" && x.params.account === acct);
+  return c.redirect(link?.params.return_url ?? "/", 303);
+});
+// Stripe's customer portal: "Update payment method" pays the customer's open invoice (the retry succeeds).
+web.get("/__stripe/portal/:id", (c) => {
+  const hit = connectPlatform.find(webStripe, (a) => a.portalSessions.get(c.req.param("id")));
+  if (!hit) return c.text("No such portal session", 404);
+  return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fake Stripe customer portal</title></head>
+<body><h1>Fake Stripe customer portal</h1><p>Test only. Customer ${esc(hit.value.customer)}.</p><form method="post"><label>Card <input name="card" value="4242 4242 4242 4242"></label><button type="submit">Update payment method</button></form></body></html>`);
+});
+web.post("/__stripe/portal/:id", async (c) => {
+  const hit = connectPlatform.find(webStripe, (a) => a.portalSessions.get(c.req.param("id")));
+  if (!hit) return c.text("No such portal session", 404);
+  const inv = [...hit.account.invoices.values()].reverse().find((i) => i.customer === hit.value.customer && i.status === "open");
+  if (inv) {
+    hit.account.payInvoice(inv.id);
+    if (hit.account.connect) await deliverConnect(hit.account.event("invoice.paid", hit.account.invoices.get(inv.id)!));
+  }
+  return c.redirect(hit.value.return_url ?? "/", 303);
+});
+web.post("/__stripe/fail_renewal", async (c) => {
+  const b = await c.req.json() as { subscription?: string };
+  const hit = b.subscription ? connectPlatform.find(webStripe, (a) => a.subscriptions.get(b.subscription!)) : newestSubscription(true);
+  if (!hit) return c.json({ error: "no subscription" }, 404);
+  // The failed period starts now (the fake's subscription was bought seconds ago, a year before its real renewal).
+  const inv = hit.account.failRenewal(hit.value.id, { startAt: Math.max(Math.floor(Date.now() / 1000), Number(hit.value.current_period_start) + 1) });
+  const delivered = hit.account.connect ? await deliverConnect(hit.account.event("invoice.payment_failed", inv)) : null;
+  return c.json({ subscription: hit.value.id, invoice: inv, delivered, account: hit.account.connect?.accountId ?? null });
+});
+// A store purchase and its billing issue (or renewal) through the real purchase pipeline, like Apple's, Google's and Amazon's
+// notifications would apply them (payment-recovery.spec.ts): the e2e server never talks to those stores.
+const STORE_TYPES: Record<string, { type: string; product: string; plan?: string; price: number }> = {
+  app_store: { type: "app_store", product: "recovery.pro.monthly", price: 9.99 },
+  play_store: { type: "play_store", product: "recovery_pro", plan: "monthly", price: 7.99 },
+  amazon: { type: "amazon", product: "recovery.pro.monthly", price: 8.99 },
+};
+async function storeApp(projectId: string, store: string) {
+  const t = STORE_TYPES[store]!;
+  let [app] = await db.select().from(schema.apps).where(and(eq(schema.apps.projectId, projectId), eq(schema.apps.type, t.type)));
+  if (!app) {
+    [app] = await db.insert(schema.apps).values({ id: `app_rcv_${store}_${projectId.slice(-6)}`, projectId, name: `Recovery ${store}`, type: t.type, bundleId: "com.example.recovery", publicKey: `${store}_rcv_${projectId}`, credentials: {} }).returning();
+  }
+  return app!;
+}
+web.post("/__store/billing_issue", async (c) => {
+  const b = await c.req.json() as { project_id: string; store: string; app_user_id: string; email?: string };
+  const t = STORE_TYPES[b.store];
+  if (!t) return c.json({ error: "store must be app_store, play_store or amazon" }, 400);
+  const app = await storeApp(b.project_id, b.store);
+  const key = `${b.store}_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const start = new Date(Date.now() - 30 * DAY - 3600_000), failedAt = new Date(Date.now() - 60_000);
+  const { customer } = await getOrCreateCustomer(db, b.project_id, b.app_user_id, start);
+  if (b.email) await db.insert(schema.customerAttributes).values({ customerId: customer.id, key: "$email", value: b.email, updatedAtMs: Date.now() }).onConflictDoNothing();
+  const first = { kind: "subscription", store: t.type, storeKey: key, productIdentifier: t.product, productPlanIdentifier: t.plan ?? null, isSandbox: false, purchaseDate: start, originalPurchaseDate: start,
+    expiresDate: new Date(start.getTime() + 30 * DAY), periodType: "normal", storeTransactionId: `${key}.0`, originalTransactionId: key, price: { amount: t.price, currency: "USD" }, countryCode: "US" } as VerifiedPurchase;
+  await applyPurchases(db, customer, [first], { projectId: b.project_id, appId: app.id, appUserId: b.app_user_id, now: start, fromDevice: false });
+  await applyPurchases(db, customer, [{ ...first, billingIssuesDetectedAt: failedAt, unsubscribeDetectedAt: failedAt, cancelReason: "BILLING_ERROR", gracePeriodExpiresDate: b.store === "play_store" ? null : new Date(failedAt.getTime() + 16 * DAY) } as VerifiedPurchase],
+    { projectId: b.project_id, appId: app.id, appUserId: b.app_user_id, now: failedAt, fromDevice: false });
+  return c.json({ store_key: key, app_id: app.id });
+});
+web.post("/__store/renew", async (c) => {
+  const b = await c.req.json() as { project_id: string; store: string; app_user_id: string; store_key: string };
+  const t = STORE_TYPES[b.store]!;
+  const app = await storeApp(b.project_id, b.store);
+  const { customer } = await getOrCreateCustomer(db, b.project_id, b.app_user_id, new Date());
+  const at = new Date();
+  await applyPurchases(db, customer, [{ kind: "subscription", store: t.type, storeKey: b.store_key, productIdentifier: t.product, productPlanIdentifier: t.plan ?? null, isSandbox: false,
+    purchaseDate: at, originalPurchaseDate: new Date(Date.now() - 30 * DAY - 3600_000), expiresDate: new Date(at.getTime() + 30 * DAY), periodType: "normal", storeTransactionId: `${b.store_key}.1`,
+    originalTransactionId: b.store_key, price: { amount: t.price, currency: "USD" }, countryCode: "US", billingIssuesDetectedAt: null, unsubscribeDetectedAt: null, gracePeriodExpiresDate: null, cancelReason: null } as VerifiedPurchase],
+    { projectId: b.project_id, appId: app.id, appUserId: b.app_user_id, now: at, fromDevice: false });
+  return c.json({ ok: true });
+});
+/** The newest subscription across the fake accounts (specs share one e2e server), optionally only active ones. */
+function newestSubscription(onlyActive: boolean) {
+  let best: { account: (typeof webStripe); value: Record<string, any> } | null = null;
+  for (const account of [webStripe, ...connectPlatform.accounts.values()]) {
+    for (const value of account.subscriptions.values()) {
+      if (onlyActive && value.status !== "active" && value.status !== "trialing") continue;
+      if (!best || Number(value.created) >= Number(best.value.created)) best = { account, value };
+    }
+  }
+  return best;
+}
+web.post("/__stripe/refund", async (c) => {
+  const b = await c.req.json() as { subscription?: string };
+  const hit = b.subscription ? connectPlatform.find(null, (a) => a.subscriptions.get(b.subscription!)) : newestSubscription(false);
+  if (!hit?.account.connect) return c.json({ error: "no connected subscription" }, 404);
+  const inv = hit.account.invoices.get(hit.value.latest_invoice);
+  const delivered = await deliverConnect(connectPlatform.connectEvent(hit.account.connect.accountId, "charge.refunded", { id: `ch_${crypto.randomUUID().slice(0, 8)}`, object: "charge", amount: inv?.amount_paid ?? 0, amount_refunded: inv?.amount_paid ?? 0, refunded: true, currency: inv?.currency ?? "usd", invoice: inv?.id, livemode: false, refunds: { data: [{ created: Math.floor(Date.now() / 1000) }] } }));
+  return c.json({ delivered });
+});
+// A Stripe customer without an email address (payment-recovery.spec.ts: the Customer Center's no-email page).
+web.post("/__stripe/customer_email", async (c) => {
+  const b = await c.req.json() as { subscription?: string; email: string | null };
+  const hit = b.subscription ? connectPlatform.find(webStripe, (a) => a.subscriptions.get(b.subscription!)) : newestSubscription(true);
+  if (!hit) return c.json({ error: "no subscription" }, 404);
+  const customer = hit.account.customers.get(String(hit.value.customer));
+  if (!customer) return c.json({ error: "no customer" }, 404);
+  customer.email = b.email;
+  return c.json({ subscription: hit.value.id, customer: customer.id, email: b.email });
+});
+// Onboarding progress of a connected account (account.updated through the Connect endpoint).
+web.post("/__stripe/account_updated", async (c) => {
+  const b = await c.req.json() as { account?: string; charges_enabled: boolean };
+  const account = b.account ?? [...connectPlatform.accounts.keys()].at(-1);
+  if (!account) return c.json({ error: "no account" }, 404);
+  return c.json({ account, delivered: await deliverConnect(connectPlatform.connectEvent(account, "account.updated", { id: account, object: "account", charges_enabled: b.charges_enabled, details_submitted: b.charges_enabled })) });
+});
+web.post("/__stripe/deauthorize", async (c) => {
+  const b = await c.req.json() as { account?: string };
+  const account = b.account ?? [...connectPlatform.accounts.keys()].at(-1);
+  if (!account) return c.json({ error: "no account" }, 404);
+  connectPlatform.deauthorized.add(account);
+  return c.json({ account, delivered: await deliverConnect(connectPlatform.connectEvent(account, "account.application.deauthorized", { id: FAKE_CONNECT_CLIENT_ID, object: "application", name: "RevenueDot" })) });
+});
 // Store import (store-import.spec.ts): products and prices in the in-memory Stripe account, as if made in Stripe's dashboard.
 web.post("/__stripe/seed", async (c) => {
   const b = await c.req.json() as { products?: Record<string, unknown>[]; prices?: Record<string, unknown>[] };
@@ -127,7 +289,7 @@ web.post("/__dns", async (c) => { const b = await c.req.json() as { name: string
 // A minimal stand-in for Stripe's hosted Checkout page (never Stripe itself).
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 web.get("/__stripe/checkout/:id", (c) => {
-  const s = webStripe.sessions.get(c.req.param("id"));
+  const s = connectPlatform.find(webStripe, (a) => a.sessions.get(c.req.param("id")))?.value;
   if (!s) return c.text("No such checkout session", 404);
   const item = s.line_items.data[0];
   const amount = `${(item.price.unit_amount / 100).toFixed(2)} ${String(item.price.currency).toUpperCase()}`;
@@ -140,11 +302,12 @@ web.get("/__stripe/checkout/:id", (c) => {
 ${s.cancel_url ? `<p><a href="${esc(s.cancel_url)}">Back</a></p>` : ""}</body></html>`);
 });
 web.post("/__stripe/checkout/:id", async (c) => {
-  const s = webStripe.sessions.get(c.req.param("id"));
-  if (!s) return c.text("No such checkout session", 404);
+  const hit = connectPlatform.find(webStripe, (a) => a.sessions.get(c.req.param("id")));
+  if (!hit) return c.text("No such checkout session", 404);
+  const s = hit.value;
   const form = await c.req.parseBody();
   const email = typeof form.email === "string" && form.email.trim() ? form.email.trim() : undefined;
-  webStripe.complete(s.id, { email });
+  hit.account.complete(s.id, { email });
   return c.redirect(s.success_url, 303);
 });
 web.all("/*", async (c) => {
@@ -165,6 +328,9 @@ const base = `http://localhost:${PORT}`;
 // RevenueDot Cloud for the Move and Billing specs (e2e/cloud-server.ts): E2E_PORT + 1.
 await startCloud(PORT + 1, DIST, mail);
 webStripe.checkoutUrl = `${base}/__stripe/checkout/{id}`;
+webStripe.portalUrl = `${base}/__stripe/portal/{id}`;
+connectPlatform.accountDefaults = { checkoutUrl: `${base}/__stripe/checkout/{id}`, portalUrl: `${base}/__stripe/portal/{id}` };
+connectPlatform.onboardingUrl = `${base}/__stripe/connect/onboarding/{account}`;
 
 // E2E_SEED=off (manual checks on a Railway database, which keeps its data across restarts): no demo data. The module
 // then waits forever here while the server and the tick keep running.

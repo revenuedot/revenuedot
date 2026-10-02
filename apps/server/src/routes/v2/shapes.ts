@@ -33,7 +33,8 @@ export const appleKeyConfigured = (cr: Record<string, unknown>) => has(cr, "subs
 export const googleKeyConfigured = (cr: Record<string, unknown>) => has(cr, "play_service_account_credentials_json");
 /** Amazon and Stripe secrets are sealed in apps.secrets; their hints say whether they are set (services/store-secrets.ts). */
 export const amazonKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "shared_secret");
-export const stripeKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "stripe_secret_key");
+/** A Stripe app can reach Stripe: a restricted key, or "Connect with Stripe" (prd/web-billing/PRD.md §8). */
+export const stripeKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "stripe_secret_key") || storeSecretSet(a, "stripe_connect_account_id");
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 
 /** The store segment of an app's notification URL (`/v1/notifications/{store}/{app_id}`), or null when it has none. */

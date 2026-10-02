@@ -5,6 +5,7 @@ import { Codes, RCError } from "../errors.js";
 import { backdateFirstSeen, findCustomer, isOnlyAnonymous, mergeCustomers, nonSubRowToDomain, subRowToDomain, type CustomerRow } from "../repo/customers.js";
 import type { VerifiedPurchase, VerifiedSubscription } from "../stores/types.js";
 import { recordEvent, recordSubscriberAlias, type EventSubject } from "./events.js";
+import { trackRecovery } from "./payment-recovery.js";
 import { grantForPurchase } from "./virtual-currencies.js";
 import { adoptImportedChain } from "./imported-chains.js";
 import { usdValue, type FxFetch } from "./fx.js";
@@ -121,8 +122,9 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     offerId: p.offerId === undefined ? existing?.offerId ?? null : p.offerId,
     ...(p.eligibleWinBackOfferIds === undefined ? {} : { eligibleWinBackOfferIds: p.eligibleWinBackOfferIds, winBackOffersAt: ctx.now }),
   };
+  const subId = existing?.id ?? newId("sub_", 16);
   if (existing) await db.update(subscriptions).set(values).where(eq(subscriptions.id, existing.id));
-  else await db.insert(subscriptions).values({ id: newId("sub_", 16), ...values });
+  else await db.insert(subscriptions).values({ id: subId, ...values });
   if (existing && existing.storeTransactionId === p.storeTransactionId && existing.priceAmount === 0 && (p.price?.amount ?? 0) > 0
     && existing.periodType !== "trial" && p.periodType !== "trial") {
     // The period was first recorded at a placeholder price of 0 (a Stripe invoice counted while still open); its revenue
@@ -147,7 +149,8 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     offerId: values.offerId,
   };
   if (transferFrom) await recordTransfer(db, ctx, transferFrom, owner, subject);
-  for (const d of diffSubscription(prev, next, ctx.now)) {
+  const derived = diffSubscription(prev, next, ctx.now);
+  for (const d of derived) {
     await recordEvent(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, derived: d, subject, now: ctx.now });
     if (d.type === "EXPIRATION") await db.update(subscriptions).set({ expiredEventAt: ctx.now }).where(and(eq(subscriptions.projectId, ctx.projectId), eq(subscriptions.store, p.store), eq(subscriptions.storeKey, p.storeKey)));
     const refund = d.type === "CANCELLATION" && d.isRefund;
@@ -168,6 +171,14 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
       }
     }
+  }
+  // Payment recovery: a billing issue opens a case, a renewal recovers it (prd/payment-recovery/PRD.md).
+  if (derived.length || (existing && existing.customerId !== owner.id)) {
+    await trackRecovery(db, {
+      projectId: ctx.projectId, customerId: owner.id, subscriptionId: subId, appId: ctx.appId, store: p.store, storeKey: p.storeKey, productId: p.productIdentifier,
+      isSandbox: p.isSandbox, derived, billingIssuesDetectedAt: p.billingIssuesDetectedAt ?? null, gracePeriodExpiresAt: p.gracePeriodExpiresDate ?? null,
+      priceUsd: priceUsd ?? null, transactionId: p.storeTransactionId, now: ctx.now,
+    });
   }
   if (p.replacesStoreKey && p.replacesStoreKey !== p.storeKey) await applyReplacement(db, ctx, p);
   const [o] = await db.select().from(customers).where(eq(customers.id, owner.id));

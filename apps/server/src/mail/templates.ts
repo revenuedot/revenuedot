@@ -204,7 +204,7 @@ export function supportTicketEmail(o: { base: string; projectName: string; appNa
  * A win-back email to an app's customer. It speaks for the app, not for RevenueDot: the app's name on top, the developer's
  * text, one button, and an unsubscribe link. An open-tracking image is added only when the campaign asks for it.
  */
-export function winbackEmail(o: { appName: string; subject: string; heading: string; body: string; buttonLabel: string; offerUrl: string; unsubscribeUrl: string; pixelUrl?: string | null }): Rendered {
+export function winbackEmail(o: { appName: string; subject: string; heading: string; body: string; buttonLabel: string; offerUrl: string; unsubscribeUrl: string; pixelUrl?: string | null; reason?: string }): Rendered {
   const paras = o.body.split(/\n{2,}/).map((t) => t.trim()).filter(Boolean);
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(o.subject)}</title></head>` +
     `<body style="margin:0;padding:0;background:#FFFFFF;">` +
@@ -218,12 +218,36 @@ export function winbackEmail(o: { appName: string; subject: string; heading: str
     `<a href="${esc(o.offerUrl)}" style="display:inline-block;padding:12px 20px;font-size:13px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(o.buttonLabel)}</a>` +
     `</td></tr></table></td></tr>` +
     `<tr><td style="border-top:1px solid ${BORDER};padding:20px 0 0;font-size:12px;line-height:18px;color:${FG3};">` +
-    `You received this because you subscribed to ${esc(o.appName)}. <a href="${esc(o.unsubscribeUrl)}" style="color:${FG3};">Unsubscribe</a>` +
+    `${esc(o.reason ?? `You received this because you subscribed to ${o.appName}.`)} <a href="${esc(o.unsubscribeUrl)}" style="color:${FG3};">Unsubscribe</a>` +
     `</td></tr></table></td></tr></table>` +
     (o.pixelUrl ? `<img src="${esc(o.pixelUrl)}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;">` : "") +
     `</body></html>`;
-  const text = [o.heading, "", ...paras.flatMap((t) => [t, ""]), `${o.buttonLabel}: ${o.offerUrl}`, "", "--", `You received this because you subscribed to ${o.appName}. Unsubscribe: ${o.unsubscribeUrl}`].join("\n");
+  const text = [o.heading, "", ...paras.flatMap((t) => [t, ""]), `${o.buttonLabel}: ${o.offerUrl}`, "", "--", `${o.reason ?? `You received this because you subscribed to ${o.appName}.`} Unsubscribe: ${o.unsubscribeUrl}`].join("\n");
   return { subject: o.subject, text, html };
+}
+
+/**
+ * A payment recovery email (prd/payment-recovery/PRD.md): from the app, in the win-back layout, with the "Update payment"
+ * link and an unsubscribe link. No tracking pixel.
+ */
+export function recoveryEmail(o: { appName: string; subject: string; heading: string; body: string; buttonLabel: string; linkUrl: string; unsubscribeUrl: string }): Rendered {
+  return winbackEmail({
+    appName: o.appName, subject: o.subject, heading: o.heading, body: o.body, buttonLabel: o.buttonLabel, offerUrl: o.linkUrl, unsubscribeUrl: o.unsubscribeUrl,
+    reason: `You received this because a payment for your ${o.appName} subscription failed.`,
+  });
+}
+
+/**
+ * The one-time link a customer asked for from the Customer Center to update their payment (prd/payment-recovery/PRD.md,
+ * "Customer Center path"). From the app, in the win-back layout.
+ */
+export function portalLinkEmail(o: { appName: string; linkUrl: string; unsubscribeUrl: string; minutes: number }): Rendered {
+  return winbackEmail({
+    appName: o.appName, subject: `Your link to update your payment for ${o.appName}`, heading: "Update your payment method",
+    body: `You asked to update your payment method for ${o.appName}. Use the button below within ${o.minutes} minutes. It works once.\n\nIf you did not ask for this, you can ignore this email. Nothing changes.`,
+    buttonLabel: "Update payment", offerUrl: o.linkUrl, unsubscribeUrl: o.unsubscribeUrl,
+    reason: `You received this because you asked for it in ${o.appName}.`,
+  });
 }
 
 /* ---- RevenueDot Cloud billing (prd/cloud-billing/PRD.md) ---- */

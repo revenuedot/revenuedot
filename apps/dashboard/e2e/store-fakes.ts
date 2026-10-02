@@ -10,10 +10,12 @@ import { createAmazonStore } from "@revenuedot/server/stores/amazon/index.js";
 import { createStripeStore } from "@revenuedot/server/stores/stripe/index.js";
 
 import { E2E_AMAZON_SECRET, E2E_ASC_EMPTY_KEY_ID, E2E_ASC_FORBIDDEN_KEY_ID, E2E_PLAY_DENIED_EMAIL, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_EMAIL, E2E_STRIPE_KEY, E2E_STRIPE_SUB } from "./store-values.ts";
-import { FAKE_STRIPE_KEY, FakeStripeAccount } from "../../../packages/contract/src/fake-stripe.ts";
+import { FAKE_STRIPE_KEY, FakeStripeAccount, FakeStripePlatform } from "../../../packages/contract/src/fake-stripe.ts";
 
 /** The web billing Stripe account (FAKE_STRIPE_KEY). server.ts points its checkout URL at its own fake Checkout page. */
 export const webStripe = new FakeStripeAccount();
+/** RevenueDot's Stripe Connect platform (stripe-connect.spec.ts, payment-recovery.spec.ts): OAuth, Account Links and connected accounts. */
+export const connectPlatform = new FakeStripePlatform();
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -44,8 +46,11 @@ function amazonFetch(url: string): Response {
 
 export const fakeStoreFetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  const h = new Headers(init.headers);
+  // The Connect platform: its OAuth host, its own keys, and calls for a connected account (Stripe-Account).
+  if (url.startsWith("https://connect.stripe.com/") || (url.startsWith("https://api.stripe.com/") && (h.has("stripe-account") || connectPlatform.keys.has((h.get("authorization") ?? "").replace(/^Bearer /, ""))))) return connectPlatform.fetch(url, init);
   if (url.startsWith("https://api.stripe.com/")) {
-    if (new Headers(init.headers).get("authorization") === `Bearer ${FAKE_STRIPE_KEY}`) return webStripe.fetch(url, init);
+    if (h.get("authorization") === `Bearer ${FAKE_STRIPE_KEY}`) return webStripe.fetch(url, init);
     return stripeFetch(url, init);
   }
   if (url.startsWith("https://appstore-sdk.amazon.com/")) return amazonFetch(url);

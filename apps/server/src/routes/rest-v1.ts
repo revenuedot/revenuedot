@@ -6,6 +6,7 @@ import { Codes, RCError } from "../errors.js";
 import type { Deps, Vars } from "../context.js";
 import { entitlementMap } from "../repo/catalog.js";
 import { aliasesOf, findCustomer, getOrCreateCustomer, loadState } from "../repo/customers.js";
+import { publicOrigin } from "./oauth.js";
 import { revokeSubscriberTokens } from "../services/auth.js";
 import { applyPurchases } from "../services/purchases.js";
 import { addDuration } from "../stores/test-store.js";
@@ -26,7 +27,7 @@ export function restV1(r: Hono<{ Variables: Vars }>, deps: Deps) {
   const uid = (c: any) => decodeURIComponent(c.req.param("id"));
   const respond = async (c: any, projectId: string, customerId: string) => {
     const [cust] = await deps.db.select().from(schema.customers).where(eq(schema.customers.id, customerId));
-    const state = await loadState(deps.db, cust!);
+    const state = await loadState(deps.db, cust!, { recoveryBase: deps.apiUrl ?? publicOrigin(c) });
     return c.json(buildCustomerInfo(state, await entitlementMap(deps.db, projectId), deps.now(), { includeAttributes: true }));
   };
 

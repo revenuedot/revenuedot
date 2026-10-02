@@ -91,7 +91,7 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     await d.getByRole("button", { name: "Add app" }).click();
     await page.waitForURL(/\/apps\/app/);
     stripeId = page.url().split("/").pop()!.split("#")[0]!;
-    const keySection = page.getByRole("region", { name: "Stripe API key" });
+    const keySection = page.getByRole("region", { name: "Stripe account" });
     await keySection.getByLabel("Restricted key").fill(FAKE_STRIPE_KEY);
     await keySection.getByRole("button", { name: "Check credentials" }).click();
     await expect(keySection.getByText("Valid credentials. Stripe accepted the test mode key.")).toBeVisible();
