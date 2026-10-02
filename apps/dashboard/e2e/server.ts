@@ -34,6 +34,7 @@ import { and, eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { startCloud } from "./cloud-server.ts";
 import { connectPlatform, fakeStoreFetch, fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
+import { store3Routes } from "./store3-routes.ts";
 import { FAKE_CONNECT_CLIENT_ID, FAKE_CONNECT_WHSEC, FAKE_PLATFORM_KEY, FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stripe.ts";
 import { signStripePayload } from "@revenuedot/server/stores/stripe/signature.js";
 import type { StripeConnectConfig } from "@revenuedot/server/services/stripe-connect-config.js";
@@ -285,6 +286,8 @@ web.post("/__stripe/seed", async (c) => {
   for (const p of b.prices ?? []) webStripe.prices.set(String(p.id), { object: "price", active: true, livemode: false, billing_scheme: "per_unit", metadata: {}, ...p });
   return c.json({ ok: true });
 });
+// Paddle, Roku and Samsung for stores3.spec.ts: purchases in the fakes and their signed notifications (e2e/store3-routes.ts).
+store3Routes(web, () => `http://localhost:${PORT}`, now);
 web.post("/__dns", async (c) => { const b = await c.req.json() as { name: string; CNAME?: string[]; TXT?: string[] }; dns[b.name] = { CNAME: b.CNAME, TXT: b.TXT }; return c.json({ ok: true }); });
 // A minimal stand-in for Stripe's hosted Checkout page (never Stripe itself).
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);

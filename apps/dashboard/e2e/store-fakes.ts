@@ -5,9 +5,17 @@
  * account (products, prices, Checkout Sessions, coupons, promotion codes) shared with the contract tests.
  * Store import (store-import.spec.ts) reads a fake App Store Connect and a fake Google Play Developer API through
  * `storeCatalogFetch`, which answers only the e2e key ids and service account in store-values.ts.
+ * Paddle, Roku and the Galaxy Store (stores3.spec.ts) answer from the stateful fakes in packages/contract/src, driven by the
+ * spec through `/__store3/*` (e2e/store3-routes.ts).
  */
 import { createAmazonStore } from "@revenuedot/server/stores/amazon/index.js";
 import { createStripeStore } from "@revenuedot/server/stores/stripe/index.js";
+import { createPaddleStore } from "@revenuedot/server/stores/paddle/index.js";
+import { createRokuStore } from "@revenuedot/server/stores/roku/index.js";
+import { createGalaxyStore } from "@revenuedot/server/stores/galaxy/index.js";
+import { FakePaddleAccount } from "../../../packages/contract/src/fake-paddle.ts";
+import { FakeRoku } from "../../../packages/contract/src/fake-roku.ts";
+import { FakeGalaxy } from "../../../packages/contract/src/fake-galaxy.ts";
 
 import { E2E_AMAZON_SECRET, E2E_ASC_EMPTY_KEY_ID, E2E_ASC_FORBIDDEN_KEY_ID, E2E_PLAY_DENIED_EMAIL, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_EMAIL, E2E_STRIPE_KEY, E2E_STRIPE_SUB } from "./store-values.ts";
 import { FAKE_STRIPE_KEY, FakeStripeAccount, FakeStripePlatform } from "../../../packages/contract/src/fake-stripe.ts";
@@ -16,6 +24,10 @@ import { FAKE_STRIPE_KEY, FakeStripeAccount, FakeStripePlatform } from "../../..
 export const webStripe = new FakeStripeAccount();
 /** RevenueDot's Stripe Connect platform (stripe-connect.spec.ts, payment-recovery.spec.ts): OAuth, Account Links and connected accounts. */
 export const connectPlatform = new FakeStripePlatform();
+/** One Paddle sandbox account, one Roku developer account and one Samsung seller, for the whole e2e run. */
+export const paddleFake = new FakePaddleAccount();
+export const rokuFake = new FakeRoku();
+export const galaxyFake = new FakeGalaxy();
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -54,11 +66,18 @@ export const fakeStoreFetch = (async (input: RequestInfo | URL, init: RequestIni
     return stripeFetch(url, init);
   }
   if (url.startsWith("https://appstore-sdk.amazon.com/")) return amazonFetch(url);
+  const host = new URL(url).hostname;
+  if (host === "api.paddle.com" || host === "sandbox-api.paddle.com") return paddleFake.fetch(url, init);
+  if (host === "apipub.roku.com" || host === "assets.cs.roku.com") return rokuFake.fetch(url, init);
+  if (host === "iap.samsungapps.com" || host === "devapi.samsungapps.com") return galaxyFake.fetch(url, init);
   throw new Error(`The e2e store fakes do not serve ${url}`);
 }) as typeof fetch;
 
 /** Amazon and Stripe adapters wired to the fakes above. */
-export const fakeStores = () => ({ amazon: createAmazonStore({ fetch: fakeStoreFetch }), stripe: createStripeStore({ fetch: fakeStoreFetch }) });
+export const fakeStores = () => ({
+  amazon: createAmazonStore({ fetch: fakeStoreFetch }), stripe: createStripeStore({ fetch: fakeStoreFetch }),
+  paddle: createPaddleStore({ fetch: fakeStoreFetch }), roku: createRokuStore({ fetch: fakeStoreFetch }), galaxy: createGalaxyStore({ fetch: fakeStoreFetch }),
+});
 
 // ---- Store import: App Store Connect and Google Play product lists ------------------------------------------------------
 

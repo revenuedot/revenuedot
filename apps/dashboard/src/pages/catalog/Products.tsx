@@ -18,7 +18,7 @@ import { api, fmt } from "../../lib/api";
 import { Copy, Shell } from "../../components/Shell";
 import { ConfirmDialog, Dialog, EmptyState, Field, KeyValue, Menu, PageHead, Panel, Segmented, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
-import { IMPORT_STORES, ImportProductsDialog } from "./ImportProducts";
+import { IMPORT_STORES, NO_CATALOG_API, ImportProductsDialog } from "./ImportProducts";
 import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog, ProductCell } from "./parts";
 import { count, durationLabel, errMsg, isConflict, lookupKeyError, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, v2, type Entitlement, type Offering, type Product } from "./lib";
 
@@ -83,7 +83,7 @@ export function ProductsPage() {
   const [q, setQ] = useState("");
   const [newFor, setNewFor] = useState<string | null | undefined>(undefined);
   const [importFor, setImportFor] = useState<string | null | undefined>(undefined);
-  const canImport = (apps.data ?? []).some((a) => IMPORT_STORES.has(a.type) && a.type !== "amazon");
+  const canImport = (apps.data ?? []).some((a) => IMPORT_STORES.has(a.type) && !NO_CATALOG_API.has(a.type));
   const base = `/projects/${pid}/product-catalog`;
   const all = products.data ?? [];
   const needle = q.trim().toLowerCase();
@@ -112,7 +112,7 @@ export function ProductsPage() {
         const total = all.filter((p) => p.app_id === a.id).length;
         return (
           <section className="panel" key={a.id} aria-label={`${a.name} products`}>
-            <div className="ph"><AppName app={a} sub /><span className="hrow">{IMPORT_STORES.has(a.type) && a.type !== "amazon" && <button type="button" className="btn btn-ghost" aria-label={`Import products into ${a.name}`} onClick={() => setImportFor(a.id)}><Icon name="download" />Import</button>}<button type="button" className="btn btn-ghost" onClick={() => setNewFor(a.id)}><Icon name="plus" />New</button></span></div>
+            <div className="ph"><AppName app={a} sub /><span className="hrow">{IMPORT_STORES.has(a.type) && !NO_CATALOG_API.has(a.type) && <button type="button" className="btn btn-ghost" aria-label={`Import products into ${a.name}`} onClick={() => setImportFor(a.id)}><Icon name="download" />Import</button>}<button type="button" className="btn btn-ghost" onClick={() => setNewFor(a.id)}><Icon name="plus" />New</button></span></div>
             {!rows.length ? (
               <div className="pb cat-note">{total ? (needle ? "No products match your search." : `No ${filter} products for this app.`) : <>No products for this app yet. <button type="button" className="cat-lnk" onClick={() => setNewFor(a.id)}>Add one</button>.</>}</div>
             ) : (

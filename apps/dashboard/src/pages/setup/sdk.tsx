@@ -2,11 +2,13 @@ import { useState } from "react";
 import { CodeBlock, Tabs } from "../../components/ui";
 import type { AppType } from "./data";
 
-type Platform = "ios" | "android" | "react-native" | "flutter" | "curl" | "node";
+type Platform = "ios" | "android" | "react-native" | "flutter" | "curl" | "node" | "brightscript";
 
 /** The one change an app needs: the SDK's proxy URL, set before configure, plus this app's public key. */
 export function snippet(platform: Platform, origin: string, key: string, type: AppType = "app_store"): string {
   const amazon = type === "amazon";
+  const galaxy = type === "galaxy";
+  const paddle = type === "paddle";
   switch (platform) {
     case "ios":
       return `import RevenueCat
@@ -15,6 +17,14 @@ export function snippet(platform: Platform, origin: string, key: string, type: A
 Purchases.proxyURL = URL(string: "${origin}")!   // before configure
 Purchases.configure(withAPIKey: "${key}")`;
     case "android":
+      if (galaxy) return `// build.gradle: implementation("com.revenuecat.purchases:purchases-store-galaxy:<version>")
+import com.revenuecat.purchases.Purchases
+import com.revenuecat.purchases.galaxy.GalaxyConfiguration
+import java.net.URL
+
+// In Application.onCreate() of your Galaxy Store build
+Purchases.proxyURL = URL("${origin}")   // before configure
+Purchases.configure(GalaxyConfiguration.Builder(this, "${key}").build())`;
       return amazon ? `import com.revenuecat.purchases.AmazonConfiguration
 import com.revenuecat.purchases.Purchases
 import java.net.URL
@@ -29,6 +39,12 @@ import java.net.URL
 Purchases.proxyURL = URL("${origin}")   // before configure
 Purchases.configure(PurchasesConfiguration.Builder(this, "${key}").build())`;
     case "react-native":
+      if (galaxy) return `import Purchases from "react-native-purchases";
+// npm install react-native-purchases-store-galaxy
+
+// Once, when your app starts
+await Purchases.setProxyURL("${origin}");   // before configure
+Purchases.configure({ apiKey: "${key}", store: "GALAXY" });`;
       return `import Purchases from "react-native-purchases";
 
 // Once, when your app starts
@@ -40,7 +56,20 @@ Purchases.configure({ apiKey: "${key}"${amazon ? ", useAmazon: true" : ""} });`;
 // Once, in main() before runApp
 await Purchases.setProxyURL("${origin}");   // before configure
 await Purchases.configure(${amazon ? "AmazonConfiguration" : "PurchasesConfiguration"}("${key}"));`;
+    case "brightscript":
+      return `' RevenueCat's Roku SDK (purchases-roku), in your channel's main scene
+Purchases().configure({
+    apiKey: "${key}",
+    proxyUrl: "${origin}/v1/"   ' before any other call
+})
+' Purchases().purchase({ code: "your_product_code" }, sub(result) ... end sub)`;
     case "curl":
+      if (paddle) return `# From your backend, after Paddle's transaction.completed (or subscription.created)
+curl -X POST "${origin}/v1/receipts" \\
+  -H "Authorization: Bearer ${key}" \\
+  -H "X-Platform: paddle" \\
+  -H "Content-Type: application/json" \\
+  -d '{ "app_user_id": "user_123", "fetch_token": "sub_01h..." }'   # or a transaction id (txn_...)`;
       return `# From your backend, after customer.subscription.created or checkout.session.completed
 curl -X POST "${origin}/v1/receipts" \\
   -H "Authorization: Bearer ${key}" \\
@@ -48,6 +77,12 @@ curl -X POST "${origin}/v1/receipts" \\
   -H "Content-Type: application/json" \\
   -d '{ "app_user_id": "user_123", "fetch_token": "sub_1Abc..." }'   # or a Checkout Session id (cs_...)`;
     case "node":
+      if (paddle) return `// From your Paddle webhook handler or checkout success route
+await fetch("${origin}/v1/receipts", {
+  method: "POST",
+  headers: { Authorization: "Bearer ${key}", "X-Platform": "paddle", "Content-Type": "application/json" },
+  body: JSON.stringify({ app_user_id: userId, fetch_token: transaction.subscriptionId ?? transaction.id }), // sub_... or txn_...
+});`;
       return `// From your Stripe webhook handler or checkout success route
 await fetch("${origin}/v1/receipts", {
   method: "POST",
@@ -61,12 +96,14 @@ const TABS: { value: Platform; label: string }[] = [
   { value: "ios", label: "iOS" }, { value: "android", label: "Android" }, { value: "react-native", label: "React Native" }, { value: "flutter", label: "Flutter" },
 ];
 const AMAZON_TABS = TABS.filter((t) => t.value !== "ios");
+const GALAXY_TABS = TABS.filter((t) => t.value === "android" || t.value === "react-native");
+const ROKU_TABS: { value: Platform; label: string }[] = [{ value: "brightscript", label: "BrightScript" }];
 const SERVER_TABS: { value: Platform; label: string }[] = [{ value: "curl", label: "curl" }, { value: "node", label: "Node.js" }];
 
-/** SDK setup tabs; the store decides which platforms are offered and which is shown first. Stripe purchases are posted by a server. */
+/** SDK setup tabs; the store decides which platforms are offered and which is shown first. Stripe and Paddle purchases are posted by a server. */
 export function SdkSetup({ type, origin, publicKey }: { type: AppType; origin: string; publicKey: string }) {
-  const tabs = type === "stripe" ? SERVER_TABS : type === "amazon" ? AMAZON_TABS : TABS;
-  const [p, setP] = useState<Platform>(type === "stripe" ? "curl" : type === "play_store" || type === "amazon" ? "android" : "ios");
+  const tabs = type === "stripe" || type === "paddle" ? SERVER_TABS : type === "amazon" ? AMAZON_TABS : type === "galaxy" ? GALAXY_TABS : type === "roku" ? ROKU_TABS : TABS;
+  const [p, setP] = useState<Platform>(tabs[0]!.value === "ios" && (type === "play_store" || type === "amazon") ? "android" : tabs[0]!.value);
   return (
     <div className="stack tight">
       <Tabs label="Platform" idBase="sdk" value={p} tabs={tabs} onChange={setP} />

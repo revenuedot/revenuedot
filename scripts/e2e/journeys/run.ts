@@ -41,6 +41,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   move: () => import("./move.ts"),
   billing: () => import("./billing.ts"),
   import: () => import("./import.ts"),
+  stores3: () => import("./stores3.ts"),
 };
 
 async function main() {

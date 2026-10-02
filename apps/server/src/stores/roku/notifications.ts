@@ -36,7 +36,8 @@ export function rokuNotificationRoutes(deps: Deps) {
       return c.json({ code: Codes.BAD_REQUEST, message }, 400);
     };
     let push;
-    try { push = await verifyRokuPush(raw, deps.fetch ?? client.fetchImpl, now); } catch (e) {
+    // Roku's key set through the Roku client's own fetch (the same one that validates transactions).
+    try { push = await verifyRokuPush(raw, client.fetchImpl, now); } catch (e) {
       const message = e instanceof RokuPushError ? e.message : String(e);
       return reject(`rejected: ${message}`, message);
     }

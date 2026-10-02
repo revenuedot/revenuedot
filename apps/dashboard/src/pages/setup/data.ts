@@ -3,7 +3,7 @@ import { api, type List } from "../../lib/api";
 
 /** API shapes and queries shared by the setup pages (apps, API keys, integrations, project settings). */
 
-export type AppType = "app_store" | "mac_app_store" | "play_store" | "amazon" | "stripe" | "rc_billing" | "roku" | "paddle" | "test_store";
+export type AppType = "app_store" | "mac_app_store" | "play_store" | "amazon" | "stripe" | "rc_billing" | "roku" | "paddle" | "test_store" | "galaxy";
 
 export interface App {
   object: "app"; id: string; name: string; type: AppType; project_id: string; created_at: number; custom_url_scheme?: string;
@@ -12,6 +12,9 @@ export interface App {
   play_store?: { package_name: string; play_service_account_credentials_configured: boolean };
   amazon?: { package_name: string };
   stripe?: { stripe_account_id: string | null };
+  paddle?: { paddle_is_sandbox: boolean; paddle_api_key: null };
+  roku?: { roku_channel_id: string | null; roku_channel_name: string | null };
+  galaxy?: { package_name: string };
 }
 
 export interface PublicKey { object: "public_api_key"; id: string; key: string; environment: "production" | "sandbox"; app_id: string; created_at: number }
@@ -31,6 +34,11 @@ export interface StoreSettings {
     amazon_shared_secret?: { configured: boolean };
     stripe_secret_key?: { configured: boolean; mode: "live" | "test" | null; kind: "restricted" | "secret" | "other" | null; last4: string | null };
     stripe_webhook_secret?: { configured: boolean };
+    paddle_api_key?: { configured: boolean; environment: "live" | "sandbox" | null; last4: string | null };
+    paddle_webhook_secret?: { configured: boolean };
+    roku_api_key?: { configured: boolean };
+    galaxy_service_account?: { configured: boolean; service_account_id: string | null };
+    galaxy_iap_public_key?: { configured: boolean };
   };
   /** Amazon: the SNS topic notifications must come from (optional). */
   sns_topic_arn?: string | null;
@@ -40,9 +48,13 @@ export interface StoreSettings {
     /** How the app reaches Stripe: "Connect with Stripe", a restricted key, or not yet. */
     connection?: "stripe_connect" | "restricted_key" | null; connected_account?: string | null; mode?: "live" | "test" | null;
   } | null;
+  /** Paddle: the key's environment, how purchases first seen in a notification find their customer, Apply in Paddle's destination. */
+  paddle?: { environment: "live" | "sandbox"; paddle_is_sandbox: boolean; app_user_id_source: "custom_data" | "anonymous"; app_user_id_custom_data_key: string; notification_setting_id: string | null; events: string[]; configured: boolean } | null;
+  roku?: { roku_channel_id: string | null; roku_channel_name: string | null; configured: boolean } | null;
+  galaxy?: { package_name: string | null; service_account_id: string | null; configured: boolean; iap_public_key_configured: boolean } | null;
 }
 
-export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string; mode?: "live" | "test" }
+export interface CredentialsCheck { object: "credentials_check"; status: "valid" | "invalid" | "unreachable"; valid: boolean; message: string; checked_at: number; client_email?: string | null; key_id?: string; mode?: "live" | "test"; environment?: "live" | "sandbox"; service_account_id?: string }
 
 export interface SdkVersion {
   app_id: string | null; platform: string; platform_flavor: string; platform_flavor_version: string | null; sdk_version: string;
@@ -91,16 +103,17 @@ export interface Product {
   indicative_price?: { amount_micros: number; currency: string } | null;
 }
 
-export const STORES: Record<string, { label: string; icon: string; idLabel?: string; idField?: "bundle_id" | "package_name"; notif?: "apple" | "google" | "amazon" | "stripe" }> = {
+export const STORES: Record<string, { label: string; icon: string; idLabel?: string; idField?: "bundle_id" | "package_name"; notif?: "apple" | "google" | "amazon" | "stripe" | "paddle" | "roku" | "galaxy" }> = {
   app_store: { label: "App Store", icon: "apple", idLabel: "Bundle ID", idField: "bundle_id", notif: "apple" },
   mac_app_store: { label: "Mac App Store", icon: "apple", idLabel: "Bundle ID", idField: "bundle_id", notif: "apple" },
   play_store: { label: "Google Play", icon: "play", idLabel: "Package name", idField: "package_name", notif: "google" },
   test_store: { label: "Test Store", icon: "flask" },
   amazon: { label: "Amazon Appstore", icon: "apps", idLabel: "Package name", idField: "package_name", notif: "amazon" },
-  stripe: { label: "Stripe", icon: "web", notif: "stripe" }, rc_billing: { label: "Web Billing", icon: "web" }, roku: { label: "Roku", icon: "apps" }, paddle: { label: "Paddle", icon: "web" },
+  stripe: { label: "Stripe", icon: "web", notif: "stripe" }, rc_billing: { label: "Web Billing", icon: "web" }, roku: { label: "Roku", icon: "apps", notif: "roku" }, paddle: { label: "Paddle", icon: "web", notif: "paddle" },
+  galaxy: { label: "Galaxy Store", icon: "phone", idLabel: "Package name", idField: "package_name", notif: "galaxy" },
 };
 
-export const storeId = (a: App) => a.app_store?.bundle_id ?? a.mac_app_store?.bundle_id ?? a.play_store?.package_name ?? a.amazon?.package_name ?? null;
+export const storeId = (a: App) => a.app_store?.bundle_id ?? a.mac_app_store?.bundle_id ?? a.play_store?.package_name ?? a.amazon?.package_name ?? a.galaxy?.package_name ?? null;
 
 const all = async <T,>(path: string): Promise<T[]> => {
   const out: T[] = [];

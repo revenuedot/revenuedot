@@ -25,7 +25,11 @@ import { TestStorePriceField } from "../catalog/parts";
  * account JSON with a live check, Pub/Sub push endpoint and steps. Amazon Appstore: package name, shared key with a live
  * RVS check, the Real-time Notifications URL (SNS) with its live status, the pinned SNS topic (set from the first verified message). Stripe: restricted
  * key with a live check, webhook URL with the events to select and the signing secret, how app user ids are found, when
- * a subscription counts, and server snippets for POST /v1/receipts. Test Store: nothing to configure, a test purchase.
+ * a subscription counts, and server snippets for POST /v1/receipts. Paddle: API key with a live check, the notification
+ * destination (Apply in Paddle, or the URL and the secret key by hand), how app user ids are found, server snippets. Roku:
+ * Roku Pay API key with a live check, channel id and name, the push notification URL, the BrightScript snippet. Galaxy
+ * Store: package name, service account with a live check, the Instant Server Notification URL and the optional IAP public
+ * key, the Android and React Native snippets. Test Store: nothing to configure, a test purchase.
  *
  * GAPS vs RevenueCat (later tiers; each shows as a note in its collapsed section):
  * - "Apply in App Store Connect" (setting the notification URL through Apple's API) and Apple's "request a test
@@ -45,6 +49,9 @@ type Draft = {
   forwardUrl: string; trackNew: boolean; allowUnsigned: boolean;
   amazonSecret: string; snsTopic: string;
   stripeKey: string; stripeWhsec: string; stripeAccount: string; userSource: "metadata" | "customer_id" | "anonymous"; metadataKey: string; registerOn: "invoice_paid" | "invoice_created";
+  paddleKey: string; paddleSecret: string; paddleSandbox: boolean; paddleUserSource: "custom_data" | "anonymous"; paddleUserKey: string;
+  rokuKey: string; rokuChannelId: string; rokuChannelName: string;
+  galaxyAccount: string; galaxyKey: { name: string; text: string } | null; galaxyIapKey: string;
 };
 
 const initial = (a: App, s: StoreSettings): Draft => ({
@@ -57,10 +64,18 @@ const initial = (a: App, s: StoreSettings): Draft => ({
   amazonSecret: "", snsTopic: s.sns_topic_arn ?? "",
   stripeKey: "", stripeWhsec: "", stripeAccount: s.stripe?.stripe_account_id ?? "", userSource: s.stripe?.app_user_id_source ?? "metadata",
   metadataKey: s.stripe?.app_user_id_metadata_key ?? "app_user_id", registerOn: s.stripe?.register_on ?? "invoice_paid",
+  paddleKey: "", paddleSecret: "", paddleSandbox: s.paddle?.paddle_is_sandbox ?? false, paddleUserSource: s.paddle?.app_user_id_source ?? "custom_data",
+  paddleUserKey: s.paddle?.app_user_id_custom_data_key ?? "app_user_id",
+  rokuKey: "", rokuChannelId: s.roku?.roku_channel_id ?? "", rokuChannelName: s.roku?.roku_channel_name ?? "",
+  galaxyAccount: s.galaxy?.service_account_id ?? "", galaxyKey: null, galaxyIapKey: "",
 });
 
-type StoreName = "Apple" | "Google" | "Amazon" | "Stripe";
-const storeName = (type: App["type"]): StoreName => (type === "play_store" ? "Google" : type === "amazon" ? "Amazon" : type === "stripe" ? "Stripe" : "Apple");
+type StoreName = "Apple" | "Google" | "Amazon" | "Stripe" | "Paddle" | "Roku" | "Samsung";
+const STORE_NAME: Partial<Record<App["type"], StoreName>> = { play_store: "Google", amazon: "Amazon", stripe: "Stripe", paddle: "Paddle", roku: "Roku", galaxy: "Samsung" };
+const storeName = (type: App["type"]): StoreName => STORE_NAME[type] ?? "Apple";
+
+/** Paddle server-side API keys (69 characters, the prefix is the environment), or the 50-character keys from before 2025-05-06. */
+const PADDLE_KEY = /^(pdl_(live|sdbx)_apikey_[a-z\d]{26}_[a-zA-Z\d]{22}_[a-zA-Z\d]{3}|[a-z\d]{50})$/;
 
 /** The Stripe events the webhook endpoint needs (RevenueCat's list plus the ones RevenueDot also reads). */
 export const STRIPE_EVENTS = [
@@ -122,6 +137,24 @@ function validate(type: App["type"], d: Draft, s: StoreSettings, origin: string)
     if (d.stripeAccount.trim() && !/^acct_[A-Za-z0-9]+$/.test(d.stripeAccount.trim())) e.stripeAccount = "A Stripe account id starts with acct_.";
     if (d.userSource === "metadata" && !/^[\w.-]{1,40}$/.test(d.metadataKey.trim())) e.metadataKey = "Use the metadata key you set in Stripe, for example app_user_id.";
   }
+  if (type === "paddle") {
+    const k = d.paddleKey.trim();
+    if (k && /^(live|test)_/.test(k)) e.paddleKey = "This is a client-side token. Paste a server-side API key (pdl_live_apikey_… or pdl_sdbx_apikey_…).";
+    else if (k && !PADDLE_KEY.test(k)) e.paddleKey = "A Paddle API key starts with pdl_live_apikey_ or pdl_sdbx_apikey_ and is 69 characters long.";
+    if (d.paddleSecret.trim() && !/^pdl_ntfset_[A-Za-z0-9_]+$/.test(d.paddleSecret.trim())) e.paddleSecret = "The secret key starts with pdl_ntfset_.";
+    if (d.paddleUserSource === "custom_data" && !/^[\w.-]{1,40}$/.test(d.paddleUserKey.trim())) e.paddleUserKey = "Use the custom_data key your checkout sets, for example app_user_id.";
+  }
+  if (type === "roku") {
+    if (d.rokuKey.trim() && !/^[A-Za-z0-9]{20,64}$/.test(d.rokuKey.trim())) e.rokuKey = "The Roku Pay API key is letters and digits, from Roku Pay web services.";
+    if (d.rokuChannelId.trim() && !/^[A-Za-z0-9_-]{1,20}$/.test(d.rokuChannelId.trim())) e.rokuChannelId = "Use the channel id shown on your channel's page, like 123456.";
+    if (d.rokuChannelName.length > 30) e.rokuChannelName = "At most 30 characters.";
+  }
+  if (type === "galaxy") {
+    if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(d.storeId.trim())) e.storeId = "A package name looks like com.company.app.";
+    if (d.galaxyAccount.trim() && !/^[\w.@:-]{4,100}$/.test(d.galaxyAccount.trim())) e.galaxyAccount = "Use the service account id shown in Seller Portal.";
+    if (d.galaxyKey && !/PRIVATE KEY-----/.test(d.galaxyKey.text) && !/^[A-Za-z0-9+/=\s]{100,}$/.test(d.galaxyKey.text.trim())) e.galaxyKey = "This is not a private key file. Upload the key Seller Portal gave you when you created the service account.";
+    if (d.galaxyIapKey.trim() && !/PUBLIC KEY-----/.test(d.galaxyIapKey) && !/^[A-Za-z0-9+/=\s]{100,}$/.test(d.galaxyIapKey.trim())) e.galaxyIapKey = "Paste the IAP public key from Seller Portal → Assistance → API Service.";
+  }
   const f = d.forwardUrl.trim();
   if (f) {
     let u: URL | null = null;
@@ -162,6 +195,7 @@ function NotificationStatus({ s, store }: { s: StoreSettings; store: StoreName }
 
 const FORWARD_NAME: Record<StoreName, string> = {
   Apple: " Apple Server Notification URL", Google: " Google real-time notification URL", Amazon: " Amazon Real-time Notifications URL", Stripe: " Stripe webhook endpoint URL",
+  Paddle: " Paddle notification URL", Roku: " Roku push notification URL", Samsung: " Galaxy Store server notification URL",
 };
 
 function ForwardField({ d, set, errors, s, store }: { d: Draft; set: (p: Partial<Draft>) => void; errors: Record<string, string>; s: StoreSettings; store: StoreName }) {
@@ -182,6 +216,9 @@ const TRACK_HINT: Record<StoreName, string> = {
   Google: "Record purchases RevenueDot first hears about from Google. The customer is matched by the obfuscated account ID set at purchase, or gets an anonymous ID.",
   Amazon: "Record purchases RevenueDot first hears about from Amazon. Amazon's notifications carry no app user ID, so the customer gets an anonymous ID until the app posts the receipt.",
   Stripe: "Record subscriptions and Checkout purchases RevenueDot first hears about from Stripe, even if your backend never posts them. The customer is found as set below.",
+  Paddle: "Record subscriptions and transactions RevenueDot first hears about from Paddle, even if your backend never posts them. The customer is found as set below.",
+  Roku: "Record purchases RevenueDot first hears about from Roku. Roku's notifications carry no app user ID, so the customer gets an anonymous ID until the channel posts the purchase.",
+  Samsung: "Record purchases RevenueDot first hears about from Samsung. Samsung's notifications carry no app user ID, so the customer gets an anonymous ID until the app posts the purchase.",
 };
 
 function TrackNew({ d, set, store }: { d: Draft; set: (p: Partial<Draft>) => void; store: StoreName }) {
@@ -312,14 +349,20 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [check, setCheck] = useState<{ busy: boolean; result: CredentialsCheck | null; error: string | null }>({ busy: false, result: null, error: null });
-  const [replacing, setReplacing] = useState<{ p8?: boolean; asc?: boolean; sa?: boolean; secret?: boolean; amazon?: boolean; stripeKey?: boolean; whsec?: boolean }>({});
+  const [replacing, setReplacing] = useState<{ p8?: boolean; asc?: boolean; sa?: boolean; secret?: boolean; amazon?: boolean; stripeKey?: boolean; whsec?: boolean; paddleKey?: boolean; paddleSecret?: boolean; rokuKey?: boolean; galaxyKey?: boolean; galaxyIap?: boolean }>({});
+  const [applying, setApplying] = useState<{ busy: boolean; done: string | null; error: string | null }>({ busy: false, done: null, error: null });
   const [deleting, setDeleting] = useState(false);
   const set = (p: Partial<Draft>) => { setTouched(true); setD((x) => ({ ...x, ...p })); setErrors((e) => { const n = { ...e }; for (const k of Object.keys(p)) delete n[k]; return n; }); };
   const apple = app.type === "app_store" || app.type === "mac_app_store";
   const google = app.type === "play_store";
   const amazon = app.type === "amazon";
   const stripe = app.type === "stripe";
+  const paddle = app.type === "paddle";
+  const roku = app.type === "roku";
+  const galaxy = app.type === "galaxy";
   const test = app.type === "test_store";
+  /** Purchases are posted by the developer's backend, not an SDK in the app. */
+  const server = stripe || paddle;
   const name = storeName(app.type);
   const dirty = JSON.stringify(d) !== JSON.stringify(start);
   const sa = d.sa ? parseServiceAccount(d.sa.text) : null;
@@ -337,6 +380,9 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
       ? { [app.type]: { bundle_id: d.storeId.trim() || null, subscription_private_key: d.p8?.text ?? null, subscription_key_id: d.keyId.trim() || null, subscription_key_issuer: d.issuerId.trim() || null } }
       : amazon ? { amazon: { package_name: d.storeId.trim() || null, shared_secret: d.amazonSecret.trim() || null } }
       : stripe ? { stripe: { stripe_secret_key: d.stripeKey.trim() || null, stripe_account_id: d.stripeAccount.trim() || null } }
+      : paddle ? { paddle: { paddle_api_key: d.paddleKey.trim() || null, paddle_is_sandbox: d.paddleSandbox } }
+      : roku ? { roku: { roku_api_key: d.rokuKey.trim() || null } }
+      : galaxy ? { galaxy: { package_name: d.storeId.trim() || null, galaxy_service_account_id: d.galaxyAccount.trim() || null, galaxy_service_account_private_key: d.galaxyKey?.text ?? null } }
       : { play_store: { package_name: d.storeId.trim() || null, play_service_account_credentials_json: d.sa?.text ?? null } };
     try {
       const r = await api<CredentialsCheck>(`${base(pid)}/apps/${app.id}/actions/verify_credentials`, { method: "POST", json });
@@ -385,6 +431,24 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
       put("app_user_id_metadata_key", d.metadataKey.trim(), start.metadataKey);
       put("register_on", d.registerOn, start.registerOn);
     }
+    if (paddle) {
+      if (d.paddleKey.trim()) { details.paddle_api_key = d.paddleKey.trim(); credsChanged = true; }
+      if (d.paddleSecret.trim()) details.paddle_webhook_secret = d.paddleSecret.trim();
+      put("paddle_is_sandbox", d.paddleSandbox, start.paddleSandbox);
+      put("app_user_id_source", d.paddleUserSource, start.paddleUserSource);
+      put("app_user_id_custom_data_key", d.paddleUserKey.trim(), start.paddleUserKey);
+    }
+    if (roku) {
+      if (d.rokuKey.trim()) { details.roku_api_key = d.rokuKey.trim(); credsChanged = true; }
+      put("roku_channel_id", d.rokuChannelId.trim() || null, start.rokuChannelId || null);
+      put("roku_channel_name", d.rokuChannelName.trim() || null, start.rokuChannelName || null);
+    }
+    if (galaxy) {
+      put("package_name", d.storeId.trim(), start.storeId);
+      if (d.galaxyAccount.trim() !== start.galaxyAccount) { details.galaxy_service_account_id = d.galaxyAccount.trim() || null; credsChanged = true; }
+      if (d.galaxyKey) { details.galaxy_service_account_private_key = d.galaxyKey.text.trim(); credsChanged = true; }
+      if (d.galaxyIapKey.trim()) details.galaxy_iap_public_key = d.galaxyIapKey.trim();
+    }
     if (!test) {
       put("notification_forward_url", d.forwardUrl.trim() || null, start.forwardUrl || null);
       put("track_new_purchases", d.trackNew, start.trackNew);
@@ -421,9 +485,25 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const connected = s.stripe?.connection === "stripe_connect";
   const stripeOk = !!stripeKey?.configured || connected;
   const whsecOk = !!cr.stripe_webhook_secret?.configured;
-  const credsOk = apple ? keyOk : google ? saOk : amazon ? amazonOk : stripeOk;
-  const credsName = apple ? "In-app purchase key" : google ? "Service account" : amazon ? "Shared key" : "Stripe account";
-  const notifName = apple ? "Server notifications" : google ? "Real-time developer notifications" : amazon ? "Real-time Notifications" : "Stripe webhooks";
+  const paddleKey = cr.paddle_api_key;
+  const paddleOk = !!paddleKey?.configured;
+  const paddleSecretOk = !!cr.paddle_webhook_secret?.configured;
+  const rokuOk = !!cr.roku_api_key?.configured;
+  const galaxyOk = !!cr.galaxy_service_account?.configured;
+  const credsOk = apple ? keyOk : google ? saOk : amazon ? amazonOk : paddle ? paddleOk : roku ? rokuOk : galaxy ? galaxyOk : stripeOk;
+  const credsName = apple ? "In-app purchase key" : google || galaxy ? "Service account" : amazon ? "Shared key" : paddle ? "Paddle API key" : roku ? "Roku Pay API key" : "Stripe account";
+  const notifName = apple ? "Server notifications" : google ? "Real-time developer notifications" : amazon ? "Real-time Notifications" : paddle ? "Paddle notifications" : roku ? "Roku push notifications" : galaxy ? "Server notifications" : "Stripe webhooks";
+  // A 50-character Paddle key carries no environment: the developer says whether it is a sandbox key.
+  const paddleLegacy = paddle && (/^[a-z\d]{50}$/.test(d.paddleKey.trim()) || (paddleOk && !d.paddleKey.trim() && paddleKey?.environment === null));
+
+  const applyInPaddle = async () => {
+    setApplying({ busy: true, done: null, error: null });
+    try {
+      const r = await api<{ notification_setting_id: string; secret_saved: boolean }>(`${base(pid)}/apps/${app.id}/actions/apply_notification_settings`, { method: "POST", json: {} });
+      setApplying({ busy: false, done: `Paddle now sends notifications to this app (destination ${r.notification_setting_id}). The secret key is saved.`, error: null });
+      await qc.invalidateQueries({ queryKey: ["store_settings", pid, app.id] });
+    } catch (e) { setApplying({ busy: false, done: null, error: errMsg(e) }); }
+  };
 
   return (
     <div className="page narrow">
@@ -432,7 +512,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           <h1>{app.name}</h1>
           <p className="hrow">{store.label} · <span className="copy"><span>{app.id}</span><CopyButton value={app.id} label="Copy app ID" /></span></p>
         </div>
-        {(apple || google || stripe) && <div className="actions"><button type="button" className="btn btn-line" onClick={() => setImporting(true)}><Icon name="download" />Import products</button></div>}
+        {(apple || google || stripe || paddle || galaxy) && <div className="actions"><button type="button" className="btn btn-line" onClick={() => setImporting(true)}><Icon name="download" />Import products</button></div>}
       </div>
       {importing && <ImportProductsDialog pid={pid} apps={[app as unknown as CatalogApp]} appId={app.id} onClose={() => setImporting(false)} />}
 
@@ -442,8 +522,8 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           <div className="pb stack tight">
             <StatusLine tone={credsOk ? "ok" : "bad"}><a className="linkish" href="#credentials">{credsName}</a> {credsOk ? (connected ? "is connected with Stripe Connect." : "is saved.") : stripe ? "is not connected yet. Connect with Stripe, or add a restricted key. RevenueDot needs it to check purchases with Stripe." : `is missing. RevenueDot needs it to check purchases with ${name}.`}</StatusLine>
             <StatusLine tone={s.last_notification_at ? "ok" : "idle"}><a className="linkish" href={connected ? "#credentials" : "#notifications"}>{notifName}</a> {s.last_notification_at ? `arrive (last ${fmt.ago(s.last_notification_at)}).` : "have not arrived yet."}</StatusLine>
-            {stripe
-              ? <StatusLine tone="idle"><a className="linkish" href="#sdk">Your backend</a>: post each new subscription or Checkout Session to <span className="mono">/v1/receipts</span> with this app's key.</StatusLine>
+            {server
+              ? <StatusLine tone="idle"><a className="linkish" href="#sdk">Your backend</a>: post each new {paddle ? "subscription or transaction" : "subscription or Checkout Session"} to <span className="mono">/v1/receipts</span> with this app's key.</StatusLine>
               : <StatusLine tone="idle"><a className="linkish" href="#sdk">SDK</a>: set the proxy URL and this app's key in your app, then make a sandbox purchase.</StatusLine>}
           </div>
         </section>
@@ -454,8 +534,8 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           <Field label="App name" htmlFor="app-name" error={errors.name}>
             <input id="app-name" className="input" maxLength={255} value={d.name} aria-invalid={!!errors.name} onChange={(e) => set({ name: e.target.value })} />
           </Field>
-          {(apple || google || amazon) && (
-            <Field label={store.idLabel!} htmlFor="f-storeId" error={errors.storeId} hint={apple ? "In Xcode: your target → General → Bundle Identifier." : amazon ? "Your app's package name in the Amazon Appstore Console." : "Shown under your app's name in Play Console."}>
+          {(apple || google || amazon || galaxy) && (
+            <Field label={store.idLabel!} htmlFor="f-storeId" error={errors.storeId} hint={apple ? "In Xcode: your target → General → Bundle Identifier." : amazon ? "Your app's package name in the Amazon Appstore Console." : galaxy ? "Your app's package name in Samsung Seller Portal." : "Shown under your app's name in Play Console."}>
               <input id="f-storeId" className="input mono" value={d.storeId} spellCheck={false} aria-invalid={!!errors.storeId} onChange={(e) => set({ storeId: e.target.value })} />
             </Field>
           )}
@@ -724,6 +804,172 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
         </Section>
       )}
 
+      {paddle && (
+        <Section id="credentials" title="Paddle API key" tag={<span className="tag gold">Required</span>}>
+          <p className="section-sub">RevenueDot reads subscriptions, transactions and refunds from your own Paddle account with a server-side API key. It never charges, refunds or changes anything in Paddle.</p>
+          <ol className="steps">
+            <li>In <a href="https://vendors.paddle.com/authentication-v2" target="_blank" rel="noreferrer">Paddle → Developer tools → Authentication</a>, click <b>New API key</b>. Use the sandbox dashboard for a sandbox key.</li>
+            <li>Give it <b>Read</b> access to Subscriptions, Transactions, Adjustments, Customers, Products and Prices, and <b>Write</b> access to Notification settings and Customer portal sessions. Set no expiry.</li>
+            <li>Paste the key below and check it. A sandbox key (<span className="mono">pdl_sdbx_apikey_…</span>) records sandbox purchases; use one Paddle app per Paddle account.</li>
+          </ol>
+          {paddleOk && !replacing.paddleKey && !d.paddleKey
+            ? <Saved onReplace={() => setReplacing({ ...replacing, paddleKey: true })} replaceLabel="Replace key">A {paddleKey?.environment === "sandbox" ? "sandbox" : paddleKey?.environment === "live" ? "live" : ""} key ending in <span className="mono">{paddleKey?.last4}</span> is saved.</Saved>
+            : (
+              <Field label="API key" htmlFor="f-paddleKey" error={errors.paddleKey}>
+                <input id="f-paddleKey" className="input mono" type="password" autoComplete="off" spellCheck={false} placeholder="pdl_live_apikey_…" value={d.paddleKey} aria-invalid={!!errors.paddleKey} onChange={(e) => set({ paddleKey: e.target.value })} />
+              </Field>
+            )}
+          {paddleLegacy && <Check checked={d.paddleSandbox} onChange={(v) => set({ paddleSandbox: v })} label="This is a sandbox key" hint="Keys made before May 2025 do not say which environment they belong to." />}
+          <div className="hrow">
+            <button type="button" className="btn btn-line" disabled={check.busy || (!paddleOk && !d.paddleKey.trim())} onClick={() => runCheck(true)}><Icon name="refresh" />Check credentials</button>
+            <CheckResult state={check} />
+          </div>
+        </Section>
+      )}
+
+      {paddle && s.notification_url && (
+        <Section id="notifications" title="Paddle notifications">
+          <p className="section-sub">Paddle tells RevenueDot about renewals, failed payments, cancellations, pauses and refunds. Every notification's Paddle-Signature is checked with the destination's secret key. Notifications are needed for refunds of one-time purchases.</p>
+          <Field label="Notification URL" htmlFor="notif-url">
+            <CopyField value={s.notification_url} label="notification URL" />
+          </Field>
+          <NotificationStatus s={s} store="Paddle" />
+          <div className="hrow">
+            <button type="button" className="btn btn-dark" disabled={applying.busy || !paddleOk} onClick={applyInPaddle}><Icon name="send" />{applying.busy ? "Applying…" : s.paddle?.notification_setting_id ? "Apply in Paddle again" : "Apply in Paddle"}</button>
+            {!paddleOk && <span className="subtle">Save the API key first.</span>}
+            {applying.done && <StatusLine tone="ok">{applying.done}</StatusLine>}
+            {applying.error && <StatusLine tone="bad">{applying.error}</StatusLine>}
+          </div>
+          <Disclosure title="Or set it up in Paddle yourself" sub={paddleSecretOk ? "Secret key saved" : "URL, events and secret key"}>
+            <ol className="steps">
+              <li>In <a href="https://vendors.paddle.com/notifications-v2" target="_blank" rel="noreferrer">Paddle → Developer tools → Notifications</a>, click <b>New destination</b> with the URL above.</li>
+              <li>Select these events: <span className="mono">{(s.paddle?.events ?? []).join(", ")}</span>.</li>
+              <li>Open the destination, copy its <b>secret key</b> and paste it below.</li>
+            </ol>
+            {paddleSecretOk && !replacing.paddleSecret && !d.paddleSecret
+              ? <Saved onReplace={() => setReplacing({ ...replacing, paddleSecret: true })} replaceLabel="Replace secret">A secret key is saved.</Saved>
+              : (
+                <Field label="Secret key" htmlFor="f-paddleSecret" error={errors.paddleSecret} hint={!paddleSecretOk ? "Without it every notification is refused with 400." : undefined}>
+                  <input id="f-paddleSecret" className="input mono" type="password" autoComplete="off" spellCheck={false} placeholder="pdl_ntfset_…" value={d.paddleSecret} aria-invalid={!!errors.paddleSecret} onChange={(e) => set({ paddleSecret: e.target.value })} />
+                </Field>
+              )}
+          </Disclosure>
+          <ForwardField d={d} set={set} errors={errors} s={s} store="Paddle" />
+        </Section>
+      )}
+
+      {paddle && (
+        <Section id="paddle-purchases" title="Purchases first seen in a notification">
+          <TrackNew d={d} set={set} store="Paddle" />
+          <div className="cols">
+            <Field label="Find the app user ID from" htmlFor="f-paddleUserSource" hint="Posts from your backend always carry the app user ID.">
+              <select id="f-paddleUserSource" className="select" value={d.paddleUserSource} onChange={(e) => set({ paddleUserSource: e.target.value as Draft["paddleUserSource"] })}>
+                <option value="custom_data">A custom_data key</option>
+                <option value="anonymous">An anonymous ID</option>
+              </select>
+            </Field>
+            {d.paddleUserSource === "custom_data" && (
+              <Field label="custom_data key" htmlFor="f-paddleUserKey" error={errors.paddleUserKey} hint="Read on the subscription and the transaction. Without it, an anonymous ID is used.">
+                <input id="f-paddleUserKey" className="input mono" spellCheck={false} value={d.paddleUserKey} aria-invalid={!!errors.paddleUserKey} onChange={(e) => set({ paddleUserKey: e.target.value })} />
+              </Field>
+            )}
+          </div>
+        </Section>
+      )}
+
+      {roku && (
+        <Section id="credentials" title="Roku Pay" tag={<span className="tag gold">Required</span>}>
+          <p className="section-sub">RevenueDot checks every Roku purchase with Roku Pay's web services, so nobody can unlock your channel with a made-up transaction.</p>
+          <ol className="steps">
+            <li>Sign in to the <a href="https://developer.roku.com/rpay-web-services" target="_blank" rel="noreferrer">Roku developer dashboard → Roku Pay web services</a>.</li>
+            <li>Copy the <b>API key</b> and paste it below, then check it.</li>
+            <li>Add the channel ID from your channel's page. Roku has one push URL per developer account, so the ID tells your channels apart.</li>
+          </ol>
+          {rokuOk && !replacing.rokuKey && !d.rokuKey
+            ? <Saved onReplace={() => setReplacing({ ...replacing, rokuKey: true })} replaceLabel="Replace key">A Roku Pay API key is saved. It is never shown again.</Saved>
+            : (
+              <Field label="Roku Pay API key" htmlFor="f-rokuKey" error={errors.rokuKey}>
+                <input id="f-rokuKey" className="input mono" type="password" autoComplete="off" spellCheck={false} value={d.rokuKey} aria-invalid={!!errors.rokuKey} onChange={(e) => set({ rokuKey: e.target.value })} />
+              </Field>
+            )}
+          <div className="hrow">
+            <button type="button" className="btn btn-line" disabled={check.busy || (!rokuOk && !d.rokuKey.trim())} onClick={() => runCheck(true)}><Icon name="refresh" />Check credentials</button>
+            <CheckResult state={check} />
+          </div>
+          <div className="cols">
+            <Field label="Channel ID" htmlFor="f-rokuChannelId" error={errors.rokuChannelId} hint="Shown on your channel's page in the developer dashboard.">
+              <input id="f-rokuChannelId" className="input mono" spellCheck={false} placeholder="123456" value={d.rokuChannelId} aria-invalid={!!errors.rokuChannelId} onChange={(e) => set({ rokuChannelId: e.target.value })} />
+            </Field>
+            <Field label="Channel name" htmlFor="f-rokuChannelName" error={errors.rokuChannelName}>
+              <input id="f-rokuChannelName" className="input" maxLength={30} value={d.rokuChannelName} aria-invalid={!!errors.rokuChannelName} onChange={(e) => set({ rokuChannelName: e.target.value })} />
+            </Field>
+          </div>
+        </Section>
+      )}
+
+      {roku && s.notification_url && (
+        <Section id="notifications" title="Roku push notifications">
+          <p className="section-sub">Roku tells RevenueDot about renewals, failed payments, cancellations, refunds and plan changes. Every push is signed by Roku and checked with Roku's published keys.</p>
+          <Field label="Push notification URL" htmlFor="notif-url">
+            <CopyField value={s.notification_url} label="push notification URL" />
+          </Field>
+          <NotificationStatus s={s} store="Roku" />
+          <ol className="steps">
+            <li>In the <a href="https://developer.roku.com/rpay-web-services" target="_blank" rel="noreferrer">Roku developer dashboard → Roku Pay web services</a>, set the <b>Push notification URL</b> to the URL above.</li>
+            <li>Roku sends pushes for every channel of your account to this one URL; RevenueDot gives each to the Roku app with its channel ID.</li>
+            <li>Make a test purchase. The status above turns green when the first push arrives.</li>
+          </ol>
+          <ForwardField d={d} set={set} errors={errors} s={s} store="Roku" />
+          <TrackNew d={d} set={set} store="Roku" />
+        </Section>
+      )}
+
+      {galaxy && (
+        <Section id="credentials" title="Service account" tag={<span className="tag gold">Required</span>}>
+          <p className="section-sub">RevenueDot reads subscriptions from Samsung with a Seller Portal service account, to check renewals, cancellations and refunds. One-time items are checked without it.</p>
+          <ol className="steps">
+            <li>In <a href="https://seller.samsungapps.com" target="_blank" rel="noreferrer">Samsung Seller Portal</a>, open <b>Assistance → API Service</b> and click <b>Create Service Account</b>.</li>
+            <li>Select the <b>Publishing &amp; Item</b> and <b>GSS</b> scopes, then click <b>Download Key</b>. Samsung shows the key only once.</li>
+            <li>Paste the service account ID and drop the key file below, then check them.</li>
+          </ol>
+          <Field label="Service account ID" htmlFor="f-galaxyAccount" error={errors.galaxyAccount}>
+            <input id="f-galaxyAccount" className="input mono" spellCheck={false} value={d.galaxyAccount} aria-invalid={!!errors.galaxyAccount} onChange={(e) => set({ galaxyAccount: e.target.value })} />
+          </Field>
+          {galaxyOk && !replacing.galaxyKey && !d.galaxyKey
+            ? <Saved onReplace={() => setReplacing({ ...replacing, galaxyKey: true })} replaceLabel="Replace key">The private key of <span className="mono">{cr.galaxy_service_account?.service_account_id ?? ""}</span> is saved. It is never shown again.</Saved>
+            : (
+              <Field label="Private key file" htmlFor="f-galaxyKey" error={errors.galaxyKey}>
+                <FileDrop id="f-galaxyKey" accept=".key,.pem,.txt" prompt={d.galaxyKey ? <><b>{d.galaxyKey.name}</b> is ready to save.</> : "Drop the private key file from Seller Portal here."}
+                  onFile={(name, text) => set({ galaxyKey: { name, text } })} />
+              </Field>
+            )}
+          <div className="hrow">
+            <button type="button" className="btn btn-line" disabled={check.busy || (!galaxyOk && !(d.galaxyKey && d.galaxyAccount.trim()))} onClick={() => runCheck(true)}><Icon name="refresh" />Check credentials</button>
+            <CheckResult state={check} />
+          </div>
+        </Section>
+      )}
+
+      {galaxy && s.notification_url && (
+        <Section id="notifications" title="Galaxy Store server notifications">
+          <p className="section-sub">Samsung tells RevenueDot about renewals, cancellations, grace periods, plan changes and refunds as they happen. Notifications are needed for refunds of one-time items.</p>
+          <Field label="Instant Server Notification URL" htmlFor="notif-url">
+            <CopyField value={s.notification_url} label="server notification URL" />
+          </Field>
+          <NotificationStatus s={s} store="Samsung" />
+          <ol className="steps">
+            <li>In Seller Portal, open your app → <b>In App Purchase</b> and paste the URL above as the server notification URL.</li>
+            <li>Send Samsung's test notification. The status above turns green when it arrives.</li>
+          </ol>
+          <Field label="IAP public key (optional)" htmlFor="f-galaxyIapKey" error={errors.galaxyIapKey}
+            hint={s.galaxy?.iap_public_key_configured ? "Saved: every notification's signature must match it. Paste a new key to replace it." : "From Seller Portal → Assistance → API Service → IAP Key. With it, every notification's signature is checked; without it, RevenueDot trusts nothing in a notification and reads the purchase from Samsung."}>
+            <textarea id="f-galaxyIapKey" className="textarea mono" rows={3} placeholder="-----BEGIN PUBLIC KEY-----" value={d.galaxyIapKey} aria-invalid={!!errors.galaxyIapKey} onChange={(e) => set({ galaxyIapKey: e.target.value })} />
+          </Field>
+          <ForwardField d={d} set={set} errors={errors} s={s} store="Samsung" />
+          <TrackNew d={d} set={set} store="Samsung" />
+        </Section>
+      )}
+
       <section className="panel" aria-label="More settings">
         <div className="ph"><b>More settings</b></div>
         {apple && (
@@ -764,14 +1010,20 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
         )}
         <Disclosure title="Public API key" sub="The key your app passes to the SDK" defaultOpen={test}>
           {key ? <SecretText value={key} label="public SDK key" /> : <span className="subtle">Loading…</span>}
-          <p>{stripe ? "Use this key in your backend's posts to /v1/receipts. It can only read and post purchases for this app's customers." : "Public keys are safe to ship in your app. They can only read and post purchases for this app's customers."}</p>
+          <p>{server ? "Use this key in your backend's posts to /v1/receipts. It can only read and post purchases for this app's customers." : "Public keys are safe to ship in your app. They can only read and post purchases for this app's customers."}</p>
         </Disclosure>
       </section>
 
-      <Section id="sdk" title={stripe ? "Send purchases from your backend" : "SDK setup"}>
+      <Section id="sdk" title={server ? "Send purchases from your backend" : "SDK setup"}>
         <p className="section-sub">{stripe
           ? <>After Stripe confirms a purchase (<span className="mono">customer.subscription.created</span> or <span className="mono">checkout.session.completed</span>), post its subscription or Checkout Session id with the customer's app user ID. Your apps then see the same entitlements.</>
-          : <>Your app keeps using the RevenueCat SDK. Add one line that points it at this server, before <span className="mono">configure</span>, and use this app's key.</>}</p>
+          : paddle
+            ? <>After Paddle confirms a purchase (<span className="mono">transaction.completed</span>), post its subscription id (<span className="mono">sub_…</span>) or transaction id (<span className="mono">txn_…</span>) with the customer's app user ID. Put the app user ID in the checkout's <span className="mono">customData</span> too, so notifications can find the customer.</>
+            : roku
+              ? <>Your channel keeps using RevenueCat's Roku SDK. Set <span className="mono">proxyUrl</span> to this server (ending in <span className="mono">/v1/</span>) and use this app's key. Sideloaded builds record sandbox purchases.</>
+              : galaxy
+                ? <>Build your Galaxy Store app with the RevenueCat SDK's Galaxy module (<span className="mono">purchases-store-galaxy</span>, or <span className="mono">react-native-purchases-store-galaxy</span>), point it at this server and use this app's <span className="mono">galx_</span> key.</>
+                : <>Your app keeps using the RevenueCat SDK. Add one line that points it at this server, before <span className="mono">configure</span>, and use this app's key.</>}</p>
         {key && <SdkSetup type={app.type} origin={origin} publicKey={key} />}
       </Section>
 
