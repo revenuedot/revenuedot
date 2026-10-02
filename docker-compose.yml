@@ -30,6 +30,15 @@ services:
       # Google OAuth client for "Connect AdMob"; unset lets each project enter its own (see .env.example).
       REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID:-}
       REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET: ${REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET:-}
+      # Full exports and moves: archives on the volume below, or an S3-compatible bucket (see .env.example).
+      REVENUEDOT_ARCHIVE_DIR: ${REVENUEDOT_ARCHIVE_DIR:-/data/archives}
+      REVENUEDOT_ARCHIVE_S3_BUCKET: ${REVENUEDOT_ARCHIVE_S3_BUCKET:-}
+      REVENUEDOT_ARCHIVE_S3_REGION: ${REVENUEDOT_ARCHIVE_S3_REGION:-}
+      REVENUEDOT_ARCHIVE_S3_ENDPOINT: ${REVENUEDOT_ARCHIVE_S3_ENDPOINT:-}
+      REVENUEDOT_ARCHIVE_S3_ACCESS_KEY_ID: ${REVENUEDOT_ARCHIVE_S3_ACCESS_KEY_ID:-}
+      REVENUEDOT_ARCHIVE_S3_SECRET_ACCESS_KEY: ${REVENUEDOT_ARCHIVE_S3_SECRET_ACCESS_KEY:-}
+      REVENUEDOT_ARCHIVE_S3_PREFIX: ${REVENUEDOT_ARCHIVE_S3_PREFIX:-}
+    volumes: [revenuedot-archives:/data/archives]
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped
@@ -48,3 +57,4 @@ services:
     restart: unless-stopped
 volumes:
   revenuedot-data:
+  revenuedot-archives:
