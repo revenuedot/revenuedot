@@ -170,6 +170,62 @@ GROUP BY pe.period ORDER BY pe.period;`,
   },
 ];
 
+/**
+ * The customers behind four core charts (the Customers tab, prd/charts/PRD.md), one row per customer with their share of
+ * the chart's measure over the whole range: the values add up to the chart's total (revenue, new customers, new trials)
+ * or to its last period (MRR). packages/contract/test/v2-chart-extras.test.ts checks them against the API.
+ */
+export const REFERENCE_CUSTOMER_SQL: ReferenceQuery[] = [
+  {
+    chart: "revenue", title: "Customers behind revenue",
+    sql: `-- Each customer's revenue in the range: purchases, renewals and one-time purchases minus refunds on the refund date,
+-- plus ad revenue reported in USD for that customer.
+WITH ${LEDGER},
+money AS (
+  SELECT customer_id, at, revenue_usd AS usd FROM ledger WHERE kind <> 'trial'
+  UNION ALL
+  SELECT coalesce(e.customer_id, a.customer_id), e.occurred_at AT TIME ZONE 'UTC', (e.payload->>'revenue_micros')::numeric / 1000000 FROM sdk_events e
+  LEFT JOIN customer_aliases a ON a.project_id = e.project_id AND a.app_user_id = e.app_user_id
+  WHERE e.project_id = :'project_id' AND NOT e.is_sandbox AND e.type = 'rc_ads_ad_revenue' AND coalesce(e.payload->>'currency', 'USD') = 'USD'
+)
+SELECT customer_id, round(sum(usd)::numeric, 2) AS revenue
+FROM money
+WHERE customer_id IS NOT NULL AND at >= :'start_date'::timestamptz AT TIME ZONE 'UTC' AND at < :'end_date'::timestamptz AT TIME ZONE 'UTC'
+GROUP BY customer_id ORDER BY customer_id;`,
+  },
+  {
+    chart: "customers_new", title: "Customers behind new customers",
+    sql: `-- Customers whose cohort date (the earlier of first seen and first purchase) is in the range.
+WITH ${LEDGER},
+cohorts AS (
+  SELECT c.id, LEAST(c.first_seen, (SELECT min(purchased_at) FROM ledger l WHERE l.customer_id = c.id)) AT TIME ZONE 'UTC' AS cohort_at
+  FROM customers c WHERE c.project_id = :'project_id'
+)
+SELECT id AS customer_id, 1 AS new_customers FROM cohorts
+WHERE cohort_at >= :'start_date'::timestamptz AT TIME ZONE 'UTC' AND cohort_at < :'end_date'::timestamptz AT TIME ZONE 'UTC'
+ORDER BY id;`,
+  },
+  {
+    chart: "trials_new", title: "Customers behind new trials",
+    sql: `-- Free trials each customer started in the range.
+WITH ${LEDGER}
+SELECT customer_id, count(*) AS new_trials FROM ledger
+WHERE kind = 'trial' AND at >= :'start_date'::timestamptz AT TIME ZONE 'UTC' AND at < :'end_date'::timestamptz AT TIME ZONE 'UTC'
+GROUP BY customer_id ORDER BY customer_id;`,
+  },
+  {
+    chart: "mrr", title: "Customers behind MRR",
+    sql: `-- Each customer's MRR at the end of the range's last period (the chart's last value).
+WITH ${PERIODS},
+${LEDGER},
+${PERIOD_ROWS.replace("SELECT DISTINCT ON (pe.period, sp.customer_id, sp.store, sp.app_id) pe.period, sp.kind,", "SELECT DISTINCT ON (pe.period, sp.customer_id, sp.store, sp.app_id) pe.period, sp.customer_id, sp.kind,")}
+SELECT s.customer_id, round(sum(s.mrr)::numeric, 2) AS mrr
+FROM snapshot s
+WHERE s.kind <> 'trial' AND s.period = (SELECT max(period) FROM periods)
+GROUP BY s.customer_id HAVING sum(s.mrr) > 0 ORDER BY s.customer_id;`,
+  },
+];
+
 /** Fills the psql variables with quoted literals (tests and one-off scripts; the values are ours, never user input). */
 export function fillReferenceSql(sqlText: string, vars: Record<string, string>): string {
   return sqlText.replace(/:'(\w+)'/g, (_, k: string) => {

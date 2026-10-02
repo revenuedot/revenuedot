@@ -731,6 +731,43 @@ tr.sel td{background:var(--active)}
 .crail-sv:hover .ib,.crail-sv .ib:focus-visible{opacity:1}
 .crail-sv .ib svg{width:12px;height:12px}
 .cdelta{display:block;font:500 12px/16px var(--mono);color:var(--fg-3);margin-top:2px}
+/* The chart page's tabs, annotations and share dialog (prd/charts/PRD.md "The chart page"). */
+.cpanel>.tabs,.ctabs>.tabs{padding:0 16px;border-top:1px solid var(--border);margin-top:8px}
+.ctabs{margin-top:0}.ctabs>.tabs{border-top:0;margin-top:0}
+.ctab{min-width:0}
+.select.ctype{max-width:200px}
+.ctab-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;flex-wrap:wrap}
+.ctab-h p{margin:0;font-size:13px;flex:1;min-width:220px}
+.ctab-h b.mono{font-weight:500;color:var(--fg)}
+.ctab-empty{margin:0;padding:24px 16px;color:var(--fg-3);font-size:13px;border-top:1px solid var(--border-2)}
+.ctab .tbl{border-top:1px solid var(--border)}
+.ctab td.mono{font:400 12px/18px var(--mono)}
+.alist{list-style:none;margin:0;padding:0;border-top:1px solid var(--border)}
+.alist li{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-bottom:1px solid var(--border-2);transition:background var(--fast) var(--ease)}
+.alist li.on{background:var(--hover);box-shadow:inset 2px 0 0 var(--fg)}
+.amark{width:8px;height:8px;background:var(--fg-2);margin-top:6px;flex:none}
+.atext{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;font-size:13px}
+.atext p{margin:2px 0;color:var(--fg-2);white-space:pre-wrap;overflow-wrap:anywhere}
+.atext .subtle{font-size:12px}
+.aact{display:flex;gap:2px;flex:none}
+.arow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.plot.can-select [data-testid=plot-area]{cursor:crosshair}
+.plot .anote{cursor:pointer;outline:none}
+.plot .anote:focus-visible rect:last-child{stroke:var(--accent);stroke-width:2}
+.tip-note{font-size:13px;color:var(--fg);overflow-wrap:anywhere}
+.tip-hint{font-size:11px;color:var(--fg-3);margin-top:6px}
+.plot-add{position:absolute;top:0;z-index:6}
+.plot-add .ib{width:28px;height:28px;background:var(--fg);color:var(--bg);font:600 18px/1 var(--font);border:0}
+.plot-add .ib:hover{background:var(--fg-2)}
+.share-intro{margin:0 0 12px;font-size:13px}
+.share-made{display:flex;flex-direction:column;gap:10px}
+.share-made img{width:100%;height:auto;border:1px solid var(--border);background:#fff}
+.share-url{display:flex;gap:6px;align-items:center}.share-url .input{flex:1;min-width:0}
+.share-list{margin-top:16px;border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.share-list ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.share-list li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-2);font-size:13px}
+.share-list .subtle{font-size:12px}
+@media (max-width:640px){.arow{grid-template-columns:1fr}.share-url{flex-wrap:wrap}.ctab-h .btn{width:100%;justify-content:center}}
 .cdelta .up{color:var(--up)}.cdelta .down{color:var(--down)}
 .ctable tr.cprev th{color:var(--fg-3);font-weight:500}
 .pe-rows{position:relative}

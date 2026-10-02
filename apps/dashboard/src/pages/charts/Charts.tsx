@@ -1,26 +1,26 @@
 /*
  * Charts: every built-in chart (prd/charts/PRD.md), grouped in a rail the way RevenueCat's chart list is, with one
  * reusable chart page. Data: GET /v2/projects/{id}/charts/{chart} and …/options (RevenueCat's shape). The state lives in
- * the URL (range, resolution, segment, filters, selectors, sandbox), so a chart view is a link you can share.
+ * the URL (range, resolution, segment, filters, selectors, sandbox, chart type, measure, tab), so a chart view is a link
+ * you can share with your team.
  *
- * Saved charts (a named view: chart, range, resolution, segment, filters, selectors, sandbox, compare) are listed on top
- * of the rail; "Compare" draws the window of the same length just before the current one as a dashed line.
- *
- * GAPS versus RevenueCat's chart page (company/docs/research/contact-sheets/revenuecat/frames/03-chart-mrr.jpg):
- * - No annotations or chart-type switch (line ↔ bar) yet.
- * - The "Customers" tab under the chart (the customers behind a number) is not built.
+ * Saved charts (a named view) are listed on top of the rail; "Compare" draws the window of the same length just before the
+ * current one as a dashed line. The page (prd/charts/PRD.md "The chart page") also has the chart type menu, the
+ * Summary, Customers and Annotations tabs under the chart, annotation markers and "+" on a selected day or range,
+ * Refresh, Ask AI (RevenueDot AI with the chart mentioned) and the "…" menu with Export CSV and Share preview.
  */
-import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CHARTS, GROUPS, chartDef, type ChartDef } from "@revenuedot/core";
-import { Shell } from "../../components/Shell";
+import { addPeriods, CHART_TYPE_LABEL, CHART_TYPES, CHARTS, chartTypeFor, defaultChartType, GROUPS, chartDef, groupLabel, isStackedType, measureGroups, type ChartDef, type ChartType, type Resolution } from "@revenuedot/core";
+import { Shell, useMe } from "../../components/Shell";
 import { Icon } from "../../components/icons";
-import { Dialog, Field, Segmented, Switch, Tag, useProjectId, useToast } from "../../components/ui";
+import { Dialog, Field, Menu, Segmented, Switch, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, type List } from "../../lib/api";
 import { currencyDigits, currencySymbol, getDisplay } from "../../lib/prefs";
 import { DateField } from "../../components/DateField";
-import { Legend, Plot, seriesColor, type Series } from "./plot";
+import { Legend, Plot, seriesColor, type PlotAnnotation, type Series } from "./plot";
+import { AnnotationDialog, AnnotationsTab, CustomersTab, ShareDialog, annotationsKey, customersKey, useAnnotations, whenText, type Annotation } from "./extras";
 
 interface Measure { id: string; display_name: string; description: string; unit: "$" | "#" | "%"; decimal_precision: number; chartable: boolean; tabulable: boolean }
 interface SeriesMeta { id?: string; display_name: string; unit?: string; scale?: string; is_total?: boolean; is_other?: boolean; decimal_precision?: number }
@@ -28,6 +28,7 @@ interface ChartData {
   display_name: string; description: string; display_type: string; resolution: string; yaxis_currency: string; start_date: number; end_date: number;
   measures: Measure[]; values: { cohort: number; measure?: number; segment?: number; period?: number; value: number | null; incomplete?: boolean; predicted?: boolean }[];
   segments: SeriesMeta[] | null; periods?: SeriesMeta[] | null; summary: Record<string, Record<string, number | null>>; user_selectors: Record<string, string> | null;
+  last_computed_at: number;
 }
 interface Options {
   resolutions: { id: string; display_name: string }[];
@@ -193,8 +194,16 @@ export function ChartsPage() {
   return <ChartView key={def.name} pid={pid} def={def} />;
 }
 
+type TabId = "summary" | "customers" | "annotations";
+
 function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   const [sp, setSp] = useSearchParams();
+  const nav = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const me = useMe();
+  const role = me.data?.projects.find((x) => x.id === pid)?.role;
+  const canWrite = !!role && role !== "viewer";
   const cohortTable = def.shape === "cohort_table";
   const range = (sp.get("range") as RangeId | null) ?? (cohortTable ? "12m" : "30d");
   const today = Math.floor(Date.now() / DAY) * DAY;
@@ -209,6 +218,8 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   const env = sp.get("env") === "sandbox" || sp.get("environment") === "sandbox" ? "sandbox" : "production";
   const compare = sp.get("cmp") === "1" && !cohortTable;
   const savedId = sp.get("saved");
+  const tabs: TabId[] = cohortTable ? ["customers", "annotations"] : ["summary", "customers", "annotations"];
+  const tab: TabId = tabs.includes(sp.get("tab") as TabId) ? (sp.get("tab") as TabId) : tabs[0]!;
   const set = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(sp);
     for (const [k, v] of Object.entries(patch)) { if (v === null || v === "") next.delete(k); else next.set(k, v); }
@@ -232,12 +243,16 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   const prevQuery = new URLSearchParams(query);
   if (canCompare) { prevQuery.set("end_date", iso(startMs - DAY)); prevQuery.set("start_date", iso(startMs - DAY - span)); }
   const prev = useQuery({ queryKey: ["chart", pid, def.name, prevQuery.toString()], enabled: canCompare, queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${prevQuery}`) });
+  const annotations = useAnnotations(pid, start, end);
   const saved = useSaved(pid);
   const savedNow = saved.data?.items.find((x) => x.id === savedId) ?? null;
   const [saving, setSaving] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [editing, setEditing] = useState<(Partial<Annotation> & { start_date: string; end_date: string }) | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
   const view = () => {
     const v: Record<string, string | boolean> = {};
-    for (const k of ["range", "start", "end", "res", "segment", "filters", "sel"]) { const x = sp.get(k); if (x) v[k] = x; }
+    for (const k of ["range", "start", "end", "res", "segment", "filters", "sel", "type", "m"]) { const x = sp.get(k); if (x) v[k] = x; }
     if (env === "sandbox") v.env = "sandbox";
     if (compare) v.compare = true;
     return v;
@@ -246,6 +261,31 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
 
   const body = data.data;
   const currency = body?.yaxis_currency ?? "USD";
+  // What the plot shows: one measure group at a time, or one measure split by segment; the type it is drawn as.
+  const segmented = !!body?.segments;
+  const groups = body && !body.periods ? measureGroups(body.measures, segmented) : [];
+  const mRaw = Number(sp.get("m") ?? 0);
+  const gi = Number.isInteger(mRaw) && mRaw >= 0 && mRaw < groups.length ? mRaw : 0;
+  const seriesCount = segmented ? body!.segments!.filter((x) => !x.is_total).length : groups[gi]?.length ?? 1;
+  const chartType = chartTypeFor(def, sp.get("type"), seriesCount, segmented);
+  const refresh = async () => {
+    await Promise.all([["chart", pid, def.name], ["chart-options", pid, def.name], ["chart-customers", pid, def.name], annotationsKey(pid)].map((queryKey) => qc.invalidateQueries({ queryKey })));
+    toast("Chart recomputed");
+  };
+  const askAi = () => {
+    const params = Object.fromEntries(query.entries());
+    const label = def.display_name;
+    nav(`/projects/${pid}/ai`, { state: { draft: { text: `@${label} What stands out in this chart for ${start} to ${end}, and why?`, mentions: [{ type: "chart", id: def.name, label, detail: "Chart", params }] } } });
+  };
+  const describe = [`${start} to ${end}`, RESOLUTIONS.find(([v]) => v === resolution)?.[1].toLowerCase() ?? resolution, filters.length ? `${filters.length} filter${filters.length > 1 ? "s" : ""}` : null, segment ? `by ${segment.replace(/_/g, " ")}` : null, env === "sandbox" ? "sandbox data" : null, cohortTable ? null : CHART_TYPE_LABEL[chartType].toLowerCase()].filter(Boolean).join(", ");
+  const addAt = (from: string, to: string) => { setEditing({ start_date: from, end_date: to }); };
+  const tabBar = (
+    <Tabs label="Chart details" idBase="ctab" value={tab} onChange={(v) => set({ tab: v === tabs[0] ? null : v })}
+      tabs={tabs.map((t) => ({ value: t, label: t === "summary" ? "Summary" : t === "customers" ? "Customers" : `Annotations${annotations.data?.length ? ` (${annotations.data.length})` : ""}` }))} />
+  );
+  const tabBody = tab === "customers" ? <CustomersTab pid={pid} chart={def.name} query={query.toString()} format={(unit) => formatter(unit, currency, 2)} />
+    : tab === "annotations" ? <AnnotationsTab pid={pid} items={annotations.data} loading={annotations.isLoading} canWrite={canWrite} highlight={highlight} onNew={() => addAt(end < iso(today) ? end : iso(today), end < iso(today) ? end : iso(today))} onEdit={(a) => setEditing(a)} />
+    : null;
   return (
     <Shell title={def.display_name} crumbs={<><Link to={`/projects/${pid}/charts`}>Charts</Link> <span className="crumb-sep">/</span> <b>{def.display_name}</b></>}>
       <div className="charts">
@@ -256,8 +296,13 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
             <div className="actions">
               {!cohortTable && <Switch checked={compare} onChange={(v) => set({ cmp: v ? "1" : null })} label="Compare to previous period" />}
               <Switch checked={env === "sandbox"} onChange={(v) => set({ env: v ? "sandbox" : null, environment: null })} label="Sandbox data" />
+              <button type="button" className="btn btn-line" onClick={refresh} disabled={data.isFetching} title={body ? `Computed ${new Date(body.last_computed_at).toLocaleTimeString()}` : undefined}><Icon name="refresh" />Refresh</button>
               <button type="button" className="btn btn-line" onClick={() => setSaving(true)}><Icon name="plus" />Save</button>
-              <button type="button" className="btn btn-line" disabled={!body} onClick={() => body && downloadCsv(`${def.name}-${start}-${end}`, csvRows(body))}><Icon name="docs" />CSV</button>
+              <button type="button" className="btn btn-line" onClick={askAi}><Icon name="spark" className="i gold" />Ask AI</button>
+              <Menu label="More chart actions" items={[
+                { label: "Export CSV", icon: "download", disabled: !body, onSelect: () => body && downloadCsv(`${def.name}-${start}-${end}`, csvRows(body)) },
+                { label: "Share preview", icon: "link", onSelect: () => setSharing(true) },
+              ]} />
             </div>
           </div>
           <div className="ctools" role="group" aria-label="Chart controls">
@@ -271,6 +316,12 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
             <select className="select sm" aria-label="Resolution" value={resolution} onChange={(e) => set({ res: e.target.value })}>
               {RESOLUTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
+            {!cohortTable && (
+              <select className="select sm ctype" aria-label="Chart type" value={chartType} title={seriesCount < 2 ? "Segment the chart to stack it" : undefined}
+                onChange={(e) => set({ type: e.target.value === defaultChartType(def, segmented) ? null : e.target.value })}>
+                {CHART_TYPES.map((t) => <option key={t} value={t} disabled={isStackedType(t) && seriesCount < 2}>{CHART_TYPE_LABEL[t]}</option>)}
+              </select>
+            )}
             <FilterMenu options={options.data?.filters ?? []} value={filters} onChange={(f) => set({ filters: f.length ? JSON.stringify(f) : null })} />
             {def.segmentable && (options.data?.segments.length ?? 0) > 0 && (
               <select className="select sm" aria-label="Segment" value={segment} onChange={(e) => set({ segment: e.target.value || null })}>
@@ -305,42 +356,47 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
           ) : !body ? (
             <section className="panel cpanel" aria-busy="true"><div className="sk" style={{ height: 300, margin: 16 }} /></section>
           ) : body.periods ? (
-            <CohortTable body={body} />
+            <>
+              <CohortTable body={body} />
+              <section className="panel ctabs" aria-label={`${def.display_name} details`}>{tabBar}{tabBody}</section>
+            </>
           ) : (
-            <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching || (canCompare && prev.isFetching)} prev={canCompare ? prev.data ?? null : null} />
+            <SeriesChart def={def} body={body} currency={currency} fetching={data.isFetching || (canCompare && prev.isFetching)} prev={canCompare ? prev.data ?? null : null}
+              groups={groups} gi={gi} onPick={(i) => set({ m: i ? String(i) : null })} kind={chartType}
+              annotations={annotations.data ?? []} onAnnotation={(id) => { setHighlight(id); set({ tab: "annotations" }); }}
+              onAdd={canWrite ? addAt : undefined} tabBar={tabBar} tabBody={tabBody} />
           )}
           {def.name === "app_store_save_outcomes" && <p className="fn">RevenueDot does not use Apple's Retention Messaging API yet, so this chart stays at zero.</p>}
-          <p className="fn"><a className="ul" href={`https://revenuedot.app/docs/guides/charts#${def.name}`} target="_blank" rel="noreferrer">How {def.display_name} is calculated →</a></p>
+          <p className="fn">{body && <>Computed {new Date(body.last_computed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · </>}<a className="ul" href={`https://revenuedot.app/docs/guides/charts#${def.name}`} target="_blank" rel="noreferrer">How {def.display_name} is calculated →</a></p>
         </div>
       </div>
       {saving && <SaveChartDialog pid={pid} chart={def} initial={savedNow?.name ?? def.display_name} existing={savedNow} view={view()} onClose={() => setSaving(false)} onSaved={(s) => setSp(new URLSearchParams(savedHref(pid, s).split("?")[1]), { replace: true })} />}
+      {sharing && <ShareDialog pid={pid} chart={def.name} title={def.display_name} view={view()} describe={describe} canWrite={canWrite} onClose={() => setSharing(false)} />}
+      {editing && <AnnotationDialog pid={pid} initial={editing} onClose={() => setEditing(null)} />}
     </Shell>
   );
 }
 
-/** Time series: picks what to plot (one unit at a time, never two y axes), then the plot, legend and table. */
-function SeriesChart({ def, body, currency, fetching, prev }: { def: ChartDef; body: ChartData; currency: string; fetching: boolean; prev?: ChartData | null }) {
-  const [picked, setPicked] = useState<number | null>(null);
+/** Time series: the measure picker, summary values, legend, plot with annotations, then the tabs (Summary is the table). */
+function SeriesChart({ def, body, currency, fetching, prev, groups, gi, onPick, kind, annotations, onAnnotation, onAdd, tabBar, tabBody }: {
+  def: ChartDef; body: ChartData; currency: string; fetching: boolean; prev?: ChartData | null; groups: number[][]; gi: number; onPick: (i: number) => void; kind: ChartType;
+  annotations: Annotation[]; onAnnotation: (id: string) => void; onAdd?: (from: string, to: string) => void; tabBar: ReactNode; tabBody: ReactNode;
+}) {
   const starts = useMemo(() => [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b), [body]);
   const incomplete = useMemo(() => { const inc = new Set(body.values.filter((v) => v.incomplete).map((v) => v.cohort)); return starts.map((s) => inc.has(s)); }, [body, starts]);
   const periods = starts.map((s, i) => ({ start: s * 1000, ...periodLabels(s * 1000, body.resolution), incomplete: incomplete[i]! }));
-  const chartable = body.measures.map((m, i) => ({ m, i })).filter((x) => x.m.chartable);
   // Never two y axes: chartable measures are grouped by unit and one group is plotted at a time. A segmented chart
   // plots one measure, split by segment.
   const segmented = !!body.segments;
-  const groups = segmented ? chartable.map((x) => [x]) : [...new Set(chartable.map((x) => x.m.unit))].map((u) => chartable.filter((x) => x.m.unit === u));
-  const groupLabel = (g: typeof chartable) => g.length === 1 ? g[0]!.m.display_name : g[0]!.m.unit === "%" ? "Rates" : g[0]!.m.unit === "$" ? "Amounts" : "Counts";
-  const gi = picked !== null && picked < groups.length ? picked : 0;
   const group = groups[gi] ?? [];
-  const sel = group[0]?.i ?? 0;
+  const sel = group[0] ?? 0;
   const lookup = useMemo(() => valueIndex(body), [body]);
   const at = (seg: number | undefined, measure: number) => starts.map((s) => lookup(s, { segment: seg, measure })?.value ?? null);
   let series: Series[];
   if (segmented) series = body.segments!.map((s, i) => ({ key: `s${i}`, label: s.display_name, values: at(i, sel), other: s.is_other })).filter((_, i) => !body.segments![i]!.is_total);
-  else series = group.map((x) => ({ key: `m${x.i}`, label: x.m.display_name, values: at(undefined, x.i) }));
+  else series = group.map((i) => ({ key: `m${i}`, label: body.measures[i]!.display_name, values: at(undefined, i) }));
   const oneAtATime = groups.length > 1;
   const unit = body.measures[sel]?.unit ?? "#";
-  const kind = (series.length > 1 && def.display_type === "stacked_bar") || (segmented && def.display_type !== "line") ? "stacked_bar" : def.display_type === "bar" || def.display_type === "stacked_bar" ? "bar" : "line";
   const fmt = (m: Measure) => formatter(m.unit, currency, m.decimal_precision);
   const plotFmt = formatter(unit, currency, body.measures[sel]?.decimal_precision ?? 2);
   // Table rows: every tabulable measure, or each segment of the plotted measure.
@@ -348,6 +404,7 @@ function SeriesChart({ def, body, currency, fetching, prev }: { def: ChartDef; b
     ? body.segments!.map((s, i) => ({ key: `s${i}`, label: s.display_name, color: s.is_total ? undefined : seriesColor(i, { key: "", label: "", values: [], other: s.is_other }), values: at(i, sel), format: plotFmt }))
     : body.measures.map((m, j) => ({ key: `m${j}`, label: m.display_name, color: series.length > 1 ? (() => { const k = series.findIndex((s) => s.key === `m${j}`); return k >= 0 ? seriesColor(k, series[k]!) : undefined; })() : undefined, values: at(undefined, j), format: fmt(m) }));
   const total = body.summary?.total ?? {};
+  const totalSeg = segmented ? body.segments!.findIndex((s) => s.is_total) : -1;
   const avg = body.summary?.average ?? {};
   // The previous period of the plotted measure, by position (segmented charts compare their total).
   const prevStarts = prev ? [...new Set(prev.values.map((v) => v.cohort))].sort((a, b) => a - b) : [];
@@ -372,16 +429,31 @@ function SeriesChart({ def, body, currency, fetching, prev }: { def: ChartDef; b
     if (kind === "latest") return [...(prevAt(j) ?? [])].reverse().find((x) => x !== null) ?? null;
     return (kind === "total" ? prev.summary?.total : prev.summary?.average)?.[m.display_name] ?? null;
   };
+  // Annotations by period: the period that holds each day (periods are UTC buckets of the chart's resolution).
+  const res = body.resolution as Resolution;
+  const ends = periods.map((p) => addPeriods(p.start, res));
+  const indexOf = (day: string) => { const t = Date.parse(`${day}T00:00:00Z`); let k = -1; periods.forEach((p, i) => { if (p.start <= t) k = i; }); return t >= (ends[ends.length - 1] ?? 0) ? periods.length : k; };
+  const plotNotes: PlotAnnotation[] = annotations.map((a) => ({ id: a.id, title: a.title, when: whenText(a), from: indexOf(a.start_date), to: indexOf(a.end_date) }))
+    .map((a) => ({ ...a, from: Math.max(0, a.from), to: Math.min(periods.length - 1, a.to) })).filter((a) => a.to >= 0 && a.from <= a.to && a.from < periods.length);
+  const add = onAdd ? (from: number, to: number) => {
+    // The days of the periods drawn, clipped to the range of the data drawn (body's, not the page's: while a new range
+    // loads, the plot still shows the previous answer).
+    if (!periods[from] || ends[to] === undefined) return;
+    const s = iso(Math.max(periods[from]!.start, body.start_date));
+    const e = iso(Math.min(ends[to]! - DAY, body.end_date));
+    onAdd(s, e < s ? s : e);
+  } : undefined;
   return (
     <section className={`panel cpanel${fetching ? " busy" : ""}`} aria-label={`${def.display_name} chart`}>
       {oneAtATime && (
-        <div className="cmeasure"><Segmented label="Measure" value={String(gi)} options={groups.map((g, i) => ({ value: String(i), label: groupLabel(g) }))} onChange={(v) => setPicked(Number(v))} /></div>
+        <div className="cmeasure"><Segmented label="Measure" value={String(gi)} options={groups.map((g, i) => ({ value: String(i), label: groupLabel(body.measures, g) }))} onChange={(v) => onPick(Number(v))} /></div>
       )}
       <div className="cstats">
         {body.measures.filter((m) => m.tabulable).slice(0, 4).map((m) => {
           // Snapshots show the latest value, flows their total, rates their average.
           const j = body.measures.indexOf(m);
-          const latest = def.shape === "stock" ? [...at(undefined, j)].reverse().find((x) => x !== null) ?? null : null;
+          // A segmented chart's latest value is its Total segment's (values carry a segment index there).
+          const latest = def.shape === "stock" ? [...at(totalSeg >= 0 ? totalSeg : undefined, j)].reverse().find((x) => x !== null) ?? null : null;
           const kind = def.shape === "stock" ? "latest" : m.display_name in total && m.unit !== "%" ? "total" : "average";
           const v = kind === "latest" ? latest : kind === "total" ? total[m.display_name] ?? null : avg[m.display_name] ?? null;
           const pv = prevStat(m, kind);
@@ -394,30 +466,35 @@ function SeriesChart({ def, body, currency, fetching, prev }: { def: ChartDef; b
         })}
       </div>
       <Legend series={series} />
-      {compareValues && <ul className="legend" aria-label="Comparison"><li><i style={{ background: "transparent", border: "1px dashed var(--fg-3)" }} />Previous period · {body.measures[sel]?.display_name}</li></ul>}
+      {compareValues && kind !== "percent_column" && <ul className="legend" aria-label="Comparison"><li><i style={{ background: "transparent", border: "1px dashed var(--fg-3)" }} />Previous period · {body.measures[sel]?.display_name}</li></ul>}
       <Plot periods={periods} series={series} kind={kind} integer={unit === "#" && series.every((x) => x.values.every((v) => v === null || Number.isInteger(v)))} format={plotFmt} formatTick={tickFormatter(unit, currency)}
-        compare={compareValues ? { label: "Previous period", values: compareValues } : null}
-        ariaLabel={`${def.display_name}: ${series.map((s) => s.label).join(", ")} by ${body.resolution}. Values are in the table below.`} />
-      <div className="tbl ctable" data-scroll="x">
-        <table className="compact">
-          <thead><tr><th scope="col">{segmented ? body.measures[sel]?.display_name : "Measure"}</th>{periods.map((p) => <th key={p.start} scope="col" className="amt" title={p.long}>{p.label}{p.incomplete ? "*" : ""}</th>)}</tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.key}>
-                <th scope="row">{r.color && <i className="key" style={{ background: r.color }} />}{r.label}</th>
-                {r.values.map((v, i) => <td key={i} className={`amt${periods[i]?.incomplete ? " inc" : ""}`}>{r.format(v)}</td>)}
-              </tr>
-            ))}
-            {compareValues && (
-              <tr className="cprev">
-                <th scope="row">Previous period</th>
-                {compareValues.map((v, i) => <td key={i} className="amt subtle">{plotFmt(v)}</td>)}
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {periods.some((p) => p.incomplete) && <div className="pfoot"><span>* Incomplete period: the data can still change.</span></div>}
+        compare={compareValues ? { label: "Previous period", values: compareValues } : null} annotations={plotNotes} onAnnotation={onAnnotation} onAddAnnotation={add}
+        ariaLabel={`${def.display_name}: ${series.map((s) => s.label).join(", ")} by ${body.resolution}, drawn as ${CHART_TYPE_LABEL[kind].toLowerCase()}. Values are in the table below.`} />
+      {tabBar}
+      {tabBody ?? (
+        <>
+          <div className="tbl ctable" data-scroll="x">
+            <table className="compact">
+              <thead><tr><th scope="col">{segmented ? body.measures[sel]?.display_name : "Measure"}</th>{periods.map((p) => <th key={p.start} scope="col" className="amt" title={p.long}>{p.label}{p.incomplete ? "*" : ""}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.key}>
+                    <th scope="row">{r.color && <i className="key" style={{ background: r.color }} />}{r.label}</th>
+                    {r.values.map((v, i) => <td key={i} className={`amt${periods[i]?.incomplete ? " inc" : ""}`}>{r.format(v)}</td>)}
+                  </tr>
+                ))}
+                {compareValues && (
+                  <tr className="cprev">
+                    <th scope="row">Previous period</th>
+                    {compareValues.map((v, i) => <td key={i} className="amt subtle">{plotFmt(v)}</td>)}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {periods.some((p) => p.incomplete) && <div className="pfoot"><span>* Incomplete period: the data can still change.</span></div>}
+        </>
+      )}
     </section>
   );
 }

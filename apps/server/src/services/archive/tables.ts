@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0029_account_settings";
+export const ARCHIVE_SCHEMA = "0030_account_settings";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -64,6 +64,9 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
   { name: "paywall_versions", scope: { via: "paywall_id", parent: "paywalls" }, page: 50 },
   { name: "media_assets", scope: { project: "project_id" }, page: 10 },
   { name: "saved_charts", scope: { project: "project_id" } },
+  // Chart annotations and share links (prd/charts/PRD.md, migration 0028). A share link keeps its token, so it opens on the target once its host serves the project; its snapshot and PNG make big rows.
+  { name: "chart_annotations", scope: { project: "project_id" } },
+  { name: "chart_shares", scope: { project: "project_id" }, page: 50 },
   { name: "audiences", scope: { project: "project_id" } },
   { name: "targeting_rules", scope: { project: "project_id" } },
   { name: "experiments", scope: { project: "project_id" } },

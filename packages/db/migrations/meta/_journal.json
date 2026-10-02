@@ -194,8 +194,15 @@
     {
       "idx": 29,
       "version": "7",
-      "when": 1790940000000,
-      "tag": "0029_account_settings",
+      "when": 1790977597636,
+      "tag": "0029_chart_extras",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790978000000,
+      "tag": "0030_account_settings",
       "breakpoints": true
     }
   ]

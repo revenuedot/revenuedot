@@ -732,6 +732,43 @@ export const savedCharts = pgTable("saved_charts", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("saved_charts_project").on(t.projectId)]);
 
+/**
+ * A note on a day or a date range that every chart of the project shows (prd/charts/PRD.md "Annotations", migration 0028).
+ * Days are UTC, YYYY-MM-DD; a single day has `end_date` = `start_date`.
+ */
+export const chartAnnotations = pgTable("chart_annotations", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  createdBy: text("created_by"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("chart_annotations_project").on(t.projectId, t.startDate)]);
+
+/**
+ * A public, revocable link to a picture of one chart view (prd/charts/PRD.md "Share preview", migration 0028). `token` is
+ * the unguessable part of the public URL (`cs_` and 32 characters, 192 random bits); the public pages find a link by its
+ * SHA-256 (`token_hash`), so how long a lookup takes says nothing about the token. `id` names the link everywhere else
+ * (the API, the audit log). `snapshot` holds the numbers computed when the link was made: series, labels and summary
+ * values, never customer data; `image` is its 1200×630 PNG preview (base64), drawn once then.
+ */
+export const chartShares = pgTable("chart_shares", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  token: text("token").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  chartName: text("chart_name").notNull(),
+  view: jsonb("view").$type<Record<string, unknown>>().notNull().default({}),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+  image: text("image"),
+  createdBy: text("created_by"),
+  createdAt: created(),
+  revokedAt: ts("revoked_at"),
+}, (t) => [index("chart_shares_project").on(t.projectId, t.createdAt), uniqueIndex("chart_shares_token_hash").on(t.tokenHash)]);
+
 /** A saved set of conditions on customers (RevenueCat's audience rules: groups OR-ed, conditions in a group AND-ed). */
 export const audiences = pgTable("audiences", {
   id: text("id").primaryKey(),

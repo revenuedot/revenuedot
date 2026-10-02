@@ -184,11 +184,11 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
-| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 68 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
+| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 70 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
 | **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · built, tested against a fake Stripe; switched on when the Stripe keys are set |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · all ten released on npm, CocoaPods, Maven Central, OpenUPM and as git tags |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
-| **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments (attribution included), CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
+| **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments (attribution included), five chart types, the customers behind every number, annotations on every chart, public share links, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
 | **Attribution** | The attribution the SDK already sends (media source, campaign, ad group, keyword, ad, creative, the Apple Search Ads AdServices token, AppsFlyer, Adjust and Branch ids) kept as one record per customer; every chart segments by it; **Revenue by campaign** with day-0, day-7, day-30 and to-date revenue, spend and ROAS; Customers and audience filters ([guide](https://revenuedot.app/docs/guides/attribution)) | Tier 3 · built, tested on a real server and Postgres |
 | **Benchmarks** | RevenueDot Cloud only, opt-in: your trial conversion, churn, refund rate, LTV, ARPU and prices against the percentiles of similar apps by category, platform and country; groups need 10 apps and nothing identifies an app ([guide](https://revenuedot.app/docs/guides/benchmarks)) | Tier 3 · built, tested |
 | **Growth insights** | Every Monday RevenueDot AI reads your charts, campaigns and benchmarks and writes 3 to 5 numbers-backed recommendations on the Overview, emailed to admins (one-click opt-out); read-only ([guide](https://revenuedot.app/docs/guides/growth-insights)) | Tier 3 · built, tested with a scripted model and a real Workers AI run |
@@ -220,6 +220,11 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts-dark.png">
   <img alt="RevenueDot Charts: MRR Movement by week with new and churned MRR, the grouped chart list, filters and the data table" src="docs/assets/charts-light.png" width="100%">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts/chart-page-dark.png">
+  <img alt="RevenueDot chart page: weekly revenue by product as a stacked column, an annotation band for a spring sale with its title on hover, Refresh, Save, Ask AI and the chart type menu" src="docs/assets/charts/chart-page-light.png" width="100%">
 </picture>
 
 <picture>
@@ -470,6 +475,25 @@ Block their app user ID under **Project settings → Blocked customers** or with
 <details><summary><b>Can I publish verified MRR and revenue numbers?</b></summary>
 
 Yes. **Project settings → Verified Metrics** publishes a public page at `/verified/<slug>` with your production MRR, revenue, subscriptions, trials and customers, 28-day sparklines and a link-preview image. It shows totals only, never customers or sandbox data.
+<details><summary><b>Can I see which customers are behind a chart, like RevenueCat's Customers tab?</b></summary>
+
+Yes. Every chart has **Summary**, **Customers** and **Annotations** tabs, like RevenueCat's Charts v3 page ([RevenueCat docs](https://www.revenuecat.com/docs/dashboard-and-metrics/charts)). The Customers tab lists up to 100 customers behind the chart's current range, filters, segment and sandbox switch, each with their status, store, product and their part of the chart's number (their revenue, their MRR at the end of the range …), linked to the customer page. **Export all** downloads every one as CSV. The values add up to the chart; ad revenue from app users who never became customers is shown as its own amount. The API is `GET /v2/projects/{id}/charts/{chart_name}/customers` (`format=csv` for the export), and the docs publish the SQL behind revenue, new customers, new trials and MRR.
+
+<img alt="The Customers tab under the Revenue chart: twelve customers with status, store, product, latest purchase and revenue, and Export all" src="docs/assets/charts/customers-tab-light.png" width="100%">
+</details>
+
+<details><summary><b>Can I mark launches and price changes on my revenue charts?</b></summary>
+
+Yes. Click a day on any chart, or drag across a range, and press **+** to add an annotation with a title and a note. It shows on every chart of the project as a marker or a shaded band, with the title on hover, and in the chart's Annotations tab, where you can edit or delete it. Viewers see annotations but cannot change them. The API is `/v2/projects/{id}/chart_annotations`, and `include_annotations=true` on chart data returns them in RevenueCat's format.
+</details>
+
+<details><summary><b>How do I share a chart with an investor without giving them dashboard access?</b></summary>
+
+Open the chart's **…** menu and choose **Share preview**. RevenueDot makes a public link to a picture of the chart as you see it (type, range, filters, segment), with a link preview image for Slack, X and email. It shows the numbers and labels only, never customer data. Revoke the link from the same menu and it stops working at once.
+
+<img alt="A shared Revenue chart opened without signing in: total revenue, transactions, weekly revenue by product and the values table" src="docs/assets/charts/share-page.png" width="100%">
+</details>
+
 <details><summary><b>Does RevenueDot have an AI assistant like RevenueCat's Rico?</b></summary>
 
 Yes. RevenueCat's dashboard has Rico, an AI advisor that answers questions about your subscription data ([RevenueCat docs](https://www.revenuecat.com/docs/tools/rico)). RevenueDot AI does the same from the dashboard's sparkle button or the Overview's Ask bar, reads any of the 43 charts, customers, the catalog, experiments and webhook health, and can grant access, create products, set the current offering, pause experiments or replay webhooks after you approve each change. Admins choose read and write, read only, or off per project. Self-hosted, it uses your own Anthropic or OpenAI key and keeps conversations in your Postgres. Guide: [RevenueDot AI](https://revenuedot.app/docs/guides/revenuedot-ai).

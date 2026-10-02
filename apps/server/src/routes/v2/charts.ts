@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import {
-  addMonths, ATTRIBUTION_DIMS, chartDef, DEFAULT_WEEK_START, DIM_LABEL, NO_ATTRIBUTION, dimValues, floorTo, RESOLUTIONS, runChart,
+  addMonths, ATTRIBUTION_DIMS, chartDef, DEFAULT_WEEK_START, DIM_LABEL, NO_ATTRIBUTION, dimValues, floorTo, isoDay, RESOLUTIONS, runChart,
   type ChartDef, type ChartFilter, type ChartOutput, type ChartRequest, type Dim, type MeasureDef, type Resolution,
 } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { chartSources, loadChartInput } from "../../services/charts/load.js";
+import { annotationsBetween, rcAnnotation } from "../../services/charts/annotations.js";
 import { paramError, scope, V2Error, type V2Context, type V2Router } from "./common.js";
 
 /**
@@ -176,7 +177,7 @@ export function chartRoutes(r: V2Router, deps: Deps) {
       measures: measures.map((m) => ({ id: m.id, display_name: m.display_name, description: m.description, unit: m.unit, decimal_precision: m.decimal_precision, chartable: m.chartable, tabulable: m.tabulable })),
       user_selectors: p.def.selectors.length ? Object.fromEntries(p.def.selectors.map((s) => [s.id, p.req.selectors[s.id] ?? s.default])) : null,
     };
-    if (p.annotations) body.annotations = [];
+    if (p.annotations) body.annotations = (await annotationsBetween(deps.db, c.get("projectId"), isoDay(p.rangeStart), isoDay(p.lastDay))).map(rcAnnotation);
     if (o.kind === "cohort") {
       body.periods = o.periods.map((x) => ({ display_name: x.display_name, description: x.description, unit: x.unit, decimal_precision: x.decimal_precision, scale: x.scale, chartable: true, tabulable: true, is_total: false, is_other: false }));
       if (!p.aggregate) body.values = o.rows.flatMap((row) => row.cells.map((cell, k) => ({
@@ -272,3 +273,6 @@ async function dimLabels(deps: Deps, projectId: string, dim: Dim): Promise<(v: s
   if ((ATTRIBUTION_DIMS as string[]).includes(dim)) return (v) => (v === "" ? NO_ATTRIBUTION : v);
   return (v) => unknown(v, (x) => x);
 }
+
+/** For the chart extensions (chart-extras.ts): the same parameters and labels as the chart itself. */
+export { parse as parseChartQuery, dimLabels };
