@@ -40,7 +40,8 @@ const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
  */
 export function viewQuery(def: Pick<ChartDef, "shape">, v: ChartView, now: number): Record<string, string> {
   const cohortTable = def.shape === "cohort_table";
-  const range = v.range && (v.range === "custom" || v.range in RANGE_DAYS) ? v.range : cohortTable ? "12m" : "30d";
+  // Own keys only: `"constructor" in RANGE_DAYS` is true, and its "days" (a function) made every date NaN.
+  const range = v.range && (v.range === "custom" || Object.hasOwn(RANGE_DAYS, v.range)) ? v.range : cohortTable ? "12m" : "30d";
   const today = Math.floor(now / DAY) * DAY;
   const days = RANGE_DAYS[range] ?? 30;
   const end = range === "custom" ? v.end ?? iso(today) : iso(today);

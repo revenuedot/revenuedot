@@ -356,5 +356,11 @@ describe("chart share links", () => {
     expect(bad.body.param).toBe("view.segment");
     expect((await call("POST", S, {}, { ext: true, json: { chart_name: "nope" } })).status).toBe(400);
     expect((await call("POST", S, {}, { ext: true, json: { chart_name: "mrr", view: { type: "pie" } } })).status).toBe(400);
+    // A range name that is also an Object property ("constructor", "toString") is not a preset: the default range, not a 500.
+    for (const range of ["constructor", "toString", "__proto__"]) {
+      const odd = await call("POST", S, {}, { ext: true, json: { chart_name: "mrr", view: { range } } });
+      expect(odd.status, range).toBe(201);
+      expect(odd.body.end_date).toBe(NOW.toISOString().slice(0, 10));
+    }
   });
 });
