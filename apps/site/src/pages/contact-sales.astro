@@ -1,0 +1,336 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import { getCountries, getCountryCallingCode } from "libphonenumber-js/max";
+import { CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, TIMELINE } from "../../worker/lead";
+import { SITE } from "../site";
+
+// Every country libphonenumber knows, as "🇺🇸 +1 United States", sorted by name. The flag and code come first so a narrow
+// picker still shows them. The Worker's /api/geo answer picks the visitor's country when the page loads.
+const names = new Intl.DisplayNames(["en"], { type: "region" });
+const flag = (cc: string) => String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+const countries = getCountries()
+  .map((cc) => ({ cc, name: names.of(cc) ?? cc, code: getCountryCallingCode(cc) }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+---
+<Base
+  title="Contact sales"
+  description="Talk to RevenueDot sales about Enterprise: custom pricing from $50,000 a year, self-hosting with a commercial licence, an uptime SLA and migration help."
+  path="/contact-sales"
+  crumbs={[{ name: "Pricing", path: "/pricing" }, { name: "Contact sales", path: "/contact-sales" }]}
+>
+  <div class="wrap">
+    <PageHead label="Enterprise" title="Talk to sales about RevenueDot Enterprise" lede="Tell us about your apps and what you need, and we will reply within one business day with pricing and a time to talk." />
+  </div>
+
+  <section class="section first cs" aria-label="Contact sales">
+    <div class="wrap cs-grid">
+      <aside class="cs-aside">
+        <div class="cs-price">
+          <p class="label">Enterprise pricing</p>
+          <p class="cs-big">From $50K</p>
+          <p class="small muted">a year, with custom pricing for your scale and deployment.</p>
+        </div>
+        <div>
+          <p class="label">Included today</p>
+          <ul class="cs-list">
+            <li>A commercial licence to self-host RevenueDot in your own cloud</li>
+            <li>An uptime SLA on the purchase path, with service credits</li>
+            <li>A 1-hour response, any time, when purchases are failing</li>
+            <li>Your migration from RevenueCat, done with you</li>
+            <li>A data processing agreement and security reviews</li>
+          </ul>
+        </div>
+        <div>
+          <p class="label">Rolling out to Enterprise first</p>
+          <ul class="cs-list">
+            <li>Single sign-on (SAML) and SCIM</li>
+            <li>EU and US data regions</li>
+          </ul>
+        </div>
+        <div>
+          <p class="label">What happens next</p>
+          <ol class="cs-steps">
+            <li>We read your answers and reply within one business day.</li>
+            <li>A 30-minute call about your apps, your current setup and your requirements.</li>
+            <li>A written quote and a migration plan.</li>
+          </ol>
+        </div>
+        <p class="tiny">Smaller app? <a href={SITE.signup}>RevenueDot Cloud</a> is free up to $10,000 a month, and you can start without talking to us.</p>
+      </aside>
+
+      <div class="cs-panel">
+        <form id="cs-form" class="cs-form" method="post" action="/api/contact-sales" novalidate>
+          <fieldset>
+            <legend>About you</legend>
+            <div class="row2">
+              <div class="field" data-field="name">
+                <label for="name">Full name</label>
+                <input id="name" name="name" type="text" autocomplete="name" required maxlength="120" aria-describedby="err-name" />
+                <p class="err" id="err-name" hidden></p>
+              </div>
+              <div class="field" data-field="email">
+                <label for="email">Work email</label>
+                <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required maxlength="254" aria-describedby="err-email" />
+                <p class="err" id="err-email" hidden></p>
+              </div>
+            </div>
+            <div class="field" data-field="phone">
+              <label for="phone">Phone number</label>
+              <div class="phone">
+                <select id="phoneCountry" name="phoneCountry" autocomplete="tel-country-code" aria-label="Country calling code">
+                  {countries.map((c) => <option value={c.cc} selected={c.cc === "US"}>{`${flag(c.cc)} +${c.code} ${c.name}`}</option>)}
+                </select>
+                <input id="phone" name="phone" type="tel" autocomplete="tel-national" inputmode="tel" required maxlength="40" placeholder="201 555 0123" aria-describedby="phone-hint err-phone" />
+              </div>
+              <p class="hint" id="phone-hint">So we can call you about your quote. Pick the country, then type the number.</p>
+              <p class="err" id="err-phone" hidden></p>
+            </div>
+            <div class="row2">
+              <div class="field" data-field="company">
+                <label for="company">Company</label>
+                <input id="company" name="company" type="text" autocomplete="organization" required maxlength="160" aria-describedby="err-company" />
+                <p class="err" id="err-company" hidden></p>
+              </div>
+              <div class="field" data-field="role">
+                <label for="role">Your role</label>
+                <select id="role" name="role" required aria-describedby="err-role">
+                  <option value="" selected disabled>Choose one</option>
+                  {ROLES.map(([v, l]) => <option value={v}>{l}</option>)}
+                </select>
+                <p class="err" id="err-role" hidden></p>
+              </div>
+            </div>
+            <div class="field" data-field="website">
+              <label for="website">Company website <span class="opt">optional</span></label>
+              <input id="website" name="website" type="text" autocomplete="url" inputmode="url" maxlength="200" placeholder="company.com" aria-describedby="err-website" />
+              <p class="err" id="err-website" hidden></p>
+            </div>
+          </fieldset>
+
+          <fieldset class="field" data-field="revenue" aria-describedby="revenue-hint err-revenue">
+            <legend>Monthly in-app revenue</legend>
+            <p class="hint" id="revenue-hint">Across all your apps, before Apple and Google take their fees. It is the number our pricing uses.</p>
+            <div class="chips">
+              {REVENUE.map(([v, l]) => <label class="chip"><input type="radio" name="revenue" value={v} required /><span>{l}</span></label>)}
+            </div>
+            <p class="err" id="err-revenue" hidden></p>
+          </fieldset>
+
+          <div class="field" data-field="current">
+            <label for="current">What do you use for in-app purchases today?</label>
+            <select id="current" name="current" required aria-describedby="err-current">
+              <option value="" selected disabled>Choose one</option>
+              {CURRENT.map(([v, l]) => <option value={v}>{l}</option>)}
+            </select>
+            <p class="err" id="err-current" hidden></p>
+          </div>
+
+          <fieldset class="field" data-field="needs">
+            <legend>What do you need? <span class="opt">choose any</span></legend>
+            <div class="chips">
+              {NEEDS.map(([v, l]) => <label class="chip"><input type="checkbox" name="needs" value={v} /><span>{l}</span></label>)}
+            </div>
+          </fieldset>
+
+          <fieldset class="field" data-field="timeline" aria-describedby="err-timeline">
+            <legend>When do you want to start?</legend>
+            <div class="chips">
+              {TIMELINE.map(([v, l]) => <label class="chip"><input type="radio" name="timeline" value={v} required /><span>{l}</span></label>)}
+            </div>
+            <p class="err" id="err-timeline" hidden></p>
+          </fieldset>
+
+          <fieldset class="field" data-field="platforms">
+            <legend>Platforms <span class="opt">optional</span></legend>
+            <div class="chips">
+              {PLATFORMS.map(([v, l]) => <label class="chip"><input type="checkbox" name="platforms" value={v} /><span>{l}</span></label>)}
+            </div>
+          </fieldset>
+
+          <div class="field" data-field="message">
+            <label for="message">Anything else we should know? <span class="opt">optional</span></label>
+            <textarea id="message" name="message" rows="4" maxlength="4000" placeholder="Number of apps, compliance requirements, deadlines"></textarea>
+          </div>
+
+          <div class="hp" aria-hidden="true"><label for="fax">Fax</label><input id="fax" name="fax" type="text" tabindex="-1" autocomplete="off" /></div>
+          <input type="hidden" name="started" id="started" value="" />
+
+          <div class="cs-submit">
+            <button class="btn" type="submit" id="cs-send">Contact sales</button>
+            <p class="tiny">We use these details only to answer you. See our <a href="/legal/privacy">privacy policy</a>.</p>
+          </div>
+          <p class="cs-status" id="cs-status" role="alert" hidden></p>
+        </form>
+
+        <div class="cs-done" id="cs-done" tabindex="-1" hidden>
+          <p class="label"><span class="dot"></span> Request sent</p>
+          <h2 class="h3" id="cs-done-title">Thanks. We will reply within one business day.</h2>
+          <p class="muted" id="cs-done-body"></p>
+          <div class="btns" id="cs-done-cloud" hidden>
+            <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+            <a class="btn secondary" href="/pricing">See pricing</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .cs { border-top: 0; padding-top: 8px; }
+  .cs-grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .cs-aside { display: grid; gap: 28px; position: sticky; top: calc(var(--topbar-h) + 24px + env(safe-area-inset-top, 0px)); }
+  .cs-price { border: 1px solid var(--border); padding: 20px; background: var(--sidebar); display: grid; gap: 6px; }
+  .cs-big { font: 700 clamp(32px, 4vw, 44px)/1.05 var(--font); letter-spacing: var(--tracking-title); }
+  .cs-list, .cs-steps { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; color: var(--fg-2); }
+  .cs-panel { border: 1px solid var(--border); background: var(--panel); min-width: 0; }
+  .cs-form { display: grid; gap: 28px; padding: 32px; }
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+  legend { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 0; margin-bottom: 4px; }
+  .cs-form > fieldset:first-child > legend { font-size: 12px; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-3); }
+  .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  .field { display: grid; gap: 8px; min-width: 0; }
+  .field > label { font-size: 13px; font-weight: 600; color: var(--fg-2); }
+  .opt { font-weight: 500; color: var(--fg-3); font-size: 12px; margin-left: 4px; }
+  .hint { font-size: 12.5px; line-height: 1.45; color: var(--fg-3); margin: 0; }
+  input[type=text], input[type=email], input[type=tel], select, textarea {
+    width: 100%; min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+    font: 500 16px var(--font); border-radius: 0; transition: border-color var(--fast) var(--ease); -webkit-appearance: none; appearance: none;
+  }
+  select { padding-right: 34px; text-overflow: ellipsis; background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%), linear-gradient(135deg, var(--fg-3) 50%, transparent 50%); background-position: right 16px top 19px, right 11px top 19px; background-size: 5px 5px; background-repeat: no-repeat; }
+  textarea { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+  input:hover, select:hover, textarea:hover { border-color: var(--fg-3); }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--fg); }
+  [aria-invalid="true"] { border-color: var(--down) !important; }
+  .phone { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); }
+  .phone select { border-right: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { position: relative; display: inline-flex; cursor: pointer; }
+  .chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .chip span { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 14px; border: 1px solid var(--border); background: var(--panel); font-size: 14px; font-weight: 500; color: var(--fg-2); line-height: 1.3; transition: border-color var(--fast) var(--ease); }
+  .chip:hover span { border-color: var(--fg-3); }
+  .chip input:checked + span { border-color: var(--fg); background: var(--fg); color: var(--bg); }
+  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field[data-invalid] .chip span { border-color: var(--down); }
+  .err { margin: 0; font-size: 13px; font-weight: 600; color: var(--down); }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .cs-submit { display: grid; gap: 10px; justify-items: start; padding-top: 4px; border-top: 1px solid var(--border-2); padding-top: 24px; }
+  .cs-submit .btn { cursor: pointer; }
+  .cs-submit .btn[disabled] { opacity: .6; cursor: progress; }
+  .cs-status { margin: 0; padding: 12px 14px; border: 1px solid var(--down); color: var(--down); font-size: 14px; font-weight: 600; }
+  .cs-done { padding: 40px 32px; display: grid; gap: 14px; }
+  .cs-done:focus { outline: none; }
+  @media (max-width: 900px) {
+    .cs-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+    .cs-aside { position: static; order: 2; }
+  }
+  @media (max-width: 560px) {
+    .cs-form { padding: 20px 16px; gap: 24px; }
+    .cs-done { padding: 28px 16px; }
+    .row2 { grid-template-columns: minmax(0, 1fr); }
+    .phone { grid-template-columns: minmax(0, 116px) minmax(0, 1fr); }
+    .cs-submit { justify-items: stretch; }
+    .cs-submit .btn { justify-content: center; }
+    .chip { flex: 1 1 auto; }
+    .chip span { width: 100%; }
+  }
+</style>
+
+<script>
+  import { AsYouType, getExampleNumber, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/max";
+  import examples from "libphonenumber-js/mobile/examples";
+  import { parsePhone, validate } from "../../worker/lead";
+
+  const form = document.getElementById("cs-form") as HTMLFormElement;
+  const country = document.getElementById("phoneCountry") as HTMLSelectElement;
+  const phone = document.getElementById("phone") as HTMLInputElement;
+  const send = document.getElementById("cs-send") as HTMLButtonElement;
+  const status = document.getElementById("cs-status") as HTMLParagraphElement;
+  (document.getElementById("started") as HTMLInputElement).value = String(Date.now());
+
+  const setPlaceholder = () => {
+    const ex = getExampleNumber(country.value as CountryCode, examples);
+    phone.placeholder = ex ? ex.formatNational() : "";
+  };
+  let countryTouched = false;
+  country.addEventListener("change", () => { countryTouched = true; setPlaceholder(); if (touched.has("phone")) check("phone"); });
+  setPlaceholder();
+  fetch("/api/geo").then((r) => (r.ok ? r.json() : null)).then((g) => {
+    if (!countryTouched && g?.country && [...country.options].some((o) => o.value === g.country)) { country.value = g.country; setPlaceholder(); }
+  }).catch(() => {});
+
+  // A number typed with + picks its own country.
+  phone.addEventListener("input", () => {
+    if (!phone.value.trim().startsWith("+")) return;
+    const t = new AsYouType(); t.input(phone.value);
+    const cc = t.getCountry();
+    if (cc && cc !== country.value) { country.value = cc; setPlaceholder(); }
+  });
+  // On leaving the field, show a valid number in its country's own format.
+  phone.addEventListener("blur", () => {
+    const p = parsePhone(phone.value, country.value);
+    if (p) { country.value = p.country; setPlaceholder(); phone.value = parsePhoneNumberFromString(p.e164)?.formatNational() ?? phone.value; }
+  });
+
+  const data = () => {
+    const fd = new FormData(form);
+    const o: Record<string, unknown> = {};
+    for (const k of new Set(fd.keys())) { const all = fd.getAll(k).map(String); o[k] = k === "needs" || k === "platforms" ? all : all[0]; }
+    return o;
+  };
+  const touched = new Set<string>();
+  const show = (field: string, msg?: string) => {
+    const box = form.querySelector<HTMLElement>(`[data-field="${field}"]`);
+    const err = document.getElementById(`err-${field}`);
+    if (!box || !err) return;
+    err.textContent = msg ?? ""; err.hidden = !msg;
+    if (msg) box.setAttribute("data-invalid", ""); else box.removeAttribute("data-invalid");
+    box.querySelectorAll("input:not([type=radio]):not([type=checkbox]), select, textarea").forEach((el) => el.setAttribute("aria-invalid", msg ? "true" : "false"));
+  };
+  const check = (field: string) => { const v = validate(data()); show(field, v.ok ? undefined : v.errors[field]); };
+  for (const f of ["name", "email", "phone", "company", "role", "website", "current"]) {
+    const el = document.getElementById(f);
+    el?.addEventListener("blur", () => { if ((el as HTMLInputElement).value) touched.add(f); if (touched.has(f)) check(f); });
+    el?.addEventListener("change", () => { touched.add(f); check(f); });
+  }
+  for (const f of ["revenue", "timeline"]) form.querySelectorAll(`input[name=${f}]`).forEach((el) => el.addEventListener("change", () => show(f)));
+
+  const showAll = (errors: Record<string, string>) => {
+    for (const f of ["name", "email", "phone", "company", "role", "website", "revenue", "current", "timeline"]) show(f, errors[f]);
+    const first = form.querySelector<HTMLElement>("[data-invalid]");
+    first?.scrollIntoView({ behavior: "smooth", block: "center" });
+    first?.querySelector<HTMLElement>("input, select, textarea")?.focus({ preventScroll: true });
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    status.hidden = true;
+    const body = data();
+    const v = validate(body);
+    if (!v.ok) { showAll(v.errors); return; }
+    send.disabled = true; send.textContent = "Sending…";
+    try {
+      const r = await fetch("/api/contact-sales", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const out = await r.json().catch(() => ({}));
+      if (r.ok && out.ok) {
+        const lead = v.lead;
+        form.hidden = true;
+        const done = document.getElementById("cs-done")!;
+        document.getElementById("cs-done-title")!.textContent = `Thanks, ${lead.name.split(" ")[0]}. We will reply within one business day.`;
+        document.getElementById("cs-done-body")!.textContent = out.next === "self_serve"
+          ? `We will email ${lead.email}. Your apps fit RevenueDot Cloud, which is free up to $10,000 a month, so you can start now while you wait.`
+          : `We will email ${lead.email} or call ${parsePhoneNumberFromString(lead.phone)?.formatInternational() ?? lead.phone} to set up a 30-minute call.`;
+        document.getElementById("cs-done-cloud")!.hidden = out.next !== "self_serve";
+        done.hidden = false; done.focus(); done.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (r.status === 400 && out.errors) { showAll(out.errors); }
+      else { status.textContent = out.error ?? "Something went wrong. Try again, or email hello@revenuedot.app."; status.hidden = false; }
+    } catch {
+      status.textContent = "We could not reach the server. Check your connection and try again."; status.hidden = false;
+    } finally {
+      send.disabled = false; send.textContent = "Contact sales";
+    }
+  });
+</script>
