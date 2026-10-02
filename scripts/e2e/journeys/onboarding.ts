@@ -194,6 +194,12 @@ const journey: Journey = {
         await sdk.purchase(`second_${ctx.stamp}`, "sleep_annual", { price: 49.99 });
         const failed = await until(async () => (await backend.r("GET", `/webhooks/${bad.id}/deliveries?limit=5`)).body.items?.find((x: any) => x.status !== "pending" || x.attempts > 0), { timeoutMs: 45_000 });
         c.check("a webhook with another secret is refused by the backend (401) and not marked delivered", failed && failed.status !== "delivered" && failed.response_status === 401, failed);
+        // Retry on a delivery waiting for its scheduled retry sends it at once, as RevenueCat's dashboard Retry does.
+        c.check("the refused delivery waits about 5 minutes for its next attempt", failed?.status === "pending" && failed.attempts === 1 && Math.abs(failed.next_attempt_at - Date.now() - 5 * 60_000) < 60_000, failed);
+        const retry = await backend.r("POST", `/webhooks/${bad.id}/deliveries/${failed.id}/retry`);
+        c.check("Retry of the waiting delivery is accepted (200) and due now", retry.status === 200 && retry.body.status === "pending" && retry.body.next_attempt_at <= Date.now() + 1000, { status: retry.status, body: retry.body });
+        const again = await until(async () => (await backend.r("GET", `/webhooks/${bad.id}/deliveries?limit=5`)).body.items?.find((x: any) => x.id === failed.id && x.attempts >= 2), { timeoutMs: 45_000 });
+        c.check("the retried delivery was sent again at once (attempt 2, the backend still answers 401)", again?.attempts === 2 && again.response_status === 401, again);
       } finally { be.kill("SIGTERM"); }
 
       c.begin("paywall from the gallery, published");

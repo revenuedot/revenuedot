@@ -88,6 +88,9 @@ const journey: Journey = {
     const [projAuth] = await sql`SELECT auth_settings FROM projects WHERE id = ${P}`;
     c.eq("SQL: projects.auth_settings", projAuth?.auth_settings, { enabled: true, allow_anonymous: true });
     const prov = await dev.v2("POST", "/auth/providers", { kind: "oidc", name: "Journey IdP", issuer: ISSUER, audiences: [AUD], app_user_id_prefix: "idp:" });
+    c.has("GET /auth/settings reads the saved settings back", await dev.v2("GET", "/auth/settings"), { enabled: true, allow_anonymous: true });
+    const provList = await dev.v2("GET", "/auth/providers");
+    c.check("GET /auth/providers lists the provider", provList.items?.length === 1 && provList.items[0].id === prov.id && provList.items[0].issuer === ISSUER, provList.items);
     c.has("OIDC provider saved with discovery as its key source", prov, { kind: "oidc", issuer: ISSUER, audiences: [AUD], jwks_source: "discovery", app_user_id_claim: "sub", app_user_id_prefix: "idp:", enabled: true });
     const tested = await dev.v2("POST", `/auth/providers/${prov.id}/actions/test`, { id_token: idp.sign({ sub: "alice-1", email: "alice@journeys.test" }) });
     c.has("Test a token: valid, mapped app user id, not linked yet", tested, { valid: true, subject: "alice-1", app_user_id: "idp:alice-1", linked: false });
@@ -98,6 +101,13 @@ const journey: Journey = {
     c.begin("the app signs in anonymously, buys and sets attributes");
     const anon = await login({ method: "anonymous" });
     c.check("anonymous sign-in answers the token response", anon.status === 200 && anon.body.token_type === "Bearer" && anon.body.expires_in === 3600 && /^rdrf_[0-9a-f]{64}$/.test(anon.body.refresh_token), anon.status);
+    // The same endpoints under /v1 (the SDKs' API prefix): sign in, refresh, revoke.
+    const v1anon = await sdk.call("POST", "/v1/auth/login", { scope: "openid offline_access", method: "anonymous" }, { authorization: `Bearer ${cat.testKey}` });
+    c.check("POST /v1/auth/login: anonymous sign-in", v1anon.status === 200 && /^rdrf_[0-9a-f]{64}$/.test(v1anon.body.refresh_token ?? ""), v1anon.status);
+    const v1tok = await sdk.call("POST", "/v1/auth/token", { grant_type: "refresh_token", refresh_token: v1anon.body.refresh_token });
+    c.check("POST /v1/auth/token: refresh rotates the refresh token", v1tok.status === 200 && v1tok.body.refresh_token !== v1anon.body.refresh_token, v1tok.status);
+    const v1rv = await sdk.call("POST", "/v1/auth/revoke", { token: v1tok.body.refresh_token });
+    c.check("POST /v1/auth/revoke ends that session", v1rv.status === 200 && (await sdk.call("POST", "/v1/auth/token", { grant_type: "refresh_token", refresh_token: v1tok.body.refresh_token })).status === 401, v1rv.status);
     const anonUser = decode(anon.body.access_token).payload["rc.app_user_id"] as string;
     c.check("the access token is a JWT the SDK decodes: rc.app_user_id is a new anonymous id, amr anonymous", /^\$RCAnonymousID:[0-9a-f]{32}$/.test(anonUser) && JSON.stringify(decode(anon.body.id_token).payload.amr) === '["anonymous"]', decode(anon.body.access_token).payload);
     const proBuy = await buyWith(anon.body.access_token, anonUser, "pro_monthly");

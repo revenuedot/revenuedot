@@ -446,7 +446,10 @@ const journey: Journey = {
       const idsB = { ...ids, $email: `amazon-${S}@journeys.test`, $gpsAdId: randomUUID(), $idfa: null, $idfv: null, $airshipChannelId: randomUUID(), $onesignalUserId: randomUUID() } as Record<string, string | null>;
       await sdkB.call("POST", `/v1/subscribers/${buyerB}/attributes`, { attributes: Object.fromEntries(Object.entries(idsB).map(([k, v]) => [k, { value: v, updated_at_ms: Date.now() }])) }, androidHeaders);
       const receiptId = `amzn-receipt-${rnd(16)}`;
-      amazonReceipts.set(receiptId, { receiptId, productId: "journey.pro", productType: "SUBSCRIPTION", termSku: "journey.pro.monthly", term: "1 Month", purchaseDate: Date.now() - 5000, renewalDate: Date.now() + 30 * 86400_000, cancelDate: null, autoRenewing: true, testTransaction: false, betaProduct: false, countryCode: "US", quantity: 1 });
+      // A first period: Amazon's renewal date is one calendar month after the purchase.
+      const amzBought = new Date(Date.now() - 5000);
+      const amzRenews = new Date(amzBought); amzRenews.setUTCMonth(amzRenews.getUTCMonth() + 1);
+      amazonReceipts.set(receiptId, { receiptId, productId: "journey.pro", productType: "SUBSCRIPTION", termSku: "journey.pro.monthly", term: "1 Month", purchaseDate: amzBought.getTime(), renewalDate: amzRenews.getTime(), cancelDate: null, autoRenewing: true, testTransaction: false, betaProduct: false, countryCode: "US", quantity: 1 });
       capFrom = ctx.capture.requests.length; outFrom = ctx.server.outbound().length;
       const amz = await sdkB.call("POST", "/v1/receipts", { app_user_id: buyerB, fetch_token: receiptId, product_id: "journey.pro.monthly", store_user_id: `amzn1.account.${rnd(20).toUpperCase()}`, price: 4.99, currency: "USD", is_restore: false }, androidHeaders);
       c.must("Amazon purchase answers 200 with pro active", amz.status === 200 && amz.body.subscriber?.entitlements?.pro, amz.body);
@@ -499,6 +502,11 @@ const journey: Journey = {
       c.check("Amplitude HTTP 500: the delivery waits for its next attempt in 5 minutes, with the error logged", d500?.status === "pending" && d500.response_status === 500 && /^HTTP 500/.test(d500.last_error) && Math.abs(d500.next_attempt_at - Date.now() - 5 * 60_000) < 60_000, d500);
       let ampRow = await intRow(ampId);
       c.check("integrations row counts the failure and keeps the error", ampRow.consecutive_failures === 1 && /^HTTP 500/.test(ampRow.last_error ?? ""), { failures: ampRow.consecutive_failures, error: ampRow.last_error });
+      // RevenueCat's dashboard sends a failed or retrying event at once on Retry; a delivery waiting for its scheduled retry is no exception.
+      const ampRetry = await dev.v2r("POST", `/integrations/partners/${ampId}/deliveries/${t500.id}/retry`);
+      c.check("Retry of the delivery waiting for its 5-minute retry is accepted (200, not 409)", ampRetry.status === 200 && ampRetry.body.status === "pending", { status: ampRetry.status, body: ampRetry.body });
+      const dAmpRetry = await until(async () => (await deliveriesOf(ampId)).find((x) => x.id === t500.id && x.status === "delivered"), { timeoutMs: 60_000 });
+      c.check("the retried Amplitude delivery is sent now and delivered with HTTP 200", dAmpRetry?.response_status === 200, dAmpRetry);
       // Segment answers 400: a permanent error, failed at once.
       const segId = idOf.get("segment")!;
       fails.set("api.segment.io", { status: 400, left: 1 });
@@ -529,7 +537,7 @@ const journey: Journey = {
       const evReplay = (await eventsById([t400b.event_id]))[0]!;
       await verifyEvent("D-replay", evReplay, capFrom, outFrom, {}, ["segment"]);
       ampRow = await intRow(ampId);
-      note("amplitude", { phase: "D", status: "HTTP 500 → pending, retry in 5 min", detail: d500?.last_error ?? "" });
+      note("amplitude", { phase: "D", status: "HTTP 500 → pending, retry in 5 min; manual Retry sent it at once and it was delivered", detail: d500?.last_error ?? "" });
       note("segment", { phase: "D", status: "HTTP 400 → failed; retry and replay delivered", detail: "" });
 
       // ---------- E. connections that send no events ----------
@@ -625,7 +633,8 @@ const journey: Journey = {
       const [txB] = await sql`SELECT store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.project_id = ${dev.projectId} AND cu.original_app_user_id = ${buyerB}`;
       const rb = rowOf(tx, buyerB);
       c.has("the Amazon purchase row: production, $4.99, the transaction id", rb, { product_identifier: "journey.pro.monthly", store: "amazon", is_sandbox: "false", price_in_usd: "4.99", store_transaction_id: txB?.store_transaction_id, app_id: amazonApp.id });
-      c.check("the Amazon transaction id is the receipt id plus the period start", String(txB?.store_transaction_id).startsWith(`${receiptId}.`), txB);
+      // stores/amazon/map.ts: the first period's transaction id is the receipt id; later periods add their start (ms).
+      c.eq("the Amazon transaction id of the first period is the receipt id", txB?.store_transaction_id, receiptId);
       c.eq("transactions CSV has the rows the run reports", tx.length - 1, csvRun.files.find((f: any) => f.table === "transactions").rows);
       for (const t of ["customers", "subscriptions", "events"]) {
         const rows = await csvOf(t);
