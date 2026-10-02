@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { publicOrigin } from "../oauth.js";
 import { hit } from "../../services/rate-limit.js";
-import { storeSecretHintOf, stripeKeyHintOf, withStoreSecrets } from "../../services/store-secrets.js";
+import { storeSecretHintOf, storeSecretSet, stripeConnected, stripeKeyHintOf, stripeModeOf, stripeReachable, withStoreSecrets } from "../../services/store-secrets.js";
 import { lookOf, saveWebConfig, stripeAppsOf, WebConfigIn, webConfigOf } from "../../services/web/config.js";
 import { webPackages, webProductsOf } from "../../services/web/catalog.js";
 import { cnameTarget, DOMAIN, domainOf, forgetHost, payBaseOf, projectBase, RESERVED_SLUGS, SLUG, slugTaken, txtName, txtValue, verifyDomain, type DomainRow } from "../../services/web/domains.js";
@@ -88,7 +88,8 @@ export function webRoutes(r: V2Router, deps: Deps) {
   async function defaultStripeApp(projectId: string, appId?: string | null) {
     const apps = await stripeAppsOf(db, projectId);
     if (appId) { const a = apps.find((x) => x.id === appId); if (!a) throw paramError("app_id must be a Stripe app of this project.", "app_id"); return a; }
-    return apps[0] ?? null;
+    // The first app that can reach Stripe (a restricted key or Connect), else the first.
+    return apps.find((a) => stripeReachable(a)) ?? apps[0] ?? null;
   }
   async function slugFree(projectId: string, slug: string, except: { link?: string; funnel?: string } = {}) {
     const [l] = await db.select({ id: schema.purchaseLinks.id }).from(schema.purchaseLinks).where(and(eq(schema.purchaseLinks.projectId, projectId), eq(schema.purchaseLinks.slug, slug))).limit(1);
@@ -117,13 +118,16 @@ export function webRoutes(r: V2Router, deps: Deps) {
     const d = await domainOf(db, projectId, deps.now());
     const providers = apps.map((a) => ({
       object: "web_provider", id: a.id, name: a.name, type: "stripe", public_key: a.publicKey, key: stripeKeyHintOf(storeSecretHintOf(a, "stripe_secret_key")),
+      // How the app reaches Stripe: "Connect with Stripe" (prd/web-billing/PRD.md §8), a restricted key, or not yet.
+      connection: stripeConnected(a) ? "stripe_connect" : storeSecretSet(a, "stripe_secret_key") ? "restricted_key" : null,
+      connected_account: stripeConnected(a) ? storeSecretHintOf(a, "stripe_connect_account_id") : null, mode: stripeModeOf(a),
       web_config: configs.some((x) => x.appId === a.id), created_at: a.createdAt.getTime(),
     }));
     return c.json({
       object: "web_overview", pay_base: payBase(c), project_base: projectBase(payBase(c), d), domain: domainShape(c, d),
       providers,
       checklist: {
-        connect_stripe: providers.some((p) => p.key.configured), web_config: providers.some((p) => p.web_config),
+        connect_stripe: providers.some((p) => p.connection !== null), web_config: providers.some((p) => p.web_config),
         web_products: products.length > 0, offering: offeringsWithWeb.length > 0,
       },
       web_products: products.length, offerings_with_web_products: offeringsWithWeb.map((o) => o.id),
@@ -167,7 +171,11 @@ export function webRoutes(r: V2Router, deps: Deps) {
     const a = await stripeApp(c, c.req.param("app_id")!);
     const b = await body(c, WebProductIn);
     const app = await withStoreSecrets(deps, a);
-    if (!stripeKeyOf(app)) throw new V2Error(422, "unprocessable_entity_error", "This Stripe app has no API key yet. Add a restricted key with write access to Products and Prices.", "app_id");
+    if (!stripeKeyOf(app)) {
+      throw new V2Error(422, "unprocessable_entity_error", stripeConnected(a)
+        ? "This app is connected with Stripe Connect, but this server has no Stripe Connect platform key for the connection's mode."
+        : "This Stripe app has no API key yet. Connect with Stripe, or add a restricted key with write access to Products and Prices.", "app_id");
+    }
     const { client } = stripeClientFor(deps.stores, deps.fetch);
     const now = deps.now();
     const reqId = newId("", 12);
@@ -188,7 +196,7 @@ export function webRoutes(r: V2Router, deps: Deps) {
     } catch (e) {
       if (e instanceof V2Error) throw e;
       if (e instanceof StripeApiError) {
-        if (e.kind === "credentials") throw new V2Error(422, "store_error", `Stripe refused the request. The restricted key needs write access to Products and Prices. Stripe said: ${e.message}`, "app_id");
+        if (e.kind === "credentials") throw new V2Error(422, "store_error", stripeConnected(a) ? `Stripe refused the request on the connected account. Stripe said: ${e.message}` : `Stripe refused the request. The restricted key needs write access to Products and Prices. Stripe said: ${e.message}`, "app_id");
         if (e.kind === "transient") throw new V2Error(422, "store_error", `Stripe is unavailable: ${e.message}`, undefined, true);
         throw new V2Error(422, "store_error", `Stripe: ${e.message}`, b.stripe_price_id ? "stripe_price_id" : "price");
       }

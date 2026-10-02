@@ -3,8 +3,8 @@
  * on the web": connect Stripe, add a web config (checkout look, legal links, success behaviour, the redemption deep link),
  * create web products (RevenueDot creates them in the developer's Stripe account), and put one in an offering. Each step
  * is done or not from GET /v2/projects/:id/web. RevenueCat's equivalent: frame 26 of the contact sheet.
- * GAPS vs RevenueCat: Paddle and RevenueCat Billing providers, and "Connect with Stripe" (OAuth) — the developer pastes a
- * restricted key on the Stripe app's page instead.
+ * Step 1 connects Stripe with "Connect with Stripe" (Stripe Connect OAuth, §8) or a restricted key, on the Stripe app's page.
+ * GAPS vs RevenueCat: Paddle and RevenueCat Billing providers.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -29,15 +29,15 @@ export function WebPage() {
   const [adding, setAdding] = useState(false);
   const [configFor, setConfigFor] = useState<string | null>(null);
   const [productFor, setProductFor] = useState<string | null>(null);
-  const main = providers.find((p) => p.key.configured) ?? providers[0] ?? null;
+  const main = providers.find((p) => p.connection) ?? providers[0] ?? null;
   const c = web.data?.checklist;
   const addProvider = <button type="button" className="btn btn-dark" onClick={() => setAdding(true)}><Icon name="plus" />Add web provider</button>;
 
   const steps: { key: string; title: string; done: boolean; text: ReactNode; action: ReactNode }[] = c ? [
     {
       key: "stripe", title: "Connect Stripe", done: c.connect_stripe,
-      text: <>Web payments run on your own Stripe account. Add a Stripe app and paste a restricted key with <b>write</b> access to {STRIPE_WRITE}, plus the read permissions listed on the app's page.</>,
-      action: main ? <Link className="btn btn-dark" to={`/projects/${pid}/apps/${main.id}#credentials`}>Add restricted key</Link> : <button type="button" className="btn btn-dark" onClick={() => setAdding(true)}>Add Stripe app</button>,
+      text: <>Web payments run on your own Stripe account. Add a Stripe app, then click <b>Connect with Stripe</b> on its page, or paste a restricted key with <b>write</b> access to {STRIPE_WRITE}, plus the read permissions listed there.</>,
+      action: main ? <Link className="btn btn-dark" to={`/projects/${pid}/apps/${main.id}#credentials`}>Connect Stripe</Link> : <button type="button" className="btn btn-dark" onClick={() => setAdding(true)}>Add Stripe app</button>,
     },
     {
       key: "config", title: "Add a web config", done: c.web_config,
@@ -47,7 +47,7 @@ export function WebPage() {
     {
       key: "products", title: "Create web products and prices", done: c.web_products,
       text: "Name a plan, set its price, period and free trial. RevenueDot creates the product and its price in your Stripe account and attaches it to your entitlements.",
-      action: <button type="button" className="btn btn-dark" disabled={!main || !c.connect_stripe} onClick={() => main && setProductFor(main.id)}>Create web product</button>,
+      action: <button type="button" className="btn btn-dark" disabled={!main?.connection} onClick={() => main && setProductFor(main.id)}>Create web product</button>,
     },
     {
       key: "offering", title: "Create an offering", done: c.offering,
@@ -69,7 +69,7 @@ export function WebPage() {
             {providers.length ? (
               <div className="panel tbl">
                 <table aria-label="Web providers">
-                  <thead><tr><th>Name</th><th>App ID</th><th>Public API key</th><th>Key</th><th>Web config</th><th aria-label="Actions" /></tr></thead>
+                  <thead><tr><th>Name</th><th>App ID</th><th>Public API key</th><th>Stripe</th><th>Web config</th><th aria-label="Actions" /></tr></thead>
                   <tbody>
                     {providers.map((p) => <ProviderRow key={p.id} p={p} pid={pid} onConfig={() => setConfigFor(p.id)} onProduct={() => setProductFor(p.id)} onOpen={() => nav(`/projects/${pid}/apps/${p.id}`)} />)}
                   </tbody>
@@ -148,7 +148,7 @@ export function WebPage() {
 function ProviderRow({ p, pid, onConfig, onProduct, onOpen }: { p: Provider; pid: string; onConfig: () => void; onProduct: () => void; onOpen: () => void }) {
   const items: MenuItem[] = [
     { label: p.web_config ? "Edit web config" : "Add web config", icon: "edit", onSelect: onConfig },
-    { label: "Create web product", icon: "plus", onSelect: onProduct, disabled: !p.key.configured, hint: p.key.configured ? undefined : "Add a key first" },
+    { label: "Create web product", icon: "plus", onSelect: onProduct, disabled: !p.connection, hint: p.connection ? undefined : "Connect Stripe first" },
     { label: "Stripe app settings", icon: "settings", onSelect: onOpen },
   ];
   return (
@@ -156,7 +156,9 @@ function ProviderRow({ p, pid, onConfig, onProduct, onOpen }: { p: Provider; pid
       <td><span className="appcell"><span className="tile"><Icon name="dollar" /></span><span><b>{p.name}</b><small>Stripe</small></span></span></td>
       <td className="id"><span className="hrow" onClick={(e) => e.stopPropagation()}>{p.id}<CopyButton value={p.id} label="Copy app ID" /></span></td>
       <td><SecretText value={p.public_key} label="public API key" /></td>
-      <td>{p.key.configured ? <Tag tone={p.key.mode === "test" ? "info" : "up"}>{p.key.mode === "test" ? "Test" : "Live"}</Tag> : <Link className="ul subtle" to={`/projects/${pid}/apps/${p.id}#credentials`} onClick={(e) => e.stopPropagation()}>Add key</Link>}</td>
+      <td>{p.connection
+        ? <span className="hrow"><Tag tone={p.mode === "test" ? "info" : "up"}>{p.mode === "test" ? "Test" : "Live"}</Tag><span className="subtle" style={{ fontSize: 12 }}>{p.connection === "stripe_connect" ? `Connect · ${p.connected_account ?? ""}` : "Restricted key"}</span></span>
+        : <Link className="ul subtle" to={`/projects/${pid}/apps/${p.id}#credentials`} onClick={(e) => e.stopPropagation()}>Connect Stripe</Link>}</td>
       <td>{p.web_config ? <Tag tone="up">Saved</Tag> : <span className="subtle">Not set</span>}</td>
       <td className="amt"><Menu label={`Actions for ${p.name}`} items={items} /></td>
     </tr>

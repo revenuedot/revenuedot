@@ -1,0 +1,9 @@
+{
+  "connect-recovery": {
+    "title": "Connect with Stripe (OAuth, sealed account, checkout, refund, disconnect, deauthorization) and payment recovery (Stripe, Google Play, Test Store) in a real browser",
+    "date": "2026-10-02",
+    "run": "202610020239055660",
+    "passed": 54,
+    "failed": 0
+  }
+}

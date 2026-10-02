@@ -11,6 +11,8 @@ import { depsSecretKey } from "./secrets.js";
 import { runAlerts } from "./alerts.js";
 import { retryDueConsumption } from "./refunds.js";
 import { runDueCampaigns } from "./winback.js";
+import { runPaymentRecovery } from "./payment-recovery.js";
+import type { StripeConnectConfig } from "./stripe-connect-config.js";
 import { recheckDueCredentials } from "./credential-health.js";
 import { ensureFirstSaleCards } from "./assistant/first-sale.js";
 import { pruneStreams } from "./assistant/store.js";
@@ -51,6 +53,10 @@ export interface TickOptions {
   /** AdMob connections reload their ad units once a day here unless false (the Worker does it from the cron only). */
   admob?: boolean;
   googleOAuth?: { clientId?: string; clientSecret?: string };
+  /** Payment recovery emails send here unless false (the Worker sends them from the cron only, like win-back). */
+  recovery?: boolean;
+  /** "Connect with Stripe" platform keys: recovery reads a connected Stripe customer's email with them. */
+  stripeConnect?: StripeConnectConfig;
   /** Remove funnel visitors' IP addresses and user agents older than 7 days now (default: at minute 7 of each hour). */
   purgeFunnelClients?: boolean;
 }
@@ -74,12 +80,19 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
       console.error("tick: integration deliveries failed", e);
     }
   }
-  const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {}, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }, now) : 0;
+  const credentialsChecked = opts.checkCredentials ? await recheckDueCredentials({ db, fetch: fetchImpl, now: () => now, stores: opts.stores ?? {}, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey, stripeConnect: opts.stripeConnect }, now) : 0;
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
   // Win-back campaigns that are due today (each runs once a day at its UTC hour).
   let winback = 0;
   if (opts.winback !== false) {
     try { winback = await runDueCampaigns({ db, mailer: opts.mailer, now: () => now }, opts.publicUrl); } catch (e) { console.error("tick: win-back campaigns failed", e); }
+  }
+  // Payment recovery: close cases whose window passed, email the due steps (prd/payment-recovery/PRD.md).
+  let recovery = { sent: 0, failed: 0, skipped: 0, closed: 0 };
+  if (opts.recovery !== false) {
+    try {
+      recovery = await runPaymentRecovery({ db, mailer: opts.mailer, now: () => now, publicUrl: opts.publicUrl, stores: opts.stores, fetch: fetchImpl, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey, stripeConnect: opts.stripeConnect });
+    } catch (e) { console.error("tick: payment recovery failed", e); }
   }
   // RevenueDot AI: the first-sale card for projects whose first paid production purchase just arrived, and old stream chunks.
   let firstSales = 0;
@@ -104,7 +117,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     lastFunnelPurgeHour = hour;
     try { funnelClientsPurged = await purgeFunnelClientContext(db, now); } catch (e) { console.error("tick: funnel visitor purge failed", e); }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, admob, funnelClientsPurged, firstSales };
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, recovery, admob, funnelClientsPurged, firstSales };
 }
 
 let lastFunnelPurgeHour = -1;

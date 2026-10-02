@@ -5,7 +5,7 @@ import { DEFAULT_THEME, purchaseLinkFunnel, renderFunnelPage, renderMessagePage,
 import type { AppRecord, Deps } from "../context.js";
 import { publicOrigin } from "./oauth.js";
 import { clientIp, hit } from "../services/rate-limit.js";
-import { stripeKeyHintOf } from "../services/store-secrets.js";
+import { stripeModeOf, stripeReachable } from "../services/store-secrets.js";
 import { lookOf, stripeAppsOf, webConfigOf, type WebConfig } from "../services/web/config.js";
 import { offeringByKey, webPackages } from "../services/web/catalog.js";
 import { CheckoutError, completeWebCheckout, deepLinkFor, redeemUrlFor, startCheckout, tokenFor } from "../services/web/checkout.js";
@@ -56,7 +56,8 @@ export function payRoutes(deps: Deps) {
       const [a] = await db.select().from(schema.apps).where(and(eq(schema.apps.id, appId), eq(schema.apps.projectId, projectId))).limit(1);
       if (a) return a;
     }
-    return (await stripeAppsOf(db, projectId))[0] ?? null;
+    const apps = await stripeAppsOf(db, projectId);
+    return apps.find((a) => stripeReachable(a)) ?? apps[0] ?? null;
   }
 
   async function pageOf(projectSlug: string, slug: string): Promise<Page | null> {
@@ -102,7 +103,7 @@ export function payRoutes(deps: Deps) {
   }
 
   const linkClosed = (p: Page, now: Date) => p.kind === "link" && (!!p.link.disabledAt || (!!p.link.expiresAt && p.link.expiresAt <= now));
-  const sandboxOf = (app: AppRecord) => stripeKeyHintOf(app.secretHints?.stripe_secret_key).mode === "test";
+  const sandboxOf = (app: AppRecord) => stripeModeOf(app) === "test";
 
   // Redemption link page: opens the app with the deep link; store buttons when the app is not installed.
   r.get("/r/:token", async (c) => {

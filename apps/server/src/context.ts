@@ -66,6 +66,11 @@ export interface Deps {
   assistantCaps?: import("./services/assistant/limits.js").AssistantCaps;
   /** Cloud: wipes a conversation's Durable Object after its row is deleted. */
   destroyConversation?: (conversationId: string) => Promise<void>;
+  /**
+   * RevenueDot's Stripe Connect platform for "Connect with Stripe" (REVENUEDOT_STRIPE_CONNECT_*; prd/web-billing/PRD.md §8).
+   * Unset or incomplete: Connect is unavailable and developers paste a restricted key.
+   */
+  stripeConnect?: import("./services/stripe-connect-config.js").StripeConnectConfig;
   /** The app's own fetch. Set by createApp; RevenueDot AI's tools call the REST API v2 through it in-process. */
   dispatch?: (req: Request) => Promise<Response>;
 }

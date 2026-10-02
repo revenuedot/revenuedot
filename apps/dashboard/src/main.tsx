@@ -6,6 +6,7 @@ import "./styles/index.css";
 import { AuthPage } from "./pages/Auth";
 import { AccountPage, ForgotPasswordPage, InvitePage, ResetPasswordPage, VerifyEmailPage } from "./pages/AccountPages";
 import { Soon } from "./pages/Soon";
+import { StripeConnectCallback } from "./pages/setup/StripeConnect";
 import { routes } from "./routes";
 import { useMe } from "./components/Shell";
 import { ToastProvider } from "./components/ui";
@@ -42,6 +43,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/invite" element={<InvitePage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/connect/stripe" element={<StripeConnectCallback />} />
           {routes}
           {SOON.map(([p, t, w]) => <Route key={p} path={`/projects/:projectId/${p}`} element={<Soon title={t} what={w} />} />)}
           <Route path="*" element={<Navigate to="/" replace />} />

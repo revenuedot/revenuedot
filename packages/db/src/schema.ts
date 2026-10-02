@@ -29,6 +29,8 @@ export const projects = pgTable("projects", {
   aiAccess: text("ai_access").notNull().default("read_write"),
   /** When an admin hid the first-sale card on the Overview. */
   firstSaleDismissedAt: ts("first_sale_dismissed_at"),
+  /** Payment recovery settings (prd/payment-recovery/PRD.md): { enabled, steps, window_days, include_sandbox, sender_name }. */
+  recoverySettings: jsonb("recovery_settings").$type<Record<string, unknown>>(),
   createdAt: created(),
 });
 
@@ -1327,3 +1329,94 @@ export const aiShareCards = pgTable("ai_share_cards", {
   data: jsonb("data").$type<Record<string, unknown>>().notNull(),
   createdAt: created(),
 }, (t) => [uniqueIndex("ai_share_cards_kind").on(t.projectId, t.kind)]);
+
+/* ---- Stripe Connect and payment recovery (prd/web-billing/PRD.md §8, prd/payment-recovery/PRD.md, migration 0026) ---- */
+
+/**
+ * "Connect with Stripe" for one Stripe app. The connected account id itself is sealed in `apps.secrets`
+ * (`stripe_connect_account_id`); `accountHash` (SHA-256 hex of it) routes the platform's Connect webhooks to the app.
+ * `pending*` hold the hashed OAuth state and browser nonce while a connection is being made.
+ */
+export const stripeConnections = pgTable("stripe_connections", {
+  appId: text("app_id").primaryKey().references(() => apps.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  /** not_connected, connected or disconnected. */
+  status: text("status").notNull().default("not_connected"),
+  /** oauth (an existing Stripe account) or account_link (an account created through RevenueDot's platform). */
+  method: text("method"),
+  /** live or test: which platform key acts for the account. */
+  mode: text("mode").notNull().default("live"),
+  accountHash: text("account_hash"),
+  pendingStateHash: text("pending_state_hash"),
+  pendingNonceHash: text("pending_nonce_hash"),
+  pendingUntil: ts("pending_until"),
+  pendingMode: text("pending_mode"),
+  redirectUri: text("redirect_uri"),
+  chargesEnabled: boolean("charges_enabled"),
+  detailsSubmitted: boolean("details_submitted"),
+  connectedAt: ts("connected_at"),
+  connectedBy: text("connected_by"),
+  disconnectedAt: ts("disconnected_at"),
+  disconnectReason: text("disconnect_reason"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("stripe_connections_account").on(t.accountHash)]);
+
+/**
+ * One billing issue of one subscription chain: opened when BILLING_ISSUE is derived, recovered by a renewal within the
+ * window, lost when the window passes or the purchase is refunded. `token` is the random id in the email's links.
+ */
+export const recoveryCases = pgTable("recovery_cases", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  customerId: text("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  subscriptionId: text("subscription_id").references(() => subscriptions.id, { onDelete: "set null" }),
+  appId: text("app_id"),
+  store: text("store").notNull(),
+  storeKey: text("store_key").notNull(),
+  productId: text("product_id").notNull(),
+  isSandbox: boolean("is_sandbox").notNull().default(false),
+  /** open, recovered or lost. */
+  status: text("status").notNull().default("open"),
+  detectedAt: ts("detected_at").notNull(),
+  graceExpiresAt: ts("grace_expires_at"),
+  /** What the period is worth in USD: the revenue at risk. */
+  atRiskUsd: doublePrecision("at_risk_usd"),
+  email: text("email"),
+  stepsSent: integer("steps_sent").notNull().default(0),
+  /** When the next email is due; null when none is left. */
+  nextStepAt: ts("next_step_at"),
+  firstSentAt: ts("first_sent_at"),
+  lastSentAt: ts("last_sent_at"),
+  /** Why the last due step sent nothing (no_email, unsubscribed, mailer_failed, disabled). */
+  skipReason: text("skip_reason"),
+  token: text("token").notNull(),
+  clickedAt: ts("clicked_at"),
+  unsubscribedAt: ts("unsubscribed_at"),
+  resolvedAt: ts("resolved_at"),
+  recoveredTransactionId: text("recovered_transaction_id"),
+  recoveredUsd: doublePrecision("recovered_usd"),
+  /** Recovered after at least one recovery email: the money RevenueDot recovered. */
+  attributed: boolean("attributed").notNull().default(false),
+  lostReason: text("lost_reason"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("recovery_cases_token").on(t.token),
+  uniqueIndex("recovery_cases_one_open").on(t.projectId, t.store, t.storeKey).where(sql`status = 'open'`),
+  index("recovery_cases_project").on(t.projectId, t.detectedAt),
+  index("recovery_cases_due").on(t.status, t.nextStepAt),
+  index("recovery_cases_customer").on(t.customerId),
+]);
+
+/** One recovery email (or a step that could not be sent, with `error`). */
+export const recoveryMessages = pgTable("recovery_messages", {
+  id: text("id").primaryKey(),
+  caseId: text("case_id").notNull().references(() => recoveryCases.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  step: integer("step").notNull(),
+  channel: text("channel").notNull().default("email"),
+  email: text("email"),
+  sentAt: ts("sent_at").notNull(),
+  error: text("error"),
+}, (t) => [index("recovery_messages_case").on(t.caseId), index("recovery_messages_project").on(t.projectId, t.sentAt)]);

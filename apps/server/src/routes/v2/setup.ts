@@ -12,7 +12,7 @@ import { amazonKeyConfigured, appleKeyConfigured, googleKeyConfigured, notificat
 import { notificationHealth } from "./notification-health.js";
 import { apiRole } from "../../services/members.js";
 import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
-import { storeSecretHintOf, storeSecretSet, stripeKeyHintOf, withStoreSecrets } from "../../services/store-secrets.js";
+import { storeSecretHintOf, storeSecretSet, stripeConnected, stripeKeyHintOf, stripeModeOf, withStoreSecrets } from "../../services/store-secrets.js";
 import { SANDBOX_ACCESS } from "../../repo/access.js";
 import { ownershipEmail } from "../../mail/templates.js";
 import { trySend } from "../../mail/index.js";
@@ -219,6 +219,9 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         stripe_account_id: s(cr.stripe_account_id), app_user_id_source: s(cr.app_user_id_source) ?? "metadata",
         app_user_id_metadata_key: s(cr.app_user_id_metadata_key) ?? "app_user_id", register_on: cr.register_on === "invoice_created" ? "invoice_created" : "invoice_paid",
         configured: stripeKeyConfigured(a),
+        // "Connect with Stripe" (prd/web-billing/PRD.md §8): its events arrive at the platform's endpoint, not this app's.
+        connection: stripeConnected(a) ? "stripe_connect" : storeSecretSet(a, "stripe_secret_key") ? "restricted_key" : null,
+        connected_account: stripeConnected(a) ? storeSecretHintOf(a, "stripe_connect_account_id") : null, mode: stripeModeOf(a),
       } : null,
     });
   });

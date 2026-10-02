@@ -1,6 +1,6 @@
 # Web billing, purchase links, funnels, web discounts and domains (Tier 3, parity batch C)
 
-**Status:** built on branch `tier3-web-billing`. Everything runs on the developer's own Stripe account through the Stripe app they already connected (`prd/store-stripe/PRD.md`). Every test runs against an in-process fake Stripe; no real Stripe account or key is used.
+**Status:** built on branch `tier3-web-billing`; "Connect with Stripe" (§8) on branch `tier3-connect-recovery`. Everything runs on the developer's own Stripe account: either through RevenueDot's Stripe Connect platform (the developer clicks "Connect with Stripe"), or through a restricted key they paste into the Stripe app (`prd/store-stripe/PRD.md`). Every test runs against an in-process fake Stripe; no real Stripe account or key is used.
 
 ## Users and jobs
 - **Developers** sell their app's subscriptions on the web without building a checkout: connect Stripe once, describe the checkout look, create web products (RevenueDot creates them in their Stripe account), put them in an offering, and share a purchase link or publish a funnel.
@@ -26,14 +26,13 @@ Essential (this batch)
 - Domains: RevenueDot's path (`/pay/<project>/<slug>`, or `pay.<host>` when `REVENUEDOT_PAY_URL` is set) and a verified custom domain.
 
 Later
-- **Stripe Connect** ("Connect with Stripe" OAuth on RevenueDot's own platform account). This needs a RevenueDot platform account in Stripe, an account change Kai has to make; until then the developer pastes a restricted key with write permissions.
 - Paddle as a web provider; Stripe Elements embedded checkout (the purchases-js `/rcbilling/v1/checkout/*` flow stays a stub, see below); Apple Pay domain registration.
 - Automatic TLS for custom domains on Cloud (Cloudflare for SaaS custom hostnames, see Domains).
 - Funnel A/B tests (RevenueCat's "test every step"), funnel templates gallery, image upload in funnels.
 
 ## 1. Web (providers and checklist)
 Screen `/projects/:id/web`: the project's Stripe apps as web providers (name, app id, public key with reveal and copy), "Add web provider" (Add app → Stripe), then **Start selling on the web** with four steps, each done or not from real state:
-1. **Connect Stripe**: a Stripe app with a restricted key. Web billing needs write access the store adapter does not: **Products, Prices, Checkout Sessions, Coupons and Promotion Codes: write** (plus the read permissions in `prd/store-stripe/PRD.md`). "Check credentials" names a missing permission.
+1. **Connect Stripe**: a Stripe app connected with "Connect with Stripe" (§8), or with a restricted key. With a restricted key, web billing needs write access the store adapter does not: **Products, Prices, Checkout Sessions, Coupons and Promotion Codes: write** (plus the read permissions in `prd/store-stripe/PRD.md`). "Check credentials" names a missing permission.
 2. **Add a web config** (`PUT /v2/projects/{id}/apps/{app_id}/web_config`): app name, logo URL, colours (background, text, accent, button text) with presets, terms and privacy URLs, support email, success behaviour (`show_redemption` page, or `redirect` to a URL with `?redemption_url=`), cancel URL, the app's deep link scheme for redemption links (default `rd-<10 hex of the project id hash>`), App Store and Google Play URLs for the success page, and the redemption link lifetime (default 24 hours).
 3. **Create web products and prices** (`POST /v2/projects/{id}/apps/{app_id}/web_products`): name, identifier, type (subscription or one-time), price and currency, billing period (week, month, 3 months, 6 months, year), free trial days. RevenueDot creates a Stripe Product (`metadata.revenuedot_project`) and a Price in the developer's account and stores the RevenueDot product with `store_identifier` = the price id (price ids win over product ids in the Stripe store, so each price is its own product), plus the price in `web_products`. Linking an existing price: `{ stripe_price_id }` reads it from Stripe instead. Optionally attaches the product to entitlements.
 4. **Create an offering**: done when an offering has a package with a web product; the button opens the offering editor.
@@ -91,6 +90,48 @@ Screen `/projects/:id/web`: the project's Stripe apps as web providers (name, ap
 - **Custom domain** (`PUT /v2/projects/{id}/web_domain` `{ custom_domain }`, `POST …/web_domain/actions/verify`): the dashboard shows two DNS records, a CNAME from the domain to the pay host and a TXT `_revenuedot.<domain>` with a token. Verify reads both through DNS over HTTPS (Cloudflare's resolver) and marks the domain verified; then the server answers that host with the project's pages at `/<page>`.
 - **On Cloud** the custom hostname also needs TLS and routing from Cloudflare for SaaS (a custom hostname on the `revenuedot.app` zone and a fallback origin). That is an account change, so it is a documented manual step in `docs/cloud.md`, not done by the server.
 
+## 8. Stripe Connect ("Connect with Stripe")
+Today a developer pastes a restricted key from their own Stripe account. "Connect with Stripe" does the same job in two clicks, through RevenueDot's own Stripe Connect platform account. The developer's account stays theirs: it is a **Standard** connected account, charges are **direct charges** on it, Stripe's fees are theirs, and payouts go to them. RevenueDot takes **no application fee**: the pricing notes charge for tracked revenue and recovered money, not for web payments (`company/docs/business-model.md`). Kai decides whether that changes.
+
+**Platform keys come from the environment.** Kai adds them once the platform account exists:
+
+| Variable | What |
+|---|---|
+| `REVENUEDOT_STRIPE_CONNECT_CLIENT_ID` | The platform's OAuth client id (`ca_…`, Stripe Dashboard → Settings → Connect → Onboarding options → OAuth) |
+| `REVENUEDOT_STRIPE_CONNECT_SECRET_KEY` | The platform's secret key (`sk_live_…`). A `sk_test_…` key makes every connection a test-mode one |
+| `REVENUEDOT_STRIPE_CONNECT_TEST_SECRET_KEY` | Optional `sk_test_…`: lets a developer connect in test mode too (an account connected with the live client id can be used in both modes) |
+| `REVENUEDOT_STRIPE_CONNECT_WEBHOOK_SECRET` | The signing secret of the platform's Connect webhook endpoint (`whsec_…`); several, comma-separated, when live and test have separate endpoints |
+
+Without the client id, a secret key and a webhook secret, Connect is **unavailable**: the button is disabled and says why ("Connect with Stripe is not set up on this server"), and the restricted-key path works as before.
+
+**Flow (OAuth, an existing Stripe account).**
+1. On the Stripe app's page (or step 1 of the Web checklist) the developer picks live or test mode and clicks **Connect with Stripe**. `POST /v2/projects/{id}/apps/{app_id}/stripe_connect/actions/start` `{ method: "oauth", mode, redirect_uri }` stores the SHA-256 of a fresh state (`<project>.<app>.<random>`) and of a browser nonce for 10 minutes and answers Stripe's authorize URL (`https://connect.stripe.com/oauth/authorize?response_type=code&client_id=…&scope=read_write&state=…&redirect_uri=…`) and the nonce. The dashboard keeps the nonce in the tab's session storage.
+2. Stripe sends the developer back to `<dashboard>/connect/stripe?code=…&state=…` (or `error=access_denied`). That page posts `actions/finish` `{ state, code, nonce }`. The state is single-use and must be this app's pending one, the nonce must match (so a link started in someone else's project cannot connect your account to theirs), and it must be under 10 minutes old.
+3. The server exchanges the code at `POST https://connect.stripe.com/oauth/token` (`grant_type=authorization_code`, the platform secret key as the bearer), and keeps only `stripe_user_id` (the `acct_…` id). The access token Stripe also returns is not stored: the platform key plus `Stripe-Account` does everything. It reads `GET /v1/accounts/{acct}` for `charges_enabled` and `details_submitted`.
+4. The account id is **sealed** in `apps.secrets` (`stripe_connect_account_id`, AES-256-GCM like the other store secrets); the dashboard sees only `acct_…abcd`. A SHA-256 of the id routes Connect webhooks (`stripe_connections.account_hash`). Connecting removes the app's restricted key and webhook signing secret, so one app has one way to reach Stripe.
+
+**Flow (Account Links, no Stripe account yet).** "Create a Stripe account" calls `actions/start` with `method: "account_link"` (and the developer's email): `POST /v1/accounts` `{ type: "standard", email }`, then `POST /v1/account_links` `{ account, type: "account_onboarding", refresh_url, return_url }`, both with the platform key. The account is linked at once (sealed like above, `charges_enabled` false); Stripe's onboarding returns to the same callback page, which calls `finish` to read the account's status again. `account.updated` keeps it current.
+
+**Using the connection.** When a connected app's secrets are opened in memory (`withStoreSecrets`), the platform secret key of the connection's mode becomes the app's key and the account id its `Stripe-Account` header. Every existing Stripe path therefore works unchanged on the connected account: receipts, the store adapter's reads, web products and prices, hosted checkout, purchase links, funnels, web discounts (coupons and promotion codes), the customer portal for payment recovery (`prd/payment-recovery/PRD.md`), refunds recorded from `charge.refunded`, and "Check credentials" (it reads one subscription and one Checkout Session on the connected account). A test-mode connection records sandbox purchases.
+
+**Webhooks.** Connected accounts need no endpoint of their own: Stripe sends their events to the platform's Connect endpoint `POST /v1/notifications/stripe-connect`, with `account` on each event. The signature is checked against every configured platform secret, the event is routed to each connected app whose account hash matches, and then handled exactly like an event on the app's own endpoint (stored per app, de-duplicated by event id, forwarded when the app has a forwarding URL). An event for an account no app is connected to answers 200 `unknown_account`, so Stripe does not retry it for days.
+
+**Disconnect.**
+- In RevenueDot: `actions/disconnect` deauthorizes at `POST https://connect.stripe.com/oauth/deauthorize` (`client_id`, `stripe_user_id`), removes the sealed id and marks the connection `disconnected`. Stripe answering that the account is already disconnected is not an error; Stripe being down still disconnects locally and says so.
+- In Stripe: the developer removes RevenueDot from their account; Stripe sends `account.application.deauthorized` to the platform endpoint, and the app is disconnected with the reason "Disconnected in Stripe" (the app page shows it).
+- After a disconnect the app has no key: Stripe calls answer "no API key yet" until the developer connects again or pastes a restricted key.
+
+**API (RevenueDot extensions).** `GET /v2/projects/{id}/apps/{app_id}/stripe_connect` (availability with the reason, modes, status `not_connected` / `connected` / `disconnected`, method, mode, account hint, `charges_enabled`, `details_submitted`, times, the disconnect reason); `POST …/stripe_connect/actions/start`, `…/actions/finish`, `…/actions/disconnect` (`project_configuration:apps:read_write`). `GET /v2/projects/{id}/web` providers carry `connection` (`stripe_connect` or `restricted_key`).
+
+**Data (migration 0026).** `stripe_connections` (one row per Stripe app: status, method, mode, account hash, pending state and nonce hashes with their expiry and redirect URI, `charges_enabled`, `details_submitted`, connected and disconnected times, who connected, disconnect reason). The account id itself lives only sealed in `apps.secrets`.
+
+**Kai's setup steps** (none are done; nothing here calls Stripe until they are):
+1. In the Circo Stripe account (or a new RevenueDot one), turn on Connect: Settings → Connect → choose **Standard** accounts, platform profile, business details.
+2. Settings → Connect → Onboarding options → OAuth: turn OAuth on and add the redirect URIs `https://app.revenuedot.app/connect/stripe` (Cloud) and, for testing, `http://localhost:5178/connect/stripe`. Copy the live client id.
+3. Developers → Webhooks → Add endpoint → "Events on Connected accounts": `https://api.revenuedot.app/v1/notifications/stripe-connect`, with the events in the Stripe app's list plus `account.updated` and `account.application.deauthorized`. Copy its signing secret (and the test-mode endpoint's, if one is added).
+4. Store the client id, `sk_live_…`, optional `sk_test_…` and the webhook secrets in 1Password (`RevenueDot` vault), then set them as Worker secrets on `revenuedot` (`REVENUEDOT_STRIPE_CONNECT_*`), piped from 1Password.
+5. Decide whether web payments carry an application fee (none today).
+
 ## API additions (RevenueDot extensions)
 | Method and path | What |
 |---|---|
@@ -101,6 +142,8 @@ Screen `/projects/:id/web`: the project's Stripe apps as web providers (name, ap
 | `GET`, `POST /v2/projects/{id}/funnels`; `GET`, `PATCH`, `DELETE …/{id}`; `POST …/{id}/actions/publish`, `…/unpublish`; `GET …/{id}/analytics`; `GET …/{id}/preview_data`; `POST …/funnels/generate`, `GET …/funnels/ai` | Funnels |
 | `GET /v2/projects/{id}/web_discounts` | Discounts with RevenueDot's extra settings, codes and Stripe ids |
 | `GET`, `PUT /v2/projects/{id}/web_domain`; `POST …/web_domain/actions/verify` | Domains |
+| `GET /v2/projects/{id}/apps/{app_id}/stripe_connect`; `POST …/stripe_connect/actions/start`, `…/finish`, `…/disconnect` | Stripe Connect (§8) |
+| `POST /v1/notifications/stripe-connect` (Stripe) | The platform's Connect webhook endpoint (§8) |
 | `POST /rcbilling/v1/hosted-checkout` (SDK) | Real: a Stripe Checkout for the package's web product, `{ operation_session_id, checkout_url, success_url, cancel_url }` |
 
 Public pages (no auth): `GET <pay>/<project>/<slug>`, `…/success`, `GET <pay>/r/<token>`, `POST <pay>/api/checkout`, `POST <pay>/api/discount`, `POST <pay>/api/events`.
@@ -114,9 +157,12 @@ Public pages (no auth): `GET <pay>/<project>/<slug>`, `…/success`, `GET <pay>/
 - `packages/contract/test/v2-discounts.test.ts`: all 10 operations validated against RevenueCat's OpenAPI, the Stripe coupon and promotion code calls, eligibility and caps at checkout, the discount on the Checkout Session.
 - `packages/core/test/funnels.test.ts`: validation, paths, the renderer (escaping, every step type, preview mode).
 - `apps/server/test/funnels.test.ts`: publish, the public page, events, opt-in webhook and integration delivery, analytics, AI generation with the fake model.
+- `apps/server/test/stripe-connect.test.ts` (fake Stripe platform with connected accounts in `packages/contract/src/fake-stripe.ts`): unavailable without platform keys, OAuth start and finish (state, nonce, expiry, single use, another project's state), the code exchange, the sealed account id, checkout, web products, discounts, receipts and refunds sent with `Stripe-Account`, Connect webhooks routed by account (signature, unknown account, de-duplication), `account.application.deauthorized`, disconnect, Account Links onboarding, test-mode connections, the restricted-key path unchanged.
+- `apps/dashboard/e2e/stripe-connect.spec.ts`: the button unavailable with the reason, connect through the fake OAuth page, connected state, test mode, disconnect, deauthorized in Stripe, the Web checklist.
 - `apps/dashboard/e2e/web.spec.ts` (fake Stripe in the e2e server): connect Stripe, web config, create a web product, create an offering, open the purchase link, complete a fake checkout, redeem the link, build, publish, visit and convert a funnel, a discount code applied; screenshots at 1440×900 and 390px.
 
 ## Known gaps
+- Stripe Connect has not run against a real platform account: the platform does not exist yet (Kai's setup steps in §8). There is no application fee.
 - No real Stripe account has been used; a run in Stripe test mode with a restricted key is the next check (form encoding of nested fields, Checkout redirects, coupon `currency_options`).
 - Custom domains on Cloud need the Cloudflare for SaaS custom hostname created by hand; `pay.revenuedot.app` needs its DNS record and worker route added (both account changes).
 - The purchases-js Web Billing flow (`rcb_` keys, `/rcbilling/v1/checkout/*`, Stripe Elements inside the SDK) is still a stub: RevenueDot's checkout is a hosted page.

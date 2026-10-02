@@ -6,6 +6,8 @@ import { esc } from "../mail/templates.js";
 import { JwsError, verifyAppleJws } from "../stores/apple/jws.js";
 import { messagingOf, realtimeAnswer, type RealtimeRequest } from "../services/retention.js";
 import { markClicked, markOpened, sendByToken, unsubscribe } from "../services/winback.js";
+import { caseByToken, destinationFor, markClicked as markRecoveryClicked, unsubscribeCase } from "../services/payment-recovery.js";
+import { publicOrigin } from "./oauth.js";
 
 /**
  * Public lifecycle endpoints (no API key): Apple's real-time Retention Messaging call, and the links in win-back emails.
@@ -84,6 +86,36 @@ export function lifecyclePublicRoutes(deps: Deps) {
     const s = await sendByToken(db, c.req.param("token"));
     if (!s || !(await unsubscribe(db, c.req.param("token"), deps.now()))) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
     return c.html(page("You are unsubscribed", `${s.email} will get no more of these emails.`));
+  });
+
+  // Payment recovery email links (prd/payment-recovery/PRD.md): "Update payment", the return page, unsubscribe.
+  r.get("/v1/recovery/l/:token", async (c) => {
+    const rc = await caseByToken(db, c.req.param("token"));
+    if (!rc) return c.html(page("Link not found", "This link is not valid."), 404);
+    if (rc.status === "recovered") return c.html(page("Your payment went through", "Your subscription is active again. There is nothing else to do."));
+    await markRecoveryClicked(db, rc, deps.now());
+    const back = `${deps.apiUrl ?? publicOrigin(c)}/v1/recovery/done/${rc.token}`;
+    const to = await destinationFor(deps, rc, back);
+    if (to.kind === "redirect") return c.redirect(to.url, 303);
+    return c.html(page(to.title, to.body));
+  });
+  r.get("/v1/recovery/done/:token", async (c) => {
+    const rc = await caseByToken(db, c.req.param("token"));
+    if (!rc) return c.html(page("Link not found", "This link is not valid."), 404);
+    return c.html(page("Thank you", "Your payment details are saved. The store retries the payment shortly, and your subscription continues once it goes through. You can close this page."));
+  });
+  // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also RFC 8058 one-click.
+  r.get("/v1/recovery/u/:token", async (c) => {
+    const rc = await caseByToken(db, c.req.param("token"));
+    if (!rc) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
+    if (rc.unsubscribedAt) return c.html(page("You are unsubscribed", "You will get no more of these emails."));
+    return c.html(page("Unsubscribe?", `Stop emails about failed payments${rc.email ? ` to ${rc.email}` : ""}.`, `<form method="post"><button type="submit">Unsubscribe</button></form>`));
+  });
+  r.post("/v1/recovery/u/:token", async (c) => {
+    const rc = await caseByToken(db, c.req.param("token"));
+    if (!rc) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
+    await unsubscribeCase(db, rc, deps.now());
+    return c.html(page("You are unsubscribed", `${rc.email ?? "This address"} will get no more of these emails.`));
   });
   return r;
 }

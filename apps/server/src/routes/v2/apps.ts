@@ -3,10 +3,10 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { body, listOf, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
+import { V2Error, body, listOf, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
 import { appShape } from "./shapes.js";
 import { depsSecretKey } from "../../services/secrets.js";
-import { sealStoreSecrets, storeSecretFields, takeStoreSecrets } from "../../services/store-secrets.js";
+import { sealStoreSecrets, storeSecretFields, stripeConnected, takeStoreSecrets } from "../../services/store-secrets.js";
 
 const APP_TYPES = ["amazon", "app_store", "mac_app_store", "play_store", "stripe", "rc_billing", "roku", "paddle", "test_store"] as const;
 
@@ -63,6 +63,8 @@ function checkStoreFields(type: string, rest: Record<string, unknown>) {
     bool("track_new_purchases");
   }
   if (type === "stripe") {
+    // Set only by "Connect with Stripe" (services/stripe-connect.ts): an API body can never point an app at a connected account.
+    for (const k of ["stripe_connect_account_id", "stripe_connect_mode", "stripe_connected"]) if (k in rest) bad(k, "is set by Connect with Stripe, not through the API.");
     const key = text("stripe_secret_key");
     if (key && /^pk_/.test(key)) bad("stripe_secret_key", "is a publishable key (pk_…). Use a restricted key (rk_…) or a secret key (sk_…).");
     if (key && !/^(rk|sk)_(live|test)_[A-Za-z0-9]+$/.test(key)) bad("stripe_secret_key", "must be a Stripe restricted key (rk_live_… or rk_test_…) or secret key (sk_…).");
@@ -138,6 +140,9 @@ export function appRoutes(r: V2Router, deps: Deps) {
     const fwd = forwardUrl(rest);
     checkStoreFields(a.type, rest);
     const secretUpdate = takeStoreSecrets(a.type, rest);
+    if (a.type === "stripe" && stripeConnected(a) && (secretUpdate.stripe_secret_key || secretUpdate.stripe_webhook_secret)) {
+      throw new V2Error(409, "resource_already_exists", "This app is connected with Stripe Connect. Disconnect it before adding a restricted key or a webhook signing secret.", "stripe.stripe_secret_key");
+    }
     // null clears a credential; other values replace it.
     let credentials: Record<string, unknown> = { ...a.credentials };
     for (const [k, v] of Object.entries(rest)) { if (v === null) delete credentials[k]; else credentials[k] = v; }

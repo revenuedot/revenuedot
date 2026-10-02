@@ -31,7 +31,7 @@ const NAV: Item[] = [
   { label: "Lifecycle", icon: "lifecycle", children: [
     { label: "Customer Center", to: "lifecycle/customer-center" }, { label: "Support", to: "lifecycle/support" },
     { label: "Retention", to: "lifecycle/retention" }, { label: "Refund control", to: "lifecycle/refund-control" },
-    { label: "Win-back", to: "lifecycle/winback" },
+    { label: "Payment recovery", to: "lifecycle/payment-recovery" }, { label: "Win-back", to: "lifecycle/winback" },
   ] },
   { label: "Auth", to: "auth", icon: "auth", badge: "BETA" },
 ];
