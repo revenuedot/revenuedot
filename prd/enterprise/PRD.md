@@ -63,7 +63,7 @@ Patterns followed: WorkOS for SSO set-up fields, DNS TXT domain verification, en
 - Base URL `<dashboard>/scim/v2`, bearer tokens per organization (`rdscim_…`, shown once, stored hashed, revocable).
 - `ServiceProviderConfig`, `ResourceTypes`, `Schemas`, `/Users` and `/Groups` with GET (filters `eq ne co sw ew pr gt ge lt le`, `and or not`, value paths such as `emails[type eq "work"].value`), POST, PUT, PATCH (Okta's path-less `replace`, Entra's capitalised ops and `"False"` strings, dotted keys), DELETE; pagination with 1-based `startIndex`; ETags; RFC 7644 error bodies.
 - Users must be on a verified domain. **Deprovisioning** (`active: false` or DELETE) removes every membership in the organization's projects and ends every session of that person at once; reactivation restores group-mapped access.
-- **Decision: project API keys survive deprovisioning.** Secret keys belong to a project and record no creator, including MCP OAuth keys ("OAuth: <client>"); admins revoke them under API keys. Recording a creator and revoking a leaver's keys is a later option.
+- **Decision: project API keys survive deprovisioning.** Secret keys belong to a project and record no creator, including MCP OAuth keys (named like "OAuth: Claude"); admins revoke them under API keys. Recording a creator and revoking a leaver's keys is a later option.
 
 ## 7. Group → role mappings
 - `group name → (project, role)`, matched case-insensitively against SCIM group display names and SSO `groups` values. A person in several mapped groups gets the highest role per project: Admin, Developer, custom roles (more scopes first), Viewer.
