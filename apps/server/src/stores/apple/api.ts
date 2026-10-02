@@ -41,11 +41,20 @@ export interface StatusesResponse {
   data?: { subscriptionGroupIdentifier?: string; lastTransactions?: { originalTransactionId: string; status: number; signedTransactionInfo: string; signedRenewalInfo?: string }[] }[];
 }
 
+/** Waiting on Apple's rate limit (HTTP 429). Off by default: SDK requests answer 503 at once and the device retries. */
+export interface RateLimitRetry {
+  /** How many times one call waits and tries again after a 429. */
+  retries: number;
+  /** The longest single wait. A Retry-After further out gives up at once with AppleRateLimitError. */
+  maxWaitMs: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
 /** A client for one app; 5xx and network failures surface as retryable 503s, key problems as 7234. */
 export class AppStoreServerApi {
   private token: Promise<string> | null = null;
 
-  constructor(private creds: AppleCredentials, private fetchFn: FetchFn, private now: () => Date) {}
+  constructor(private creds: AppleCredentials, private fetchFn: FetchFn, private now: () => Date, private rateLimit?: RateLimitRetry) {}
 
   private jwt(): Promise<string> {
     this.token ??= (async () => {
@@ -77,25 +86,42 @@ export class AppStoreServerApi {
   private async call<T>(url: string, method: string, body?: unknown): Promise<T | null> {
     const headers: Record<string, string> = { Authorization: `Bearer ${await this.jwt()}` };
     if (body !== undefined) headers["content-type"] = "application/json";
-    let res: Response;
-    try {
-      res = await this.fetchFn(url, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(TIMEOUT_MS) });
-    } catch {
-      throw new RCError(503, Codes.STORE_PROBLEM, "The App Store could not be reached. Try again later.");
-    }
-    if (res.status === 404) return null;
-    if (res.status === 401) throw new RCError(500, Codes.INVALID_APPLE_SUBSCRIPTION_KEY, "The App Store rejected the in-app purchase key (key_id, issuer_id or private_key is wrong).");
-    if (res.status === 429 || res.status >= 500) throw new RCError(503, Codes.STORE_PROBLEM, "The App Store is not responding. Try again later.");
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as { errorCode?: number; errorMessage?: string };
-      throw new AppleApiClientError(res.status, body.errorCode ?? null, body.errorMessage ?? `App Store Server API answered ${res.status}`);
-    }
-    const text = await res.text().catch(() => "");
-    if (!text.trim()) return {} as T;
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new RCError(503, Codes.STORE_PROBLEM, "The App Store returned an unreadable response. Try again later.");
+    // Called as a plain function: Workers' global fetch throws "Illegal invocation" when called as a method of this object.
+    const fetchFn = this.fetchFn;
+    for (let attempt = 0; ; attempt++) {
+      let res: Response;
+      try {
+        res = await fetchFn(url, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      } catch (e) {
+        throw new RCError(503, Codes.STORE_PROBLEM, `The App Store could not be reached (${networkReason(e)}). Try again later.`);
+      }
+      if (res.status === 429) {
+        await discard(res);
+        const waitMs = retryAfterMs(res.headers.get("retry-after"), this.now().getTime());
+        const rl = this.rateLimit;
+        if (rl && attempt < rl.retries) {
+          const wait = waitMs ?? 1000 * 2 ** attempt;
+          if (wait <= rl.maxWaitMs) {
+            await (rl.sleep ?? sleep)(wait);
+            continue;
+          }
+        }
+        throw new AppleRateLimitError(waitMs);
+      }
+      if (res.status === 404) { await discard(res); return null; }
+      if (res.status === 401) { await discard(res); throw new RCError(500, Codes.INVALID_APPLE_SUBSCRIPTION_KEY, "The App Store rejected the in-app purchase key (key_id, issuer_id or private_key is wrong)."); }
+      if (res.status >= 500) { await discard(res); throw new RCError(503, Codes.STORE_PROBLEM, `The App Store answered HTTP ${res.status}. Try again later.`); }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { errorCode?: number; errorMessage?: string };
+        throw new AppleApiClientError(res.status, body.errorCode ?? null, body.errorMessage ?? `App Store Server API answered ${res.status}`);
+      }
+      const text = await res.text().catch(() => "");
+      if (!text.trim()) return {} as T;
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        throw new RCError(503, Codes.STORE_PROBLEM, "The App Store returned an unreadable response. Try again later.");
+      }
     }
   }
 
@@ -160,4 +186,38 @@ export class AppStoreServerApi {
 /** A 4xx other than 401/404 from Apple: the request was about a transaction Apple does not accept. */
 export class AppleApiClientError extends Error {
   constructor(public status: number, public errorCode: number | null, message: string) { super(message); }
+}
+
+/** Apple's rate limit (HTTP 429) after any allowed waits. A 503 like other temporary store failures. */
+export class AppleRateLimitError extends RCError {
+  constructor(public retryAfterMs: number | null) {
+    super(503, Codes.STORE_PROBLEM, `Apple's rate limit was reached (HTTP 429)${retryAfterMs !== null ? `; Apple asks to wait ${Math.max(1, Math.ceil(retryAfterMs / 1000))} s` : ""}. Try again later.`);
+  }
+}
+
+/**
+ * Milliseconds until Retry-After allows another call, or null without a usable header. Apple sends the UNIX time in
+ * milliseconds; the HTTP forms (seconds, or a date) are accepted too.
+ */
+export function retryAfterMs(header: string | null, nowMs: number): number | null {
+  const v = header?.trim();
+  if (!v) return null;
+  if (/^\d+(\.\d+)?$/.test(v)) {
+    const n = Number(v);
+    return Math.max(0, n > 1e11 ? n - nowMs : n * 1000);
+  }
+  const at = Date.parse(v);
+  return Number.isNaN(at) ? null : Math.max(0, at - nowMs);
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Frees the connection: Workers count an unread response body against the request's few simultaneous connections. */
+const discard = (res: Response) => res.body?.cancel().catch(() => {});
+
+/** Why fetch threw, short and safe to show (the URL holds no secret; the key is in a header). */
+function networkReason(e: unknown): string {
+  if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) return `no answer within ${TIMEOUT_MS / 1000} s`;
+  const text = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
