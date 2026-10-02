@@ -1,6 +1,6 @@
 # Cloud billing: plans and metering (Tier 2, batch G)
 
-**Status:** built on branch `tier2-moves-billing` (migration `0022_moves_billing`), tested against a fake Stripe only. RevenueDot Cloud meters tracked revenue per project per month and bills it through RevenueDot's own Stripe account (Circo). Self-host stays free and unmetered: none of this runs there. **The live Stripe keys, price id and meter are Kai's to create**; until they are set, the Billing page shows the plan and usage and the upgrade button says billing is not set up yet.
+**Status:** built on branch `tier2-moves-billing` (migration `0022_moves_billing`), tested against a fake Stripe only. RevenueDot Cloud meters tracked revenue per project per month and bills it through RevenueDot's own Stripe account (Circo). Self-host stays free and unmetered: none of this runs there. **The live Stripe keys, price id and meter are Kai's to create**; until they are set, Cloud behaves as before billing existed: no usage emails and no Billing link in the dashboard (`/auth/me` answers `billing_ready: false`); metering still runs, and `/account/billing` opened directly shows the plan and usage and says billing is not set up yet.
 
 ## Users and jobs
 - **A developer on Cloud** sees which plan they are on, how much revenue their apps tracked this month, what that will cost, and their invoices; upgrades with Stripe Checkout and manages the card or cancels in Stripe's Customer Portal.
