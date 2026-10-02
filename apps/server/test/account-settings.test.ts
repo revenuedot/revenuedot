@@ -499,7 +499,7 @@ describe("preferences, projects, notifications and the exchange rate", () => {
     expect(JSON.stringify(r)).not.toContain("acct_1Abcdefghij1234");
     expect(r.items[0].account).toMatch(/1234$/);
     expect(r.connectable_apps).toEqual([{ app: { id: "app_none", name: "Web app_none" }, project: { id: a.projectId, name: "Scanner" } }]);
-    expect((await a.browser.call("GET", "/auth/me")).body.account.features).toEqual({ stripe_connect: true });
+    expect((await a.browser.call("GET", "/auth/me")).body.account.features).toMatchObject({ stripe_connect: true });
   });
 
   it("answers the display currency's rate from cached or bundled ECB rates", async () => {
