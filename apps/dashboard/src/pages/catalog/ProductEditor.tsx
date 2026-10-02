@@ -235,7 +235,7 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
         {play && <div className="pb cat-note" data-testid="pe-play-note"><Icon name="warn" />Play Store one-time purchases aren't supported yet. Their prices are shown but cannot be selected.</div>}
       </div>
       {loading ? <LoadingRows label="Loading products" rows={4} /> : !items.length ? (
-        <div className="panel"><div className="pb cat-note">{sync?.status === "never" ? `Reading products from ${store}…` : `${store} has no products for this app yet. Add a row with action create to the CSV to make one.`}</div></div>
+        <div className="panel"><div className="pb cat-note">{sync?.status === "never" ? (canEdit ? `Reading products from ${store}…` : `Products have not been read from ${store} yet. An admin or developer can refresh them.`) : canEdit ? `${store} has no products for this app yet. Add a row with action create to the CSV to make one.` : `${store} has no products for this app yet.`}</div></div>
       ) : <div className="pe-table"><DataTable columns={columns} rows={ordered} rowKey={(i) => i.store_identifier} onRowClick={toggle} /></div>}
       <section className="pe-upload" aria-label="Upload a product file">
         <h2>Upload the edited file</h2>
@@ -383,8 +383,10 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
       {discard && (
         <ConfirmDialog title="Discard this file?" confirmLabel="Discard" danger onClose={() => setDiscard(false)} onConfirm={async () => {
           await api(`${v2(pid)}/product_edits/${encodeURIComponent(editId)}`, { method: "DELETE" });
-          await qc.invalidateQueries({ queryKey: catalogKey(pid) });
+          // The file is gone: drop its query first, so no refetch of it 404s while the page still shows it.
+          qc.removeQueries({ queryKey: key });
           onBack();
+          void qc.invalidateQueries({ queryKey: catalogKey(pid) });
         }}>
           <p>{e.file_name} is removed from the Files tab. Nothing was sent to {store}.</p>
         </ConfirmDialog>

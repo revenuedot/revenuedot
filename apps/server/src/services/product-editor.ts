@@ -282,11 +282,15 @@ export function validateFile(kind: "apple" | "play", text: string, live: PricedL
   else warnings.push({ line: bigChanges[0]!.line, message: `${bigChanges.length} prices change by more than 50% (lines ${bigChanges.slice(0, 12).map((b) => b.line).join(", ")}${bigChanges.length > 12 ? " …" : ""}). Check they are not typos.` });
 
   // New products: the base price, and where they will be sold.
+  // Counted once per product: a file of 20,000 new products must not scan every change for each of them.
+  const priced = new Map<string, number>();
+  for (const c of changes) priced.set(c.store_identifier, (priced.get(c.store_identifier) ?? 0) + 1);
+  const errorLines = new Set(errors.map((e) => e.line));
   for (const [id, np] of newProducts) {
-    const rows = changes.filter((c) => c.store_identifier === id);
-    if (!rows.length && !errors.some((e) => e.line === np.line)) fail(np.line, `${id} has no price. A new product needs at least one territory with a price.`);
-    if (rows.length && np.product.type === "subscription" && territories.size > rows.length) {
-      warnings.push({ line: np.line, message: `${id} gets a price in ${rows.length} of ${territories.size} territories; ${kind === "apple" ? "the App Store" : "Google Play"} sells it only where it has one.` });
+    const count = priced.get(id) ?? 0;
+    if (!count && !errorLines.has(np.line)) fail(np.line, `${id} has no price. A new product needs at least one territory with a price.`);
+    if (count && np.product.type === "subscription" && territories.size > count) {
+      warnings.push({ line: np.line, message: `${id} gets a price in ${count} of ${territories.size} territories; ${kind === "apple" ? "the App Store" : "Google Play"} sells it only where it has one.` });
     }
   }
   if (!errors.length && !changes.length) fail(null, `The file changes nothing: every price matches ${store}${blank ? ` (${blank} rows have no price)` : ""}.`);

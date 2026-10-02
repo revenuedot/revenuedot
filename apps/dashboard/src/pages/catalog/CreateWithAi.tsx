@@ -33,6 +33,7 @@ export function CreateWithAiDialog({ pid, what, apps, onClose }: { pid: string; 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const go = async () => {
+    if (busy) return;
     const t = text.trim();
     if (!t) { setError(`Describe the ${what === "product" ? "products" : "offering"} to create, such as "${c.examples[0]}".`); return; }
     setBusy(true); setError(null);
