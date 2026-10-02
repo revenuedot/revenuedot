@@ -1,5 +1,5 @@
 // SDK landing pages: /sdks/<slug>. Code lines come from src/lib/sdks.ts and the docs in docs/sdks/*.md.
-// Fork packages are not on any registry yet (docs/STATUS.md, October 2026): every page says so. Writing rules: apps/site/CONTENT.md.
+// Fork packages are published (docs/STATUS.md row 1.13, checked October 2026): every page gives the real install line and version. Writing rules: apps/site/CONTENT.md.
 import type { Landing } from "./types";
 
 const SIGNUP = "https://app.revenuedot.app/signup";
@@ -464,7 +464,7 @@ if (pkg) {
       { title: "One awaited call", text: "`Purchases.setProxyURL` before `configure` is the whole change on iOS and Android." },
       { title: "Verification already off", text: "`EntitlementVerificationMode.disabled` is the Flutter default." },
       { title: "Web needs the fork", text: "The stock web plugin ignores the proxy URL. The fork makes it work." },
-      { title: "Package name stays", text: "The planned fork keeps `package:purchases_flutter`, shipped as a git dependency." },
+      { title: "Package name stays", text: "The fork keeps `package:purchases_flutter`, installed as a git dependency." },
     ],
     blocks: [
       {
@@ -540,16 +540,21 @@ if (package != null) {
         h2: "The RevenueDot fork package for Flutter",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/purchases-flutter](https://github.com/revenuedot/purchases-flutter). pub.dev names belong to RevenueCat, so it will ship as a git dependency with `-revenuedot` tags. **It is not published yet (checked October 2026)**, and its iOS and Android builds need native packages that are not published either. Use proxy mode today. The planned install:",
+          "The fork lives at [github.com/revenuedot/purchases-flutter](https://github.com/revenuedot/purchases-flutter). pub.dev names belong to RevenueCat, so it ships as a git dependency on `-revenuedot` tags. **It is published as the tag `10.13.2-revenuedot` (checked October 2026)**, and its iOS and Android builds pull RevenueDot's native packages from CocoaPods and Maven Central. Install it from git:",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "pubspec.yaml",
           code: `# pubspec.yaml
 purchases_flutter:
   git:
-    url: https://github.com/revenuedot/purchases-flutter
-    ref: <version>-revenuedot`,
+    url: https://github.com/revenuedot/purchases-flutter.git
+    ref: 10.13.2-revenuedot
+purchases_ui_flutter:   # paywalls, optional
+  git:
+    url: https://github.com/revenuedot/purchases-flutter.git
+    path: purchases_ui_flutter
+    ref: 10.13.2-revenuedot`,
         },
       },
       {
@@ -575,7 +580,7 @@ purchases_flutter:
       },
       {
         q: "Does RevenueDot work with Flutter web?",
-        a: "Not with the stock package: its web plugin ignores setProxyURL. The RevenueDot fork fixes that, but it is not published yet. For web sales today, use a RevenueDot purchase link and Stripe Checkout.",
+        a: "Not with the stock package: its web plugin ignores setProxyURL. The RevenueDot fork fixes that: install purchases_flutter from the git tag 10.13.2-revenuedot. A RevenueDot purchase link with Stripe Checkout also works for web sales.",
       },
       {
         q: "How do I test Flutter purchases without store accounts?",
@@ -583,7 +588,7 @@ purchases_flutter:
       },
       {
         q: "Will my Dart imports change with the fork?",
-        a: "No. The package names stay purchases_flutter and purchases_ui_flutter. Only the dependency source in pubspec.yaml changes, and the fork is not published yet.",
+        a: "No. The package names stay purchases_flutter and purchases_ui_flutter. Only the dependency source in pubspec.yaml changes, to the git tag 10.13.2-revenuedot.",
       },
     ],
     docs: [
@@ -1013,7 +1018,7 @@ if (aPackage) {
       { title: "Inspector setting", text: "Proxy URL sits under Advanced on the Purchases component." },
       { title: "Works with runtime setup", text: "The field still applies when you configure from a script." },
       { title: "iOS and Android", text: "Purchases run on a device or simulator. The Editor uses a no-op wrapper." },
-      { title: "Namespaces stay", text: "`using RevenueCat;` keeps working with the planned fork." },
+      { title: "Namespaces stay", text: "`using RevenueCat;` keeps working with the fork." },
     ],
     blocks: [
       {
@@ -1097,13 +1102,15 @@ public class Store : MonoBehaviour
         h2: "The RevenueDot fork package for Unity",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity). C# namespaces and assembly names stay the same. **It is not published yet (checked October 2026)**, and it cannot build a working app until its native dependencies are published, so use the Inspector setting today.",
+          "The fork lives at [github.com/revenuedot/purchases-unity](https://github.com/revenuedot/purchases-unity). C# namespaces and assembly names stay the same. **It is published on OpenUPM as `com.revenuedot.purchases-unity` 9.11.1 (checked October 2026)**, and its native dependencies come from CocoaPods and Maven Central. The Inspector setting works with the stock plugin too.",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "terminal",
-          code: `// OpenUPM
-openupm add com.revenuedot.purchases-unity`,
+          code: `# OpenUPM
+openupm add com.revenuedot.purchases-unity
+# or, in Package Manager, Add package from git URL:
+# https://github.com/revenuedot/purchases-unity.git?path=RevenueCat#9.11.1-revenuedot`,
         },
       },
       {
@@ -1225,12 +1232,12 @@ val nowPro = result.customerInfo.entitlements.active.containsKey("pro")`,
         h2: "The RevenueDot fork package for Kotlin Multiplatform",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/purchases-kmp](https://github.com/revenuedot/purchases-kmp). Packages stay `com.revenuecat.purchases.kmp.*`. It builds on RevenueDot's iOS and Android forks, so both trust RevenueDot's signing key and send events to your proxy URL. **It is not on Maven Central yet (checked October 2026)**, so proxy mode is the practical choice today.",
+          "The fork lives at [github.com/revenuedot/purchases-kmp](https://github.com/revenuedot/purchases-kmp). Packages stay `com.revenuecat.purchases.kmp.*`. It builds on RevenueDot's iOS and Android forks, so both trust RevenueDot's signing key and send events to your proxy URL. **It is published on Maven Central as `app.revenuedot.purchases:purchases-kmp-core` 3.10.1 (checked October 2026).**",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "Gradle",
-          code: `implementation("app.revenuedot.purchases:purchases-kmp-core:<version>")`,
+          code: `implementation("app.revenuedot.purchases:purchases-kmp-core:3.10.1")`,
         },
       },
       {

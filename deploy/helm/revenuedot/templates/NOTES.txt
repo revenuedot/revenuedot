@@ -1,0 +1,23 @@
+RevenueDot is installed as {{ include "revenuedot.fullname" . }} in {{ .Release.Namespace }}.
+
+Address: {{ include "revenuedot.publicUrl" . }}
+{{- if not .Values.ingress.enabled }}
+No Ingress: try it with
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "revenuedot.fullname" . }} 8787:{{ .Values.service.port }}
+{{- end }}
+
+Replicas: {{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.minReplicas }} to {{ .Values.autoscaling.maxReplicas }} (autoscaled){{ else }}{{ .Values.replicaCount }}{{ end }}. Migrations: {{ include "revenuedot.migrationMode" . }}{{ if eq (include "revenuedot.migrationMode" .) "job" }} (hook Job before each install and upgrade){{ else }} (each replica on start, under a Postgres lock){{ end }}.
+Check: kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "revenuedot.fullname" . }} && helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+{{- if .Values.postgresql.enabled }}
+
+WARNING: the bundled Postgres is for evaluation only. It is one pod with no failover, no backups and no point-in-time
+recovery. Move to a managed Postgres (database.existingSecret) before you take real purchases.
+{{- end }}
+{{- if and (not .Values.secrets.existingSecret) (not .Values.secrets.encryptionKey) }}
+
+Set secrets.encryptionKey (or REVENUEDOT_ENCRYPTION_KEY in secrets.existingSecret) before you connect integrations or
+data exports: it seals their credentials at rest.
+{{- end }}
+
+The first account to sign up becomes the owner{{ if not .Values.allowSignup }}; after that, sign-up is closed (allowSignup=false){{ end }}.
+Guide: https://revenuedot.app/docs/guides/high-availability

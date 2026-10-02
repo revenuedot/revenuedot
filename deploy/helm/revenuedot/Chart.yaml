@@ -1,0 +1,29 @@
+apiVersion: v2
+name: revenuedot
+description: RevenueDot, the open-source RevenueCat alternative, as a high-availability deployment (API and dashboard replicas on an external Postgres).
+type: application
+# Chart version: bump on any chart change. appVersion: the RevenueDot image tag the chart installs by default.
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
+home: https://revenuedot.app
+icon: https://revenuedot.app/favicon.svg
+sources:
+  - https://github.com/revenuedot/revenuedot
+keywords:
+  - in-app-purchases
+  - subscriptions
+  - revenuecat
+  - storekit
+  - google-play
+maintainers:
+  - name: RevenueDot
+    email: hello@revenuedot.app
+    url: https://revenuedot.app
+annotations:
+  artifacthub.io/license: AGPL-3.0-only
+  artifacthub.io/links: |
+    - name: Guide
+      url: https://revenuedot.app/docs/guides/high-availability
+    - name: Spec
+      url: https://github.com/revenuedot/revenuedot/blob/main/prd/ha-self-host/PRD.md

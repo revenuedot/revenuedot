@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { trySend, type Mailer } from "../mail/index.js";
@@ -60,16 +60,22 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
     : [];
   const byKey = new Map(existing.map((a) => [key(a.kind, a.subjectId), a]));
 
+  // Each email is sent only by the run whose write changed the alert row (insert, or an update conditioned on the state it
+  // read), so two runs at once (several replicas, or the Worker's cron and a request-kicked run) never email twice.
   for (const f of failing) {
     const row = byKey.get(key(f.kind, f.subjectId));
     if (!row || row.status !== "open") {
+      const won = row
+        ? await db.update(A).set({ status: "open", projectId: f.projectId, message: f.detail, openedAt: now, lastNotifiedAt: now, resolvedAt: null }).where(and(eq(A.id, row.id), ne(A.status, "open"))).returning({ id: A.id })
+        : await db.insert(A).values({ id: newId("alrt_", 12), projectId: f.projectId, kind: f.kind, subjectId: f.subjectId, status: "open", message: f.detail, openedAt: now, lastNotifiedAt: now }).onConflictDoNothing().returning({ id: A.id });
+      if (!won.length) continue;
       await notify(deps, f, "open");
-      if (row) await db.update(A).set({ status: "open", projectId: f.projectId, message: f.detail, openedAt: now, lastNotifiedAt: now, resolvedAt: null }).where(eq(A.id, row.id));
-      else await db.insert(A).values({ id: newId("alrt_", 12), projectId: f.projectId, kind: f.kind, subjectId: f.subjectId, status: "open", message: f.detail, openedAt: now, lastNotifiedAt: now }).onConflictDoNothing();
       opened++;
     } else if (!row.lastNotifiedAt || now.getTime() - row.lastNotifiedAt.getTime() >= REMIND_AFTER_MS) {
+      const won = await db.update(A).set({ message: f.detail, lastNotifiedAt: now })
+        .where(and(eq(A.id, row.id), eq(A.status, "open"), row.lastNotifiedAt ? eq(A.lastNotifiedAt, row.lastNotifiedAt) : isNull(A.lastNotifiedAt))).returning({ id: A.id });
+      if (!won.length) continue;
       await notify(deps, f, "reminder");
-      await db.update(A).set({ message: f.detail, lastNotifiedAt: now }).where(eq(A.id, row.id));
       reminded++;
     } else if (row.message !== f.detail) {
       await db.update(A).set({ message: f.detail }).where(eq(A.id, row.id));
@@ -78,7 +84,8 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
 
   for (const row of open) {
     if (failingKeys.has(key(row.kind, row.subjectId))) continue;
-    await db.update(A).set({ status: "resolved", resolvedAt: now }).where(eq(A.id, row.id));
+    const won = await db.update(A).set({ status: "resolved", resolvedAt: now }).where(and(eq(A.id, row.id), eq(A.status, "open"))).returning({ id: A.id });
+    if (!won.length) continue;
     const subject = await subjectOf(db, row.kind as AlertKind, row.subjectId);
     // A deleted app or webhook resolves without an email.
     if (subject && row.lastNotifiedAt) await notify(deps, { projectId: row.projectId, kind: row.kind as AlertKind, subjectId: row.subjectId, subjectName: subject.name, detail: null }, "resolved");

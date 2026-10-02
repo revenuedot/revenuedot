@@ -164,7 +164,7 @@ async function contactSales(request: Request, env: Env): Promise<Response> {
   const draftId = typeof data.draftId === "string" && /^[a-f0-9-]{36}$/.test(data.draftId) ? data.draftId : null;
   if (draftId && env.LEADS) await env.LEADS.prepare("UPDATE sales_lead_drafts SET completed = 1 WHERE id = ?").bind(draftId).run().catch(() => {});
   console.log(JSON.stringify({ event: "contact_sales", id, score: s, stored, emailed }));
-  if (!stored && !emailed) return json({ ok: false, error: "We could not save your request. Email hello@revenuedot.app instead." }, 503);
+  if (!stored && !emailed) return json({ ok: false, error: "We could not save your request. Email sales@revenuedot.app instead." }, 503);
   return done(s === "self_serve" ? "self_serve" : "sales");
 }
 

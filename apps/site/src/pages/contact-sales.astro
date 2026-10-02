@@ -141,6 +141,7 @@ const KEYS = "ABCDEFGHIJ";
           <p class="label">Rolling out to Enterprise first</p>
           <ul class="cs-list"><li>Single sign-on (SAML) and SCIM</li><li>EU and US data regions</li></ul>
         </div>
+        <p class="tiny">Prefer email? Write to <a href={`mailto:${SITE.email.sales}`}>{SITE.email.sales}</a>.</p>
         <p class="tiny">Smaller app? <a href={SITE.signup}>RevenueDot Cloud</a> is free up to $10,000 a month, with no call needed.</p>
       </aside>
     </div>
@@ -380,7 +381,7 @@ const KEYS = "ABCDEFGHIJ";
         return;
       }
       if (r.status === 400 && out.errors) { const i = steps.findIndex((_, j) => fieldsOf(j).some((f) => f in out.errors)); go(Math.max(0, i)); for (const [f, m] of Object.entries(out.errors as Record<string, string>)) show(f, m); }
-      else { status.textContent = out.error ?? "Something went wrong. Try again, or email hello@revenuedot.app."; status.hidden = false; }
+      else { status.textContent = out.error ?? "Something went wrong. Try again, or email sales@revenuedot.app."; status.hidden = false; }
     } catch {
       status.textContent = "We could not reach the server. Check your connection and try again."; status.hidden = false;
     } finally {

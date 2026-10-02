@@ -116,6 +116,18 @@ describe("webhook failing", () => {
     await s.db.update(schema.webhooks).set({ enabled: false }).where(eq(schema.webhooks.id, w.id));
     expect((await runAlerts({ db: s.db, mailer: s.mail }, s.now())).resolved).toBe(1);
   });
+
+  it("two alert runs at once (several replicas, or cron plus a kicked run) send one email each for open, reminder and resolved", async () => {
+    const { browser, P, s } = await project();
+    const w = (await browser.call("POST", `${P}/integrations/webhooks`, { name: "Backend", url: "https://hooks.example.com/rd" })).body;
+    await s.db.update(schema.webhooks).set({ consecutiveFailures: 7, lastError: "timeout" }).where(eq(schema.webhooks.id, w.id));
+    const both = async (at: Date) => { const [a, b] = await Promise.all([runAlerts({ db: s.db, mailer: s.mail }, at), runAlerts({ db: s.db, mailer: s.mail }, at)]); return { opened: a.opened + b.opened, reminded: a.reminded + b.reminded, resolved: a.resolved + b.resolved }; };
+    expect(await both(s.now())).toEqual({ opened: 1, reminded: 0, resolved: 0 });
+    expect(await both(new Date(s.now().getTime() + 25 * HOUR))).toEqual({ opened: 0, reminded: 1, resolved: 0 });
+    await s.db.update(schema.webhooks).set({ consecutiveFailures: 0, lastError: null }).where(eq(schema.webhooks.id, w.id));
+    expect(await both(new Date(s.now().getTime() + 26 * HOUR))).toEqual({ opened: 0, reminded: 0, resolved: 1 });
+    expect(alertMails(s)).toEqual(["admin@example.com: Webhook Backend is failing", "admin@example.com: Still failing: Webhook Backend is failing", "admin@example.com: Resolved: webhook Backend"]);
+  });
 });
 
 describe("store credentials failing", () => {
