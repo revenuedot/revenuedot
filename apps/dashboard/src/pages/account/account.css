@@ -36,10 +36,9 @@
 .tfa-codes li{font:500 14px/22px var(--mono);letter-spacing:.04em}
 
 /* Notifications matrix */
-.nmx td{white-space:nowrap}
 .nmx td.p{white-space:normal;min-width:160px}
 .nmx .sens{height:28px;width:auto;font-size:12px}
-.nmx-cell{display:flex;align-items:center;gap:8px}
+.nmx-cell{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 
 /* Interface */
 .theme-opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}

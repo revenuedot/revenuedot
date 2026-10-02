@@ -49,11 +49,11 @@ export function AccountNotificationsPage() {
               <tbody>{q.data.projects.map((p) => (
                 <tr key={p.project.id} data-project={p.project.id}>
                   <td className="p"><b>{p.project.name}</b></td>
-                  <td><Switch checked={p.weekly_summary} onChange={(v) => save(p, { weekly_summary: v }, v ? `Weekly summary on for ${p.project.name}.` : `Weekly summary off for ${p.project.name}.`)} label={`Weekly summary for ${p.project.name}`} /></td>
-                  <td><Switch checked={p.experiment_results} onChange={(v) => save(p, { experiment_results: v }, v ? `Experiment results on for ${p.project.name}.` : `Experiment results off for ${p.project.name}.`)} label={`Experiment results for ${p.project.name}`} /></td>
+                  <td><Switch checked={p.weekly_summary} onChange={(v) => save(p, { weekly_summary: v }, v ? `Weekly summary on for ${p.project.name}.` : `Weekly summary off for ${p.project.name}.`)} label={`Weekly summary for ${p.project.name}`} hideLabel /></td>
+                  <td><Switch checked={p.experiment_results} onChange={(v) => save(p, { experiment_results: v }, v ? `Experiment results on for ${p.project.name}.` : `Experiment results off for ${p.project.name}.`)} label={`Experiment results for ${p.project.name}`} hideLabel /></td>
                   <td>
                     <div className="nmx-cell">
-                      <Switch checked={p.anomaly_alerts} onChange={(v) => save(p, { anomaly_alerts: v }, v ? `Anomaly alerts on for ${p.project.name}.` : `Anomaly alerts off for ${p.project.name}.`)} label={`Revenue anomalies for ${p.project.name}`} />
+                      <Switch checked={p.anomaly_alerts} onChange={(v) => save(p, { anomaly_alerts: v }, v ? `Anomaly alerts on for ${p.project.name}.` : `Anomaly alerts off for ${p.project.name}.`)} label={`Revenue anomalies for ${p.project.name}`} hideLabel />
                       {p.anomaly_alerts && (
                         <select className="select sens" aria-label={`Sensitivity for ${p.project.name}`} value={p.anomaly_sensitivity} onChange={(e) => save(p, { anomaly_sensitivity: e.target.value as ProjectPrefs["anomaly_sensitivity"] }, `Sensitivity ${e.target.value} for ${p.project.name}.`)}>
                           <option value="low">Low: big moves only</option><option value="medium">Medium</option><option value="high">High: smaller moves too</option>
