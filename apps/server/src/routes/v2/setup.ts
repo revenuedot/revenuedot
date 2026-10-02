@@ -21,6 +21,7 @@ import { SANDBOX_ACCESS } from "../../repo/access.js";
 import { ownershipEmail } from "../../mail/templates.js";
 import { trySend } from "../../mail/index.js";
 import { linkBase, requestOrigin } from "../../services/account-email.js";
+import { buildSampleApp, SAMPLE_APPS, samplePlatformsFor, type SamplePlatform } from "../../services/sample-apps/index.js";
 
 /**
  * Project setup endpoints for the dashboard (apps, project settings, webhook tests).
@@ -195,6 +196,24 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     };
   };
 
+  // A zip of the matching example from revenuedot/examples with this app's public key, this server's URL and the
+  // project's first entitlement filled in (services/sample-apps). Only public values: the same ones the app ships with.
+  r.get(`${P}/apps/:app_id/sample_app`, scope("project_configuration:apps:read"), async (c) => {
+    const a = await findApp(c);
+    const offered = samplePlatformsFor(a.type);
+    const platform = (c.req.query("platform") ?? offered[0]) as SamplePlatform | undefined;
+    if (!platform || !offered.includes(platform)) {
+      throw paramError(offered.length ? `platform must be one of ${offered.join(", ")} for ${a.type} apps.` : `There is no sample app for ${a.type} apps.`, "platform");
+    }
+    const [ent] = await db.select({ key: schema.entitlements.lookupKey }).from(schema.entitlements)
+      .where(eq(schema.entitlements.projectId, a.projectId)).orderBy(schema.entitlements.createdAt, schema.entitlements.id).limit(1);
+    const out = await buildSampleApp({ platform, appType: a.type, appName: a.name, publicKey: a.publicKey, serverUrl: publicOrigin(c), entitlement: ent?.key ?? null, now: deps.now() });
+    return new Response(out.data, { headers: {
+      "content-type": "application/zip", "content-disposition": `attachment; filename="${out.filename}"`,
+      "cache-control": "no-store", "x-revenuedot-examples-commit": out.commit,
+    } });
+  });
+
   // What the app configuration page shows: never a secret, only whether it is set and the non-secret ids around it.
   r.get(`${P}/apps/:app_id/store_settings`, scope("project_configuration:apps:read"), async (c) => {
     const a = await findApp(c);
@@ -212,6 +231,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       api_origin: publicOrigin(c),
       notification_url: store ? `${publicOrigin(c)}/v1/notifications/${store}/${a.id}` : null,
       notification_forward_url: a.notificationForwardUrl ?? null,
+      // "Test your setup with the sample app": the examples that can buy with this app (GET …/sample_app?platform=).
+      sample_apps: samplePlatformsFor(a.type).map((platform) => ({ platform, ...SAMPLE_APPS[platform] })),
       // Only a notification processed for a known purchase counts; the newest failure stays visible until one succeeds.
       last_notification_at: health.last_notification_at,
       last_notification_error: health.notification_status === "failing" ? health.last_notification_error!.message : null,

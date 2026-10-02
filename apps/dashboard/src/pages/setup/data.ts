@@ -22,6 +22,8 @@ export interface PublicKey { object: "public_api_key"; id: string; key: string; 
 export interface StoreSettings {
   object: "app_store_settings"; app_id: string; type: AppType; api_origin: string;
   notification_url: string | null; notification_forward_url: string | null;
+  /** "Test your setup with the sample app": examples that can buy with this app (GET …/sample_app?platform=). */
+  sample_apps?: Array<{ platform: string; name: string; example: string }>;
   last_notification_at: number | null; last_notification_error: string | null;
   last_forward: { status: number; at: number } | null;
   track_new_purchases: boolean; allow_unsigned_receipts: boolean;

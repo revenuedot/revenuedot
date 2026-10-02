@@ -388,6 +388,43 @@ function ProgramEditor({ d, set, s, error }: { d: Draft; set: (p: Partial<Draft>
   );
 }
 
+function SampleApp({ pid, app, s }: { pid: string; app: App; s: StoreSettings }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const download = async (platform: string) => {
+    setBusy(platform); setError(null); setDone(null);
+    try {
+      const res = await fetch(`${base(pid)}/apps/${encodeURIComponent(app.id)}/sample_app?platform=${platform}`, { credentials: "same-origin" });
+      if (!res.ok) {
+        const b = await res.json().catch(() => null) as { message?: string } | null;
+        throw new Error(b?.message ?? `The download failed (${res.status}).`);
+      }
+      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "revenuedot-sample.zip";
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setDone(name);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  };
+  const list = s.sample_apps ?? [];
+  return (
+    <div className="stack tight">
+      <div className="hrow">
+        {list.map((x) => (
+          <button key={x.platform} type="button" className="btn btn-line" disabled={!!busy} onClick={() => download(x.platform)} data-platform={x.platform}>
+            <Icon name="download" />{busy === x.platform ? "Preparing…" : x.name}
+          </button>
+        ))}
+      </div>
+      {done && <StatusLine tone="ok">Downloaded <span className="mono">{done}</span>. Its README says how to run it.</StatusLine>}
+      {error && <div className="banner err" role="alert">{error}</div>}
+      <p className="subtle">The code comes from <a className="linkish" href="https://github.com/revenuedot/examples" target="_blank" rel="noreferrer">revenuedot/examples</a>. Only public values are filled in: this app's key, the server URL and your first entitlement.</p>
+    </div>
+  );
+}
+
 function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const pid = useProjectId();
   const nav = useNavigate();
@@ -1095,6 +1132,15 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
                 : <>Your app keeps using the RevenueCat SDK. Add one line that points it at this server, before <span className="mono">configure</span>, and use this app's key.</>}</p>
         {key && <SdkSetup type={app.type} origin={origin} publicKey={key} />}
       </Section>
+
+      {!!s.sample_apps?.length && (
+        <Section id="sample-app" title="Test your setup with the sample app">
+          <p className="section-sub">{test
+            ? "A small paywall app with this Test Store key and this server already filled in. Run a debug build and buy: no store account needed, and the purchase shows up under Customers as sandbox data."
+            : "A small paywall app with this app's key and this server already filled in. Set your bundle ID or package name, run it on a sandbox account and buy: the purchase shows up under Customers."}</p>
+          <SampleApp pid={pid} app={app} s={s} />
+        </Section>
+      )}
 
       <KeyValue rows={[["REST API identifier", <span className="copy"><span>{app.id}</span><CopyButton value={app.id} label="Copy REST API identifier" /></span>]]} />
 
