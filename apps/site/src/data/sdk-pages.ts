@@ -102,15 +102,15 @@ if let package = offerings.current?.availablePackages.first {
         h2: "The RevenueDot fork package for iOS",
         label: "Fork",
         paras: [
-          "RevenueDot keeps a fork of the iOS SDK at [github.com/revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios). It keeps the modules `RevenueCat` and `RevenueCatUI`, trusts RevenueDot's signing key and defaults to `https://api.revenuedot.app`. **The packages are not published yet (checked October 2026).** The planned install lines are below. Today you can use the fork from its `revenuedot/main-patches` branch with Swift Package Manager.",
+          "RevenueDot keeps a fork of the iOS SDK at [github.com/revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios). It keeps the modules `RevenueCat` and `RevenueCatUI`, trusts RevenueDot's signing key and defaults to `https://api.revenuedot.app`. **It is published (checked October 2026):** CocoaPods `RevenueDotPurchases` and `RevenueDotPurchasesUI` 5.91.0, and the Swift Package Manager tag `5.91.0-revenuedot`.",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "Swift and CocoaPods",
           code: `// Swift Package Manager
-.package(url: "https://github.com/revenuedot/purchases-ios", exact: "<version>-revenuedot")
+.package(url: "https://github.com/revenuedot/purchases-ios", exact: "5.91.0-revenuedot")
 // CocoaPods
-pod "RevenueDotPurchases"   // still: import RevenueCat`,
+pod "RevenueDotPurchases", "5.91.0"   // still: import RevenueCat`,
         },
       },
       {
@@ -248,13 +248,13 @@ try {
         h2: "The RevenueDot fork package for Android",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/purchases-android](https://github.com/revenuedot/purchases-android). Imports do not change. It also routes diagnostics, paywall events and ad events to your proxy URL, which the stock SDK still sends to RevenueCat. **It is not published to Maven Central yet (checked October 2026).** The planned coordinates:",
+          "The fork lives at [github.com/revenuedot/purchases-android](https://github.com/revenuedot/purchases-android). Imports do not change. It also routes diagnostics, paywall events and ad events to your proxy URL, which the stock SDK still sends to RevenueCat. **It is published on Maven Central as `app.revenuedot.purchases:purchases` 10.23.3 (checked October 2026).**",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "Gradle",
           code: `// build.gradle.kts
-implementation("app.revenuedot.purchases:purchases:<version>")
+implementation("app.revenuedot.purchases:purchases:10.23.3")
 // still: import com.revenuecat.purchases.*`,
         },
       },
@@ -318,7 +318,7 @@ implementation("app.revenuedot.purchases:purchases:<version>")
     points: [
       { title: "One awaited call", text: "`Purchases.setProxyURL` is the whole change. Verification is already `DISABLED` in React Native." },
       { title: "Expo Go and web", text: "A `test_` key buys in Expo Go and on the web, with no store account." },
-      { title: "Imports stay", text: "The planned fork installs through an npm alias, so no import changes." },
+      { title: "Imports stay", text: "The fork installs through an npm alias, so no import changes." },
       { title: "Example app", text: "An Expo example loads offerings, buys through the Test Store and shows the entitlement." },
     ],
     blocks: [
@@ -396,13 +396,13 @@ if (pkg) {
         h2: "The RevenueDot fork package for React Native",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/react-native-purchases](https://github.com/revenuedot/react-native-purchases). It depends on RevenueDot's hybrid-common native builds, which trust RevenueDot's signing key. **None of its packages is published yet (checked October 2026)**, so use proxy mode today. The planned install is an npm alias:",
+          "The fork lives at [github.com/revenuedot/react-native-purchases](https://github.com/revenuedot/react-native-purchases). It depends on RevenueDot's hybrid-common native builds, which trust RevenueDot's signing key. **It is published on npm as `@revenuedot/react-native-purchases` 10.10.2, with its native builds on CocoaPods and Maven Central (checked October 2026).** Install it through an npm alias:",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "package.json",
           code: `// package.json: an npm alias keeps every import
-"react-native-purchases": "npm:@revenuedot/react-native-purchases@<version>"`,
+"react-native-purchases": "npm:@revenuedot/react-native-purchases@10.10.2"`,
         },
       },
       {
@@ -436,7 +436,7 @@ if (pkg) {
       },
       {
         q: "Will my imports change when I switch to the RevenueDot fork?",
-        a: "No. The planned install is an npm alias, so import Purchases from react-native-purchases keeps working. The fork is not published yet.",
+        a: "No. The fork installs through an npm alias, so import Purchases from react-native-purchases keeps working. It is published on npm as @revenuedot/react-native-purchases.",
       },
     ],
     docs: [
@@ -681,13 +681,13 @@ if (rcPackage) {
         h2: "The RevenueDot fork package for the web",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/purchases-js](https://github.com/revenuedot/purchases-js). It sends analytics events to the proxy URL too, and its checkout reads Secure checkout by RevenueDot. **It is not on npm yet (checked October 2026).** The planned install keeps your imports through an alias. Until then you can build a tarball from the `revenuedot/main-patches` branch.",
+          "The fork lives at [github.com/revenuedot/purchases-js](https://github.com/revenuedot/purchases-js). It sends analytics events to the proxy URL too, and its checkout reads Secure checkout by RevenueDot. **It is published on npm as `@revenuedot/purchases-js` 1.67.0 (checked October 2026).** Install it through an alias so your imports stay the same.",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "package.json",
           code: `// package.json
-"@revenuecat/purchases-js": "npm:@revenuedot/purchases-js@<version>"`,
+"@revenuecat/purchases-js": "npm:@revenuedot/purchases-js@1.67.0"`,
         },
       },
       {
@@ -748,7 +748,7 @@ if (rcPackage) {
     points: [
       { title: "Object argument", text: "`setProxyURL` takes `{ url }`, not a plain string." },
       { title: "Pass DISABLED", text: "Capacitor has no default, so the native informational mode applies unless you pass `DISABLED`." },
-      { title: "Alias-only fork", text: "Install the planned fork through an npm alias so the native pod and package names stay the same." },
+      { title: "Alias-only fork", text: "Install the fork through an npm alias so the native pod and package names stay the same." },
       { title: "iOS and Android", text: "One TypeScript call path covers both native platforms." },
     ],
     blocks: [
@@ -816,13 +816,13 @@ if (aPackage) {
         h2: "The RevenueDot fork package for Capacitor",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/purchases-capacitor](https://github.com/revenuedot/purchases-capacitor). Install it only through the alias below: Capacitor derives native pod and Swift package names from the npm name, and the alias keeps them unchanged. **It is not published yet (checked October 2026)**, so use proxy mode today.",
+          "The fork lives at [github.com/revenuedot/purchases-capacitor](https://github.com/revenuedot/purchases-capacitor). Install it only through the alias below: Capacitor derives native pod and Swift package names from the npm name, and the alias keeps them unchanged. **It is published on npm as `@revenuedot/purchases-capacitor` 13.6.1 (checked October 2026).**",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "package.json",
           code: `// package.json
-"@revenuecat/purchases-capacitor": "npm:@revenuedot/purchases-capacitor@<version>"`,
+"@revenuecat/purchases-capacitor": "npm:@revenuedot/purchases-capacitor@13.6.1"`,
         },
       },
       {
@@ -852,7 +852,7 @@ if (aPackage) {
       },
       {
         q: "Can I install the RevenueDot fork of the Capacitor plugin directly?",
-        a: "Only through the npm alias. A direct install of @revenuedot/purchases-capacitor would change the generated native names and is not supported. The fork is not published yet.",
+        a: "Only through the npm alias. A direct install of @revenuedot/purchases-capacitor would change the generated native names and is not supported. The fork is published on npm.",
       },
     ],
     docs: [
@@ -880,7 +880,7 @@ if (aPackage) {
       { title: "One call", text: "`Purchases.setProxyURL` before `configureWith` is the whole code change." },
       { title: "Honest limit", text: "You cannot turn off the signature log from JavaScript in the stock plugin." },
       { title: "Access still works", text: "The native default mode is informational, so entitlements are granted." },
-      { title: "Plugin id stays", text: "The planned fork keeps `cordova-plugin-purchases` and the global `Purchases`." },
+      { title: "Plugin id stays", text: "The fork keeps `cordova-plugin-purchases` and the global `Purchases`." },
     ],
     blocks: [
       {
@@ -950,12 +950,12 @@ if (aPackage) {
         h2: "The RevenueDot fork package for Cordova",
         label: "Fork",
         paras: [
-          "The fork lives at [github.com/revenuedot/cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases). It trusts RevenueDot's signing key, so the verification log noise goes away when the server signs with that key. **It is not published yet (checked October 2026)**, and its native dependencies are not published either, so use proxy mode today.",
+          "The fork lives at [github.com/revenuedot/cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases). It trusts RevenueDot's signing key, so the verification log noise goes away when the server signs with that key. **It is published on npm as `@revenuedot/cordova-plugin-purchases` 8.2.3, and its native dependencies are on CocoaPods and Maven Central (checked October 2026).**",
         ],
         code: {
-          title: "Planned fork install",
+          title: "Fork install",
           label: "terminal",
-          code: `cordova plugin add @revenuedot/cordova-plugin-purchases`,
+          code: `cordova plugin add @revenuedot/cordova-plugin-purchases@8.2.3`,
         },
       },
       {
@@ -985,7 +985,7 @@ if (aPackage) {
       },
       {
         q: "Will my config.xml change with the fork?",
-        a: "No. The plugin id stays cordova-plugin-purchases and the global stays Purchases. The fork is not published yet.",
+        a: "No. The plugin id stays cordova-plugin-purchases and the global stays Purchases. The fork is published on npm.",
       },
     ],
     docs: [
