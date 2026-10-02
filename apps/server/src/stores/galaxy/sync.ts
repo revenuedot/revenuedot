@@ -54,7 +54,8 @@ async function apply(ctx: SyncCtx, p: VerifiedPurchase, o: { testPay: boolean; r
 export async function handleGalaxyNotification(ctx: SyncCtx, n: GalaxyNotification): Promise<SyncResult> {
   const { db, app, client, now } = ctx;
   const d = n.data ?? {};
-  const testPay = d.testPayYn === "Y" || d.betaTestYn === "Y";
+  // Unsigned (no IAP public key saved): the body is only a trigger, so its test flag cannot move a real purchase to the sandbox.
+  const testPay = n.verified && (d.testPayYn === "Y" || d.betaTestYn === "Y");
   if (n.event === "TEST") return { status: "processed", sandbox: true };
   if (n.event === "ORDER_HISTORY_DELETED") return { status: "ignored" };
   const catalog = await productInfo(db, app.id);
@@ -97,7 +98,8 @@ export async function handleGalaxyNotification(ctx: SyncCtx, n: GalaxyNotificati
       const next = await read(newId);
       let applied = false;
       let ownerHint: string | null = null;
-      if (oldId && next.kind === "subscription") {
+      // Rewriting the old chain (and giving the new one its owner) rests on the body's ids and times: signed notifications only.
+      if (oldId && next.kind === "subscription" && n.verified) {
         const old = await read(oldId);
         const oldRow = old.kind === "subscription" ? await subRowOf(db, app.projectId, "galaxy", old.storeKey) : undefined;
         ownerHint = oldRow ? await appUserIdOf(db, oldRow.customerId) : null;

@@ -183,6 +183,21 @@ describe("Galaxy lifecycle through notifications", () => {
     expect((await info("galaxy_user")).subscriber.entitlements.pro!.product_identifier).toBe("premium_yearly");
   });
 
+  it("an unsigned plan change cannot cut another customer's subscription short or move it to the sandbox", async () => {
+    await e.setCredentials({ galaxy_service_account_id: FAKE_GALAXY_ACCOUNT, galaxy_service_account_private_key: (await e.galaxy.keys()).serviceAccountPrivateKey });
+    const { first: victim } = await subscribed();
+    const mine = e.galaxy.subscribe("premium_yearly");
+    await post(mine.purchaseId, "premium_yearly", { normal_duration: "P1Y" }, "attacker");
+    const before = (await sub(victim)).expiresDate;
+    const forged = e.galaxy.n("ARS_UPDOWNGRADED", { oldPurchaseId: victim, newPurchaseId: mine.purchaseId, scheduledTimeOfRenewal: Math.floor(e.h.now().getTime() / 1000) + 5, testPayYn: "Y" });
+    const otherKey = (await new (await import("../../../packages/contract/src/fake-galaxy.js")).FakeGalaxy().keys()).iapPrivateKey;
+    expect(await (await notify([forged], { key: otherKey }))[0]!.json()).toMatchObject({ verified: false });
+    const after = await sub(victim);
+    expect(after.expiresDate).toEqual(before);
+    expect(after.isSandbox).toBe(false);
+    expect(await eventTypes(e)).not.toContain("PRODUCT_CHANGE");
+  });
+
   it("unknown purchases are ignored unless tracked", async () => {
     const s = e.galaxy.subscribe("premium_monthly");
     expect(await (await notify(s.notifications))[0]!.json()).toMatchObject({ status: "unknown_purchase" });
