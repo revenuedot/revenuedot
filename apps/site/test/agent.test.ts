@@ -60,14 +60,14 @@ describe("agent init", () => {
     expect(out.type).toBe("conversation_initiation_client_data");
     expect(out.dynamic_variables).toMatchObject({
       name: "Maya", company: "Habitly", revenue: "$100K to $500K a month", current_tool: "RevenueCat", timeline: "This quarter",
-      email: "maya@habitly.app", lead_known: "yes", caller_phone: "+14155550132", greeting: "Hey Maya, it's Alex at RevenueDot. Good to hear from you. What's up?",
+      email: "maya@habitly.app", lead_known: "yes", caller_phone: "+14155550132", greeting: "Hi Maya, this is Alex, customer success manager at RevenueDot. Good to hear from you. How can I help?",
     });
     expect(Object.values(out.dynamic_variables).every((v) => typeof v === "string")).toBe(true);
   });
   it("falls back to unknowns for a new caller or a database error", async () => {
     for (const env of [makeEnv(), makeEnv(() => { throw new Error("D1 down"); })]) {
       const out = await (await init(env, "+447400123456")).json();
-      expect(out.dynamic_variables).toMatchObject({ name: "there", company: "unknown", revenue: "unknown", current_tool: "unknown", timeline: "unknown", email: "unknown", lead_known: "no", caller_phone: "+447400123456", greeting: "Hey, thanks for calling RevenueDot, this is Alex. Who am I chatting with?" });
+      expect(out.dynamic_variables).toMatchObject({ name: "there", company: "unknown", revenue: "unknown", current_tool: "unknown", timeline: "unknown", email: "unknown", lead_known: "no", caller_phone: "+447400123456", greeting: "Hi, this is Alex, customer success manager at RevenueDot, the open-source RevenueCat alternative for mobile app monetization. How can I help you today?" });
     }
   });
   it("gives local time in the caller's country", () => {
@@ -76,7 +76,7 @@ describe("agent init", () => {
     expect(dynamicVariables(null, "+447400123456", "inbound", at).local_time).toBe("Friday 8:40 PM");
     expect(dynamicVariables(null, "+819012345678", "inbound", at).local_time).toBe("Saturday 4:40 AM");
     expect(dynamicVariables(null, "not a phone", "inbound", at).local_time).toBe("Friday 7:40 PM");
-    expect(dynamicVariables(lead(), "+14155550132", "outbound", at).greeting).toBe("Hi Maya, it's Alex from RevenueDot. You'd asked us to give you a call about RevenueDot. Is now an okay time?");
+    expect(dynamicVariables(lead(), "+14155550132", "outbound", at).greeting).toBe("Hi Maya, this is Alex, customer success manager at RevenueDot, the open-source RevenueCat alternative. You'd asked us to reach out about RevenueDot. Is now a good time?");
     expect(zonesFor("+14155550132")).toEqual(["America/New_York", "America/Los_Angeles"]);
     expect(zonesFor("+33612345678")).toEqual(["Europe/Paris"]);
   });

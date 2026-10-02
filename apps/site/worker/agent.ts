@@ -87,8 +87,10 @@ const LEAD_COLUMNS = "id, created_at, name, email, company, phone, revenue, curr
 type Known = { name: string; company: string; email: string; revenue: string; current: string; currentOther?: string | null; timeline: string };
 
 export function greeting(direction: "inbound" | "outbound", name: string | null) {
-  if (direction === "outbound") return `Hi ${name ?? "there"}, it's Alex from RevenueDot. You'd asked us to give you a call about RevenueDot. Is now an okay time?`;
-  return name ? `Hey ${name}, it's Alex at RevenueDot. Good to hear from you. What's up?` : "Hey, thanks for calling RevenueDot, this is Alex. Who am I chatting with?";
+  if (direction === "outbound") return `Hi ${name ?? "there"}, this is Alex, customer success manager at RevenueDot, the open-source RevenueCat alternative. You'd asked us to reach out about RevenueDot. Is now a good time?`;
+  return name
+    ? `Hi ${name}, this is Alex, customer success manager at RevenueDot. Good to hear from you. How can I help?`
+    : "Hi, this is Alex, customer success manager at RevenueDot, the open-source RevenueCat alternative for mobile app monetization. How can I help you today?";
 }
 
 export function dynamicVariables(lead: Known | null, phone: string, direction: "inbound" | "outbound", now = new Date()): Record<string, string> {
