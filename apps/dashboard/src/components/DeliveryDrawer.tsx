@@ -28,8 +28,8 @@ const ok = (s: number | null) => s !== null && s >= 200 && s < 300;
 const MAX_KEPT = 10;
 
 /**
- * `canRetry` says whether "Retry now" applies to the delivery as loaded: webhooks retry anything not delivered and not
- * already due; integrations only failed or skipped deliveries (the server refuses a pending one, which may be in flight).
+ * `canRetry` says whether "Retry now" applies to the delivery as loaded: anything not delivered and not already due. (An
+ * integration delivery a tick is sending right now also reads as pending; the server answers 409 and the toast says so.)
  */
 export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { path: string; title: string; onClose: () => void; onRetry?: () => Promise<void>; canRetry?: (d: DeliveryDetail) => boolean }) {
   const toast = useToast();

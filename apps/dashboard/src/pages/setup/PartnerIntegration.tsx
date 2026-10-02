@@ -227,7 +227,7 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
       {q.hasNextPage && <div className="pb"><button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</button></div>}
       {open && (
         <DeliveryDrawer path={`${base(pid)}/integrations/partners/${id}/deliveries/${open.id}`} title={`${open.event_type} · ${open.sent_as ?? `${open.event_id.slice(0, 8)}…`}`}
-          onClose={() => setOpen(null)} onRetry={() => retry(open)} canRetry={(x) => x.status === "failed" || x.status === "skipped"} />
+          onClose={() => setOpen(null)} onRetry={() => retry(open)} canRetry={(x) => x.status !== "delivered" && !(x.status === "pending" && (x.next_attempt_at ?? 0) <= Date.now())} />
       )}
     </section>
   );
