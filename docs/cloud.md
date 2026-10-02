@@ -24,8 +24,9 @@ GitHub Actions on every push to `main` (see [Deploy](#deploy)).
 | Deploy | `scripts/deploy-cloud.sh` (`pnpm deploy:cloud`) |
 | Smoke test | `scripts/smoke-cloud.mjs <base URL>` |
 
-Every account is on the `free` plan (`users.plan`) until billing plans ship. `/auth/me` returns
-`account: { edition: "cloud", plan }` on the cloud build.
+Every account is on Cloud Free until it upgrades (`billing_accounts`, `prd/cloud-billing/PRD.md`). `/auth/me` returns
+`account: { edition: "cloud", plan, billing_status }` on the cloud build. Billing stays off (the Billing page says "not set
+up yet") until the Stripe secrets below are set.
 
 ## Requirements
 
@@ -149,6 +150,35 @@ steps below are done, Cloud serves them at `https://api.revenuedot.app/pay/<proj
      CNAME resolves. Automating this needs an API token with "SSL and Certificates: Edit" on the zone, which is an
      account change; until then it is done by hand.
    - Self-hosted servers need none of this: the custom domain points at the server, which answers the verified host.
+
+## Cloud billing on RevenueDot's own Stripe account (manual steps, Kai's)
+
+`prd/cloud-billing/PRD.md`. Nothing here is set up yet; until it is, the Billing page shows the plan and usage and the
+upgrade button says billing is not set up. Do it in Stripe **test mode** first, then repeat in live mode.
+
+1. In the Circo Stripe account create a **Billing Meter**: event name `revenuedot_cloud_bill_cents`, aggregation
+   **Last**, customer mapping `stripe_customer_id`, value key `value`.
+2. Create the product **RevenueDot Cloud Standard** with a monthly **metered** price of **$0.01 per unit** on that meter.
+   The server reports the month's bill in cents, so the invoice equals the bill.
+3. Customer Portal (Settings → Billing → Customer portal): payment method updates on, cancellation at period end on.
+4. Webhook endpoint `https://api.revenuedot.app/v2/billing/stripe/webhook` with `checkout.session.completed`,
+   `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.created`,
+   `invoice.finalized`, `invoice.paid`, `invoice.payment_failed`, `invoice.voided`, `invoice.marked_uncollectible`.
+5. Store the values in 1Password (`RevenueDot` vault) and set them as Worker secrets by piping, never in files:
+   `REVENUEDOT_BILLING_STRIPE_SECRET_KEY` (a restricted key: Customers, Checkout Sessions, Customer Portal, Billing
+   Meter Events write), `REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET` (`whsec_…`), and the variable
+   `REVENUEDOT_BILLING_PRICE_STANDARD` (`price_…`). Optional: `REVENUEDOT_BILLING_METER_EVENT`, `REVENUEDOT_BILLING_PLANS`
+   (JSON plan table, replaces `apps/server/src/services/billing/plans.ts` without a deploy).
+6. Live keys (`sk_live_`, `rk_live_`) are refused unless `REVENUEDOT_BILLING_LIVE=true` is also set, so a test setup can
+   never charge anyone.
+
+## Full-export archives in R2 (manual step, needs Kai's approval)
+
+Exports and moves (`prd/moves-export/PRD.md`) work on Cloud today with the archive files in Postgres (`archive_blobs`,
+deleted after 7 days). To keep them in R2 instead: create a bucket (for example `revenuedot-exports`) in the Circo
+account (Cloudflare dashboard → R2 → Create bucket), then set `REVENUEDOT_EXPORTS_BUCKET=revenuedot-exports` in the
+deploy environment (`.github/workflows/deploy.yml` and `scripts/deploy-cloud.sh`). `cloudflare.config.ts` then binds it
+as `EXPORTS`.
 
 ## Workers differences from self-host
 

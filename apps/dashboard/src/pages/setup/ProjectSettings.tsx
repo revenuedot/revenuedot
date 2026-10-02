@@ -12,13 +12,14 @@ import { base, errMsg, type Collaborator, type ProjectSettings as Project, type 
 import { BrandTab } from "../settings/Brand";
 import { BlockedCustomersTab } from "../settings/BlockedCustomers";
 import { VerifiedMetricsTab } from "../settings/VerifiedMetrics";
+import { ExportMoveTab } from "../settings/ExportMove";
 
 /**
  * Project settings (/projects/:projectId/settings/:tab), tabs in RevenueCat's order (frame 28, prd/project-settings):
  * General (name, project ID, transfer behaviour with an optional sandbox behaviour, sandbox testing access enforced on the
  * server, transfer ownership to an admin, delete), AI features (what RevenueDot AI may do here, pages/ai/AiFeaturesTab.tsx), Brand (colour, gradient and font presets for
  * the paywall editor), Audit logs, Blocked customers, Collaborators (roles, invites; prd/account-email), Verified Metrics
- * (the public page) and Domains (pages/web/Domains.tsx).
+ * (the public page), Domains (pages/web/Domains.tsx) and Export and move (pages/settings/ExportMove.tsx, prd/moves-export).
  * GAPS vs RevenueCat: the Operations, Growth and Support roles.
  */
 
@@ -29,11 +30,11 @@ const BEHAVIORS: { value: TransferBehavior; label: string; text: string }[] = [
   { value: "share", label: "Share between App User IDs (legacy)", text: "Both app user IDs are merged into one customer and share access. Only for apps that relied on this older behaviour." },
 ];
 
-type Tab = "general" | "ai" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains";
+type Tab = "general" | "ai" | "brand" | "audit-logs" | "blocked-customers" | "collaborators" | "verified-metrics" | "domains" | "export";
 const TABS: { value: Tab; label: string; badge?: string }[] = [
   { value: "general", label: "General" }, { value: "ai", label: "AI features" }, { value: "brand", label: "Brand" },
   { value: "audit-logs", label: "Audit logs" }, { value: "blocked-customers", label: "Blocked customers" }, { value: "collaborators", label: "Collaborators" },
-  { value: "verified-metrics", label: "Verified Metrics" }, { value: "domains", label: "Domains" },
+  { value: "verified-metrics", label: "Verified Metrics" }, { value: "domains", label: "Domains" }, { value: "export", label: "Export and move" },
 ];
 const ACCESS: { value: SandboxAccess; label: string; text: string }[] = [
   { value: "anybody", label: "Anybody", text: "Every sandbox and Test Store purchase unlocks entitlements and in-app currency. The default." },
@@ -437,6 +438,7 @@ export function ProjectSettingsPage() {
           {t === "blocked-customers" && <BlockedCustomersTab pid={pid} />}
           {t === "verified-metrics" && <VerifiedMetricsTab pid={pid} />}
           {t === "ai" && <AiFeaturesTab pid={pid} />}
+          {t === "export" && <ExportMoveTab pid={pid} />}
         </div>
       </div>
     </Shell>

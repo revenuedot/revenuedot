@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
+import { notMoving } from "./archive/moving.js";
 import type { AppRecord } from "../context.js";
 import { findCustomer, type CustomerRow } from "../repo/customers.js";
 import { appleApiFor } from "../stores/apple/index.js";
@@ -291,7 +292,7 @@ const CLAIM_MS = 2 * 60_000;
 export async function retryDueConsumption(deps: RefundDeps): Promise<number> {
   const now = deps.now();
   const rr = schema.refundRequests;
-  const dueNow = and(eq(rr.consumptionStatus, "pending"), or(isNull(rr.nextAttemptAt), lte(rr.nextAttemptAt, now)));
+  const dueNow = and(eq(rr.consumptionStatus, "pending"), or(isNull(rr.nextAttemptAt), lte(rr.nextAttemptAt, now)), notMoving(rr.projectId));
   const due = await deps.db.select().from(rr).where(dueNow).orderBy(asc(rr.deadlineAt)).limit(RETRIES_PER_TICK);
   let done = 0;
   for (const r of due) {

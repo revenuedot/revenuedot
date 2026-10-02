@@ -50,6 +50,7 @@ export function NewProject() {
             onChange={(e) => { setName(e.target.value); if (error) setError(null); }} />
         </Field>
         <button className="btn btn-dark btn-lg" type="submit" disabled={busy}>{busy ? "Creating…" : "Create project"}</button>
+        <p>Moving a project from another RevenueDot server? <Link to="/projects/receive" className="link-u">Receive a project</Link>.</p>
         {back && <p><Link to={back} className="link-u">Cancel</Link></p>}
       </form>
     </main>
