@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { schema, type StorePrice } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { appleHttpFor } from "../stores/apple/index.js";
-import { AppStoreConnectApi, ConnectError, connectCredentials, type AscPrice } from "../stores/apple/connect.js";
+import { AppStoreConnectApi, ConnectError, ascToday, connectCredentials, type AscPrice } from "../stores/apple/connect.js";
 import { hasServiceAccount, moneyMicros, type PlayBasePlan } from "../stores/google/api.js";
 import { listStoreProducts, type StoreListing } from "./store-import.js";
 import { StoreOpError } from "./store-ops.js";
@@ -86,8 +86,8 @@ export async function readStorePrices(deps: Deps, app: App): Promise<{ store: st
     throw new StoreOpError("credentials", "Reading prices from Google Play needs the app's service account JSON, with the \"View app information and download bulk reports (read-only)\" permission in Play Console.");
   }
   const listing = await listStoreProducts(deps, app);
-  const today = deps.now().toISOString().slice(0, 10);
   if (APPLE.has(app.type)) {
+    const today = ascToday(deps.now());
     const { fetchFn, now } = appleHttpFor(deps.stores, deps.fetch, deps.now);
     const api = new AppStoreConnectApi(connectCredentials(app)!, fetchFn, now);
     try {
@@ -217,14 +217,35 @@ export function storeDetailsOf(listing: ListingRow | null | undefined, sync: Syn
   };
 }
 
-/** Apps whose prices are due: App Store apps with an App Store Connect key and Play apps with a service account, not refreshed today. */
-export async function refreshDueStorePrices(deps: Deps, max = 5): Promise<number> {
+/** The daily refresh starts no new app after this long in one tick; the others wait for the next tick. */
+const DAILY_BUDGET_MS = 20_000;
+
+/**
+ * Takes an app for the daily refresh: moves its refresh time to now while it is still stale, or creates its refresh row
+ * (status `never` until the read lands). A tick running at the same time (an overlapping cron, another server) finds
+ * the app taken and skips it.
+ */
+async function claimDue(deps: Deps, app: App, now: Date, stale: Date): Promise<boolean> {
+  const S = schema.storeListingSyncs;
+  const moved = await deps.db.update(S).set({ refreshedAt: now }).where(and(eq(S.appId, app.id), lt(S.refreshedAt, stale))).returning({ appId: S.appId });
+  if (moved.length) return true;
+  const made = await deps.db.insert(S).values({ appId: app.id, projectId: app.projectId, status: "never", error: null, itemCount: 0, refreshedAt: now }).onConflictDoNothing().returning({ appId: S.appId });
+  return made.length > 0;
+}
+
+/**
+ * The daily refresh: App Store apps with an App Store Connect key and Play apps with a service account whose prices are
+ * older than a day, oldest first, at most `max` apps and `budgetMs` of starting new ones per tick. Each app is taken
+ * before it is read, so overlapping ticks never read one twice; a failure is recorded on the app and moves on.
+ */
+export async function refreshDueStorePrices(deps: Deps, max = 5, budgetMs = DAILY_BUDGET_MS): Promise<number> {
   const now = deps.now();
+  const stale = new Date(now.getTime() - STALE_MS);
   const S = schema.storeListingSyncs, A = schema.apps;
   const due = await deps.db.select({ app: A }).from(A).leftJoin(S, eq(S.appId, A.id))
     .where(and(
       inArray(A.type, [...PRICE_STORES]),
-      or(isNull(S.refreshedAt), lt(S.refreshedAt, new Date(now.getTime() - STALE_MS))),
+      or(isNull(S.refreshedAt), lt(S.refreshedAt, stale)),
       // The same tests as connectCredentials and hasServiceAccount, so an app with an empty key is never picked.
       or(
         and(inArray(A.type, [...APPLE]), sql`nullif(trim(${A.credentials} ->> 'app_store_connect_api_key'), '') is not null and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_id'), '') is not null and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_issuer'), '') is not null`),
@@ -232,9 +253,11 @@ export async function refreshDueStorePrices(deps: Deps, max = 5): Promise<number
       ),
     ))
     .orderBy(sql`${S.refreshedAt} asc nulls first`).limit(max * 2);
+  const started = Date.now();
   let done = 0;
   for (const { app } of due) {
-    if (done >= max) break;
+    if (done >= max || Date.now() - started > budgetMs) break;
+    if (!(await claimDue(deps, app, now, stale))) continue;
     if (APPLE.has(app.type) ? !connectCredentials(app) : !hasServiceAccount(app)) {
       await recordFailure(deps, app, new StoreOpError("credentials", "The app's store key is incomplete."));
       continue;

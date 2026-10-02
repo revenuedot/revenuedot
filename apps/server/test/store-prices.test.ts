@@ -169,3 +169,16 @@ describe("daily refresh: incomplete keys", () => {
     expect(syncs.map((x) => x.appId).sort()).toEqual(["app_ios", "app_play"]);
   });
 });
+
+describe("daily refresh: overlapping ticks", () => {
+  it("two ticks at once read each app once; a refused key fails only its own app", async () => {
+    s = await storeCatalogServer();
+    s.asc.keyIds.clear();
+    const [a, b] = await Promise.all([refreshDueStorePrices(s.deps, 5), refreshDueStorePrices(s.deps, 5)]);
+    expect(a + b).toBe(2);
+    const syncs = await s.db.select().from(schema.storeListingSyncs);
+    expect(Object.fromEntries(syncs.map((x) => [x.appId, x.status]))).toEqual({ app_ios: "failing", app_play: "ok" });
+    expect(s.play.calls.filter((c) => c.method === "GET" && c.path.startsWith("/oneTimeProducts"))).toHaveLength(1);
+    expect(s.asc.calls.filter((c) => c.path.startsWith("/v1/apps?"))).toHaveLength(1);
+  });
+});

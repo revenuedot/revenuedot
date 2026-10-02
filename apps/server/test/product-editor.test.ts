@@ -416,3 +416,87 @@ describe("review fixes: no lost store prices, one commit per app", () => {
     expect(s.play.subscriptions[0]!.basePlans.find((b: any) => b.basePlanId === "biweekly").state).toBe("ACTIVE");
   });
 });
+
+describe("second review: scheduled subscription prices, partial refusals, base plans made elsewhere, one commit per app", () => {
+  it("App Store: a subscription territory with a price change scheduled (Pacific dates) is left alone; the others change", async () => {
+    s = await storeCatalogServer();
+    // 03:00 UTC on Oct 1 is still Sep 30 in California: a price starting Oct 1 is scheduled, not current.
+    s.setNow(new Date("2026-10-01T03:00:00Z"));
+    s.asc.subPrices.push({ id: "sched1", subscriptionId: s.ids.proMonthly, territory: "GBR", tier: s.asc.tierOf(12.99), startDate: "2026-10-01", preserved: false });
+    const csv = (await download(s, "app_ios", "store_identifiers=focus_pro_monthly")).text;
+    expect(csvRows(csv).find((r) => r[5] === "GBR")![7]).toBe(s.asc.customerPrice("GBR", s.asc.tierOf(9.99)));
+    const up = await upload(s, "app_ios", edit(csv, [["focus_pro_monthly", "USA", "10.99"], ["focus_pro_monthly", "GBR", s.asc.customerPrice("GBR", s.asc.tierOf(10.99))]]));
+    expect(up.body.status).toBe("ready");
+    const r = await commit(s, up.body.id);
+    expect(r.body.status).toBe("partially_committed");
+    const byT = Object.fromEntries(r.body.rows.map((x: any) => [x.territory, x]));
+    expect(byT.USA).toMatchObject({ status: "succeeded" });
+    expect(byT.GBR).toMatchObject({ status: "failed", error: expect.stringMatching(/price change scheduled in App Store Connect in GBR\. A new price would replace it/) });
+    // Apple would have replaced the scheduled change: it was never sent, so it is still there.
+    expect(s.asc.subPrices.some((p) => p.id === "sched1")).toBe(true);
+    expect(s.asc.calls.filter((c) => c.method === "POST" && (c.body as any)?.data?.relationships?.territory?.data?.id === "GBR")).toHaveLength(0);
+  });
+
+  it("App Store: a key refused halfway keeps the prices already written as succeeded, in the rows and the audit log", async () => {
+    s = await storeCatalogServer();
+    const csv = (await download(s, "app_ios", "store_identifiers=focus_pro_monthly")).text;
+    const to = (t: string) => s!.asc.customerPrice(t, s!.asc.tierOf(10.99));
+    const up = await upload(s, "app_ios", edit(csv, [["focus_pro_monthly", "USA", "10.99"], ["focus_pro_monthly", "DEU", to("DEU")], ["focus_pro_monthly", "GBR", to("GBR")]]));
+    s.asc.fail((m, p, b) => m === "POST" && p === "/v1/subscriptionPrices" && b?.data?.relationships?.territory?.data?.id === "GBR", 401, "Authentication credentials are missing or invalid.", "", 1, "NOT_AUTHORIZED");
+    const r = await commit(s, up.body.id);
+    expect(r.body.rows.map((x: any) => [x.territory, x.status])).toEqual([["USA", "succeeded"], ["DEU", "succeeded"], ["GBR", "failed"]]);
+    expect(r.body.rows[2].error).toMatch(/refused the API key \(401\)/);
+    const audit = await s.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.actionType, "store_price_changed"));
+    expect(Object.fromEntries(audit.map((a) => [(a.additionalData as any).territory, (a.additionalData as any).result]))).toEqual({ USA: "succeeded", DEU: "succeeded", GBR: "failed" });
+    expect(s.asc.currentSubPrice(s.ids.proMonthly, "DEU")).toBe(to("DEU"));
+  });
+
+  it("Play: a base plan someone made in Play Console after the upload is left alone: not priced, not activated", async () => {
+    s = await storeCatalogServer();
+    const up = await upload(s, "app_play", `${HEADER}\npremium:weekly,Focus Premium,subscription,P1W,,US,USD,2.99,create`);
+    expect(up.body.status).toBe("ready");
+    s.play.subscriptions[0]!.basePlans.push({ basePlanId: "weekly", state: "DRAFT", autoRenewingBasePlanType: { billingPeriodDuration: "P1W" }, regionalConfigs: [{ regionCode: "US", newSubscriberAvailability: true, price: { currencyCode: "USD", units: "3", nanos: 490000000 } }] });
+    const r = await commit(s, up.body.id);
+    expect(r.body).toMatchObject({ status: "failed", rows: [{ status: "failed", error: expect.stringMatching(/created in Google Play after this file was uploaded/) }] });
+    const weekly = s.play.subscriptions[0]!.basePlans.find((b: any) => b.basePlanId === "weekly");
+    expect([weekly.state, s.play.price("premium", "weekly", "US")]).toEqual(["DRAFT", 3_490_000]);
+    expect(s.play.calls.filter((c) => c.method === "PATCH" || c.path.includes(":activate"))).toHaveLength(0);
+    expect(await s.db.select().from(schema.products).where(eq(schema.products.storeIdentifier, "premium:weekly"))).toHaveLength(0);
+  });
+
+  it("Play: a refused activation keeps the new subscription's base plans; the retry activates them and both join the catalog once", async () => {
+    s = await storeCatalogServer();
+    const up = await upload(s, "app_play", [HEADER, "focus.max:monthly,Focus Max,subscription,P1M,,US,USD,4.99,create", "focus.max:annual,Focus Max,subscription,P1Y,,US,USD,39.99,create"].join("\n"));
+    s.play.fail((m, p) => m === "POST" && p.endsWith(":activate"), 403, "The caller does not have permission", 1);
+    const r = await commit(s, up.body.id);
+    expect(r.body.rows.map((x: any) => x.status)).toEqual(["failed", "failed"]);
+    expect(r.body.rows[0].error).toMatch(/refused the service account/);
+    const max = () => s!.play.subscriptions.find((x) => x.productId === "focus.max")!;
+    expect(max().basePlans.map((b: any) => b.state)).toEqual(["DRAFT", "DRAFT"]);
+    const again = await commit(s, up.body.id, "retry");
+    expect(again.body.status).toBe("committed");
+    expect(max().basePlans.map((b: any) => b.state)).toEqual(["ACTIVE", "ACTIVE"]);
+    expect(s.play.calls.filter((c) => c.method === "POST" && c.path.startsWith("/subscriptions?"))).toHaveLength(1);
+    const catalog = await s.db.select().from(schema.products).where(eq(schema.products.appId, "app_play"));
+    expect(catalog.map((x) => x.storeIdentifier).filter((x) => x.startsWith("focus.max")).sort()).toEqual(["focus.max:annual", "focus.max:monthly"]);
+    const created = await s.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.actionType, "store_product_created"));
+    expect(created.map((a) => a.targetIdentifier).sort()).toEqual(["focus.max:annual", "focus.max:monthly"]);
+  });
+
+  it("two files of one app committed at the same moment: one commits, the other is refused", async () => {
+    s = await storeCatalogServer();
+    const csv = (await download(s, "app_play", "store_identifiers=premium:monthly,premium:annual")).text;
+    const a = await upload(s, "app_play", edit(csv, [["premium:monthly", "US", "10.99"]]));
+    const b = await upload(s, "app_play", edit(csv, [["premium:annual", "US", "64.99"]]));
+    const [ra, rb] = await Promise.all([commit(s, a.body.id), commit(s, b.body.id)]);
+    expect([ra.status, rb.status].sort()).toEqual([200, 409]);
+    expect((ra.status === 409 ? ra : rb).body.type).toBe("resource_locked_error");
+  });
+
+  it("a downloaded price the currency could not take is unchanged; a new product's name that is not UTF-8 is refused", () => {
+    const live = [listing("pro_monthly", [["USA", "USD", 9_995_000], ["GBR", "GBP", 8_990_000]])];
+    const v = validateFile("apple", [HEADER, "pro_monthly,,,,,USA,USD,9.995,", "pro_monthly,,,,,GBR,GBP,9.49,", "coins,Caf�,consumable,,,USA,USD,0.99,create"].join("\n"), live, TERR);
+    expect(v.errors).toEqual([{ line: 4, message: 'The name of coins has characters that could not be read (shown as �). Save the file as "CSV UTF-8" and upload it again.' }]);
+    expect(v.summary).toMatchObject({ unchanged: 1, price_changes: 1 });
+  });
+});

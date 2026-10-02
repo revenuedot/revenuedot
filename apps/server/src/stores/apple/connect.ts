@@ -39,6 +39,14 @@ export const relId = (r: Resource, name: string): string | null => {
 /** A territory's price as App Store Connect reports it: the price point's customer price, in the territory's currency. */
 export interface AscPrice { territory: string; currency: string | null; customerPrice: string; pricePointId: string | null; startDate: string | null; manual?: boolean }
 
+/**
+ * Today's date as App Store Connect counts it: price `startDate`s are days in US Pacific time, so between midnight UTC and
+ * midnight in California a price starting on the UTC date has not started yet.
+ */
+export function ascToday(now: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
 export class AppStoreConnectApi {
   private token: Promise<string> | null = null;
   constructor(private creds: ConnectCredentials, private fetchFn: FetchFn, private now: () => Date) {}
@@ -154,12 +162,22 @@ export class AppStoreConnectApi {
    * plans for annual subscriptions (`planType` MONTHLY) are left out: the price of the product is the upfront one.
    */
   async subscriptionPrices(subscriptionId: string, today: string): Promise<AscPrice[]> {
+    return (await this.subscriptionPriceSchedule(subscriptionId, today)).current;
+  }
+
+  /**
+   * A subscription's current prices, and the territories with a price change scheduled after today. Apple keeps one
+   * scheduled change per territory: a new price there replaces it, so writers must leave those territories alone.
+   * `truncated` is true when App Store Connect had more pages than RevenueDot reads.
+   */
+  async subscriptionPriceSchedule(subscriptionId: string, today: string): Promise<{ current: AscPrice[]; scheduled: string[]; truncated: boolean }> {
     const q = new URLSearchParams({
       include: "territory,subscriptionPricePoint", limit: "200", "fields[subscriptionPrices]": "startDate,preserved,planType,territory,subscriptionPricePoint",
       "fields[subscriptionPricePoints]": "customerPrice,territory", "fields[territories]": "currency",
     });
     const r = await this.listAllIncluded(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}/prices?${q}`, 50);
-    return currentPrices(r.data, r.included, "subscriptionPricePoint", today);
+    const scheduled = [...new Set(r.data.filter((x) => typeof x.attributes?.startDate === "string" && (x.attributes.startDate as string) > today).map((x) => relId(x, "territory") ?? "?"))];
+    return { current: currentPrices(r.data, r.included, "subscriptionPricePoint", today), scheduled, truncated: r.truncated };
   }
 
   /**

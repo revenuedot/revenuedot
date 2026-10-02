@@ -4,7 +4,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import type { AppRow } from "../stores/types.js";
 import { appleHttpFor } from "../stores/apple/index.js";
-import { AppStoreConnectApi, ConnectError, connectCredentials } from "../stores/apple/connect.js";
+import { AppStoreConnectApi, ConnectError, ascToday, connectCredentials } from "../stores/apple/connect.js";
 import { GoogleApiError, hasServiceAccount, microsMoney, moneyMicros, type PlayBasePlan, type PlaySubscription } from "../stores/google/api.js";
 import { googleClientFor } from "../stores/google/index.js";
 import type { AuditActor } from "../routes/v2/audit.js";
@@ -46,7 +46,7 @@ const STORE_NAME = { apple: "App Store Connect", play: "Google Play" } as const;
  * Throws on an unterminated quote.
  */
 export function readCsv(text: string): { line: number; cells: string[] }[] {
-  const src = text.replace(/^﻿/, "");
+  const src = text.replace(/^\uFEFF/, "");
   const firstLine = src.split(/\r?\n/, 1)[0] ?? "";
   const delim = firstLine.includes(",") ? "," : firstLine.includes(";") ? ";" : firstLine.includes("\t") ? "\t" : ",";
   const out: { line: number; cells: string[] }[] = [];
@@ -155,7 +155,7 @@ export function validateFile(kind: "apple" | "play", text: string, live: PricedL
   try { records = readCsv(text); } catch (e) { fail(null, `This is not a valid CSV file: ${(e as Error).message}`); return empty; }
   records = records.filter((r) => r.cells.some((c) => c.trim() !== ""));
   if (!records.length) { fail(null, "The file is empty. Download a CSV first, change its prices, and upload it."); return empty; }
-  const header = records[0]!.cells.map((c) => c.trim().toLowerCase().replace(/^﻿/, ""));
+  const header = records[0]!.cells.map((c) => c.trim().toLowerCase());
   const col = new Map<string, number>();
   header.forEach((h, i) => {
     if (!h) return;
@@ -240,7 +240,12 @@ export function validateFile(kind: "apple" | "play", text: string, live: PricedL
     if (dup !== undefined) { fail(line, `${id} in ${territory} is on lines ${dup} and ${line}. Keep one of them.`); continue; }
     seen.set(key, line);
     const price = parsePrice(rawPrice, currency);
-    if ("error" in price) { fail(line, price.error); continue; }
+    if ("error" in price) {
+      // A price as downloaded is unchanged even when the editor could not write it (more decimals than the currency has).
+      if (action !== "create" && existing?.prices.some((p) => p.territory === territory && p.amount_micros === decimalMicros(rawPrice.replace(/^\$/, "")))) { unchanged++; continue; }
+      fail(line, price.error);
+      continue;
+    }
 
     if (action === "create") {
       changes.push({ kind: "new_product", line, store_identifier: id, territory, currency, old_micros: null, new_micros: price.micros, product: newProducts.get(id)!.product });
@@ -295,6 +300,8 @@ export function validateFile(kind: "apple" | "play", text: string, live: PricedL
 }
 
 function newProductProblem(kind: "apple" | "play", id: string, p: { type: string; duration: string | null; display_name: string; group: string | null }): string | null {
+  // A file saved in another encoding than UTF-8 (Excel's plain "CSV" on Windows) reads accented letters as U+FFFD.
+  if (/\uFFFD/.test(`${p.display_name}${p.group ?? ""}`)) return `The name of ${id} has characters that could not be read (shown as \uFFFD). Save the file as "CSV UTF-8" and upload it again.`;
   if (kind === "apple") {
     if (!/^[A-Za-z0-9._]+$/.test(id) || id.length > 100) return `${id} is not a valid App Store product ID: use letters, digits, periods and underscores.`;
     if (!APPLE_TYPES.has(p.type)) return `type "${p.type}" of new product ${id} is not one of: subscription, consumable, non_consumable, non_renewing_subscription.`;
@@ -430,7 +437,13 @@ const COMMITTABLE = ["ready", "committing", "partially_committed", "failed"];
 /** A row's result; null when the row was not attempted (the time budget ran out) and stays pending. */
 interface Outcome { ok: boolean; error?: string; note?: string }
 type MaybeOutcome = Outcome | null;
-class FatalStoreError extends Error {}
+/**
+ * The store refused the key: the commit stops and every row left fails with this message. `done` keeps the outcomes of
+ * the group's rows that were written before the refusal, so their success is recorded and audited as it happened.
+ */
+class FatalStoreError extends Error { constructor(message: string, public done: MaybeOutcome[] = []) { super(message); } }
+/** The time budget ran out between two store calls: the group's rows stay pending for the next commit call. */
+class OutOfTime extends Error {}
 
 /**
  * Commits an edit's pending rows to the store, one product at a time, for at most `budgetMs`. Rows sharing a store call
@@ -447,13 +460,17 @@ export async function commitEdit(deps: Deps, edit: EditRow, actor: AuditActor, o
   const now = deps.now();
   const E = schema.productEdits, R = schema.productEditRows;
   // One commit per app at a time: price schedules and Play subscriptions are read, changed and written back whole, so two
-  // files of one app committing together could undo each other (and one edit never commits twice at once).
-  const other = await deps.db.select({ id: E.id }).from(E).where(and(eq(E.appId, edit.appId), ne(E.id, edit.id), gt(E.lockedUntil, now))).limit(1);
-  if (other.length) throw new StoreOpError("conflict", "Another product file of this app is being committed right now. Wait for it to finish.", "locked");
-  const [locked] = await deps.db.update(E).set({ lockedUntil: new Date(now.getTime() + LOCK_MS), status: "committing", updatedAt: now })
-    .where(and(eq(E.id, edit.id), inArray(E.status, COMMITTABLE), or(isNull(E.lockedUntil), lt(E.lockedUntil, now)),
-      sql`not exists (select 1 from ${E} o where o.app_id = ${edit.appId} and o.id <> ${edit.id} and o.locked_until > ${now.toISOString()}::timestamptz)`)).returning();
-  if (!locked) throw new StoreOpError("conflict", "This edit is being committed right now. Wait for it to finish.", "locked");
+  // files of one app committing together could undo each other (and one edit never commits twice at once). The check and
+  // the lock are one transaction under a per-app advisory lock: two files' checks can never both pass.
+  const locked = await deps.db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('product_edit_commit'), hashtext(${edit.appId}))`);
+    const other = await tx.select({ id: E.id }).from(E).where(and(eq(E.appId, edit.appId), ne(E.id, edit.id), gt(E.lockedUntil, now))).limit(1);
+    if (other.length) throw new StoreOpError("conflict", "Another product file of this app is being committed right now. Wait for it to finish.", "locked");
+    const [row] = await tx.update(E).set({ lockedUntil: new Date(now.getTime() + LOCK_MS), status: "committing", updatedAt: now })
+      .where(and(eq(E.id, edit.id), inArray(E.status, COMMITTABLE), or(isNull(E.lockedUntil), lt(E.lockedUntil, now)))).returning();
+    if (!row) throw new StoreOpError("conflict", "This edit is being committed right now. Wait for it to finish.", "locked");
+    return row;
+  });
   if (opts.retry) await deps.db.update(R).set({ status: "pending", error: null, updatedAt: now }).where(and(eq(R.editId, edit.id), eq(R.status, "failed")));
 
   const started = Date.now();
@@ -474,9 +491,11 @@ export async function commitEdit(deps: Deps, edit: EditRow, actor: AuditActor, o
       try {
         outcomes = kind === "apple" ? await commitApple(ctx, rows) : await commitPlay(ctx, key, rows);
       } catch (e) {
+        if (e instanceof OutOfTime) break;
         const msg = storeMessage(kind, e);
         if (e instanceof FatalStoreError || isCredentialError(e)) fatal = msg;
-        outcomes = rows.map(() => ({ ok: false, error: msg }));
+        const done = e instanceof FatalStoreError ? e.done : [];
+        outcomes = rows.map((_, i) => done[i] ?? { ok: false, error: msg });
       }
       await finish(ctx, rows, outcomes);
     }
@@ -564,11 +583,15 @@ async function productCreated(ctx: CommitContext, storeIdentifier: string, store
 const ASC_PERIOD: Record<string, string> = { P1W: "ONE_WEEK", P1M: "ONE_MONTH", P2M: "TWO_MONTHS", P3M: "THREE_MONTHS", P6M: "SIX_MONTHS", P1Y: "ONE_YEAR" };
 const ASC_IAP: Record<string, "CONSUMABLE" | "NON_CONSUMABLE" | "NON_RENEWING_SUBSCRIPTION"> = { consumable: "CONSUMABLE", non_consumable: "NON_CONSUMABLE", non_renewing_subscription: "NON_RENEWING_SUBSCRIPTION" };
 
-/** Price points of these territories (cached for the commit), fetched 20 territories a call. */
+/**
+ * Price points of these territories (cached for the commit), fetched 20 territories a call. Throws OutOfTime when the
+ * budget runs out between two calls, so a long list never holds the commit lock past its time.
+ */
 async function pointsFor(ctx: CommitContext, api: AppStoreConnectApi, sub: boolean, ref: string, territories: string[]) {
   const key = (t: string) => `${sub ? "s" : "i"}|${ref}|${t}`;
   const missing = [...new Set(territories)].filter((t) => !ctx.pricePoints.has(key(t)));
   for (let i = 0; i < missing.length; i += 20) {
+    if (Date.now() > ctx.deadline) throw new OutOfTime();
     const chunk = missing.slice(i, i + 20);
     const got = sub ? await api.subscriptionPricePoints(ref, chunk) : await api.inAppPurchasePricePoints(ref, chunk);
     for (const t of chunk) ctx.pricePoints.set(key(t), got.get(t) ?? []);
@@ -591,16 +614,17 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
   const api = ascApi(deps, app);
   const first = rows[0]!;
   const id = first.storeIdentifier;
-  const today = deps.now().toISOString().slice(0, 10);
+  const today = ascToday(deps.now());
   let ref: string | null = ctx.created[id] ?? null;
   let isSub: boolean;
   if (first.kind === "new_product") {
     const p = first.product ?? {};
     isSub = p.type === "subscription";
     if (!ref) {
-      if (!app.bundleId) throw new FatalStoreError("The app has no bundle ID. Add it in the app's settings.");
+      // Only new products need the App Store Connect app: the other products of the file still commit.
+      if (!app.bundleId) throw new StoreOpError("invalid", "The app has no bundle ID. Add it in the app's settings.");
       const ascApp = await api.appByBundleId(app.bundleId);
-      if (!ascApp) throw new FatalStoreError(`App Store Connect has no app with bundle ID ${app.bundleId} that this API key can see.`);
+      if (!ascApp) throw new StoreOpError("invalid", `App Store Connect has no app with bundle ID ${app.bundleId} that this API key can see.`);
       const name = (p.display_name ?? id).slice(0, 64);
       const created = isSub
         ? await api.createSubscription(await api.subscriptionGroup(ascApp.id, p.group ?? "Subscriptions"), { name, productId: id, subscriptionPeriod: ASC_PERIOD[p.duration ?? ""] ?? "ONE_MONTH" })
@@ -619,13 +643,20 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
   if (isSub) {
     const preserve = ctx.edit.options.preserve_current_price !== false;
     // A row may have gone through in a run that was cut off: read the current prices first and skip rows already at
-    // their price. Then the price points of every territory of the product in a few calls.
-    const current = await api.subscriptionPrices(ref, today);
-    const points = await pointsFor(ctx, api, true, ref, rows.map((r) => r.territory));
+    // their price. Apple keeps one scheduled change per territory and a new price replaces it, so territories with a
+    // change scheduled for later are left alone. Then the price points of every territory of the product in a few calls.
+    const schedule = await api.subscriptionPriceSchedule(ref, today);
+    if (schedule.truncated) return rows.map(() => ({ ok: false, error: `${id} has more prices than RevenueDot reads at once; change its prices in App Store Connect.` }));
+    const scheduled = new Set(schedule.scheduled);
+    const points = await pointsFor(ctx, api, true, ref, rows.filter((r) => !scheduled.has(r.territory)).map((r) => r.territory));
     const out: MaybeOutcome[] = [];
     for (const r of rows) {
+      if (scheduled.has(r.territory)) {
+        out.push({ ok: false, error: `${id} has a price change scheduled in App Store Connect in ${r.territory}. A new price would replace it: change the price in App Store Connect, or remove the scheduled change and retry.` });
+        continue;
+      }
       if (Date.now() > ctx.deadline) { out.push(null); continue; }
-      const now = current.find((p) => p.territory === r.territory);
+      const now = schedule.current.find((p) => p.territory === r.territory);
       if (now && decimalMicros(now.customerPrice) === r.newMicros) { out.push({ ok: true, note: "Already at this price." }); continue; }
       try {
         const m = matchPoint(points(r.territory), r.newMicros, r.territory, r.currency);
@@ -633,7 +664,8 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
         await api.createSubscriptionPrice(ref, r.territory, m.id, preserve);
         out.push({ ok: true });
       } catch (e) {
-        if (isCredentialError(e)) throw e;
+        // The rows written before the refusal keep their success.
+        if (isCredentialError(e)) throw new FatalStoreError(storeMessage("apple", e), out);
         out.push({ ok: false, error: storeMessage("apple", e) });
       }
     }
@@ -689,53 +721,71 @@ async function commitPlay(ctx: CommitContext, subscriptionId: string, rows: Edit
     if (e instanceof GoogleApiError && e.status === 404) sub = null;
     else throw e;
   }
+  const planOf = (r: EditLineRow) => r.storeIdentifier.split(":")[1]!;
   const newPlans = new Map<string, EditLineRow[]>();
-  for (const r of rows) if (r.kind === "new_product") { const bp = r.storeIdentifier.split(":")[1]!; newPlans.set(bp, [...(newPlans.get(bp) ?? []), r]); }
+  for (const r of rows) if (r.kind === "new_product") newPlans.set(planOf(r), [...(newPlans.get(planOf(r)) ?? []), r]);
   const regional = (rs: EditLineRow[]) => rs.map((r) => ({ regionCode: r.territory, newSubscriberAvailability: true, price: microsMoney(r.newMicros, r.currency) }));
   const planFor = (bp: string, rs: EditLineRow[]): PlayBasePlan => ({ basePlanId: bp, autoRenewingBasePlanType: { billingPeriodDuration: rs[0]!.product?.duration ?? "P1M" }, regionalConfigs: regional(rs) });
+  const out: MaybeOutcome[] = rows.map(() => null);
+  const settle = (match: (r: EditLineRow) => boolean, o: Outcome) => rows.forEach((r, i) => { if (!out[i] && match(r)) out[i] = o; });
 
-  // A new subscription: created with its base plans, then each plan activated.
   if (!sub) {
+    // A new subscription: created with its base plans (as drafts), then each plan is activated below.
     if (rows.some((r) => r.kind !== "new_product")) return rows.map(() => ({ ok: false, error: `${subscriptionId} is no longer in Google Play.` }));
     const title = (rows[0]!.product?.display_name ?? subscriptionId).slice(0, 55);
     const languageCode = await client.defaultLanguage(row);
     await client.createSubscriptionWithBasePlans(row, subscriptionId, { languageCode, title }, [...newPlans].map(([bp, rs]) => planFor(bp, rs)));
-    const activated = await activateNew(ctx, client, row, subscriptionId, newPlans);
-    return rows.map((r) => activated.get(r.storeIdentifier.split(":")[1]!) ?? { ok: true });
+  } else {
+    // Changes to existing base plans, plus base plans this edit adds; skip rows whose price is already there (a retry).
+    const plans: PlayBasePlan[] = (sub.basePlans ?? []).map((b) => ({ ...b, regionalConfigs: (b.regionalConfigs ?? []).map((c) => ({ ...c })) }));
+    let changed = false;
+    for (const [bp, rs] of [...newPlans]) {
+      const existing = plans.find((b) => b.basePlanId === bp);
+      if (!existing) { plans.push(planFor(bp, rs)); changed = true; continue; }
+      // A base plan this file adds that is already in Play: written by an earlier attempt of this edit (recorded, or a
+      // row was sent before), or made elsewhere after the upload. Someone else's plan is left alone: its prices are not
+      // overwritten and it is not activated.
+      if (!ctx.created[`${subscriptionId}:${bp}`] && !rs.some((r) => r.attempts > 0)) {
+        settle((r) => r.kind === "new_product" && planOf(r) === bp, { ok: false, error: `Base plan ${bp} of ${subscriptionId} was created in Google Play after this file was uploaded, so the product editor leaves it alone. Upload a new file to change its prices.` });
+        newPlans.delete(bp);
+        continue;
+      }
+      for (const r of rs) changed = setRegion(existing, r) || changed;
+    }
+    rows.forEach((r, i) => {
+      if (r.kind !== "price_change") return;
+      const plan = plans.find((b) => b.basePlanId === planOf(r));
+      if (!plan) { out[i] = { ok: false, error: `Base plan ${planOf(r)} is no longer in Google Play.` }; return; }
+      const cfg = plan.regionalConfigs!.find((c) => c.regionCode === r.territory);
+      if (cfg && moneyMicros(cfg.price) === r.newMicros && cfg.price?.currencyCode === r.currency) { out[i] = { ok: true, note: "Already at this price." }; return; }
+      changed = setRegion(plan, r) || changed;
+    });
+    if (changed) {
+      try {
+        await client.patchSubscriptionBasePlans(row, { ...sub, basePlans: plans });
+      } catch (e) {
+        if (isCredentialError(e)) throw new FatalStoreError(storeMessage("play", e), out);
+        // Rows already at their price keep that outcome; the others share Play's refusal.
+        const msg = storeMessage("play", e);
+        return rows.map((_, i) => out[i] ?? { ok: false, error: msg });
+      }
+    }
+    settle((r) => r.kind === "price_change", { ok: true });
   }
 
-  // Changes to existing base plans, plus base plans this edit adds; skip rows whose price is already there (a retry).
-  const plans: PlayBasePlan[] = (sub.basePlans ?? []).map((b) => ({ ...b, regionalConfigs: [...(b.regionalConfigs ?? [])] }));
-  const out: (Outcome | null)[] = rows.map(() => null);
-  let changed = false;
-  for (const [bp, rs] of newPlans) {
-    const existing = plans.find((b) => b.basePlanId === bp);
-    if (!existing) { plans.push(planFor(bp, rs)); changed = true; continue; }
-    // Created by an earlier attempt of this edit: set the prices like a change.
-    for (const r of rs) changed = setRegion(existing, r) || changed;
-  }
-  rows.forEach((r, i) => {
-    if (r.kind !== "price_change") return;
-    const bp = r.storeIdentifier.split(":")[1];
-    const plan = plans.find((b) => b.basePlanId === bp);
-    if (!plan) { out[i] = { ok: false, error: `Base plan ${bp} is no longer in Google Play.` }; return; }
-    const cfg = plan.regionalConfigs!.find((c) => c.regionCode === r.territory);
-    if (cfg && moneyMicros(cfg.price) === r.newMicros && cfg.price?.currencyCode === r.currency) { out[i] = { ok: true, note: "Already at this price." }; return; }
-    changed = setRegion(plan, r) || changed;
-  });
-  if (changed) {
-    try {
-      await client.patchSubscriptionBasePlans(row, { ...sub, basePlans: plans });
-    } catch (e) {
-      if (isCredentialError(e)) throw e;
-      // Rows already at their price keep that outcome; the others share Play's refusal.
-      const msg = storeMessage("play", e);
-      return rows.map((_, i) => out[i] ?? { ok: false, error: msg });
+  // The new base plans are in Play now: all of them join the catalog (once), then each goes on sale.
+  for (const [bp, rs] of newPlans) if (!ctx.created[`${subscriptionId}:${bp}`]) await productCreated(ctx, `${subscriptionId}:${bp}`, `${subscriptionId}:${bp}`, rs[0]!.product ?? {});
+  for (const bp of newPlans.keys()) {
+    let o: Outcome = { ok: true };
+    try { await client.activateBasePlan(row, subscriptionId, bp); } catch (e) {
+      if (isCredentialError(e)) throw new FatalStoreError(storeMessage("play", e), out);
+      // Already active (a retry) is fine: Play's own state decides, not the wording of its error.
+      const now = await client.getSubscription(row, subscriptionId).catch(() => null);
+      if (now?.basePlans?.find((b) => b.basePlanId === bp)?.state !== "ACTIVE") o = { ok: false, error: `The base plan was created but not activated: ${storeMessage("play", e)} Activate it in Play Console.` };
     }
-    for (const [bp, rs] of newPlans) if (!ctx.created[`${subscriptionId}:${bp}`]) await productCreated(ctx, `${subscriptionId}:${bp}`, `${subscriptionId}:${bp}`, rs[0]!.product ?? {});
+    settle((r) => r.kind === "new_product" && planOf(r) === bp, o);
   }
-  const activated = newPlans.size ? await activateNew(ctx, client, row, subscriptionId, newPlans, true) : new Map<string, Outcome>();
-  return rows.map((r, i) => out[i] ?? (r.kind === "new_product" ? activated.get(r.storeIdentifier.split(":")[1]!) : undefined) ?? { ok: true });
+  return rows.map((_, i) => out[i] ?? { ok: true });
 }
 
 function setRegion(plan: PlayBasePlan, r: EditLineRow): boolean {
@@ -747,24 +797,6 @@ function setRegion(plan: PlayBasePlan, r: EditLineRow): boolean {
     cfg.price = price;
   } else configs.push({ regionCode: r.territory, newSubscriberAvailability: true, price });
   return true;
-}
-
-/** Activates the edit's new base plans and records them as created; the outcome per base plan id. */
-async function activateNew(ctx: CommitContext, client: ReturnType<typeof googleClientFor>["client"], row: AppRow, subscriptionId: string, newPlans: Map<string, EditLineRow[]>, recorded = false): Promise<Map<string, Outcome>> {
-  const out = new Map<string, Outcome>();
-  for (const [bp, rs] of newPlans) {
-    const key = `${subscriptionId}:${bp}`;
-    if (!recorded && !ctx.created[key]) await productCreated(ctx, key, key, rs[0]!.product ?? {});
-    let o: Outcome = { ok: true };
-    try { await client.activateBasePlan(row, subscriptionId, bp); } catch (e) {
-      if (isCredentialError(e)) throw e;
-      // Already active (a retry) is fine: Play's own state decides, not the wording of its error.
-      const now = await client.getSubscription(row, subscriptionId).catch(() => null);
-      if (now?.basePlans?.find((b) => b.basePlanId === bp)?.state !== "ACTIVE") o = { ok: false, error: `The base plan was created but not activated: ${storeMessage("play", e)} Activate it in Play Console.` };
-    }
-    out.set(bp, o);
-  }
-  return out;
 }
 
 // ---- Answers --------------------------------------------------------------------------------------------------------

@@ -60,7 +60,8 @@ export class FakeAppStoreConnect {
   private seq = 7_000_000_000;
   /** The fake's clock (tests share theirs): token expiry and the start date of new prices. */
   now: () => Date = () => new Date();
-  today = () => this.now().toISOString().slice(0, 10);
+  /** Apple's dates are days in US Pacific time. */
+  today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(this.now());
 
   fail(match: Injected["match"], status: number, title: string, detail = "", times = Infinity, code = status === 409 ? "ENTITY_ERROR" : "ERROR") {
     this.injected.push({ match, status, body: { errors: [{ status: String(status), code, title, detail }] }, times });
@@ -195,6 +196,8 @@ export class FakeAppStoreConnect {
       if (d.s !== subId || d.t !== territory || !(d.tier >= 0 && d.tier < LADDER.length)) return this.error(409, "The provided entity includes a relationship with an invalid value", "The price point is not valid for this subscription and territory.", "ENTITY_ERROR.RELATIONSHIP.INVALID");
       if (sub.state === "REMOVED_FROM_SALE" || sub.state === "DEVELOPER_REMOVED_FROM_SALE") return this.error(409, "The request cannot be fulfilled because of the state of another resource.", "Prices cannot change while the subscription is removed from sale.", "STATE_ERROR");
       const p: AscSubPrice = { id: this.nextId(), subscriptionId: subId, territory, tier: d.tier, startDate: body.data.attributes?.startDate ?? this.today(), preserved: !!body.data.attributes?.preserveCurrentPrice };
+      // Like Apple: one scheduled change per territory, and a new price replaces the one scheduled there.
+      this.subPrices = this.subPrices.filter((x) => !(x.subscriptionId === subId && x.territory === territory && x.startDate && x.startDate > this.today()));
       this.subPrices.push(p);
       return json(201, { data: { type: "subscriptionPrices", id: p.id, attributes: { startDate: p.startDate, preserved: p.preserved } } });
     }

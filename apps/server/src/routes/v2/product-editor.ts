@@ -26,7 +26,7 @@ import { v2StoreError } from "./store-ops.js";
 const Upload = z.object({
   app_id: z.string().min(1),
   file_name: z.string().trim().max(200).optional(),
-  csv: z.string().min(1, "csv: the file is empty.").max(MAX_CSV_BYTES, `csv: the file is larger than ${MAX_CSV_BYTES / 1_000_000} MB.`),
+  csv: z.string().min(1, "the file is empty.").refine((t) => new TextEncoder().encode(t).length <= MAX_CSV_BYTES, `the file is larger than ${MAX_CSV_BYTES / 1_000_000} MB.`),
   preserve_current_price: z.boolean().optional(),
 });
 const Options = z.object({ preserve_current_price: z.boolean() });
@@ -150,6 +150,8 @@ export function productEditorRoutes(r: V2Router, deps: Deps) {
   });
 
   r.post(`${P}/product_edits`, scope("project_configuration:products:read_write"), async (c) => {
+    // The body is read only when it can hold a file of at most 1 MB (JSON escapes at most double it).
+    if (Number(c.req.header("content-length") ?? 0) > 2 * MAX_CSV_BYTES + 10_000) throw paramError(`csv: the file is larger than ${MAX_CSV_BYTES / 1_000_000} MB.`, "csv");
     const b = await body(c, Upload);
     const app = await findApp(c, b.app_id).catch(() => { throw paramError("app_id does not match an app in this project.", "app_id"); });
     const p = c.get("principal");
@@ -171,8 +173,12 @@ export function productEditorRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, Options);
     if (e.status !== "ready") throw new V2Error(409, "invalid_request", "Options can only change before the edit is committed.");
     if (storeKind(e.store) !== "apple") throw paramError("preserve_current_price applies to App Store subscriptions only.", "preserve_current_price");
-    const [row] = await db.update(schema.productEdits).set({ options: { ...e.options, preserve_current_price: b.preserve_current_price }, updatedAt: deps.now() }).where(eq(schema.productEdits.id, e.id)).returning();
-    return c.json(editShape(row!, await editRows(deps, e.id)));
+    // Only while the edit is still ready: a commit that starts at the same moment keeps the options it read.
+    const E = schema.productEdits;
+    const [row] = await db.update(E).set({ options: { ...e.options, preserve_current_price: b.preserve_current_price }, updatedAt: deps.now() })
+      .where(and(eq(E.id, e.id), eq(E.status, "ready"), or(isNull(E.lockedUntil), lt(E.lockedUntil, deps.now())))).returning();
+    if (!row) throw new V2Error(409, "invalid_request", "Options can only change before the edit is committed.");
+    return c.json(editShape(row, await editRows(deps, e.id)));
   });
 
   r.delete(`${P}/product_edits/:edit_id`, scope("project_configuration:products:read_write"), async (c) => {
