@@ -18,6 +18,8 @@ import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { Dialog, Field, Segmented, Switch, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, type List } from "../../lib/api";
+import { currencySymbol, getDisplay } from "../../lib/prefs";
+import { DateField } from "../../components/DateField";
 import { Legend, Plot, seriesColor, type Series } from "./plot";
 
 interface Measure { id: string; display_name: string; description: string; unit: "$" | "#" | "%"; decimal_precision: number; chartable: boolean; tabulable: boolean }
@@ -80,7 +82,7 @@ function formatter(unit: string, currency: string, precision = 2) {
 function tickFormatter(unit: string, currency: string) {
   return (v: number) => {
     const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`;
-    if (unit === "$") return `${currency === "USD" ? "$" : `${currency} `}${s}`;
+    if (unit === "$") return `${currencySymbol({ ...getDisplay(), currency })}${s}`;
     return unit === "%" ? `${s}%` : s;
   };
 }
@@ -213,7 +215,11 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   };
 
   const options = useQuery({ queryKey: ["chart-options", pid, def.name, env], queryFn: () => api<Options>(`/v2/projects/${pid}/charts/${def.name}/options?environment=${env}`) });
+  // Money in the person's display currency and weeks from their first day (Account settings → Date and region).
+  const display = getDisplay();
   const query = new URLSearchParams({ resolution, start_date: start, end_date: end, environment: env });
+  if (display.currency !== "USD") query.set("currency", display.currency);
+  if (resolution === "week" && display.weekStart !== 1) query.set("week_start", String(display.weekStart));
   if (segment) { query.set("segment", segment); query.set("limit_num_segments", "5"); }
   if (filters.length) query.set("filters", JSON.stringify(filters));
   if (Object.keys(selectors).length) query.set("selectors", JSON.stringify(selectors));
@@ -257,9 +263,9 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
             <Segmented label="Date range" value={range} options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
               onChange={(v) => set({ range: v === (cohortTable ? "12m" : "30d") ? null : v, start: v === "custom" ? start : null, end: v === "custom" ? end : null, res: null })} />
             {range === "custom" && <>
-              <input className="input dt" type="date" aria-label="Start date" value={start} max={end} onChange={(e) => set({ start: e.target.value })} />
+              <DateField className="dt" label="Start date" value={start} max={end} onChange={(v) => set({ start: v })} />
               <span className="subtle">to</span>
-              <input className="input dt" type="date" aria-label="End date" value={end} min={start} onChange={(e) => set({ end: e.target.value })} />
+              <DateField className="dt" label="End date" value={end} min={start} onChange={(v) => set({ end: v })} />
             </>}
             <select className="select sm" aria-label="Resolution" value={resolution} onChange={(e) => set({ res: e.target.value })}>
               {RESOLUTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}

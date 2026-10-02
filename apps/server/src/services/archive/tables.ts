@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0027_delivery_attempts";
+export const ARCHIVE_SCHEMA = "0028_account_settings";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -34,7 +34,8 @@ export interface ArchiveTable {
 export const ARCHIVE_TABLES: ArchiveTable[] = [
   { name: "projects", scope: { project: "id" }, local: ["owner_user_id", "move_state", "moved_to_url", "move_updated_at", "moved_in_at", "moved_in_from"] },
   { name: "apps", scope: { project: "project_id" }, secrets: { credentials: { empty: {} }, secrets: { empty: null, sealed: true }, secret_hints: { empty: {} } } },
-  { name: "api_keys", scope: { project: "project_id" } },
+  // Who granted an OAuth key, and to which client, stays on this server (accounts and OAuth clients are not moved).
+  { name: "api_keys", scope: { project: "project_id" }, local: ["created_by_user_id", "oauth_client_id"] },
   { name: "products", scope: { project: "project_id" } },
   { name: "entitlements", scope: { project: "project_id" } },
   { name: "entitlement_products", scope: { via: "entitlement_id", parent: "entitlements" } },
@@ -137,6 +138,10 @@ export const NOT_EXPORTED: Record<string, string> = {
   billing_invoices: "RevenueDot Cloud billing is per account and server.",
   billing_notices: "RevenueDot Cloud billing is per account and server.",
   recovery_portal_links: "One-time payment links that last 30 minutes.",
+  two_factor_recovery_codes: "Two-factor recovery codes belong to one account on one server.",
+  notification_prefs: "Each person's email choices stay with their account; they choose again on the target.",
+  notification_sends: "Which summary and alert emails this server already sent.",
+  anomaly_checks: "Daily revenue anomaly results of this server; the target checks again.",
 };
 
 export interface TableInfo extends ArchiveTable {

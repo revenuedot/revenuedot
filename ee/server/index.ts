@@ -65,6 +65,20 @@ export function enterpriseExtension(license: LicenseState, regions: RegionConfig
       return { enterprise: { ...status(), organizations: orgs } };
     },
 
+    // An organization must keep an owner: its last owner cannot delete their account while others are still in it.
+    beforeAccountDelete: on && features.has("organizations") ? async (a) => {
+      const db = a.deps.db;
+      const mine = await db.select({ orgId: eeOrgMembers.orgId, name: eeOrganizations.name }).from(eeOrgMembers)
+        .innerJoin(eeOrganizations, eq(eeOrganizations.id, eeOrgMembers.orgId))
+        .where(and(eq(eeOrgMembers.userId, a.userId), eq(eeOrgMembers.role, "owner"), eq(eeOrgMembers.active, true)));
+      for (const o of mine) {
+        const people = await db.select({ u: eeOrgMembers.userId, role: eeOrgMembers.role }).from(eeOrgMembers).where(and(eq(eeOrgMembers.orgId, o.orgId), eq(eeOrgMembers.active, true)));
+        const others = people.filter((p) => p.u !== a.userId);
+        if (others.length && !others.some((p) => p.role === "owner")) return { message: `You are the only owner of the organization ${o.name}, which has other members. Make someone else an owner first.` };
+      }
+      return null;
+    } : undefined,
+
     tick: on ? (db, now) => enterpriseTick(db, now, features) : undefined,
   };
 }

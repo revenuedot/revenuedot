@@ -299,7 +299,8 @@ export function ssoRoutes(ctx: EeCtx) {
     }
     const { user, created } = await ensureUser(db, email, identity.name, now, conn.orgId);
     await ensureOrgMember(db, conn.orgId, user.id, "sso", { ssoGroups: identity.groups, now });
-    const sid = await createSession(db, user.id, now);
+    // Labelled "Single sign-on" in Account settings → Security; such sessions never ask for a two-factor code.
+    const sid = await createSession(db, user.id, now, { method: "sso", userAgent: c.req.header("user-agent") ?? null, ip: c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? null });
     await db.insert(eeSsoSessions).values({ sessionId: sid, orgId: conn.orgId, connectionId: conn.id, userId: user.id, createdAt: now });
     setCookie(c, SESSION_COOKIE, sid, { httpOnly: true, sameSite: "Lax", secure: c.req.url.startsWith("https:"), path: "/", maxAge: COOKIE_MAX_AGE });
     await orgAudit(db, now, { orgId: conn.orgId, action: "sso_sign_in", actor: { type: "sso", id: conn.id }, target: { type: "user", id: user.id }, data: { connection_id: conn.id, kind: conn.kind, email, account_created: created, groups: identity.groups.slice(0, 50), ...extra } });

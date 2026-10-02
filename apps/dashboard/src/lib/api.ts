@@ -1,3 +1,5 @@
+import { formatUsd } from "./prefs";
+
 /** Thin client for the RevenueDot API. The dashboard uses the session cookie; errors surface RevenueCat-style messages. */
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body: unknown) { super(message); }
@@ -20,7 +22,10 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
 export interface List<T> { object: "list"; items: T[]; next_page: string | null; url: string }
 
 export const fmt = {
-  usd: (n: number | null | undefined, cents = false) => n === null || n === undefined ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }),
+  /** A USD amount from the API, shown in the person's display currency (Account settings → Date and region). */
+  usd: (n: number | null | undefined, cents = false) => n === null || n === undefined ? "—" : formatUsd(n, cents),
+  /** Always USD: what RevenueDot Cloud charges, and public pages that everyone sees in USD. */
+  usdRaw: (n: number | null | undefined, cents = false) => n === null || n === undefined ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }),
   int: (n: number | null | undefined) => (n === null || n === undefined ? "—" : n.toLocaleString("en-US")),
   date: (ms: number | string | null | undefined) => { if (!ms) return "—"; const d = new Date(ms); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); },
   dateTime: (ms: number | string | null | undefined) => { if (!ms) return "—"; const d = new Date(ms); return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }); },

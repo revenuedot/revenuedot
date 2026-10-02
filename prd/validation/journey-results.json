@@ -145,5 +145,12 @@
     "run": "202610020546045600",
     "passed": 66,
     "failed": 0
+  },
+  "account": {
+    "title": "Account settings: email change, password, two-factor, sessions, OAuth tokens, preferences, anomaly alert, deletion",
+    "date": "2026-10-02",
+    "run": "202610020803165680",
+    "passed": 51,
+    "failed": 0
   }
 }

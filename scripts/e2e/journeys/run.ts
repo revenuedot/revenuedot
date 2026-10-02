@@ -35,6 +35,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   assistant: () => import("./assistant.ts"),
   ios: () => import("./ios.ts"),
   android: () => import("./android.ts"),
+  account: () => import("./account.ts"),
   "settings-auth": () => import("./settings-auth.ts"),
   "self-host": () => import("./self-host.ts"),
   "connect-recovery": () => import("./connect-recovery.ts"),

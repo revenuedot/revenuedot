@@ -8,3 +8,4 @@ export * from "./paywall-templates.js";
 export * from "./charts/index.js";
 export * from "./paywalls/index.js";
 export * from "./storekit.js";
+export * from "./anomaly.js";

@@ -13,6 +13,7 @@ import { api, fmt } from "../../lib/api";
 import { v2 } from "../catalog/lib";
 import { Pictogram, apiError } from "./parts";
 import { ELIGIBILITY, endOfDay, useRefreshWeb, useWeb, useWebDiscounts, useWebProducts, webPrice, type WebDiscount } from "./lib";
+import { DateField } from "../../components/DateField";
 
 const STATUS_TONE: Record<WebDiscount["status"], "up" | "muted" | "down"> = { active: "up", disabled: "muted", expired: "down", used_up: "down" };
 const STATUS_LABEL: Record<WebDiscount["status"], string> = { active: "Active", disabled: "Disabled", expired: "Expired", used_up: "Used up" };
@@ -215,7 +216,7 @@ function DiscountDialog({ pid, onClose }: { pid: string; onClose: () => void }) 
             <input id="dc-max" className="input mono" inputMode="numeric" placeholder="No limit" value={max} onChange={(e) => { setMax(e.target.value); setErr(null); }} />
           </Field>
           <Field label="Expires" htmlFor="dc-expires" error={fe("expires_at")} hint="Optional. The last day it can be used.">
-            <input id="dc-expires" className="input" type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+            <DateField id="dc-expires" label="Expires" value={expires} onChange={setExpires} />
           </Field>
         </div>
         <Field label="Codes" htmlFor="dc-codes" error={fe("codes")} hint="Optional. Separate codes with commas or new lines. Codes are not case sensitive. Leave empty for a discount that only applies automatically.">

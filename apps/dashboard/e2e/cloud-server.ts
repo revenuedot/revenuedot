@@ -23,7 +23,8 @@ import { FAKE_BILLING_KEY, FAKE_BILLING_PRICE, FAKE_BILLING_WEBHOOK_SECRET, Fake
 const CLOUD_KEY = "Y2xvdWQtZTJlLWtleS1mb3ItdGVzdHMtb25seS0xMjM=";
 
 export async function startCloud(port: number, dist: string, mail: Mailer & { sent: { to: string }[] }) {
-  const { db } = await openDb("pglite://memory");
+  // E2E_CLOUD_DATABASE_URL: a Railway development database instead of PGlite, for manual browser checks.
+  const { db } = await openDb(process.env.E2E_CLOUD_DATABASE_URL ?? "pglite://memory");
   const base = `http://localhost:${port}`;
   const stripe = new FakeBillingStripe();
   stripe.checkoutUrl = `${base}/__billing/checkout/{id}`;

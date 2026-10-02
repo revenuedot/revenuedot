@@ -75,7 +75,7 @@ a.cat-lnk:hover{text-decoration-color:var(--fg)}
 .cat-radios label:last-child{border-right:0}
 .cat-radios label span{font-size:11.5px;font-weight:500;color:var(--fg-3);line-height:15px}
 .cat-radios label:has(input:checked){box-shadow:inset 0 0 0 1px var(--fg)}
-.cat-radios label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.cat-radios label:has(input:focus-visible){outline:2px solid var(--focus, var(--accent));outline-offset:2px}
 .cat-radios input{position:absolute;opacity:0;pointer-events:none}
 .cat-flabel{font:600 12px/16px var(--font);color:var(--fg-2)}
 .cat-ptable{table-layout:fixed}

@@ -29,8 +29,9 @@ import { memoryMailer } from "@revenuedot/server/mail/index.js";
 import { getOrCreateCustomer, touch } from "@revenuedot/server/repo/customers.js";
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
 import { tick } from "@revenuedot/server/services/tick.js";
+import { runAccountNotifications } from "@revenuedot/server/services/account-notifications.js";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { startCloud } from "./cloud-server.ts";
 import { connectPlatform, fakeStoreFetch, fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
@@ -285,6 +286,31 @@ web.post("/__stripe/seed", async (c) => {
   for (const p of b.prices ?? []) webStripe.prices.set(String(p.id), { object: "price", active: true, livemode: false, billing_scheme: "per_unit", metadata: {}, ...p });
   return c.json({ ok: true });
 });
+// Account settings (account-settings.spec.ts): a link that ran out of time, as if 24 hours had passed for it alone.
+web.post("/__tokens/expire", async (c) => {
+  const b = await c.req.json() as { email: string; kind: string };
+  const [u] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, b.email));
+  if (!u) return c.json({ error: "no such user" }, 404);
+  const rows = await db.update(schema.authTokens).set({ expiresAt: new Date(Date.now() - 60_000) }).where(and(eq(schema.authTokens.userId, u.id), eq(schema.authTokens.kind, b.kind), isNull(schema.authTokens.usedAt))).returning({ h: schema.authTokens.hash });
+  return c.json({ expired: rows.length });
+});
+// A production App Store purchase of `usd` in the first project the account owns, `daysAgo` days back (account-settings.spec.ts:
+// amounts shown in the display currency on the Overview, Customers and Charts).
+web.post("/__revenue", async (c) => {
+  const b = await c.req.json() as { email: string; usd: number; daysAgo?: number };
+  const [u] = await db.select().from(schema.users).where(eq(schema.users.email, b.email));
+  const [p] = await db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+  const id = `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const at = new Date(Date.now() - (b.daysAgo ?? 0) * DAY);
+  await db.insert(schema.customers).values({ id: `cus_${id}`, projectId: p!.id, originalAppUserId: `buyer_${id}`, firstSeen: at, lastSeen: at });
+  await db.insert(schema.transactions).values({ id: `txn_${id}`, projectId: p!.id, customerId: `cus_${id}`, store: "app_store", storeTransactionId: id, productIdentifier: "pro_yearly", kind: "purchase", isSandbox: false, purchasedAt: at, revenueUsd: b.usd, priceAmount: b.usd, priceCurrency: "USD" });
+  return c.json({ ok: true, project: p!.id, customer: `buyer_${id}` });
+});
+// The account notification emails (weekly summary, experiment results, anomalies) at a chosen time, like the tick would.
+web.post("/__notifications/run", async (c) => {
+  const b = await c.req.json().catch(() => ({})) as { at?: string };
+  return c.json(await runAccountNotifications({ db, mailer: mail, publicUrl: `http://localhost:${PORT}`, fetch: localFetch }, b.at ? new Date(b.at) : now(), { projects: 50, emails: 200, budgetMs: 60_000 }));
+});
 web.post("/__dns", async (c) => { const b = await c.req.json() as { name: string; CNAME?: string[]; TXT?: string[] }; dns[b.name] = { CNAME: b.CNAME, TXT: b.TXT }; return c.json({ ok: true }); });
 // A minimal stand-in for Stripe's hosted Checkout page (never Stripe itself).
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
@@ -312,7 +338,7 @@ web.post("/__stripe/checkout/:id", async (c) => {
 });
 web.all("/*", async (c) => {
   const path = c.req.path;
-  if (/^\/(v1|v2|auth|rcbilling|blobs|pay|share|verified|sso|scim|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
+  if (/^\/(v1|v2|auth|oauth|rcbilling|blobs|pay|share|verified|sso|scim|\.well-known)(\/|$)/.test(path)) return api.fetch(c.req.raw);
   const file = join(DIST, path);
   // Paywall assets and icons (/assets/{project}/{object}, /assets/icons/{name}) share /assets with the dashboard build.
   if (path.startsWith("/assets/") && !existsSync(file)) return api.fetch(c.req.raw);

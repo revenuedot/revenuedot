@@ -6,6 +6,7 @@ import { sdkRoutes } from "./routes/sdk.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { lifecyclePublicRoutes } from "./routes/lifecycle-public.js";
 import { authRoutes } from "./routes/auth.js";
+import { accountRoutes } from "./routes/account.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { v2Routes } from "./routes/v2/index.js";
 import { adsPublicRoutes } from "./routes/ads-public.js";
@@ -83,6 +84,9 @@ export function createApp(input: Deps) {
   // App sign-in (Auth, prd/auth) answers POST /auth/login when it carries an app key; the dashboard's sign-in gets the rest.
   app.route("/", identityRoutes(deps));
   app.route("/", authRoutes(deps));
+  // Account settings (prd/account-settings/PRD.md): email change, password, sessions, two-factor, OAuth tokens, deletion,
+  // notification preferences and the display currency's rate.
+  app.route("/", accountRoutes(deps));
   // Public Verified Metrics pages (prd/project-settings §4).
   app.route("/", verifiedRoutes(deps));
   // Public share cards (the first-sale card, prd/ai-assistant/PRD.md).

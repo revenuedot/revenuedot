@@ -5,6 +5,7 @@ import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { DataTable, Panel, Segmented, Sparkline, Switch, Tabs, Tag, useProjectId, type Column } from "../../components/ui";
 import { api, fmt } from "../../lib/api";
+import { currencySymbol, displayRate, formatDisplay } from "../../lib/prefs";
 import { Legend, Plot, type Series } from "../charts/plot";
 import { errMsg, useApps } from "../setup/data";
 import { FORMAT_LABEL, v2, type AdsOverview as Overview, type Breakdown } from "./data";
@@ -92,18 +93,21 @@ function Trend({ o }: { o: Overview }) {
     const d = new Date(`${s.date}T00:00:00Z`);
     return { start: d.getTime(), label: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }), long: d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }), incomplete: i === o.series.length - 1 };
   }), [o.series]);
+  // Money is plotted in the display currency (Account settings → Date and region) at the latest rate.
+  const k = displayRate();
+  const cv = (v: number | null) => (v === null ? null : v * k);
   const series: Series[] = measure === "both"
-    ? [{ key: "ad", label: "Ad revenue", values: o.series.map((x) => x.ad_revenue) }, { key: "sub", label: "Subscription revenue", values: o.series.map((x) => x.subscription_revenue) }]
-    : measure === "ad_revenue" ? [{ key: "ad", label: "Ad revenue", values: o.series.map((x) => x.ad_revenue) }]
+    ? [{ key: "ad", label: "Ad revenue", values: o.series.map((x) => cv(x.ad_revenue)) }, { key: "sub", label: "Subscription revenue", values: o.series.map((x) => cv(x.subscription_revenue)) }]
+    : measure === "ad_revenue" ? [{ key: "ad", label: "Ad revenue", values: o.series.map((x) => cv(x.ad_revenue)) }]
       : measure === "impressions" ? [{ key: "imp", label: "Impressions", values: o.series.map((x) => x.impressions) }]
-        : [{ key: "ecpm", label: "eCPM", values: o.series.map((x) => x.ecpm) }];
+        : [{ key: "ecpm", label: "eCPM", values: o.series.map((x) => cv(x.ecpm)) }];
   const money = measure !== "impressions";
   return (
     <Panel title="Daily" link={<Segmented label="Measure" value={measure} onChange={setMeasure} options={[{ value: "ad_revenue", label: "Ad revenue" }, { value: "impressions", label: "Impressions" }, { value: "ecpm", label: "eCPM" }, { value: "both", label: "With subscriptions" }]} />}>
       <Legend series={series} />
       <Plot periods={periods} series={series} kind={measure === "both" || measure === "ecpm" ? "line" : "bar"} integer={!money}
-        format={(v) => (v === null ? "—" : money ? usd(v) : fmt.int(v))}
-        formatTick={(v) => { const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`; return money ? `$${s}` : s; }}
+        format={(v) => (v === null ? "—" : money ? formatDisplay(v) : fmt.int(v))}
+        formatTick={(v) => { const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`; return money ? `${currencySymbol()}${s}` : s; }}
         ariaLabel={`${series.map((s) => s.label).join(" and ")} by day. The values are in the tables below.`} />
     </Panel>
   );

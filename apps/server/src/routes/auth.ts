@@ -4,7 +4,10 @@ import { schema } from "@revenuedot/db";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import type { Deps } from "../context.js";
-import { SESSION_COOKIE, createSession, hashPassword, login, logout, projectsForUser, sessionUser, signup } from "../services/sessions.js";
+import { SESSION_COOKIE, createSession, hashPassword, login, logout, projectsForUser, sessionUser, signup, type SessionMethod } from "../services/sessions.js";
+import { LIMITS, checkSecondFactor, issueChallenge, pendingEmailChange, preferencesOf, preferencesPatch, recoveryCodesLeft, twoFactorOn, type User } from "../services/account.js";
+import { twoFactorEmail } from "../mail/templates.js";
+import { trySend } from "../mail/index.js";
 import {
   checkToken, consumeToken, defer, linkBase, needsVerification, rememberOrigin, requestOrigin, retireTokens, sendPasswordReset, sendVerification,
 } from "../services/account-email.js";
@@ -19,7 +22,12 @@ const Login = z.object({ email: Email, password: z.string().min(1) });
 const Forgot = z.object({ email: z.string().max(320) });
 const Token = z.object({ token: z.string().min(1).max(200) });
 const Reset = z.object({ token: z.string().min(1).max(200), password: Password });
-const MeUpdate = z.object({ name: z.string().trim().max(100).nullable().optional(), alert_emails: z.boolean().optional() });
+const MeUpdate = z.object({
+  name: z.string().trim().max(100).nullable().optional(), alert_emails: z.boolean().optional(),
+  // Account settings → Interface and Date and region (prd/account-settings); checked by preferencesPatch.
+  theme: z.unknown().optional(), tint: z.unknown().optional(), week_start: z.unknown().optional(), display_currency: z.unknown().optional(),
+});
+const TwoFactorLogin = z.object({ challenge: z.string().min(1).max(200), code: z.string().max(40).optional(), recovery_code: z.string().max(40).optional() });
 
 const MIN = 60_000;
 /** Password reset: requests per IP per 15 minutes (429 beyond), and emails per address per hour (silently skipped beyond). */
@@ -40,10 +48,24 @@ export function authRoutes(deps: Deps) {
   const isHttps = (url: string) => url.startsWith("https:");
   const origin = (c: Context) => requestOrigin(c.req.url, (n) => c.req.header(n));
   const base = (c: Context) => linkBase(deps, origin(c));
-  const startSession = async (c: Context, userId: string) => setCookie(c, SESSION_COOKIE, await createSession(deps.db, userId, deps.now()), cookieOpts(isHttps(c.req.url)));
+  const startSession = async (c: Context, userId: string, method: SessionMethod = "password") => setCookie(c, SESSION_COOKIE,
+    await createSession(deps.db, userId, deps.now(), { method, userAgent: c.req.header("user-agent") ?? null, ip: ipOf(c) }), cookieOpts(isHttps(c.req.url)));
+  /** The caller's IP from the edge's headers, else the socket on a self-hosted Node server without a proxy. */
+  const ipOf = (c: Context) => {
+    const h = clientIp((n) => c.req.header(n));
+    if (h !== "unknown") return h;
+    return (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress?.replace(/^::ffff:/, "") ?? null;
+  };
   const json = async (c: Context) => c.req.json().catch(() => ({}));
   const bad = (c: Context, message: string) => c.json({ type: "invalid_request", message }, 400);
   const me = (c: Context) => sessionUser(deps.db, getCookie(c, SESSION_COOKIE), deps.now());
+  /** The user as GET /auth/me shows it: profile, preferences, security state and a waiting email change. */
+  const userOut = async (u: User) => ({
+    id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails,
+    preferences: preferencesOf(u), has_password: !!u.passwordHash,
+    two_factor: { enabled: twoFactorOn(u), enabled_at: u.totpEnabledAt?.getTime() ?? null, recovery_codes_left: twoFactorOn(u) ? await recoveryCodesLeft(deps.db, u.id) : 0 },
+    pending_email: await pendingEmailChange(deps.db, u, deps.now()), password_changed_at: u.passwordChangedAt?.getTime() ?? null, created_at: u.createdAt.getTime(),
+  });
   const meExtras = async (c: Context, userId: string) => {
     const extra: Record<string, unknown> = {};
     for (const x of deps.extensions ?? []) Object.assign(extra, await x.me?.({ deps, userId, sessionId: getCookie(c, SESSION_COOKIE) ?? null }));
@@ -103,7 +125,7 @@ export function authRoutes(deps: Deps) {
       const user = { id: res.userId!, email: normEmail(p.data.email) };
       defer(deps, () => sendVerification(deps, user, b));
     }
-    await startSession(c, res.userId!);
+    await startSession(c, res.userId!, invite ? "invite" : "signup");
     return c.json({ ok: true, ...(invite ? { project_id: invite.projectId } : {}) }, 201);
   });
 
@@ -114,8 +136,43 @@ export function authRoutes(deps: Deps) {
     if (refusal) return ssoRequired(c, refusal);
     const u = await login(deps.db, p.data.email, p.data.password);
     if (!u) return c.json({ type: "authentication_error", message: "Email or password is incorrect." }, 401);
+    // Two-factor on: no session yet. The browser finishes with POST /auth/login/2fa and the challenge.
+    if (twoFactorOn(u)) return c.json(await challengeBody(u));
     await startSession(c, u.id);
     return c.json({ ok: true });
+  });
+
+  const challengeBody = async (u: User) => ({
+    ok: false, two_factor_required: true, challenge: await issueChallenge(deps.db, u, deps.now()), methods: ["totp", "recovery_code"],
+    message: "Enter the 6-digit code from your authenticator app, or a recovery code.",
+  });
+
+  // Sign-in, step 2 (prd/account-settings §3): the challenge from step 1 with a TOTP code or a recovery code.
+  r.post("/auth/login/2fa", async (c) => {
+    const p = TwoFactorLogin.safeParse(await json(c));
+    if (!p.success) return bad(c, "Send the challenge and a code.");
+    const now = deps.now();
+    const t = await checkToken(deps.db, "two_factor", p.data.challenge, now);
+    if (!t.ok) return c.json({ type: "challenge_invalid", reason: t.reason, message: t.reason === "expired" ? "This sign-in took too long. Enter your password again." : "This sign-in is no longer valid. Enter your password again." }, 400);
+    const challengeKey = `2fa:challenge:${t.row.hash}`;
+    if (!(await hit(deps.db, challengeKey, LIMITS.perChallenge.n, LIMITS.perChallenge.ms, now))) {
+      await retireTokens(deps.db, "two_factor", t.user.id, now);
+      return c.json({ type: "rate_limit_error", message: "Too many wrong codes. Enter your password again." }, 429);
+    }
+    if (!(await hit(deps.db, `2fa:user:${t.user.id}`, LIMITS.codesPerUser.n, LIMITS.codesPerUser.ms, now))) {
+      return c.json({ type: "rate_limit_error", message: "Too many code attempts. Try again in 15 minutes." }, 429);
+    }
+    if (!twoFactorOn(t.user)) return c.json({ type: "challenge_invalid", reason: "invalid", message: "Two-factor authentication is off for this account. Sign in again." }, 400);
+    const f = await checkSecondFactor(deps, t.user, { code: p.data.code, recovery_code: p.data.recovery_code }, now);
+    if (!f.ok) return c.json({ type: "authentication_error", message: f.reason === "missing" ? "Enter a code." : "That code is not right. Check your authenticator app, or use a recovery code." }, 401);
+    const used = await consumeToken(deps.db, "two_factor", p.data.challenge, now);
+    if (!used.ok) return c.json({ type: "challenge_invalid", reason: used.reason, message: "This sign-in is no longer valid. Enter your password again." }, 400);
+    if (f.method === "recovery_code") {
+      const b = base(c);
+      defer(deps, () => trySend(deps.mailer, { to: t.user.email, ...twoFactorEmail({ base: b, email: t.user.email, kind: "recovery_used", remaining: f.remaining }) }));
+    }
+    await startSession(c, t.user.id, "two_factor");
+    return c.json({ ok: true, ...(f.method === "recovery_code" ? { recovery_codes_left: f.remaining } : {}) });
   });
 
   r.post("/auth/logout", async (c) => {
@@ -125,33 +182,48 @@ export function authRoutes(deps: Deps) {
     return c.json({ ok: true });
   });
 
+  // Log out of all sessions: every browser of this user, this one included.
+  r.post("/auth/logout/all", async (c) => {
+    const site = c.req.header("sec-fetch-site");
+    if (site === "cross-site" || site === "same-site") return c.json({ type: "authorization_error", message: "Dashboard requests must come from the dashboard." }, 403);
+    const u = await me(c);
+    if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
+    const gone = await deps.db.delete(schema.sessions).where(eq(schema.sessions.userId, u.id)).returning({ id: schema.sessions.id });
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return c.json({ ok: true, sessions_revoked: gone.length });
+  });
+
   r.get("/auth/me", async (c) => {
     const u = await me(c);
     if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
     return c.json({
-      user: { id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails },
+      user: await userOut(u),
       // Cloud: the plan and billing status (prd/cloud-billing/PRD.md); self-hosted servers have no plan. `billing_ready`:
       // RevenueDot's Stripe is set up; until then the dashboard links no Billing page, as before billing existed.
       account: {
         edition: deps.edition ?? "self-hosted", plan: u.plan, billing_ready: deps.edition === "cloud" && !stripeProblem(deps.billing),
         billing_status: deps.edition === "cloud" ? (await deps.db.select({ s: schema.billingAccounts.status }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)))[0]?.s ?? "none" : null, email_verification_required: needsVerification(deps, u),
+        // Account settings → General lists the Stripe accounts connected with Connect with Stripe (prd/web-billing §8).
+        features: { stripe_connect: true },
       },
       projects: await projectsForUser(deps.db, u.id),
       ...(await meExtras(c, u.id)),
     });
   });
 
-  // Account settings: display name and alert emails.
+  // Account settings: display name, alert emails, and the preferences of Interface and Date and region.
   r.post("/auth/me", async (c) => {
     const u = await me(c);
     if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
     const p = MeUpdate.safeParse(await json(c));
     if (!p.success) return bad(c, p.error.issues[0]?.message ?? "Invalid request.");
-    const set: Partial<typeof schema.users.$inferInsert> = {};
+    const prefs = preferencesPatch(p.data as Record<string, unknown>);
+    if ("error" in prefs) return bad(c, prefs.error);
+    const set: Partial<typeof schema.users.$inferInsert> = { ...prefs.set };
     if (p.data.name !== undefined) set.name = p.data.name || null;
     if (p.data.alert_emails !== undefined) set.alertEmails = p.data.alert_emails;
     const [row] = Object.keys(set).length ? await deps.db.update(schema.users).set(set).where(eq(schema.users.id, u.id)).returning() : [u];
-    return c.json({ user: { id: row!.id, email: row!.email, name: row!.name, email_verified: !!row!.emailVerifiedAt, alert_emails: row!.alertEmails } });
+    return c.json({ user: await userOut(row!) });
   });
 
   // Password reset, step 1. The same answer, after the same work, whether or not the account exists: the lookup and
@@ -191,10 +263,12 @@ export function authRoutes(deps: Deps) {
     if (!t.ok) return c.json({ type: "token_invalid", reason: t.reason, message: TOKEN_ERRORS[t.reason] }, 400);
     const refusal = await passwordRefusal(t.user.email);
     if (refusal) return ssoRequired(c, refusal);
-    await deps.db.update(schema.users).set({ passwordHash: await hashPassword(p.data.password), emailVerifiedAt: t.user.emailVerifiedAt ?? now }).where(eq(schema.users.id, t.user.id));
+    await deps.db.update(schema.users).set({ passwordHash: await hashPassword(p.data.password), emailVerifiedAt: t.user.emailVerifiedAt ?? now, passwordChangedAt: now }).where(eq(schema.users.id, t.user.id));
     await deps.db.delete(schema.sessions).where(eq(schema.sessions.userId, t.user.id));
     await retireTokens(deps.db, "password_reset", t.user.id, now);
-    await startSession(c, t.user.id);
+    // The link proves the inbox, not the phone: with two-factor on, the new password still needs a code to sign in.
+    if (twoFactorOn(t.user)) return c.json({ ...(await challengeBody(t.user)), password_reset: true });
+    await startSession(c, t.user.id, "reset");
     return c.json({ ok: true });
   });
 

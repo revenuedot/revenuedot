@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "../../components/icons";
 import { useToast } from "../../components/ui";
-import { api } from "../../lib/api";
+import { api, fmt } from "../../lib/api";
 import { aiBase, useAiStatus, type Conversation, type PendingMessage } from "./data";
 
 /**
@@ -67,7 +67,7 @@ function priceOf(card: FirstSale) {
   if (card.amount !== null && card.currency) {
     try { return new Intl.NumberFormat("en-US", { style: "currency", currency: card.currency }).format(card.amount); } catch { /* unknown code */ }
   }
-  return `$${card.revenue_usd.toFixed(2)}`;
+  return fmt.usd(card.revenue_usd, true);
 }
 
 /** The first-sale card (prd/ai-assistant/PRD.md §4): shown on the Overview until dismissed, with a public share link. */

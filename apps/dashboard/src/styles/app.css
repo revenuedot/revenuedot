@@ -7,7 +7,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:500 14px/20px var(--font
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0;letter-spacing:inherit}
 input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 a{color:inherit;text-decoration:none}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+:focus-visible{outline:2px solid var(--focus, var(--accent));outline-offset:2px}
 svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .muted{color:var(--fg-2)}.subtle{color:var(--fg-3)}
@@ -302,7 +302,7 @@ table.subs .subs-prod{min-width:140px;overflow-wrap:anywhere}
 .radio-row label{height:30px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid var(--border);font-size:12px;color:var(--fg-2);cursor:pointer}
 .radio-row input{position:absolute;opacity:0;pointer-events:none}
 .radio-row label:has(input:checked){background:var(--fg);color:var(--bg);border-color:var(--fg)}
-.radio-row label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.radio-row label:has(input:focus-visible){outline:2px solid var(--focus, var(--accent));outline-offset:2px}
 @media (max-width:1180px){.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.stats>div:nth-child(3){border-right:0}.stats>div:nth-child(-n+3){border-bottom:1px solid var(--border)}}
 @media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stats>div{border-right:0!important;border-bottom:1px solid var(--border)}.stats>div:nth-child(odd){border-right:1px solid var(--border)!important}.stats>div:last-child{border-bottom:0}.step{grid-template-columns:24px minmax(0,1fr);padding:14px 16px}.step .go{grid-column:2;justify-self:start}.setup-h{padding:16px}.cust-h h1{font-size:18px;line-height:26px}.ask{font-size:13px}.cust-h{flex-direction:column;align-items:stretch}.stats>div:last-child:nth-child(odd){grid-column:1/-1;border-right:0!important}.tl details>summary{grid-template-columns:12px minmax(0,1fr)}.tl time{grid-column:2}.tl pre{padding-left:16px}.tbl .idcell{max-width:150px!important}.tbl .idcell .soon{display:none}table.subs .hide-sm{display:none}}
 
@@ -342,7 +342,7 @@ table.subs .subs-prod{min-width:140px;overflow-wrap:anywhere}
 .check{display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;min-width:0}
 .check input{appearance:none;-webkit-appearance:none;margin:2px 0 0;width:14px;height:14px;flex:none;border:1px solid var(--fg-3);background:var(--panel);border-radius:0;cursor:pointer}
 .check input:checked{background:var(--fg);border-color:var(--fg);box-shadow:inset 0 0 0 2px var(--panel)}
-.check input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.check input:focus-visible{outline:2px solid var(--focus, var(--accent));outline-offset:2px}
 .check span{display:flex;flex-direction:column;min-width:0}
 .check b{font-weight:500;color:var(--fg)}
 .check small{font-size:12px;color:var(--fg-3)}
@@ -351,7 +351,7 @@ table.subs .subs-prod{min-width:140px;overflow-wrap:anywhere}
 .drop.over{background:var(--hover);border-color:var(--fg)}
 .drop>span{flex:1;min-width:180px}
 .drop label.btn{cursor:pointer}
-.drop:focus-within label.btn{outline:2px solid var(--accent);outline-offset:2px}
+.drop:focus-within label.btn{outline:2px solid var(--focus, var(--accent));outline-offset:2px}
 .drop .err{flex-basis:100%;font-size:12px;color:var(--down)}
 .stack{display:flex;flex-direction:column;gap:16px;min-width:0}
 .stack.tight{gap:8px}
@@ -574,7 +574,7 @@ tr.sel td{background:var(--active)}
 .pwr-island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:122px;height:35px;border-radius:20px;background:#000;pointer-events:none}
 .pwr-c{box-sizing:border-box;min-width:0}
 .pwr-pick .pwr-c:hover{outline:1px dashed rgba(247,181,0,.9);outline-offset:-1px}
-.pwr-focus{outline:2px solid var(--accent)!important;outline-offset:-2px}
+.pwr-focus{outline:2px solid var(--focus, var(--accent))!important;outline-offset:-2px}
 .pwr-ph{display:flex;align-items:center;justify-content:center;min-height:60px;height:100%;background:repeating-linear-gradient(45deg,#00000008 0 8px,#00000014 8px 16px);color:#737373;font:500 12px/16px var(--mono);padding:8px;text-align:center;word-break:break-all}
 .pwr-empty{color:#a3a3a3}
 /* Paywalls list: the three starts (empty state) */
@@ -903,6 +903,29 @@ button.ask{width:100%;text-align:left;cursor:pointer}
 @media (max-width:640px){.cc-colors{grid-template-columns:1fr}.cc-trans-row{grid-template-columns:1fr}}
 .cc-swatch.empty{opacity:.25}
 
+/* Date field with a calendar that starts weeks on the person's first day (components/DateField.tsx) */
+.datefield{display:inline-flex;align-items:center;position:relative;min-width:0;vertical-align:middle}
+.datefield .input{width:132px;padding-right:34px}
+.field .datefield,.datefield.block{display:flex}
+.field .datefield .input,.datefield.block .input{width:100%}
+.datefield .df-open{position:absolute;right:0;top:0;color:var(--fg-3)}
+.datefield .df-open:hover{color:var(--fg)}
+.i.flip{transform:rotate(180deg)}
+.df-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:40;background:var(--panel);border:1px solid var(--border);padding:10px;width:268px;box-shadow:0 12px 32px -12px rgb(12 11 10/.25)}
+.df-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.df-head b{font:600 13px/20px var(--font)}
+.df-grid{display:flex;flex-direction:column;gap:2px}
+.df-row{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.df-wd{font:600 10.5px/24px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);text-align:center}
+.df-day{width:100%;height:32px;font:500 12.5px/1 var(--mono);color:var(--fg);border:1px solid transparent}
+.df-day:hover:not(:disabled){border-color:var(--border)}
+.df-day.out{color:var(--fg-3)}
+.df-day.today{box-shadow:inset 0 -2px 0 var(--accent)}
+.df-day.sel{background:var(--fg);color:var(--bg)}
+.df-day:disabled{opacity:.35;cursor:not-allowed}
+.df-foot{margin:8px 0 0;font-size:11.5px;line-height:16px}
+@media (max-width:480px){.df-pop{position:fixed;left:16px;right:16px;top:auto;width:auto}}
+.code-input{font:600 20px/28px var(--mono);letter-spacing:.3em;height:44px;text-align:center}
 /* Stripe Connect on the Stripe app page (pages/setup/StripeConnect.tsx) */
 .sc-box{border:1px solid var(--border);background:var(--panel);padding:16px;display:flex;flex-direction:column;gap:12px}
 .sc-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}

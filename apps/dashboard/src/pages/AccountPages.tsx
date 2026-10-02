@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
 import { signOut, useMe, type Me } from "../components/Shell";
 import { Mark } from "../components/icons";
-import { Switch, useToast } from "../components/ui";
+import { TwoFactorStep } from "../components/TwoFactorStep";
 
 /**
  * Pages reached from emails and the sign-in page (prd/account-email/PRD.md): forgot password, reset password,
@@ -78,6 +78,7 @@ export function ResetPasswordPage() {
   });
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+  const [challenge, setChallenge] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent) => {
@@ -86,11 +87,17 @@ export function ResetPasswordPage() {
     if (pw !== pw2) { setError("The two passwords are different."); return; }
     setBusy(true); setError(null);
     try {
-      await api("/auth/password/reset", { method: "POST", json: { token, password: pw } });
+      const r = await api<{ two_factor_required?: boolean; challenge?: string }>("/auth/password/reset", { method: "POST", json: { token, password: pw } });
       qc.clear();
+      // Two-factor on: the link proved the inbox, the code proves the phone (prd/account-settings §3).
+      if (r?.two_factor_required && r.challenge) { setChallenge(r.challenge); return; }
       nav(await homePath(qc), { replace: true });
     } catch (err) { setError(errText(err)); setBusy(false); }
   };
+  if (challenge) {
+    return <TwoFactorStep challenge={challenge} title="One more step" note="Your new password is saved. Enter the 6-digit code from your authenticator app to sign in."
+      onDone={async () => nav(await homePath(qc), { replace: true })} onRestart={(m) => nav(`/login?email=${encodeURIComponent(check.data?.email ?? "")}`, { replace: true, state: { message: m } })} />;
+  }
   if (!token || check.data?.valid === false || check.isError) {
     return (
       <Card title="This link does not work" sub={check.data?.message ?? "The reset link is incomplete. Copy the whole link from the email, or ask for a new one."}>
@@ -212,39 +219,31 @@ export function InvitePage() {
   );
 }
 
+/** /account opens the first section of Account settings (pages/account, prd/account-settings/PRD.md). */
 export function AccountPage() {
-  const me = useMe();
-  const nav = useNavigate();
+  return <Navigate to="/account/general" replace />;
+}
+
+/** The link in the "Confirm your new email" message (prd/account-settings §1). Works in any browser, signed in or not. */
+export function ConfirmEmailPage() {
+  const [params] = useSearchParams();
+  const token = params.get("token") ?? "";
   const qc = useQueryClient();
-  const toast = useToast();
-  const [name, setName] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { if (me.isError) nav(`/login?next=${encodeURIComponent("/account")}`, { replace: true }); }, [me.isError, nav]);
-  if (!me.data) return <Card title="Account settings" sub="Loading…"><span /></Card>;
-  const u = me.data.user;
-  const save = async (patch: Record<string, unknown>, done: string) => {
-    setBusy(true);
-    try { const r = await api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: patch }); qc.setQueryData<Me>(["me"], (m) => (m ? { ...m, user: { ...m.user, ...r.user } } : m)); toast(done); }
-    catch (e) { toast(errText(e)); } finally { setBusy(false); }
-  };
-  const home = me.data.projects[0] ? `/projects/${me.data.projects[0].id}/overview` : "/projects/new";
+  const [state, setState] = useState<{ ok: boolean; message: string } | null>(null);
+  const once = useRef(false);
+  useEffect(() => {
+    if (once.current) return;
+    once.current = true;
+    if (!token) { setState({ ok: false, message: "The link is incomplete. Copy the whole link from the email." }); return; }
+    api<{ email: string }>("/auth/email/change/confirm", { method: "POST", json: { token } })
+      .then((r) => { setState({ ok: true, message: `Your account now uses ${r.email}. Sign in with it from now on.` }); void qc.invalidateQueries({ queryKey: ["me"] }); })
+      .catch((e) => setState({ ok: false, message: errText(e) }));
+  }, [token, qc]);
+  if (!state) return <Card title="Confirming your new email" sub="One moment…"><span /></Card>;
   return (
-    <Card title="Account settings" sub={u.email}>
-      <div className="field">
-        <label htmlFor="account-name">Your name</label>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input id="account-name" className="input" style={{ flex: 1, minWidth: 0 }} autoComplete="name" maxLength={100} value={name ?? u.name ?? ""} onChange={(e) => setName(e.target.value)} />
-          <button type="button" className="btn btn-line" disabled={busy || name === null || name === (u.name ?? "")} onClick={() => save({ name: (name ?? "").trim() || null }, "Name saved.")}>Save</button>
-        </div>
-        <span className="hint">Shown to your teammates and in invites you send.</span>
-      </div>
-      <div className="field" role="group" aria-labelledby="alerts-h">
-        <span className="flabel" id="alerts-h">Email notifications</span>
-        <Switch checked={u.alert_emails} onChange={(v) => save({ alert_emails: v }, v ? "Alert emails are on." : "Alert emails are off.")} label="Email me about problems with my projects" />
-        <span className="hint">For projects where you are an admin: store notifications failing, a webhook that keeps failing, or store credentials that Apple or Google rejected. At most one email a day per problem, and one when it is fixed. Password resets and invites always arrive.</span>
-      </div>
-      {me.data.account?.edition === "cloud" && me.data.account.billing_ready && <p><Link className="link-u" to="/account/billing">Billing: plan, usage and invoices</Link></p>}
-      <Link className="btn btn-dark btn-lg" to={home}>Back to the dashboard</Link>
+    <Card title={state.ok ? "Email changed" : "This link does not work"} sub={state.message}>
+      {!state.ok && <p className="section-sub">Start the change again from Account settings → General.</p>}
+      <Link className="btn btn-dark btn-lg" to={state.ok ? "/" : "/account/general"}>{state.ok ? "Open the dashboard" : "Open Account settings"}</Link>
     </Card>
   );
 }
