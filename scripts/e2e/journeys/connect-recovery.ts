@@ -122,11 +122,13 @@ const journey: Journey = {
         await page.getByRole("heading", { name: "Thank you for your purchase" }).waitFor();
       };
       const S = ctx.stamp;
+      // Other journeys of the same run use the developer-account fake too: count only this journey's sessions.
+      const ownSessionsBefore = ctx.capture.stripe.sessions.size;
       await buy(`buyer_a_${S}`, `buyer-a-${S}@journeys.test`);
       await buy(`buyer_b_${S}`, `buyer-b-${S}@journeys.test`);
       const subs = await sql`SELECT a.app_user_id, s.store, s.is_sandbox, s.store_key FROM subscriptions s JOIN customer_aliases a ON a.customer_id = s.customer_id WHERE s.project_id = ${P} AND s.store = 'stripe' ORDER BY a.app_user_id`;
       c.check("SQL: both web subscriptions are recorded as Stripe sandbox purchases", subs.length === 2 && subs.every((x) => x.is_sandbox), subs);
-      c.check("the Checkout Sessions live on the connected account", acct.sessions.size === 2 && ctx.capture.stripe.sessions.size === 0);
+      c.check("the Checkout Sessions live on the connected account", acct.sessions.size === 2 && ctx.capture.stripe.sessions.size === ownSessionsBefore, { connected: acct.sessions.size, developerAccount: ctx.capture.stripe.sessions.size - ownSessionsBefore });
       const subA = subs.find((x) => x.app_user_id === `buyer_a_${S}`)!.store_key as string;
       const subB = subs.find((x) => x.app_user_id === `buyer_b_${S}`)!.store_key as string;
 
