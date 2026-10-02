@@ -176,6 +176,13 @@
       "when": 1790915215289,
       "tag": "0026_connect_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790927985219,
+      "tag": "0030_delivery_attempts",
+      "breakpoints": true
     }
   ]
 }

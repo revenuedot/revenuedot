@@ -102,8 +102,13 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
       const row = page.getByRole("row", { name: /INITIAL_PURCHASE.*initial_purchase.*delivered/ });
       await expect(row).toBeVisible({ timeout: 20_000 });
       await row.getByRole("button", { name: "Details" }).click();
-      await expect(page.getByText("POST [redacted]")).toBeVisible();
-      await expect(page.getByText("HTTP 200")).toBeVisible();
+      // The delivery details drawer: the request without the Slack URL (a secret), the attempt and Slack's answer.
+      const drawer = page.getByRole("dialog", { name: "Delivery details" });
+      await expect(drawer.getByText("POST [redacted]")).toBeVisible();
+      await expect(drawer.locator(".tag", { hasText: "HTTP 200" })).toBeVisible();
+      await expect(drawer.getByText("Response body (first 4 KB)")).toBeVisible();
+      await drawer.getByRole("button", { name: "Done" }).click();
+      await expect(drawer).toBeHidden();
     });
 
     await test.step("turning Slack off stops deliveries", async () => {

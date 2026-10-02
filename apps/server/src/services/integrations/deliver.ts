@@ -2,9 +2,9 @@ import { and, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
 import {
   BIGQUERY_SCOPE, bigQueryCreateTable, buildIntegration, responseError, retryableStatus, type EventContext, type IntegrationKind, type OutRequest,
 } from "@revenuedot/core/integrations";
-import { schema, type DB } from "@revenuedot/db";
+import { schema, type DB, type DeliveryAttempt } from "@revenuedot/db";
 import { notMoving } from "../archive/moving.js";
-import { RETRY_MINUTES } from "../webhooks.js";
+import { ATTEMPT_LOG_MAX, RESPONSE_LOG_CHARS, RETRY_MINUTES } from "../webhooks.js";
 import { SecretsError, unseal, type SecretKey } from "../secrets.js";
 import { GoogleAuthError, googleAccessToken, parseServiceAccount } from "../google-sa.js";
 import { outboundUrlProblem } from "../outbound.js";
@@ -107,10 +107,13 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
   const attempt = attempts ?? row.d.attempts + 1;
   const started = Date.now();
   let redact: string[] = [];
-  const fail = async (error: string, opts: { retry: boolean; status?: number | null; request?: string | null; requestBody?: string | null; responseBody?: string | null; sentAs?: string | null }) => {
+  // Each attempt is kept for the delivery details (newest last, at most 10; cleared after 30 days by pruneAttemptLogs).
+  const logged = (e: Omit<DeliveryAttempt, "at" | "ms">) => [...(row.d.attemptLog ?? []), { at: rt.now.getTime(), ms: Date.now() - started, ...e }].slice(-ATTEMPT_LOG_MAX);
+  const fail = async (error: string, opts: { retry: boolean; status?: number | null; request?: string | null; requestBody?: string | null; responseBody?: string | null; sentAs?: string | null; answer?: string | null }) => {
     const retryIn = opts.retry ? RETRY_MINUTES[attempt - 1] : undefined;
     const message = scrub(error, redact);
     await db.update(D).set({
+      attemptLog: logged({ status: opts.status ?? null, error: message.slice(0, 500), response_body: opts.answer ?? opts.responseBody ?? null, request: opts.request ?? null }),
       attempts: attempt, status: retryIn === undefined ? "failed" : "pending", nextAttemptAt: retryIn === undefined ? rt.now : new Date(rt.now.getTime() + retryIn * 60_000),
       lastError: message.slice(0, 1000), responseStatus: opts.status ?? null, responseMs: Date.now() - started,
       request: opts.request ?? null, requestBody: opts.requestBody ?? null, responseBody: opts.responseBody ?? null, sentAs: opts.sentAs ?? null,
@@ -167,10 +170,12 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
         return await fail(err, {
           retry: last.error !== null || retryableStatus(last.status), status: last.status, request: lines.join("\n"),
           requestBody: bodies.join("\n").slice(0, LOG_BODY), responseBody: scrub(last.body, redact).slice(0, LOG_RESPONSE), sentAs: plan.name,
+          answer: scrub(last.body, redact).slice(0, RESPONSE_LOG_CHARS),
         });
       }
     }
     await db.update(D).set({
+      attemptLog: logged({ status: last.status, error: null, response_body: scrub(last.body, redact).slice(0, RESPONSE_LOG_CHARS), request: lines.join("\n") }),
       attempts: attempt, status: "delivered", nextAttemptAt: rt.now, lastError: null, responseStatus: last.status, responseMs: Date.now() - started,
       request: lines.join("\n"), requestBody: bodies.join("\n").slice(0, LOG_BODY), responseBody: scrub(last.body, redact).slice(0, LOG_RESPONSE), sentAs: plan.name,
     }).where(eq(D.id, deliveryId));

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ADJUST_STEPS, INTEGRATION_EVENTS, STEP_LABELS, defaultEventName, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
 import { Shell } from "../../components/Shell";
+import { DeliveryDrawer } from "../../components/DeliveryDrawer";
 import { Icon } from "../../components/icons";
 import { Check, CodeBlock, ConfirmDialog, Dialog, Disclosure, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Switch, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
@@ -176,6 +177,7 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
   const newest = rows[0] ? `${rows[0].id}:${rows[0].status}` : "";
   useEffect(() => { if (newest) void qc.invalidateQueries({ queryKey: ["integrations", pid] }); }, [newest, pid, qc]);
   const refresh = () => qc.invalidateQueries({ queryKey: ["integration_deliveries", pid, id] });
+  const openRow = rows.find((x) => x.id === open) ?? null;
   const retry = async (d: IntegrationDelivery) => {
     setBusy(d.id);
     try { await api(`${base(pid)}/integrations/partners/${id}/deliveries/${d.id}/retry`, { method: "POST" }); toast("Retry queued."); await refresh(); } catch (e) { toast(errMsg(e)); } finally { setBusy(null); }
@@ -206,31 +208,27 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
           <table>
             <thead><tr><th>Event</th><th>Sent as</th><th>Status</th><th>Attempts</th><th>Response</th><th>Created</th><th aria-label="Actions" /></tr></thead>
             <tbody>{rows.map((d) => (
-              <Fragment key={d.id}>
-                <tr>
-                  <td><Tag tone={EVENT_TONE[d.event_type] ?? "muted"}>{d.event_type}</Tag><span className="cellsub mono" title={d.event_id}>{d.event_id.slice(0, 8)}…</span></td>
-                  <td className="mono">{d.sent_as ?? "—"}</td>
-                  <td><Tag tone={STATUS_TONE[d.status]}>{d.status}</Tag>{d.last_error && d.status !== "delivered" && <span className="cellsub">{d.last_error}</span>}</td>
-                  <td className="num">{d.attempts}</td>
-                  <td className="num">{d.response_status ?? (d.attempts ? "No answer" : "—")}{d.response_ms !== null && <span className="subtle"> · {d.response_ms} ms</span>}</td>
-                  <td title={fmt.dateTime(d.created_at)}>{fmt.ago(d.created_at)}</td>
-                  <td className="amt"><span className="hrow" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                    {d.request && <button type="button" className="btn btn-ghost" aria-expanded={open === d.id} onClick={() => setOpen(open === d.id ? null : d.id)}>{open === d.id ? "Hide" : "Details"}</button>}
-                    {d.status !== "delivered" && d.status !== "pending" && <button type="button" className="btn btn-line" disabled={busy === d.id} onClick={() => retry(d)}>{busy === d.id ? "Retrying…" : "Retry"}</button>}
-                  </span></td>
-                </tr>
-                {open === d.id && (
-                  <tr><td colSpan={7}><div className="stack tight" style={{ padding: "8px 0" }}>
-                    <CodeBlock label="Request" code={`${d.request}\n\n${d.request_body ?? ""}`} />
-                    <CodeBlock label={`Response${d.response_status ? ` · HTTP ${d.response_status}` : ""}`} code={d.response_body || "(empty)"} />
-                  </div></td></tr>
-                )}
-              </Fragment>
+              <tr key={d.id} className="row" tabIndex={0} onClick={() => setOpen(d.id)} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setOpen(d.id); }}>
+                <td><Tag tone={EVENT_TONE[d.event_type] ?? "muted"}>{d.event_type}</Tag><span className="cellsub mono" title={d.event_id}>{d.event_id.slice(0, 8)}…</span></td>
+                <td className="mono">{d.sent_as ?? "—"}</td>
+                <td><Tag tone={STATUS_TONE[d.status]}>{d.status}</Tag>{d.last_error && d.status !== "delivered" && <span className="cellsub">{d.last_error}</span>}</td>
+                <td className="num">{d.attempts}</td>
+                <td className="num">{d.response_status ?? (d.attempts ? "No answer" : "—")}{d.response_ms !== null && <span className="subtle"> · {d.response_ms} ms</span>}</td>
+                <td title={fmt.dateTime(d.created_at)}>{fmt.ago(d.created_at)}</td>
+                <td className="amt"><span className="hrow" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" className="btn btn-ghost" onClick={() => setOpen(d.id)}>Details</button>
+                  {d.status !== "delivered" && d.status !== "pending" && <button type="button" className="btn btn-line" disabled={busy === d.id} onClick={() => retry(d)}>{busy === d.id ? "Retrying…" : "Retry"}</button>}
+                </span></td>
+              </tr>
             ))}</tbody>
           </table>
         </div>
       )}
       {q.hasNextPage && <div className="pb"><button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</button></div>}
+      {openRow && (
+        <DeliveryDrawer path={`${base(pid)}/integrations/partners/${id}/deliveries/${openRow.id}`} title={`${openRow.event_type} · ${openRow.sent_as ?? openRow.event_id.slice(0, 8)}`}
+          onClose={() => setOpen(null)} canRetry onRetry={() => retry(openRow)} />
+      )}
     </section>
   );
 }

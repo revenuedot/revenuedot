@@ -2,7 +2,7 @@ import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { expirationReasonOf } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { recordEvent } from "./events.js";
-import { deliverDue } from "./webhooks.js";
+import { deliverDue, pruneAttemptLogs } from "./webhooks.js";
 import { deliverDueIntegrations } from "./integrations/deliver.js";
 import { refreshDueAdMob } from "./ads/admob.js";
 import { purgeFunnelClientContext } from "./web/funnels.js";
@@ -83,6 +83,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now }); } catch (e) { console.error("tick: consumption information retries failed", e); }
   }
   const sent = await deliverDue(db, fetchImpl, now);
+  await pruneAttemptLogs(db, now).catch((e) => console.error("pruning delivery attempt details failed", e));
   // A bad REVENUEDOT_ENCRYPTION_KEY leaves deliveries and exports queued (not failed) until the key is fixed.
   const secretKey = await depsSecretKey(opts).then((k) => ({ ok: true as const, k }), (e) => { console.error("tick: integration secrets key", e); return { ok: false as const }; });
   let integrations = 0;

@@ -7,8 +7,9 @@ import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer } from "../../repo/customers.js";
 import { depsSecretKey, mergeSecrets } from "../../services/secrets.js";
 import { requeueIntegrationDelivery } from "../../services/integrations/deliver.js";
+import { ATTEMPT_LOG_DAYS, curlFor } from "../../services/webhooks.js";
 import { outboundUrlProblem } from "../../services/outbound.js";
-import { V2Error, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Router } from "./common.js";
+import { V2Error, allows, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Router } from "./common.js";
 import { ALL_WEBHOOK_EVENT_TYPES } from "./integrations.js";
 
 /**
@@ -21,6 +22,7 @@ import { ALL_WEBHOOK_EVENT_TYPES } from "./integrations.js";
  *   DELETE /v2/projects/{project_id}/integrations/partners/{integration_id}
  *   POST   /v2/projects/{project_id}/integrations/partners/{integration_id}/test             queue a TEST event to this integration
  *   GET    /v2/projects/{project_id}/integrations/partners/{integration_id}/deliveries       delivery log (?status=)
+ *   GET    /v2/projects/{project_id}/integrations/partners/{integration_id}/deliveries/{delivery_id}   one delivery: every attempt, cURL
  *   POST   /v2/projects/{project_id}/integrations/partners/{integration_id}/deliveries/{delivery_id}/retry
  *   POST   /v2/projects/{project_id}/integrations/partners/{integration_id}/actions/replay   queue failed or skipped deliveries again
  * `settings` takes every field of the catalogue entry; secret fields are sealed (services/secrets.ts) and come back
@@ -262,7 +264,26 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const rows = await db.select({ d: D, type: schema.events.type }).from(D).innerJoin(schema.events, eq(schema.events.id, D.eventId))
       .where(and(...conds)).orderBy(desc(D.createdAt), desc(D.id)).limit(limit + 1);
     const page = rows.slice(0, limit);
-    return c.json(listOf(c, page.map((x) => deliveryShape(x.d, x.type)), rows.length > limit ? page[page.length - 1]!.d.id : null));
+    // Request and response bodies can hold customer data: Viewers get the log without them.
+    const full = allows(c.get("principal"), "project_configuration:integrations:read_write");
+    return c.json(listOf(c, page.map((x) => ({ ...deliveryShape(x.d, x.type), ...(full ? {} : { request_body: null, response_body: null }) })), rows.length > limit ? page[page.length - 1]!.d.id : null));
+  });
+
+  // One delivery with every attempt's answer and a cURL of the request (credentials are never stored). Admins and Developers only.
+  r.get(`${P}/:integration_id/deliveries/:delivery_id`, scope("project_configuration:integrations:read_write"), async (c) => {
+    const i = await find(c.get("projectId"), c.req.param("integration_id"));
+    const D = schema.integrationDeliveries;
+    const [row] = await db.select({ d: D, type: schema.events.type }).from(D).innerJoin(schema.events, eq(schema.events.id, D.eventId))
+      .where(and(eq(D.integrationId, i.id), eq(D.id, c.req.param("delivery_id")))).limit(1);
+    if (!row) throw notFound("Integration delivery");
+    const lines = (row.d.request ?? "").split("\n").filter(Boolean);
+    const m = lines.length === 1 ? /^(\w+) (\S+)$/.exec(lines[0]!) : null;
+    return c.json({
+      ...deliveryShape(row.d, row.type),
+      curl: m ? curlFor(m[1]!, m[2]!, [{ name: "Content-Type", value: "application/json" }, { name: "Authorization", value: "<partner credentials>" }], row.d.requestBody) : null,
+      attempt_log: (row.d.attemptLog ?? []).map((a) => ({ attempted_at: a.at, response_status: a.status, response_ms: a.ms, error: a.error, response_body: a.response_body, request: a.request ?? null })),
+      attempt_log_kept_days: ATTEMPT_LOG_DAYS,
+    });
   });
 
   r.post(`${P}/:integration_id/deliveries/:delivery_id/retry`, scope("project_configuration:integrations:read_write"), async (c) => {

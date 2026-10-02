@@ -330,8 +330,26 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
   responseStatus: integer("response_status"),
   responseMs: integer("response_ms"),
   lastError: text("last_error"),
+  /** Every attempt (newest last, at most 10): time, HTTP status, latency, error, the response's first 4 KB (scrubbed) and the signature sent. Cleared after 30 days. */
+  attemptLog: jsonb("attempt_log").$type<DeliveryAttempt[]>().notNull().default([]),
   createdAt: created(),
-}, (t) => [index("deliveries_due").on(t.status, t.nextAttemptAt), uniqueIndex("deliveries_unique").on(t.webhookId, t.eventId)]);
+}, (t) => [index("deliveries_due").on(t.status, t.nextAttemptAt), uniqueIndex("deliveries_unique").on(t.webhookId, t.eventId),
+  index("deliveries_attempt_log_age").on(t.createdAt).where(sql`${t.attemptLog} <> '[]'::jsonb`)]);
+
+/** One delivery attempt, kept on webhook and integration deliveries for the delivery details drawer. */
+export interface DeliveryAttempt {
+  /** When the request was sent (ms). */
+  at: number;
+  status: number | null;
+  ms: number | null;
+  error: string | null;
+  /** The first 4,096 characters of the answer, with the delivery's secrets and bearer tokens replaced. */
+  response_body: string | null;
+  /** Webhooks: the X-RevenueCat-Webhook-Signature header of this attempt (it is re-signed every time). */
+  signature?: string | null;
+  /** Integrations: method and URL of each request, credentials removed. */
+  request?: string | null;
+}
 
 /** Dashboard users. */
 export const users = pgTable("users", {
@@ -741,8 +759,10 @@ export const integrationDeliveries = pgTable("integration_deliveries", {
   /** The first 1,000 characters of the partner's answer to the last attempt. */
   responseBody: text("response_body"),
   lastError: text("last_error"),
+  /** Every attempt (newest last, at most 10), as on webhook deliveries. Cleared after 30 days. */
+  attemptLog: jsonb("attempt_log").$type<DeliveryAttempt[]>().notNull().default([]),
   createdAt: created(),
-}, (t) => [index("integration_deliveries_due").on(t.status, t.nextAttemptAt), uniqueIndex("integration_deliveries_unique").on(t.integrationId, t.eventId), index("integration_deliveries_log").on(t.integrationId, t.createdAt)]);
+}, (t) => [index("integration_deliveries_attempt_log_age").on(t.createdAt).where(sql`${t.attemptLog} <> '[]'::jsonb`), index("integration_deliveries_due").on(t.status, t.nextAttemptAt), uniqueIndex("integration_deliveries_unique").on(t.integrationId, t.eventId), index("integration_deliveries_log").on(t.integrationId, t.createdAt)]);
 
 /**
  * Scheduled data exports: CSV or Parquet files of customers, subscriptions, transactions and events, written to S3, R2
