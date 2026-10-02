@@ -39,7 +39,8 @@ export const ORG_ROLE_TEXT: Record<string, string> = {
   member: "Sees the organization and the projects they were given.",
 };
 export const SOURCE_LABEL: Record<string, string> = { manual: "Added by hand", sso: "Single sign-on", scim: "SCIM", project: "From a project", idp: "Identity provider", org: "Organization role" };
-export const label = (action: string) => action.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+/** "sso_sign_in_failed" → "SSO sign-in failed". */
+export const label = (action: string) => action.replace(/_/g, " ").replace(/\bsso\b/g, "SSO").replace(/\bscim\b/g, "SCIM").replace(/\bsign in\b/g, "sign-in").replace(/^./, (c) => c.toUpperCase());
 
 /** Roles a project member can get: the built-in ones, then the organization's custom roles that apply to this project. */
 export function roleOptions(roles: CustomRole[] | undefined, projectId: string) {

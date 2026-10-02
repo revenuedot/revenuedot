@@ -78,11 +78,15 @@ export function enterpriseExtension(license: LicenseState, regions: RegionConfig
 async function projectAccess(db: DB, features: Set<string>, a: { userId: string; sessionId: string | null; projectId: string; role: string }): Promise<ProjectAccess | null> {
   const [row] = await db.select({ orgId: eeOrgProjects.orgId, enforced: eeOrganizations.ssoEnforced }).from(eeOrgProjects)
     .innerJoin(eeOrganizations, eq(eeOrganizations.id, eeOrgProjects.orgId)).where(eq(eeOrgProjects.projectId, a.projectId)).limit(1);
-  if (row?.enforced && features.has("sso")) {
+  if (row) {
     const [member] = await db.select({ role: eeOrgMembers.role, active: eeOrgMembers.active }).from(eeOrgMembers)
       .where(and(eq(eeOrgMembers.orgId, row.orgId), eq(eeOrgMembers.userId, a.userId))).limit(1);
+    // Deprovisioned people keep no access, even through a membership added later by hand.
     if (member?.active === false) return { deny: { status: 404, message: "Project not found." } };
-    if (member?.role !== "owner" && (await mustUseSso(db, row.orgId, a.userId))) {
+    // Someone who joined an organization project through a project invite becomes an organization member, so the
+    // organization's member list, seats and access reviews include them.
+    if (!member) await db.insert(eeOrgMembers).values({ orgId: row.orgId, userId: a.userId, role: "member", source: "project" }).onConflictDoNothing();
+    if (row.enforced && features.has("sso") && member?.role !== "owner" && (await mustUseSso(db, row.orgId, a.userId))) {
       const [sso] = a.sessionId ? await db.select({ id: eeSsoSessions.sessionId }).from(eeSsoSessions)
         .where(and(eq(eeSsoSessions.sessionId, a.sessionId), eq(eeSsoSessions.orgId, row.orgId))).limit(1) : [];
       if (!sso) return { deny: { status: 403, message: "This project's organization requires single sign-on. Sign out, then sign in with SSO." } };

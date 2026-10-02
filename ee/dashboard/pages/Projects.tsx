@@ -69,7 +69,7 @@ function ProjectMembers({ org, project, onClose }: { org: Overview; project: Org
             <thead><tr><th>Member</th><th>Role</th><th className="hide-sm">Managed by</th></tr></thead>
             <tbody>{list.data.map((m) => (
               <tr key={m.user_id}>
-                <td><b>{m.name ?? m.email}</b><div className="subtle">{m.email}</div></td>
+                <td><b>{m.name ?? m.email}</b><div className="subtle" style={{ overflowWrap: "anywhere" }}>{m.email}</div></td>
                 <td>{canEdit
                   ? <select className="select" aria-label={`Role of ${m.email} in ${project.name}`} value={m.role} onChange={(e) => void set(m, e.target.value)}>
                       {!options.some((o) => o.value === m.role) && <option value={m.role}>{m.role_name}</option>}

@@ -77,7 +77,7 @@ export function MembersTab({ org }: { org: Overview }) {
                 const self = m.user_id === me.data?.user.id;
                 return (
                   <tr key={m.user_id}>
-                    <td><b>{m.name ?? m.email}</b>{self && <span className="subtle"> (you)</span>}<div className="subtle">{m.email}</div></td>
+                    <td><b>{m.name ?? m.email}</b>{self && <span className="subtle"> (you)</span>}<div className="subtle" style={{ overflowWrap: "anywhere" }}>{m.email}</div></td>
                     <td>{canEdit(m)
                       ? <select className="select" aria-label={`Organization role of ${m.email}`} value={m.role} onChange={(e) => void setRole(m, e.target.value)}>{ROLES.filter((r) => r !== "owner" || org.your_role === "owner").map((r) => <option key={r} value={r}>{roleName(r)}</option>)}</select>
                       : <Tag tone={m.role === "owner" ? "gold" : "muted"}>{roleName(m.role)}</Tag>}

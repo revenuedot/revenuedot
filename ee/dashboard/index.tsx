@@ -29,9 +29,11 @@ function CreateOrg({ first }: { first: boolean }) {
     setBusy(true); setError(null);
     try {
       const o = await api<Org>("/v2/organizations", { method: "POST", json: { name: name.trim() } });
-      await Promise.all([qc.invalidateQueries({ queryKey: ["me"] }), qc.invalidateQueries({ queryKey: ["orgs"] })]);
-      toast(`${o.name} created.`);
+      // Leave this page before the list refreshes, or the one-organization redirect would win.
       nav(`/organizations/${o.id}/projects`);
+      toast(`${o.name} created.`);
+      void qc.invalidateQueries({ queryKey: ["me"] });
+      void qc.invalidateQueries({ queryKey: ["orgs"] });
     } catch (e) { setError(errMsg(e)); setBusy(false); }
   };
   return (

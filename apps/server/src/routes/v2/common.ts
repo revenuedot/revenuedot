@@ -70,7 +70,7 @@ export const scope = (...scopes: string[]): MiddlewareHandler<{ Variables: V2Var
   const p = c.get("principal");
   const missing = scopes.filter((s) => !allows(p, s));
   if (missing.length) {
-    if (p.kind === "user") throw new V2Error(403, "authorization_error", `Your role in this project (${p.role ?? "member"}) does not allow this. Ask a project admin.`);
+    if (p.kind === "user") throw new V2Error(403, "authorization_error", `Your role in this project (${p.permissions ? "a custom role" : p.role ?? "member"}) does not allow this. Ask a project admin.`);
     throw new V2Error(403, "authorization_error", `This API key is missing the permission(s): ${missing.join(", ")}.`);
   }
   await next();
