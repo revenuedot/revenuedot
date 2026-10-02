@@ -573,6 +573,24 @@ describe("review fixes", () => {
     expect((await s.client().call("POST", "/auth/login/2fa", { challenge: r.body.challenge, code: await code(secret) })).status).toBe(200);
   });
 
+  it("a session id of another person can be neither listed nor signed out", async () => {
+    s = await accountServer();
+    const a = await s.signup("gia@example.com");
+    const b = await s.signup("hob@example.com");
+    const theirs = (await b.browser.call("GET", "/auth/sessions")).body.items[0].id as string;
+    expect((await a.browser.call("DELETE", `/auth/sessions/${theirs}`)).status).toBe(404);
+    expect((await b.browser.call("GET", "/auth/me")).status).toBe(200);
+    expect((await a.browser.call("GET", "/auth/sessions")).body.items.map((x: any) => x.id)).not.toContain(theirs);
+  });
+
+  it("an email change with two-factor on needs a code too", async () => {
+    s = await accountServer();
+    const { browser } = await s.signup("ira@example.com");
+    const { secret } = await enable2fa(browser);
+    expect((await browser.call("POST", "/auth/email/change", { new_email: "ira@new.example", password: PW })).body).toMatchObject({ type: "invalid_code" });
+    expect((await browser.call("POST", "/auth/email/change", { new_email: "ira@new.example", password: PW, code: await code(secret) })).status).toBe(200);
+  });
+
   it("account deletion leaves an audit entry, with the email, in every project the person leaves", async () => {
     s = await accountServer();
     const owner = await s.signup("eve@example.com");
