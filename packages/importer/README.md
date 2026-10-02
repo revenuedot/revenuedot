@@ -129,6 +129,7 @@ Until a subscription has its token it is marked `needs_token_refresh`. The custo
 | `--restart` | Ignore the state file and start from the first customer |
 | `--concurrency <n>` | Customers fetched in parallel (default 4) |
 | `--limit <n>` | Import only the first n customers, for a trial |
+| `--page-size <n>` | Customers per page and per import call (default 50, at most 100). If a page times out, the CLI stops and suggests a smaller value; rerun with it and the import resumes at that page |
 | `--google-tokens <csv>` | Google purchase tokens you already have |
 | `--no-public-keys` | Keep RevenueDot's own SDK keys |
 | `--emit-events` | Record lifecycle events and send webhooks for imported purchases (off by default) |

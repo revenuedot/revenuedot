@@ -22,10 +22,10 @@ export class RevenueDotClient {
     this.projectId = o.projectId ?? null;
   }
 
-  private req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private req<T>(method: string, path: string, body?: unknown, http: HttpOptions = {}): Promise<T> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.o.apiKey}`, Accept: "application/json" };
     if (body !== undefined) headers["content-type"] = "application/json";
-    return requestJson<T>(`${this.base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }, this.o.http);
+    return requestJson<T>(`${this.base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }, { ...this.o.http, ...http });
   }
 
   private p(path = "") {
@@ -60,8 +60,9 @@ export class RevenueDotClient {
   products() { return this.all<RcProduct>("/products"); }
   entitlements() { return this.all<RdEntitlement>("/entitlements", "expand=items.product"); }
   offerings() { return this.all<RdOffering>("/offerings", "expand=items.package.product"); }
+  /** A page that timed out is tried once more: a page too big for the time limit will not fit on a third try either. */
   importCustomers(customers: ImportCustomer[], opts: { emitEvents?: boolean } = {}) {
-    return this.post<ImportResult>("/import/customers", { customers, emit_events: opts.emitEvents ?? false });
+    return this.req<ImportResult>("POST", this.p("/import/customers"), { customers, emit_events: opts.emitEvents ?? false }, { timeoutRetries: 1 });
   }
   setPublicKey(appId: string, key: string) { return this.post(`/import/apps/${encodeURIComponent(appId)}/public_key`, { public_key: key }); }
   importStatus() { return this.get<ImportStatus>("/import/status"); }
