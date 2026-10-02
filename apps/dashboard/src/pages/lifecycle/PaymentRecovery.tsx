@@ -57,7 +57,7 @@ function CaseDialog({ pid, c, onClose }: { pid: string; c: Case; onClose: () => 
       <button type="button" className="btn btn-dark" onClick={onClose}>Done</button>
     </>}>
       <div className="hrow" style={{ gap: 6, flexWrap: "wrap" }}>{statusTag(c)}{c.environment === "sandbox" && <Tag tone="info">Sandbox</Tag>}</div>
-      {unsubscribed(c) && <div className="banner" role="status"><span><b>Unsubscribed{c.unsubscribed_at ? ` ${fmt.dateTime(c.unsubscribed_at)}` : ""}.</b> {c.email ?? "This customer"} gets no more recovery emails. The store keeps retrying the payment.</span></div>}
+      {unsubscribed(c) && <div className="banner" role="status"><span><b>Unsubscribed{c.unsubscribed_at ? ` ${fmt.dateTime(c.unsubscribed_at)}` : ""}.</b> {c.email ?? "This customer"} gets no more recovery emails.{c.status === "open" && " The store keeps retrying the payment."}</span></div>}
       <KeyValue rows={[
         ["Customer", <span key="c"><span className="mono">{c.app_user_id}</span>{c.email && <span className="subtle"> · {c.email}</span>}</span>],
         ["Store and product", <span key="s">{storeLabel(c.store)} · <span className="mono">{c.product_id}</span></span>],
@@ -67,7 +67,7 @@ function CaseDialog({ pid, c, onClose }: { pid: string; c: Case; onClose: () => 
         ["Last email", at(c.last_message_at)],
         ["Next email", c.status === "open" && !unsubscribed(c) ? at(c.next_message_at) : "—"],
         ["Link clicked", at(c.clicked_at)],
-        ["Unsubscribed", at(c.unsubscribed_at)],
+        ["Unsubscribed", c.unsubscribed_at ? at(c.unsubscribed_at) : unsubscribed(c) ? "Yes, from another case's email" : "—"],
         [c.status === "open" ? "At risk" : "Recovered revenue", <span key="r" className="mono">{c.status === "open" ? money(c.at_risk_in_usd ?? 0) : c.status === "recovered" ? money(c.recovered_revenue_in_usd ?? 0) : "—"}</span>],
         ["Closed", at(c.resolved_at)],
       ]} />

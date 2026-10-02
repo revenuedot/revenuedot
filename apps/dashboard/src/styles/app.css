@@ -266,9 +266,9 @@ table.compact th:last-child,table.compact td:last-child{padding-right:16px}
 table.subs td{white-space:normal;padding-top:8px;padding-bottom:8px}
 table.subs td.nw{white-space:nowrap}
 table.subs .l2{display:block;margin-top:2px;font:400 12px/16px var(--font);color:var(--fg-3)}
-table.subs .subs-prod{min-width:140px}
+table.subs .subs-prod{min-width:140px;overflow-wrap:anywhere}
 /* Below 1400px the side column would squeeze the tables, so the page stacks: purchases, then the customer's details, then the history. */
-@media (max-width:1399px){.cgrid{display:flex;flex-direction:column;align-items:stretch}.cgrid>.col{display:contents}.cgrid>.col>*{min-width:0}.cgrid>.col:first-child>:nth-child(4){order:2}.cgrid>.col:last-child>*{order:1}.cgrid>.col:last-child>:last-child{order:3}}
+@media (max-width:1399px){.cgrid{display:flex;flex-direction:column;align-items:stretch}.cgrid>.col{display:contents}.cgrid>.col>*{min-width:0}.cgrid>.col:last-child>*{order:1}.cgrid>.col>.c-hist{order:2}.cgrid>.col>.c-del{order:3}}
 .col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
 .erow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-2)}
 .erow:last-child{border-bottom:0}
@@ -952,7 +952,7 @@ button.masked:hover{color:var(--fg)}
 .pchips button[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
 /* Apps list: app ID over the bundle or package ID. */
 .appids{display:flex;flex-direction:column;gap:2px}
-.appids .hrow{flex-wrap:nowrap;gap:4px}
+.appids .hrow{flex-wrap:nowrap;gap:4px;overflow-wrap:anywhere;min-width:0}
 td.apps-setup{min-width:120px}
 /* Customers: Auto-renewal and First seen are columns from 1400px, sub-lines of Status and Last seen below it. */
 td .c-narrow{display:none}

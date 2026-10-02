@@ -31,7 +31,7 @@ export function RetentionPage() {
         <PageHead title="Retention Offers" sub="Decide what customers see at the moments they are about to leave, such as cancelling or asking for a refund, to keep more of them." />
         <Tabs label="Retention" idBase="retention" value={tab} onChange={(t) => { const n = new URLSearchParams(sp); n.set("tab", t); setSp(n, { replace: true }); }}
           tabs={[{ value: "apple", label: "Apple Retention Messaging API" }, { value: "customer_center", label: "Customer Center" }]}
-          right={<Switch checked={sandbox} onChange={setSandbox} label="Sandbox data" />} />
+          right={tab === "apple" ? <Switch checked={sandbox} onChange={setSandbox} label="Sandbox data" /> : undefined} />
         <div role="tabpanel" id={`retention-${tab}-panel`} aria-labelledby={`retention-${tab}`} className="stack">
           {tab === "apple" ? <AppleTab env={sandbox ? "sandbox" : "production"} /> : <CustomerCenterTab />}
         </div>

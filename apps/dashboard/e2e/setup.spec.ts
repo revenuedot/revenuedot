@@ -232,6 +232,9 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await page.getByLabel("App user ID").fill("e2e_buyer");
     await page.getByRole("button", { name: "Send a test purchase" }).click();
     await expect(page.getByText(/e2e_buyer bought pro_monthly for \$9\.99/)).toBeVisible();
+    // What the server recorded, not only what the page says.
+    const tx = await api("GET", `${P}/transactions?environment=sandbox&customer=e2e_buyer&limit=1`);
+    expect(tx.body.items[0]).toMatchObject({ customer_id: "e2e_buyer", price: { amount: 9.99, currency: "USD" }, revenue_in_usd: 9.99 });
     await shot("test-store-purchase");
     const c = await api("GET", `${P}/customers/e2e_buyer`);
     expect(c.status).toBe(200);

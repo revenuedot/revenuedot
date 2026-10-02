@@ -114,7 +114,7 @@ function MetricGrid({ pid, env, period, all }: { pid: string; env: string; perio
         return (
           <article className="m" key={c.id} title={c.define} data-metric={c.id}>
             {/* Charts belong to one project, so the label links only in a project's Overview. */}
-            <div className="lab">{all ? <span>{c.label}</span> : <Link to={`/projects/${pid}/charts/${CHART_OF[c.id]}`} className="ul" title={`Open the ${c.label} chart`}>{c.label}</Link>}<Icon name={c.icon} /></div>
+            <div className="lab">{all ? <span>{c.label}</span> : <Link to={`/projects/${pid}/charts/${CHART_OF[c.id]}${env === "sandbox" ? "?env=sandbox" : ""}`} className="ul" title={`Open the ${c.label} chart`}>{c.label}</Link>}<Icon name={c.icon} /></div>
             {value === undefined ? <span className="sk num" /> : <div className="v"><MetricValue value={value} isMoney={c.money} /></div>}
             <div className="meta">
               {value !== undefined && h && <Delta value={value} previous={h.previous_value} stock={c.stock} words={period.words} isMoney={c.money} />}
@@ -177,9 +177,9 @@ function RecentTransactions({ pid, env, products, entitlements, projects }: { pi
                   return (
                     <tr key={t.id}>
                       <td className="id"><span className="idcell">{t.country && <span className="flag" role="img" aria-label={t.country}>{flag(t.country)}</span>}<Link to={`/projects/${t.project_id ?? pid}/customers/${encodeURIComponent(t.customer_id)}`} title={t.customer_id}>{shortId(t.customer_id)}</Link></span></td>
-                      {all && <td className="subtle">{projects.get(t.project_id ?? "") ?? t.project_id}</td>}
+                      {all && <td className="subtle w2">{projects.get(t.project_id ?? "") ?? t.project_id}</td>}
                       <td><Tag tone={tag.tone}>{tag.label}</Tag></td>
-                      <td>{promo ? (() => { const k = t.product_identifier.replace(/^rc_promo_(.+)_\w+$/, "$1"); return entitlements.find((e) => e.lookup_key === k)?.display_name ?? k; })() : name(t)}</td>
+                      <td className="w2">{promo ? (() => { const k = t.product_identifier.replace(/^rc_promo_(.+)_\w+$/, "$1"); return entitlements.find((e) => e.lookup_key === k)?.display_name ?? k; })() : name(t)}</td>
                       <td className="subtle">{storeLabel(t.store)}</td>
                       <td className="subtle" title={fmt.dateTime(t.purchased_at)}>{relative(t.purchased_at)}</td>
                       <td className="subtle" title={t.expires_at ? fmt.dateTime(t.expires_at) : undefined}>{t.kind === "refund" ? "—" : t.expires_at ? relative(t.expires_at) : "Never"}</td>
@@ -485,13 +485,14 @@ export function Overview() {
   const period = PERIODS.find((p) => p.value === sp.get("period")) ?? PERIODS[1];
   const me = useMe();
   const myProjects = me.data?.projects ?? [];
-  const all = sp.get("projects") === "all" && myProjects.length > 1;
+  // Until /auth/me answers, a link to ?projects=all is taken at its word, so one project's data never flashes first.
+  const all = sp.get("projects") === "all" && (me.isLoading || myProjects.length > 1);
   const hideKey = `rd-setup-hidden:${pid}`;
   const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(hideKey) === "1"; } catch { return false; } });
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v === null) n.delete(k); else n.set(k, v); setSp(n, { replace: true }); };
 
   const setup = useQuery({
-    queryKey: ["setup", pid],
+    queryKey: ["setup", pid], enabled: !all,
     queryFn: async (): Promise<SetupState> => {
       const P = `/v2/projects/${pid}`;
       const [apps, products, entitlements, offerings, customers, tx] = await Promise.all([
@@ -521,7 +522,7 @@ export function Overview() {
         <div className="head">
           <div>
             <h1>Overview</h1>
-            <p>{all ? `All projects · ${included.length || "…"} project${included.length === 1 ? "" : "s"} · USD · ${when}` : `All apps · USD · ${firstRun ? "no purchases yet" : when}`}</p>
+            <p>{all ? `All projects · ${account.data ? `${included.length} project${included.length === 1 ? "" : "s"}` : "…"} · USD · ${when}` : `All apps · USD · ${firstRun ? "no purchases yet" : when}`}</p>
           </div>
           {!firstRun && (
             <div className="actions">

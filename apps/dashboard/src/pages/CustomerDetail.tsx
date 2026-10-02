@@ -441,7 +441,7 @@ export function CustomerDetail() {
                 : !subs.length ? <div className="pnote">No subscriptions.</div>
                 : (
                   <div className="tbl"><table className="compact subs">
-                    {/* Six columns with two-line cells (store under the product, renewal under the date), so the table fits the panel from 1100px up without scrolling sideways. */}
+                    {/* Six columns with two-line cells (store under the product, renewal under the date), so the table fits its panel from 1024px up without scrolling sideways. */}
                     <thead><tr><th>Product</th><th>Status</th><th className="hide-sm">Started</th><th>Renews or ends</th><th className="amt">Price</th><th className="amt">Revenue</th></tr></thead>
                     <tbody>
                       {[...subs].sort((a, b) => b.current_period_starts_at - a.current_period_starts_at).map((x) => {
@@ -492,7 +492,8 @@ export function CustomerDetail() {
                 )}
             </Panel>
 
-            <Timeline pid={pid} id={id} entName={entName} productName={productName} />
+            {/* Below 1400px the page stacks, and the history moves after the customer's details (app.css .c-hist). */}
+            <div className="c-hist"><Timeline pid={pid} id={id} entName={entName} productName={productName} /></div>
           </div>
 
           <div className="col">
@@ -530,9 +531,9 @@ export function CustomerDetail() {
 
             {c && <Attributes attrs={c.attributes?.items ?? []} onEdit={(a) => setDialog({ kind: "attr", attr: a })} onAdd={() => setDialog({ kind: "attr" })} />}
 
-            <Panel title="Delete customer" flush>
+            <div className="c-del"><Panel title="Delete customer" flush>
               <div className="danger-zone"><span>Erase this customer and all their data.</span><button type="button" className="btn btn-danger" onClick={() => setDialog({ kind: "delete" })}><Icon name="trash" />Delete</button></div>
-            </Panel>
+            </Panel></div>
           </div>
         </div>
       </div>

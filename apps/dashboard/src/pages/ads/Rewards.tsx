@@ -276,7 +276,7 @@ function Ledger({ pid }: { pid: string }) {
             <tbody>{rows.map((v) => (
               <tr key={v.id}>
                 <td className="w2"><Link className="mono" to={`/projects/${pid}/customers/${encodeURIComponent(v.app_user_id)}`}>{v.app_user_id || "—"}</Link>{v.is_sandbox && <span className="soon" style={{ marginLeft: 6 }}>SANDBOX</span>}</td>
-                <td className="w2">{v.network === "admob" ? "AdMob" : v.network === "test" ? "Test" : v.network}<span className="cellsub mono" title={v.network_transaction_id}>{v.ad_unit_id ?? v.network_transaction_id.slice(0, 18)}</span></td>
+                <td className="w2">{v.network === "admob" ? "AdMob" : v.network === "test" ? "Test" : v.network}<span className="cellsub mono" title={`Transaction ${v.network_transaction_id}`}>{v.ad_unit_id ?? "No ad unit"}</span></td>
                 <td className="mono">{v.reward_item ? `${v.reward_amount ?? ""} ${v.reward_item}`.trim() : v.reward_amount ?? "—"}</td>
                 <td className="w2"><Tag tone={STATUS_TONE[v.status]}>{v.status}</Tag>{v.failure_message && <span className="cellsub">{v.failure_message}</span>}</td>
                 <td className="w2">{v.rewards.length ? v.rewards.map(rewardText).join(", ") : <span className="subtle">Nothing</span>}</td>

@@ -43,21 +43,23 @@ test("checklist opens Add app; the app page's inline product asks for a price an
   await page.getByRole("link", { name: "Add an app" }).click();
   const dialog = page.getByRole("dialog", { name: "Add an app" });
   await expect(dialog).toBeVisible();
-  await expect(page).toHaveURL(/\/apps\?add=app_store$/);
+  // The parameter is used once and removed, so Back from the new app does not open the dialog again.
+  await expect(page).toHaveURL(/\/apps$/);
   await dialog.getByRole("button", { name: /Test Store/ }).click();
   await dialog.getByRole("button", { name: "Add app" }).click();
   await page.waitForURL(/\/apps\/app\w+$/);
   const form = page.getByRole("form", { name: "Create a Test Store product" });
   await expect(form.getByLabel("Price amount")).toHaveValue("9.99");
   await expect(form.getByLabel("Currency")).toHaveValue("USD");
-  // Validation: empty, zero, a comma, a bad currency.
-  for (const [amount, currency, message] of [["", "USD", "Enter the price"], ["0", "USD", "above 0"], ["4,99", "USD", "with a dot"], ["4.99", "EU", "three-letter currency code"]] as const) {
+  // Validation: empty, zero, an ambiguous comma, too many decimals, a malformed and an unknown currency.
+  for (const [amount, currency, message] of [["", "USD", "Enter the price"], ["0", "USD", "above 0"], ["1,000", "USD", "with a dot"], ["4.999", "EUR", "at most 2 decimals"], ["4.99", "EU", "three-letter currency code"], ["4.99", "XYZ", "not a currency code"]] as const) {
     await form.getByLabel("Price amount").fill(amount);
     await form.getByLabel("Currency").fill(currency);
     await form.getByRole("button", { name: "Create product" }).click();
     await expect(form.getByText(new RegExp(message))).toBeVisible();
   }
-  await form.getByLabel("Price amount").fill("4.99");
+  // A decimal comma (what an iPhone's keypad types in Germany) is read as 4.99.
+  await form.getByLabel("Price amount").fill("4,99");
   await form.getByLabel("Currency").fill("eur");
   await form.getByLabel("Type").selectOption("P1W");
   await form.getByRole("button", { name: "Create product" }).click();

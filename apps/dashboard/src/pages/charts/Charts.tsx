@@ -183,8 +183,10 @@ function FilterMenu({ options, value, onChange }: { options: Options["filters"];
 export function ChartsPage() {
   const pid = useProjectId();
   const { chartName } = useParams();
+  const [sp] = useSearchParams();
   const def = chartName ? chartDef(chartName) : null;
-  if (!chartName || !def) return <Navigate to={`/projects/${pid}/charts/revenue`} replace />;
+  // The query (?environment=sandbox from another page's link) survives the redirect to the default chart.
+  if (!chartName || !def) return <Navigate to={`/projects/${pid}/charts/revenue${sp.size ? `?${sp}` : ""}`} replace />;
   return <ChartView key={def.name} pid={pid} def={def} />;
 }
 
