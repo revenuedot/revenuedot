@@ -1,5 +1,5 @@
 // revenuedot.app marketing site on Cloudflare Workers, deployed with the `cf` CLI. Static assets answer every request
-// except /api/*, which the Worker script handles (worker/index.ts: the contact-sales form and the visitor's country).
+// except /api/*, which the Worker script handles (worker/index.ts: the contact-sales form, the visitor's country and the sales voice agent).
 // Deploy only after approval: pnpm --filter site run deploy. vite.config.ts hands the Astro build (dist/) to cf as the
 // Worker's static assets. www.revenuedot.app redirects to the apex with a zone redirect rule (docs/cloud.md).
 import { bindings, defineConfig, triggers } from "cf/config";
@@ -29,6 +29,11 @@ export default defineConfig({
       LEAD_LIMIT: bindings.rateLimit({ namespace: "1101", simple: { limit: 5, period: 60 } }),
       // Partial answers from the stepped form: one save per step, so a higher limit (30 a minute per IP address).
       DRAFT_LIMIT: bindings.rateLimit({ namespace: "1102", simple: { limit: 30, period: 60 } }),
+      // The ElevenLabs sales voice agent (worker/agent.ts) and the Twilio number it calls from. Its secrets AGENT_TOKEN,
+      // ELEVENLABS_WEBHOOK_SECRET and ELEVENLABS_API_KEY are set on the Worker directly and kept across deploys; without
+      // them /api/agent/* answers 503 and no outbound calls are made.
+      ELEVENLABS_AGENT_ID: bindings.text("agent_0801m3xdj6pqffnshp716p97jccc"),
+      ELEVENLABS_PHONE_ID: bindings.text("phnum_9001m3zasth9e6r8j4mtkc4m3pfh"),
     },
   },
 });

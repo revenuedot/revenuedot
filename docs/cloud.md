@@ -11,7 +11,7 @@ GitHub Actions on every push to `main` (see [Deploy](#deploy)).
 | https://api.revenuedot.app | `revenuedot` | `apps/server` | The whole API (SDK `/v1`, REST `/v2`, `/auth`, OAuth, `/.well-known`) |
 | https://app.revenuedot.app | `revenuedot` | `apps/server` + `apps/dashboard` | The dashboard (static assets, single-page fallback) plus same-origin API calls |
 | https://mcp.revenuedot.app | `revenuedot-mcp` | [revenuedot/mcp](https://github.com/revenuedot/mcp) | The hosted MCP server (`/mcp`), pointed at `https://api.revenuedot.app` |
-| https://revenuedot.app | `revenuedot-site` | `apps/site` | The marketing site and docs (static assets only) |
+| https://revenuedot.app | `revenuedot-site` | `apps/site` | The marketing site and docs (static assets), plus `/api/*`: the contact-sales form and the sales voice agent |
 | https://www.revenuedot.app | `revenuedot-site` | zone redirect rule | 301 to `https://revenuedot.app` with the path and query kept |
 
 | Piece | Where |
@@ -117,6 +117,24 @@ cd ../mcp && pnpm run deploy                # cf deploy (mcp/cloudflare.config.t
 The site's build reads the docs repo at `../docs` (override with `DOCS_DIR`). `cf build` on its own would run
 `astro build` without the Pagefind step, so the site's deploy script runs its own build and packages `dist/` with the
 Cloudflare Vite plugin.
+
+## Voice agent
+
+The sales voice agent runs on ElevenLabs (agent `agent_0801m3xdj6pqffnshp716p97jccc`, Twilio number
+`phnum_9001m3zasth9e6r8j4mtkc4m3pfh`). Its webhooks and tools are served by the site Worker, `apps/site/worker/agent.ts`:
+
+| Route | Used by ElevenLabs as |
+| --- | --- |
+| `POST /api/agent/init` | Conversation initiation webhook (inbound calls): the caller's lead record as dynamic variables |
+| `POST /api/agent/lookup`, `/meeting`, `/send_info`, `GET /api/agent/docs?q=` | Server tools, with header `x-agent-token` |
+| `POST /api/agent/postcall` | Post-call webhook, signed with `ElevenLabs-Signature` |
+
+- **Secrets** on worker `revenuedot-site`: `AGENT_TOKEN`, `ELEVENLABS_WEBHOOK_SECRET`, `ELEVENLABS_API_KEY`. They are not
+  declared in `cloudflare.config.ts`, so deploys keep them. Without them the routes answer 503 and no calls go out.
+- **Outbound calls:** a contact-sales lead scored hot or warm, with a valid phone number, is called at once, only
+  between 8am and 8pm in their time zone (from the phone number's country). The sales email says when and why a lead
+  was not called.
+- **Data** (D1 `revenuedot-leads`): `sales_meetings`, `agent_calls`, and `sales_leads.outbound_conversation_id`.
 
 ## Zone settings
 
