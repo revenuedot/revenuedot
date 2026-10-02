@@ -72,6 +72,15 @@ export interface Deps {
    */
   stripeConnect?: import("./services/stripe-connect-config.js").StripeConnectConfig;
   /**
+   * Benchmarks (prd/attribution-benchmarks-insights §2): on only on RevenueDot Cloud (the Worker) and the e2e server. Off,
+   * the benchmark endpoints answer `available: false`, the nightly job does nothing and no data is shared.
+   */
+  benchmarks?: boolean;
+  /** Tests and the e2e server only: a lower k, smaller minimum samples (services/benchmarks.ts). Never set on Cloud. */
+  benchmarkOptions?: import("./services/benchmarks.js").BenchmarkOptions;
+  /** Generate and email the weekly AI growth insights digest (Cloud: always; self-host: REVENUEDOT_INSIGHTS_DIGEST=on). */
+  insightsDigest?: boolean;
+  /**
    * Where full-export archives are kept (prd/moves-export/PRD.md): R2 on Cloud, a folder or bucket on self-host. Unset:
    * Postgres (`archive_blobs`).
    */

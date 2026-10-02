@@ -48,6 +48,8 @@ import { authRoutes as authConfigRoutes } from "./auth.js";
 import { assistantRoutes } from "./assistant.js";
 import { ASSISTANT_CTX } from "../../services/assistant/client.js";
 import { adsRoutes } from "./ads.js";
+import { attributionRoutes } from "./attribution.js";
+import { benchmarkRoutes } from "./benchmarks.js";
 import { moveRoutes } from "./moves.js";
 
 /**
@@ -67,6 +69,9 @@ export function v2Routes(deps: Deps) {
     const assistant = ASSISTANT_CTX.get(c.req.raw);
     const header = c.req.header("authorization");
     if (assistant) {
+      // AI growth insights (prd/attribution-benchmarks-insights §3): this actor only reads, on every route, whatever the
+      // project allows.
+      if (assistant.readOnly && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) throw new V2Error(403, "authorization_error", "AI growth insights can only read.");
       c.set("principal", { kind: "user", userId: assistant.userId, via: "assistant", email: assistant.email, conversationId: assistant.conversationId });
     } else if (header !== undefined && header.trim() !== "") {
       const key = header.replace(/^Bearer\s+/i, "").trim();
@@ -138,6 +143,8 @@ export function v2Routes(deps: Deps) {
   targetingRoutes(r, deps);
   experimentRoutes(r, deps);
   chartRoutes(r, deps);
+  attributionRoutes(r, deps);
+  benchmarkRoutes(r, deps);
   savedChartRoutes(r, deps);
   partnerIntegrationRoutes(r, deps);
   dataExportRoutes(r, deps);

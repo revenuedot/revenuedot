@@ -35,6 +35,7 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
     customer: cust, aliases, subs, ones, attributes: Object.fromEntries(Object.entries(state.attributes).map(([k, a]) => [k, a.value])),
     attributeTimes: Object.fromEntries(Object.entries(state.attributes).map(([k, a]) => [k, a.updatedAtMs])),
     tx: txns.map((t) => ({ usd: t.revenueUsd, kind: t.kind, sandbox: t.isSandbox, at: t.purchasedAt, product: t.productIdentifier })),
+    attribution: (await db.select().from(schema.customerAttribution).where(eq(schema.customerAttribution.customerId, cust.id)).limit(1))[0] ?? null,
   };
   const offeringNow = await currentOfferingFor(db, data, override ?? null, active.map((e) => e.identifier), now);
   const entRow = (lookupKey: string) => ents.find((e) => e.lookupKey === lookupKey);

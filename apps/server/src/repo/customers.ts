@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { isAnonymous, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
+import { ATTRIBUTION_KEYS, isAnonymous, isAttributionKey, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { accessOf } from "./access.js";
+import { syncCustomerAttribution } from "./attribution.js";
 
 const { customers, customerAliases, customerAttributes, subscriptions, nonSubscriptions } = schema;
 export type CustomerRow = typeof customers.$inferSelect;
@@ -71,18 +72,34 @@ export async function backdateFirstSeen(db: DB, customerId: string, earliest: Da
   await db.update(customers).set({ firstSeen: earliest }).where(and(eq(customers.id, customerId), sql`${customers.firstSeen} > ${earliest.toISOString()}::timestamptz`));
 }
 
-/** Upserts attributes; a newer `updated_at_ms` wins. Empty string or null deletes the value (iOS sends "", Android null). */
-export async function setAttributes(db: DB, customerId: string, attrs: Record<string, { value: unknown; updated_at_ms?: number }>, now: Date) {
+const WRITE_ONCE = new Set<string>(ATTRIBUTION_KEYS);
+
+/**
+ * Upserts attributes; a newer `updated_at_ms` wins. Empty string or null deletes the value (iOS sends "", Android null).
+ * `attributionOnce` (the SDK endpoints): attribution attributes ($mediaSource, $campaign … $appleAds*) are write-once,
+ * as RevenueCat documents ("Once attribution data is set for a subscriber, it can't be changed"), so a reinstall or a
+ * partner resending conversion data never overwrites the original install's attribution. The REST API v2 (a developer
+ * with a secret key, the dashboard) can still correct or clear them.
+ */
+export async function setAttributes(db: DB, customerId: string, attrs: Record<string, { value: unknown; updated_at_ms?: number }>, now: Date, o: { attributionOnce?: boolean } = {}) {
+  let attribution = false;
   for (const [key, raw] of Object.entries(attrs ?? {})) {
     const value = raw?.value === null || raw?.value === undefined || raw.value === "" ? null : String(raw.value);
     const updatedAtMs = Number(raw?.updated_at_ms ?? now.getTime());
     // One upsert, newest timestamp wins: a read-then-insert let two concurrent writes of a new key (the SDK's attribute
     // sync next to a receipt carrying attributes) collide on the primary key on Postgres and answer 500.
+    // Write-once attribution (SDK): a stored value is kept unless it is empty or the same.
+    const once = o.attributionOnce && WRITE_ONCE.has(key);
     await db.insert(customerAttributes).values({ customerId, key, value, updatedAtMs }).onConflictDoUpdate({
       target: [customerAttributes.customerId, customerAttributes.key], set: { value, updatedAtMs },
-      setWhere: sql`${customerAttributes.updatedAtMs} <= ${updatedAtMs}`,
+      setWhere: once
+        ? sql`${customerAttributes.updatedAtMs} <= ${updatedAtMs} and (${customerAttributes.value} is null or ${customerAttributes.value} = ${value})`
+        : sql`${customerAttributes.updatedAtMs} <= ${updatedAtMs}`,
     });
+    if (isAttributionKey(key)) attribution = true;
   }
+  // Attribution attributes also live as one first-class row (prd/attribution-benchmarks-insights §1).
+  if (attribution) await syncCustomerAttribution(db, customerId, now);
 }
 
 export function subRowToDomain(r: typeof subscriptions.$inferSelect): Subscription {
@@ -169,6 +186,7 @@ async function mergeInto(db: DB, fromId: string, intoId: string) {
   const fromAttrs = await db.select().from(customerAttributes).where(eq(customerAttributes.customerId, fromId));
   for (const a of fromAttrs) if (!have.has(a.key)) await db.insert(customerAttributes).values({ ...a, customerId: intoId }).onConflictDoNothing();
   await db.delete(customers).where(eq(customers.id, fromId));
+  if (fromAttrs.some((a) => isAttributionKey(a.key) && !have.has(a.key))) await syncCustomerAttribution(db, intoId);
 }
 
 /**

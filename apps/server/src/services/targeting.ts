@@ -28,13 +28,19 @@ export interface CustomerContext {
   firstPurchaseAt: number | null; mostRecentPurchaseAt: number | null; latestExpirationAt: number | null; allPurchasedProductIds: string[];
   /** Latest renewal, trial conversion included (Refund Control's "recent renewal" template). */
   lastRenewalAt: number | null;
+  /** First-class attribution (customer_attribution): Apple Search Ads campaigns and ad groups by name when loaded. */
+  attribution: Partial<Record<AttributionField, string | null>>;
 }
+
+/** Condition fields that read the customer's attribution row. */
+export const ATTRIBUTION_FIELDS = ["mediaSource", "campaign", "adGroup", "ad", "keyword", "creative"] as const;
+export type AttributionField = (typeof ATTRIBUTION_FIELDS)[number];
 
 export const emptyContext = (): CustomerContext => ({
   customerId: null, appUserIds: [], originalAppUserId: null, country: null, platform: null, appVersion: null, sdkVersion: null, sdkFlavor: null, platformVersion: null,
   storefront: null, locale: null, firstSeenAt: null, lastSeenAt: null, attributes: {}, activeEntitlements: [], status: "never", totalSpent: 0, totalRenewals: 0,
   latestProduct: null, latestStore: null, anyActiveStore: [], isCurrentlyTrialing: false, hasMadeSandboxPurchase: false, hasMadeNonSubscriptionPurchase: false,
-  firstPurchaseAt: null, mostRecentPurchaseAt: null, latestExpirationAt: null, allPurchasedProductIds: [], lastRenewalAt: null,
+  firstPurchaseAt: null, mostRecentPurchaseAt: null, latestExpirationAt: null, allPurchasedProductIds: [], lastRenewalAt: null, attribution: {},
 });
 
 const ATTRIBUTE_FIELDS: Record<string, string> = {
@@ -56,6 +62,7 @@ export const fieldSupported = (f: string) => SUPPORTED_FIELDS.has(f) || /^custom
 type Value = string | number | boolean | string[] | null;
 function fieldValue(ctx: CustomerContext, field: string): Value {
   if (field.startsWith("customAttribute:")) return ctx.attributes[field.slice(16)] ?? null;
+  if ((ATTRIBUTION_FIELDS as readonly string[]).includes(field) && ctx.attribution[field as AttributionField] !== undefined) return ctx.attribution[field as AttributionField] ?? null;
   if (ATTRIBUTE_FIELDS[field]) return ctx.attributes[ATTRIBUTE_FIELDS[field]!] ?? null;
   switch (field) {
     case "customerId": return ctx.appUserIds.length ? ctx.appUserIds : null;
@@ -192,7 +199,7 @@ export interface Resolution {
 
 type ExperimentRow = typeof schema.experiments.$inferSelect;
 
-/** An experiment's variants; rows written before migration 0028 (or archives from older servers) only have offering_a/b. */
+/** An experiment's variants; rows written before migration 0029 (or archives from older servers) only have offering_a/b. */
 export function variantsOf(e: Pick<ExperimentRow, "variants" | "offeringA" | "offeringB">): ExperimentVariant[] {
   if (Array.isArray(e.variants) && e.variants.length) return e.variants;
   return [

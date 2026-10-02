@@ -39,6 +39,8 @@ export function parseWrite(method: string, path: string): Parsed | null {
   // RevenueDot AI: the setting is project configuration; chats, files and the first-sale card change nothing in the
   // project (the assistant's own writes go through the API's routes and are audited there).
   if (rest[0] === "ai") return rest[1] === "settings" && method === "POST" ? { actionType: "ai_settings_updated", targetType: "project", targetId: seg[2] } : null;
+  // Benchmarks: sharing and the category are project configuration (prd/attribution-benchmarks-insights §2).
+  if (rest[0] === "benchmarks") return rest[1] === "settings" && method === "POST" ? { actionType: "benchmarks_settings_updated", targetType: "project", targetId: seg[2] } : null;
   let i = 0;
   if (rest[0] === "integrations" || rest[0] === "ads" || rest[0] === "auth") i = 1;
   const coll = rest[i]!;

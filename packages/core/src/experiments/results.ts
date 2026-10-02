@@ -33,7 +33,7 @@ export interface ResultsInput {
   maxDays?: number;
 }
 
-export interface MetricValue {
+export interface ExperimentMetricValue {
   value: number | null;
   numerator?: number;
   denominator?: number;
@@ -53,7 +53,7 @@ export interface VariantResult {
   offering_id: string | null;
   customers: number;
   paywall_viewers: number;
-  metrics: Record<string, MetricValue>;
+  metrics: Record<string, ExperimentMetricValue>;
 }
 
 export interface Guidance {
@@ -231,13 +231,13 @@ function plainValue(id: string, m: Measured): number | null {
   return m.counts[id] ?? null;
 }
 
-function withStats(def: MetricDef, m: Measured, control: Measured | null): MetricValue {
+function withStats(def: MetricDef, m: Measured, control: Measured | null): ExperimentMetricValue {
   const r = (x: number | null | undefined, d = 6) => (x === null || x === undefined || !Number.isFinite(x) ? null : round(x, d));
   if (def.kind === "rate") {
     const [kk, nn] = RATES[def.id]!;
     const k = m.counts[kk]!, n = m.counts[nn]!;
     const ci = wilson(k, n);
-    const out: MetricValue = { value: n ? r(k / n) : null, numerator: k, denominator: n, lower: r(ci?.lower), upper: r(ci?.upper) };
+    const out: ExperimentMetricValue = { value: n ? r(k / n) : null, numerator: k, denominator: n, lower: r(ci?.lower), upper: r(ci?.upper) };
     if (control) {
       const kc = control.counts[kk]!, nc = control.counts[nn]!;
       const lift = rateLift(k, n, kc, nc);
@@ -249,7 +249,7 @@ function withStats(def: MetricDef, m: Measured, control: Measured | null): Metri
   if (def.kind === "mean") {
     const s = meanOf(m, def.id);
     const ci = meanInterval(s);
-    const out: MetricValue = { value: s.n ? r(s.mean, 4) : null, denominator: s.n, lower: r(ci?.lower, 4), upper: r(ci?.upper, 4) };
+    const out: ExperimentMetricValue = { value: s.n ? r(s.mean, 4) : null, denominator: s.n, lower: r(ci?.lower, 4), upper: r(ci?.upper, 4) };
     if (control) {
       const sc = meanOf(control, def.id);
       // The lift needs a positive control mean; its interval also needs two customers on each side and a positive mean here.

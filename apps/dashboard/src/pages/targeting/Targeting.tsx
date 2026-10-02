@@ -14,7 +14,7 @@ import { Shell } from "../../components/Shell";
 import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, listAll, v2, type Offering } from "../catalog/lib";
-import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type Groups } from "../../components/conditions";
+import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, useFieldSuggestions, type Groups } from "../../components/conditions";
 import { useAiStatus } from "../ai/data";
 import { AskDialog } from "../experiments/Experiments";
 import { useCanEdit, useOrderSaver, type Audience, type TargetingRule as Rule } from "../experiments/lib";
@@ -42,6 +42,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
   const [preview, setPreview] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const suggestions = useFieldSuggestions(pid);
   const rules = toRules(groups);
   async function check() {
     setErr(null);
@@ -66,7 +67,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
     </>}>
       <form id="aud-form" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Name" htmlFor="aud-name"><input id="aud-name" className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Gold plan in the US" /></Field>
-        <ConditionBuilder value={groups} onChange={setGroups} />
+        <ConditionBuilder value={groups} onChange={setGroups} suggestions={suggestions.data} />
         {preview && <div className="banner" role="status">{preview}</div>}
         {err && <div className="banner err" role="alert">{err}</div>}
       </form>

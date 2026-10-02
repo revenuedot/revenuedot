@@ -1,4 +1,5 @@
 import type { Resolution } from "./time.js";
+import { ATTRIBUTION_DIM_LABEL, type AttributionDim } from "../attribution.js";
 
 /**
  * The chart catalog: every chart RevenueCat's dashboard and API offer, with RevenueCat's API names, grouped the way
@@ -19,7 +20,7 @@ export interface MeasureDef {
 }
 export interface SelectorDef { id: string; display_name: string; default: string; options: { id: string; display_name: string }[] }
 
-export type Dim = "app" | "store" | "product" | "product_duration" | "offering" | "country" | "platform" | "app_version" | "paywall" | "survey_option";
+export type Dim = "app" | "store" | "product" | "product_duration" | "offering" | "country" | "platform" | "app_version" | "paywall" | "survey_option" | AttributionDim;
 export const DIM_LABEL: Record<Dim, { display_name: string; group: string }> = {
   app: { display_name: "App", group: "Store and product" },
   store: { display_name: "Store", group: "Store and product" },
@@ -31,6 +32,13 @@ export const DIM_LABEL: Record<Dim, { display_name: string; group: string }> = {
   app_version: { display_name: "App version", group: "Customer" },
   paywall: { display_name: "Paywall", group: "Paywall" },
   survey_option: { display_name: "Survey option", group: "Customer Center" },
+  // Attribution (prd/attribution-benchmarks-insights §1): the customer's first-class attribution row.
+  media_source: { display_name: ATTRIBUTION_DIM_LABEL.media_source, group: "Attribution" },
+  campaign: { display_name: ATTRIBUTION_DIM_LABEL.campaign, group: "Attribution" },
+  ad_group: { display_name: ATTRIBUTION_DIM_LABEL.ad_group, group: "Attribution" },
+  keyword: { display_name: ATTRIBUTION_DIM_LABEL.keyword, group: "Attribution" },
+  ad: { display_name: ATTRIBUTION_DIM_LABEL.ad, group: "Attribution" },
+  creative: { display_name: ATTRIBUTION_DIM_LABEL.creative, group: "Attribution" },
 };
 
 export type GroupId = "revenue" | "subscriptions" | "ads" | "ltv" | "customers" | "conversion" | "paywalls" | "trials" | "churn" | "retention";
@@ -86,12 +94,14 @@ export const CONVERSION_TIMEFRAME = days([["0_days", "Day 0"], ["3_days", "3 day
 export const CUSTOMER_LIFETIME = days([["0_days", "Day 0"], ["7_days", "7 days"], ["14_days", "14 days"], ["30_days", "30 days"], ["60_days", "60 days"], ["90_days", "90 days"], ["180_days", "180 days"], ["365_days", "1 year"], ["unbounded", "Unbounded"]], "30_days", "customer_lifetime", "Customer lifetime");
 const REVENUE_TYPE: SelectorDef = { id: "revenue_type", display_name: "Revenue type", default: "revenue", options: [{ id: "revenue", display_name: "Revenue" }, { id: "revenue_net_of_taxes", display_name: "Revenue (net of taxes)" }, { id: "proceeds", display_name: "Proceeds" }] };
 
-const MONEY: Dim[] = ["app", "store", "product", "product_duration", "offering", "country", "platform", "app_version"];
+/** Attribution dimensions: customer dimensions, offered wherever the customer's country is. */
+const ATTR: Dim[] = ["media_source", "campaign", "ad_group", "keyword", "ad", "creative"];
+const MONEY: Dim[] = ["app", "store", "product", "product_duration", "offering", "country", "platform", "app_version", ...ATTR];
 const SUBS: Dim[] = MONEY;
-const CUSTOMER: Dim[] = ["country", "platform", "app_version"];
+const CUSTOMER: Dim[] = ["country", "platform", "app_version", ...ATTR];
 const CUSTOMER_AND_PURCHASE: Dim[] = MONEY;
-const ADS: Dim[] = ["app", "country", "platform", "app_version"];
-const PAYWALL: Dim[] = ["paywall", "app", "country", "platform", "app_version"];
+const ADS: Dim[] = ["app", "country", "platform", "app_version", ...ATTR];
+const PAYWALL: Dim[] = ["paywall", "app", "country", "platform", "app_version", ...ATTR];
 
 const def = (d: Omit<ChartDef, "selectors" | "segmentable" | "inRail" | "defaultResolution"> & Partial<Pick<ChartDef, "selectors" | "segmentable" | "inRail" | "defaultResolution">>): ChartDef =>
   ({ selectors: [], segmentable: true, inRail: true, defaultResolution: d.shape === "cohort_table" ? "month" : "day", ...d });
@@ -291,16 +301,16 @@ export const CHARTS: ChartDef[] = [
     description: "Money refunded and refunded transactions, by refund date, net of reversed refunds.",
     measures: [flowM("refunded_revenue", "Refunded Revenue", "$", "Money refunded in the period, minus refunds reversed in it."),
       flowM("refunded_transactions", "Refunded Transactions", "#", "Transactions refunded in the period, minus reversals.")] }),
-  def({ name: "refund_request", display_name: "Refund Request Outcomes", group: "churn", display_type: "stacked_bar", shape: "flow", dims: ["app", "store", "country"],
+  def({ name: "refund_request", display_name: "Refund Request Outcomes", group: "churn", display_type: "stacked_bar", shape: "flow", dims: ["app", "store", "country", ...ATTR],
     description: "App Store refund requests received in each period, by outcome.",
     measures: [flowM("granted", "Refund Granted", "#", "The store refunded the purchase."), flowM("declined", "Refund Declined", "#", "The store declined, or no grant arrived within 2 days."),
       flowM("reversed", "Refund Reversed", "#", "The store reversed a granted refund."), flowM("no_resolution", "No Resolution", "#", "Received less than 2 days ago, no outcome yet."),
       flowM("requests", "Total Requests", "#", "Refund requests received in the period.", { chartable: false }),
       flowM("amount", "Refund Request Amount", "$", "Price of the purchases the requests were about.", { chartable: false })] }),
-  def({ name: "play_store_cancel_reasons", display_name: "Play Store Cancel Reasons", group: "churn", display_type: "stacked_bar", shape: "flow", dims: ["app", "product", "product_duration", "country", "platform"], extension: true,
+  def({ name: "play_store_cancel_reasons", display_name: "Play Store Cancel Reasons", group: "churn", display_type: "stacked_bar", shape: "flow", dims: ["app", "product", "product_duration", "country", "platform", ...ATTR], extension: true,
     description: "Google Play subscriptions cancelled in each period, by the answer the customer gave to Google's cancel survey.",
     measures: [] }),
-  def({ name: "customer_center_survey_responses", display_name: "Customer Center Survey Responses", group: "churn", display_type: "stacked_bar", shape: "flow", dims: ["app", "country", "platform", "app_version"], extension: true, dynamicMeasures: true,
+  def({ name: "customer_center_survey_responses", display_name: "Customer Center Survey Responses", group: "churn", display_type: "stacked_bar", shape: "flow", dims: ["app", "country", "platform", "app_version", ...ATTR], extension: true, dynamicMeasures: true,
     description: "Answers to the Customer Center's surveys in each period, per option.",
     measures: [] }),
   // Retention (API only)

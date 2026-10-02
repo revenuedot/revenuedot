@@ -24,6 +24,8 @@ export interface CustomerData {
   subs: SubRow[];
   ones: NonSubRow[];
   tx: TxLite[];
+  /** The customer's first-class attribution row (prd/attribution-benchmarks-insights §1), if any. */
+  attribution: typeof schema.customerAttribution.$inferSelect | null;
 }
 
 const CHUNK = 500;
@@ -36,17 +38,19 @@ async function chunked<T>(ids: string[], load: (part: string[]) => Promise<T[]>)
 /** Aliases, attributes, purchases and transactions of these customers, keyed by customer id. */
 export async function loadCustomerData(db: DB, customers: CustomerRow[]): Promise<Map<string, CustomerData>> {
   const out = new Map<string, CustomerData>();
-  for (const c of customers) out.set(c.id, { customer: c, aliases: [], attributes: {}, attributeTimes: {}, subs: [], ones: [], tx: [] });
+  for (const c of customers) out.set(c.id, { customer: c, aliases: [], attributes: {}, attributeTimes: {}, subs: [], ones: [], tx: [], attribution: null });
   const ids = customers.map((c) => c.id);
   if (!ids.length) return out;
-  const [aliases, attrs, subs, ones, tx] = await Promise.all([
+  const [aliases, attrs, subs, ones, tx, attribution] = await Promise.all([
     chunked(ids, (p) => db.select({ c: schema.customerAliases.customerId, a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(inArray(schema.customerAliases.customerId, p))),
     chunked(ids, (p) => db.select().from(schema.customerAttributes).where(inArray(schema.customerAttributes.customerId, p))),
     chunked(ids, (p) => db.select().from(schema.subscriptions).where(inArray(schema.subscriptions.customerId, p))),
     chunked(ids, (p) => db.select().from(schema.nonSubscriptions).where(inArray(schema.nonSubscriptions.customerId, p))),
     chunked(ids, (p) => db.select({ c: schema.transactions.customerId, usd: schema.transactions.revenueUsd, kind: schema.transactions.kind, sandbox: schema.transactions.isSandbox, at: schema.transactions.purchasedAt, product: schema.transactions.productIdentifier })
       .from(schema.transactions).where(inArray(schema.transactions.customerId, p))),
+    chunked(ids, (p) => db.select().from(schema.customerAttribution).where(inArray(schema.customerAttribution.customerId, p))),
   ]);
+  for (const a of attribution) { const d = out.get(a.customerId); if (d) d.attribution = a; }
   for (const a of aliases) out.get(a.c)?.aliases.push(a.a);
   for (const a of attrs) { const d = out.get(a.customerId); if (d) { d.attributes[a.key] = a.value; d.attributeTimes[a.key] = a.updatedAtMs; } }
   for (const s of subs) out.get(s.customerId)?.subs.push(s);
@@ -83,6 +87,10 @@ export function buildContext(d: CustomerData, now: Date, activeEntitlements: str
   ctx.firstSeenAt = cu.firstSeen.getTime();
   ctx.lastSeenAt = cu.lastSeen.getTime();
   ctx.attributes = { ...d.attributes };
+  const at = d.attribution;
+  ctx.attribution = at
+    ? { mediaSource: at.mediaSource, campaign: at.campaign, adGroup: at.adGroup, ad: at.ad, keyword: at.keyword, creative: at.creative }
+    : { mediaSource: null, campaign: null, adGroup: null, ad: null, keyword: null, creative: null };
   ctx.totalSpent = Math.round(d.tx.filter((t) => !t.sandbox).reduce((s, t) => s + t.usd, 0) * 100) / 100;
   ctx.totalRenewals = d.tx.filter((t) => t.kind === "renewal").length;
   const renewals = d.tx.filter((t) => t.kind === "renewal").map((t) => t.at.getTime());
