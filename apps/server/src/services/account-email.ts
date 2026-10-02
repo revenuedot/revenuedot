@@ -27,10 +27,15 @@ export function linkBase(deps: Pick<Deps, "publicUrl">, requestOrigin?: string):
   return (deps.publicUrl ?? requestOrigin ?? lastOrigin ?? "http://localhost:8787").replace(/\/+$/, "");
 }
 
-/** The origin the browser used, behind a proxy too (X-Forwarded-Host / -Proto). */
+/**
+ * The origin the browser used, behind a proxy too (X-Forwarded-Host / -Proto). Without X-Forwarded-Proto the request's
+ * own scheme is kept, so a plain-http server (local dev, a self-host without TLS) does not hand out https links.
+ */
 export function requestOrigin(url: string, header: (n: string) => string | undefined): string {
-  const host = header("x-forwarded-host");
-  return host ? `${header("x-forwarded-proto") ?? "https"}://${host}` : new URL(url).origin;
+  const host = header("x-forwarded-host")?.split(",")[0]!.trim();
+  if (!host) return new URL(url).origin;
+  const proto = (header("x-forwarded-proto") ?? new URL(url).protocol.replace(":", "")).split(",")[0]!.trim();
+  return `${proto === "http" ? "http" : "https"}://${host}`;
 }
 
 export async function issueToken(db: DB, kind: TokenKind, user: { id: string; email: string }, now: Date): Promise<string> {
