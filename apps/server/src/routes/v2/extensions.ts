@@ -5,6 +5,7 @@ import type { Deps } from "../../context.js";
 import { findCustomer, getOrCreateCustomer } from "../../repo/customers.js";
 import { accessOf } from "../../repo/access.js";
 import { createSecretKey } from "../../services/auth.js";
+import { CONVERTIBLE_CURRENCIES } from "../../services/fx.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { recordDueExpirations } from "../../services/tick.js";
 import { TEST_SCENARIOS, testStoreScenario } from "../../stores/test-store.js";
@@ -42,7 +43,8 @@ const TestPurchase = z.object({
   product_id: z.string().min(1),
   app_id: z.string().min(1).optional(),
   price: z.number().min(0).optional(),
-  currency: z.string().length(3).optional(),
+  currency: z.string().length(3).transform((c) => c.toUpperCase())
+    .refine((c) => CONVERTIBLE_CURRENCIES.has(c), "is not a currency RevenueDot can convert to USD; use an ISO 4217 code such as USD or EUR").optional(),
   purchased_at: z.number().int().optional(),
   presented_offering_id: z.string().optional(),
   /** A lifecycle to simulate (see stores/test-store.ts testStoreScenario); default purchase. */

@@ -235,6 +235,11 @@ describe("dashboard extensions", () => {
     const info = await (await h.fetch("/v1/subscribers/tester")).json();
     expect(info.subscriber.entitlements.pro).toBeDefined();
     expect((await call("POST", `${P}/test_purchases`, {}, { ext: true, json: { app_user_id: "tester", product_id: "pro_annual" } })).body.param).toBe("product_id");
+    // A price in a currency no exchange rate knows would be $0 of revenue: refused. A lower-case code is fine.
+    expect((await call("POST", `${P}/test_purchases`, {}, { ext: true, json: { app_user_id: "tester", product_id: "pro_monthly", price: 4.99, currency: "XYZ" } })).body.param).toBe("currency");
+    const eur = await call("POST", `${P}/test_purchases`, {}, { ext: true, json: { app_user_id: "tester_eur", product_id: "pro_monthly", price: 4.99, currency: "eur" } });
+    expect(eur.status).toBe(201);
+    expect(eur.body.subscription.total_revenue_in_usd.gross).toBeGreaterThan(4.99);
   });
 });
 

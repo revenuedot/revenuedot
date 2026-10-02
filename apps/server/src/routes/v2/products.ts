@@ -3,6 +3,7 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
+import { CONVERTIBLE_CURRENCIES } from "../../services/fx.js";
 import { body, conflict, expands, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
 import { appsById, productShape } from "./shapes.js";
 
@@ -22,7 +23,8 @@ const Duration = z.string().trim().regex(/^P(?=\d)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:
  */
 const TestStorePrice = z.object({
   amount_micros: z.number().int().min(0).max(1e15),
-  currency: z.string().trim().regex(/^[A-Za-z]{3}$/, "must be an ISO 4217 code such as USD").transform((c) => c.toUpperCase()),
+  currency: z.string().trim().regex(/^[A-Za-z]{3}$/, "must be an ISO 4217 code such as USD").transform((c) => c.toUpperCase())
+    .refine((c) => CONVERTIBLE_CURRENCIES.has(c), "is not a currency RevenueDot can convert to USD; use an ISO 4217 code such as USD or EUR"),
 }).nullable();
 
 const ProductCreate = z.object({
