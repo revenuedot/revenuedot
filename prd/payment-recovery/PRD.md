@@ -21,11 +21,12 @@ Scope row: `prd/SCOPE.md` Tier 3 "Revenue recovery: failed-payment recovery, ref
 - **Recovered**: a RENEWAL of the same chain (a new paid period) while the case is open and within the **recovery window** (default 30 days, 7 to 60). The case stores the renewal's transaction and revenue in USD.
 - **Attributed**: recovered after at least one recovery email was sent. Attributed recoveries are the money RevenueDot recovered, the basis for the outcome price. Recoveries without an email (emails off, no address, unsubscribed, or the store's retry won before day 0's email) are shown separately as "recovered without a message".
 - **Lost**: the window passed without a renewal, or the purchase was refunded.
+- A billing issue already older than the window when RevenueDot first sees it (imported history) opens no case, so it never shows up as a fresh loss.
 - Customer merges move cases to the surviving customer.
 
 ### Messages
 - Settings per project (`projects.recovery_settings`): on or off (default **off**), up to 5 steps with a day offset from the start of the billing issue (default day 0, 3 and 7), each with subject, heading, body and button label; sender name (default the project name); the recovery window; whether sandbox cases get emails too (default no, for testing with test-mode Stripe or the Test Store).
-- The tick (every minute; on Workers from the cron only, like win-back) sends due steps: at most 100 emails a tick and 2,000 per project a day. A case that has several steps overdue (emails were just turned on) gets only the latest of them. Before each email the subscription is read again: if the billing issue is gone, the purchase was refunded or the case is closed, nothing is sent.
+- The tick (every minute; on Workers from the cron only, like win-back) sends due steps: at most 100 emails a tick and 2,000 per project a day. A case that has several steps overdue (emails were just turned on) gets only the latest of them. Cases of a project at its daily cap, or with no address for links (self-host without `REVENUEDOT_PUBLIC_URL` and settings never saved from the dashboard), stay due but are not picked, so they never fill the batch and hold back other projects. Before each email the subscription is read again: if the billing issue is gone, the purchase was refunded or the case is closed, nothing is sent.
 - **Address**: the customer's `$email` attribute; for Stripe subscriptions without one, the Stripe customer's email (read once through the app's key or Connect, and kept on the case).
 - **Mailer and sender**: as win-back. Cloudflare Email Sending on Cloud (`no-reply@mail.revenuedot.app`, the app's name as the From name), SMTP or the log on self-host; Reply-To the project's support email from the Customer Center settings.
 - **Unsubscribe**: every email has a one-click unsubscribe link (GET shows a button, POST unsubscribes; `List-Unsubscribe` and `List-Unsubscribe-Post` when the link is https). It adds the address to the project's suppression list, which win-back shares: an unsubscribed address gets no lifecycle email from that project.
@@ -42,7 +43,7 @@ Scope row: `prd/SCOPE.md` Tier 3 "Revenue recovery: failed-payment recovery, ref
 | Stripe (web) | A new Stripe customer portal session for the subscription's customer (`POST /v1/billing_portal/sessions` with `flow_data[type]=payment_method_update` and the app's key or Connect), returning to `/v1/recovery/done/{token}`. When the portal is not set up in the developer's Stripe account, the open invoice's `hosted_invoice_url` instead. Otherwise a page that says to contact the app's support |
 | Test Store | A page that explains this is a test purchase |
 
-Portal sessions expire after a few minutes, so the session is made at the click, never put in the email. The restricted key needs **Customer portal: write** for this; "Check credentials" does not require it.
+Portal sessions expire after a few minutes, so the session is made at the click, never put in the email. Only while the case is open: a lost case's Stripe link says it has expired. The restricted key needs **Customer portal: write** for this; "Check credentials" does not require it.
 
 ### Customer Center path
 While a customer has an open case, customer info carries `management_url` (top level and on that subscription) = the same recovery link with `?via=customer_center`. The SDKs' Customer Center opens `management_url` from "Manage subscription" for purchases it cannot manage natively, so a web (Stripe) subscriber can fix their card from inside the app; App Store and Play customers land on their store's page. Without an open case, `management_url` stays null as before.
@@ -88,3 +89,5 @@ The outcome price is "a share of the money recovered" (`company/docs/business-mo
 - Amazon recovery opens Amazon's subscriptions page; Amazon has no deep link to a payment method.
 - The Stripe portal must be configured in the developer's Stripe account; otherwise the open invoice page is used.
 - Lists scan cases in Postgres per project; very large projects will want rollups.
+- **Decision for Kai (PR #32 review):** the Customer Center link is the case's token, and customer info is readable with the app's public SDK key and the app user id. While a Stripe case is open, anyone who has both can open that customer's Stripe portal session (card, invoices, billing address) or unsubscribe them. Options: keep it (same exposure as customer info today), or send the Customer Center path through a portal login that asks for the customer's email.
+- Attribution uses the time RevenueDot processes the renewal, not when the store charged: a store retry that succeeds just before the day-0 email but is reported after it counts as attributed.
