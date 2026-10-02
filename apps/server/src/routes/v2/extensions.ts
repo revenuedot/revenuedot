@@ -15,6 +15,7 @@ import { sdkVersionsOf } from "../../services/sdk-versions.js";
 import { notificationHealth } from "./notification-health.js";
 import { V2Error, allows, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { customerShape, loadCatalog, notificationStoreOf, storeCredentialsConfigured, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
+import { requestOrigin } from "../../services/account-email.js";
 
 /**
  * RevenueDot extensions to API v2. These paths are NOT in RevenueCat's API; they serve our dashboard and use the
@@ -177,8 +178,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
   r.get(`${P}/setup_health`, scope("project_configuration:apps:read"), async (c) => {
     const projectId = c.get("projectId");
     const now = deps.now();
-    const fwdHost = c.req.header("x-forwarded-host");
-    const origin = fwdHost ? `${c.req.header("x-forwarded-proto") ?? "https"}://${fwdHost}` : new URL(c.req.url).origin;
+    const origin = requestOrigin(c.req.url, (n) => c.req.header(n));
     const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId));
     const appItems = [];
     for (const a of apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) {
