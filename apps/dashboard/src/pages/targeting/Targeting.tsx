@@ -1,30 +1,39 @@
 /**
- * Targeting: /projects/:projectId/targeting (rules in evaluation order, audiences) and Experiments: /experiments,
- * /experiments/:experimentId (variants, status, results).
- * A rule picks the current offering, and an offering per placement, for customers in its audience; the first live rule
- * that matches wins. Experiments split customers between two offerings and report conversion and revenue.
- * GAPS vs RevenueCat: no drag and drop (move up and down instead), no rule scheduling UI beyond start and end dates,
- * one control and one treatment per experiment, no LTV projections.
+ * Targeting: /projects/:projectId/targeting (prd/experiments/PRD.md §6), in RevenueCat's layout. Tabs Live, Scheduled
+ * (turned on, start date ahead), Inactive (turned off or ended) and Audiences. Each rule is a card that reads as
+ * sentences ("If customer matches Gold plan then show promo for onboarding_end; default for all other cases") with a
+ * drag handle (arrow keys too) and a menu: Edit, Turn on / off, Move up / down, Duplicate, Delete. Below the live rules
+ * the default offering: the project's current offering, for customers no rule matches. New rule: from scratch, or
+ * drafted by RevenueDot AI (created turned off, after approval).
+ * Rules are checked from top to bottom; the first live rule that matches decides (services/targeting.ts).
  */
-import { useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmt, type List } from "../../lib/api";
 import { Shell } from "../../components/Shell";
-import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, Tabs, Tag, useProjectId, useSandboxParam, useToast, type MenuItem } from "../../components/ui";
+import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2, type Offering } from "../catalog/lib";
-import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type Groups, type Rules } from "../../components/conditions";
-
-interface Audience { id: string; name: string; rules: Rules; created_at: number; stats?: { total_customers: number; active_subscriptions: number; is_approximate: boolean } }
-interface Rule { id: string; name: string; audience_id: string | null; offering_id: string; placements: Record<string, string | null>; position: number; state: "active" | "inactive"; starts_at: number | null; ends_at: number | null }
-interface Experiment { id: string; name: string; status: "draft" | "running" | "paused" | "stopped"; audience_id: string | null; enrollment_percent: number; variants: { id: "a" | "b"; offering_id: string }[]; started_at: number | null; stopped_at: number | null; created_at: number }
+import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, type Groups } from "../../components/conditions";
+import { useAiStatus } from "../ai/data";
+import { AskDialog } from "../experiments/Experiments";
+import type { Audience, TargetingRule as Rule } from "../experiments/lib";
 
 export { describeRules };
 
 const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
 const useRules = (pid: string) => useQuery({ queryKey: ["targeting-rules", pid], enabled: !!pid, queryFn: async () => (await api<List<Rule>>(`${v2(pid)}/targeting_rules`)).items });
 const useOfferingList = (pid: string) => useQuery({ queryKey: ["offering-list", pid], enabled: !!pid, queryFn: async () => (await api<List<Offering>>(`${v2(pid)}/offerings?limit=100`)).items });
+
+type Phase = "live" | "scheduled" | "inactive";
+/** Where a rule is now: live (on, started, not ended), scheduled (on, starts later) or inactive (off, or ended). */
+export function phaseOf(r: Rule, now = Date.now()): Phase {
+  if (r.state !== "active" || (r.ends_at !== null && r.ends_at <= now)) return "inactive";
+  return r.starts_at !== null && r.starts_at > now ? "scheduled" : "live";
+}
+/** datetime-local value (local time) for an epoch, and back. */
+const toLocal = (ms: number | null) => (ms === null ? "" : new Date(ms - new Date(ms).getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
+const fromLocal = (s: string) => (s ? new Date(s).getTime() : null);
 
 function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; existing?: Audience; onClose: () => void; onSaved: (a: Audience) => void }) {
   const toast = useToast();
@@ -70,19 +79,24 @@ function RuleDialog({ pid, existing, audiences, offerings, onClose }: { pid: str
   const qc = useQueryClient();
   const [name, setName] = useState(existing?.name ?? "");
   const [audience, setAudience] = useState(existing?.audience_id ?? "");
-  const [offering, setOffering] = useState(existing?.offering_id ?? offerings[0]?.id ?? "");
+  const [offering, setOffering] = useState(existing?.offering_id ?? offerings.find((o) => !o.is_current)?.id ?? offerings[0]?.id ?? "");
   const [placements, setPlacements] = useState<[string, string][]>(Object.entries(existing?.placements ?? {}).map(([k, v]) => [k, v ?? ""]));
+  const [starts, setStarts] = useState(toLocal(existing?.starts_at ?? null));
+  const [ends, setEnds] = useState(toLocal(existing?.ends_at ?? null));
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) { setErr("Name the rule."); return; }
     if (placements.some(([k]) => !/^[a-zA-Z0-9_.-]{1,100}$/.test(k))) { setErr("Placement identifiers are letters, digits, dots, dashes or underscores."); return; }
+    if (new Set(placements.map(([k]) => k)).size !== placements.length) { setErr("Each placement can be listed once."); return; }
+    const s = fromLocal(starts), en = fromLocal(ends);
+    if (s !== null && en !== null && en <= s) { setErr("The end must be after the start."); return; }
     setBusy(true); setErr(null);
-    const json = { name: name.trim(), audience_id: audience || null, offering_id: offering, placements: Object.fromEntries(placements.map(([k, v]) => [k, v || null])) };
+    const json = { name: name.trim(), audience_id: audience || null, offering_id: offering, placements: Object.fromEntries(placements.map(([k, v]) => [k, v || null])), starts_at: s, ends_at: en };
     try {
       await api(existing ? `${v2(pid)}/targeting_rules/${existing.id}` : `${v2(pid)}/targeting_rules`, { method: "POST", json });
-      await qc.invalidateQueries({ queryKey: ["targeting-rules", pid] }); toast(existing ? "Rule saved" : "Rule created. It is inactive until you turn it on."); onClose();
+      await qc.invalidateQueries({ queryKey: ["targeting-rules", pid] }); toast(existing ? "Rule saved" : "Rule created. It is off until you turn it on."); onClose();
     } catch (x) { setErr(errMsg(x)); setBusy(false); }
   }
   return (
@@ -93,9 +107,9 @@ function RuleDialog({ pid, existing, audiences, offerings, onClose }: { pid: str
       <form id="rule-form" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Field label="Name" htmlFor="rule-name"><input id="rule-name" className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer sale for Germany" /></Field>
         <Field label="Audience" htmlFor="rule-aud" hint="Who this rule applies to.">
-          <select id="rule-aud" className="select" value={audience} onChange={(e) => setAudience(e.target.value)}><option value="">Everyone</option>{audiences.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+          <select id="rule-aud" className="select" value={audience} onChange={(e) => setAudience(e.target.value)}><option value="">Any audience</option>{audiences.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
         </Field>
-        <Field label="Current offering" htmlFor="rule-off" hint="What Offerings.current returns for them.">
+        <Field label="Current offering" htmlFor="rule-off" hint="What Offerings.current returns for them, and what every placement not listed below shows.">
           <select id="rule-off" className="select" value={offering} onChange={(e) => setOffering(e.target.value)}>{offerings.map((o) => <option key={o.id} value={o.id}>{o.display_name} ({o.lookup_key})</option>)}</select>
         </Field>
         <div>
@@ -112,6 +126,10 @@ function RuleDialog({ pid, existing, audiences, offerings, onClose }: { pid: str
           ))}
           <button type="button" className="btn btn-ghost" onClick={() => setPlacements([...placements, ["", offering]])}><Icon name="plus" />Add a placement</button>
         </div>
+        <div className="xp-grid2">
+          <Field label="Starts" htmlFor="rule-start" hint="Optional. Empty: as soon as it is on."><input id="rule-start" type="datetime-local" className="input" value={starts} onChange={(e) => setStarts(e.target.value)} /></Field>
+          <Field label="Ends" htmlFor="rule-end" hint="Optional. Empty: until you turn it off."><input id="rule-end" type="datetime-local" className="input" value={ends} onChange={(e) => setEnds(e.target.value)} /></Field>
+        </div>
         {err && <div className="banner err" role="alert">{err}</div>}
       </form>
     </Dialog>
@@ -122,47 +140,138 @@ export function TargetingPage() {
   const pid = useProjectId();
   const toast = useToast();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"rules" | "audiences">("rules");
+  const [tab, setTab] = useState<Phase | "audiences">("live");
   const rules = useRules(pid);
   const auds = useAudiences(pid);
   const offs = useOfferingList(pid);
+  const ai = useAiStatus(pid);
   const [dialog, setDialog] = useState<ReactNode>(null);
+  const [drag, setDrag] = useState<{ from: string; over: string | null } | null>(null);
   const close = () => setDialog(null);
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["targeting-rules", pid] }), qc.invalidateQueries({ queryKey: ["audiences", pid] })]);
-  const offName = (id: string | null) => offs.data?.find((o) => o.id === id)?.lookup_key ?? id ?? "—";
-  const audName = (id: string | null) => (id ? auds.data?.find((a) => a.id === id)?.name ?? id : "Everyone");
-  const list = rules.data ?? [];
-  const move = async (i: number, d: -1 | 1) => {
-    const ids = list.map((r) => r.id);
-    [ids[i], ids[i + d]] = [ids[i + d]!, ids[i]!];
-    await api(`${v2(pid)}/targeting_rules/actions/reorder`, { method: "POST", json: { rule_ids: ids } }); await refresh();
+  const offKey = (id: string | null) => offs.data?.find((o) => o.id === id)?.lookup_key ?? id ?? "—";
+  const audName = (id: string | null) => (id ? auds.data?.find((a) => a.id === id)?.name ?? id : "Any audience");
+  const all = (rules.data ?? []).slice().sort((a, b) => a.position - b.position);
+  const now = Date.now();
+  const byPhase = { live: all.filter((r) => phaseOf(r, now) === "live"), scheduled: all.filter((r) => phaseOf(r, now) === "scheduled"), inactive: all.filter((r) => phaseOf(r, now) === "inactive") };
+  const shown = tab === "audiences" ? [] : byPhase[tab];
+  const current = offs.data?.find((o) => o.is_current);
+  const aiOk = !!ai.data?.available && !!ai.data?.can_write;
+
+  /** Reorders the rules of one tab; the other tabs' rules keep their slots in the global order. */
+  const reorder = async (subset: string[]) => {
+    const set = new Set(subset);
+    const queue = [...subset];
+    const ids = all.map((r) => (set.has(r.id) ? queue.shift()! : r.id));
+    qc.setQueryData<Rule[]>(["targeting-rules", pid], (rs) => rs?.map((r) => ({ ...r, position: ids.indexOf(r.id) })));
+    try { await api(`${v2(pid)}/targeting_rules/actions/reorder`, { method: "POST", json: { rule_ids: ids } }); toast("Order saved"); } catch (e) { toast(errMsg(e)); }
+    await refresh();
+  };
+  const move = (id: string, to: number) => {
+    const ids = shown.map((r) => r.id);
+    const from = ids.indexOf(id);
+    if (from < 0 || to < 0 || to >= ids.length || from === to) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]!);
+    void reorder(ids);
+  };
+  const onDrop = (e: DragEvent, target: string) => { e.preventDefault(); if (drag) move(drag.from, shown.findIndex((r) => r.id === target)); setDrag(null); };
+  const setState = async (r: Rule, on: boolean) => {
+    try { await api(`${v2(pid)}/targeting_rules/${r.id}`, { method: "POST", json: { state: on ? "active" : "inactive" } }); await refresh(); toast(on ? (phaseOf({ ...r, state: "active" }) === "scheduled" ? "Rule scheduled" : "Rule is live") : "Rule turned off"); }
+    catch (e) { toast(errMsg(e)); }
+  };
+  const duplicate = async (r: Rule) => {
+    try {
+      await api(`${v2(pid)}/targeting_rules`, { method: "POST", json: { name: `${r.name} (copy)`.slice(0, 256), audience_id: r.audience_id, offering_id: r.offering_id, placements: r.placements, state: "inactive", starts_at: r.starts_at, ends_at: r.ends_at } });
+      await refresh(); toast("Copied. The copy is off, in Inactive.");
+    } catch (e) { toast(errMsg(e)); }
   };
   const ruleMenu = (r: Rule, i: number): (MenuItem | "-")[] => [
-    { label: r.state === "active" ? "Turn off" : "Turn on", icon: r.state === "active" ? "archive" : "refresh", onSelect: async () => { await api(`${v2(pid)}/targeting_rules/${r.id}`, { method: "POST", json: { state: r.state === "active" ? "inactive" : "active" } }); await refresh(); toast(r.state === "active" ? "Rule turned off" : "Rule is live"); } },
     { label: "Edit", icon: "edit", onSelect: () => setDialog(<RuleDialog pid={pid} existing={r} audiences={auds.data ?? []} offerings={offs.data ?? []} onClose={close} />) },
-    { label: "Move up", icon: "up", disabled: i === 0, onSelect: () => move(i, -1) },
-    { label: "Move down", icon: "down", disabled: i === list.length - 1, onSelect: () => move(i, 1) },
-    "-", { label: "Delete", icon: "trash", danger: true, onSelect: () => setDialog(<ConfirmDialog title="Delete this rule?" confirmLabel="Delete rule" danger onClose={close} onConfirm={async () => { await api(`${v2(pid)}/targeting_rules/${r.id}`, { method: "DELETE" }); await refresh(); toast("Rule deleted"); }}><p>Customers it matched get the next matching rule, or the current offering.</p></ConfirmDialog>) },
+    { label: r.state === "active" ? "Turn off" : "Turn on", icon: r.state === "active" ? "archive" : "refresh", onSelect: () => void setState(r, r.state !== "active") },
+    { label: "Move up", icon: "up", disabled: i === 0, onSelect: () => move(r.id, i - 1) },
+    { label: "Move down", icon: "down", disabled: i === shown.length - 1, onSelect: () => move(r.id, i + 1) },
+    { label: "Duplicate", icon: "duplicate", onSelect: () => void duplicate(r) },
+    "-", { label: "Delete", icon: "trash", danger: true, onSelect: () => setDialog(<ConfirmDialog title="Delete this rule?" confirmLabel="Delete rule" danger onClose={close} onConfirm={async () => { await api(`${v2(pid)}/targeting_rules/${r.id}`, { method: "DELETE" }); await refresh(); toast("Rule deleted"); }}><p>Customers it matched get the next matching rule, or the default offering.</p></ConfirmDialog>) },
   ];
+  const setDefault = (id: string) => {
+    const o = offs.data?.find((x) => x.id === id);
+    if (!o || o.is_current) return;
+    setDialog(<ConfirmDialog title={`Make ${o.lookup_key} the default offering?`} confirmLabel="Make default" onClose={close} onConfirm={async () => {
+      await api(`${v2(pid)}/offerings/${o.id}`, { method: "POST", json: { is_current: true } });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["offering-list", pid] }), qc.invalidateQueries({ queryKey: ["catalog", pid] }), qc.invalidateQueries({ queryKey: ["offering-list-full", pid] })]);
+      toast(`${o.lookup_key} is the default offering`);
+    }}><p>Customers who match no live rule (and are in no experiment) see it from their next offerings request. It is also the project's current offering in Product catalog.</p></ConfirmDialog>);
+  };
+  const schedule = (r: Rule) => [r.starts_at ? `${r.starts_at > now ? "Starts" : "Started"} ${fmt.dateTime(r.starts_at)}` : null, r.ends_at ? `${r.ends_at > now ? "ends" : "ended"} ${fmt.dateTime(r.ends_at)}` : null].filter(Boolean).join(", ");
+  const empty: Record<Phase, string> = {
+    live: "No live rules: everyone sees the default offering below. Add a rule to show another offering to an audience, or per placement.",
+    scheduled: "No scheduled rules. A rule that is on with a start date ahead waits here until it starts.",
+    inactive: "No inactive rules. Rules you turn off, and rules past their end date, wait here.",
+  };
+  const newRule = () => setDialog(<RuleDialog pid={pid} audiences={auds.data ?? []} offerings={offs.data ?? []} onClose={close} />);
+
   return (
     <Shell title="Targeting">
       <div className="page">
         <PageHead title="Targeting" sub="Show different offerings to different customers without an app release. Rules are checked from top to bottom; the first live rule that matches decides."
-          actions={tab === "rules"
-            ? <button type="button" className="btn btn-dark" disabled={!offs.data?.length} onClick={() => setDialog(<RuleDialog pid={pid} audiences={auds.data ?? []} offerings={offs.data ?? []} onClose={close} />)}><Icon name="plus" />New rule</button>
+          actions={tab !== "audiences"
+            ? <Menu label="New rule" text="New rule" primary items={[
+                { label: "Create from scratch", icon: "plus", disabled: !offs.data?.length, hint: offs.data?.length ? undefined : "Create an offering first", onSelect: newRule },
+                { label: "Create with RevenueDot AI", icon: "spark", disabled: !aiOk || !offs.data?.length, hint: ai.data && !aiOk ? ai.data.reason ?? "RevenueDot AI is not available here." : undefined, onSelect: () => setDialog(<AskDialog pid={pid} kind="targeting rule" onClose={close} />) },
+              ]} />
             : <button type="button" className="btn btn-dark" onClick={() => setDialog(<AudienceDialog pid={pid} onClose={close} onSaved={() => refresh()} />)}><Icon name="plus" />New audience</button>} />
-        <Tabs label="Targeting" idBase="targeting" value={tab} tabs={[{ value: "rules", label: "Rules" }, { value: "audiences", label: "Audiences" }]} onChange={setTab} />
-        {tab === "rules" ? (rules.isLoading ? <div className="panel pb subtle">Loading…</div> : !list.length ? (
-          <EmptyState title="No targeting rules" text={offs.data?.length ? "Everyone sees the current offering. Add a rule to show another offering to an audience, or per placement." : "Create an offering first."} />
-        ) : (
-          <DataTable rowKey={(r) => r.id} rows={list} columns={[
-            { key: "n", header: "#", render: (r) => r.position + 1 },
-            { key: "name", header: "Rule", render: (r) => r.name },
-            { key: "aud", header: "Audience", render: (r) => audName(r.audience_id) },
-            { key: "off", header: "Offering", render: (r) => <><code>{offName(r.offering_id)}</code>{Object.keys(r.placements).length ? <span className="subtle"> · {Object.keys(r.placements).length} placement{Object.keys(r.placements).length === 1 ? "" : "s"}</span> : null}</> },
-            { key: "state", header: "State", render: (r) => <Tag tone={r.state === "active" ? "up" : "muted"}>{r.state === "active" ? "Live" : "Off"}</Tag> },
-            { key: "menu", header: "", align: "right", render: (r) => <Menu label={`Actions for ${r.name}`} items={ruleMenu(r, list.indexOf(r))} /> },
-          ]} />
+        <Tabs label="Targeting" idBase="targeting" value={tab} onChange={setTab} tabs={[
+          { value: "live", label: `Live · ${byPhase.live.length}` }, { value: "scheduled", label: `Scheduled · ${byPhase.scheduled.length}` },
+          { value: "inactive", label: `Inactive · ${byPhase.inactive.length}` }, { value: "audiences", label: "Audiences" },
+        ]} />
+        {tab !== "audiences" ? (rules.isLoading || offs.isLoading ? <div className="panel pb subtle">Loading…</div> : (
+          <div role="tabpanel" id={`targeting-${tab}-panel`} aria-labelledby={`targeting-${tab}`} className="tg-stack">
+            {!shown.length ? <EmptyState title={`No ${tab} rules`} text={offs.data?.length ? empty[tab] : "Create an offering first."} /> : (
+              <ol className="tg-list">
+                {shown.map((r, i) => {
+                  const pls = Object.entries(r.placements);
+                  return (
+                    <li key={r.id} className={`tg-card${drag?.from === r.id ? " dragging" : ""}${drag?.over === r.id && drag.from !== r.id ? " over" : ""}`} aria-label={`Rule ${r.name}`}
+                      onDragOver={(e) => { if (drag) { e.preventDefault(); if (drag.over !== r.id) setDrag({ ...drag, over: r.id }); } }} onDrop={(e) => onDrop(e, r.id)}>
+                      <div className="tg-card-h">
+                        <button type="button" className="ib grip" draggable aria-label={`Move ${r.name}. Use the up and down arrow keys.`} title="Drag to reorder" data-grip={r.id}
+                          onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.id); setDrag({ from: r.id, over: null }); }}
+                          onDragEnd={() => setDrag(null)}
+                          onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); move(r.id, i + (e.key === "ArrowUp" ? -1 : 1)); requestAnimationFrame(() => (document.querySelector(`[data-grip="${r.id}"]`) as HTMLElement | null)?.focus()); } }}>
+                          <Icon name="grip" />
+                        </button>
+                        <span className="pos mono">{i + 1}</span>
+                        <b className="tg-name">{r.name}</b>
+                        {schedule(r) && <span className="subtle tg-when">{schedule(r)}</span>}
+                        <Tag tone={tab === "live" ? "up" : tab === "scheduled" ? "info" : "muted"}>{tab === "live" ? "Live" : tab === "scheduled" ? "Scheduled" : r.state === "active" ? "Ended" : "Off"}</Tag>
+                        <Menu label={`Actions for ${r.name}`} items={ruleMenu(r, i)} />
+                      </div>
+                      <div className="tg-card-b">
+                        <p>If customer matches <b>{audName(r.audience_id)}</b> then show</p>
+                        <ul>
+                          {pls.map(([p, o]) => <li key={p}>{o ? <code>{offKey(o)}</code> : <b>no paywall</b>} for <code>{p}</code></li>)}
+                          <li><code>{offKey(r.offering_id)}</code> for {pls.length ? "all other cases" : "every placement"}</li>
+                        </ul>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            {tab === "live" && offs.data?.length ? (
+              <section className="panel tg-default" aria-labelledby="tg-default">
+                <div className="ph"><b id="tg-default">Default offering</b></div>
+                <div className="pb">
+                  <Field label="Select default offering" htmlFor="tg-default-off" hint="Show the selected offering to customers who don't match any of the rules above.">
+                    <select id="tg-default-off" className="select" value={current?.id ?? ""} onChange={(e) => setDefault(e.target.value)}>
+                      {!current && <option value="" disabled>Choose an offering</option>}
+                      {offs.data.filter((o) => o.state !== "inactive" || o.is_current).map((o) => <option key={o.id} value={o.id}>{o.display_name} ({o.lookup_key})</option>)}
+                    </select>
+                  </Field>
+                </div>
+              </section>
+            ) : null}
+          </div>
         )) : (auds.isLoading ? <div className="panel pb subtle">Loading…</div> : !auds.data?.length ? (
           <EmptyState title="No audiences" text="An audience is a set of conditions on customers, such as country, app version, subscription status or a custom attribute." />
         ) : (
@@ -177,131 +286,6 @@ export function TargetingPage() {
         ))}
       </div>
       {dialog}
-    </Shell>
-  );
-}
-
-// ---- Experiments ----
-
-const STATUS_TONE: Record<Experiment["status"], "up" | "gold" | "muted" | "info"> = { draft: "muted", running: "up", paused: "gold", stopped: "info" };
-
-function ExperimentDialog({ pid, audiences, offerings, onClose }: { pid: string; audiences: Audience[]; offerings: Offering[]; onClose: () => void }) {
-  const nav = useNavigate();
-  const [name, setName] = useState("");
-  const [a, setA] = useState(offerings.find((o) => o.is_current)?.id ?? offerings[0]?.id ?? "");
-  const [b, setB] = useState(offerings.find((o) => !o.is_current)?.id ?? "");
-  const [audience, setAudience] = useState("");
-  const [pct, setPct] = useState("100");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) { setErr("Name the experiment."); return; }
-    if (!a || !b || a === b) { setErr("Pick two different offerings."); return; }
-    const n = Number(pct);
-    if (!Number.isInteger(n) || n < 1 || n > 100) { setErr("Enrollment is a whole percentage from 1 to 100."); return; }
-    setBusy(true); setErr(null);
-    try { const x = await api<Experiment>(`${v2(pid)}/experiments`, { method: "POST", json: { name: name.trim(), offering_a: a, offering_b: b, audience_id: audience || null, enrollment_percent: n } }); nav(`/projects/${pid}/experiments/${x.id}`); }
-    catch (x) { setErr(errMsg(x)); setBusy(false); }
-  }
-  return (
-    <Dialog title="New experiment" onClose={onClose} footer={<>
-      <button type="button" className="btn btn-line" onClick={onClose}>Cancel</button>
-      <button type="submit" form="exp-form" className="btn btn-dark" disabled={busy}>{busy ? "Creating…" : "Create"}</button>
-    </>}>
-      <form id="exp-form" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Field label="Name" htmlFor="exp-name"><input id="exp-name" className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Annual plan first" /></Field>
-        <Field label="Control (a)" htmlFor="exp-a"><select id="exp-a" className="select" value={a} onChange={(e) => setA(e.target.value)}>{offerings.map((o) => <option key={o.id} value={o.id}>{o.lookup_key}</option>)}</select></Field>
-        <Field label="Treatment (b)" htmlFor="exp-b"><select id="exp-b" className="select" value={b} onChange={(e) => setB(e.target.value)}><option value="">Choose an offering</option>{offerings.map((o) => <option key={o.id} value={o.id}>{o.lookup_key}</option>)}</select></Field>
-        <Field label="Audience" htmlFor="exp-aud"><select id="exp-aud" className="select" value={audience} onChange={(e) => setAudience(e.target.value)}><option value="">Everyone</option>{audiences.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-        <Field label="Enroll this share of customers (%)" htmlFor="exp-pct" hint="Customers who are not enrolled see the normal offering."><input id="exp-pct" className="input" inputMode="numeric" value={pct} onChange={(e) => setPct(e.target.value)} /></Field>
-        {err && <div className="banner err" role="alert">{err}</div>}
-      </form>
-    </Dialog>
-  );
-}
-
-export function ExperimentsPage() {
-  const pid = useProjectId();
-  const nav = useNavigate();
-  const q = useQuery({ queryKey: ["experiments", pid], enabled: !!pid, queryFn: async () => (await api<List<Experiment>>(`${v2(pid)}/experiments?limit=100`)).items });
-  const auds = useAudiences(pid);
-  const offs = useOfferingList(pid);
-  const [creating, setCreating] = useState(false);
-  const offName = (id: string) => offs.data?.find((o) => o.id === id)?.lookup_key ?? id;
-  return (
-    <Shell title="Experiments">
-      <div className="page">
-        <PageHead title="Experiments" sub="Test two offerings against each other. Each customer always sees the same one, and results compare conversion and revenue."
-          actions={<button type="button" className="btn btn-dark" disabled={(offs.data?.length ?? 0) < 2} onClick={() => setCreating(true)}><Icon name="plus" />New experiment</button>} />
-        {q.isLoading ? <div className="panel pb subtle">Loading…</div> : !q.data?.length ? (
-          <EmptyState title="No experiments yet" text={(offs.data?.length ?? 0) < 2 ? "Create two offerings to compare, then start an experiment." : "Pick a control and a treatment offering and start the test."} />
-        ) : (
-          <DataTable rowKey={(x) => x.id} rows={q.data.slice().sort((a, b) => b.created_at - a.created_at)} onRowClick={(x) => nav(`/projects/${pid}/experiments/${x.id}`)} columns={[
-            { key: "name", header: "Experiment", render: (x) => x.name },
-            { key: "v", header: "Offerings", render: (x) => <><code>{offName(x.variants[0]!.offering_id)}</code> vs <code>{offName(x.variants[1]!.offering_id)}</code></> },
-            { key: "s", header: "Status", render: (x) => <Tag tone={STATUS_TONE[x.status]}>{x.status[0]!.toUpperCase() + x.status.slice(1)}</Tag> },
-            { key: "d", header: "Started", render: (x) => fmt.date(x.started_at) },
-          ]} />
-        )}
-      </div>
-      {creating && <ExperimentDialog pid={pid} audiences={auds.data ?? []} offerings={offs.data ?? []} onClose={() => setCreating(false)} />}
-    </Shell>
-  );
-}
-
-interface Results { variants: { items: { id: "a" | "b"; offering_id: string; customers: number; conversions: number; trials: number; conversion_rate: number; revenue: number; revenue_per_customer: number }[] }; chance_b_beats_a: number; enough_data: boolean }
-
-export function ExperimentDetail() {
-  const pid = useProjectId();
-  const { experimentId = "" } = useParams();
-  const nav = useNavigate();
-  const toast = useToast();
-  const qc = useQueryClient();
-  // Kept in the URL as `?environment=sandbox`, like every Sandbox data switch.
-  const [sandbox, setSandbox] = useSandboxParam();
-  const env = sandbox ? "sandbox" : "production";
-  const x = useQuery({ queryKey: ["experiment", pid, experimentId], queryFn: () => api<Experiment>(`${v2(pid)}/experiments/${experimentId}`) });
-  const res = useQuery({ queryKey: ["experiment-results", pid, experimentId, env], queryFn: () => api<Results>(`${v2(pid)}/experiments/${experimentId}/results?environment=${env}`) });
-  const offs = useOfferingList(pid);
-  const [confirm, setConfirm] = useState<ReactNode>(null);
-  const offName = (id: string) => offs.data?.find((o) => o.id === id)?.lookup_key ?? id;
-  const act = async (action: "start" | "pause" | "stop") => {
-    await api(`${v2(pid)}/experiments/${experimentId}/actions/${action}`, { method: "POST" });
-    await qc.invalidateQueries({ queryKey: ["experiment", pid, experimentId] }); await qc.invalidateQueries({ queryKey: ["experiments", pid] });
-    toast(action === "start" ? "Experiment running" : action === "pause" ? "Paused: nobody new is enrolled" : "Experiment stopped");
-  };
-  const e = x.data;
-  const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
-  return (
-    <Shell title={e?.name ?? "Experiment"} crumbs={<><Link className="cat-crumb-up" to={`/projects/${pid}/experiments`}>Experiments</Link> <span className="cat-crumb-up">/</span> <b className="cat-crumb">{e?.name ?? ""}</b></>}>
-      <div className="page">
-        <PageHead title={e?.name ?? "Experiment"} sub={e ? <Tag tone={STATUS_TONE[e.status]}>{e.status[0]!.toUpperCase() + e.status.slice(1)}</Tag> : undefined} actions={e ? (
-          <div style={{ display: "flex", gap: 8 }}>
-            {(e.status === "draft" || e.status === "paused") && <button type="button" className="btn btn-dark" onClick={() => act("start")}>{e.status === "draft" ? "Start" : "Resume"}</button>}
-            {e.status === "running" && <button type="button" className="btn btn-line" onClick={() => act("pause")}>Pause</button>}
-            {(e.status === "running" || e.status === "paused") && <button type="button" className="btn btn-line" onClick={() => setConfirm(<ConfirmDialog title="Stop this experiment?" confirmLabel="Stop" danger onClose={() => setConfirm(null)} onConfirm={() => act("stop")}><p>Customers go back to the normal offering. A stopped experiment cannot restart.</p></ConfirmDialog>)}>Stop</button>}
-            {e.status !== "running" && <button type="button" className="btn btn-ghost" onClick={() => setConfirm(<ConfirmDialog title="Delete this experiment?" confirmLabel="Delete" danger onClose={() => setConfirm(null)} onConfirm={async () => { await api(`${v2(pid)}/experiments/${experimentId}`, { method: "DELETE" }); await qc.invalidateQueries({ queryKey: ["experiments", pid] }); nav(`/projects/${pid}/experiments`); }}><p>Its enrollments and results are deleted.</p></ConfirmDialog>)}>Delete</button>}
-          </div>) : undefined} />
-        {e && (
-          <Panel title="Results" link={<select aria-label="Environment" className="select" value={env} onChange={(ev) => setSandbox(ev.target.value === "sandbox")}><option value="production">Production</option><option value="sandbox">Sandbox</option></select>}>
-            {res.isLoading || !res.data ? <div className="pb subtle">Loading…</div> : (
-              <>
-                <DataTable rowKey={(v) => v.id} rows={res.data.variants.items} columns={[
-                  { key: "v", header: "Variant", render: (v) => <>{v.id === "a" ? "Control" : "Treatment"} <code>{offName(v.offering_id)}</code></> },
-                  { key: "c", header: "Customers", align: "right", render: (v) => fmt.int(v.customers) },
-                  { key: "cv", header: "Converted", align: "right", render: (v) => `${fmt.int(v.conversions)} (${pct(v.conversion_rate)})` },
-                  { key: "t", header: "Trials", align: "right", render: (v) => fmt.int(v.trials) },
-                  { key: "r", header: "Revenue", align: "right", render: (v) => fmt.usd(v.revenue, true) },
-                  { key: "rpc", header: "Per customer", align: "right", render: (v) => fmt.usd(v.revenue_per_customer, true) },
-                ]} />
-                <p className="pb" style={{ margin: 0 }}>Chance the treatment converts better: <b>{pct(res.data.chance_b_beats_a)}</b>.{!res.data.enough_data && <span className="subtle"> Too early to call: wait for at least 100 customers in each variant.</span>}</p>
-              </>
-            )}
-          </Panel>
-        )}
-      </div>
-      {confirm}
     </Shell>
   );
 }

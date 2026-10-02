@@ -519,7 +519,7 @@ export function CustomerDetail() {
               ) : s.current_offering && s.current_offering.source !== "default" ? (
                 <div className="erow"><div><b>{s.current_offering.display_name}</b> <span className="mono subtle" style={{ fontSize: 12 }}>{s.current_offering.lookup_key}</span>
                   <span className="dt">{s.current_offering.source === "experiment"
-                    ? <>Variant {s.current_offering.variant?.toUpperCase()} of the experiment <Link className="ul" to={`/projects/${pid}/experiments/${s.current_offering.experiment_id}`}>{s.current_offering.experiment_name ?? s.current_offering.experiment_id}</Link></>
+                    ? <>Variant {s.current_offering.variant?.toUpperCase()}{s.current_offering.variant_name ? ` (${s.current_offering.variant_name})` : ""} of the experiment <Link className="ul" to={`/projects/${pid}/experiments/${s.current_offering.experiment_id}`}>{s.current_offering.experiment_name ?? s.current_offering.experiment_id}</Link></>
                     : <>From the targeting rule <Link className="ul" to={`/projects/${pid}/targeting`}>{s.current_offering.rule_name ?? s.current_offering.rule_id}</Link></>}</span></div>
                   <Tag tone="gold">{s.current_offering.source === "experiment" ? "Experiment" : "Targeting"}</Tag></div>
               ) : (
