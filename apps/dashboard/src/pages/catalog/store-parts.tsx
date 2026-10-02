@@ -3,7 +3,7 @@
  * leads with ("$89.99/year" over the identifier), the store status tag, each app's price source line with Refresh, and
  * the "New …" menu with Create from scratch and Create with AI.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, fmt } from "../../lib/api";
@@ -51,22 +51,30 @@ export function PriceSource({ pid, app, sync, canEdit }: { pid: string; app: App
   const qc = useQueryClient();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  if (!sync) return null;
   const store = app.type === "play_store" ? "Google Play" : "App Store Connect";
-  const refresh = async () => {
+  const refresh = async (quiet = false) => {
     setBusy(true);
     try {
       const r = await api<{ items: unknown[] }>(`${v2(pid)}/apps/${app.id}/store_prices/actions/refresh`, { method: "POST" });
-      toast(`Read ${r.items.length} products from ${store}`);
-    } catch (e) { toast(errMsg(e)); }
+      if (!quiet) toast(`Read ${r.items.length} products from ${store}`);
+    } catch (e) { if (!quiet) toast(errMsg(e)); }
     await qc.invalidateQueries({ queryKey: catalogKey(pid) });
     setBusy(false);
   };
+  // Prices never read for this app: an admin or developer opening the page reads them once (the tick refreshes them daily after).
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current || !canEdit || sync?.status !== "never" || !sync.can_read_prices) return;
+    asked.current = true;
+    void refresh(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sync?.status, sync?.can_read_prices, canEdit]);
+  if (!sync) return null;
   let text: ReactNode;
   if (!sync.can_read_prices) {
     text = <><Icon name="warn" /><span>{sync.reason} <Link className="cat-lnk" to={`/projects/${pid}/apps/${app.id}`}>App settings</Link></span></>;
   } else if (sync.status === "never") {
-    text = <span>Prices and status have not been read from {store} yet.</span>;
+    text = <span>{busy ? `Reading prices and status from ${store}…` : `Prices and status have not been read from ${store} yet.`}</span>;
   } else if (sync.status === "failing") {
     text = <><Icon name="warn" /><span className="cat-err">The last read from {store} failed {fmt.ago(sync.refreshed_at)}: {sync.error}</span></>;
   } else {
@@ -76,7 +84,7 @@ export function PriceSource({ pid, app, sync, canEdit }: { pid: string; app: App
     <div className="cat-pricesrc" data-testid={`price-source-${app.id}`}>
       {text}
       {sync.can_read_prices && canEdit && (
-        <button type="button" className="btn btn-ghost" onClick={refresh} disabled={busy} aria-label={`Refresh prices of ${app.name}`}><Icon name="refresh" />{busy ? "Reading…" : "Refresh prices"}</button>
+        <button type="button" className="btn btn-ghost" onClick={() => void refresh()} disabled={busy} aria-label={`Refresh prices of ${app.name}`}><Icon name="refresh" />{busy ? "Reading…" : "Refresh prices"}</button>
       )}
     </div>
   );

@@ -184,6 +184,7 @@ function argText(v: unknown): string {
   if (Array.isArray(v) && v.every((x) => typeof x !== "object" || x === null)) return v.join(", ");
   const o = v as Record<string, unknown>;
   if (typeof o.amount === "number" && typeof o.currency === "string") return `${o.amount} ${o.currency}`;
+  if (!Array.isArray(v)) return Object.entries(o).filter(([, x]) => x !== undefined && x !== null && x !== "").map(([k, x]) => `${k}: ${typeof x === "object" ? JSON.stringify(x) : String(x)}`).join(" · ");
   return JSON.stringify(v);
 }
 /** A list of objects (the products of create-products, the packages of create-offering) as a small table. */

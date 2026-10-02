@@ -14,7 +14,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmt, type List } from "../../lib/api";
 import { Shell } from "../../components/Shell";
-import { Check, ConfirmDialog, EmptyState, PageHead, Panel, Segmented, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
+import { Check, ConfirmDialog, DataTable, EmptyState, PageHead, Segmented, Tabs, Tag, useProjectId, useToast, type Column } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { AppName, CatalogCrumbs, LoadError, LoadingRows } from "./parts";
 import { PRICE_STORES, catalogKey, durationLabel, errMsg, priceLabel, storeStatus, typeLabel, useApps, useStorePrices, v2, type App, type PriceSync, type StoreListing } from "./lib";
@@ -42,6 +42,18 @@ const STATUS_TAG: Record<Edit["status"], [string, "up" | "down" | "info" | "gold
   partially_committed: ["Partly committed", "down"], failed: ["Failed", "down"],
 };
 const MAX_BYTES = 1_000_000;
+type Dir = "asc" | "desc";
+/** One sort state for a table: the column and direction, and the header props DataTable's sortable headers take. */
+function useSort<K extends string>(initial: { key: K; dir: Dir }) {
+  const [sort, setSort] = useState(initial);
+  const of = (key: K) => ({ direction: sort.key === key ? sort.dir : null, onSort: () => setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" })) });
+  const cmp = <T,>(get: (x: T) => string | number | null) => (a: T, b: T) => {
+    const x = get(a), y = get(b);
+    const r = x === null ? (y === null ? 0 : 1) : y === null ? -1 : typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+    return sort.dir === "asc" ? r : -r;
+  };
+  return { sort, of, cmp };
+}
 const money = (micros: number | null, currency: string) => (micros === null ? "—" : priceLabel({ amount_micros: micros, currency }));
 const storeOf = (a: App): StoreKey => (a.type === "play_store" ? "play_store" : "app_store");
 
@@ -141,19 +153,11 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const sorter = useSort<"product" | "price" | "status">({ key: "product", dir: "asc" });
   const items = useMemo(() => [...(listings ?? [])].sort((a, b) => Number(b.editable) - Number(a.editable) || a.store_identifier.localeCompare(b.store_identifier)), [listings]);
   const choosable = items.filter((i) => i.editable);
   const play = app.type === "play_store";
   const store = STORE_NAME[storeOf(app)];
-  // Prices never read for this app: read them once when an editor opens the page.
-  const asked = useRef(false);
-  useEffect(() => {
-    if (asked.current || !canEdit || sync?.status !== "never" || !sync.can_read_prices) return;
-    asked.current = true;
-    void api(`${v2(pid)}/apps/${encodeURIComponent(app.id)}/store_prices/actions/refresh`, { method: "POST" })
-      .catch((e) => toast(errMsg(e))).finally(() => qc.invalidateQueries({ queryKey: catalogKey(pid) }));
-  }, [sync?.status, sync?.can_read_prices, canEdit, pid, app.id, qc, toast]);
-
   if (sync && !sync.can_read_prices) {
     return (
       <div className="banner warn pe-cant" role="alert" data-testid="pe-no-key">
@@ -174,7 +178,8 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast(`Downloaded ${name}`);
-      await qc.invalidateQueries({ queryKey: catalogKey(pid) });
+      // The download read the store again: show the fresh prices (without holding the button).
+      void qc.invalidateQueries({ queryKey: [...catalogKey(pid), "store-prices"] });
     } catch (e) { toast(errMsg(e)); }
     setBusy(null);
   };
@@ -190,38 +195,45 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
     } catch (e) { setUploadError(errMsg(e)); setBusy(null); }
   };
   const allOn = choosable.length > 0 && choosable.every((i) => sel.has(i.store_identifier));
+  const picked = [...sel].filter((x) => choosable.some((c) => c.store_identifier === x)).length;
+  const toggle = (i: StoreListing) => {
+    if (!i.editable) return;
+    const n = new Set(sel);
+    if (n.has(i.store_identifier)) n.delete(i.store_identifier); else n.add(i.store_identifier);
+    setSel(n);
+  };
+  const off = (i: StoreListing) => (i.editable ? "" : "pe-off");
+  const columns: Column<StoreListing>[] = [
+    {
+      key: "pick", header: "Select", className: "pe-w-check",
+      headerExtra: <input type="checkbox" aria-label="Select all products" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(choosable.map((c) => c.store_identifier)))} disabled={!choosable.length} />,
+      render: (i) => <input type="checkbox" aria-label={`Select ${i.store_identifier}`} checked={sel.has(i.store_identifier)} disabled={!i.editable} onChange={() => toggle(i)} onClick={(e) => e.stopPropagation()} />,
+    },
+    {
+      key: "product", header: "Product", sort: sorter.of("product"),
+      render: (i) => <span className={`cat-cell ${off(i)}`} title={i.editable ? undefined : play && i.type === "one_time" ? "Play Store one-time purchases aren't supported yet." : i.note ?? "This product cannot be edited here."}><span className="cat-t">{i.display_name ?? i.store_identifier}</span><span className="cat-s">{i.store_identifier}</span></span>,
+    },
+    { key: "type", header: "Type", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (i) => <span className={off(i)}>{typeLabel(i.type)}{i.duration ? <span className="subtle"> · {durationLabel(i.duration)}</span> : null}</span> },
+    { key: "price", header: "Price", sort: sorter.of("price"), render: (i) => <span className={`mono ${off(i)}`}>{i.price ? priceLabel(i.price) : <span className="subtle">No price</span>}{i.price?.territory && <span className="subtle"> {i.price.territory}</span>}</span> },
+    { key: "terr", header: "Territories", align: "right", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (i) => <span className="num">{i.prices.length}</span> },
+    { key: "status", header: "Status", sort: sorter.of("status"), className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (i) => { const st = storeStatus(i.status); return st ? <Tag tone={st.tone}>{st.label}</Tag> : "—"; } },
+  ];
+  const ordered = [...items].sort(sorter.sort.key === "product" ? sorter.cmp((i: StoreListing) => i.display_name ?? i.store_identifier)
+    : sorter.sort.key === "price" ? sorter.cmp((i: StoreListing) => (i.price && i.price.currency === "USD" ? i.price.amount_micros : i.price ? i.price.amount_micros / 1e6 : null))
+      : sorter.cmp((i: StoreListing) => storeStatus(i.status)?.label ?? null));
   return (
     <div className="pe-products">
-      <Panel flush title={<span>{choosable.length ? `${[...sel].filter((x) => choosable.some((c) => c.store_identifier === x)).length} selected of ${choosable.length} products` : "Products"}</span>}
-        link={<button type="button" className="btn btn-dark" disabled={!sel.size || busy !== null} onClick={download}><Icon name="download" />{busy === "download" ? "Preparing…" : "Download .csv"}</button>}>
-        <PriceSource pid={pid} app={app} sync={sync} canEdit={canEdit} />
+      <div className="pe-bar">
+        <b data-testid="pe-count">{choosable.length ? `${picked} selected of ${choosable.length} products` : "No products to select"}</b>
+        <span className="grow" />
+        <button type="button" className="btn btn-dark" disabled={!picked || busy !== null} onClick={download}><Icon name="download" />{busy === "download" ? "Preparing…" : "Download .csv"}</button>
+      </div>
+      <div className="panel pe-src"><PriceSource pid={pid} app={app} sync={sync} canEdit={canEdit} />
         {play && <div className="pb cat-note" data-testid="pe-play-note"><Icon name="warn" />Play Store one-time purchases aren't supported yet. Their prices are shown but cannot be selected.</div>}
-        {loading ? <LoadingRows label="Loading products" rows={4} /> : !items.length ? (
-          <div className="pb cat-note">{sync?.status === "never" ? `No products have been read from ${store} yet. Refresh prices to read them.` : `${store} has no products for this app yet. Add a row with action create to the CSV to make one.`}</div>
-        ) : (
-          <div className="tbl"><table className="pe-table">
-            <thead><tr>
-              <th className="pe-w-check"><input type="checkbox" aria-label="Select all products" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(choosable.map((c) => c.store_identifier)))} disabled={!choosable.length} /></th>
-              <th>Product</th><th className="cat-hide-sm pe-w-type">Type</th><th className="pe-w-price">Price</th><th className="cat-hide-sm pe-w-terr">Territories</th><th className="pe-w-stat cat-hide-sm">Status</th>
-            </tr></thead>
-            <tbody>{items.map((i) => {
-              const st = storeStatus(i.status);
-              const on = sel.has(i.store_identifier);
-              const toggle = () => { if (!i.editable) return; const n = new Set(sel); if (on) n.delete(i.store_identifier); else n.add(i.store_identifier); setSel(n); };
-              return (
-                <tr key={i.store_identifier} className={i.editable ? "row" : "pe-off"} onClick={toggle} title={i.editable ? undefined : play && i.type === "one_time" ? "Play Store one-time purchases aren't supported yet." : i.note ?? "This product cannot be edited here."}>
-                  <td><input type="checkbox" aria-label={`Select ${i.store_identifier}`} checked={on} disabled={!i.editable} onChange={toggle} onClick={(e) => e.stopPropagation()} /></td>
-                  <td><span className="cat-cell"><span className="cat-t">{i.display_name ?? i.store_identifier}</span><span className="cat-s">{i.store_identifier}</span></span></td>
-                  <td className="cat-hide-sm">{typeLabel(i.type)}{i.duration ? <span className="subtle"> · {durationLabel(i.duration)}</span> : null}</td>
-                  <td className="mono">{i.price ? `${priceLabel(i.price)}` : <span className="subtle">No price</span>}{i.price?.territory && <span className="subtle"> {i.price.territory}</span>}</td>
-                  <td className="num cat-hide-sm">{i.prices.length}</td>
-                  <td className="cat-hide-sm">{st ? <Tag tone={st.tone}>{st.label}</Tag> : "—"}</td>
-                </tr>
-              );
-            })}</tbody>
-          </table></div>
-        )}
-      </Panel>
+      </div>
+      {loading ? <LoadingRows label="Loading products" rows={4} /> : !items.length ? (
+        <div className="panel"><div className="pb cat-note">{sync?.status === "never" ? `Reading products from ${store}…` : `${store} has no products for this app yet. Add a row with action create to the CSV to make one.`}</div></div>
+      ) : <div className="pe-table"><DataTable columns={columns} rows={ordered} rowKey={(i) => i.store_identifier} onRowClick={toggle} /></div>}
       <section className="pe-upload" aria-label="Upload a product file">
         <h2>Upload the edited file</h2>
         <p className="cat-lead">Change the <code>price</code> column, or add rows with <code>action</code> set to <code>create</code> for new products. Territories use {play ? "Google Play's two-letter region codes (US, GB)" : "App Store Connect's three-letter codes (USA, GBR)"}. <a className="cat-lnk" href="https://revenuedot.app/docs/guides/product-editor" target="_blank" rel="noreferrer">CSV format</a></p>
@@ -241,28 +253,20 @@ function ProductsTab({ pid, app, sync, listings, loading, canEdit, preselect, on
 }
 
 function FilesTab({ files, onOpen }: { files: ReturnType<typeof useQuery<Edit[]>>; onOpen: (id: string) => void }) {
+  const sorter = useSort<"uploaded" | "status" | "file">({ key: "uploaded", dir: "desc" });
   if (files.isError) return <LoadError error={files.error} retry={() => files.refetch()} />;
   if (files.isLoading) return <LoadingRows label="Loading files" rows={3} />;
   const list = files.data ?? [];
   if (!list.length) return <div className="panel"><div className="pb cat-note">No files uploaded for this app yet. Download a CSV on the Products tab, change it, and upload it.</div></div>;
-  return (
-    <div className="panel"><div className="tbl"><table className="pe-files">
-      <thead><tr><th>File</th><th className="cat-hide-sm">Uploaded</th><th>Status</th><th className="cat-hide-sm amt">Changes</th><th className="amt cat-hide-sm">Results</th></tr></thead>
-      <tbody>{list.map((f) => {
-        const [label, tone] = STATUS_TAG[f.status] ?? [f.status, "muted"];
-        const changes = (f.summary.price_changes ?? 0) + (f.summary.new_product_prices ?? 0);
-        return (
-          <tr key={f.id} className="row" tabIndex={0} onClick={() => onOpen(f.id)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(f.id); }}>
-            <td><span className="cat-cell"><button type="button" className="cat-lnk cat-t pe-linkbtn" onClick={(e) => { e.stopPropagation(); onOpen(f.id); }}>{f.file_name}</button><span className="cat-s">{f.id}</span></span></td>
-            <td className="cat-hide-sm"><span className="cat-cell"><span>{fmt.dateTime(f.created_at)}</span><span className="cat-s">{f.created_by_email ?? "API key"}</span></span></td>
-            <td><Tag tone={tone}>{label}</Tag></td>
-            <td className="amt num cat-hide-sm">{f.status === "invalid" ? `${f.errors.length} errors` : changes}</td>
-            <td className="amt num cat-hide-sm">{f.results && (f.results.succeeded || f.results.failed) ? <>{f.results.succeeded} ok{f.results.failed ? <span className="down"> · {f.results.failed} failed</span> : null}</> : "—"}</td>
-          </tr>
-        );
-      })}</tbody>
-    </table></div></div>
-  );
+  const ordered = [...list].sort(sorter.sort.key === "uploaded" ? sorter.cmp((f: Edit) => f.created_at) : sorter.sort.key === "status" ? sorter.cmp((f: Edit) => STATUS_TAG[f.status]?.[0] ?? f.status) : sorter.cmp((f: Edit) => f.file_name));
+  const columns: Column<Edit>[] = [
+    { key: "file", header: "File", sort: sorter.of("file"), render: (f) => <span className="cat-cell"><span className="cat-lnk cat-t">{f.file_name}</span><span className="cat-s">{f.id}</span></span> },
+    { key: "uploaded", header: "Uploaded", sort: sorter.of("uploaded"), className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (f) => <span className="cat-cell"><span>{fmt.dateTime(f.created_at)}</span><span className="cat-s">{f.created_by_email ?? "API key"}</span></span> },
+    { key: "status", header: "Status", sort: sorter.of("status"), render: (f) => { const [label, tone] = STATUS_TAG[f.status] ?? [f.status, "muted"]; return <Tag tone={tone}>{label}</Tag>; } },
+    { key: "changes", header: "Changes", align: "right", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (f) => <span className="num">{f.status === "invalid" ? `${f.errors.length} ${f.errors.length === 1 ? "error" : "errors"}` : (f.summary.price_changes ?? 0) + (f.summary.new_product_prices ?? 0)}</span> },
+    { key: "results", header: "Results", align: "right", className: "cat-hide-sm", headerClassName: "cat-hide-sm", render: (f) => <span className="num">{f.results && (f.results.succeeded || f.results.failed) ? <>{f.results.succeeded} ok{f.results.failed ? <span className="down"> · {f.results.failed} failed</span> : null}</> : "—"}</span> },
+  ];
+  return <div className="pe-files"><DataTable columns={columns} rows={ordered} rowKey={(f) => f.id} onRowClick={(f) => onOpen(f.id)} /></div>;
 }
 
 // ---- Steps 2 and 3 ------------------------------------------------------------------------------------------------------
@@ -275,6 +279,8 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
   const [confirm, setConfirm] = useState(false);
   const [running, setRunning] = useState(false);
   const [discard, setDiscard] = useState(false);
+  // The checkbox follows the click at once; the server's copy is the truth after the save.
+  const [preserveShown, setPreserveShown] = useState<boolean | null>(null);
   const e = edit.data;
   const store = STORE_NAME[storeOf(app)];
   const run = useCallback(async (action: "commit" | "retry") => {
@@ -306,8 +312,10 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
   const committable = rows.length;
   const hasSubChanges = storeOf(app) === "app_store" && rows.some((r) => r.kind === "price_change");
   const setPreserve = async (v: boolean) => {
+    setPreserveShown(v);
     try { qc.setQueryData(key, await api<Edit>(`${v2(pid)}/product_edits/${encodeURIComponent(editId)}`, { method: "POST", json: { preserve_current_price: v } })); }
     catch (err) { toast(errMsg(err)); }
+    setPreserveShown(null);
   };
   const [label, tone] = STATUS_TAG[e.status];
   return (
@@ -315,9 +323,9 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
       <Steps at={reviewing ? 2 : 3} />
       <div className="pe-filehead">
         <span className="cat-cell"><b className="cat-t">{e.file_name}</b><span className="cat-s">Uploaded {fmt.dateTime(e.created_at)}{e.created_by_email ? ` by ${e.created_by_email}` : ""} · {app.name}</span></span>
-        <Tag tone={tone}>{label}</Tag>
+        <span data-testid="pe-status"><Tag tone={tone}>{label}</Tag></span>
       </div>
-      {reviewing && <Summary e={e} />}
+      {e.status === "ready" && <Summary e={e} />}
       {e.status === "invalid" && (
         <div className="banner err pe-errors" role="alert" data-testid="pe-errors">
           <Icon name="warn" />
@@ -336,7 +344,7 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
       {e.status !== "invalid" && <Diff rows={rows} results={!reviewing} />}
       {e.status === "ready" && hasSubChanges && (
         <div className="pe-opt">
-          <Check checked={e.options.preserve_current_price !== false} disabled={!canEdit} onChange={setPreserve} label="Keep existing subscribers on their current price"
+          <Check checked={preserveShown ?? e.options.preserve_current_price !== false} disabled={!canEdit} onChange={setPreserve} label="Keep existing subscribers on their current price"
             hint="Apple's preserveCurrentPrice. Turn it off to move existing subscribers to the new price; Apple asks them to agree to an increase." />
         </div>
       )}
@@ -344,7 +352,7 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
         <p className="cat-note">Google Play applies new base plan prices to new subscribers. Existing subscribers keep their price until you migrate them in Play Console.</p>
       )}
       <div className="pe-actions">
-        <button type="button" className="btn btn-line" onClick={onBack}><Icon name="undo" />{reviewing ? "Back" : "Back to products"}</button>
+        <button type="button" className="btn btn-line" onClick={onBack}><Icon name="undo" />{e.status === "invalid" ? "Upload a corrected file" : reviewing ? "Back" : "Back to products"}</button>
         {reviewing && canEdit && <button type="button" className="btn btn-ghost" onClick={() => setDiscard(true)}><Icon name="trash" />Discard file</button>}
         <span className="grow" />
         {e.status === "ready" && canEdit && (
@@ -370,7 +378,6 @@ function EditView({ pid, app, editId, canEdit, onBack, onOpen }: { pid: string; 
           <p>{e.file_name} is removed from the Files tab. Nothing was sent to {store}.</p>
         </ConfirmDialog>
       )}
-      {!reviewing && e.status !== "committing" && <p className="cat-note"><Link className="cat-lnk" to={`/projects/${pid}/product-catalog/products`}>Back to Products</Link> shows the new prices; <button type="button" className="cat-lnk pe-linkbtn" onClick={() => onOpen(e.id)}>reload</button> this file to see its rows again.</p>}
     </>
   );
 }
@@ -404,12 +411,12 @@ function Diff({ rows, results }: { rows: EditRowT[]; results: boolean }) {
               <span className="hrow">{np && <Tag tone="info">New product</Tag>}{results && <span className="cat-note">{ok} committed{bad ? <span className="down"> · {bad} failed</span> : null}</span>}</span>
             </div>
             <div className="tbl"><table className="pe-difft">
-              <thead><tr><th className="pe-w-terr">Territory</th><th className="amt">Current</th><th className="amt">New</th><th className="amt cat-hide-sm">Change</th>{results && <th className="pe-w-res">Result</th>}</tr></thead>
+              <thead><tr><th className="pe-w-terr">Territory</th><th className="amt cat-hide-sm">Current</th><th className="amt">New</th><th className="amt cat-hide-sm">Change</th>{results && <th className="pe-w-res">Result</th>}</tr></thead>
               <tbody>{rs.map((r) => (
                 <tr key={r.idx} className={r.status === "failed" ? "pe-failed" : undefined}>
                   <td className="mono">{r.territory} <span className="subtle">{r.currency}</span>{r.line ? <span className="subtle cat-hide-sm"> · line {r.line}</span> : null}</td>
-                  <td className="amt mono subtle">{r.old_amount_micros === null ? (r.kind === "new_product" ? "—" : "No price") : money(r.old_amount_micros, r.currency)}</td>
-                  <td className="amt mono"><b>{money(r.new_amount_micros, r.currency)}</b></td>
+                  <td className="amt mono subtle cat-hide-sm">{r.old_amount_micros === null ? (r.kind === "new_product" ? "—" : "No price") : money(r.old_amount_micros, r.currency)}</td>
+                  <td className="amt mono"><b>{money(r.new_amount_micros, r.currency)}</b>{r.old_amount_micros !== null && <span className="cat-show-sm subtle pe-was">was {money(r.old_amount_micros, r.currency)}</span>}</td>
                   <td className={`amt mono cat-hide-sm ${r.change_percent === null ? "subtle" : r.change_percent > 0 ? "up" : "down"}`}>{r.change_percent === null ? "new" : `${r.change_percent > 0 ? "+" : ""}${r.change_percent}%`}</td>
                   {results && <td>{r.status === "succeeded" ? <Tag tone="up">Committed</Tag> : r.status === "failed" ? <span className="pe-res"><Tag tone="down">Failed</Tag><span className="pe-msg">{r.error}</span></span> : <Tag>Pending</Tag>}{r.status === "succeeded" && r.error ? <span className="pe-msg subtle">{r.error}</span> : null}</td>}
                 </tr>

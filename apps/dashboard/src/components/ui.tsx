@@ -38,6 +38,8 @@ export interface Column<T> {
   sort?: { direction: "asc" | "desc" | null; onSort: () => void };
   /** A control shown after the header text, such as a toggle. */
   headerExtra?: ReactNode;
+  /** Classes for the header cell only, such as `cat-hide-sm` to hide a column on phones with its cells. */
+  headerClassName?: string;
 }
 
 function HeaderCell<T>({ c }: { c: Column<T> }) {
