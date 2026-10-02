@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0022_moves_billing";
+export const ARCHIVE_SCHEMA = "0026_connect_recovery";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -99,6 +99,12 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
   { name: "identity_sessions", scope: { project: "project_id" } },
   { name: "blocked_customers", scope: { project: "project_id" } },
   { name: "verified_pages", scope: { project: "project_id" } },
+  // Connect with Stripe (prd/web-billing/PRD.md §8): the sealed account id travels in apps.secrets, so its routing row comes
+  // too. On a server with another Connect platform the app then says to connect again. A sign-in in progress stays here.
+  { name: "stripe_connections", scope: { project: "project_id" }, local: ["pending_state_hash", "pending_nonce_hash", "pending_until", "pending_mode", "redirect_uri", "connected_by"] },
+  // Payment recovery (prd/payment-recovery/PRD.md): cases keep their link tokens, so emails already sent keep working.
+  { name: "recovery_cases", scope: { project: "project_id" } },
+  { name: "recovery_messages", scope: { project: "project_id" } },
 ];
 
 /** Tables that are not in an archive, and why (the manifest's `excluded`). */
