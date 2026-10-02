@@ -99,7 +99,7 @@ test("product catalog: products, entitlement, offerings, default offering and th
     const iosPanel = page.getByRole("region", { name: "Scanner iOS products" });
     await expect(iosPanel.getByRole("row")).toHaveCount(3); // header + 2
     await expect(iosPanel.getByText("pro_annual")).toBeVisible();
-    await expect(iosPanel.getByText("1 year", { exact: true })).toBeVisible();
+    await expect(iosPanel.getByRole("cell", { name: "1 year", exact: true })).toBeVisible();
     const products = (await json(req, "GET", `${P}/products?limit=100`)).items;
     expect(products).toHaveLength(5);
     expect(products.find((p: any) => p.store_identifier === "pro:annual")).toMatchObject({ app_id: android.id, type: "subscription", subscription: { duration: "P1Y" }, display_name: "Pro annual" });
