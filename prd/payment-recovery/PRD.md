@@ -46,7 +46,14 @@ Scope row: `prd/SCOPE.md` Tier 3 "Revenue recovery: failed-payment recovery, ref
 Portal sessions expire after a few minutes, so the session is made at the click, never put in the email. Only while the case is open: a lost case's Stripe link says it has expired. The restricted key needs **Customer portal: write** for this; "Check credentials" does not require it.
 
 ### Customer Center path
-While a customer has an open case, customer info carries `management_url` (top level and on that subscription) = the same recovery link with `?via=customer_center`. The SDKs' Customer Center opens `management_url` from "Manage subscription" for purchases it cannot manage natively, so a web (Stripe) subscriber can fix their card from inside the app; App Store and Play customers land on their store's page. Without an open case, `management_url` stays null as before.
+While a customer has an open case, customer info carries `management_url` (top level and on that subscription) = `/v1/recovery/c/{center_token}`, a token of its own (never the emailed one, which also unsubscribes). The SDKs' Customer Center opens `management_url` from "Manage subscription" for purchases it cannot manage natively. Without an open case, `management_url` stays null as before.
+
+Customer info is readable with the app's public SDK key and an app user id, so this link never opens a Stripe portal by itself (decision 2026-10-02, PR #32 review: a portal session shows the card, invoices and billing address).
+- **App Store, Google Play, Amazon:** a redirect straight to the store's own signed-in page, as in the email.
+- **Stripe (web):** a page "We'll email you a secure link". Its button (a GET never sends: link previews and prefetching open links) emails a one-time link to the address on file (the case's email, `$email`, or the Stripe customer's), from the app's name. The link works once, for 30 minutes; only its SHA-256 is stored (`recovery_portal_links`). Opening it shows an "Update payment method" button (mail scanners open links, which must not spend it); the button spends it and only then makes the portal session. Used, expired and closed links say so and make nothing.
+- **Limits:** 3 links an hour per customer and 10 an hour per IP address (Cloudflare's client IP on Cloud); more answers 429 "Too many requests".
+- **No email on file:** the page says to update the payment in the account where they subscribed on the web, or to contact the app's support.
+- The links in recovery emails (which only reach the customer's own inbox) still open the portal directly.
 
 ### Webhooks and integrations
 Unchanged: BILLING_ISSUE, RENEWAL and EXPIRATION go out as they did. Integrations such as Braze or Customer.io can keep doing their own messaging from the same events.
@@ -69,12 +76,13 @@ Unchanged: BILLING_ISSUE, RENEWAL and EXPIRATION go out as they did. Integration
 | `POST /payment_recovery/actions/send_test` | `project_configuration:projects:read_write` | One step to an address |
 | `POST /payment_recovery/actions/run` | `project_configuration:projects:read_write` | Send what is due now |
 
-Public (no key): `GET /v1/recovery/l/{token}` (link), `GET /v1/recovery/done/{token}` (return page), `GET` and `POST /v1/recovery/u/{token}` (unsubscribe).
+Public (no key): `GET /v1/recovery/l/{token}` (the email's link), `GET /v1/recovery/done/{token}` (return page), `GET` and `POST /v1/recovery/u/{token}` (unsubscribe), `GET` and `POST /v1/recovery/c/{center_token}` (the Customer Center link; POST emails a one-time link), `GET` and `POST /v1/recovery/p/{token}` (the emailed one-time link; POST opens the portal).
 
 ## Data (migration 0026)
 - `projects.recovery_settings` (jsonb).
 - `recovery_cases`: project, customer, subscription, app, store, store key, product, sandbox, status (`open`, `recovered`, `lost`), detected at, grace end, at-risk USD, email, steps sent, next step due, first and last message, link token, click and unsubscribe times, resolved at, recovered transaction and USD, attributed, lost reason. One open case per chain (partial unique index).
 - `recovery_messages`: case, step, address, sent at, error.
+- `recovery_cases.center_token`: the Customer Center link's own token. `recovery_portal_links`: one-time portal links (case, SHA-256 of the token, address, expiry, used at); not in exports.
 
 ## Pricing
 The outcome price is "a share of the money recovered" (`company/docs/business-model.md`); the share is not decided. RevenueDot measures it as the attributed recovered revenue in USD (`GET /payment_recovery/stats`), from its own purchase events only. Cloud billing does not charge it yet; that needs the share (Kai) and the Cloud billing branch.
@@ -89,5 +97,5 @@ The outcome price is "a share of the money recovered" (`company/docs/business-mo
 - Amazon recovery opens Amazon's subscriptions page; Amazon has no deep link to a payment method.
 - The Stripe portal must be configured in the developer's Stripe account; otherwise the open invoice page is used.
 - Lists scan cases in Postgres per project; very large projects will want rollups.
-- **Decision for Kai (PR #32 review):** the Customer Center link is the case's token, and customer info is readable with the app's public SDK key and the app user id. While a Stripe case is open, anyone who has both can open that customer's Stripe portal session (card, invoices, billing address) or unsubscribe them. Options: keep it (same exposure as customer info today), or send the Customer Center path through a portal login that asks for the customer's email.
+- Customer Center for web purchases needs an email address on file; without one the customer is pointed to their web account or the app's support.
 - Attribution uses the time RevenueDot processes the renewal, not when the store charged: a store retry that succeeds just before the day-0 email but is reported after it counts as attributed.
