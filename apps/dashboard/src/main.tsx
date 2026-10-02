@@ -19,8 +19,10 @@ import { routes } from "./routes";
 import { useMe } from "./components/Shell";
 import { ToastProvider } from "./components/ui";
 import { api } from "./lib/api";
+import { initAnalytics } from "./lib/analytics";
 import { EnterpriseRoutes } from "./extensions";
 
+initAnalytics();
 // The theme, tint, currency and week start of the last visit, before the first paint (lib/prefs.ts).
 loadCachedPrefs();
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } } });

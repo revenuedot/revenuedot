@@ -49,7 +49,7 @@ export async function startCloud(port: number, dist: string, mail: Mailer & { se
   web.get("/__billing/checkout/:id", (c) => {
     const s = stripe.sessions.get(c.req.param("id"));
     if (!s) return c.text("No such checkout session", 404);
-    return c.html(page("Fake Stripe Checkout", `<p>RevenueDot Cloud Standard, billed monthly by usage.</p><form method="post"><button type="submit">Subscribe</button></form><p><a href="${s.cancel_url}">Back</a></p>`));
+    return c.html(page("Fake Stripe Checkout", `<p>RevenueDot Cloud Standard, billed monthly by usage.</p><pre data-session-metadata>${JSON.stringify({ metadata: s.metadata ?? {}, subscription: s.subscription_data?.metadata ?? {} })}</pre><form method="post"><button type="submit">Subscribe</button></form><p><a href="${s.cancel_url}">Back</a></p>`));
   });
   web.post("/__billing/checkout/:id", async (c) => {
     const id = c.req.param("id");

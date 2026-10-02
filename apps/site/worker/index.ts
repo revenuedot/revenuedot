@@ -4,8 +4,11 @@
 //   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
 //   /api/agent/*             the ElevenLabs sales voice agent (worker/agent.ts): init, lookup, meeting, send_info, docs,
 //                            postcall. A new hot or warm lead gets a call from the agent within seconds (8am to 8pm their time).
+// Every other page is the static file, plus a note to DataFast when the visitor is a known crawler (bots.ts).
 // Scheduled (daily, cloudflare.config.ts): one email to sales listing people who started the form and did not finish.
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
+import { trackCrawler } from "./bots";
+import { applyConsent } from "./consent";
 import { agent, esc, json, later, outboundPlan, startOutboundCall, type AgentEnv, type Ctx } from "./agent";
 import { isEmail, vendorLabel, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
 
@@ -57,7 +60,9 @@ export default {
     }
     if (url.pathname.startsWith("/api/agent/")) return agent(request, env, ctx);
     if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Not found." }, 404);
-    return env.ASSETS.fetch(request);
+    const res = await env.ASSETS.fetch(request);
+    trackCrawler(request, res, ctx);
+    return applyConsent(request, res);
   },
 };
 

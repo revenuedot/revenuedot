@@ -1,3 +1,5 @@
+import { DATAFAST } from "./datafast";
+
 // Site-wide constants. Change a fact here and every page, JSON-LD block and llms.txt follows.
 export const SITE = {
   name: "RevenueDot",
@@ -27,6 +29,7 @@ export const SITE = {
   ogImageAlt: "RevenueDot: the open-source RevenueCat alternative",
   // Cookieless Cloudflare Web Analytics. Set PUBLIC_CF_WEB_ANALYTICS_TOKEN at build time to turn it on; unset = no beacon.
   analyticsToken: (import.meta.env.PUBLIC_CF_WEB_ANALYTICS_TOKEN as string | undefined) || "",
+  datafast: DATAFAST,
   // Date competitor prices were last checked against their public pricing pages.
   pricesChecked: "October 2026",
 } as const;

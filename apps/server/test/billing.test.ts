@@ -91,6 +91,23 @@ describe("plans and the bill", () => {
 });
 
 describe("billing page, upgrade and the meter", () => {
+  it("Checkout carries the visitor's DataFast ids, so DataFast credits the payment to the channel that brought them", async () => {
+    const withCookies = async (extra: string) => {
+      const res = await app.fetch(new Request("https://app.revenuedot.test/v2/billing/checkout", { method: "POST", headers: { cookie: `${cookie}; ${extra}`, "content-type": "application/json" }, body: JSON.stringify({ plan: "standard" }) }));
+      const body = await res.json() as any;
+      return stripe.sessions.get(body.id)!;
+    };
+    const visitor = "a3ab2331-989f-4cfa-91c6-2461c9e3c6bd", visit = "0f2c5d7e-1b4a-4c1e-9d3f-7a6b5c4d3e2f";
+    const s1 = await withCookies(`datafast_visitor_id=${visitor}; datafast_session_id=${visit}`);
+    expect(s1.metadata).toMatchObject({ revenuedot_user_id: "usr_1", plan: "standard", datafast_visitor_id: visitor, datafast_session_id: visit });
+    expect(s1.subscription_data.metadata).toMatchObject({ datafast_visitor_id: visitor, datafast_session_id: visit });
+    // No cookies, or values that are not plain ids: nothing extra reaches Stripe.
+    const s2 = await withCookies("other=1");
+    expect(Object.keys(s2.metadata).sort()).toEqual(["plan", "revenuedot_user_id"]);
+    const s3 = await withCookies("datafast_visitor_id=<script>alert(1)</script>");
+    expect(Object.keys(s3.metadata).sort()).toEqual(["plan", "revenuedot_user_id"]);
+  });
+
   it("free account over the limit: the page, one usage email, then Checkout, the webhook, the meter and the portal", async () => {
     await txn({ usd: 12_000 });
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, publicUrl: "https://app.revenuedot.test", config: config() });

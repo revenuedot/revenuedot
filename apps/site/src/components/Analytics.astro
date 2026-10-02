@@ -1,0 +1,40 @@
+---
+// DataFast web analytics for revenuedot.app (docs/analytics.md): pageviews, referrers, goals, and the cookies the
+// Cloud dashboard reads to attribute a Stripe payment to the channel that brought the visitor.
+import { DATAFAST } from "../datafast";
+const { websiteId, domain } = DATAFAST;
+---
+<script is:inline>
+  window.datafast = window.datafast || function () { (window.datafast.q = window.datafast.q || []).push(arguments); };
+</script>
+<script is:inline defer data-website-id={websiteId} data-domain={domain} src="https://datafa.st/js/script.js"></script>
+<script is:inline>
+  // Goals from link targets, so no page needs its own attributes. One goal per click, with where on the page it was.
+  (function () {
+    var GOALS = [
+      [/^https:\/\/app\.revenuedot\.app\/signup/, "signup_click"],
+      [/^https:\/\/app\.revenuedot\.app\/login/, "login_click"],
+      [/^https:\/\/app\.revenuedot\.app/, "app_click"],
+      [/^\/contact-sales/, "contact_sales_click"],
+      [/^\/migrate-from-revenuecat/, "migrate_click"],
+      [/^\/self-host/, "self_host_click"],
+      [/^https:\/\/github\.com\/revenuedot/, "github_click"],
+      [/^mailto:/, "email_click"]
+    ];
+    var where = function (el) {
+      if (el.closest("header")) return "header";
+      if (el.closest("footer")) return "footer";
+      if (el.closest(".cta")) return "cta_band";
+      if (el.closest(".hero")) return "hero";
+      return location.pathname.indexOf("/docs") === 0 ? "docs" : "page";
+    };
+    document.addEventListener("click", function (e) {
+      var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+      if (!a || a.hasAttribute("data-fast-goal") || typeof window.datafast !== "function") return;
+      var href = a.getAttribute("href") || "";
+      for (var i = 0; i < GOALS.length; i++) {
+        if (GOALS[i][0].test(href)) { window.datafast(GOALS[i][1], { location: where(a) }); return; }
+      }
+    }, true);
+  })();
+</script>
