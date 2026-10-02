@@ -500,7 +500,7 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
     const refused = await startTurn(db, deps.assistantCaps ?? DEFAULT_CAPS, p.userId, projectId, now);
     if (refused) throw new V2Error(429, "rate_limit_error", refused);
     try {
-      await generateInsights(deps, projectId, { by: { userId: p.userId }, now });
+      await generateInsights(deps, projectId, { by: { userId: p.userId, sessionId: getCookie(c, SESSION_COOKIE) ?? null }, now });
     } catch (e) {
       if (e instanceof InsightsError) throw new V2Error(e.status, e.status === 429 ? "rate_limit_error" : e.status === 403 ? "authorization_error" : e.status === 409 ? "resource_locked_error" : e.status === 400 ? "parameter_error" : "server_error", e.message, undefined, e.status === 503);
       throw e;

@@ -107,7 +107,8 @@ export function insightInstructions(project: string): string {
 
 export interface GenerateOptions {
   /** Who asked: a user who pressed Refresh, or the weekly schedule. */
-  by: { userId: string } | "schedule";
+  /** Refresh carries the session it came from (an organization that requires single sign-on checks it). */
+  by: { userId: string; sessionId?: string | null } | "schedule";
   now?: Date;
 }
 
@@ -158,7 +159,7 @@ export async function generateInsights(deps: Deps, projectId: string, o: Generat
     const pack = await buildInsightPack(db, projectId, now);
     const ctx: AssistantContext = {
       deps, model, userName: user.name, caps,
-      actor: { userId: user.id, email: user.email, projectId, conversationId: `insights:${week}`, readOnly: true },
+      actor: { userId: user.id, email: user.email, projectId, conversationId: `insights:${week}`, readOnly: true, sessionId: o.by === "schedule" ? null : o.by.sessionId ?? null },
       project: { id: projectId, name: proj.name },
       // Read tools only, whatever the project allows and whoever asked.
       scope: assistantScope("read_only", user.role === "viewer" ? "viewer" : user.role),
