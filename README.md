@@ -469,6 +469,11 @@ Yes. When a customer asks Apple for a refund, Apple sends a `CONSUMPTION_REQUEST
 Three ways, all built: Apple's [win-back offers](https://revenuedot.app/docs/guides/win-back-offers) work with the RevenueCat SDK unchanged; a Customer Center offer catches customers as they cancel ([retention offers](https://revenuedot.app/docs/guides/retention)); and win-back campaigns email lapsed subscribers a link back to the store, once each, with clicks, unsubscribes and reactivations counted ([win-back campaigns](https://revenuedot.app/docs/guides/win-back-campaigns)).
 </details>
 
+<details><summary><b>Can I change the in-app Customer Center without releasing an app update?</b></summary>
+
+Yes. The SDK's `CustomerCenterView` loads its configuration from your server each time it opens. Under **Lifecycle > Customer Center** you choose the paths on each screen and their order (restore, change plans, cancel, refund, a web page, an action in your app), ask why customers cancel with an offer per answer, set colours for light and dark mode and override any text in 33 languages, with a phone preview. Saved changes reach every app the next time the screen opens ([guide](https://revenuedot.app/docs/guides/customer-center)).
+</details>
+
 <details><summary><b>Where do Customer Center support requests go?</b></summary>
 
 To your support email, with the customer's subscription details and Reply-To set to the customer, and to **Lifecycle > Support > Tickets** in the dashboard. Help desks such as Intercom and Zendesk can show the customer's subscriptions from the support summary endpoint ([guide](https://revenuedot.app/docs/guides/support-integrations)).
