@@ -22,6 +22,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: npx tsc -b
+      # The root project leaves out the dashboard, and Vite builds without type checking.
+      - run: npx tsc --noEmit -p apps/dashboard
       - run: pnpm vitest run
 
   # The same contract and server suites on a real Postgres 16 (PGlite above): driver result shapes, concurrent
