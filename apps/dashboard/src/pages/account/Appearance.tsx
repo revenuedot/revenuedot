@@ -66,7 +66,7 @@ export function AccountInterfacePage() {
                 <button key={t.label} type="button" role="radio" aria-checked={tint === t.value} className="tint" title={t.label} aria-label={t.label} onClick={() => setTint(t.value)}><span style={{ background: t.color }} /></button>
               ))}
               <label className={`btn btn-line tint-custom${tint && !TINTS.some((t) => t.value === tint) ? " on" : ""}`}>
-                <input type="color" aria-label="Custom tint colour" value={custom ?? tint ?? "#F7B500"} onChange={(e) => setCustom(e.target.value)} onBlur={() => { if (custom && custom.toUpperCase() !== tint) void setTint(custom.toUpperCase()); }} />
+                <input type="color" aria-label="Custom tint colour" value={custom ?? tint ?? "#F7B500"} onChange={(e) => setCustom(e.target.value)} />
                 Custom
               </label>
               {custom && custom.toUpperCase() !== tint && <button type="button" className="btn btn-dark" onClick={() => setTint(custom.toUpperCase())}>Use {custom.toUpperCase()}</button>}
@@ -98,7 +98,8 @@ export function AccountDateRegionPage() {
   const [sample, setSample] = useState(() => new Date().toISOString().slice(0, 10));
   const fx = useQuery({ queryKey: ["fx", p?.display_currency], enabled: !!p && p.display_currency !== "USD", staleTime: 3_600_000, queryFn: () => api<{ currency: string; rate: number; date: string; source: string }>(`/auth/fx?currency=${p!.display_currency}`) });
   const cur = p?.display_currency ?? "USD";
-  const d = { currency: cur, rate: cur === "USD" ? 1 : fx.data?.rate ?? 1, rateDate: fx.data?.date ?? null, weekStart: p?.week_start ?? 1 };
+  // Until the rate is known the example stays in USD, like every other amount.
+  const d = cur === "USD" || !fx.data ? { currency: "USD", rate: 1, rateDate: null, weekStart: p?.week_start ?? 1 } : { currency: cur, rate: fx.data.rate, rateDate: fx.data.date, weekStart: p?.week_start ?? 1 };
   return (
     <AccountLayout section="date-and-region">
       {p && <>

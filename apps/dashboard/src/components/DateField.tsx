@@ -52,17 +52,21 @@ export function DateField({ value, onChange, label, min, max, id, className, wee
       Home: () => focus - ((new Date(focus).getUTCDay() - ws + 7) % 7) * DAY, End: () => focus + (6 - (new Date(focus).getUTCDay() - ws + 7) % 7) * DAY,
     };
     if (move[e.key]) { e.preventDefault(); setFocus(move[e.key]!()); }
-    else if (e.key === "Escape") { e.preventDefault(); setOpen(false); wrap.current?.querySelector<HTMLButtonElement>("button.df-open")?.focus(); }
+    // Escape closes the calendar only, not a dialog the field sits in.
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); wrap.current?.querySelector<HTMLButtonElement>("button.df-open")?.focus(); }
   };
   const selected = parse(value);
   return (
     <span className={`datefield${className ? ` ${className}` : ""}`} ref={wrap}>
-      <input id={fid} className="input mono" aria-label={label} placeholder="YYYY-MM-DD" inputMode="numeric" value={text} maxLength={10}
+      <input id={fid} className="input mono" aria-label={label} placeholder="YYYY-MM-DD" value={text} maxLength={10}
         onChange={(e) => { const v = e.target.value.trim(); setText(e.target.value); if (v === "") onChange(""); else { const t = parse(v); if (t !== null && allowed(t)) onChange(v); } }}
-        onBlur={() => { if (text.trim() !== "" && parse(text.trim()) === null) setText(value); }} />
+        // A typed date that is not a date, or is outside min and max, goes back to the saved one instead of showing
+        // a value the page does not use.
+        onBlur={() => { const t = parse(text.trim()); if (text.trim() !== "" && (t === null || !allowed(t))) setText(value); }} />
       <button type="button" className="ib df-open" aria-label={`Choose ${label.toLowerCase()}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setFocus(selected ?? focus); setOpen(!open); }}><Icon name="calendar" /></button>
       {open && (
-        <div className="df-pop" role="dialog" aria-label={`${label}: choose a date`} onKeyDown={onKey}>
+        <div className="df-pop" role="dialog" aria-label={`${label}: choose a date`} onKeyDown={onKey}
+          onBlur={(e) => { if (!wrap.current?.contains(e.relatedTarget as Node | null)) setOpen(false); }}>
           <div className="df-head">
             <button type="button" className="ib" aria-label="Previous month" onClick={() => setFocus(addMonths(focus, -1))}><Icon name="chev" className="i flip" /></button>
             <b aria-live="polite">{new Date(view).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}</b>

@@ -7,8 +7,10 @@
 //     replay refused, a recovery code used once, the per-challenge limit
 //   - OAuth: a grant recorded on api_keys, listed and revoked from Account settings, the key dead at once
 //   - preferences stored on users; charts with week_start and currency through the API
-//   - revenue anomaly alert sent by the server's own tick for a project whose revenue stopped yesterday
-//   - account deletion refused while a teammate needs an owner, then done after the transfer, checked in SQL
+//   - revenue anomaly alert sent by the server's own tick for a project whose revenue stopped yesterday, and its
+//     one-click unsubscribe link (RFC 8058) turning the alerts off without a session
+//   - account deletion refused while a teammate needs an owner, then done after the transfer, checked in SQL, with the
+//     audit entry the shared project keeps
 // Every state is checked through the API, SQL and the emails the SMTP sink received.
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { Journey } from "./run.ts";
@@ -162,8 +164,19 @@ const journey: Journey = {
       c.check("in the reader's currency (EUR)", /€/.test(alert?.text ?? ""), alert?.text?.slice(0, 300));
       const checks = await sql`SELECT day, result FROM anomaly_checks WHERE project_id = ${dev.projectId}`;
       c.check("one anomaly check stored for yesterday", checks.length === 1 && checks[0]!.day === new Date(today - DAY).toISOString().slice(0, 10), checks.map((x) => x.day));
-      const sends = await sql`SELECT kind, key FROM notification_sends WHERE user_id = ${uid}`;
-      c.check("one send recorded", sends.length === 1 && sends[0]!.kind === "revenue_anomaly", sends);
+      const sends = await sql`SELECT kind, key, token_hash FROM notification_sends WHERE user_id = ${uid}`;
+      c.check("one send recorded, with its unsubscribe token hashed", sends.length === 1 && sends[0]!.kind === "revenue_anomaly" && /^[0-9a-f]{64}$/.test(sends[0]!.token_hash ?? ""), sends.map((x) => x.kind));
+      c.check("List-Unsubscribe-Post marks it one-click", /List-Unsubscribe-Post: List-Unsubscribe=One-Click/i.test(alert?.raw ?? ""));
+      const unsub = alert ? linksOf(alert).find((l) => l.includes("/auth/notifications/unsubscribe/")) : undefined;
+      c.check("the email has an unsubscribe link", !!unsub);
+      if (unsub) {
+        const path = new URL(unsub).pathname;
+        c.eq("opening it changes nothing yet", (await req(ctx, "GET", path)).status, 200);
+        c.eq("still on after a GET", (await sql`SELECT anomaly_alerts FROM notification_prefs WHERE user_id = ${uid}`)[0]?.anomaly_alerts, true);
+        const one = await fetch(ctx.base + path, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" });
+        c.eq("one-click POST without a session", one.status, 200);
+        c.eq("the alerts are off in SQL", (await sql`SELECT anomaly_alerts FROM notification_prefs WHERE user_id = ${uid}`)[0]?.anomaly_alerts, false);
+      }
     } else c.check("before 06:00 UTC the daily check waits (skipped)", true);
 
     c.begin("account deletion");
@@ -172,7 +185,7 @@ const journey: Journey = {
     const invite = await waitMail(ctx, mate.email, /invited you/);
     const inviteToken = new URL(linksOf(invite!).find((l) => l.includes("/invite?token="))!).searchParams.get("token")!;
     c.eq("the teammate joins", (await req(ctx, "POST", `/auth/invites/${encodeURIComponent(inviteToken)}/accept`, undefined, mate.cookie)).status, 200);
-    const blocked = await req(ctx, "POST", "/auth/account/delete", { email, password: pw2, code: totp(secret, Date.now() + 60_000) }, dev.cookie);
+    const blocked = await req(ctx, "POST", "/auth/account/delete", { email, password: pw2 }, dev.cookie);
     c.eq("refused while the shared project needs its owner", blocked.body?.type, "ownership_transfer_required");
     const [mateRow] = await sql`SELECT id FROM users WHERE email = ${mate.email}`;
     c.eq("ownership moves to the teammate", (await req(ctx, "POST", `/v2/projects/${dev.projectId}/actions/transfer_ownership`, { user_id: mateRow!.id }, dev.cookie)).status, 200);
@@ -183,6 +196,8 @@ const journey: Journey = {
     c.eq("recovery codes and preferences gone", (await sql`SELECT 1 FROM two_factor_recovery_codes WHERE user_id = ${uid} UNION ALL SELECT 1 FROM notification_prefs WHERE user_id = ${uid}`).length, 0);
     const members = await sql`SELECT user_id FROM memberships WHERE project_id = ${dev.projectId}`;
     c.check("the shared project stays with the teammate", members.length === 1 && members[0]!.user_id === mateRow!.id, members);
+    const [left] = await sql`SELECT target_identifier, additional_data FROM audit_logs WHERE project_id = ${dev.projectId} AND action_type = 'collaborator_account_deleted'`;
+    c.check("its audit log names who left, by email", left?.target_identifier === uid && left?.additional_data?.email === email, left);
     c.check("the deletion email arrived", !!(await waitMail(ctx, email, /account was deleted/)));
     c.eq("the old password no longer signs in", (await req(ctx, "POST", "/auth/login", { email, password: pw2 })).status, 401);
   },

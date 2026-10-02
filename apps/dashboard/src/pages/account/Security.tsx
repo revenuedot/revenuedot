@@ -32,6 +32,7 @@ function Password({ me }: { me: Me }) {
   const [error, setError] = useState<string | null>(null);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     if (f.next.length < 8) { setError("Use at least 8 characters for your new password."); return; }
     if (f.next !== f.again) { setError("The two new passwords are different."); return; }
     setBusy(true); setError(null);
@@ -140,13 +141,16 @@ function SetupTwoFactor({ me, onClose }: { me: Me; onClose: () => void }) {
   const [codes, setCodes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Each guard stops a second Enter while a request is out: two setups would leave a QR code the server no longer has.
   const start = async (e?: FormEvent) => {
     e?.preventDefault();
+    if (busy) return;
     setBusy(true); setError(null);
     try { setSetup(await api("/auth/2fa/setup", { method: "POST", json: { password } })); setStep("scan"); } catch (err) { setError(errText(err)); } finally { setBusy(false); }
   };
   const verify = async (e?: FormEvent) => {
     e?.preventDefault();
+    if (busy) return;
     setBusy(true); setError(null);
     try {
       const r = await api<{ recovery_codes: string[] }>("/auth/2fa/enable", { method: "POST", json: { code: code.replace(/\s/g, "") } });
@@ -208,6 +212,7 @@ function CodeDialog({ title, action, path, intro, onDone, onClose, danger }: { t
   const [codes, setCodes] = useState<string[] | null>(null);
   const go = async (e?: FormEvent) => {
     e?.preventDefault();
+    if (busy) return;
     setBusy(true); setError(null);
     const c = code.trim();
     try {
@@ -246,7 +251,7 @@ function Sessions() {
   return (
     <Section title="Sessions" id="sessions" sub="Browsers signed in to your account. Sign out any you do not recognise, then change your password."
       action={others > 0 ? <button type="button" className="btn btn-line" onClick={() => setConfirm("others")}>Sign out other sessions</button> : undefined}>
-      {q.isError ? <div className="acct-pad"><div className="banner err" role="alert">{errText(q.error)}</div></div> : (
+      {q.isError ? <div className="acct-pad"><div className="banner err" role="alert">{errText(q.error)}</div></div> : q.isLoading ? <div className="acct-empty">Loading…</div> : (
         <div className="tbl"><table>
           <thead><tr><th>Browser</th><th>Signed in with</th><th>IP address</th><th>Last active</th><th>Started</th><th aria-label="Actions" /></tr></thead>
           <tbody>{rows.map((s) => (
@@ -263,8 +268,9 @@ function Sessions() {
       )}
       {confirm && <ConfirmDialog title={confirm === "others" ? "Sign out other sessions?" : "Sign out this session?"} confirmLabel="Sign out" danger
         onConfirm={async () => {
-          const r = confirm === "others" ? await api<{ sessions_revoked: number }>("/auth/sessions/revoke_others", { method: "POST" }) : await api(`/auth/sessions/${confirm.id}`, { method: "DELETE" });
-          await qc.invalidateQueries({ queryKey: ["sessions"] });
+          // The list is read again either way: a session that "already ended" disappears from it too.
+          const r = await (confirm === "others" ? api<{ sessions_revoked: number }>("/auth/sessions/revoke_others", { method: "POST" }) : api(`/auth/sessions/${confirm.id}`, { method: "DELETE" }))
+            .finally(() => qc.invalidateQueries({ queryKey: ["sessions"] }));
           toast(confirm === "others" ? `${(r as { sessions_revoked: number }).sessions_revoked} session${(r as { sessions_revoked: number }).sessions_revoked === 1 ? "" : "s"} signed out.` : "Session signed out.");
         }} onClose={() => setConfirm(null)}>
         <p>{confirm === "others" ? `Every other browser (${others}) is signed out at once. This one stays signed in.` : `${confirm.browser}${confirm.os ? ` on ${confirm.os}` : ""} is signed out at once.`}</p>
@@ -303,7 +309,7 @@ function OAuthTokens() {
         </table></div>
       )}
       {revoke && <ConfirmDialog title={`Revoke ${revoke.client.name}?`} confirmLabel="Revoke" danger onClose={() => setRevoke(null)}
-        onConfirm={async () => { await api(`/auth/oauth_tokens/${revoke.id}`, { method: "DELETE" }); await qc.invalidateQueries({ queryKey: ["oauth-tokens"] }); toast(`${revoke.client.name} can no longer use ${revoke.project.name}.`); }}>
+        onConfirm={async () => { await api(`/auth/oauth_tokens/${revoke.id}`, { method: "DELETE" }).finally(() => qc.invalidateQueries({ queryKey: ["oauth-tokens"] })); toast(`${revoke.client.name} can no longer use ${revoke.project.name}.`); }}>
         <p>{revoke.client.name} loses access to {revoke.project.name} at once. Connect it again from the app if you need it.</p>
       </ConfirmDialog>}
     </Section>

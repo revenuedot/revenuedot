@@ -18,6 +18,7 @@ export function TwoFactorStep({ challenge, onDone, onRestart, title = "Two-facto
   useEffect(() => { input.current?.focus(); }, [recovery]);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     setBusy(true); setError(null);
     try {
       const r = await api<{ recovery_codes_left?: number }>("/auth/login/2fa", { method: "POST", json: recovery ? { challenge, recovery_code: code.trim() } : { challenge, code: code.replace(/\s/g, "") } });
@@ -36,7 +37,7 @@ export function TwoFactorStep({ challenge, onDone, onRestart, title = "Two-facto
         <Mark size={36} />
         <div>
           <h1>{title}</h1>
-          <p>{note ?? (recovery ? "Enter one of the recovery codes you saved when you turned on two-factor authentication. Each works once." : "Enter the 6-digit code from your authenticator app.")}</p>
+          <p>{recovery ? "Enter one of the recovery codes you saved when you turned on two-factor authentication. Each works once." : note ?? "Enter the 6-digit code from your authenticator app."}</p>
         </div>
         {recovery ? (
           <div className="field"><label htmlFor="recovery-code">Recovery code</label><input ref={input} id="recovery-code" className="input mono" autoComplete="one-time-code" placeholder="abcde-fghjk" maxLength={20} value={code} onChange={(e) => { setCode(e.target.value); setError(null); }} /></div>

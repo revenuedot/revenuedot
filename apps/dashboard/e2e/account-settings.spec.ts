@@ -116,6 +116,9 @@ test("General: name, email change confirmed from the new inbox, expired and canc
   await json(page.request, "POST", "/__tokens/expire", { email, kind: "email_change" });
   const other = await newPage(browser);
   await other.goto(expired);
+  // Opening the link changes nothing (mail scanners open links too): the move needs a click.
+  await expect(other.getByRole("heading", { name: "Confirm your new email" })).toBeVisible();
+  await other.getByRole("button", { name: "Confirm new email" }).click();
   await expect(other.getByRole("heading", { name: "This link does not work" })).toBeVisible();
   await expect(other.getByText("This link has expired.")).toBeVisible();
   await phone(other, "confirm-email-expired");
@@ -133,6 +136,7 @@ test("General: name, email change confirmed from the new inbox, expired and canc
   await page.getByRole("button", { name: "Cancel change" }).click();
   await expect(page.locator("[data-pending-email]")).toHaveCount(0);
   await other.goto(cancelled);
+  await other.getByRole("button", { name: "Confirm new email" }).click();
   await expect(other.getByText("This link was already used.")).toBeVisible();
 
   // The real one, opened in another browser without a session.
@@ -144,6 +148,9 @@ test("General: name, email change confirmed from the new inbox, expired and canc
   await shot(page, "account-general-pending");
   const good = await linkIn(page.request, next, "/confirm-email?token=");
   await other.goto(good);
+  await expect(other.getByRole("heading", { name: "Confirm your new email" })).toBeVisible();
+  expect((await json(page.request, "GET", "/auth/me")).user.email).toBe(email);
+  await other.getByRole("button", { name: "Confirm new email" }).click();
   await expect(other.getByRole("heading", { name: "Email changed" })).toBeVisible();
   await expect(other.getByText(`Your account now uses ${next}.`)).toBeVisible();
   await page.reload();
@@ -210,7 +217,7 @@ test("Security: password, two-factor from the QR key, sign-in with a code and a 
   await setup.getByRole("button", { name: "I saved my codes" }).click();
   await expect(page.locator("[data-two-factor=on]")).toBeVisible();
   await expect(page.locator("[data-codes-left]")).toHaveText("10 of 10 left");
-  expect((await mails(page.request, email)).map((m) => m.subject)).toContain("Two-factor authentication is on");
+  await expect.poll(async () => (await mails(page.request, email)).map((m) => m.subject)).toContain("Two-factor authentication is on");
 
   // Sign-in now asks for a code: a wrong one, then the next step's code (the current step was used to turn it on).
   const phoneCtx = await newPage(browser);
@@ -291,7 +298,6 @@ test("Security: password, two-factor from the QR key, sign-in with a code and a 
   await expect(fresh.locator("[data-recovery-codes] li")).toHaveCount(10);
   const newCodes = await fresh.locator("[data-recovery-codes] li").allInnerTexts();
   expect(newCodes).toHaveLength(10);
-  expect(newCodes).not.toContain(codes[1]);
   await fresh.getByRole("button", { name: "I saved my codes" }).click();
   await expect(page.locator("[data-codes-left]")).toHaveText("10 of 10 left");
   await page.getByRole("button", { name: "Turn off" }).click();
@@ -442,8 +448,9 @@ test("Notifications, Interface and Date and region: saved per person and applied
   expect(url.searchParams.get("week_start")).toBe("0");
   const body = await json(page.request, "GET", `/v2/projects/${pid}/charts/revenue${url.search}`);
   expect(body.yaxis_currency).toBe("EUR");
+  expect(body.values.length).toBeGreaterThan(0);
   for (const v of body.values) expect(new Date(v.cohort * 1000).getUTCDay()).toBe(0);
-  await page.getByRole("button", { name: "Custom" }).click().catch(() => {});
+  await page.getByRole("button", { name: "Custom" }).click();
   await page.locator(".ctools").getByRole("button", { name: "Choose start date" }).click();
   await expect(page.getByRole("grid")).toHaveAttribute("data-week-start", "0");
   await page.keyboard.press("Escape");

@@ -81,22 +81,31 @@ export function ResetPasswordPage() {
   const [challenge, setChallenge] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The address, kept before the cache is cleared: the link check answers "used" once the reset went through.
+  const [email, setEmail] = useState("");
+  /**
+   * Signed in: a full page load of the home page, so nothing of an earlier session (cached data, the display
+   * preferences that follow the ["me"] query) is left in memory.
+   */
+  const enter = async () => { window.location.replace(await homePath(qc)); };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     if (pw.length < 8) { setError("Use at least 8 characters for your password."); return; }
     if (pw !== pw2) { setError("The two passwords are different."); return; }
     setBusy(true); setError(null);
     try {
       const r = await api<{ two_factor_required?: boolean; challenge?: string }>("/auth/password/reset", { method: "POST", json: { token, password: pw } });
+      setEmail(check.data?.email ?? "");
       qc.clear();
       // Two-factor on: the link proved the inbox, the code proves the phone (prd/account-settings §3).
       if (r?.two_factor_required && r.challenge) { setChallenge(r.challenge); return; }
-      nav(await homePath(qc), { replace: true });
+      await enter();
     } catch (err) { setError(errText(err)); setBusy(false); }
   };
   if (challenge) {
     return <TwoFactorStep challenge={challenge} title="One more step" note="Your new password is saved. Enter the 6-digit code from your authenticator app to sign in."
-      onDone={async () => nav(await homePath(qc), { replace: true })} onRestart={(m) => nav(`/login?email=${encodeURIComponent(check.data?.email ?? "")}`, { replace: true, state: { message: m } })} />;
+      onDone={() => { void enter(); }} onRestart={(m) => nav(`/login?email=${encodeURIComponent(email)}`, { replace: true, state: { message: m } })} />;
   }
   if (!token || check.data?.valid === false || check.isError) {
     return (
@@ -224,22 +233,34 @@ export function AccountPage() {
   return <Navigate to="/account/general" replace />;
 }
 
-/** The link in the "Confirm your new email" message (prd/account-settings §1). Works in any browser, signed in or not. */
+/**
+ * The link in the "Confirm your new email" message (prd/account-settings §1). Works in any browser, signed in or not.
+ * The account moves only when the person clicks: mail scanners that open links and run their scripts must not confirm
+ * a change to an address nobody checked (a typo would hand the account to whoever owns it).
+ */
 export function ConfirmEmailPage() {
   const [params] = useSearchParams();
   const token = params.get("token") ?? "";
   const qc = useQueryClient();
-  const [state, setState] = useState<{ ok: boolean; message: string } | null>(null);
-  const once = useRef(false);
-  useEffect(() => {
-    if (once.current) return;
-    once.current = true;
-    if (!token) { setState({ ok: false, message: "The link is incomplete. Copy the whole link from the email." }); return; }
-    api<{ email: string }>("/auth/email/change/confirm", { method: "POST", json: { token } })
-      .then((r) => { setState({ ok: true, message: `Your account now uses ${r.email}. Sign in with it from now on.` }); void qc.invalidateQueries({ queryKey: ["me"] }); })
-      .catch((e) => setState({ ok: false, message: errText(e) }));
-  }, [token, qc]);
-  if (!state) return <Card title="Confirming your new email" sub="One moment…"><span /></Card>;
+  const [state, setState] = useState<{ ok: boolean; message: string } | null>(token ? null : { ok: false, message: "The link is incomplete. Copy the whole link from the email." });
+  const [busy, setBusy] = useState(false);
+  const confirm = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await api<{ email: string }>("/auth/email/change/confirm", { method: "POST", json: { token } });
+      setState({ ok: true, message: `Your account now uses ${r.email}. Sign in with it from now on.` });
+      void qc.invalidateQueries({ queryKey: ["me"] });
+    } catch (err) { setState({ ok: false, message: errText(err) }); }
+  };
+  if (!state) {
+    return (
+      <Card title="Confirm your new email" sub="Your RevenueDot account moves to the address this link was sent to. Until you confirm, it keeps the old one." onSubmit={confirm}>
+        <button className="btn btn-dark btn-lg" type="submit" disabled={busy}>{busy ? "Confirming…" : "Confirm new email"}</button>
+      </Card>
+    );
+  }
   return (
     <Card title={state.ok ? "Email changed" : "This link does not work"} sub={state.message}>
       {!state.ok && <p className="section-sub">Start the change again from Account settings → General.</p>}

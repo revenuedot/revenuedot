@@ -18,7 +18,7 @@ import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { Dialog, Field, Segmented, Switch, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, type List } from "../../lib/api";
-import { currencySymbol, getDisplay } from "../../lib/prefs";
+import { currencyDigits, currencySymbol, getDisplay } from "../../lib/prefs";
 import { DateField } from "../../components/DateField";
 import { Legend, Plot, seriesColor, type Series } from "./plot";
 
@@ -74,7 +74,8 @@ function valueIndex(body: ChartData) {
 function formatter(unit: string, currency: string, precision = 2) {
   return (v: number | null) => {
     if (v === null || v === undefined) return "—";
-    if (unit === "$") return v.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: Math.min(precision, 2), maximumFractionDigits: Math.max(2, precision) });
+    // In the currency's own minor units: ¥12,345, not ¥12,345.00.
+    if (unit === "$") { const cd = currencyDigits(currency); return v.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: Math.min(precision, cd), maximumFractionDigits: cd === 0 ? 0 : Math.max(cd, precision) }); }
     if (unit === "%") return `${v.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
     return v.toLocaleString("en-US", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 });
   };
@@ -483,6 +484,8 @@ function CohortTable({ body }: { body: ChartData }) {
 
 function csvRows(body: ChartData): (string | number | null)[][] {
   const day = (s: number) => iso(s * 1000);
+  // Money columns name their currency: the export holds the display currency's amounts, not always USD.
+  const head = (m: Measure) => (m.unit === "$" ? `${m.display_name} (${body.yaxis_currency})` : m.display_name);
   const lookup = valueIndex(body);
   if (body.periods) {
     const cohorts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
@@ -490,9 +493,9 @@ function csvRows(body: ChartData): (string | number | null)[][] {
   }
   const starts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
   if (body.segments) {
-    const cols = body.segments.flatMap((s, i) => body.measures.map((m, j) => ({ name: `${s.display_name} · ${m.display_name}`, i, j })));
+    const cols = body.segments.flatMap((s, i) => body.measures.map((m, j) => ({ name: `${s.display_name} · ${head(m)}`, i, j })));
     return [["period", ...cols.map((c) => c.name)], ...starts.map((s) => [day(s), ...cols.map((c) => lookup(s, { segment: c.i, measure: c.j })?.value ?? null)])];
   }
-  return [["period", ...body.measures.map((m) => m.display_name), "incomplete"], ...starts.map((s) => [day(s), ...body.measures.map((_, j) => lookup(s, { measure: j })?.value ?? null), body.measures.some((_, j) => lookup(s, { measure: j })?.incomplete) ? "true" : "false"])];
+  return [["period", ...body.measures.map(head), "incomplete"], ...starts.map((s) => [day(s), ...body.measures.map((_, j) => lookup(s, { measure: j })?.value ?? null), body.measures.some((_, j) => lookup(s, { measure: j })?.incomplete) ? "true" : "false"])];
 }
 

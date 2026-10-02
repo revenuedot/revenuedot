@@ -88,7 +88,9 @@ export function applyTint(tint: string | null) {
 
 /* ---------- Money and weeks ---------- */
 
-const digits = (currency: string) => { try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2; } catch { return 2; } };
+/** The currency's minor units: 2 for USD and EUR, 0 for JPY and KRW. */
+export const currencyDigits = (currency: string) => { try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2; } catch { return 2; } };
+const digits = currencyDigits;
 
 /** A USD amount in the display currency (at the latest rate). `cents` keeps the currency's minor units. */
 export function formatUsd(n: number, cents: boolean, d: Display = display): string {

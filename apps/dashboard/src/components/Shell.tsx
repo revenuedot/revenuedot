@@ -99,7 +99,7 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
           {me.enterprise?.features.includes("organizations") && enterpriseAvailable && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/organizations"); }}><Icon name="layers" />Organization settings</button>}
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account"); }}><Icon name="settings" />Account settings</button>
           {me.account?.edition === "cloud" && me.account.billing_ready && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account/billing"); }}><Icon name="dollar" />Billing</button>}
-          <button role="menuitem" type="button" onClick={() => { setOpen(false); clearCachedPrefs(); void signOut(qc, "/login"); }}><Icon name="logout" />Sign out</button>
+          <button role="menuitem" type="button" onClick={() => { setOpen(false); void signOut(qc, "/login"); }}><Icon name="logout" />Sign out</button>
         </div>
       )}
     </div>
@@ -147,7 +147,8 @@ export function Shell({ title, crumbs, children, actions, projectId: pinned, sid
     const next = effectiveTheme() === "dark" ? "light" : "dark";
     applyTheme(next);
     qc.setQueryData<Me>(["me"], (m) => (m?.user.preferences ? { ...m, user: { ...m.user, preferences: { ...m.user.preferences, theme: next } } } : m));
-    void api("/auth/me", { method: "POST", json: { theme: next } }).catch(() => { /* kept locally; saved next time */ });
+    // Not saved on the account when this fails: this browser keeps the theme (localStorage), other browsers the old one.
+    void api("/auth/me", { method: "POST", json: { theme: next } }).catch(() => {});
   };
   return (
     <div className="shell">
@@ -241,16 +242,18 @@ export function Copy({ value, label }: { value: string; label?: string }) {
  * Sign out without a single request answering 401: queries are paused (offline mode) and drained before the session
  * ends, then the browser loads the sign-in page afresh. A client-side navigation is not enough: React Router renders it
  * in a transition, so the old page can still be mounted when the cache is cleared and refetch with no session. The full
- * load also leaves no cached project data in memory.
+ * load also leaves no cached project data or display preferences in memory. `end` is the request that ends the session:
+ * POST /auth/logout by default, /auth/logout/all, or the account deletion. When it fails, queries resume and it throws.
  */
-export async function signOut(qc: QueryClient, to: string) {
+export async function signOut(qc: QueryClient, to: string, end: () => Promise<unknown> = () => api("/auth/logout", { method: "POST" })) {
   onlineManager.setOnline(false);
   try {
     for (let i = 0; i < 50 && qc.isFetching() > 0; i++) await new Promise((r) => setTimeout(r, 100));
-    await api("/auth/logout", { method: "POST" });
+    await end();
   } catch (e) {
     onlineManager.setOnline(true);
     throw e;
   }
+  clearCachedPrefs();
   window.location.replace(to);
 }

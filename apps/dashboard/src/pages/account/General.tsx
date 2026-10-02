@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMe, type Me } from "../../components/Shell";
+import { signOut, useMe, type Me } from "../../components/Shell";
 import { Dialog, Field, Tag, useToast } from "../../components/ui";
 import { api, ApiError, fmt } from "../../lib/api";
-import { clearCachedPrefs } from "../../lib/prefs";
 import { AccountLayout, Row, Section, errText } from "./AccountLayout";
 
 /**
@@ -34,6 +33,7 @@ function Profile({ me }: { me: Me }) {
   const [changing, setChanging] = useState(false);
   useEffect(() => { setName(u.name ?? ""); }, [u.name]);
   const saveName = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       const r = await api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: { name: name.trim() || null } });
@@ -77,6 +77,7 @@ function ChangeEmail({ me, onClose }: { me: Me; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const tfa = !!me.user.two_factor?.enabled;
   const go = async () => {
+    if (busy) return;
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setError("Enter a valid email address."); return; }
     setBusy(true); setError(null);
     try {
@@ -141,17 +142,12 @@ function StripeAccounts() {
 }
 
 function SignOut() {
-  const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const out = async (all: boolean) => {
     setBusy(all ? "all" : "one");
-    try {
-      await api(all ? "/auth/logout/all" : "/auth/logout", { method: "POST" });
-      qc.clear(); clearCachedPrefs();
-      nav("/login", { replace: true });
-    } catch (e) { toast(errText(e)); setBusy(null); }
+    try { await signOut(qc, "/login", () => api(all ? "/auth/logout/all" : "/auth/logout", { method: "POST" })); } catch (e) { toast(errText(e)); setBusy(null); }
   };
   return (
     <Section title="Sign out" id="sign-out">
@@ -180,7 +176,6 @@ function DangerZone({ me }: { me: Me }) {
 }
 
 function DeleteAccount({ me, onClose }: { me: Me; onClose: () => void }) {
-  const nav = useNavigate();
   const qc = useQueryClient();
   const check = useQuery({ queryKey: ["account-deletion"], queryFn: () => api<Deletion>("/auth/account/delete"), staleTime: 0, gcTime: 0 });
   const [typed, setTyped] = useState("");
@@ -192,11 +187,11 @@ function DeleteAccount({ me, onClose }: { me: Me; onClose: () => void }) {
   const d = check.data;
   const ok = !!d?.allowed && typed.trim().toLowerCase() === me.user.email && (me.user.has_password === false || !!password) && (!tfa || !!code);
   const go = async () => {
+    if (busy) return;
     setBusy(true); setError(null);
     try {
-      await api("/auth/account/delete", { method: "POST", json: { email: typed.trim(), password: password || undefined, ...(tfa ? (/^\d{6}$/.test(code.replace(/\s/g, "")) ? { code } : { recovery_code: code }) : {}) } });
-      qc.clear(); clearCachedPrefs();
-      nav("/login?deleted=1", { replace: true });
+      const json = { email: typed.trim(), password: password || undefined, ...(tfa ? (/^\d{6}$/.test(code.replace(/\s/g, "")) ? { code } : { recovery_code: code }) : {}) };
+      await signOut(qc, "/login?deleted=1", () => api("/auth/account/delete", { method: "POST", json }));
     } catch (e) {
       setError(errText(e));
       if (e instanceof ApiError && e.status === 409) void check.refetch();
