@@ -1,12 +1,13 @@
 /** Test helpers for the App Store adapter: a throwaway CA, signed JWS, DER receipts, a mock App Store Server API and a harness. */
 import { CompactSign } from "jose";
 import { asc } from "drizzle-orm";
-import { openDb, schema, type DB } from "@revenuedot/db";
+import { schema, type DB } from "@revenuedot/db";
 import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
 import { createAppleStore } from "../src/stores/apple/index.js";
 import type { FetchFn, StatusesResponse } from "../src/stores/apple/api.js";
 import type { AppleRenewalInfo, AppleTransaction } from "../src/stores/apple/map.js";
+import { openTestDb } from "../../../packages/contract/src/test-db.js";
 
 // ---------- DER encoding ----------
 
@@ -224,7 +225,7 @@ export const APP_ID = "app_ios";
 const KEY = "appl_testkey123";
 
 export async function appleHarness(o: { credentials?: Record<string, unknown>; fetch?: FetchFn; forwardUrl?: string; bundleId?: string | null } = {}): Promise<AppleHarness> {
-  const { db, close } = await openDb("pglite://memory");
+  const { db, close } = await openTestDb();
   let clock = new Date(T0);
   const now = () => clock;
   const app = createApp({ db, now, stores: { ...defaultStores(), app_store: createAppleStore({ fetch: o.fetch, now }) } });

@@ -22,7 +22,10 @@ import { attributeChecks, readLog, requestChecks, type Expectation } from "../sd
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "../../..");
 const BUILD = join(HERE, "build");
-const PORT = Number(process.env.HARNESS_PORT ?? 8872);
+// RD_SERVER_URL: use a server that is already running (the journey runner's, scripts/e2e/journeys/ios.ts and android.ts)
+// instead of starting one; RD_REQUEST_LOG is that server's request log.
+const EXTERNAL = process.env.RD_SERVER_URL?.trim().replace(/\/+$/, "") || null;
+const PORT = EXTERNAL ? Number(new URL(EXTERNAL).port) : Number(process.env.HARNESS_PORT ?? 8872);
 const BASE = `http://localhost:${PORT}`;
 // The emulator reaches the Mac's loopback at 10.0.2.2.
 const DEVICE_BASE = `http://10.0.2.2:${PORT}`;
@@ -30,7 +33,7 @@ const AVD = process.env.ANDROID_AVD ?? "rd_harness";
 const LOGIN_ID = `android_harness_${Date.now()}`;
 const APP_ID = "app.revenuedot.harness";
 const DB_NAME = "rd_android_harness";
-const REQUEST_LOG = join(BUILD, "requests.jsonl");
+const REQUEST_LOG = process.env.RD_REQUEST_LOG ?? join(BUILD, "requests.jsonl");
 const JAVA_HOME = process.env.JAVA_HOME ?? "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home";
 const ANDROID_HOME = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? "/opt/homebrew/share/android-commandlinetools";
 const ENV = { ...process.env, JAVA_HOME, ANDROID_HOME, PATH: `${JAVA_HOME}/bin:${process.env.PATH}` };
@@ -217,11 +220,13 @@ try {
   const shots = process.env.SHOTS;
   if (shots) mkdirSync(shots, { recursive: true });
   mkdirSync(BUILD, { recursive: true });
-  const db = await database();
-  owned = db.owned;
   // The emulator boots while the server starts.
   const booting = bootEmulator();
-  server = await startServer(db.url);
+  if (!EXTERNAL) {
+    const db = await database();
+    owned = db.owned;
+    server = await startServer(db.url);
+  }
   const cookie = await session(BASE, "android-harness@revenuedot.test", "android-harness-password", "Android harness");
   const me = await (await fetch(`${BASE}/auth/me`, { headers: { cookie } })).json() as { projects: { id: string }[] };
   const projectId = me.projects[0]!.id;

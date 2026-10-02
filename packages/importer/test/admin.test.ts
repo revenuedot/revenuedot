@@ -2,22 +2,22 @@
 // This file: `revenuedot admin reset-password` against a real (in-memory) RevenueDot database.
 // Docs: https://revenuedot.app/docs/guides/self-hosting#reset-a-password-without-email
 import { afterEach, describe, expect, it } from "vitest";
-import { openDb, schema } from "@revenuedot/db";
+import { schema } from "@revenuedot/db";
 import { main } from "../src/cli.js";
 import type { Query } from "../src/admin.js";
 import { hashPassword as serverHash, login, createSession } from "../../../apps/server/src/services/sessions.js";
+import { openTestDb } from "../../contract/src/test-db.js";
 
 let close: (() => Promise<void>) | undefined;
 afterEach(async () => { await close?.(); close = undefined; });
 
 async function setup() {
-  const o = await openDb("pglite://memory");
+  const o = await openTestDb();
   close = o.close;
   await o.db.insert(schema.users).values({ id: "usr_1", email: "owner@example.com", passwordHash: await serverHash("old password 1") });
   await createSession(o.db, "usr_1", new Date());
   await createSession(o.db, "usr_1", new Date());
-  const client = (o.db as unknown as { $client: { query: (t: string, p: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> } }).$client;
-  const query: Query = async (t, p) => (await client.query(t, p)).rows;
+  const query: Query = (t, p) => o.query(t, p);
   const out: string[] = [], err: string[] = [];
   const run = (args: string[]) => main(args, { out: (s) => out.push(s), err: (s) => err.push(s), env: {}, query });
   return { db: o.db, run, out, err };

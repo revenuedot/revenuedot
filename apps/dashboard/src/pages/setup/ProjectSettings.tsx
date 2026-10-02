@@ -62,10 +62,12 @@ function DeleteProject({ p, onClose }: { p: Project; onClose: () => void }) {
     setBusy(true); setError(null);
     try {
       await api(base(p.id), { method: "DELETE" });
-      qc.removeQueries({ predicate: (q) => q.queryKey.includes(p.id) });
       await qc.invalidateQueries({ queryKey: ["me"] });
       toast(`${p.name} deleted.`);
       nav("/");
+      // The deleted project's cached data goes once no page shows it: removing it under the mounted page (its move banner)
+      // made that page fetch again and get 404 for the project it had just deleted.
+      setTimeout(() => qc.removeQueries({ predicate: (q) => q.queryKey.includes(p.id), type: "inactive" }), 0);
     } catch (e) { setError(errMsg(e)); setBusy(false); }
   };
   return (

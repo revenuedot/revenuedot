@@ -224,7 +224,8 @@ test("paywalls: gallery, create from template, edit, translate, publish to the S
   // Phone width: no sideways scroll.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(200);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  // Neither the document nor the app's scroll area (the editor's toolbar row) scrolls sideways.
+  expect(await page.evaluate(() => { const s = document.querySelector(".scroll"); return document.documentElement.scrollWidth <= window.innerWidth + 1 && (!s || s.scrollWidth <= s.clientWidth + 1); })).toBe(true);
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // 7. Generate with AI (the e2e server's fake model) on the second offering.

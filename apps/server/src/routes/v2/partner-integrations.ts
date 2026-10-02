@@ -251,7 +251,8 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const status = c.req.query("status");
     if (status) {
       if (!["pending", "delivered", "failed", "skipped"].includes(status)) throw paramError("status must be pending, delivered, failed or skipped.", "status");
-      conds.push(eq(D.status, status));
+      // A delivery being sent right now ("sending", leased by a tick) is still pending to the API.
+      conds.push(status === "pending" ? inArray(D.status, ["pending", "sending"]) : eq(D.status, status));
     }
     if (startingAfter) {
       const [cur] = await db.select().from(D).where(and(eq(D.integrationId, i.id), eq(D.id, startingAfter))).limit(1);
@@ -296,8 +297,8 @@ const cleanNames = (n: Record<string, string> | undefined) => Object.fromEntries
 
 export function deliveryShape(d: typeof schema.integrationDeliveries.$inferSelect, eventType: string) {
   return {
-    object: "integration_delivery" as const, id: d.id, integration_id: d.integrationId, event_id: d.eventId, event_type: eventType, status: d.status,
-    attempts: d.attempts, sent_as: d.sentAs, next_attempt_at: d.status === "pending" ? d.nextAttemptAt.getTime() : null, request: d.request, request_body: d.requestBody,
+    object: "integration_delivery" as const, id: d.id, integration_id: d.integrationId, event_id: d.eventId, event_type: eventType, status: d.status === "sending" ? "pending" : d.status,
+    attempts: d.attempts, sent_as: d.sentAs, next_attempt_at: d.status === "pending" || d.status === "sending" ? d.nextAttemptAt.getTime() : null, request: d.request, request_body: d.requestBody,
     response_status: d.responseStatus, response_ms: d.responseMs, response_body: d.responseBody, last_error: d.lastError, created_at: d.createdAt.getTime(),
   };
 }

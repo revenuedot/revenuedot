@@ -2,16 +2,17 @@
 // This file: who may sign up. Self-hosted servers take only their owner's account unless REVENUEDOT_ALLOW_SIGNUP=true.
 // Docs: https://revenuedot.app/docs/self-hosting
 import { afterEach, describe, expect, it } from "vitest";
-import { openDb, schema } from "@revenuedot/db";
+import { schema } from "@revenuedot/db";
 import { createApp } from "../src/app.js";
 import type { Deps } from "../src/context.js";
 import { defaultStores } from "../src/stores/index.js";
+import { openTestDb } from "../../../packages/contract/src/test-db.js";
 
 let close: (() => Promise<void>) | undefined;
 afterEach(async () => { await close?.(); close = undefined; });
 
 async function server(over: Partial<Deps>) {
-  const o = await openDb("pglite://memory");
+  const o = await openTestDb();
   close = o.close;
   const app = createApp({ db: o.db, now: () => new Date("2026-09-30T12:00:00Z"), stores: defaultStores(), ...over });
   const call = async (method: string, path: string, json?: unknown) => {

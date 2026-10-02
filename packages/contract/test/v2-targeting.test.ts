@@ -165,6 +165,16 @@ describe("the customer page's current offering", () => {
     expect(await summary("f1")).toMatchObject({ lookup_key: "promo", source: "targeting", rule_name: "Flutter promo" });
   });
 
+  it("a storefront rule matches the country whether it is written as DE or DEU, in the SDK and on the customer page", async () => {
+    const promo = await offering("promo");
+    const aud = (await call("POST", AUD, {}, { json: { name: "Germany", rules: { groups: [{ conditions: [{ field: "storefront", operator: "is", value: "DE" }] }] } } })).body.id;
+    await call("POST", RULES, {}, { ext: true, json: { name: "German promo", audience_id: aud, offering_id: promo, state: "active" } });
+    const ios = { "x-platform": "iOS", "x-storefront": "DEU" };
+    await h.fetch("/v1/subscribers/de1", { key: h.ids.testKey, headers: ios });
+    expect((await sdk("de1", ios)).current_offering_id).toBe("promo");
+    expect(await summary("de1")).toMatchObject({ lookup_key: "promo", source: "targeting", rule_name: "German promo" });
+  });
+
   it("shows a paused experiment only to customers already in it", async () => {
     const promo = await offering("promo");
     const exp = await call("POST", EXP, {}, { ext: true, json: { name: "Promo test", offering_a: "ofr_default", offering_b: promo } });

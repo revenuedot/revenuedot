@@ -30,8 +30,9 @@ describe("published chart SQL", () => {
       for (const r of RANGES) {
         const endExclusive = new Date(Date.parse(`${r.end_date}T00:00:00Z`) + 86_400_000).toISOString();
         const text = fillReferenceSql(q.sql, { project_id: "proj1", resolution: r.resolution, start_date: `${r.start_date}T00:00:00Z`, end_date: endExclusive, now: NOW.toISOString() });
-        const res = await h.db.execute(sql.raw(text)) as unknown as { rows: Record<string, unknown>[] };
-        const rows = res.rows;
+        // PGlite answers { rows }, postgres.js an array of rows (REVENUEDOT_TEST_PG_URL runs).
+        const res = await h.db.execute(sql.raw(text)) as unknown as { rows: Record<string, unknown>[] } | Record<string, unknown>[];
+        const rows = Array.isArray(res) ? res : res.rows;
         const api = await call("GET", "/v2/projects/{project_id}/charts/{chart_name}", { chart_name: q.chart }, { query: `resolution=${r.resolution}&start_date=${r.start_date}&end_date=${r.end_date}` });
         const measures: { id: string }[] = api.body.measures;
         const fromApi = (j: number) => api.body.values.filter((v: any) => v.measure === j).map((v: any) => v.value);

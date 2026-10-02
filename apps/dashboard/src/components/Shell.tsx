@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Icon, Mark } from "./icons";
 import { enterpriseAvailable } from "../extensions";
@@ -91,7 +91,7 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
           {me.enterprise?.features.includes("organizations") && enterpriseAvailable && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/organizations"); }}><Icon name="layers" />Organization settings</button>}
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account"); }}><Icon name="settings" />Account settings</button>
           {me.account?.edition === "cloud" && me.account.billing_ready && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account/billing"); }}><Icon name="dollar" />Billing</button>}
-          <button role="menuitem" type="button" onClick={async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav("/login"); }}><Icon name="logout" />Sign out</button>
+          <button role="menuitem" type="button" onClick={() => { setOpen(false); void signOut(qc, "/login"); }}><Icon name="logout" />Sign out</button>
         </div>
       )}
     </div>
@@ -219,4 +219,22 @@ export function Copy({ value, label }: { value: string; label?: string }) {
       </button>
     </span>
   );
+}
+
+/**
+ * Sign out without a single request answering 401: queries are paused (offline mode) and drained before the session
+ * ends, then the browser loads the sign-in page afresh. A client-side navigation is not enough: React Router renders it
+ * in a transition, so the old page can still be mounted when the cache is cleared and refetch with no session. The full
+ * load also leaves no cached project data in memory.
+ */
+export async function signOut(qc: QueryClient, to: string) {
+  onlineManager.setOnline(false);
+  try {
+    for (let i = 0; i < 50 && qc.isFetching() > 0; i++) await new Promise((r) => setTimeout(r, 100));
+    await api("/auth/logout", { method: "POST" });
+  } catch (e) {
+    onlineManager.setOnline(true);
+    throw e;
+  }
+  window.location.replace(to);
 }

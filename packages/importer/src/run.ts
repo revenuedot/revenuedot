@@ -94,7 +94,10 @@ export function formatReport(r: ImportReport): string {
   out.push(`  ${"SDK keys".padEnd(14)} ${r.catalog.publicKeys.updated} kept (existing app builds keep working with RevenueDot)`);
   out.push("");
   out.push(`Customers (pass ${r.customers.pass}${r.customers.complete ? ", complete" : ", incomplete: run again to continue"})`);
-  out.push(`  ${r.customers.imported} customers ${r.dryRun ? "read" : "imported"}${r.dryRun ? "" : ` (${r.customers.created} new, ${r.customers.merged} merged with existing ones)`}`);
+  // Every imported customer is new or joins one RevenueDot already had (from live traffic, or from an earlier pass).
+  const existing = r.customers.imported - r.customers.created;
+  const merged = r.customers.merged ? `, ${r.customers.merged} of them merged from several RevenueDot customers` : "";
+  out.push(`  ${r.customers.imported} customers ${r.dryRun ? "read" : "imported"}${r.dryRun ? "" : ` (${r.customers.created} new, ${existing} already in RevenueDot${merged})`}`);
   out.push(`  ${r.customers.subscriptions} subscriptions, ${r.customers.purchases} one-time purchases`);
   if (r.dryRun && r.googleWithoutToken) out.push(`  ${r.googleWithoutToken} Google Play subscriptions have no purchase token in the export; RevenueDot looks them up with the app's service account, or marks them needs_token_refresh`);
   if (!r.dryRun && r.customers.needsTokenRefresh) out.push(`  ${r.customers.needsTokenRefresh} Google Play subscriptions need a purchase token (add the service account and run again; see "revenuedot import plan")`);

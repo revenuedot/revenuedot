@@ -355,7 +355,7 @@ const journey: Journey = {
       const seen = await sdk.call("GET", `/v1/subscribers/${buyer}`, undefined, iosHeaders);
       const setAttrs = await sdk.attributes(buyer, ids);
       c.check("the app sets the partner ids as customer attributes (POST /v1/subscribers/{id}/attributes)", (seen.status === 200 || seen.status === 201) && setAttrs.status === 200, { seen: seen.status, attrs: setAttrs.status, body: setAttrs.body });
-      const stored = Object.fromEntries((await sql`SELECT a.key, a.value FROM customer_attributes a JOIN customer_aliases al ON al.customer_id = a.customer_id WHERE al.app_user_id = ${buyer}`).map((r: any) => [r.key, r.value]));
+      const stored = Object.fromEntries((await sql`SELECT a.key, a.value FROM customer_attributes a JOIN customer_aliases al ON al.customer_id = a.customer_id WHERE al.project_id = ${dev.projectId} AND al.app_user_id = ${buyer}`).map((r: any) => [r.key, r.value]));
       const notStored = Object.entries(ids).filter(([k, v]) => stored[k] !== v).map(([k]) => k);
       c.check("every attribute is stored on the customer", notStored.length === 0, { notStored, stored });
       let capFrom = ctx.capture.requests.length, outFrom = ctx.server.outbound().length;
@@ -446,7 +446,10 @@ const journey: Journey = {
       const idsB = { ...ids, $email: `amazon-${S}@journeys.test`, $gpsAdId: randomUUID(), $idfa: null, $idfv: null, $airshipChannelId: randomUUID(), $onesignalUserId: randomUUID() } as Record<string, string | null>;
       await sdkB.call("POST", `/v1/subscribers/${buyerB}/attributes`, { attributes: Object.fromEntries(Object.entries(idsB).map(([k, v]) => [k, { value: v, updated_at_ms: Date.now() }])) }, androidHeaders);
       const receiptId = `amzn-receipt-${rnd(16)}`;
-      amazonReceipts.set(receiptId, { receiptId, productId: "journey.pro", productType: "SUBSCRIPTION", termSku: "journey.pro.monthly", term: "1 Month", purchaseDate: Date.now() - 5000, renewalDate: Date.now() + 30 * 86400_000, cancelDate: null, autoRenewing: true, testTransaction: false, betaProduct: false, countryCode: "US", quantity: 1 });
+      // A first period: Amazon's renewal date is one calendar month after the purchase.
+      const amzBought = new Date(Date.now() - 5000);
+      const amzRenews = new Date(amzBought); amzRenews.setUTCMonth(amzRenews.getUTCMonth() + 1);
+      amazonReceipts.set(receiptId, { receiptId, productId: "journey.pro", productType: "SUBSCRIPTION", termSku: "journey.pro.monthly", term: "1 Month", purchaseDate: amzBought.getTime(), renewalDate: amzRenews.getTime(), cancelDate: null, autoRenewing: true, testTransaction: false, betaProduct: false, countryCode: "US", quantity: 1 });
       capFrom = ctx.capture.requests.length; outFrom = ctx.server.outbound().length;
       const amz = await sdkB.call("POST", "/v1/receipts", { app_user_id: buyerB, fetch_token: receiptId, product_id: "journey.pro.monthly", store_user_id: `amzn1.account.${rnd(20).toUpperCase()}`, price: 4.99, currency: "USD", is_restore: false }, androidHeaders);
       c.must("Amazon purchase answers 200 with pro active", amz.status === 200 && amz.body.subscriber?.entitlements?.pro, amz.body);
@@ -499,6 +502,11 @@ const journey: Journey = {
       c.check("Amplitude HTTP 500: the delivery waits for its next attempt in 5 minutes, with the error logged", d500?.status === "pending" && d500.response_status === 500 && /^HTTP 500/.test(d500.last_error) && Math.abs(d500.next_attempt_at - Date.now() - 5 * 60_000) < 60_000, d500);
       let ampRow = await intRow(ampId);
       c.check("integrations row counts the failure and keeps the error", ampRow.consecutive_failures === 1 && /^HTTP 500/.test(ampRow.last_error ?? ""), { failures: ampRow.consecutive_failures, error: ampRow.last_error });
+      // RevenueCat's dashboard sends a failed or retrying event at once on Retry; a delivery waiting for its scheduled retry is no exception.
+      const ampRetry = await dev.v2r("POST", `/integrations/partners/${ampId}/deliveries/${t500.id}/retry`);
+      c.check("Retry of the delivery waiting for its 5-minute retry is accepted (200, not 409)", ampRetry.status === 200 && ampRetry.body.status === "pending", { status: ampRetry.status, body: ampRetry.body });
+      const dAmpRetry = await until(async () => (await deliveriesOf(ampId)).find((x) => x.id === t500.id && x.status === "delivered"), { timeoutMs: 60_000 });
+      c.check("the retried Amplitude delivery is sent now and delivered with HTTP 200", dAmpRetry?.response_status === 200, dAmpRetry);
       // Segment answers 400: a permanent error, failed at once.
       const segId = idOf.get("segment")!;
       fails.set("api.segment.io", { status: 400, left: 1 });
@@ -529,7 +537,7 @@ const journey: Journey = {
       const evReplay = (await eventsById([t400b.event_id]))[0]!;
       await verifyEvent("D-replay", evReplay, capFrom, outFrom, {}, ["segment"]);
       ampRow = await intRow(ampId);
-      note("amplitude", { phase: "D", status: "HTTP 500 → pending, retry in 5 min", detail: d500?.last_error ?? "" });
+      note("amplitude", { phase: "D", status: "HTTP 500 → pending, retry in 5 min; manual Retry sent it at once and it was delivered", detail: d500?.last_error ?? "" });
       note("segment", { phase: "D", status: "HTTP 400 → failed; retry and replay delivered", detail: "" });
 
       // ---------- E. connections that send no events ----------
@@ -619,13 +627,14 @@ const journey: Journey = {
       c.eq("transactions CSV header = RevenueCat's transaction export columns (plus app_id)", tx[0], RC_TRANSACTION_COLUMNS);
       const col = (rows: string[][], name: string) => rows[0]!.indexOf(name);
       const rowOf = (rows: string[][], user: string) => { const r = rows.find((x) => x[col(rows, "rc_original_app_user_id")] === user); return r ? Object.fromEntries(rows[0]!.map((h, k) => [h, r[k]])) : null; };
-      const [txA] = await sql`SELECT store, store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.original_app_user_id = ${buyer}`;
+      const [txA] = await sql`SELECT store, store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.project_id = ${dev.projectId} AND cu.original_app_user_id = ${buyer}`;
       const ra = rowOf(tx, buyer);
       c.has("the Test Store purchase row: product, store, sandbox, $9.99 USD, the transaction id, entitlement", ra, { product_identifier: "pro_monthly", store: txA?.store, is_sandbox: "true", price_in_usd: "9.99", purchase_price_in_usd: "9.99", purchased_currency: "USD", store_transaction_id: txA?.store_transaction_id, is_auto_renewable: "true", entitlement_identifiers: '["pro"]', product_duration: "P1M", app_id: cat.app.id });
-      const [txB] = await sql`SELECT store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.original_app_user_id = ${buyerB}`;
+      const [txB] = await sql`SELECT store_transaction_id FROM transactions t JOIN customers cu ON cu.id = t.customer_id WHERE cu.project_id = ${dev.projectId} AND cu.original_app_user_id = ${buyerB}`;
       const rb = rowOf(tx, buyerB);
       c.has("the Amazon purchase row: production, $4.99, the transaction id", rb, { product_identifier: "journey.pro.monthly", store: "amazon", is_sandbox: "false", price_in_usd: "4.99", store_transaction_id: txB?.store_transaction_id, app_id: amazonApp.id });
-      c.check("the Amazon transaction id is the receipt id plus the period start", String(txB?.store_transaction_id).startsWith(`${receiptId}.`), txB);
+      // stores/amazon/map.ts: the first period's transaction id is the receipt id; later periods add their start (ms).
+      c.eq("the Amazon transaction id of the first period is the receipt id", txB?.store_transaction_id, receiptId);
       c.eq("transactions CSV has the rows the run reports", tx.length - 1, csvRun.files.find((f: any) => f.table === "transactions").rows);
       for (const t of ["customers", "subscriptions", "events"]) {
         const rows = await csvOf(t);
@@ -645,6 +654,18 @@ const journey: Journey = {
       }
       const runsList = await dev.v2("GET", `/integrations/exports/${csvJob.body.id}/runs`);
       c.check("run history lists the run with rows and bytes", runsList.items.length === 1 && runsList.items[0].rows > 0 && runsList.items[0].bytes > 0, runsList.items);
+
+      c.begin("G. list and delete");
+      const exportsList = await dev.v2("GET", "/integrations/exports");
+      c.check("GET exports lists the destinations made", [csvJob.body.id, badJob.body.id].every((id) => exportsList.items.some((x: any) => x.id === id)), exportsList.items.map((x: any) => x.id));
+      await dev.v2("DELETE", `/integrations/exports/${badJob.body.id}`);
+      c.check("a deleted export destination is gone", !(await dev.v2("GET", "/integrations/exports")).items.some((x: any) => x.id === badJob.body.id));
+      const partners = await dev.v2("GET", "/integrations/partners?limit=100");
+      const victim = partners.items.find((x: any) => x.type === "discord");
+      await dev.v2("DELETE", `/integrations/partners/${victim.id}`);
+      c.eq("a deleted partner integration answers 404", (await dev.v2r("GET", `/integrations/partners/${victim.id}`)).status, 404);
+      const leftover = await ctx.sql`SELECT count(*)::int AS n FROM integration_deliveries WHERE integration_id = ${victim.id}`;
+      c.eq("its delivery log went with it", leftover[0]!.n, 0);
     } finally {
       const at = ctx.capture.handlers.indexOf(handler);
       if (at >= 0) ctx.capture.handlers.splice(at, 1);

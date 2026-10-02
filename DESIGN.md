@@ -29,12 +29,12 @@
 | `--active` | `#EDEDED` | `#1F1F1F` | Selected nav item |
 | `--fg` | `#0A0A0A` | `#FAFAFA` | Text, primary fill |
 | `--fg-2` | `#525252` | `#A3A3A3` | Secondary text |
-| `--fg-3` | `#737373` | `#8A8A8A` | Labels, captions |
+| `--fg-3` | `#6B6B6B` | `#8A8A8A` | Labels, captions |
 | `--border` | `#E5E5E5` | `#262626` | Panel edges, grid dividers |
 | `--border-2` | `#F0F0F0` | `#1C1C1C` | Row separators |
 | `--accent` | `#F7B500` | `#F7B500` | The gold dot |
 | `--accent-ink` | `#8A5A00` | `#FFD35C` | Gold text |
-| `--up` / `--down` / `--info` | `#5F822B` / `#C2410C` / `#2F6F9F` | `#9BC75A` / `#F0875A` / `#7FB7E0` | State |
+| `--up` / `--down` / `--info` | `#587A27` / `#C2410C` / `#2F6F9F` | `#9BC75A` / `#F0875A` / `#7FB7E0` | State |
 
 ## 4. Typography
 | Role | Spec |
