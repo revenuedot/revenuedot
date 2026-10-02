@@ -133,7 +133,7 @@ test("Overview bar opens a conversation with the question", async ({ page }) => 
 });
 
 test("Project settings → AI features: read only hides writes, disabled turns it off", async ({ page }) => {
-  const { pid } = await fresh(page, "settings");
+  const { pid, P } = await fresh(page, "settings");
   await page.goto(`/projects/${pid}/settings/ai`);
   const tab = page.getByTestId("ai-features");
   await expect(tab.getByRole("radio", { name: /Read and write with permission/ })).toBeChecked();
@@ -151,8 +151,10 @@ test("Project settings → AI features: read only hides writes, disabled turns i
   await expect(page.getByText("AI features saved.")).toBeVisible();
   await page.goto(`/projects/${pid}/ai`);
   await expect(page.getByTestId("ai-unavailable")).toContainText("An admin turned RevenueDot AI off for this project.");
+  // The Overview's ask bar shows the reason (it appears once the project has a customer; a first-run Overview shows setup instead).
+  await json(page, "POST", `${P}/test_purchases`, { app_user_id: "ai_buyer", product_id: "pro_monthly" });
   await page.goto(`/projects/${pid}/overview`);
-  await expect(page.getByRole("button", { name: "RevenueDot AI" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "RevenueDot AI" }).first()).toContainText("An admin turned RevenueDot AI off for this project.");
 });
 
 test("@ mentions and the .storekit viewer", async ({ page }) => {

@@ -16,6 +16,7 @@ import type { ServerResponse } from "node:http";
 import type { Journey } from "./run.ts";
 import { sleep, until } from "./lib/check.ts";
 import { type Ctx, eventsOf, sdkClient, secretClient, signUp } from "./lib/context.ts";
+import { chromium } from "./onboarding.ts";
 import { PORTS, ROOT, type Captured } from "./lib/stack.ts";
 import { FakeRevenueCat, type RcModel } from "../../../packages/importer/test/fake-revenuecat.ts";
 import { ANON, DAY, PROJECT, T0, TOKENS_CSV, rcModel } from "../../../packages/importer/test/fixtures.ts";
@@ -309,6 +310,36 @@ const journey: Journey = {
       c.check("lifetime purchase: non_subscriptions lists lifetime and the refunded coins", life.body.subscriber?.non_subscriptions?.lifetime?.length === 1 && life.body.subscriber?.non_subscriptions?.coins_100?.length === 1, life.body.subscriber?.non_subscriptions);
       const v2Apple = await backend.r("GET", `/customers/user_apple`);
       c.check("v2 customer: user_apple's active entitlement 'pro' until the period end", v2Apple.body.active_entitlements?.items?.length === 1 && v2Apple.body.active_entitlements.items[0].expires_at === at(25), v2Apple.body);
+
+      c.begin("the imported data in the dashboard (Chromium)");
+      {
+        const browser = await chromium().launch();
+        const errors: string[] = [];
+        try {
+          const bcx = await browser.newContext();
+          await bcx.addCookies([{ name: "rd_session", value: dev.cookie.split("=")[1]!, url: ctx.base }]);
+          const page = await bcx.newPage();
+          page.on("pageerror", (e) => errors.push(String(e)));
+          page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+          page.on("response", (r) => { if (r.url().startsWith(ctx.base) && r.status() >= 400) errors.push(`${r.status()} ${new URL(r.url()).pathname}`); });
+          await page.goto(`${ctx.base}/projects/${dev.projectId}/customers/user_apple`);
+          await page.getByRole("heading", { name: "user_apple" }).waitFor({ timeout: 20_000 });
+          await page.waitForLoadState("networkidle").catch(() => {});
+          const body = await page.locator("body").innerText();
+          c.check("user_apple's customer page shows the imported pro entitlement and its App Store subscription", /\bpro\b/.test(body) && /App Store/.test(body), body.slice(0, 600));
+          await page.goto(`${ctx.base}/projects/${dev.projectId}/product-catalog/products`);
+          await page.waitForLoadState("networkidle").catch(() => {});
+          const prods = await page.locator("body").innerText();
+          const archived = new Set(products.filter((x: any) => x.state === "inactive").map((x: any) => x.store_identifier as string));
+          const missing = model.products.map((x: Obj) => x.store_identifier as string).filter((sid: string) => !archived.has(sid) && !prods.includes(sid));
+          c.check("the Products page lists every active imported product", missing.length === 0, missing);
+          await page.getByRole("group", { name: "Filter products" }).getByRole("button", { name: "Inactive" }).click();
+          await page.waitForTimeout(300);
+          const inactive = await page.locator("body").innerText();
+          c.check(`the Inactive filter shows the archived import (${[...archived].join(", ")})`, archived.size > 0 && [...archived].every((sid) => inactive.includes(sid)), [...archived]);
+          c.eq("no page errors, console errors or failed requests on those pages", errors, []);
+        } finally { await browser.close(); }
+      }
 
       c.begin("no webhooks and no events for imported history");
       const ev1 = await eventsOf(ctx, P);
