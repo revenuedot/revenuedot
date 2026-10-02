@@ -458,6 +458,8 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await page.getByLabel("Sandbox behavior").selectOption("transfer");
     await page.getByRole("button", { name: "Save changes" }).click();
     await toast("Project settings saved.");
+    // The toast of the save above can still be showing; wait for this save on a slower (real) database.
+    await expect.poll(async () => (await api("GET", P)).body.sandbox_transfer_behavior).toBe("transfer");
     expect((await api("GET", P)).body).toMatchObject({ transfer_behavior: "keep", sandbox_transfer_behavior: "transfer" });
     expect((await post("dave", t2)).status).toBe(200);
   });

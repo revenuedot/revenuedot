@@ -368,8 +368,8 @@ function ProgramEditor({ d, set, s, error }: { d: Draft; set: (p: Partial<Draft>
                 <input id={`f-program-entry-${i}`} className="input" type="date" value={p.entry_date} onChange={(e) => update(i, { entry_date: e.target.value })} />
               </Field>
               <Field label="Exit date" htmlFor={`f-program-exit-${i}`} hint="Leave empty while you are still in the program.">
-                <div className="hrow">
-                  <input id={`f-program-exit-${i}`} className="input" type="date" value={p.exit_date ?? ""} onChange={(e) => update(i, { exit_date: e.target.value || null })} />
+                <div className="hrow" style={{ flexWrap: "nowrap" }}>
+                  <input id={`f-program-exit-${i}`} className="input" style={{ flex: "1 1 0", minWidth: 0 }} type="date" value={p.exit_date ?? ""} onChange={(e) => update(i, { exit_date: e.target.value || null })} />
                   {d.program.periods.length > 1 && <button type="button" className="btn btn-line" aria-label={`Remove period ${i + 1}`} onClick={() => set({ program: { ...d.program, periods: d.program.periods.filter((_, k) => k !== i) } })}><Icon name="trash" /></button>}
                 </div>
               </Field>
