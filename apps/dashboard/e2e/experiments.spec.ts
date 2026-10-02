@@ -243,6 +243,10 @@ test("create, validate, draft, edit, start; SDK split with placements; results, 
   // Results in the browser match the API.
   await page.reload();
   await page.getByLabel("Environment").selectOption("sandbox");
+  // The choice is kept in the URL (?environment=sandbox), so a reload or a shared link stays on sandbox results.
+  await expect(page).toHaveURL(/\?environment=sandbox$/);
+  await page.reload();
+  await expect(page.getByLabel("Environment")).toHaveValue("sandbox");
   const res = await json(page, "GET", `${P}/experiments/${id}/results?environment=sandbox`);
   expect(res.variants.items.reduce((s: number, v: any) => s + v.customers, 0)).toBe(45);
   expect(res.variants.items.reduce((s: number, v: any) => s + v.metrics.paid_customers.value, 0)).toBe(buyers.length);
@@ -351,6 +355,52 @@ test("enrollment priority by keyboard and drag; Create with RevenueDot AI saves 
   const audit = await json(page, "GET", `${P}/audit_logs?limit=20`);
   expect(audit.items.some((l: any) => l.action_type === "experiment_created" && l.actor_type === "assistant")).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("a viewer reads experiments, results and targeting without any control that changes them", async ({ page, browser }) => {
+  const errors = watchConsole(page);
+  const { pid, P, ids, stamp } = await fresh(page, "viewer");
+  const x = await json(page, "POST", `${P}/experiments`, { name: "Read only", variants: [{ offering_id: ids.def }, { offering_id: ids.promo }] });
+  await json(page, "POST", `${P}/experiments`, { name: "Second draft", variants: [{ offering_id: ids.promo }, { offering_id: ids.def }] });
+  await json(page, "POST", `${P}/experiments/${x.id}/actions/start`);
+  await json(page, "POST", `${P}/targeting_rules`, { name: "Promo for all", offering_id: ids.promo, state: "active" });
+  const email = `xp-viewer-guest-${stamp}@revenuedot.test`;
+  await json(page, "POST", `${P}/invites`, { email, role: "viewer" });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const guest = await ctx.newPage();
+  const guestErrors = watchConsole(guest);
+  await json(guest, "POST", "/auth/signup", { email, password: `e2e-${stamp}-pw`, name: "Viewer Vic", project_name: "Own" });
+  let token = "";
+  await expect.poll(async () => {
+    const mails = (await (await guest.request.get(`/__mail?to=${encodeURIComponent(email)}`)).json()) as { text: string }[];
+    token = /invite\?token=([\w-]+)/.exec(mails.map((m) => m.text).join("\n"))?.[1] ?? "";
+    return token;
+  }).not.toBe("");
+  await json(guest, "POST", `/auth/invites/${token}/accept`);
+
+  await guest.goto(`/projects/${pid}/experiments`);
+  await expect(guest.locator(".xp-item")).toHaveCount(2);
+  await expect(guest.getByRole("button", { name: "New experiment" })).toHaveCount(0);
+  await expect(guest.locator(".xp-item .grip")).toHaveCount(0);
+  await expect(guest.getByRole("button", { name: /^Actions for/ })).toHaveCount(0);
+  await guest.goto(`/projects/${pid}/experiments/${x.id}`);
+  await expect(guest.getByRole("heading", { name: "Read only" })).toBeVisible();
+  await expect(guest.getByTestId("xp-guidance")).toBeVisible();
+  for (const name of ["Pause", "Stop", "Start", "More actions"]) await expect(guest.getByRole("button", { name, exact: true })).toHaveCount(0);
+  await guest.goto(`/projects/${pid}/experiments/${x.id}/edit`);
+  await expect(guest.getByRole("status").filter({ hasText: "can view experiments but not change them" })).toBeVisible();
+  await expect(guest.getByRole("button", { name: /Save/ })).toHaveCount(0);
+  await guest.goto(`/projects/${pid}/targeting`);
+  await expect(guest.getByRole("listitem", { name: "Rule Promo for all" })).toBeVisible();
+  await expect(guest.getByRole("button", { name: "New rule" })).toHaveCount(0);
+  await expect(guest.locator(".tg-card .grip")).toHaveCount(0);
+  await expect(guest.getByLabel("Select default offering")).toBeDisabled();
+  // The server refuses a viewer's write whatever the page shows.
+  expect((await guest.request.post(`${P}/experiments/${x.id}/actions/stop`)).status()).toBe(403);
+  expect((await json(page, "GET", `${P}/experiments/${x.id}`)).status).toBe("running");
+  await ctx.close();
+  expect(errors).toEqual([]);
+  expect(guestErrors).toEqual([]);
 });
 
 test("phone width and dark theme: list, form, experiment and results fit without page-level horizontal scroll", async ({ page }) => {
