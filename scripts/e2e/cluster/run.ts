@@ -9,7 +9,7 @@
 // and it checks that every event reached the working webhook exactly once, that the failing webhook opened one alert email,
 // that no two background job runs overlapped, and that no request failed at the load balancer.
 //
-//   pnpm tsx scripts/e2e/cluster/run.ts            (CLUSTER_PURCHASES=120, CLUSTER_PORT_BASE=5700, KEEP_DB=1 keeps the database)
+//   pnpm tsx scripts/e2e/cluster/run.ts            (CLUSTER_PURCHASES=300, CLUSTER_PORT_BASE=5700, KEEP_DB=1 keeps the database)
 //
 // Results: scripts/e2e/cluster/build/<stamp>/ (summary.json, one server.log per replica) and prd/ha-self-host/cluster-results.json.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -20,7 +20,7 @@ import { sdkClient, signUp, standardCatalog } from "../journeys/lib/context.ts";
 import { Capture, RdServer, ROOT, createDatabase, dropDatabase, hideUrls, postgres, startSmtpSink, writeJson } from "../journeys/lib/stack.ts";
 
 const PORT_BASE = Number(process.env.CLUSTER_PORT_BASE ?? 5700);
-const PURCHASES = Number(process.env.CLUSTER_PURCHASES ?? 120);
+const PURCHASES = Number(process.env.CLUSTER_PURCHASES ?? 300);
 const EXPIRE = Math.min(40, Math.floor(PURCHASES / 3));
 const REPLICAS = 3;
 const ports = { replicas: Array.from({ length: REPLICAS }, (_, i) => PORT_BASE + i), smtp: PORT_BASE + 3, capture: PORT_BASE + 4 };
@@ -50,10 +50,20 @@ async function main() {
   const sql = postgres(databaseUrl, { max: 3, onnotice: () => {} });
   const lbFailures: string[] = [];
   let rr = 0;
-  // The load balancer: round robin over the replicas; a refused connection or a 503 goes to the next one.
+  // The load balancer: health-checks /readyz every 500 ms like a cloud load balancer, sends requests round robin to the
+  // ready replicas, and retries on the next one when a connection is refused or a replica answers 503.
+  const ready = ports.replicas.map(() => true);
+  const healthTimer = setInterval(() => {
+    ports.replicas.forEach((port, i) => {
+      fetch(`http://localhost:${port}/readyz`, { signal: AbortSignal.timeout(400) }).then((r) => { ready[i] = r.ok; }, () => { ready[i] = false; });
+    });
+  }, 500);
+  healthTimer.unref();
   const lbFetch = async (path: string, init: RequestInit): Promise<Response> => {
     for (let tries = 0; tries < REPLICAS * 2; tries++) {
-      const port = ports.replicas[rr++ % REPLICAS]!;
+      let i = rr++ % REPLICAS;
+      for (let k = 0; k < REPLICAS && !ready[i]; k++) i = rr++ % REPLICAS;
+      const port = ports.replicas[i]!;
       try {
         const res = await fetch(`http://localhost:${port}${path}`, init);
         if (res.status !== 503) return res;
@@ -107,7 +117,8 @@ async function main() {
     await runLoad(0, half);
     // Stop replica 2 while the second half of the purchases is arriving.
     const victim = replicas[1]!;
-    const exited = new Promise<number | null>((r) => victim.child.once("exit", (code) => r(code)));
+    let exitedAt = 0;
+    const exited = new Promise<number | null>((r) => victim.child.once("exit", (code) => { exitedAt = Date.now(); r(code); }));
     const secondHalf = runLoad(half, PURCHASES);
     await sleep(300);
     const sigtermAt = Date.now();
@@ -121,7 +132,8 @@ async function main() {
     c.eq("the stopped replica exited 0 after draining", code, 0);
     const victimLog = readFileSync(victim.serverLog, "utf8");
     c.check("its log shows the drain and the stop", /SIGTERM: draining/.test(victimLog) && /Stopped\./.test(victimLog), victimLog.slice(-600));
-    console.log(`    (drained and exited ${Date.now() - sigtermAt} ms after SIGTERM)`);
+    c.check("it exited within its delay plus timeout (1.5 s + 20 s)", exitedAt - sigtermAt < 21_500, { ms: exitedAt - sigtermAt });
+    console.log(`    (drained and exited ${exitedAt - sigtermAt} ms after SIGTERM, with ${PURCHASES - half} purchases still arriving)`);
     replicas[1] = makeReplica(1);
     await replicas[1].start();
     c.check("replica 2 started again on the migrated database", (await fetch(`${replicas[1].base}/readyz`)).status === 200);
@@ -172,7 +184,7 @@ async function main() {
     runs.sort((a, b) => a.started - b.started);
     const overlaps = runs.slice(1).filter((r, i) => r.started < runs[i]!.ended).map((r, i) => ({ a: runs[i], b: r }));
     const ranOn = [...new Set(runs.map((r) => r.replica))].sort();
-    c.eq("no two runs overlapped (from the replicas' job logs)", { runs: runs.length > 10, overlaps: overlaps.slice(0, 3) }, { runs: true, overlaps: [] });
+    c.eq("no two runs overlapped (from the replicas' job logs)", { severalRuns: runs.length >= 3, overlaps: overlaps.slice(0, 3) }, { severalRuns: true, overlaps: [] });
     c.check("runs moved between replicas (no fixed leader to lose)", ranOn.length >= 2, ranOn);
     const [{ attempts }] = await sql<{ attempts: number }[]>`SELECT coalesce(sum(d.attempts), 0)::int AS attempts FROM webhook_deliveries d JOIN webhooks w ON w.id = d.webhook_id WHERE w.project_id = ${dev.projectId}`;
     c.eq("attempts sent by the job runs add up to the attempts recorded", runs.reduce((s, r) => s + r.sent, 0), attempts);

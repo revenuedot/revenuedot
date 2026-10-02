@@ -74,6 +74,9 @@ export interface TickOptions {
   edition?: "cloud" | "self-hosted";
   /** RevenueDot Cloud billing (prd/cloud-billing/PRD.md): metering, the Stripe meter and usage emails. Cloud only. */
   billing?: import("./billing/stripe.js").BillingConfig | null;
+  /** Aborted when this replica starts shutting down: the run stops sending webhooks after those in flight and skips the
+   *  steps it has not started (each resumes on the next run, on any replica). */
+  signal?: AbortSignal;
 }
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
@@ -84,11 +87,13 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   if (opts.consumption !== false) {
     try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now }); } catch (e) { console.error("tick: consumption information retries failed", e); }
   }
-  const sent = await deliverDue(db, fetchImpl, now);
+  const sent = await deliverDue(db, fetchImpl, now, 50, 20_000, opts.signal);
+  // Draining (SIGTERM): the long steps below (integrations, exports, AdMob, full exports and moves) wait for the next run.
+  const draining = () => opts.signal?.aborted === true;
   // A bad REVENUEDOT_ENCRYPTION_KEY leaves deliveries and exports queued (not failed) until the key is fixed.
   const secretKey = await depsSecretKey(opts).then((k) => ({ ok: true as const, k }), (e) => { console.error("tick: integration secrets key", e); return { ok: false as const }; });
   let integrations = 0;
-  if (secretKey.ok) {
+  if (secretKey.ok && !draining()) {
     try {
       integrations = await deliverDueIntegrations(db, { fetch: fetchImpl, now, secretKey: secretKey.k, publicUrl: opts.publicUrl, strictUrls: opts.strictUrls });
     } catch (e) {
@@ -113,7 +118,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   let firstSales = 0;
   try { firstSales = await ensureFirstSaleCards(db, now); await pruneStreams(db, now); } catch (e) { console.error("tick: first-sale cards failed", e); }
   let exports = 0;
-  if (opts.exports !== false && secretKey.ok) {
+  if (opts.exports !== false && secretKey.ok && !draining()) {
     try {
       await queueDueExports(db, now);
       exports = await processExportRuns(db, { fetch: fetchImpl, now, secretKey: secretKey.k, strictUrls: opts.strictUrls });
@@ -122,7 +127,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     }
   }
   let admob = 0;
-  if (opts.admob !== false && secretKey.ok) {
+  if (opts.admob !== false && secretKey.ok && !draining()) {
     try { admob = await refreshDueAdMob({ db, fetch: fetchImpl, now: () => now, secretKey: secretKey.k, googleOAuth: opts.googleOAuth }); } catch (e) { console.error("tick: AdMob refresh failed", e); }
   }
   // Funnel visitors' IP addresses and user agents (kept for Meta and Branch) are removed after 7 days, once an hour.
@@ -139,7 +144,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   }
   // Full exports and server-run moves (bounded; the rest waits for the next tick), then Cloud billing.
   let archives = 0, moves = 0, billing = 0;
-  if (opts.archives !== false) {
+  if (opts.archives !== false && !draining()) {
     const deps = { db, now: () => now, fetch: fetchImpl, stores: opts.stores ?? {}, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey, edition: opts.edition, archiveStore: opts.archiveStore };
     try {
       archives = await processExports({ db, store: opts.archiveStore ?? dbStore(db), now, serverKey: secretKey.ok ? secretKey.k : null, budgetMs: 15_000 });

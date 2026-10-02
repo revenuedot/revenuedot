@@ -60,6 +60,8 @@ const lock = pg ? advisoryLock(pg) : localLock();
 const tickLog = process.env.REVENUEDOT_TICK_LOG === "1";
 let current: Promise<unknown> | null = null;
 let draining = false;
+// Aborted on SIGTERM: a running job stops after the webhooks in flight and skips its long steps.
+const stopping = new AbortController();
 const runTick = async (): Promise<boolean> => {
   if (draining || !cluster.backgroundJobs) return true;
   if (current) return false;
@@ -67,7 +69,7 @@ const runTick = async (): Promise<boolean> => {
     try {
       const r = await lock.tryRun(async () => {
         const started = Date.now();
-        const out = await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing, extensions, stripeConnect });
+        const out = await tick(db, new Date(), fetch, { stores, mailer, publicUrl, checkCredentials: true, googleOAuth, archiveStore, edition, billing, extensions, stripeConnect, signal: stopping.signal });
         // REVENUEDOT_TICK_LOG=1: one line per run, with the time the lock was held (the cluster test checks no two overlap).
         if (tickLog) console.log(`tick ${JSON.stringify({ replica, started, ended: Date.now(), sent: out.sent, expired: out.expired, alerts: out.alerts })}`);
         return out;
@@ -114,7 +116,9 @@ const health = { draining: () => draining, ping: () => db.execute(q`select 1`) }
 const handler: typeof app.fetch = async (req, ...rest) => {
   const t0 = Date.now();
   const url = new URL(req.url);
-  const res = (await healthResponse(url.pathname, health)) ?? await appFetch(req, ...rest);
+  let res = (await healthResponse(url.pathname, health)) ?? await appFetch(req, ...rest);
+  // Draining: tell keep-alive clients to reconnect (to another replica) after this answer.
+  if (draining) { res = new Response(res.body, res); res.headers.set("connection", "close"); }
   if (requestLog) {
     // Hono's own 404 for an unknown path is plain text; every deliberate SDK error is JSON with a code.
     const routed = !(res.status === 404 && !(res.headers.get("content-type") ?? "").includes("json"));
@@ -133,17 +137,22 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const shutdown = async (signal: string) => {
   if (draining) return;
   draining = true;
+  stopping.abort();
   console.log(`${signal}: draining (replica ${replica})`);
   clearInterval(interval);
   if (kickTimer) clearTimeout(kickTimer);
   await sleep(cluster.shutdownDelayMs);
   const closed = new Promise<void>((r) => server.close(() => r()));
   server.closeIdleConnections?.();
+  const t0 = Date.now();
+  const waited: Record<string, number> = {};
+  const timed = (name: string, p: Promise<unknown> | null) => Promise.resolve(p).then(() => { waited[name] = Date.now() - t0; });
   const done = await Promise.race([
-    Promise.all([closed, current, flushStoreForwards(), flushGoogleForwards()]).then(() => true),
+    Promise.all([timed("requests", closed), timed("job", current), timed("forwards", Promise.all([flushStoreForwards(), flushGoogleForwards()]))]).then(() => true),
     sleep(cluster.shutdownTimeoutMs).then(() => false),
   ]);
   if (!done) console.error(`Shutdown timed out after ${cluster.shutdownTimeoutMs} ms; closing open connections.`);
+  else console.log(`Drained (ms): ${JSON.stringify(waited)}`);
   server.closeAllConnections?.();
   await closeDb().catch(() => {});
   console.log("Stopped.");

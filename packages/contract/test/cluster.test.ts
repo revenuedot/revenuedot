@@ -31,6 +31,39 @@ describe("background work run twice at once", () => {
     expect(rows.every((d) => d.status === "delivered" && d.attempts === 1)).toBe(true);
   });
 
+  it("a burst bigger than one batch goes out in one run, one webhook at a time in order, several webhooks in parallel", async () => {
+    await h.db.insert(schema.webhooks).values([
+      { id: "wh1", projectId: h.ids.project, name: "A", url: "https://a.example.com/rc", signingSecret: "whsec_a" },
+      { id: "wh2", projectId: h.ids.project, name: "B", url: "https://b.example.com/rc", signingSecret: "whsec_b" },
+    ]);
+    for (let i = 0; i < 5; i++) await buy(`cl_burst_${i}`, "pro_monthly", new Date("2026-09-01T11:00:00Z"));
+    const seen: Record<string, string[]> = {};
+    let inFlight = 0, maxInFlight = 0;
+    const slow: typeof fetch = async (u, init) => {
+      inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+      (seen[new URL(String(u)).host] ??= []).push(JSON.parse(String(init!.body)).event.app_user_id);
+      await new Promise((r) => setTimeout(r, 10));
+      inFlight--;
+      return new Response("ok", { status: 200 });
+    };
+    expect(await deliverDue(h.db, slow, h.now(), 3)).toBe(10);
+    expect(seen["a.example.com"]).toEqual([0, 1, 2, 3, 4].map((i) => `cl_burst_${i}`));
+    expect(seen["b.example.com"]).toHaveLength(5);
+    expect(maxInFlight).toBe(2);
+  });
+
+  it("a replica that starts draining finishes the send in flight, claims no more, and leaves the rest due for another replica", async () => {
+    await h.db.insert(schema.webhooks).values({ id: "wh1", projectId: h.ids.project, name: "Backend", url: "https://hooks.example.com/rc", signingSecret: "whsec_test" });
+    for (let i = 0; i < 4; i++) await buy(`cl_drain_${i}`, "pro_monthly", new Date("2026-09-01T11:00:00Z"));
+    const stop = new AbortController();
+    const ok: typeof fetch = async () => { stop.abort(); return new Response("ok", { status: 200 }); };
+    expect(await deliverDue(h.db, ok, h.now(), 50, 20_000, stop.signal)).toBe(1);
+    const rows = await h.db.select().from(schema.webhookDeliveries);
+    expect(rows.filter((d) => d.status === "delivered")).toHaveLength(1);
+    expect(rows.filter((d) => d.status === "pending" && d.nextAttemptAt <= h.now())).toHaveLength(3);
+    expect(await deliverDue(h.db, async () => new Response("ok", { status: 200 }), h.now())).toBe(3);
+  });
+
   it("a delivery claimed by a run that died is sent again once its lease lapses", async () => {
     await h.db.insert(schema.webhooks).values({ id: "wh1", projectId: h.ids.project, name: "Backend", url: "https://hooks.example.com/rc", signingSecret: "whsec_test" });
     await buy("cl_dead", "pro_monthly", new Date("2026-09-01T11:00:00Z"));

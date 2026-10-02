@@ -1,9 +1,9 @@
 {
   "date": "2026-10-02",
-  "run": "202610020503015700",
+  "run": "202610020717125700",
   "replicas": 3,
-  "purchases": 120,
-  "passed": 23,
+  "purchases": 300,
+  "passed": 24,
   "failed": 0,
   "checks": [
     {
@@ -43,11 +43,15 @@
       "ok": true
     },
     {
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: it exited within its delay plus timeout (1.5 s + 20 s)",
+      "ok": true
+    },
+    {
       "name": "load, with one replica stopped mid-way (SIGTERM) and started again: replica 2 started again on the migrated database",
       "ok": true
     },
     {
-      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: all 120 purchases succeeded through the load balancer",
+      "name": "load, with one replica stopped mid-way (SIGTERM) and started again: all 300 purchases succeeded through the load balancer",
       "ok": true
     },
     {
@@ -67,7 +71,7 @@
       "ok": true
     },
     {
-      "name": "every event delivered once: the failing webhook's deliveries were each tried once so far (next retry in 5 minutes)",
+      "name": "every event delivered once: the failing webhook got one call per recorded attempt, and every event was tried",
       "ok": true
     },
     {
@@ -87,7 +91,7 @@
       "ok": true
     },
     {
-      "name": "one background job run at a time: deliveries sent by the job runs add up to the deliveries made",
+      "name": "one background job run at a time: attempts sent by the job runs add up to the attempts recorded",
       "ok": true
     },
     {

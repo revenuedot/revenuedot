@@ -128,25 +128,47 @@ export async function attempt(db: DB, deliveryId: string, fetchImpl: typeof fetc
 export const DELIVERY_LEASE_MS = 2 * 60_000;
 
 /**
- * Sends every due delivery. Retries for a disabled webhook wait until it is enabled again.
+ * Sends every due delivery, in batches of `limit` for up to `budgetMs`. Retries for a disabled webhook wait until it is
+ * enabled again. Deliveries to one webhook go out one at a time, oldest first; different webhooks are sent to in parallel.
  * Each delivery is claimed first (its next attempt moved 2 minutes ahead, only if it is still due), so two jobs running at
  * once (several self-hosted replicas, or the Worker's cron and a request-kicked run) never send it twice. A job that dies
  * mid-attempt leaves the claim to lapse, and the delivery is sent again after it (at least once, as RevenueCat does).
+ * `signal` (a replica draining on SIGTERM) stops it after the attempts in flight.
  */
-export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50) {
-  const due = await db.select({ id: webhookDeliveries.id }).from(webhookDeliveries)
-    .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId))
-    .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
+export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50, budgetMs = 20_000, signal?: AbortSignal) {
+  const started = Date.now();
   let sent = 0;
-  for (const d of due) {
-    const [claimed] = await db.update(webhookDeliveries).set({ nextAttemptAt: new Date(now.getTime() + DELIVERY_LEASE_MS) })
-      .where(and(eq(webhookDeliveries.id, d.id), eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now))).returning({ id: webhookDeliveries.id });
-    if (!claimed) continue;
-    await attempt(db, d.id, fetchImpl, now);
-    sent++;
+  for (;;) {
+    const due = await db.select({ id: webhookDeliveries.id, webhookId: webhookDeliveries.webhookId }).from(webhookDeliveries)
+      .innerJoin(webhooks, eq(webhooks.id, webhookDeliveries.webhookId))
+      .where(and(eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId))).orderBy(asc(webhookDeliveries.nextAttemptAt)).limit(limit);
+    const byHook = new Map<string, string[]>();
+    for (const d of due) byHook.set(d.webhookId, [...(byHook.get(d.webhookId) ?? []), d.id]);
+    let claimedAny = false;
+    const queues = [...byHook.values()];
+    const worker = async () => {
+      for (let q = queues.shift(); q; q = queues.shift()) {
+        for (const id of q) {
+          // A replica that is shutting down finishes the attempt in flight and claims no more.
+          if (signal?.aborted) return;
+          const [claimed] = await db.update(webhookDeliveries).set({ nextAttemptAt: new Date(now.getTime() + DELIVERY_LEASE_MS) })
+            .where(and(eq(webhookDeliveries.id, id), eq(webhookDeliveries.status, "pending"), lte(webhookDeliveries.nextAttemptAt, now))).returning({ id: webhookDeliveries.id });
+          if (!claimed) continue;
+          claimedAny = true;
+          await attempt(db, id, fetchImpl, now);
+          sent++;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(WEBHOOK_CONCURRENCY, queues.length) }, worker));
+    // Another full batch may be waiting (a burst of purchases); stop when the batch was short, nothing could be claimed
+    // (another job holds them), or the time is up.
+    if (due.length < limit || !claimedAny || Date.now() - started >= budgetMs || signal?.aborted) return sent;
   }
-  return sent;
 }
+
+/** Webhooks sent to at once by one job run (deliveries to the same webhook stay one at a time). */
+const WEBHOOK_CONCURRENCY = 8;
 
 /** Manual retry from the dashboard or API: queue immediately. */
 export async function retryDelivery(db: DB, deliveryId: string, now: Date) {
