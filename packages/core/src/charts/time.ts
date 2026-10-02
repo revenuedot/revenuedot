@@ -1,6 +1,7 @@
 /**
- * Chart periods. Everything is UTC: days start at 00:00, weeks on Monday, months, quarters and years on their first day.
- * A bucket is the half-open interval [start, end) in epoch milliseconds.
+ * Chart periods. Everything is UTC: days start at 00:00, weeks on Monday unless the viewer chose another first day
+ * (`weekStart`, 0 = Sunday … 6 = Saturday; Account settings → Date and region), months, quarters and years on their
+ * first day. A bucket is the half-open interval [start, end) in epoch milliseconds.
  */
 export const HOUR = 3_600_000;
 export const DAY = 86_400_000;
@@ -21,13 +22,16 @@ export function addMonths(t: number, n: number): number {
   return Date.UTC(y, m, Math.min(day, last), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds());
 }
 
-/** The start of the period that contains `t`. */
-export function floorTo(t: number, res: Resolution): number {
+/** Monday, the first day of a week unless the viewer picked another. */
+export const DEFAULT_WEEK_START = 1;
+
+/** The start of the period that contains `t`. Weeks start on `weekStart` (0 = Sunday … 6 = Saturday). */
+export function floorTo(t: number, res: Resolution, weekStart = DEFAULT_WEEK_START): number {
   const d = new Date(t);
   const y = d.getUTCFullYear(), m = d.getUTCMonth();
   switch (res) {
     case "day": return dayStart(t);
-    case "week": return dayStart(t) - ((d.getUTCDay() + 6) % 7) * DAY;
+    case "week": return dayStart(t) - ((d.getUTCDay() - weekStart + 7) % 7) * DAY;
     case "month": return Date.UTC(y, m, 1);
     case "quarter": return Date.UTC(y, m - (m % 3), 1);
     case "year": return Date.UTC(y, 0, 1);
@@ -46,9 +50,9 @@ export function addPeriods(start: number, res: Resolution, n = 1): number {
 }
 
 /** Every period that overlaps [from, to). */
-export function buckets(from: number, to: number, res: Resolution, max = Infinity): Bucket[] {
+export function buckets(from: number, to: number, res: Resolution, max = Infinity, weekStart = DEFAULT_WEEK_START): Bucket[] {
   const out: Bucket[] = [];
-  for (let s = floorTo(from, res); s < to; s = addPeriods(s, res)) {
+  for (let s = floorTo(from, res, weekStart); s < to; s = addPeriods(s, res)) {
     out.push({ start: s, end: addPeriods(s, res) });
     if (out.length > max) break;
   }

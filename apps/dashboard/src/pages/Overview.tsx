@@ -10,7 +10,8 @@
  * - Only the card's label links to its chart; RevenueCat opens the chart from anywhere on the card.
  * - Active customers has no sparkline: only each customer's latest visit is stored, so there is no daily history.
  * - Setup health has no SDK-version row and no migration row yet: the API does not record SDK versions or imports.
- * - Currency is USD only (the API refuses other currencies rather than mislabel them).
+ * - The API answers in USD; the cards show the person's display currency at the latest rate (Account settings → Date
+ *   and region), where RevenueCat converts on its servers.
  */
 import { useEffect, useMemo, useState } from "react";
 import { AskBar, FirstSaleCard, GrowthInsights } from "./ai/OverviewBits";
@@ -20,6 +21,7 @@ import { Shell, useMe } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { Dialog, Field, Segmented, Sparkline, Switch, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
+import { getDisplay } from "../lib/prefs";
 import { apiOrigin } from "./setup/data";
 import { flag, money, relative, shortId, storeLabel, TX_TAG, type App, type Entitlement, type Offering, type Product, type Transaction } from "../lib/customers";
 
@@ -46,8 +48,8 @@ type Period = (typeof PERIODS)[number]["value"];
 const CARDS: { id: MetricId; label: string; icon: string; stock: boolean; money?: boolean; define: string }[] = [
   { id: "active_trials", label: "Active trials", icon: "hourglass", stock: true, define: "Trials that currently give access, including cancelled trials that have not ended yet." },
   { id: "active_subscriptions", label: "Active subscriptions", icon: "box", stock: true, define: "Paid subscriptions that currently give access, including cancelled ones that have not ended and ones in a grace period. Trials and granted entitlements are not counted." },
-  { id: "mrr", label: "MRR", icon: "refresh", stock: true, money: true, define: "Monthly recurring revenue: each active paid subscription's price in USD, normalised to one month." },
-  { id: "revenue", label: "Revenue", icon: "dollar", stock: false, money: true, define: "Gross revenue from purchases and renewals in the period, minus refunds, in USD." },
+  { id: "mrr", label: "MRR", icon: "refresh", stock: true, money: true, define: "Monthly recurring revenue: each active paid subscription's price, normalised to one month, in your display currency." },
+  { id: "revenue", label: "Revenue", icon: "dollar", stock: false, money: true, define: "Gross revenue from purchases and renewals in the period, minus refunds, in your display currency." },
   { id: "new_customers", label: "New customers", icon: "userplus", stock: false, define: "App user IDs first seen in the period. Aliases of one customer count once." },
   { id: "active_users", label: "Active customers", icon: "customers", stock: false, define: "Customers whose app contacted RevenueDot in the period. Aliases of one customer count once." },
 ];
@@ -526,7 +528,7 @@ export function Overview() {
         <div className="head">
           <div>
             <h1>Overview</h1>
-            <p>{all ? `All projects · ${account.data ? `${included.length} project${included.length === 1 ? "" : "s"}` : "…"} · USD · ${when}` : `All apps · USD · ${firstRun ? "no purchases yet" : when}`}</p>
+            <p>{all ? `All projects · ${account.data ? `${included.length} project${included.length === 1 ? "" : "s"}` : "…"} · ${getDisplay().currency} · ${when}` : `All apps · ${getDisplay().currency} · ${firstRun ? "no purchases yet" : when}`}</p>
           </div>
           {!firstRun && (
             <div className="actions">

@@ -211,6 +211,13 @@
       "when": 1790979499275,
       "tag": "0031_experiments_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790980000000,
+      "tag": "0032_account_settings",
+      "breakpoints": true
     }
   ]
 }

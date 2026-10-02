@@ -1,4 +1,4 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 
@@ -30,18 +30,42 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 export const SESSION_COOKIE = "rd_session";
 const SESSION_DAYS = 30;
+/** `sessions.last_seen_at` is written at most this often per session. */
+const SEEN_EVERY_MS = 5 * 60_000;
 
-export async function createSession(db: DB, userId: string, now: Date) {
+/**
+ * How a session began (Account settings → Security lists it): password, two_factor, signup, reset, invite,
+ * email_change, or sso (enterprise single sign-on, ee/server/sso). Unknown callers get "password".
+ */
+export type SessionMethod = "password" | "two_factor" | "signup" | "reset" | "invite" | "email_change" | "sso";
+export interface SessionMeta { userAgent?: string | null; ip?: string | null; method?: SessionMethod }
+
+export async function createSession(db: DB, userId: string, now: Date, meta: SessionMeta = {}) {
   const id = b64(crypto.getRandomValues(new Uint8Array(32))).replace(/[^a-zA-Z0-9]/g, "");
-  await db.insert(sessions).values({ id, userId, expiresAt: new Date(now.getTime() + SESSION_DAYS * 86400_000) });
+  await db.insert(sessions).values({
+    id, userId, expiresAt: new Date(now.getTime() + SESSION_DAYS * 86400_000), createdAt: now, lastSeenAt: now,
+    userAgent: meta.userAgent?.slice(0, 400) ?? null, ip: meta.ip && meta.ip !== "unknown" ? meta.ip.slice(0, 64) : null, method: meta.method ?? "password",
+  });
   return id;
 }
 
 export async function sessionUser(db: DB, sessionId: string | undefined, now: Date) {
   if (!sessionId) return null;
-  const [row] = await db.select({ u: users }).from(sessions).innerJoin(users, eq(users.id, sessions.userId))
+  const [row] = await db.select({ u: users, seen: sessions.lastSeenAt }).from(sessions).innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.id, sessionId), gt(sessions.expiresAt, now))).limit(1);
-  return row?.u ?? null;
+  if (!row) return null;
+  // "Last active" in the sessions list, without a write on every request.
+  if (!row.seen || now.getTime() - row.seen.getTime() >= SEEN_EVERY_MS) {
+    await db.update(sessions).set({ lastSeenAt: now })
+      .where(and(eq(sessions.id, sessionId), or(isNull(sessions.lastSeenAt), lt(sessions.lastSeenAt, new Date(now.getTime() - SEEN_EVERY_MS + 1000)))));
+  }
+  return row.u;
+}
+
+/** A session's id as the dashboard sees it: a hash, never the cookie value itself. */
+export async function publicSessionId(sessionId: string) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`session:${sessionId}`));
+  return Array.from(new Uint8Array(d).slice(0, 12), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export async function projectsForUser(db: DB, userId: string) {

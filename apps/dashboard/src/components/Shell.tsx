@@ -5,10 +5,18 @@ import { api } from "../lib/api";
 import { identifyUser } from "../lib/analytics";
 import { Icon, Mark } from "./icons";
 import { enterpriseAvailable } from "../extensions";
+import { applyTheme, clearCachedPrefs, effectiveTheme } from "../lib/prefs";
 
+export interface Preferences { theme: "system" | "light" | "dark"; tint: string | null; week_start: number; display_currency: string }
 export interface Me {
-  user: { id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean; insights_emails?: boolean };
-  account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean; features?: { benchmarks: boolean; insights_digest: boolean } };
+  user: {
+    id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean; insights_emails?: boolean;
+    /** Account settings (prd/account-settings/PRD.md). Optional: older servers do not send them. */
+    preferences?: Preferences; has_password?: boolean;
+    two_factor?: { enabled: boolean; enabled_at: number | null; recovery_codes_left: number };
+    pending_email?: { email: string; expires_at: number } | null; password_changed_at?: number | null; created_at?: number;
+  };
+  account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean; features?: { stripe_connect?: boolean; benchmarks?: boolean; insights_digest?: boolean } };
   projects: { id: string; name: string; role: string }[];
   /** Only with an enterprise licence (src/extensions.tsx). */
   enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
@@ -120,7 +128,11 @@ const CRUMB_CSS = `
 .top .crumb>b:last-child{flex-shrink:1;min-width:3em}
 `;
 
-export function Shell({ title, crumbs, children, actions, projectId: pinned }: { title: string; crumbs?: ReactNode; children: ReactNode; actions?: ReactNode; projectId?: string }) {
+export function Shell({ title, crumbs, children, actions, projectId: pinned, sidebar, root }: {
+  title: string; crumbs?: ReactNode; children: ReactNode; actions?: ReactNode; projectId?: string;
+  /** Replaces the project navigation (Account settings' own sections). */ sidebar?: ReactNode;
+  /** The first breadcrumb instead of the project's name ("Account"). */ root?: string;
+}) {
   const { projectId: routeProject = "" } = useParams();
   // Account pages (Billing) have no project in the URL: they show the sidebar of the project last used.
   const projectId = pinned ?? routeProject;
@@ -137,35 +149,40 @@ export function Shell({ title, crumbs, children, actions, projectId: pinned }: {
   useEffect(() => { document.title = `${title} · RevenueDot`; }, [title]);
   // Signed out: sign in, then come back to this exact page.
   useEffect(() => { if (me.isError) nav(`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`, { replace: true }); }, [me.isError, nav, loc.pathname, loc.search]);
+  const qc = useQueryClient();
+  // The theme is saved on the account (Account settings → Interface), so it follows the person to other browsers.
   const toggleTheme = () => {
-    const root = document.documentElement;
-    const dark = root.dataset.theme === "dark" || (!root.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
-    root.dataset.theme = dark ? "light" : "dark";
-    try { localStorage.setItem("rd-theme", root.dataset.theme); } catch { /* ignore */ }
+    const next = effectiveTheme() === "dark" ? "light" : "dark";
+    applyTheme(next);
+    qc.setQueryData<Me>(["me"], (m) => (m?.user.preferences ? { ...m, user: { ...m.user, preferences: { ...m.user.preferences, theme: next } } } : m));
+    // Not saved on the account when this fails: this browser keeps the theme (localStorage), other browsers the old one.
+    void api("/auth/me", { method: "POST", json: { theme: next } }).catch(() => {});
   };
   return (
     <div className="shell">
       {menu && <button type="button" className="side-scrim" aria-label="Close menu" onClick={() => setMenu(false)} />}
       <aside className={`side${menu ? " open" : ""}`} aria-label="Sidebar" id="sidebar">
         <div className="brand">
-          <Link to={`${base}/overview`} aria-label="RevenueDot home"><Mark /></Link>
+          <Link to={projectId ? `${base}/overview` : "/"} aria-label="RevenueDot home"><Mark /></Link>
           {me.data && <ProjectSwitcher me={me.data} current={projectId} />}
         </div>
-        <nav className="nav" aria-label="Project">{NAV.map((i) => <NavItem key={i.label} item={i} base={base} />)}</nav>
-        <div className="nav-foot">{FOOT.map((i) => <NavItem key={i.label} item={i} base={base} />)}</div>
+        {sidebar ?? <>
+          <nav className="nav" aria-label="Project">{NAV.map((i) => <NavItem key={i.label} item={i} base={base} />)}</nav>
+          <div className="nav-foot">{FOOT.map((i) => <NavItem key={i.label} item={i} base={base} />)}</div>
+        </>}
       </aside>
       <div className="main">
         <header className="top">
           <style>{CRUMB_CSS}</style>
           <button type="button" className="ib menu-btn" aria-label="Menu" aria-controls="sidebar" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="menu" /></button>
           <nav className="crumb" aria-label="Breadcrumb">
-            <span className="crumb-project" title={projectName}>{projectName}</span> <span className="crumb-sep">/</span> {crumbs ?? <b>{title}</b>}
+            <span className="crumb-project" title={root ?? projectName}>{root ?? projectName}</span> <span className="crumb-sep">/</span> {crumbs ?? <b>{title}</b>}
           </nav>
           <div className="top-r">
-            <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) nav(`${base}/customers?q=${encodeURIComponent(q.trim())}`); }}>
+            {!sidebar && <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) nav(`${base}/customers?q=${encodeURIComponent(q.trim())}`); }}>
               <Icon name="search" /><input aria-label="Search customers" placeholder="Search customers, transactions, IDs" value={q} onChange={(e) => setQ(e.target.value)} /><kbd>⌘K</kbd>
-            </form>
-            <NavLink className={({ isActive }) => `ib ai-top${isActive ? " on" : ""}`} to={`${base}/ai`} aria-label="RevenueDot AI" title="RevenueDot AI"><Icon name="spark" /></NavLink>
+            </form>}
+            {!sidebar && <NavLink className={({ isActive }) => `ib ai-top${isActive ? " on" : ""}`} to={`${base}/ai`} aria-label="RevenueDot AI" title="RevenueDot AI"><Icon name="spark" /></NavLink>}
             <a className="ib" href="https://revenuedot.app/docs" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a>
             <button className="ib" type="button" aria-label="Toggle light and dark" onClick={toggleTheme}><Icon name="moon" /></button>
             {actions}
@@ -233,16 +250,18 @@ export function Copy({ value, label }: { value: string; label?: string }) {
  * Sign out without a single request answering 401: queries are paused (offline mode) and drained before the session
  * ends, then the browser loads the sign-in page afresh. A client-side navigation is not enough: React Router renders it
  * in a transition, so the old page can still be mounted when the cache is cleared and refetch with no session. The full
- * load also leaves no cached project data in memory.
+ * load also leaves no cached project data or display preferences in memory. `end` is the request that ends the session:
+ * POST /auth/logout by default, /auth/logout/all, or the account deletion. When it fails, queries resume and it throws.
  */
-export async function signOut(qc: QueryClient, to: string) {
+export async function signOut(qc: QueryClient, to: string, end: () => Promise<unknown> = () => api("/auth/logout", { method: "POST" })) {
   onlineManager.setOnline(false);
   try {
     for (let i = 0; i < 50 && qc.isFetching() > 0; i++) await new Promise((r) => setTimeout(r, 100));
-    await api("/auth/logout", { method: "POST" });
+    await end();
   } catch (e) {
     onlineManager.setOnline(true);
     throw e;
   }
+  clearCachedPrefs();
   window.location.replace(to);
 }

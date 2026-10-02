@@ -162,7 +162,7 @@ describe("self-hosted servers", () => {
     const p = await u.browser.call("POST", `/v2/projects/${u.projectId}/benchmarks/settings`, { share: true, category: "travel" });
     expect(p.status).toBe(404);
     const me = await u.browser.call("GET", "/auth/me");
-    expect(me.body.account.features).toEqual({ benchmarks: false, insights_digest: false });
+    expect(me.body.account.features).toMatchObject({ benchmarks: false, insights_digest: false });
     await self.close();
   });
 });

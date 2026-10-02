@@ -4,7 +4,13 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "rea
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import "./styles/index.css";
 import { AuthPage } from "./pages/Auth";
-import { AccountPage, ForgotPasswordPage, InvitePage, ResetPasswordPage, VerifyEmailPage } from "./pages/AccountPages";
+import { AccountPage, ConfirmEmailPage, ForgotPasswordPage, InvitePage, ResetPasswordPage, VerifyEmailPage } from "./pages/AccountPages";
+import { AccountGeneralPage } from "./pages/account/General";
+import { AccountSecurityPage } from "./pages/account/Security";
+import { AccountNotificationsPage } from "./pages/account/Notifications";
+import { AccountDateRegionPage, AccountInterfacePage } from "./pages/account/Appearance";
+import { PrefsProvider } from "./components/Prefs";
+import { loadCachedPrefs } from "./lib/prefs";
 import { Soon } from "./pages/Soon";
 import { StripeConnectCallback } from "./pages/setup/StripeConnect";
 import { BillingPage } from "./pages/Billing";
@@ -17,7 +23,8 @@ import { initAnalytics } from "./lib/analytics";
 import { EnterpriseRoutes } from "./extensions";
 
 initAnalytics();
-try { const t = localStorage.getItem("rd-theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* ignore */ }
+// The theme, tint, currency and week start of the last visit, before the first paint (lib/prefs.ts).
+loadCachedPrefs();
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } } });
 
 function Home() {
@@ -53,7 +60,7 @@ const SOON: [string, string, string][] = [
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={qc}>
-      <ToastProvider><BrowserRouter>
+      <ToastProvider><BrowserRouter><PrefsProvider>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
@@ -62,10 +69,16 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/invite" element={<InvitePage />} />
+          <Route path="/confirm-email" element={<ConfirmEmailPage />} />
           <Route element={<RequireAuth />}>
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/account/general" element={<AccountGeneralPage />} />
             <Route path="/connect/stripe" element={<StripeConnectCallback />} />
             <Route path="/account/billing" element={<BillingPage />} />
+            <Route path="/account/security" element={<AccountSecurityPage />} />
+            <Route path="/account/notifications" element={<AccountNotificationsPage />} />
+            <Route path="/account/interface" element={<AccountInterfacePage />} />
+            <Route path="/account/date-and-region" element={<AccountDateRegionPage />} />
             <Route path="/projects/receive" element={<ReceiveProject />} />
             {routes}
             <Route path="/organizations/*" element={<EnterpriseRoutes />} />
@@ -73,7 +86,7 @@ createRoot(document.getElementById("root")!).render(
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter></ToastProvider>
+      </PrefsProvider></BrowserRouter></ToastProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

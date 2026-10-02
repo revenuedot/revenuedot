@@ -14,6 +14,7 @@ import { useOfferings, v2 } from "../catalog/lib";
 import { DropButton } from "../paywalls/Paywalls";
 import { Pictogram, apiError } from "./parts";
 import { dateInput, endOfDay, useFunnelAi, useFunnels, usePurchaseLinks, useRefreshWeb, useWeb, useWebDiscounts, type Funnel, type FunnelSummary, type PurchaseLink } from "./lib";
+import { DateField } from "../../components/DateField";
 
 type Start = "starter" | "blank" | "ai";
 
@@ -220,7 +221,7 @@ function LinkDialog({ pid, link, onClose }: { pid: string; link: PurchaseLink | 
           </select>
         </Field>
         <Field label="Expires" htmlFor="pl-expires" error={fe("expires_at")} hint="Optional. After this day the link shows an expired page.">
-          <input id="pl-expires" className="input" type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+          <DateField id="pl-expires" label="Expires" value={expires} onChange={setExpires} />
         </Field>
         {link && <Check checked={enabled} onChange={setEnabled} label="Enabled" hint="A disabled link shows an expired page." />}
         {err && !["name", "offering_id", "slug", "discount_id", "expires_at"].includes(err.param ?? "") && <div className="banner err" role="alert">{err.message}</div>}

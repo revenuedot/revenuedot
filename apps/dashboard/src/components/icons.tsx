@@ -59,6 +59,16 @@ const P: Record<string, ReactNode> = {
   apple: <path d="M10.5 1.5c0 1.4-1.1 2.6-2.4 2.6 0-1.4 1.1-2.6 2.4-2.6zM12.9 11c-.5 1.2-1.3 2.7-2.4 2.7-.9 0-1.1-.6-2.3-.6s-1.5.6-2.3.6c-1.1 0-2.2-1.8-2.7-3.2-.8-2.3-.3-5 1.9-5.3.9-.1 1.7.6 2.2.6s1.4-.7 2.5-.6c.5 0 1.9.2 2.6 1.4-2.1 1.2-1.7 4 .5 4.4z" />,
   play: <path d="M3.5 2l9.5 6-9.5 6z" />,
   flask: <path d="M6 2v4.5L2.5 13a1 1 0 00.9 1.5h9.2a1 1 0 00.9-1.5L10 6.5V2M5 2h6M4.5 10h7" />,
+  calendar: <><rect x="2" y="3" width="12" height="11" /><path d="M2 6.5h12M5 1.5v3M11 1.5v3" /></>,
+  shield: <path d="M8 1.5l5 2v4c0 3.2-2.2 5.6-5 7-2.8-1.4-5-3.8-5-7v-4zM5.8 8l1.6 1.6 3-3.2" />,
+  user: <><circle cx="8" cy="5" r="2.75" /><path d="M2.5 14.5c.6-2.8 2.8-4.5 5.5-4.5s4.9 1.7 5.5 4.5" /></>,
+  palette: <><path d="M8 1.5a6.5 6.5 0 100 13c.8 0 1.2-.6 1-1.3-.3-.9.3-1.7 1.2-1.7h1.6a2.7 2.7 0 002.7-2.7A7.3 7.3 0 008 1.5z" /><circle cx="5" cy="7" r=".6" /><circle cx="8" cy="4.8" r=".6" /><circle cx="11" cy="7" r=".6" /></>,
+  sun: <><circle cx="8" cy="8" r="3" /><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1" /></>,
+  monitor: <><rect x="1.5" y="2.5" width="13" height="9" /><path d="M5.5 14.5h5M8 11.5v3" /></>,
+  lock: <><rect x="3" y="7" width="10" height="7.5" /><path d="M5 7V5a3 3 0 016 0v2" /></>,
+  mail: <><rect x="1.5" y="3.5" width="13" height="9" /><path d="M1.5 4l6.5 5 6.5-5" /></>,
+  clock: <><circle cx="8" cy="8" r="6.5" /><path d="M8 4.5V8l2.5 1.5" /></>,
+  back: <path d="M13 8H3M7 4L3 8l4 4" />,
 };
 
 export function Icon({ name, className = "i", title }: { name: keyof typeof P | string; className?: string; title?: string }) {
