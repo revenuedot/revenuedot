@@ -30,6 +30,7 @@ share all state through Postgres, so any replica can answer any request.
 2. Install the chart from the listing's ECR repository:
    ```bash
    helm install revenuedot oci://<marketplace-ecr>/revenuedot/revenuedot --version 0.1.0 -n revenuedot \
+     --set image.repository=<marketplace-ecr>/revenuedot/revenuedot --set image.tag=0.1.0 \
      --set publicUrl=https://revenuedot.example.com \
      --set database.existingSecret=revenuedot-db \
      --set secrets.existingSecret=revenuedot-secrets \
@@ -41,8 +42,8 @@ share all state through Postgres, so any replica can answer any request.
      --set ingress.hosts[0].host=revenuedot.example.com --set ingress.hosts[0].paths[0].path=/ \
      --set ingress.hosts[0].paths[0].pathType=Prefix
    ```
-   A pre-install hook Job applies the database migrations once; then two to ten replicas start (autoscaled on CPU and
-   memory, spread over Availability Zones, with a PodDisruptionBudget).
+   A pre-install hook Job applies the database migrations once; then two to ten replicas start (autoscaled on CPU,
+   spread over Availability Zones, with a PodDisruptionBudget).
 3. Check it: `kubectl -n revenuedot rollout status deploy/revenuedot && helm test revenuedot -n revenuedot`.
 4. Point DNS for your host name at the load balancer, open `https://revenuedot.example.com/signup` and create the owner
    account. Only the owner can sign up; the owner invites the rest of the team.
@@ -61,7 +62,8 @@ terraform init && terraform apply
 
 Without Terraform, run the image with: port 8787; `DATABASE_URL` and `REVENUEDOT_ENCRYPTION_KEY` from Secrets Manager;
 `REVENUEDOT_PUBLIC_URL=https://<your host>`; `REVENUEDOT_ARCHIVE_DIR=db`; user `1000:1000` with a read-only root
-filesystem and a writable `/tmp`; the target group health check on `/readyz`; a container stop timeout of 30 seconds.
+filesystem and a writable `/tmp`; the target group health check on `/healthz` (ECS replaces tasks that fail it, so it
+must not depend on the database); a container stop timeout of 30 seconds.
 
 ## Upgrades
 Change the image tag (Helm: `helm upgrade … --version <new>`; Terraform: `image = …` and `terraform apply`). Migrations
@@ -73,4 +75,4 @@ each old replica stops taking requests, finishes the ones in flight and exits.
 - Logs go to stdout; every replica logs its name. Alarms: 5xx rate, p95 latency, healthy targets, running tasks,
   database CPU, storage, memory and connections, and failed background job runs.
 - Backups: RDS automated backups with point-in-time recovery (14 days in the Terraform setup).
-- Support: Enterprise customers use their private Slack channel; everyone else emails hello@revenuedot.app.
+- Support: email hello@revenuedot.app; Enterprise customers use the channel in their agreement.

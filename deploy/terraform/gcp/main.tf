@@ -3,7 +3,7 @@ data "google_project" "this" {
 }
 
 locals {
-  apis = ["run.googleapis.com", "sqladmin.googleapis.com", "secretmanager.googleapis.com", "servicenetworking.googleapis.com", "compute.googleapis.com", "monitoring.googleapis.com", "logging.googleapis.com"]
+  apis = ["run.googleapis.com", "sqladmin.googleapis.com", "secretmanager.googleapis.com", "servicenetworking.googleapis.com", "compute.googleapis.com", "monitoring.googleapis.com", "logging.googleapis.com", "iam.googleapis.com", "cloudresourcemanager.googleapis.com"]
   # Cloud Run's deterministic address, used when no custom domain is set.
   run_url     = "https://${var.name}-${data.google_project.this.number}.${var.region}.run.app"
   public_url  = trimsuffix(var.public_url != "" ? var.public_url : local.run_url, "/")

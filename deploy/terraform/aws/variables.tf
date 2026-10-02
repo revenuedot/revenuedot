@@ -151,7 +151,7 @@ variable "db_pool_max" {
 }
 
 variable "migrate_on_start" {
-  description = "Each task migrates on start under a Postgres lock. Set false to run the migration task yourself before each deploy (see outputs)."
+  description = "Each task migrates on start under a Postgres lock. Set false to migrate as a separate step: tasks then refuse to start on a database missing a migration, so every apply that changes the image runs in two steps (terraform apply -target=aws_ecs_task_definition.migrate, the migrate_command output, then terraform apply)."
   type        = bool
   default     = true
 }

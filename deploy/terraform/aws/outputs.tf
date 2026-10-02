@@ -44,6 +44,10 @@ output "alarm_topic_arn" {
 }
 
 output "migrate_command" {
-  description = "Runs the migrations once (for migrate_on_start = false, before each deploy)."
-  value       = "aws ecs run-task --region ${var.region} --cluster ${aws_ecs_cluster.main.name} --launch-type FARGATE --task-definition ${aws_ecs_task_definition.migrate.family} --network-configuration 'awsvpcConfiguration={subnets=[${join(",", aws_subnet.private[*].id)}],securityGroups=[${aws_security_group.app.id}],assignPublicIp=DISABLED}'"
+  description = "Runs the migrations once and waits for them (for migrate_on_start = false, before the service moves to a new image)."
+  value = join(" && ", [
+    "task=$(aws ecs run-task --region ${var.region} --cluster ${aws_ecs_cluster.main.name} --launch-type FARGATE --task-definition ${aws_ecs_task_definition.migrate.family} --network-configuration 'awsvpcConfiguration={subnets=[${join(",", aws_subnet.private[*].id)}],securityGroups=[${aws_security_group.app.id}],assignPublicIp=DISABLED}' --query 'tasks[0].taskArn' --output text)",
+    "aws ecs wait tasks-stopped --region ${var.region} --cluster ${aws_ecs_cluster.main.name} --tasks \"$task\"",
+    "test \"$(aws ecs describe-tasks --region ${var.region} --cluster ${aws_ecs_cluster.main.name} --tasks \"$task\" --query 'tasks[0].containers[0].exitCode' --output text)\" = 0",
+  ])
 }

@@ -132,6 +132,10 @@ const handler: typeof app.fetch = async (req, ...rest) => {
   return res;
 };
 const server = serve({ fetch: handler, port }) as Server;
+// Keep idle connections open longer than a load balancer does (AWS ALB up to 120 s, nginx 60 s): when Node closes first
+// (its default is 5 s), the balancer can send a request down a socket Node just closed and answer 502.
+server.keepAliveTimeout = 125_000;
+server.headersTimeout = 126_000;
 console.log(`RevenueDot API on http://localhost:${port} (replica ${replica}${cluster.backgroundJobs ? "" : ", background jobs off"})`);
 console.log(mailer.driver === "smtp" ? "Email: SMTP (REVENUEDOT_SMTP_URL)." : "Email: not configured; emails are printed to this log. Set REVENUEDOT_SMTP_URL to send them.");
 

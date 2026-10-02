@@ -31,7 +31,7 @@ resource "aws_cloudwatch_metric_alarm" "http_5xx" {
   ok_actions          = local.alarm_actions
   metric_query {
     id          = "rate"
-    expression  = "100 * (FILL(t5xx, 0) + FILL(e5xx, 0)) / MAX([FILL(req, 0), 1])"
+    expression  = "IF(FILL(req, 0) > 0, 100 * (FILL(t5xx, 0) + FILL(e5xx, 0)) / FILL(req, 0), 0)"
     label       = "5xx percent"
     return_data = true
   }
@@ -194,8 +194,8 @@ resource "aws_cloudwatch_metric_alarm" "tick_failed" {
   namespace           = "RevenueDot/${var.name}"
   metric_name         = "TickFailed"
   statistic           = "Sum"
-  period              = 300
-  evaluation_periods  = 3
+  period              = 900
+  evaluation_periods  = 1
   threshold           = 3
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"

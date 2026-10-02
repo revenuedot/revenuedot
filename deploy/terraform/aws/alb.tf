@@ -18,8 +18,9 @@ resource "aws_lb_target_group" "app" {
   vpc_id               = aws_vpc.main.id
   deregistration_delay = 30
   health_check {
-    # Ready: the database answers and the task is not draining. A task turns 503 here as soon as it gets SIGTERM.
-    path                = "/readyz"
+    # Liveness, not /readyz: ECS replaces tasks this check fails, and a slow or failing-over database would make every
+    # task fail /readyz at once. ECS takes a task out of the target group (deregistration_delay) before its SIGTERM.
+    path                = "/healthz"
     matcher             = "200"
     interval            = 10
     timeout             = 5

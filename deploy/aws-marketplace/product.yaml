@@ -43,13 +43,10 @@ product:
   resources:
     - { title: Documentation, url: https://revenuedot.app/docs }
     - { title: High-availability guide, url: https://revenuedot.app/docs/guides/high-availability }
-    - { title: Service level agreement, url: https://revenuedot.app/docs/guides/sla }
     - { title: Source code, url: https://github.com/revenuedot/revenuedot }
   support:
     description: >-
-      Enterprise customers get the support response times in the service level agreement (purchases failing in
-      production: 1 hour, at any hour) through a private Slack channel. Everyone else: email hello@revenuedot.app or open
-      a GitHub issue.
+      Email hello@revenuedot.app or open a GitHub issue. Enterprise customers get the support terms of their agreement.
     email: hello@revenuedot.app
   video: ""   # optional: a demo video URL from company/marketing/videos
 
@@ -82,14 +79,16 @@ version:
 pricing:
   # Decision pending (submission-checklist.md, "Pricing"). Public price today: Enterprise from $50,000 a year, contact sales.
   model: TBD   # options: contract (annual, AWS License Manager) with private offers | BYOL | free (open-source only)
-  refund_policy: >-
-    Annual contracts can be cancelled within 30 days of purchase for a full refund. Email hello@revenuedot.app.
+  refund_policy: TBD   # decided with the pricing model; nothing is promised until it is
   eula: standard-contract-for-aws-marketplace   # SCMP, with the RevenueDot Enterprise License as an addendum for ee/
 
 compliance:
-  image_runs_as_root: false        # the chart and the ECS task run it as uid 1000 with a read-only root filesystem
+  # The image's default user is root (docker compose installs keep their root-owned archive volume); both delivery
+  # options run it as uid 1000 with a read-only root filesystem. See submission-checklist.md before answering.
+  image_runs_as_root: true
   outbound_network: >-
-    Calls the App Store Server API, the Google Play Developer API, public exchange-rate feeds (jsDelivr and the
+    Calls the App Store Server API, the Google Play Developer API, the Amazon Appstore and Stripe APIs (when those
+    stores are connected), public exchange-rate feeds (jsDelivr and the
     European Central Bank), and the webhook URLs and integrations the customer configures. Licence keys are checked
     offline. Nothing is sent to RevenueDot.
   data_collected_by_seller: none

@@ -40,7 +40,8 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring" {
 }
 
 # Multi-AZ: a synchronous standby in another zone; RDS fails over in about a minute and the endpoint name stays the same.
-# The servers reconnect on their own (the pool replaces broken connections), and /readyz is 503 until they can.
+# The servers reconnect on their own (the pool replaces broken connections); requests that need the database answer 5xx
+# until then, and the SDKs retry receipts that got a 5xx.
 resource "aws_db_instance" "main" {
   identifier                            = var.name
   engine                                = "postgres"
@@ -77,4 +78,6 @@ resource "aws_db_instance" "main" {
   monitoring_role_arn                   = aws_iam_role.rds_monitoring.arn
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
   ca_cert_identifier                    = "rds-ca-rsa2048-g1"
+  # Enhanced monitoring needs the role's policy in place, or the first create can fail while IAM catches up.
+  depends_on = [aws_iam_role_policy_attachment.rds_monitoring]
 }

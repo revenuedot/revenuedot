@@ -70,8 +70,8 @@
   <text x="440" y="172" class="s">public subnets</text>
   <rect x="470" y="180" width="520" height="56" rx="8" class="box"/>
   <rect x="470" y="180" width="6" height="56" rx="3" class="accent"/>
-  <text x="490" y="203" class="h">Application Load Balancer (HTTPS, ACM certificate, TLS 1.3 policy)</text>
-  <text x="490" y="222" class="s">health check /readyz · a replica that gets SIGTERM answers 503 and drains · idle timeout 120 s</text>
+  <text x="490" y="203" class="h">Application Load Balancer (HTTPS, ACM certificate, TLS 1.2 and 1.3)</text>
+  <text x="490" y="222" class="s">health check /healthz · a task leaves the target group, then drains on SIGTERM · idle timeout 120 s</text>
   <path d="M370 198 L470 206" class="line"/>
 
   <!-- Private tier: replicas -->

@@ -3,6 +3,7 @@ resource "google_monitoring_notification_channel" "email" {
   display_name = "${var.name} alerts"
   type         = "email"
   labels       = { email_address = var.alert_email }
+  depends_on   = [google_project_service.apis]
 }
 
 locals {
@@ -11,7 +12,7 @@ locals {
   sql_filter = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:${google_sql_database_instance.main.name}\""
 }
 
-# The SLA's measure: an outside check of the public address every minute from several regions.
+# An outside check of the public address every minute from several regions.
 resource "google_monitoring_uptime_check_config" "readyz" {
   display_name = "${var.name} /readyz"
   timeout      = "10s"
@@ -26,6 +27,7 @@ resource "google_monitoring_uptime_check_config" "readyz" {
     type   = "uptime_url"
     labels = { project_id = var.project_id, host = local.public_host }
   }
+  depends_on = [google_project_service.apis]
 }
 
 resource "google_monitoring_alert_policy" "uptime" {
@@ -123,8 +125,9 @@ resource "google_monitoring_alert_policy" "db" {
 
 # The background job (expirations, webhooks, alerts, exports) logs "tick failed" when a run throws.
 resource "google_logging_metric" "tick_failed" {
-  name   = "${var.name}-tick-failed"
-  filter = "${local.run_filter} AND textPayload:\"tick failed\""
+  name       = "${var.name}-tick-failed"
+  filter     = "${local.run_filter} AND textPayload:\"tick failed\""
+  depends_on = [google_project_service.apis]
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"

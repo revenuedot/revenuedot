@@ -115,11 +115,12 @@ resource "aws_ecs_task_definition" "app" {
     # ECS sends SIGTERM, then SIGKILL after stopTimeout: the server drains in the 5 + 20 seconds set above.
     stopTimeout = 30
     healthCheck = {
-      command     = ["CMD", "node", "-e", "fetch('http://localhost:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval    = 15
-      timeout     = 5
-      retries     = 3
-      startPeriod = 120
+      command  = ["CMD", "node", "-e", "fetch('http://localhost:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval = 15
+      timeout  = 5
+      retries  = 3
+      # Room for a long migration on start (the most ECS allows).
+      startPeriod = 300
     }
     logConfiguration = { logDriver = "awslogs", options = local.log_options }
   }])
