@@ -118,6 +118,92 @@ export const products = pgTable("products", {
   createdAt: created(),
 }, (t) => [uniqueIndex("products_app_store_id").on(t.appId, t.storeIdentifier)]);
 
+/** One store price in one territory (App Store territory `USA`, Google Play region `US`), amount in micros of `currency`. */
+export interface StorePrice { territory: string; currency: string; amount_micros: number }
+
+/**
+ * What the store has for each product of an app, as last read (prd/catalog/PRD.md "Store prices and status"): type,
+ * period, the store's state, the base price and every territory's price. Replaced as a whole on each refresh.
+ */
+export const storeListings = pgTable("store_listings", {
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  storeIdentifier: text("store_identifier").notNull(),
+  type: text("type").notNull(),
+  displayName: text("display_name"),
+  duration: text("duration"),
+  /** The store's own state: APPROVED, READY_TO_SUBMIT … (App Store), ACTIVE, DRAFT, INACTIVE (Google Play). */
+  storeState: text("store_state"),
+  groupId: text("group_id"),
+  groupName: text("group_name"),
+  /** The store's id for the product: the App Store Connect subscription or in-app purchase id, the Play product id. */
+  storeRef: text("store_ref"),
+  baseTerritory: text("base_territory"),
+  baseCurrency: text("base_currency"),
+  basePriceMicros: bigint("base_price_micros", { mode: "number" }),
+  prices: jsonb("prices").$type<StorePrice[]>().notNull().default([]),
+  /** Whether the product editor can change this product's prices (Google Play one-time products cannot). */
+  editable: boolean("editable").notNull().default(true),
+  note: text("note"),
+  refreshedAt: ts("refreshed_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.appId, t.storeIdentifier] }), index("store_listings_project").on(t.projectId)]);
+
+/** The last price refresh of each app: when, whether it worked, and the store's error when it did not. */
+export const storeListingSyncs = pgTable("store_listing_syncs", {
+  appId: text("app_id").primaryKey().references(() => apps.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  status: text("status").notNull(),
+  error: text("error"),
+  itemCount: integer("item_count").notNull().default(0),
+  refreshedAt: ts("refreshed_at").notNull(),
+}, (t) => [index("store_listing_syncs_project").on(t.projectId)]);
+
+/**
+ * A product editor file (prd/catalog/PRD.md "Product editor"): the uploaded CSV, its validation, and the commit to the
+ * store. `status`: invalid, ready, committing, committed, partially_committed, failed, discarded.
+ */
+export const productEdits = pgTable("product_edits", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  store: text("store").notNull(),
+  status: text("status").notNull(),
+  fileName: text("file_name").notNull(),
+  csv: text("csv").notNull(),
+  errors: jsonb("errors").$type<{ line: number | null; message: string }[]>().notNull().default([]),
+  warnings: jsonb("warnings").$type<{ line: number | null; message: string }[]>().notNull().default([]),
+  summary: jsonb("summary").$type<Record<string, number>>().notNull().default({}),
+  options: jsonb("options").$type<{ preserve_current_price?: boolean }>().notNull().default({}),
+  /** Store ids of products this edit created, so a retry never creates one twice. */
+  created: jsonb("created").$type<Record<string, string>>().notNull().default({}),
+  createdBy: text("created_by"),
+  lockedUntil: ts("locked_until"),
+  committedAt: ts("committed_at"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("product_edits_project").on(t.projectId, t.createdAt)]);
+
+/** One change of a product editor file: a price in one territory, or one territory's price of a new product. */
+export const productEditRows = pgTable("product_edit_rows", {
+  editId: text("edit_id").notNull().references(() => productEdits.id, { onDelete: "cascade" }),
+  idx: integer("idx").notNull(),
+  /** price_change or new_product. */
+  kind: text("kind").notNull(),
+  line: integer("line"),
+  storeIdentifier: text("store_identifier").notNull(),
+  territory: text("territory").notNull(),
+  currency: text("currency").notNull(),
+  oldMicros: bigint("old_micros", { mode: "number" }),
+  newMicros: bigint("new_micros", { mode: "number" }).notNull(),
+  /** New products: { type, duration, display_name, group }. */
+  product: jsonb("product").$type<Record<string, string | null>>(),
+  /** pending, succeeded, failed. */
+  status: text("status").notNull().default("pending"),
+  error: text("error"),
+  attempts: integer("attempts").notNull().default(0),
+  updatedAt: ts("updated_at"),
+}, (t) => [primaryKey({ columns: [t.editId, t.idx] })]);
+
 export const entitlements = pgTable("entitlements", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),

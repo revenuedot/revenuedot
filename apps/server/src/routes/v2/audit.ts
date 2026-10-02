@@ -3,7 +3,7 @@ import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { listOf, pageParams, paramError, scope, type V2Router, type V2Vars } from "./common.js";
+import { listOf, pageParams, paramError, scope, type Principal, type V2Router, type V2Vars } from "./common.js";
 
 /**
  * Audit log: who changed what in a project. A middleware records every successful write on `/v2/projects/{id}/...`
@@ -22,7 +22,7 @@ const SINGULAR: Record<string, string> = {
 /** One object per project: a POST without an id updates it. */
 const SINGLETONS = new Set(["brand", "verified_metrics", "auth_settings"]);
 /** Writes that change nothing worth auditing. */
-const QUIET = new Set(["verify_credentials", "preview", "test", "check", "advance"]);
+const QUIET = new Set(["verify_credentials", "preview", "test", "check", "advance", "refresh"]);
 
 interface Parsed { actionType: string; targetType: string; targetId: string | null }
 
@@ -57,6 +57,32 @@ export function parseWrite(method: string, path: string): Parsed | null {
   return null;
 }
 
+/** Who an audit entry names: a user, RevenueDot AI on a user's behalf, an API key or an OAuth client. */
+export interface AuditActor { actorType: string; actorIdentifier: string; data: Record<string, unknown> }
+
+export async function auditActor(deps: Deps, p: Principal): Promise<AuditActor> {
+  if (p.kind === "user" && p.via === "assistant") {
+    // RevenueDot AI acting for a user after they approved the change in the chat (prd/ai-assistant/PRD.md §2).
+    return { actorType: "assistant", actorIdentifier: p.userId, data: { actor_display: `assistant on behalf of ${p.email ?? p.userId}`, on_behalf_of: p.userId, conversation_id: p.conversationId } };
+  }
+  if (p.kind === "user") return { actorType: "user", actorIdentifier: p.userId, data: {} };
+  const [k] = await deps.db.select({ name: schema.apiKeys.name }).from(schema.apiKeys).where(eq(schema.apiKeys.id, p.keyId)).limit(1);
+  const oauth = !!k?.name.startsWith("OAuth: ");
+  return { actorType: oauth ? "oauth_client" : "api_key", actorIdentifier: p.keyId, data: oauth ? { key_id: p.keyId } : {} };
+}
+
+/** An audit entry written by a service for one change it made (a store write of the product editor, for example). */
+export async function writeAudit(deps: Deps, projectId: string, actor: AuditActor, entry: { actionType: string; targetType: string; targetIdentifier: string; data: Record<string, unknown> }) {
+  try {
+    await deps.db.insert(schema.auditLogs).values({
+      id: newId("log", 12), projectId, actionType: entry.actionType, targetType: entry.targetType, targetIdentifier: entry.targetIdentifier,
+      actorType: actor.actorType, actorIdentifier: actor.actorIdentifier, additionalData: { ...entry.data, ...actor.data }, occurredAt: deps.now(),
+    });
+  } catch (e) {
+    console.error("audit log failed", e);
+  }
+}
+
 export function auditMiddleware(deps: Deps): MiddlewareHandler<{ Variables: V2Vars }> {
   return async (c, next) => {
     await next();
@@ -72,25 +98,10 @@ export function auditMiddleware(deps: Deps): MiddlewareHandler<{ Variables: V2Va
         const j = (await c.res.clone().json().catch(() => null)) as { id?: string; code?: string } | null;
         targetId = j?.id ?? j?.code ?? projectId;
       }
-      const p = c.get("principal");
-      let actorType = "user";
-      let actor = "unknown";
-      if (p.kind === "user" && p.via === "assistant") {
-        // RevenueDot AI acting for a user after they approved the change in the chat (prd/ai-assistant/PRD.md §2).
-        actorType = "assistant";
-        actor = p.userId;
-      } else if (p.kind === "user") actor = p.userId;
-      else {
-        const [k] = await deps.db.select({ name: schema.apiKeys.name }).from(schema.apiKeys).where(eq(schema.apiKeys.id, p.keyId)).limit(1);
-        actorType = k?.name.startsWith("OAuth: ") ? "oauth_client" : "api_key";
-        actor = p.keyId;
-      }
+      const a = await auditActor(deps, c.get("principal"));
       await deps.db.insert(schema.auditLogs).values({
-        id: newId("log", 12), projectId, actionType: parsed.actionType, targetType: parsed.targetType, targetIdentifier: targetId, actorType, actorIdentifier: actor,
-        additionalData: {
-          method, status: c.res.status, ...(actorType === "oauth_client" && p.kind === "key" ? { key_id: p.keyId } : {}),
-          ...(p.kind === "user" && p.via === "assistant" ? { actor_display: `assistant on behalf of ${p.email ?? p.userId}`, on_behalf_of: p.userId, conversation_id: p.conversationId } : {}),
-        }, occurredAt: deps.now(),
+        id: newId("log", 12), projectId, actionType: parsed.actionType, targetType: parsed.targetType, targetIdentifier: targetId, actorType: a.actorType, actorIdentifier: a.actorIdentifier,
+        additionalData: { method, status: c.res.status, ...a.data }, occurredAt: deps.now(),
       });
     } catch (e) {
       // An audit failure must never fail the write it describes.

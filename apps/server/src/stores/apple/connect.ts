@@ -28,7 +28,16 @@ export class ConnectError extends Error {
   constructor(public kind: "credentials" | "conflict" | "invalid" | "unavailable", message: string, public status = 0) { super(message); }
 }
 
-export interface Resource { id: string; type: string; attributes?: Record<string, unknown> }
+export interface Resource { id: string; type: string; attributes?: Record<string, unknown>; relationships?: Record<string, { data?: { id: string; type: string } | { id: string; type: string }[] | null }> }
+
+/** The id of a to-one relationship, or null. */
+export const relId = (r: Resource, name: string): string | null => {
+  const d = r.relationships?.[name]?.data;
+  return d && !Array.isArray(d) ? d.id : null;
+};
+
+/** A territory's price as App Store Connect reports it: the price point's customer price, in the territory's currency. */
+export interface AscPrice { territory: string; currency: string | null; customerPrice: string; pricePointId: string | null; startDate: string | null; manual?: boolean }
 
 export class AppStoreConnectApi {
   private token: Promise<string> | null = null;
@@ -49,7 +58,7 @@ export class AppStoreConnectApi {
   }
 
   /** `path` is a path on App Store Connect, or a full URL there (the `links.next` of a list). */
-  async send<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  async send<T>(method: "GET" | "POST" | "PATCH", path: string, body?: unknown): Promise<T> {
     const url = path.startsWith("/") ? `${ASC_HOST}${path}` : path;
     // A paging link comes from Apple's answer: it must stay on App Store Connect, which gets the bearer token.
     if (!url.startsWith(`${ASC_HOST}/`) || outboundUrlProblem(url, true)) throw new ConnectError("invalid", "App Store Connect answered with a link to another host, which is not followed.");
@@ -124,6 +133,122 @@ export class AppStoreConnectApi {
     return { data, truncated: false };
   }
 
+  /** Like listAll, and keeps the `included` resources of every page (territories, price points). */
+  async listAllIncluded(path: string, maxPages = 25): Promise<{ data: Resource[]; included: Resource[]; truncated: boolean }> {
+    const data: Resource[] = [];
+    const included: Resource[] = [];
+    let next: string | undefined = path;
+    for (let page = 0; next; page++) {
+      if (page >= maxPages) return { data, included, truncated: true };
+      const r: { data?: Resource[]; included?: Resource[]; links?: { next?: string } } = await this.send("GET", next);
+      data.push(...(r.data ?? []));
+      included.push(...(r.included ?? []));
+      next = r.links?.next || undefined;
+    }
+    return { data, included, truncated: false };
+  }
+
+  /**
+   * A subscription's current price in every territory. App Store Connect lists past, current and scheduled prices; the
+   * current one is the latest whose `startDate` is today or earlier (no date: since the start). Prices of Apple's monthly
+   * plans for annual subscriptions (`planType` MONTHLY) are left out: the price of the product is the upfront one.
+   */
+  async subscriptionPrices(subscriptionId: string, today: string): Promise<AscPrice[]> {
+    const q = new URLSearchParams({
+      include: "territory,subscriptionPricePoint", limit: "200", "fields[subscriptionPrices]": "startDate,preserved,planType,territory,subscriptionPricePoint",
+      "fields[subscriptionPricePoints]": "customerPrice,territory", "fields[territories]": "currency",
+    });
+    const r = await this.listAllIncluded(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}/prices?${q}`, 50);
+    return currentPrices(r.data, r.included, "subscriptionPricePoint", today);
+  }
+
+  /** The price points of one territory for a subscription (customer price and id), all of them. */
+  async subscriptionPricePoints(subscriptionId: string, territory: string): Promise<{ id: string; customerPrice: string }[]> {
+    const q = new URLSearchParams({ "filter[territory]": territory, limit: "8000", "fields[subscriptionPricePoints]": "customerPrice" });
+    const r = await this.listAll(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}/pricePoints?${q}`, 10);
+    return r.data.map((p) => ({ id: p.id, customerPrice: String(p.attributes?.customerPrice ?? "") }));
+  }
+
+  /** Schedules a subscription price in one territory (no start date: as soon as Apple allows). */
+  createSubscriptionPrice(subscriptionId: string, territory: string, pricePointId: string, preserveCurrentPrice: boolean) {
+    return this.send<{ data: Resource }>("POST", "/v1/subscriptionPrices", {
+      data: {
+        type: "subscriptionPrices", attributes: { preserveCurrentPrice },
+        relationships: {
+          subscription: { data: { type: "subscriptions", id: subscriptionId } },
+          subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: pricePointId } },
+          territory: { data: { type: "territories", id: territory } },
+        },
+      },
+    });
+  }
+
+  /**
+   * An in-app purchase's price schedule: its base territory and the current manual and automatic (equalised) prices.
+   * Null when the product has no price yet.
+   */
+  async inAppPurchaseSchedule(iapId: string, today: string): Promise<{ id: string; baseTerritory: string | null; manual: AscPrice[]; automatic: AscPrice[] } | null> {
+    let schedule: { data?: Resource };
+    try {
+      schedule = await this.send("GET", `/v2/inAppPurchases/${encodeURIComponent(iapId)}/iapPriceSchedule`);
+    } catch (e) {
+      if (e instanceof ConnectError && e.status === 404) return null;
+      throw e;
+    }
+    const id = schedule.data?.id;
+    if (!id) return null;
+    const base = await this.send<{ data?: Resource }>("GET", `/v1/inAppPurchasePriceSchedules/${encodeURIComponent(id)}/baseTerritory?fields[territories]=currency`).catch((e) => {
+      if (e instanceof ConnectError && e.status === 404) return { data: undefined };
+      throw e;
+    });
+    const q = new URLSearchParams({
+      include: "inAppPurchasePricePoint,territory", limit: "200", "fields[inAppPurchasePrices]": "startDate,endDate,manual,inAppPurchasePricePoint,territory",
+      "fields[inAppPurchasePricePoints]": "customerPrice,territory", "fields[territories]": "currency",
+    });
+    const manual = await this.listAllIncluded(`/v1/inAppPurchasePriceSchedules/${encodeURIComponent(id)}/manualPrices?${q}`, 10);
+    const automatic = await this.listAllIncluded(`/v1/inAppPurchasePriceSchedules/${encodeURIComponent(id)}/automaticPrices?${q}`, 10);
+    return {
+      id, baseTerritory: base.data?.id ?? null,
+      manual: currentPrices(manual.data, manual.included, "inAppPurchasePricePoint", today).map((p) => ({ ...p, manual: true })),
+      automatic: currentPrices(automatic.data, automatic.included, "inAppPurchasePricePoint", today).map((p) => ({ ...p, manual: false })),
+    };
+  }
+
+  /** The price points of one territory for an in-app purchase. */
+  async inAppPurchasePricePoints(iapId: string, territory: string): Promise<{ id: string; customerPrice: string }[]> {
+    const q = new URLSearchParams({ "filter[territory]": territory, limit: "8000", "fields[inAppPurchasePricePoints]": "customerPrice" });
+    const r = await this.listAll(`/v2/inAppPurchases/${encodeURIComponent(iapId)}/pricePoints?${q}`, 10);
+    return r.data.map((p) => ({ id: p.id, customerPrice: String(p.attributes?.customerPrice ?? "") }));
+  }
+
+  /**
+   * Replaces an in-app purchase's price schedule: the base territory and its manual prices (the base territory's price
+   * among them). Territories without a manual price follow the base price (Apple's equalisation).
+   */
+  setInAppPurchaseSchedule(iapId: string, baseTerritory: string, manual: { pricePointId: string }[]) {
+    const included = manual.map((m, i) => ({
+      type: "inAppPurchasePrices", id: `\${price${i}}`, attributes: { startDate: null },
+      relationships: { inAppPurchaseV2: { data: { type: "inAppPurchases", id: iapId } }, inAppPurchasePricePoint: { data: { type: "inAppPurchasePricePoints", id: m.pricePointId } } },
+    }));
+    return this.send<{ data: Resource }>("POST", "/v1/inAppPurchasePriceSchedules", {
+      data: {
+        type: "inAppPurchasePriceSchedules",
+        relationships: {
+          inAppPurchase: { data: { type: "inAppPurchases", id: iapId } },
+          baseTerritory: { data: { type: "territories", id: baseTerritory } },
+          manualPrices: { data: included.map((x) => ({ type: "inAppPurchasePrices", id: x.id })) },
+        },
+      },
+      included,
+    });
+  }
+
+  /** Every App Store territory with its currency. */
+  async territories(): Promise<Map<string, string>> {
+    const r = await this.listAll("/v1/territories?limit=200&fields[territories]=currency", 5);
+    return new Map(r.data.map((t) => [t.id, String(t.attributes?.currency ?? "")]));
+  }
+
   /** The app's in-app purchases (consumable, non-consumable, non-renewing), from the in-app purchases v2 API. */
   inAppPurchases(appId: string) {
     const q = new URLSearchParams({ limit: "200", "fields[inAppPurchases]": "name,productId,inAppPurchaseType,state" });
@@ -141,4 +266,32 @@ export class AppStoreConnectApi {
     const q = new URLSearchParams({ limit: "200", "fields[subscriptions]": "name,productId,subscriptionPeriod,state,groupLevel" });
     return this.listAll(`/v1/subscriptionGroups/${encodeURIComponent(groupId)}/subscriptions?${q}`);
   }
+}
+
+/** The current price per territory from a list of price resources and their included price points and territories. */
+function currentPrices(data: Resource[], included: Resource[], pointRel: string, today: string): AscPrice[] {
+  const byKey = new Map(included.map((x) => [`${x.type}:${x.id}`, x]));
+  const best = new Map<string, { start: string | null; r: Resource }>();
+  for (const r of data) {
+    const a = r.attributes ?? {};
+    if (a.planType === "MONTHLY") continue;
+    const start = typeof a.startDate === "string" ? a.startDate : null;
+    const end = typeof a.endDate === "string" ? a.endDate : null;
+    if ((start && start > today) || (end && end <= today)) continue;
+    const point = byKey.get(`${pointRel === "subscriptionPricePoint" ? "subscriptionPricePoints" : "inAppPurchasePricePoints"}:${relId(r, pointRel)}`);
+    const territory = relId(r, "territory") ?? (point ? relId(point, "territory") : null);
+    if (!territory) continue;
+    const prev = best.get(territory);
+    if (!prev || (prev.start ?? "") <= (start ?? "")) best.set(territory, { start, r });
+  }
+  const out: AscPrice[] = [];
+  for (const [territory, { start, r }] of best) {
+    const pointId = relId(r, pointRel);
+    const point = byKey.get(`${pointRel === "subscriptionPricePoint" ? "subscriptionPricePoints" : "inAppPurchasePricePoints"}:${pointId}`);
+    const price = point?.attributes?.customerPrice;
+    if (typeof price !== "string" && typeof price !== "number") continue;
+    const t = byKey.get(`territories:${territory}`);
+    out.push({ territory, currency: typeof t?.attributes?.currency === "string" ? t.attributes.currency : null, customerPrice: String(price), pricePointId: pointId, startDate: start });
+  }
+  return out.sort((a, b) => a.territory.localeCompare(b.territory));
 }

@@ -5,7 +5,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { CONVERTIBLE_CURRENCIES } from "../../services/fx.js";
 import { body, conflict, expands, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
-import { appsById, productShape } from "./shapes.js";
+import { appsById, priceContext, productShape } from "./shapes.js";
 
 export const PRODUCT_TYPES = ["subscription", "one_time", "consumable", "non_consumable", "non_renewing_subscription"] as const;
 /**
@@ -55,13 +55,18 @@ export function productRoutes(r: V2Router, deps: Deps) {
     return p;
   };
   const withApp = async (c: { get: (k: "projectId") => string }, exp: Set<string>, key: string) => (exp.has(key) ? await appsById(db, c.get("projectId")) : null);
+  // Store prices for one product: `indicative_price` and the `store_details` extension.
+  const single = async (projectId: string, p: typeof schema.products.$inferSelect, exp: Set<string>) =>
+    (exp.has("indicative_price") || exp.has("store_details") ? priceContext(db, projectId, [p], exp.has("store_details")) : null);
 
   r.get(P, scope("project_configuration:products:read"), async (c) => {
     const appId = c.req.query("app_id");
     const rows = await db.select().from(schema.products).where(and(eq(schema.products.projectId, c.get("projectId")), ...(appId ? [eq(schema.products.appId, appId)] : [])));
     const exp = expands(c);
     const apps = await withApp(c, exp, "items.app");
-    return c.json(paginate(c, rows, (p) => p.id, (p) => p.createdAt.getTime(), (p) => productShape(p, apps?.get(p.appId), exp.has("items.indicative_price"))));
+    const priced = exp.has("items.indicative_price") || exp.has("items.store_details");
+    const ctx = priced ? await priceContext(db, c.get("projectId"), rows, exp.has("items.store_details")) : null;
+    return c.json(paginate(c, rows, (p) => p.id, (p) => p.createdAt.getTime(), (p) => productShape(p, apps?.get(p.appId), exp.has("items.indicative_price"), ctx)));
   });
 
   r.post(P, scope("project_configuration:products:read_write"), async (c) => {
@@ -77,14 +82,15 @@ export function productRoutes(r: V2Router, deps: Deps) {
       displayName: b.display_name ?? b.title ?? null, duration: b.subscription?.duration ?? null, createdAt: deps.now(),
       ...priceColumns(b.test_store_price ?? null),
     }).returning();
-    return c.json(productShape(row!, null, expands(c).has("indicative_price")), 201);
+    const exp = expands(c);
+    return c.json(productShape(row!, null, exp.has("indicative_price"), await single(c.get("projectId"), row!, exp)), 201);
   });
 
   r.get(`${P}/:product_id`, scope("project_configuration:products:read"), async (c) => {
     const p = await find(c.get("projectId"), c.req.param("product_id"));
     const exp = expands(c);
     const apps = await withApp(c, exp, "app");
-    return c.json(productShape(p, apps?.get(p.appId), exp.has("indicative_price")));
+    return c.json(productShape(p, apps?.get(p.appId), exp.has("indicative_price"), await single(c.get("projectId"), p, exp)));
   });
 
   r.post(`${P}/:product_id`, scope("project_configuration:products:read_write"), async (c) => {
@@ -102,7 +108,7 @@ export function productRoutes(r: V2Router, deps: Deps) {
       .where(and(eq(schema.products.projectId, p.projectId), eq(schema.products.id, p.id))).returning();
     const exp = expands(c);
     const apps = await withApp(c, exp, "app");
-    return c.json(productShape(row!, apps?.get(row!.appId), exp.has("indicative_price")));
+    return c.json(productShape(row!, apps?.get(row!.appId), exp.has("indicative_price"), await single(c.get("projectId"), row!, exp)));
   });
 
   // Deleting a product detaches it from entitlements and packages (FK cascade). Purchase history keeps the store id.
