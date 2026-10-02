@@ -25,6 +25,8 @@ interface Layout {
   table?: { head?: [string, string, string]; rows: [string, string, string][] };
   /** Where "Notification settings" in the footer points. */
   settingsUrl: string;
+  /** Opt-in emails (the weekly summary, experiment results, anomaly alerts): the one-click unsubscribe link. */
+  unsubscribeUrl?: string;
   /** Why the reader got this email. */
   reason: string;
 }
@@ -62,6 +64,7 @@ function layout(l: Layout): Rendered {
     `</td></tr>` +
     `<tr><td style="border-top:1px solid ${BORDER};padding:20px 0 0;font-size:12px;line-height:18px;color:${FG3};">` +
     `${esc(l.reason)}<br>RevenueDot · <a href="${esc(l.settingsUrl)}" style="color:${FG3};">Notification settings</a>` +
+    (l.unsubscribeUrl ? ` · <a href="${esc(l.unsubscribeUrl)}" style="color:${FG3};">Unsubscribe</a>` : "") +
     `</td></tr></table></td></tr></table></body></html>`;
   const text = [
     l.heading, "",
@@ -72,6 +75,7 @@ function layout(l: Layout): Rendered {
     "--",
     l.reason,
     `RevenueDot · Notification settings: ${l.settingsUrl}`,
+    ...(l.unsubscribeUrl ? [`Unsubscribe: ${l.unsubscribeUrl}`] : []),
   ].join("\n");
   return { subject: l.subject, text, html };
 }
@@ -373,7 +377,7 @@ export function accountDeletedEmail(o: { base: string; email: string; projects: 
 }
 
 /** The weekly summary of one project (figures already formatted in the reader's currency). */
-export function weeklySummaryEmail(o: { base: string; projectName: string; weekLabel: string; rows: [string, string, string][]; url: string; headline: string }): Rendered {
+export function weeklySummaryEmail(o: { base: string; projectName: string; weekLabel: string; rows: [string, string, string][]; url: string; headline: string; unsubscribeUrl?: string }): Rendered {
   return layout({
     subject: `${o.projectName}: your week, ${o.weekLabel}`,
     preheader: o.headline,
@@ -382,12 +386,12 @@ export function weeklySummaryEmail(o: { base: string; projectName: string; weekL
     table: { head: ["Metric", "This week", "Vs last week"], rows: o.rows },
     button: { label: "Open the charts", url: o.url },
     after: ["Production purchases only, from the same numbers as the Charts page. Weeks start on the day you chose in Date and region."],
-    settingsUrl: settingsUrl(o.base),
+    settingsUrl: settingsUrl(o.base), unsubscribeUrl: o.unsubscribeUrl,
     reason: `You received this because you turned on the weekly summary for ${o.projectName}.`,
   });
 }
 
-export function experimentResultEmail(o: { base: string; projectName: string; experimentName: string; kind: "enough_data" | "ended"; rows: [string, string, string][]; verdict: string; url: string }): Rendered {
+export function experimentResultEmail(o: { base: string; projectName: string; experimentName: string; kind: "enough_data" | "ended"; rows: [string, string, string][]; verdict: string; url: string; unsubscribeUrl?: string }): Rendered {
   const enough = o.kind === "enough_data";
   return layout({
     subject: enough ? `${o.experimentName} has enough data to read` : `${o.experimentName} ended`,
@@ -396,12 +400,12 @@ export function experimentResultEmail(o: { base: string; projectName: string; ex
     paragraphs: [enough ? `Both variants of the experiment ${o.experimentName} in ${o.projectName} have at least 100 customers.` : `The experiment ${o.experimentName} in ${o.projectName} was stopped. These are its final results.`, o.verdict],
     table: { head: ["Variant", "Conversion", "Revenue per customer"], rows: o.rows },
     button: { label: "Open the experiment", url: o.url },
-    settingsUrl: settingsUrl(o.base),
+    settingsUrl: settingsUrl(o.base), unsubscribeUrl: o.unsubscribeUrl,
     reason: `You received this because you turned on experiment results for ${o.projectName}.`,
   });
 }
 
-export function anomalyEmail(o: { base: string; projectName: string; day: string; lines: { title: string; text: string }[]; url: string; sensitivity: string }): Rendered {
+export function anomalyEmail(o: { base: string; projectName: string; day: string; lines: { title: string; text: string }[]; url: string; sensitivity: string; unsubscribeUrl?: string }): Rendered {
   const first = o.lines[0]!;
   return layout({
     subject: `${o.projectName}: ${first.title.toLowerCase()} on ${o.day}`,
@@ -410,7 +414,7 @@ export function anomalyEmail(o: { base: string; projectName: string; day: string
     paragraphs: o.lines.map((l) => `${l.title}. ${l.text}`),
     button: { label: "Open the chart", url: o.url },
     after: [`Compared with the 28 days before, at ${o.sensitivity} sensitivity. A sudden drop often means a broken paywall, a failing store connection or an app update; a spike, a feature or a promotion.`],
-    settingsUrl: settingsUrl(o.base),
+    settingsUrl: settingsUrl(o.base), unsubscribeUrl: o.unsubscribeUrl,
     reason: `You received this because you turned on revenue anomaly alerts for ${o.projectName}.`,
   });
 }

@@ -3,10 +3,12 @@ import { addPeriods, chartDef, DAY, detectAnomaly, floorTo, runChart, type Anoma
 import { schema, type DB } from "@revenuedot/db";
 import { trySend, type Mailer } from "../mail/index.js";
 import { anomalyEmail, experimentResultEmail, weeklySummaryEmail } from "../mail/templates.js";
-import { linkBase } from "./account-email.js";
+import { linkBase, randomToken } from "./account-email.js";
+import { sha256Hex } from "./auth.js";
 import { chartSources, loadChartInput, type ChartSources } from "./charts/load.js";
 import { experimentResults } from "./experiments.js";
 import { fxLookup, type FxFetch } from "./fx.js";
+import { hit } from "./rate-limit.js";
 
 /**
  * Account notification emails (prd/account-settings/PRD.md §4), one step of the every-minute tick:
@@ -15,9 +17,10 @@ import { fxLookup, type FxFetch } from "./fx.js";
  *   experiment_ended        an experiment was stopped (within 7 days)
  *   revenue_anomaly         yesterday's revenue or new paid subscriptions against the 28 days before (daily, after 06:00 UTC)
  * Only for people who turned the kind on for a project they still belong to (notification_prefs). Each email is claimed
- * in notification_sends before it goes out, so overlapping ticks send it once. Each tick is bounded: at most
- * `projects` analyses (summary, experiment and anomaly computations), `emails` emails and `budgetMs` of work; the rest
- * waits for the next tick.
+ * in notification_sends before it goes out, so overlapping ticks send it once, and carries a one-click unsubscribe link
+ * (RFC 8058) for that kind and project. Each tick is bounded: at most `projects` analyses (summary, experiment and
+ * anomaly computations), `emails` emails and `budgetMs` of work; the rest waits for the next tick. A running experiment
+ * without enough data yet is analysed again at most once an hour, so a few of them cannot take every tick's analyses.
  */
 
 export interface NotifyDeps { db: DB; mailer?: Mailer; publicUrl?: string; fetch?: FxFetch | null }
@@ -28,6 +31,16 @@ export const SUMMARY_WINDOW_DAYS = 3;
 /** Anomaly checks run for yesterday from this hour (UTC). */
 export const ANOMALY_FROM_HOUR = 6;
 const ENDED_WITHIN_MS = 7 * DAY;
+/** How often a running experiment that does not have enough data yet is analysed again. */
+export const EXPERIMENT_RECHECK_MS = 3_600_000;
+
+/** The preference each email kind turns off when its unsubscribe link is used. */
+export const UNSUBSCRIBE_COLUMN = {
+  weekly_summary: "weeklySummary", experiment_enough_data: "experimentResults", experiment_ended: "experimentResults", revenue_anomaly: "anomalyAlerts",
+} as const;
+export type NotificationKind = keyof typeof UNSUBSCRIBE_COLUMN;
+/** The unsubscribe link of one email (routes/account.ts answers it without a session). */
+export const unsubscribeUrl = (base: string, token: string) => `${base}/auth/notifications/unsubscribe/${token}`;
 
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
 
@@ -141,11 +154,27 @@ export async function runAccountNotifications(deps: NotifyDeps, now: Date, limit
   if (!prefs.length) return out;
   const base = linkBase(deps);
   const S = schema.notificationSends;
-  /** Claims an email; false when another tick (or an earlier one) already did. */
-  const claim = async (userId: string, projectId: string, kind: string, key: string) =>
-    (await db.insert(S).values({ userId, projectId, kind, key, sentAt: now }).onConflictDoNothing().returning({ k: S.key })).length > 0;
-  const sent = async (userId: string, projectId: string, kind: string, key: string) =>
+  /**
+   * Claims an email and returns its unsubscribe link, or null when another tick (or an earlier one) already claimed it.
+   * The link's token is stored as a SHA-256 only.
+   */
+  const claim = async (userId: string, projectId: string, kind: NotificationKind, key: string) => {
+    const token = randomToken();
+    const won = await db.insert(S).values({ userId, projectId, kind, key, tokenHash: await sha256Hex(token), sentAt: now }).onConflictDoNothing().returning({ k: S.key });
+    return won.length ? unsubscribeUrl(base, token) : null;
+  };
+  const sent = async (userId: string, projectId: string, kind: NotificationKind, key: string) =>
     (await db.select({ k: S.key }).from(S).where(and(eq(S.userId, userId), eq(S.projectId, projectId), eq(S.kind, kind), eq(S.key, key))).limit(1)).length > 0;
+  const send = (to: string, mail: { subject: string; text: string; html: string }, unsubscribe: string) =>
+    trySend(deps.mailer, { to, ...mail, headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
+  // Exchange rates, loaded once per run. A currency without a rate shows USD, labelled USD, never USD amounts under
+  // another currency's sign.
+  let rates: Awaited<ReturnType<typeof fxLookup>> | undefined;
+  const perUsd = async (currency: string, at: number) => (currency === "USD" ? 1 : ((rates ??= await fxLookup(db)).perUsd(currency, at)));
+  const display = async (currency: string, at: number) => {
+    const rate = await perUsd(currency, at);
+    return rate ? { currency, conv: (usd: number) => usd * rate } : { currency: "USD", conv: (usd: number) => usd };
+  };
 
   // 1. Weekly summaries: one computation per project, week and currency.
   const digests = new Map<string, Digest>();
@@ -156,20 +185,22 @@ export async function runAccountNotifications(deps: NotifyDeps, now: Date, limit
     const week = addPeriods(thisWeek, "week", -1);
     const key = iso(week);
     if (await sent(u.id, p.id, "weekly_summary", key)) continue;
-    const dk = `${p.id}|${week}|${u.weekStart}|${u.displayCurrency}`;
+    const currency = (await perUsd(u.displayCurrency, now.getTime())) ? u.displayCurrency : "USD";
+    const dk = `${p.id}|${week}|${u.weekStart}|${currency}`;
     let d = digests.get(dk);
     if (!d) {
       if (!canWork()) { out.deferred++; continue; }
       out.analysed++;
-      d = await weeklyDigest(deps, p.id, week, u.weekStart, u.displayCurrency, now);
+      d = await weeklyDigest(deps, p.id, week, u.weekStart, currency, now);
       digests.set(dk, d);
     }
-    if (!canSend() || !(await claim(u.id, p.id, "weekly_summary", key))) continue;
+    if (!canSend()) continue;
+    const unsubscribe = await claim(u.id, p.id, "weekly_summary", key);
     // A project with nothing in either week gets no email (the claim still records that the week was handled).
-    if (d.empty) continue;
+    if (!unsubscribe || d.empty) continue;
     const { rows, headline } = digestRows(d);
     emails++;
-    if (await trySend(deps.mailer, { to: u.email, ...weeklySummaryEmail({ base, projectName: p.name, weekLabel: weekLabel(week), rows, headline, url: `${base}/projects/${p.id}/charts/mrr` }) })) out.weekly++;
+    if (await send(u.email, weeklySummaryEmail({ base, projectName: p.name, weekLabel: weekLabel(week), rows, headline, url: `${base}/projects/${p.id}/charts/mrr`, unsubscribeUrl: unsubscribe }), unsubscribe)) out.weekly++;
   }
 
   // 2. Experiment results: when one first has enough data, and when it ends.
@@ -186,21 +217,24 @@ export async function runAccountNotifications(deps: NotifyDeps, now: Date, limit
       for (const r of readers) if (!(await sent(r.u.id, x.projectId, kind, x.id))) waiting.push(r);
       if (!waiting.length) continue;
       if (!canWork()) { out.deferred++; continue; }
+      // Still running: analysed again at most once an hour until it has enough data.
+      if (!ended && !(await hit(db, `notify:experiment:${x.id}`, 1, EXPERIMENT_RECHECK_MS, now))) continue;
       out.analysed++;
       const res = await experimentResults(db, x, "production");
       if (!ended && !res.enoughData) continue;
       for (const r of waiting) {
-        if (!canSend() || !(await claim(r.u.id, x.projectId, kind, x.id))) continue;
+        if (!canSend()) continue;
+        const unsubscribe = await claim(r.u.id, x.projectId, kind, x.id);
+        if (!unsubscribe) continue;
         // An experiment that ended counts as read: no "enough data" email after the "ended" one.
         if (ended) await claim(r.u.id, x.projectId, "experiment_enough_data", x.id);
-        const cur = r.u.displayCurrency;
-        const fx = cur === "USD" ? null : await fxLookup(db);
-        const conv = (usd: number) => (fx ? usd * (fx.perUsd(cur, now.getTime()) ?? 1) : usd);
-        const rows: [string, string, string][] = [res.a, res.b].map((v) => [`${v.id.toUpperCase()} (${v.customers} customers)`, `${(v.conversion_rate * 100).toFixed(1)}%`, money(conv(v.revenue_per_customer), fx ? cur : "USD")]);
+        const cur = await display(r.u.displayCurrency, now.getTime());
+        const rows: [string, string, string][] = [res.a, res.b].map((v) => [`${v.id.toUpperCase()} (${v.customers} customers)`, `${(v.conversion_rate * 100).toFixed(1)}%`, money(cur.conv(v.revenue_per_customer), cur.currency)]);
         const chance = Math.round(res.chanceBBeatsA * 100);
         const verdict = chance >= 95 ? `B beats A on conversion with a ${chance}% chance.` : chance <= 5 ? `A beats B on conversion with a ${100 - chance}% chance.` : `No clear winner yet: B has a ${chance}% chance of beating A on conversion.`;
         emails++;
-        if (await trySend(deps.mailer, { to: r.u.email, ...experimentResultEmail({ base, projectName: r.p.name, experimentName: x.name, kind: ended ? "ended" : "enough_data", rows, verdict, url: `${base}/projects/${x.projectId}/experiments/${x.id}` }) })) out.experiments++;
+        const mail = experimentResultEmail({ base, projectName: r.p.name, experimentName: x.name, kind: ended ? "ended" : "enough_data", rows, verdict, url: `${base}/projects/${x.projectId}/experiments/${x.id}`, unsubscribeUrl: unsubscribe });
+        if (await send(r.u.email, mail, unsubscribe)) out.experiments++;
       }
     }
   }
@@ -230,20 +264,18 @@ export async function runAccountNotifications(deps: NotifyDeps, now: Date, limit
         const sens = (["low", "medium", "high"].includes(w.n.anomalySensitivity) ? w.n.anomalySensitivity : "medium") as AnomalySensitivity;
         const found = judge(input, sens).filter((r) => r.anomaly);
         if (!found.length || !canSend()) continue;
-        if (!(await claim(w.u.id, pid, "revenue_anomaly", dayKey))) continue;
-        const cur = w.u.displayCurrency;
-        const fx = cur === "USD" ? null : await fxLookup(db);
-        const conv = (usd: number) => (fx ? usd * (fx.perUsd(cur, day) ?? 1) : usd);
-        const cc = fx ? cur : "USD";
+        const unsubscribe = await claim(w.u.id, pid, "revenue_anomaly", dayKey);
+        if (!unsubscribe) continue;
+        const cur = await display(w.u.displayCurrency, day);
         const lines = found.map((r) => {
           const what = r.series === "revenue" ? "Revenue" : "New paid subscriptions";
-          const fmtv = (v: number) => (r.series === "revenue" ? money(conv(v), cc) : int(v));
+          const fmtv = (v: number) => (r.series === "revenue" ? money(cur.conv(v), cur.currency) : int(v));
           const pct = r.change === null ? "" : ` (${r.change > 0 ? "+" : "−"}${Math.abs(r.change * 100).toFixed(0)}%)`;
           return { title: `${what} ${r.direction === "down" ? "dropped" : "spiked"}`, text: `${fmtv(r.value)} on ${dayKey}, against a usual ${fmtv(r.median)} a day${pct}.` };
         });
         emails++;
         const chart = found[0]!.series === "revenue" ? "revenue" : "actives_new";
-        if (await trySend(deps.mailer, { to: w.u.email, ...anomalyEmail({ base, projectName: w.p.name, day: dayKey, lines, sensitivity: sens, url: `${base}/projects/${pid}/charts/${chart}` }) })) out.anomalies++;
+        if (await send(w.u.email, anomalyEmail({ base, projectName: w.p.name, day: dayKey, lines, sensitivity: sens, url: `${base}/projects/${pid}/charts/${chart}`, unsubscribeUrl: unsubscribe }), unsubscribe)) out.anomalies++;
       }
     }
   }

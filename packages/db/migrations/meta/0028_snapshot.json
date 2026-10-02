@@ -1,5 +1,5 @@
 {
-  "id": "860ab130-59fd-4e04-90b8-a10edf4e86dd",
+  "id": "287989f5-9f4e-45e4-a12b-92dd439f8000",
   "prevId": "da643a1d-ac25-48b4-a631-f35584c6e982",
   "version": "7",
   "dialect": "postgresql",
@@ -5950,6 +5950,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sent_at": {
           "name": "sent_at",
           "type": "timestamp with time zone",
@@ -5958,7 +5964,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "notification_sends_token": {
+          "name": "notification_sends_token",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "notification_sends_user_id_users_id_fk": {
           "name": "notification_sends_user_id_users_id_fk",

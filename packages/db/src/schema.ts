@@ -524,15 +524,17 @@ export const notificationPrefs = pgTable("notification_prefs", {
 /**
  * One row per email of services/account-notifications.ts, written before it is sent, so every email goes out once:
  * kind "weekly_summary" (key: the week's first day), "experiment_enough_data" / "experiment_ended" (key: experiment id),
- * "revenue_anomaly" (key: the day).
+ * "revenue_anomaly" (key: the day). `tokenHash`: SHA-256 of the email's one-click unsubscribe link (RFC 8058), which
+ * turns that kind off for that project.
  */
 export const notificationSends = pgTable("notification_sends", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   kind: text("kind").notNull(),
   key: text("key").notNull(),
+  tokenHash: text("token_hash"),
   sentAt: ts("sent_at").notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.userId, t.projectId, t.kind, t.key] })]);
+}, (t) => [primaryKey({ columns: [t.userId, t.projectId, t.kind, t.key] }), uniqueIndex("notification_sends_token").on(t.tokenHash)]);
 
 /** The daily revenue anomaly check per project and UTC day (YYYY-MM-DD): run once, emailed from the result. */
 export const anomalyChecks = pgTable("anomaly_checks", {

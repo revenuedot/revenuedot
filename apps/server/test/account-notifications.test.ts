@@ -240,3 +240,78 @@ describe("revenue anomaly alerts", () => {
     expect(left).toHaveLength(3);
   });
 });
+
+describe("review fixes", () => {
+  it("re-checks a running experiment without enough data at most once an hour, so it never starves the others", async () => {
+    s = await accountServer({ fetch: noNetwork });
+    await project("scan", "Scanner");
+    await member("gil@example.com", "scan", { experimentResults: true });
+    s.setNow(T("2026-09-30T12:00:00Z"));
+    // Six small experiments come before the one that is ready, more than one tick may analyse.
+    const X = schema.experiments;
+    await s.db.insert(schema.offerings).values([{ id: "ofrA", projectId: "scan", lookupKey: "a", displayName: "A" }, { id: "ofrB", projectId: "scan", lookupKey: "b", displayName: "B" }]);
+    for (let i = 0; i < 6; i++) await s.db.insert(X).values({ id: `exp_small${i}`, projectId: "scan", name: `Small ${i}`, status: "running", offeringA: "ofrA", offeringB: "ofrB", startedAt: T("2026-09-01") });
+    await s.db.insert(X).values({ id: "exp_ready", projectId: "scan", name: "Ready", status: "running", offeringA: "ofrA", offeringB: "ofrB", startedAt: T("2026-09-01") });
+    for (const v of ["a", "b"] as const) for (let i = 0; i < 100; i++) {
+      const cid = `r_${v}${i}`;
+      await s.db.insert(schema.customers).values({ id: cid, projectId: "scan", originalAppUserId: cid, firstSeen: T("2026-09-02") });
+      await s.db.insert(schema.experimentEnrollments).values({ experimentId: "exp_ready", customerId: cid, variant: v, enrolledAt: T("2026-09-02") });
+    }
+    const limits = { projects: 5, emails: 20, budgetMs: 15_000 };
+    await run(limits);
+    s.advance(60_000);
+    await run(limits);
+    expect(mails("gil@example.com").map((m) => m.subject)).toEqual(["Ready has enough data to read"]);
+    // The small ones are looked at again an hour later, not every minute.
+    s.advance(60_000);
+    expect((await run(limits)).analysed).toBe(0);
+    s.advance(3_600_000);
+    expect((await run(limits)).analysed).toBe(5);
+  });
+
+  it("shows amounts in USD, labelled USD, when the reader's currency has no rate", async () => {
+    s = await accountServer({ fetch: noNetwork });
+    await project("scan", "Scanner");
+    const customer = await purchase("scan", "2026-08-30", { product: "coins", usd: 100 });
+    for (let i = 1; i < 28; i++) await purchase("scan", new Date(T("2026-08-30").getTime() + i * DAY).toISOString(), { product: "coins", usd: 100, customer });
+    // Cached rates of both sources, neither with GBP.
+    await s.db.insert(schema.fxRates).values([{ source: "ecb", date: "2026-09-01", rates: { EUR: 1, USD: 1.25 } }, { source: "usd", date: "2026-09-01", rates: { EUR: 0.8 } }]);
+    await member("hal@example.com", "scan", { anomalyAlerts: true }, { displayCurrency: "GBP" });
+    s.setNow(T("2026-09-28T07:00:00Z"));
+    expect((await run()).anomalies).toBe(1);
+    const [m] = mails("hal@example.com");
+    expect(m!.text).toContain("$0.00 on 2026-09-27, against a usual $100.00 a day");
+    expect(m!.text).not.toContain("£");
+  });
+
+  it("every notification email has a one-click unsubscribe that turns off that email for that project only", async () => {
+    s = await accountServer({ fetch: noNetwork });
+    await weekData();
+    await project("other", "Other");
+    await member("ida@example.com", "scan", { weeklySummary: true, anomalyAlerts: true });
+    await s.db.insert(schema.memberships).values({ userId: "usr_ida", projectId: "other", role: "admin" });
+    await s.db.insert(schema.notificationPrefs).values({ userId: "usr_ida", projectId: "other", weeklySummary: true });
+    s.setNow(T("2026-09-28T07:00:00Z"));
+    await run();
+    const [m] = mails("ida@example.com");
+    const header = m!.headers?.["List-Unsubscribe"] ?? "";
+    expect(m!.headers?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+    const url = /^<(https:\/\/dash\.example\.com\/auth\/notifications\/unsubscribe\/[A-Za-z0-9_-]+)>$/.exec(header)?.[1];
+    expect(url).toBeTruthy();
+    expect(m!.text).toContain(`Unsubscribe: ${url}`);
+    expect(m!.html).toContain(url);
+    const path = new URL(url!).pathname;
+    // A GET (a mail scanner following the link) changes nothing; it shows a button.
+    const page = await s.app.fetch(new Request(`http://localhost${path}`));
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("<form method=\"post\"");
+    expect((await s.db.select().from(schema.notificationPrefs).where(and(eq(schema.notificationPrefs.userId, "usr_ida"), eq(schema.notificationPrefs.projectId, "scan"))))[0]!.weeklySummary).toBe(true);
+    // RFC 8058 one-click: a POST without a session.
+    const done = await s.app.fetch(new Request(`http://localhost${path}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" }));
+    expect(done.status).toBe(200);
+    const prefs = await s.db.select().from(schema.notificationPrefs).where(eq(schema.notificationPrefs.userId, "usr_ida"));
+    expect(prefs.find((p) => p.projectId === "scan")).toMatchObject({ weeklySummary: false, anomalyAlerts: true });
+    expect(prefs.find((p) => p.projectId === "other")).toMatchObject({ weeklySummary: true });
+    expect((await s.app.fetch(new Request("http://localhost/auth/notifications/unsubscribe/not-a-token", { method: "POST" }))).status).toBe(404);
+  });
+});

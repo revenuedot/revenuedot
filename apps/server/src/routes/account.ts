@@ -19,6 +19,9 @@ import { SESSION_COOKIE, hashPassword, publicSessionId, sessionUser, verifyPassw
 import { newTotpSecret, otpauthUrl } from "../services/totp.js";
 import { planOf, plansFrom } from "../services/billing/plans.js";
 import { OAUTH_SCOPES } from "./oauth.js";
+import { page } from "./lifecycle-public.js";
+import { UNSUBSCRIBE_COLUMN, type NotificationKind } from "../services/account-notifications.js";
+import { sha256Hex } from "../services/auth.js";
 import { connectAvailability } from "../services/stripe-connect.js";
 import { storeSecretHintOf, stripeConnected } from "../services/store-secrets.js";
 
@@ -39,6 +42,7 @@ import { storeSecretHintOf, stripeConnected } from "../services/store-secrets.js
  *   POST   /auth/account/delete            { email, password?, code? }
  *   GET    /auth/notifications             per project: weekly summary, experiment results, anomaly alerts
  *   PUT    /auth/notifications/{project_id}
+ *   GET|POST /auth/notifications/unsubscribe/{token}  (no session needed) the one-click unsubscribe link of one email
  *   GET    /auth/fx?currency=EUR           the latest USD rate for the display currency
  *   GET    /auth/stripe_accounts           Stripe accounts connected with Connect with Stripe to apps in the person's projects
  * Writes must come from the dashboard's own origin (the session cookie also rides on same-site requests).
@@ -72,11 +76,11 @@ export function accountRoutes(deps: Deps) {
     return null;
   };
 
-  // Every route here but the confirmation link needs a session; writes must come from the dashboard itself.
-  const PUBLIC = new Set(["/auth/email/change/confirm"]);
+  // Every route here but the links in emails needs a session; writes must come from the dashboard itself.
+  const isPublic = (path: string) => path === "/auth/email/change/confirm" || path.startsWith("/auth/notifications/unsubscribe/");
   const ROUTES = /^\/auth\/(email\/change|password\/change|sessions|2fa\/|oauth_tokens|account\/|notifications|fx|stripe_accounts)/;
   r.use("/auth/*", async (c, next) => {
-    if (!ROUTES.test(c.req.path) || PUBLIC.has(c.req.path)) return next();
+    if (!ROUTES.test(c.req.path) || isPublic(c.req.path)) return next();
     const site = c.req.header("sec-fetch-site");
     if (c.req.method !== "GET" && (site === "cross-site" || site === "same-site")) return err(c, 403, "authorization_error", "Dashboard requests must come from the dashboard.");
     const u = await sessionUser(db, sid(c), deps.now());
@@ -477,6 +481,33 @@ export function accountRoutes(deps: Deps) {
       object: "project_notifications", project_id: pid, weekly_summary: row!.weeklySummary, experiment_results: row!.experimentResults,
       anomaly_alerts: row!.anomalyAlerts, anomaly_sensitivity: row!.anomalySensitivity,
     });
+  });
+
+  // ---------- Notifications: the one-click unsubscribe link of an email (RFC 8058), no session ----------
+  const KIND_LABEL: Record<NotificationKind, string> = {
+    weekly_summary: "weekly summaries", experiment_enough_data: "experiment results", experiment_ended: "experiment results", revenue_anomaly: "revenue anomaly alerts",
+  };
+  const unsubscribeOf = async (token: string) => {
+    if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) return null;
+    const S = schema.notificationSends;
+    const [row] = await db.select({ send: S, email: schema.users.email, project: schema.projects.name }).from(S)
+      .innerJoin(schema.users, eq(schema.users.id, S.userId)).innerJoin(schema.projects, eq(schema.projects.id, S.projectId))
+      .where(eq(S.tokenHash, await sha256Hex(token))).limit(1);
+    return row && row.send.kind in UNSUBSCRIBE_COLUMN ? { ...row, kind: row.send.kind as NotificationKind } : null;
+  };
+  const NOT_FOUND = () => page("Link not found", "This unsubscribe link is not valid. Choose your emails in Account settings → Notifications.");
+  // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also as one-click.
+  r.get("/auth/notifications/unsubscribe/:token", async (c) => {
+    const u = await unsubscribeOf(c.req.param("token"));
+    if (!u) return c.html(NOT_FOUND(), 404);
+    return c.html(page("Unsubscribe?", `Stop ${KIND_LABEL[u.kind]} for ${u.project} to ${u.email}.`, `<form method="post"><button type="submit">Unsubscribe</button></form>`));
+  });
+  r.post("/auth/notifications/unsubscribe/:token", async (c) => {
+    const u = await unsubscribeOf(c.req.param("token"));
+    if (!u) return c.html(NOT_FOUND(), 404);
+    const N = schema.notificationPrefs;
+    await db.update(N).set({ [UNSUBSCRIBE_COLUMN[u.kind]]: false, updatedAt: deps.now() }).where(and(eq(N.userId, u.send.userId), eq(N.projectId, u.send.projectId)));
+    return c.html(page("You are unsubscribed", `${u.email} gets no more ${KIND_LABEL[u.kind]} for ${u.project}. Turn them back on in Account settings → Notifications.`));
   });
 
   // ---------- General: Stripe accounts (RevenueCat's account-level list; RevenueDot connects per app, prd/web-billing §8) ----------

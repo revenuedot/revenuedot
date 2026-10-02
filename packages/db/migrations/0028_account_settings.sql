@@ -22,6 +22,7 @@ CREATE TABLE "notification_sends" (
 	"project_id" text NOT NULL,
 	"kind" text NOT NULL,
 	"key" text NOT NULL,
+	"token_hash" text,
 	"sent_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "notification_sends_user_id_project_id_kind_key_pk" PRIMARY KEY("user_id","project_id","kind","key")
 );
@@ -56,6 +57,7 @@ ALTER TABLE "notification_prefs" ADD CONSTRAINT "notification_prefs_project_id_p
 ALTER TABLE "notification_sends" ADD CONSTRAINT "notification_sends_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notification_sends" ADD CONSTRAINT "notification_sends_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "two_factor_recovery_codes" ADD CONSTRAINT "two_factor_recovery_codes_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "notification_sends_token" ON "notification_sends" USING btree ("token_hash");--> statement-breakpoint
 ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "api_keys" ADD CONSTRAINT "api_keys_oauth_client_id_oauth_clients_id_fk" FOREIGN KEY ("oauth_client_id") REFERENCES "public"."oauth_clients"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "api_keys_created_by" ON "api_keys" USING btree ("created_by_user_id");--> statement-breakpoint
