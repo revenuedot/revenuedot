@@ -2,91 +2,91 @@
   "onboarding": {
     "title": "Developer onboarding: sign-up, email, team, catalog, keys, webhook backend, paywall",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 52,
     "failed": 0
   },
   "web-sdk": {
     "title": "End user buys with the unmodified purchases-js in Chromium (Test Store), then logs in",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 27,
     "failed": 0
   },
   "lifecycle": {
     "title": "Lifecycle: renewal, cancellation, billing issue, expiration, refunds; webhooks key-checked; charts",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 64,
     "failed": 0
   },
   "identity": {
     "title": "Identity: anonymous → logIn → merge → alias → restore under each transfer behaviour; currency survives merges",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 44,
     "failed": 0
   },
   "targeting": {
     "title": "Targeting: audience from SDK attributes, rule with placements, two-offering experiment, enrollment, results",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 26,
     "failed": 0
   },
   "web-billing": {
     "title": "Web billing (fake Stripe): purchase link, discount, checkout, redemption email and SDK redeem, webhook once, funnel",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 47,
     "failed": 0
   },
   "lifecycle-tools": {
     "title": "Lifecycle tools: Refund Control, Retention, Win-back (SMTP, clicks, unsubscribe, reactivation), Support tickets, Customer lists and CSV",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 201,
     "failed": 0
   },
   "integrations": {
     "title": "Integrations: every catalogue partner gets real events (exact payloads), Google's MP validation, retry and replay, S3 exports to MinIO",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 896,
     "failed": 0
   },
   "ads-rewards": {
     "title": "Ads: reward rules, AdMob SSV with a generated key, SDK poll, ledger, abuse cases, ad events, overview, AdMob connect",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 110,
     "failed": 0
   },
   "stores": {
     "title": "Stores through real entry points with network fakes: Stripe webhooks, Amazon RVS + SNS, Google Play API + RTDN",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 143,
     "failed": 0
   },
   "importer": {
     "title": "Moving from RevenueCat: the real CLI imports catalog, customers and history, idempotent, no webhooks",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 70,
     "failed": 0
   },
   "dashboard-ui": {
     "title": "The dashboard in a real browser: every page, every object created, edited and deleted, phone width, dark mode",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020454225600",
     "passed": 411,
     "failed": 0
   },
   "assistant": {
     "title": "RevenueDot AI: read with a tool, approve and deny a write, audit, viewer, read only, disabled",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 34,
     "failed": 0
   },
@@ -107,28 +107,28 @@
   "settings-auth": {
     "title": "Auth (OIDC sign-in, refresh, revoke), blocked customers, sandbox testing access, ownership transfer, brand, Verified Metrics",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020421215600",
     "passed": 156,
     "failed": 0
   },
   "self-host": {
     "title": "Self-hosting: docker compose with the repo's image on a Railway database, owner sign-up, a purchase, a restart",
     "date": "2026-10-02",
-    "run": "202610020318215600",
+    "run": "202610020451525600",
     "passed": 42,
     "failed": 0
   },
   "move": {
     "title": "Self-hosted to Cloud with npx revenuedot move: purchases-js before and after, webhooks keep their secret",
     "date": "2026-10-02",
-    "run": "202610020236465420",
+    "run": "202610020421215600",
     "passed": 48,
     "failed": 0
   },
   "billing": {
     "title": "Cloud billing: metered production revenue, upgrade through Checkout, the meter, Portal, failed payment",
     "date": "2026-10-02",
-    "run": "202610020236465420",
+    "run": "202610020421215600",
     "passed": 18,
     "failed": 0
   }
