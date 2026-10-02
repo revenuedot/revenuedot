@@ -4,7 +4,7 @@ import {
 } from "@revenuedot/core/integrations";
 import { schema, type DB, type DeliveryAttempt } from "@revenuedot/db";
 import { notMoving } from "../archive/moving.js";
-import { ATTEMPT_LOG_MAX, RESPONSE_LOG_CHARS, RETRY_MINUTES } from "../webhooks.js";
+import { ATTEMPT_LOG_MAX, RESPONSE_LOG_CHARS, RETRY_MINUTES, curlFor, readCapped, scrubSecrets } from "../webhooks.js";
 import { SecretsError, unseal, type SecretKey } from "../secrets.js";
 import { GoogleAuthError, googleAccessToken, parseServiceAccount } from "../google-sa.js";
 import { outboundUrlProblem } from "../outbound.js";
@@ -37,11 +37,33 @@ export interface IntegrationRuntime {
   budgetMs?: number;
 }
 
-const LOG_BODY = 4000, LOG_RESPONSE = 1000;
+const LOG_BODY = 4000, LOG_RESPONSE = 1000, LOG_REQUEST = 2000;
+/** How much of a partner's answer is read: enough for the error checks and the log, never an unbounded body. */
+const READ_RESPONSE = 64 * 1024;
 /** A claimed delivery whose tick died is picked up again after this long. */
 const LEASE_MS = 10 * 60_000;
 const PER_INTEGRATION = 10, CONCURRENCY = 4;
 
+/**
+ * A cURL that repeats a delivery's request, with the partner's credentials as placeholders. Null when the delivery sent
+ * nothing yet, sent several requests, or sent a body longer than the log keeps (the command would send a cut body).
+ */
+export function integrationCurl(request: string | null, body: string | null): string | null {
+  const lines = (request ?? "").split("\n").filter(Boolean);
+  const m = lines.length === 1 ? /^([A-Z]+) (\S+)$/.exec(lines[0]!) : null;
+  // A URL that is itself a secret (Slack's) is logged as [redacted]: there is nothing to repeat.
+  if (!m || !/^https?:\/\//.test(m[2]!) || (body?.length ?? 0) >= LOG_BODY) return null;
+  const data = body && m[1] !== "GET" && m[1] !== "HEAD" ? body : null;
+  // Builders send JSON or, for Adjust, Singular and Tenjin, a form.
+  const json = data !== null && (() => { try { JSON.parse(data); return true; } catch { return false; } })();
+  const headers = [
+    ...(data === null ? [] : [{ name: "Content-Type", value: json ? "application/json" : "application/x-www-form-urlencoded" }]),
+    { name: "Authorization", value: "<partner credentials>" },
+  ];
+  return curlFor(m[1]!, m[2]!, headers, data);
+}
+
+/** Removes the integration's own secrets only: request bodies stay exactly as sent otherwise. */
 function scrub(s: string, secrets: string[]) {
   let out = s;
   for (const v of secrets) if (v && v.length >= 4) out = out.split(v).join("[redacted]");
@@ -58,7 +80,7 @@ async function send(r: OutRequest, f: typeof fetch, timeoutMs: number): Promise<
     if ((res.status >= 300 && res.status < 400) || res.type === "opaqueredirect") {
       return { status: res.status || null, body: "", error: "The partner answered with a redirect, which is not followed. Use the final URL." };
     }
-    const body = await res.text().catch(() => "");
+    const body = await readCapped(res, READ_RESPONSE).catch(() => "");
     return { status: res.status, body, error: null };
   } catch (e) {
     return { status: null, body: "", error: ctl.signal.aborted ? "The request timed out." : e instanceof Error ? e.message : String(e) };
@@ -111,9 +133,9 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
   const logged = (e: Omit<DeliveryAttempt, "at" | "ms">) => [...(row.d.attemptLog ?? []), { at: rt.now.getTime(), ms: Date.now() - started, ...e }].slice(-ATTEMPT_LOG_MAX);
   const fail = async (error: string, opts: { retry: boolean; status?: number | null; request?: string | null; requestBody?: string | null; responseBody?: string | null; sentAs?: string | null; answer?: string | null }) => {
     const retryIn = opts.retry ? RETRY_MINUTES[attempt - 1] : undefined;
-    const message = scrub(error, redact);
+    const message = scrubSecrets(error, redact);
     await db.update(D).set({
-      attemptLog: logged({ status: opts.status ?? null, error: message.slice(0, 500), response_body: opts.answer ?? opts.responseBody ?? null, request: opts.request ?? null }),
+      attemptLog: logged({ status: opts.status ?? null, error: message.slice(0, 500), response_body: opts.answer ?? opts.responseBody ?? null, request: opts.request?.slice(0, LOG_REQUEST) ?? null }),
       attempts: attempt, status: retryIn === undefined ? "failed" : "pending", nextAttemptAt: retryIn === undefined ? rt.now : new Date(rt.now.getTime() + retryIn * 60_000),
       lastError: message.slice(0, 1000), responseStatus: opts.status ?? null, responseMs: Date.now() - started,
       request: opts.request ?? null, requestBody: opts.requestBody ?? null, responseBody: opts.responseBody ?? null, sentAs: opts.sentAs ?? null,
@@ -155,7 +177,7 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
     const timeout = rt.timeoutMs ?? 20_000;
     let last: { status: number | null; body: string; error: string | null } = { status: null, body: "", error: null };
     for (const r of plan.requests) {
-      lines.push(`${r.method} ${scrub(r.url, redact)}`);
+      lines.push(`${r.method} ${scrubSecrets(r.url, redact)}`);
       bodies.push(scrub(r.body, redact));
       const problem = outboundUrlProblem(r.url, !!rt.strictUrls);
       if (problem) return await fail(`The ${kind} URL ${problem}. Fix the integration's settings, then replay.`, { retry: false, request: lines.join("\n"), sentAs: plan.name });
@@ -166,18 +188,19 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
         if ((created.status !== null && created.status < 300) || created.status === 409) last = await send(r, rt.fetch, timeout);
       }
       const err = last.error ?? (last.status !== null ? responseError(kind, last.status, last.body) : "No answer.");
+      const answer = scrubSecrets(last.body, redact).slice(0, RESPONSE_LOG_CHARS);
       if (err) {
         return await fail(err, {
           retry: last.error !== null || retryableStatus(last.status), status: last.status, request: lines.join("\n"),
-          requestBody: bodies.join("\n").slice(0, LOG_BODY), responseBody: scrub(last.body, redact).slice(0, LOG_RESPONSE), sentAs: plan.name,
-          answer: scrub(last.body, redact).slice(0, RESPONSE_LOG_CHARS),
+          requestBody: bodies.join("\n").slice(0, LOG_BODY), responseBody: answer.slice(0, LOG_RESPONSE), sentAs: plan.name, answer,
         });
       }
     }
+    const answer = scrubSecrets(last.body, redact).slice(0, RESPONSE_LOG_CHARS);
     await db.update(D).set({
-      attemptLog: logged({ status: last.status, error: null, response_body: scrub(last.body, redact).slice(0, RESPONSE_LOG_CHARS), request: lines.join("\n") }),
+      attemptLog: logged({ status: last.status, error: null, response_body: answer, request: lines.join("\n").slice(0, LOG_REQUEST) }),
       attempts: attempt, status: "delivered", nextAttemptAt: rt.now, lastError: null, responseStatus: last.status, responseMs: Date.now() - started,
-      request: lines.join("\n"), requestBody: bodies.join("\n").slice(0, LOG_BODY), responseBody: scrub(last.body, redact).slice(0, LOG_RESPONSE), sentAs: plan.name,
+      request: lines.join("\n"), requestBody: bodies.join("\n").slice(0, LOG_BODY), responseBody: answer.slice(0, LOG_RESPONSE), sentAs: plan.name,
     }).where(eq(D.id, deliveryId));
     await db.update(I).set({ consecutiveFailures: 0, lastError: null, lastDeliveredAt: rt.now }).where(eq(I.id, row.i.id));
   } catch (e) {

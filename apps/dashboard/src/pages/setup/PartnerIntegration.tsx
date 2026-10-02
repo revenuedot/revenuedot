@@ -5,7 +5,7 @@ import { ADJUST_STEPS, INTEGRATION_EVENTS, STEP_LABELS, defaultEventName, type C
 import { Shell } from "../../components/Shell";
 import { DeliveryDrawer } from "../../components/DeliveryDrawer";
 import { Icon } from "../../components/icons";
-import { Check, CodeBlock, ConfirmDialog, Dialog, Disclosure, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Switch, Tag, useProjectId, useToast } from "../../components/ui";
+import { Check, ConfirmDialog, Dialog, Disclosure, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Switch, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
 import { base, errMsg, useApps, useIntegrations, useIntegrationTypes, type Integration, type IntegrationDelivery, type IntegrationType } from "./data";
 import { IntercomInboxPanel } from "./SupportApps";
@@ -162,7 +162,8 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
   const qc = useQueryClient();
   const toast = useToast();
   const [status, setStatus] = useState<"all" | IntegrationDelivery["status"]>("all");
-  const [open, setOpen] = useState<string | null>(null);
+  // The row as clicked: the drawer stays open when a refresh or the status filter takes the row out of the list.
+  const [open, setOpen] = useState<IntegrationDelivery | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const id = integration.id;
   const q = useInfiniteQuery({
@@ -177,7 +178,6 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
   const newest = rows[0] ? `${rows[0].id}:${rows[0].status}` : "";
   useEffect(() => { if (newest) void qc.invalidateQueries({ queryKey: ["integrations", pid] }); }, [newest, pid, qc]);
   const refresh = () => qc.invalidateQueries({ queryKey: ["integration_deliveries", pid, id] });
-  const openRow = rows.find((x) => x.id === open) ?? null;
   const retry = async (d: IntegrationDelivery) => {
     setBusy(d.id);
     try { await api(`${base(pid)}/integrations/partners/${id}/deliveries/${d.id}/retry`, { method: "POST" }); toast("Retry queued."); await refresh(); } catch (e) { toast(errMsg(e)); } finally { setBusy(null); }
@@ -208,7 +208,7 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
           <table>
             <thead><tr><th>Event</th><th>Sent as</th><th>Status</th><th>Attempts</th><th>Response</th><th>Created</th><th aria-label="Actions" /></tr></thead>
             <tbody>{rows.map((d) => (
-              <tr key={d.id} className="row" tabIndex={0} onClick={() => setOpen(d.id)} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setOpen(d.id); }}>
+              <tr key={d.id} className="row" tabIndex={0} onClick={() => setOpen(d)} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setOpen(d); }}>
                 <td><Tag tone={EVENT_TONE[d.event_type] ?? "muted"}>{d.event_type}</Tag><span className="cellsub mono" title={d.event_id}>{d.event_id.slice(0, 8)}…</span></td>
                 <td className="mono">{d.sent_as ?? "—"}</td>
                 <td><Tag tone={STATUS_TONE[d.status]}>{d.status}</Tag>{d.last_error && d.status !== "delivered" && <span className="cellsub">{d.last_error}</span>}</td>
@@ -216,7 +216,7 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
                 <td className="num">{d.response_status ?? (d.attempts ? "No answer" : "—")}{d.response_ms !== null && <span className="subtle"> · {d.response_ms} ms</span>}</td>
                 <td title={fmt.dateTime(d.created_at)}>{fmt.ago(d.created_at)}</td>
                 <td className="amt"><span className="hrow" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="btn btn-ghost" onClick={() => setOpen(d.id)}>Details</button>
+                  <button type="button" className="btn btn-ghost" onClick={() => setOpen(d)}>Details</button>
                   {d.status !== "delivered" && d.status !== "pending" && <button type="button" className="btn btn-line" disabled={busy === d.id} onClick={() => retry(d)}>{busy === d.id ? "Retrying…" : "Retry"}</button>}
                 </span></td>
               </tr>
@@ -225,9 +225,9 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
         </div>
       )}
       {q.hasNextPage && <div className="pb"><button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</button></div>}
-      {openRow && (
-        <DeliveryDrawer path={`${base(pid)}/integrations/partners/${id}/deliveries/${openRow.id}`} title={`${openRow.event_type} · ${openRow.sent_as ?? openRow.event_id.slice(0, 8)}`}
-          onClose={() => setOpen(null)} canRetry onRetry={() => retry(openRow)} />
+      {open && (
+        <DeliveryDrawer path={`${base(pid)}/integrations/partners/${id}/deliveries/${open.id}`} title={`${open.event_type} · ${open.sent_as ?? `${open.event_id.slice(0, 8)}…`}`}
+          onClose={() => setOpen(null)} onRetry={() => retry(open)} canRetry={(x) => x.status === "failed" || x.status === "skipped"} />
       )}
     </section>
   );

@@ -377,7 +377,8 @@ export function WebhookDetail() {
       )}
       {openDelivery && (
         <DeliveryDrawer path={`${base(pid)}/webhooks/${encodeURIComponent(webhookId)}/deliveries/${openDelivery.id}`} title={`${openDelivery.event_type} · ${openDelivery.event_id.slice(0, 8)}…`}
-          onClose={() => setOpenDelivery(null)} canRetry onRetry={() => retry(openDelivery)} />
+          onClose={() => setOpenDelivery(null)} onRetry={() => retry(openDelivery)}
+          canRetry={(x) => x.status !== "delivered" && !(x.status === "pending" && (x.next_attempt_at ?? 0) <= Date.now())} />
       )}
     </Shell>
   );

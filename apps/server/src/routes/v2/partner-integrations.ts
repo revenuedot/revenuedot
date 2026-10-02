@@ -6,8 +6,8 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer } from "../../repo/customers.js";
 import { depsSecretKey, mergeSecrets } from "../../services/secrets.js";
-import { requeueIntegrationDelivery } from "../../services/integrations/deliver.js";
-import { ATTEMPT_LOG_DAYS, curlFor } from "../../services/webhooks.js";
+import { integrationCurl, requeueIntegrationDelivery } from "../../services/integrations/deliver.js";
+import { ATTEMPT_LOG_DAYS } from "../../services/webhooks.js";
 import { outboundUrlProblem } from "../../services/outbound.js";
 import { V2Error, allows, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Router } from "./common.js";
 import { ALL_WEBHOOK_EVENT_TYPES } from "./integrations.js";
@@ -276,11 +276,9 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const [row] = await db.select({ d: D, type: schema.events.type }).from(D).innerJoin(schema.events, eq(schema.events.id, D.eventId))
       .where(and(eq(D.integrationId, i.id), eq(D.id, c.req.param("delivery_id")))).limit(1);
     if (!row) throw notFound("Integration delivery");
-    const lines = (row.d.request ?? "").split("\n").filter(Boolean);
-    const m = lines.length === 1 ? /^(\w+) (\S+)$/.exec(lines[0]!) : null;
     return c.json({
       ...deliveryShape(row.d, row.type),
-      curl: m ? curlFor(m[1]!, m[2]!, [{ name: "Content-Type", value: "application/json" }, { name: "Authorization", value: "<partner credentials>" }], row.d.requestBody) : null,
+      curl: integrationCurl(row.d.request, row.d.requestBody),
       attempt_log: (row.d.attemptLog ?? []).map((a) => ({ attempted_at: a.at, response_status: a.status, response_ms: a.ms, error: a.error, response_body: a.response_body, request: a.request ?? null })),
       attempt_log_kept_days: ATTEMPT_LOG_DAYS,
     });

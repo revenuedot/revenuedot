@@ -62,6 +62,8 @@ export interface TickOptions {
   recovery?: boolean;
   /** "Connect with Stripe" platform keys: recovery reads a connected Stripe customer's email with them. */
   stripeConnect?: StripeConnectConfig;
+  /** Remove delivery attempt details older than 30 days here unless false (the Worker does it from the cron only). */
+  pruneDeliveryLogs?: boolean;
   /** Remove funnel visitors' IP addresses and user agents older than 7 days now (default: at minute 7 of each hour). */
   purgeFunnelClients?: boolean;
   /** Enterprise extensions (extensions.ts) whose own periodic work runs last. None in the open-source build. */
@@ -83,7 +85,6 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now }); } catch (e) { console.error("tick: consumption information retries failed", e); }
   }
   const sent = await deliverDue(db, fetchImpl, now);
-  await pruneAttemptLogs(db, now).catch((e) => console.error("pruning delivery attempt details failed", e));
   // A bad REVENUEDOT_ENCRYPTION_KEY leaves deliveries and exports queued (not failed) until the key is fixed.
   const secretKey = await depsSecretKey(opts).then((k) => ({ ok: true as const, k }), (e) => { console.error("tick: integration secrets key", e); return { ok: false as const }; });
   let integrations = 0;
@@ -131,6 +132,11 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     lastFunnelPurgeHour = hour;
     try { funnelClientsPurged = await purgeFunnelClientContext(db, now); } catch (e) { console.error("tick: funnel visitor purge failed", e); }
   }
+  // Delivery attempt details (answers, signatures) are removed 30 days after each attempt.
+  let attemptLogsPruned = 0;
+  if (opts.pruneDeliveryLogs !== false) {
+    try { attemptLogsPruned = await pruneAttemptLogs(db, now); } catch (e) { console.error("tick: pruning delivery attempt details failed", e); }
+  }
   // Full exports and server-run moves (bounded; the rest waits for the next tick), then Cloud billing.
   let archives = 0, moves = 0, billing = 0;
   if (opts.archives !== false) {
@@ -147,7 +153,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, recovery, admob, funnelClientsPurged, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, alerts, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

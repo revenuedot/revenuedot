@@ -24,18 +24,29 @@ export interface DeliveryDetail {
 const TONE: Record<string, "up" | "info" | "down" | "muted"> = { delivered: "up", pending: "info", failed: "down", skipped: "muted" };
 const pretty = (body: string) => { try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; } };
 const ok = (s: number | null) => s !== null && s >= 200 && s < 300;
+/** Attempts the server keeps per delivery (services/webhooks.ts ATTEMPT_LOG_MAX). */
+const MAX_KEPT = 10;
 
-export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { path: string; title: string; onClose: () => void; onRetry?: () => Promise<void>; canRetry?: boolean }) {
+/**
+ * `canRetry` says whether "Retry now" applies to the delivery as loaded: webhooks retry anything not delivered and not
+ * already due; integrations only failed or skipped deliveries (the server refuses a pending one, which may be in flight).
+ */
+export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { path: string; title: string; onClose: () => void; onRetry?: () => Promise<void>; canRetry?: (d: DeliveryDetail) => boolean }) {
   const toast = useToast();
   const close = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   const [retrying, setRetrying] = useState(false);
   const q = useQuery({ queryKey: ["delivery", path], queryFn: () => api<DeliveryDetail>(path), retry: false, refetchInterval: (x) => (x.state.data?.status === "pending" ? 5000 : false) });
+  // Focus moves in once on open and back to where it was on close; the parent re-rendering (its list refreshes every few
+  // seconds) must not pull focus to the close button again.
   useEffect(() => {
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     close.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeRef.current(); };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => { document.removeEventListener("keydown", onKey); before?.focus(); };
+  }, []);
   const d = q.data;
   const forbidden = q.error instanceof ApiError && q.error.status === 403;
   const req = d && typeof d.request === "object" && d.request ? d.request : null;
@@ -86,6 +97,8 @@ export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { pa
                 {!d.attempt_log.length ? (
                   <p className="subtle" style={{ margin: 0 }}>{d.attempts ? `Attempt details are kept for ${d.attempt_log_kept_days} days.` : "Not sent yet."}</p>
                 ) : (
+                  <>
+                  {(d.attempt_log.length < d.attempts || d.attempt_log.length >= MAX_KEPT) && <p className="subtle" style={{ margin: 0 }}>The latest {MAX_KEPT} attempts of the last {d.attempt_log_kept_days} days are kept.</p>}
                   <ol className="drawer-attempts">
                     {[...d.attempt_log].reverse().map((a, i) => (
                       <li key={a.attempted_at + ":" + i}>
@@ -102,6 +115,7 @@ export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { pa
                       </li>
                     ))}
                   </ol>
+                  </>
                 )}
               </section>
             </>
@@ -109,7 +123,7 @@ export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { pa
         </div>
         <div className="drawer-f">
           {d?.curl && <button type="button" className="btn btn-line" onClick={copyCurl}><Icon name="copy" />Copy as cURL</button>}
-          {canRetry && onRetry && d && d.status !== "delivered" && !(d.status === "pending" && (d.next_attempt_at ?? 0) <= Date.now()) && <button type="button" className="btn btn-dark" disabled={retrying} onClick={retry}><Icon name="refresh" />{retrying ? "Retrying…" : "Retry now"}</button>}
+          {onRetry && d && canRetry?.(d) && <button type="button" className="btn btn-dark" disabled={retrying} onClick={retry}><Icon name="refresh" />{retrying ? "Retrying…" : "Retry now"}</button>}
           <button type="button" className="btn btn-line" onClick={onClose}>Done</button>
         </div>
       </aside>

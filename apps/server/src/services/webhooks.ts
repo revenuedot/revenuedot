@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, lt, lte, sql } from "drizzle-orm";
-import { schema, type DB } from "@revenuedot/db";
+import { schema, type DB, type DeliveryAttempt } from "@revenuedot/db";
 import { notMoving } from "./archive/moving.js";
 
 const { webhookDeliveries, webhooks, events } = schema;
@@ -29,11 +29,35 @@ export async function verifySignature(secret: string, body: string, header: stri
 /** Attempts kept per delivery, and how much of each answer. */
 export const ATTEMPT_LOG_MAX = 10, RESPONSE_LOG_CHARS = 4096;
 
-/** Replaces the delivery's own secrets and anything that looks like a bearer token or secret key. */
+// Names whose values are credentials: JSON fields and header-like "name: value" text end with one of these; query and
+// form parameters also match `key`, `sig` and `signature` (Google API keys, signed URLs).
+const SECRET_FIELD = "[A-Za-z0-9_-]*(?:token|secret|password|passwd|api_?key|apikey|api-key|authorization|private_key|credentials?)";
+const SECRET_PARAM = `${SECRET_FIELD}|[A-Za-z0-9_-]*(?:key|sig|signature)|x-amz-credential`;
+const SCRUB: [RegExp, string][] = [
+  // https://user:password@host
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:"']+:[^\s/@"']+@/gi, "$1[redacted]@"],
+  [new RegExp(`("${SECRET_FIELD}"\\s*:\\s*)"(?:[^"\\\\]|\\\\.)*"`, "gi"), '$1"[redacted]"'],
+  [new RegExp(`(^|[?&;\\s"'])((?:${SECRET_PARAM})=)[^&#;\\s"'<>]+`, "gi"), "$1$2[redacted]"],
+  // "X-Api-Key: 3f9a…" (a value long enough, with a digit, to be a credential rather than a word)
+  [new RegExp(`(^|[\\s{,;])(${SECRET_FIELD}\\s*:\\s*)(?!Bearer\\b|Basic\\b)(?=[^\\s"',;}]*\\d)[^\\s"',;}]{12,}`, "gim"), "$1$2[redacted]"],
+  [/\b(Bearer|Basic)(\s+)[A-Za-z0-9._~+/=-]{8,}/gi, "$1$2[redacted]"],
+  // Secret keys (sk_, rk_, whsec_), JWTs, Google API keys, Slack, GitHub and AWS access keys.
+  [/\b(sk|rk|whsec)_[A-Za-z0-9_]{8,}/g, "$1_[redacted]"],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+/g, "[redacted]"],
+  [/\b(?:AIza[0-9A-Za-z_-]{30,}|xox[abposr]-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})\b/g, "[redacted]"],
+];
+
+/**
+ * Replaces the delivery's own secrets (an Authorization value also by its credential alone) and anything that looks
+ * like one: bearer and basic credentials, URL passwords, secret-looking JSON fields, query and form parameters, secret
+ * keys and well-known token formats. For logs and answers shown in the dashboard, never for what is sent.
+ */
 export function scrubSecrets(text: string, secrets: (string | null | undefined)[]): string {
   let out = text;
-  for (const s of secrets) if (s && s.length >= 4) out = out.split(s).join("[redacted]");
-  return out.replace(/(Bearer\s+)[A-Za-z0-9._~+\/=-]{8,}/gi, "$1[redacted]").replace(/\b(sk|rk|whsec)_[A-Za-z0-9_]{8,}/g, "$1_[redacted]");
+  const all = secrets.flatMap((s) => (s ? [s, /^\w+\s+(\S.*)$/.exec(s.trim())?.[1] ?? ""] : []));
+  for (const s of all.sort((a, b) => b.length - a.length)) if (s.length >= 4) out = out.split(s).join("[redacted]");
+  for (const [re, to] of SCRUB) out = out.replace(re, to);
+  return out;
 }
 
 /** The first `max` characters of a response body, without reading the rest of it. */
@@ -80,9 +104,11 @@ export async function attempt(db: DB, deliveryId: string, fetchImpl: typeof fetc
     clearTimeout(timer);
   }
   const ms = Date.now() - started;
+  // Errors are shown to every role in the delivery log, answers to Admins and Developers: neither may carry a secret.
   const secrets = [row.h.authorizationHeader, row.h.signingSecret];
-  const entry = {
-    at: now.getTime(), status, ms, error: error ? scrubSecrets(error, secrets).slice(0, 500) : null,
+  if (error) error = scrubSecrets(error, secrets);
+  const entry: DeliveryAttempt = {
+    at: now.getTime(), status, ms, error: error?.slice(0, 500) ?? null,
     response_body: responseBody === null ? null : scrubSecrets(responseBody, secrets), signature: headers["X-RevenueCat-Webhook-Signature"]!,
   };
   const attempts = row.d.attempts + 1;
@@ -113,23 +139,31 @@ export async function retryDelivery(db: DB, deliveryId: string, now: Date) {
 }
 
 const DAY = 86400_000;
-/** How long attempt details (response bodies, signatures) are kept. Delivery rows and events stay. */
+/** How long attempt details (answers, signatures) are kept after each attempt. Delivery rows and events stay. */
 export const ATTEMPT_LOG_DAYS = 30;
-let lastPrune = 0;
 
 /**
- * Clears attempt details older than 30 days on webhook and integration deliveries, at most once an hour and 5,000 rows
- * per table a run (a partial index finds them). The deliveries keep their status, attempt count and last answer status.
+ * Removes attempt details older than 30 days from webhook and integration deliveries; the deliveries keep their status,
+ * attempt count and last answer status. A partial index on created_at finds rows that still hold details, so a run with
+ * nothing to do costs one index probe a table. Works in batches until done or `budgetMs` is spent (the rest waits for the
+ * next tick), so a backlog never grows faster than it is cleared. Returns how many deliveries changed.
  */
-export async function pruneAttemptLogs(db: DB, now: Date, force = false) {
-  if (!force && now.getTime() - lastPrune < 3600_000) return 0;
-  lastPrune = now.getTime();
+export async function pruneAttemptLogs(db: DB, now: Date, { batch = 1000, budgetMs = 3000 } = {}) {
+  const started = Date.now();
   const cutoff = new Date(now.getTime() - ATTEMPT_LOG_DAYS * DAY);
+  const cutoffMs = cutoff.getTime();
   let n = 0;
   for (const T of [webhookDeliveries, schema.integrationDeliveries]) {
-    const old = db.select({ id: T.id }).from(T).where(and(lt(T.createdAt, cutoff), sql`${T.attemptLog} <> '[]'::jsonb`)).limit(5000);
-    const done = await db.update(T).set({ attemptLog: [] }).where(inArray(T.id, old)).returning({ id: T.id });
-    n += done.length;
+    for (;;) {
+      // Attempts are kept oldest first, so a row is due when its first attempt is older than the cutoff.
+      const due = db.select({ id: T.id }).from(T)
+        .where(and(lt(T.createdAt, cutoff), sql`${T.attemptLog} <> '[]'::jsonb`, sql`(${T.attemptLog}->0->>'at')::bigint < ${cutoffMs}`)).limit(batch);
+      const done = await db.update(T).set({
+        attemptLog: sql`coalesce((select jsonb_agg(a.x order by a.i) from jsonb_array_elements(${T.attemptLog}) with ordinality as a(x, i) where (a.x->>'at')::bigint >= ${cutoffMs}), '[]'::jsonb)`,
+      }).where(inArray(T.id, due)).returning({ id: T.id });
+      n += done.length;
+      if (done.length < batch || Date.now() - started > budgetMs) break;
+    }
   }
   return n;
 }
@@ -141,11 +175,11 @@ export function maskAuthorization(v: string): string {
 }
 const shq = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`;
 
-/** A cURL command that repeats a JSON POST, with credentials left as placeholders. */
+/** A cURL command that repeats a request, with credentials left as placeholders (the caller's header values). */
 export function curlFor(method: string, url: string, headers: { name: string; value: string }[], body: string | null): string {
   const lines = [`curl -X ${method} ${shq(url)}`, ...headers.map((h) => `-H ${shq(`${h.name}: ${h.value}`)}`)];
-  if (body !== null) lines.push("--data-binary @- <<'JSON'");
-  return lines.join(" \\\n  ") + (body !== null ? `\n${body}\nJSON` : "");
+  if (body !== null) lines.push("--data-binary @- <<'BODY'");
+  return lines.join(" \\\n  ") + (body !== null ? `\n${body}\nBODY` : "");
 }
 
 /** What a webhook delivery sends: method, URL, headers (Authorization masked) and the exact body. */
