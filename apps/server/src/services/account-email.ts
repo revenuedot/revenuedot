@@ -10,8 +10,12 @@ import { sha256Hex } from "./auth.js";
  * keeps only their SHA-256, the address it was sent to, an expiry and when it was used. Every link works once.
  */
 
-export type TokenKind = "password_reset" | "email_verify";
-export const TOKEN_TTL_MS: Record<TokenKind, number> = { password_reset: 3600_000, email_verify: 24 * 3600_000 };
+/**
+ * Kinds: password reset (1 hour), email verification (24 hours), email change (24 hours, prd/account-settings) and the
+ * two-factor sign-in challenge (10 minutes: the step between a correct password and a session).
+ */
+export type TokenKind = "password_reset" | "email_verify" | "email_change" | "two_factor";
+export const TOKEN_TTL_MS: Record<TokenKind, number> = { password_reset: 3600_000, email_verify: 24 * 3600_000, email_change: 24 * 3600_000, two_factor: 10 * 60_000 };
 
 export function randomToken(): string {
   const b = crypto.getRandomValues(new Uint8Array(32));
@@ -43,9 +47,9 @@ export function requestOrigin(url: string, header: (n: string) => string | undef
   return `${proto === "http" ? "http" : "https"}://${host}`;
 }
 
-export async function issueToken(db: DB, kind: TokenKind, user: { id: string; email: string }, now: Date): Promise<string> {
+export async function issueToken(db: DB, kind: TokenKind, user: { id: string; email: string }, now: Date, extra: { newEmail?: string } = {}): Promise<string> {
   const token = randomToken();
-  await db.insert(schema.authTokens).values({ hash: await sha256Hex(token), kind, userId: user.id, email: user.email, expiresAt: new Date(now.getTime() + TOKEN_TTL_MS[kind]), createdAt: now });
+  await db.insert(schema.authTokens).values({ hash: await sha256Hex(token), kind, userId: user.id, email: user.email, newEmail: extra.newEmail ?? null, expiresAt: new Date(now.getTime() + TOKEN_TTL_MS[kind]), createdAt: now });
   return token;
 }
 
@@ -57,8 +61,10 @@ export async function checkToken(db: DB, kind: TokenKind, token: string, now: Da
   const [row] = await db.select({ t: schema.authTokens, u: schema.users }).from(schema.authTokens)
     .innerJoin(schema.users, eq(schema.users.id, schema.authTokens.userId))
     .where(and(eq(schema.authTokens.hash, await sha256Hex(token)), eq(schema.authTokens.kind, kind))).limit(1);
-  if (!row || row.t.email !== row.u.email) return { ok: false, reason: "invalid" };
+  if (!row) return { ok: false, reason: "invalid" };
+  // A used link says so even after the account moved to another address (an email change link moves it).
   if (row.t.usedAt) return { ok: false, reason: "used" };
+  if (row.t.email !== row.u.email) return { ok: false, reason: "invalid" };
   if (row.t.expiresAt <= now) return { ok: false, reason: "expired" };
   return { ok: true, row: row.t, user: row.u };
 }

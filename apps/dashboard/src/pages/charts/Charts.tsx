@@ -17,6 +17,8 @@ import { Shell, useMe } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { Dialog, Field, Menu, Segmented, Switch, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, type List } from "../../lib/api";
+import { currencyDigits, currencySymbol, getDisplay } from "../../lib/prefs";
+import { DateField } from "../../components/DateField";
 import { Legend, Plot, seriesColor, type PlotAnnotation, type Series } from "./plot";
 import { AnnotationDialog, AnnotationsTab, CustomersTab, ShareDialog, annotationsKey, customersKey, useAnnotations, whenText, type Annotation } from "./extras";
 
@@ -73,7 +75,8 @@ function valueIndex(body: ChartData) {
 function formatter(unit: string, currency: string, precision = 2) {
   return (v: number | null) => {
     if (v === null || v === undefined) return "—";
-    if (unit === "$") return v.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: Math.min(precision, 2), maximumFractionDigits: Math.max(2, precision) });
+    // In the currency's own minor units: ¥12,345, not ¥12,345.00.
+    if (unit === "$") { const cd = currencyDigits(currency); return v.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: Math.min(precision, cd), maximumFractionDigits: cd === 0 ? 0 : Math.max(cd, precision) }); }
     if (unit === "%") return `${v.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
     return v.toLocaleString("en-US", { maximumFractionDigits: Number.isInteger(v) ? 0 : 2 });
   };
@@ -81,7 +84,7 @@ function formatter(unit: string, currency: string, precision = 2) {
 function tickFormatter(unit: string, currency: string) {
   return (v: number) => {
     const s = Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`;
-    if (unit === "$") return `${currency === "USD" ? "$" : `${currency} `}${s}`;
+    if (unit === "$") return `${currencySymbol({ ...getDisplay(), currency })}${s}`;
     return unit === "%" ? `${s}%` : s;
   };
 }
@@ -224,7 +227,11 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   };
 
   const options = useQuery({ queryKey: ["chart-options", pid, def.name, env], queryFn: () => api<Options>(`/v2/projects/${pid}/charts/${def.name}/options?environment=${env}`) });
+  // Money in the person's display currency and weeks from their first day (Account settings → Date and region).
+  const display = getDisplay();
   const query = new URLSearchParams({ resolution, start_date: start, end_date: end, environment: env });
+  if (display.currency !== "USD") query.set("currency", display.currency);
+  if (resolution === "week" && display.weekStart !== 1) query.set("week_start", String(display.weekStart));
   if (segment) { query.set("segment", segment); query.set("limit_num_segments", "5"); }
   if (filters.length) query.set("filters", JSON.stringify(filters));
   if (Object.keys(selectors).length) query.set("selectors", JSON.stringify(selectors));
@@ -302,9 +309,9 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
             <Segmented label="Date range" value={range} options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
               onChange={(v) => set({ range: v === (cohortTable ? "12m" : "30d") ? null : v, start: v === "custom" ? start : null, end: v === "custom" ? end : null, res: null })} />
             {range === "custom" && <>
-              <input className="input dt" type="date" aria-label="Start date" value={start} max={end} onChange={(e) => set({ start: e.target.value })} />
+              <DateField className="dt" label="Start date" value={start} max={end} onChange={(v) => set({ start: v })} />
               <span className="subtle">to</span>
-              <input className="input dt" type="date" aria-label="End date" value={end} min={start} onChange={(e) => set({ end: e.target.value })} />
+              <DateField className="dt" label="End date" value={end} min={start} onChange={(v) => set({ end: v })} />
             </>}
             <select className="select sm" aria-label="Resolution" value={resolution} onChange={(e) => set({ res: e.target.value })}>
               {RESOLUTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -559,6 +566,8 @@ function CohortTable({ body }: { body: ChartData }) {
 
 function csvRows(body: ChartData): (string | number | null)[][] {
   const day = (s: number) => iso(s * 1000);
+  // Money columns in another display currency name it ("MRR (EUR)"); USD exports keep their plain headers.
+  const head = (m: Measure) => (m.unit === "$" && body.yaxis_currency !== "USD" ? `${m.display_name} (${body.yaxis_currency})` : m.display_name);
   const lookup = valueIndex(body);
   if (body.periods) {
     const cohorts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
@@ -566,9 +575,9 @@ function csvRows(body: ChartData): (string | number | null)[][] {
   }
   const starts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
   if (body.segments) {
-    const cols = body.segments.flatMap((s, i) => body.measures.map((m, j) => ({ name: `${s.display_name} · ${m.display_name}`, i, j })));
+    const cols = body.segments.flatMap((s, i) => body.measures.map((m, j) => ({ name: `${s.display_name} · ${head(m)}`, i, j })));
     return [["period", ...cols.map((c) => c.name)], ...starts.map((s) => [day(s), ...cols.map((c) => lookup(s, { segment: c.i, measure: c.j })?.value ?? null)])];
   }
-  return [["period", ...body.measures.map((m) => m.display_name), "incomplete"], ...starts.map((s) => [day(s), ...body.measures.map((_, j) => lookup(s, { measure: j })?.value ?? null), body.measures.some((_, j) => lookup(s, { measure: j })?.incomplete) ? "true" : "false"])];
+  return [["period", ...body.measures.map(head), "incomplete"], ...starts.map((s) => [day(s), ...body.measures.map((_, j) => lookup(s, { measure: j })?.value ?? null), body.measures.some((_, j) => lookup(s, { measure: j })?.incomplete) ? "true" : "false"])];
 }
 

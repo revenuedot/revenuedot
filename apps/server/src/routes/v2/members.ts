@@ -58,7 +58,7 @@ export function memberRoutes(r: V2Router, deps: Deps) {
   };
   const collaborator = async (userId: string, role: string) => {
     const [u] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
-    return { object: "collaborator", id: userId, name: u?.name ?? null, email: u?.email ?? null, role: apiRole(role), accepted_at: u ? u.createdAt.getTime() : null, has_mfa: false };
+    return { object: "collaborator", id: userId, name: u?.name ?? null, email: u?.email ?? null, role: apiRole(role), accepted_at: u ? u.createdAt.getTime() : null, has_mfa: !!u?.totpEnabledAt && !!u?.totpSecret };
   };
 
   r.get(`${P}/invites`, scope("project_configuration:collaborators:read"), async (c) => {

@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { DataTable, EmptyState, Field, Tag } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
 import { base, errMsg, type Collaborator } from "./data";
+import { DateField } from "../../components/DateField";
 
 /** Audit logs tab: who changed what in the project, newest first, with a date filter. `GET /v2/projects/{id}/audit_logs`. */
 interface Log {
@@ -36,8 +37,8 @@ export function AuditLogs({ pid }: { pid: string }) {
   return (
     <div className="panel pb" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
-        <Field label="From" htmlFor="al-from"><input id="al-from" type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-        <Field label="To" htmlFor="al-to"><input id="al-to" type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+        <Field label="From" htmlFor="al-from"><DateField id="al-from" label="From" value={from} max={to || undefined} onChange={setFrom} /></Field>
+        <Field label="To" htmlFor="al-to"><DateField id="al-to" label="To" value={to} min={from || undefined} onChange={setTo} /></Field>
         {(from || to) && <button type="button" className="btn btn-line" onClick={() => { setFrom(""); setTo(""); }}>Clear</button>}
       </div>
       {q.isError ? <div className="banner err" role="alert">The audit log could not be loaded: {errMsg(q.error)}</div> : q.isLoading ? <div className="subtle">Loading…</div> : !rows.length ? (

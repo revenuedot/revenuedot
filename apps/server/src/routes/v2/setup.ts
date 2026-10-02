@@ -178,7 +178,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     rows.sort((a, b) => a.u.createdAt.getTime() - b.u.createdAt.getTime() || a.u.id.localeCompare(b.u.id));
     return c.json(listOf(c, rows.map(({ u, role }) => ({
       object: "collaborator", id: u.id, name: u.name ?? null, email: u.email, role: apiRole(role),
-      accepted_at: u.createdAt.getTime(), has_mfa: false,
+      accepted_at: u.createdAt.getTime(), has_mfa: !!u.totpEnabledAt && !!u.totpSecret,
     })), null));
   });
 

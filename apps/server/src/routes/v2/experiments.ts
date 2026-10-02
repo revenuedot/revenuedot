@@ -56,6 +56,78 @@ const ESTIMATE_LIMIT = 5000;
 export const RESULTS_SAMPLE = 25_000;
 const DAY = 86_400_000;
 
+/**
+ * Loads one experiment's enrolled customers and computes its results (the results routes and the experiment emails of
+ * prd/account-settings §4 share this). `paywallAsked`: the caller named a paywall filter, so views are loaded for it.
+ */
+export async function loadExperimentResults(deps: Pick<Deps, "db" | "now">, x: Row, o: { env: "production" | "sandbox"; paywall: "all" | "viewed" | "not_viewed"; platform: string | null; country: string | null; paywallAsked: boolean }) {
+  const { db } = deps;
+  const { env, paywall, platform, country } = o;
+  const sandbox = env === "sandbox";
+  const now = deps.now();
+  const EN = schema.experimentEnrollments;
+  // Production results leave out customers enrolled from test devices; sandbox results show everyone's test purchases.
+  const who = sandbox ? eq(EN.experimentId, x.id) : and(eq(EN.experimentId, x.id), eq(EN.isSandbox, false));
+  // Every enrolled customer per variant; above RESULTS_SAMPLE the results come from a fixed random sample of them, so one
+  // large experiment stays within the Worker's CPU and memory limits (rates, means, intervals and chances are estimated
+  // from the sample; counts and totals are the sample's).
+  const enrolledByVariant = new Map((await db.select({ v: EN.variant, n: sql<number>`count(*)::int` }).from(EN).where(who).groupBy(EN.variant)).map((r) => [r.v, Number(r.n)]));
+  const enrolledTotal = [...enrolledByVariant.values()].reduce((a, b) => a + b, 0);
+  const sampled = enrolledTotal > RESULTS_SAMPLE;
+  const enrolls = sampled
+    ? await db.select().from(EN).where(who).orderBy(sql`md5(${EN.customerId})`, EN.customerId).limit(RESULTS_SAMPLE)
+    : await db.select().from(EN).where(who);
+  const ids = enrolls.map((e) => e.customerId);
+  const C = schema.customers, T = schema.transactions, S = schema.subscriptions, X = schema.sdkEvents, A = schema.customerAliases, EV = schema.events;
+  const chunks = <T>(load: (part: string[]) => Promise<T[]>) => (async () => { const out: T[] = []; for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await load(ids.slice(i, i + CHUNK)))); return out; })();
+  // Paywall views from a minute before joining (results take the first one after it). Events stored before the app user
+  // id was known have no customer_id: they are few, found through the aliases once.
+  const viewTypes = and(eq(X.projectId, x.projectId), eq(X.isSandbox, sandbox), inArray(X.type, PAYWALL_VIEW_TYPES));
+  const since = new Date((x.startedAt?.getTime() ?? 0) - 60_000);
+  const loadViews = x.trackPaywallViews || o.paywallAsked;
+  const [custs, txs, subs, products, views, orphanViews, billing] = await Promise.all([
+    chunks((p) => db.select({ id: C.id, platform: C.lastSeenPlatform, country: C.lastSeenCountry }).from(C).where(inArray(C.id, p))),
+    chunks((p) => db.select().from(T).where(and(inArray(T.customerId, p), eq(T.isSandbox, sandbox)))),
+    chunks((p) => db.select().from(S).where(and(inArray(S.customerId, p), eq(S.isSandbox, sandbox)))),
+    db.select().from(schema.products).where(eq(schema.products.projectId, x.projectId)),
+    loadViews ? chunks((p) => db.select({ customerId: X.customerId, at: sql<number>`(extract(epoch from min(${X.occurredAt})) * 1000)::float8`.mapWith(Number) }).from(X)
+      .innerJoin(EN, and(eq(EN.experimentId, x.id), eq(EN.customerId, X.customerId)))
+      .where(and(inArray(X.customerId, p), viewTypes, sql`${X.occurredAt} >= ${EN.enrolledAt} - interval '1 minute'`)).groupBy(X.customerId)) : Promise.resolve([]),
+    loadViews ? db.select({ customerId: A.customerId, at: X.occurredAt }).from(X).innerJoin(A, and(eq(A.projectId, X.projectId), eq(A.appUserId, X.appUserId)))
+      .innerJoin(EN, and(eq(EN.experimentId, x.id), eq(EN.customerId, A.customerId)))
+      .where(and(viewTypes, isNull(X.customerId), gte(X.occurredAt, since))) : Promise.resolve([]),
+    chunks((p) => db.select({ customerId: EV.customerId, at: EV.eventTimestampMs, store: sql<string | null>`${EV.payload}->'event'->>'store'`, productId: sql<string | null>`${EV.payload}->'event'->>'product_id'` })
+      .from(EV).where(and(inArray(EV.customerId, p), eq(EV.environment, env), eq(EV.type, "BILLING_ISSUE")))),
+  ]);
+  const lc = (s: string | null) => (s ?? "").toLowerCase();
+  const keep = new Set(custs.filter((cu) => (!platform || lc(cu.platform) === platform.toLowerCase()) && (!country || lc(cu.country) === country.toLowerCase())).map((cu) => cu.id));
+  const vs = variantsOf(x);
+  const computed = computeExperimentResults({
+    now: now.getTime(), variants: vs.map((v) => ({ id: v.id, name: v.name, offering_id: v.offering_id || null })), controlId: vs[0]!.id, primaryMetric: x.primaryMetric,
+    enrollments: enrolls.filter((e) => keep.has(e.customerId)).map((e) => ({ customerId: e.customerId, variant: e.variant, enrolledAt: e.enrolledAt.getTime() })),
+    txs: txs.filter((t) => keep.has(t.customerId)).map((t) => ({
+      id: t.id, customerId: t.customerId, appId: t.appId, store: t.store, storeTransactionId: t.storeTransactionId, productId: t.productIdentifier, kind: t.kind as TxKind,
+      at: t.purchasedAt.getTime(), expiresAt: t.expiresAt?.getTime() ?? null, usd: t.revenueUsd, country: t.countryCode,
+    })),
+    products: products.map((p) => ({ appId: p.appId, storeIdentifier: p.storeIdentifier, type: p.type, duration: p.duration })),
+    subStates: subs.map((s) => ({
+      customerId: s.customerId, store: s.store, appId: s.appId, productId: s.productIdentifier, expiresAt: s.expiresDate?.getTime() ?? null, autoRenew: !s.unsubscribeDetectedAt,
+      billingIssue: !!s.billingIssuesDetectedAt, graceUntil: s.gracePeriodExpiresDate?.getTime() ?? null, familyShared: s.ownershipType === "FAMILY_SHARED", offering: s.presentedOfferingId,
+      cancelSurveyReason: s.cancelSurveyReason, unsubscribeAt: s.unsubscribeDetectedAt?.getTime() ?? null,
+    })),
+    lifecycle: billing.filter((e) => e.customerId).map((e): ChartLifecycle => ({ customerId: e.customerId!, store: (e.store ?? "").toLowerCase(), productId: e.productId ?? "", type: "BILLING_ISSUE", at: Number(e.at) })),
+    paywallViews: [...views.map((v) => ({ customerId: v.customerId, at: v.at })), ...orphanViews.map((v) => ({ customerId: v.customerId, at: v.at.getTime() }))]
+      .filter((v): v is { customerId: string; at: number } => !!v.customerId && keep.has(v.customerId)),
+    paywall: paywall as "all" | "viewed" | "not_viewed",
+    seriesFrom: x.startedAt?.getTime() ?? null,
+  });
+  const options = (k: "platform" | "country") => [...new Set(custs.map((cu) => cu[k]).filter((v): v is string => !!v))].sort();
+  return {
+    computed, env, paywall, platform, country, filterOptions: { platforms: options("platform"), countries: options("country") },
+    sample: sampled ? { customers: enrolls.length, enrolled_customers: enrolledTotal, enrolled_by_variant: Object.fromEntries(vs.map((v) => [v.id, enrolledByVariant.get(v.id) ?? 0])) } : null,
+  };
+}
+
 export function experimentRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
   const E = "/v2/projects/:project_id/experiments";
@@ -282,69 +354,7 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
     const paywall = c.req.query("paywall") ?? (x.trackPaywallViews ? "viewed" : "all");
     if (paywall !== "all" && paywall !== "viewed" && paywall !== "not_viewed") throw paramError("paywall must be all, viewed or not_viewed.", "paywall");
     const platform = c.req.query("platform")?.trim() || null, country = c.req.query("country")?.trim() || null;
-    const sandbox = env === "sandbox";
-    const now = deps.now();
-    const EN = schema.experimentEnrollments;
-    // Production results leave out customers enrolled from test devices; sandbox results show everyone's test purchases.
-    const who = sandbox ? eq(EN.experimentId, x.id) : and(eq(EN.experimentId, x.id), eq(EN.isSandbox, false));
-    // Every enrolled customer per variant; above RESULTS_SAMPLE the results come from a fixed random sample of them, so one
-    // large experiment stays within the Worker's CPU and memory limits (rates, means, intervals and chances are estimated
-    // from the sample; counts and totals are the sample's).
-    const enrolledByVariant = new Map((await db.select({ v: EN.variant, n: sql<number>`count(*)::int` }).from(EN).where(who).groupBy(EN.variant)).map((r) => [r.v, Number(r.n)]));
-    const enrolledTotal = [...enrolledByVariant.values()].reduce((a, b) => a + b, 0);
-    const sampled = enrolledTotal > RESULTS_SAMPLE;
-    const enrolls = sampled
-      ? await db.select().from(EN).where(who).orderBy(sql`md5(${EN.customerId})`, EN.customerId).limit(RESULTS_SAMPLE)
-      : await db.select().from(EN).where(who);
-    const ids = enrolls.map((e) => e.customerId);
-    const C = schema.customers, T = schema.transactions, S = schema.subscriptions, X = schema.sdkEvents, A = schema.customerAliases, EV = schema.events;
-    const chunks = <T>(load: (part: string[]) => Promise<T[]>) => (async () => { const out: T[] = []; for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await load(ids.slice(i, i + CHUNK)))); return out; })();
-    // Paywall views from a minute before joining (results take the first one after it). Events stored before the app user
-    // id was known have no customer_id: they are few, found through the aliases once.
-    const viewTypes = and(eq(X.projectId, x.projectId), eq(X.isSandbox, sandbox), inArray(X.type, PAYWALL_VIEW_TYPES));
-    const since = new Date((x.startedAt?.getTime() ?? 0) - 60_000);
-    const loadViews = x.trackPaywallViews || c.req.query("paywall");
-    const [custs, txs, subs, products, views, orphanViews, billing] = await Promise.all([
-      chunks((p) => db.select({ id: C.id, platform: C.lastSeenPlatform, country: C.lastSeenCountry }).from(C).where(inArray(C.id, p))),
-      chunks((p) => db.select().from(T).where(and(inArray(T.customerId, p), eq(T.isSandbox, sandbox)))),
-      chunks((p) => db.select().from(S).where(and(inArray(S.customerId, p), eq(S.isSandbox, sandbox)))),
-      db.select().from(schema.products).where(eq(schema.products.projectId, x.projectId)),
-      loadViews ? chunks((p) => db.select({ customerId: X.customerId, at: sql<number>`(extract(epoch from min(${X.occurredAt})) * 1000)::float8`.mapWith(Number) }).from(X)
-        .innerJoin(EN, and(eq(EN.experimentId, x.id), eq(EN.customerId, X.customerId)))
-        .where(and(inArray(X.customerId, p), viewTypes, sql`${X.occurredAt} >= ${EN.enrolledAt} - interval '1 minute'`)).groupBy(X.customerId)) : Promise.resolve([]),
-      loadViews ? db.select({ customerId: A.customerId, at: X.occurredAt }).from(X).innerJoin(A, and(eq(A.projectId, X.projectId), eq(A.appUserId, X.appUserId)))
-        .innerJoin(EN, and(eq(EN.experimentId, x.id), eq(EN.customerId, A.customerId)))
-        .where(and(viewTypes, isNull(X.customerId), gte(X.occurredAt, since))) : Promise.resolve([]),
-      chunks((p) => db.select({ customerId: EV.customerId, at: EV.eventTimestampMs, store: sql<string | null>`${EV.payload}->'event'->>'store'`, productId: sql<string | null>`${EV.payload}->'event'->>'product_id'` })
-        .from(EV).where(and(inArray(EV.customerId, p), eq(EV.environment, env), eq(EV.type, "BILLING_ISSUE")))),
-    ]);
-    const lc = (s: string | null) => (s ?? "").toLowerCase();
-    const keep = new Set(custs.filter((cu) => (!platform || lc(cu.platform) === platform.toLowerCase()) && (!country || lc(cu.country) === country.toLowerCase())).map((cu) => cu.id));
-    const vs = variantsOf(x);
-    const computed = computeExperimentResults({
-      now: now.getTime(), variants: vs.map((v) => ({ id: v.id, name: v.name, offering_id: v.offering_id || null })), controlId: vs[0]!.id, primaryMetric: x.primaryMetric,
-      enrollments: enrolls.filter((e) => keep.has(e.customerId)).map((e) => ({ customerId: e.customerId, variant: e.variant, enrolledAt: e.enrolledAt.getTime() })),
-      txs: txs.filter((t) => keep.has(t.customerId)).map((t) => ({
-        id: t.id, customerId: t.customerId, appId: t.appId, store: t.store, storeTransactionId: t.storeTransactionId, productId: t.productIdentifier, kind: t.kind as TxKind,
-        at: t.purchasedAt.getTime(), expiresAt: t.expiresAt?.getTime() ?? null, usd: t.revenueUsd, country: t.countryCode,
-      })),
-      products: products.map((p) => ({ appId: p.appId, storeIdentifier: p.storeIdentifier, type: p.type, duration: p.duration })),
-      subStates: subs.map((s) => ({
-        customerId: s.customerId, store: s.store, appId: s.appId, productId: s.productIdentifier, expiresAt: s.expiresDate?.getTime() ?? null, autoRenew: !s.unsubscribeDetectedAt,
-        billingIssue: !!s.billingIssuesDetectedAt, graceUntil: s.gracePeriodExpiresDate?.getTime() ?? null, familyShared: s.ownershipType === "FAMILY_SHARED", offering: s.presentedOfferingId,
-        cancelSurveyReason: s.cancelSurveyReason, unsubscribeAt: s.unsubscribeDetectedAt?.getTime() ?? null,
-      })),
-      lifecycle: billing.filter((e) => e.customerId).map((e): ChartLifecycle => ({ customerId: e.customerId!, store: (e.store ?? "").toLowerCase(), productId: e.productId ?? "", type: "BILLING_ISSUE", at: Number(e.at) })),
-      paywallViews: [...views.map((v) => ({ customerId: v.customerId, at: v.at })), ...orphanViews.map((v) => ({ customerId: v.customerId, at: v.at.getTime() }))]
-        .filter((v): v is { customerId: string; at: number } => !!v.customerId && keep.has(v.customerId)),
-      paywall: paywall as "all" | "viewed" | "not_viewed",
-      seriesFrom: x.startedAt?.getTime() ?? null,
-    });
-    const options = (k: "platform" | "country") => [...new Set(custs.map((cu) => cu[k]).filter((v): v is string => !!v))].sort();
-    return {
-      computed, env, paywall, platform, country, filterOptions: { platforms: options("platform"), countries: options("country") },
-      sample: sampled ? { customers: enrolls.length, enrolled_customers: enrolledTotal, enrolled_by_variant: Object.fromEntries(vs.map((v) => [v.id, enrolledByVariant.get(v.id) ?? 0])) } : null,
-    };
+    return loadExperimentResults(deps, x, { env, paywall, platform, country, paywallAsked: !!c.req.query("paywall") });
   };
 
   r.get(`${E}/:experiment_id/results`, scope(READ), async (c) => {

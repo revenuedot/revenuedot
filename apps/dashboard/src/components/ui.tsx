@@ -102,8 +102,9 @@ export function Field({ label, hint, error, htmlFor, children }: { label: string
   return <div className="field"><label htmlFor={htmlFor}>{label}</label>{children}{hint && <span className="hint">{hint}</span>}{error && <span className="err" role="alert">{error}</span>}</div>;
 }
 
-export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
-  return <button type="button" role="switch" aria-checked={checked} className="sw" disabled={disabled} onClick={() => onChange(!checked)}><i />{label}</button>;
+/** `hideLabel`: the label is the switch's accessible name only (a table cell whose column header already says it). */
+export function Switch({ checked, onChange, label, disabled, hideLabel }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean; hideLabel?: boolean }) {
+  return <button type="button" role="switch" aria-checked={checked} className="sw" disabled={disabled} aria-label={hideLabel ? label : undefined} onClick={() => onChange(!checked)}><i />{hideLabel ? null : label}</button>;
 }
 
 export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {

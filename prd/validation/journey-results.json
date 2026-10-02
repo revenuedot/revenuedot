@@ -153,6 +153,13 @@
     "passed": 42,
     "failed": 0
   },
+  "account": {
+    "title": "Account settings: email change, password, two-factor, sessions, OAuth tokens, preferences, anomaly alert, deletion",
+    "date": "2026-10-02",
+    "run": "202610021550245710",
+    "passed": 58,
+    "failed": 0
+  },
   "experiments": {
     "title": "Experiments v2: 4 and 2 variants, modes, audience, priority, placements, 400 SDK customers, results against SQL, CSV, AI draft",
     "date": "2026-10-02",

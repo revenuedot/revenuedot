@@ -235,6 +235,18 @@ describe("charts: numbers by hand", () => {
     expect(table((await get("revenue", "resolution=2&start_date=2026-06-10&end_date=2026-07-31&expand_periods=true")).body)["2026-06"]).toEqual([20, 3]);
   });
 
+  it("week_start (RevenueDot extension) moves weekly buckets to the viewer's first day", async () => {
+    const q = "resolution=week&start_date=2026-08-03&end_date=2026-08-16";
+    const starts = (body: any) => [...new Set(body.values.map((v: any) => new Date(v.cohort * 1000).toISOString().slice(0, 10)))];
+    // Monday by default (Aug 3, 2026 is a Monday); Sunday and Saturday weeks start before the range.
+    expect(starts((await get("revenue", q)).body)).toEqual(["2026-08-03", "2026-08-10"]);
+    expect(starts((await get("revenue", `${q}&week_start=0`)).body)).toEqual(["2026-08-02", "2026-08-09", "2026-08-16"]);
+    expect(starts((await get("revenue", `${q}&week_start=saturday`)).body)).toEqual(["2026-08-01", "2026-08-08", "2026-08-15"]);
+    const bad = await get("revenue", `${q}&week_start=funday`);
+    expect(bad.status).toBe(400);
+    expect(bad.body.param).toBe("week_start");
+  });
+
   it("options list the values in the data", async () => {
     const o = await call("GET", `${P}/options`, { chart_name: "revenue" });
     const store = o.body.filters.find((x: any) => x.id === "store");

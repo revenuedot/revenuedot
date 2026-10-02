@@ -374,7 +374,7 @@ export function oauthRoutes(deps: Deps) {
     const permissions = access.narrow(permissionsFor(level, support)).filter((s) => row.permissions.includes(s));
     if (!permissions.length) return tokenError(c, "invalid_grant", "The user's role in the project no longer allows this access.");
     const [client] = await db.select().from(schema.oauthClients).where(eq(schema.oauthClients.id, row.clientId)).limit(1);
-    const { key } = await createSecretKey(db, row.projectId, `OAuth: ${client?.name ?? "MCP client"}`.slice(0, 100), permissions);
+    const { key } = await createSecretKey(db, row.projectId, `OAuth: ${client?.name ?? "MCP client"}`.slice(0, 100), permissions, client ? { userId: row.userId, clientId: client.id } : undefined);
     c.header("Cache-Control", "no-store");
     return c.json({ access_token: key, token_type: "Bearer", scope, project_id: row.projectId });
   });
@@ -400,6 +400,12 @@ function signInForm(clientName: string, dash: string) {
       <p class="muted"><a id="forgot" href="${esc(dash)}/forgot-password" target="_blank" rel="noopener">Forgot your password?</a> It opens in a new tab; come back to this tab when you are done.</p>
       <p id="err-signin" class="err" role="alert" hidden></p>
       <div class="row"><button type="submit">Sign in</button></div>
+    </form>
+    <form id="twofa" aria-label="Two-factor code" hidden>
+      <p>Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+      <label>Code<input name="code" inputmode="text" autocomplete="one-time-code" maxlength="20" required></label>
+      <p id="err-twofa" class="err" role="alert" hidden></p>
+      <div class="row"><button type="submit">Verify</button></div>
     </form>
     <form id="signup" role="tabpanel" aria-labelledby="tab-signup" hidden>
       <label>Email<input name="email" type="email" autocomplete="email" required></label>
@@ -436,15 +442,29 @@ function signInForm(clientName: string, dash: string) {
         err.hidden = true;
         try {
           const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body(f)) });
+          const out = await res.json().catch(() => ({}));
+          // Two-factor authentication on (prd/account-settings §3): the password was right; ask for the code.
+          if (res.ok && out.two_factor_required) {
+            challenge = out.challenge;
+            for (const id of ["signin", "signup"]) document.getElementById(id).hidden = true;
+            document.querySelector(".tabs").hidden = true;
+            document.getElementById("twofa").hidden = false;
+            document.querySelector("#twofa input").focus();
+            btn.disabled = false;
+            return;
+          }
           if (res.ok) return location.reload();
-          err.textContent = (await res.json().catch(() => ({}))).message || "That did not work. Try again.";
+          if (id === "twofa" && res.status === 400) { challenge = null; err.textContent = (out.message || "Sign in again.") + " "; setTimeout(() => location.reload(), 1500); }
+          else err.textContent = out.message || "That did not work. Try again.";
         } catch {
           err.textContent = "Could not reach RevenueDot. Check your connection and try again.";
         }
         btn.disabled = false;
         err.hidden = false;
       });
+      let challenge = null;
       submit("signin", "/auth/login", (f) => ({ email: f.get("email"), password: f.get("password") }));
+      submit("twofa", "/auth/login/2fa", (f) => ({ challenge, code: f.get("code") }));
       submit("signup", "/auth/signup", (f) => ({ email: f.get("email"), password: f.get("password"), project_name: "My project" }));
     </script>`;
 }

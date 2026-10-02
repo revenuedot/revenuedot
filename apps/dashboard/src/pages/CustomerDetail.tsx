@@ -10,7 +10,8 @@
  *   need the transfer endpoint and store API calls; later tier.
  * - Per-event detail of which integrations fired: the raw event body is shown instead.
  * - Experiment enrollment is shown only as the current offering's source.
- * - Total spent is in USD only (no display-currency setting yet).
+ * - Amounts in USD from the API are shown in the display currency (Account settings → Date and region); store prices stay
+ *   in the currency the customer paid.
  */
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -19,6 +20,7 @@ import { Copy, Shell } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { ConfirmDialog, Dialog, EmptyState, EVENT_TONE, Field, Menu, Panel, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
+import { getDisplay } from "../lib/prefs";
 import { listAll } from "./catalog/lib";
 import {
   attributeLabel, durationWords, eventLabel, flag, isAnonymous, money, per, PERIOD_TYPE, relative, RENEWAL, storeLabel, SUB_STATUS,
@@ -424,7 +426,7 @@ export function CustomerDetail() {
         </div>
 
         <div className="stats" aria-label="Customer summary">
-          {stat("Total spent", s ? money(s.total_revenue_in_usd) : <span className="sk line" style={{ width: 80, height: 18 }} />, "Production revenue across all aliases, in USD, minus refunds")}
+          {stat("Total spent", s ? money(s.total_revenue_in_usd) : <span className="sk line" style={{ width: 80, height: 18 }} />, `Production revenue across all aliases, in ${getDisplay().currency}, minus refunds`)}
           {stat("Sandbox spent", s ? money(s.sandbox_revenue_in_usd) : "—", "Test Store and sandbox purchases. Not counted in revenue.")}
           {stat("Active entitlements", s ? String(s.active_entitlements.length) : "—")}
           {stat("First seen", c ? fmt.date(c.first_seen_at) : "—", c ? fmt.dateTime(c.first_seen_at) : undefined)}
