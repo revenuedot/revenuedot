@@ -56,7 +56,8 @@ Left out of the table files (the column is emptied and named in `manifest.secret
 Sealed values are opened with the source server's key and sealed again with the target's (`REVENUEDOT_ENCRYPTION_KEY` or the signing-key derivation, `services/secrets.ts`). Without a passphrase the target gives each webhook a new signing secret, and lists the apps whose store credentials must be entered again. `npx revenuedot move` always uses a random passphrase it never prints, so a move keeps every secret.
 
 ### Not exported
-- Collaborators' accounts and passwords: `members.json` lists email and role; on import, people who already have an account on the target are added with their role, the rest are listed to invite. The importing user owns the project on the target.
+- Collaborators' accounts and passwords: `members.json` lists email and role; on import everyone is listed to invite (nobody is added directly: members.json is client input, and adding the accounts it names would put people into a project without their consent and reveal which emails have an account). The importing user owns the project on the target.
+- A custom domain's verification (`web_domains.verification_token`, `status`, `verified_at`, `checked_at`, `error`): DNS proves a domain to one server. The target gives the domain its own token and leaves it `pending`; the finish report lists it under `domains_to_verify`.
 - RevenueDot AI conversations, files and usage (they belong to one person; on Cloud they live in Durable Objects).
 - Pending invites, subscriber access tokens (one hour long), sessions, rate limits, OAuth codes.
 - Exchange rates and remote-config blobs (shared by every project; the target has or rebuilds them).
@@ -74,15 +75,15 @@ Source (secret key with `project_configuration:projects:read_write`, or an Admin
 Target:
 - `POST /v2/imports/tokens` (session; on Cloud a verified email) → `{ token: "rdi_…", expires_at }`, shown once.
 - `POST /v2/imports` (`Authorization: Bearer rdi_…`) `{ manifest, passphrase?, dry_run?, replace? }` → the import (`id`, `project_id`, `plan`): schema check, conflicts (project id, public keys, slugs, domains), and per table the rows the target has now. `dry_run` writes nothing.
-- `PUT /v2/imports/{import_id}/files/{name}`: one file; its SHA-256 must match the manifest. Tables upsert by primary key, only rows of this project; a file already applied answers `{ applied: false }`. Sending a new manifest to the same import starts the incoming copy over.
-- `POST /v2/imports/{import_id}/members` with `members.json`.
+- `PUT /v2/imports/{import_id}/files/{name}`: one file; its SHA-256 must match the manifest. Tables upsert by primary key, only rows of this project: a key that belongs to another project's row is never updated. A row whose parent (by foreign key) is not on the target is left out and counted with its checksum (the source keeps serving while it is exported table by table, so a customer created after the customers table was read can have an alias in a later table); verification adds those rows back to the target's numbers and reports `skipped_rows`. A file already applied answers `{ applied: false }`. Sending a new manifest to the same import starts the incoming copy over.
+- `POST /v2/imports/{import_id}/members` with `members.json`: returns them as `invite` (see Not exported).
 - `POST /v2/imports/{import_id}/verify` → per table `rows` and `checksum` recomputed on the target (multi-call: answers `done: false` with a cursor until finished).
 - `POST /v2/imports/{import_id}/finish` → the project goes live on the target and the answer lists the store notification URLs to change.
 - `GET /v2/imports/{import_id}`.
 
 ## 3. Move states
 `projects.move_state`:
-- `incoming` (target, from the first file until finish): the tick does nothing for the project (no expirations, deliveries, exports, win-back sends), and SDK, notification and v2 writes answer 503 / 423, so the copy stays exactly the source's.
+- `incoming` (target, from the first file until finish): the tick does nothing for the project (no expirations, deliveries, exports, win-back sends), and SDK, notification and v2 writes answer 503 / 423, so the copy stays exactly the source's. An Admin may still delete the project (`DELETE /v2/projects/{id}`), so a copy that never finishes is not stuck.
 - `paused` (source, during the final copy): reads are served; SDK writes (`POST /v1/receipts` …) and store notifications answer **503** with `Retry-After: 60` (the SDK keeps the transaction and retries; Apple and Google retry notifications); v2 writes answer 423 `resource_locked_error`. The tick does nothing for the project, so pending webhook deliveries move with the data and are sent exactly once, by the target.
 - `forwarded` (source, after finish): every `/v1`, `/rcbilling` and secret-key `/v2` request for the project is proxied to `moved_to_url` with the same method, path, headers and body, and the target's answer (signature included) is returned. Store notifications too. The dashboard shows "This project moved to …" and refuses writes. A loop (a forwarded request arriving at a forwarded project) answers 508.
 - `null`: normal.
@@ -96,7 +97,7 @@ npx revenuedot move --from http://old-server:8787 --to https://api.revenuedot.ap
 - Asks for the source secret key and the target import token with hidden input (or `REVENUEDOT_FROM_KEY`, `REVENUEDOT_TO_TOKEN`).
 - Steps: export on the source (driven with `advance`), check on the target (`dry_run` diff: rows per table there now against the archive), copy every file (skipping files the state file says are done), the secrets and members, verify, and print the store notification URLs to change.
 - `--dry-run` stops after the diff and writes nothing on either server.
-- `--finish` (run after a copy, or alone): pause the source, wait 10 seconds, copy again (the target's incoming copy starts over, so rows deleted on the source since the first copy do not linger), verify, put the target live, forward the source. A verification failure cancels the pause, so the source keeps serving.
+- `--finish` (run after a copy, or alone): pause the source, wait 10 seconds, copy again (the target's incoming copy starts over, so rows deleted on the source since the first copy do not linger), verify, put the target live, forward the source. Any failure before the target goes live (verification, the network) cancels the pause, so the source keeps serving; running again pauses again.
 - `--from-archive <file.tar>` reads an archive downloaded with `npx revenuedot export` instead of a server.
 - Exit codes: 0 done, 1 failed or verification found differences, 2 usage error, 130 cancelled.
 
@@ -113,6 +114,7 @@ The paths keep the app id, so only the host changes: `<new server>/v1/notificati
 ## Tests that prove it
 - `apps/server/test/archive.test.ts`: a project seeded with every table exports and imports into a fresh database; every table's rows compare equal (secrets with a passphrase; without one the secret columns are empty and webhooks get new signing secrets); checksums match on both sides; resume after a part; a wrong passphrase is refused; a newer schema is refused.
 - `apps/server/test/archive.test.ts` (move states): finish pauses the source, puts the target live and forwards SDK calls, notifications and REST calls; a forwarding loop answers 508; the dashboard's server-run move (dry run, copy, verify, finish).
+- `apps/server/test/archive.test.ts` (a live source, import safety): a new app user created while the export runs is left out and counted, and the copy verifies; an archive row with another project's primary key changes nothing; a dry run hides another account's row counts; members are only listed; a verified custom domain arrives `pending` with a new token; an unfinished copy can be deleted; a passphrase export never reuses one with another passphrase; an expired download link stops at once.
 - `packages/importer/test/move.test.ts`: two in-process servers on two databases; `revenuedot move` (dry run diff, copy, verify, finish with forwarding), bad keys and tokens refused before any work, `revenuedot export` to a tar that then moves into another server.
 - Journey `scripts/e2e/journeys/move.ts`: two real Node servers on two Railway development databases; the unmodified purchases-js buys in Chromium before the move, `npx revenuedot move` moves the project, the old app build (still pointing at the old server) and a new build (pointing at the new one) both see the entitlement, a second purchase on the new server delivers a webhook signed with the original secret.
 - Playwright `apps/dashboard/e2e/moves.spec.ts`: export and download, receive token, move with dry run, copy, verify and finish between two projects on the e2e server.
