@@ -5,7 +5,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import type { Deps } from "../context.js";
 import { SESSION_COOKIE, createSession, hashPassword, login, logout, projectsForUser, sessionUser, signup, type SessionMethod } from "../services/sessions.js";
-import { LIMITS, checkSecondFactor, issueChallenge, pendingEmailChange, preferencesOf, preferencesPatch, recoveryCodesLeft, twoFactorOn, type User } from "../services/account.js";
+import { LIMITS, checkSecondFactor, countCodeAttempt, forgiveCodeAttempt, issueChallenge, pendingEmailChange, preferencesOf, preferencesPatch, recoveryCodesLeft, twoFactorOn, type User } from "../services/account.js";
 import { twoFactorEmail } from "../mail/templates.js";
 import { trySend } from "../mail/index.js";
 import {
@@ -49,13 +49,7 @@ export function authRoutes(deps: Deps) {
   const origin = (c: Context) => requestOrigin(c.req.url, (n) => c.req.header(n));
   const base = (c: Context) => linkBase(deps, origin(c));
   const startSession = async (c: Context, userId: string, method: SessionMethod = "password") => setCookie(c, SESSION_COOKIE,
-    await createSession(deps.db, userId, deps.now(), { method, userAgent: c.req.header("user-agent") ?? null, ip: ipOf(c) }), cookieOpts(isHttps(c.req.url)));
-  /** The caller's IP from the edge's headers, else the socket on a self-hosted Node server without a proxy. */
-  const ipOf = (c: Context) => {
-    const h = clientIp((n) => c.req.header(n));
-    if (h !== "unknown") return h;
-    return (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress?.replace(/^::ffff:/, "") ?? null;
-  };
+    await createSession(deps.db, userId, deps.now(), { method, userAgent: c.req.header("user-agent") ?? null, ip: clientIp((n) => c.req.header(n), c.env) }), cookieOpts(isHttps(c.req.url)));
   const json = async (c: Context) => c.req.json().catch(() => ({}));
   const bad = (c: Context, message: string) => c.json({ type: "invalid_request", message }, 400);
   const me = (c: Context) => sessionUser(deps.db, getCookie(c, SESSION_COOKIE), deps.now());
@@ -159,12 +153,13 @@ export function authRoutes(deps: Deps) {
       await retireTokens(deps.db, "two_factor", t.user.id, now);
       return c.json({ type: "rate_limit_error", message: "Too many wrong codes. Enter your password again." }, 429);
     }
-    if (!(await hit(deps.db, `2fa:user:${t.user.id}`, LIMITS.codesPerUser.n, LIMITS.codesPerUser.ms, now))) {
+    if (!(await countCodeAttempt(deps.db, t.user.id, now))) {
       return c.json({ type: "rate_limit_error", message: "Too many code attempts. Try again in 15 minutes." }, 429);
     }
     if (!twoFactorOn(t.user)) return c.json({ type: "challenge_invalid", reason: "invalid", message: "Two-factor authentication is off for this account. Sign in again." }, 400);
     const f = await checkSecondFactor(deps, t.user, { code: p.data.code, recovery_code: p.data.recovery_code }, now);
     if (!f.ok) return c.json({ type: "authentication_error", message: f.reason === "missing" ? "Enter a code." : "That code is not right. Check your authenticator app, or use a recovery code." }, 401);
+    await forgiveCodeAttempt(deps.db, t.user.id);
     const used = await consumeToken(deps.db, "two_factor", p.data.challenge, now);
     if (!used.ok) return c.json({ type: "challenge_invalid", reason: used.reason, message: "This sign-in is no longer valid. Enter your password again." }, 400);
     if (f.method === "recovery_code") {
@@ -266,6 +261,8 @@ export function authRoutes(deps: Deps) {
     await deps.db.update(schema.users).set({ passwordHash: await hashPassword(p.data.password), emailVerifiedAt: t.user.emailVerifiedAt ?? now, passwordChangedAt: now }).where(eq(schema.users.id, t.user.id));
     await deps.db.delete(schema.sessions).where(eq(schema.sessions.userId, t.user.id));
     await retireTokens(deps.db, "password_reset", t.user.id, now);
+    // Sign-ins half done with the old password (a correct password, no code yet) end too.
+    await retireTokens(deps.db, "two_factor", t.user.id, now);
     // The link proves the inbox, not the phone: with two-factor on, the new password still needs a code to sign in.
     if (twoFactorOn(t.user)) return c.json({ ...(await challengeBody(t.user)), password_reset: true });
     await startSession(c, t.user.id, "reset");

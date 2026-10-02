@@ -3,7 +3,7 @@
 // authentication with TOTP and recovery codes, OAuth tokens, account deletion, preferences and the display currency.
 // Docs: https://revenuedot.app/docs/guides/account-settings
 import { afterEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { accountServer, type Client } from "./account-helpers.js";
 import { base32Decode, totp } from "../src/services/totp.js";
@@ -263,10 +263,10 @@ describe("two-factor authentication", () => {
     const ch = (await login(s.client(), "kai@example.com")).body.challenge;
     for (let i = 0; i < 5; i++) expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch, code: "000000" })).status).toBe(401);
     expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch, code: await code(secret) })).status).toBe(429);
-    // That challenge is finished; a fresh sign-in gets a new one, until the per-user limit (10 in 15 minutes).
+    // That challenge is finished; a fresh sign-in gets a new one, until the per-user limit (10 wrong codes in 15 minutes).
     expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch, code: await code(secret) })).status).toBe(400);
     const ch2 = (await login(s.client(), "kai@example.com")).body.challenge;
-    for (let i = 0; i < 4; i++) expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch2, code: "000000" })).status).toBe(401);
+    for (let i = 0; i < 5; i++) expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch2, code: "000000" })).status).toBe(401);
     const ch3 = (await login(s.client(), "kai@example.com")).body.challenge;
     expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch3, code: await code(secret) })).status).toBe(429);
     s.advance(15 * 60_000);
@@ -515,5 +515,74 @@ describe("preferences, projects, notifications and the exchange rate", () => {
     await s.db.insert(schema.fxRates).values({ source: "ecb", date: "2026-09-30", rates: { EUR: 1, USD: 1.25, GBP: 0.8 } });
     expect((await browser.call("GET", "/auth/fx?currency=EUR")).body).toMatchObject({ rate: 0.8, date: "2026-09-30" });
     expect((await browser.call("GET", "/auth/fx?currency=GBP")).body.rate).toBe(0.64);
+  });
+});
+
+describe("review fixes", () => {
+  it("an address taken between the check and the move answers 409, never a 500", async () => {
+    s = await accountServer();
+    const a = await s.signup("ari@example.com");
+    await a.browser.call("POST", "/auth/email/change", { new_email: "race@example.com", password: PW });
+    const { token } = s.linkIn("race@example.com", "/confirm-email?token=");
+    // Another account takes the address at the last moment: a trigger signs it up right before the move is written.
+    await s.db.execute(sql`CREATE FUNCTION steal_address() RETURNS trigger AS $$ BEGIN
+      IF NEW.email = 'race@example.com' AND OLD.email <> NEW.email THEN INSERT INTO users (id, email) VALUES ('usr_thief', 'race@example.com') ON CONFLICT DO NOTHING; END IF;
+      RETURN NEW; END $$ LANGUAGE plpgsql`);
+    await s.db.execute(sql`CREATE TRIGGER steal_address BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION steal_address()`);
+    const r = await s.client().call("POST", "/auth/email/change/confirm", { token });
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ type: "email_taken" });
+    expect((await a.browser.call("GET", "/auth/me")).body.user.email).toBe("ari@example.com");
+  });
+
+  it("counts only wrong codes towards the 10 per 15 minutes: ten good sign-ins in a row still work", async () => {
+    s = await accountServer();
+    const { browser } = await s.signup("cal@example.com");
+    const { secret } = await enable2fa(browser);
+    for (let i = 0; i < 11; i++) {
+      const ch = (await login(s.client(), "cal@example.com")).body.challenge;
+      expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch, code: await code(secret) })).status).toBe(200);
+      s.advance(30_000); // a new time step: the same code never works twice
+    }
+    // Ten wrong codes (two sign-in attempts of five) pause code checks, even for the right code.
+    for (let k = 0; k < 2; k++) {
+      const ch = (await login(s.client(), "cal@example.com")).body.challenge;
+      for (let i = 0; i < 5; i++) expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch, code: "000000" })).status).toBe(401);
+    }
+    const ch = (await login(s.client(), "cal@example.com")).body.challenge;
+    expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch, code: await code(secret) })).status).toBe(429);
+  });
+
+  it("a password change or reset ends sign-in challenges that began with the old password", async () => {
+    s = await accountServer();
+    const { browser } = await s.signup("dov@example.com");
+    const { secret } = await enable2fa(browser);
+    const ch = (await login(s.client(), "dov@example.com")).body.challenge;
+    expect((await browser.call("POST", "/auth/password/change", { current_password: PW, new_password: "another long password" })).status).toBe(200);
+    expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch, code: await code(secret) })).body).toMatchObject({ type: "challenge_invalid" });
+
+    const ch2 = (await login(s.client(), "dov@example.com", "another long password")).body.challenge;
+    await s.client().call("POST", "/auth/password/forgot", { email: "dov@example.com" }, { "cf-connecting-ip": "203.0.113.7" });
+    await s.settle();
+    const { token } = s.linkIn("dov@example.com", "/reset-password?token=");
+    const r = await s.client().call("POST", "/auth/password/reset", { token, password: "a third long password" });
+    expect(r.body).toMatchObject({ two_factor_required: true });
+    s.advance(30_000);
+    expect((await s.client().call("POST", "/auth/login/2fa", { challenge: ch2, code: await code(secret) })).body).toMatchObject({ type: "challenge_invalid" });
+    // The reset's own challenge still works.
+    expect((await s.client().call("POST", "/auth/login/2fa", { challenge: r.body.challenge, code: await code(secret) })).status).toBe(200);
+  });
+
+  it("account deletion leaves an audit entry, with the email, in every project the person leaves", async () => {
+    s = await accountServer();
+    const owner = await s.signup("eve@example.com");
+    const leaver = await s.signup("fin@example.com");
+    await s.db.insert(schema.memberships).values({ userId: leaver.userId, projectId: owner.projectId!, role: "developer" });
+    expect((await leaver.browser.call("POST", "/auth/account/delete", { email: "fin@example.com", password: PW })).status).toBe(200);
+    const logs = await s.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.projectId, owner.projectId!));
+    expect(logs).toEqual([expect.objectContaining({
+      actionType: "collaborator_account_deleted", targetType: "collaborator", targetIdentifier: leaver.userId, actorType: "user", actorIdentifier: leaver.userId,
+      additionalData: expect.objectContaining({ email: "fin@example.com", via: "account_settings" }),
+    })]);
   });
 });

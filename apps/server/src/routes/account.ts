@@ -8,7 +8,8 @@ import type { Deps } from "../context.js";
 import { trySend } from "../mail/index.js";
 import { accountDeletedEmail, emailChangeConfirmEmail, emailChangeNoticeEmail, passwordChangedEmail, twoFactorEmail } from "../mail/templates.js";
 import {
-  LIMITS, DISPLAY_CURRENCIES, checkSecondFactor, describeAgent, replaceRecoveryCodes, sealTotp, twoFactorOn, unsealTotp, type User,
+  LIMITS, DISPLAY_CURRENCIES, checkSecondFactor, countCodeAttempt, describeAgent, forgiveCodeAttempt, isUniqueViolation, replaceRecoveryCodes, sealTotp, twoFactorOn,
+  unsealTotp, type User,
 } from "../services/account.js";
 import { consumeToken, defer, issueToken, linkBase, requestOrigin, retireTokens } from "../services/account-email.js";
 import { ratesOn, type FxFetch } from "../services/fx.js";
@@ -95,9 +96,10 @@ export function accountRoutes(deps: Deps) {
   /** With two-factor on, a code (or recovery code) too; rate-limited with sign-in's code attempts. */
   const checkCode = async (c: Context, u: User, f: { code?: string; recovery_code?: string }): Promise<Response | { method?: string } | null> => {
     if (!twoFactorOn(u)) return null;
-    if (!(await hit(db, `2fa:user:${u.id}`, LIMITS.codesPerUser.n, LIMITS.codesPerUser.ms, deps.now()))) return err(c, 429, "rate_limit_error", "Too many code attempts. Try again in 15 minutes.");
+    if (!(await countCodeAttempt(db, u.id, deps.now()))) return err(c, 429, "rate_limit_error", "Too many code attempts. Try again in 15 minutes.");
     const r = await checkSecondFactor(deps, u, f, deps.now());
     if (!r.ok) return err(c, 400, "invalid_code", r.reason === "missing" ? "Enter the code from your authenticator app." : "That code is not right. Check your authenticator app, or use a recovery code.");
+    await forgiveCodeAttempt(db, u.id);
     return { method: r.method };
   };
   const isResponse = (x: unknown): x is Response => x instanceof Response;
@@ -151,10 +153,14 @@ export function accountRoutes(deps: Deps) {
     const t = await consumeToken(db, "email_change", token, now);
     if (!t.ok) return err(c, 400, "token_invalid", LINK_ERRORS[t.reason], { reason: t.reason });
     const to = t.row.newEmail!;
-    const [taken] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, to)).limit(1);
-    if (taken) return err(c, 409, "email_taken", "Another RevenueDot account started using that address. Pick another one.");
     const old = t.user.email;
-    await db.update(schema.users).set({ email: to, emailVerifiedAt: now }).where(eq(schema.users.id, t.user.id));
+    // The unique index on users.email decides, so an address another account took a moment ago is refused, not a 500.
+    try {
+      await db.update(schema.users).set({ email: to, emailVerifiedAt: now }).where(eq(schema.users.id, t.user.id));
+    } catch (e) {
+      if (isUniqueViolation(e)) return err(c, 409, "email_taken", "Another RevenueDot account started using that address. Pick another one.");
+      throw e;
+    }
     // Links sent to the old address stop working (they are bound to it); say so for the record.
     for (const k of ["password_reset", "email_verify", "email_change", "two_factor"] as const) await retireTokens(db, k, t.user.id, now);
     const bs = base(c);
@@ -177,6 +183,8 @@ export function accountRoutes(deps: Deps) {
     await db.update(schema.users).set({ passwordHash: await hashPassword(b.new_password), passwordChangedAt: now }).where(eq(schema.users.id, u.id));
     const others = await db.delete(schema.sessions).where(and(eq(schema.sessions.userId, u.id), ne(schema.sessions.id, sid(c)!))).returning({ id: schema.sessions.id });
     await retireTokens(db, "password_reset", u.id, now);
+    // Sign-ins half done with the old password (a correct password, no code yet) end too.
+    await retireTokens(db, "two_factor", u.id, now);
     const bs = base(c);
     defer(deps, () => trySend(deps.mailer, { to: u.email, ...passwordChangedEmail({ base: bs, email: u.email }) }));
     return c.json({ ok: true, sessions_revoked: others.length });
@@ -233,12 +241,13 @@ export function accountRoutes(deps: Deps) {
     const b = parse(c, Code, await json(c));
     if (isResponse(b)) return b;
     const now = deps.now();
-    if (!(await hit(db, `2fa:user:${u.id}`, LIMITS.codesPerUser.n, LIMITS.codesPerUser.ms, now))) return err(c, 429, "rate_limit_error", "Too many code attempts. Try again in 15 minutes.");
+    if (!(await countCodeAttempt(db, u.id, now))) return err(c, 429, "rate_limit_error", "Too many code attempts. Try again in 15 minutes.");
     const secret = await unsealTotp(deps, u.totpSecret);
     if (!secret) return err(c, 409, "setup_required", "Start the setup again: there is no pending authenticator.");
     // Only an authenticator code proves the app was set up; recovery codes do not exist yet.
     const r2 = await checkSecondFactor(deps, u, { code: b.code }, now, secret);
     if (!r2.ok || r2.method !== "totp") return err(c, 400, "invalid_code", "That code is not right. Check that the time on your phone is set automatically, and try the newest code.");
+    await forgiveCodeAttempt(db, u.id);
     await db.update(schema.users).set({ totpEnabledAt: now }).where(eq(schema.users.id, u.id));
     const codes = await replaceRecoveryCodes(db, u.id, now);
     const bs = base(c);
@@ -361,10 +370,21 @@ export function accountRoutes(deps: Deps) {
       const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(M).where(eq(M.projectId, p.id));
       if (Number(n) <= 1) solo.push(p);
     }
+    const now = deps.now();
     await db.transaction(async (tx) => {
       // OAuth keys this person handed to assistants stop working everywhere, then their own projects go.
-      await tx.delete(schema.apiKeys).where(and(eq(schema.apiKeys.createdByUserId, u.id), isNotNull(schema.apiKeys.oauthClientId)));
+      const keys = await tx.delete(schema.apiKeys).where(and(eq(schema.apiKeys.createdByUserId, u.id), isNotNull(schema.apiKeys.oauthClientId))).returning({ projectId: schema.apiKeys.projectId });
       if (solo.length) await tx.delete(P).where(inArray(P.id, solo.map((p) => p.id)));
+      // The projects other people keep record who left and why, with the email: the user id in older entries no longer
+      // names anyone once the account is gone.
+      const left = mine.filter((p) => !solo.some((x) => x.id === p.id));
+      if (left.length) {
+        await tx.insert(schema.auditLogs).values(left.map((p) => ({
+          id: newId("log", 12), projectId: p.id, actionType: "collaborator_account_deleted", targetType: "collaborator", targetIdentifier: u.id,
+          actorType: "user", actorIdentifier: u.id, occurredAt: now,
+          additionalData: { email: u.email, name: u.name, via: "account_settings", oauth_keys_revoked: keys.filter((k) => k.projectId === p.id).length },
+        })));
+      }
       // Memberships, sessions, links, codes, preferences, AI conversations and the billing account cascade.
       await tx.delete(schema.users).where(eq(schema.users.id, u.id));
     });

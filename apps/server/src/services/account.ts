@@ -4,6 +4,7 @@ import type { Deps } from "../context.js";
 import { CURRENCIES } from "../routes/v2/charts.js";
 import { issueToken } from "./account-email.js";
 import { sha256Hex } from "./auth.js";
+import { hit } from "./rate-limit.js";
 import { depsSecretKey, seal, unseal } from "./secrets.js";
 import { looksLikeRecoveryCode, newRecoveryCodes, normalizeRecoveryCode, verifyTotp } from "./totp.js";
 
@@ -88,6 +89,23 @@ export async function recoveryCodesLeft(db: DB, userId: string) {
   const R = schema.twoFactorRecoveryCodes;
   const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(R).where(and(eq(R.userId, userId), isNull(R.usedAt)));
   return Number(n);
+}
+
+/**
+ * One code attempt against the per-user limit (sign-in and settings together). It is counted before the code is checked,
+ * so parallel guesses cannot slip past the limit; `forgiveCodeAttempt` takes a right code back off, so only wrong codes
+ * add up to the pause.
+ */
+export const countCodeAttempt = (db: DB, userId: string, now: Date) => hit(db, `2fa:user:${userId}`, LIMITS.codesPerUser.n, LIMITS.codesPerUser.ms, now);
+export async function forgiveCodeAttempt(db: DB, userId: string) {
+  const t = schema.rateLimits;
+  await db.update(t).set({ count: sql`greatest(${t.count} - 1, 0)` }).where(eq(t.key, `2fa:user:${userId}`));
+}
+
+/** A Postgres unique violation (23505), from postgres-js or PGlite. */
+export function isUniqueViolation(e: unknown): boolean {
+  const x = e as { code?: unknown; cause?: { code?: unknown } } | null;
+  return x?.code === "23505" || x?.cause?.code === "23505";
 }
 
 /** The step between a correct password and a session: a single-use token (10 minutes) the browser sends with the code. */
