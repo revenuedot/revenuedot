@@ -13,6 +13,7 @@ import { withDashboardRoot } from "./node-dashboard.js";
 import { defaultStores } from "./stores/index.js";
 
 import { tick } from "./services/tick.js";
+import { runScheduledJobs } from "./services/scheduled.js";
 import { logMailer, type Mailer } from "./mail/index.js";
 import { modelFromEnv } from "./services/paywall-ai.js";
 import { assistantModelFromEnv } from "./services/assistant/models.js";
@@ -93,7 +94,16 @@ function kick(tries = 10) {
     if (!(await runTick()) && tries > 1) kick(tries - 1);
   }, tries === 10 ? 250 : 1000);
 }
-const interval = setInterval(() => { void runTick(); }, cluster.tickIntervalMs);
+// The weekly insights digest when REVENUEDOT_INSIGHTS_DIGEST=on (benchmarks are Cloud only and stay off here). It runs
+// outside the job lock, one at a time per replica: a model call can take a minute and must not hold up webhook sends.
+// Replicas cannot write or email a project's week twice (ai_insights claims the week, then the send).
+let scheduledRunning = false;
+const runScheduled = async () => {
+  if (scheduledRunning || draining || !cluster.backgroundJobs) return;
+  scheduledRunning = true;
+  try { await runScheduledJobs(app.deps, new Date()); } catch (e) { console.error("scheduled jobs failed", e); } finally { scheduledRunning = false; }
+};
+const interval = setInterval(() => { void runTick(); void runScheduled(); }, cluster.tickIntervalMs);
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
 const app = createApp({ db, now: () => new Date(), stores, kick: () => kick(), signup, mailer, publicUrl, archiveStore, edition, billing, encryptionKey: process.env.REVENUEDOT_ENCRYPTION_KEY?.trim() || undefined,
@@ -103,7 +113,9 @@ const app = createApp({ db, now: () => new Date(), stores, kick: () => kick(), s
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
   // RevenueDot AI (prd/ai-assistant/PRD.md): ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to
   // pick another; hidden without either. Conversations and their streams live in Postgres; caps from REVENUEDOT_ASSISTANT_CAPS.
-  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS), extensions, stripeConnect });
+  assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS), extensions, stripeConnect,
+  // The weekly AI growth insights digest spends the owner's model key, so self-host runs it only when asked.
+  insightsDigest: process.env.REVENUEDOT_INSIGHTS_DIGEST === "on" });
 // Self-host: one process serves the API and the built dashboard (single-page app with index.html fallback).
 const dist = process.env.DASHBOARD_DIST ?? new URL("../../dashboard/dist", import.meta.url).pathname;
 const html = existsSync(`${dist}/index.html`) ? readFileSync(`${dist}/index.html`, "utf8") : null;

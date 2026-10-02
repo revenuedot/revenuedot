@@ -9,6 +9,7 @@ import { sql as q } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 import { mkdirSync, readFileSync } from "node:fs";
 import * as schema from "./schema.js";
+import { LOCK_KEYS } from "./locks.js";
 
 export { schema };
 export type { DeliveryAttempt } from "./schema.js";
@@ -56,12 +57,7 @@ export async function assertMigrated(db: DB, folder = migrationsFolder) {
   }
 }
 
-/**
- * Advisory lock keys shared by every RevenueDot process on one database (prd/ha-self-host/PRD.md): migrations, and the
- * background job (apps/server/src/cluster.ts). Session locks: they need a direct connection, RDS Proxy or PgBouncer in
- * session mode, never PgBouncer in transaction mode.
- */
-export const LOCK_KEYS = { migrate: 5_276_440_101, tick: 5_276_440_102 } as const;
+export { LOCK_KEYS };
 
 export interface OpenDbOptions {
   /**

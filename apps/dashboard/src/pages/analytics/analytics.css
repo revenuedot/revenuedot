@@ -1,0 +1,78 @@
+/* Analytics: Attribution (revenue by campaign), Benchmarks and the Overview's growth insights (prd/attribution-benchmarks-insights).
+   Tokens only (DESIGN.md): hairlines, square corners, one gold accent for "you". */
+
+/* ── Attribution ─────────────────────────────────────────────────────────────────────────────────────────────────── */
+.attr-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+.attr-tbl table{min-width:1180px}
+.attr-tbl th,.attr-tbl td{padding-left:12px;padding-right:12px}
+.attr-tbl th:first-child,.attr-tbl td:first-child{padding-left:16px;position:sticky;left:0;background:var(--panel);z-index:1;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.attr-tbl td.lbl{font-weight:600}
+.attr-tbl tfoot td{border-bottom:0;border-top:1px solid var(--border);background:var(--sidebar)}
+.attr-tbl tfoot td:first-child{background:var(--sidebar)}
+.attr-tbl sup{color:var(--fg-3);margin-left:2px}
+.attr-tbl td.go{display:flex;gap:2px;justify-content:flex-end;align-items:center;height:var(--row-h)}
+.input.spend{width:96px;height:28px;text-align:right;font-family:var(--mono);font-size:12px}
+
+/* ── Benchmarks ──────────────────────────────────────────────────────────────────────────────────────────────────── */
+.bm-opp{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--border);background:var(--panel);flex-wrap:wrap}
+.bm-opp .dot{width:8px;height:8px;background:var(--accent);flex:none}
+.bm-opp .t{flex:1;min-width:220px;font-size:13px;color:var(--fg-2)}
+.bm-opp .t b{color:var(--fg)}
+.bm-rows{display:flex;flex-direction:column}
+.bm-row{display:grid;grid-template-columns:minmax(0,1.3fr) 120px minmax(220px,1.6fr) 150px;gap:16px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border-2)}
+.bm-row:last-child{border-bottom:0}
+.bm-row h3{margin:0;font:600 14px/20px var(--font)}
+.bm-row h3 a:hover{text-decoration:underline}
+.bm-row p{margin:2px 0 0;font-size:12px;line-height:18px;color:var(--fg-3)}
+.bm-you{font:600 20px/26px var(--font);font-variant-numeric:tabular-nums;letter-spacing:-.02em;text-align:right;white-space:nowrap}
+.bm-you small{display:block;font:500 11px/16px var(--mono);color:var(--fg-3);letter-spacing:0;white-space:normal}
+.bm-track{position:relative;height:28px}
+.bm-track .rail{position:absolute;left:0;right:0;top:13px;height:1px;background:var(--border)}
+.bm-track .band{position:absolute;top:8px;height:11px;background:var(--active);border:1px solid var(--border)}
+.bm-track .dec{position:absolute;top:10px;height:7px;border-left:1px solid var(--fg-3);border-right:1px solid var(--fg-3)}
+.bm-track .med{position:absolute;top:5px;width:1px;height:17px;background:var(--fg)}
+.bm-track .you{position:absolute;top:9px;width:9px;height:9px;margin-left:-4px;background:var(--accent);outline:1px solid var(--bg)}
+.bm-scale{display:flex;justify-content:space-between;font:400 11px/14px var(--mono);color:var(--fg-3);margin-top:2px}
+.bm-pct{font:400 11px/16px var(--mono);color:var(--fg-3);display:flex;gap:8px;flex-wrap:wrap}
+.bm-stand{text-align:right;font-size:12px;line-height:18px;color:var(--fg-2)}
+.bm-stand .tag{margin-bottom:2px}
+.bm-none{font-size:12px;color:var(--fg-3)}
+.bm-key{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--fg-3);padding:10px 16px;border-top:1px solid var(--border)}
+.bm-key i{display:inline-block;vertical-align:-1px;margin-right:6px}
+.bm-key i.band{width:16px;height:9px;background:var(--active);border:1px solid var(--border)}
+.bm-key i.med{width:1px;height:12px;background:var(--fg);vertical-align:-2px}
+.bm-key i.you{width:9px;height:9px;background:var(--accent)}
+.bm-share{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px;align-items:end}
+@media (max-width:900px){
+  .bm-row{grid-template-columns:minmax(0,1fr) 110px;gap:8px 16px}
+  .bm-row .bm-track-cell{grid-column:1/-1}
+  .bm-row .bm-stand{grid-column:1/-1;text-align:left;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .bm-share{grid-template-columns:1fr}
+}
+@media (max-width:640px){.attr-cards{grid-template-columns:1fr}}
+
+/* ── Growth insights (Overview) ──────────────────────────────────────────────────────────────────────────────────── */
+.ins{border:1px solid var(--border);background:var(--panel)}
+.ins-h{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:0 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ins-h b{font:600 14px/20px var(--font);display:inline-flex;align-items:center;gap:8px}
+.ins-h b .i{color:var(--accent-ink)}
+.ins-h .r{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0}
+.ins-h .sub{font-size:12px;color:var(--fg-3)}
+.ins-list{list-style:none;margin:0;padding:0;counter-reset:ins}
+.ins-i{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:14px;padding:16px;border-bottom:1px solid var(--border-2);counter-increment:ins}
+.ins-i:last-child{border-bottom:0}
+.ins-i::before{content:counter(ins);width:22px;height:22px;border:1px solid var(--border);display:grid;place-items:center;font:500 11px/1 var(--mono);color:var(--fg-3)}
+.ins-i h3{margin:0;font:600 14px/22px var(--font)}
+.ins-i p{margin:4px 0 0;font-size:13px;line-height:20px;color:var(--fg-2)}
+.ins-i p.do{color:var(--fg)}
+.ins-i p.do b{font:600 11px/16px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);margin-right:6px}
+.ins-nums{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ins-num{display:inline-flex;align-items:baseline;gap:6px;border:1px solid var(--border);padding:2px 8px;font-size:12px;color:var(--fg-2);max-width:100%}
+.ins-num b{font:500 12px/18px var(--mono);color:var(--fg)}
+.ins-num .d{font:500 11px/18px var(--mono)}
+.ins-num .d.up{color:var(--up)}.ins-num .d.down{color:var(--down)}
+.ins-num span.l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px}
+.ins-go{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.ins-empty{padding:16px;font-size:13px;color:var(--fg-3);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.ins-empty span{flex:1;min-width:220px}
+@media (max-width:640px){.ins-i{grid-template-columns:22px minmax(0,1fr)}.ins-go{grid-column:2;flex-direction:row;align-items:center}}

@@ -160,7 +160,7 @@ export const tools: ToolDefinition[] = [
       start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("First day (default: 30 days ago; 12 months for cohort tables)."),
       end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Last day (default today)."),
       resolution: z.enum(["day", "week", "month", "quarter", "year"]).optional(),
-      segment: z.string().optional().describe("Split by app, store, product, product_duration, offering, country, platform or app_version."),
+      segment: z.string().optional().describe("Split by app, store, product, product_duration, offering, country, platform, app_version, or attribution: media_source, campaign, ad_group, keyword, ad, creative."),
       environment,
       currency: z.string().length(3).optional().describe("ISO 4217 display currency, default USD."),
     },
@@ -168,6 +168,33 @@ export const tools: ToolDefinition[] = [
     run: async (c, a) => compactChart(await c.request<Record<string, unknown>>("GET", `${await P(c)}/charts/${enc(a.chart)}`, {
       query: { start_date: a.start_date, end_date: a.end_date, resolution: a.resolution, segment: a.segment, environment: a.environment, currency: a.currency, limit_num_segments: a.segment ? 6 : undefined },
     })),
+  }),
+
+  define({
+    name: "get-attribution-report", title: "Get revenue by campaign",
+    description: "New customers of a date range grouped by media source, campaign, ad group or keyword (their attribution), with trial starts, paying customers, conversion to paying and revenue on day 0, by day 7, by day 30 and to date (USD, production). Use for questions about ad campaigns, return on ad spend and where good customers come from.",
+    inputSchema: {
+      group_by: z.enum(["media_source", "campaign", "ad_group", "keyword"]).optional().describe("Default campaign."),
+      media_source: z.string().optional().describe("Only this media source, e.g. Apple Search Ads."),
+      start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("First cohort day (default 30 days ago)."),
+      end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Last cohort day (default today)."),
+    },
+    annotations: READ, scopes: ["charts_metrics:charts:read"],
+    run: async (c, a) => {
+      const r = await c.request<{ rows: Record<string, unknown>[]; [k: string]: unknown }>("GET", `${await P(c)}/attribution/report`, { query: { group_by: a.group_by, media_source: a.media_source, start_date: a.start_date, end_date: a.end_date } });
+      return { ...r, rows: r.rows.slice(0, 30), rows_total: r.rows.length };
+    },
+  }),
+  define({
+    name: "get-benchmarks", title: "Get benchmarks",
+    description: "RevenueDot Cloud only, when the project shares anonymized benchmarks: the project's trial conversion, initial conversion, conversion to paying, churn, refund rate, LTV, ARPU and prices over the last 12 months against the peer percentiles (25th, median, 75th) of apps in its category, with where it stands and its biggest opportunity.",
+    inputSchema: {
+      category: z.string().optional().describe("A benchmark category id (health_fitness, productivity …) or all; default the project's."),
+      platform: z.enum(["all", "ios", "android"]).optional(),
+      country: z.string().length(2).optional().describe("Two-letter country code."),
+    },
+    annotations: READ, scopes: ["charts_metrics:charts:read"],
+    run: async (c, a) => c.request("GET", `${await P(c)}/benchmarks`, { query: { category: a.category, platform: a.platform, country: a.country } }),
   }),
 
   // ---- Read: customers

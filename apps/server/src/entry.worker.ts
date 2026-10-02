@@ -7,6 +7,7 @@ import { connectPostgres, type DB } from "@revenuedot/db/worker";
 import { createApp } from "./app.js";
 import { API_PATH } from "./api-paths.js";
 import { tick } from "./services/tick.js";
+import { runScheduledJobs } from "./services/scheduled.js";
 import { routeAssistantAgent } from "./assistant-agent.worker.js";
 import { loadExtensions } from "./extensions.js";
 import type { ServerExtension } from "./extensions.js";
@@ -91,11 +92,23 @@ export default {
     }
   },
 
-  /** Cron Trigger, every minute: expirations, the daily Google voided-purchases scan, webhook and integration deliveries, data exports. */
+  /**
+   * Cron Trigger, every minute: expirations, the daily Google voided-purchases scan, webhook and integration deliveries,
+   * data exports; then the nightly benchmark job and the weekly insights digest (services/scheduled.ts), which use the
+   * app's own dependencies and so run in a request scope on this connection.
+   */
   async scheduled(_c: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
+    const s: RequestScope = { db: conn.db, pending: [] };
     ctx.waitUntil((async () => {
-      try { await runTick(env, conn.db, "cron"); } finally { await conn.close(); }
+      try {
+        await runTick(env, conn.db, "cron");
+        await scope.run(s, async () => {
+          const r = await runScheduledJobs(appFor(env, await extensionsFor(env)).deps, new Date());
+          if (r.benchmarks?.computed || r.benchmarks?.aggregated || r.insights?.project) console.log("scheduled", JSON.stringify(r));
+        });
+        for (let i = 0; i < s.pending.length; i++) await s.pending[i];
+      } finally { await conn.close(); }
     })());
   },
 };

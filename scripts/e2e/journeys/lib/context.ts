@@ -16,6 +16,8 @@ export interface Ctx {
   capture: Capture;
   mails: Mail[];
   sql: Sql;
+  /** The journey database (never printed): for in-process code that runs on the same rows (the Cloud-only jobs). */
+  databaseUrl: string;
   /** A folder for this journey's screenshots and logs. */
   out: string;
   stamp: string;

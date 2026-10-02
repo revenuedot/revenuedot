@@ -19,7 +19,7 @@ const Login = z.object({ email: Email, password: z.string().min(1) });
 const Forgot = z.object({ email: z.string().max(320) });
 const Token = z.object({ token: z.string().min(1).max(200) });
 const Reset = z.object({ token: z.string().min(1).max(200), password: Password });
-const MeUpdate = z.object({ name: z.string().trim().max(100).nullable().optional(), alert_emails: z.boolean().optional() });
+const MeUpdate = z.object({ name: z.string().trim().max(100).nullable().optional(), alert_emails: z.boolean().optional(), insights_emails: z.boolean().optional() });
 
 const MIN = 60_000;
 /** Password reset: requests per IP per 15 minutes (429 beyond), and emails per address per hour (silently skipped beyond). */
@@ -129,12 +129,14 @@ export function authRoutes(deps: Deps) {
     const u = await me(c);
     if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
     return c.json({
-      user: { id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails },
+      user: { id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails, insights_emails: u.insightsEmails },
       // Cloud: the plan and billing status (prd/cloud-billing/PRD.md); self-hosted servers have no plan. `billing_ready`:
       // RevenueDot's Stripe is set up; until then the dashboard links no Billing page, as before billing existed.
       account: {
         edition: deps.edition ?? "self-hosted", plan: u.plan, billing_ready: deps.edition === "cloud" && !stripeProblem(deps.billing),
         billing_status: deps.edition === "cloud" ? (await deps.db.select({ s: schema.billingAccounts.status }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)))[0]?.s ?? "none" : null, email_verification_required: needsVerification(deps, u),
+        // Cloud-only features the dashboard shows (prd/attribution-benchmarks-insights): benchmarks and the weekly digest.
+        features: { benchmarks: !!deps.benchmarks, insights_digest: !!deps.insightsDigest && !!deps.assistant },
       },
       projects: await projectsForUser(deps.db, u.id),
       ...(await meExtras(c, u.id)),
@@ -150,8 +152,9 @@ export function authRoutes(deps: Deps) {
     const set: Partial<typeof schema.users.$inferInsert> = {};
     if (p.data.name !== undefined) set.name = p.data.name || null;
     if (p.data.alert_emails !== undefined) set.alertEmails = p.data.alert_emails;
+    if (p.data.insights_emails !== undefined) set.insightsEmails = p.data.insights_emails;
     const [row] = Object.keys(set).length ? await deps.db.update(schema.users).set(set).where(eq(schema.users.id, u.id)).returning() : [u];
-    return c.json({ user: { id: row!.id, email: row!.email, name: row!.name, email_verified: !!row!.emailVerifiedAt, alert_emails: row!.alertEmails } });
+    return c.json({ user: { id: row!.id, email: row!.email, name: row!.name, email_verified: !!row!.emailVerifiedAt, alert_emails: row!.alertEmails, insights_emails: row!.insightsEmails } });
   });
 
   // Password reset, step 1. The same answer, after the same work, whether or not the account exists: the lookup and

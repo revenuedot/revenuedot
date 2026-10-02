@@ -1,4 +1,5 @@
 import { DAY, HOUR, mrrFactor } from "./time.js";
+import type { ChartAttribution } from "../attribution.js";
 
 /**
  * The rows every chart is computed from, already scoped to one project and one environment, with times in epoch ms.
@@ -29,6 +30,8 @@ export interface ChartCustomer {
   country: string | null;
   platform: string | null;
   appVersion: string | null;
+  /** The customer's attribution (customer_attribution), by dimension; absent or null is "no attribution". */
+  attribution?: ChartAttribution;
 }
 
 export interface ChartProduct { appId: string | null; storeIdentifier: string; type: string; duration: string | null }

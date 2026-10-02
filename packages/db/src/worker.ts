@@ -8,6 +8,7 @@ import type { DB } from "./index.js";
  * connection, without PGlite, migrations or node:fs. Migrations run from Node before a deploy (`scripts/migrate.ts`).
  */
 export { schema };
+export { LOCK_KEYS } from "./locks.js";
 export type { DB };
 export type { StorePrice } from "./schema.js";
 

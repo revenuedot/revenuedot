@@ -41,6 +41,7 @@ const JOURNEYS: Record<string, () => Promise<{ default: Journey }>> = {
   move: () => import("./move.ts"),
   billing: () => import("./billing.ts"),
   import: () => import("./import.ts"),
+  insights: () => import("./insights.ts"),
 };
 
 async function main() {
@@ -80,7 +81,7 @@ async function main() {
       const t0 = Date.now();
       console.log(`\n=== ${j.name}: ${j.title}`);
       let error: string | undefined;
-      try { await j.run({ name: j.name, c, server, base: server.base, capture, mails: smtp.mails, sql, out, stamp }); } catch (e) {
+      try { await j.run({ name: j.name, c, server, base: server.base, capture, mails: smtp.mails, sql, databaseUrl, out, stamp }); } catch (e) {
         error = hideUrls(e instanceof Error ? `${e.message}\n${e.stack?.split("\n").slice(1, 6).join("\n")}` : String(e));
         c.check("journey finished without an exception", false, error);
       }
