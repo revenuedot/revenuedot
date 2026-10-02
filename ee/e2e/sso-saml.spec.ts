@@ -179,12 +179,35 @@ test("IdP-initiated sign-in is refused until the connection allows it; then a re
   await x.context.close(); await y.context.close();
 });
 
+test("an account someone registered in advance with a work address loses its password when the real person signs in with SSO", async ({ browser }) => {
+  // Before SSO, someone signs up with the CEO's address and never confirms it.
+  const squatter = await person(browser);
+  await signupUi(squatter.page, `ceo@${D}`, "Squat");
+  const ceo = await person(browser);
+  const w = watch(ceo.page);
+  await ssoFromLogin(ceo.page, `ceo@${D}`);
+  await ceo.page.waitForURL(/\/projects\//);
+  expect((await (await ceo.page.request.get("/auth/me")).json()).user.email).toBe(`ceo@${D}`);
+  // The squatter's session is gone and the password no longer signs in.
+  await squatter.page.goto("/account");
+  await squatter.page.waitForURL(/\/login/);
+  await loginUi(squatter.page, `ceo@${D}`);
+  await expect(squatter.page.getByRole("alert")).toHaveText("Email or password is incorrect.");
+  expect((await sql()`select password_hash from users where email = ${`ceo@${D}`}`)[0]!.password_hash).toBeNull();
+  w.expectClean();
+  for (const x of [squatter, ceo]) await x.context.close();
+});
+
 test("enforced SSO: password sign-in is refused with a way to SSO, password sessions lose access, the owner keeps a password", async ({ browser }) => {
   // carol signs up with a password before enforcement and opens the project through an invite-free membership (group).
   const carol = await person(browser);
   await signupUi(carol.page, `carol@${D}`, "Carol's");
   await sql()`insert into memberships (user_id, project_id, role) select id, ${projectId}, 'viewer' from users where email = ${`carol@${D}`}`;
   expect((await carol.page.request.get(`/v2/projects/${projectId}/products`)).status()).toBe(200);
+  // Carol is also an organization admin, with that same password session.
+  await sql()`update ee_org_members set role = 'admin' where org_id = ${orgId} and user_id = (select id from users where email = ${`carol@${D}`})`;
+  await orgTab(carol.page, orgId, "members");
+  await expect(carol.page.getByRole("button", { name: "Add member" })).toBeVisible();
   const { page } = owner;
   const w = watch(page);
   await orgTab(page, orgId, "sso");
@@ -197,6 +220,12 @@ test("enforced SSO: password sign-in is refused with a way to SSO, password sess
   const denied = await carol.page.request.get(`/v2/projects/${projectId}/products`);
   expect(denied.status()).toBe(403);
   expect((await denied.json()).message).toContain("requires single sign-on");
+  // Nor Organization settings: the old session cannot turn the requirement off.
+  await carol.page.goto(`/organizations/${orgId}/sso`);
+  await expect(carol.page.getByRole("alert")).toContainText("requires single sign-on");
+  await shot(carol.page, "sso-required-org-settings");
+  expect((await carol.page.request.post(`/v2/organizations/${orgId}`, { data: { sso_enforced: false } })).status()).toBe(403);
+  expect((await sql()`select sso_enforced from ee_organizations where id = ${orgId}`)[0]!.sso_enforced).toBe(true);
   // Her password no longer signs her in; the page offers SSO and it works.
   const c2 = await person(browser);
   await loginUi(c2.page, `carol@${D}`);

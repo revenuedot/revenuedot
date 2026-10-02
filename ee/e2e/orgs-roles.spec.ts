@@ -145,6 +145,35 @@ test("a developer is invited, given the custom role, and the role is enforced in
   w.expectClean();
 });
 
+test("an MCP client the custom-role member connects gets only the role's reads", async () => {
+  const REDIRECT = "https://claude.example.com/callback";
+  const w = watch(dev.page);
+  const reg = await dev.page.request.post("/oauth/register", { data: { client_name: "Claude", redirect_uris: [REDIRECT] } });
+  expect(reg.status()).toBe(201);
+  const clientId = (await reg.json()).client_id as string;
+  const verifier = "v".repeat(43);
+  const challenge = await dev.page.evaluate(async (v) => btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v))))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""), verifier);
+  // The app's callback page: catch the redirect instead of leaving for the internet.
+  let back = "";
+  await dev.page.route("https://claude.example.com/**", (r) => { back = r.request().url(); return r.fulfill({ status: 200, contentType: "text/html", body: "<p>Connected</p>" }); });
+  await dev.page.goto(`/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", state: "e2e" })}`);
+  await expect(dev.page.getByRole("heading", { name: /Connect Claude/ })).toBeVisible();
+  await dev.page.getByLabel("Project").selectOption(projectId);
+  await shot(dev.page, "mcp-consent-custom-role");
+  await dev.page.getByRole("button", { name: "Allow access" }).click();
+  await expect.poll(() => back).toContain("code=");
+  const tok = await dev.page.request.post("/oauth/token", { form: { grant_type: "authorization_code", code: new URL(back).searchParams.get("code")!, code_verifier: verifier, client_id: clientId, redirect_uri: REDIRECT } });
+  expect(tok.status()).toBe(200);
+  const key = (await tok.json()).access_token as string;
+  const [k] = await sql()`select permissions from api_keys where project_id = ${projectId} and name = 'OAuth: Claude'`;
+  expect([...k!.permissions].sort()).toEqual(["project_configuration:entitlements:read_write", "project_configuration:products:read"]);
+  const bearer = { headers: { authorization: `Bearer ${key}` } };
+  expect((await dev.page.request.get(`/v2/projects/${projectId}/products`, bearer)).status()).toBe(200);
+  expect((await dev.page.request.get(`/v2/projects/${projectId}/customers`, bearer)).status()).toBe(403);
+  expect((await dev.page.request.get(`/v2/projects/${projectId}/apps`, bearer)).status()).toBe(403);
+  w.expectClean();
+});
+
 test("members: roles change, an admin is admin of every project, removal ends access", async () => {
   const { page } = owner;
   const w = watch(page);
