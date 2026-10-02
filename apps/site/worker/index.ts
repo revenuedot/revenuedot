@@ -1,8 +1,9 @@
 // revenuedot.app Worker. Static assets answer every request except /api/* (cloudflare.config.ts, runWorkerFirst):
 //   GET  /api/geo            the visitor's country (Cloudflare's guess), so the phone picker starts on the right country
 //   POST /api/contact-sales  the contact-sales form: validate, store in D1 (LEADS), email sales (EMAIL to SALES_TO)
+//   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
-import { CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
+import { isEmail, CURRENT, NEEDS, PLATFORMS, REVENUE, ROLES, SCORE_LABEL, TIMELINE, label, score, validate, type Lead, type Score } from "./lead";
 
 interface D1 { prepare(sql: string): { bind(...v: unknown[]): { run(): Promise<unknown> }; run(): Promise<unknown> } }
 interface SendEmail { send(m: { to: string; from: { email: string; name?: string }; subject: string; text: string; html: string; replyTo?: string }): Promise<unknown> }
@@ -12,6 +13,7 @@ interface Env {
   LEADS?: D1;
   EMAIL?: SendEmail;
   LEAD_LIMIT?: RateLimit;
+  DRAFT_LIMIT?: RateLimit;
   SALES_TO?: string;
 }
 
@@ -23,7 +25,11 @@ const SCHEMA = `CREATE TABLE IF NOT EXISTS sales_leads (
   phone TEXT NOT NULL, phone_country TEXT NOT NULL, revenue TEXT NOT NULL, current_vendor TEXT NOT NULL,
   needs TEXT NOT NULL, timeline TEXT NOT NULL, platforms TEXT NOT NULL, website TEXT, message TEXT,
   country TEXT, referrer TEXT, user_agent TEXT, emailed INTEGER NOT NULL DEFAULT 0)`;
+const DRAFTS = `CREATE TABLE IF NOT EXISTS sales_lead_drafts (
+  id TEXT PRIMARY KEY, email TEXT NOT NULL, answers TEXT NOT NULL, step INTEGER NOT NULL,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, country TEXT)`;
 let schemaReady = false;
+let draftsReady = false;
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 // A plain page for form posts made without JavaScript. `body` is trusted HTML built here.
@@ -37,6 +43,10 @@ export default {
       const country = (request as Request & { cf?: { country?: string } }).cf?.country ?? null;
       return json({ country: country && /^[A-Z]{2}$/.test(country) ? country : null });
     }
+    if (url.pathname === "/api/contact-sales/draft") {
+      if (request.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
+      return saveDraft(request, env);
+    }
     if (url.pathname === "/api/contact-sales") {
       if (request.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
       return contactSales(request, env);
@@ -45,6 +55,32 @@ export default {
     return env.ASSETS.fetch(request);
   },
 };
+
+/** Saves the answers so far, so a buyer who leaves after giving an email is not lost. Upsert by the form's draft id. */
+async function saveDraft(request: Request, env: Env): Promise<Response> {
+  const origin = request.headers.get("origin");
+  if (origin && !ALLOWED_ORIGIN.test(origin)) return json({ ok: false }, 403);
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  if (env.DRAFT_LIMIT && !(await env.DRAFT_LIMIT.limit({ key: ip })).success) return json({ ok: false }, 429);
+  const body = await readBody(request);
+  const d = body?.data ?? {};
+  const id = typeof d.draftId === "string" && /^[a-f0-9-]{36}$/.test(d.draftId) ? d.draftId : null;
+  const email = typeof d.email === "string" ? d.email.trim().toLowerCase() : "";
+  if (!id || !isEmail(email) || typeof d.fax === "string" && d.fax.trim()) return json({ ok: false }, 400);
+  const step = Math.max(0, Math.min(20, Number(d.step) || 0));
+  const keep = ["revenue", "current", "needs", "timeline", "name", "company", "role", "phone", "phoneCountry", "platforms", "website", "message"];
+  const answers = JSON.stringify(Object.fromEntries(keep.filter((k) => d[k] !== undefined).map((k) => [k, typeof d[k] === "string" ? (d[k] as string).slice(0, 2000) : d[k]])));
+  if (!env.LEADS) return json({ ok: true });
+  try {
+    if (!draftsReady) { await env.LEADS.prepare(DRAFTS).run(); draftsReady = true; }
+    const now = new Date().toISOString();
+    const country = (request as Request & { cf?: { country?: string } }).cf?.country ?? null;
+    await env.LEADS.prepare(`INSERT INTO sales_lead_drafts (id, email, answers, step, created_at, updated_at, country) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET email = excluded.email, answers = excluded.answers, step = max(sales_lead_drafts.step, excluded.step), updated_at = excluded.updated_at`)
+      .bind(id, email, answers, step, now, now, country).run();
+  } catch (e) { console.error("contact-sales: saving a draft failed", e); return json({ ok: false }, 503); }
+  return json({ ok: true });
+}
 
 async function readBody(request: Request): Promise<{ data: Record<string, unknown>; form: boolean } | null> {
   const type = request.headers.get("content-type") ?? "";
@@ -114,6 +150,8 @@ async function contactSales(request: Request, env: Env): Promise<Response> {
       if (stored) await env.LEADS!.prepare("UPDATE sales_leads SET emailed = 1 WHERE id = ?").bind(id).run().catch(() => {});
     } catch (e) { console.error("contact-sales: emailing the lead failed", e); }
   }
+  const draftId = typeof data.draftId === "string" && /^[a-f0-9-]{36}$/.test(data.draftId) ? data.draftId : null;
+  if (draftId && env.LEADS) await env.LEADS.prepare("UPDATE sales_lead_drafts SET completed = 1 WHERE id = ?").bind(draftId).run().catch(() => {});
   console.log(JSON.stringify({ event: "contact_sales", id, score: s, stored, emailed }));
   if (!stored && !emailed) return json({ ok: false, error: "We could not save your request. Email hello@revenuedot.app instead." }, 503);
   return done(s === "self_serve" ? "self_serve" : "sales");
