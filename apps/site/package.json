@@ -17,7 +17,8 @@
     "@astrojs/markdown-satteri": "0.4.2",
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource/geist-mono": "^5.3.0",
-    "astro": "^7"
+    "astro": "^7",
+    "libphonenumber-js": "^1"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.sha-ad79608dd",

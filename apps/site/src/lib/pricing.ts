@@ -1,5 +1,4 @@
 // Plans and the price maths. Source of the numbers: company/docs/business-model.md (private repo), decided 2026-09-30.
-import { SITE } from "../site";
 export type Plan = {
   id: string;
   name: string;
@@ -71,16 +70,16 @@ export const PLANS: Plan[] = [
     name: "Enterprise",
     price: "$50K",
     priceNote: "a year to start, custom pricing",
-    summary: "Cloud with a support promise, or a commercial license to self-host in your own account, with single sign-on, audit logs and data-location controls.",
-    available: false,
+    summary: "RevenueDot in our cloud with a support promise, or a commercial license to self-host in your own account, priced for your scale.",
+    available: true,
     features: [
-      "SSO/SAML, SCIM and audit logs",
-      "EU and US data regions, or your own cloud",
-      "High-availability self-host and an SLA",
-      "Commercial license for the ee/ folder",
-      "Custom pricing for your scale",
+      "Commercial license to self-host",
+      "Uptime SLA and priority support",
+      "Migration from RevenueCat, done with you",
+      "DPA and security reviews",
+      "SSO/SAML, SCIM and data regions as they roll out",
     ],
-    cta: { label: "Contact sales", href: `mailto:${SITE.email.sales}?subject=RevenueDot%20Enterprise` },
+    cta: { label: "Contact sales", href: "/contact-sales" },
   },
 ];
 

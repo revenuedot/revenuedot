@@ -19,7 +19,6 @@ export const SITE = {
   login: "https://app.revenuedot.app/login",
   email: {
     hello: "hello@revenuedot.app",
-    sales: "sales@revenuedot.app",
     security: "security@revenuedot.app",
     legal: "legal@revenuedot.app",
   },
@@ -55,6 +54,7 @@ export const FOOTER = [
       { href: "/tools", label: "Free tools" },
       { href: "/glossary", label: "Glossary" },
       { href: "/pricing", label: "Pricing" },
+      { href: "/contact-sales", label: "Contact sales" },
       { href: "/changelog", label: "Changelog" },
     ],
   },
