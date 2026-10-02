@@ -86,7 +86,7 @@ test("in-app currencies, Customer Center and audit logs", async ({ page }) => {
   await page.getByRole("button", { name: "Actions for GLD" }).click();
   await page.getByRole("menuitem", { name: "Archive" }).click();
   await page.getByRole("button", { name: "Archive" }).last().click();
-  await expect(page.getByText("Archived")).toBeVisible();
+  await expect(page.getByText("Archived", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Actions for GLD" }).click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete currency" }).click();
