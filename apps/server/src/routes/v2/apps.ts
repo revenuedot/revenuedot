@@ -7,12 +7,14 @@ import { V2Error, body, listOf, notFound, paginate, paramError, scope, type V2Ro
 import { appShape } from "./shapes.js";
 import { depsSecretKey } from "../../services/secrets.js";
 import { sealStoreSecrets, storeSecretFields, stripeConnected, takeStoreSecrets } from "../../services/store-secrets.js";
+import { PADDLE_KEY_RE } from "../../stores/paddle/api.js";
 
-const APP_TYPES = ["amazon", "app_store", "mac_app_store", "play_store", "stripe", "rc_billing", "roku", "paddle", "test_store"] as const;
+/** RevenueCat's app types, plus `galaxy` (Samsung Galaxy Store; RevenueCat's v2 API has no Galaxy app object, a RevenueDot extension). */
+const APP_TYPES = ["amazon", "app_store", "mac_app_store", "play_store", "stripe", "rc_billing", "roku", "paddle", "test_store", "galaxy"] as const;
 
 /** Public SDK key prefix per store, matching the prefixes the RevenueCat SDKs expect. */
 const KEY_PREFIX: Record<string, string> = {
-  app_store: "appl_", mac_app_store: "mac_", play_store: "goog_", amazon: "amzn_", stripe: "strp_", rc_billing: "rcb_", roku: "roku_", paddle: "pdl_", test_store: "test_",
+  app_store: "appl_", mac_app_store: "mac_", play_store: "goog_", amazon: "amzn_", stripe: "strp_", rc_billing: "rcb_", roku: "roku_", paddle: "pdl_", test_store: "test_", galaxy: "galx_",
 };
 
 const details = z.record(z.unknown());
@@ -20,16 +22,16 @@ const AppCreate = z.object({
   name: z.string().trim().min(1).max(255),
   type: z.enum(APP_TYPES),
   app_store: details.optional(), mac_app_store: details.optional(), play_store: details.optional(), amazon: details.optional(),
-  stripe: details.optional(), rc_billing: details.nullable().optional(), roku: details.nullable().optional(), paddle: details.nullable().optional(),
+  stripe: details.optional(), rc_billing: details.nullable().optional(), roku: details.nullable().optional(), paddle: details.nullable().optional(), galaxy: details.optional(),
 });
 const AppUpdate = z.object({
   name: z.string().trim().min(1).max(255).optional(),
   app_store: details.optional(), mac_app_store: details.optional(), play_store: details.optional(), amazon: details.optional(),
-  stripe: details.optional(), rc_billing: details.optional(), roku: details.optional(), paddle: details.optional(),
+  stripe: details.optional(), rc_billing: details.optional(), roku: details.optional(), paddle: details.optional(), galaxy: details.optional(),
 });
 
 /** The identifier field each store's details must carry (stored in `apps.bundle_id`). */
-const ID_FIELD: Record<string, string> = { app_store: "bundle_id", mac_app_store: "bundle_id", play_store: "package_name", amazon: "package_name" };
+const ID_FIELD: Record<string, string> = { app_store: "bundle_id", mac_app_store: "bundle_id", play_store: "package_name", amazon: "package_name", galaxy: "package_name" };
 
 /** Splits a store details object into the bundle/package id and the rest (credentials and settings, stored as given). */
 function splitDetails(type: string, d: Record<string, unknown> | null | undefined) {
@@ -43,7 +45,7 @@ function splitDetails(type: string, d: Record<string, unknown> | null | undefine
 }
 
 /**
- * Checks the Amazon and Stripe credential fields before they are stored (a pasted publishable key or a webhook secret in
+ * Checks the Amazon, Stripe, Paddle, Roku and Galaxy credential fields before they are stored (a pasted publishable key or a webhook secret in
  * the key field fails here, not on the first purchase). null clears a field and is always allowed.
  */
 function checkStoreFields(type: string, rest: Record<string, unknown>) {
@@ -78,6 +80,63 @@ function checkStoreFields(type: string, rest: Record<string, unknown>) {
     if (mk && !/^[\w.-]+$/.test(mk)) bad("app_user_id_metadata_key", "must be a Stripe metadata key (letters, digits, _ . -; at most 40).");
     const reg = val("register_on");
     if (reg !== null && reg !== "invoice_paid" && reg !== "invoice_created") bad("register_on", "must be invoice_paid or invoice_created.");
+    bool("track_new_purchases");
+  }
+  // Store commission programs (services/commission.ts): App Store Small Business Program and Amazon Small Business
+  // Accelerator, as RevenueCat's entry and exit dates (an exit needs an entry; exit after entry; periods do not overlap).
+  const programField = type === "app_store" || type === "mac_app_store" ? "small_business_program" : type === "amazon" ? "small_business_accelerator" : null;
+  if (programField && rest[programField] !== undefined && rest[programField] !== null) {
+    const v = rest[programField] as Record<string, unknown>;
+    if (typeof v !== "object" || Array.isArray(v)) bad(programField, "must be an object { enrolled, periods }.");
+    if (v.enrolled !== undefined && typeof v.enrolled !== "boolean") bad(`${programField}.enrolled`, "must be true or false.");
+    const periods = v.periods === undefined ? [] : v.periods;
+    if (!Array.isArray(periods) || periods.length > 10) bad(`${programField}.periods`, "must be a list of at most 10 { entry_date, exit_date } periods.");
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    const parsed = (periods as Array<Record<string, unknown>>).map((x, i) => {
+      if (!x || typeof x !== "object") bad(`${programField}.periods[${i}]`, "must be { entry_date, exit_date }.");
+      const entry = x.entry_date, exit = x.exit_date ?? null;
+      if (typeof entry !== "string" || !day.test(entry) || Number.isNaN(Date.parse(entry))) bad(`${programField}.periods[${i}].entry_date`, "is required: a date such as 2024-01-01 (needed for an exit date too).");
+      if (exit !== null && (typeof exit !== "string" || !day.test(exit) || Number.isNaN(Date.parse(exit)))) bad(`${programField}.periods[${i}].exit_date`, "must be a date such as 2025-06-30, or null while still enrolled.");
+      if (exit !== null && (exit as string) <= (entry as string)) bad(`${programField}.periods[${i}].exit_date`, "must be after the entry date.");
+      return { entry_date: entry as string, exit_date: exit as string | null };
+    }).sort((a, b) => (a.entry_date < b.entry_date ? -1 : 1));
+    for (let i = 1; i < parsed.length; i++) {
+      const prev = parsed[i - 1]!;
+      if (prev.exit_date === null || prev.exit_date > parsed[i]!.entry_date) bad(`${programField}.periods`, "must not overlap: each period must end before the next one starts.");
+    }
+    rest[programField] = { enrolled: v.enrolled !== false && parsed.length > 0, periods: parsed };
+  }
+  if (type === "paddle") {
+    const key = text("paddle_api_key", 200);
+    if (key && /^(live|test)_[a-z0-9]+$/.test(key)) bad("paddle_api_key", "is a client-side token (live_… or test_…). Use a server-side API key (pdl_live_apikey_… or pdl_sdbx_apikey_…) from Paddle → Developer tools → Authentication.");
+    if (key && !PADDLE_KEY_RE.test(key)) bad("paddle_api_key", "must be a Paddle API key (pdl_live_apikey_… or pdl_sdbx_apikey_…, 69 characters).");
+    const secret = text("paddle_webhook_secret", 200);
+    if (secret && !/^pdl_ntfset_[A-Za-z0-9_]+$/.test(secret)) bad("paddle_webhook_secret", "must be the notification destination's secret key (pdl_ntfset_…).");
+    const setting = text("paddle_notification_setting_id", 100);
+    if (setting && !/^ntfset_[a-z0-9]+$/.test(setting)) bad("paddle_notification_setting_id", "must be a Paddle notification setting id (ntfset_…).");
+    bool("paddle_is_sandbox");
+    const src = val("app_user_id_source");
+    if (src !== null && !["custom_data", "anonymous"].includes(String(src))) bad("app_user_id_source", "must be custom_data or anonymous.");
+    const ck = text("app_user_id_custom_data_key", 40);
+    if (ck && !/^[\w.-]+$/.test(ck)) bad("app_user_id_custom_data_key", "must be a custom_data key (letters, digits, _ . -; at most 40).");
+    bool("track_new_purchases");
+  }
+  if (type === "roku") {
+    if (typeof rest.roku_channel_id === "number") rest.roku_channel_id = String(rest.roku_channel_id);
+    const key = text("roku_api_key", 100);
+    if (key && !/^[A-Za-z0-9]{20,64}$/.test(key)) bad("roku_api_key", "must be the Roku Pay web services API key (letters and digits, from the Roku developer dashboard).");
+    const ch = text("roku_channel_id", 20);
+    if (ch && !/^[A-Za-z0-9_-]{1,20}$/.test(ch)) bad("roku_channel_id", "must be the channel id shown on the Roku channel page.");
+    text("roku_channel_name", 30);
+    bool("track_new_purchases");
+  }
+  if (type === "galaxy") {
+    const id = text("galaxy_service_account_id", 100);
+    if (id && !/^[\w.@:-]{4,100}$/.test(id)) bad("galaxy_service_account_id", "must be the service account id shown in Seller Portal → Assistance → API Service.");
+    const pk = text("galaxy_service_account_private_key", 10_000);
+    if (pk && !/PRIVATE KEY-----/.test(pk) && !/^[A-Za-z0-9+/=\s]{100,}$/.test(pk)) bad("galaxy_service_account_private_key", "must be the service account's private key file (-----BEGIN PRIVATE KEY-----).");
+    const pub = text("galaxy_iap_public_key", 5_000);
+    if (pub && !/PUBLIC KEY-----/.test(pub) && !/^[A-Za-z0-9+/=\s]{100,}$/.test(pub)) bad("galaxy_iap_public_key", "must be the IAP public key from Seller Portal (an RSA public key).");
     bool("track_new_purchases");
   }
 }
@@ -154,7 +213,7 @@ export function appRoutes(r: V2Router, deps: Deps) {
       sealed = { secrets: s.secrets, secretHints: s.secretHints };
     }
     // New credentials (or package name) are checked with the store on the next tick; a failing alert resolves only once the store accepts them.
-    const recheck = bundleId || Object.keys(rest).length || Object.keys(secretUpdate).length ? { credentialsCheckedAt: null } : {};
+    const recheck = bundleId || Object.keys(rest).some((k) => !k.startsWith("small_business_")) || Object.keys(secretUpdate).length ? { credentialsCheckedAt: null } : {};
     const [row] = await db.update(schema.apps).set({ ...(b.name ? { name: b.name } : {}), ...(bundleId ? { bundleId } : {}), ...(fwd !== undefined ? { notificationForwardUrl: fwd } : {}), credentials, ...(sealed ?? {}), ...recheck })
       .where(and(eq(schema.apps.projectId, a.projectId), eq(schema.apps.id, a.id))).returning();
     return c.json(appShape(row!));

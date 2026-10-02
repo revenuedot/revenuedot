@@ -22,6 +22,8 @@ export interface ChartTx {
   country: string | null;
   /** The offering the SDK presented with the purchase, when known. */
   offering?: string | null;
+  /** The store's commission rate for this transaction (commission.ts); the store's default rate when absent. */
+  commission?: number;
 }
 
 export interface ChartCustomer {

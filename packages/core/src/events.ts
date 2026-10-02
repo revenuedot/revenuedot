@@ -1,3 +1,4 @@
+import { commissionRate } from "./commission.js";
 import type { NonSubscription, Store, Subscription } from "./types.js";
 
 export type EventType =
@@ -85,7 +86,8 @@ export function diffSubscription(prev: Subscription | null, next: Subscription, 
     if (newPeriod) out.push(renewal);
   } else if (newPeriod) {
     out.push(renewal);
-  } else if (next.expiresDate && prev.expiresDate && next.expiresDate > prev.expiresDate && t(next.purchaseDate) === t(prev.purchaseDate)) {
+  } else if (next.expiresDate && prev.expiresDate && next.expiresDate > prev.expiresDate && t(next.purchaseDate) === t(prev.purchaseDate) && !(prev.refundedAt && !next.refundedAt)) {
+    // (A refund taken back restores the period's own end: REFUND_REVERSED below, not an extension.)
     out.push({ type: "SUBSCRIPTION_EXTENDED" });
   }
   // A downgrade or crossgrade scheduled for the next renewal (App Store DOWNGRADE, deferred Google Play replacement).
@@ -107,7 +109,8 @@ export function diffSubscription(prev: Subscription | null, next: Subscription, 
   }
   if (!prev.autoResumeDate && next.autoResumeDate) out.push({ type: "SUBSCRIPTION_PAUSED" });
   out.push(...priceIncreaseEvents(prev.priceIncreaseStatus, next.priceIncreaseStatus));
-  const prevLive = prev.expiresDate === null || prev.expiresDate > now;
+  // Access during a grace period is access too: a chain that ends while in grace expires then.
+  const prevLive = prev.expiresDate === null || prev.expiresDate > now || (prev.gracePeriodExpiresDate ?? null) !== null && prev.gracePeriodExpiresDate! > now;
   const nextLive = next.expiresDate === null || next.expiresDate > now || (next.gracePeriodExpiresDate ?? null) !== null && next.gracePeriodExpiresDate! > now;
   if (prevLive && !nextLive && !next.refundedAt) out.push({ type: "EXPIRATION", expirationReason: expirationReasonOf(next) });
   return out;
@@ -124,8 +127,12 @@ export function diffNonSubscription(prev: NonSubscription | null, next: NonSubsc
 /** Store names in webhook payloads are upper case (APP_STORE, PLAY_STORE ...). */
 export const webhookStore = (s: Store) => s.toUpperCase();
 
-/** Approximate store commission used for take-home estimates (RevenueCat reports 0.7 / 0.85 / 1.0 similarly). */
+/**
+ * The store's commission rate without transaction context (no program dates, under Google Play's $1M tier): App Store,
+ * Amazon and Galaxy Store 30% (15% with `smallBusiness`), Google Play 15%, Roku 20%, Paddle 5%. Per-transaction rates,
+ * with the Small Business Program dates and Google Play's yearly tier, come from `commissionRate` (commission.ts).
+ */
 export function commission(store: Store, smallBusiness = false): number {
-  if (store === "app_store" || store === "mac_app_store" || store === "play_store" || store === "amazon") return smallBusiness ? 0.15 : 0.3;
-  return 0;
+  if (smallBusiness && (store === "app_store" || store === "mac_app_store" || store === "play_store" || store === "amazon" || store === "galaxy")) return 0.15;
+  return commissionRate({ store, appId: null, at: 0, kind: "purchase" });
 }

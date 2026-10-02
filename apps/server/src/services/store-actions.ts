@@ -8,6 +8,10 @@ import { googleClientFor } from "../stores/google/index.js";
 import { baseOrderId } from "../stores/google/map.js";
 import { applyVoided, syncSubscription } from "../stores/google/sync.js";
 import { RCError } from "../errors.js";
+import { GalaxyApiError } from "../stores/galaxy/api.js";
+import { galaxyClientFor } from "../stores/galaxy/index.js";
+import { syncGalaxyPurchase } from "../stores/galaxy/sync.js";
+import { withStoreSecrets } from "./store-secrets.js";
 import { applyFromStore } from "./purchases.js";
 
 /**
@@ -16,6 +20,8 @@ import { applyFromStore } from "./purchases.js";
  *   Google Play: refund and revoke (subscriptionsv2.revoke with a full refund of the latest order), cancel
  *   (subscriptionsv2.cancel), defer (subscriptionsv2.defer), refund one order (orders.refund with revoke).
  *   App Store: extend the renewal date (Extend a Subscription Renewal Date); no consumption information is needed.
+ *   Galaxy Store: refund (RevenueCat's "refund a Play Store or Galaxy subscription's transaction"), revoke and cancel
+ *   through Samsung's subscription API (PATCH … { action: refund | revoke | cancel }).
  * Anything else is `unsupported` for that store.
  */
 
@@ -30,7 +36,7 @@ export class StoreActionError extends Error {
 
 const APPLE = new Set(["app_store", "mac_app_store"]);
 const DAY = 86_400_000;
-const storeName = (store: string) => (APPLE.has(store) ? "App Store" : store === "play_store" ? "Google Play" : store === "test_store" ? "Test Store" : store === "promotional" ? "promotional" : store);
+const storeName = (store: string) => (APPLE.has(store) ? "App Store" : store === "play_store" ? "Google Play" : store === "galaxy" ? "Galaxy Store" : store === "test_store" ? "Test Store" : store === "promotional" ? "promotional" : store);
 
 async function appOf(deps: Deps, row: { appId: string | null; projectId: string; store: string }): Promise<AppRecord> {
   const A = schema.apps;
@@ -48,6 +54,10 @@ function storeFailure(e: unknown, store: string): never {
     if (e.kind === "invalid_token") throw new StoreActionError("rejected", `Google Play rejected the request: ${e.message}`);
     if (e.kind === "credentials") throw new StoreActionError("unavailable", `Google Play credentials problem: ${e.message}`);
     throw new StoreActionError("unavailable", `Google Play could not be reached: ${e.message}`);
+  }
+  if (e instanceof GalaxyApiError) {
+    if (e.kind === "invalid" || e.kind === "not_found") throw new StoreActionError("rejected", `Samsung rejected the request: ${e.message}`);
+    throw new StoreActionError("unavailable", e.kind === "credentials" ? `Galaxy credentials problem: ${e.message}` : `Samsung could not be reached: ${e.message}`);
   }
   if (e instanceof AppleApiClientError) throw new StoreActionError("rejected", `The App Store rejected the request: ${e.message}${e.errorCode ? ` (${e.errorCode})` : ""}`);
   if (e instanceof RCError) throw new StoreActionError(e.status >= 500 ? "unavailable" : "rejected", e.message);
@@ -69,9 +79,24 @@ async function resyncGoogle(deps: Deps, app: AppRecord, token: string, opts: Par
   deps.kick?.();
 }
 
-/** Google Play: refund the latest order and revoke access now. */
+/** The Galaxy Store: one subscription action through Samsung, then the chain read back (a refund marks `refundOrderId`'s period). */
+async function galaxyAction(deps: Deps, sub: SubRow, action: "cancel" | "refund" | "revoke", refundOrderId: string | null) {
+  const app = await withStoreSecrets(deps, await appOf(deps, sub));
+  const { client } = galaxyClientFor(deps.stores, deps.fetch);
+  try { await client.subscriptionAction(app, sub.storeKey, action); } catch (e) { storeFailure(e, sub.store); }
+  const now = deps.now();
+  try {
+    await syncGalaxyPurchase({ db: deps.db, app, client, now }, sub.storeKey, refundOrderId ? { refundOrderId, refundAt: now } : {});
+  } catch (e) {
+    console.warn(`Reading ${sub.storeKey} back from Samsung after a store action failed: ${e instanceof Error ? e.message : e}`);
+  }
+  deps.kick?.();
+}
+
+/** Google Play: refund the latest order and revoke access now. The Galaxy Store: revoke (refund and end access). */
 export async function revokeSubscription(deps: Deps, sub: SubRow) {
-  if (sub.store !== "play_store") throw unsupported("Refunding and revoking a subscription", sub.store, "Google Play");
+  if (sub.store === "galaxy") return galaxyAction(deps, sub, "revoke", sub.storeTransactionId ?? null);
+  if (sub.store !== "play_store") throw unsupported("Refunding and revoking a subscription", sub.store, "Google Play and Galaxy Store");
   const app = await appOf(deps, sub);
   const { client } = googleClientFor(deps.stores, deps.fetch);
   try { await client.revokeSubscriptionV2(app, sub.storeKey); } catch (e) { storeFailure(e, sub.store); }
@@ -80,7 +105,8 @@ export async function revokeSubscription(deps: Deps, sub: SubRow) {
 
 /** Google Play: stop renewal; access continues to the end of the paid period. */
 export async function cancelSubscription(deps: Deps, sub: SubRow) {
-  if (sub.store !== "play_store") throw unsupported("Cancelling a subscription", sub.store, "Google Play");
+  if (sub.store === "galaxy") return galaxyAction(deps, sub, "cancel", null);
+  if (sub.store !== "play_store") throw unsupported("Cancelling a subscription", sub.store, "Google Play and Galaxy Store");
   const app = await appOf(deps, sub);
   const { client } = googleClientFor(deps.stores, deps.fetch);
   try { await client.cancelSubscriptionV2(app, sub.storeKey); } catch (e) { storeFailure(e, sub.store); }
@@ -144,7 +170,12 @@ export async function extendSubscription(deps: Deps, sub: SubRow, p: { extendByD
 /** Google Play: refund one order (a subscription period or a one-time purchase) and revoke what it granted. */
 export async function refundOrder(deps: Deps, target: { kind: "subscription"; row: SubRow; orderId: string } | { kind: "purchase"; row: NonSubRow }) {
   const row = target.row;
-  if (row.store !== "play_store") throw new StoreActionError("unsupported", `Refunding a transaction is not supported for ${storeName(row.store)} purchases. It works for Google Play purchases; App Store refunds go through Apple.`);
+  if (row.store === "galaxy" && target.kind === "subscription") {
+    // Samsung refunds the subscription's latest payment and cancels it; only that period can be refunded.
+    if (target.orderId !== (target.row.storeTransactionId ?? "")) throw new StoreActionError("rejected", "Samsung can only refund a subscription's latest payment.");
+    return galaxyAction(deps, target.row, "refund", target.orderId);
+  }
+  if (row.store !== "play_store") throw new StoreActionError("unsupported", `Refunding a transaction is not supported for ${storeName(row.store)} purchases. It works for Google Play and Galaxy Store subscriptions; App Store refunds go through Apple.`);
   const app = await appOf(deps, row);
   const { client } = googleClientFor(deps.stores, deps.fetch);
   const orderId = target.kind === "subscription" ? target.orderId : target.row.storeTransactionId;

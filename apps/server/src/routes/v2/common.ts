@@ -145,8 +145,8 @@ export function paginate<T>(c: Context, rows: T[], key: (r: T) => string, create
 export const ms = (d: Date | null | undefined) => (d ? d.getTime() : null);
 
 /** A MonetaryAmount in any currency: gross, the estimated store commission, no tax, proceeds. */
-export function monetaryFor(gross: number, currency: string, store: string) {
-  const comm = round2(gross * commission(store as Store));
+export function monetaryFor(gross: number, currency: string, store: string, rate?: number) {
+  const comm = round2(gross * (rate ?? commission(store as Store)));
   return { currency, gross: round2(gross), commission: comm, tax: 0, proceeds: round2(gross - comm) };
 }
 export const round2 = (n: number) => Math.round(n * 100) / 100;

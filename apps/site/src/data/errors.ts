@@ -951,9 +951,9 @@ export const ERRORS: ErrorPage[] = [
     backend: [
       { code: 7662, meaning: "Android mapping: the product IDs are malformed or the receipt is not supported. RevenueDot uses it for receipts from store types it does not support. iOS has no mapping for it and reports unknownBackendError." },
     ],
-    revenuedot: "RevenueDot answers HTTP 400 with code 7662 for receipts from app types it does not support yet (RevenueCat Billing, Paddle and Roku apps), and when an Android SDK asks for Amazon receipt details with a key that is not an Amazon app's. On Android that arrives as this error. Supported stores are the App Store, Mac App Store, Google Play, Amazon Appstore, Stripe and the Test Store. See [4xx or 5xx on a receipt](/docs/help/receipt-errors-4xx-vs-5xx).",
+    revenuedot: "RevenueDot answers HTTP 400 with code 7662 for receipts from app types it does not support yet (RevenueCat Billing apps), and when an Android SDK asks for Amazon receipt details with a key that is not an Amazon app's. On Android that arrives as this error. Supported stores are the App Store, Mac App Store, Google Play, Amazon Appstore, Samsung Galaxy Store, Roku, Stripe, Paddle and the Test Store. See [4xx or 5xx on a receipt](/docs/help/receipt-errors-4xx-vs-5xx).",
     faq: [
-      { q: "What does RevenueCat error 7662 mean on RevenueDot?", a: "RevenueDot answers 7662 when it does not support receipts for the app's store yet, for example a RevenueCat Billing, Paddle or Roku app. The Android SDK reports it as unsupportedError." },
+      { q: "What does RevenueCat error 7662 mean on RevenueDot?", a: "RevenueDot answers 7662 when it does not support receipts for the app's store yet, for example a RevenueCat Billing app. The Android SDK reports it as unsupportedError." },
       { q: "Why do I get unsupportedError in a SwiftUI preview?", a: "The SDK runs in UI preview mode there and refuses operations that need a real store. Run the app on a simulator or device to test the call." },
       hy("unsupportedError", "UNSUPPORTED_ERROR", "unsupportedError", 24),
     ],

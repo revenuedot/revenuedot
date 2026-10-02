@@ -1,3 +1,4 @@
+import { commissionModel } from "../commission.js";
 import { and, asc, eq, gt, inArray, lte, or, sql, type AnyColumn } from "drizzle-orm";
 import { commission, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
@@ -208,6 +209,7 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
   }
   for (const list of chains.values()) list.sort((a, b) => a.purchasedAt.getTime() - b.purchasedAt.getTime());
 
+  const cm = await commissionModel(db, projectId);
   const out: Row[] = rows.map((t) => {
     const i = info.get(t.customerId);
     const s = t.kind === "one_time" ? null : subFor(t);
@@ -217,7 +219,7 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
     const product = (t.appId ? productOf.get(`${t.appId}|${t.productIdentifier}`) : undefined) ?? productAny.get(t.productIdentifier);
     const chain = chains.get(chainKey(t)) ?? [t];
     const idx = Math.max(0, chain.findIndex((x) => x.id === t.id));
-    const comm = commission(t.store as Store);
+    const comm = cm.rate({ id: t.id, store: t.store, appId: t.appId, at: t.purchasedAt, kind: t.kind, isSandbox: t.isSandbox, country: t.countryCode, firstSeen: i?.c.firstSeen ?? null });
     const usd = t.revenueUsd;
     const grace = current && s?.gracePeriodExpiresDate && t.expiresAt && s.gracePeriodExpiresDate > t.expiresAt ? s.gracePeriodExpiresDate : null;
     const auto = t.kind !== "one_time" && (product ? product.type === "subscription" : !!t.expiresAt);

@@ -37,6 +37,7 @@ import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
 import { startCloud } from "./cloud-server.ts";
+import { store3Routes } from "./store3-routes.ts";
 import { connectPlatform, editorAsc, editorPlay, fakeStoreFetch, fakeStores, resetEditorStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
 import { FAKE_CONNECT_CLIENT_ID, FAKE_CONNECT_WHSEC, FAKE_PLATFORM_KEY, FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stripe.ts";
 import { signStripePayload } from "@revenuedot/server/stores/stripe/signature.js";
@@ -303,6 +304,8 @@ web.post("/__stripe/seed", async (c) => {
   for (const p of b.prices ?? []) webStripe.prices.set(String(p.id), { object: "price", active: true, livemode: false, billing_scheme: "per_unit", metadata: {}, ...p });
   return c.json({ ok: true });
 });
+// Paddle, Roku and Samsung for stores3.spec.ts: purchases in the fakes and their signed notifications (e2e/store3-routes.ts).
+store3Routes(web, () => `http://localhost:${PORT}`, now);
 // Account settings (account-settings.spec.ts): a link that ran out of time, as if 24 hours had passed for it alone.
 web.post("/__tokens/expire", async (c) => {
   const b = await c.req.json() as { email: string; kind: string };

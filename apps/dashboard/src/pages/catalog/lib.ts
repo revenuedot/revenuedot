@@ -5,7 +5,7 @@ import { api, ApiError, type List } from "../../lib/api";
 
 export interface App {
   object: "app"; id: string; name: string; type: string; created_at: number; project_id: string;
-  app_store?: { bundle_id: string }; mac_app_store?: { bundle_id: string }; play_store?: { package_name: string }; amazon?: { package_name: string };
+  app_store?: { bundle_id: string }; mac_app_store?: { bundle_id: string }; play_store?: { package_name: string }; amazon?: { package_name: string }; galaxy?: { package_name: string };
 }
 export interface Product {
   object: "product"; id: string; store_identifier: string; type: string; state: "active" | "inactive"; created_at: number; app_id: string;
@@ -172,9 +172,9 @@ const TYPE_LABEL: Record<string, string> = { subscription: "Subscription", consu
 export const typeLabel = (t: string) => TYPE_LABEL[t] ?? t;
 
 /** Two-letter store codes for the square store mark (brand logos are not ours to use). */
-export const STORE_CODE: Record<string, string> = { app_store: "AS", mac_app_store: "MA", play_store: "GP", amazon: "AZ", stripe: "ST", rc_billing: "WB", roku: "RK", paddle: "PD", test_store: "TS" };
+export const STORE_CODE: Record<string, string> = { app_store: "AS", mac_app_store: "MA", play_store: "GP", amazon: "AZ", stripe: "ST", rc_billing: "WB", roku: "RK", paddle: "PD", test_store: "TS", galaxy: "GX" };
 
-export const appIdentifier = (a: App) => a.app_store?.bundle_id ?? a.mac_app_store?.bundle_id ?? a.play_store?.package_name ?? a.amazon?.package_name ?? null;
+export const appIdentifier = (a: App) => a.app_store?.bundle_id ?? a.mac_app_store?.bundle_id ?? a.play_store?.package_name ?? a.amazon?.package_name ?? a.galaxy?.package_name ?? null;
 
 /** Placeholder and help for the store identifier field, per store. */
 export function storeIdHelp(type: string | undefined): { placeholder: string; hint: string } {
@@ -183,6 +183,9 @@ export function storeIdHelp(type: string | undefined): { placeholder: string; hi
     case "play_store": return { placeholder: "pro_monthly:monthly-base", hint: "Subscriptions: productId:basePlanId. One-time products: the SKU." };
     case "amazon": return { placeholder: "com.example.pro.monthly", hint: "The term SKU for subscriptions, the SKU for one-time products." };
     case "stripe": case "rc_billing": return { placeholder: "prod_1234", hint: "The Stripe product ID, starting with prod_." };
+    case "paddle": return { placeholder: "pri_01h…", hint: "The Paddle price ID, starting with pri_. Each price is its own product." };
+    case "roku": return { placeholder: "monthly_sub", hint: "The product code from the Roku developer dashboard." };
+    case "galaxy": return { placeholder: "premium_monthly", hint: "The item ID from Samsung Seller Portal." };
     case "test_store": return { placeholder: "pro_monthly", hint: "Any identifier. Test Store purchases need no store setup." };
     default: return { placeholder: "pro_monthly", hint: "The product identifier in the store." };
   }

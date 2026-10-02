@@ -9,6 +9,12 @@ import { AmazonApiError, sharedSecretOf } from "../stores/amazon/api.js";
 import { amazonClientFor } from "../stores/amazon/index.js";
 import { isTestKey, StripeApiError, stripeKeyOf } from "../stores/stripe/api.js";
 import { stripeClientFor } from "../stores/stripe/index.js";
+import { PaddleApiError, paddleEnvOf, paddleKeyOf } from "../stores/paddle/api.js";
+import { paddleClientFor } from "../stores/paddle/index.js";
+import { RokuApiError, rokuKeyOf } from "../stores/roku/api.js";
+import { rokuClientFor } from "../stores/roku/index.js";
+import { GalaxyApiError, hasServiceAccount as hasGalaxyAccount } from "../stores/galaxy/api.js";
+import { galaxyClientFor } from "../stores/galaxy/index.js";
 import type { AppRow, StoreAdapter } from "../stores/types.js";
 import { withStoreSecrets } from "./store-secrets.js";
 
@@ -23,7 +29,7 @@ export interface CredentialCheck { status: CheckStatus; message: string; extra: 
 
 type CheckDeps = Pick<Deps, "fetch" | "now" | "stores"> & Partial<Pick<Deps, "encryptionKey" | "signingKey" | "stripeConnect">>;
 
-const STORE_TYPES = ["app_store", "mac_app_store", "play_store", "amazon", "stripe"];
+const STORE_TYPES = ["app_store", "mac_app_store", "play_store", "amazon", "stripe", "paddle", "roku", "galaxy"];
 
 /** Asks Apple or Google whether the credentials work, with one harmless request. */
 export async function checkStoreCredentials(deps: CheckDeps, app: AppRow): Promise<CredentialCheck> {
@@ -132,7 +138,92 @@ export async function checkStoreCredentials(deps: CheckDeps, app: AppRow): Promi
       return out("unreachable", "Stripe could not be reached. Try again in a minute.", { mode });
     }
   }
+  if (app.type === "paddle") return checkPaddle(deps, app);
+  if (app.type === "roku") {
+    const key = rokuKeyOf(app);
+    if (!key) return out("invalid", "No Roku Pay API key yet. Copy it from the Roku developer dashboard → Roku Pay web services.");
+    const { client } = rokuClientFor(deps.stores, deps.fetch);
+    // A made-up transaction id: Roku answers UNAUTHORIZED for a wrong key, and "not found" when the key is right.
+    try {
+      await client.validateWith(key, "0000000000000000000000000000000a");
+      return out("valid", "Roku accepted the Roku Pay API key.");
+    } catch (e) {
+      if (e instanceof RokuApiError) {
+        if (e.kind === "invalid") return out("valid", "Roku accepted the Roku Pay API key.");
+        if (e.kind === "credentials") return out("invalid", "Roku rejected the API key (UNAUTHORIZED). Copy the key from the Roku developer dashboard → Roku Pay web services again.");
+      }
+      return out("unreachable", "Roku could not be reached. Try again in a minute.");
+    }
+  }
+  if (app.type === "galaxy") {
+    if (!app.bundleId) return out("invalid", "Add the package name first (for example com.example.app).");
+    if (!hasGalaxyAccount(app)) return out("invalid", "No service account yet. Create one in Seller Portal → Assistance → API Service with the Publishing & Item and GSS scopes, and save its id and private key.");
+    const { client } = galaxyClientFor(deps.stores, deps.fetch);
+    const id = String(app.credentials?.galaxy_service_account_id ?? "");
+    try {
+      await client.accessToken(app, true);
+      // A made-up purchase id: Samsung answers "not found" or "invalid" when the account may read this app's subscriptions.
+      await client.subscription(app, "revenuedot-credentials-check");
+      return out("valid", "Samsung accepted the service account and it can read this app's subscriptions.", { service_account_id: id });
+    } catch (e) {
+      if (e instanceof GalaxyApiError) {
+        if (e.kind === "invalid" || e.kind === "not_found") return out("valid", "Samsung accepted the service account and it can read this app's subscriptions.", { service_account_id: id });
+        if (e.kind === "credentials") {
+          return out("invalid", e.status === 403
+            ? `The service account works but may not read this app's purchases (${e.message}). Give it the GSS scope and access to ${app.bundleId} in Seller Portal.`
+            : `Samsung rejected the service account: ${e.message}`, { service_account_id: id });
+        }
+      }
+      if (e instanceof RCError && e.status < 500) return out("invalid", e.message);
+      return out("unreachable", "Samsung could not be reached. Try again in a minute.", { service_account_id: id });
+    }
+  }
   return out("invalid", `${app.type} apps have no store credentials to check.`);
+}
+
+/**
+ * Paddle: `GET /event-types` proves the key works (it needs no permission), then products and subscriptions prove read
+ * access. Paddle answers 403 for every authentication failure (`invalid_token`: wrong, revoked or other-environment key;
+ * `forbidden`: a permission is missing). A key from before 2025-05-06 carries no environment, so live and then sandbox are tried.
+ */
+async function checkPaddle(deps: CheckDeps, app: AppRow): Promise<CredentialCheck> {
+  const out = (status: CheckStatus, message: string, extra: Record<string, unknown> = {}) => ({ status, message, extra });
+  const key = paddleKeyOf(app);
+  if (!key) return out("invalid", "No Paddle API key yet. Create one in Paddle → Developer tools → Authentication.");
+  if (/^(live|test)_/.test(key)) return out("invalid", "This is a client-side token. Use a server-side API key (pdl_live_apikey_… or pdl_sdbx_apikey_…).");
+  const { client } = paddleClientFor(deps.stores, deps.fetch);
+  const legacy = !/^pdl_(live|sdbx)_/.test(key);
+  const envs: Array<"live" | "sandbox"> = legacy ? ["live", "sandbox"] : [paddleEnvOf(app)];
+  let lastErr: unknown = null;
+  for (const env of envs) {
+    const a = { ...app, credentials: { ...(app.credentials ?? {}), paddle_is_sandbox: env === "sandbox" } };
+    try {
+      await client.get(a, "/event-types");
+    } catch (e) {
+      lastErr = e;
+      if (e instanceof PaddleApiError && e.kind === "credentials" && e.code === "invalid_token") continue;
+      break;
+    }
+    try {
+      await client.get(a, "/products", { per_page: "1" });
+      await client.get(a, "/subscriptions", { per_page: "1" });
+      return out("valid", `Paddle accepted the ${env} key.`, { environment: env });
+    } catch (e) {
+      if (e instanceof PaddleApiError && e.kind === "credentials") {
+        if (e.code === "paddle_billing_not_enabled") return out("invalid", "Paddle Billing is not enabled on this Paddle account.", { environment: env });
+        return out("invalid", `The key works but cannot read everything RevenueDot needs. Give it read access to Subscriptions, Transactions, Adjustments, Customers, Products and Prices. Paddle said: ${e.message}`, { environment: env });
+      }
+      lastErr = e;
+      break;
+    }
+  }
+  if (lastErr instanceof PaddleApiError) {
+    if (lastErr.kind === "credentials") return out("invalid", legacy ? "Paddle rejected the key on both the live and the sandbox API." : `Paddle rejected the key (${lastErr.code ?? lastErr.status}). Check that it is a ${paddleEnvOf(app)} key and not revoked or expired.`);
+    if (lastErr.kind === "transient") return out("unreachable", "Paddle could not be reached. Try again in a minute.");
+    return out("invalid", `Paddle refused the check: ${lastErr.message}`);
+  }
+  if (lastErr instanceof RCError) return out("invalid", lastErr.message);
+  return out("unreachable", "Paddle could not be reached. Try again in a minute.");
 }
 
 /** Stores a check's outcome; "unreachable" says nothing about the credentials, so only the check time moves. */
@@ -150,8 +241,8 @@ export function credentialFailureOf(e: unknown): string | null {
   if (e instanceof RCError && e.code === Codes.INVALID_APPLE_SUBSCRIPTION_KEY) return e.message;
   if (e instanceof GoogleApiError && e.kind === "credentials") return e.message;
   if (e instanceof RCError && e.status === 503 && e.message.startsWith("Google Play credentials problem")) return e.message;
-  if (e instanceof RCError && /^(Amazon|Stripe) credentials problem/.test(e.message)) return e.message;
-  if ((e instanceof AmazonApiError || e instanceof StripeApiError) && e.kind === "credentials") return e.message;
+  if (e instanceof RCError && /^(Amazon|Stripe|Paddle|Roku|Galaxy) credentials problem/.test(e.message)) return e.message;
+  if ((e instanceof AmazonApiError || e instanceof StripeApiError || e instanceof PaddleApiError || e instanceof RokuApiError || e instanceof GalaxyApiError) && e.kind === "credentials") return e.message;
   return null;
 }
 
@@ -200,7 +291,8 @@ export async function recheckDueCredentials(deps: CheckDeps & { db: DB }, now: D
       await recordCredentialCheck(deps.db, row.id, { status: "invalid", message: e instanceof Error ? e.message : String(e) }, now);
       continue;
     }
-    const configured = app.type === "play_store" ? hasServiceAccount(app) : app.type === "amazon" ? !!sharedSecretOf(app) : app.type === "stripe" ? !!stripeKeyOf(app) : hasAppleKey(app.credentials ?? {});
+    const configured = app.type === "play_store" ? hasServiceAccount(app) : app.type === "amazon" ? !!sharedSecretOf(app) : app.type === "stripe" ? !!stripeKeyOf(app)
+      : app.type === "paddle" ? !!paddleKeyOf(app) : app.type === "roku" ? !!rokuKeyOf(app) : app.type === "galaxy" ? hasGalaxyAccount(app) : hasAppleKey(app.credentials ?? {});
     if (!configured) {
       // Nothing to check: no status, and try again in a day (the check time also keeps the query small).
       await deps.db.update(A).set({ credentialsStatus: null, credentialsError: null, credentialsCheckedAt: now }).where(eq(A.id, app.id));

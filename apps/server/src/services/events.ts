@@ -1,3 +1,4 @@
+import { commissionRateFor } from "./commission.js";
 import { and, eq, sql } from "drizzle-orm";
 import { OPT_IN_EVENT_TYPES, commission, rcDate, webhookStore, type DerivedEvent, type EventType, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
@@ -20,6 +21,7 @@ async function createdAtFor(db: DB, customerId: string, now: Date): Promise<Date
   const last = r?.last ? new Date(r.last) : null;
   return last && last.getTime() >= now.getTime() ? new Date(last.getTime() + 1) : now;
 }
+const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
 
 export interface EventSubject {
   store: Store;
@@ -94,7 +96,9 @@ export async function recordEvent(db: DB, opts: {
     const map = await entitlementMap(db, projectId);
     const productKey = subject.productPlanId ? `${subject.productId}:${subject.productPlanId}` : subject.productId;
     const entitlementIds = Object.entries(map).filter(([, p]) => p.includes(productKey) || p.includes(subject.productId)).map(([k]) => k);
-    const comm = commission(subject.store);
+    // The store's commission for this transaction: program dates, Google Play's yearly tier (services/commission.ts).
+    const oneTime = type === "NON_RENEWING_PURCHASE" || (subject.expiresAt === null && subject.periodType !== "prepaid");
+    const comm = round4(await commissionRateFor(db, projectId, { store: subject.store, appId, at: subject.purchasedAt, kind: oneTime ? "one_time" : "renewal", isSandbox: subject.isSandbox, country: subject.countryCode ?? null, firstSeen: customer.firstSeen }));
     const moves = REVENUE_EVENTS.has(type) || (type === "CANCELLATION" && derived.isRefund);
     const sign = derived.isRefund ? -1 : 1;
     const usd = subject.priceUsd !== undefined && subject.priceUsd !== null ? subject.priceUsd : subject.price?.currency === "USD" ? subject.price.amount : null;

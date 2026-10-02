@@ -82,6 +82,7 @@ flowchart LR
     GP["Google Play<br/>Real-time notifications"]
     AZ["Amazon Appstore<br/>Real-time Notifications"]
     ST["Stripe<br/>webhooks"]
+    MORE["Paddle · Roku · Galaxy Store<br/>signed notifications"]
   end
   Apps -- "RevenueCat or RevenueDot SDK<br/>(proxyURL)" --> API["RevenueDot API<br/>Hono · TypeScript"]
   Stores -- "server notifications" --> API
@@ -174,6 +175,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
 | **Amazon Appstore** | Receipts checked with Amazon's Receipt Verification Service, the SDK's Amazon receipt route, Real-time Notifications through Amazon SNS with signature checks, grace periods, tier changes, one-time refunds, Live App Testing and App Tester as sandbox | Tier 2 · built, tested against a mocked Amazon and a test SNS certificate; no real Amazon purchase yet. [Guide](https://revenuedot.app/docs/guides/amazon-appstore) |
 | **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
+| **Paddle, Roku, Galaxy Store** | **Paddle Billing:** an API key, `POST /v1/receipts` with `X-Platform: paddle` and a `sub_…` or `txn_…`, Apply in Paddle (the notification destination made through Paddle's API), Paddle-signed notifications, prices imported as products, trials, failed payments with a 30-day grace, cancellation, pause, plan changes, refunds and chargebacks. **Roku:** the Roku SDK's purchases validated with Roku Pay, Roku-signed push notifications (JWT) routed by channel, grace and on hold, upgrades and downgrades, refunds. **Samsung Galaxy Store:** the Android SDK's Galaxy module (`galx_` keys), receipts and subscriptions read with a Seller Portal service account, Samsung's server notifications (signature checked with the IAP key), plan changes, refunds and cancels through Samsung, items imported. Spec: `prd/stores-paddle-roku-galaxy/PRD.md` | Tier 3 · built · tested against copies of each store's API · browser-validated |
 | **Web billing** | Sell your app's subscriptions on the web through your own Stripe account, linked with **Connect with Stripe** (no keys to copy, no webhook to set up, no fee from RevenueDot) or a restricted key: the Web page's four-step checklist, web products created in Stripe, a hosted checkout, purchase links per offering, redemption links that unlock web purchases in the app (`redeemWebPurchase`, PURCHASE_REDEEMED), no-code web-to-app funnels with a builder, live preview, Build with AI and analytics, web discount codes as Stripe coupons, and your own domain ([guide](https://revenuedot.app/docs/guides/web-billing), [Connect with Stripe](https://revenuedot.app/docs/guides/stripe-connect)) | Tier 3 · built, tested against an in-memory Stripe and a fake Connect platform; no real Stripe account yet, and Connect waits for RevenueDot's platform account |
 | **Product import** | "Import products" lists what App Store Connect (subscription groups and in-app purchases), Google Play (each base plan as `subscription:base_plan`, one-time products) and your Stripe account (each active price) already have, marks what the catalog has, and creates the chosen products with their type, duration and name, optionally attached to entitlements. Amazon has no product API, so its products are added by SKU ([guide](https://revenuedot.app/docs/guides/import-products)) | Tier 1/2 · built, tested against fake store APIs; not yet run against a real store account |
 | **Store prices and product editor** | Products show each App Store and Google Play product's store price and period ("$9.99/month") and its review or base plan status ("Approved", "Active", "Draft"), read from App Store Connect and Google Play and refreshed daily; the product page lists the price in every territory. The **Product editor** (beta) downloads a CSV of the products you pick, checks your edited file line by line, shows every price change and new product, then commits them to App Store Connect (price points and price schedules) or Google Play (base plan prices) with each row's result, Retry and an audit entry per store write. **Create with AI** in the New product and New offering menus has RevenueDot AI draft the products or the offering, written only after you approve ([guide](https://revenuedot.app/docs/guides/product-editor)) | Tier 2 · built, tested against stateful App Store Connect and Play fakes; real Play prices read live; the real Play price write needs the "Manage store presence" permission, and App Store needs a team API key |
@@ -660,7 +662,24 @@ Yes. Scheduled data exports write CSV or Parquet files of transactions, customer
 
 <details><summary><b>Which stores are supported?</b></summary>
 
-App Store, Google Play, the Amazon Appstore, and Stripe subscriptions from your own Stripe account. Paddle and Roku come in Tier 3. Amazon and Stripe are tested against mocked store APIs; no real Amazon or Stripe purchase has run yet.
+App Store, Google Play, the Amazon Appstore, the Samsung Galaxy Store, Roku, and web purchases from your own Stripe or Paddle account. Amazon, Stripe, Paddle, Roku and the Galaxy Store are tested against copies of each store's API; no real purchase in those stores has run yet. Guides: [Paddle](https://revenuedot.app/docs/guides/paddle), [Roku](https://revenuedot.app/docs/guides/roku), [Galaxy Store](https://revenuedot.app/docs/guides/galaxy-store).
+</details>
+
+<details><summary><b>Can I track Paddle Billing subscriptions with a RevenueCat-compatible server?</b></summary>
+
+Yes. Create a Paddle app in RevenueDot with a Paddle API key, click Apply in Paddle so Paddle sends its notifications to RevenueDot, import your prices, and post each `sub_…` or `txn_…` from your backend to `POST /v1/receipts` with `X-Platform: paddle`. Products are Paddle price ids, as in [RevenueCat's Paddle integration](https://www.revenuecat.com/docs/web/integrations/paddle).
+
+![The Paddle API key on the app page, checked with Paddle](docs/assets/paddle-setup.png)
+</details>
+
+<details><summary><b>Does RevenueDot work with RevenueCat's Roku SDK?</b></summary>
+
+Yes. Set the [Roku SDK's](https://github.com/RevenueCat/purchases-roku) `proxyUrl` to your RevenueDot server and use a Roku app's `roku_` key. RevenueDot validates each transaction with Roku Pay's web services and accepts Roku's signed push notifications at one URL per developer account.
+</details>
+
+<details><summary><b>Does RevenueDot support the Samsung Galaxy Store?</b></summary>
+
+Yes. Build your Android app with the RevenueCat SDK's Galaxy module (`purchases-store-galaxy`, or `react-native-purchases-store-galaxy`) and a Galaxy app's `galx_` key. RevenueDot reads receipts and subscriptions from Samsung with a Seller Portal service account and applies Samsung's server notifications.
 </details>
 
 <details><summary><b>Can I use Amazon Appstore in-app purchases with a RevenueCat-compatible server?</b></summary>

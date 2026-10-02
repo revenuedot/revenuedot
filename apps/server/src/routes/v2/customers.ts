@@ -9,6 +9,7 @@ import { attributionShape } from "../../repo/attribution.js";
 import { revokeSubscriberTokens } from "../../services/auth.js";
 import { applyPurchases } from "../../services/purchases.js";
 import { subscriptionTransactions } from "../../services/subscription-transactions.js";
+import { commissionRateFor } from "../../services/commission.js";
 import { StoreActionError, cancelSubscription, extendSubscription, refundOrder, revokeSubscription } from "../../services/store-actions.js";
 import { V2Error, body, conflict, expands, listOf, monetaryFor, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { activeEntitlements, attributeItems, customerShape, loadCatalog, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
@@ -311,13 +312,14 @@ export function customerRoutes(r: V2Router, deps: Deps) {
     await act(() => refundOrder(deps, { kind: "subscription", row: s, orderId: txId }));
     const [after] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.id, s.id));
     const purchasedAt = t?.purchasedAt ?? s.purchaseDate;
+    const rate = await commissionRateFor(db, s.projectId, { store: s.store, appId: s.appId, at: purchasedAt, kind: "renewal", isSandbox: s.isSandbox, country: s.countryCode });
     const expires = t?.expiresAt ?? s.expiresDate;
     const local = t?.priceAmount ?? s.priceAmount;
     const currency = t?.priceCurrency ?? s.priceCurrency;
     return c.json({
       object: "subscription_transaction", id: txId, purchased_at: purchasedAt.getTime(), product_store_identifier: s.productIdentifier,
-      revenue_in_local_currency: local !== null && currency ? monetaryFor(local, currency, s.store) : null,
-      revenue_in_usd: monetaryFor(t?.revenueUsd ?? s.priceUsd ?? 0, "USD", s.store),
+      revenue_in_local_currency: local !== null && currency ? monetaryFor(local, currency, s.store, rate) : null,
+      revenue_in_usd: monetaryFor(t?.revenueUsd ?? s.priceUsd ?? 0, "USD", s.store, rate),
       expiration_date: expires ? expires.getTime() : null,
       effective_expiration_date: after?.refundedAt && txId === after.storeTransactionId ? after.refundedAt.getTime() : expires ? expires.getTime() : null,
     });

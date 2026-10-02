@@ -64,7 +64,7 @@ export async function resolveKey(db: DB, key: string, now: Date = new Date()): P
 
 const platformToType: Record<string, string[]> = {
   ios: ["app_store", "mac_app_store"], macos: ["mac_app_store", "app_store"], uikitformac: ["app_store"], watchos: ["app_store"], tvos: ["app_store"], visionos: ["app_store"],
-  android: ["play_store"], amazon: ["amazon"], stripe: ["stripe"], web: ["rc_billing", "stripe"], roku: ["roku"], paddle: ["paddle"],
+  android: ["play_store"], amazon: ["amazon"], stripe: ["stripe"], web: ["rc_billing", "stripe"], roku: ["roku"], paddle: ["paddle"], galaxy: ["galaxy"],
 };
 
 /** For secret keys: the project's app for the X-Platform header. */
