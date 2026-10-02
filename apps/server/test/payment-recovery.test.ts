@@ -269,11 +269,16 @@ describe("Stripe", () => {
     const get = await web!.raw(`/v1/recovery/u/${tok}`);
     expect(await get.text()).toContain("<form method=\"post\">");
     expect((await cases())[0].unsubscribed_at).toBeNull();
+    // Another open case for the same address (another subscription), due for its next email.
+    const [first] = await web!.h.db.select().from(schema.recoveryCases);
+    await web!.h.db.insert(schema.recoveryCases).values({ ...first!, id: "rc_same_address", storeKey: "sub_same_address", token: "tok_same_address_0123456789", centerToken: "center_same_address_0123456789", email: "Buyer@Example.com", nextStepAt: new Date(web!.h.now().getTime() + DAY), skipReason: null });
     const post = await web!.raw(`/v1/recovery/u/${tok}`, { method: "POST" });
     expect(await post.text()).toContain("buyer@example.com will get no more of these emails");
     const [sup] = await web!.h.db.select().from(schema.emailSuppressions).where(eq(schema.emailSuppressions.email, "buyer@example.com"));
     expect(sup).toBeTruthy();
     expect((await cases())[0]).toMatchObject({ skip_reason: "unsubscribed", next_message_at: null });
+    const [other] = await web!.h.db.select().from(schema.recoveryCases).where(eq(schema.recoveryCases.id, "rc_same_address"));
+    expect(other).toMatchObject({ skipReason: "unsubscribed", nextStepAt: null, unsubscribedAt: null });
     web!.h.setNow(new Date(web!.h.now().getTime() + 8 * DAY));
     expect(await run()).toMatchObject({ sent: 0 });
     expect(recoveryMails(web!.mail)).toHaveLength(1);
