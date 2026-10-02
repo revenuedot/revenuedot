@@ -11,7 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmt, type List } from "../../lib/api";
 import { Shell, useMe } from "../../components/Shell";
 import { Icon } from "../../components/icons";
-import { Check, DataTable, Dialog, EmptyState, Field, PageHead, Panel, Segmented, Switch, Tabs, Tag, useProjectId, useToast } from "../../components/ui";
+import { Check, DataTable, Dialog, EmptyState, Field, PageHead, Panel, Segmented, Switch, Tabs, Tag, useProjectId, useSandboxParam, useToast, KeyValue } from "../../components/ui";
 import { money, relative, storeLabel } from "../../lib/customers";
 import { errMsg, v2 } from "../catalog/lib";
 
@@ -33,13 +33,46 @@ const PERIODS = [{ value: "7", label: "7D" }, { value: "28", label: "28D" }, { v
 type Period = (typeof PERIODS)[number]["value"];
 type Filter = "open" | "recovered" | "lost" | "all";
 
-function statusTag(c: Case) {
+const unsubscribed = (c: Case) => !!c.unsubscribed_at || c.skip_reason === "unsubscribed";
+
+function caseTag(c: Case) {
   if (c.status === "recovered") return <Tag tone="up">{c.attributed ? "Recovered" : "Recovered on its own"}</Tag>;
   if (c.status === "lost") return <Tag tone="muted">{c.lost_reason === "refunded" ? "Refunded" : "Lost"}</Tag>;
-  if (c.unsubscribed_at || c.skip_reason === "unsubscribed") return <Tag tone="gold">Unsubscribed</Tag>;
   if (c.skip_reason === "no_email") return <Tag tone="gold">No email</Tag>;
   if (c.skip_reason === "issue_cleared") return <Tag tone="muted">Waiting for renewal</Tag>;
   return <Tag tone="down">Billing issue</Tag>;
+}
+
+/** The case's state, plus "Unsubscribed" whenever the customer used the unsubscribe link, open or closed. */
+function statusTag(c: Case) {
+  return <span className="hrow" style={{ gap: 6, flexWrap: "wrap" }}>{caseTag(c)}{unsubscribed(c) && <span title={c.unsubscribed_at ? `Unsubscribed ${fmt.dateTime(c.unsubscribed_at)}` : "Unsubscribed from recovery emails"}><Tag tone="gold">Unsubscribed</Tag></span>}</span>;
+}
+
+/** One case: what happened, when, and which emails went out. */
+function CaseDialog({ pid, c, onClose }: { pid: string; c: Case; onClose: () => void }) {
+  const at = (ms: number | null) => (ms ? fmt.dateTime(ms) : "—");
+  return (
+    <Dialog title="Recovery case" onClose={onClose} footer={<>
+      <Link className="btn btn-line" to={`/projects/${pid}/customers/${encodeURIComponent(c.app_user_id)}`}>Open customer</Link>
+      <button type="button" className="btn btn-dark" onClick={onClose}>Done</button>
+    </>}>
+      <div className="hrow" style={{ gap: 6, flexWrap: "wrap" }}>{statusTag(c)}{c.environment === "sandbox" && <Tag tone="info">Sandbox</Tag>}</div>
+      {unsubscribed(c) && <div className="banner" role="status"><span><b>Unsubscribed{c.unsubscribed_at ? ` ${fmt.dateTime(c.unsubscribed_at)}` : ""}.</b> {c.email ?? "This customer"} gets no more recovery emails.{c.status === "open" && " The store keeps retrying the payment."}</span></div>}
+      <KeyValue rows={[
+        ["Customer", <span key="c"><span className="mono">{c.app_user_id}</span>{c.email && <span className="subtle"> · {c.email}</span>}</span>],
+        ["Store and product", <span key="s">{storeLabel(c.store)} · <span className="mono">{c.product_id}</span></span>],
+        ["Payment failed", at(c.detected_at)],
+        ["Grace period ends", at(c.grace_period_expires_at)],
+        ["Emails sent", <span key="m" className="mono">{c.messages_sent}</span>],
+        ["Last email", at(c.last_message_at)],
+        ["Next email", c.status === "open" && !unsubscribed(c) ? at(c.next_message_at) : "—"],
+        ["Link clicked", at(c.clicked_at)],
+        ["Unsubscribed", c.unsubscribed_at ? at(c.unsubscribed_at) : unsubscribed(c) ? "Yes, from another case's email" : "—"],
+        [c.status === "open" ? "At risk" : "Recovered revenue", <span key="r" className="mono">{c.status === "open" ? money(c.at_risk_in_usd ?? 0) : c.status === "recovered" ? money(c.recovered_revenue_in_usd ?? 0) : "—"}</span>],
+        ["Closed", at(c.resolved_at)],
+      ]} />
+    </Dialog>
+  );
 }
 
 export function PaymentRecoveryPage() {
@@ -47,8 +80,9 @@ export function PaymentRecoveryPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const [period, setPeriod] = useState<Period>("28");
-  const [sandbox, setSandbox] = useState(false);
+  const [sandbox, setSandbox] = useSandboxParam();
   const [filter, setFilter] = useState<Filter>("open");
+  const [open, setOpen] = useState<Case | null>(null);
   const [editing, setEditing] = useState(false);
   const [running, setRunning] = useState(false);
   const env = sandbox ? "sandbox" : "production";
@@ -118,10 +152,10 @@ export function PaymentRecoveryPage() {
           {cases.isError ? <div className="pb"><div className="banner err" role="alert">Cases could not be loaded: {errMsg(cases.error)} <button type="button" className="linkish" onClick={() => cases.refetch()}>Try again</button></div></div>
             : cases.isLoading ? <div className="pb" aria-busy="true"><span className="sk line" /></div>
             : (
-              <DataTable rowKey={(c) => c.id} rows={cases.data ?? []} empty={
+              <DataTable rowKey={(c) => c.id} rows={cases.data ?? []} onRowClick={setOpen} empty={
                 <div className="pb"><EmptyState title={filter === "open" ? "No failed payments right now" : "Nothing here yet"} text={filter === "open" ? `When a ${sandbox ? "sandbox " : ""}renewal fails on any store, the subscriber shows up here with the emails they got.` : "Cases move here when a subscriber's payment goes through or the recovery window ends."} /></div>
               } columns={[
-                { key: "c", header: "Customer", render: (c) => <span><Link className="mono" style={{ fontSize: 12 }} to={`/projects/${pid}/customers/${encodeURIComponent(c.app_user_id)}`}>{c.app_user_id}</Link><span className="cellsub">{c.email ?? "No email yet"}</span></span> },
+                { key: "c", header: "Customer", render: (c) => <span><Link className="mono" style={{ fontSize: 12 }} to={`/projects/${pid}/customers/${encodeURIComponent(c.app_user_id)}`} onClick={(e) => e.stopPropagation()}>{c.app_user_id}</Link><span className="cellsub">{c.email ?? "No email yet"}</span></span> },
                 { key: "s", header: "Store", render: (c) => <span><span>{storeLabel(c.store)}</span><span className="cellsub mono">{c.product_id}</span></span> },
                 { key: "d", header: "Since", render: (c) => <span title={fmt.dateTime(c.detected_at)}>{relative(c.detected_at)}{c.grace_period_expires_at && <span className="cellsub">Grace ends {fmt.date(c.grace_period_expires_at)}</span>}</span> },
                 { key: "m", header: "Emails", align: "right", render: (c) => <span className="mono">{c.messages_sent}{c.clicked_at ? <span className="cellsub">clicked</span> : c.next_message_at && c.status === "open" ? <span className="cellsub" title={fmt.dateTime(c.next_message_at)}>next {fmt.date(c.next_message_at)}</span> : null}</span> },
@@ -130,6 +164,7 @@ export function PaymentRecoveryPage() {
               ]} />
             )}
         </Panel>
+        {open && <CaseDialog pid={pid} c={open} onClose={() => setOpen(null)} />}
 
         <Panel title="How money is counted">
           <ul className="pr-how">

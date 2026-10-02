@@ -45,12 +45,12 @@ export function AuditLogs({ pid }: { pid: string }) {
       ) : (
         <DataTable rowKey={(r) => r.id} rows={rows} columns={[
           { key: "when", header: "When", render: (r) => <span title={fmt.dateTime(r.occurred_at)}>{fmt.dateTime(r.occurred_at)}</span> },
-          { key: "what", header: "What", render: (r) => label(r.action_type) },
-          { key: "target", header: "Target", render: (r) => <><span className="subtle">{r.target_type.replace(/_/g, " ")} </span><code>{r.target_identifier}</code></> },
-          { key: "who", header: "Who", render: (r) => r.actor_type === "assistant"
+          { key: "what", header: "What", className: "w2", render: (r) => label(r.action_type) },
+          { key: "target", header: "Target", className: "w2", render: (r) => <><code>{r.target_identifier}</code><span className="cellsub">{r.target_type.replace(/_/g, " ")}</span></> },
+          { key: "who", header: "Who", className: "w2", render: (r) => r.actor_type === "assistant"
             // RevenueDot AI acting after the person approved the change in the chat.
-            ? <><Tag tone="gold">RevenueDot AI</Tag> <span className="subtle">on behalf of</span> <code>{String(r.additional_data.actor_display ?? "").replace(/^assistant on behalf of /, "") || r.actor_identifier}</code></>
-            : <><Tag tone={r.actor_type === "oauth_client" ? "gold" : "muted"}>{ACTOR[r.actor_type] ?? r.actor_type}</Tag> {r.actor_type === "user" && emailOf(r.actor_identifier) ? <span title={r.actor_identifier}>{emailOf(r.actor_identifier)}</span> : <code>{r.actor_identifier}</code>}</> },
+            ? <><Tag tone="gold">RevenueDot AI</Tag><span className="cellsub">on behalf of <code>{String(r.additional_data.actor_display ?? "").replace(/^assistant on behalf of /, "") || r.actor_identifier}</code></span></>
+            : <><Tag tone={r.actor_type === "oauth_client" ? "gold" : "muted"}>{ACTOR[r.actor_type] ?? r.actor_type}</Tag><span className="cellsub">{r.actor_type === "user" && emailOf(r.actor_identifier) ? <span title={r.actor_identifier}>{emailOf(r.actor_identifier)}</span> : <code>{r.actor_identifier}</code>}</span></> },
         ]} />
       )}
       {q.hasNextPage && <button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</button>}

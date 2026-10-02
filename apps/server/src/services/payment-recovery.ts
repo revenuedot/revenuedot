@@ -361,6 +361,12 @@ export async function unsubscribeCase(db: DB, c: CaseRow, now: Date) {
   const email = c.email?.toLowerCase();
   if (email) await db.insert(schema.emailSuppressions).values({ projectId: c.projectId, email, createdAt: now }).onConflictDoNothing();
   await db.update(schema.recoveryCases).set({ unsubscribedAt: c.unsubscribedAt ?? now, nextStepAt: null, skipReason: "unsubscribed", updatedAt: now }).where(eq(schema.recoveryCases.id, c.id));
+  // The address is suppressed for the whole project, so every other open case of it stops now too: each shows
+  // Unsubscribed with no next email, instead of waiting for its next step to find out.
+  if (email) {
+    await db.update(schema.recoveryCases).set({ nextStepAt: null, skipReason: "unsubscribed", updatedAt: now })
+      .where(and(eq(schema.recoveryCases.projectId, c.projectId), eq(schema.recoveryCases.status, "open"), sql`lower(${schema.recoveryCases.email}) = ${email}`));
+  }
 }
 
 /** The management URL for customer info while a customer has an open case (the SDKs' Customer Center opens it). */

@@ -186,6 +186,8 @@ describe("Overview insights and Refresh", () => {
     await expect(client.request("GET", `${P}/apps`)).resolves.toBeTruthy();
     await expect(client.request("POST", `${P}/products`, { body: { store_identifier: "x", type: "subscription" } })).rejects.toThrow(RevenueDotApiError);
     await expect(client.request("POST", `${P}/products`, { body: { store_identifier: "x", type: "subscription" } })).rejects.toThrow(/only read/);
+    // Outside a project too (creating a project): the client stays in the project, and the API refuses the write.
+    await expect(client.request("POST", "/v2/projects", { body: { name: "Not by insights" } })).rejects.toThrow(/can only/);
   });
 });
 

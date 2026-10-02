@@ -84,7 +84,12 @@ export interface ProjectSettings {
 
 export interface Collaborator { object: "collaborator"; id: string; name: string | null; email: string; role: string; accepted_at: number | null; has_mfa: boolean }
 
-export interface Product { object: "product"; id: string; store_identifier: string; type: string; display_name: string | null; app_id: string }
+export interface Product {
+  object: "product"; id: string; store_identifier: string; type: string; display_name: string | null; app_id: string;
+  subscription?: { duration: string | null };
+  /** The Test Store price (expand=items.indicative_price); null when there is none. */
+  indicative_price?: { amount_micros: number; currency: string } | null;
+}
 
 export const STORES: Record<string, { label: string; icon: string; idLabel?: string; idField?: "bundle_id" | "package_name"; notif?: "apple" | "google" | "amazon" | "stripe" }> = {
   app_store: { label: "App Store", icon: "apple", idLabel: "Bundle ID", idField: "bundle_id", notif: "apple" },
@@ -128,7 +133,7 @@ export async function withStates(pid: string, hooks: Webhook[]): Promise<Webhook
 }
 export const useWebhooks = (pid: string) => useQuery({ queryKey: ["webhooks", pid], queryFn: async () => withStates(pid, await all<Webhook>(`${base(pid)}/integrations/webhooks`)), enabled: !!pid });
 export const useProducts = (pid: string, appId?: string) => useQuery({
-  queryKey: ["products", pid, appId ?? "all"], queryFn: () => all<Product>(`${base(pid)}/products${appId ? `?app_id=${encodeURIComponent(appId)}` : ""}`), enabled: !!pid,
+  queryKey: ["products", pid, appId ?? "all"], queryFn: () => all<Product>(`${base(pid)}/products?expand=items.indicative_price${appId ? `&app_id=${encodeURIComponent(appId)}` : ""}`), enabled: !!pid,
 });
 
 /** The server this dashboard talks to: what the SDK's proxy URL and the stores' notification URLs point at. */

@@ -64,7 +64,8 @@ export async function overviewValues(db: DB, projectId: string, now: Date, envir
   };
 }
 
-const METRICS: { id: keyof OverviewValues; name: string; description: string; unit: string; period: "P0D" | "P28D" }[] = [
+/** The six Overview cards, in RevenueCat's order (also summed across projects by account-overview.ts). */
+export const METRICS: { id: keyof OverviewValues; name: string; description: string; unit: string; period: "P0D" | "P28D" }[] = [
   { id: "active_trials", name: "Active Trials", description: "In total", unit: "#", period: "P0D" },
   { id: "active_subscriptions", name: "Active Subscriptions", description: "In total", unit: "#", period: "P0D" },
   { id: "mrr", name: "MRR", description: "Monthly Recurring Revenue", unit: "$", period: "P28D" },

@@ -71,6 +71,10 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
   await ok("POST", "/auth/signup", { email: `web-${stamp}@revenuedot.test`, password: `e2e-${stamp}-pw`, name: "Web e2e", project_name: "Scanner" });
   const pid: string = (await ok("GET", "/auth/me")).projects[0].id;
   const P = `/v2/projects/${pid}`;
+  // The project's web address comes from its name, "scanner", unless an earlier spec's "Scanner" project took it first
+  // (the e2e account's project gets one when layout.spec opens its Web page): then "scanner-<random>". Read it once.
+  const slug: string = (await ok("GET", `${P}/web_domain`)).slug;
+  expect(slug).toMatch(/^scanner(-[a-z0-9]+)?$/);
   const ent = await ok("POST", `${P}/entitlements`, { lookup_key: "pro", display_name: "Pro access" });
   // The iOS app that redeems the web purchase (apps are another area; made through the API).
   const ios = await ok("POST", `${P}/apps`, { name: "Scanner iOS", type: "app_store", app_store: { bundle_id: "com.example.scanner" } });
@@ -168,7 +172,7 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     for (const k of ["stripe", "config", "products", "offering"]) await expect(page.locator(`[data-step="${k}"]`)).toHaveClass(/done/);
     await expect(page.getByLabel("4 of 4 steps done")).toBeVisible();
     await expect(page.getByText("You can sell on the web.")).toBeVisible();
-    await expect(page.locator(".wb-base code")).toContainText(`${WEB}/pay/scanner`);
+    await expect(page.locator(".wb-base code")).toContainText(`${WEB}/pay/${slug}`);
     await shot("web", { full: false });
   });
 
@@ -216,10 +220,10 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     const row = page.getByRole("table", { name: "Purchase links" }).locator("tbody tr");
     await expect(row).toContainText("Spring sale");
     await expect(row).toContainText("Go Pro on the web");
-    await expect(row).toContainText(`${WEB}/pay/scanner/spring-sale`);
+    await expect(row).toContainText(`${WEB}/pay/${slug}/spring-sale`);
     await expect(row.locator(".tag")).toHaveText(/active/i);
     link = (await ok("GET", `${P}/purchase_links`)).items[0];
-    expect(link.url).toBe(`${WEB}/pay/scanner/spring-sale`);
+    expect(link.url).toBe(`${WEB}/pay/${slug}/spring-sale`);
     await row.getByRole("button", { name: "Copy Spring sale link" }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link.url);
     await row.getByRole("button", { name: "Actions for Spring sale" }).click();
@@ -250,7 +254,7 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     await expect(page.locator("[data-amount]")).toHaveText("9.99 USD");
     await page.getByLabel("Email").fill(`buyer-${stamp}@example.com`);
     await page.getByRole("button", { name: "Pay" }).click();
-    await page.waitForURL(/\/pay\/scanner\/spring-sale\/success\?/);
+    await page.waitForURL(new RegExp(`/pay/${slug}/spring-sale/success\\?`));
     await expect(page.getByRole("heading", { name: "Thank you for your purchase" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", /\/pay\/r\/rdrt_/);
     await expect(page.getByRole("link", { name: "App Store" })).toHaveAttribute("href", "https://apps.apple.com/app/id123");
@@ -332,7 +336,7 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     await toast("Published. The public page shows this version now.");
     await expect(page.locator(".pe-meta .tag").first()).toHaveText(/published/i);
     funnel = await ok("GET", `${P}/funnels/${funnelId}`);
-    expect(funnel).toMatchObject({ status: "published", url: `${WEB}/pay/scanner/onboarding-funnel`, problems: [] });
+    expect(funnel).toMatchObject({ status: "published", url: `${WEB}/pay/${slug}/onboarding-funnel`, problems: [] });
     expect(funnel.draft.steps.map((s: any) => s.id)).toEqual(["goal", "question", "plan", "email", "paywall", "success"]);
     expect(funnel.draft.steps[4].offering).toBe("web");
   });
@@ -354,7 +358,7 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
     await page.waitForURL(/\/__stripe\/checkout\/cs_/);
     await expect(page.getByLabel("Email")).toHaveValue(`funnel-${stamp}@example.com`);
     await page.getByRole("button", { name: "Pay" }).click();
-    await page.waitForURL(/\/pay\/scanner\/onboarding-funnel\/success\?/);
+    await page.waitForURL(new RegExp(`/pay/${slug}/onboarding-funnel/success\\?`));
     await expect(page.getByRole("heading", { name: "You are in" })).toBeVisible();
     await expect(page.locator(".link")).toContainText("/pay/r/rdrt_");
     await shot("funnel-success", { wide: true });
@@ -413,8 +417,8 @@ test("web billing: Stripe, web config, products, purchase link, discount code, r
   await test.step("Project settings → Domains: the project address, a custom domain, its DNS records and verification", async () => {
     await page.goto(`${WEB}/projects/${pid}/settings/domains`);
     await expect(page.getByRole("tab", { name: "Domains" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByLabel("Project address")).toHaveValue("scanner");
-    await expect(page.getByRole("region", { name: "RevenueDot domain" }).locator(".copyfield code")).toHaveText(`${WEB}/pay/scanner`);
+    await expect(page.getByLabel("Project address")).toHaveValue(slug);
+    await expect(page.getByRole("region", { name: "RevenueDot domain" }).locator(".copyfield code")).toHaveText(`${WEB}/pay/${slug}`);
     const domain = `pay-${stamp}.scanner-e2e.test`;
     await page.getByLabel("Domain", { exact: true }).fill(domain);
     await page.getByRole("button", { name: "Save domain" }).click();

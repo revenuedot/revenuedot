@@ -87,9 +87,12 @@ test("targeting: audience, rule with placement, SDK view; experiment start, resu
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
   for (let i = 0; i < 12; i++) await sdk(`exp_${stamp}_${i}`);
   await page.getByLabel("Environment").selectOption("sandbox");
+  // The choice is kept in the URL (?environment=sandbox), so a reload stays on sandbox results.
+  await expect(page).toHaveURL(/\?environment=sandbox$/);
   await page.reload();
+  await expect(page.getByLabel("Environment")).toHaveValue("sandbox");
   await expect(page.getByRole("cell", { name: /Control/ })).toBeVisible();
-  const res = await json(req, "GET", `${P}/experiments/${page.url().split("/").pop()}/results`);
+  const res = await json(req, "GET", `${P}/experiments/${new URL(page.url()).pathname.split("/").pop()}/results`);
   expect(res.variants.items.reduce((s: number, x: any) => s + x.customers, 0)).toBe(12);
   await expect(page.getByText("Too early to call")).toBeVisible();
   await page.getByRole("button", { name: "Stop" }).click();

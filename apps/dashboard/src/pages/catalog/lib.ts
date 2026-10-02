@@ -43,10 +43,13 @@ export const useProducts = (pid: string) => useQuery({ queryKey: [...catalogKey(
 export const useEntitlements = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "entitlements"], queryFn: () => listAll<Entitlement>(`${v2(pid)}/entitlements?expand=items.product`), enabled: !!pid });
 export const useOfferings = (pid: string) => useQuery({ queryKey: [...catalogKey(pid), "offerings"], queryFn: () => listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`), enabled: !!pid });
 
-/** Every catalog mutation refreshes the whole catalog: products, entitlements and offerings reference each other. */
+/**
+ * Every catalog mutation refreshes the whole catalog (products, entitlements and offerings reference each other) and the
+ * product lists the app and customer pages keep under ["products", pid, …], so a changed Test Store price shows there too.
+ */
 export function useRefreshCatalog(pid: string) {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: catalogKey(pid) });
+  return () => Promise.all([qc.invalidateQueries({ queryKey: catalogKey(pid) }), qc.invalidateQueries({ queryKey: ["products", pid] })]);
 }
 
 /** RevenueCat's reserved package identifiers, in the order its New Offering form lists them. The SDK maps each to a package type. */
@@ -96,11 +99,47 @@ export function priceLabel(p: { amount_micros: number; currency: string } | null
   const amount = p.amount_micros / 1_000_000;
   try { return amount.toLocaleString("en-US", { style: "currency", currency: p.currency }); } catch { return `${p.currency} ${amount}`; }
 }
-/** "2.99" -> 2990000 micros; null for an empty field, NaN for anything that is not a non-negative amount. */
+/**
+ * "2.99" -> 2990000 micros; null for an empty field, NaN for anything that is not a non-negative amount. A comma with one
+ * or two digits after it ("4,99", what an iPhone's decimal keypad types in a comma-decimal region) is a decimal comma;
+ * "1,000" stays ambiguous and is refused.
+ */
 export function parseMicros(amount: string): number | null {
-  const t = amount.trim();
+  const t = amount.trim().replace(/^(\d+),(\d{1,2})$/, "$1.$2");
   if (!t) return null;
   return /^\d+(\.\d{1,6})?$/.test(t) ? Math.round(Number(t) * 1_000_000) : NaN;
+}
+
+/** Currencies offered first in the Test Store price field; any ISO 4217 code is accepted. */
+export const COMMON_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "BRL", "MXN", "KRW", "SEK", "NOK", "DKK", "PLN", "TRY", "SGD", "HKD", "NZD"];
+
+/** ISO 4217 codes the browser knows (null where it cannot list them); the server has the final say. */
+const KNOWN_CURRENCIES = (() => {
+  try { return new Set((Intl as unknown as { supportedValuesOf(k: string): string[] }).supportedValuesOf("currency")); } catch { return null; }
+})();
+/** Decimals a currency uses (2 for USD, 0 for JPY, 3 for KWD). */
+function minorUnits(code: string): number {
+  try { return new Intl.NumberFormat("en-US", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits ?? 2; } catch { return 2; }
+}
+
+/**
+ * The `test_store_price` body field from the form's amount and currency, or an error message and the input it is about.
+ * A required price (new Test Store products, like RevenueCat's form) must be above zero; an optional one may be left
+ * empty for no price. Amounts up to the server's limit (1,000,000,000 units, for IDR and VND prices) and with no more
+ * decimals than the currency has.
+ */
+export function testStorePrice(amount: string, currency: string, required = false): { value: { amount_micros: number; currency: string } | null } | { error: string; field: "amount" | "currency" } {
+  const micros = parseMicros(amount);
+  if (micros === null) return required ? { error: "Enter the price, such as 9.99. Test purchases record it as revenue.", field: "amount" } : { value: null };
+  if (Number.isNaN(micros)) return { error: /^\s*-/.test(amount) ? "A price cannot be negative." : "Enter an amount such as 9.99, with a dot for decimals.", field: "amount" };
+  if (required && micros === 0) return { error: "Enter a price above 0, such as 9.99.", field: "amount" };
+  if (micros > 1e15) return { error: "Enter an amount of 1,000,000,000 or less.", field: "amount" };
+  const code = currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) return { error: "Enter a three-letter currency code such as USD or EUR.", field: "currency" };
+  if (KNOWN_CURRENCIES && !KNOWN_CURRENCIES.has(code)) return { error: `${code} is not a currency code. Use an ISO 4217 code such as USD or EUR.`, field: "currency" };
+  const d = minorUnits(code);
+  if (micros % 10 ** (6 - Math.min(d, 6))) return { error: d ? `Use at most ${d} decimals for ${code}.` : `${code} has no decimals. Enter a whole amount.`, field: "amount" };
+  return { value: { amount_micros: micros, currency: code } };
 }
 
 export const PRODUCT_TYPES: { value: string; label: string; help: string }[] = [

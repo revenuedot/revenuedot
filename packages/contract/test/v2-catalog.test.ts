@@ -180,6 +180,11 @@ describe("Test Store prices", () => {
     expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: "p1" }, { json: { test_store_price: { amount_micros: 1, currency: "USD" } } })).body.param).toBe("test_store_price");
     expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { json: { test_store_price: { amount_micros: 1.5, currency: "USD" } } })).status).toBe(400);
     expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { json: { test_store_price: { amount_micros: 100, currency: "dollars" } } })).status).toBe(400);
+    // A well-formed code that no exchange rate knows would record $0 of revenue for every test purchase: refused.
+    const xyz = await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { json: { test_store_price: { amount_micros: 100, currency: "XYZ" } } });
+    expect(xyz.status).toBe(400);
+    expect(xyz.body).toMatchObject({ param: "test_store_price.currency", message: expect.stringContaining("convert to USD") });
+    expect((await call("POST", `${PRODUCTS}/{product_id}`, { product_id: id }, { json: { test_store_price: { amount_micros: 1_199_000_000_000, currency: "idr" } } })).status).toBe(200);
   });
 });
 

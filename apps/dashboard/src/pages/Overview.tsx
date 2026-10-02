@@ -4,7 +4,8 @@
  * extensions /metrics/history, /transactions and /setup_health.
  *
  * GAPS versus RevenueCat's Overview (company/docs/research/contact-sheets/revenuecat/frames/01-overview.jpg):
- * - Project filter chips ("All projects" plus one chip per project): later tier; the project switcher sits in the sidebar.
+ * - "All projects" sums the six cards and lists transactions across every project you can read (GET /v2/overview, a
+ *   RevenueDot extension); charts, setup health and the checklist stay per project, so they are hidden there.
  * - Info tooltips that define each card: the definitions are in the card's title attribute instead.
  * - Only the card's label links to its chart; RevenueCat opens the chart from anywhere on the card.
  * - Active customers has no sparkline: only each customer's latest visit is stored, so there is no daily history.
@@ -15,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AskBar, FirstSaleCard, GrowthInsights } from "./ai/OverviewBits";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Shell } from "../components/Shell";
+import { Shell, useMe } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { Dialog, Field, Segmented, Sparkline, Switch, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
@@ -79,27 +80,41 @@ function Delta({ value, previous, stock, words, isMoney }: { value: number; prev
   return <span className={`d ${pct > 0 ? "up" : pct < 0 ? "down" : ""}`} title={stock ? `${prev} ${words} ago` : `${prev} in the ${words} before`}>{s}</span>;
 }
 
-function MetricGrid({ pid, env, period }: { pid: string; env: string; period: (typeof PERIODS)[number] }) {
-  const overview = useQuery({ queryKey: ["overview", pid, env], queryFn: () => api<{ metrics: OverviewMetric[] }>(`/v2/projects/${pid}/metrics/overview?environment=${env}`), refetchInterval: 60_000 });
+/** GET /v2/overview: the six cards summed over the user's projects (All projects). */
+interface AccountOverview {
+  projects: { id: string; name: string; included: boolean; reason?: string }[];
+  metrics: (OverviewMetric & { history: Omit<History, "id"> })[];
+}
+const useAccountOverview = (env: string, days: number, enabled: boolean) => useQuery({
+  queryKey: ["overview-all", env, days], enabled, refetchInterval: 60_000,
+  queryFn: () => api<AccountOverview>(`/v2/overview?environment=${env}&days=${days}`),
+});
+
+function MetricGrid({ pid, env, period, all }: { pid: string; env: string; period: (typeof PERIODS)[number]; all?: boolean }) {
+  const overview = useQuery({ queryKey: ["overview", pid, env], enabled: !all, queryFn: () => api<{ metrics: OverviewMetric[] }>(`/v2/projects/${pid}/metrics/overview?environment=${env}`), refetchInterval: 60_000 });
   const hist = useQueries({
     queries: CARDS.map((c) => ({
-      queryKey: ["history", pid, env, c.id, period.days],
+      queryKey: ["history", pid, env, c.id, period.days], enabled: !all,
       queryFn: () => api<History>(`/v2/projects/${pid}/metrics/history?metric=${c.id}&days=${period.days}&environment=${env}`),
       refetchInterval: 60_000,
     })),
   });
-  if (overview.isError) return <ErrorBanner error={overview.error} retry={() => overview.refetch()} what="the metrics" />;
+  const account = useAccountOverview(env, period.days, !!all);
+  const failed = all ? account : overview;
+  if (failed.isError) return <ErrorBanner error={failed.error} retry={() => failed.refetch()} what="the metrics" />;
   return (
-    <section className="grid" aria-label="Key metrics" aria-busy={overview.isLoading}>
+    <section className="grid" aria-label="Key metrics" aria-busy={all ? account.isLoading : overview.isLoading} data-scope={all ? "all" : "project"}>
       {CARDS.map((c, i) => {
-        const h = hist[i]!.data;
-        const base = overview.data?.metrics.find((m) => m.id === c.id)?.value;
+        const m = all ? account.data?.metrics.find((x) => x.id === c.id) : undefined;
+        const h = all ? (m ? { id: c.id, ...m.history } : undefined) : hist[i]!.data;
+        const base = all ? m?.value : overview.data?.metrics.find((x) => x.id === c.id)?.value;
         // Card values follow RevenueCat's definitions; the period changes the window of the flow metrics.
         const value = c.stock || period.days === 28 ? base : h?.value;
         const context = c.id === "mrr" ? "monthly recurring revenue" : c.stock ? "in total" : `last ${period.words}`;
         return (
           <article className="m" key={c.id} title={c.define} data-metric={c.id}>
-            <div className="lab"><Link to={`/projects/${pid}/charts/${CHART_OF[c.id]}`} className="ul" title={`Open the ${c.label} chart`}>{c.label}</Link><Icon name={c.icon} /></div>
+            {/* Charts belong to one project, so the label links only in a project's Overview. */}
+            <div className="lab">{all ? <span>{c.label}</span> : <Link to={`/projects/${pid}/charts/${CHART_OF[c.id]}${env === "sandbox" ? "?env=sandbox" : ""}`} className="ul" title={`Open the ${c.label} chart`}>{c.label}</Link>}<Icon name={c.icon} /></div>
             {value === undefined ? <span className="sk num" /> : <div className="v"><MetricValue value={value} isMoney={c.money} /></div>}
             <div className="meta">
               {value !== undefined && h && <Delta value={value} previous={h.previous_value} stock={c.stock} words={period.words} isMoney={c.money} />}
@@ -124,11 +139,17 @@ function ErrorBanner({ error, retry, what }: { error: unknown; retry: () => void
   );
 }
 
-function RecentTransactions({ pid, env, products, entitlements }: { pid: string; env: string; products: Product[]; entitlements: Entitlement[] }) {
-  const tx = useQuery({ queryKey: ["tx", pid, env], queryFn: () => api<List<Transaction>>(`/v2/projects/${pid}/transactions?limit=8&environment=${env}`), refetchInterval: 30_000 });
+function RecentTransactions({ pid, env, products, entitlements, projects }: { pid: string; env: string; products: Product[]; entitlements: Entitlement[]; projects?: Map<string, string> }) {
+  const all = !!projects;
+  const tx = useQuery({
+    queryKey: all ? ["tx-all", env] : ["tx", pid, env], refetchInterval: 30_000,
+    queryFn: () => api<List<Transaction> & { projects?: AccountOverview["projects"] }>(all ? `/v2/overview/transactions?limit=8&environment=${env}` : `/v2/projects/${pid}/transactions?limit=8&environment=${env}`),
+  });
+  // All projects: the transactions have their own access check (purchases), so they can leave out other projects than the cards.
+  const leftOut = (tx.data?.projects ?? []).filter((x) => !x.included);
   const [more, setMore] = useState<Transaction[]>([]);
   const [next, setNext] = useState<string | null>(null);
-  useEffect(() => { setMore([]); setNext(null); }, [pid, env]);
+  useEffect(() => { setMore([]); setNext(null); }, [pid, env, all]);
   const name = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of products) { m.set(`${p.app_id}:${p.store_identifier}`, p.display_name ?? p.store_identifier); if (!m.has(p.store_identifier)) m.set(p.store_identifier, p.display_name ?? p.store_identifier); }
@@ -143,24 +164,27 @@ function RecentTransactions({ pid, env, products, entitlements }: { pid: string;
   };
   return (
     <section className="panel" aria-label="Recent transactions">
-      <div className="ph"><b>Recent transactions</b>{env === "sandbox" && <Tag tone="info">Sandbox</Tag>}</div>
+      <div className="ph"><span className="hrow"><b>Recent transactions</b>{all && <span className="subtle" style={{ fontSize: 12 }}>All projects</span>}</span>{env === "sandbox" && <Tag tone="info">Sandbox</Tag>}</div>
+      {leftOut.length > 0 && <div className="pnote" data-testid="tx-left-out">Left out of this list: {leftOut.map((x, i) => <span key={x.id}>{i ? "; " : ""}<b>{x.name}</b> ({x.reason ?? "no access"})</span>)}</div>}
       {tx.isError ? <div className="pb"><ErrorBanner error={tx.error} retry={() => tx.refetch()} what="transactions" /></div>
         : tx.isLoading ? <div className="pb" style={{ display: "grid", gap: 14 }}>{[0, 1, 2, 3].map((i) => <span key={i} className="sk line" style={{ width: `${90 - i * 12}%` }} />)}</div>
         : !rows.length ? <div className="pnote">{env === "sandbox" ? "No sandbox purchases yet. Make a test purchase with a Test Store key to see it here." : "No production purchases yet. They appear here seconds after a store confirms them."}</div>
         : (
           <>
             <div className="tbl"><table className="compact">
-              <thead><tr><th>Customer</th><th>Type</th><th>Product</th><th>Store</th><th>When</th><th>Expires</th><th className="amt">Revenue</th></tr></thead>
+              {/* All projects adds a Project column; the store then moves under the product so the table still fits at 1024px. */}
+              <thead><tr><th>Customer</th>{all && <th>Project</th>}<th>Type</th><th>Product</th>{!all && <th>Store</th>}<th>When</th><th>Expires</th><th className="amt">Revenue</th></tr></thead>
               <tbody>
                 {rows.map((t) => {
                   const promo = t.store === "promotional";
                   const tag = promo ? { label: "Granted", tone: "muted" as const } : TX_TAG[t.kind] ?? { label: t.kind, tone: "muted" as const };
                   return (
                     <tr key={t.id}>
-                      <td className="id"><span className="idcell">{t.country && <span className="flag" role="img" aria-label={t.country}>{flag(t.country)}</span>}<Link to={`/projects/${pid}/customers/${encodeURIComponent(t.customer_id)}`} title={t.customer_id}>{shortId(t.customer_id)}</Link></span></td>
+                      <td className="id"><span className="idcell">{t.country && <span className="flag" role="img" aria-label={t.country}>{flag(t.country)}</span>}<Link to={`/projects/${t.project_id ?? pid}/customers/${encodeURIComponent(t.customer_id)}`} title={t.customer_id}>{shortId(t.customer_id)}</Link></span></td>
+                      {all && <td className="subtle w2">{projects.get(t.project_id ?? "") ?? t.project_id}</td>}
                       <td><Tag tone={tag.tone}>{tag.label}</Tag></td>
-                      <td>{promo ? (() => { const k = t.product_identifier.replace(/^rc_promo_(.+)_\w+$/, "$1"); return entitlements.find((e) => e.lookup_key === k)?.display_name ?? k; })() : name(t)}</td>
-                      <td className="subtle">{storeLabel(t.store)}</td>
+                      <td className="w2">{promo ? (() => { const k = t.product_identifier.replace(/^rc_promo_(.+)_\w+$/, "$1"); return entitlements.find((e) => e.lookup_key === k)?.display_name ?? k; })() : name(t)}{all && <span className="cellsub">{storeLabel(t.store)}</span>}</td>
+                      {!all && <td className="subtle">{storeLabel(t.store)}</td>}
                       <td className="subtle" title={fmt.dateTime(t.purchased_at)}>{relative(t.purchased_at)}</td>
                       <td className="subtle" title={t.expires_at ? fmt.dateTime(t.expires_at) : undefined}>{t.kind === "refund" ? "—" : t.expires_at ? relative(t.expires_at) : "Never"}</td>
                       <td className={`amt${t.revenue_in_usd < 0 ? " down" : ""}`}>{t.kind === "trial" || promo ? "—" : money(t.revenue_in_usd)}</td>
@@ -183,7 +207,7 @@ function SetupHealthPanel({ pid }: { pid: string }) {
   const rows: { key: string; tone: "ok" | "bad" | "idle"; title: string; detail: React.ReactNode; right?: React.ReactNode }[] = [];
   if (h.data) {
     const types = h.data.apps.map((a) => a.type);
-    if (!h.data.apps.length) rows.push({ key: "noapps", tone: "idle", title: "No apps connected", detail: "Connect the App Store, Google Play or the Test Store to start.", right: <Link className="r" to={`/projects/${pid}/apps`}>Add app →</Link> });
+    if (!h.data.apps.length) rows.push({ key: "noapps", tone: "idle", title: "No apps connected", detail: "Connect the App Store, Google Play or the Test Store to start.", right: <Link className="r" to={`/projects/${pid}/apps?add=app_store`}>Add app →</Link> });
     for (const a of h.data.apps) {
       const many = types.filter((t) => t === a.type).length > 1;
       if (a.type === "test_store") { rows.push({ key: a.id, tone: "ok", title: many ? `Test Store · ${a.name}` : "Test Store", detail: "Ready for sandbox test purchases" }); continue; }
@@ -324,10 +348,13 @@ function TestPurchaseDialog({ pid, apps, products, onClose, onDone }: { pid: str
   const own = products.filter((p) => p.app_id === testApp?.id);
   const [user, setUser] = useState("test_user_1");
   const [product, setProduct] = useState(own[0]?.id ?? "");
-  const [price, setPrice] = useState("9.99");
+  // Prefilled with the product's Test Store price (what the SDK shows); a different amount is a one-off.
+  const priceOf = (id: string) => { const p = own.find((x) => x.id === id)?.indicative_price; return p ? String(p.amount_micros / 1_000_000) : ""; };
+  const currencyOf = (id: string) => own.find((x) => x.id === id)?.indicative_price?.currency ?? "USD";
+  const [price, setPrice] = useState(() => priceOf(own[0]?.id ?? ""));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (!product && own[0]) setProduct(own[0].id); }, [own, product]);
+  useEffect(() => { if (!product && own[0]) { setProduct(own[0].id); setPrice(priceOf(own[0].id)); } }, [own, product]); // eslint-disable-line react-hooks/exhaustive-deps
   const createApp = async () => {
     setBusy(true); setError(null);
     try { await api(`/v2/projects/${pid}/apps`, { method: "POST", json: { name: "Test Store", type: "test_store" } }); await qc.invalidateQueries({ predicate: (q) => q.queryKey[1] === pid }); toast("Test Store app created."); }
@@ -335,10 +362,11 @@ function TestPurchaseDialog({ pid, apps, products, onClose, onDone }: { pid: str
   };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true); setError(null);
     const n = Number(price);
+    if (price.trim() && !(/^\d+(\.\d{1,6})?$/.test(price.trim()) && Number.isFinite(n))) { setError("Enter a price such as 9.99, or leave it empty for a free purchase."); return; }
+    setBusy(true); setError(null);
     try {
-      await api(`/v2/projects/${pid}/test_purchases`, { method: "POST", json: { app_user_id: user.trim(), product_id: product, ...(price.trim() && Number.isFinite(n) ? { price: n, currency: "USD" } : {}) } });
+      await api(`/v2/projects/${pid}/test_purchases`, { method: "POST", json: { app_user_id: user.trim(), product_id: product, ...(price.trim() ? { price: n, currency: currencyOf(product) } : { price: 0, currency: currencyOf(product) }) } });
       toast(`Test purchase recorded for ${user.trim()}.`);
       onDone();
     } catch (err) { setError(err instanceof ApiError ? err.message : "The test purchase failed."); setBusy(false); }
@@ -357,8 +385,8 @@ function TestPurchaseDialog({ pid, apps, products, onClose, onDone }: { pid: str
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>Runs a Test Store purchase through the same pipeline as a real one: the customer gets the entitlement, events and webhooks fire, and it shows up as sandbox data.</p>
         {!own.length ? <div className="banner warn">The Test Store app has no products. <Link className="ul" to={`/projects/${pid}/product-catalog/products`}>Create a product</Link> for it first.</div> : <>
           <Field label="App user ID" htmlFor="tp-user"><input id="tp-user" className="input mono" value={user} onChange={(e) => setUser(e.target.value)} required maxLength={100} /></Field>
-          <Field label="Product" htmlFor="tp-product"><select id="tp-product" className="select" value={product} onChange={(e) => setProduct(e.target.value)}>{own.map((p) => <option key={p.id} value={p.id}>{p.display_name ?? p.store_identifier} ({p.store_identifier})</option>)}</select></Field>
-          <Field label="Price in USD" htmlFor="tp-price" hint="Leave empty for a free purchase."><input id="tp-price" className="input mono" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
+          <Field label="Product" htmlFor="tp-product"><select id="tp-product" className="select" value={product} onChange={(e) => { setProduct(e.target.value); setPrice(priceOf(e.target.value)); }}>{own.map((p) => <option key={p.id} value={p.id}>{p.display_name ?? p.store_identifier} ({p.store_identifier})</option>)}</select></Field>
+          <Field label={`Price in ${currencyOf(product)}`} htmlFor="tp-price" hint={own.find((x) => x.id === product)?.indicative_price ? "The product's Test Store price. Leave empty for a free purchase." : "This product has no Test Store price. Leave empty for a free purchase."}><input id="tp-price" className="input mono" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
         </>}
         {error && <div className="banner err" role="alert">{error}</div>}
       </form>
@@ -376,7 +404,7 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
   const steps = [
     { key: "store", title: "Connect a store", done: s.apps.length > 0,
       text: stores.length ? `${stores.map((a) => a.name).join(", ")} connected.` : s.apps.length ? "The Test Store is ready. Add your App Store or Google Play app when you are ready to sell." : "Add your App Store or Google Play app with its in-app purchase credentials, or start with the Test Store.",
-      action: <Link className="btn btn-line" to={`${base}/apps`}>{s.apps.length ? "Manage apps" : "Add an app"}</Link> },
+      action: <Link className="btn btn-line" to={s.apps.length ? `${base}/apps` : `${base}/apps?add=app_store`}>{s.apps.length ? "Manage apps" : "Add an app"}</Link> },
     { key: "products", title: "Create products", done: s.products.length > 0,
       text: s.products.length ? `${s.products.length} product${s.products.length === 1 ? "" : "s"} in the catalog.` : "Add each subscription and one-time purchase with the identifier it has in the store.",
       action: <Link className="btn btn-line" to={`${base}/product-catalog/products`}>{s.products.length ? "View products" : "Add products"}</Link> },
@@ -430,33 +458,67 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
 
 /* ---------- Page ---------- */
 
+/**
+ * RevenueCat's project chips: "All projects" sums every project you can read (GET /v2/overview); a project chip opens
+ * that project's Overview. Shown when you belong to more than one project.
+ */
+function ProjectChips({ pid, all, projects, onAll }: { pid: string; all: boolean; projects: { id: string; name: string }[]; onAll: () => void }) {
+  const nav = useNavigate();
+  const [sp] = useSearchParams();
+  const keep = () => { const n = new URLSearchParams(sp); n.delete("projects"); const q = n.toString(); return q ? `?${q}` : ""; };
+  return (
+    <div className="pchips" role="group" aria-label="Projects">
+      <button type="button" aria-pressed={all} onClick={onAll}>All projects</button>
+      {projects.map((p) => (
+        <button key={p.id} type="button" aria-pressed={!all && p.id === pid} title={p.name} onClick={() => nav(`/projects/${p.id}/overview${keep()}`)}>{p.name}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Product names for the transactions of every included project (each project's catalog, read in parallel). */
+function useProductsOf(ids: string[]) {
+  const q = useQueries({ queries: ids.map((id) => ({ queryKey: ["products-of", id], staleTime: 60_000, queryFn: () => api<List<Product>>(`/v2/projects/${id}/products?limit=100`).then((r) => r.items).catch(() => [] as Product[]) })) });
+  return useMemo(() => q.flatMap((x) => x.data ?? []), [q]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 export function Overview() {
   const pid = useProjectId();
   const [sp, setSp] = useSearchParams();
   const env = sp.get("environment") === "sandbox" ? "sandbox" : "production";
   const period = PERIODS.find((p) => p.value === sp.get("period")) ?? PERIODS[1];
+  const me = useMe();
+  const myProjects = me.data?.projects ?? [];
+  // Until /auth/me answers, a link to ?projects=all is taken at its word, so one project's data never flashes first.
+  const all = sp.get("projects") === "all" && (me.isLoading || myProjects.length > 1);
   const hideKey = `rd-setup-hidden:${pid}`;
   const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(hideKey) === "1"; } catch { return false; } });
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v === null) n.delete(k); else n.set(k, v); setSp(n, { replace: true }); };
 
   const setup = useQuery({
-    queryKey: ["setup", pid],
+    queryKey: ["setup", pid], enabled: !all,
     queryFn: async (): Promise<SetupState> => {
       const P = `/v2/projects/${pid}`;
       const [apps, products, entitlements, offerings, customers, tx] = await Promise.all([
-        api<List<App>>(`${P}/apps?limit=100`), api<List<Product>>(`${P}/products?limit=100`), api<List<SetupState["entitlements"][number]>>(`${P}/entitlements?limit=100&expand=items.product`),
+        api<List<App>>(`${P}/apps?limit=100`), api<List<Product>>(`${P}/products?limit=100&expand=items.indicative_price`), api<List<SetupState["entitlements"][number]>>(`${P}/entitlements?limit=100&expand=items.product`),
         api<List<Offering>>(`${P}/offerings?limit=100`), api<List<unknown>>(`${P}/customers?limit=1`), api<List<unknown>>(`${P}/transactions?limit=1`),
       ]);
       return { apps: apps.items, products: products.items, entitlements: entitlements.items, offerings: offerings.items, hasCustomer: customers.items.length > 0, hasPurchase: tx.items.length > 0 };
     },
   });
-  const prodTx = useQuery({ queryKey: ["tx-any", pid, "production"], queryFn: () => api<List<Transaction>>(`/v2/projects/${pid}/transactions?limit=25&environment=production`), enabled: env === "production" && !!setup.data?.hasPurchase });
+  const prodTx = useQuery({ queryKey: ["tx-any", pid, "production"], queryFn: () => api<List<Transaction>>(`/v2/projects/${pid}/transactions?limit=25&environment=production`), enabled: !all && env === "production" && !!setup.data?.hasPurchase });
+  const account = useAccountOverview(env, period.days, all);
+  const included = useMemo(() => (account.data?.projects ?? []).filter((x) => x.included), [account.data]);
+  const left = (account.data?.projects ?? []).filter((x) => !x.included);
+  const allProducts = useProductsOf(all ? included.map((x) => x.id) : []);
+  const names = useMemo(() => new Map(myProjects.map((x) => [x.id, x.name])), [myProjects]);
 
   const s = setup.data;
   const allDone = s ? s.apps.length > 0 && s.products.length > 0 && s.entitlements.some((e) => (e.products?.items.length ?? 0) > 0) && s.offerings.some((o) => o.is_current) && s.hasCustomer && s.hasPurchase : true;
-  const firstRun = !!s && !s.hasPurchase && !s.hasCustomer;
+  const firstRun = !all && !!s && !s.hasPurchase && !s.hasCustomer;
   // Granted entitlements are production records but not purchases.
-  const onlySandbox = env === "production" && prodTx.data && !prodTx.data.items.some((t) => t.store !== "promotional");
+  const onlySandbox = !all && env === "production" && prodTx.data && !prodTx.data.items.some((t) => t.store !== "promotional");
+  const when = period.days === 28 ? "last 28 days compared with the 28 days before" : `last ${period.words} compared with the ${period.words} before`;
 
   return (
     <Shell title="Overview">
@@ -464,7 +526,7 @@ export function Overview() {
         <div className="head">
           <div>
             <h1>Overview</h1>
-            <p>All apps · USD · {firstRun ? "no purchases yet" : period.days === 28 ? "last 28 days compared with the 28 days before" : `last ${period.words} compared with the ${period.words} before`}</p>
+            <p>{all ? `All projects · ${account.data ? `${included.length} project${included.length === 1 ? "" : "s"}` : "…"} · USD · ${when}` : `All apps · USD · ${firstRun ? "no purchases yet" : when}`}</p>
           </div>
           {!firstRun && (
             <div className="actions">
@@ -474,33 +536,49 @@ export function Overview() {
           )}
         </div>
 
-        {setup.isError && <ErrorBanner error={setup.error} retry={() => setup.refetch()} what="the project" />}
+        {myProjects.length > 1 && <ProjectChips pid={pid} all={all} projects={myProjects} onAll={() => set("projects", "all")} />}
 
-        {s && !allDone && (!hidden || firstRun) && (
-          <SetupChecklist pid={pid} s={s} firstRun={firstRun} onHide={firstRun ? undefined : () => { setHidden(true); try { localStorage.setItem(hideKey, "1"); } catch { /* ignore */ } }} />
-        )}
-
-        {!firstRun && (
+        {all ? (
           <>
-            <FirstSaleCard pid={pid} />
-            <AskBar pid={pid} />
-            {onlySandbox && (
-              <div className="banner" role="status" style={{ alignItems: "center" }}>
-                <span style={{ flex: 1 }}>No production purchases yet. Your test purchases are sandbox data.</span>
-                <button type="button" className="btn btn-line" onClick={() => set("environment", "sandbox")}>Show sandbox data</button>
+            {left.length > 0 && (
+              <div className="banner" role="status" data-testid="left-out">
+                <span>Left out of the cards: {left.map((x, i) => <span key={x.id}>{i ? "; " : ""}<b>{x.name}</b> ({x.reason ?? "no access"})</span>)}</span>
               </div>
             )}
-            <MetricGrid pid={pid} env={env} period={period} />
-            <GrowthInsights pid={pid} />
+            <MetricGrid pid={pid} env={env} period={period} all />
+            <RecentTransactions pid={pid} env={env} products={allProducts} entitlements={[]} projects={names} />
           </>
-        )}
+        ) : (
+          <>
+            {setup.isError && <ErrorBanner error={setup.error} retry={() => setup.refetch()} what="the project" />}
 
-        <div className={firstRun ? undefined : "two"}>
-          {!firstRun && <RecentTransactions pid={pid} env={env} products={s?.products ?? []} entitlements={s?.entitlements ?? []} />}
-          <SetupHealthPanel pid={pid} />
-        </div>
-        {s && !allDone && hidden && !firstRun && (
-          <p className="fn"><button type="button" className="linkbtn" onClick={() => { setHidden(false); try { localStorage.removeItem(hideKey); } catch { /* ignore */ } }}>Show the setup checklist</button></p>
+            {s && !allDone && (!hidden || firstRun) && (
+              <SetupChecklist pid={pid} s={s} firstRun={firstRun} onHide={firstRun ? undefined : () => { setHidden(true); try { localStorage.setItem(hideKey, "1"); } catch { /* ignore */ } }} />
+            )}
+
+            {!firstRun && (
+              <>
+                <FirstSaleCard pid={pid} />
+                <AskBar pid={pid} />
+                {onlySandbox && (
+                  <div className="banner" role="status" style={{ alignItems: "center" }}>
+                    <span style={{ flex: 1 }}>No production purchases yet. Your test purchases are sandbox data.</span>
+                    <button type="button" className="btn btn-line" onClick={() => set("environment", "sandbox")}>Show sandbox data</button>
+                  </div>
+                )}
+                <MetricGrid pid={pid} env={env} period={period} />
+                <GrowthInsights pid={pid} />
+              </>
+            )}
+
+            <div className={firstRun ? undefined : "two ov-two"}>
+              {!firstRun && <RecentTransactions pid={pid} env={env} products={s?.products ?? []} entitlements={s?.entitlements ?? []} />}
+              <SetupHealthPanel pid={pid} />
+            </div>
+            {s && !allDone && hidden && !firstRun && (
+              <p className="fn"><button type="button" className="linkbtn" onClick={() => { setHidden(false); try { localStorage.removeItem(hideKey); } catch { /* ignore */ } }}>Show the setup checklist</button></p>
+            )}
+          </>
         )}
       </div>
     </Shell>

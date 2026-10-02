@@ -4,7 +4,7 @@ import { api } from "../../lib/api";
 import { Dialog, Field, STORE_LABEL, useToast } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import {
-  DURATIONS, ISO_PERIOD, PRODUCT_TYPES, STORE_CODE, appIdentifier, durationLabel, errMsg, errParam, isConflict, parseMicros, productName, storeIdHelp, useApps, useRefreshCatalog, v2,
+  COMMON_CURRENCIES, DURATIONS, ISO_PERIOD, PRODUCT_TYPES, STORE_CODE, appIdentifier, durationLabel, errMsg, errParam, isConflict, productName, storeIdHelp, testStorePrice, useApps, useRefreshCatalog, v2,
   type App, type Product,
 } from "./lib";
 import "./catalog.css";
@@ -74,26 +74,22 @@ export function DurationField({ id, value, onChange, error }: { id: string; valu
   );
 }
 
-/** Test Store price: what the SDK shows for this product. Amount plus an ISO 4217 currency code. */
-function TestStorePriceField({ amount, currency, onAmount, onCurrency, error }: { amount: string; currency: string; onAmount: (v: string) => void; onCurrency: (v: string) => void; error?: string | null }) {
+/**
+ * Test Store price: what the SDK shows for this product and what a test purchase records as revenue. Amount plus an
+ * ISO 4217 currency code (USD by default). Required when creating a Test Store product, optional when editing one.
+ */
+export function TestStorePriceField({ id = "tsp", amount, currency, onAmount, onCurrency, error, invalid = "amount", required }: { id?: string; amount: string; currency: string; onAmount: (v: string) => void; onCurrency: (v: string) => void; error?: string | null; invalid?: "amount" | "currency"; required?: boolean }) {
   return (
-    <Field label="Test Store price" htmlFor="tsp-amount" error={error} hint="Optional. The price the SDK shows for this Test Store product. Leave the amount empty for no price.">
-      <div className="cat-row2">
-        <input id="tsp-amount" className="input mono" aria-label="Test Store price amount" inputMode="decimal" autoComplete="off" placeholder="9.99" value={amount} onChange={(e) => onAmount(e.target.value)} />
-        <input className="input mono" aria-label="Currency (ISO 4217 code)" maxLength={3} placeholder="USD" value={currency} onChange={(e) => onCurrency(e.target.value.toUpperCase().trim())} />
+    <Field label="Price" htmlFor={`${id}-amount`} error={error} hint={required ? "What the SDK shows for this Test Store product. Test purchases record it as revenue." : "What the SDK shows for this Test Store product and what test purchases record. Leave the amount empty for no price."}>
+      <div className="cat-price">
+        <input id={`${id}-amount`} className="input mono" aria-label="Price amount" aria-required={required} aria-invalid={!!error && invalid === "amount"} inputMode="decimal" autoComplete="off" placeholder="9.99" value={amount} onChange={(e) => onAmount(e.target.value)} />
+        <input className="input mono" aria-label="Currency" aria-invalid={!!error && invalid === "currency"} list={`${id}-currencies`} maxLength={3} autoComplete="off" spellCheck={false} placeholder="USD" value={currency} onChange={(e) => onCurrency(e.target.value.toUpperCase().trim())} />
+        <datalist id={`${id}-currencies`}>{COMMON_CURRENCIES.map((c) => <option key={c} value={c} />)}</datalist>
       </div>
     </Field>
   );
 }
 
-/** The test_store_price body field from the form, or an error message. */
-function testStorePrice(amount: string, currency: string): { value: { amount_micros: number; currency: string } | null } | { error: string } {
-  const micros = parseMicros(amount);
-  if (micros === null) return { value: null };
-  if (Number.isNaN(micros)) return { error: "Enter an amount such as 9.99." };
-  if (!/^[A-Z]{3}$/.test(currency)) return { error: "Enter a three-letter currency code such as USD or EUR." };
-  return { value: { amount_micros: micros, currency } };
-}
 const microsToAmount = (m: number | undefined) => (m === undefined ? "" : String(m / 1_000_000));
 
 function TypeRadios({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -128,8 +124,8 @@ export function NewProductDialog({ pid, apps, appId, onClose, onCreated }: { pid
     if (!f.store_identifier.trim()) er.store_identifier = "Enter the product's identifier in the store.";
     else if (/\s/.test(f.store_identifier.trim())) er.store_identifier = "Store identifiers cannot contain spaces.";
     if (f.type === "subscription" && !ISO_PERIOD.test(f.duration)) er.duration = "Enter an ISO 8601 period such as P1M, P1Y or P3D.";
-    const price = app?.type === "test_store" ? testStorePrice(f.price, f.currency) : { value: null };
-    if ("error" in price) er.test_store_price = price.error;
+    const price = app?.type === "test_store" ? testStorePrice(f.price, f.currency, true) : { value: null };
+    if ("error" in price) er[price.field === "currency" ? "test_store_currency" : "test_store_price"] = price.error;
     setErrors(er);
     if (Object.keys(er).length) return;
     setBusy(true);
@@ -147,7 +143,7 @@ export function NewProductDialog({ pid, apps, appId, onClose, onCreated }: { pid
       const param = errParam(err);
       if (isConflict(err)) setErrors({ store_identifier: `${app?.name ?? "This app"} already has a product with this identifier.` });
       else if (param === "subscription.duration" || param === "subscription") setErrors({ duration: errMsg(err) });
-      else if (param?.startsWith("test_store_price")) setErrors({ test_store_price: errMsg(err) });
+      else if (param?.startsWith("test_store_price")) setErrors({ [param === "test_store_price.currency" ? "test_store_currency" : "test_store_price"]: errMsg(err) });
       else if (param && ["app_id", "store_identifier", "display_name", "type"].includes(param)) setErrors({ [param]: errMsg(err) });
       else setErrors({ form: errMsg(err) });
       setBusy(false);
@@ -169,7 +165,7 @@ export function NewProductDialog({ pid, apps, appId, onClose, onCreated }: { pid
         </Field>
         <TypeRadios value={f.type} onChange={(type) => setF({ ...f, type })} />
         {f.type === "subscription" && <DurationField id="np-dur" value={f.duration} onChange={(duration) => setF({ ...f, duration })} error={errors.duration} />}
-        {app?.type === "test_store" && <TestStorePriceField amount={f.price} currency={f.currency} onAmount={(price) => setF({ ...f, price })} onCurrency={(currency) => setF({ ...f, currency })} error={errors.test_store_price} />}
+        {app?.type === "test_store" && <TestStorePriceField id="np-price" required amount={f.price} currency={f.currency} onAmount={(price) => setF({ ...f, price })} onCurrency={(currency) => setF({ ...f, currency })} error={errors.test_store_price ?? errors.test_store_currency} invalid={errors.test_store_currency ? "currency" : "amount"} />}
         <Field label="Display name" htmlFor="np-name" error={errors.display_name} hint="Optional. Shown in the dashboard instead of the store identifier.">
           <input id="np-name" className="input" placeholder="e.g. Pro monthly" value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
         </Field>
@@ -195,7 +191,7 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
     e.preventDefault();
     if (type === "subscription" && !ISO_PERIOD.test(duration)) { setError({ duration: "Enter an ISO 8601 period such as P1M, P1Y or P3D." }); return; }
     const tsp = isTestStore ? testStorePrice(price, currency) : null;
-    if (tsp && "error" in tsp) { setError({ test_store_price: tsp.error }); return; }
+    if (tsp && "error" in tsp) { setError({ [tsp.field === "currency" ? "test_store_currency" : "test_store_price"]: tsp.error }); return; }
     setBusy(true); setError({});
     try {
       await api(`${v2(pid)}/products/${product.id}`, { method: "POST", json: {
@@ -207,7 +203,7 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
       onClose();
     } catch (err) {
       const param = errParam(err);
-      setError(param?.startsWith("subscription") ? { duration: errMsg(err) } : param?.startsWith("test_store_price") ? { test_store_price: errMsg(err) } : { form: errMsg(err) });
+      setError(param?.startsWith("subscription") ? { duration: errMsg(err) } : param?.startsWith("test_store_price") ? { [param === "test_store_price.currency" ? "test_store_currency" : "test_store_price"]: errMsg(err) } : { form: errMsg(err) });
       setBusy(false);
     }
   }
@@ -225,7 +221,7 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
         </Field>
         <TypeRadios value={type} onChange={setType} />
         {type === "subscription" && <DurationField id="ep-dur" value={duration} onChange={setDuration} error={error.duration} />}
-        {isTestStore && <TestStorePriceField amount={price} currency={currency} onAmount={setPrice} onCurrency={setCurrency} error={error.test_store_price} />}
+        {isTestStore && <TestStorePriceField id="ep-price" amount={price} currency={currency} onAmount={setPrice} onCurrency={setCurrency} error={error.test_store_price ?? error.test_store_currency} invalid={error.test_store_currency ? "currency" : "amount"} />}
         {error.form && <div className="banner err" role="alert">{error.form}</div>}
       </form>
     </Dialog>

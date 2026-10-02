@@ -119,7 +119,7 @@ function ChartRail({ pid, current, savedId }: { pid: string; current: string; sa
   return (
     <aside className="crail" aria-label="Charts">
       <div className="crail-s"><Icon name="search" /><input aria-label="Search charts" placeholder="Search charts" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      <nav>
+      <nav data-scroll="x">
         {mine.length > 0 && (
           <div className="crail-g" aria-label="Saved charts">
             <div className="label">Saved</div>
@@ -183,8 +183,10 @@ function FilterMenu({ options, value, onChange }: { options: Options["filters"];
 export function ChartsPage() {
   const pid = useProjectId();
   const { chartName } = useParams();
+  const [sp] = useSearchParams();
   const def = chartName ? chartDef(chartName) : null;
-  if (!chartName || !def) return <Navigate to={`/projects/${pid}/charts/revenue`} replace />;
+  // The query (?environment=sandbox from another page's link) survives the redirect to the default chart.
+  if (!chartName || !def) return <Navigate to={`/projects/${pid}/charts/revenue${sp.size ? `?${sp}` : ""}`} replace />;
   return <ChartView key={def.name} pid={pid} def={def} />;
 }
 
@@ -200,7 +202,8 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   const segment = sp.get("segment") ?? "";
   const filters = parseJson<{ name: string; values: string[] }[]>(sp.get("filters"), [], isFilters);
   const selectors = parseJson<Record<string, string>>(sp.get("sel"), {}, isSelectors);
-  const env = sp.get("env") === "sandbox" ? "sandbox" : "production";
+  // `?env=sandbox` (the chart's own links) or `?environment=sandbox` (the other pages' switch) opens sandbox data.
+  const env = sp.get("env") === "sandbox" || sp.get("environment") === "sandbox" ? "sandbox" : "production";
   const compare = sp.get("cmp") === "1" && !cohortTable;
   const savedId = sp.get("saved");
   const set = (patch: Record<string, string | null>) => {
@@ -245,7 +248,7 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
             <div><h1>{savedNow ? savedNow.name : def.display_name}</h1><p>{savedNow ? <><Tag>Saved</Tag> {def.display_name}. </> : null}{def.description}</p></div>
             <div className="actions">
               {!cohortTable && <Switch checked={compare} onChange={(v) => set({ cmp: v ? "1" : null })} label="Compare to previous period" />}
-              <Switch checked={env === "sandbox"} onChange={(v) => set({ env: v ? "sandbox" : null })} label="Sandbox data" />
+              <Switch checked={env === "sandbox"} onChange={(v) => set({ env: v ? "sandbox" : null, environment: null })} label="Sandbox data" />
               <button type="button" className="btn btn-line" onClick={() => setSaving(true)}><Icon name="plus" />Save</button>
               <button type="button" className="btn btn-line" disabled={!body} onClick={() => body && downloadCsv(`${def.name}-${start}-${end}`, csvRows(body))}><Icon name="docs" />CSV</button>
             </div>
@@ -388,7 +391,7 @@ function SeriesChart({ def, body, currency, fetching, prev }: { def: ChartDef; b
       <Plot periods={periods} series={series} kind={kind} integer={unit === "#" && series.every((x) => x.values.every((v) => v === null || Number.isInteger(v)))} format={plotFmt} formatTick={tickFormatter(unit, currency)}
         compare={compareValues ? { label: "Previous period", values: compareValues } : null}
         ariaLabel={`${def.display_name}: ${series.map((s) => s.label).join(", ")} by ${body.resolution}. Values are in the table below.`} />
-      <div className="tbl ctable">
+      <div className="tbl ctable" data-scroll="x">
         <table className="compact">
           <thead><tr><th scope="col">{segmented ? body.measures[sel]?.display_name : "Measure"}</th>{periods.map((p) => <th key={p.start} scope="col" className="amt" title={p.long}>{p.label}{p.incomplete ? "*" : ""}</th>)}</tr></thead>
           <tbody>

@@ -194,12 +194,15 @@ export function Customers() {
         {r.email && <span className="cellsub" style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{r.email}</span>}
       </span>
     ) },
-    { key: "st", header: "Subscription status", sort: sortOf("subscription_status"), render: (r) => <Tag tone={STATUS[r.subscription_status].tone}>{STATUS[r.subscription_status].label}</Tag> },
-    { key: "ar", header: "Auto-renewal", sort: sortOf("auto_renewal_status"), render: (r) => r.auto_renewal_status === "on" ? "On" : r.auto_renewal_status === "off" ? <span className="down">Off</span> : <span className="subtle">—</span> },
-    { key: "first", header: "First seen", sort: sortOf("first_seen_at"), render: (r) => <span className="subtle" title={fmt.dateTime(r.first_seen_at)}>{fmt.date(r.first_seen_at)}</span> },
-    { key: "last", header: "Last seen", sort: sortOf("last_seen_at"), render: (r) => <span className="subtle" title={fmt.dateTime(r.last_seen_at)}>{relative(r.last_seen_at)}</span> },
+    // Below 1400px Auto-renewal and First seen move under Subscription status and Last seen, so the table fits from 1024px
+    // up without scrolling sideways; wider screens show every column, each sortable.
+    { key: "st", header: "Subscription status", className: "w2", sort: sortOf("subscription_status"), render: (r) => <><Tag tone={STATUS[r.subscription_status].tone}>{STATUS[r.subscription_status].label}</Tag>
+      {r.auto_renewal_status && <span className="cellsub c-narrow">Auto-renewal {r.auto_renewal_status === "on" ? "on" : <span className="down">off</span>}</span>}</> },
+    { key: "ar", header: "Auto-renewal", className: "c-wide", sort: sortOf("auto_renewal_status"), render: (r) => r.auto_renewal_status === "on" ? "On" : r.auto_renewal_status === "off" ? <span className="down">Off</span> : <span className="subtle">—</span> },
+    { key: "first", header: "First seen", className: "c-wide", sort: sortOf("first_seen_at"), render: (r) => <span className="subtle" title={fmt.dateTime(r.first_seen_at)}>{fmt.date(r.first_seen_at)}</span> },
+    { key: "last", header: "Last seen", className: "w2", sort: sortOf("last_seen_at"), render: (r) => <><span className="subtle" title={fmt.dateTime(r.last_seen_at)}>{relative(r.last_seen_at)}</span><span className="cellsub c-narrow" title={fmt.dateTime(r.first_seen_at)}>First {fmt.date(r.first_seen_at)}</span></> },
     { key: "spent", header: "Spent", align: "right", sort: sortOf("spent_in_usd"), render: (r) => money(r.spent_in_usd) },
-    { key: "lp", header: "Latest purchase", render: (r) => r.latest_purchase ? (
+    { key: "lp", header: "Latest purchase", className: "w2", render: (r) => r.latest_purchase ? (
       <span><span className="mono" style={{ fontSize: 12 }}>{r.latest_purchase.product_id}</span>
         <span className="cellsub">{relative(r.latest_purchase.purchased_at)} · {storeLabel(r.latest_purchase.store)}{r.latest_purchase.environment === "sandbox" ? <span className="sbx" style={{ marginLeft: 4 }}>Sandbox</span> : null}</span></span>
     ) : <span className="subtle">—</span> },

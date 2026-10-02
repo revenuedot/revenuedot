@@ -11,7 +11,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmt, type List } from "../../lib/api";
 import { Shell } from "../../components/Shell";
-import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, Tabs, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
+import { ConfirmDialog, DataTable, Dialog, EmptyState, Field, Menu, PageHead, Panel, Tabs, Tag, useProjectId, useSandboxParam, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { errMsg, v2, type Offering } from "../catalog/lib";
 import { ConditionBuilder, describeRules, fromRules, incomplete, toRules, useFieldSuggestions, type Groups, type Rules } from "../../components/conditions";
@@ -259,7 +259,9 @@ export function ExperimentDetail() {
   const nav = useNavigate();
   const toast = useToast();
   const qc = useQueryClient();
-  const [env, setEnv] = useState<"production" | "sandbox">("production");
+  // Kept in the URL as `?environment=sandbox`, like every Sandbox data switch.
+  const [sandbox, setSandbox] = useSandboxParam();
+  const env = sandbox ? "sandbox" : "production";
   const x = useQuery({ queryKey: ["experiment", pid, experimentId], queryFn: () => api<Experiment>(`${v2(pid)}/experiments/${experimentId}`) });
   const res = useQuery({ queryKey: ["experiment-results", pid, experimentId, env], queryFn: () => api<Results>(`${v2(pid)}/experiments/${experimentId}/results?environment=${env}`) });
   const offs = useOfferingList(pid);
@@ -283,7 +285,7 @@ export function ExperimentDetail() {
             {e.status !== "running" && <button type="button" className="btn btn-ghost" onClick={() => setConfirm(<ConfirmDialog title="Delete this experiment?" confirmLabel="Delete" danger onClose={() => setConfirm(null)} onConfirm={async () => { await api(`${v2(pid)}/experiments/${experimentId}`, { method: "DELETE" }); await qc.invalidateQueries({ queryKey: ["experiments", pid] }); nav(`/projects/${pid}/experiments`); }}><p>Its enrollments and results are deleted.</p></ConfirmDialog>)}>Delete</button>}
           </div>) : undefined} />
         {e && (
-          <Panel title="Results" link={<select aria-label="Environment" className="select" value={env} onChange={(ev) => setEnv(ev.target.value as typeof env)}><option value="production">Production</option><option value="sandbox">Sandbox</option></select>}>
+          <Panel title="Results" link={<select aria-label="Environment" className="select" value={env} onChange={(ev) => setSandbox(ev.target.value === "sandbox")}><option value="production">Production</option><option value="sandbox">Sandbox</option></select>}>
             {res.isLoading || !res.data ? <div className="pb subtle">Loading…</div> : (
               <>
                 <DataTable rowKey={(v) => v.id} rows={res.data.variants.items} columns={[

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "./icons";
 
 /** Shared dashboard building blocks. Pages compose these; they never restyle them (see DESIGN.md). */
@@ -42,7 +42,7 @@ export interface Column<T> {
 
 function HeaderCell<T>({ c }: { c: Column<T> }) {
   const d = c.sort?.direction ?? null;
-  const cls = c.align === "right" ? "amt" : undefined;
+  const cls = `${c.align === "right" ? "amt" : ""} ${c.className ?? ""}`.trim() || undefined;
   if (!c.sort && !c.headerExtra) return <th className={cls}>{c.header}</th>;
   return (
     <th className={cls} aria-sort={d === "asc" ? "ascending" : d === "desc" ? "descending" : undefined}>
@@ -271,7 +271,7 @@ export function CopyButton({ value, label = "Copy", text }: { value: string; lab
 export function SecretText({ value, label = "key" }: { value: string; label?: string }) {
   const [shown, setShown] = useState(false);
   const cut = value.indexOf("_");
-  const masked = (cut > 0 && cut < 6 ? value.slice(0, cut + 1) : "") + "•".repeat(20);
+  const masked = (cut > 0 && cut < 6 ? value.slice(0, cut + 1) : "") + "•".repeat(12);
   return (
     <span className="secret">
       <code aria-label={shown ? undefined : `${label} hidden`}>{shown ? value : masked}</code>
@@ -345,4 +345,14 @@ export function FileDrop({ id, accept, prompt, onFile, maxBytes = 64_000 }: { id
       {error && <span className="err" role="alert">{error}</span>}
     </div>
   );
+}
+
+/**
+ * The Sandbox data switch, kept in the URL as `?environment=sandbox` (the Overview's convention), so a link or a reload
+ * opens the page on the same data.
+ */
+export function useSandboxParam(): [boolean, (on: boolean) => void] {
+  const [sp, setSp] = useSearchParams();
+  const on = sp.get("environment") === "sandbox";
+  return [on, (v) => { const n = new URLSearchParams(sp); if (v) n.set("environment", "sandbox"); else n.delete("environment"); setSp(n, { replace: true }); }];
 }

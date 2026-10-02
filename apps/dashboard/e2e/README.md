@@ -32,6 +32,8 @@ Manual checks on a real Postgres: `E2E_DATABASE_URL=<a database of your own on t
 
 | File | Covers |
 |---|---|
+| `browser-pass-3.spec.ts` | Test Store price on the app page's inline form (validation, the purchase records it), Products at 1200px, Attach creating an entitlement, Offerings header link, paywall preview with real prices and the intro switch, Overview "All projects" (sums, chips, sandbox, periods, left-out projects), checklist opening Add app; phone width and dark theme |
+| `layout.spec.ts` | No page, table or tab row scrolls sideways at 1024, 1200 and 1440px on 40 pages; only `data-scroll="x"` areas and code blocks may |
 | `overview-customers.spec.ts` | First-run checklist and test purchase flow; Overview cards against `/metrics/overview` and `/metrics/history`, period and sandbox switches, transactions, setup health; customer list, pagination and search; customer page history, grant and revoke, offering override, attributes, delete; phone width; console errors |
 | `account-email.spec.ts` | Forgot and reset password (the link works once), invite and accept as a new and an existing user, role changes, the last admin, resend, revoke, remove, leave, alert email settings, the unverified-email banner and verify link; every page at 390px. Emails come from the e2e server's in-memory mailer, `GET /__mail?to=<address>` |
 | `catalog.spec.ts` | Products, entitlements, offerings and what the SDK receives |
