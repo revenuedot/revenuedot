@@ -54,12 +54,15 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
   const { projectId, sandbox, sources } = opts;
   const env = sandbox ? "sandbox" : "production";
   const T = schema.transactions, S = schema.subscriptions, N = schema.nonSubscriptions, C = schema.customers, E = schema.events, X = schema.sdkEvents, A = schema.customerAliases;
-  const CA = schema.customerActivity, SN = schema.storeNotifications;
+  const CA = schema.customerActivity, SN = schema.storeNotifications, CAT = schema.customerAttribution;
   const [txs, subs, nonSubs, customers, products, lifecycle, sdk, activity, notes] = await Promise.all([
     db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox))),
     db.select().from(S).where(and(eq(S.projectId, projectId), eq(S.isSandbox, sandbox))),
     db.select({ store: N.store, tx: N.storeTransactionId, offering: N.presentedOfferingId }).from(N).where(and(eq(N.projectId, projectId), eq(N.isSandbox, sandbox))),
-    db.select({ id: C.id, firstSeen: C.firstSeen, lastSeen: C.lastSeen, country: C.lastSeenCountry, platform: C.lastSeenPlatform, appVersion: C.lastSeenAppVersion }).from(C).where(eq(C.projectId, projectId)),
+    db.select({
+      id: C.id, firstSeen: C.firstSeen, lastSeen: C.lastSeen, country: C.lastSeenCountry, platform: C.lastSeenPlatform, appVersion: C.lastSeenAppVersion,
+      mediaSource: CAT.mediaSource, campaign: CAT.campaign, adGroup: CAT.adGroup, keyword: CAT.keyword, ad: CAT.ad, creative: CAT.creative,
+    }).from(C).leftJoin(CAT, eq(CAT.customerId, C.id)).where(eq(C.projectId, projectId)),
     db.select().from(schema.products).where(eq(schema.products.projectId, projectId)),
     db.select({ customerId: E.customerId, type: E.type, at: E.eventTimestampMs, store: sql<string | null>`${E.payload}->'event'->>'store'`, productId: sql<string | null>`${E.payload}->'event'->>'product_id'`, cancelReason: sql<string | null>`${E.payload}->'event'->>'cancel_reason'` }).from(E)
       .where(and(eq(E.projectId, projectId), eq(E.environment, env), inArray(E.type, ["CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE"]))),
@@ -125,7 +128,10 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
       kind: t.kind as TxKind, at: t.purchasedAt.getTime(), expiresAt: t.expiresAt ? t.expiresAt.getTime() : null, usd: t.revenueUsd, country: t.countryCode,
       offering: t.kind === "one_time" || oneOffering.has(`${t.store}|${t.storeTransactionId}`) ? oneOffering.get(`${t.store}|${t.storeTransactionId}`) ?? null : subOffering.get(`${t.customerId}|${t.store}|${t.productIdentifier}`) ?? null,
     })),
-    customers: customers.map((c) => ({ id: c.id, firstSeen: c.firstSeen.getTime(), country: c.country, platform: c.platform, appVersion: c.appVersion })),
+    customers: customers.map((c) => ({
+      id: c.id, firstSeen: c.firstSeen.getTime(), country: c.country, platform: c.platform, appVersion: c.appVersion,
+      attribution: { media_source: c.mediaSource, campaign: c.campaign, ad_group: c.adGroup, keyword: c.keyword, ad: c.ad, creative: c.creative },
+    })),
     products: products.map((p) => ({ appId: p.appId, storeIdentifier: p.storeIdentifier, type: p.type, duration: p.duration })),
     subStates: subs.map((s) => ({
       customerId: s.customerId, store: s.store, appId: s.appId, productId: s.productIdentifier, expiresAt: s.expiresDate ? s.expiresDate.getTime() : null,

@@ -1,7 +1,8 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { isAnonymous, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
+import { isAnonymous, isAttributionKey, newId, type CustomerState, type NonSubscription, type Subscription } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { accessOf } from "./access.js";
+import { syncCustomerAttribution } from "./attribution.js";
 
 const { customers, customerAliases, customerAttributes, subscriptions, nonSubscriptions } = schema;
 export type CustomerRow = typeof customers.$inferSelect;
@@ -70,6 +71,7 @@ export async function backdateFirstSeen(db: DB, customerId: string, earliest: Da
 
 /** Upserts attributes; a newer `updated_at_ms` wins. Empty string or null deletes the value (iOS sends "", Android null). */
 export async function setAttributes(db: DB, customerId: string, attrs: Record<string, { value: unknown; updated_at_ms?: number }>, now: Date) {
+  let attribution = false;
   for (const [key, raw] of Object.entries(attrs ?? {})) {
     const value = raw?.value === null || raw?.value === undefined || raw.value === "" ? null : String(raw.value);
     const updatedAtMs = Number(raw?.updated_at_ms ?? now.getTime());
@@ -77,7 +79,10 @@ export async function setAttributes(db: DB, customerId: string, attrs: Record<st
     if (cur && cur.updatedAtMs > updatedAtMs) continue;
     if (cur) await db.update(customerAttributes).set({ value, updatedAtMs }).where(and(eq(customerAttributes.customerId, customerId), eq(customerAttributes.key, key)));
     else await db.insert(customerAttributes).values({ customerId, key, value, updatedAtMs });
+    if (isAttributionKey(key)) attribution = true;
   }
+  // Attribution attributes also live as one first-class row (prd/attribution-benchmarks-insights §1).
+  if (attribution) await syncCustomerAttribution(db, customerId, now);
 }
 
 export function subRowToDomain(r: typeof subscriptions.$inferSelect): Subscription {
@@ -147,6 +152,7 @@ async function mergeInto(db: DB, fromId: string, intoId: string) {
   const fromAttrs = await db.select().from(customerAttributes).where(eq(customerAttributes.customerId, fromId));
   for (const a of fromAttrs) if (!have.has(a.key)) await db.insert(customerAttributes).values({ ...a, customerId: intoId }).onConflictDoNothing();
   await db.delete(customers).where(eq(customers.id, fromId));
+  if (fromAttrs.some((a) => isAttributionKey(a.key) && !have.has(a.key))) await syncCustomerAttribution(db, intoId);
 }
 
 /**

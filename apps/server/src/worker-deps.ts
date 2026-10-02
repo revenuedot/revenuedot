@@ -68,6 +68,9 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   now: () => new Date(),
   stores,
   edition: "cloud",
+  // Anonymized benchmarks and the weekly insights digest are Cloud features (prd/attribution-benchmarks-insights).
+  benchmarks: true,
+  insightsDigest: true,
   signingKey: env.REVENUEDOT_SIGNING_KEY ?? "",
   encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY,
   mailer: mailerFor(env),

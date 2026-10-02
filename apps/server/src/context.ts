@@ -66,6 +66,15 @@ export interface Deps {
   assistantCaps?: import("./services/assistant/limits.js").AssistantCaps;
   /** Cloud: wipes a conversation's Durable Object after its row is deleted. */
   destroyConversation?: (conversationId: string) => Promise<void>;
+  /**
+   * Benchmarks (prd/attribution-benchmarks-insights §2): on only on RevenueDot Cloud (the Worker) and the e2e server. Off,
+   * the benchmark endpoints answer `available: false`, the nightly job does nothing and no data is shared.
+   */
+  benchmarks?: boolean;
+  /** Tests and the e2e server only: a lower k, smaller minimum samples (services/benchmarks.ts). Never set on Cloud. */
+  benchmarkOptions?: import("./services/benchmarks.js").BenchmarkOptions;
+  /** Generate and email the weekly AI growth insights digest (Cloud: always; self-host: REVENUEDOT_INSIGHTS_DIGEST=on). */
+  insightsDigest?: boolean;
   /** The app's own fetch. Set by createApp; RevenueDot AI's tools call the REST API v2 through it in-process. */
   dispatch?: (req: Request) => Promise<Response>;
 }

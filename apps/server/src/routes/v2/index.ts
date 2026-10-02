@@ -44,6 +44,8 @@ import { assistantRoutes } from "./assistant.js";
 import { ASSISTANT_CTX } from "../../services/assistant/client.js";
 import { assistantScope } from "../../services/assistant/access.js";
 import { adsRoutes } from "./ads.js";
+import { attributionRoutes } from "./attribution.js";
+import { benchmarkRoutes } from "./benchmarks.js";
 
 /**
  * REST API v2, wire-compatible with RevenueCat's `https://api.revenuecat.com/v2`.
@@ -138,6 +140,8 @@ export function v2Routes(deps: Deps) {
   paywallRoutes(r, deps);
   targetingRoutes(r, deps);
   chartRoutes(r, deps);
+  attributionRoutes(r, deps);
+  benchmarkRoutes(r, deps);
   savedChartRoutes(r, deps);
   partnerIntegrationRoutes(r, deps);
   dataExportRoutes(r, deps);
