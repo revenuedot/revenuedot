@@ -44,6 +44,13 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
     return row;
   };
 
+  /** An experiment that may still serve the offering keeps it; stopped ones keep their results and show its id. */
+  const refuseIfExperimentUses = async (o: typeof schema.offerings.$inferSelect, what: "deleted" | "archived") => {
+    const live = await db.select().from(schema.experiments).where(and(eq(schema.experiments.projectId, o.projectId), inArray(schema.experiments.status, ["draft", "running", "paused"])));
+    const user = live.find((e) => variantsOf(e).some((v) => v.offering_id === o.id || Object.values(v.placements).includes(o.id)));
+    if (user) throw new V2Error(409, "resource_already_exists", `The offering is used by the ${user.status} experiment "${user.name}", so it cannot be ${what}. Stop the experiment or pick another offering in it first.`);
+  };
+
   /** The paywall attached to each offering, by offering id. */
   const paywallIds = async (offeringIds: string[]) => {
     const rows = offeringIds.length ? await db.select({ id: schema.paywalls.id, o: schema.paywalls.offeringId }).from(schema.paywalls).where(inArray(schema.paywalls.offeringId, offeringIds)) : [];
@@ -104,10 +111,7 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
   // Deletes the offering and its packages (FK cascade).
   r.delete(`${O}/:offering_id`, scope("project_configuration:offerings:read_write"), async (c) => {
     const o = await findOffering(c.get("projectId"), c.req.param("offering_id"));
-    // An experiment that may still serve the offering keeps it; stopped ones keep their results and show its id.
-    const live = await db.select().from(schema.experiments).where(and(eq(schema.experiments.projectId, o.projectId), inArray(schema.experiments.status, ["draft", "running", "paused"])));
-    const user = live.find((e) => variantsOf(e).some((v) => v.offering_id === o.id || Object.values(v.placements).includes(o.id)));
-    if (user) throw new V2Error(409, "resource_already_exists", `The offering is used by the ${user.status} experiment "${user.name}". Stop the experiment or pick another offering in it first.`);
+    await refuseIfExperimentUses(o, "deleted");
     await db.delete(schema.offerings).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.id, o.id)));
     await db.update(schema.customers).set({ offeringOverrideId: null }).where(and(eq(schema.customers.projectId, o.projectId), eq(schema.customers.offeringOverrideId, o.id)));
     return c.json({ object: "offering", id: o.id, deleted_at: deps.now().getTime() });
@@ -138,31 +142,37 @@ export function offeringRoutes(r: V2Router, deps: Deps) {
         if (rows[a]!.appId === rows[z2]!.appId && overlaps(rows[a]!.eligibility, rows[z2]!.eligibility)) throw new V2Error(409, "invalid_request", `packages.${i}.products: two products of the same app need non-overlapping eligibility_criteria.`, `packages.${i}.products`);
       }
     }
+    const [pw] = b.copy_paywall ? await db.select().from(schema.paywalls).where(eq(schema.paywalls.offeringId, o.id)).limit(1) : [];
+    if (b.copy_paywall && !pw) throw paramError("copy_paywall: the offering has no paywall to copy.", "copy_paywall");
     const now = deps.now();
-    const [copy] = await db.insert(schema.offerings).values({
-      id: newId("ofrng", 10), projectId: o.projectId, lookupKey: b.lookup_key, displayName: b.display_name, metadata: b.metadata !== undefined ? b.metadata : o.metadata, isCurrent: false, createdAt: now,
-    }).returning();
-    for (const [i, p] of plan.entries()) {
-      const src = source.find((s) => s.id === p.source_package_id)!;
-      const [pkg] = await db.insert(schema.packages).values({ id: newId("pkge", 10), offeringId: copy!.id, lookupKey: src.lookupKey, displayName: src.displayName, position: i, createdAt: now }).returning();
-      const items = p.products ? p.products.map((x) => ({ productId: x.product_id, eligibility: x.eligibility_criteria as string }))
-        : (prods.get(src.id)?.products ?? []).map((x) => ({ productId: x.product.id, eligibility: x.eligibility }));
-      for (const it of items) await db.insert(schema.packageProducts).values({ packageId: pkg!.id, productId: it.productId, eligibilityCriteria: it.eligibility });
-    }
-    if (b.copy_paywall) {
-      const [pw] = await db.select().from(schema.paywalls).where(eq(schema.paywalls.offeringId, o.id)).limit(1);
-      if (!pw) throw paramError("copy_paywall: the offering has no paywall to copy.", "copy_paywall");
-      await db.insert(schema.paywalls).values({
-        id: newId("pw", 14), projectId: o.projectId, name: `${pw.name ?? "Paywall"} (${b.display_name})`, offeringId: copy!.id, automaticallyScaleFontSize: pw.automaticallyScaleFontSize,
-        revision: 1, draft: pw.draft ? { ...pw.draft, revision: 1 } : null, published: pw.published ? { ...pw.published, revision: 1 } : null, template: pw.template,
-        publishedAt: pw.published ? now : null, createdAt: now,
-      });
-    }
-    return c.json((await shapeOfferings([copy!], new Set(["package", "package.product"]), "")).get(copy!.id), 201);
+    // One transaction: a failure leaves no half-made offering behind (a retry would then hit its lookup key).
+    const copy = await db.transaction(async (raw) => {
+      const tx = raw as unknown as typeof db;
+      const [made] = await tx.insert(schema.offerings).values({
+        id: newId("ofrng", 10), projectId: o.projectId, lookupKey: b.lookup_key, displayName: b.display_name, metadata: b.metadata !== undefined ? b.metadata : o.metadata, isCurrent: false, createdAt: now,
+      }).returning();
+      for (const [i, p] of plan.entries()) {
+        const src = source.find((s) => s.id === p.source_package_id)!;
+        const [pkg] = await tx.insert(schema.packages).values({ id: newId("pkge", 10), offeringId: made!.id, lookupKey: src.lookupKey, displayName: src.displayName, position: i, createdAt: now }).returning();
+        const items = p.products ? p.products.map((x) => ({ productId: x.product_id, eligibility: x.eligibility_criteria as string }))
+          : (prods.get(src.id)?.products ?? []).map((x) => ({ productId: x.product.id, eligibility: x.eligibility }));
+        for (const it of items) await tx.insert(schema.packageProducts).values({ packageId: pkg!.id, productId: it.productId, eligibilityCriteria: it.eligibility });
+      }
+      if (pw) {
+        await tx.insert(schema.paywalls).values({
+          id: newId("pw", 14), projectId: o.projectId, name: `${pw.name ?? "Paywall"} (${b.display_name})`, offeringId: made!.id, automaticallyScaleFontSize: pw.automaticallyScaleFontSize,
+          revision: 1, draft: pw.draft ? { ...pw.draft, revision: 1 } : null, published: pw.published ? { ...pw.published, revision: 1 } : null, template: pw.template,
+          publishedAt: pw.published ? now : null, createdAt: now,
+        });
+      }
+      return made!;
+    });
+    return c.json((await shapeOfferings([copy], new Set(["package", "package.product"]), "")).get(copy.id), 201);
   });
 
   r.post(`${O}/:offering_id/actions/archive`, scope("project_configuration:offerings:read_write"), async (c) => {
     const o = await findOffering(c.get("projectId"), c.req.param("offering_id"));
+    await refuseIfExperimentUses(o, "archived");
     if (o.isCurrent) throw new V2Error(422, "unprocessable_entity_error", "The current offering cannot be archived. Make another offering current first.");
     const [row] = await db.update(schema.offerings).set({ state: "inactive" }).where(and(eq(schema.offerings.projectId, o.projectId), eq(schema.offerings.id, o.id))).returning();
     return c.json(await shapeOne(row!));

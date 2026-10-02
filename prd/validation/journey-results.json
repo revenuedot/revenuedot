@@ -145,5 +145,12 @@
     "run": "202610020546045600",
     "passed": 66,
     "failed": 0
+  },
+  "experiments": {
+    "title": "Experiments v2: 4 and 2 variants, modes, audience, priority, placements, 400 SDK customers, results against SQL, CSV, AI draft",
+    "date": "2026-10-02",
+    "run": "202610020914025553",
+    "passed": 53,
+    "failed": 0
   }
 }

@@ -18,7 +18,8 @@ function inline(text: string, key: string): ReactNode[] {
     else if (m[4]) {
       const label = m[4].slice(1, m[4].indexOf("]("));
       const href = m[5]!;
-      out.push(/^(https?:\/\/|\/)/.test(href) ? <a key={k} href={href} target={href.startsWith("/") ? undefined : "_blank"} rel="noreferrer">{label}</a> : m[4]);
+      // http(s) links, or paths on this dashboard ("/projects/…"; never "//host" or "/\\host", which leave the site).
+      out.push(/^(https?:\/\/|\/(?![\/\\]))/.test(href) ? <a key={k} href={href} target={href.startsWith("/") ? undefined : "_blank"} rel="noreferrer">{label}</a> : m[4]);
     }
     last = m.index + m[0].length;
   }

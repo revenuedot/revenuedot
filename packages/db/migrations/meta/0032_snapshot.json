@@ -3669,7 +3669,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'new'"
+          "default": "'new_and_existing'"
         },
         "track_paywall_views": {
           "name": "track_paywall_views",

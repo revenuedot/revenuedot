@@ -149,7 +149,8 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
   async function save(mode: "draft" | "start") {
     const e = validate();
     setErrors(e); setBanner(null);
-    if (Object.keys(e).length) { setBanner("Fix the highlighted fields."); document.querySelector<HTMLElement>("[aria-invalid=true]")?.focus(); return; }
+    // Focus the first highlighted field once React has drawn the errors.
+    if (Object.keys(e).length) { setBanner("Fix the highlighted fields."); requestAnimationFrame(() => document.querySelector<HTMLElement>("[aria-invalid=true]")?.focus()); return; }
     setBusy(mode);
     const live = { name: name.trim(), type, primary_metric: primary, secondary_metrics: secondary.filter((m) => m !== primary), notes, enrollment_percent: Number(pct) };
     const json = locked ? live : {
@@ -157,13 +158,23 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
       audience_id: audMode === "saved" ? audienceId : null, audience_rules: audMode === "custom" ? audienceRules : null,
       variants: variants.map((v) => ({ name: v.name.trim(), offering_id: v.offering, placements: Object.fromEntries(Object.entries(v.placements).map(([k, o]) => [k, o || null])) })),
     };
+    let saved: Experiment | null = null;
     try {
-      const x = existing ? await api<Experiment>(`${v2(pid)}/experiments/${existing.id}`, { method: "POST", json }) : await api<Experiment>(`${v2(pid)}/experiments`, { method: "POST", json });
-      if (mode === "start") await api(`${v2(pid)}/experiments/${x.id}/actions/start`, { method: "POST" });
-      await Promise.all([qc.invalidateQueries({ queryKey: ["experiments", pid] }), qc.invalidateQueries({ queryKey: ["experiment", pid, x.id] })]);
+      saved = existing ? await api<Experiment>(`${v2(pid)}/experiments/${existing.id}`, { method: "POST", json }) : await api<Experiment>(`${v2(pid)}/experiments`, { method: "POST", json });
+      if (mode === "start") await api(`${v2(pid)}/experiments/${saved.id}/actions/start`, { method: "POST" });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["experiments", pid] }), qc.invalidateQueries({ queryKey: ["experiment", pid, saved.id] })]);
       toast(mode === "start" ? "Experiment running: customers join from their next offerings request" : existing ? "Experiment saved" : "Draft saved");
-      nav(`/projects/${pid}/experiments/${x.id}`);
-    } catch (err) { setBanner(errMsg(err)); setBusy(null); }
+      nav(`/projects/${pid}/experiments/${saved.id}`);
+    } catch (err) {
+      // Saved but not started: open the draft (a retry here would make a second one) and say why it did not start.
+      if (saved && !existing) {
+        await qc.invalidateQueries({ queryKey: ["experiments", pid] });
+        toast(`Saved as a draft, but it did not start: ${errMsg(err)}`);
+        nav(`/projects/${pid}/experiments/${saved.id}`, { replace: true });
+        return;
+      }
+      setBanner(errMsg(err)); setBusy(null);
+    }
   }
   const submit = (e: FormEvent) => { e.preventDefault(); void save("draft"); };
 
@@ -198,9 +209,9 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
           <div>
             <Tabs label="Notes" idBase="xp-notes" value={notesTab} onChange={setNotesTab} tabs={[{ value: "write", label: "Notes" }, { value: "preview", label: "Preview" }]} />
             {notesTab === "write"
-              ? <textarea id="xp-notes-text" aria-label="Notes" className="textarea xp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={20_000}
-                placeholder={"## Hypothesis\nShowing the annual plan first raises realized LTV per customer by 10%, because…\n\n- What we change\n- What we expect"} />
-              : <div className="xp-notes-prev" role="tabpanel" aria-label="Notes preview">{notes.trim() ? <Markdown text={notes} /> : <p className="subtle">Nothing to preview yet.</p>}</div>}
+              ? <div role="tabpanel" id="xp-notes-write-panel" aria-labelledby="xp-notes-write"><textarea id="xp-notes-text" aria-label="Notes" className="textarea xp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={20_000}
+                placeholder={"## Hypothesis\nShowing the annual plan first raises realized LTV per customer by 10%, because…\n\n- What we change\n- What we expect"} /></div>
+              : <div className="xp-notes-prev" role="tabpanel" id="xp-notes-preview-panel" aria-label="Notes preview">{notes.trim() ? <Markdown text={notes} /> : <p className="subtle">Nothing to preview yet.</p>}</div>}
             <span className="subtle xp-hint">Markdown: headings, lists, **bold**, *italic*, `code` and links.</span>
           </div>
         </div>
@@ -240,7 +251,7 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
                   <select id={`xp-off-${i}`} className="select" value={v.offering} disabled={locked} aria-invalid={!!errors[`v${i}`]}
                     onChange={(e) => { if (e.target.value === "__dup") { setDup(i); return; } setVariant(i, { offering: e.target.value }); }}>
                     <option value="" disabled>Choose an offering</option>
-                    {offerings.map((o) => <option key={o.id} value={o.id}>{o.display_name} ({o.lookup_key}){o.is_current ? " · current" : ""}</option>)}
+                    {offerings.filter((o) => o.state !== "inactive" || o.id === v.offering).map((o) => <option key={o.id} value={o.id}>{o.display_name} ({o.lookup_key}){o.is_current ? " · current" : ""}{o.state === "inactive" ? " · archived" : ""}</option>)}
                     {i > 0 && variants[0]!.offering && <option value="__dup">Duplicate {offName(variants[0]!.offering)}…</option>}
                   </select>
                 </Field>
@@ -256,7 +267,7 @@ function Form({ pid, existing, offerings, startType }: { pid: string; existing?:
                     <select id={`xp-pl-${i}-${k}`} aria-label={`Variant ${VARIANT_IDS[i]!.toUpperCase()} placement ${k}`} className="select" value={v.placements[k] ?? NONE} disabled={locked}
                       onChange={(e) => setVariant(i, { placements: { ...v.placements, [k]: e.target.value } })}>
                       <option value={NONE}>No paywall</option>
-                      {offerings.map((o) => <option key={o.id} value={o.id}>{o.lookup_key}</option>)}
+                      {offerings.filter((o) => o.state !== "inactive" || o.id === v.placements[k]).map((o) => <option key={o.id} value={o.id}>{o.lookup_key}</option>)}
                     </select>
                     {i === 0 && !locked && <button type="button" className="ib" aria-label={`Remove placement ${k}`} onClick={() => removePlacement(k)}><Icon name="trash" /></button>}
                   </div>

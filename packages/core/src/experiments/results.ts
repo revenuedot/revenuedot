@@ -1,4 +1,4 @@
-import { buildSubscriptions, paidAt, type ChartLifecycle, type ChartProduct, type ChartSubState, type ChartTx, type Sub } from "../charts/model.js";
+import { buildSubscriptions, paidAt, refundTimes, type ChartLifecycle, type ChartProduct, type ChartSubState, type ChartTx, type Sub } from "../charts/model.js";
 import { DAY, dayStart } from "../charts/time.js";
 import { EXPERIMENT_METRICS, metricDef, type MetricDef } from "./catalog.js";
 import { chanceMeanBeats, chanceRateBeats, liftInterval, meanInterval, rateSe, sampleSizeMean, sampleSizeRate, summarize, wilson, type Summary } from "./stats.js";
@@ -92,8 +92,12 @@ interface Facts {
   firstPaidSubAt: number;
 }
 
-function factsOf(input: ResultsInput, included: Set<string>): Map<string, Facts> {
-  const enr = new Map(input.enrollments.filter((e) => included.has(e.customerId)).map((e) => [e.customerId, e]));
+/** When a subscription's chain ends now by the store's current state (an early expiry or a lapse the ledger row predates). */
+const stateEnd = (s: Sub) => (s.state ? (s.state.expiresAt === null ? Infinity : Math.max(s.state.expiresAt, s.state.graceUntil ?? 0)) : Infinity);
+
+/** `startAt`: when each customer starts to count (their enrollment, or their first paywall view after it). */
+function factsOf(input: ResultsInput, included: Set<string>, startAt: Map<string, number>): Map<string, Facts> {
+  const enr = new Map(input.enrollments.filter((e) => included.has(e.customerId)).map((e) => [e.customerId, { ...e, enrolledAt: startAt.get(e.customerId) ?? e.enrolledAt }]));
   const txs = input.txs.filter((t) => enr.has(t.customerId));
   const subs = buildSubscriptions({ now: input.now, txs, products: input.products, subStates: input.subStates.filter((s) => enr.has(s.customerId)), lifecycle: input.lifecycle.filter((l) => enr.has(l.customerId)), customers: [], sdkEvents: [], refundEvents: [], activity: [], fx: () => 1 });
   const successors = new Map<Sub, Sub[]>();
@@ -107,9 +111,11 @@ function factsOf(input: ResultsInput, included: Set<string>): Map<string, Facts>
   const out = new Map<string, Facts>();
   for (const [id, e] of enr) out.set(id, { id, variant: e.variant, enrolledAt: e.enrolledAt, convAt: Infinity, trials: [], firstPaidAt: Infinity, firstRefundAt: Infinity, money: [], subs: [], firstPaidSubAt: Infinity });
   const keys = new Set<string>();
+  // A product change continues the subscription it replaced: it counts only when the first one started after joining.
+  const rootStart = (s: Sub) => { let r = s; while (r.predecessor) r = r.predecessor; return r.start; };
   for (const s of subs) {
     const f = out.get(s.customerId)!;
-    if (s.start < f.enrolledAt - GRACE) continue;
+    if (rootStart(s) < f.enrolledAt - GRACE) continue;
     f.subs.push(s);
     f.convAt = Math.min(f.convAt, s.start);
     if (s.paidStart !== null) f.firstPaidSubAt = Math.min(f.firstPaidSubAt, s.paidStart);
@@ -124,12 +130,15 @@ function factsOf(input: ResultsInput, included: Set<string>): Map<string, Facts>
     const f = out.get(t.customerId)!;
     f.convAt = Math.min(f.convAt, t.at);
   }
+  // Refunds net of reversals: a reversed refund is not a refunded customer.
+  const refunded = refundTimes(txs);
   for (const t of txs) {
     if (!keys.has(txKey(t.store, t.storeTransactionId))) continue;
     const f = out.get(t.customerId)!;
     f.money.push({ at: t.at, usd: t.usd });
     if (isMoney(t.kind) && t.usd > 0) f.firstPaidAt = Math.min(f.firstPaidAt, t.at);
-    if (t.kind === "refund") f.firstRefundAt = Math.min(f.firstRefundAt, t.at);
+    const r = t.kind === "refund" ? refunded.get(txKey(t.store, t.storeTransactionId)) : undefined;
+    if (r !== undefined) f.firstRefundAt = Math.min(f.firstRefundAt, r);
   }
   for (const f of out.values()) f.money.sort((a, b) => a.at - b.at);
   return out;
@@ -159,7 +168,7 @@ function measure(list: Facts[], t: number): Measured {
     const paid = f.firstPaidAt <= t;
     if (paid) c.paid_customers++;
     let m = 0, active = false;
-    for (const s of f.subs) { const p = paidAt(s, t); if (p) { active = true; m += p.monthly; } }
+    for (const s of f.subs) { const p = t < stateEnd(s) ? paidAt(s, t) : null; if (p) { active = true; m += p.monthly; } }
     if (active) c.active_subscribers++;
     if (f.firstPaidSubAt <= t && !active) c.churned_subscribers++;
     if (f.firstRefundAt <= t) c.refunded_customers++;
@@ -227,7 +236,12 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 function guidanceOf(input: ResultsInput, variants: VariantResult[], measured: Map<string, Measured>): Guidance {
   const def = metricDef(input.primaryMetric) ?? metricDef("initial_conversion_rate")!;
   const control = measured.get(input.controlId);
-  const events = (m: Measured) => (def.kind === "rate" ? m.counts[RATES[def.id]![0]]! : m.counts.paid_customers!);
+  // Events: a rate of customers needs its conversions; a rate of a sub-population (trials, payers) needs that population.
+  const events = (m: Measured) => {
+    if (def.kind !== "rate") return m.counts.paid_customers!;
+    const [k, n] = RATES[def.id]!;
+    return n === "customers" ? m.counts[k]! : m.counts[n]!;
+  };
   const enough = variants.length > 1 && variants.every((v) => v.customers >= MIN_CUSTOMERS && events(measured.get(v.id)!) >= MIN_EVENTS);
   let needed: number | null = null;
   if (control) {
@@ -251,7 +265,8 @@ function guidanceOf(input: ResultsInput, variants: VariantResult[], measured: Ma
   let message: string;
   if (!total) message = "Nobody is enrolled yet. Customers join when your app asks for offerings while the experiment runs.";
   else if (!enough) {
-    message = `Too early to call: each variant needs at least ${MIN_CUSTOMERS} customers and ${MIN_EVENTS} ${def.kind === "rate" ? "conversions" : "paying customers"} for ${def.name}.`;
+    const what = def.kind !== "rate" ? "paying customers" : RATES[def.id]![1] === "customers" ? "conversions" : RATES[def.id]![1] === "trials_completed" ? "completed trials" : "paying customers";
+    message = `Too early to call: each variant needs at least ${MIN_CUSTOMERS} customers and ${MIN_EVENTS} ${what} for ${def.name}.`;
     if (needed) message += ` To detect a 20% lift, plan for about ${needed.toLocaleString("en-US")} customers per variant (the smallest has ${fewest.toLocaleString("en-US")}).`;
   } else if (leader && leader.chance_to_beat_control >= 0.95) message = `${name(leader.variant_id)} leads: ${pct(leader.chance_to_beat_control)} chance to beat the control on ${def.name}.`;
   else if (treatments.length && treatments.every((v) => (v.metrics[def.id]?.chance_to_beat_control ?? 1) <= 0.05)) message = `The control leads: every treatment has at most a 5% chance to beat it on ${def.name}.`;
@@ -261,10 +276,15 @@ function guidanceOf(input: ResultsInput, variants: VariantResult[], measured: Ma
 
 export function computeExperimentResults(input: ResultsInput): ExperimentResults {
   const enrolledAt = new Map(input.enrollments.map((e) => [e.customerId, e.enrolledAt]));
-  const viewed = new Set<string>();
-  for (const v of input.paywallViews) { const at = enrolledAt.get(v.customerId); if (at !== undefined && v.at >= at - GRACE) viewed.add(v.customerId); }
+  // First paywall view after joining, per customer.
+  const viewed = new Map<string, number>();
+  for (const v of input.paywallViews) {
+    const at = enrolledAt.get(v.customerId);
+    if (at !== undefined && v.at >= at - GRACE) viewed.set(v.customerId, Math.min(viewed.get(v.customerId) ?? Infinity, Math.max(v.at, at)));
+  }
   const included = new Set(input.enrollments.map((e) => e.customerId).filter((id) => input.paywall === "all" || (input.paywall === "viewed" ? viewed.has(id) : !viewed.has(id))));
-  const facts = factsOf(input, included);
+  // Viewers only: each customer counts from their first paywall view (what they bought before it does not count).
+  const facts = factsOf(input, included, input.paywall === "viewed" ? viewed : new Map());
   const byVariant = new Map<string, Facts[]>(input.variants.map((v) => [v.id, []]));
   for (const f of facts.values()) byVariant.get(f.variant)?.push(f);
 

@@ -46,7 +46,7 @@ const journey: Journey = {
     for (const u of old) await ios.customerInfo(u);
     const four = await dev.v2("POST", "/experiments", {
       name: "Plans for new US customers", type: "subscription_ordering", enrollment: "new", notes: "Annual first should lift realized LTV per customer.",
-      audience_rules: { groups: [{ conditions: [{ field: "country", operator: "is", value: "USA" }, { field: "platform", operator: "is", value: "ios" }] }] },
+      audience_rules: { groups: [{ conditions: [{ field: "country", operator: "is", value: "US" }, { field: "platform", operator: "is", value: "ios" }] }] },
       variants: [{ offering_id: cat.offering.id }, { offering_id: annualFirst.id, placements: { onboarding_end: onboarding.id } }, { offering_id: allAnnual.id }, { offering_id: copy.id, placements: { onboarding_end: null } }],
     });
     const two = await dev.v2("POST", "/experiments", { name: "Everyone: annual only", enrollment: "new_and_existing", variants: [{ offering_id: cat.offering.id }, { offering_id: allAnnual.id }] });
@@ -111,7 +111,8 @@ const journey: Journey = {
       us.slice(24, 26).forEach((u) => plan.push([u, "pro_monthly", "expire"]));
       us.slice(26, 27).forEach((u) => plan.push([u, "pro_annual", "refund"]));
     }
-    for (const [u, product, scenario] of plan) await dev.v2("POST", "/test_purchases", { app_user_id: u, product_id: product, scenario });
+    // "expire" starts a period ago by default; these lapses start now (after joining) and end at once.
+    for (const [u, product, scenario] of plan) await dev.v2("POST", "/test_purchases", { app_user_id: u, product_id: product, scenario, ...(scenario === "expire" ? { purchased_at: Date.now() - 2000 } : {}) });
     // Two customers buy through the SDK's own receipt post too.
     for (const u of byVariant("b").slice(30, 32)) await ios.purchase(u, "pro_annual", { price: 59.99, presented_offering_identifier: "annual_first" });
 
@@ -153,8 +154,8 @@ const journey: Journey = {
       c.check(`variant ${row.variant}: rate intervals hold the value`, m.initial_conversion_rate.lower <= m.initial_conversion_rate.value && m.initial_conversion_rate.value <= m.initial_conversion_rate.upper, m.initial_conversion_rate);
     }
     const lapsed = await ctx.sql<{ variant: string; n: number }[]>`SELECT e.variant, count(DISTINCT e.customer_id)::int AS n FROM experiment_enrollments e JOIN subscriptions s ON s.customer_id = e.customer_id
-      WHERE e.experiment_id = ${four.id} AND s.is_sandbox AND s.period_type = 'normal' AND s.refunded_at IS NULL AND s.expires_date <= now() GROUP BY e.variant`;
-    c.check("churned subscribers: every variant counts its lapsed subscriptions", lapsed.every((l) => res.variants.items.find((x: any) => x.id === l.variant).metrics.churned_subscribers.value === l.n), { sql: lapsed, api: res.variants.items.map((x: any) => [x.id, x.metrics.churned_subscribers.value]) });
+      WHERE e.experiment_id = ${four.id} AND s.is_sandbox AND s.period_type = 'normal' AND s.refunded_at IS NULL AND s.expires_date <= now() AND s.original_purchase_date >= e.enrolled_at - interval '1 minute' GROUP BY e.variant`;
+    c.check("churned subscribers: every variant counts the subscriptions bought after joining that lapsed", lapsed.length === 4 && lapsed.every((l) => res.variants.items.find((x: any) => x.id === l.variant).metrics.churned_subscribers.value === l.n), { sql: lapsed, api: res.variants.items.map((x: any) => [x.id, x.metrics.churned_subscribers.value]) });
     c.check("treatments carry a lift and a chance to beat the control; the control none", res.variants.items.slice(1).every((v: any) => typeof v.metrics.conversion_to_paying.chance_to_beat_control === "number") && res.variants.items[0].metrics.conversion_to_paying.chance_to_beat_control === undefined, res.variants.items.map((v: any) => v.metrics.conversion_to_paying));
     c.check("guidance says it is too early (under 100 customers per variant)", res.guidance.enough_data === false && /Too early to call/.test(res.guidance.message), res.guidance);
     c.check("the series has one value per day and variant", res.series.days.length >= 1 && res.series.values.realized_ltv.a.length === res.series.days.length, res.series.days);

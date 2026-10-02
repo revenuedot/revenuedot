@@ -70,7 +70,8 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
       if (!OPERATORS.has(cnd.operator)) throw paramError(`${p}.operator: unknown operator ${cnd.operator}.`, `${p}.operator`);
     }
   };
-  const offeringIds = async (projectId: string) => new Set((await db.select({ id: schema.offerings.id }).from(schema.offerings).where(eq(schema.offerings.projectId, projectId))).map((o) => o.id));
+  /** The project's offerings that can be served: archived ones are not in the SDK's offerings list. */
+  const offeringIds = async (projectId: string) => new Set((await db.select({ id: schema.offerings.id }).from(schema.offerings).where(and(eq(schema.offerings.projectId, projectId), eq(schema.offerings.state, "active")))).map((o) => o.id));
   const checkAudience = async (projectId: string, id: string) => {
     const [a] = await db.select({ id: schema.audiences.id }).from(schema.audiences).where(and(eq(schema.audiences.projectId, projectId), eq(schema.audiences.id, id))).limit(1);
     if (!a) throw paramError("audience_id: no such audience in this project.", "audience_id");
@@ -82,10 +83,10 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
     const out = input.map((v, i) => {
       const id = VARIANT_IDS[i]!;
       if (v.id && v.id !== id) throw paramError(`variants.${i}.id: variant ${i + 1} is "${id}" (control a, then b, c, d).`, `variants.${i}.id`);
-      if (!known.has(v.offering_id)) throw paramError(`variants.${i}.offering_id: no such offering in this project.`, `variants.${i}.offering_id`);
+      if (!known.has(v.offering_id)) throw paramError(`variants.${i}.offering_id: no such offering in this project, or it is archived.`, `variants.${i}.offering_id`);
       for (const [p, o] of Object.entries(v.placements ?? {})) {
         if (!PLACEMENT_ID.test(p)) throw paramError(`variants.${i}.placements: "${p}" is not a placement id (letters, digits, dots, dashes or underscores, up to 100).`, `variants.${i}.placements`);
-        if (o && !known.has(o)) throw paramError(`variants.${i}.placements.${p}: no such offering in this project.`, `variants.${i}.placements.${p}`);
+        if (o && !known.has(o)) throw paramError(`variants.${i}.placements.${p}: no such offering in this project, or it is archived.`, `variants.${i}.placements.${p}`);
       }
       return { id, name: v.name ?? variantDefaultName(id), offering_id: v.offering_id, placements: v.placements ?? {} };
     });
@@ -128,8 +129,10 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
     }
     const enrollment = b.enrollment ?? current?.enrollment ?? "new";
     let track = b.track_paywall_views ?? current?.trackPaywallViews ?? false;
-    if (enrollment === "new_and_existing") {
-      if (b.track_paywall_views === false) throw paramError("Experiments that enroll existing customers need paywall view tracking: results count customers from their first paywall view.", "track_paywall_views");
+    // Enrolling existing customers needs paywall tracking (results can then count viewers from their first view). It is
+    // turned on when the request asks for new and existing customers; rows migrated from A/B tests keep their setting.
+    if (enrollment === "new_and_existing" && (b.enrollment === "new_and_existing" || b.track_paywall_views === false)) {
+      if (b.track_paywall_views === false) throw paramError("Experiments that enroll existing customers need paywall view tracking, so results can count customers from their first paywall view.", "track_paywall_views");
       track = true;
     }
     return { variants, enrollment, track };
@@ -175,7 +178,8 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
   });
 
   // Matching customers in the last 7 days: first seen (new customers) or seen (new and existing), up to 5,000 checked.
-  r.post(`${E}/actions/estimate`, scope(READ), async (c) => {
+  // Audience conditions can name one customer (an email, an app user id), so the estimate needs the audience read scope.
+  r.post(`${E}/actions/estimate`, scope(READ, "audiences:audiences:read"), async (c) => {
     const projectId = c.get("projectId");
     const b = await body(c, Estimate);
     if (b.audience_id && b.audience_rules) throw paramError("Send a saved audience (audience_id) or conditions (audience_rules), not both.", "audience_rules");
@@ -247,7 +251,7 @@ export function experimentRoutes(r: V2Router, deps: Deps) {
       const vs = variantsOf(x);
       const known = await offeringIds(x.projectId);
       const missing = vs.flatMap((v) => [v.offering_id, ...Object.values(v.placements)].filter((o): o is string => !!o && !known.has(o)));
-      if (vs.length < 2 || missing.length) throw new V2Error(422, "unprocessable_entity_error", missing.length ? "An offering of this experiment was deleted. Pick another offering in each variant first." : "An experiment needs a control and at least one treatment.");
+      if (vs.length < 2 || missing.length) throw new V2Error(422, "unprocessable_entity_error", missing.length ? "An offering of this experiment was deleted or archived. Pick another offering in each variant first." : "An experiment needs a control and at least one treatment.");
     }
     const now = deps.now();
     const [out] = await db.update(schema.experiments).set({

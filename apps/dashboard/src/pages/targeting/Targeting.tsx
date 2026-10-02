@@ -176,7 +176,11 @@ export function TargetingPage() {
   };
   const onDrop = (e: DragEvent, target: string) => { e.preventDefault(); if (drag) move(drag.from, shown.findIndex((r) => r.id === target)); setDrag(null); };
   const setState = async (r: Rule, on: boolean) => {
-    try { await api(`${v2(pid)}/targeting_rules/${r.id}`, { method: "POST", json: { state: on ? "active" : "inactive" } }); await refresh(); toast(on ? (phaseOf({ ...r, state: "active" }) === "scheduled" ? "Rule scheduled" : "Rule is live") : "Rule turned off"); }
+    try {
+      await api(`${v2(pid)}/targeting_rules/${r.id}`, { method: "POST", json: { state: on ? "active" : "inactive" } }); await refresh();
+      const phase = phaseOf({ ...r, state: "active" });
+      toast(!on ? "Rule turned off" : phase === "scheduled" ? "Rule scheduled" : phase === "inactive" ? "Rule turned on, but its end date has passed: edit the dates to use it" : "Rule is live");
+    }
     catch (e) { toast(errMsg(e)); }
   };
   const duplicate = async (r: Rule) => {

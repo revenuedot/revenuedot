@@ -178,6 +178,55 @@ describe("experiment results from a ledger", () => {
     expect(not.variants.map((x) => x.customers)).toEqual([2, 3]);
   });
 
+  it("skips upgrades of subscriptions bought before joining, nets reversed refunds, follows the store's current expiry, and counts viewers from their first view", () => {
+    const base0 = input();
+    const r = computeExperimentResults({
+      ...base0,
+      enrollments: [...base0.enrollments, { customerId: "c8", variant: "a", enrolledAt: d(5) }, { customerId: "c9", variant: "b", enrolledAt: d(1) }, { customerId: "c10", variant: "b", enrolledAt: d(1) }, { customerId: "c11", variant: "a", enrolledAt: d(0) }],
+      txs: [...base0.txs,
+        // c8: monthly since before joining, upgraded to annual after joining: a product change, not a new conversion.
+        tx("c8", "purchase", d(-10), 10, { expiresAt: d(20) }), tx("c8", "purchase", d(6), 50, { productId: "annual", expiresAt: d(371) }),
+        // c9: a refund that was reversed.
+        tx("c9", "one_time", d(2), 20, { storeTransactionId: "t9", productId: "lifetime" }), tx("c9", "refund", d(3), -20, { storeTransactionId: "t9", productId: "lifetime" }), tx("c9", "refund_reversal", d(4), 20, { storeTransactionId: "t9", productId: "lifetime" }),
+        // c10: the ledger says the month runs to day 32; the store says it ended on day 10.
+        tx("c10", "purchase", d(2), 10, { expiresAt: d(32) }),
+        // c11: bought on day 1, first saw a paywall on day 2.
+        tx("c11", "purchase", d(1), 10, { expiresAt: d(31) }),
+      ],
+      subStates: [{ customerId: "c10", store: "app_store", appId: "app1", productId: "monthly", expiresAt: d(10), autoRenew: false, billingIssue: false, graceUntil: null, familyShared: false, offering: null, cancelSurveyReason: null, unsubscribeAt: d(3) }],
+      paywallViews: [...base0.paywallViews, { customerId: "c11", at: d(2) }],
+    });
+    const [a, b] = r.variants;
+    // a: c1 converts, c8's upgrade does not, c11 bought → initial conversions 2 of 5.
+    expect(a!.metrics.initial_conversions!.value).toBe(2);
+    expect(a!.metrics.realized_ltv!.value).toBe(20);
+    // b: c9 paid and is not refunded (reversed); c10 bought and lapsed on day 10.
+    expect(b!.metrics.refunded_customers!.value).toBe(1);
+    expect(b!.metrics.paid_customers!.value).toBe(5);
+    expect(b!.metrics.active_subscribers!.value).toBe(1);
+    expect(b!.metrics.churned_subscribers!.value).toBe(2);
+    expect(b!.metrics.realized_ltv!.value).toBe(90);
+    // Viewers only: c11 bought before their first view, so they count from day 2 and have not converted.
+    const viewers = computeExperimentResults({ ...base0, enrollments: [...base0.enrollments, { customerId: "c11", variant: "a", enrolledAt: d(0) }], txs: [...base0.txs, tx("c11", "purchase", d(1), 10, { expiresAt: d(31) })], paywallViews: [...base0.paywallViews, { customerId: "c11", at: d(2) }], paywall: "viewed" });
+    expect(viewers.variants[0]!.customers).toBe(2);
+    expect(viewers.variants[0]!.metrics.initial_conversions!.value).toBe(1);
+    expect(viewers.variants[0]!.metrics.realized_ltv!.value).toBe(10);
+  });
+
+  it("needs completed trials for a trial conversion test and payers for a refund rate test", () => {
+    const enrollments: ResultsInput["enrollments"] = [], txs: ChartTx[] = [];
+    for (let i = 0; i < 240; i++) {
+      enrollments.push({ customerId: `y${i}`, variant: i % 2 ? "b" : "a", enrolledAt: d(0) });
+      if (i % 2 === 0 && i < 30) txs.push(tx(`y${i}`, "purchase", d(1), 10, { expiresAt: d(31) }));
+      if (i % 2 === 1 && i < 30) txs.push(tx(`y${i}`, "purchase", d(1), 10, { expiresAt: d(31) }));
+    }
+    const refund = computeExperimentResults({ ...input(), enrollments, txs, paywallViews: [], primaryMetric: "refund_rate" });
+    expect(refund.guidance.enough_data).toBe(true);
+    const trial = computeExperimentResults({ ...input(), enrollments, txs, paywallViews: [], primaryMetric: "trial_conversion_rate" });
+    expect(trial.guidance.enough_data).toBe(false);
+    expect(trial.guidance.message).toMatch(/10 completed trials for Trial conversion rate/);
+  });
+
   it("calls a winner with enough data", () => {
     const enrollments: ResultsInput["enrollments"] = [], txs: ChartTx[] = [];
     for (let i = 0; i < 400; i++) {

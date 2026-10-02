@@ -676,8 +676,11 @@ export const experiments = pgTable("experiments", {
   secondaryMetrics: jsonb("secondary_metrics").$type<string[]>().notNull().default([]),
   /** The hypothesis, in Markdown. */
   notes: text("notes").notNull().default(""),
-  /** "new": customers first seen after the start; "new_and_existing": anyone who asks while it runs. */
-  enrollment: text("enrollment").notNull().default("new"),
+  /**
+   * "new": customers first seen after the start; "new_and_existing": anyone who asks while it runs. The column default is
+   * the pre-0032 behaviour (for rows an older server writes); the API always sets it, "new" unless asked otherwise.
+   */
+  enrollment: text("enrollment").notNull().default("new_and_existing"),
   trackPaywallViews: boolean("track_paywall_views").notNull().default(false),
   audienceId: text("audience_id").references(() => audiences.id, { onDelete: "restrict" }),
   /** Conditions written for this experiment only (the audience rule format), instead of a saved audience. */

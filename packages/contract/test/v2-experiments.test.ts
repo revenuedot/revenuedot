@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { parseCsv } from "@revenuedot/server/services/exports/files.js";
 import { applyRows } from "@revenuedot/server/services/archive/import.js";
+import { createSecretKey } from "@revenuedot/server/services/auth.js";
 import { harness, type Harness } from "../src/harness.js";
 import { buy, v2 } from "./v2-helpers.js";
 
@@ -211,9 +212,9 @@ describe("enrollment", () => {
   it("migration 0032 turns an A/B experiment into variants a and b without moving anyone", async () => {
     const o2 = await offering("o2");
     const now = h.now();
-    // A row as the first release wrote it: no variants, enrollment and priority at their column defaults.
-    await h.db.execute(sql`insert into experiments (id, project_id, name, status, enrollment_percent, offering_a, offering_b, started_at, created_at, variants, enrollment, priority)
-      values ('prexp_legacy01', 'proj1', 'Legacy AB', 'running', 100, 'ofr_default', ${o2}, ${now.toISOString()}, ${now.toISOString()}, '[]'::jsonb, 'new', 0)`);
+    // A row as the first release wrote it (and as an older server writes during a deploy): the new columns at their defaults.
+    await h.db.execute(sql`insert into experiments (id, project_id, name, status, enrollment_percent, offering_a, offering_b, started_at, created_at)
+      values ('prexp_legacy01', 'proj1', 'Legacy AB', 'running', 100, 'ofr_default', ${o2}, ${now.toISOString()}, ${now.toISOString()})`);
     for (const [user, variant] of [["la", "a"], ["lb", "b"]] as const) {
       await newCustomer(user);
       const [a] = await h.db.select().from(schema.customerAliases).where(eq(schema.customerAliases.appUserId, user));
@@ -227,6 +228,40 @@ describe("enrollment", () => {
     expect(got).toMatchObject({ enrollment: "new_and_existing", priority: 1, enrolled_customers: 2, variants: [{ id: "a", name: "Control", offering_id: "ofr_default", placements: {} }, { id: "b", name: "Treatment B", offering_id: o2, placements: {} }] });
     expect((await sdk("la")).current_offering_id).toBe("default");
     expect((await sdk("lb")).current_offering_id).toBe("o2");
+  });
+});
+
+describe("archived offerings", () => {
+  it("cannot be a variant, and an archived offering a rule names falls back to the current offering in the SDK", async () => {
+    const o2 = await offering("o2");
+    await call("POST", "/v2/projects/{project_id}/offerings/{offering_id}/actions/archive", { offering_id: o2 });
+    const r = await create({ name: "Archived", variants: [{ offering_id: "ofr_default" }, { offering_id: o2 }] });
+    expect(r.status).toBe(400);
+    expect(r.body.message).toMatch(/archived/);
+    const o3 = await offering("o3");
+    await call("POST", "/v2/projects/{project_id}/targeting_rules", {}, ext({ name: "Everyone", offering_id: o2, placements: { onboarding_end: o2, paywall_b: o3 }, state: "active" }));
+    await newCustomer("arch1");
+    const body = await sdk("arch1");
+    expect(body.current_offering_id).toBe("default");
+    expect(body.placements).toEqual({ fallback_offering_id: "default", offering_ids_by_placement: { paywall_b: "o3" } });
+  });
+
+  it("an update of a migrated experiment keeps its paywall tracking setting; asking for new and existing customers turns it on", async () => {
+    const o2 = await offering("o2");
+    await h.db.execute(sql`insert into experiments (id, project_id, name, status, enrollment_percent, offering_a, offering_b, created_at)
+      values ('prexp_mig_draft', 'proj1', 'Migrated draft', 'draft', 100, 'ofr_default', ${o2}, ${h.now().toISOString()})`);
+    const renamed = await call("POST", ONE, { experiment_id: "prexp_mig_draft" }, ext({ name: "Renamed", enrollment_percent: 40 }));
+    expect(renamed.body).toMatchObject({ name: "Renamed", enrollment: "new_and_existing", track_paywall_views: false, enrollment_percent: 40 });
+    const asked = await call("POST", ONE, { experiment_id: "prexp_mig_draft" }, ext({ enrollment: "new_and_existing" }));
+    expect(asked.body.track_paywall_views).toBe(true);
+    expect((await call("POST", ONE, { experiment_id: "prexp_mig_draft" }, ext({ track_paywall_views: false }))).status).toBe(400);
+  });
+
+  it("the estimate needs the audience read permission", async () => {
+    const { key } = await createSecretKey(h.db, "proj1", "offerings only", ["project_configuration:offerings:read"]);
+    const res = await h.fetch("/v2/projects/proj1/experiments/actions/estimate", { method: "POST", key, json: {} });
+    expect(res.status).toBe(403);
+    expect((await res.json()).message).toMatch(/audiences:audiences:read/);
   });
 });
 
@@ -263,6 +298,8 @@ describe("offerings for treatments", () => {
     expect((await call("POST", "/v2/projects/{project_id}/offerings/{offering_id}/actions/duplicate", { offering_id: "ofr_default" }, ext({ lookup_key: "default", display_name: "x" }))).status).toBe(409);
     expect((await call("POST", "/v2/projects/{project_id}/offerings/{offering_id}/actions/duplicate", { offering_id: "ofr_default" }, ext({ lookup_key: "x1", display_name: "x", packages: [{ source_package_id: "pkge_other" }] }))).status).toBe(400);
     expect((await call("POST", "/v2/projects/{project_id}/offerings/{offering_id}/actions/duplicate", { offering_id: "ofr_default" }, ext({ lookup_key: "x2", display_name: "x", copy_paywall: true }))).status).toBe(400);
+    // A refused copy leaves nothing behind, so the same lookup key works on the next try.
+    expect((await call("GET", "/v2/projects/{project_id}/offerings")).body.items.some((o: any) => o.lookup_key === "x2")).toBe(false);
     const pw = await call("POST", "/v2/projects/{project_id}/paywalls", {}, { ext: true, json: { offering_id: "ofr_default" } });
     expect(pw.status).toBeLessThan(300);
     const design = await call("POST", "/v2/projects/{project_id}/offerings/{offering_id}/actions/duplicate", { offering_id: "ofr_default" }, ext({ lookup_key: "design_b", display_name: "Design B", copy_paywall: true }));
@@ -276,6 +313,9 @@ describe("offerings for treatments", () => {
       expect(del.status).toBe(409);
       expect(del.body.message).toMatch(/used by the draft experiment "Uses copy"/);
     }
+    const archive = await call("POST", "/v2/projects/{project_id}/offerings/{offering_id}/actions/archive", { offering_id: exact.body.id });
+    expect(archive.status).toBe(409);
+    expect(archive.body.message).toMatch(/cannot be archived/);
     await act(id, "start"); await act(id, "stop");
     expect((await call("DELETE", "/v2/projects/{project_id}/offerings/{offering_id}", { offering_id: exact.body.id })).status).toBe(200);
     // The stopped experiment keeps its results and the deleted offering's id.
@@ -307,7 +347,7 @@ describe("results, CSV and the estimate", () => {
 
     const r = (await call("GET", `${ONE}/results`, { experiment_id: id }, ext(undefined, "environment=sandbox&paywall=all"))).body;
     expect(r).toMatchObject({ object: "experiment_results", environment: "sandbox", currency: "USD", primary_metric: "realized_ltv_per_customer", control_variant_id: "a", filters: { platform: null, country: null, paywall: "all" } });
-    expect(r.filter_options).toEqual({ platforms: ["android", "iOS"], countries: ["DEU", "USA"] });
+    expect(r.filter_options).toEqual({ platforms: ["android", "iOS"], countries: ["DE", "US"] });
     expect(r.metrics.map((m: any) => m.id)).toContain("trial_conversion_rate");
     const items = r.variants.items;
     expect(items.reduce((s: number, v: any) => s + v.customers, 0)).toBe(30);
@@ -328,7 +368,7 @@ describe("results, CSV and the estimate", () => {
     const viewed = (await call("GET", `${ONE}/results`, { experiment_id: id }, ext(undefined, "environment=sandbox"))).body;
     expect(viewed.filters.paywall).toBe("viewed");
     expect(viewed.variants.items.reduce((s: number, v: any) => s + v.customers, 0)).toBe(10);
-    const android = (await call("GET", `${ONE}/results`, { experiment_id: id }, ext(undefined, "environment=sandbox&paywall=all&platform=ANDROID&country=deu"))).body;
+    const android = (await call("GET", `${ONE}/results`, { experiment_id: id }, ext(undefined, "environment=sandbox&paywall=all&platform=ANDROID&country=de"))).body;
     expect(android.variants.items.reduce((s: number, v: any) => s + v.customers, 0)).toBe(5);
     expect((await call("GET", `${ONE}/results`, { experiment_id: id }, ext(undefined, "paywall=maybe"))).status).toBe(400);
 
