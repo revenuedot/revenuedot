@@ -2,14 +2,14 @@
 // Spec: prd/enterprise/PRD.md.
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
-import { schema, type DB } from "@revenuedot/db";
+import type { DB } from "@revenuedot/db";
 import type { ExtensionStatus, PasswordRefusal, ProjectAccess, ServerExtension } from "../../apps/server/src/extensions.js";
 import { v2ErrorResponse } from "../../apps/server/src/routes/v2/common.js";
 import { checkLicense, type LicenseState } from "./license.js";
 import { regionConfigFrom, regionGuard, type RegionConfig } from "./region.js";
-import { eeOrgMembers, eeOrgProjects, eeOrganizations, eeSsoDomains, eeSsoSessions } from "./schema.js";
+import { eeOrgMembers, eeOrgProjects, eeOrganizations, eeSsoSessions } from "./schema.js";
 import { ADMIN_ONLY_SCOPES, customRoleFor, isBuiltin } from "./access.js";
-import { emailDomain, signedIn, type EeCtx } from "./util.js";
+import { mustUseSso, signedIn, type EeCtx } from "./util.js";
 import { orgRoutes } from "./orgs.js";
 import { ssoPasswordPolicy, ssoRoutes } from "./sso/routes.js";
 import { scimRoutes } from "./scim/routes.js";
@@ -98,12 +98,5 @@ async function projectAccess(db: DB, features: Set<string>, a: { userId: string;
   return { permissions: role ? role.scopes.filter((s) => !ADMIN_ONLY_SCOPES.has(s)) : [] };
 }
 
-/** Enforcement covers people whose email domain the organization verified. */
-async function mustUseSso(db: DB, orgId: string, userId: string) {
-  const [u] = await db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
-  if (!u) return true;
-  const domains = await db.select({ d: eeSsoDomains.domain, v: eeSsoDomains.verifiedAt }).from(eeSsoDomains).where(eq(eeSsoDomains.orgId, orgId));
-  return domains.some((d) => d.v && d.d === emailDomain(u.email));
-}
 
 export type { EeCtx };

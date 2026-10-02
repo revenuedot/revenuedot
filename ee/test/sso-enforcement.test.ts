@@ -82,6 +82,34 @@ describe("required single sign-on", () => {
     expect((await x.owner.call("DELETE", `/v2/organizations/${x.orgId}/sso/connections/${conn.id}`)).status).toBe(422);
   });
 
+  it("organization admin routes need an SSO session too, except for owners", async () => {
+    const x = await base();
+    // Ada is an organization admin on the verified domain with a password session from before enforcement.
+    const ada = await s!.signup("ada@acme.test", "Ada's");
+    expect((await x.owner.call("POST", `/v2/organizations/${x.orgId}/members`, { email: "ada@acme.test", role: "admin" })).status).toBe(201);
+    const conn = await connect(x.owner, x.orgId);
+    await addVerifiedDomain(x.owner, x.orgId, "acme.test", x.dns);
+    expect((await ada.browser.call("GET", `/v2/organizations/${x.orgId}/sso/connections`)).status).toBe(200);
+    expect((await x.owner.call("POST", `/v2/organizations/${x.orgId}`, { sso_enforced: true })).status).toBe(200);
+    // The old password session can no longer manage the organization or turn enforcement off.
+    for (const [method, path, body] of [
+      ["POST", `/v2/organizations/${x.orgId}`, { sso_enforced: false }],
+      ["GET", `/v2/organizations/${x.orgId}/members`, undefined],
+      ["GET", `/v2/organizations/${x.orgId}/sso/connections`, undefined],
+      ["POST", `/v2/organizations/${x.orgId}/scim/tokens`, { name: "Okta" }],
+      ["GET", `/v2/organizations/${x.orgId}/exports/access_review`, undefined],
+    ] as const) {
+      const r = await ada.browser.call(method, path, body);
+      expect(r.status, `${method} ${path}`).toBe(403);
+      expect(r.body.message).toContain("single sign-on");
+    }
+    // Signed in with SSO, Ada manages it again; the owner keeps password access (break-glass).
+    const ssoB = s!.browser();
+    expect((await ssoB.form(`/sso/saml/${conn.id}/acs`, { SAMLResponse: samlResponse({ acsUrl: conn.sp.acs_url, audience: conn.sp.entity_id, email: "ada@acme.test" }) })).status).toBe(303);
+    expect((await ssoB.call("GET", `/v2/organizations/${x.orgId}/members`)).status).toBe(200);
+    expect((await x.owner.call("GET", `/v2/organizations/${x.orgId}/members`)).status).toBe(200);
+  });
+
   it("a deactivated owner loses break-glass", async () => {
     const x = await base();
     await connect(x.owner, x.orgId);

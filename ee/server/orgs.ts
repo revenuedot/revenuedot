@@ -79,7 +79,7 @@ export function orgRoutes(ctx: EeCtx) {
   /** Signed in and an active member of the organization in the path. */
   const member = async (c: Context) => {
     const { user, sessionId } = await signedIn(c, deps);
-    const { org, member: m } = await orgMembership(db, c.req.param("org_id")!, user.id);
+    const { org, member: m } = await orgMembership(db, c.req.param("org_id")!, user.id, { sessionId, features: ctx.features });
     return { user, sessionId, org, role: m.role };
   };
   const admin = async (c: Context) => { const m = await member(c); requireOrgAdmin(m.role); return m; };

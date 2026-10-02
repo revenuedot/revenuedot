@@ -68,8 +68,8 @@ export function scimRoutes(ctx: EeCtx) {
 
   const admin = async (c: Context) => {
     needFeature(ctx, "scim");
-    const { user } = await signedIn(c, deps);
-    const { org, member } = await orgMembership(db, c.req.param("org_id")!, user.id);
+    const { user, sessionId } = await signedIn(c, deps);
+    const { org, member } = await orgMembership(db, c.req.param("org_id")!, user.id, { sessionId, features: ctx.features });
     requireOrgAdmin(member.role);
     return { user, org };
   };

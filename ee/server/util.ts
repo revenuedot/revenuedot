@@ -7,7 +7,8 @@ import type { DB } from "@revenuedot/db";
 import type { Deps } from "../../apps/server/src/context.js";
 import { SESSION_COOKIE, sessionUser } from "../../apps/server/src/services/sessions.js";
 import { V2Error } from "../../apps/server/src/routes/v2/common.js";
-import { eeOrgAuditLogs, eeOrgMembers, eeOrganizations } from "./schema.js";
+import { schema } from "@revenuedot/db";
+import { eeOrgAuditLogs, eeOrgMembers, eeOrganizations, eeSsoDomains, eeSsoSessions } from "./schema.js";
 import type { Feature } from "./license.js";
 
 export { V2Error };
@@ -46,13 +47,30 @@ export async function signedIn(c: Context, deps: Deps) {
   return { user, sessionId: sid };
 }
 
-/** The caller's membership in an organization; other organizations answer 404 so ids cannot be probed. */
-export async function orgMembership(db: DB, orgId: string, userId: string) {
+/**
+ * The caller's membership in an organization; other organizations answer 404 so ids cannot be probed. With `sso`, an
+ * organization that requires single sign-on needs a session that began with its SSO, as its projects do (owners keep
+ * password access: break-glass), so a password session from before enforcement cannot manage it.
+ */
+export async function orgMembership(db: DB, orgId: string, userId: string, sso?: { sessionId: string | null; features: Set<string> }) {
   const [row] = await db.select({ org: eeOrganizations, member: eeOrgMembers }).from(eeOrgMembers)
     .innerJoin(eeOrganizations, eq(eeOrganizations.id, eeOrgMembers.orgId))
     .where(and(eq(eeOrgMembers.orgId, orgId), eq(eeOrgMembers.userId, userId))).limit(1);
   if (!row || !row.member.active) throw new V2Error(404, "resource_missing", "Organization not found.");
+  if (sso && row.org.ssoEnforced && sso.features.has("sso") && row.member.role !== "owner" && (await mustUseSso(db, orgId, userId))) {
+    const [s] = sso.sessionId ? await db.select({ id: eeSsoSessions.sessionId }).from(eeSsoSessions)
+      .where(and(eq(eeSsoSessions.sessionId, sso.sessionId), eq(eeSsoSessions.orgId, orgId))).limit(1) : [];
+    if (!s) throw new V2Error(403, "authorization_error", "This organization requires single sign-on. Sign out, then sign in with SSO.");
+  }
   return row;
+}
+
+/** Required single sign-on covers people whose email domain the organization verified. */
+export async function mustUseSso(db: DB, orgId: string, userId: string) {
+  const [u] = await db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  if (!u) return true;
+  const domains = await db.select({ d: eeSsoDomains.domain, v: eeSsoDomains.verifiedAt }).from(eeSsoDomains).where(eq(eeSsoDomains.orgId, orgId));
+  return domains.some((d) => d.v && d.d === emailDomain(u.email));
 }
 
 export const isOrgAdmin = (role: string) => role === "owner" || role === "admin";
