@@ -17,3 +17,4 @@
 .auth-card.wide{max-width:640px}
 .token-box{display:block;flex:1;min-width:0;padding:8px 10px;border:1px solid var(--border);background:var(--panel);font-size:12px;word-break:break-all}
 @media (max-width:900px){.bl-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bl-grid>div:nth-child(2n){border-right:0}.bl-grid>div:nth-child(-n+2){border-bottom:1px solid var(--border)}.bl-plans{grid-template-columns:1fr}}
+@media (max-width:480px){.bl-grid .v{font-size:20px;line-height:26px;white-space:normal;overflow-wrap:anywhere}}
