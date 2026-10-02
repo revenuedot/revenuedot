@@ -231,9 +231,19 @@ export async function sha256Hex(s: string): Promise<string> {
 
 export const basicAuth = (user: string, pass = "") => `Basic ${btoa(`${user}:${pass}`)}`;
 
-/** The webhook store name → the platform the event's app runs on. */
-export const platformOf = (store: unknown): "ios" | "android" | "web" | "other" =>
-  store === "APP_STORE" || store === "MAC_APP_STORE" ? "ios" : store === "PLAY_STORE" ? "android" : store === "STRIPE" || store === "RC_BILLING" || store === "PADDLE" ? "web" : "other";
+/**
+ * The webhook store name → the platform the event's app runs on. Test Store purchases come from the app on whatever
+ * platform it runs on, so for TEST_STORE the platform is the one the customer's SDK last reported (`x-platform`, passed
+ * as `sdkPlatform` from the event context): a Test Store purchase in the iOS app goes to the iOS app's sandbox keys of
+ * AppsFlyer, Adjust, Firebase, Branch and Kochava, which is how developers test those integrations before the stores.
+ */
+export const platformOf = (store: unknown, sdkPlatform?: string | null): "ios" | "android" | "web" | "other" => {
+  if (store === "TEST_STORE") {
+    const p = (sdkPlatform ?? "").trim().toLowerCase();
+    return ["ios", "ipados", "macos", "tvos", "watchos", "visionos"].includes(p) ? "ios" : p === "android" ? "android" : "other";
+  }
+  return store === "APP_STORE" || store === "MAC_APP_STORE" ? "ios" : store === "PLAY_STORE" ? "android" : store === "STRIPE" || store === "RC_BILLING" || store === "PADDLE" ? "web" : "other";
+};
 
 export const json = (o: unknown) => JSON.stringify(o);
 
