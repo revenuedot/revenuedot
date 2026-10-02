@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
+import { notMoving } from "../../services/archive/moving.js";
 import type { AppRecord } from "../../context.js";
 import type { StoreAdapter } from "../types.js";
 import { hasServiceAccount, type GooglePlayClient } from "./api.js";
@@ -48,7 +49,7 @@ export async function scanVoidedPurchases(db: DB, app: AppRecord, client: Google
 
 /** The daily scan for every Google Play app with a service account whose last scan is a day old. A failed scan retries in an hour. */
 export async function scanDueVoidedPurchases(db: DB, now: Date, stores: Record<string, StoreAdapter>, fetchImpl?: typeof fetch) {
-  const due = await db.select().from(apps).where(and(eq(apps.type, "play_store"),
+  const due = await db.select().from(apps).where(and(eq(apps.type, "play_store"), notMoving(apps.projectId),
     or(isNull(apps.voidedPurchasesCheckedAt), lte(apps.voidedPurchasesCheckedAt, new Date(now.getTime() - DAY)))));
   let applied = 0;
   for (const app of due) {

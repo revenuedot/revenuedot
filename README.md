@@ -184,6 +184,8 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Migration** | One-command importer, Google purchase-token recovery through Google's Orders API, notification forwarding for a side-by-side run | Tier 1 · built, tested against a fake RevenueCat; CLI on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) |
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
+| **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 64 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
+| **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · built, tested against a fake Stripe; switched on when the Stripe keys are set |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · forked and patched; not on package registries yet |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
@@ -318,7 +320,11 @@ docker compose up -d        # API, dashboard and Postgres
 
 ## RevenueDot Cloud
 
-RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan.
+RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan. Cloud Free covers up to $10,000 of tracked revenue a month; the Billing page shows each project's usage. Moving between Cloud and your own server is one command either way: `npx revenuedot move` ([guide](https://revenuedot.app/docs/guides/move-projects)).
+
+<img alt="RevenueDot Project settings, Export and move: the export list with Download, and a move to another server copied and verified (all 64 tables match by count and checksum)" src="docs/assets/export-move-light.png" width="100%">
+
+<img alt="RevenueDot Cloud Billing page: Cloud Standard, $12,000 tracked this month, a $10.00 bill, revenue per project, the three plans and invoices" src="docs/assets/billing-light.png" width="100%">
 
 | Host | What it is |
 |---|---|
@@ -505,7 +511,7 @@ To your support email, with the customer's subscription details and Reply-To set
 
 <details><summary><b>How much does RevenueDot cost?</b></summary>
 
-Self-hosting is free. RevenueDot Cloud is live with a free plan on every account; paid plans have not shipped. Enterprise licenses cover SSO, audit logs, data regions and support.
+Self-hosting is free, with no revenue share and no limits. RevenueDot Cloud is free up to $10,000 of tracked revenue a month. Cloud Standard is 0.5% of the tracked revenue above $10,000, never more than $999 a month; it is built and starts when billing is switched on ([Cloud billing](https://revenuedot.app/docs/guides/cloud-billing)). RevenueCat charges 1% of all tracked revenue once an app passes $2,500 a month ([pricing](https://www.revenuecat.com/pricing)). Enterprise starts at $50,000 a year.
 </details>
 
 <details><summary><b>Is it safe to validate purchases on my own server?</b></summary>
@@ -516,6 +522,16 @@ RevenueDot verifies every App Store transaction against Apple's signed JWS and t
 <details><summary><b>Does RevenueDot work with Amplitude, Mixpanel, Segment, AppsFlyer or Firebase like RevenueCat does?</b></summary>
 
 Yes. Connect Slack, Segment, Amplitude, Mixpanel, PostHog, Firebase, BigQuery, AppsFlyer, Adjust or Meta under Integrations, and each purchase, trial, renewal, cancellation and refund is sent with the event names RevenueCat's integrations use (`rc_initial_purchase_event`, `rc_trial_started_event` ...) and the same reserved attributes (`$amplitudeDeviceId`, `$mixpanelDistinctId`, `$appsflyerId`, `$adjustId`, `$fbAnonId`). Dashboards built on RevenueCat's events keep working. See [the integrations guide](https://revenuedot.app/docs/guides/integrations).
+</details>
+
+<details><summary><b>Can I move from self-hosted RevenueDot to RevenueDot Cloud, or back?</b></summary>
+
+Yes, with one command: `npx revenuedot move --from <old server> --to <new server>`, or **Project settings → Export and move** in the dashboard. The project keeps its ids, public SDK keys, secret API keys and webhook signing secrets, so apps and backends keep working. A dry run shows the rows per table first, the copy resumes if it stops, and every table's row count and checksum are verified before the switch. After it, the old server forwards SDK calls and store notifications to the new one until you update the proxy URL and the store notification URLs ([guide](https://revenuedot.app/docs/guides/move-projects)). RevenueCat has no way to move a project to another server.
+</details>
+
+<details><summary><b>Can I export all of a project's data?</b></summary>
+
+Yes. **Export project** (or `npx revenuedot export`) writes every table the project owns, 64 in all, as JSON Lines with a manifest of row counts and checksums, and keeps it for 7 days. Store keys and webhook secrets are included only if you give a passphrase, and then they are encrypted with it. RevenueCat's scheduled exports cover transactions only ([scheduled data exports](https://www.revenuecat.com/docs/integrations/scheduled-data-exports)).
 </details>
 
 <details><summary><b>Can I export my subscription data to S3, BigQuery or my warehouse?</b></summary>

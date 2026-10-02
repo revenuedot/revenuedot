@@ -1,6 +1,7 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
 // This file: the stack every journey runs against, all on this machine except Postgres:
-//   - a fresh database `rd_validate_j_<stamp>` on the Railway development Postgres (dropped at the end)
+//   - a fresh database `<JOURNEY_DB_PREFIX><stamp>` (default `rd_validate_j_<stamp>`) on the Railway development Postgres
+//     (dropped at the end)
 //   - an SMTP sink (the server's real SMTP driver delivers to it)
 //   - a capture server: answers the server's outbound calls (see outbound-preload.mjs), hosts the fake Stripe account and
 //     its Checkout page, records webhook and partner requests, and serves the web SDK test page
@@ -25,6 +26,8 @@ const req = createRequire(join(ROOT, "packages/db/package.json"));
 export const postgres = req("postgres") as typeof import("postgres");
 const serverReq = createRequire(join(ROOT, "apps/server/package.json"));
 
+/** Database names of a run start with this, so parallel tasks can tell their databases apart. */
+export const DB_PREFIX = process.env.JOURNEY_DB_PREFIX ?? "rd_validate_j_";
 export const PORT_BASE = Number(process.env.JOURNEY_PORT_BASE ?? 5600);
 export const PORTS = { server: PORT_BASE, smtp: PORT_BASE + 1, capture: PORT_BASE + 2, backend: PORT_BASE + 3, minio: PORT_BASE + 4, minioConsole: PORT_BASE + 5, selfhost: Number(process.env.JOURNEY_SELFHOST_PORT ?? PORT_BASE + 6) };
 

@@ -6,7 +6,7 @@ import { Icon, Mark } from "./icons";
 
 export interface Me {
   user: { id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean };
-  account?: { edition: string; plan: string; email_verification_required: boolean };
+  account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean };
   projects: { id: string; name: string; role: string }[];
 }
 export const useMe = (enabled = true) => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
@@ -84,7 +84,9 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
           {me.projects.map((x) => <button key={x.id} role="menuitem" type="button" onClick={() => { setOpen(false); nav(`/projects/${x.id}/overview`); }}>{x.name}</button>)}
           <hr />
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/new"); }}><Icon name="plus" />New project</button>
+          <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/receive"); }}><Icon name="arrow" />Receive a project</button>
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account"); }}><Icon name="settings" />Account settings</button>
+          {me.account?.edition === "cloud" && me.account.billing_ready && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account/billing"); }}><Icon name="dollar" />Billing</button>}
           <button role="menuitem" type="button" onClick={async () => { await api("/auth/logout", { method: "POST" }); qc.clear(); nav("/login"); }}><Icon name="logout" />Sign out</button>
         </div>
       )}
@@ -106,8 +108,11 @@ const CRUMB_CSS = `
 .top .crumb>b:last-child{flex-shrink:1;min-width:3em}
 `;
 
-export function Shell({ title, crumbs, children, actions }: { title: string; crumbs?: ReactNode; children: ReactNode; actions?: ReactNode }) {
-  const { projectId = "" } = useParams();
+export function Shell({ title, crumbs, children, actions, projectId: pinned }: { title: string; crumbs?: ReactNode; children: ReactNode; actions?: ReactNode; projectId?: string }) {
+  const { projectId: routeProject = "" } = useParams();
+  // Account pages (Billing) have no project in the URL: they show the sidebar of the project last used.
+  const projectId = pinned ?? routeProject;
+  useEffect(() => { if (routeProject) try { localStorage.setItem("rd-last-project", routeProject); } catch { /* ignore */ } }, [routeProject]);
   const me = useMe();
   const nav = useNavigate();
   const loc = useLocation();
@@ -155,8 +160,30 @@ export function Shell({ title, crumbs, children, actions }: { title: string; cru
           </div>
         </header>
         {me.data?.account?.email_verification_required && <VerifyBanner email={me.data.user.email} />}
+        {(me.data?.account?.billing_status === "past_due" || me.data?.account?.billing_status === "unpaid") && (
+          <div className="verify-banner" role="status">
+            <span>{me.data.account.billing_status === "past_due" ? "A RevenueDot payment failed. Your apps keep working; update your card to settle the invoice." : "We could not collect your RevenueDot payment, so your account is back on Cloud Free. Your apps keep working."}</span>
+            <Link className="btn btn-line" to="/account/billing">Open billing</Link>
+          </div>
+        )}
+        {routeProject && <MoveBanner pid={routeProject} />}
         <div className="scroll">{children}</div>
       </div>
+    </div>
+  );
+}
+
+/** A project that is moving between servers (prd/moves-export/PRD.md §6): where it went, or that it is being copied in. */
+function MoveBanner({ pid }: { pid: string }) {
+  const q = useQuery({ queryKey: ["move", pid], queryFn: () => api<{ state: string | null; moved_to_url: string | null; moved_in_from: string | null }>(`/v2/projects/${encodeURIComponent(pid)}/move`), retry: false, staleTime: 30_000 });
+  const s = q.data?.state;
+  if (!s) return null;
+  return (
+    <div className="verify-banner move-banner" role="status" data-move-state={s}>
+      <span>{s === "forwarded" ? <>This project moved to <b>{q.data!.moved_to_url}</b>. Requests that arrive here are forwarded there; this copy is read-only.</>
+        : s === "paused" ? <>This project is moving to another server. Purchases and store notifications wait a moment and are retried.</>
+        : <>This project is being copied in{q.data!.moved_in_from ? <> from <b>{q.data!.moved_in_from}</b></> : null}. It goes live when the move finishes.</>}</span>
+      <Link className="btn btn-line" to={`/projects/${pid}/settings/export`}>Export and move</Link>
     </div>
   );
 }

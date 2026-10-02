@@ -31,6 +31,7 @@ import { tick } from "@revenuedot/server/services/tick.js";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
 import { and, eq } from "drizzle-orm";
 import { client, seedProject, session } from "./seed.ts";
+import { startCloud } from "./cloud-server.ts";
 import { connectPlatform, fakeStoreFetch, fakeStores, storeCatalogFetch, webStripe } from "./store-fakes.ts";
 import { FAKE_CONNECT_CLIENT_ID, FAKE_CONNECT_WHSEC, FAKE_PLATFORM_KEY, FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stripe.ts";
 import { signStripePayload } from "@revenuedot/server/stores/stripe/signature.js";
@@ -119,7 +120,7 @@ const fakeAssistant = process.env.E2E_AI === "off" ? undefined : fakeAssistantMo
 const CONNECT_ON: StripeConnectConfig = { clientId: FAKE_CONNECT_CLIENT_ID, secretKey: FAKE_PLATFORM_KEY, testSecretKey: FAKE_PLATFORM_TEST_KEY, webhookSecrets: [FAKE_CONNECT_WHSEC] };
 const connectConfig: StripeConnectConfig = process.env.E2E_STRIPE_CONNECT === "off" ? { webhookSecrets: [] } : { ...CONNECT_ON, webhookSecrets: [...CONNECT_ON.webhookSecrets] };
 const stores = { ...defaultStores(), ...fakeStores() };
-const api = createApp({ db, now, fetch: localFetch, stores, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, stripeConnect: connectConfig });
+const api = createApp({ db, now, fetch: localFetch, stores, mailer: mail, kick: () => { setTimeout(runTick, 100); }, ai: fakeAi, assistant: fakeAssistant, assistantRuntime: "sse", encryptionKey: SEALING_KEY, stripeConnect: connectConfig, moveDrainSeconds: 1 });
 
 let ready = false;
 const web = new Hono();
@@ -311,6 +312,8 @@ web.all("/*", async (c) => {
 if (!existsSync(join(DIST, "index.html"))) { console.error(`No dashboard build at ${DIST}. Run vite build first.`); process.exit(1); }
 serve({ fetch: web.fetch, port: PORT });
 const base = `http://localhost:${PORT}`;
+// RevenueDot Cloud for the Move and Billing specs (e2e/cloud-server.ts): E2E_PORT + 1.
+await startCloud(PORT + 1, DIST, mail);
 webStripe.checkoutUrl = `${base}/__stripe/checkout/{id}`;
 webStripe.portalUrl = `${base}/__stripe/portal/{id}`;
 connectPlatform.accountDefaults = { checkoutUrl: `${base}/__stripe/checkout/{id}`, portalUrl: `${base}/__stripe/portal/{id}` };

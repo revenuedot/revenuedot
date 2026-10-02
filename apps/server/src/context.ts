@@ -71,6 +71,15 @@ export interface Deps {
    * Unset or incomplete: Connect is unavailable and developers paste a restricted key.
    */
   stripeConnect?: import("./services/stripe-connect-config.js").StripeConnectConfig;
+  /**
+   * Where full-export archives are kept (prd/moves-export/PRD.md): R2 on Cloud, a folder or bucket on self-host. Unset:
+   * Postgres (`archive_blobs`).
+   */
+  archiveStore?: import("./services/archive/store.js").ArchiveStore;
+  /** Seconds a server-run move waits after pausing the source before the last copy (default 10; tests use 0). */
+  moveDrainSeconds?: number;
+  /** RevenueDot Cloud billing through RevenueDot's own Stripe account (prd/cloud-billing/PRD.md). Unset: not set up yet. */
+  billing?: import("./services/billing/stripe.js").BillingConfig;
   /** The app's own fetch. Set by createApp; RevenueDot AI's tools call the REST API v2 through it in-process. */
   dispatch?: (req: Request) => Promise<Response>;
 }
