@@ -197,6 +197,13 @@
       "when": 1790977597636,
       "tag": "0029_chart_extras",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790978701296,
+      "tag": "0030_catalog_extras",
+      "breakpoints": true
     }
   ]
 }

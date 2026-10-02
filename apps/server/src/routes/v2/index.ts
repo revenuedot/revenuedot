@@ -32,6 +32,7 @@ import { partnerIntegrationRoutes } from "./partner-integrations.js";
 import { dataExportRoutes } from "./data-exports.js";
 import { storeOpRoutes } from "./store-ops.js";
 import { storeImportRoutes } from "./store-import.js";
+import { productEditorRoutes } from "./product-editor.js";
 import { subscriberAuthRoutes } from "./subscriber-auth.js";
 import { billingExcludedRoutes } from "./billing-excluded.js";
 import { discountRoutes } from "./discounts.js";
@@ -150,6 +151,7 @@ export function v2Routes(deps: Deps) {
   dataExportRoutes(r, deps);
   storeOpRoutes(r, deps);
   storeImportRoutes(r, deps);
+  productEditorRoutes(r, deps);
   subscriberAuthRoutes(r, deps);
   discountRoutes(r, deps);
   webRoutes(r, deps);
