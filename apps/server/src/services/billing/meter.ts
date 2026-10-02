@@ -20,13 +20,14 @@ export interface BillingRuntime { db: DB; now: Date; fetch?: typeof fetch; maile
 
 /** Tracked revenue of every project in a month: production money, refunds not subtracted, moved-in history left out. */
 export async function meterMonth(db: DB, month: string, now: Date): Promise<number> {
+  // Dates go in as ISO text: postgres-js (the real driver) does not take a Date in a raw query, PGlite does.
   const { start, end } = monthBounds(month);
   const rows = rowsOf<{ project_id: string; name: string; owner: string | null; usd: number; n: number }>(await db.execute(sql`
     SELECT p.id AS project_id, p.name, p.owner_user_id AS owner,
       coalesce(sum(t.revenue_usd) FILTER (WHERE t.id IS NOT NULL), 0)::float8 AS usd, count(t.id)::int AS n
     FROM projects p
     JOIN transactions t ON t.project_id = p.id
-      AND t.purchased_at >= ${start} AND t.purchased_at < ${end} AND t.is_sandbox = false AND t.revenue_usd > 0
+      AND t.purchased_at >= ${start.toISOString()}::timestamptz AND t.purchased_at < ${end.toISOString()}::timestamptz AND t.is_sandbox = false AND t.revenue_usd > 0
       AND t.kind IN (${sql.join(PAID_KINDS.map((k) => sql`${k}`), sql`, `)})
       AND (p.moved_in_at IS NULL OR t.created_at >= p.moved_in_at)
     GROUP BY p.id, p.name, p.owner_user_id`));
@@ -129,4 +130,14 @@ async function reportMeter(rt: BillingRuntime, acct: typeof schema.billingAccoun
   } catch (e) {
     console.error(`billing: meter event for ${acct.userId} ${month} failed`, e);
   }
+}
+
+/** Right after an upgrade: the month's bill so far goes to the meter at once, so Stripe's upcoming invoice shows it. */
+export async function reportAccountNow(rt: BillingRuntime, userId: string): Promise<void> {
+  const month = monthOf(rt.now);
+  await meterMonth(rt.db, month, rt.now);
+  const acct = await accountOf(rt.db, userId);
+  const plan = planOf(plansFrom(rt.config?.plansJson), acct?.plan ?? "free");
+  const usage = await accountUsage(rt.db, userId, month);
+  await reportMeter(rt, acct, plan, month, billCents(plan, usage.tracked_revenue_usd));
 }

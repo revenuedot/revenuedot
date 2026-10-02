@@ -1,0 +1,16 @@
+{
+  "move": {
+    "title": "Self-hosted to Cloud with npx revenuedot move: purchases-js before and after, webhooks keep their secret",
+    "date": "2026-10-02",
+    "run": "202610020021155640",
+    "passed": 47,
+    "failed": 1
+  },
+  "billing": {
+    "title": "Cloud billing: metered production revenue, upgrade through Checkout, the meter, Portal, failed payment",
+    "date": "2026-10-02",
+    "run": "202610020016305640",
+    "passed": 18,
+    "failed": 0
+  }
+}

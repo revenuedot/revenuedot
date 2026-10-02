@@ -5,7 +5,7 @@ import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
 import { SESSION_COOKIE, sessionUser } from "../services/sessions.js";
 import { linkBase, requestOrigin } from "../services/account-email.js";
-import { accountOf, accountUsage } from "../services/billing/meter.js";
+import { accountOf, accountUsage, reportAccountNow } from "../services/billing/meter.js";
 import { billCents, monthBounds, monthOf, planOf, plansFrom } from "../services/billing/plans.js";
 import { BillingStripeError, billingStripe, stripeProblem } from "../services/billing/stripe.js";
 import { handleBillingEvent } from "../services/billing/webhook.js";
@@ -123,6 +123,12 @@ export function billingRoutes(deps: Deps) {
     let event: { id: string; type: string; data: { object: Record<string, unknown> } };
     try { event = JSON.parse(raw); } catch { return err(c, 400, "invalid_request", "The body is not JSON."); }
     const result = await handleBillingEvent({ db, now: deps.now(), mailer: deps.mailer, publicUrl: deps.publicUrl }, event);
+    // A new subscription gets this month's bill on the meter now, not at the next hourly pass.
+    if (event.type === "checkout.session.completed" && result === "subscribed") {
+      const userId = String((event.data.object as { client_reference_id?: string }).client_reference_id ?? "");
+      const run = reportAccountNow({ db, now: deps.now(), fetch: deps.fetch, config: deps.billing ?? null }, userId).catch((e) => console.error("billing: report after upgrade failed", e));
+      if (deps.defer) deps.defer(() => run); else await run;
+    }
     return c.json({ received: true, result });
   });
 
