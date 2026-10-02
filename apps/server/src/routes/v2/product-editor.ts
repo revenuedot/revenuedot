@@ -34,7 +34,7 @@ const Options = z.object({ preserve_current_price: z.boolean() });
 /** Product editor failures: a commit already running is locked (409), other state conflicts are 409 invalid_request. */
 function editError(e: unknown): unknown {
   if (e instanceof StoreOpError && e.kind === "conflict") {
-    return e.param === "locked" ? new V2Error(409, "resource_locked_error", e.message) : new V2Error(409, "invalid_request", e.message, e.param === "status" ? undefined : e.param);
+    return e.param === "locked" ? new V2Error(409, "resource_locked_error", e.message, undefined, true) : new V2Error(409, "invalid_request", e.message, e.param === "status" ? undefined : e.param);
   }
   return v2StoreError(e);
 }
