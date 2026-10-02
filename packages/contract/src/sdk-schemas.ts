@@ -117,7 +117,7 @@ const ccColors = z.object({ accent_color: ccColor.optional(), text_color: ccColo
 const ccPathType = z.enum(["MISSING_PURCHASE", "REFUND_REQUEST", "CHANGE_PLANS", "CANCEL", "CUSTOM_URL", "CUSTOM_ACTION"]);
 const ccCross = z.record(z.object({ store_offer_identifier: z.string(), target_product_id: z.string() }));
 function ccSchema(platform: "ios" | "android") {
-  const offerId = platform === "ios" ? { ios_offer_id: z.string() } : { android_offer_id: z.string() };
+  const offerId: z.ZodRawShape = platform === "ios" ? { ios_offer_id: z.string() } : { android_offer_id: z.string() };
   const offer = z.object({ ...offerId, eligible: z.boolean(), title: z.string(), subtitle: z.string(), product_mapping: z.record(z.string()), cross_product_promotions: ccCross.optional() });
   const path = z.object({
     id: z.string(), title: z.string(), type: ccPathType, url: z.string().optional(), open_method: z.enum(["IN_APP", "EXTERNAL"]).optional(),

@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
-import { defaultCustomerCenter, mergeConfig, sdkCustomerCenter, validateCustomerCenter } from "@revenuedot/core/customer-center";
-import { retentionOffersOf, withRetentionOffers } from "./retention.js";
+import { ccOfferRefs, defaultCustomerCenter, mergeConfig, resolveCcOfferRefs, sdkCustomerCenter, validateCustomerCenter } from "@revenuedot/core/customer-center";
+import { promotionalOfferFor, retentionOffersOf, withRetentionOffers } from "./retention.js";
 
 /**
  * Customer Center configuration (prd/customer-center/PRD.md), in the shape the SDKs decode (`GET /v1/customercenter/{id}`)
@@ -34,16 +34,25 @@ export async function customerCenterConfigOf(db: DB, projectId: string): Promise
 
 /** Problems with stored overrides once merged over the default ("field: message" lines; empty when valid). */
 export async function customerCenterProblems(db: DB, projectId: string, overrides: Json): Promise<string[]> {
-  return validateCustomerCenter(mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)) as unknown as Json, overrides));
+  const merged = mergeConfig(defaultCustomerCenter(await supportEmailOf(db, projectId)) as unknown as Json, overrides);
+  const problems = validateCustomerCenter(merged);
+  const refs = ccOfferRefs(merged);
+  if (refs.length) {
+    const ids = new Set((await retentionOffersOf(db, projectId)).map((o) => o.id));
+    for (const r of refs) if (!ids.has(r.id)) problems.push(`${r.at}.retention_offer_id: no Retention offer "${r.id}" in this project.`);
+  }
+  return problems;
 }
 
 /**
- * The configuration the SDK loads: the default, the project's overrides, the Retention offers on the cancel and refund
- * paths that have no offer of their own, then the SDK shape in the customer's language (`X-Preferred-Locales`).
+ * The configuration the SDK loads: the default, the project's overrides with Retention offer references resolved (a deleted
+ * or inactive offer becomes "no offer"), the Retention offers on cancel and refund paths that do not set an offer, then the SDK shape in the customer's language (`X-Preferred-Locales`).
  */
 export async function customerCenterFor(db: DB, projectId: string, opts: { preferredLocales?: string | null } = {}): Promise<Json> {
-  const merged = await customerCenterConfigOf(db, projectId);
-  return sdkCustomerCenter(withRetentionOffers(merged, await retentionOffersOf(db, projectId)), { preferredLocales: opts.preferredLocales });
+  const offers = await retentionOffersOf(db, projectId);
+  const byId = new Map(offers.map((o) => [o.id, o]));
+  const merged = resolveCcOfferRefs(await customerCenterConfigOf(db, projectId), (id) => { const o = byId.get(id); return o ? promotionalOfferFor([o]) : null; });
+  return sdkCustomerCenter(withRetentionOffers(merged, offers), { preferredLocales: opts.preferredLocales });
 }
 
 /** Customer Center support settings (email and ticket intake) without the Retention offers, for Support and tickets. */

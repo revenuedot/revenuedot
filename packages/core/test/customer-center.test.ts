@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  CC_BUILTIN, CC_LANGUAGES, CC_PATH_TYPES, CC_STRINGS, ccLanguageOf, ccStringFor, defaultCustomerCenter, mergeConfig, newCcPath, pickCcLocale,
-  sdkCustomerCenter, validateCustomerCenter,
+  CC_BUILTIN, CC_LANGUAGES, CC_PATH_TYPES, CC_STRINGS, ccLanguageOf, ccOfferRefs, ccStringFor, defaultCustomerCenter, mergeConfig, newCcPath, pickCcLocale,
+  resolveCcOfferRefs, sdkCustomerCenter, validateCustomerCenter,
 } from "../src/customer-center/index.js";
 
 const dflt = () => defaultCustomerCenter("help@scanner.app") as unknown as Record<string, any>;
@@ -110,5 +110,57 @@ describe("the SDK shape", () => {
     expect(out.screens.NO_ACTIVE.title).toBe("No active subscriptions");
     expect(out.support.email).toBe("");
     expect(out.change_plans).toEqual([]);
+  });
+});
+
+describe("promotional offer references, tickets and offerings", () => {
+  const withRefs = () => mergeConfig(dflt(), {
+    screens: {
+      MANAGEMENT: {
+        title: "Help",
+        paths: [
+          { id: "c", type: "CANCEL", title: "Cancel", promotional_offer: { retention_offer_id: "ro_1" }, feedback_survey: { title: "Why?", options: [{ id: "o1", title: "Price", promotional_offer: { retention_offer_id: "ro_2" } }, { id: "o2", title: "Other" }] } },
+          { id: "r", type: "REFUND_REQUEST", title: "Refund", promotional_offer: null },
+        ],
+      },
+    },
+  });
+
+  it("finds, validates and resolves references; a missing offer becomes no offer", () => {
+    const cfg = withRefs();
+    expect(validateCustomerCenter(cfg)).toEqual([]);
+    expect(ccOfferRefs(cfg)).toEqual([
+      { id: "ro_1", at: "screens.MANAGEMENT.paths[0].promotional_offer" },
+      { id: "ro_2", at: "screens.MANAGEMENT.paths[0].feedback_survey.options[0].promotional_offer" },
+    ]);
+    const resolved = resolveCcOfferRefs(cfg, (id) => (id === "ro_1" ? { title: "Stay", product_mapping: { pro: "stay" } } : null)) as any;
+    const out = sdkCustomerCenter(resolved) as any;
+    const cancel = out.screens.MANAGEMENT.paths[0];
+    expect(cancel.promotional_offer).toMatchObject({ title: "Stay", ios_offer_id: "stay", product_mapping: { pro: "stay" } });
+    expect(cancel.feedback_survey.options[0]).toEqual({ id: "o1", title: "Price" });
+    expect(out.screens.MANAGEMENT.paths[1]).toEqual({ id: "r", title: "Refund", type: "REFUND_REQUEST" });
+    expect(JSON.stringify(out)).not.toContain("retention_offer_id");
+  });
+
+  it("rejects a reference mixed with an offer of its own, bad ticket settings and offerings", () => {
+    const cfg = mergeConfig(dflt(), {
+      screens: { NO_ACTIVE: { title: "None", offering: { type: "SPECIFIC" }, paths: [] }, MANAGEMENT: { title: "Help", paths: [{ id: "c", type: "CANCEL", title: "x", promotional_offer: { retention_offer_id: "ro_1", title: "Also" } }] } },
+      support: { support_tickets: { allow_creation: "yes", customer_type: "everyone" } },
+    });
+    expect(validateCustomerCenter(cfg)).toEqual([
+      "support.support_tickets.allow_creation: must be true or false.",
+      "support.support_tickets.customer_type: must be one of active, not_active, all, none.",
+      "screens.MANAGEMENT.paths[0].promotional_offer: is either a reference to a Retention offer (retention_offer_id) or an offer of its own, not both.",
+      "screens.NO_ACTIVE.offering.offering_id: is required for a specific offering.",
+    ]);
+  });
+
+  it("sends only the support and offering fields the SDKs decode", () => {
+    const out = sdkCustomerCenter(mergeConfig(dflt(), {
+      support: { email: "a@b.co", internal_note: "x", display_purchase_history_link: "yes", support_tickets: { allow_creation: true, customer_type: "bogus", customer_details: { idfv: true, email: "x" } } },
+      screens: { NO_ACTIVE: { title: "None", paths: [], offering: { type: "CURRENT", button_text: "See plans", extra: 1 } } },
+    })) as any;
+    expect(out.support).toEqual({ email: "a@b.co", should_warn_customer_to_update: false, display_user_details_section: true, display_virtual_currencies: false, support_tickets: { allow_creation: true, customer_type: "not_active", customer_details: { idfv: true } } });
+    expect(out.screens.NO_ACTIVE.offering).toEqual({ type: "CURRENT", button_text: "See plans" });
   });
 });

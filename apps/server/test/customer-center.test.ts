@@ -60,6 +60,32 @@ describe("Customer Center configuration storage", () => {
     expect(sdk.screens.MANAGEMENT.paths.find((p: any) => p.type === "CANCEL").promotional_offer).toMatchObject({ title: "Our own offer", ios_offer_id: "own" });
   });
 
+  it("resolves Retention offer references, keeps \"no offer\" off the path, and rejects unknown offers", async () => {
+    const mk = async (json: unknown) => (await (await h.fetch("/v2/projects/proj1/retention_offers", { method: "POST", key: h.ids.secretKey, json })).json() as any).id as string;
+    const cancelId = await mk({ trigger: "cancel", name: "Half", title: "Half price", store: "app_store", product_mapping: { pro_monthly: "half" } });
+    const refundId = await mk({ trigger: "refund", name: "Month", title: "A free month", store: "play_store", product_mapping: { "pro:monthly": "free-month" } });
+    const config = await customerCenterConfigOf(h.db, "proj1") as any;
+    const cancel = config.screens.MANAGEMENT.paths.find((p: any) => p.type === "CANCEL");
+    cancel.promotional_offer = null;
+    cancel.feedback_survey = { title: "Why?", options: [{ id: "o1", title: "Too expensive", promotional_offer: { retention_offer_id: refundId } }] };
+    config.screens.MANAGEMENT.paths.find((p: any) => p.type === "REFUND_REQUEST").promotional_offer = { retention_offer_id: cancelId };
+    expect((await post({ customer_center: config })).status).toBe(200);
+    let sdk = await customerCenterFor(h.db, "proj1") as any;
+    const paths = sdk.screens.MANAGEMENT.paths;
+    expect(paths.find((p: any) => p.type === "CANCEL").promotional_offer).toBeUndefined();
+    expect(paths.find((p: any) => p.type === "CANCEL").feedback_survey.options[0].promotional_offer).toMatchObject({ title: "A free month", android_offer_id: "free-month", product_mapping: { "pro:monthly": "free-month" } });
+    expect(paths.find((p: any) => p.type === "REFUND_REQUEST").promotional_offer).toMatchObject({ title: "Half price", ios_offer_id: "half" });
+
+    // Deleting the offer removes it from the path instead of breaking the SDK response.
+    expect((await h.fetch(`/v2/projects/proj1/retention_offers/${cancelId}`, { method: "DELETE", key: h.ids.secretKey })).status).toBeLessThan(300);
+    sdk = await customerCenterFor(h.db, "proj1") as any;
+    expect(sdk.screens.MANAGEMENT.paths.find((p: any) => p.type === "REFUND_REQUEST").promotional_offer).toBeUndefined();
+    // A reference to an offer that does not exist is refused.
+    const res = await post({ customer_center: config });
+    expect(res.status).toBe(400);
+    expect((await res.json() as any).message).toMatch(/retention_offer_id: no Retention offer/);
+  });
+
   it("validates the stored overrides merged over the default, and resets with null", async () => {
     expect(await customerCenterProblems(h.db, "proj1", { screens: { NO_ACTIVE: { paths: [{ id: "x", type: "CUSTOM_URL", title: "Site", url: "ftp//nope" }] } } }))
       .toEqual(["screens.NO_ACTIVE.paths[0].url: needs a full URL, such as https://example.com/help or myapp://support."]);

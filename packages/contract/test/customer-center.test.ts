@@ -128,6 +128,27 @@ describe("Customer Center: what the SDKs decode", () => {
     expect(v2de.body.customer_center.screens.MANAGEMENT.title).toBe("Wie können wir dir helfen?");
   });
 
+  it("Retention offer references and \"no offer\" decode on both SDKs as plain promotional offers", async () => {
+    const offer = await call("POST", "/v2/projects/{project_id}/retention_offers", {}, { ext: true, json: { trigger: "cancel", name: "Half", title: "Half price", subtitle: "3 months", store: "app_store", product_mapping: { pro_monthly: "half" } } });
+    expect(offer.status).toBe(201);
+    const config = JSON.parse(JSON.stringify(FULL_CONFIG));
+    const manage = config.screens.MANAGEMENT.paths.find((p: any) => p.id === "p_manage");
+    manage.promotional_offer = { retention_offer_id: offer.body.id };
+    manage.feedback_survey.options[1].promotional_offer = { retention_offer_id: offer.body.id };
+    config.screens.MANAGEMENT.paths.find((p: any) => p.id === "p_refund").promotional_offer = null;
+    expect((await call("POST", CONFIG, {}, { ext: true, json: { customer_center: config } })).status).toBe(200);
+    for (const key of [h.ids.iosKey, h.ids.androidKey]) {
+      const body = await sdk(undefined, key);
+      decodes(body);
+      const paths = body.customer_center.screens.MANAGEMENT.paths;
+      const m = paths.find((p: any) => p.id === "p_manage");
+      expect(m.promotional_offer).toEqual({ ios_offer_id: "half", android_offer_id: "", eligible: true, title: "Half price", subtitle: "3 months", product_mapping: { pro_monthly: "half" } });
+      expect(m.feedback_survey.options[1].promotional_offer.title).toBe("Half price");
+      expect(paths.find((p: any) => p.id === "p_refund").promotional_offer).toBeUndefined();
+      expect(JSON.stringify(body)).not.toContain("retention_offer_id");
+    }
+  });
+
   it("rejects what the SDKs could not act on, and stores nothing", async () => {
     const bad = async (patch: unknown, message: RegExp) => {
       const res = await call("POST", CONFIG, {}, { ext: true, json: { customer_center: patch } });

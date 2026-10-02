@@ -80,6 +80,12 @@ export const CC_DEFAULT_SURVEY = { title: "Why are you cancelling?", options: ["
 
 export const CC_COLOR_KEYS = ["accent_color", "text_color", "background_color", "button_text_color", "button_background_color"] as const;
 
+/**
+ * A promotional offer on a path or survey option: a reference to an offer set up under Lifecycle > Retention
+ * (`{ retention_offer_id }`, resolved by the server when the SDK loads the configuration), or an offer of its own.
+ * `null` on a Manage or Refund Request path means "no offer", so the Retention offers for that trigger are not added.
+ */
+export interface CcOfferRef { retention_offer_id: string }
 export interface CcPromotionalOffer {
   title: string; subtitle?: string;
   /** Store product identifier → store offer identifier (App Store promotional offer id or Google Play offer id). */
@@ -88,12 +94,12 @@ export interface CcPromotionalOffer {
   cross_product_promotions?: Record<string, { store_offer_identifier: string; target_product_id: string }>;
   title_localizations?: Record<string, string>; subtitle_localizations?: Record<string, string>;
 }
-export interface CcSurveyOption { id: string; title: string; promotional_offer?: CcPromotionalOffer | null; title_localizations?: Record<string, string> }
+export interface CcSurveyOption { id: string; title: string; promotional_offer?: CcPromotionalOffer | CcOfferRef | null; title_localizations?: Record<string, string> }
 export interface CcPath {
   id: string; type: CcPathType | string; title: string;
   url?: string; open_method?: "IN_APP" | "EXTERNAL"; action_identifier?: string;
   feedback_survey?: { title: string; options: CcSurveyOption[]; title_localizations?: Record<string, string> } | null;
-  promotional_offer?: CcPromotionalOffer | null;
+  promotional_offer?: CcPromotionalOffer | CcOfferRef | null;
   refund_window?: string;
   title_localizations?: Record<string, string>;
 }
@@ -169,6 +175,7 @@ export function mergeConfig(base: Json, over: Json): Json {
 
 // ---------- Validation ----------
 
+const TICKET_CUSTOMERS = ["active", "not_active", "all", "none"];
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const HEX = /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const PATH_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -198,6 +205,11 @@ class Problems {
 function checkOffer(p: Problems, at: string, o: unknown) {
   if (o === undefined || o === null) return;
   if (!isObj(o)) { p.add(at, "must be an object."); return; }
+  if (o.retention_offer_id !== undefined) {
+    if (!isStr(o.retention_offer_id) || !o.retention_offer_id.trim()) p.add(`${at}.retention_offer_id`, "needs the id of a Retention offer.");
+    else if (Object.keys(o).length > 1) p.add(at, "is either a reference to a Retention offer (retention_offer_id) or an offer of its own, not both.");
+    return;
+  }
   p.text(`${at}.title`, o.title, { max: 100 });
   p.text(`${at}.subtitle`, o.subtitle, { max: 300, min: 0, required: false });
   p.localizations(`${at}.title_localizations`, o.title_localizations, 100);
@@ -285,6 +297,15 @@ export function validateCustomerCenter(config: unknown): string[] {
       for (const k of ["should_warn_customer_to_update", "display_purchase_history_link", "display_user_details_section", "display_virtual_currencies"]) {
         if (s[k] !== undefined && typeof s[k] !== "boolean") p.add(`support.${k}`, "must be true or false.");
       }
+      const t = s.support_tickets;
+      if (t !== undefined && t !== null) {
+        if (!isObj(t)) p.add("support.support_tickets", "must be an object.");
+        else {
+          if (t.allow_creation !== undefined && typeof t.allow_creation !== "boolean") p.add("support.support_tickets.allow_creation", "must be true or false.");
+          if (t.customer_type !== undefined && !TICKET_CUSTOMERS.includes(t.customer_type as string)) p.add("support.support_tickets.customer_type", `must be one of ${TICKET_CUSTOMERS.join(", ")}.`);
+          if (t.customer_details !== undefined && (!isObj(t.customer_details) || Object.values(t.customer_details).some((v) => typeof v !== "boolean"))) p.add("support.support_tickets.customer_details", "must be an object of field → true or false.");
+        }
+      }
     }
   }
   if (c.appearance !== undefined) {
@@ -310,6 +331,11 @@ export function validateCustomerCenter(config: unknown): string[] {
       p.text(`${at}.subtitle`, s.subtitle, { max: 500, min: 0, required: false });
       p.localizations(`${at}.title_localizations`, s.title_localizations, 200);
       p.localizations(`${at}.subtitle_localizations`, s.subtitle_localizations, 500);
+      if (s.offering !== undefined && s.offering !== null) {
+        const o = s.offering;
+        if (!isObj(o) || (o.type !== "CURRENT" && o.type !== "SPECIFIC")) p.add(`${at}.offering`, "needs type CURRENT or SPECIFIC.");
+        else if (o.type === "SPECIFIC" && (!isStr(o.offering_id) || !o.offering_id)) p.add(`${at}.offering.offering_id`, "is required for a specific offering.");
+      }
       if (!Array.isArray(s.paths)) p.add(`${at}.paths`, "must be a list.");
       else if (s.paths.length > 20) p.add(`${at}.paths`, "can have at most 20 paths.");
       else {
@@ -418,6 +444,22 @@ function sdkColors(m: unknown): Json {
   return out;
 }
 
+/** Support settings with only the keys and values the SDKs decode (Android's ticket enum is strict). */
+function sdkSupport(s: Json): Json {
+  const out: Json = { email: isStr(s.email) ? s.email : "" };
+  for (const k of ["should_warn_customer_to_update", "display_purchase_history_link", "display_user_details_section", "display_virtual_currencies"]) if (typeof s[k] === "boolean") out[k] = s[k];
+  const t = s.support_tickets;
+  if (isObj(t)) {
+    const details = isObj(t.customer_details) ? Object.fromEntries(Object.entries(t.customer_details).filter(([, v]) => typeof v === "boolean")) : {};
+    out.support_tickets = {
+      allow_creation: t.allow_creation === true,
+      customer_type: TICKET_CUSTOMERS.includes(t.customer_type as string) ? t.customer_type : "not_active",
+      customer_details: details,
+    };
+  }
+  return out;
+}
+
 /**
  * The `customer_center` object of `GET /v1/customercenter/{id}`, in the customer's language. Only fields the SDKs
  * decode are sent; a path the SDK could not act on (a Custom URL without a URL) is left out, and anything missing or
@@ -436,7 +478,9 @@ export function sdkCustomerCenter(config: Json, opts: SdkOptions = {}): Json {
     const title = isStr(s.title) && s.title.trim() ? localized(s, "title", lang)! : localized(base, "title", lang)!;
     const out: Json = { type: key, title, paths: (Array.isArray(s.paths) ? s.paths : []).map((p) => sdkPath(p, lang)).filter(Boolean) };
     if (isStr(s.subtitle) && s.subtitle.trim()) out.subtitle = localized(s, "subtitle", lang);
-    if (isObj(s.offering) && isStr(s.offering.type)) out.offering = s.offering;
+    if (isObj(s.offering) && (s.offering.type === "CURRENT" || (s.offering.type === "SPECIFIC" && isStr(s.offering.offering_id)))) {
+      out.offering = { type: s.offering.type, ...(isStr(s.offering.offering_id) ? { offering_id: s.offering.offering_id } : {}), ...(isStr(s.offering.button_text) ? { button_text: s.offering.button_text } : {}) };
+    }
     screens[key] = out;
   }
 
@@ -444,8 +488,7 @@ export function sdkCustomerCenter(config: Json, opts: SdkOptions = {}): Json {
   const custom = isObj(loc.custom_strings) && isObj(loc.custom_strings[lang]) ? Object.fromEntries(Object.entries(loc.custom_strings[lang] as Json).filter(([, v]) => isStr(v))) as Record<string, string> : {};
   const strings: Record<string, string> = lang === "en" ? { ...english, ...custom } : { ...english, ...(CC_BUILTIN[lang]?.strings ?? {}), ...custom };
 
-  const support = isObj(config.support) ? { ...config.support } : { ...(dflt.support as Json) };
-  if (!isStr(support.email)) support.email = "";
+  const support = sdkSupport(isObj(config.support) ? config.support : dflt.support as Json);
   return {
     appearance: { light: sdkColors(isObj(config.appearance) ? config.appearance.light : null), dark: sdkColors(isObj(config.appearance) ? config.appearance.dark : null) },
     screens,
@@ -463,4 +506,53 @@ export function ccStringFor(config: Json, lang: string, key: string): { value: s
   if (lang !== "en" && builtinString(lang, key)) return { value: builtinString(lang, key)!, source: "built-in" };
   const english = isObj(loc.localized_strings) && isStr(loc.localized_strings[key]) ? loc.localized_strings[key] as string : BASE_STRINGS[key];
   return { value: english ?? CC_STRINGS[key] ?? "", source: "default" };
+}
+
+// ---------- Promotional offer references ----------
+
+const isRef = (o: unknown): o is CcOfferRef => isObj(o) && isStr(o.retention_offer_id);
+
+/** Calls `fn` for every promotional offer slot (paths and survey options) with its location. */
+function eachOffer(config: Json, fn: (o: unknown, at: string) => unknown, write: boolean): Json {
+  const screens = isObj(config.screens) ? config.screens : {};
+  const out: Json = {};
+  for (const [key, s] of Object.entries(screens)) {
+    if (!isObj(s) || !Array.isArray(s.paths)) { out[key] = s; continue; }
+    out[key] = {
+      ...s,
+      paths: s.paths.map((x: unknown, i: number) => {
+        if (!isObj(x)) return x;
+        const at = `screens.${key}.paths[${i}]`;
+        const path: Json = { ...x };
+        if ("promotional_offer" in x) { const v = fn(x.promotional_offer, `${at}.promotional_offer`); if (write) path.promotional_offer = v; }
+        if (isObj(x.feedback_survey) && Array.isArray(x.feedback_survey.options)) {
+          path.feedback_survey = {
+            ...x.feedback_survey,
+            options: x.feedback_survey.options.map((o: unknown, j: number) => {
+              if (!isObj(o) || !("promotional_offer" in o)) return o;
+              const v = fn(o.promotional_offer, `${at}.feedback_survey.options[${j}].promotional_offer`);
+              return write ? { ...o, promotional_offer: v } : o;
+            }),
+          };
+        }
+        return path;
+      }),
+    };
+  }
+  return write ? { ...config, screens: out } : config;
+}
+
+/** The Retention offer ids a configuration references, with where ("screens.MANAGEMENT.paths[2].promotional_offer"). */
+export function ccOfferRefs(config: Json): { id: string; at: string }[] {
+  const refs: { id: string; at: string }[] = [];
+  eachOffer(config, (o, at) => { if (isRef(o)) refs.push({ id: o.retention_offer_id, at }); }, false);
+  return refs;
+}
+
+/**
+ * Replaces each `{ retention_offer_id }` with the offer `resolve` returns (SDK shape), or removes it (`null`, "no offer")
+ * when the offer was deleted or switched off. Offers of their own and `null` stay as they are.
+ */
+export function resolveCcOfferRefs(config: Json, resolve: (id: string) => Json | null): Json {
+  return eachOffer(config, (o) => (isRef(o) ? resolve(o.retention_offer_id) : o), true);
 }
