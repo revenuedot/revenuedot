@@ -325,15 +325,28 @@ function toVerified(s: ImportSub, k: KeyInfo, notes: string[]): VerifiedSubscrip
   const billing = s.status === "in_grace_period" || s.status === "in_billing_retry";
   let expiresDate: Date | null = periodEnd;
   if (!expiresDate && !promo) expiresDate = periodStart; // paused until an indefinite date: no access now
+  const lastTx = [...(s.transactions ?? [])].sort((a, b) => b.purchased_at - a.purchased_at)[0];
+  const lastTxEnd = d(lastTx?.expires_at ?? null);
+  // The store already renewed (RevenueCat: has_already_renewed): its newest transaction starts at or after the period
+  // end and runs past it, so access lasts to that transaction's expiry, as RevenueCat's ends_at says.
+  if (expiresDate && lastTx && lastTxEnd && lastTxEnd > expiresDate && lastTx.purchased_at >= expiresDate.getTime() - 86_400_000
+    && s.status !== "expired" && s.status !== "in_grace_period") {
+    expiresDate = lastTxEnd;
+  }
   let grace: Date | null = null;
   if (s.status === "in_grace_period") {
-    grace = d(s.grace_period_expires_at) ?? d(Math.max(...(s.transactions ?? []).map((t) => t.expires_at ?? 0), 0) || null);
-    if (!grace || (expiresDate && grace <= expiresDate)) {
+    const latestTxEnd = d(Math.max(...(s.transactions ?? []).map((t) => t.expires_at ?? 0), 0) || null);
+    grace = d(s.grace_period_expires_at) ?? latestTxEnd;
+    if (expiresDate && latestTxEnd && latestTxEnd < expiresDate && !(grace && grace > expiresDate)) {
+      // RevenueCat reports a subscription in its grace period with the grace end as the period end; the paid period
+      // ended at the newest transaction's expiry.
+      grace = expiresDate;
+      expiresDate = latestTxEnd;
+    } else if (!grace || (expiresDate && grace <= expiresDate)) {
       grace = new Date((expiresDate ?? periodStart).getTime() + 7 * 86_400_000);
       notes.push(`${s.store_subscription_identifier}: grace period end unknown; assumed 7 days after the period end.`);
     }
   }
-  const lastTx = [...(s.transactions ?? [])].sort((a, b) => b.purchased_at - a.purchased_at)[0];
   const price = s.price ?? lastTx?.price ?? null;
   return {
     kind: "subscription", store: s.store as Store, storeKey: k.key, productIdentifier: product, productPlanIdentifier: plan,
@@ -341,7 +354,7 @@ function toVerified(s: ImportSub, k: KeyInfo, notes: string[]): VerifiedSubscrip
     periodType: s.period_type ?? (promo ? "promotional" : s.status === "trialing" ? "trial" : "normal"),
     ownershipType: s.ownership === "family_shared" ? "FAMILY_SHARED" : "PURCHASED",
     unsubscribeDetectedAt: d(s.unsubscribe_detected_at) ?? (!promo && (renewalOff || billing || s.status === "expired") ? periodStart : null),
-    billingIssuesDetectedAt: d(s.billing_issues_detected_at) ?? (billing ? periodEnd ?? periodStart : null),
+    billingIssuesDetectedAt: d(s.billing_issues_detected_at) ?? (billing ? expiresDate ?? periodStart : null),
     gracePeriodExpiresDate: grace, refundedAt: d(s.refunded_at),
     autoResumeDate: s.status === "paused" ? d(s.auto_resume_at) ?? periodEnd ?? periodStart : d(s.auto_resume_at),
     storeTransactionId: s.store_subscription_identifier, originalTransactionId: k.original,

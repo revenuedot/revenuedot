@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
-import { main } from "../src/cli.js";
+import { main, readIds } from "../src/cli.js";
 import { PromptCancelled } from "../src/prompt.js";
 import { buildPlan, formatPlan } from "../src/plan.js";
 import { RevenueCatClient } from "../src/revenuecat.js";
@@ -230,6 +230,31 @@ describe("revenuedot import", () => {
     const again = await e.run();
     expect(again.customers).toMatchObject({ pass: 2, imported: 14, complete: true });
     expect(again.customers.caughtUp ?? 0).toBe(0);
+  });
+
+  it("--ids imports exactly the given customers by id, even ones RevenueCat's list leaves out, without touching the state file", async () => {
+    e = await setup();
+    e.rc.unlisted.add("user_apple");
+    e.rc.unlisted.add("user_grace");
+    const r = await e.run({ ids: ["user_apple", "user_grace", "user_apple", "nobody"] });
+    expect(r.requestedIds).toBe(3);
+    expect(r.customers).toMatchObject({ imported: 2 });
+    expect(r.problems).toContainEqual({ kind: "skipped", message: "nobody: not found in RevenueCat" });
+    expect(formatReport(r)).toContain("Customers (by id: 3 requested)");
+    expect(existsSync(e.statePath)).toBe(false);
+    const ids = (await e.h.db.select().from(schema.customerAliases)).map((a) => a.appUserId);
+    expect(ids).toEqual(expect.arrayContaining(["user_apple", "user_grace"]));
+    expect(await e.h.db.select().from(schema.customers)).toHaveLength(2);
+    // Running it again changes nothing.
+    const before = await dump(e.h.db);
+    await e.run({ ids: ["user_apple", "user_grace"] });
+    expect(await dump(e.h.db)).toEqual(before);
+  });
+
+  it("readIds takes a JSON id array, verify's mismatches, or one id per line", () => {
+    expect(readIds('["a","b"]')).toEqual(["a", "b"]);
+    expect(readIds('[{"customer":"a","kind":"missing_customer"},{"id":"b"}]')).toEqual(["a", "b"]);
+    expect(readIds("a\n\n b \r\nc\n")).toEqual(["a", "b", "c"]);
   });
 
   it("plan prints the cutover steps with this project's notification URLs and missing credentials", async () => {

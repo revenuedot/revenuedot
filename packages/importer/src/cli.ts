@@ -37,6 +37,8 @@ Options
   --restart               Ignore the state file and start from the first customer
   --concurrency <n>       Customers fetched in parallel (default 4; RevenueCat allows 480 requests a minute)
   --limit <n>             Import only the first n customers (a trial run)
+  --ids <file>            Import only these RevenueCat customer ids, looked up by id (a JSON array, or one id per
+                          line); for customers RevenueCat's list leaves out, such as verify's missing_customer ids
   --page-size <n>         Customers per page and per import call (default 50, at most 100)
   --google-tokens <csv>   Google purchase tokens (columns purchase_token and order_id, or app_user_id and product_id)
   --no-public-keys        Keep RevenueDot's own SDK keys instead of RevenueCat's
@@ -101,7 +103,7 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
       options: {
         "from-revenuecat": { type: "boolean" }, "rc-key": { type: "string" }, "rc-project": { type: "string" }, "rc-url": { type: "string" },
         to: { type: "string" }, "to-key": { type: "string" }, "to-project": { type: "string" }, state: { type: "string" },
-        "dry-run": { type: "boolean" }, restart: { type: "boolean" }, concurrency: { type: "string" }, limit: { type: "string" },
+        "dry-run": { type: "boolean" }, restart: { type: "boolean" }, concurrency: { type: "string" }, limit: { type: "string" }, ids: { type: "string" },
         "page-size": { type: "string" }, "google-tokens": { type: "string" }, "no-public-keys": { type: "boolean" }, "emit-events": { type: "boolean" },
         json: { type: "boolean" }, help: { type: "boolean", short: "h" }, password: { type: "string" }, "database-url": { type: "string" },
         from: { type: "string" }, "from-key": { type: "string" }, "from-archive": { type: "string" }, "to-token": { type: "string" },
@@ -195,7 +197,7 @@ export async function main(argv: string[], io: CliIO = defaultIO()): Promise<num
     const report = await runImport({
       rcKey: rcKey!, rcProject: rcProject!, rcBaseUrl: v["rc-url"], to: to!, toKey: toKey!, toProject: v["to-project"],
       statePath: v.state ?? `revenuedot-import-${rcProject!.replace(/[^\w-]/g, "_")}.json`, dryRun: v["dry-run"], restart: v.restart,
-      concurrency: int("--concurrency", v.concurrency), limit: int("--limit", v.limit), pageSize: pageSize(int("--page-size", v["page-size"])),
+      concurrency: int("--concurrency", v.concurrency), limit: int("--limit", v.limit), ids: v.ids ? readIds(readFileSync(v.ids, "utf8")) : undefined, pageSize: pageSize(int("--page-size", v["page-size"])),
       publicKeys: !v["no-public-keys"], emitEvents: v["emit-events"], tokens, http: io.http, targetHttp: io.targetHttp, log, progress,
     });
     done();
@@ -258,4 +260,14 @@ async function admin(sub: string | undefined, args: string[], v: { password?: st
   } finally {
     await close();
   }
+}
+
+/** Customer ids from a file: a JSON array of ids (or of objects with `customer` or `id`, as verify's mismatches), or one id per line. */
+export function readIds(text: string): string[] {
+  const t = text.trim();
+  if (t.startsWith("[")) {
+    const arr = JSON.parse(t) as unknown[];
+    return arr.map((x) => (typeof x === "string" ? x : (x as { customer?: string; id?: string }).customer ?? (x as { id?: string }).id ?? "")).filter(Boolean);
+  }
+  return t.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
 }

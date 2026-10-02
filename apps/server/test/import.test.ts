@@ -158,6 +158,38 @@ describe("POST /v2/projects/{id}/import/customers (App Store)", () => {
     expect(await dump(h.db)).toEqual(before);
   });
 
+  it("a chain in its grace period: RevenueCat's period end is the grace end, the paid period ended at the newest transaction", async () => {
+    h = await appleHarness();
+    const rest = await restFor(h.db, h.now);
+    const out = await rest.importCustomers([appleCustomer({}, {
+      status: "in_grace_period", current_period_starts_at: T0 - 8 * DAY, current_period_ends_at: T0 + 5 * DAY,
+      transactions: [{ id: "2000000001", purchased_at: T0 - 8 * DAY, expires_at: T0 - DAY, revenue_usd: 9.99 }],
+    })]);
+    expect(out.customers[0].notes).toEqual([]);
+    const [s] = await h.db.select().from(schema.subscriptions);
+    expect(s).toMatchObject({ expiresDate: new Date(T0 - DAY), gracePeriodExpiresDate: new Date(T0 + 5 * DAY), billingIssuesDetectedAt: new Date(T0 - DAY) });
+    const info = await h.customerInfo("user1");
+    expect(info.subscriber.entitlements.pro.expires_date).toBe(new Date(T0 + 5 * DAY).toISOString().replace(/\.\d{3}Z$/, "Z"));
+  });
+
+  it("a chain the store already renewed (has_already_renewed) gives access to the renewed period's end", async () => {
+    h = await appleHarness();
+    const rest = await restFor(h.db, h.now);
+    const renewedAt = T0 + 3_600_000;
+    await rest.importCustomers([appleCustomer({}, {
+      auto_renewal_status: "has_already_renewed", current_period_starts_at: T0 - 7 * DAY, current_period_ends_at: renewedAt,
+      store_subscription_identifier: "2000000001",
+      transactions: [
+        { id: "2000000001", purchased_at: T0 - 7 * DAY, expires_at: renewedAt, revenue_usd: 9.99 },
+        { id: "2000000002", purchased_at: renewedAt, expires_at: renewedAt + 7 * DAY, revenue_usd: 9.99 },
+      ],
+    })]);
+    const [s] = await h.db.select().from(schema.subscriptions);
+    expect(s!.expiresDate).toEqual(new Date(renewedAt + 7 * DAY));
+    const info = await h.customerInfo("user1");
+    expect(info.subscriber.entitlements.pro.expires_date).toBe(new Date(renewedAt + 7 * DAY).toISOString().replace(/\.\d{3}Z$/, "Z"));
+  });
+
   it("with the in-app purchase key, Apple's API confirms the original transaction id of a resubscribed chain", async () => {
     const lookups: string[] = [];
     const appleApi = (async (url: string) => {
