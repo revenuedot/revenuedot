@@ -1250,6 +1250,9 @@ const journey: Journey = {
         c.eq("the new password signs in", (await fetch(`${ctx.base}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password: `${password}-2` }) })).status, 200);
         // The signed-out pages at phone width, light and dark.
         const signedOut: R[] = [{ path: "/login", h1: "Sign in to RevenueDot" }, { path: "/signup", h1: "Create your account" }, { path: "/forgot-password", h1: "Reset your password" }];
+        // The journey ends this session through the API, not the UI: leave the dashboard first, or the Overview the reset
+        // just opened is still loading and its requests answer 401 (the journey's doing, not the dashboard's).
+        await page.goto("about:blank");
         await page.request.post(`${ctx.base}/auth/logout`);
         await cx.clearCookies();
         await page.setViewportSize(PHONE);

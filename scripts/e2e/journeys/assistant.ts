@@ -95,6 +95,19 @@ const journey: Journey = {
       await page.goto(`${ctx.base}/projects/${dev.projectId}/settings/audit-logs`);
       c.check("the Audit logs tab shows RevenueDot AI and the person", await page.getByText("RevenueDot AI").first().waitFor({ timeout: 15_000 }).then(() => true, () => false) && (await page.locator("body").innerText()).includes(dev.email));
 
+      c.begin("a read and a write in one step: Approve finishes the answer");
+      const both = `ai_both_${ctx.stamp}`;
+      await page.goto(`${ctx.base}/projects/${dev.projectId}/ai`);
+      await composer().waitFor({ timeout: 15_000 });
+      await ask(`look up ${both} and grant pro to ${both}`);
+      const third = page.getByTestId("approval-card").last();
+      await third.getByRole("button", { name: "Approve" }).waitFor({ timeout: 30_000 });
+      c.check("the read tool ran before the approval", await page.locator('[data-tool="get-customer"]').last().waitFor({ timeout: 15_000 }).then(() => true, () => false));
+      await third.getByRole("button", { name: "Approve" }).click();
+      c.check("after Approve the answer finishes (no endless Thinking…)", await page.getByText(/^Done\. The customer has the entitlement/).last().waitFor({ timeout: 30_000 }).then(() => true, () => false));
+      const bothActive = await dev.v2("GET", `/customers/${both}/active_entitlements`);
+      c.check("the customer has pro from the grant", bothActive.items.some((e: any) => e.entitlement_id === cat.pro.id), bothActive.items);
+
       c.begin("a viewer");
       const viewerEmail = `aiviewer-${ctx.stamp}@journeys.test`;
       await dev.v2("POST", "/invites", { email: viewerEmail, role: "viewer" });
