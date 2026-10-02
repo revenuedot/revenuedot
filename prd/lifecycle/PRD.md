@@ -2,7 +2,7 @@
 
 **Status:** built on branch `tier2-lifecycle` (2026-10-01). Refund Control answers Apple's refund requests with consumption information, Retention serves cancel and refund offers to the Customer Center and answers Apple's Retention Messaging API, Win-back emails churned subscribers an offer, Support stores and emails Customer Center tickets and gives help desks a customer summary, and Customers has audiences, summary cards, filters and CSV export. Tested against a mocked App Store and the in-memory mailer; no real Apple refund request, retention message or win-back email to a real customer has run yet.
 
-Scope rows: `prd/SCOPE.md` Tier 2 "win-back offers", Tier 3 "Revenue recovery: failed-payment recovery, refund defense (Apple consumption info), win-back flows". Parity rows: `company/docs/research/parity-matrix.md` (Lifecycle: Support, Retention, Refund control, Win-back; Customers: saved customer lists), and its "Live walkthrough notes" plus contact-sheet frames 18 to 21.
+Scope rows: `prd/SCOPE.md` Tier 2 "win-back offers", Tier 3 "Revenue recovery: failed-payment recovery, refund defense (Apple consumption info), win-back flows". Failed-payment recovery has its own spec: `prd/payment-recovery/PRD.md` (Lifecycle → Payment recovery). Parity rows: `company/docs/research/parity-matrix.md` (Lifecycle: Support, Retention, Refund control, Win-back; Customers: saved customer lists), and its "Live walkthrough notes" plus contact-sheet frames 18 to 21.
 
 ## Users and jobs
 - **Developers with App Store apps** lose money to refunds that Apple grants without knowing the customer used the purchase. They want Apple to get the facts (and their preference) within Apple's 12-hour window without writing a server.

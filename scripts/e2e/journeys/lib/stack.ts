@@ -16,7 +16,8 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
-import { FakeStripeAccount } from "../../../../packages/contract/src/fake-stripe.ts";
+import { FAKE_CONNECT_CLIENT_ID, FAKE_CONNECT_WHSEC, FAKE_PLATFORM_KEY, FAKE_PLATFORM_TEST_KEY, FakeStripeAccount, FakeStripePlatform } from "../../../../packages/contract/src/fake-stripe.ts";
+import { signStripePayload } from "../../../../apps/server/src/stores/stripe/signature.ts";
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(HERE, "../../../..");
@@ -123,6 +124,10 @@ export interface Captured { at: number; method: string; host: string; path: stri
 export class Capture {
   requests: Captured[] = [];
   stripe = new FakeStripeAccount();
+  /** RevenueDot's fake Stripe Connect platform: connect.stripe.com and calls with Stripe-Account or a platform key. */
+  platform = new FakeStripePlatform();
+  /** Where the fake portal delivers a connected account's invoice.paid (the server's Connect endpoint). */
+  connectEndpoint: string | null = null;
   /** Extra handlers by original host (or "/local/<name>" paths), tried before the defaults. */
   handlers: Array<(c: Captured, res: ServerResponse) => boolean | Promise<boolean>> = [];
   /** Static pages served at /pages/<name>. */
@@ -132,6 +137,17 @@ export class Capture {
   server!: Server;
   constructor(readonly port: number) {
     this.stripe.checkoutUrl = `http://localhost:${port}/__stripe/checkout/{id}`;
+    this.stripe.portalUrl = `http://localhost:${port}/__stripe/portal/{id}`;
+    this.platform.accountDefaults = { checkoutUrl: this.stripe.checkoutUrl, portalUrl: this.stripe.portalUrl };
+    this.platform.onboardingUrl = `http://localhost:${port}/__stripe/connect/onboarding/{account}`;
+  }
+
+  /** Signs an event for a connected account with the platform's webhook secret and posts it to the server's Connect endpoint. */
+  async deliverConnect(event: Record<string, unknown>) {
+    if (!this.connectEndpoint) throw new Error("connectEndpoint is not set");
+    const raw = JSON.stringify(event);
+    const res = await fetch(this.connectEndpoint, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": await signStripePayload(FAKE_CONNECT_WHSEC, raw) }, body: raw });
+    return { status: res.status, body: await res.json().catch(() => null) as any };
   }
   get base() { return `http://localhost:${this.port}`; }
 
@@ -157,11 +173,12 @@ export class Capture {
     // Fake Stripe Checkout page: "Pay" completes the session the way the customer paying on Stripe would.
     const co = /^\/__stripe\/checkout\/([^/]+)$/.exec(url.pathname);
     if (co && host === "local") {
-      const s = this.stripe.sessions.get(co[1]!);
-      if (!s) { rs.statusCode = 404; rs.end("No such checkout session"); return; }
+      const hit = this.platform.find(this.stripe, (a) => a.sessions.get(co[1]!));
+      const s = hit?.value;
+      if (!s || !hit) { rs.statusCode = 404; rs.end("No such checkout session"); return; }
       if (rq.method === "POST") {
         const email = new URLSearchParams(c.body).get("email")?.trim() || undefined;
-        this.stripe.complete(s.id, { email });
+        hit.account.complete(s.id, { email });
         rs.statusCode = 303; rs.setHeader("location", s.success_url); rs.end(); return;
       }
       const item = s.line_items.data[0];
@@ -170,6 +187,36 @@ export class Capture {
       rs.setHeader("content-type", "text/html");
       rs.end(`<!doctype html><html><head><meta charset="utf-8"><title>Fake Stripe Checkout</title></head><body><h1>Fake Stripe Checkout</h1>
 <p>${s.mode}: <b data-amount>${amount}</b></p>${discount}<form method="post"><input name="email" type="email" value="${s.customer_email ?? ""}"><button type="submit">Pay</button></form></body></html>`);
+      return;
+    }
+    // Fake Stripe Connect consent page (the browser is routed here instead of connect.stripe.com/oauth/authorize).
+    if (url.pathname === "/__stripe/connect/authorize" && host === "local") {
+      const authorize = `https://connect.stripe.com/oauth/authorize${url.search}`;
+      if (rq.method === "POST") {
+        const choice = new URLSearchParams(c.body).get("choice");
+        rs.statusCode = 303; rs.setHeader("location", choice === "cancel" ? this.platform.deny(authorize) : this.platform.approve(authorize).redirect); rs.end(); return;
+      }
+      rs.setHeader("content-type", "text/html");
+      rs.end(`<!doctype html><html><head><meta charset="utf-8"><title>Fake Stripe Connect</title></head><body><h1>Fake Stripe Connect</h1><p>RevenueDot asks to connect to your Stripe account.</p>
+<form method="post" action="/__stripe/connect/authorize${url.search.replace(/"/g, "&quot;")}"><button name="choice" value="connect" type="submit">Connect my Stripe account</button><button name="choice" value="cancel" type="submit">Cancel</button></form></body></html>`);
+      return;
+    }
+    // Fake Stripe customer portal: "Update payment method" pays the customer's open invoice; a connected account's
+    // invoice.paid goes to the server's Connect endpoint.
+    const portal = /^\/__stripe\/portal\/([^/]+)$/.exec(url.pathname);
+    if (portal && host === "local") {
+      const hit = this.platform.find(this.stripe, (a) => a.portalSessions.get(portal[1]!));
+      if (!hit) { rs.statusCode = 404; rs.end("No such portal session"); return; }
+      if (rq.method === "POST") {
+        const inv = [...hit.account.invoices.values()].reverse().find((i) => i.customer === hit.value.customer && i.status === "open");
+        if (inv) {
+          hit.account.payInvoice(inv.id);
+          if (hit.account.connect) await this.deliverConnect(hit.account.event("invoice.paid", hit.account.invoices.get(inv.id)!));
+        }
+        rs.statusCode = 303; rs.setHeader("location", hit.value.return_url ?? "/"); rs.end(); return;
+      }
+      rs.setHeader("content-type", "text/html");
+      rs.end(`<!doctype html><html><head><meta charset="utf-8"><title>Fake Stripe customer portal</title></head><body><h1>Fake Stripe customer portal</h1><form method="post"><button type="submit">Update payment method</button></form></body></html>`);
       return;
     }
     for (const [prefix, dir] of this.dirs) {
@@ -192,6 +239,11 @@ export class Capture {
     this.requests.push(c);
     for (const h of this.handlers) if (await h(c, rs)) return;
 
+    const bearer = String(rq.headers.authorization ?? "").replace(/^Bearer /, "");
+    if (host === "connect.stripe.com" || (host === "api.stripe.com" && (rq.headers["stripe-account"] || this.platform.keys.has(bearer)))) {
+      const res = await this.platform.fetch(`https://${host}${url.pathname}${url.search}`, { method: c.method, headers: rq.headers as Record<string, string>, body: ["GET", "HEAD"].includes(c.method) ? undefined : c.body });
+      rs.statusCode = res.status; rs.setHeader("content-type", "application/json"); rs.end(await res.text()); return;
+    }
     if (host === "api.stripe.com") {
       const res = await this.stripe.fetch(`https://api.stripe.com${url.pathname}${url.search}`, { method: c.method, headers: rq.headers as Record<string, string>, body: ["GET", "HEAD"].includes(c.method) ? undefined : c.body });
       rs.statusCode = res.status; rs.setHeader("content-type", "application/json"); rs.end(await res.text()); return;
@@ -248,6 +300,9 @@ export class RdServer {
       DASHBOARD_DIST: join(ROOT, "apps/dashboard/dist"),
       // A made-up Anthropic key: model calls go to the scripted Messages API (fake-anthropic.ts); no real model is called.
       ANTHROPIC_API_KEY: "sk-ant-journey-fake-model", OPENAI_API_KEY: "",
+      // "Connect with Stripe" on a fake platform (the capture server answers connect.stripe.com and the connected accounts).
+      REVENUEDOT_STRIPE_CONNECT_CLIENT_ID: FAKE_CONNECT_CLIENT_ID, REVENUEDOT_STRIPE_CONNECT_SECRET_KEY: FAKE_PLATFORM_KEY,
+      REVENUEDOT_STRIPE_CONNECT_TEST_SECRET_KEY: FAKE_PLATFORM_TEST_KEY, REVENUEDOT_STRIPE_CONNECT_WEBHOOK_SECRET: FAKE_CONNECT_WHSEC,
       ...this.o.env,
     };
     this.child = spawn(process.execPath, ["--import", tsxLoader, "--import", join(HERE, "outbound-preload.mjs"), join(ROOT, "apps/server/src/entry.node.ts")], {

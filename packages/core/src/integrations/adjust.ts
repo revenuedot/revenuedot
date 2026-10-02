@@ -24,7 +24,7 @@ export async function buildAdjust(i: BuildInput): Promise<Plan> {
   const tokens = (i.settings.event_tokens ?? {}) as Record<string, string>;
   const eventToken = tokens[c]?.trim();
   if (!eventToken) return skip(`No Adjust event token is set for ${c}.`);
-  const platform = platformOf(e.store);
+  const platform = platformOf(e.store, i.context?.platform);
   const appToken = platform === "android" ? i.settings.android_app_token : platform === "ios" ? i.settings.ios_app_token : null;
   if (!appToken) return skip(platform === "ios" || platform === "android" ? `No Adjust app token is saved for ${platform === "ios" ? "iOS" : "Android"}.` : `${e.store} purchases are not sent to Adjust.`);
   const adid = attr(e, "$adjustId");

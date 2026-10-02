@@ -31,7 +31,7 @@ export async function buildSingular(i: BuildInput): Promise<Plan> {
   if (!c || !SINGULAR_EVENTS.includes(c)) return skip(`${e.type} events are not sent to Singular.`);
   const key = isSandbox(e) ? i.secrets.sandbox_sdk_key : i.secrets.sdk_key;
   if (!key) return skip(isSandbox(e) ? "Sandbox events need a sandbox Singular SDK key." : "No Singular SDK key is saved.");
-  const platform = e.store === "AMAZON" ? "android" : platformOf(e.store);
+  const platform = e.store === "AMAZON" ? "android" : platformOf(e.store, i.context?.platform);
   if (platform !== "ios" && platform !== "android") return skip(`${e.store} purchases are not sent to Singular's app events.`);
   const bundle = i.context?.bundleId;
   if (!bundle) return skip("The app has no bundle ID or package name saved, which Singular needs.");

@@ -21,7 +21,7 @@ import { withStoreSecrets } from "./store-secrets.js";
 export type CheckStatus = "valid" | "invalid" | "unreachable";
 export interface CredentialCheck { status: CheckStatus; message: string; extra: Record<string, unknown> }
 
-type CheckDeps = Pick<Deps, "fetch" | "now" | "stores"> & Partial<Pick<Deps, "encryptionKey" | "signingKey">>;
+type CheckDeps = Pick<Deps, "fetch" | "now" | "stores"> & Partial<Pick<Deps, "encryptionKey" | "signingKey" | "stripeConnect">>;
 
 const STORE_TYPES = ["app_store", "mac_app_store", "play_store", "amazon", "stripe"];
 
@@ -105,16 +105,23 @@ export async function checkStoreCredentials(deps: CheckDeps, app: AppRow): Promi
   }
   if (app.type === "stripe") {
     const key = stripeKeyOf(app);
-    if (!key) return out("invalid", "No Stripe API key yet. Create a restricted key in the Stripe Dashboard → Developers → API keys.");
+    if (!key && app.credentials?.stripe_connected === true) return out("invalid", "This app is connected with Stripe Connect, but this server has no Stripe Connect platform key for the connection's mode.");
+    if (!key) return out("invalid", "No Stripe API key yet. Connect with Stripe, or create a restricted key in the Stripe Dashboard → Developers → API keys.");
     if (/^pk_/.test(key)) return out("invalid", "This is a publishable key (pk_…). Use a restricted key (rk_…) or a secret key (sk_…).");
     const mode = isTestKey(key) ? "test" : "live";
     const { client } = stripeClientFor(deps.stores, deps.fetch);
+    const connected = app.credentials?.stripe_connected === true;
     try {
       // Read access to both objects RevenueDot reads first; one item each.
       await client.get(app, "/v1/subscriptions", { limit: "1", status: "all" });
       await client.get(app, "/v1/checkout/sessions", { limit: "1" });
-      return out("valid", `Stripe accepted the ${mode} mode key.`, { mode });
+      return out("valid", connected ? `The connected Stripe account answered in ${mode} mode.` : `Stripe accepted the ${mode} mode key.`, { mode });
     } catch (e) {
+      if (e instanceof StripeApiError && connected) {
+        if (e.kind === "credentials") return out("invalid", `Stripe refused access to the connected account. Connect with Stripe again. Stripe said: ${e.message}`, { mode });
+        if (e.kind === "transient") return out("unreachable", "Stripe could not be reached. Try again in a minute.", { mode });
+        return out("invalid", `Stripe refused the check: ${e.message}`, { mode });
+      }
       if (e instanceof StripeApiError) {
         if (e.kind === "credentials" && e.status === 403) return out("invalid", `The key works but cannot read everything RevenueDot needs. Give the restricted key read access to Subscriptions, Invoices, Checkout Sessions, Charges, Customers, Products and Prices. Stripe said: ${e.message}`, { mode });
         if (e.kind === "credentials") return out("invalid", "Stripe rejected the key. Copy it again from the Stripe Dashboard → Developers → API keys.", { mode });

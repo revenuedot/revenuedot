@@ -22,6 +22,7 @@ import { RefundControlPage } from "./pages/lifecycle/RefundControl";
 import { RetentionPage } from "./pages/lifecycle/Retention";
 import { SupportPage } from "./pages/lifecycle/Support";
 import { WinbackEditor, WinbackListPage } from "./pages/lifecycle/Winback";
+import { PaymentRecoveryPage } from "./pages/lifecycle/PaymentRecovery";
 import { PaywallsPage } from "./pages/paywalls/Paywalls";
 import { PaywallEditor } from "./pages/paywalls/Editor";
 import { GalleryPage } from "./pages/paywalls/Gallery";
@@ -68,6 +69,7 @@ export const routes = [
   <Route key="support" path="/projects/:projectId/lifecycle/support" element={<SupportPage />} />,
   <Route key="retention" path="/projects/:projectId/lifecycle/retention" element={<RetentionPage />} />,
   <Route key="refund-control" path="/projects/:projectId/lifecycle/refund-control" element={<RefundControlPage />} />,
+  <Route key="payment-recovery" path="/projects/:projectId/lifecycle/payment-recovery" element={<PaymentRecoveryPage />} />,
   <Route key="winback" path="/projects/:projectId/lifecycle/winback" element={<WinbackListPage />} />,
   <Route key="winback-new" path="/projects/:projectId/lifecycle/winback/new" element={<WinbackEditor />} />,
   <Route key="winback-campaign" path="/projects/:projectId/lifecycle/winback/:campaignId" element={<WinbackEditor />} />,

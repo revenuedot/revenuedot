@@ -8,6 +8,19 @@ import { queueIntegrationDeliveries } from "./integrations/queue.js";
 
 const { events, webhooks, webhookDeliveries, customerAttributes } = schema;
 
+/**
+ * `created_at` for a customer's event at `now`: `now`, or 1 ms after that customer's latest event at the same instant.
+ * Lists order events by (event_timestamp_ms, created_at); two events of one instant (BILLING_ISSUE and CANCELLATION,
+ * a purchase and turning auto-renew off) otherwise tie, and real Postgres returns ties in any order (PGlite happened to
+ * keep insertion order), so webhooks, the timeline and the API listed them in random order.
+ */
+async function createdAtFor(db: DB, customerId: string, now: Date): Promise<Date> {
+  const [r] = await db.select({ last: sql<string | null>`max(${events.createdAt})` }).from(events)
+    .where(and(eq(events.customerId, customerId), eq(events.eventTimestampMs, now.getTime())));
+  const last = r?.last ? new Date(r.last) : null;
+  return last && last.getTime() >= now.getTime() ? new Date(last.getTime() + 1) : now;
+}
+
 export interface EventSubject {
   store: Store;
   productId: string;
@@ -118,7 +131,7 @@ export async function recordEvent(db: DB, opts: {
   const payload = { api_version: "1.0", event };
   await db.insert(events).values({
     id, projectId, customerId: customer.id, type, environment: environment.toLowerCase(), appId,
-    payload, eventTimestampMs: now.getTime(), createdAt: now,
+    payload, eventTimestampMs: now.getTime(), createdAt: await createdAtFor(db, customer.id, now),
   });
   await queueDeliveries(db, projectId, id, type, environment.toLowerCase(), appId, now, event);
   return payload;
@@ -142,7 +155,7 @@ export async function recordRawEvent(db: DB, opts: {
     ? { event_timestamp_ms: opts.now.getTime(), app_user_id: opts.appUserId, aliases, ...opts.fields, type: opts.type, id }
     : { ...opts.fields, aliases, app_id: opts.appId, app_user_id: opts.appUserId, event_timestamp_ms: opts.now.getTime(), subscriber_attributes, type: opts.type, id };
   const environment = opts.sandbox ? "sandbox" : "production";
-  await db.insert(events).values({ id, projectId: opts.projectId, customerId: opts.customer.id, type: opts.type, environment, appId: opts.appId, payload: { api_version: "1.0", event }, eventTimestampMs: opts.now.getTime(), createdAt: opts.now });
+  await db.insert(events).values({ id, projectId: opts.projectId, customerId: opts.customer.id, type: opts.type, environment, appId: opts.appId, payload: { api_version: "1.0", event }, eventTimestampMs: opts.now.getTime(), createdAt: await createdAtFor(db, opts.customer.id, opts.now) });
   await queueDeliveries(db, opts.projectId, id, opts.type, environment, opts.appId, opts.now, event);
   return event;
 }

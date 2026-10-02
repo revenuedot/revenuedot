@@ -79,6 +79,9 @@ export async function seedEverything(db: DB, key: SecretKey | null, o: { userId:
   await db.insert(s.identitySessions).values({ id: "is_1", projectId: P, appId: "app_ios", appUserId: "u1", providerId: "ap_1", subject: "sub-1", method: "oidc", refreshHash: `rh_${P}`, expiresAt: T });
   await db.insert(s.blockedCustomers).values({ projectId: P, appUserId: "fraud_1", note: "chargebacks", blockedBy: o.userId });
   await db.insert(s.verifiedPages).values({ projectId: P, slug: `scanner-metrics-${P}`, displayName: "Scanner", metrics: [{ id: "mrr", visible: true }] });
+  await db.insert(s.stripeConnections).values({ appId: "app_stripe", projectId: P, status: "disconnected", method: "oauth", mode: "test", disconnectedAt: T, disconnectReason: "Disconnected in Stripe", pendingStateHash: "pending-state", connectedBy: o.userId });
+  await db.insert(s.recoveryCases).values({ id: `rcv_${P}`, projectId: P, customerId: "cus_1", subscriptionId: "sub_1", appId: "app_ios", store: "app_store", storeKey: "orig_1", productId: "pro_monthly", detectedAt: T, atRiskUsd: 10.72, email: "u1@example.com", stepsSent: 1, nextStepAt: T, firstSentAt: T, token: `rcvtok_${P}_0000000000000` });
+  await db.insert(s.recoveryMessages).values({ id: `rcm_${P}`, caseId: `rcv_${P}`, projectId: P, step: 0, email: "u1@example.com", sentAt: T });
 }
 
 import { eq } from "drizzle-orm";

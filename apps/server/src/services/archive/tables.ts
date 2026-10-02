@@ -101,6 +101,12 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
   { name: "identity_sessions", scope: { project: "project_id" } },
   { name: "blocked_customers", scope: { project: "project_id" } },
   { name: "verified_pages", scope: { project: "project_id" } },
+  // Connect with Stripe (prd/web-billing/PRD.md §8): the sealed account id travels in apps.secrets, so its routing row comes
+  // too. On a server with another Connect platform the app then says to connect again. A sign-in in progress stays here.
+  { name: "stripe_connections", scope: { project: "project_id" }, local: ["pending_state_hash", "pending_nonce_hash", "pending_until", "pending_mode", "redirect_uri", "connected_by"] },
+  // Payment recovery (prd/payment-recovery/PRD.md): cases keep their link tokens, so emails already sent keep working.
+  { name: "recovery_cases", scope: { project: "project_id" } },
+  { name: "recovery_messages", scope: { project: "project_id" } },
 ];
 
 /** Tables that are not in an archive, and why (the manifest's `excluded`). */
@@ -132,6 +138,7 @@ export const NOT_EXPORTED: Record<string, string> = {
   billing_meter_reports: "RevenueDot Cloud billing is per account and server.",
   billing_invoices: "RevenueDot Cloud billing is per account and server.",
   billing_notices: "RevenueDot Cloud billing is per account and server.",
+  recovery_portal_links: "One-time payment links that last 30 minutes.",
   benchmark_project_values: "Benchmarks are computed on RevenueDot Cloud from projects that share there; rebuilt nightly.",
   benchmark_aggregates: "Peer percentiles across projects, not one project's data.",
   benchmark_runs: "Runs of this server's nightly benchmark job.",

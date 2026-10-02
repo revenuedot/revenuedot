@@ -12,6 +12,7 @@ import {
   type App, type CredentialsCheck, type Product, type StoreSettings,
 } from "./data";
 import { SdkSetup } from "./sdk";
+import { StripeConnectPanel } from "./StripeConnect";
 import { ImportProductsDialog } from "../catalog/ImportProducts";
 import type { App as CatalogApp } from "../catalog/lib";
 
@@ -384,10 +385,11 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const saOk = cr.play_service_account.configured;
   const amazonOk = !!cr.amazon_shared_secret?.configured;
   const stripeKey = cr.stripe_secret_key;
-  const stripeOk = !!stripeKey?.configured;
+  const connected = s.stripe?.connection === "stripe_connect";
+  const stripeOk = !!stripeKey?.configured || connected;
   const whsecOk = !!cr.stripe_webhook_secret?.configured;
   const credsOk = apple ? keyOk : google ? saOk : amazon ? amazonOk : stripeOk;
-  const credsName = apple ? "In-app purchase key" : google ? "Service account" : amazon ? "Shared key" : "Stripe API key";
+  const credsName = apple ? "In-app purchase key" : google ? "Service account" : amazon ? "Shared key" : "Stripe account";
   const notifName = apple ? "Server notifications" : google ? "Real-time developer notifications" : amazon ? "Real-time Notifications" : "Stripe webhooks";
 
   return (
@@ -405,8 +407,8 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
         <section className="panel" aria-label="Setup checklist">
           <div className="ph"><b>Setup checklist</b><span className="link">{[credsOk, !!s.last_notification_at].filter(Boolean).length} of 2 verified</span></div>
           <div className="pb stack tight">
-            <StatusLine tone={credsOk ? "ok" : "bad"}><a className="linkish" href="#credentials">{credsName}</a> {credsOk ? "is saved." : `is missing. RevenueDot needs it to check purchases with ${name}.`}</StatusLine>
-            <StatusLine tone={s.last_notification_at ? "ok" : "idle"}><a className="linkish" href="#notifications">{notifName}</a> {s.last_notification_at ? `arrive (last ${fmt.ago(s.last_notification_at)}).` : "have not arrived yet."}</StatusLine>
+            <StatusLine tone={credsOk ? "ok" : "bad"}><a className="linkish" href="#credentials">{credsName}</a> {credsOk ? (connected ? "is connected with Stripe Connect." : "is saved.") : stripe ? "is not connected yet. Connect with Stripe, or add a restricted key. RevenueDot needs it to check purchases with Stripe." : `is missing. RevenueDot needs it to check purchases with ${name}.`}</StatusLine>
+            <StatusLine tone={s.last_notification_at ? "ok" : "idle"}><a className="linkish" href={connected ? "#credentials" : "#notifications"}>{notifName}</a> {s.last_notification_at ? `arrive (last ${fmt.ago(s.last_notification_at)}).` : "have not arrived yet."}</StatusLine>
             {stripe
               ? <StatusLine tone="idle"><a className="linkish" href="#sdk">Your backend</a>: post each new subscription or Checkout Session to <span className="mono">/v1/receipts</span> with this app's key.</StatusLine>
               : <StatusLine tone="idle"><a className="linkish" href="#sdk">SDK</a>: set the proxy URL and this app's key in your app, then make a sandbox purchase.</StatusLine>}
@@ -598,7 +600,10 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
       )}
 
       {stripe && (
-        <Section id="credentials" title="Stripe API key" tag={<span className="tag gold">Required</span>}>
+        <Section id="credentials" title="Stripe account" tag={<span className="tag gold">Required</span>}>
+          <StripeConnectPanel pid={pid} appId={app.id} onChange={() => { void qc.invalidateQueries({ queryKey: ["store_settings", pid, app.id] }); void qc.invalidateQueries({ queryKey: ["app", pid, app.id] }); }} />
+          {!connected && <>
+          <h3 className="sc-or">Or use a restricted key</h3>
           <p className="section-sub">RevenueDot reads subscriptions, invoices and Checkout Sessions from your own Stripe account with a restricted key. It never charges, refunds or changes anything in Stripe.</p>
           <ol className="steps">
             <li>In the <a href="https://dashboard.stripe.com/apikeys/create" target="_blank" rel="noreferrer">Stripe Dashboard → Developers → API keys</a>, click <b>Create restricted key</b>.</li>
@@ -619,10 +624,25 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           <Field label="Connected account ID" htmlFor="f-stripeAccount" error={errors.stripeAccount} hint="Optional. Only for a Stripe Connect platform key that acts for one connected account (sent as Stripe-Account).">
             <input id="f-stripeAccount" className="input mono" spellCheck={false} placeholder="acct_…" value={d.stripeAccount} aria-invalid={!!errors.stripeAccount} onChange={(e) => set({ stripeAccount: e.target.value })} />
           </Field>
+          </>}
+          {connected && (
+            <div className="hrow">
+              <button type="button" className="btn btn-line" disabled={check.busy} onClick={() => runCheck(false)}><Icon name="refresh" />Check connection</button>
+              <CheckResult state={check} />
+            </div>
+          )}
         </Section>
       )}
 
-      {stripe && s.notification_url && (
+      {stripe && connected && (
+        <Section id="notifications" title="Stripe webhooks">
+          <p className="section-sub">Stripe sends this account's renewals, failed payments, cancellations and refunds to RevenueDot's Stripe Connect endpoint. Nothing to set up here; an endpoint you added before connecting can be removed from your Stripe account.</p>
+          <NotificationStatus s={s} store="Stripe" />
+          <ForwardField d={d} set={set} errors={errors} s={s} store="Stripe" />
+        </Section>
+      )}
+
+      {stripe && !connected && s.notification_url && (
         <Section id="notifications" title="Stripe webhooks">
           <p className="section-sub">Stripe tells RevenueDot about renewals, failed payments, cancellations and refunds. Every event's Stripe-Signature is checked with the signing secret.</p>
           <Field label="Webhook endpoint URL" htmlFor="notif-url">

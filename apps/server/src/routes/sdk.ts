@@ -176,9 +176,11 @@ export function sdkRoutes(deps: Deps) {
     };
   };
 
-  async function customerInfoFor(projectId: string, appUserId: string, now: Date, includeAttributes: boolean) {
+  // Payment recovery links in customer info (management_url) point at the API origin apps call.
+  const recoveryBase = (c: Parameters<typeof publicOrigin>[0]) => deps.apiUrl ?? publicOrigin(c);
+  async function customerInfoFor(projectId: string, appUserId: string, now: Date, includeAttributes: boolean, base?: string) {
     const { customer, created } = await getOrCreateCustomer(deps.db, projectId, appUserId, now);
-    const state = await loadState(deps.db, customer);
+    const state = await loadState(deps.db, customer, { recoveryBase: base });
     return { customer, created, body: buildCustomerInfo(state, await entitlementMap(deps.db, projectId), now, { includeAttributes }) };
   }
   const isSecret = (c: any) => c.get("auth")?.kind === "secret";
@@ -192,7 +194,7 @@ export function sdkRoutes(deps: Deps) {
   // 1. Customer info
   r.get("/v1/subscribers/:id", async (c) => {
     const app = c.get("app"); const now = deps.now();
-    const { customer, created, body } = await customerInfoFor(app.projectId, userId(c.req.param("id")), now, isSecret(c));
+    const { customer, created, body } = await customerInfoFor(app.projectId, userId(c.req.param("id")), now, isSecret(c), recoveryBase(c));
     await touch(deps.db, customer.id, now, reqInfo(c));
     return c.json(body, created ? 201 : 200);
   });
@@ -239,7 +241,7 @@ export function sdkRoutes(deps: Deps) {
     });
     await touch(deps.db, customer.id, now, reqInfo(c));
     deps.kick?.();
-    const state = await loadState(deps.db, customer);
+    const state = await loadState(deps.db, customer, { recoveryBase: recoveryBase(c) });
     const body = buildCustomerInfo(state, await entitlementMap(deps.db, app.projectId), now, { includeAttributes: isSecret(c) });
     // Android consumes a purchase only when told to; iOS matches store_transaction_id in non_subscriptions.
     const purchased_products: Record<string, { should_consume: boolean }> = {};
@@ -299,7 +301,7 @@ export function sdkRoutes(deps: Deps) {
     const { customer, created, aliased } = await identify(deps.db, app.projectId, oldId, newAppUserId, now);
     if (aliased) await aliasEvent(c, customer.id, newAppUserId, now);
     await touch(deps.db, customer.id, now, reqInfo(c));
-    const state = await loadState(deps.db, customer);
+    const state = await loadState(deps.db, customer, { recoveryBase: recoveryBase(c) });
     return c.json(buildCustomerInfo(state, await entitlementMap(deps.db, app.projectId), now), created ? 201 : 200);
   });
 
@@ -429,7 +431,7 @@ export function sdkRoutes(deps: Deps) {
     const token = typeof b.redemption_token === "string" ? b.redemption_token.trim() : "";
     const owner = await redeemWebPurchase(deps, app, { appUserId, token, platform: c.req.header("x-platform") ?? null, payBase: mailPayBase(deps, publicOrigin(c)) });
     await touch(deps.db, owner.id, now, reqInfo(c));
-    const { body } = await customerInfoFor(app.projectId, appUserId, now, isSecret(c));
+    const { body } = await customerInfoFor(app.projectId, appUserId, now, isSecret(c), recoveryBase(c));
     return c.json(body);
   });
 

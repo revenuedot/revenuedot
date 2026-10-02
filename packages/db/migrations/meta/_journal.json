@@ -171,6 +171,13 @@
       "breakpoints": true
     },
     {
+      "idx": 26,
+      "version": "7",
+      "when": 1790915215289,
+      "tag": "0026_connect_recovery",
+      "breakpoints": true
+    },
+    {
       "idx": 27,
       "version": "7",
       "when": 1791412000000,

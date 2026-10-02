@@ -11,7 +11,11 @@ export interface Domain {
   dns: { type: "CNAME" | "TXT"; name: string; value: string }[]; cloud_note: string | null; found?: { cname: string[] | null; txt: string[] | null };
 }
 export interface StripeKeyHint { configured: boolean; mode: "test" | "live" | null; kind: "restricted" | "secret" | "other" | null; last4: string | null }
-export interface Provider { object: "web_provider"; id: string; name: string; type: "stripe"; public_key: string; key: StripeKeyHint; web_config: boolean; created_at: number }
+export interface Provider {
+  object: "web_provider"; id: string; name: string; type: "stripe"; public_key: string; key: StripeKeyHint; web_config: boolean; created_at: number;
+  /** How the app reaches Stripe: "Connect with Stripe", a restricted key, or not yet (prd/web-billing/PRD.md §8). */
+  connection: "stripe_connect" | "restricted_key" | null; connected_account: string | null; mode: "live" | "test" | null;
+}
 export interface WebOverview {
   object: "web_overview"; pay_base: string; project_base: string; domain: Domain; providers: Provider[];
   checklist: { connect_stripe: boolean; web_config: boolean; web_products: boolean; offering: boolean };

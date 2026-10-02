@@ -37,6 +37,8 @@ import { refundControlRoutes } from "./refund-control.js";
 import { retentionRoutes } from "./retention.js";
 import { supportRoutes } from "./support.js";
 import { winbackRoutes } from "./winback.js";
+import { stripeConnectRoutes } from "./stripe-connect.js";
+import { paymentRecoveryRoutes } from "./payment-recovery.js";
 import { customerListRoutes } from "./customer-lists.js";
 import { projectSettingsRoutes } from "./project-settings.js";
 import { authRoutes as authConfigRoutes } from "./auth.js";
@@ -134,6 +136,8 @@ export function v2Routes(deps: Deps) {
   retentionRoutes(r, deps);
   supportRoutes(r, deps);
   winbackRoutes(r, deps);
+  paymentRecoveryRoutes(r, deps);
+  stripeConnectRoutes(r, deps);
   customerListRoutes(r, deps);
   adsRoutes(r, deps);
   productRoutes(r, deps);

@@ -67,6 +67,11 @@ export interface Deps {
   /** Cloud: wipes a conversation's Durable Object after its row is deleted. */
   destroyConversation?: (conversationId: string) => Promise<void>;
   /**
+   * RevenueDot's Stripe Connect platform for "Connect with Stripe" (REVENUEDOT_STRIPE_CONNECT_*; prd/web-billing/PRD.md §8).
+   * Unset or incomplete: Connect is unavailable and developers paste a restricted key.
+   */
+  stripeConnect?: import("./services/stripe-connect-config.js").StripeConnectConfig;
+  /**
    * Benchmarks (prd/attribution-benchmarks-insights §2): on only on RevenueDot Cloud (the Worker) and the e2e server. Off,
    * the benchmark endpoints answer `available: false`, the nightly job does nothing and no data is shared.
    */

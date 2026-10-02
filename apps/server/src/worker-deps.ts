@@ -7,6 +7,7 @@ import { assistantModelFromEnv, workersAiAssistantModel, type WorkersAiBinding }
 import { capsFromEnv } from "./services/assistant/limits.js";
 import { fakeAssistantModel } from "./services/assistant/fake-model.js";
 import type { Deps } from "./context.js";
+import { stripeConnectFromEnv } from "./services/stripe-connect-config.js";
 import { r2Store } from "./services/archive/store.js";
 import { billingConfigFromEnv } from "./services/billing/stripe.js";
 
@@ -50,6 +51,11 @@ export interface Env {
   REVENUEDOT_ASSISTANT_MODEL?: string;
   /** JSON caps for RevenueDot AI (services/assistant/limits.ts). */
   REVENUEDOT_ASSISTANT_CAPS?: string;
+  /** Secrets for "Connect with Stripe" (prd/web-billing/PRD.md §8), Kai's to add once the Connect platform exists. Unset: unavailable. */
+  REVENUEDOT_STRIPE_CONNECT_CLIENT_ID?: string;
+  REVENUEDOT_STRIPE_CONNECT_SECRET_KEY?: string;
+  REVENUEDOT_STRIPE_CONNECT_TEST_SECRET_KEY?: string;
+  REVENUEDOT_STRIPE_CONNECT_WEBHOOK_SECRET?: string;
   /**
    * Optional R2 bucket for full-export archives (prd/moves-export/PRD.md). Unset: archives are kept in Postgres. Add the
    * binding in cloudflare.config.ts once the bucket exists (docs/cloud.md).
@@ -73,6 +79,7 @@ export interface Env {
 
 export const mailerFor = (env: Env) => (env.EMAIL ? cloudflareMailer(env.EMAIL) : logMailer());
 export const publicUrlFor = (env: Env) => env.REVENUEDOT_PUBLIC_URL || "https://app.revenuedot.app";
+export const stripeConnectFor = (env: Env) => stripeConnectFromEnv(env as unknown as Record<string, string | undefined>);
 export const googleOAuthFor = (env: Env) => ({ clientId: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID || undefined, clientSecret: env.REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET || undefined });
 
 
@@ -98,6 +105,7 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   // Apps reach the API host; paywall images and icons are served from it.
   apiUrl: env.REVENUEDOT_API_URL || "https://api.revenuedot.app",
   googleOAuth: googleOAuthFor(env),
+  stripeConnect: stripeConnectFor(env),
   payUrl: env.REVENUEDOT_PAY_URL || `${env.REVENUEDOT_API_URL || "https://api.revenuedot.app"}/pay`,
   customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
   // RevenueDot AI: a provider key set as a secret wins; otherwise Workers AI (Kimi K2.6). Conversations run in Durable Objects.

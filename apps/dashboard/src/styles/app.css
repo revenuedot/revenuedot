@@ -888,3 +888,31 @@ button.ask{width:100%;text-align:left;cursor:pointer}
 @media (max-width:1180px){.cc-two{grid-template-columns:1fr}.cc-side{position:static}}
 @media (max-width:640px){.cc-colors{grid-template-columns:1fr}.cc-trans-row{grid-template-columns:1fr}}
 .cc-swatch.empty{opacity:.25}
+
+/* Stripe Connect on the Stripe app page (pages/setup/StripeConnect.tsx) */
+.sc-box{border:1px solid var(--border);background:var(--panel);padding:16px;display:flex;flex-direction:column;gap:12px}
+.sc-row{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.sc-row>div:first-child{flex:1;min-width:220px}
+.sc-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* The onboarding banner: the button drops under the text on a phone instead of squeezing it. */
+.sc-box .banner{flex-wrap:wrap;align-items:center}
+.sc-box .banner>span{min-width:200px}
+.sc-why{margin:0;font-size:13px;color:var(--fg-2);border-left:2px solid var(--fg-3);padding-left:10px}
+.sc-or{margin:20px 0 4px;font:600 12px/16px var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3)}
+
+/* Payment recovery (pages/lifecycle/PaymentRecovery.tsx) */
+.pr-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);background:var(--panel);position:relative}
+.pr-grid::before,.pr-grid::after{content:"";position:absolute;width:9px;height:9px;border:1px solid var(--fg);pointer-events:none}
+.pr-grid::before{top:-5px;left:-5px;border-right:0;border-bottom:0}
+.pr-grid::after{bottom:-5px;right:-5px;border-left:0;border-top:0}
+.pr-grid>div{padding:16px 20px;border-left:1px solid var(--border);display:flex;flex-direction:column;gap:6px;min-width:0}
+.pr-grid>div:first-child{border-left:0}
+.pr-grid .num{font:600 30px/38px var(--font);letter-spacing:-.035em;font-variant-numeric:tabular-nums}
+.pr-grid .pr-sub{font:400 12px/16px var(--mono);color:var(--fg-3)}
+.pr-grid .pr-sub b{color:var(--fg-2);font-weight:500}
+.pr-steps{display:flex;flex-direction:column;gap:12px}
+.pr-step{border:1px solid var(--border);padding:12px;display:grid;gap:10px}
+.pr-step-h{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.pr-how{margin:0;padding-left:18px;font-size:13px;color:var(--fg-2);display:grid;gap:6px}
+@media (max-width:900px){.pr-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pr-grid>div:nth-child(3){border-left:0}.pr-grid>div:nth-child(n+3){border-top:1px solid var(--border)}}
+@media (max-width:520px){.pr-grid{grid-template-columns:1fr}.pr-grid>div{border-left:0}.pr-grid>div+div{border-top:1px solid var(--border)}}
