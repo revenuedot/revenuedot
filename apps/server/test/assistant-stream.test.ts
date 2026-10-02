@@ -172,6 +172,25 @@ describe("attachments, mentions and the .storekit viewer", () => {
     expect(saved.metadata.mentions).toEqual([{ type: "customer", id: "wren_ios", label: "wren_ios" }]);
     expect(JSON.stringify(saved)).not.toMatch(/Context the user attached/);
   });
+
+  it("a chart mention from the chart page's Ask AI carries its view; unknown keys and bad values are dropped", async () => {
+    const s = await assistantServer();
+    const cid = await s.newConversation();
+    const params = { start_date: "2026-01-01", end_date: "2026-03-31", resolution: "week", environment: "sandbox", segment: "country", filters: "[{\"name\":\"country\",\"values\":[\"US\"]}]", currency: "EUR", limit_num_segments: "999" };
+    await s.chat(s.admin.browser, cid, userMessage("What changed? @MRR", { metadata: { mentions: [{ type: "chart", id: "mrr", label: "MRR", params }] } }));
+    const prompt = JSON.stringify(s.model.fake.calls.at(-1)!.prompt);
+    expect(prompt).toMatch(/@MRR \(chart mrr\)/);
+    expect(prompt).toContain(`\\"resolution\\":\\"week\\"`);
+    expect(prompt).toContain(`\\"start_date\\":\\"2026-01-01T00:00:00.000Z\\"`);
+    expect(prompt).toContain(`\\"segmented_by\\"`);
+    // currency is not a view key: the chart stays in USD.
+    expect(prompt).toContain(`\\"currency\\":\\"USD\\"`);
+    const cid2 = await s.newConversation();
+    await s.chat(s.admin.browser, cid2, userMessage("@MRR", { metadata: { mentions: [{ type: "chart", id: "mrr", label: "MRR", params: { resolution: "hourly", start_date: "yesterday", filters: "[not json]" } }] } }));
+    const p2 = JSON.stringify(s.model.fake.calls.at(-1)!.prompt);
+    expect(p2).toContain(`\\"resolution\\":\\"day\\"`);
+    expect(p2).not.toMatch(/could not be loaded/);
+  });
 });
 
 describe("status and settings", () => {

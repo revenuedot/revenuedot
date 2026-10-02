@@ -26,7 +26,7 @@ export interface AssistantContext {
 }
 
 /** Message metadata the composer sends: `@` mentions to attach as context. */
-export interface MessageMetadata { mentions?: { type: "customer" | "offering" | "chart"; id: string; label?: string }[] }
+export interface MessageMetadata { mentions?: { type: "customer" | "offering" | "chart"; id: string; label?: string; params?: Record<string, unknown> }[] }
 
 /** Reads who is asking, their role and the project's AI setting. Null when the user is not a member. */
 export async function loadAssistantContext(deps: Deps, model: AssistantModel, userId: string, projectId: string, conversationId: string, sessionId: string | null = null): Promise<AssistantContext | null> {
@@ -189,13 +189,33 @@ function storeKitSummary(id: string, name: string, b64: string): string {
   }
 }
 
+/**
+ * The chart page's view on a chart mention ("Ask AI" on a chart): only these keys, in these formats, reach get-chart.
+ * On Cloud the browser's message metadata is not validated by a schema, so this is the only check.
+ */
+function chartView(params: unknown): Record<string, string> {
+  if (!params || typeof params !== "object") return {};
+  const ok: Record<string, RegExp> = {
+    start_date: /^\d{4}-\d{2}-\d{2}$/, end_date: /^\d{4}-\d{2}-\d{2}$/, resolution: /^(day|week|month|quarter|year)$/,
+    segment: /^[a-z_]{1,40}$/, environment: /^(production|sandbox)$/, filters: /^\[.{0,2000}\]$/s, selectors: /^\{.{0,1000}\}$/s,
+  };
+  const out: Record<string, string> = {};
+  for (const [k, re] of Object.entries(ok)) {
+    const v = (params as Record<string, unknown>)[k];
+    if (typeof v !== "string" || !re.test(v)) continue;
+    if (k === "filters" || k === "selectors") { try { JSON.parse(v); } catch { continue; } }
+    out[k] = v;
+  }
+  return out;
+}
+
 async function mentionContext(client: RevenueDotClient, mentions: NonNullable<MessageMetadata["mentions"]>): Promise<string> {
   const out: string[] = [];
   for (const m of mentions) {
     try {
       const def = m.type === "customer" ? toolsByName.get("get-customer") : m.type === "chart" ? toolsByName.get("get-chart") : null;
       let value: unknown;
-      if (def) value = await def.run(client, (m.type === "customer" ? { customer_id: m.id } : { chart: m.id }) as never);
+      if (def) value = await def.run(client, (m.type === "customer" ? { customer_id: m.id } : { chart: m.id, ...chartView(m.params) }) as never);
       else {
         const base = `/v2/projects/${encodeURIComponent(await client.project())}`;
         value = await client.request("GET", `${base}/offerings/${encodeURIComponent(m.id)}`, { query: { expand: "package.product" } });
