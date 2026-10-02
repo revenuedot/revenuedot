@@ -10,6 +10,7 @@ import type { DB } from "./index.js";
 export { schema };
 export { LOCK_KEYS } from "./locks.js";
 export type { DB };
+export type { StorePrice } from "./schema.js";
 
 /** One short-lived connection pool per request, as Cloudflare recommends with Hyperdrive (Hyperdrive does the pooling). */
 export function connectPostgres(url: string): { db: DB; close: () => Promise<void> } {

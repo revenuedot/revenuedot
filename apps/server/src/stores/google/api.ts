@@ -96,31 +96,64 @@ export interface VoidedPurchase {
   refundType?: number;
 }
 
-/** monetization.subscriptions resource (the fields the product import reads). */
-export interface PlaySubscription {
-  productId: string;
-  listings?: Array<{ languageCode?: string; title?: string }>;
-  basePlans?: Array<{
-    basePlanId: string;
-    state?: string;
-    autoRenewingBasePlanType?: { billingPeriodDuration?: string; legacyCompatible?: boolean };
-    prepaidBasePlanType?: { billingPeriodDuration?: string };
-    installmentsBasePlanType?: { billingPeriodDuration?: string };
-  }>;
-  archived?: boolean;
+/** A base plan's price in one region (monetization RegionalBasePlanConfig). */
+export interface PlayRegionalConfig { regionCode: string; newSubscriberAvailability?: boolean; price?: Money }
+
+/** monetization.subscriptions base plan (the fields RevenueDot reads; anything else is kept as read when patching). */
+export interface PlayBasePlan {
+  basePlanId: string;
+  state?: string;
+  autoRenewingBasePlanType?: { billingPeriodDuration?: string; legacyCompatible?: boolean; [k: string]: unknown };
+  prepaidBasePlanType?: { billingPeriodDuration?: string; [k: string]: unknown };
+  installmentsBasePlanType?: { billingPeriodDuration?: string; [k: string]: unknown };
+  regionalConfigs?: PlayRegionalConfig[];
+  otherRegionsConfig?: { usdPrice?: Money; eurPrice?: Money; newSubscriberAvailability?: boolean };
+  [k: string]: unknown;
 }
+
+/** monetization.subscriptions resource (the fields the product import and the price reads use). */
+export interface PlaySubscription {
+  packageName?: string;
+  productId: string;
+  listings?: Array<{ languageCode?: string; title?: string; [k: string]: unknown }>;
+  basePlans?: PlayBasePlan[];
+  archived?: boolean;
+  [k: string]: unknown;
+}
+
+/** Google's Money as micros of its currency: units plus nanos. */
+export const moneyMicros = (m: Money | undefined | null): number | null => {
+  if (!m || (m.units === undefined && m.nanos === undefined)) return null;
+  const units = Number(m.units ?? 0);
+  if (!Number.isFinite(units)) return null;
+  return units * 1_000_000 + Math.round((m.nanos ?? 0) / 1000);
+};
+/** Micros of a currency as Google's Money. */
+export const microsMoney = (micros: number, currencyCode: string): Money => {
+  const units = Math.floor(micros / 1_000_000);
+  const nanos = (micros - units * 1_000_000) * 1000;
+  return { currencyCode, units: String(units), ...(nanos ? { nanos } : {}) };
+};
+
+/** The regions version RevenueDot sends with subscription writes (Play rejects a write without one). */
+export const PLAY_REGIONS_VERSION = "2022/02";
 
 /** monetization.onetimeproducts resource (the fields the product import reads). */
 export interface PlayOneTimeProduct {
   productId: string;
   listings?: Array<{ languageCode?: string; title?: string }>;
-  purchaseOptions?: Array<{ purchaseOptionId?: string; state?: string; buyOption?: { legacyCompatible?: boolean }; rentOption?: object }>;
+  purchaseOptions?: Array<{
+    purchaseOptionId?: string; state?: string; buyOption?: { legacyCompatible?: boolean }; rentOption?: object;
+    regionalPricingAndAvailabilityConfigs?: Array<{ regionCode: string; price?: Money; availability?: string }>;
+  }>;
 }
 
 /** inappproducts resource (legacy API; still lists one-time products made before Play's 2025 purchase options). */
 export interface PlayInAppProduct {
   sku: string; status?: string; purchaseType?: string; defaultLanguage?: string;
   listings?: Record<string, { title?: string }>;
+  defaultPrice?: { priceMicros?: string; currency?: string };
+  prices?: Record<string, { priceMicros?: string; currency?: string }>;
 }
 
 /** Whether the app has a service account configured at all (either field name). */
@@ -243,7 +276,7 @@ export class GooglePlayClient {
   }
 
   /** One authorised call to the Play Developer API. Returns parsed JSON ({} for empty bodies). */
-  async call<T = any>(app: Pick<AppRow, "credentials" | "bundleId">, method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+  async call<T = any>(app: Pick<AppRow, "credentials" | "bundleId">, method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
     const sa = serviceAccountOf(app);
     const token = await this.accessToken(sa);
     const res = await this.http(`${ANDROID_PUBLISHER}/applications/${enc(packageNameOf(app))}${path}`, {
@@ -354,6 +387,36 @@ export class GooglePlayClient {
   createSubscription(app: AppRow, productId: string, listing: { languageCode: string; title: string }) {
     const q = new URLSearchParams({ productId, "regionsVersion.version": "2022/02" });
     return this.call<{ productId?: string; listings?: { title?: string }[] }>(app, "POST", `/subscriptions?${q}`, { packageName: packageNameOf(app), productId, listings: [listing] });
+  }
+
+  /** monetization.subscriptions.get. */
+  getSubscription(app: AppRow, productId: string) {
+    return this.call<PlaySubscription>(app, "GET", `/subscriptions/${enc(productId)}`);
+  }
+
+  /**
+   * monetization.subscriptions.patch with `updateMask=basePlans`: the subscription as read, with its base plans changed.
+   * Base plan prices apply to new subscribers; existing ones keep theirs until migrated (basePlans.migratePrices).
+   */
+  patchSubscriptionBasePlans(app: AppRow, sub: PlaySubscription) {
+    const q = new URLSearchParams({ updateMask: "basePlans", "regionsVersion.version": PLAY_REGIONS_VERSION });
+    return this.call<PlaySubscription>(app, "PATCH", `/subscriptions/${enc(sub.productId)}?${q}`, { ...sub, packageName: packageNameOf(app) });
+  }
+
+  /** monetization.subscriptions.create with one listing and the given base plans (they start as drafts). */
+  createSubscriptionWithBasePlans(app: AppRow, productId: string, listing: { languageCode: string; title: string }, basePlans: PlayBasePlan[]) {
+    const q = new URLSearchParams({ productId, "regionsVersion.version": PLAY_REGIONS_VERSION });
+    return this.call<PlaySubscription>(app, "POST", `/subscriptions?${q}`, { packageName: packageNameOf(app), productId, listings: [listing], basePlans });
+  }
+
+  /** monetization.subscriptions.basePlans.activate: a draft base plan goes on sale. */
+  activateBasePlan(app: AppRow, productId: string, basePlanId: string) {
+    return this.call<PlaySubscription>(app, "POST", `/subscriptions/${enc(productId)}/basePlans/${enc(basePlanId)}:activate`, { packageName: packageNameOf(app), productId, basePlanId });
+  }
+
+  /** pricing.convertRegionPrices: a price converted to every region Play sells in (with each region's currency). */
+  convertRegionPrices(app: AppRow, price: Money) {
+    return this.call<{ convertedRegionPrices?: Record<string, { regionCode?: string; price?: Money }>; regionVersion?: { version?: string } }>(app, "POST", "/pricing:convertRegionPrices", { price });
   }
 
   /** Pages through a Play list: `pageToken`/`nextPageToken` (monetization) or `token`/`tokenPagination` (inappproducts). */

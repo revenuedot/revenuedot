@@ -7,6 +7,8 @@
  * `storeCatalogFetch`, which answers only the e2e key ids and service account in store-values.ts.
  * Paddle, Roku and the Galaxy Store (stores3.spec.ts) answer from the stateful fakes in packages/contract/src, driven by the
  * spec through `/__store3/*` (e2e/store3-routes.ts).
+ * Store prices and the product editor (product-editor.spec.ts) use the stateful fakes in
+ * packages/contract/src/fake-store-catalog.ts (`editorAsc`, `editorPlay`), reached with their own key and service account.
  */
 import { createAmazonStore } from "@revenuedot/server/stores/amazon/index.js";
 import { createStripeStore } from "@revenuedot/server/stores/stripe/index.js";
@@ -17,7 +19,8 @@ import { FakePaddleAccount } from "../../../packages/contract/src/fake-paddle.ts
 import { FakeRoku } from "../../../packages/contract/src/fake-roku.ts";
 import { FakeGalaxy } from "../../../packages/contract/src/fake-galaxy.ts";
 
-import { E2E_AMAZON_SECRET, E2E_ASC_EMPTY_KEY_ID, E2E_ASC_FORBIDDEN_KEY_ID, E2E_PLAY_DENIED_EMAIL, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_EMAIL, E2E_STRIPE_KEY, E2E_STRIPE_SUB } from "./store-values.ts";
+import { E2E_AMAZON_SECRET, E2E_ASC_EMPTY_KEY_ID, E2E_ASC_FORBIDDEN_KEY_ID, E2E_PLAY_DENIED_EMAIL, E2E_ASC_KEY_ID, E2E_IMPORT_BUNDLE, E2E_PLAY_EMAIL, E2E_STRIPE_KEY, E2E_STRIPE_SUB, E2E_EDITOR_ASC_KEY_ID, E2E_EDITOR_BUNDLE, E2E_EDITOR_PACKAGE, E2E_EDITOR_PLAY_EMAIL } from "./store-values.ts";
+import { FakeAppStoreConnect, FakePlayConsole } from "../../../packages/contract/src/fake-store-catalog.ts";
 import { FAKE_STRIPE_KEY, FakeStripeAccount, FakeStripePlatform } from "../../../packages/contract/src/fake-stripe.ts";
 
 /** The web billing Stripe account (FAKE_STRIPE_KEY). server.ts points its checkout URL at its own fake Checkout page. */
@@ -148,12 +151,49 @@ async function playFetch(url: string, init: RequestInit): Promise<Response | nul
   return json(404, { error: { code: 404, message: "Not found", status: "NOT_FOUND" } });
 }
 
+// ---- Store prices and the product editor: stateful fakes ------------------------------------------------------------
+
+export let editorAsc: FakeAppStoreConnect;
+export let editorPlay: FakePlayConsole;
+/** (Re)creates the product editor's stores with their seed: App Store subscriptions and in-app purchases, Play base plans and a one-time product. */
+export function resetEditorStores() {
+  editorAsc = new FakeAppStoreConnect();
+  editorAsc.keyIds.add(E2E_EDITOR_ASC_KEY_ID);
+  const app = editorAsc.addApp(E2E_EDITOR_BUNDLE, "Focus");
+  editorAsc.addSubscription(app, "Focus Pro", "focus_pro_monthly", "Focus Pro Monthly", "ONE_MONTH", "APPROVED", 9.99);
+  editorAsc.addSubscription(app, "Focus Pro", "focus_pro_annual", "Focus Pro Annual", "ONE_YEAR", "APPROVED", 59.99);
+  editorAsc.addSubscription(app, "Focus Pro", "focus_pro_weekly", "Focus Pro Weekly", "ONE_WEEK", "READY_TO_SUBMIT");
+  editorAsc.addIap(app, "focus_lifetime", "Focus Lifetime", "NON_CONSUMABLE", "APPROVED", 99.99);
+  editorAsc.addIap(app, "focus_coins_100", "100 focus coins", "CONSUMABLE", "WAITING_FOR_REVIEW", 0.99);
+  editorPlay = new FakePlayConsole(E2E_EDITOR_PACKAGE);
+  editorPlay.emails.add(E2E_EDITOR_PLAY_EMAIL);
+  editorPlay.addSubscription("premium", "Focus Premium", [{ id: "monthly", period: "P1M", usd: 9.99 }, { id: "annual", period: "P1Y", usd: 59.99 }]);
+  editorPlay.addSubscription("family", "Focus Family", [{ id: "yearly", period: "P1Y", usd: 79.99, state: "DRAFT" }]);
+  editorPlay.addOneTime("focus_unlock", "Focus Unlock", 4.99);
+}
+resetEditorStores();
+const editorTokens = new Set<string>();
+
 /**
- * App Store Connect and Google Play for the e2e store import, or null for anything else (the e2e server then answers
- * as if the store were down, as before). Only the key ids and service account in store-values.ts are served.
+ * App Store Connect and Google Play for the e2e store import and the product editor, or null for anything else (the e2e
+ * server then answers as if the store were down, as before). Only the key ids and service accounts in store-values.ts are served.
  */
 export async function storeCatalogFetch(url: string, init: RequestInit = {}): Promise<Response | null> {
-  if (url.startsWith("https://api.appstoreconnect.apple.com/")) return ascFetch(url, init);
+  if (url.startsWith("https://api.appstoreconnect.apple.com/")) {
+    const token = (new Headers(init.headers).get("authorization") ?? "").replace(/^Bearer /, "");
+    if (b64json(token.split(".")[0]).kid === E2E_EDITOR_ASC_KEY_ID) return editorAsc.fetch(url, init);
+    return ascFetch(url, init);
+  }
+  if (url === "https://oauth2.googleapis.com/token") {
+    const assertion = new URLSearchParams(typeof init.body === "string" ? init.body : "").get("assertion") ?? "";
+    if (b64json(assertion.split(".")[1]).iss === E2E_EDITOR_PLAY_EMAIL) {
+      const res = await editorPlay.fetch(url, init);
+      const body = await res.clone().json() as { access_token?: string };
+      if (body.access_token) editorTokens.add(body.access_token);
+      return res;
+    }
+  }
+  if (url.startsWith(editorPlay.api)) return editorPlay.fetch(url, init);
   if (url.startsWith("https://oauth2.googleapis.com/token") || url.startsWith("https://androidpublisher.googleapis.com/")) return playFetch(url, init);
   return null;
 }

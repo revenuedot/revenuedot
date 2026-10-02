@@ -6,7 +6,7 @@ import { RCError } from "../errors.js";
 import type { AppRow } from "../stores/types.js";
 import { appleHttpFor } from "../stores/apple/index.js";
 import { AppStoreConnectApi, ConnectError, connectCredentials, type Resource } from "../stores/apple/connect.js";
-import { GoogleApiError, hasServiceAccount, type PlayInAppProduct, type PlayOneTimeProduct, type PlaySubscription } from "../stores/google/api.js";
+import { GoogleApiError, hasServiceAccount, type PlayBasePlan, type PlayInAppProduct, type PlayOneTimeProduct, type PlaySubscription } from "../stores/google/api.js";
 import { googleClientFor } from "../stores/google/index.js";
 import { StripeApiError, stripeKeyOf } from "../stores/stripe/api.js";
 import { stripeClientFor } from "../stores/stripe/index.js";
@@ -47,7 +47,16 @@ export interface StoreListing {
   note: string | null;
   /** Stripe only, not in answers: what web billing needs to sell the price. */
   stripe?: { product: string; amount_minor: number | null; currency: string; interval: string | null; interval_count: number | null; trial_days: number | null };
+  /** Not in answers: the store's own record, for reading prices (services/store-prices.ts). */
+  ref?: StoreRef;
 }
+
+export type StoreRef =
+  | { kind: "asc_subscription"; id: string }
+  | { kind: "asc_iap"; id: string }
+  | { kind: "play_subscription"; sub: PlaySubscription; basePlan: PlayBasePlan }
+  | { kind: "play_one_time"; product: PlayOneTimeProduct }
+  | { kind: "play_inapp"; product: PlayInAppProduct };
 
 export interface StoreListingResult { store: string; items: StoreListing[]; warnings: string[] }
 
@@ -127,7 +136,7 @@ function appleSubscription(s: Resource, g: Resource): StoreListing {
   const duration = period ? ASC_PERIOD[period] ?? null : null;
   return {
     store_identifier: str(a.productId) ?? "", type: "subscription", display_name: str(a.name), duration, store_state: str(a.state),
-    group: { id: g.id, name: str(g.attributes?.referenceName) }, price: null, importable: true,
+    group: { id: g.id, name: str(g.attributes?.referenceName) }, price: null, importable: true, ref: { kind: "asc_subscription", id: s.id },
     note: period && !duration ? `App Store Connect reports the period ${period}, which RevenueDot does not know. Set the duration after importing.` : !period ? "No duration is set in App Store Connect yet. Set it after importing; MRR uses it." : null,
   };
 }
@@ -137,7 +146,7 @@ function appleIap(p: Resource): StoreListing {
   const kind = str(a.inAppPurchaseType);
   return {
     store_identifier: str(a.productId) ?? "", type: (kind && ASC_IAP_TYPE[kind]) || "non_consumable", display_name: str(a.name), duration: null,
-    store_state: str(a.state), group: null, price: null, importable: true,
+    store_state: str(a.state), group: null, price: null, importable: true, ref: { kind: "asc_iap", id: p.id },
     note: kind && !ASC_IAP_TYPE[kind] ? `App Store Connect reports the type ${kind}; it is imported as non-consumable. Change the type after importing if needed.` : null,
   };
 }
@@ -210,7 +219,7 @@ function playSubscription(s: PlaySubscription): StoreListing[] {
       store_identifier: `${s.productId}:${b.basePlanId}`, type: "subscription" as const,
       display_name: title ? (plans.length > 1 ? `${title} (${b.basePlanId})` : title) : null,
       duration: period && /^P(?=\d)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?$/.test(period) ? period : null,
-      store_state: b.state ?? null, group: { id: s.productId, name: title }, price: null, importable: true,
+      store_state: b.state ?? null, group: { id: s.productId, name: title }, price: null, importable: true, ref: { kind: "play_subscription" as const, sub: s, basePlan: b },
       note: b.prepaidBasePlanType ? "Prepaid base plan: it does not renew by itself." : b.installmentsBasePlanType ? "Installment base plan." : null,
     };
   });
@@ -222,7 +231,7 @@ function playOneTime(p: PlayOneTimeProduct): StoreListing {
   const legacy = options.some((o) => o.buyOption?.legacyCompatible);
   return {
     store_identifier: p.productId, type: "one_time", display_name: playTitle(p.listings), duration: null,
-    store_state: active ? "ACTIVE" : options[0]?.state ?? null, group: null, price: null, importable: true,
+    store_state: active ? "ACTIVE" : options[0]?.state ?? null, group: null, price: null, importable: true, ref: { kind: "play_one_time", product: p },
     note: options.length && !legacy ? "No purchase option is marked backwards compatible in Play Console; SDK versions that predate purchase options cannot buy it." : null,
   };
 }
@@ -232,7 +241,7 @@ function playInAppProduct(p: PlayInAppProduct): StoreListing {
   const title = str((p.defaultLanguage ? l[p.defaultLanguage]?.title : undefined) ?? l["en-US"]?.title ?? Object.values(l)[0]?.title);
   return {
     store_identifier: p.sku, type: "one_time", display_name: title, duration: null, store_state: p.status ? p.status.toUpperCase() : null,
-    group: null, price: null, importable: true, note: null,
+    group: null, price: null, importable: true, note: null, ref: { kind: "play_inapp", product: p },
   };
 }
 

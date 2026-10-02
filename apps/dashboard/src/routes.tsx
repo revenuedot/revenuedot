@@ -6,6 +6,7 @@ import { OfferingsPage } from "./pages/catalog/Offerings";
 import { OfferingEditor } from "./pages/catalog/OfferingEditor";
 import { OfferingDetail } from "./pages/catalog/OfferingDetail";
 import { ProductDetail, ProductsPage } from "./pages/catalog/Products";
+import { ProductEditorPage } from "./pages/catalog/ProductEditor";
 import { EntitlementDetail, EntitlementsPage } from "./pages/catalog/Entitlements";
 import { NewProject } from "./pages/setup/NewProject";
 import { Apps } from "./pages/setup/Apps";
@@ -62,6 +63,7 @@ export const routes = [
   <Route key="catalog-offering-edit" path="/projects/:projectId/product-catalog/offerings/:offeringId/edit" element={<OfferingEditor />} />,
   <Route key="catalog-products" path="/projects/:projectId/product-catalog/products" element={<ProductsPage />} />,
   <Route key="catalog-product" path="/projects/:projectId/product-catalog/products/:productId" element={<ProductDetail />} />,
+  <Route key="catalog-product-editor" path="/projects/:projectId/product-catalog/product-editor" element={<ProductEditorPage />} />,
   <Route key="catalog-entitlements" path="/projects/:projectId/product-catalog/entitlements" element={<EntitlementsPage />} />,
   <Route key="catalog-entitlement" path="/projects/:projectId/product-catalog/entitlements/:entitlementId" element={<EntitlementDetail />} />,
   <Route key="catalog-currencies" path="/projects/:projectId/product-catalog/virtual-currencies" element={<VirtualCurrenciesPage />} />,
