@@ -484,8 +484,8 @@ function CohortTable({ body }: { body: ChartData }) {
 
 function csvRows(body: ChartData): (string | number | null)[][] {
   const day = (s: number) => iso(s * 1000);
-  // Money columns name their currency: the export holds the display currency's amounts, not always USD.
-  const head = (m: Measure) => (m.unit === "$" ? `${m.display_name} (${body.yaxis_currency})` : m.display_name);
+  // Money columns in another display currency name it ("MRR (EUR)"); USD exports keep their plain headers.
+  const head = (m: Measure) => (m.unit === "$" && body.yaxis_currency !== "USD" ? `${m.display_name} (${body.yaxis_currency})` : m.display_name);
   const lookup = valueIndex(body);
   if (body.periods) {
     const cohorts = [...new Set(body.values.map((v) => v.cohort))].sort((a, b) => a - b);
