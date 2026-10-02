@@ -44,7 +44,7 @@ const features = [
 ];
 ---
 <Base
-  title="RevenueDot: the open-source RevenueCat alternative"
+  title="RevenueDot | Open-source RevenueCat alternative for in-app purchases"
   description="Open-source in-app purchase backend that works with the RevenueCat SDK. Start free on RevenueDot Cloud or self-host it. Change one line, keep your app code."
   path="/"
   faq={faq}
@@ -55,12 +55,13 @@ const features = [
     <div class="wrap">
       <a class="pill rise" href="/changelog"><span class="dot" aria-hidden="true"></span>Open source · see what shipped <span class="arrow">→</span></a>
       <h1 class="display rise d1">The open-source RevenueCat alternative</h1>
-      <p class="lede rise d2">RevenueDot is a backend for in-app purchases and subscriptions. Keep the RevenueCat SDK you already ship, change one line, and own your purchase data. RevenueDot Cloud is free up to $10,000 a month in tracked revenue, and you can self-host the same code any time.</p>
+      <p class="lede rise d2">RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK you already ship, so you can switch by changing one line of code.</p>
       <div class="btns rise d3">
         <a class="btn" href={SITE.signup}>Start free on Cloud</a>
         <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
       </div>
       <p class="small muted rise d3 alt">Already have an account? <a href={SITE.login}>Sign in</a> · Prefer your own servers? <a href="/self-host">Self-host free</a></p>
+      <p class="small rise d3 new"><a href="/add-in-app-purchases"><strong>New to in-app purchases?</strong> Add subscriptions to your app for free <span class="arrow">→</span></a></p>
       <div class="hero-code rise d3">
         <Code title="The one line" label="Swift · AppDelegate" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!  // or your own server
 Purchases.configure(withAPIKey: "appl_...")                       // unchanged`} />
@@ -231,6 +232,10 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
 
 <style>
   .alt { margin-top: 14px; }
+  .new { margin-top: -12px; }
+  .new a { color: var(--fg-2); text-decoration: none; }
+  .new a strong { color: var(--fg); }
+  .new a:hover { color: var(--fg); }
   .alt a { color: var(--fg); }
   .hero { padding: 72px 0 0; }
   .hero .wrap:first-child { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; justify-items: start; }

@@ -1577,6 +1577,224 @@ const VERSUS_RC_QONVERSION: ComparePage = {
   related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-qonversion", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/pricing"],
 };
 
+// ---- 9. RevenueCat vs Stripe (RevenueDot third) -------------------------------------------------------------------------
+// Different jobs: Stripe charges cards on the web; RevenueCat manages store purchases and can sell on the web through Stripe.
+const STRIPE_PRICING = src("Stripe pricing page", "https://stripe.com/pricing");
+const STRIPE_BILLING = src("Stripe Billing pricing", "https://stripe.com/billing/pricing");
+const STRIPE_CHECKOUT = src("Stripe Checkout docs", "https://docs.stripe.com/checkout/quickstart");
+const STRIPE_ANALYTICS = src("Stripe Billing analytics docs", "https://docs.stripe.com/billing/subscriptions/analytics");
+const APPLE_GUIDELINES = src("Apple App Review Guidelines 3.1", "https://developer.apple.com/app-store/review/guidelines/");
+const APPLE_SUBS = src("Apple: auto-renewable subscriptions", "https://developer.apple.com/app-store/subscriptions/");
+const GOOGLE_FEES = src("Google Play service fees", "https://support.google.com/googleplay/android-developer/answer/112622?hl=en");
+const GOOGLE_PAYMENTS = src("Google Play Payments policy", "https://support.google.com/googleplay/android-developer/answer/9858738");
+// Stripe on web sales of a $9.99 monthly plan: 2.9% + 30c per US card charge, plus 0.7% Stripe Billing.
+const stripeFee = (m: number) => m * (0.029 + 0.007) + (m / 9.99) * 0.3;
+
+const VERSUS_RC_STRIPE: ComparePage = {
+  slug: "revenuecat-vs-stripe",
+  kind: "versus",
+  columns: ["RevenueCat", "Stripe", "RevenueDot"],
+  title: "RevenueCat vs Stripe: in-app purchases, web billing and fees compared",
+  metaTitle: "RevenueCat vs Stripe: Which One Does Your App Need?",
+  metaDescription:
+    "RevenueCat vs Stripe: Stripe charges cards on the web, RevenueCat runs App Store and Google Play purchases. When to use each, the store rules and fees, sourced.",
+  card: "Stripe charges cards on the web; RevenueCat runs store purchases. When you need each, and how they work together.",
+  answer:
+    "RevenueCat and Stripe do different jobs, and many apps use both. Stripe charges cards on your website. RevenueCat manages in-app purchases that Apple and Google charge, and can sell on the web through Stripe so a web purchase unlocks access in the app. Inside an iOS app, digital features must be sold with in-app purchase, though US storefront apps may link to a web checkout. RevenueDot is the open-source option for RevenueCat's job.",
+  choose: [
+    {
+      name: "RevenueCat",
+      reasons: [
+        "You sell subscriptions inside iOS and Android apps and want a mature hosted backend with a SOC 2 report.",
+        "You want App Store, Google Play and web purchases to unlock one entitlement.",
+        "You also sell through Paddle or the Samsung Galaxy Store.",
+      ],
+    },
+    {
+      name: "Stripe",
+      reasons: [
+        "You sell a web app or SaaS, where no app store takes part in the payment.",
+        "You sell physical goods or services used outside the app, which Apple says must not use in-app purchase.",
+        "You already run your own backend for accounts and access, and only need payments.",
+      ],
+    },
+    {
+      name: "RevenueDot",
+      reasons: [
+        "You want RevenueCat's job done by an open-source server that works with the RevenueCat SDK.",
+        "You want web checkout on your own Stripe account to unlock the same entitlement as the stores.",
+        "You want it free up to $10K a month, or on your own servers.",
+      ],
+    },
+  ],
+  rows: [
+    {
+      topic: "What it is",
+      cells: [
+        "A hosted backend for in-app purchases and subscriptions on the App Store, Google Play and the web",
+        "A payment processor and billing system for cards and other payment methods",
+        "An open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK",
+      ],
+      sources: [RC_HOME, STRIPE_PRICING],
+    },
+    {
+      topic: "Who charges the customer",
+      cells: [
+        "Apple or Google for store purchases. On the web, Stripe or Paddle; RevenueCat Billing uses Stripe as the payment gateway",
+        "Stripe charges the card and pays out to you",
+        "Apple, Google or Amazon for store purchases. On the web, your own Stripe account",
+      ],
+      sources: [RC_WEB, STRIPE_PRICING],
+    },
+    {
+      topic: "Digital features inside an iOS or Android app",
+      cells: [
+        "Yes, through each store's in-app purchase system",
+        "Not as the in-app payment. Apple requires in-app purchase to unlock features; US storefront apps may link to a web checkout",
+        "Yes, through each store's in-app purchase system",
+      ],
+      sources: [APPLE_GUIDELINES, GOOGLE_PAYMENTS],
+    },
+    {
+      topic: "Web checkout",
+      cells: [
+        "Web Billing, Stripe Billing or Paddle, with web purchase links, web paywalls and funnels",
+        "Checkout, Billing, a customer portal and invoices",
+        RD.web + ", on your own Stripe account",
+      ],
+      sources: [RC_WEB, RC_STRIPE, STRIPE_CHECKOUT],
+    },
+    {
+      topic: "Unlocks access in the mobile app",
+      cells: [
+        "Yes. Web purchases unlock entitlements in the app, with redemption links for buyers who are not signed in",
+        "No. Your own backend maps the Stripe customer to the app user and grants access",
+        "Yes. A Stripe purchase unlocks the same entitlement as App Store and Google Play, with redemption links",
+      ],
+      sources: [RC_WEB, RC_STRIPE, STRIPE_CHECKOUT],
+    },
+    {
+      topic: "App Store and Google Play purchases",
+      cells: [
+        "Validates them and handles the stores' server notifications",
+        "Does not process App Store or Google Play purchases",
+        "Validates them and handles the stores' server notifications",
+      ],
+      sources: [RC_QUICKSTART, STRIPE_PRICING],
+    },
+    {
+      topic: "Fees",
+      cells: [
+        "Free to $2,500 monthly tracked revenue, then 1% of all of it. RevenueCat Web adds no RevenueCat fee; Stripe's fees still apply",
+        "2.9% + 30¢ per successful US card charge, 1.5% more for international cards, and 0.7% of volume for Stripe Billing",
+        "Cloud free to $10K a month; planned 0.5% above, capped at $999. Self-host $0. Stripe's fees still apply on web sales",
+      ],
+      sources: [RC_PRICING, RC_WEB, STRIPE_PRICING, STRIPE_BILLING],
+    },
+    {
+      topic: "Subscription analytics",
+      cells: [
+        "MRR, churn, trials and more across stores and the web",
+        "Billing analytics for Stripe subscriptions only",
+        RD.charts + ", across stores and Stripe",
+      ],
+      sources: [RC_PRICING, STRIPE_ANALYTICS],
+    },
+    {
+      topic: "Open source",
+      cells: [
+        "Open-source SDKs (MIT); the service is hosted by RevenueCat",
+        "A hosted service",
+        "Server under AGPL-3.0, SDK forks under MIT; self-hostable",
+      ],
+      sources: [RC_LICENSE, STRIPE_PRICING],
+    },
+  ],
+  price: {
+    intro:
+      "Each column is a separate fee. Store purchases pay Apple or Google, web sales pay Stripe, and RevenueCat or RevenueDot charges on top of either. The store column uses 15%, the rate for Apple's Small Business Program and Google Play subscriptions. The Stripe column assumes $9.99 monthly plans sold on the web: 2.9% + 30¢ per US card charge plus 0.7% for Stripe Billing. " +
+      RD_RATE,
+    head: ["Monthly revenue", "Store fee (15%)", "RevenueCat", "Stripe (web, $9.99 plans)", "RevenueDot Cloud (planned above $10K)"],
+    rows: LEVELS.map((m) => [usd(m), usd(m * 0.15), usd(rcBill(m)), usd(stripeFee(m)), usd(cloudBill(m))]),
+    sources: [APPLE_SUBS, GOOGLE_FEES, RC_PRICING, STRIPE_PRICING, STRIPE_BILLING],
+  },
+  blocks: [
+    {
+      h2: "When to use Stripe and when to use in-app purchase",
+      label: "Store rules",
+      paras: [
+        "Apple's App Review Guideline 3.1.1 says that to unlock features or functionality within your app, such as subscriptions or premium content, you must use in-app purchase. Physical goods and services used outside the app must use another method, such as Apple Pay or a card ([Apple](https://developer.apple.com/app-store/review/guidelines/)). Google Play's [Payments policy](https://support.google.com/googleplay/android-developer/answer/9858738) requires Google Play's billing system for digital goods, with exceptions for physical goods and alternative billing programs in some countries.",
+        "On the United States storefront, iOS apps may now link to a web checkout. Our guide to [selling iOS subscriptions on the web with Stripe](/blog/web-checkout-for-ios-apps-stripe) covers the court rulings and the fee math.",
+      ],
+      table: {
+        head: ["What you sell", "Inside an iOS app", "Inside an Android app", "On your website"],
+        rows: [
+          ["Subscriptions or premium features", "In-app purchase. US storefront apps may also link to web checkout", "Google Play Billing, with alternative programs in some countries", "Stripe"],
+          ["Credits, coins or AI usage", "In-app purchase", "Google Play Billing", "Stripe"],
+          ["Physical goods or services used outside the app", "Apple Pay or a card, not in-app purchase", "Your own payment processor", "Stripe"],
+        ],
+        caption: "Rules checked October 2026. They change by country and by court ruling, so read Apple's and Google's current policy before you ship.",
+      },
+    },
+    {
+      h2: "How a Stripe purchase unlocks access in the app",
+      label: "Web to app",
+      paras: ["RevenueCat and RevenueDot both connect a Stripe purchase on your website to the app. The flow is the same in both."],
+      steps: [
+        { name: "The customer pays on the web", text: "A link in the app, an ad or an email opens a checkout page that creates a Stripe Checkout Session on your Stripe account." },
+        { name: "The backend records the purchase", text: "Stripe's `checkout.session.completed` webhook reaches the backend, which records the purchase like any store purchase and sends your webhooks." },
+        { name: "The purchase moves to the app user", text: "If the link carried the app user ID, the purchase lands on that user. If not, a redemption link opens the app and moves the purchase to the signed-in customer." },
+        { name: "The app sees the entitlement", text: "The SDK's customer info shows the same `pro` entitlement that an App Store or Google Play purchase would unlock." },
+      ],
+    },
+    {
+      h2: "What you keep from a $9.99 subscription",
+      label: "Per sale",
+      table: {
+        head: ["Channel", "Fee on $9.99", "You keep"],
+        rows: [
+          ["App Store, 30% (first year)", "$3.00", "$6.99"],
+          ["App Store or Google Play, 15%", "$1.50", "$8.49"],
+          ["Stripe card, 2.9% + 30¢", "$0.59", "$9.40"],
+          ["Stripe card plus Billing at 0.7%", "$0.66", "$9.33"],
+        ],
+        caption: "Before tax. On the web you also handle sales tax or VAT, refunds and chargebacks. Sources: [Apple](https://developer.apple.com/app-store/subscriptions/), [Google Play](https://support.google.com/googleplay/android-developer/answer/112622?hl=en), [Stripe](https://stripe.com/pricing). Try other prices in the [App Store and Google Play fee calculator](/tools/app-store-fee-calculator).",
+      },
+    },
+    {
+      h2: "Where RevenueDot fits",
+      paras: [
+        "RevenueDot does RevenueCat's job with an open-source server: App Store, Google Play, Amazon Appstore and Stripe purchases in one customer record, with the RevenueCat SDK in your app. Web checkout runs on your own Stripe account with a restricted key, and [purchase links](/features/purchase-links), [funnels](/features/funnels) and redemption links come included. Stripe Connect sign-in is not built yet.",
+        "It is newer than RevenueCat and has no SOC 2 report. [Start free on RevenueDot Cloud](" + SIGNUP + ") or read about [web checkout](/features/web-billing).",
+      ],
+    },
+  ],
+  faq: [
+    {
+      q: "Can I use Stripe instead of in-app purchases in my iOS app?",
+      a: "Not for features unlocked inside the app. Apple's guideline 3.1.1 requires in-app purchase for that. On the US storefront you may link from the app to a web checkout that uses Stripe. Physical goods and services must use a method other than in-app purchase, such as Stripe.",
+    },
+    {
+      q: "Does RevenueCat work with Stripe?",
+      a: "Yes. RevenueCat can use your Stripe account as its web billing engine, import Stripe Billing purchases and unlock entitlements in the app for them. Its own RevenueCat Billing also uses Stripe as the payment gateway. RevenueCat says its web features add no RevenueCat fee beyond its normal price.",
+    },
+    {
+      q: "Is RevenueCat cheaper than Stripe?",
+      a: "They charge for different things. Stripe takes 2.9% + 30¢ per US card charge on web sales. RevenueCat charges 1% of all tracked revenue from $2,500 a month, on top of the store's or Stripe's fee. An app that sells on the web through RevenueCat pays both.",
+    },
+    {
+      q: "Do I need RevenueCat if I already use Stripe for my web app?",
+      a: "Only if you add an iOS or Android app that sells digital features. Those sales go through the stores' in-app purchase, and a backend such as RevenueCat or RevenueDot joins them with your Stripe customers so one account has one set of access.",
+    },
+    {
+      q: "Can RevenueDot sell subscriptions with Stripe?",
+      a: "Yes. RevenueDot connects to your own Stripe account with a restricted key and offers hosted checkout, purchase links, funnels, web discounts and redemption links. A Stripe purchase unlocks the same entitlement as an App Store or Google Play purchase.",
+    },
+  ],
+  checked: CHECKED,
+  related: ["/stores/stripe", "/features/web-billing", "/blog/web-checkout-for-ios-apps-stripe", "/in-app-purchases", "/tools/app-store-fee-calculator", "/compare/revenuedot-vs-revenuecat"],
+};
+
 export const COMPARE: ComparePage[] = [
   VS_REVENUECAT,
   VS_ADAPTY,
@@ -1586,6 +1804,7 @@ export const COMPARE: ComparePage[] = [
   VERSUS_RC_ADAPTY,
   VERSUS_RC_SUPERWALL,
   VERSUS_RC_QONVERSION,
+  VERSUS_RC_STRIPE,
 ];
 
 // ---- /revenuecat-alternative (singular): "RevenueCat alternative", "open source RevenueCat alternative", "self-hosted RevenueCat" ----

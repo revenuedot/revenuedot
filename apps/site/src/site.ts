@@ -67,6 +67,7 @@ export const FOOTER = [
       { href: "/compare/revenuedot-vs-adapty", label: "RevenueDot vs Adapty" },
       { href: "/compare/revenuedot-vs-superwall", label: "RevenueDot vs Superwall" },
       { href: "/compare/revenuedot-vs-qonversion", label: "RevenueDot vs Qonversion" },
+      { href: "/compare/revenuecat-vs-stripe", label: "RevenueCat vs Stripe" },
       { href: "/migrate-from-revenuecat", label: "Migrate from RevenueCat" },
       { href: "/self-host", label: "Self-host" },
     ],
@@ -74,6 +75,9 @@ export const FOOTER = [
   {
     title: "Developers",
     links: [
+      { href: "/add-in-app-purchases", label: "New to in-app purchases?" },
+      { href: "/in-app-purchases", label: "In-app purchases guide" },
+      { href: "/do-i-need-revenuecat", label: "Do I need RevenueCat?" },
       { href: "/docs", label: "Docs" },
       { href: "/sdks", label: "SDKs" },
       { href: "/stores", label: "Stores" },
