@@ -384,32 +384,42 @@ export const tools: ToolDefinition[] = [
       const skipped: { store_identifier: string; app_id: string; reason: string; id?: string }[] = [];
       const failed: { store_identifier: string; app_id: string; error: string }[] = [];
       for (const p of a.products) {
+        const sid = p.store_identifier.trim();
         try {
           const row = await c.request<{ id: string }>("POST", `${base}/products`, {
             body: {
-              app_id: p.app_id, store_identifier: p.store_identifier.trim(), type: p.type, display_name: p.display_name,
+              app_id: p.app_id, store_identifier: sid, type: p.type, display_name: p.display_name,
               ...(p.subscription_duration && p.type === "subscription" ? { subscription: { duration: p.subscription_duration } } : {}),
               ...(p.test_store_price ? { test_store_price: { amount_micros: Math.round(p.test_store_price.amount * 1_000_000), currency: p.test_store_price.currency.toUpperCase() } } : {}),
             },
           });
-          created.push({ id: row.id, store_identifier: p.store_identifier, app_id: p.app_id });
+          created.push({ id: row.id, store_identifier: sid, app_id: p.app_id });
         } catch (e) {
           if (e instanceof RevenueDotApiError && e.status === 409) {
             const existing = await allItems<{ id: string; store_identifier: string }>(c, `${base}/products`, { app_id: p.app_id }).catch(() => []);
-            skipped.push({ store_identifier: p.store_identifier, app_id: p.app_id, reason: "already exists", id: existing.find((x) => x.store_identifier === p.store_identifier.trim())?.id });
-          } else failed.push({ store_identifier: p.store_identifier, app_id: p.app_id, error: e instanceof Error ? e.message : String(e) });
+            skipped.push({ store_identifier: sid, app_id: p.app_id, reason: "already exists", id: existing.find((x) => x.store_identifier === sid)?.id });
+          } else failed.push({ store_identifier: sid, app_id: p.app_id, error: e instanceof Error ? e.message : String(e) });
         }
       }
+      // The products are written: a refused entitlement step (a role without entitlement access, a bad lookup key) is
+      // reported with them rather than hiding what was created.
       let entitlement: { id: string; lookup_key: string; created: boolean } | null = null;
+      let entitlementError: string | null = null;
       const ids = [...created.map((x) => x.id), ...skipped.flatMap((x) => (x.id ? [x.id] : []))];
       if (a.entitlement && ids.length) {
-        const list = await allItems<{ id: string; lookup_key: string }>(c, `${base}/entitlements`);
-        const found = list.find((e) => e.lookup_key === a.entitlement!.lookup_key);
-        const ent = found ?? await c.request<{ id: string; lookup_key: string }>("POST", `${base}/entitlements`, { body: { lookup_key: a.entitlement.lookup_key, display_name: a.entitlement.display_name || a.entitlement.lookup_key } });
-        for (let i = 0; i < ids.length; i += 50) await c.request("POST", `${base}/entitlements/${enc(ent.id)}/actions/attach_products`, { body: { product_ids: ids.slice(i, i + 50) } });
-        entitlement = { id: ent.id, lookup_key: ent.lookup_key, created: !found };
+        let found: { id: string; lookup_key: string } | undefined;
+        let made: { id: string; lookup_key: string } | undefined;
+        try {
+          found = (await allItems<{ id: string; lookup_key: string }>(c, `${base}/entitlements`)).find((e) => e.lookup_key === a.entitlement!.lookup_key);
+          made = found ? undefined : await c.request<{ id: string; lookup_key: string }>("POST", `${base}/entitlements`, { body: { lookup_key: a.entitlement.lookup_key, display_name: a.entitlement.display_name || a.entitlement.lookup_key } });
+          const ent = (found ?? made)!;
+          for (let i = 0; i < ids.length; i += 50) await c.request("POST", `${base}/entitlements/${enc(ent.id)}/actions/attach_products`, { body: { product_ids: ids.slice(i, i + 50) } });
+          entitlement = { id: ent.id, lookup_key: ent.lookup_key, created: !found };
+        } catch (e) {
+          entitlementError = `The products were created, but attaching them to ${a.entitlement.lookup_key} failed${made ? " (the entitlement was created)" : ""}: ${e instanceof Error ? e.message : String(e)}`;
+        }
       }
-      return { object: "products_created", created, skipped, failed, entitlement };
+      return { object: "products_created", created, skipped, failed, entitlement, ...(entitlementError ? { entitlement_error: entitlementError } : {}) };
     },
   }),
   define({
