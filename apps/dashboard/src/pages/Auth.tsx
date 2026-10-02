@@ -25,7 +25,10 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const [busy, setBusy] = useState(false);
   const signup = mode === "signup";
   // Self-hosted servers take only their owner's account unless REVENUEDOT_ALLOW_SIGNUP=true.
-  const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ edition: string; signup: "open" | "closed"; signed_in?: boolean }>("/auth/config"), retry: false });
+  // `sso` is only present when an enterprise extension offers single sign-on (src/extensions.tsx); `sso_error` comes back from it.
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: () => api<{ edition: string; signup: "open" | "closed"; signed_in?: boolean; sso?: boolean }>("/auth/config"), retry: false });
+  const [ssoUrl, setSsoUrl] = useState<string | null>(null);
+  const ssoError = params.get("sso_error");
   const closed = config.data?.signup === "closed";
   const cloud = config.data?.edition === "cloud";
   const me = useMe(config.data?.signed_in === true);
@@ -41,8 +44,19 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
       nav(next ?? (me.projects[0] ? `/projects/${me.projects[0].id}/overview` : "/projects/new"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      // The address must sign in with single sign-on: offer its link.
+      const b = err instanceof ApiError ? (err.body as { type?: string; sso_url?: string } | null) : null;
+      if (b?.type === "sso_required" && b.sso_url?.startsWith("/")) setSsoUrl(b.sso_url);
     } finally { setBusy(false); }
   }
+  /** Single sign-on: a full page load, because the identity provider answers with redirects. */
+  const startSso = (url?: string | null) => {
+    const email = form.email.trim();
+    if (!url && !/^\S+@\S+\.\S+$/.test(email)) { setError("Enter your work email, then continue with SSO."); document.getElementById("email")?.focus(); return; }
+    const target = new URL(url ?? `/sso/start?email=${encodeURIComponent(email)}`, window.location.origin);
+    if (next) target.searchParams.set("next", next);
+    window.location.assign(target.pathname + target.search);
+  };
   // Invited people create their account on the invite page, which joins the project instead of creating an empty one.
   if (signup && next?.startsWith("/invite?")) return <Navigate to={next} replace />;
   // Already signed in: go where they were headed instead of showing the form again.
@@ -75,9 +89,11 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
         <div className="field"><label htmlFor="email">Email</label><input id="email" className="input" type="email" autoComplete="email" required value={form.email} onChange={set("email")} /></div>
         <div className="field"><div className="label-row"><label htmlFor="password">Password</label>{!signup && <Link to={withNext(`/forgot-password${form.email ? `?email=${encodeURIComponent(form.email)}` : ""}`)} className="label-link">Forgot password?</Link>}</div><input id="password" className="input" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={8} value={form.password} onChange={set("password")} />{signup && <span className="hint">At least 8 characters.</span>}</div>
         {signup && <div className="field"><label htmlFor="project">First project</label><input id="project" className="input" placeholder="e.g. Scanner" value={form.project_name} onChange={set("project_name")} /><span className="hint">A project holds your apps, products and customers.</span></div>}
-        {error && <div className="banner err" role="alert">{error}</div>}
+        {(error || ssoError) && <div className="banner err" role="alert">{error ?? ssoError}</div>}
+        {ssoUrl && <button className="btn btn-line btn-lg" type="button" onClick={() => startSso(ssoUrl)}>Continue with SSO</button>}
         {signup && cloud && <p className="hint">We email you a link to confirm the address. By creating an account you agree to the <a href="https://revenuedot.app/legal/terms" target="_blank" rel="noopener" style={{ textDecoration: "underline" }}>Terms</a> and <a href="https://revenuedot.app/legal/privacy" target="_blank" rel="noopener" style={{ textDecoration: "underline" }}>Privacy Policy</a>.</p>}
         <button className="btn btn-dark btn-lg" type="submit" disabled={busy}>{busy ? "Please wait…" : signup ? "Create account" : "Sign in"}</button>
+        {!signup && config.data?.sso && !ssoUrl && <button className="btn btn-line btn-lg" type="button" onClick={() => startSso()}>Continue with SSO</button>}
         <p>{signup ? <>Already have an account? <Link to={withNext("/login")} style={{ textDecoration: "underline" }}>Sign in</Link></> : closed ? "Sign-up is closed on this server." : <>New to RevenueDot? <Link to={withNext("/signup")} style={{ textDecoration: "underline" }}>Create an account</Link></>}</p>
       </form>
     </main>

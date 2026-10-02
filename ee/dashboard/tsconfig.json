@@ -1,0 +1,31 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "baseUrl": "../../apps/dashboard",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "*": [
+        "./node_modules/@types/*",
+        "./node_modules/*"
+      ]
+    },
+    "typeRoots": [
+      "../../apps/dashboard/node_modules/@types"
+    ],
+    "types": []
+  },
+  "include": [
+    "."
+  ],
+  "files": [
+    "../../apps/dashboard/node_modules/vite/client.d.ts"
+  ]
+}
