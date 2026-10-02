@@ -14,7 +14,9 @@ export interface AiStatus {
 }
 export interface Conversation { id: string; title: string; runtime: "durable_object" | "postgres"; created_at: number; updated_at: number }
 export interface ConversationDetail extends Conversation { messages: UIMessage[]; streaming: boolean; last_stream: { status: string; error: string | null } | null }
-export interface Mention { type: "customer" | "offering" | "chart"; id: string; label: string; detail?: string }
+export interface Mention { type: "customer" | "offering" | "chart"; id: string; label: string; detail?: string; /** A chart's view from the chart page's Ask AI. */ params?: Record<string, string> }
+/** What the chart page's Ask AI hands to the empty assistant page: a question with the chart mentioned. */
+export interface Draft { text: string; mentions: Mention[] }
 export interface StoreKitProduct {
   productId: string; referenceName: string; type: string; price: number | null; duration: string | null; group: string | null; displayName: string | null;
   introOffer: { mode: string; period: string | null; periods: number; price: number | null } | null;

@@ -12,7 +12,7 @@ import { Suggestion } from "@/components/ai-elements/suggestion";
 import { Icon } from "../../components/icons";
 import { api } from "../../lib/api";
 import { Composer, type ComposerSubmit } from "./Composer";
-import { aiBase, greeting, isStoreKitPart, uploadFiles, type AiStatus, type ChatLike, type StoreKitConfig } from "./data";
+import { aiBase, greeting, isStoreKitPart, uploadFiles, type AiStatus, type ChatLike, type Draft, type StoreKitConfig } from "./data";
 import { describeRead, describeWrite, toolTitle, WRITE_TOOLS } from "./toolCopy";
 
 export const EXAMPLES = [
@@ -49,14 +49,14 @@ const SAFE_COMPONENTS = {
 };
 
 /** The empty state: greeting by name and time of day, what the assistant does, the composer and example questions. */
-export function Welcome({ status, pid, onSubmit }: { status: AiStatus; pid: string; onSubmit: (m: ComposerSubmit) => unknown }) {
+export function Welcome({ status, pid, onSubmit, draft }: { status: AiStatus; pid: string; onSubmit: (m: ComposerSubmit) => unknown; draft?: Draft | null }) {
   const [busy, setBusy] = useState(false);
   const go = async (m: ComposerSubmit) => { setBusy(true); try { await onSubmit(m); } finally { setBusy(false); } };
   return (
     <div className="ai-welcome">
       <h1><Icon name="spark" className="i gold" />{greeting(status.greeting_name)}</h1>
       <p>I'm RevenueDot AI. I read your revenue, customers and catalog, and I change things only after you approve.</p>
-      <Composer pid={pid} onSubmit={go} status={busy ? "submitted" : "ready"} autoFocus />
+      <Composer pid={pid} onSubmit={go} status={busy ? "submitted" : "ready"} autoFocus initial={draft} />
       <div className="ai-examples">
         {EXAMPLES.map((q) => <Suggestion key={q} suggestion={q} onClick={() => go({ text: q, files: [], mentions: [] })} />)}
       </div>

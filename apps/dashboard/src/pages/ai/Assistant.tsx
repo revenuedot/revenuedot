@@ -11,7 +11,7 @@ import { ConfirmDialog, useToast } from "../../components/ui";
 import { api } from "../../lib/api";
 import { ChatView, Welcome } from "./ChatView";
 import type { ComposerSubmit } from "./Composer";
-import { aiBase, uploadFiles, useAiStatus, useConversations, type AiStatus, type ChatLike, type Conversation, type ConversationDetail, type PendingMessage } from "./data";
+import { aiBase, uploadFiles, useAiStatus, useConversations, type AiStatus, type ChatLike, type Conversation, type ConversationDetail, type Draft, type PendingMessage } from "./data";
 
 /**
  * RevenueDot AI (/projects/:projectId/ai[/:conversationId], prd/ai-assistant/PRD.md §3): a history rail (search, New
@@ -40,6 +40,7 @@ export function AssistantPage() {
   };
 
   const s = status.data;
+  const draft = (useLocation().state as { draft?: Draft } | null)?.draft ?? null;
   return (
     <Shell title="RevenueDot AI" crumbs={<b>RevenueDot AI</b>}>
       <div className="ai-page rd-ai">
@@ -52,7 +53,7 @@ export function AssistantPage() {
           ) : conversationId ? (
             <ConversationLoader key={conversationId} pid={pid} id={conversationId} status={s} />
           ) : (
-            <Welcome status={s} pid={pid} onSubmit={start} />
+            <Welcome status={s} pid={pid} onSubmit={start} draft={draft} />
           )}
         </section>
       </div>
@@ -155,7 +156,7 @@ function usePending(chat: ChatLike, ready: boolean) {
     if (!pending || sent.current || !ready) return;
     sent.current = true;
     nav(loc.pathname, { replace: true, state: null });
-    void chat.sendMessage({ text: pending.text, files: pending.files, metadata: pending.metadata?.mentions?.length ? { mentions: pending.metadata.mentions.map(({ type, id, label }) => ({ type, id, label })) } : undefined });
+    void chat.sendMessage({ text: pending.text, files: pending.files, metadata: pending.metadata?.mentions?.length ? { mentions: pending.metadata.mentions.map(({ type, id, label, params }) => ({ type, id, label, ...(params ? { params } : {}) })) } : undefined });
   }, [loc, ready, chat, nav]);
 }
 
