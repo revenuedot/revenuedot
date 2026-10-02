@@ -118,6 +118,22 @@ describe("customer lists", () => {
     expect(csv.trim().split("\r\n").slice(1).map((l) => l.split(",")[0])).toEqual(["buyer", "paying", "cancelled", "lapsed", "trialing", "tester", "browser"]);
   });
 
+  it("sorts anonymous IDs after named IDs in both directions", async () => {
+    await person("$RCAnonymousID:f00d", { seenDaysAgo: 1 });
+    await person("Zed", { seenDaysAgo: 2 });
+    await person("$RCAnonymousID:0abc", { seenDaysAgo: 3 });
+    await person("amy", { seenDaysAgo: 4 });
+    const ids = async (query: string) => (await get(`list=all&${query}`)).body.items.map((r: any) => r.id);
+    expect(await ids("sort=id&direction=asc")).toEqual(["amy", "Zed", "$RCAnonymousID:0abc", "$RCAnonymousID:f00d"]);
+    expect(await ids("sort=id&direction=desc")).toEqual(["Zed", "amy", "$RCAnonymousID:f00d", "$RCAnonymousID:0abc"]);
+
+    const p1 = await get("list=all&sort=id&limit=2");
+    expect(p1.body.items.map((r: any) => r.id)).toEqual(["amy", "Zed"]);
+    const p2 = await get(`list=all&sort=id&limit=2&starting_after=${new URL(p1.body.next_page, "http://x").searchParams.get("starting_after")}`);
+    expect(p2.body.items.map((r: any) => r.id)).toEqual(["$RCAnonymousID:0abc", "$RCAnonymousID:f00d"]);
+    expect(p2.body.next_page).toBeNull();
+  });
+
   it("exports the list as CSV", async () => {
     await seed();
     const res = await h.fetch("/v2/projects/proj1/customer_lists/export?list=active", { key: h.ids.secretKey });
