@@ -181,7 +181,12 @@ const HEX = /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const PATH_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const ACTION_ID = /^[A-Za-z0-9_.:-]{1,100}$/;
 const STRING_KEY = /^[A-Za-z0-9_.-]{1,100}$/;
-const isUrl = (v: unknown) => { if (!isStr(v) || !v.trim() || /\s/.test(v)) return false; try { return /^[a-z][a-z0-9+.-]*:$/i.test(new URL(v).protocol); } catch { return false; } };
+/** Schemes a Custom URL path may not use: script and inline-content URLs, and local files. */
+const BLOCKED_SCHEMES = new Set(["javascript:", "vbscript:", "data:", "file:", "blob:", "about:"]);
+const isUrl = (v: unknown) => {
+  if (!isStr(v) || !v.trim() || /\s/.test(v)) return false;
+  try { const proto = new URL(v).protocol.toLowerCase(); return /^[a-z][a-z0-9+.-]*:$/.test(proto) && !BLOCKED_SCHEMES.has(proto); } catch { return false; }
+};
 
 class Problems {
   list: string[] = [];
@@ -281,6 +286,10 @@ function checkPath(p: Problems, at: string, x: unknown, seen: { ids: Set<string>
   if (x.refund_window !== undefined && !isStr(x.refund_window)) p.add(`${at}.refund_window`, "must be text (an ISO 8601 duration or \"forever\").");
 }
 
+/** A `change_plans` entry iOS can decode (`CustomerCenterConfigResponse.ChangePlan`); one bad entry fails the whole config. */
+const isChangePlan = (g: unknown): boolean => isObj(g) && isStr(g.group_id) && isStr(g.group_name) && Array.isArray(g.products)
+  && g.products.every((x: unknown) => isObj(x) && isStr(x.product_id) && typeof x.selected === "boolean");
+
 /**
  * Problems with a configuration (the stored overrides merged over the default), as "field: message" lines.
  * Empty when the SDKs can show it as configured.
@@ -351,7 +360,14 @@ export function validateCustomerCenter(config: unknown): string[] {
       if (l.locale !== undefined && (!isStr(l.locale) || !/^[A-Za-z]{2,3}([_-][A-Za-z0-9]{2,8})*$/.test(l.locale))) p.add("localization.locale", "must be a locale such as en_US.");
       if (l.localized_strings !== undefined) {
         if (!isObj(l.localized_strings)) p.add("localization.localized_strings", "must be an object of key → text.");
-        else for (const [k, v] of Object.entries(l.localized_strings)) if (!isStr(v)) p.add(`localization.localized_strings.${k}`, "must be text.");
+        else {
+          if (Object.keys(l.localized_strings).length > 500) p.add("localization.localized_strings", "can have at most 500 strings.");
+          for (const [k, v] of Object.entries(l.localized_strings)) {
+            if (!STRING_KEY.test(k)) p.add(`localization.localized_strings.${k}`, "the key needs letters, digits, _ . or -.");
+            else if (!isStr(v)) p.add(`localization.localized_strings.${k}`, "must be text.");
+            else if ([...v].length > 1000) p.add(`localization.localized_strings.${k}`, "can be at most 1000 characters.");
+          }
+        }
       }
       if (l.custom_strings !== undefined && l.custom_strings !== null) {
         if (!isObj(l.custom_strings)) p.add("localization.custom_strings", "must be an object of language → strings.");
@@ -368,7 +384,11 @@ export function validateCustomerCenter(config: unknown): string[] {
       }
     }
   }
-  if (c.change_plans !== undefined && !Array.isArray(c.change_plans)) p.add("change_plans", "must be a list.");
+  if (c.change_plans !== undefined) {
+    if (!Array.isArray(c.change_plans)) p.add("change_plans", "must be a list.");
+    else if (c.change_plans.length > 50) p.add("change_plans", "can have at most 50 subscription groups.");
+    else c.change_plans.forEach((g: unknown, i: number) => { if (!isChangePlan(g)) p.add(`change_plans[${i}]`, "needs group_id, group_name and products ({ product_id, selected })."); });
+  }
   return p.list;
 }
 
@@ -496,7 +516,7 @@ export function sdkCustomerCenter(config: Json, opts: SdkOptions = {}): Json {
     screens,
     localization: { locale, localized_strings: strings },
     support,
-    change_plans: Array.isArray(config.change_plans) ? config.change_plans : [],
+    change_plans: Array.isArray(config.change_plans) ? config.change_plans.filter(isChangePlan) : [],
   };
 }
 

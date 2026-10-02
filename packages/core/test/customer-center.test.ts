@@ -104,6 +104,24 @@ describe("the SDK shape", () => {
     expect(ccStringFor(cfg, "en", "refund_status")).toEqual({ value: "Refund status", source: "default" });
   });
 
+  it("refuses and never sends script, data and file URLs; caps strings; sends only change_plans iOS can decode", () => {
+    for (const url of ["javascript:alert(1)", "JavaScript:alert(1)", "data:text/html,<script>alert(1)</script>", "file:///etc/passwd", "vbscript:x"]) {
+      const cfg = mergeConfig(dflt(), { screens: { MANAGEMENT: { paths: [{ id: "u", type: "CUSTOM_URL", title: "Help", url }] } } });
+      expect(validateCustomerCenter(cfg)).toEqual(["screens.MANAGEMENT.paths[0].url: needs a full URL, such as https://example.com/help or myapp://support."]);
+      expect((sdkCustomerCenter(cfg) as any).screens.MANAGEMENT.paths).toEqual([]);
+    }
+    const deep = mergeConfig(dflt(), { screens: { MANAGEMENT: { paths: [{ id: "u", type: "CUSTOM_URL", title: "Help", url: "myapp://support" }] } } });
+    expect(validateCustomerCenter(deep)).toEqual([]);
+    expect(validateCustomerCenter(mergeConfig(dflt(), { localization: { localized_strings: { done: "x".repeat(1001), "bad key": "y" } } }))).toEqual([
+      "localization.localized_strings.done: can be at most 1000 characters.",
+      "localization.localized_strings.bad key: the key needs letters, digits, _ . or -.",
+    ]);
+    const good = { group_id: "g1", group_name: "Pro", products: [{ product_id: "pro_m", selected: true }] };
+    const plans = mergeConfig(dflt(), { change_plans: [good, { group_id: "g2" }] });
+    expect(validateCustomerCenter(plans)).toEqual(["change_plans[1]: needs group_id, group_name and products ({ product_id, selected })."]);
+    expect((sdkCustomerCenter(plans) as any).change_plans).toEqual([good]);
+  });
+
   it("falls back to the default screen when a stored screen is broken", () => {
     const out = sdkCustomerCenter({ screens: { MANAGEMENT: "oops" }, support: { email: 3 } }) as any;
     expect(out.screens.MANAGEMENT.paths.map((p: any) => p.id)).toEqual(["path_cancel", "path_refund", "path_missing"]);
