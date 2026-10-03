@@ -69,7 +69,7 @@ export function StripeConnectPanel({ pid, appId, email, onChange }: { pid: strin
               : <a className="btn btn-dark" href="https://dashboard.stripe.com/account/onboarding" target="_blank" rel="noreferrer">Open the Stripe Dashboard</a>}
           </div>
         )}
-        {!s.available && <p className="banner err" role="alert">{s.unavailable_reason} Until then, Stripe calls for this app fail.</p>}
+        {!s.available && <p className="banner err" role="alert">{s.unavailable_reason} Disconnect first to add a key. Until then, Stripe calls for this app fail.</p>}
         {err && <div className="banner err" role="alert">{err}</div>}
         <div className="hrow"><button type="button" className="btn btn-line" onClick={() => setConfirm(true)}><Icon name="close" />Disconnect</button></div>
         {confirm && (

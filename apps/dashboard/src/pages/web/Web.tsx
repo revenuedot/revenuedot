@@ -37,7 +37,7 @@ export function WebPage() {
   const steps: { key: string; title: string; done: boolean; text: ReactNode; action: ReactNode }[] = c ? [
     {
       key: "stripe", title: "Connect Stripe", done: c.connect_stripe,
-      text: <>Web payments run on your own Stripe account. Add a Stripe app, then on its page paste a restricted key with <b>write</b> access to {STRIPE_WRITE}, plus the read permissions listed there, and the signing secret of the Stripe webhook endpoint shown there. Connect with Stripe is not available on RevenueDot Cloud yet; a self-hosted server shows it on the same page once its operator sets it up.</>,
+      text: <>Web payments run on your own Stripe account. Add a Stripe app, then on its page paste a restricted key with <b>write</b> access to {STRIPE_WRITE}, plus the read permissions listed there. Then add the webhook endpoint shown there in your Stripe Dashboard and paste its signing secret. Connect with Stripe is not available on RevenueDot Cloud yet; a self-hosted server can turn it on.</>,
       action: main ? <Link className="btn btn-dark" to={`/projects/${pid}/apps/${main.id}#credentials`}>Connect Stripe</Link> : <button type="button" className="btn btn-dark" onClick={() => setAdding(true)}>Add Stripe app</button>,
     },
     {
