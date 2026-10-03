@@ -169,6 +169,19 @@ describe("purchase links and hosted checkout", () => {
     expect(await env.events("INITIAL_PURCHASE")).toHaveLength(1);
   });
 
+  it("Stripe's customer.subscription.created arrives before the session completes: the purchase still carries the presented offering", async () => {
+    env = await webEnv();
+    await env.setupWeb();
+    const l = await link();
+    const { sessionId, successUrl } = await buy(l.url, "$rc_monthly", { app_user_id: "user_early", email: "early@example.com" });
+    const sub = [...env.stripe.subscriptions.values()].at(-1)!;
+    expect((await env.webhook(env.stripe.event("customer.subscription.created", sub))).status).toBe(200);
+    expect((await env.events("INITIAL_PURCHASE"))[0]).toMatchObject({ app_user_id: "user_early", presented_offering_id: "web" });
+    expect((await env.webhook(env.stripe.completedEvent(sessionId))).status).toBe(200);
+    expect((await env.raw(successUrl)).status).toBe(200);
+    expect(await env.events("INITIAL_PURCHASE")).toHaveLength(1);
+  });
+
   it("with app_user_id the purchase goes straight to that user: no redemption link", async () => {
     env = await webEnv();
     await env.setupWeb();

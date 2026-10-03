@@ -28,3 +28,5 @@ scripts/e2e/cluster/build/
 *.tfstate
 *.tfstate.*
 terraform.tfvars
+
+scripts/e2e/real-stripe/build/

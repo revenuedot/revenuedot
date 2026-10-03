@@ -303,7 +303,7 @@ export { findCustomer };
  * (RevenueCat's "track new purchases from server-to-server notifications").
  * Returns false when the purchase is unknown and was not created.
  */
-export async function applyFromStore(db: DB, opts: { projectId: string; appId: string; purchase: VerifiedPurchase; now: Date; createIfUnknown?: boolean; appUserIdHint?: string | null; fetch?: FxFetch | null }): Promise<boolean> {
+export async function applyFromStore(db: DB, opts: { projectId: string; appId: string; purchase: VerifiedPurchase; now: Date; createIfUnknown?: boolean; appUserIdHint?: string | null; presentedOfferingId?: string | null; fetch?: FxFetch | null }): Promise<boolean> {
   const { projectId, appId, purchase: p, now } = opts;
   let ownerId: string | null = null;
   if (p.kind === "subscription") {
@@ -320,6 +320,17 @@ export async function applyFromStore(db: DB, opts: { projectId: string; appId: s
   let created = false;
   if (ownerId) [owner] = await db.select().from(customers).where(eq(customers.id, ownerId));
   if (!owner && opts.appUserIdHint) owner = (await findCustomer(db, projectId, opts.appUserIdHint)) ?? undefined;
+  // A purchase first recorded without its app user id (Stripe sends customer.subscription.created before the Checkout
+  // Session's metadata arrives) belongs to the customer the store now names: an anonymous owner is merged into it, as a receipt would.
+  if (owner && ownerId && opts.appUserIdHint && !isAnonymous(opts.appUserIdHint) && (await isOnlyAnonymous(db, owner.id))) {
+    const { getOrCreateCustomer } = await import("../repo/customers.js");
+    const { customer: target } = await getOrCreateCustomer(db, projectId, opts.appUserIdHint, now);
+    if (target.id !== owner.id) {
+      await mergeCustomers(db, owner.id, target.id);
+      await recordSubscriberAlias(db, { projectId, appId, customerId: target.id, appUserId: opts.appUserIdHint, sandbox: p.isSandbox, now });
+      owner = target;
+    }
+  }
   if (!owner) {
     if (!opts.createIfUnknown) return false;
     const { getOrCreateCustomer } = await import("../repo/customers.js");
@@ -327,6 +338,6 @@ export async function applyFromStore(db: DB, opts: { projectId: string; appId: s
   }
   const aliases = await db.select({ a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(eq(schema.customerAliases.customerId, owner.id));
   const appUserId = aliases.find((a) => !isAnonymous(a.a))?.a ?? owner.originalAppUserId;
-  await applyPurchases(db, owner, [p], { projectId, appId, appUserId, now, fromDevice: false, customerCreated: created, fetch: opts.fetch });
+  await applyPurchases(db, owner, [p], { projectId, appId, appUserId, now, fromDevice: false, customerCreated: created, presentedOfferingId: opts.presentedOfferingId ?? null, fetch: opts.fetch });
   return true;
 }

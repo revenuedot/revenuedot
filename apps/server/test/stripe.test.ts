@@ -338,6 +338,18 @@ describe("Stripe webhooks", () => {
     expect(await (await e.webhook("customer.subscription.created", e.st.subs.get("sub_4"))).json()).toEqual({ status: "ignored" });
   });
 
+  it("customer.subscription.created before the Checkout Session: the anonymous customer is merged into the user the session's metadata names", async () => {
+    await e.setCredentials({ stripe_secret_key: KEY, stripe_webhook_secret: WHSEC, track_new_purchases: true });
+    e.st.put(subscription({ invoice: "in_1First", metadata: {} }), invoice({ id: "in_1First", sub: SUB, start: T0, end: at(30) }));
+    e.st.sessions.set("cs_late", checkoutSession({ id: "cs_late", mode: "subscription", sub: SUB, metadata: { app_user_id: "web_user_9" } }));
+    await e.webhook("customer.subscription.created", e.st.subs.get(SUB));
+    expect((await e.events("INITIAL_PURCHASE"))[0]!.app_user_id).toMatch(/^\$RCAnonymousID:/);
+    expect((await (await e.webhook("checkout.session.completed", e.st.sessions.get("cs_late"))).json())).toEqual({ status: "processed" });
+    expect((await info("web_user_9")).subscriber.entitlements.pro).toBeDefined();
+    expect(await e.events("INITIAL_PURCHASE")).toHaveLength(1);
+    expect((await e.events("SUBSCRIBER_ALIAS")).map((x) => x.app_user_id)).toEqual(["web_user_9"]);
+  });
+
   it("Stripe outages answer 500 so Stripe retries; the retry is processed; events are forwarded with their signature", async () => {
     await e.h.db.update(schema.apps).set({ notificationForwardUrl: "https://hooks.example.com/stripe" }).where(eq(schema.apps.id, e.appId));
     await bought();
