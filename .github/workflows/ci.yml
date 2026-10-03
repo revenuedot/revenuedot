@@ -172,6 +172,8 @@ jobs:
       # Builds the self-host image and checks it starts and answers health; nothing is pushed. No layer cache: the
       # install layer changes with every commit, and exporting it to the cache took longer than building it.
       - uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           load: true
