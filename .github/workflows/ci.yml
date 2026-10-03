@@ -100,13 +100,13 @@ jobs:
   test-postgres:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    name: test-postgres (${{ matrix.shard }}/3)
+    name: test-postgres (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: postgres:16
@@ -124,7 +124,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm vitest run --shard=${{ matrix.shard }}/3 --maxWorkers=4 --minWorkers=1
+      - run: pnpm vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=4 --minWorkers=1
         env:
           REVENUEDOT_TEST_PG_URL: postgres://postgres:ci@localhost:5432/postgres
 
