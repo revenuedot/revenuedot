@@ -1,6 +1,6 @@
 # Cloud billing: plans and metering (Tier 2, batch G)
 
-**Status:** built on branch `tier2-moves-billing` (migration `0022_moves_billing`), tested against a fake Stripe only. RevenueDot Cloud meters tracked revenue per project per month and bills it through RevenueDot's own Stripe account (Circo). Self-host stays free and unmetered: none of this runs there. **The live Stripe keys, price id and meter are Kai's to create**; until they are set, Cloud behaves as before billing existed: no usage emails and no Billing link in the dashboard (`/auth/me` answers `billing_ready: false`); metering still runs, and `/account/billing` opened directly shows the plan and usage and says billing is not set up yet.
+**Status:** built on branch `tier2-moves-billing` (migration `0022_moves_billing`), tested against a fake Stripe and, on 2026-10-03, against Stripe's real test mode (`scripts/e2e/real-stripe/billing.ts`, 40 checks: Checkout, webhooks, the meter, month-end failure and recovery, retries running out, Portal link, cancellation). RevenueDot Cloud meters tracked revenue per project per month and bills it through RevenueDot's own Stripe account (Circo). Self-host stays free and unmetered: none of this runs there. **The live Stripe keys, price id and meter are Kai's to create**; until they are set, Cloud behaves as before billing existed: no usage emails and no Billing link in the dashboard (`/auth/me` answers `billing_ready: false`); metering still runs, and `/account/billing` opened directly shows the plan and usage and says billing is not set up yet.
 
 ## Users and jobs
 - **A developer on Cloud** sees which plan they are on, how much revenue their apps tracked this month, what that will cost, and their invoices; upgrades with Stripe Checkout and manages the card or cancels in Stripe's Customer Portal.
@@ -65,6 +65,6 @@ Stripe setup (test mode first, then live): a meter `revenuedot_cloud_bill_cents`
 - Playwright `apps/dashboard/e2e/billing.spec.ts`: the Billing page in each state, Upgrade to the fake Checkout and back, Manage billing.
 
 ## Known gaps
-- No Stripe test-mode run yet (no test keys on this machine); every Stripe call is tested against the fake, which follows Stripe's API reference for the fields we use.
+- Stripe test mode is proven; live mode is not (nothing is charged until Kai sets `REVENUEDOT_BILLING_LIVE=true` with live keys). Stripe's meter takes up to a minute to show a new value on the upcoming invoice, and usage-based invoices stay draft for 3 days after month end before they are charged.
 - Metering reads the month's transactions of every project in one query per tick; fine for now, a rollup later.
 - Enterprise accounts are set by hand (`billing_accounts.plan = 'enterprise'`).

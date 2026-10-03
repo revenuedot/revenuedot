@@ -1,6 +1,6 @@
 # Web billing, purchase links, funnels, web discounts and domains (Tier 3, parity batch C)
 
-**Status:** built on branch `tier3-web-billing`; "Connect with Stripe" (§8) on branch `tier3-connect-recovery`. Everything runs on the developer's own Stripe account: either through RevenueDot's Stripe Connect platform (the developer clicks "Connect with Stripe"), or through a restricted key they paste into the Stripe app (`prd/store-stripe/PRD.md`). Every test runs against an in-process fake Stripe; no real Stripe account or key is used.
+**Status:** built on branch `tier3-web-billing`; "Connect with Stripe" (§8) on branch `tier3-connect-recovery`. Everything runs on the developer's own Stripe account: either through RevenueDot's Stripe Connect platform (the developer clicks "Connect with Stripe"), or through a restricted key they paste into the Stripe app (`prd/store-stripe/PRD.md`). Unit tests and journeys run against an in-process fake Stripe. On 2026-10-03 web products, a discount code, the purchase link, hosted Checkout (paid in a browser with test cards), the paywall's hosted checkout and redemption by the iOS SDK call were also run against Stripe's real test-mode API (`scripts/e2e/real-stripe/store.ts`).
 
 ## Users and jobs
 - **Developers** sell their app's subscriptions on the web without building a checkout: connect Stripe once, describe the checkout look, create web products (RevenueDot creates them in their Stripe account), put them in an offering, and share a purchase link or publish a funnel.

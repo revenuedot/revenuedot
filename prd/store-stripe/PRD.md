@@ -1,6 +1,6 @@
 # Stripe subscriptions from the customer's own Stripe account (Tier 2, "Stores: Stripe")
 
-**Status:** A Stripe app holds a restricted API key and a webhook signing secret from the developer's own Stripe account. Subscriptions and Checkout Sessions posted to `POST /v1/receipts` with `X-Platform: stripe` are read from Stripe's API, and Stripe webhooks are accepted only with a valid `Stripe-Signature`. Every test runs against a mocked Stripe API with Stripe's documented object and event shapes; no real Stripe account or key is used.
+**Status:** A Stripe app holds a restricted API key and a webhook signing secret from the developer's own Stripe account. Subscriptions and Checkout Sessions posted to `POST /v1/receipts` with `X-Platform: stripe` are read from Stripe's API, and Stripe webhooks are accepted only with a valid `Stripe-Signature`. Unit tests run against a mocked Stripe API with Stripe's documented object and event shapes. On 2026-10-03 the whole flow was also run against Stripe's real test-mode API (`scripts/e2e/real-stripe/store.ts`, 118 checks): see `docs/STATUS.md`.
 
 ## Users and jobs
 - **Developers who sell on the web with their own Stripe Checkout or Billing** post each new subscription or Checkout Session from their backend, and the same entitlements unlock in their mobile apps.
@@ -69,6 +69,7 @@ Live and test mode: a key's mode decides the environment. Objects with `livemode
 
 - Every event is stored raw in `store_notifications` (id `stripe_{app}_{event id}`), so redelivered events are processed once, and forwarded to `notification_forward_url` when set.
 - Unknown purchases answer 200 and are ignored unless `track_new_purchases` is on; then the customer comes from `app_user_id_source`.
+- Stripe sends `customer.subscription.created` before `checkout.session.completed`, so a purchase can be recorded first under an anonymous id. When the session's metadata (or the subscription's) later names an app user id, an anonymous owner is merged into that user (SUBSCRIBER_ALIAS), as a receipt would.
 - Temporary failures answer 500, so Stripe retries for up to three days.
 
 ## Mapping to the core engine
