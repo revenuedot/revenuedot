@@ -18,6 +18,8 @@ export const SITE = {
   // RevenueDot Cloud: where people sign up and sign in. Every page's main call to action points here.
   app: "https://app.revenuedot.app",
   signup: "https://app.revenuedot.app/signup",
+  // Kai's Google Calendar booking page (kai@circo.so, "RevenueDot: 30 min with Kai", weekdays 9 to 5 Pacific, Google Meet).
+  booking: "https://calendar.google.com/calendar/appointments/schedules/AcZssZ0IxzgwYNVDGggPF9qelyDSh51L5UzFNcrDE2u3eMTwqpLfGsrRxjx2TxY-WyehZVX1ns8MhQWg",
   login: "https://app.revenuedot.app/login",
   email: {
     hello: "hello@revenuedot.app",

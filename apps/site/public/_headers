@@ -4,7 +4,7 @@
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com https://datafa.st; connect-src 'self' https://cloudflareinsights.com https://datafa.st; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://customer-fmxk2rh71xv35llp.cloudflarestream.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com https://datafa.st; connect-src 'self' https://cloudflareinsights.com https://datafa.st; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src https://customer-fmxk2rh71xv35llp.cloudflarestream.com https://calendar.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
