@@ -34,11 +34,17 @@ export function statusOf(stripeStatus: string): { status: string; plan: "standar
   }
 }
 
-/** The subscription that decides the account: the one on file if still live, else the oldest live, else the newest ended. */
+/**
+ * The subscription that decides the account. A billing one (active, trialing, past due) wins over one that is not (unpaid,
+ * incomplete from an abandoned Checkout, paused): the one on file, else the oldest. Without a billing one: the live one on
+ * file, else the oldest live, else the newest ended. Other billing subscriptions are duplicates.
+ */
 export function currentSubscription(subs: Obj[], onFile: string | null | undefined): { current: Obj | null; duplicates: Obj[] } {
   const live = subs.filter((s) => LIVE.includes(s.status)).sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
-  const current = live.find((s) => s.id === onFile) ?? live[0] ?? [...subs].sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] ?? null;
-  const duplicates = current && BILLING.includes(current.status) ? live.filter((s) => s.id !== current.id && BILLING.includes(s.status)) : [];
+  const billing = live.filter((s) => BILLING.includes(s.status));
+  const current = billing.find((s) => s.id === onFile) ?? billing[0] ?? live.find((s) => s.id === onFile) ?? live[0]
+    ?? [...subs].sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] ?? null;
+  const duplicates = current && BILLING.includes(current.status) ? billing.filter((s) => s.id !== current.id) : [];
   return { current, duplicates };
 }
 

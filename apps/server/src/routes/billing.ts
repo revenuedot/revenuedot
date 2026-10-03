@@ -92,6 +92,9 @@ export function billingRoutes(deps: Deps) {
         // Stripe, not our copy, says whether a subscription is already running (a webhook may still be on its way).
         const r = await syncCustomer({ db, now: deps.now(), stripe, mailer: deps.mailer, publicUrl: deps.publicUrl }, customer, u.id);
         if (r && ["active", "past_due"].includes(r.after.status)) return err(c, 409, "resource_already_exists", "You are on Cloud Standard already. Manage it with Manage billing.");
+        // Unpaid: the subscription still exists with an open invoice. Paying it brings Standard back; a second subscription
+        // would bill the same meter twice.
+        if (r?.after.status === "unpaid") return err(c, 409, "resource_already_exists", "Your last invoice is unpaid. Pay it in Manage billing and Cloud Standard comes back.");
         // One checkout at a time: an older open session (another tab) could otherwise start a second subscription.
         for (const s of await stripe.listOpenCheckouts(customer)) await stripe.expireCheckout(s.id).catch((e) => console.error(`billing: could not expire checkout ${s.id}`, e));
       }

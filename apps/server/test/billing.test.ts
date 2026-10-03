@@ -331,6 +331,27 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
   });
 
+  it("a paying subscription wins over an abandoned or unpaid one; an unpaid account is sent to pay its invoice, not to a second Checkout", async () => {
+    const { subscription } = await upgrade();
+    // An abandoned Checkout left an older incomplete subscription on the same customer: it is neither chosen nor cancelled.
+    const stale = { ...stripe.snapshot(subscription), id: "sub_test_incomplete", status: "incomplete", created: subscription.created - 60 };
+    stripe.subscriptions.set(stale.id, stale);
+    await hook("customer.subscription.created", subscription);
+    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeSubscriptionId).toBe(subscription.id);
+    expect(stripe.subscriptions.get(stale.id)!.status).toBe("incomplete");
+    // Every retry failed: unpaid. Upgrade is refused with the way back; paying the invoice makes the same subscription active.
+    await hook("customer.subscription.updated", stripe.updateSubscription(subscription.id, { status: "unpaid" }));
+    expect(await account()).toMatchObject({ plan: "free", status: "unpaid" });
+    const again = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    expect(again.status).toBe(409);
+    expect(again.body.message).toMatch(/unpaid/);
+    await hook("invoice.paid", stripe.invoice(subscription.customer, { amount_due: 900, status: "paid", subscription: subscription.id }));
+    stripe.updateSubscription(subscription.id, { status: "active" });
+    await hook("customer.subscription.updated", stripe.subscriptions.get(subscription.id)!);
+    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+  });
+
   it("events about objects Stripe does not know are acknowledged and ignored", async () => {
     await upgrade();
     expect((await hook("invoice.paid", { id: "in_missing", customer: "cus_nobody" })).body.result).toBe("unknown to Stripe");
