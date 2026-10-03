@@ -200,7 +200,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
   r.get(`${P}/setup_health`, scope("project_configuration:apps:read"), async (c) => {
     const projectId = c.get("projectId");
     const now = deps.now();
-    const origin = requestOrigin(c.req.url, (n) => c.req.header(n));
+    const origin = (deps.apiUrl ?? requestOrigin(c.req.url, (n) => c.req.header(n))).replace(/\/+$/, "");
     const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId));
     const appItems = [];
     for (const a of apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) {

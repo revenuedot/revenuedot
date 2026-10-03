@@ -90,6 +90,11 @@ export function publicOrigin(c: V2Context) {
   return requestOrigin(c.req.url, (n) => c.req.header(n));
 }
 
+/** The API host developers paste into SDKs and store consoles: REVENUEDOT_API_URL (Cloud: api.revenuedot.app), else this request's origin. */
+export function apiOriginOf(deps: Pick<Deps, "apiUrl">, c: V2Context) {
+  return (deps.apiUrl ?? publicOrigin(c)).replace(/\/+$/, "");
+}
+
 const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
 export function setupRoutes(r: V2Router, deps: Deps) {
@@ -210,7 +215,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     }
     const [ent] = await db.select({ key: schema.entitlements.lookupKey }).from(schema.entitlements)
       .where(eq(schema.entitlements.projectId, a.projectId)).orderBy(schema.entitlements.createdAt, schema.entitlements.id).limit(1);
-    const out = await buildSampleApp({ platform, appType: a.type, appName: a.name, publicKey: a.publicKey, serverUrl: publicOrigin(c), entitlement: ent?.key ?? null, now: deps.now() });
+    const out = await buildSampleApp({ platform, appType: a.type, appName: a.name, publicKey: a.publicKey, serverUrl: apiOriginOf(deps, c), entitlement: ent?.key ?? null, now: deps.now() });
     return new Response(out.data, { headers: {
       "content-type": "application/zip", "content-disposition": `attachment; filename="${out.filename}"`,
       "cache-control": "no-store", "x-revenuedot-examples-commit": out.commit,
@@ -231,8 +236,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     return c.json({
       object: "app_store_settings", app_id: a.id, type: a.type,
       // What the SDK's proxy URL should be: this server as the outside world reaches it.
-      api_origin: publicOrigin(c),
-      notification_url: store ? `${publicOrigin(c)}/v1/notifications/${store}/${a.id}` : null,
+      api_origin: apiOriginOf(deps, c),
+      notification_url: store ? `${apiOriginOf(deps, c)}/v1/notifications/${store}/${a.id}` : null,
       notification_forward_url: a.notificationForwardUrl ?? null,
       // "Test your setup with the sample app": the examples that can buy with this app (GET …/sample_app?platform=).
       sample_apps: samplePlatformsFor(a.type).map((platform) => ({ platform, ...SAMPLE_APPS[platform] })),
@@ -376,7 +381,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     try { a = await withStoreSecrets(deps, row); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
     if (!paddleKeyConfigured(row)) throw new V2Error(422, "store_error", "Save the Paddle API key first.", "paddle_api_key");
     const { client } = paddleClientFor(deps.stores, deps.fetch);
-    const url = `${publicOrigin(c)}/v1/notifications/paddle/${a.id}`;
+    const url = `${apiOriginOf(deps, c)}/v1/notifications/paddle/${a.id}`;
     const body = { description: `RevenueDot ${a.name}`.slice(0, 100), type: "url", destination: url, subscribed_events: PADDLE_EVENTS, api_version: 1, include_sensitive_fields: false, traffic_source: "all" };
     const cr = a.credentials ?? {};
     const existing = s(cr.paddle_notification_setting_id);

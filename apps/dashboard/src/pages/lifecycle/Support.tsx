@@ -14,6 +14,7 @@ import { Check, CodeBlock, DataTable, EmptyState, Field, KeyValue, PageHead, Pan
 import { errMsg, v2 } from "../catalog/lib";
 import { relative } from "../../lib/customers";
 import type { SupportTicket } from "./lib";
+import { apiOrigin } from "../setup/data";
 
 type Tab = "integrations" | "customer_center" | "tickets";
 const GUIDE = "https://revenuedot.app/docs/guides/support-integrations";
@@ -38,7 +39,7 @@ export function SupportPage() {
 
 function Integrations() {
   const pid = useProjectId();
-  const origin = window.location.origin;
+  const origin = apiOrigin();
   const curl = `# By email: what Intercom and Zendesk know about a customer
 curl "${origin}/v2/projects/${pid}/support_summaries?email=jane%40example.com" \\
   -H "Authorization: Bearer $REVENUEDOT_SECRET_KEY"

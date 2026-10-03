@@ -145,6 +145,19 @@ describe("store settings and forwarding URL", () => {
   });
 });
 
+describe("store settings on Cloud", () => {
+  it("shows the API host (REVENUEDOT_API_URL) for the SDK proxy and notification URLs, even when the dashboard calls from its own host", async () => {
+    h = await harness();
+    const app = createApp({ db: h.db, now: h.now, stores: defaultStores(), apiUrl: "https://api.revenuedot.app" });
+    const get = async (path: string) => (await app.fetch(new Request(`https://app.revenuedot.app${path}`, { headers: { Authorization: `Bearer ${h.ids.secretKey}` } }))).json() as Promise<any>;
+    expect(await get(`${P}/apps/app_ios/store_settings`)).toMatchObject({
+      api_origin: "https://api.revenuedot.app", notification_url: "https://api.revenuedot.app/v1/notifications/apple/app_ios",
+    });
+    const health = await get(`${P}/setup_health`);
+    expect(health.apps.find((a: { id: string }) => a.id === "app_play").notification_url).toBe("https://api.revenuedot.app/v1/notifications/google/app_play");
+  });
+});
+
 describe("webhook test event", () => {
   it("queues a signed TEST event for that webhook only, ignoring its event filter, and it is delivered by the tick", async () => {
     h = await harness();
