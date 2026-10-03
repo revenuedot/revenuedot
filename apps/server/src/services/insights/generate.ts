@@ -224,6 +224,8 @@ async function ask(ctx: AssistantContext, system: string, messages: ModelMessage
     // Overrides the model's default effort (ai-gateway.ts) for OpenAI reasoning models; other providers ignore it.
     ...(o.reasoning ? { providerOptions: { openai: { reasoningEffort: o.reasoning } } } : {}),
     onError: ({ error }: { error: unknown }) => { failure = error; },
+    // A timeout after a finished step ends the stream without an error; say so rather than "the model gave no answer".
+    onAbort: () => { failure ??= new Error(`The model took longer than ${INSIGHTS_ASK_TIMEOUT_MS / 60_000} minutes.`); },
     onStepEnd: async (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
       try { await addUsage(db, usageKey, ctx.project.id, ctx.deps.now(), { inputTokens: step.usage?.inputTokens ?? 0, outputTokens: step.usage?.outputTokens ?? 0 }); } catch (e) { console.error("insights usage", e); }
     },

@@ -151,6 +151,7 @@ describe("Overview insights and Refresh", () => {
     expect(calls).toHaveLength(2);
     // Every step has room to reason and still write the answer; the repair has no tools and reasons briefly.
     expect(calls.map((c) => c.maxOutputTokens)).toEqual([INSIGHTS_MAX_OUTPUT_TOKENS, INSIGHTS_MAX_OUTPUT_TOKENS]);
+    expect(INSIGHTS_MAX_OUTPUT_TOKENS).toBeGreaterThanOrEqual(16_000);
     expect(calls.map((c) => c.abortSignal)).toEqual([expect.any(AbortSignal), expect.any(AbortSignal)]);
     expect(calls[0]!.providerOptions?.openai?.reasoningEffort).toBeUndefined();
     expect(calls[1]!.tools ?? []).toEqual([]);
