@@ -354,8 +354,9 @@ export function setupRoutes(r: V2Router, deps: Deps) {
   });
 
   // The App Store Connect API key (Import products, the product editor): values in the body are checked before they are
-  // saved, anything missing falls back to what is stored. Read-only at Apple; the result is not stored.
-  r.post(`${P}/apps/:app_id/actions/verify_app_store_connect_key`, scope("project_configuration:apps:read"), async (c) => {
+  // saved, anything missing falls back to what is stored. Read-only at Apple; the result is not stored. It needs write
+  // access: the stored .p8 with another bundle ID in the body would describe any app of the developer's Apple team.
+  r.post(`${P}/apps/:app_id/actions/verify_app_store_connect_key`, scope("project_configuration:apps:read_write"), async (c) => {
     const row = await findApp(c);
     if (row.type !== "app_store" && row.type !== "mac_app_store") throw paramError("Only App Store and Mac App Store apps have an App Store Connect API key.", "app_id");
     const b = await body(c, VerifyConnectKey);

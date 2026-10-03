@@ -18,7 +18,7 @@ const NOT_AUTHORIZED = { errors: [{ status: "401", code: "NOT_AUTHORIZED", title
 const FORBIDDEN = { errors: [{ status: "403", code: "FORBIDDEN_ERROR", title: "This request is forbidden for security reasons", detail: "The API key in use does not allow this request" }] };
 
 /** A fake App Store Connect for one team: which key ID and issuer it accepts, its apps, and which reads the key's role allows. */
-function fakeConnect(o: { keyId?: string; issuer?: string; apps?: { id: string; bundleId: string; name: string }[]; forbid?: "apps" | "products" | null; down?: boolean } = {}) {
+function fakeConnect(o: { keyId?: string; issuer?: string; apps?: { id: string; bundleId: string; name: string }[]; forbid?: "apps" | "products" | "agreements" | null; down?: boolean | 429 } = {}) {
   const calls: { method: string; path: string; kid: string | null; iss: string | null }[] = [];
   const apps = o.apps ?? [{ id: "6400000001", bundleId: BUNDLE, name: "Scanner" }];
   const fetchFn: FetchFn = async (url, init = {}) => {
@@ -28,7 +28,9 @@ function fakeConnect(o: { keyId?: string; issuer?: string; apps?: { id: string; 
     const kid = token ? String(decodeProtectedHeader(token).kid) : null;
     const iss = token ? String(decodeJwt(token).iss) : null;
     calls.push({ method: init.method ?? "GET", path: u.pathname + u.search, kid, iss });
+    if (o.down === 429) return json(429, { errors: [{ status: "429", code: "RATE_LIMIT_EXCEEDED", title: "The request rate limit has been reached." }] });
     if (o.down) return new Response("", { status: 503 });
+    if (o.forbid === "agreements") return json(403, { errors: [{ status: "403", code: "FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED", title: "A required agreement is missing or has expired.", detail: "This request requires an in-effect agreement that has not been signed or has expired." }] });
     if (kid !== (o.keyId ?? "2X9R4HXF34") || iss !== (o.issuer ?? ISSUER)) return json(401, NOT_AUTHORIZED);
     if (u.pathname === "/v1/apps") {
       if (o.forbid === "apps") return json(403, FORBIDDEN);
@@ -130,6 +132,19 @@ describe("verify_app_store_connect_key", () => {
     expect((await forProducts()).body.message).toBe("Key 2X9R4HXF34 sees the app but cannot read its subscriptions and in-app purchases (403). Give the key the App Manager or Admin role under Users and Access → Integrations → App Store Connect API.");
   });
 
+  it("names Apple's agreement 403 instead of the role, and checks a new .p8 with the stored key ID and issuer ID", async () => {
+    const agreements = await setup(fakeConnect({ forbid: "agreements" }), await creds());
+    const r = await agreements();
+    expect(r.body.message).toMatch(/^Apple refused the request \(403 FORBIDDEN\.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED\): an agreement is missing or expired\./);
+    expect(r.body.message).not.toMatch(/role/);
+    await h!.close(); h = undefined;
+    const asc = fakeConnect();
+    const { app_store_connect_api_key: _, ...ids } = await creds();
+    const check = await setup(asc, ids);
+    expect((await check({ app_store_connect_api_key: await makeP8() })).body).toMatchObject({ status: "valid", key_id: "2X9R4HXF34" });
+    expect(asc.calls[0]).toMatchObject({ kid: "2X9R4HXF34", iss: ISSUER });
+  });
+
   it("tells a key of another team from a wrong bundle ID, and says when the app has no bundle ID", async () => {
     const other = await setup(fakeConnect({ apps: [{ id: "1", bundleId: "com.other.one", name: "One" }, { id: "2", bundleId: "com.other.two", name: "Two" }] }), await creds());
     expect((await other()).body.message).toBe(`Apple accepted key 2X9R4HXF34, but its team has no app with bundle ID ${BUNDLE} (the team has 2 apps). The key belongs to another team, or the bundle ID in App details is wrong. Create the key in the App Store Connect team that owns this app.`);
@@ -147,6 +162,11 @@ describe("verify_app_store_connect_key", () => {
     const r = await check();
     expect(r.body).toMatchObject({ status: "unreachable", valid: false });
     expect(r.body.message).toMatch(/App Store Connect is not responding/);
+    await h!.close(); h = undefined;
+    const limited = await setup(fakeConnect({ down: 429 }), await creds());
+    expect((await limited()).body).toMatchObject({ status: "unreachable", valid: false });
+    await h!.db.update(schema.apps).set({ type: "mac_app_store" }).where(eq(schema.apps.id, APP_ID));
+    expect((await limited()).body).toMatchObject({ store: "mac_app_store", status: "unreachable" });
     await h!.db.insert(schema.apps).values({ id: "app_play", projectId: "proj1", name: "Play", type: "play_store", bundleId: "com.x", publicKey: "goog_x", credentials: {} });
     const { key } = await createSecretKey(h!.db, "proj1", "k2");
     const play = await h!.request(CHECK.replace(APP_ID, "app_play"), { method: "POST", headers: { Authorization: `Bearer ${key}` } });
@@ -154,5 +174,8 @@ describe("verify_app_store_connect_key", () => {
     expect((await h!.request(CHECK.replace(APP_ID, "app_nope"), { method: "POST", headers: { Authorization: `Bearer ${key}` } })).status).toBe(404);
     const noScope = (await createSecretKey(h!.db, "proj1", "k3", ["customer_information:customers:read"])).key;
     expect((await check(undefined, noScope)).status).toBe(403);
+    // Read access is not enough: the stored .p8 with another bundle ID would describe any app of the Apple team.
+    const readOnly = (await createSecretKey(h!.db, "proj1", "k4", ["project_configuration:apps:read"])).key;
+    expect((await check({ bundle_id: "com.other.app" }, readOnly)).status).toBe(403);
   });
 });

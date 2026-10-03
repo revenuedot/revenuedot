@@ -67,6 +67,13 @@ export async function checkConnectKey(deps: Pick<Deps, "stores" | "fetch" | "now
       }
       return invalid(`Apple did not accept the key (401). The key ID, issuer ID and .p8 file must belong to one team key: check that the key ID matches the file name AuthKey_${creds.keyId}.p8, that the issuer ID is the one shown above the team keys list (not an individual key), and that the key is not revoked. An In-App Purchase key (SubscriptionKey_….p8) does not work here.`, extra);
     }
+    if (e.status === 403 && e.code && e.code !== "FORBIDDEN_ERROR") {
+      // Not the role: Apple's own reason, such as FORBIDDEN.REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED (the Paid Apps agreement).
+      const said = e.message.replace(/^App Store Connect refused the API key \((.*)\)\. It needs the App Manager role\.$/s, "$1");
+      return invalid(/AGREEMENT/i.test(e.code)
+        ? `Apple refused the request (403 ${e.code}): an agreement is missing or expired. The Account Holder must accept the latest agreements under Business in App Store Connect. Apple said: ${said}`
+        : `Apple refused the request (403 ${e.code}). Apple said: ${said}`, extra);
+    }
     if (e.status === 403) {
       return invalid(step === "apps"
         ? `Apple accepted key ${creds.keyId} but refused to list apps (403). Give the key the ${ROLE} role under Users and Access → Integrations → App Store Connect API.`

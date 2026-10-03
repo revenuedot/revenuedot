@@ -63,7 +63,7 @@ cd apps/dashboard && RD_WEB=http://localhost:5178 npx playwright test e2e/setup.
 
 - It signs up a fresh account each run, so it is safe against the dev database.
 - It starts its own webhook listener on a random local port and checks the `X-RevenueCat-Webhook-Signature` HMAC of what arrives. The e2e server runs the delivery tick every 5 seconds (and right after writes) once seeding is done.
-- Apple and Google are never called. The "Check credentials" answers are mocked in the browser; the server side of that check (a signed App Store Server API request, the Google token and Play API call) is covered by `apps/server/test/setup-endpoints.test.ts`.
+- Apple and Google are never called. The "Check credentials" answers are mocked in the browser; the server side of that check (a signed App Store Server API request, the Google token and Play API call) is covered by `apps/server/test/setup-endpoints.test.ts`, and the App Store Connect API key check by `apps/server/test/connect-key-check.test.ts`.
 - `SHOTS=<dir>` saves a screenshot of each dialog and state along the way.
 
 ## Product catalog (`catalog.spec.ts`)

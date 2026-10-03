@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Shell } from "../../components/Shell";
@@ -446,7 +446,11 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
   const [replacing, setReplacing] = useState<{ p8?: boolean; asc?: boolean; sa?: boolean; secret?: boolean; amazon?: boolean; stripeKey?: boolean; whsec?: boolean; paddleKey?: boolean; paddleSecret?: boolean; rokuKey?: boolean; galaxyKey?: boolean; galaxyIap?: boolean }>({});
   const [applying, setApplying] = useState<{ busy: boolean; done: string | null; error: string | null }>({ busy: false, done: null, error: null });
   const [deleting, setDeleting] = useState(false);
-  const set = (p: Partial<Draft>) => { setTouched(true); setD((x) => ({ ...x, ...p })); setErrors((e) => { const n = { ...e }; for (const k of Object.keys(p)) delete n[k]; return n; }); };
+  const ascSeq = useRef(0);
+  const set = (p: Partial<Draft>) => {
+    // A check result describes the values it checked: changing the key or the bundle ID clears it.
+    if (["ascP8", "ascKeyId", "ascIssuerId", "storeId"].some((k) => k in p)) { ascSeq.current++; setAscCheck({ busy: false, result: null, error: null }); }
+    setTouched(true); setD((x) => ({ ...x, ...p })); setErrors((e) => { const n = { ...e }; for (const k of Object.keys(p)) delete n[k]; return n; }); };
   const apple = app.type === "app_store" || app.type === "mac_app_store";
   const google = app.type === "play_store";
   const amazon = app.type === "amazon";
@@ -486,12 +490,14 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
 
   /** The App Store Connect API key: the values on screen before they are saved, else the stored key. */
   const runAscCheck = async (useDraft: boolean) => {
+    const seq = ++ascSeq.current;
     setAscCheck({ busy: true, result: null, error: null });
-    const json = !useDraft ? {} : { bundle_id: d.storeId.trim() || null, app_store_connect_api_key: d.ascP8?.text ?? null, app_store_connect_api_key_id: d.ascKeyId.trim() || null, app_store_connect_api_key_issuer: d.ascIssuerId.trim() || null };
+    const json = !useDraft ? {} : { bundle_id: d.storeId.trim() || null, app_store_connect_api_key: d.ascP8?.text.trim() ?? null, app_store_connect_api_key_id: d.ascKeyId.trim() || null, app_store_connect_api_key_issuer: d.ascIssuerId.trim() || null };
     try {
       const r = await api<CredentialsCheck>(`${base(pid)}/apps/${app.id}/actions/verify_app_store_connect_key`, { method: "POST", json });
-      setAscCheck({ busy: false, result: r, error: null });
-    } catch (e) { setAscCheck({ busy: false, result: null, error: errMsg(e) }); }
+      // Only the newest check is shown (a click and the check after saving can overlap).
+      if (seq === ascSeq.current) setAscCheck({ busy: false, result: r, error: null });
+    } catch (e) { if (seq === ascSeq.current) setAscCheck({ busy: false, result: null, error: errMsg(e) }); }
   };
 
   const save = async () => {
@@ -574,7 +580,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
       toast("Changes saved.");
       if (credsChanged) void runCheck(false);
       // Checked once the key is complete: a saved key, or the three values just saved.
-      if (apple && ascChanged && (s.credentials.app_store_connect_api_key.configured || d.ascP8) && d.ascKeyId.trim() && d.ascIssuerId.trim()) void runAscCheck(false);
+      if (ascChanged && (s.credentials.app_store_connect_api_key.configured || d.ascP8) && d.ascKeyId.trim() && d.ascIssuerId.trim()) void runAscCheck(false);
     } catch (e) { toast(errMsg(e)); setErrors({ form: errMsg(e) }); } finally { setSaving(false); }
   };
 
@@ -720,7 +726,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
             <input id="f-vendor" className="input mono" inputMode="numeric" value={d.vendor} aria-invalid={!!errors.vendor} onChange={(e) => set({ vendor: e.target.value.trim() })} />
           </Field>
           <div className="hrow">
-            <button type="button" className="btn btn-line" disabled={ascCheck.busy || ((!cr.app_store_connect_api_key.configured && !d.ascP8) || !d.ascKeyId.trim() || !d.ascIssuerId.trim())} onClick={() => runAscCheck(true)}><Icon name="refresh" />Check credentials</button>
+            <button type="button" className="btn btn-line" disabled={ascCheck.busy || (replacing.asc && !d.ascP8) || ((!cr.app_store_connect_api_key.configured && !d.ascP8) || !d.ascKeyId.trim() || !d.ascIssuerId.trim())} onClick={() => runAscCheck(true)}><Icon name="refresh" />Check credentials</button>
             <CheckResult state={ascCheck} />
           </div>
         </Section>
@@ -1175,7 +1181,7 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
         <div className="unsaved" role="region" aria-label="Unsaved changes">
           <span>You have unsaved changes.</span>
           <div className="actions">
-            <button type="button" className="btn btn-line" disabled={saving} onClick={() => { setTouched(false); setD(start); setErrors({}); setReplacing({}); }}>Discard</button>
+            <button type="button" className="btn btn-line" disabled={saving} onClick={() => { setTouched(false); setD(start); setErrors({}); setReplacing({}); ascSeq.current++; setAscCheck({ busy: false, result: null, error: null }); }}>Discard</button>
             <button type="button" className="btn btn-dark" disabled={saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
           </div>
         </div>

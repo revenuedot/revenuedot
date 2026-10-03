@@ -5,7 +5,7 @@
  * checked against the REST API and the SDK endpoints.
  *
  * Apple and Google are never called: the "Check credentials" answer is mocked in the browser (the server side of that
- * check is covered by apps/server/test/setup-endpoints.test.ts). Webhooks go to a listener this test starts.
+ * check is covered by apps/server/test/setup-endpoints.test.ts and connect-key-check.test.ts). Webhooks go to a listener this test starts.
  *
  *   RD_WEB=http://localhost:5178 npx playwright test e2e/setup.spec.ts      (running API :8787 + dashboard :5178)
  *   npx playwright test -c e2e/playwright.config.ts e2e/setup.spec.ts         (the self-contained e2e server)
