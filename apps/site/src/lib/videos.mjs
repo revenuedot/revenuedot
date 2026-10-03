@@ -5,6 +5,7 @@ export const STREAM = "https://customer-fmxk2rh71xv35llp.cloudflarestream.com";
 
 export const VIDEOS = {
   "revenuedot-chatgpt-demo": { uid: "268e07161316f8ff9857a94fe1c7d195", title: "87-second demo: RevenueDot running a subscription app from ChatGPT" },
+  "revenuedot-dashboard-tour": { uid: "39db15d4d7f884f65f53577849b829fb", title: "14-second silent tour of the RevenueDot dashboard: Overview, MRR chart, paywall editor and experiment results" },
 };
 
 /** Stream player URL for a video, with our own poster so the first frame matches the site. */
