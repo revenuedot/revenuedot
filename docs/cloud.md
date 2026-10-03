@@ -213,9 +213,10 @@ How it runs:
   Stripe retries. The hourly billing pass re-reads every unsettled account, so a lost webhook is repaired within the hour.
 - **One subscription per account.** Checkout re-reads Stripe first (409 if one is live) and expires the customer's older open
   sessions; a duplicate that slips through is cancelled at once.
-- **Every endpoint must answer 2xx to `invoice.created`.** Stripe holds an invoice in draft until all endpoints accept it, for
-  up to 72 hours. The sandbox's endpoint points at production, which rejects sandbox signatures, so sandbox invoices wait 72
-  hours; give the sandbox its own endpoint (or a `stripe listen` forward) when testing renewals.
+- **Every endpoint must answer 2xx to `invoice.created`.** Stripe holds an invoice in draft until all enabled endpoints accept
+  it, for up to 72 hours. The sandbox has no deployed server, so its endpoint (`we_1UMEU073qxAZFIVoaBWUoq3o`, which pointed at
+  production) is disabled since 2026-10-03 and sandbox invoices charge about an hour after month end. Test webhooks on the
+  sandbox with `stripe listen` forwarding, as `scripts/e2e/real-stripe/billing.ts` does.
 - **Key permissions** (checked 2026-10-03): read on Subscriptions, Invoices, Checkout Sessions, Customers; write on Customers,
   Checkout Sessions (create, expire), Subscriptions (cancel a duplicate), Customer portal, Billing Meter Events.
 - **Secrets** on Worker `revenuedot`: `REVENUEDOT_BILLING_STRIPE_SECRET_KEY`, `REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET`,
