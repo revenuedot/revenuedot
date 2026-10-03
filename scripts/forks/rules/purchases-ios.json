@@ -7,6 +7,37 @@
     "SPM https://github.com/revenuedot/purchases-ios (products RevenueCat, RevenueCatUI), tags <version>-revenuedot"
   ],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot iOS SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's iOS SDK, pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "Tests",
+        "BackendIntegrationTests",
+        "Projects",
+        "Examples",
+        "emerge",
+        "ci_scripts"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Install with CocoaPods (pod 'RevenueDotPurchases', plus 'RevenueDotPurchasesUI' for paywalls) or Swift Package Manager from https://github.com/revenuedot/purchases-ios.",
+        "Swift Package Manager tags are the upstream version followed by -revenuedot, and the products are named RevenueCat and RevenueCatUI.",
+        "Keep `import RevenueCat` and `import RevenueCatUI`: the module names and every class and method name match the RevenueCat iOS SDK.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, set `Purchases.proxyURL = URL(string: \"https://revenuedot.example.com\")!` before `Purchases.configure(withAPIKey:)`.",
+        "Pass the app's public key from the RevenueDot dashboard (it starts with appl_) to `Purchases.configure(withAPIKey:)`."
+      ]
+    },
     { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api.revenuecat.com", "replace": "{{apiHost}}", "note": "main API, web billing, remote config source, test-only force-failure URL" },
     { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api-diagnostics.revenuecat.com", "replace": "{{apiHost}}", "note": "diagnostics" },
     { "type": "replace", "files": ["Sources/**/*.swift"], "find": "https://api-paywalls.revenuecat.com", "replace": "{{apiHost}}", "note": "paywall and customer-center events" },

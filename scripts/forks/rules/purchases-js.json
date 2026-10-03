@@ -3,6 +3,34 @@
   "upstream": "https://github.com/RevenueCat/purchases-js",
   "publishes": ["npm @revenuedot/purchases-js", "npm @revenuedot/purchases-js-vega"],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Web SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's web SDK (purchases-js), pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "api-report",
+        ".storybook",
+        "examples",
+        ".husky"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Install with `npm install {{npmScope}}/purchases-js`, or alias it as \"@revenuecat/purchases-js\": \"npm:{{npmScope}}/purchases-js@<version>\" to keep existing imports.",
+        "Use `import { Purchases } from \"{{npmScope}}/purchases-js\"` and `Purchases.configure({ apiKey, appUserId })` with the web app's public key from the RevenueDot dashboard.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, pass `httpConfig: { proxyURL: \"https://revenuedot.example.com\" }` with no trailing slash.",
+        "Analytics events follow `proxyURL` too, so `collectAnalyticsEvents` can stay on."
+      ]
+    },
     { "type": "replace", "files": [".env.production"], "regex": true, "flags": "m", "find": "^VITE_RC_ENDPOINT=.*$", "replace": "VITE_RC_ENDPOINT={{apiHost}}", "note": "API host (build-time constant)" },
     { "type": "replace", "files": [".env.production"], "regex": true, "flags": "m", "find": "^VITE_RC_ANALYTICS_ENDPOINT=.*$", "replace": "VITE_RC_ANALYTICS_ENDPOINT={{apiHost}}", "note": "events go to our API (/v1/events), not e.revenue.cat" },
     { "type": "replace", "files": [".env.production", ".env.development"], "regex": true, "flags": "m", "find": "^VITE_ASSETS_ENDPOINT=.*$", "replace": "VITE_ASSETS_ENDPOINT={{assetsHost}}", "note": "checkout branding assets (app icon, wordmark)" },

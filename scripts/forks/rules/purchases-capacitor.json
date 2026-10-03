@@ -3,6 +3,36 @@
   "upstream": "https://github.com/RevenueCat/purchases-capacitor",
   "publishes": ["npm @revenuedot/purchases-capacitor", "npm @revenuedot/purchases-capacitor-ui (install both through npm aliases so Capacitor's generated pod and SPM names stay the same)"],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Capacitor SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's Capacitor SDK (also for Ionic), pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "__tests__",
+        "apitesters",
+        "api-report",
+        "e2e-tests",
+        "example",
+        ".husky"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Install only through npm aliases: \"@revenuecat/purchases-capacitor\": \"npm:{{npmScope}}/purchases-capacitor@<version>\", and the same for purchases-capacitor-ui. Capacitor derives native names from the npm package name.",
+        "Keep `import { Purchases } from \"@revenuecat/purchases-capacitor\"`; the alias leaves imports unchanged. Then run `npx cap sync`.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, call `await Purchases.setProxyURL({ url: \"https://revenuedot.example.com\" })` before `configure`.",
+        "Pass each app's public key from the RevenueDot dashboard to `Purchases.configure`: appl_ for iOS and goog_ for Android."
+      ]
+    },
     { "type": "replace", "files": ["RevenuecatPurchasesCapacitor.podspec"], "find": "s.dependency 'PurchasesHybridCommon', ", "replace": "s.dependency 'RevenueDotPurchasesHybridCommon', " },
     { "type": "replace", "files": ["purchases-capacitor-ui/RevenuecatPurchasesCapacitorUI.podspec"], "find": "s.dependency 'PurchasesHybridCommonUI', ", "replace": "s.dependency 'RevenueDotPurchasesHybridCommonUI', " },
     { "type": "replace", "files": ["Package.swift", "purchases-capacitor-ui/Package.swift"], "regex": true, "find": "\\.package\\(url: \"https://github\\.com/RevenueCat/purchases-hybrid-common\\.git\", exact: \"([0-9][^\"-]*)\"\\)", "replace": ".package(url: \"https://github.com/{{org}}/purchases-hybrid-common.git\", exact: \"$1{{gitTagSuffix}}\")", "done": "https://github.com/{{org}}/purchases-hybrid-common.git" },

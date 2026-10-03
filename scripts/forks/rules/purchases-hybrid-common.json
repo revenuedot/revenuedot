@@ -8,6 +8,33 @@
     "npm @revenuedot/purchases-typescript-internal, @revenuedot/purchases-typescript-internal-esm, @revenuedot/purchases-js-hybrid-mappings"
   ],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Purchases Hybrid Common",
+      "description": "Shared native and TypeScript layer under RevenueDot's React Native, Flutter, Capacitor, Unity and Cordova SDKs, forked from RevenueCat's MIT purchases-hybrid-common.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        ".lefthook",
+        ".swiftpm"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Do not install this package directly: install the RevenueDot React Native, Flutter, Capacitor, Unity or Cordova SDK, which pull it in.",
+        "Configure the wrapper SDK, not this layer: its `setProxyURL` and `configure` calls pass through to RevenueDot's native iOS and Android SDKs.",
+        "It publishes CocoaPods RevenueDotPurchasesHybridCommon and RevenueDotPurchasesHybridCommonUI, and Maven Central {{mavenGroup}}:purchases-hybrid-common.",
+        "The npm packages are {{npmScope}}/purchases-typescript-internal, {{npmScope}}/purchases-typescript-internal-esm and {{npmScope}}/purchases-js-hybrid-mappings, installed through npm aliases by the wrappers.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host; a self-hosted server is set with the wrapper SDK's `setProxyURL`."
+      ]
+    },
     { "type": "rename", "from": "PurchasesHybridCommon.podspec", "to": "RevenueDotPurchasesHybridCommon.podspec" },
     { "type": "rename", "from": "PurchasesHybridCommonUI.podspec", "to": "RevenueDotPurchasesHybridCommonUI.podspec" },
     { "type": "replace", "files": ["RevenueDotPurchasesHybridCommon.podspec"], "find": "s.name             = \"PurchasesHybridCommon\"", "replace": "s.name             = \"RevenueDotPurchasesHybridCommon\"\n  s.module_name      = \"PurchasesHybridCommon\"", "done": "s.module_name      = \"PurchasesHybridCommon\"" },

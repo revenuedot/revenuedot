@@ -5,6 +5,45 @@
     "Maven Central app.revenuedot.purchases:purchases, purchases-ui, purchases-store-amazon, purchases-store-galaxy, purchases-bom, … (same artifact ids, Kotlin packages stay com.revenuecat.purchases.*)"
   ],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Android SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's Android SDK, pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "api-tester",
+        "baselineprofile",
+        "build-logic",
+        "codegen",
+        "danger",
+        "detekt-rules",
+        "examples",
+        "integration-tests",
+        "maestro",
+        "test-apps",
+        "upstream",
+        "dokka-hide-internal",
+        ".idea",
+        ".run",
+        ".cursor"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Add `implementation(\"{{mavenGroup}}:purchases:<version>\")` from Maven Central, plus `{{mavenGroup}}:purchases-ui` for paywalls. The artifact ids are the same as RevenueCat's.",
+        "Kotlin packages stay `com.revenuecat.purchases.*`, so imports such as `import com.revenuecat.purchases.Purchases` do not change.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, set `Purchases.proxyURL = URL(\"https://revenuedot.example.com\")` before `Purchases.configure`.",
+        "Pass the app's public key from the RevenueDot dashboard (it starts with goog_) to `PurchasesConfiguration.Builder`."
+      ]
+    },
     { "type": "replace", "files": ["**/src/main/**/*.kt", "**/src/main/**/*.java"], "find": "https://api.revenuecat.com", "replace": "{{apiHost}}", "note": "main API, codegen client (/v2), test-only force-failure URL" },
     { "type": "replace", "files": ["**/src/main/**/*.kt"], "find": "https://api-diagnostics.revenuecat.com", "replace": "{{apiHost}}", "note": "diagnostics" },
     { "type": "replace", "files": ["**/src/main/**/*.kt"], "find": "https://api-paywalls.revenuecat.com", "replace": "{{apiHost}}", "note": "paywall events" },
