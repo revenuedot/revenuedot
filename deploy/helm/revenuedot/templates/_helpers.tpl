@@ -48,8 +48,8 @@ app.kubernetes.io/part-of: revenuedot
 {{- end -}}
 
 {{- define "revenuedot.image" -}}
-{{- $repo := required "Set image.repository: there is no published RevenueDot image yet. Build and push one (docker build -t <registry>/revenuedot:<tag> . in the repository) and set image.repository and image.tag." .Values.image.repository -}}
-{{- printf "%s:%s" $repo (default .Chart.AppVersion .Values.image.tag) -}}
+{{- $repo := required "Set image.repository (the published image is ghcr.io/revenuedot/revenuedot)." .Values.image.repository -}}
+{{- printf "%s:%s" $repo (default "latest" .Values.image.tag) -}}
 {{- end -}}
 
 {{/* The public address: publicUrl, else the first Ingress host. */}}

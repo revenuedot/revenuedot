@@ -1,0 +1,116 @@
+# Publishes the self-host image, ghcr.io/revenuedot/revenuedot, for linux/amd64 and linux/arm64: on every push to main
+# that changes what goes into the image, and on every v* tag (path filters never apply to tags). Tags: `latest` and the
+# date (2026.10.03) on main, the short commit on every build, and the version (v0.3.5 -> 0.3.5) on a release tag.
+#
+# Its own workflow, not a job of deploy.yml: the arm64 half runs under QEMU and takes a while, and the Worker deploy
+# must never wait for it. After the push, the image is pulled back from the registry and started against Postgres 16.
+name: Publish image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    # Everything the Dockerfile copies, plus the Dockerfile and this workflow.
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - apps/server/**
+      - apps/dashboard/**
+      - packages/**
+      - ee/**
+      - design/**
+      - brand/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - .github/workflows/publish-image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYY.MM.DD'}},enable={{is_default_branch}}
+            type=sha,format=short,prefix=
+            type=semver,pattern={{version}}
+          labels: |
+            org.opencontainers.image.title=RevenueDot
+            org.opencontainers.image.description=Open-source, self-hostable server for in-app purchases and subscriptions that works with the RevenueCat SDK. API and dashboard in one image; set DATABASE_URL to a Postgres.
+            org.opencontainers.image.url=https://revenuedot.app/docs/guides/self-hosting
+            org.opencontainers.image.licenses=AGPL-3.0-only
+      - id: push
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          # The Dockerfile downloads packages from the lockfile alone (pnpm fetch) before it copies the source, so that
+          # layer, the slow one under QEMU, comes from this cache whenever the lockfile is unchanged.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # The image as self-hosters get it: pulled from the registry by digest, started against Postgres 16, healthy.
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Both platforms are in the manifest
+        run: |
+          docker buildx imagetools inspect "$IMAGE@${{ needs.build.outputs.digest }}" | tee manifest.txt
+          for p in linux/amd64 linux/arm64; do grep -q "Platform: *$p" manifest.txt || { echo "missing $p"; exit 1; }; done
+      - name: Start with Postgres and check health
+        run: |
+          docker network create rd
+          docker run -d --name db --network rd -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=revenuedot postgres:16
+          for i in $(seq 1 30); do docker exec db pg_isready -U postgres && break; sleep 1; done
+          docker run -d --name app --network rd -p 8787:8787 -e DATABASE_URL=postgres://postgres:ci@db:5432/revenuedot "$IMAGE@${{ needs.build.outputs.digest }}"
+          for i in $(seq 1 90); do curl -sf http://localhost:8787/healthz && break; sleep 1; done
+          curl -sf http://localhost:8787/healthz && curl -sf http://localhost:8787/readyz && curl -sf -o /dev/null http://localhost:8787/login || { docker logs app; exit 1; }
+          docker stop -t 30 app
+      - name: Summary
+        run: |
+          { echo "Pushed \`$IMAGE\` (linux/amd64, linux/arm64), digest \`${{ needs.build.outputs.digest }}\`:"; echo; echo '```'; echo "${{ needs.build.outputs.tags }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

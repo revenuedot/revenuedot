@@ -273,8 +273,8 @@ jobs:
           done
           # Guard rails: each of these must refuse to render, with its own message (a bare `! cmd` would never fail the step).
           refuses() { local want="$1"; shift; if out=$(helm template rd . "$@" 2>&1); then echo "rendered, expected: $want"; exit 1; fi; grep -q "$want" <<<"$out" || { echo "$out"; exit 1; }; }
-          ok="--set image.repository=registry.example.com/revenuedot --set publicUrl=https://x.example.com"
-          refuses "Set image.repository" --set publicUrl=https://x.example.com --set database.url=postgres://x
+          ok="--set publicUrl=https://x.example.com"
+          refuses "Set image.repository" $ok --set database.url=postgres://x --set image.repository=
           refuses "exactly one database" $ok
           refuses "exactly one database" $ok --set database.url=postgres://x --set postgresql.enabled=true
           refuses "needs database.existingSecret" $ok --set database.url=postgres://x --set migrations.mode=job

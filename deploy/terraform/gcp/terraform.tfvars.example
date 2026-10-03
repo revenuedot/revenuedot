@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars and edit. Never commit terraform.tfvars or the state: they hold secrets.
 project_id  = "my-project"
 region      = "us-central1"
-image       = "us-central1-docker.pkg.dev/my-project/revenuedot/revenuedot:0.1.0"
+image       = "us-central1-docker.pkg.dev/my-project/revenuedot/revenuedot:2026.10.03" # ghcr.io/revenuedot/revenuedot:<tag>, copied to Artifact Registry
 alert_email = "oncall@example.com"
 
 # Optional

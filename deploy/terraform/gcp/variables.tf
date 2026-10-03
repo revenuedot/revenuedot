@@ -20,7 +20,7 @@ variable "name" {
 }
 
 variable "image" {
-  description = "RevenueDot container image in Artifact Registry, e.g. us-central1-docker.pkg.dev/my-project/revenuedot/revenuedot:0.1.0."
+  description = "RevenueDot container image in Artifact Registry, e.g. us-central1-docker.pkg.dev/my-project/revenuedot/revenuedot:2026.10.03. Cloud Run pulls from Artifact Registry only: copy the published image there (docker pull ghcr.io/revenuedot/revenuedot:<tag>, docker tag, docker push), or make an Artifact Registry remote repository that proxies ghcr.io."
   type        = string
 }
 

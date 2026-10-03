@@ -38,8 +38,9 @@ variable "certificate_arn" {
 }
 
 variable "image" {
-  description = "RevenueDot container image (ECR or another registry), e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com/revenuedot:0.1.0."
+  description = "RevenueDot container image. The published one (ghcr.io/revenuedot/revenuedot, linux/amd64 and linux/arm64) pulls through the NAT gateway with no credentials; pin a date tag (ghcr.io/revenuedot/revenuedot:2026.10.03) or a commit tag in production, or copy it to ECR (123456789012.dkr.ecr.us-east-1.amazonaws.com/revenuedot:2026.10.03)."
   type        = string
+  default     = "ghcr.io/revenuedot/revenuedot:latest"
 }
 
 variable "cpu_architecture" {
