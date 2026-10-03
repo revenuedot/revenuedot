@@ -230,7 +230,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const [last] = await db.select().from(schema.storeNotifications)
       .where(and(eq(schema.storeNotifications.appId, a.id), isNotNull(schema.storeNotifications.forwardStatus)))
       .orderBy(desc(schema.storeNotifications.receivedAt)).limit(1);
-    const health = await notificationHealth(db, a);
+    const health = await notificationHealth(db, a, deps.now());
     let clientEmail: string | null = null;
     if (googleKeyConfigured(cr)) { try { clientEmail = serviceAccountOf(a).client_email; } catch { /* shown as configured but unreadable */ } }
     return c.json({
@@ -246,6 +246,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       last_notification_error: health.notification_status === "failing" ? health.last_notification_error!.message : null,
       last_notification_received_at: health.last_notification_received_at,
       notification_status: health.notification_status,
+      // Unsigned or badly signed requests of the last 24 hours, shown apart: they never change notification_status.
+      rejected_requests: health.rejected_requests,
       last_forward: last ? { status: last.forwardStatus, at: last.receivedAt.getTime() } : null,
       track_new_purchases: cr.track_new_purchases === true,
       allow_unsigned_receipts: cr.allow_unsigned_receipts === true,

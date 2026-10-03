@@ -38,12 +38,13 @@ test("apps: SDK compatibility from real SDK calls, and failing store notificatio
   expect((await sdkCall("sdk_rn_1", { "X-Platform": "android", "X-Platform-Flavor": "react-native", "X-Platform-Flavor-Version": "8.11.0", "X-Version": "9.6.0", "X-Platform-Version": "35" })).ok()).toBe(true);
   expect((await sdkCall("sdk_ios_4", { ...ios, "X-Version": "4.43.2" })).ok()).toBe(true);
 
-  // Apple sends a notification this server cannot verify: the app's notifications are failing.
+  // Someone posts a notification this server cannot verify: rejected, and the app's notifications are not failing.
   expect((await page.request.post(`/v1/notifications/apple/${iosApp.id}`, { data: { signedPayload: "not.a.jws" } })).status()).toBe(400);
 
   await page.goto(`/projects/${pid}/apps`);
   const row = page.getByRole("row").filter({ hasText: iosApp.name });
-  await expect(row).toContainText("Notifications failing");
+  await expect(row).toBeVisible();
+  await expect(row).not.toContainText("Notifications failing");
   await expect(page.getByRole("row").filter({ hasText: testApp.name })).toContainText("Ready");
 
   const panel = page.getByRole("region", { name: "SDK compatibility" });

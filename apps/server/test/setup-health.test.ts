@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
-import { env, makeKeys, sub, type Env, type Keys } from "./google-helpers.js";
+import { env, makeKeys, pushToken, sub, type Env, type Keys } from "./google-helpers.js";
 import { contextFor } from "../src/services/targeting.js";
 
 const T0 = new Date("2026-09-01T12:00:00Z");
@@ -15,11 +15,14 @@ afterEach(async () => { await e?.h.close(); });
 const health = async () => (await (await e.call("/v2/projects/proj1/setup_health", { key: e.h.ids.secretKey })).json());
 const playApp = async () => (await health()).apps.find((a: any) => a.id === "app_play");
 const settings = async () => (await e.call("/v2/projects/proj1/apps/app_play/store_settings", { key: e.h.ids.secretKey })).json();
-const note = (notificationType: number, purchaseToken: string) => e.rtdn({ subscriptionNotification: { version: "1.0", notificationType, purchaseToken, subscriptionId: "pro" } });
+// With Pub/Sub push authentication on, so a message with an invalid token is Google's and counts as a failure.
+const AUD = "https://api.example.com/v1/notifications/google/app_play";
+const note = async (notificationType: number, purchaseToken: string) =>
+  e.rtdn({ subscriptionNotification: { version: "1.0", notificationType, purchaseToken, subscriptionId: "pro" } }, { auth: `Bearer ${await pushToken(keys, e.g, AUD)}` });
 
 describe("setup health marks an app Ready only after a notification was processed", () => {
   it("waiting, then failing on an invalid token (not Ready), received for an untracked purchase, Ready after a processed one, failing again on an outage", async () => {
-    e = await env(keys);
+    e = await env(keys, { pubsub_audience: AUD });
     expect(await playApp()).toMatchObject({ notification_status: "waiting", last_notification_at: null, last_notification_error: null });
 
     await note(2, "tok_missing");

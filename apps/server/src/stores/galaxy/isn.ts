@@ -10,7 +10,10 @@ import { importIapPublicKey } from "./api.js";
  */
 export const SAMSUNG_ISSUER = "iap.samsungapps.com";
 
-export class GalaxyNotificationError extends Error {}
+/** `authenticated`: the signature verified, so the notification is Samsung's and only its content is wrong. */
+export class GalaxyNotificationError extends Error {
+  constructor(message: string, readonly authenticated = false) { super(message); }
+}
 
 export interface GalaxyNotification { event: string; data: Record<string, any>; iat: number | null; verified: boolean }
 
@@ -38,10 +41,10 @@ export async function readGalaxyNotification(body: string, o: { packageName: str
   } else {
     try { claims = decodeJwt(token); } catch { throw new GalaxyNotificationError("The notification's JWT cannot be read."); }
   }
-  if (claims.iss !== SAMSUNG_ISSUER) throw new GalaxyNotificationError(`The notification is not from Samsung (iss ${String(claims.iss)}).`);
+  if (claims.iss !== SAMSUNG_ISSUER) throw new GalaxyNotificationError(`The notification is not from Samsung (iss ${String(claims.iss)}).`, verified);
   const aud = Array.isArray(claims.aud) ? claims.aud.map(String) : typeof claims.aud === "string" ? [claims.aud] : [];
-  if (o.packageName && !aud.includes(o.packageName)) throw new GalaxyNotificationError(`The notification is for ${aud.join(", ") || "no package"}, not ${o.packageName}.`);
-  if (typeof claims.sub !== "string" || !claims.sub) throw new GalaxyNotificationError("The notification names no event (sub).");
+  if (o.packageName && !aud.includes(o.packageName)) throw new GalaxyNotificationError(`The notification is for ${aud.join(", ") || "no package"}, not ${o.packageName}.`, verified);
+  if (typeof claims.sub !== "string" || !claims.sub) throw new GalaxyNotificationError("The notification names no event (sub).", verified);
   const data = claims.data && typeof claims.data === "object" ? claims.data as Record<string, any> : {};
   return { event: claims.sub, data, iat: typeof claims.iat === "number" ? claims.iat : null, verified };
 }

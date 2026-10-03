@@ -10,6 +10,7 @@ import { RokuApiError } from "./api.js";
 import { rokuClientFor } from "./index.js";
 import { RokuPushError, verifyRokuPush } from "./push.js";
 import { handleRokuPush } from "./sync.js";
+import { logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -29,10 +30,9 @@ export function rokuNotificationRoutes(deps: Deps) {
     if (!row || row.type !== "roku") return c.json({ code: Codes.NOT_FOUND, message: "No Roku app with this id." }, 404);
     const { client } = rokuClientFor(deps.stores, deps.fetch);
     const raw = await c.req.text();
+    // A push Roku did not sign is a rejected request (stores/rejected.ts), never part of the app's notification status.
     const reject = async (error: string, message: string) => {
-      await deps.db.insert(storeNotifications).values({
-        id: `roku_${row.id}_rejected_${crypto.randomUUID()}`, projectId: row.projectId, appId: row.id, store: "roku", type: null, subtype: null, body: raw.slice(0, 64_000), receivedAt: now, error,
-      });
+      if (!(await logRejected(deps, c, row, { store: "roku", raw, error }))) return tooManyRejected(c);
       return c.json({ code: Codes.BAD_REQUEST, message }, 400);
     };
     let push;

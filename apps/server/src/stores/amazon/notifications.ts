@@ -11,6 +11,7 @@ import { AmazonApiError } from "./api.js";
 import { amazonClientFor } from "./index.js";
 import { isSnsHost, parseSns, SnsError, verifySns } from "./sns.js";
 import { syncAmazonNotification, type AmazonNotification } from "./sync.js";
+import { logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -43,12 +44,11 @@ export function amazonNotificationRoutes(deps: Deps) {
     if (m.Type === "Notification") { try { n = JSON.parse(m.Message); } catch { n = null; } }
     const type = m.Type === "Notification" ? (n?.notificationType ?? "UNKNOWN") : m.Type === "SubscriptionConfirmation" ? "SUBSCRIPTION_CONFIRMATION" : m.Type === "UnsubscribeConfirmation" ? "UNSUBSCRIBE_CONFIRMATION" : m.Type;
     const subtype = n?.receiptId ? String(n.receiptId).slice(0, 120) : null;
-    // A message that fails the checks is kept (the app's notification status shows why) under an id of its own, so an
-    // unsigned body can never take a real message's id, and it is never forwarded.
+    // A message without a valid SNS signature from the app's topic is a rejected request (stores/rejected.ts): logged
+    // under an id of its own, so an unsigned body can never take a real message's id, never forwarded, and never part
+    // of the app's notification status.
     const reject = async (status: 400 | 503, error: string, message: string) => {
-      await deps.db.insert(storeNotifications).values({
-        id: `amz_${app.id}_rejected_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "amazon", type, subtype, body: raw.slice(0, 64_000), receivedAt: now, error,
-      });
+      if (!(await logRejected(deps, c, app, { store: "amazon", raw, type, subtype, error }))) return tooManyRejected(c);
       return c.json({ code: status === 503 ? Codes.STORE_PROBLEM : Codes.BAD_REQUEST, message }, status);
     };
 
@@ -56,7 +56,7 @@ export function amazonNotificationRoutes(deps: Deps) {
       await verifySns(m, fetchFn, now);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof SnsError && e.transient) return reject(503, msg, "Could not load the SNS signing certificate; SNS will retry.");
+      if (e instanceof SnsError && e.transient) return reject(503, `rejected: ${msg}`, "Could not load the SNS signing certificate; SNS will retry.");
       return reject(400, `rejected: ${msg}`, msg);
     }
     // Any AWS account can sign SNS messages, so the signature alone does not say the message is Amazon's. Messages must

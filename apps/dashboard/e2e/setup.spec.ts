@@ -206,12 +206,13 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await page.unroute("**/actions/verify_app_store_connect_key");
   });
 
-  await test.step("a store notification is forwarded and the status on the open page updates by itself", async () => {
+  await test.step("an unsigned notification is forwarded, counted as a rejected request on the open page, and does not fail the app", async () => {
     const res = await api("POST", `/v1/notifications/apple/${iosId}`, { signedPayload: "not-a-jws" });
     expect(res.status).toBe(400);
     await expect.poll(() => hooks.hits.filter((h) => h.path === "/apple-forward").length, { timeout: 10_000 }).toBe(1);
     expect(JSON.parse(hooks.hits.find((h) => h.path === "/apple-forward")!.body)).toEqual({ signedPayload: "not-a-jws" });
-    await expect(page.getByText(/The last notification from Apple could not be processed/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("rejected-requests")).toContainText("1 rejected request in the last 24 hours", { timeout: 15_000 });
+    await expect(page.getByText(/The last notification from Apple could not be processed/)).toHaveCount(0);
     await expect(page.getByText(/Last forward: HTTP 200/)).toBeVisible({ timeout: 15_000 });
     await shot("app-store-live-status");
   });
@@ -312,9 +313,9 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await expect(row).toContainText(testKey);
     await row.getByRole("button", { name: "Copy public SDK key" }).click();
     expect(await clipboard()).toBe(testKey);
-    // The only App Store notification (the forwarded one above) failed verification, so the app is not Ready: its
-    // notifications are failing until one is processed. Google Play has none yet.
-    await expect(page.getByRole("row", { name: /Scanner iOS/ })).toContainText("Notifications failing");
+    // The only App Store request (the forwarded one above) was unsigned: a rejected request, which never makes the app's
+    // notifications failing (anyone who knows the app id can send one). Google Play has none yet.
+    await expect(page.getByRole("row", { name: /Scanner iOS/ })).toContainText("Waiting for store notifications");
     await expect(page.getByRole("row", { name: /Scanner Android/ })).toContainText("Waiting for store notifications");
     await shot("apps-list");
   });

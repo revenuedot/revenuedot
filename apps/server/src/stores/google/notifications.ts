@@ -7,6 +7,7 @@ import { Codes, RCError } from "../../errors.js";
 import { GoogleApiError, type GooglePlayClient } from "./api.js";
 import { googleClientFor } from "./index.js";
 import { applyVoided, syncOneTime, syncSubscription, type SyncCtx, type SyncResult } from "./sync.js";
+import { demoteToRejected, logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -118,6 +119,9 @@ async function handle(ctx: SyncCtx, n: DeveloperNotification): Promise<SyncResul
  * Every message is stored raw and forwarded (when configured). Pub/Sub redelivers anything but 2xx, so we answer 2xx
  * once a message is handled or can never be handled (bad token, other package), and 5xx for our own or Google's
  * temporary failures so it comes back.
+ * With push authentication set up (`pubsub_audience`), a push without a valid token is a rejected request
+ * (stores/rejected.ts). Without it nothing proves a message came from Google, so a message that cannot be handled
+ * (unreadable data, another package, a purchase token Google does not know) is a rejected request too, not a failure.
  */
 export function googleNotificationRoutes(deps: Deps) {
   const r = new Hono();
@@ -128,12 +132,16 @@ export function googleNotificationRoutes(deps: Deps) {
     const { client } = googleClientFor(deps.stores, deps.fetch);
     const creds = (app.credentials ?? {}) as Record<string, unknown>;
 
-    if (typeof creds.pubsub_audience === "string" && creds.pubsub_audience) {
+    const authenticated = typeof creds.pubsub_audience === "string" && !!creds.pubsub_audience;
+    if (authenticated) {
       let ok = false;
       try { ok = await verifyPushToken(client, c.req.header("authorization"), creds); } catch {
         return c.json({ code: Codes.STORE_PROBLEM, message: "Could not load Google's signing keys." }, 503);
       }
-      if (!ok) return c.json({ code: Codes.INVALID_AUTH_TOKEN, message: "The Pub/Sub push token is missing or invalid." }, 401);
+      if (!ok) {
+        if (!(await logRejected(deps, c, app, { store: "play_store", raw: await c.req.text(), error: "rejected: the Pub/Sub push token is missing or invalid" }))) return tooManyRejected(c);
+        return c.json({ code: Codes.INVALID_AUTH_TOKEN, message: "The Pub/Sub push token is missing or invalid." }, 401);
+      }
     }
 
     const raw = await c.req.text();
@@ -144,6 +152,16 @@ export function googleNotificationRoutes(deps: Deps) {
 
     const n = decodeData(msg.data);
     const { type, subtype } = typeOf(n);
+    // Without push authentication, a message that is not a developer notification for this app is someone else's:
+    // rejected before it is stored, so it never takes a message id.
+    if (!authenticated) {
+      const problem = !n ? "message.data is not a base64 JSON developer notification"
+        : n.packageName && app.bundleId && n.packageName !== app.bundleId ? `package ${n.packageName} does not match the app's ${app.bundleId}` : null;
+      if (problem) {
+        if (!(await logRejected(deps, c, app, { store: "play_store", raw, type, subtype, error: `rejected: ${problem}` }))) return tooManyRejected(c);
+        return c.json({ status: "ignored" });
+      }
+    }
     const messageId = String(msg.messageId ?? msg.message_id ?? crypto.randomUUID());
     const id = `gpn_${app.id}_${messageId}`;
     const inserted = await deps.db.insert(storeNotifications).values({
@@ -177,7 +195,9 @@ export function googleNotificationRoutes(deps: Deps) {
       const permanent = (e instanceof GoogleApiError && e.kind === "invalid_token") || (e instanceof RCError && e.status < 500 && e.code === Codes.INVALID_RECEIPT);
       const message = e instanceof Error ? e.message : String(e);
       if (permanent) {
-        await finish({ processedAt: now, error: `invalid purchase token: ${message}` });
+        // Unauthenticated, a token Google does not know proves the message is not Google's.
+        if (authenticated) await finish({ processedAt: now, error: `invalid purchase token: ${message}` });
+        else await demoteToRejected(deps, c, app, "play_store", id, `rejected: invalid purchase token: ${message}`);
         return c.json({ status: "invalid_token" });
       }
       console.error(`Google notification ${id} failed:`, e);

@@ -556,6 +556,11 @@ export const storeNotifications = pgTable("store_notifications", {
   body: text("body").notNull(),
   processedAt: ts("processed_at"),
   error: text("error"),
+  /**
+   * A request that failed authentication (no or a bad signature, an unverifiable sender): kept for the "rejected requests"
+   * count, never part of the app's notification status, so anyone who knows an app id cannot turn it to failing.
+   */
+  rejected: boolean("rejected").notNull().default(false),
   forwardStatus: integer("forward_status"),
   receivedAt: created(),
 }, (t) => [index("notifications_app_time").on(t.appId, t.receivedAt)]);

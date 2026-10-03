@@ -199,9 +199,26 @@ function CheckResult({ state }: { state: { busy: boolean; result: CredentialsChe
 
 /** "Last received" for store notifications, refreshed every 10 seconds while the page is open. */
 function NotificationStatus({ s, store }: { s: StoreSettings; store: StoreName }) {
+  return <>
+    <NotificationState s={s} store={store} />
+    <RejectedRequestsLine s={s} />
+  </>;
+}
+
+function NotificationState({ s, store }: { s: StoreSettings; store: StoreName }) {
   if (s.last_notification_error) return <StatusLine tone="bad">The last notification from {store} could not be processed: {s.last_notification_error}</StatusLine>;
   if (s.last_notification_at) return <StatusLine tone="ok">{store} notifications are configured correctly. Last received {fmt.ago(s.last_notification_at)} ({fmt.dateTime(s.last_notification_at)}).</StatusLine>;
   return <StatusLine tone="live">Waiting for the first notification from {store}. This updates by itself once {store} sends one.</StatusLine>;
+}
+
+/** Requests that failed authentication, counted apart: they never change the status above. */
+function RejectedRequestsLine({ s }: { s: StoreSettings }) {
+  const r = s.rejected_requests;
+  if (!r?.last_24h) return null;
+  return <p className="subtle" data-testid="rejected-requests">
+    {r.last_24h === 1 ? "1 rejected request" : `${r.last_24h} rejected requests`} in the last 24 hours. They had no valid signature, so they do not change the status above.
+    {r.last && <> The latest, {fmt.ago(r.last.at)}: {r.last.message}</>}
+  </p>;
 }
 
 const FORWARD_NAME: Record<StoreName, string> = {

@@ -209,7 +209,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
       appItems.push({
         id: a.id, name: a.name, type: a.type,
         notification_url: store ? `${origin}/v1/notifications/${store}/${a.id}` : null,
-        ...(await notificationHealth(db, a)),
+        ...(await notificationHealth(db, a, now)),
         credentials_configured: credentials,
       });
     }
