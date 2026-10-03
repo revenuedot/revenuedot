@@ -23,7 +23,49 @@
     { "type": "include", "group": "podspec", "files": ["RevenueDotPurchases.podspec", "RevenueDotPurchasesUI.podspec"] },
 
     { "type": "license", "files": ["LICENSE"] },
-    { "type": "banner", "files": ["README.md"], "install": "CocoaPods `pod 'RevenueDotPurchases'` (and `pod 'RevenueDotPurchasesUI'`), or Swift Package Manager with `https://github.com/revenuedot/purchases-ios`. The module is still `RevenueCat`, so `import RevenueCat` and `import RevenueCatUI` stay as they are." }
+    {
+      "type": "readme",
+      "file": "README.md",
+      "title": "RevenueDot iOS SDK",
+      "upstreamPackage": "purchases-ios",
+      "docs": "https://revenuedot.app/docs/sdks/ios",
+      "badges": [
+        {
+          "alt": "CocoaPods",
+          "image": "https://img.shields.io/cocoapods/v/RevenueDotPurchases?label=CocoaPods",
+          "link": "https://cocoapods.org/pods/RevenueDotPurchases"
+        },
+        {
+          "alt": "Swift Package",
+          "image": "https://img.shields.io/github/v/tag/{{org}}/{{repo}}?filter=*{{gitTagSuffix}}&label=Swift%20Package",
+          "link": "https://github.com/{{org}}/{{repo}}/releases"
+        }
+      ],
+      "install": [
+        "```ruby",
+        "# Podfile",
+        "pod 'RevenueDotPurchases', '{{version}}'",
+        "pod 'RevenueDotPurchasesUI', '{{version}}'   # only if you use RevenueCatUI",
+        "```",
+        "```swift",
+        "// Package.swift, or Xcode > Add Package Dependencies",
+        ".package(url: \"https://github.com/{{org}}/{{repo}}\", exact: \"{{version}}{{gitTagSuffix}}\")",
+        "// Products: \"RevenueCat\" and \"RevenueCatUI\"",
+        "```",
+        "The modules stay `RevenueCat` and `RevenueCatUI`, so `import RevenueCat` does not change."
+      ],
+      "configure": {
+        "lang": "swift",
+        "code": [
+          "import RevenueCat",
+          "",
+          "// Self-hosted server only: RevenueDot Cloud ({{apiHost}}) is the default.",
+          "Purchases.proxyURL = URL(string: \"https://revenuedot.example.com\")!",
+          "Purchases.configure(withAPIKey: \"appl_...\")   // the app's public key from the RevenueDot dashboard"
+        ]
+      },
+      "example": "mobile/ios-swiftui"
+    }
   ],
   "version": {"file": ".version"},
   "scanExclude": ["Tests/**", "Projects/**", "Examples/**", "Sources/**/*.docc/**", "BackendIntegrationTests/**", "Local.xcconfig.SAMPLE", "**/*.xcconfig"],

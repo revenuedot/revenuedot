@@ -24,9 +24,35 @@ export interface DeleteRule extends Base { type: "delete"; files: string[] }
 export interface LicenseRule extends Base { type: "license"; files: string[]; stubFrom?: string }
 /** Keeps a marked fork banner at the top of each README. */
 export interface BannerRule extends Base { type: "banner"; files: string[]; install: string }
+/**
+ * Keeps the RevenueDot README (lockup, H1, badges, install, configure, links) at the top of the repo README, above the
+ * upstream README, which follows unchanged under "Upstream README". `{{version}}` is the newest published fork release
+ * (see apply.ts), `{{forkVersion}}` the version this checkout declares. Strings may be given as arrays of lines.
+ */
+export interface ReadmeRule extends Base {
+  type: "readme"; file: string;
+  /** H1, for example "RevenueDot iOS SDK". */
+  title: string;
+  /** Upstream package or repo name named in the first sentence, for example "purchases-ios". */
+  upstreamPackage: string;
+  /** Docs page for this SDK, for example "https://revenuedot.app/docs/sdks/ios". */
+  docs: string;
+  /** Registry badges after the MIT one: shields.io image URLs that resolve for our package names. */
+  badges: { alt: string; image: string; link: string }[];
+  /** Markdown for the Install section. */
+  install: string | string[];
+  /** Code for the Configure section. */
+  configure: { lang: string; code: string | string[] };
+  /** One line after the configure block (what the fork changes about configuration), optional. */
+  configureNote?: string;
+  /** Folder in github.com/revenuedot/examples, for example "mobile/ios-swiftui"; omitted when there is no example. */
+  example?: string;
+  /** Replaces the default "What RevenueDot adds" bullets. */
+  adds?: string[];
+}
 /** Points a git submodule at our fork, and pins it to our patch branch when that branch contains the pinned commit. */
 export interface SubmoduleRule extends Base { type: "submodule"; path: string; url: string; pinToRepo?: string; /** Branch in pinToRepo to pin to; "{branch}" is the submodule's .gitmodules branch (an upstream tag). Default: the patch branch. */ pinBranch?: string }
-export type Rule = ReplaceRule | JsonRule | RenameRule | CopyRule | DeleteRule | LicenseRule | BannerRule | SubmoduleRule;
+export type Rule = ReplaceRule | JsonRule | RenameRule | CopyRule | DeleteRule | LicenseRule | BannerRule | ReadmeRule | SubmoduleRule;
 /** Expands to a shared rule group from rules/_shared.json; "$files" and "$file" in the group are replaced. */
 export interface IncludeRule { type: "include"; group: string; files?: string[]; file?: string }
 
@@ -114,6 +140,7 @@ function describe(r: Rule): string {
     case "delete": return `delete ${r.files.join(",")}`;
     case "license": return `license ${r.files.join(",")}`;
     case "banner": return `banner ${r.files.join(",")}`;
+    case "readme": return `readme ${r.file}`;
     case "submodule": return `submodule ${r.path}`;
   }
 }
@@ -236,6 +263,14 @@ export function applyRule(rule: Rule, ctx: ApplyContext): Result {
       }
       return { rule: name, changed, status: changed.length ? "applied" : "unchanged" };
     }
+    case "readme": {
+      const p = join(root, rule.file);
+      if (!existsSync(p)) { if (rule.optional) return { rule: name, changed, status: "skipped-optional", detail: "file missing" }; throw new Error(`Rule ${name}: ${rule.file} missing`); }
+      const before = read(p);
+      const next = upsertReadme(before, renderReadme(rule, vars));
+      if (next !== before) { write(p, next); changed.push(rule.file); }
+      return { rule: name, changed, status: changed.length ? "applied" : "unchanged" };
+    }
     case "submodule": {
       const gm = join(root, ".gitmodules");
       if (!existsSync(gm)) return miss(".gitmodules missing");
@@ -264,6 +299,107 @@ export function applyRule(rule: Rule, ctx: ApplyContext): Result {
       return { rule: name, changed, status: changed.length ? "applied" : "unchanged", detail };
     }
   }
+}
+
+export const README_START = "<!-- revenuedot:readme:start -->";
+export const README_END = "<!-- revenuedot:readme:end -->";
+export const README_UPSTREAM_HEADING = "## Upstream README (RevenueCat's, unchanged)";
+const LOCKUP = "https://raw.githubusercontent.com/revenuedot/revenuedot/main/brand/kit/wordmark/revenuedot-lockup";
+/** Text for a shields.io static badge path segment: "-" and "_" are shields' separators. */
+export const shieldsText = (s: string) => encodeURIComponent(s.replace(/-/g, "--").replace(/_/g, "__").replace(/ /g, "_"));
+const lines = (v: string | string[]) => (Array.isArray(v) ? v.join("\n") : v);
+
+/** The managed block, from the lockup to the "Upstream README" heading. Deterministic for the same rule and vars. */
+export function renderReadme(rule: ReadmeRule, vars: Vars): string {
+  const r = (s: string) => render(s, vars);
+  const upstreamRepo = `https://github.com/RevenueCat/${vars.repo}`;
+  const forkRepo = `https://github.com/${vars.org}/${vars.repo}`;
+  const badges = [
+    `[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)`,
+    ...rule.badges.map((b) => `[![${r(b.alt)}](${r(b.image)})](${r(b.link)})`),
+    `[![Upstream](https://img.shields.io/badge/upstream-${shieldsText(`RevenueCat/${vars.repo} ${vars.forkVersion}`)}-lightgrey)](${upstreamRepo})`,
+  ];
+  const adds = rule.adds ?? [
+    "**Self-host for free, or use RevenueDot Cloud** free up to $10,000 a month of tracked revenue ([pricing](https://revenuedot.app/pricing)).",
+    "**The same REST API and webhook payloads** as RevenueCat, so your backend and integrations keep working ([API reference](https://revenuedot.app/docs/api)).",
+    "**Paywalls, experiments and the Customer Center** built in the RevenueDot dashboard and rendered by this SDK ([guides](https://revenuedot.app/docs/guides)).",
+    "**A one-line migration:** point the stock SDK at RevenueDot with `setProxyURL`, or install this fork and drop the line ([migration guide](https://revenuedot.app/docs/migrate)).",
+  ];
+  const links = [
+    `- **Docs for this SDK:** ${r(rule.docs)}`,
+    ...(rule.example ? [`- **Example app:** https://github.com/${vars.org}/examples/tree/main/${r(rule.example)}`] : []),
+    `- **Releases and changelog:** ${forkRepo}/releases (tags \`<upstream version>${vars.gitTagSuffix}\`; upstream's changes are in \`CHANGELOG.md\`)`,
+    `- **RevenueDot server and dashboard:** https://github.com/${vars.org}/revenuedot`,
+    `- **Fork pipeline (what we change and how upstream is merged):** https://github.com/${vars.org}/revenuedot/tree/main/scripts/forks`,
+  ];
+  return [
+    README_START,
+    `<p align="center"><a href="${vars.homepage}"><picture>`,
+    `  <source media="(prefers-color-scheme: dark)" srcset="${LOCKUP}-white.svg">`,
+    `  <img alt="RevenueDot" src="${LOCKUP}-black.svg" height="40">`,
+    `</picture></a></p>`,
+    "",
+    `# ${r(rule.title)}`,
+    "",
+    `This is RevenueDot's MIT fork of RevenueCat's \`${r(rule.upstreamPackage)}\`: the same classes and method names, pointed at a RevenueDot server ([RevenueDot Cloud](https://app.revenuedot.app/signup) at \`${vars.apiHost}\`, or one you host) with RevenueDot's response-signing key built in, and kept in sync with upstream.`,
+    "",
+    badges.join(" "),
+    "",
+    "## Install",
+    "",
+    r(lines(rule.install)),
+    "",
+    "## Configure",
+    "",
+    "```" + rule.configure.lang,
+    r(lines(rule.configure.code)),
+    "```",
+    "",
+    `The fork already trusts RevenueDot's signing key, so no signature or verification setting is needed.${rule.configureNote ? " " + r(rule.configureNote) : ""} Full guide: ${r(rule.docs)}.`,
+    "",
+    "## What RevenueDot adds",
+    "",
+    ...adds.map((a) => `- ${r(a)}`),
+    "",
+    "## Links",
+    "",
+    ...links,
+    "",
+    `RevenueDot is not affiliated with RevenueCat, Inc. RevenueCat's copyright notice stays in \`LICENSE\`; RevenueDot's changes are MIT too.`,
+    "",
+    "---",
+    "",
+    README_UPSTREAM_HEADING,
+    README_END,
+    "",
+  ].join("\n");
+}
+
+/** Puts the block at the top of a README, replacing an older block, the pipeline's NOTE banner, or the hand-written notice. */
+export function upsertReadme(readme: string, block: string): string {
+  let s = readme;
+  const i = s.indexOf(README_START); const j = s.indexOf(README_END);
+  if (i >= 0 && j > i) return s.slice(0, i) + block + s.slice(j + README_END.length).replace(/^\n/, "");
+  const b0 = s.indexOf("<!-- revenuedot:banner:start -->"); const b1 = s.indexOf("<!-- revenuedot:banner:end -->");
+  if (b0 >= 0 && b1 > b0) s = s.slice(0, b0) + s.slice(b1 + "<!-- revenuedot:banner:end -->".length).replace(/^\n+/, "");
+  s = s.replace(/^> \[!NOTE\]\n> \*\*RevenueDot fork\.\*\*[^\n]*\n\n?/, "");
+  return block + "\n" + s;
+}
+
+/** Problems with a README on disk: missing or stale block, or RevenueCat sign-up copy above the upstream section. */
+export function checkReadme(root: string, rule: ReadmeRule, vars: Vars): string[] {
+  const p = join(root, rule.file);
+  if (!existsSync(p)) return rule.optional ? [] : [`${rule.file} missing`];
+  const s = readFileSync(p, "utf8");
+  const problems: string[] = [];
+  const i = s.indexOf(README_START); const j = s.indexOf(README_END);
+  if (i !== 0 || j < 0) return [`${rule.file} does not start with the RevenueDot README block (run apply.ts)`];
+  const block = s.slice(0, j + README_END.length + 1);
+  if (block !== renderReadme(rule, vars)) problems.push(`${rule.file}: the RevenueDot block is stale (run apply.ts)`);
+  const ours = s.slice(0, s.indexOf(README_UPSTREAM_HEADING));
+  if (!new RegExp(`^# ${render(rule.title, vars).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m").test(ours)) problems.push(`${rule.file}: H1 "${render(rule.title, vars)}" missing`);
+  for (const bad of ["app.revenuecat.com", "get started for free", "revenuecat.com/signup"]) if (ours.toLowerCase().includes(bad)) problems.push(`${rule.file}: "${bad}" appears above the upstream section`);
+  return problems;
 }
 
 /** Finds RevenueCat hosts and signing keys left in shipped code after the rules ran. */

@@ -33,7 +33,54 @@
     { "type": "license", "files": ["LICENSE"] },
     { "type": "copy", "from": "LICENSE", "to": "typescript/LICENSE", "note": "npm tarballs carry the notice" },
     { "type": "copy", "from": "LICENSE", "to": "purchases-js-hybrid-mappings/LICENSE" },
-    { "type": "banner", "files": ["README.md"], "install": "native pods `RevenueDotPurchasesHybridCommon`, Maven `app.revenuedot.purchases:purchases-hybrid-common`, npm `@revenuedot/purchases-typescript-internal`. Wrappers (React Native, Flutter, Capacitor, Unity, Cordova) pull these in for you." }
+    {
+      "type": "readme",
+      "file": "README.md",
+      "title": "RevenueDot Purchases Hybrid Common",
+      "upstreamPackage": "purchases-hybrid-common",
+      "docs": "https://revenuedot.app/docs/sdks/hybrid-common",
+      "badges": [
+        {
+          "alt": "CocoaPods",
+          "image": "https://img.shields.io/cocoapods/v/RevenueDotPurchasesHybridCommon?label=CocoaPods",
+          "link": "https://cocoapods.org/pods/RevenueDotPurchasesHybridCommon"
+        },
+        {
+          "alt": "Maven Central",
+          "image": "https://img.shields.io/maven-central/v/app.revenuedot.purchases/purchases-hybrid-common?label=Maven%20Central",
+          "link": "https://central.sonatype.com/artifact/app.revenuedot.purchases/purchases-hybrid-common"
+        },
+        {
+          "alt": "npm",
+          "image": "https://img.shields.io/npm/v/@revenuedot/purchases-typescript-internal?label=npm",
+          "link": "https://www.npmjs.com/package/@revenuedot/purchases-typescript-internal"
+        }
+      ],
+      "install": [
+        "You never install this package yourself. It is the shared native and TypeScript layer under the RevenueDot [React Native](https://github.com/{{org}}/react-native-purchases), [Flutter](https://github.com/{{org}}/purchases-flutter), [Capacitor](https://github.com/{{org}}/purchases-capacitor), [Unity](https://github.com/{{org}}/purchases-unity) and [Cordova](https://github.com/{{org}}/cordova-plugin-purchases) SDKs, which pull it in. Version {{version}} is published as:",
+        "",
+        "| Registry | Package | Name kept |",
+        "|---|---|---|",
+        "| CocoaPods | `RevenueDotPurchasesHybridCommon`, `RevenueDotPurchasesHybridCommonUI` | modules `PurchasesHybridCommon`, `PurchasesHybridCommonUI` |",
+        "| Swift Package Manager | `https://github.com/{{org}}/{{repo}}` at `{{version}}{{gitTagSuffix}}` | same products |",
+        "| Maven Central | `{{mavenGroup}}:purchases-hybrid-common`, `-ui`, `-store-galaxy` | Kotlin packages |",
+        "| npm | `{{npmScope}}/purchases-typescript-internal`, `-esm`, `{{npmScope}}/purchases-js-hybrid-mappings` | installed through npm aliases by the wrappers |"
+      ],
+      "configure": {
+        "lang": "ts",
+        "code": [
+          "// Configure the wrapper SDK, not this package: its setProxyURL and configure calls pass through this layer",
+          "// to RevenueDot's native iOS and Android SDKs, which already carry RevenueDot's host and signing key.",
+          "await Purchases.setProxyURL(\"https://revenuedot.example.com\");   // self-hosted server only",
+          "Purchases.configure({ apiKey: \"appl_...\" });"
+        ]
+      },
+      "adds": [
+        "**RevenueDot's native SDKs all the way down:** this layer pins RevenueDot's [iOS](https://github.com/{{org}}/purchases-ios), [Android](https://github.com/{{org}}/purchases-android) and [web](https://github.com/{{org}}/purchases-js) forks, so a wrapper built on it never talks to RevenueCat.",
+        "**Self-host for free, or use RevenueDot Cloud** free up to $10,000 a month of tracked revenue ([pricing](https://revenuedot.app/pricing)).",
+        "**The same REST API and webhook payloads** as RevenueCat, so your backend and integrations keep working ([API reference](https://revenuedot.app/docs/api))."
+      ]
+    }
   ],
   "version": {"file": ".version"},
   "pins": [

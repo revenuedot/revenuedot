@@ -57,6 +57,20 @@ export function readVersion(tree: Tree, src: VersionSource | undefined): string 
   return m?.[1] ?? null;
 }
 
+/**
+ * The version a README should tell people to install: this checkout's own version when it is a plain release (a
+ * release branch, or a wrapper whose patch branch sits on a release), else the newest `<v>{{gitTagSuffix}}` tag
+ * (native SDKs, whose patch branch is a -SNAPSHOT), else the own version as declared.
+ */
+export function installVersion(root: string, src: VersionSource | undefined, tagSuffix: string): { version: string; forkVersion: string } {
+  const own = readVersion(workTree(root), src) ?? "";
+  if (isRelease(own)) return { version: own, forkVersion: own };
+  const tags = git(root, ["tag", "-l", `*${tagSuffix}`], { allowFail: true }).split("\n")
+    .map((t) => t.slice(0, -tagSuffix.length)).filter(isRelease).sort(cmpVersion);
+  return { version: tags.at(-1) ?? own, forkVersion: own };
+}
+const cmpVersion = (a: string, b: string) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i]! - y[i]!; return 0; };
+
 /** The ref a dependency fork publishes from: the local patch branch, else origin's copy. */
 function patchRef(depRoot: string, patchBranch: string): string | null {
   for (const r of [patchBranch, `origin/${patchBranch}`]) if (git(depRoot, ["rev-parse", "--verify", "--quiet", r], { allowFail: true })) return r;

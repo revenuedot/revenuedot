@@ -14,8 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { allRepos, loadConfig, loadSpec, pinContext } from "./apply.ts";
-import { checkPins } from "./lib/pins.ts";
-import { git, leakScan } from "./lib/rules.ts";
+import { checkPins, installVersion } from "./lib/pins.ts";
+import { checkReadme, git, leakScan } from "./lib/rules.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -45,6 +45,11 @@ export function runChecks(repo: string, opts: { workspace: string; ref: string; 
   results.push({ repo, name: "pins (every pinned fork version has a revenuedot/release-<v> branch or <v>-revenuedot tag)", status: pinTail.length ? "fail" : "pass", seconds: 0, tail: (pinTail.length ? pinTail : pins.ok).join("\n") || "no pins" });
   console.log(`  ${(pinTail.length ? "fail" : "pass").padEnd(7)} pins${pinTail.length ? `: ${pinTail.length} pin(s) without a fork release` : ` (${pins.ok.length} resolved)`}`);
   pinTail.forEach((l) => console.log(`      ${l}`));
+  // README: the RevenueDot block sits at the top, matches what the rule renders now, and no RevenueCat sign-up copy precedes the upstream README.
+  const readmeVars = { ...cfg.vars, org: cfg.org, repo, ...installVersion(wt, spec.version, cfg.vars.gitTagSuffix!) };
+  const readmeProblems = spec.rules.flatMap((r) => (r.type === "readme" ? checkReadme(wt, r, readmeVars) : []));
+  results.push({ repo, name: "readme (RevenueDot README block current and above the upstream README)", status: readmeProblems.length ? "fail" : "pass", seconds: 0, tail: readmeProblems.join("\n") || "ok" });
+  console.log(`  ${(readmeProblems.length ? "fail" : "pass").padEnd(7)} readme${readmeProblems.length ? `: ${readmeProblems.join("; ")}` : ""}`);
   for (const c of spec.checks ?? []) {
     if (opts.only && !c.name.includes(opts.only)) continue;
     const t0 = Date.now();

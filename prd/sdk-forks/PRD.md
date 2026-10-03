@@ -78,8 +78,8 @@ Current pins and the release branches they need (all pushed). Releases are tagge
 | Wrapper releases | React Native 10.10.2, Capacitor 13.6.1, Cordova 8.2.3, Flutter 10.13.2, Unity 9.11.1, KMP 3.10.1 | `revenuedot/release-<version>` in each fork |
 
 **Branches in each fork:**
-- `main`: upstream `main` at fork time plus the one-line fork notice. The pipeline never pushes to it.
-- `revenuedot/main-patches`: `main` plus one pipeline commit. This is what we build and publish from.
+- `main`: upstream `main` at fork time plus three README-only commits made by hand before the pipeline existed. The pipeline never pushes to it; nothing is built from it.
+- `revenuedot/main-patches`: `main` (merged in, so GitHub shows `main` only as behind) plus upstream merges plus the pipeline commits. **The GitHub default branch since 2026-10-03**, so the repo page shows the RevenueDot README (the `readme` rule) instead of RevenueCat's. This is what we build and publish from. Why not patch `main`: `scripts/forks/README.md`.
 - `upstream-sync`: created by `sync-upstream.sh`; merges into `revenuedot/main-patches` by PR.
 - `revenuedot/release-<upstream tag>`: an upstream release tag plus the pipeline commit, made with `apply.ts --base <tag> --branch revenuedot/release-<tag>`. Release tags `<tag>-revenuedot` are cut from these. Which ones exist follows from the pins (table above).
 

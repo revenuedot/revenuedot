@@ -32,7 +32,39 @@
     { "type": "replace", "files": ["RevenueCat/package.json"], "find": "\"description\": \"Unity in-app purchases and subscriptions made easy. Supports iOS and Android.\"", "replace": "\"description\": \"Unity in-app purchases and subscriptions made easy. Supports iOS and Android. {{disclaimer}}\"" },
 
     { "type": "license", "files": ["LICENSE", "RevenueCat/LICENSE.md"] },
-    { "type": "banner", "files": ["README.md"], "install": "OpenUPM `com.revenuedot.purchases-unity`, or the `Purchases.unitypackage` from this repo's releases. C# namespaces are unchanged. EDM4U pulls `RevenueDotPurchasesHybridCommon` (CocoaPods) and `app.revenuedot.purchases:purchases-hybrid-common` (Maven)." }
+    {
+      "type": "readme",
+      "file": "README.md",
+      "title": "RevenueDot Unity SDK",
+      "upstreamPackage": "purchases-unity",
+      "docs": "https://revenuedot.app/docs/sdks/unity",
+      "badges": [
+        {
+          "alt": "OpenUPM",
+          "image": "https://img.shields.io/npm/v/com.revenuedot.purchases-unity?registry_uri=https://package.openupm.com&label=OpenUPM",
+          "link": "https://openupm.com/packages/com.revenuedot.purchases-unity/"
+        }
+      ],
+      "install": [
+        "```sh",
+        "openupm add com.revenuedot.purchases-unity",
+        "```",
+        "Or **Window > Package Manager > + > Add package from git URL**:",
+        "```",
+        "https://github.com/{{org}}/{{repo}}.git?path=RevenueCat#{{version}}{{gitTagSuffix}}",
+        "```",
+        "C# namespaces and assembly names are unchanged, so `using RevenueCat;` keeps working. The External Dependency Manager pulls the native side: the `RevenueDotPurchasesHybridCommon` pod and `{{mavenGroup}}:purchases-hybrid-common`."
+      ],
+      "configure": {
+        "lang": "csharp",
+        "code": [
+          "// On the Purchases component tick \"Use Runtime Setup\". Self-hosted server only: RevenueDot Cloud ({{apiHost}}) is the default.",
+          "// For a self-hosted server, fill the component's Proxy URL field. Then, in a script that runs after Purchases.Start():",
+          "var purchases = GetComponent<Purchases>();",
+          "purchases.Configure(Purchases.PurchasesConfiguration.Builder.Init(\"appl_...\").Build());   // the app's public key from the RevenueDot dashboard"
+        ]
+      }
+    }
   ],
   "version": {"file": "RevenueCat/package.json", "regex": "^  \"version\": \"([^\"]+)\""},
   "pins": [

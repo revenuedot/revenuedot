@@ -22,7 +22,51 @@
     { "type": "replace", "files": ["purchases_ui_flutter/pubspec.yaml"], "regex": true, "flags": "m", "find": "^  purchases_flutter: \\^?([0-9][^\\s]*)$", "replace": "  purchases_flutter:\n    git:\n      url: https://github.com/{{org}}/purchases-flutter.git\n      ref: $1{{gitTagSuffix}}", "done": "url: https://github.com/{{org}}/purchases-flutter.git", "note": "the UI package must not resolve RevenueCat's purchases_flutter from pub.dev" },
 
     { "type": "license", "files": ["LICENSE", "purchases_ui_flutter/LICENSE"] },
-    { "type": "banner", "files": ["README.md"], "install": "in `pubspec.yaml`, `purchases_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, ref: <version>-revenuedot } }`. The package name stays `purchases_flutter`, so `import 'package:purchases_flutter/purchases_flutter.dart'` keeps working. This fork also fixes `Purchases.setProxyURL` on Flutter web." },
+    {
+      "type": "readme",
+      "file": "README.md",
+      "title": "RevenueDot Flutter SDK",
+      "upstreamPackage": "purchases_flutter",
+      "docs": "https://revenuedot.app/docs/sdks/flutter",
+      "badges": [
+        {
+          "alt": "Git tag",
+          "image": "https://img.shields.io/github/v/tag/{{org}}/{{repo}}?filter=*{{gitTagSuffix}}&label=git%20dependency",
+          "link": "https://github.com/{{org}}/{{repo}}/releases"
+        }
+      ],
+      "install": [
+        "The package names stay `purchases_flutter` and `purchases_ui_flutter`, so every `import 'package:purchases_flutter/purchases_flutter.dart'` keeps working. The fork ships as a git dependency (the pub.dev names belong to RevenueCat):",
+        "```yaml",
+        "# pubspec.yaml",
+        "dependencies:",
+        "  purchases_flutter:",
+        "    git:",
+        "      url: https://github.com/{{org}}/{{repo}}.git",
+        "      ref: {{version}}{{gitTagSuffix}}",
+        "  purchases_ui_flutter:          # only if you use paywalls",
+        "    git:",
+        "      url: https://github.com/{{org}}/{{repo}}.git",
+        "      path: purchases_ui_flutter",
+        "      ref: {{version}}{{gitTagSuffix}}",
+        "```"
+      ],
+      "configure": {
+        "lang": "dart",
+        "code": [
+          "import 'dart:io' show Platform;",
+          "import 'package:purchases_flutter/purchases_flutter.dart';",
+          "",
+          "Future<void> initPurchases() async {",
+          "  // Self-hosted server only: RevenueDot Cloud ({{apiHost}}) is the default.",
+          "  await Purchases.setProxyURL('https://revenuedot.example.com');",
+          "  await Purchases.configure(PurchasesConfiguration(Platform.isIOS ? 'appl_...' : 'goog_...'));   // each app's public key",
+          "}"
+        ]
+      },
+      "configureNote": "`Purchases.setProxyURL` works on Flutter web with this fork.",
+      "example": "mobile/flutter"
+    },
     { "type": "banner", "files": ["purchases_ui_flutter/README.md"], "optional": true, "install": "`purchases_ui_flutter: { git: { url: https://github.com/revenuedot/purchases-flutter.git, path: purchases_ui_flutter, ref: <version>-revenuedot } }`." }
   ],
   "version": {"file": "pubspec.yaml", "regex": "^version: (\\S+)"},

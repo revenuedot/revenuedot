@@ -31,7 +31,42 @@
     { "type": "replace", "files": ["codegen/README.md"], "find": "The plugin ID is `com.revenuecat.purchases.codegen` and the artifact is `com.revenuecat.purchases:purchases-codegen-plugin`", "replace": "The plugin ID is `{{mavenGroup}}.codegen` and the artifact is `{{mavenGroup}}:purchases-codegen-plugin`", "optional": true },
 
     { "type": "license", "files": ["LICENSE"] },
-    { "type": "banner", "files": ["README.md"], "install": "`implementation(\"app.revenuedot.purchases:purchases:<version>\")` (and `purchases-ui`). Kotlin packages are still `com.revenuecat.purchases.*`, so imports stay as they are." }
+    {
+      "type": "readme",
+      "file": "README.md",
+      "title": "RevenueDot Android SDK",
+      "upstreamPackage": "purchases-android",
+      "docs": "https://revenuedot.app/docs/sdks/android",
+      "badges": [
+        {
+          "alt": "Maven Central",
+          "image": "https://img.shields.io/maven-central/v/app.revenuedot.purchases/purchases?label=Maven%20Central",
+          "link": "https://central.sonatype.com/artifact/app.revenuedot.purchases/purchases"
+        }
+      ],
+      "install": [
+        "```kotlin",
+        "// build.gradle.kts",
+        "implementation(\"{{mavenGroup}}:purchases:{{version}}\")",
+        "implementation(\"{{mavenGroup}}:purchases-ui:{{version}}\")   // only if you use RevenueCat UI",
+        "```",
+        "Kotlin packages stay `com.revenuecat.purchases.*`, so imports do not change."
+      ],
+      "configure": {
+        "lang": "kotlin",
+        "code": [
+          "import com.revenuecat.purchases.Purchases",
+          "import com.revenuecat.purchases.PurchasesConfiguration",
+          "import java.net.URL",
+          "",
+          "// Self-hosted server only: RevenueDot Cloud ({{apiHost}}) is the default.",
+          "Purchases.proxyURL = URL(\"https://revenuedot.example.com\")",
+          "Purchases.configure(PurchasesConfiguration.Builder(this, \"goog_...\").build())   // the app's public key from the RevenueDot dashboard"
+        ]
+      },
+      "configureNote": "This fork also sends diagnostics, paywall events and ad events to `proxyURL`.",
+      "example": "mobile/android-compose"
+    }
   ],
   "version": {"file": ".version"},
   "scanExclude": ["**/src/test/**", "**/src/androidTest/**", "**/src/test*/**", "examples/**", "test-apps/**", "api-tester/**", "**/detekt*/**", "**/*.api"],

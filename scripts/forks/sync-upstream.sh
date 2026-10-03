@@ -75,7 +75,7 @@ for repo in "${REPOS[@]}"; do
 
   if ! tsx scripts/forks/apply.ts --repo "$repo" --workspace "$WORKSPACE" --quiet; then echo "  rules failed: update scripts/forks/rules/$repo.json"; failed+=("$repo"); continue; fi
   git -C "$dir" add -A
-  if ! git -C "$dir" diff --cached --quiet; then git -C "$dir" commit -q -m "Re-apply RevenueDot fork patches after upstream $REF ($upstream_sha)"; fi
+  if ! git -C "$dir" diff --cached --quiet; then git -C "$dir" commit -q --no-verify -m "Re-apply RevenueDot fork patches after upstream $REF ($upstream_sha)"; fi  # --no-verify: the fork's hooks must not reformat generated files
 
   if ! tsx scripts/forks/apply.ts --repo "$repo" --workspace "$WORKSPACE" --pins --quiet; then
     echo "  pin check failed: create the missing release branches it names (apply.ts --base <tag> --branch revenuedot/release-<tag> --push)"; failed+=("$repo")
