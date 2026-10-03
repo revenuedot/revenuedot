@@ -2,9 +2,10 @@
 # Server: migrations, then the Worker for app.revenuedot.app and api.revenuedot.app, then live smoke checks.
 # Site: revenuedot.app with the docs. Secrets live in the GitHub "production" environment (master copies in 1Password).
 #
-# Tests: a pull request merged while main stood still produces a merge commit with exactly the tree its CI tested (CI
-# records it as the artifact tested-tree-<tree>). Then the deploy starts at once. When main moved in between (another
-# merge landed first), the merged tree is new and the full CI runs here first.
+# Tests: the server and site deploys wait for the whole of ci.yml (type checks, unit tests, real Postgres, the
+# dashboard's browser tests, Docker). A pull request merged while main stood still produces a merge commit with exactly
+# the tree its CI tested (CI records it as the artifact tested-tree-<tree>). Then the deploy starts at once. When main
+# moved in between (another merge landed first), the merged tree is new and the full CI runs here first.
 name: Deploy
 
 on:

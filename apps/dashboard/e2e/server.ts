@@ -393,7 +393,11 @@ web.all("/*", async (c) => {
   return c.html(readFileSync(join(DIST, "index.html"), "utf8"));
 });
 if (!existsSync(join(DIST, "index.html"))) { console.error(`No dashboard build at ${DIST}. Run vite build first.`); process.exit(1); }
-serve({ fetch: web.fetch, port: PORT });
+serve({ fetch: web.fetch, port: PORT }).on("error", (e: NodeJS.ErrnoException) => {
+  // Without this a busy port could leave Playwright talking to another run's server.
+  console.error(e.code === "EADDRINUSE" ? `Port ${PORT} is already in use (another e2e server?). Set PORT (E2E_PORT under Playwright) to a free port; the Cloud server also takes PORT + 1.` : e);
+  process.exit(1);
+});
 const base = `http://localhost:${PORT}`;
 // RevenueDot Cloud for the Move and Billing specs (e2e/cloud-server.ts): E2E_PORT + 1.
 await startCloud(PORT + 1, DIST, mail);

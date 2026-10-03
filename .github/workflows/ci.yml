@@ -2,7 +2,8 @@
 # on its pull request) and deploys only if it passes.
 #
 # Speed: only the jobs a change can affect run; the unit tests run in parallel shards, each on a
-# snapshot of a migrated database instead of migrating per test; the site build reuses Astro's image cache. The last
+# snapshot of a migrated database instead of migrating per test; the dashboard's browser tests run in 4 shards; the
+# site build reuses Astro's image cache. The last
 # job, "CI result", is the one to watch: it fails when any job failed and, for a branch of this repo, records the
 # tested tree so the deploy on main can skip running the same tests again.
 name: CI
@@ -33,6 +34,7 @@ jobs:
       site: ${{ steps.f.outputs.site }}
       docker: ${{ steps.f.outputs.docker }}
       infra: ${{ steps.f.outputs.infra }}
+      e2e: ${{ steps.f.outputs.e2e }}
     steps:
       - id: f
         env:
@@ -41,7 +43,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [ "$FULL" = "true" ] || [ -z "$PR" ]; then
-            printf 'code=true\nsite=%s\ndocker=true\ninfra=true\n' "$([ "$FULL" = "true" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"; exit 0
+            printf 'code=true\nsite=%s\ndocker=true\ninfra=true\ne2e=true\n' "$([ "$FULL" = "true" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"; exit 0
           fi
           files=$(gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate -q '.[].filename')
           echo "$files"
@@ -54,8 +56,10 @@ jobs:
           site=$(has '^(apps/site/|design/|brand/|packages/core/src/charts/)')
           docker=$(has '^(Dockerfile|\.dockerignore|docker-compose\.yml|tsconfig\.base\.json|apps/(server|dashboard)/|packages/|ee/|design/|brand/)')
           infra=$(has '^deploy/')
-          [ "$any" = true ] && { code=true; site=true; docker=true; infra=true; }
-          printf 'code=%s\nsite=%s\ndocker=%s\ninfra=%s\n' "$code" "$site" "$docker" "$infra" | tee -a "$GITHUB_OUTPUT"
+          # The dashboard in a browser against the real API: anything the dashboard, the server or their packages run.
+          e2e=$(has '^(apps/(server|dashboard)/|packages/|ee/|design/|tsconfig\.base\.json)')
+          [ "$any" = true ] && { code=true; site=true; docker=true; infra=true; e2e=true; }
+          printf 'code=%s\nsite=%s\ndocker=%s\ninfra=%s\ne2e=%s\n' "$code" "$site" "$docker" "$infra" "$e2e" | tee -a "$GITHUB_OUTPUT"
 
   typecheck:
     needs: changes
@@ -127,6 +131,47 @@ jobs:
       - run: pnpm vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=4 --minWorkers=1
         env:
           REVENUEDOT_TEST_PG_URL: postgres://postgres:ci@localhost:5432/postgres
+
+  # The dashboard's Playwright suite (apps/dashboard/e2e, about 100 tests): the built dashboard in Chromium against the
+  # real API on in-memory PGlite with fake stores (e2e/server.ts), so it needs no secrets and reaches no outside host.
+  # Split by spec file across parallel jobs, each with its own server. A failed test keeps its trace as an artifact
+  # (open it with `npx playwright show-trace <zip>` or at trace.playwright.dev).
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    name: e2e (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: pw
+        run: echo "version=$(node -p "require('./apps/dashboard/node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      # Chromium's headless shell only (the suite has no other browser); the cache holds the download, the system
+      # libraries come from apt every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - run: pnpm --filter @revenuedot/dashboard exec playwright install --with-deps --only-shell chromium
+      - run: pnpm --filter @revenuedot/dashboard build
+      - run: pnpm --filter @revenuedot/dashboard exec playwright test -c e2e/playwright.config.ts --shard=${{ matrix.shard }}/4
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces-${{ matrix.shard }}
+          path: apps/dashboard/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
 
   site:
     needs: changes
@@ -258,7 +303,7 @@ jobs:
   # One check for the whole run. Skipped jobs (the change could not affect them) count as passed.
   result:
     name: CI result
-    needs: [changes, typecheck, test, test-postgres, site, docker, deploy]
+    needs: [changes, typecheck, test, test-postgres, e2e, site, docker, deploy]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
