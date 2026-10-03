@@ -1,8 +1,13 @@
 # RevenueDot self-host: API + dashboard + Postgres.  docker compose up -d  ->  http://localhost:8787
-# Docs: https://revenuedot.app/docs/self-hosting
+# Docs: https://revenuedot.app/docs/guides/self-hosting
 services:
   revenuedot:
+    # The published image (linux/amd64 and linux/arm64), pulled when missing: https://github.com/revenuedot/revenuedot/pkgs/container/revenuedot
+    # Pin a build with REVENUEDOT_IMAGE in .env (a date tag such as 2026.10.03, or a commit). `docker compose build`
+    # (or `up --build`) builds the same image from this checkout instead.
+    image: ${REVENUEDOT_IMAGE:-ghcr.io/revenuedot/revenuedot:latest}
     build: .
+    pull_policy: missing
     ports: ["${REVENUEDOT_PORT:-8787}:8787"]
     environment:
       DATABASE_URL: postgres://revenuedot:${POSTGRES_PASSWORD:-revenuedot}@db:5432/revenuedot

@@ -3,7 +3,7 @@ name            = "revenuedot"
 region          = "us-east-1"
 domain_name     = "revenuedot.example.com"
 route53_zone_id = "Z0123456789ABCDEFGHIJ"
-image           = "123456789012.dkr.ecr.us-east-1.amazonaws.com/revenuedot:0.1.0"
+image           = "ghcr.io/revenuedot/revenuedot:2026.10.03" # a date or commit tag of the published image, or your ECR copy
 alarm_email     = "oncall@example.com"
 
 # Optional

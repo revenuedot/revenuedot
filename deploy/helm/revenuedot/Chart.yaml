@@ -2,8 +2,9 @@ apiVersion: v2
 name: revenuedot
 description: RevenueDot, the open-source RevenueCat alternative, as a high-availability deployment (API and dashboard replicas on an external Postgres).
 type: application
-# Chart version: bump on any chart change. appVersion: the RevenueDot image tag the chart installs by default.
-version: 0.1.0
+# Chart version: bump on any chart change. appVersion: the RevenueDot release the chart was last checked against; the
+# image tag it installs is values.yaml image.tag (`latest` when empty).
+version: 0.2.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.25.0-0"
 home: https://revenuedot.app

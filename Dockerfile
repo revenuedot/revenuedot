@@ -1,16 +1,21 @@
 # RevenueDot: open-source, self-hostable alternative to RevenueCat. https://revenuedot.app
 # One image runs the API and the dashboard. Set DATABASE_URL to a Postgres.
+# Published as ghcr.io/revenuedot/revenuedot (linux/amd64 and linux/arm64) by .github/workflows/publish-image.yml.
 FROM node:24-slim AS build
 RUN corepack enable
 WORKDIR /app
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
+# The lockfile (and the pnpm settings in package.json) alone decide this layer, so the package download, the slow part
+# of an arm64 build under QEMU, comes from Docker's cache and from the cache in CI until a dependency changes.
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+RUN pnpm fetch
+COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
 # The enterprise folder (ee/LICENSE) is in the image but stays off unless REVENUEDOT_LICENSE_KEY is set.
 COPY ee ./ee
 COPY design ./design
 COPY brand ./brand
-RUN pnpm install --frozen-lockfile && pnpm --filter @revenuedot/dashboard build
+RUN pnpm install --frozen-lockfile --offline && pnpm --filter @revenuedot/dashboard build
 
 FROM node:24-slim
 COPY --from=build /app /app

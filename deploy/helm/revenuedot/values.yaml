@@ -12,10 +12,10 @@
 replicaCount: 2
 
 image:
-  # Required: there is no published image yet. Build and push your own from the repository root
-  # (docker build -t <registry>/revenuedot:<tag> .) and set repository and tag.
-  repository: ""
-  # Defaults to the chart's appVersion.
+  # The published image, linux/amd64 and linux/arm64: https://github.com/revenuedot/revenuedot/pkgs/container/revenuedot
+  repository: ghcr.io/revenuedot/revenuedot
+  # Empty installs `latest`. In production pin a date tag (2026.10.03) or a commit tag, so every replica and the
+  # migration Job run the same build and a rollout never pulls a newer one than you tested.
   tag: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []

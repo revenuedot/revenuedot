@@ -399,12 +399,13 @@ Delivered at least once, with an `Authorization` header and an HMAC signature, r
 ## Self-host
 
 ```bash
+docker pull ghcr.io/revenuedot/revenuedot:latest
 git clone https://github.com/revenuedot/revenuedot && cd revenuedot
-cp .env.example .env        # add your App Store and Google Play credentials
+cp .env.example .env        # set POSTGRES_PASSWORD before the first start
 docker compose up -d        # API, dashboard and Postgres
 ```
 
-<sub>What you run yourself: the server, Postgres, backups and upgrades. Compose builds the image from source; there is no published image yet. Guide: [revenuedot.app/docs/guides/self-hosting](https://revenuedot.app/docs/guides/self-hosting).</sub>
+<sub>The image is [`ghcr.io/revenuedot/revenuedot`](https://github.com/revenuedot/revenuedot/pkgs/container/revenuedot), built for amd64 and arm64 on every change to `main` and tagged `latest`, by date (`2026.10.03`) and by commit; Compose pulls it, and `docker compose build` builds the same image from the checkout. What you run yourself: the server, Postgres, backups and upgrades (`docker compose pull && docker compose up -d`). Guide: [revenuedot.app/docs/guides/self-hosting](https://revenuedot.app/docs/guides/self-hosting).</sub>
 
 For no single point of failure, run two or more replicas behind a load balancer on a managed Postgres with a standby: the [Helm chart](deploy/helm/revenuedot) or the Terraform for [AWS](deploy/terraform/aws) and [Google Cloud](deploy/terraform/gcp). Guide: [revenuedot.app/docs/guides/high-availability](https://revenuedot.app/docs/guides/high-availability).
 
