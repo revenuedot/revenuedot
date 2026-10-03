@@ -1,0 +1,32 @@
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+const require = createRequire(import.meta.url);
+const { chromium } = require("@playwright/test");
+const base = process.env.RD_DASHBOARD ?? "http://localhost:5500";
+const ids = JSON.parse(readFileSync(`${process.env.OUT ?? new URL("../../.readme-assets", import.meta.url).pathname}/ids.json`, "utf8"));
+const browser = await chromium.launch();
+const ctx = await browser.newContext();
+const p = await ctx.newPage();
+await p.request.post(`${base}/auth/login`, { data: { email: "e2e@revenuedot.test", password: "e2e-password-1" } });
+const P = `/v2/projects/${ids.pid}`;
+const apps = (await (await p.request.get(`${base}${P}/apps`)).json()).items;
+const ts = apps.find((a) => a.type === "test_store");
+const key = (await (await p.request.get(`${base}${P}/apps/${ts.id}/public_api_keys`)).json()).items[0].key;
+let seed = 99; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+const h = { authorization: `Bearer ${key}`, "x-platform": "iOS", "x-storefront": "USA" };
+let n = { c: 0, t: 0 }, b = { c: 0, t: 0 };
+for (let i = 0; i < 380; i++) {
+  const user = `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`;
+  await p.request.get(`${base}/v1/subscribers/${encodeURIComponent(user)}`, { headers: h });
+  const off = await (await p.request.get(`${base}/v1/subscribers/${encodeURIComponent(user)}/offerings`, { headers: h })).json();
+  const t = off.current_offering_id === "annual_first";
+  n[t ? "t" : "c"]++;
+  if (rnd() < 0.85) await p.request.post(`${base}/v1/events`, { headers: { ...h, "content-type": "application/json" }, data: { events: [{ id: crypto.randomUUID(), type: "paywall_impression", app_user_id: user, timestamp_ms: Date.now() }] } });
+  if (rnd() >= (t ? 0.44 : 0.24)) continue;
+  const annual = rnd() < (t ? 0.62 : 0.3);
+  const res = await p.request.post(`${base}/v1/receipts`, { headers: { ...h, "content-type": "application/json" }, data: { app_user_id: user, fetch_token: `test_${Date.now()}_${crypto.randomUUID()}`, product_id: annual ? "pro_annual" : "pro_monthly", price: annual ? 39.99 : 9.99, currency: "USD", is_restore: false } });
+  if (!res.ok()) throw new Error(await res.text());
+  b[t ? "t" : "c"]++;
+}
+console.log("added", n, b);
+await browser.close();
