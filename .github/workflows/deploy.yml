@@ -1,6 +1,10 @@
 # Deploys to production on every push to main once CI passes. Docs changes deploy the site from revenuedot/docs.
 # Server: migrations, then the Worker for app.revenuedot.app and api.revenuedot.app, then live smoke checks.
 # Site: revenuedot.app with the docs. Secrets live in the GitHub "production" environment (master copies in 1Password).
+#
+# Tests: a pull request merged while main stood still produces a merge commit with exactly the tree its CI tested (CI
+# records it as the artifact tested-tree-<tree>). Then the deploy starts at once. When main moved in between (another
+# merge landed first), the merged tree is new and the full CI runs here first.
 name: Deploy
 
 on:
@@ -13,9 +17,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
+  tested:
     if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tree: ${{ steps.t.outputs.tree }}
+    steps:
+      - id: t
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(gh api "repos/${{ github.repository }}/git/commits/${{ github.sha }}" -q .tree.sha)
+          # Only artifacts uploaded by CI runs of branches in this repository (see ci.yml).
+          runs=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=tested-tree-$tree" -q '[.artifacts[] | select(.expired | not) | select(.workflow_run.head_repository_id == .workflow_run.repository_id) | .workflow_run.id] | join(" ")')
+          if [ -n "$runs" ]; then
+            echo "Tree $tree passed CI in run(s) $runs: skipping the tests."
+            echo "tree=passed" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tree $tree has not passed CI yet: running it."
+          fi
+
+  ci:
+    needs: tested
+    if: github.event_name == 'push' && needs.tested.outputs.tree != 'passed'
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/ci.yml
+    with:
+      full: true
 
   changes:
     runs-on: ubuntu-latest
@@ -46,10 +80,10 @@ jobs:
           echo "Changes since $base"
           files=$(git diff --name-only "$base" "${{ github.sha }}" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
           echo "$files" | grep -qE '^(apps/(server|dashboard)|packages|scripts/(deploy-cloud|migrate|smoke-cloud)|pnpm-lock\.yaml|package\.json)' && echo server=true >> "$GITHUB_OUTPUT" || echo server=false >> "$GITHUB_OUTPUT"
-          echo "$files" | grep -qE '^(apps/site|design|brand|pnpm-lock\.yaml)' && echo site=true >> "$GITHUB_OUTPUT" || echo site=false >> "$GITHUB_OUTPUT"
+          echo "$files" | grep -qE '^(apps/site|design|brand|packages/core/src/charts|pnpm-lock\.yaml)' && echo site=true >> "$GITHUB_OUTPUT" || echo site=false >> "$GITHUB_OUTPUT"
 
   server:
-    needs: [ci, changes]
+    needs: [tested, ci, changes]
     if: ${{ !failure() && !cancelled() && needs.changes.outputs.server == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -71,8 +105,9 @@ jobs:
       - name: Live smoke checks
         run: node scripts/smoke-cloud.mjs https://api.revenuedot.app --read-only --app https://app.revenuedot.app --public-key gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=
 
+  # Runs alongside the server deploy: a separate Worker with nothing in common.
   site:
-    needs: [ci, changes, server]
+    needs: [tested, ci, changes]
     if: ${{ !failure() && !cancelled() && needs.changes.outputs.site == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -94,6 +129,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The same Astro image cache as the CI site job (ci.yml): without it the build re-encodes about 840 images.
+      - uses: actions/cache@v4
+        with:
+          path: apps/site/node_modules/.astro
+          key: astro-${{ hashFiles('apps/site/src/**', 'apps/site/public/**', 'apps/site/astro.config.mjs') }}
+          restore-keys: astro-
       - run: pnpm --filter site run deploy
       - name: Live check
         run: |

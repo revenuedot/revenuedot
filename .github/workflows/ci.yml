@@ -1,18 +1,67 @@
-# Type checks and tests on every pull request. On main, deploy.yml runs this first and deploys only if it passes.
+# Type checks and tests on every pull request. On main, deploy.yml runs this first (unless the same tree already passed
+# on its pull request) and deploys only if it passes.
+#
+# Speed: only the jobs a change can affect run; the unit tests run in parallel shards, each on a
+# snapshot of a migrated database instead of migrating per test; the site build reuses Astro's image cache. The last
+# job, "CI result", is the one to watch: it fails when any job failed and, for a branch of this repo, records the
+# tested tree so the deploy on main can skip running the same tests again.
 name: CI
 
 on:
   pull_request:
   workflow_call:
+    inputs:
+      full:
+        description: Run every job whatever the change (deploy.yml on main). The site job is left to the deploy.
+        type: boolean
+        default: false
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
-  test:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.f.outputs.code }}
+      site: ${{ steps.f.outputs.site }}
+      docker: ${{ steps.f.outputs.docker }}
+      infra: ${{ steps.f.outputs.infra }}
+    steps:
+      - id: f
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FULL: ${{ inputs.full }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$FULL" = "true" ] || [ -z "$PR" ]; then
+            printf 'code=true\nsite=%s\ndocker=true\ninfra=true\n' "$([ "$FULL" = "true" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate -q '.[].filename')
+          echo "$files"
+          has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
+          # A change to the CI itself or to the workspace runs everything.
+          all='^(\.github/workflows/ci\.yml|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'
+          any=$(has "$all")
+          # Code: anything but prose and the deploy/ reference setups (vitest also covers apps/site/test).
+          code=$(echo "$files" | grep -vqE '(\.md$|^docs/|^prd/|^deploy/|^LICENSE|^\.github/(CLA|ISSUE_TEMPLATE))' && echo true || echo false)
+          site=$(has '^(apps/site/|design/|brand/|packages/core/src/charts/)')
+          docker=$(has '^(Dockerfile|\.dockerignore|docker-compose\.yml|tsconfig\.base\.json|apps/(server|dashboard)/|packages/|ee/|design/|brand/)')
+          infra=$(has '^deploy/')
+          [ "$any" = true ] && { code=true; site=true; docker=true; infra=true; }
+          printf 'code=%s\nsite=%s\ndocker=%s\ninfra=%s\n' "$code" "$site" "$docker" "$infra" | tee -a "$GITHUB_OUTPUT"
+
+  typecheck:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -24,13 +73,40 @@ jobs:
       - run: npx tsc -b
       # The root project leaves out the dashboard, and Vite builds without type checking.
       - run: npx tsc --noEmit -p apps/dashboard
-      - run: pnpm vitest run
+
+  # Unit, contract and server suites on in-memory PGlite, split by file across parallel jobs.
+  test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    name: test (${{ matrix.shard }}/6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest run --shard=${{ matrix.shard }}/6 --maxWorkers=4 --minWorkers=4
 
   # The same contract and server suites on a real Postgres 16 (PGlite above): driver result shapes, concurrent
   # transactions, deadlocks and timestamp handling only show up here. One database per test file, made by the suite.
   test-postgres:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    name: test-postgres (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: postgres:16
@@ -48,11 +124,13 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm vitest run --maxWorkers=4 --minWorkers=1
+      - run: pnpm vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=4 --minWorkers=1
         env:
           REVENUEDOT_TEST_PG_URL: postgres://postgres:ci@localhost:5432/postgres
 
   site:
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -68,6 +146,13 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Astro's optimized images (about 840 AVIF and WebP files, 6.5 minutes to encode from scratch). Entries are keyed
+      # by source and settings, so an older cache is safe to start from; the save step keeps the newest.
+      - uses: actions/cache@v4
+        with:
+          path: apps/site/node_modules/.astro
+          key: astro-${{ hashFiles('apps/site/src/**', 'apps/site/public/**', 'apps/site/astro.config.mjs') }}
+          restore-keys: astro-
       - run: pnpm --filter site build
         env:
           DOCS_DIR: ${{ github.workspace }}/docs-repo
@@ -77,19 +162,22 @@ jobs:
           CHECK_WORKSPACE: "0"
 
   docker:
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
-      # Builds the self-host image and checks it starts and answers health; nothing is pushed.
+      # Builds the self-host image and checks it starts and answers health; nothing is pushed. No layer cache: the
+      # install layer changes with every commit, and exporting it to the cache took longer than building it.
       - uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           load: true
           tags: revenuedot:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
       - name: Start with Postgres and check health
         run: |
           docker network create rd
@@ -121,6 +209,8 @@ jobs:
 
   # Helm chart and Terraform reference setups (deploy/): lint, render and validate. Nothing is applied anywhere.
   deploy:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -164,3 +254,36 @@ jobs:
           for m in aws gcp; do
             (cd "deploy/terraform/$m" && terraform init -backend=false -input=false && terraform validate && tflint --init && tflint --format compact)
           done
+
+  # One check for the whole run. Skipped jobs (the change could not affect them) count as passed.
+  result:
+    name: CI result
+    needs: [changes, typecheck, test, test-postgres, site, docker, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do case "$r" in success|skipped) ;; *) exit 1 ;; esac; done
+      # The tree GitHub tested (the pull request merged into main as it was then). When main has not moved since, the
+      # merge commit has this same tree and deploy.yml skips the tests. Branches of this repo only: a fork could edit
+      # this workflow to record a tree it never tested.
+      - name: Record the tested tree
+        id: tree
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tree=$(gh api "repos/${{ github.repository }}/git/commits/${{ github.sha }}" -q .tree.sha)
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "${{ github.sha }}" > tested-commit.txt
+      - if: steps.tree.outputs.tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-tree-${{ steps.tree.outputs.tree }}
+          path: tested-commit.txt
+          retention-days: 7

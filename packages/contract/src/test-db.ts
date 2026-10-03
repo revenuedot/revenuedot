@@ -6,7 +6,11 @@
 // file its own module graph) clones it once with CREATE DATABASE … TEMPLATE, and every later open in the same file
 // empties all tables with one TRUNCATE instead of creating another database. Teardown drops every database of the run.
 // The URL is never printed.
-import { openDb, schema, type DB } from "@revenuedot/db";
+//
+// PGlite mode: `pg-global-setup.ts` migrates one in-memory database per run and saves its data directory to a temp file
+// (REVENUEDOT_TEST_PGLITE_SNAPSHOT). Every open loads that snapshot instead of migrating from scratch.
+import { openDb, pgliteSnapshot, schema, type DB } from "@revenuedot/db";
+import { readFile } from "node:fs/promises";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createRequire } from "node:module";
 // Loaded with require: vitest's globalSetup resolves bare imports from the repo root, where postgres is not installed.
@@ -22,6 +26,23 @@ export function databaseUrl(admin: string, name: string): string {
   const u = new URL(admin);
   u.pathname = `/${name}`;
   return u.href;
+}
+
+let snapshot: Promise<Blob> | undefined;
+
+/** The migrated data directory: the run's snapshot file, or (vitest run without the global setup) one migration per file. */
+function migratedSnapshot(): Promise<Blob> {
+  return (snapshot ??= (async () => {
+    const file = process.env.REVENUEDOT_TEST_PGLITE_SNAPSHOT;
+    if (file) return new Blob([await readFile(file)]);
+    const { db, close } = await openDb("pglite://memory");
+    try { return await pgliteSnapshot(db); } finally { await close(); }
+  })());
+}
+
+/** A migrated in-memory PGlite database, in either mode (tests that need a second server's database). */
+export async function openPgliteDb(): Promise<{ db: DB; close: () => Promise<void> }> {
+  return openDb("pglite://memory", { loadDataDir: await migratedSnapshot(), migrate: false });
 }
 
 let shared: Promise<{ db: DB; tables: string[]; query: Query }> | undefined;
@@ -69,7 +90,7 @@ async function reset(s: { tables: string[]; query: Query }) {
 /** An empty, migrated database. `close` is a no-op in real-Postgres mode (the file's database is dropped at teardown). */
 export async function openTestDb(): Promise<TestDb> {
   if (!realPostgres()) {
-    const { db, close } = await openDb("pglite://memory");
+    const { db, close } = await openPgliteDb();
     const client = (db as unknown as { $client: { query: (t: string, p: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> } }).$client;
     return { db, close, query: async (t, p = []) => (await client.query(t, p)).rows, real: false };
   }
