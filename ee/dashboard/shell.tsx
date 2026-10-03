@@ -56,8 +56,8 @@ export function OrgShell({ org, title, children }: { org?: Overview; title: stri
   useEffect(() => { setMenu(false); }, [loc.pathname]);
   useEffect(() => { document.title = `${title} · ${org?.name ?? "Organization"} · RevenueDot`; }, [title, org?.name]);
   useEffect(() => { if (me.isError) nav(`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`, { replace: true }); }, [me.isError, nav, loc.pathname, loc.search]);
-  const features = new Set(ent.data?.features ?? org?.features ?? []);
-  const tabs = TABS.filter((t) => !("feature" in t) || features.has(t.feature));
+  // Every tab shows; a feature the organization lacks opens its locked panel (locked.tsx) instead of being hidden.
+  const locked = new Set((org?.locked ?? []).map((l) => l.feature));
   const home = me.data?.projects[0] ? `/projects/${me.data.projects[0].id}/overview` : "/";
   return (
     <div className="shell">
@@ -68,9 +68,14 @@ export function OrgShell({ org, title, children }: { org?: Overview; title: stri
           <OrgSwitcher current={org} />
         </div>
         <nav className="nav" aria-label="Organization">
-          {org && tabs.map((t) => (
-            <NavLink key={t.value} to={`/organizations/${org.id}/${t.value}`} className={({ isActive }) => `it${isActive ? " active" : ""}`}><Icon name={t.icon} />{t.label}</NavLink>
-          ))}
+          {org && TABS.map((t) => {
+            const lock = "feature" in t && locked.has(t.feature);
+            return (
+              <NavLink key={t.value} to={`/organizations/${org.id}/${t.value}`} className={({ isActive }) => `it${isActive ? " active" : ""}`} aria-label={lock ? `${t.label} (locked)` : undefined}>
+                <Icon name={t.icon} />{t.label}{lock && <span style={{ marginLeft: "auto", display: "inline-flex", opacity: 0.6 }} title="Not in this plan"><Icon name="lock" /></span>}
+              </NavLink>
+            );
+          })}
         </nav>
         <div className="nav-foot"><Link className="it" to={home}><Icon name="arrow" />Back to projects</Link></div>
       </aside>
@@ -80,7 +85,7 @@ export function OrgShell({ org, title, children }: { org?: Overview; title: stri
           <nav className="crumb" aria-label="Breadcrumb"><span>{org?.name ?? "Organizations"}</span> <span>/</span> <b>{title}</b></nav>
           <div className="top-r"><a className="ib" href="https://revenuedot.app/docs/guides/enterprise" target="_blank" rel="noreferrer" aria-label="Docs"><Icon name="docs" /></a></div>
         </header>
-        {ent.data && ent.data.mode !== "licensed" && (
+        {ent.data && ent.data.mode !== "licensed" && ent.data.mode !== "cloud" && (
           <div className="verify-banner" role="status">
             <span>{ent.data.mode === "development" ? "Development licence: for development and testing only, not for production use (ee/LICENSE)." : `RevenueDot Enterprise is off: ${ent.data.message ?? "the licence is not valid"}.`}</span>
           </div>

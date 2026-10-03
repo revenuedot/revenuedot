@@ -5,7 +5,7 @@
  * checked against the REST API and the SDK endpoints.
  *
  * Apple and Google are never called: the "Check credentials" answer is mocked in the browser (the server side of that
- * check is covered by apps/server/test/setup-endpoints.test.ts). Webhooks go to a listener this test starts.
+ * check is covered by apps/server/test/setup-endpoints.test.ts and connect-key-check.test.ts). Webhooks go to a listener this test starts.
  *
  *   RD_WEB=http://localhost:5178 npx playwright test e2e/setup.spec.ts      (running API :8787 + dashboard :5178)
  *   npx playwright test -c e2e/playwright.config.ts e2e/setup.spec.ts         (the self-contained e2e server)
@@ -135,12 +135,12 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     const iap = page.getByRole("region", { name: "In-app purchase key" });
     await expect(iap.getByLabel("Key ID")).toHaveValue("ABC123DEFG");
     await iap.getByLabel("Issuer ID").fill("69a6de94-014f-47e3-e053-5b8c7c11a4d1");
-    await page.getByRole("button", { name: "Check credentials" }).click();
+    await iap.getByRole("button", { name: "Check credentials" }).click();
     await expect(page.getByText(/Apple rejected the key/)).toBeVisible();
     expect(verifyBodies[0]).toMatchObject({ app_store: { subscription_key_id: "ABC123DEFG", subscription_key_issuer: "69a6de94-014f-47e3-e053-5b8c7c11a4d1", bundle_id: "com.example.scanner" } });
     expect(verifyBodies[0].app_store.subscription_private_key).toContain("BEGIN PRIVATE KEY");
     verify = { object: "credentials_check", status: "valid", valid: true, message: "Apple accepted the in-app purchase key.", checked_at: Date.now() };
-    await page.getByRole("button", { name: "Check credentials" }).click();
+    await iap.getByRole("button", { name: "Check credentials" }).click();
     await expect(page.getByText("Valid credentials. Apple accepted the in-app purchase key.")).toBeVisible();
     await shot("app-store-valid-credentials");
 
@@ -178,6 +178,32 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     // Saving new key material re-runs the check against the stored key.
     await expect.poll(() => verifyBodies.some((b) => b && Object.keys(b).length === 0)).toBe(true);
     await page.unroute("**/actions/verify_credentials");
+  });
+
+  await test.step("App Store Connect API key: .p8 upload fills the key ID, its own check before saving, and again after saving", async () => {
+    let verify: object = { object: "credentials_check", key: "app_store_connect_api_key", status: "invalid", valid: false, message: "Apple did not accept the key (401). The key ID, issuer ID and .p8 file must belong to one team key.", checked_at: Date.now() };
+    const bodies: any[] = [];
+    await page.route("**/actions/verify_app_store_connect_key", async (route) => { bodies.push(route.request().postDataJSON()); await route.fulfill({ json: verify }); });
+    const asc = page.getByRole("region", { name: "App Store Connect API key" });
+    await expect(asc.getByRole("button", { name: "Check credentials" })).toBeDisabled();
+    await page.locator("#f-ascP8").setInputFiles({ name: "AuthKey_2X9R4HXF34.p8", mimeType: "application/octet-stream", buffer: Buffer.from(p8) });
+    await expect(asc.getByLabel("Key ID")).toHaveValue("2X9R4HXF34");
+    await asc.getByLabel("Issuer ID").fill("69a6de70-79a7-47e3-e053-5b8c7c11a4d1");
+    await asc.getByRole("button", { name: "Check credentials" }).click();
+    await expect(asc.getByText(/Apple did not accept the key \(401\)/)).toBeVisible();
+    expect(bodies[0]).toMatchObject({ app_store_connect_api_key_id: "2X9R4HXF34", app_store_connect_api_key_issuer: "69a6de70-79a7-47e3-e053-5b8c7c11a4d1", bundle_id: "com.example.scanner" });
+    expect(bodies[0].app_store_connect_api_key).toContain("BEGIN PRIVATE KEY");
+    verify = { object: "credentials_check", key: "app_store_connect_api_key", status: "valid", valid: true, message: "Key 2X9R4HXF34 works: it sees Scanner (Apple ID 6400000001).", checked_at: Date.now() };
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await toast("Changes saved.");
+    await expect(asc.getByText("Key 2X9R4HXF34 is saved.")).toBeVisible();
+    // Saving the key runs the check against the stored key by itself.
+    await expect(asc.getByText("Valid credentials. Key 2X9R4HXF34 works: it sees Scanner (Apple ID 6400000001).")).toBeVisible();
+    expect(bodies.at(-1)).toEqual({});
+    const s = await api("GET", `${P}/apps/${iosId}/store_settings`);
+    expect(s.body.credentials.app_store_connect_api_key).toMatchObject({ configured: true, key_id: "2X9R4HXF34", issuer_id: "69a6de70-79a7-47e3-e053-5b8c7c11a4d1" });
+    expect(JSON.stringify(s.body)).not.toContain("BEGIN PRIVATE KEY");
+    await page.unroute("**/actions/verify_app_store_connect_key");
   });
 
   await test.step("a store notification is forwarded and the status on the open page updates by itself", async () => {

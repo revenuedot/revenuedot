@@ -7,6 +7,7 @@ import { fromBase64, toBase64 } from "../../apps/server/src/services/signing.js"
 import { paramError } from "../../apps/server/src/routes/v2/common.js";
 import { eeCustomRoles, eeMembershipSources, eeOrgAuditLogs, eeOrgMembers, eeScimUsers, eeSsoSessions } from "./schema.js";
 import { needFeature, orgAudit, sha256Hex, type EeCtx } from "./util.js";
+import type { Feature } from "./license.js";
 
 /** Rows per export; narrow the dates for more. */
 export const EXPORT_MAX_ROWS = 200_000;
@@ -72,7 +73,7 @@ const BUILTIN_PERMISSIONS: Record<string, string> = {
 };
 
 type Helpers = {
-  member: (c: Context) => Promise<{ user: { id: string; email: string }; org: { id: string; name: string } }>;
+  member: (c: Context) => Promise<{ user: { id: string; email: string }; org: { id: string; name: string }; features: Set<Feature> }>;
   orgProjects: (orgId: string) => Promise<{ projectId: string; name: string; region: string }[]>;
 };
 
@@ -82,15 +83,15 @@ export function exportRoutes(r: Hono, ctx: EeCtx, h: Helpers) {
   const O = "/v2/organizations/:org_id";
 
   r.get(`${O}/exports/public_key`, async (c) => {
-    needFeature(ctx, "compliance_exports");
-    await h.member(c);
+    const m = await h.member(c);
+    needFeature(ctx, "compliance_exports", m.features);
     const k = await exportKey(deps);
     return c.json({ object: "export_signing_key", algorithm: "Ed25519", public_key: k?.publicKey ?? null, key_id: k?.keyId ?? null, signs: !!k });
   });
 
   r.get(`${O}/exports/:kind`, async (c) => {
-    needFeature(ctx, "compliance_exports");
     const m = await h.member(c);
+    needFeature(ctx, "compliance_exports", m.features);
     const kind = c.req.param("kind");
     if (kind !== "audit_logs" && kind !== "access_review") throw paramError("kind must be audit_logs or access_review.", "kind");
     const format = c.req.query("format") ?? "csv";

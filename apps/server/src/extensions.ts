@@ -5,8 +5,10 @@ import type { Deps } from "./context.js";
 /**
  * Extension points: the only way code outside this file reaches the paid `ee/` folder (LICENSING.md, ee/README.md).
  *
- * The open-source build behaves exactly as it does without `ee/`: unless REVENUEDOT_LICENSE_KEY or REVENUEDOT_EE_DEV is
- * set, `loadExtensions` returns no extensions and never imports anything from `ee/`. Every hook below is optional and is
+ * A self-hosted server behaves exactly as it does without `ee/`: unless REVENUEDOT_LICENSE_KEY or REVENUEDOT_EE_DEV is
+ * set, `loadExtensions` returns no extensions and never imports anything from `ee/`. RevenueDot Cloud always loads it:
+ * there each organization's plan decides which features it has (Cloud Standard: organizations, custom roles, single
+ * sign-on; Enterprise: all), so Free accounts see the features as locked rather than missing. Every hook below is optional and is
  * called only when an extension is loaded. This file is licensed under AGPL-3.0 with the rest of the core.
  */
 export interface ServerExtension {
@@ -41,8 +43,11 @@ export interface ServerExtension {
 }
 
 export interface ExtensionStatus {
-  /** "licensed": a valid key; "development": REVENUEDOT_EE_DEV (development and testing only); "invalid": a key that failed. */
-  mode: "licensed" | "development" | "invalid";
+  /**
+   * "licensed": a valid key; "development": REVENUEDOT_EE_DEV (development and testing only); "invalid": a key that failed;
+   * "cloud": RevenueDot Cloud, where the account's plan decides (the hooks report each person's features).
+   */
+  mode: "licensed" | "development" | "invalid" | "cloud";
   features: string[];
   /** Who the licence is for, when it names someone. */
   licensee?: string | null;
@@ -64,9 +69,12 @@ export interface PasswordRefusal {
 
 type Env = Record<string, string | undefined>;
 
-/** True when the environment asks for the enterprise features. The default (neither variable set) is off. */
-export function extensionsRequested(env: Env): boolean {
-  return !!env.REVENUEDOT_LICENSE_KEY?.trim() || env.REVENUEDOT_EE_DEV === "true";
+/**
+ * True when the enterprise extension should load: always on RevenueDot Cloud (plans decide there), otherwise only when
+ * the environment asks for it. The self-hosted default (neither variable set) is off.
+ */
+export function extensionsRequested(env: Env, edition?: "cloud" | "self-hosted"): boolean {
+  return edition === "cloud" || !!env.REVENUEDOT_LICENSE_KEY?.trim() || env.REVENUEDOT_EE_DEV === "true";
 }
 
 /**
@@ -74,7 +82,7 @@ export function extensionsRequested(env: Env): boolean {
  * (ee/server/license.ts). A missing `ee/` folder or a load error logs and returns none, so the server still starts.
  */
 export async function loadExtensions(env: Env, o: { edition?: "cloud" | "self-hosted" } = {}): Promise<ServerExtension[]> {
-  if (!extensionsRequested(env)) return [];
+  if (!extensionsRequested(env, o.edition)) return [];
   try {
     const m = (await import("../../../ee/server/index.js")) as { createEnterprise: (x: { env: Env; edition?: "cloud" | "self-hosted" }) => Promise<ServerExtension> };
     const ext = await m.createEnterprise({ env, edition: o.edition });

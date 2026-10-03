@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../worker/index";
-import { FACTS, callEmail, dynamicVariables, outboundPlan, resetDocs, search, splitPages, verifySignature, zonesFor } from "../worker/agent";
+import { FACTS, callEmail, relayEmail, dynamicVariables, outboundPlan, resetDocs, search, splitPages, verifySignature, zonesFor } from "../worker/agent";
 import { validate, type Lead } from "../worker/lead";
 
 const TOKEN = "test-agent-token";
@@ -274,5 +274,20 @@ describe("outbound speed to lead", () => {
     expect((await form({ ...good, revenue: "under_100k", needs: [] })).status).toBe(200);
     expect(fetches).toHaveLength(1);
     expect(env.sent[1]!.text).toContain("Voice agent: Not called: Self-serve leads are not called automatically.");
+  });
+});
+
+describe("relay email", () => {
+  it("puts the message first and marks urgent ones", () => {
+    const e = relayEmail({ message: "Wants SSO pricing before Friday.", subject: "SSO", caller_name: "Dana Lee", caller_email: "dana@bigapp.com", caller_phone: "+14155550100", company: "BigApp", urgency: "urgent", conversation_id: "conv_1" });
+    expect(e.subject).toBe("[Urgent] Message from Dana Lee, BigApp: SSO");
+    expect(e.text.startsWith("Wants SSO pricing before Friday.")).toBe(true);
+    expect(e.text).toContain("https://elevenlabs.io/app/agents/history/conv_1");
+    expect(e.html).not.toContain("<script");
+  });
+  it("works without caller details", () => {
+    const e = relayEmail({ message: "Call me back.", subject: "", caller_name: "", caller_email: "", caller_phone: "", company: "", urgency: "normal", conversation_id: "" });
+    expect(e.subject).toBe("Message from A caller");
+    expect(e.text).not.toContain("Reply to this email");
   });
 });

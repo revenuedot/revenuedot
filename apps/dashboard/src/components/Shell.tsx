@@ -18,7 +18,7 @@ export interface Me {
   };
   account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean; features?: { stripe_connect?: boolean; benchmarks?: boolean; insights_digest?: boolean } };
   projects: { id: string; name: string; role: string }[];
-  /** Only with an enterprise licence (src/extensions.tsx). */
+  /** With an enterprise licence, and always on RevenueDot Cloud, where `mode` is "cloud" and the plan decides (src/extensions.tsx). */
   enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
 }
 export function useMe(enabled = true) {
@@ -104,7 +104,7 @@ function ProjectSwitcher({ me, current }: { me: Me; current: string }) {
           <hr />
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/new"); }}><Icon name="plus" />New project</button>
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/projects/receive"); }}><Icon name="arrow" />Receive a project</button>
-          {me.enterprise?.features.includes("organizations") && enterpriseAvailable && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/organizations"); }}><Icon name="layers" />Organization settings</button>}
+          {(me.enterprise?.features.includes("organizations") || me.enterprise?.mode === "cloud") && enterpriseAvailable && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/organizations"); }}><Icon name="layers" />Organization settings</button>}
           <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account"); }}><Icon name="settings" />Account settings</button>
           {me.account?.edition === "cloud" && me.account.billing_ready && <button role="menuitem" type="button" onClick={() => { setOpen(false); nav("/account/billing"); }}><Icon name="dollar" />Billing</button>}
           <button role="menuitem" type="button" onClick={() => { setOpen(false); void signOut(qc, "/login"); }}><Icon name="logout" />Sign out</button>

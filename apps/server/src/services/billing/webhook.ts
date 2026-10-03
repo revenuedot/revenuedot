@@ -104,7 +104,7 @@ async function locked<T>(d: BillingWebhookDeps, customer: string, run: (d: Billi
   return result;
 }
 
-export interface SyncResult { userId: string; before: { plan: string; status: string }; after: { plan: string; status: string }; subscription: string | null; missing?: boolean }
+export interface SyncResult { userId: string; before: { plan: string; status: string }; after: { plan: string; status: string }; subscription: string | null; missing?: boolean; enterprise?: boolean }
 
 /**
  * Reads the customer's subscriptions from Stripe and writes the account's plan, status, subscription, period end and end
@@ -128,7 +128,7 @@ async function syncLocked(d: BillingWebhookDeps, out: Outbox, customer: string, 
   if (!acct) return null;
   const before = { plan: acct.plan, status: acct.status };
   // Enterprise is set by hand and billed by contract: Stripe never moves it.
-  if (acct.plan === "enterprise") return { userId: acct.userId, before, after: before, subscription: acct.stripeSubscriptionId };
+  if (acct.plan === "enterprise") return { userId: acct.userId, before, after: before, subscription: acct.stripeSubscriptionId, enterprise: true };
   let subs: Obj[];
   try { subs = await d.stripe.listSubscriptions(customer); }
   catch (e) {
@@ -220,6 +220,7 @@ export async function handleBillingEvent(d: BillingWebhookDeps, event: { id: str
         const userId = o.client_reference_id ?? o.metadata?.revenuedot_user_id;
         const r = await syncCustomer(d, o.customer, typeof userId === "string" ? userId : null);
         if (!r) return "unknown user";
+        if (r.enterprise) return "enterprise kept";
         return r.after.plan === "standard" ? "subscribed" : r.after.status;
       }
       case "customer.subscription.created":
@@ -229,7 +230,8 @@ export async function handleBillingEvent(d: BillingWebhookDeps, event: { id: str
       case "customer.subscription.resumed": {
         if (typeof o.customer !== "string") return "ignored";
         const r = await syncCustomer(d, o.customer, typeof o.metadata?.revenuedot_user_id === "string" ? o.metadata.revenuedot_user_id : null);
-        return r ? r.after.status : "unknown customer";
+        if (!r) return "unknown customer";
+        return r.enterprise ? "enterprise kept" : r.after.status;
       }
       case "invoice.created":
       case "invoice.finalized":

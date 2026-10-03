@@ -15,7 +15,7 @@ import "./billing.css";
  * Portal) or Contact us, and invoices. Self-hosted servers have no billing.
  */
 
-interface Plan { id: "free" | "standard" | "enterprise"; name: string; price_label: string; description: string; limit_usd: number | null; self_serve: boolean }
+interface Plan { id: "free" | "standard" | "enterprise"; name: string; price_label: string; description: string; limit_usd: number | null; self_serve: boolean; includes?: string[] }
 interface Billing {
   account: { plan: Plan["id"]; status: string; cancel_at: number | null; current_period_end: number | null; has_payment_method: boolean };
   plans: Plan[];
@@ -116,9 +116,10 @@ export function BillingPage() {
                     <span className="l">{p.name}{isCurrent && <Tag tone="gold">Current</Tag>}</span>
                     <span className="v">{p.price_label}</span>
                     <p>{p.description}</p>
+                    {!!p.includes?.length && <ul className="bl-includes">{p.includes.map((x) => <li key={x}>{x}</li>)}</ul>}
                     {p.id === "standard" && !isCurrent && <button type="button" className="btn btn-dark" disabled={!b.stripe_ready || busy !== null} onClick={() => go("checkout")}>{busy === "checkout" ? "Opening Stripe…" : "Upgrade to Standard"}</button>}
                     {p.id === "standard" && isCurrent && <button type="button" className="btn btn-line" disabled={!b.stripe_ready || busy !== null} onClick={() => go("portal")}>{busy === "portal" ? "Opening Stripe…" : "Manage billing"}</button>}
-                    {p.id === "enterprise" && !isCurrent && <a className="btn btn-line" href="mailto:hello@revenuedot.app?subject=RevenueDot%20Enterprise">Contact us</a>}
+                    {p.id === "enterprise" && !isCurrent && <a className="btn btn-line" href="https://revenuedot.app/contact-sales" target="_blank" rel="noreferrer">Contact sales</a>}
                     {p.id === "free" && !isCurrent && b.account.has_payment_method && <button type="button" className="btn btn-line" disabled={!b.stripe_ready || busy !== null} onClick={() => go("portal")}>Cancel in the billing portal</button>}
                   </div>
                 );

@@ -38,7 +38,8 @@ import {
 import { REGIONS, REGION_NAMES, forgetProjectRegion, selectableRegions, type Region } from "./region.js";
 import { RETENTION_MAX_DAYS, RETENTION_MIN_DAYS } from "./retention.js";
 import { exportRoutes } from "./exports.js";
-import { ORG_ROLES, V2Error, id, isOrgAdmin, ms, needFeature, normEmail, orgAudit, orgMembership, requireOrgAdmin, requireOwner, signedIn, type EeCtx } from "./util.js";
+import { ORG_ROLES, V2Error, id, isOrgAdmin, ms, needFeature, normEmail, orgAudit, orgFeatures, orgMembership, planFields, requireOrgAdmin, requireOwner, signedIn, userFeatures, type EeCtx } from "./util.js";
+import type { Feature } from "./license.js";
 
 const Name = z.string().trim().min(1, "must not be empty").max(100);
 const OrgCreate = z.object({ name: Name, region: z.enum(REGIONS).optional() });
@@ -73,14 +74,28 @@ export function orgRoutes(ctx: EeCtx) {
   r.onError((e, c) => v2ErrorResponse(c, e));
   const O = "/v2/organizations/:org_id";
 
-  r.use("/v2/organizations/*", async (_c, next) => { needFeature(ctx, "organizations"); await next(); });
-  r.use("/v2/organizations", async (_c, next) => { needFeature(ctx, "organizations"); await next(); });
+  if (!ctx.cloud) {
+    // Self-hosted: the licence decides for the whole server.
+    r.use("/v2/organizations/*", async (_c, next) => { needFeature(ctx, "organizations"); await next(); });
+    r.use("/v2/organizations", async (_c, next) => { needFeature(ctx, "organizations"); await next(); });
+  } else {
+    // RevenueDot Cloud: each organization's plan decides (plans.ts). After a downgrade its people can still read it, move
+    // projects out, leave and delete it; changing anything needs the plan again.
+    const gate = async (c: Context, next: () => Promise<void>) => {
+      if (!["GET", "HEAD", "DELETE"].includes(c.req.method)) needFeature(ctx, "organizations", await orgFeatures(ctx, c.req.param("org_id")!));
+      await next();
+    };
+    r.use(O, gate);
+    r.use(`${O}/*`, gate);
+  }
 
-  /** Signed in and an active member of the organization in the path. */
+  /** Signed in and an active member of the organization in the path, with the features the organization has. */
   const member = async (c: Context) => {
     const { user, sessionId } = await signedIn(c, deps);
-    const { org, member: m } = await orgMembership(db, c.req.param("org_id")!, user.id, { sessionId, features: ctx.features });
-    return { user, sessionId, org, role: m.role };
+    const orgId = c.req.param("org_id")!;
+    const features = await orgFeatures(ctx, orgId);
+    const { org, member: m } = await orgMembership(db, orgId, user.id, { sessionId, features });
+    return { user, sessionId, org, role: m.role, features };
   };
   const admin = async (c: Context) => { const m = await member(c); requireOrgAdmin(m.role); return m; };
   const audit = (orgId: string, userId: string, action: string, target: { type: string; id?: string | null }, data?: Record<string, unknown>) =>
@@ -97,7 +112,7 @@ export function orgRoutes(ctx: EeCtx) {
     return ids.size;
   };
 
-  const orgShape = async (o: OrgRow, role: string) => {
+  const orgShape = async (o: OrgRow, role: string, features: Set<Feature>) => {
     const projects = await orgProjects(o.id);
     const [members] = await db.select({ n: count() }).from(eeOrgMembers).where(and(eq(eeOrgMembers.orgId, o.id), eq(eeOrgMembers.active, true)));
     return {
@@ -105,7 +120,7 @@ export function orgRoutes(ctx: EeCtx) {
       selectable_regions: selectableRegions(ctx.regions, deps.edition === "cloud"), region_enforced: Object.keys(ctx.regions.regions).length > 1, cloud: deps.edition === "cloud",
       audit_retention_days: o.auditRetentionDays, sso_enforced: o.ssoEnforced,
       seats: { purchased: o.seats, used: await seatsUsed(o.id) }, billing_email: o.billingEmail,
-      member_count: Number(members?.n ?? 0), project_count: projects.length, features: [...ctx.features],
+      member_count: Number(members?.n ?? 0), project_count: projects.length, features: [...features], ...(await planFields(ctx, o.id, features)),
       created_at: o.createdAt.getTime(), updated_at: o.updatedAt.getTime(),
     };
   };
@@ -115,12 +130,20 @@ export function orgRoutes(ctx: EeCtx) {
     const rows = await db.select({ org: eeOrganizations, role: eeOrgMembers.role }).from(eeOrgMembers)
       .innerJoin(eeOrganizations, eq(eeOrganizations.id, eeOrgMembers.orgId))
       .where(and(eq(eeOrgMembers.userId, user.id), eq(eeOrgMembers.active, true))).orderBy(eeOrganizations.createdAt);
-    return c.json(listOf(c, await Promise.all(rows.map((x) => orgShape(x.org, x.role))), null));
+    return c.json(listOf(c, await Promise.all(rows.map(async (x) => orgShape(x.org, x.role, await orgFeatures(ctx, x.org.id)))), null));
   });
 
   r.post("/v2/organizations", async (c) => {
     const { user } = await signedIn(c, deps);
     const b = await body(c, OrgCreate);
+    // Cloud: creating an organization needs a plan that includes organizations (Cloud Standard or Enterprise).
+    const mine = await userFeatures(ctx, user.id);
+    if (ctx.cloud) needFeature(ctx, "organizations", mine);
+    // A region other than this server's is a data-location setting, like the update route.
+    if (b.region !== undefined && b.region !== ctx.regions.current) {
+      needFeature(ctx, "data_location", mine);
+      if (!selectableRegions(ctx.regions, deps.edition === "cloud").includes(b.region)) throw paramError(`New organizations on this server are created in the ${REGION_NAMES[ctx.regions.current]} region.`, "region");
+    }
     if (ctx.maxOrgs) {
       const [n] = await db.select({ n: count() }).from(eeOrganizations);
       if (Number(n?.n ?? 0) >= ctx.maxOrgs) throw new V2Error(403, "authorization_error", `Your RevenueDot Enterprise licence covers ${ctx.maxOrgs} organization${ctx.maxOrgs === 1 ? "" : "s"} on this server.`);
@@ -131,10 +154,10 @@ export function orgRoutes(ctx: EeCtx) {
     await db.insert(eeOrgMembers).values({ orgId, userId: user.id, role: "owner", source: "manual", createdAt: now });
     await audit(orgId, user.id, "organization_created", { type: "organization", id: orgId }, { name: b.name });
     const [o] = await db.select().from(eeOrganizations).where(eq(eeOrganizations.id, orgId));
-    return c.json(await orgShape(o!, "owner"), 201);
+    return c.json(await orgShape(o!, "owner", await orgFeatures(ctx, o!.id)), 201);
   });
 
-  r.get(O, async (c) => { const m = await member(c); return c.json(await orgShape(m.org, m.role)); });
+  r.get(O, async (c) => { const m = await member(c); return c.json(await orgShape(m.org, m.role, m.features)); });
 
   r.post(O, async (c) => {
     const m = await admin(c);
@@ -143,18 +166,18 @@ export function orgRoutes(ctx: EeCtx) {
     const changed: Record<string, unknown> = {};
     if (b.name !== undefined) { set.name = b.name; changed.name = b.name; }
     if (b.region !== undefined) {
-      needFeature(ctx, "data_location");
+      needFeature(ctx, "data_location", m.features);
       if (!selectableRegions(ctx.regions, deps.edition === "cloud").includes(b.region)) throw paramError(`New projects of this organization are created in the ${REGION_NAMES[ctx.regions.current]} region on this server. Use the ${REGION_NAMES[b.region]} dashboard for projects stored there.`, "region");
       set.region = b.region; changed.region = b.region;
     }
     if (b.audit_retention_days !== undefined) {
-      needFeature(ctx, "audit_retention");
+      needFeature(ctx, "audit_retention", m.features);
       // Shortening retention deletes history for good, so only owners may change it.
       requireOwner(m.role);
       set.auditRetentionDays = b.audit_retention_days; changed.audit_retention_days = b.audit_retention_days;
     }
     if (b.sso_enforced !== undefined) {
-      needFeature(ctx, "sso");
+      needFeature(ctx, "sso", m.features);
       if (b.sso_enforced) {
         const [conn] = await db.select({ id: eeSsoConnections.id }).from(eeSsoConnections).where(and(eq(eeSsoConnections.orgId, m.org.id), eq(eeSsoConnections.enabled, true))).limit(1);
         const [dom] = await db.select({ d: eeSsoDomains.domain }).from(eeSsoDomains).where(and(eq(eeSsoDomains.orgId, m.org.id), sql`${eeSsoDomains.verifiedAt} is not null`)).limit(1);
@@ -166,7 +189,7 @@ export function orgRoutes(ctx: EeCtx) {
     if (b.billing_email !== undefined) { requireOwner(m.role); set.billingEmail = b.billing_email ? normEmail(b.billing_email) : null; changed.billing_email = set.billingEmail; }
     const [o] = await db.update(eeOrganizations).set(set).where(eq(eeOrganizations.id, m.org.id)).returning();
     if (Object.keys(changed).length) await audit(m.org.id, m.user.id, "organization_updated", { type: "organization", id: m.org.id }, changed);
-    return c.json(await orgShape(o!, m.role));
+    return c.json(await orgShape(o!, m.role, m.features));
   });
 
   r.delete(O, async (c) => {
@@ -301,8 +324,8 @@ export function orgRoutes(ctx: EeCtx) {
   });
 
   r.post(`${O}/projects/:project_id/region`, async (c) => {
-    needFeature(ctx, "data_location");
     const m = await admin(c);
+    needFeature(ctx, "data_location", m.features);
     const p = await orgProject(m.org.id, c.req.param("project_id")!);
     const b = await body(c, RegionSet);
     if (b.region === p.region) return c.json({ object: "organization_project", id: p.projectId, region: p.region });
@@ -345,7 +368,7 @@ export function orgRoutes(ctx: EeCtx) {
     }
     const b = await body(c, MemberProjectRole);
     if (!isBuiltin(b.role)) {
-      needFeature(ctx, "custom_roles");
+      needFeature(ctx, "custom_roles", m.features);
       const [role] = await db.select().from(eeCustomRoles).where(and(eq(eeCustomRoles.id, b.role), eq(eeCustomRoles.orgId, m.org.id))).limit(1);
       if (!role || (role.projectId && role.projectId !== p.projectId)) throw paramError("Unknown role for this project.", "role");
     }
@@ -391,16 +414,16 @@ export function orgRoutes(ctx: EeCtx) {
     : new Map<string, number>();
 
   r.get(`${O}/roles`, async (c) => {
-    needFeature(ctx, "custom_roles");
     const m = await member(c);
+    needFeature(ctx, "custom_roles", m.features);
     const rows = await db.select().from(eeCustomRoles).where(eq(eeCustomRoles.orgId, m.org.id)).orderBy(eeCustomRoles.createdAt);
     const use = await roleUse(rows.map((x) => x.id));
     return c.json(listOf(c, rows.map((x) => roleShape(x, use.get(x.id) ?? 0)), null));
   });
 
   r.post(`${O}/roles`, async (c) => {
-    needFeature(ctx, "custom_roles");
     const m = await admin(c);
+    needFeature(ctx, "custom_roles", m.features);
     const b = await body(c, RoleBody);
     await checkRoleProject(m.org.id, b.project_id);
     const scopes = checkScopes(b.scopes);
@@ -413,15 +436,15 @@ export function orgRoutes(ctx: EeCtx) {
   });
 
   r.get(`${O}/roles/:role_id`, async (c) => {
-    needFeature(ctx, "custom_roles");
     const m = await member(c);
+    needFeature(ctx, "custom_roles", m.features);
     const x = await findRole(m.org.id, c.req.param("role_id")!);
     return c.json(roleShape(x, (await roleUse([x.id])).get(x.id) ?? 0));
   });
 
   r.post(`${O}/roles/:role_id`, async (c) => {
-    needFeature(ctx, "custom_roles");
     const m = await admin(c);
+    needFeature(ctx, "custom_roles", m.features);
     const x = await findRole(m.org.id, c.req.param("role_id")!);
     const b = await body(c, RoleUpdate);
     const set: Partial<typeof eeCustomRoles.$inferInsert> = { updatedAt: deps.now() };
@@ -444,7 +467,7 @@ export function orgRoutes(ctx: EeCtx) {
   });
 
   r.delete(`${O}/roles/:role_id`, async (c) => {
-    needFeature(ctx, "custom_roles");
+    // Deleting a role stays possible after a downgrade (its members become Viewers).
     const m = await admin(c);
     const x = await findRole(m.org.id, c.req.param("role_id")!);
     // Members with the role become Viewers; mappings that gave it are removed.
@@ -474,7 +497,7 @@ export function orgRoutes(ctx: EeCtx) {
     const b = await body(c, MappingBody);
     await orgProject(m.org.id, b.project_id).catch(() => { throw paramError("project_id must be a project of this organization.", "project_id"); });
     if (!isBuiltin(b.role)) {
-      needFeature(ctx, "custom_roles");
+      needFeature(ctx, "custom_roles", m.features);
       const [role] = await db.select().from(eeCustomRoles).where(and(eq(eeCustomRoles.id, b.role), eq(eeCustomRoles.orgId, m.org.id))).limit(1);
       if (!role || (role.projectId && role.projectId !== b.project_id)) throw paramError("Unknown role for this project.", "role");
     }
@@ -530,7 +553,7 @@ export function orgRoutes(ctx: EeCtx) {
     const conns = await db.select({ id: eeSsoConnections.id, kind: eeSsoConnections.kind, enabled: eeSsoConnections.enabled }).from(eeSsoConnections).where(eq(eeSsoConnections.orgId, m.org.id));
     const domains = await db.select({ d: eeSsoDomains.domain, v: eeSsoDomains.verifiedAt }).from(eeSsoDomains).where(eq(eeSsoDomains.orgId, m.org.id));
     return c.json({
-      ...(await orgShape(m.org, m.role)), object: "organization_overview",
+      ...(await orgShape(m.org, m.role, m.features)), object: "organization_overview",
       sso: { connections: conns.length, enabled: conns.filter((x) => x.enabled).length, verified_domains: domains.filter((d) => d.v).map((d) => d.d) },
       scim: { active_tokens: Number(tokens?.n ?? 0) },
     });

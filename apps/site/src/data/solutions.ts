@@ -1,5 +1,5 @@
 // Solution landing pages: /solutions/<slug>. Facts come from docs/STATUS.md, the docs repo and src/lib/pricing.ts.
-// Writing rules: apps/site/CONTENT.md. The paid Cloud plan is planned, so every price for it says so.
+// Writing rules: apps/site/CONTENT.md. Cloud Standard prices come from src/lib/pricing.ts.
 import type { Landing } from "./types";
 
 const SIGNUP = "https://app.revenuedot.app/signup";
@@ -16,7 +16,7 @@ export const SOLUTIONS: Landing[] = [
     metaDescription:
       "Once you reach $2,500 a month, RevenueCat charges 1% of all tracked revenue. RevenueDot Cloud is free up to $10,000 a month, and self-hosting is free. Keep your SDK code.",
     answer:
-      "Once an app reaches $2,500 a month, RevenueCat charges 1% of all monthly tracked revenue. RevenueDot Cloud is free up to $10,000 a month, so an app making $10,000 a month saves $100 every month, and self-hosting costs nothing but your server. You keep the RevenueCat SDK and change one proxy URL line. The paid Cloud plan, 0.5% above $10,000, is planned.",
+      "Once an app reaches $2,500 a month, RevenueCat charges 1% of all monthly tracked revenue. RevenueDot Cloud is free up to $10,000 a month, so an app making $10,000 a month saves $100 every month, and self-hosting costs nothing but your server. You keep the RevenueCat SDK and change one proxy URL line. Cloud Standard is 0.5% above $10,000, capped at $999 a month.",
     shot: {
       src: "screens/overview-light.png",
       alt: "The RevenueDot dashboard overview with monthly revenue, active subscriptions and a sandbox switch",
@@ -32,18 +32,18 @@ export const SOLUTIONS: Landing[] = [
         h2: "What the bill looks like at each revenue level",
         label: "Price",
         paras: [
-          "RevenueCat is free up to $2,500 of monthly tracked revenue and then charges 1% of the revenue above that, according to its [pricing page](https://www.revenuecat.com/pricing) (checked September 2026). Its paywall and funnel tools are priced separately. The RevenueDot Cloud paid plan is planned and not yet billing.",
+          "RevenueCat is free up to $2,500 of monthly tracked revenue and then charges 1% of the revenue above that, according to its [pricing page](https://www.revenuecat.com/pricing) (checked September 2026). Its paywall and funnel tools are priced separately.",
         ],
         table: {
           head: ["Monthly tracked revenue", "RevenueCat", "RevenueDot Cloud", "RevenueDot self-hosted"],
           rows: [
             ["$5,000", "$25", "$0", "$0 plus your server"],
             ["$10,000", "$100", "$0", "$0 plus your server"],
-            ["$25,000", "$250", "$75 (planned)", "$0 plus your server"],
-            ["$50,000", "$500", "$200 (planned)", "$0 plus your server"],
-            ["$100,000", "$1,000", "$450 (planned)", "$0 plus your server"],
+            ["$25,000", "$250", "$75", "$0 plus your server"],
+            ["$50,000", "$500", "$200", "$0 plus your server"],
+            ["$100,000", "$1,000", "$450", "$0 plus your server"],
           ],
-          caption: "The planned Cloud Standard plan is 0.5% of tracked revenue above $10,000, capped at $999 a month.",
+          caption: "Cloud Standard is 0.5% of tracked revenue above $10,000, capped at $999 a month.",
         },
       },
       {
@@ -105,8 +105,8 @@ export const SOLUTIONS: Landing[] = [
         a: "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and self-hosted RevenueDot is free with no limits under AGPL-3.0. Both work with the RevenueCat SDK, so you change one proxy URL line.",
       },
       {
-        q: "What will RevenueDot Cloud cost above $10,000 a month?",
-        a: "The planned Standard plan is 0.5% of tracked revenue above $10,000, capped at $999 a month. It is planned, not live. Today the Cloud free plan covers up to $10,000 a month and self-hosting costs only your own server.",
+        q: "What does RevenueDot Cloud cost above $10,000 a month?",
+        a: "Cloud Standard is 0.5% of tracked revenue above $10,000, capped at $999 a month, and the rate never rises. The Cloud free plan covers up to $10,000 a month, and self-hosting costs only your own server.",
       },
       {
         q: "Do I have to rewrite my app to leave RevenueCat?",
@@ -178,7 +178,7 @@ export const SOLUTIONS: Landing[] = [
         h2: "What one server costs against one bill per app",
         label: "Cost",
         paras: [
-          "Self-hosted RevenueDot is AGPL-3.0 and takes no share of revenue, so adding a client app adds database rows, not a bill that grows with that client's sales. You pay for your own server and Postgres. If you prefer not to run servers, RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and the planned paid plan is capped at $999 a month. See [pricing](/pricing).",
+          "Self-hosted RevenueDot is AGPL-3.0 and takes no share of revenue, so adding a client app adds database rows, not a bill that grows with that client's sales. You pay for your own server and Postgres. If you prefer not to run servers, RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and Cloud Standard is capped at $999 a month. See [pricing](/pricing).",
           "For comparison, RevenueCat charges 1% of all monthly tracked revenue once it reaches $2,500 ([pricing](https://www.revenuecat.com/pricing), checked October 2026).",
         ],
       },
@@ -608,7 +608,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
       },
       {
         q: "Does RevenueDot take a cut of web payments?",
-        a: "Payments run on your own Stripe account. RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and the planned paid plan is 0.5% above that, capped at $999 a month. Stripe charges its own fees.",
+        a: "Payments run on your own Stripe account. RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and Cloud Standard is 0.5% above that, capped at $999 a month. Stripe charges its own fees.",
       },
       {
         q: "Can I see where visitors drop off in a funnel?",

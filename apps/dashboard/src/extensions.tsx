@@ -4,8 +4,8 @@ import { Navigate } from "react-router-dom";
 /**
  * Extension point: the only place the dashboard reaches the paid `ee/` folder (LICENSING.md, ee/README.md). The module is
  * found at build time with a glob, so a build without `ee/` still works (the glob is empty), and it is loaded lazily,
- * only when a page under /organizations is opened; links to those pages appear only when the server reports an
- * enterprise licence (`enterprise` in GET /auth/me). This file is licensed under AGPL-3.0 with the rest of the dashboard.
+ * only when a page under /organizations is opened; links to those pages appear when the server reports an enterprise
+ * licence, or RevenueDot Cloud (`enterprise.mode` "cloud" in GET /auth/me), where features a plan lacks show as locked. This file is licensed under AGPL-3.0 with the rest of the dashboard.
  */
 const modules = import.meta.glob<{ default: ComponentType }>("../../../ee/dashboard/index.tsx");
 const load = Object.values(modules)[0];

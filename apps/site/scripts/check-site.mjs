@@ -142,7 +142,7 @@ for (const file of htmlFiles) {
   const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "");
   for (const m of markup.matchAll(/(?:href|src)="([^"]+)"/g)) {
     const u = m[1];
-    if (/^(https?:|mailto:|data:|#)/.test(u)) {
+    if (/^(https?:|mailto:|tel:|data:|#)/.test(u)) {
       if (u.startsWith(SITE)) {
         links++;
         const { pathname, hash } = new URL(u);

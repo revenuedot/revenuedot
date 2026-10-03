@@ -34,7 +34,7 @@ const db = new Proxy({} as DB, {
 });
 
 let app: ReturnType<typeof createApp> | undefined;
-// Enterprise features (ee/, extensions.ts): loaded once per isolate, only when REVENUEDOT_LICENSE_KEY is set.
+// Enterprise features (ee/, extensions.ts): loaded once per isolate. Always on Cloud, where each organization's plan decides.
 let extensions: Promise<ServerExtension[]> | undefined;
 const extensionsFor = (env: Env) => (extensions ??= loadExtensions(env as unknown as Record<string, string | undefined>, { edition: "cloud" }));
 const appFor = (env: Env, ext: ServerExtension[]) => (app ??= createApp({
@@ -78,7 +78,7 @@ export default {
     // RevenueDot AI conversations: the session and ownership are checked here, then the Durable Object takes the socket.
     if (url.pathname.startsWith("/agents/")) {
       const conn = connectPostgres(env.HYPERDRIVE.connectionString);
-      try { return await routeAssistantAgent(req, env, conn.db); } finally { ctx.waitUntil(conn.close()); }
+      try { return await routeAssistantAgent(req, env, conn.db, await extensionsFor(env)); } finally { ctx.waitUntil(conn.close()); }
     }
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
     const s: RequestScope = { db: conn.db, pending: [] };
