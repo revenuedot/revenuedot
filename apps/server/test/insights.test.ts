@@ -7,7 +7,7 @@ import { TEST_ENCRYPTION_KEY } from "./assistant-helpers.js";
 import { defaultScript, fakeAssistantModel, type FakeScript } from "../src/services/assistant/fake-model.js";
 import { inProcessClient, RevenueDotApiError } from "../src/services/assistant/client.js";
 import { buildInsightPack } from "../src/services/insights/pack.js";
-import { extractJson, generateInsights, validateInsights, weekOf } from "../src/services/insights/generate.js";
+import { extractJson, generateInsights, INSIGHTS_MAX_OUTPUT_TOKENS, validateInsights, weekOf } from "../src/services/insights/generate.js";
 import { digestOpen, digestToken, numberLine, runInsightsDigest, verifyDigestToken } from "../src/services/insights/digest.js";
 import { DEFAULT_CAPS } from "../src/services/assistant/limits.js";
 import { createSecretKey } from "../src/services/auth.js";
@@ -140,11 +140,22 @@ describe("Overview insights and Refresh", () => {
   });
 
   it("repairs one bad answer and reports one that stays bad", async () => {
+    // The first answer is empty, as when a reasoning model spends its output budget on reasoning (SuperScan, 2026-10-02).
     let n = 0;
-    script = (ctx) => (++n === 1 ? { text: "I think things are fine." } : defaultScript(ctx));
+    script = (ctx) => (++n === 1 ? { text: "" } : defaultScript(ctx));
     s.setNow(new Date("2026-10-12T07:00:00Z"));
+    const calls0 = model.fake.calls.length;
     const ok = await ada.browser.call("POST", `${P}/ai/insights/refresh`);
     expect(ok.body).toMatchObject({ status: "ready", insights_week: "2026-10-12" });
+    const calls = model.fake.calls.slice(calls0);
+    expect(calls).toHaveLength(2);
+    // Every step has room to reason and still write the answer; the repair has no tools and reasons briefly.
+    expect(calls.map((c) => c.maxOutputTokens)).toEqual([INSIGHTS_MAX_OUTPUT_TOKENS, INSIGHTS_MAX_OUTPUT_TOKENS]);
+    expect(INSIGHTS_MAX_OUTPUT_TOKENS).toBeGreaterThanOrEqual(16_000);
+    expect(calls[0]!.providerOptions?.openai?.reasoningEffort).toBeUndefined();
+    expect(calls[1]!.tools ?? []).toEqual([]);
+    expect(calls[1]!.providerOptions).toMatchObject({ openai: { reasoningEffort: "low" } });
+    expect(JSON.stringify(calls[1]!.prompt)).toContain("The model gave no answer.");
     script = () => ({ text: '{"insights": []}' });
     s.setNow(new Date("2026-10-19T07:00:00Z"));
     const bad = await ada.browser.call("POST", `${P}/ai/insights/refresh`);
