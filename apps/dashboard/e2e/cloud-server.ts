@@ -97,7 +97,10 @@ export async function startCloud(port: number, dist: string, mail: Mailer & { se
     }
     return c.html(readFileSync(join(dist, "index.html"), "utf8"));
   });
-  serve({ fetch: web.fetch, port });
+  serve({ fetch: web.fetch, port }).on("error", (e: NodeJS.ErrnoException) => {
+    console.error(e.code === "EADDRINUSE" ? `Port ${port} (the e2e Cloud server, E2E_PORT + 1) is already in use. Set E2E_PORT to a free pair of ports.` : e);
+    process.exit(1);
+  });
   // Webhook deliveries and exports, like the Node entry point.
   setInterval(() => { tick(db, new Date(), f, { mailer: mail, encryptionKey: CLOUD_KEY, edition: "cloud", billing }).catch((e) => console.error("cloud tick failed", e)); }, 5_000);
   console.log(`E2E Cloud server on ${base}`);
