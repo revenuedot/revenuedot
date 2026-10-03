@@ -32,3 +32,9 @@ export function clientIp(header: (name: string) => string | undefined, env?: unk
   const socket = (env as { incoming?: { socket?: { remoteAddress?: string } } } | null | undefined)?.incoming?.socket;
   return socket?.remoteAddress?.replace(/^::ffff:/, "") || "unknown";
 }
+
+/** Deletes windows older than two days (the longest window is one day). */
+export async function pruneRateLimits(db: DB, now: Date) {
+  const t = schema.rateLimits;
+  await db.delete(t).where(sql`${t.windowStart} < ${new Date(now.getTime() - 2 * 86_400_000).toISOString()}::timestamptz`);
+}

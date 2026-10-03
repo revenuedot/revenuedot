@@ -144,11 +144,17 @@ test("stores: Amazon Appstore and Stripe apps", async ({ page, baseURL }) => {
     expect(res.body.subscriber.subscriptions.prod_E2eMonthly).toMatchObject({ store: "stripe", is_sandbox: true });
     const hooks = page.getByRole("region", { name: "Stripe webhooks" });
     await expect(hooks.getByText(/Waiting for the first notification from Stripe/)).toBeVisible();
-    // A forged event is refused and shows as a failure on the page.
+    // A forged event is refused and counted as a rejected request; it does not turn the page red.
     const event = JSON.stringify({ id: `evt_e2e_${stamp}`, object: "event", type: "customer.subscription.updated", created: Math.floor(Date.now() / 1000), livemode: false, data: { object: { id: E2E_STRIPE_SUB, object: "subscription" } } });
     const t = Math.floor(Date.now() / 1000);
     const bad = await page.request.post(`${WEB}/v1/notifications/stripe/${stripeId}`, { data: event, headers: { "content-type": "application/json", "stripe-signature": `t=${t},v1=${"0".repeat(64)}` } });
     expect(bad.status()).toBe(400);
+    await expect(hooks.getByTestId("rejected-requests")).toContainText("1 rejected request in the last 24 hours", { timeout: 15_000 });
+    await expect(hooks.getByText(/Waiting for the first notification from Stripe/)).toBeVisible();
+    // A body signed with the app's secret that is not an event is a real failure of this endpoint.
+    const junk = "{}";
+    const junkSig = createHmac("sha256", E2E_STRIPE_WHSEC).update(`${t}.${junk}`).digest("hex");
+    expect((await page.request.post(`${WEB}/v1/notifications/stripe/${stripeId}`, { data: junk, headers: { "content-type": "application/json", "stripe-signature": `t=${t},v1=${junkSig}` } })).status()).toBe(400);
     await expect(hooks.getByText(/The last notification from Stripe could not be processed/)).toBeVisible({ timeout: 15_000 });
     const sig = createHmac("sha256", E2E_STRIPE_WHSEC).update(`${t}.${event}`).digest("hex");
     const good = await page.request.post(`${WEB}/v1/notifications/stripe/${stripeId}`, { data: event, headers: { "content-type": "application/json", "stripe-signature": `t=${t},v1=${sig}` } });

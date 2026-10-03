@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
-import { REJECTED_LIMIT } from "../src/stores/rejected.js";
+import { REJECTED_LIMIT, backfillRejected, ipBucket, pruneRejected } from "../src/stores/rejected.js";
 import { signStripePayload } from "../src/stores/stripe/signature.js";
 import { APP_ID as APPLE_APP, appleHarness, makePki, notificationBody, renewalInfo, signJws, transaction, type Pki } from "./apple-fixtures.js";
 import * as amazon from "./amazon-helpers.js";
@@ -59,7 +59,7 @@ describe("App Store", () => {
   beforeAll(async () => { pki = await makePki(); setAppleRootsForTesting([pki.rootPem]); });
   afterAll(() => setAppleRootsForTesting(null));
 
-  it("junk and forged bodies are rejected requests; a signed one for another bundle id turns the app to failing", async () => {
+  it("junk, forged bodies and Apple-signed payloads for another app are rejected requests; a broken transaction inside this app's notification turns it to failing", async () => {
     const h = await appleHarness();
     close = h.close;
     const forged = JSON.stringify({ signedPayload: await signJws({ notificationType: "DID_RENEW", data: { bundleId: "com.example.scanner" } }, await makePki()) });
@@ -67,15 +67,18 @@ describe("App Store", () => {
     const stored = await rows(h.db, APPLE_APP);
     expect(stored).toHaveLength(4);
     expect(stored.every((r) => r.rejected && r.id.includes("_rejected_"))).toBe(true);
+    // Apple signed it, but for another app: anyone holding any signed App Store payload could post it.
+    const otherApp = JSON.stringify({ signedPayload: await signJws({ notificationType: "TEST", signedDate: h.now().getTime(), data: { bundleId: "com.evil.app", environment: "Production" } }, pki) });
+    expect((await h.notify(otherApp)).status).toBe(400);
     let s = await healthOf(h.db, APPLE_APP, h.now());
-    expectRejectedOnly(s, 4);
+    expectRejectedOnly(s, 5);
 
-    // Apple signed it, so it is Apple's notification: the app is really misconfigured.
-    const other = await notificationBody(pki, "DID_RENEW", undefined, transaction({ bundleId: "com.evil.app" }), renewalInfo(), {});
-    expect((await h.notify(other)).status).toBe(400);
+    // Apple's notification for this app whose transaction cannot be used: a real failure.
+    const broken = await notificationBody(pki, "DID_RENEW", undefined, transaction({ bundleId: "com.evil.app" }), renewalInfo(), {});
+    expect((await h.notify(broken)).status).toBe(400);
     s = await healthOf(h.db, APPLE_APP, h.now());
     expect(s.notification_status).toBe("failing");
-    expect(s.rejected_requests.last_24h).toBe(4);
+    expect(s.rejected_requests.last_24h).toBe(5);
   });
 
   it("rejected requests are rate limited per app and IP: past the limit they are answered 429 and not kept", async () => {
@@ -109,7 +112,7 @@ describe("Google Play", () => {
   it("with push authentication: a push without a valid token is rejected (401); an authenticated push with an unknown token turns the app to failing", async () => {
     const keys = await google.makeKeys();
     const aud = "https://api.example.com/v1/notifications/google/app_play";
-    const e = await google.env(keys, { pubsub_audience: aud });
+    const e = await google.env(keys, { pubsub_audience: aud, pubsub_service_account: "pubsub@scanner.iam.gserviceaccount.com" });
     close = () => e.h.close();
     const app = e.h.ids.androidApp;
     const note = { subscriptionNotification: { notificationType: 2, purchaseToken: "tok_missing", subscriptionId: "pro" } };
@@ -123,9 +126,34 @@ describe("Google Play", () => {
   });
 });
 
+describe("Google Play audience only", () => {
+  it("a token for the audience from any service account is required but proves nothing: an unknown token is a rejected request", async () => {
+    const keys = await google.makeKeys();
+    const aud = "https://api.example.com/v1/notifications/google/app_play";
+    const e = await google.env(keys, { pubsub_audience: aud });
+    close = () => e.h.close();
+    const note = { subscriptionNotification: { notificationType: 2, purchaseToken: "tok_missing", subscriptionId: "pro" } };
+    expect((await e.rtdn(note)).status).toBe(401);
+    expect((await e.rtdn(note, { auth: `Bearer ${await google.pushToken(keys, e.g, aud, "attacker@evil.iam.gserviceaccount.com")}` })).status).toBe(200);
+    expectRejectedOnly(await status(e.call, e.h.ids.project, e.h.ids.secretKey, e.h.ids.androidApp), 2);
+  });
+
+  it("without push authentication, a junk message with a real message's id does not make the real one a duplicate", async () => {
+    const keys = await google.makeKeys();
+    const e = await google.env(keys);
+    close = () => e.h.close();
+    expect((await e.rtdn({ subscriptionNotification: { notificationType: 20, purchaseToken: "x", subscriptionId: "pro" } }, { messageId: "m-real" })).status).toBe(200);
+    const res = await e.rtdn({ testNotification: { version: "1.0" } }, { messageId: "m-real" });
+    expect(await res.json()).toEqual({ status: "processed" });
+    expect((await status(e.call, e.h.ids.project, e.h.ids.secretKey, e.h.ids.androidApp)).notification_status).toBe("ready");
+  });
+});
+
 describe("Amazon Appstore", () => {
+  // One key pair for the file: the server caches the SNS certificate by its URL.
+  let keys: amazon.SnsKeys;
+  beforeAll(async () => { keys = await amazon.makeSnsKeys(); });
   it("unsigned and foreign-topic messages are rejected requests; a signed one from the app's topic for another package turns the app to failing", async () => {
-    const keys = await amazon.makeSnsKeys();
     const e = await amazon.env(keys, { sns_topic_arn: amazon.TOPIC });
     close = () => e.h.close();
     const msg = { appPackageName: amazon.PKG, notificationType: "SUBSCRIPTION_RENEWED", receiptId: "r1" };
@@ -141,6 +169,14 @@ describe("Amazon Appstore", () => {
     const s = await status(e.call, e.h.ids.project, e.h.ids.secretKey, e.appId);
     expect(s.notification_status).toBe("failing");
     expect(s.rejected_requests.last_24h).toBe(2);
+  });
+
+  it("with no topic saved, the topic pinned from the first message proves nothing: a message for another package is a rejected request", async () => {
+    const e = await amazon.env(keys);
+    close = () => e.h.close();
+    const res = await e.sns(await amazon.snsMessage(keys, { message: { appPackageName: "com.other.app", notificationType: "SUBSCRIPTION_RENEWED", receiptId: "r1" } }));
+    expect(res.status).toBe(200);
+    expectRejectedOnly(await status(e.call, e.h.ids.project, e.h.ids.secretKey, e.appId), 1);
   });
 });
 
@@ -220,6 +256,16 @@ describe("Galaxy Store", () => {
     expect(s.rejected_requests.last_24h).toBe(2);
   });
 
+  it("a saved IAP public key that cannot be read is a real failure", async () => {
+    const e = await stores3.env("galaxy");
+    close = () => e.h.close();
+    await e.setCredentials({ galaxy_service_account_id: "acct", galaxy_service_account_private_key: (await e.galaxy.keys()).serviceAccountPrivateKey, galaxy_iap_public_key: "not a key" });
+    expect((await e.notify((await e.galaxy.sign(e.galaxy.test()[0]!)).body)).status).toBe(400);
+    const s = await status(e.call, e.h.ids.project, e.h.ids.secretKey, e.appId);
+    expect(s.notification_status).toBe("failing");
+    expect(s.rejected_requests.last_24h).toBe(0);
+  });
+
   it("without the key: a notification for a purchase Samsung does not know is a rejected request, and its id stays free", async () => {
     const keys = await new (await import("../../../packages/contract/src/fake-galaxy.js")).FakeGalaxy().keys();
     const e = await stores3.env("galaxy");
@@ -247,5 +293,37 @@ describe("Test Store", () => {
       expect(res.status).toBe(store === "test_store" ? 401 : 404);
     }
     expect(await h.db.select().from(schema.storeNotifications)).toHaveLength(0);
+  });
+});
+
+describe("rejected request bookkeeping", () => {
+  it("IPv6 addresses share a bucket per /64; IPv4 addresses do not", () => {
+    expect(ipBucket("2001:db8:1:2:aaaa::1")).toBe(ipBucket("2001:0db8:0001:0002:ffff:1:2:3"));
+    expect(ipBucket("2001:db8:1:2::9")).not.toBe(ipBucket("2001:db8:1:3::9"));
+    expect(ipBucket("::1")).toBe("0:0:0:0::/64");
+    expect(ipBucket("203.0.113.7")).toBe("203.0.113.7");
+  });
+
+  it("the backfill marks old unauthenticated rows of a project rejected, keeps real failures, and old rejected rows are pruned after a week", async () => {
+    const h = await harness();
+    close = () => h.close();
+    const now = new Date("2026-10-03T12:00:00Z");
+    const ios = (await h.db.select().from(schema.apps).where(eq(schema.apps.type, "app_store")))[0]!;
+    const play = (await h.db.select().from(schema.apps).where(eq(schema.apps.type, "play_store")))[0]!;
+    const row = (id: string, appId: string, store: string, error: string, receivedAt = now) => ({ id, projectId: h.ids.project, appId, store, body: "{}", error, receivedAt });
+    await h.db.insert(schema.storeNotifications).values([
+      row("a1", ios.id, "app_store", "The signed payload is not valid: Malformed JWS."),
+      row("a2", ios.id, "app_store", "The body is not JSON."),
+      row("a3", ios.id, "app_store", "The notification could not be processed."),
+      row("g1", play.id, "play_store", "invalid purchase token: gone"),
+      row("s1", ios.id, "stripe", "rejected: The Stripe-Signature header is missing."),
+    ]);
+    await backfillRejected(h.db, h.ids.project);
+    const byId = Object.fromEntries((await h.db.select().from(schema.storeNotifications)).map((r) => [r.id, r.rejected]));
+    expect(byId).toEqual({ a1: true, a2: true, a3: false, g1: true, s1: true });
+
+    await h.db.insert(schema.storeNotifications).values({ ...row("old", ios.id, "app_store", "rejected: x", new Date(now.getTime() - 8 * 86_400_000)), rejected: true });
+    await pruneRejected(h.db, now);
+    expect((await h.db.select().from(schema.storeNotifications)).map((r) => r.id).sort()).toEqual(["a1", "a2", "a3", "g1", "s1"]);
   });
 });

@@ -31,7 +31,8 @@ export async function readGalaxyNotification(body: string, o: { packageName: str
   }
   if (o.publicKey) {
     let key;
-    try { key = await importIapPublicKey(o.publicKey); } catch (e) { throw new GalaxyNotificationError(e instanceof Error ? e.message : String(e)); }
+    // The saved key itself is broken: our setup's fault, so every notification fails for real until it is fixed.
+    try { key = await importIapPublicKey(o.publicKey); } catch (e) { throw new GalaxyNotificationError(`The saved IAP public key cannot be read: ${e instanceof Error ? e.message : String(e)}`, true); }
     try {
       ({ payload: claims } = await jwtVerify(token, key, { algorithms: ["RS256"], currentDate: o.now, clockTolerance: 300 }));
       verified = true;

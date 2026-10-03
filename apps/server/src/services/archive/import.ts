@@ -6,6 +6,7 @@ import { seal, unseal, type SecretKey } from "../secrets.js";
 import { PassphraseError, ZERO_SUM, addRows, addSums, bytesToLines, decryptJson, gunzip, passphraseKey, sha256Hex, type Kdf } from "./format.js";
 import { ARCHIVE_FORMAT, ARCHIVE_SCHEMA, ident, rowsOf, scopeWhere, tableInfos } from "./tables.js";
 import type { SecretEntry } from "./export.js";
+import { backfillRejected } from "../../stores/rejected.js";
 
 /**
  * The target side of a move or an archive load (prd/moves-export/PRD.md §2): checks a manifest, then applies each file.
@@ -248,6 +249,8 @@ export async function applyRows(db: DB, projectId: string, table: string, column
   // Experiments from an archive written before migration 0031 (no variants column): upgrade them as the migration did,
   // so they keep enrolling everyone who asks and keep their old enrollment order.
   if (table === "experiments" && !columns.includes("variants")) await upgradeArchivedExperiments(db, projectId);
+  // Store notifications from an archive written before migration 0033 (no rejected column): mark the unauthenticated ones.
+  if (table === "store_notifications" && !columns.includes("rejected")) await backfillRejected(db, projectId);
   if (table === "projects") {
     // The project's own columns on this server: who owns it here, and that it is being copied in.
     await db.update(schema.projects).set({ ownerUserId: o.userId, moveState: "incoming", movedInAt: o.now, movedInFrom: o.from, moveUpdatedAt: o.now }).where(eq(schema.projects.id, projectId));

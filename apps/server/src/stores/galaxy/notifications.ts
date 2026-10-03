@@ -14,6 +14,11 @@ import { demoteToRejected, logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
+async function bodyHash(raw: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw.trim()));
+  return [...new Uint8Array(digest).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** The purchase id a notification is about, for its stored id and subtype. */
 const purchaseOf = (d: Record<string, any>) =>
   [d.purchaseId, d.renewedPurchaseId, d.resubscribedPurchaseId, d.newPurchaseId, d.refundedPurchaseId, d.firstPurchaseId].find((x) => typeof x === "string" && x) as string | undefined;
@@ -47,7 +52,7 @@ export function galaxyNotificationRoutes(deps: Deps) {
     try { n = await readGalaxyNotification(raw, { packageName: app.bundleId, publicKey, now }); } catch (e) {
       const message = e instanceof GalaxyNotificationError ? e.message : String(e);
       if (e instanceof GalaxyNotificationError && e.authenticated) {
-        // Signed by the app's key pair but not for this app: a real failure of this app's notification URL.
+        // Signed by the app's key pair but not for this app (or the saved key is broken): a real failure of this app's URL.
         await deps.db.insert(storeNotifications).values({
           id: `galaxy_${app.id}_invalid_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "galaxy", body: raw.slice(0, 64_000), receivedAt: now, error: message,
         });
@@ -57,7 +62,8 @@ export function galaxyNotificationRoutes(deps: Deps) {
     }
     const purchase = purchaseOf(n.data) ?? "";
     const environment = n.data.testPayYn === "Y" || n.data.betaTestYn === "Y" || n.event === "TEST" ? "sandbox" : "production";
-    const id = `galaxy_${app.id}_${n.event}_${purchase}_${n.iat ?? ""}`.slice(0, 500);
+    // Unverified, the id also carries a hash of the body, so a forged notification cannot take a real one's id.
+    const id = `galaxy_${app.id}_${n.event}_${purchase}_${n.iat ?? ""}${n.verified ? "" : `_${await bodyHash(raw)}`}`.slice(0, 500);
     const inserted = await deps.db.insert(storeNotifications).values({
       id, projectId: app.projectId, appId: app.id, store: "galaxy", type: n.event, subtype: purchase.slice(0, 200) || null, body: raw, receivedAt: now, environment,
     }).onConflictDoNothing().returning({ id: storeNotifications.id });

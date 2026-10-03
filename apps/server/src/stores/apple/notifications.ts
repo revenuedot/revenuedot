@@ -30,7 +30,10 @@ interface NotificationPayload {
 /** The payload does not belong to this app or cannot be applied: 400, so it shows up as failed in App Store Connect. */
 class NotificationError extends Error {}
 
-/** The request is not signed by Apple (no JSON, no signedPayload, a JWS that does not verify): a rejected request. */
+/**
+ * Apple did not send this to this app: no JSON, no signedPayload, a JWS that does not verify, or a payload Apple signed for
+ * another app (anyone holding any signed App Store payload could post it). A rejected request.
+ */
 class UnsignedError extends Error {}
 
 /** Notification types whose signed transaction and renewal info describe a new state for the purchase. */
@@ -75,15 +78,15 @@ async function verify(raw: string, app: AppRow, now: Date): Promise<Notification
   }
 }
 
-/** Checks a verified payload belongs to this app. */
+/** Checks a verified payload is a notification for this app. */
 function checkApp(n: NotificationPayload, app: AppRow) {
-  if (typeof n?.notificationType !== "string") throw new NotificationError("The signed payload is not an App Store notification.");
+  if (typeof n?.notificationType !== "string") throw new UnsignedError("The signed payload is not an App Store notification.");
   const bundleId = n.data?.bundleId ?? n.summary?.bundleId;
   const expected = expectedBundleId(app);
-  if (expected && bundleId && bundleId !== expected) throw new NotificationError(`The notification is for bundle id ${bundleId}, not ${expected}.`);
+  if (expected && bundleId && bundleId !== expected) throw new UnsignedError(`The notification is for bundle id ${bundleId}, not ${expected}.`);
   const appAppleId = app.credentials?.app_apple_id;
   if (appAppleId && n.data?.environment === "Production" && n.data.appAppleId && String(n.data.appAppleId) !== String(appAppleId)) {
-    throw new NotificationError(`The notification is for Apple app id ${n.data.appAppleId}, not ${appAppleId}.`);
+    throw new UnsignedError(`The notification is for Apple app id ${n.data.appAppleId}, not ${appAppleId}.`);
   }
 }
 
@@ -179,11 +182,11 @@ export function appleNotificationRoutes(deps: Deps) {
     const raw = await c.req.text();
     const store = appleStoreOf(app);
     const contentType = c.req.header("content-type") ?? "application/json";
-    // Apple's signature first: an unsigned body is a rejected request, which never changes the app's notification status.
+    // Apple's signature and this app first: anything else is a rejected request, which never changes the app's status.
     // It is still forwarded (within the rejected-request limit), so a dual run's other server decides for itself.
     let n: NotificationPayload | null = null;
     let verifyError: unknown = null;
-    try { n = await verify(raw, app, deps.now()); } catch (e) {
+    try { n = await verify(raw, app, deps.now()); checkApp(n, app); } catch (e) {
       if (!(e instanceof UnsignedError)) verifyError = e;
       else {
         const rejectedId = await logRejected(deps, c, app, { store, raw, error: `rejected: ${e.message}` });
@@ -201,7 +204,6 @@ export function appleNotificationRoutes(deps: Deps) {
     };
     try {
       if (!n) throw verifyError;
-      checkApp(n, app);
       const env = n.data?.environment ?? n.summary?.environment;
       await db.update(storeNotifications).set({ type: n.notificationType, subtype: n.subtype ?? null, environment: env ? env.toLowerCase() : null })
         .where(eq(storeNotifications.id, id));

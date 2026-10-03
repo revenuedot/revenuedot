@@ -22,7 +22,7 @@ const note = async (notificationType: number, purchaseToken: string) =>
 
 describe("setup health marks an app Ready only after a notification was processed", () => {
   it("waiting, then failing on an invalid token (not Ready), received for an untracked purchase, Ready after a processed one, failing again on an outage", async () => {
-    e = await env(keys, { pubsub_audience: AUD });
+    e = await env(keys, { pubsub_audience: AUD, pubsub_service_account: "pubsub@scanner.iam.gserviceaccount.com" });
     expect(await playApp()).toMatchObject({ notification_status: "waiting", last_notification_at: null, last_notification_error: null });
 
     await note(2, "tok_missing");

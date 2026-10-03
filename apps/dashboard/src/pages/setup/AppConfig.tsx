@@ -216,8 +216,8 @@ function RejectedRequestsLine({ s }: { s: StoreSettings }) {
   const r = s.rejected_requests;
   if (!r?.last_24h) return null;
   return <p className="subtle" data-testid="rejected-requests">
-    {r.last_24h === 1 ? "1 rejected request" : `${r.last_24h} rejected requests`} in the last 24 hours. They had no valid signature, so they do not change the status above.
-    {r.last && <> The latest, {fmt.ago(r.last.at)}: {r.last.message}</>}
+    {r.last_24h === 1 ? "1 rejected request" : `${r.last_24h} rejected requests`} in the last 24 hours. RevenueDot could not confirm the store sent them, so they do not change the status above.
+    {r.last && <> The latest, {fmt.ago(r.last.at)}: {r.last.message.replace(/^rejected: /, "")}</>}
   </p>;
 }
 
