@@ -23,7 +23,9 @@ export function website() {
   return { "@type": "WebSite", "@id": `${SITE.url}/#website`, name: SITE.name, url: SITE.url, publisher: { "@id": ORG_ID } };
 }
 
-/** The product, with the plans that exist today as offers. Paid cloud plans are "coming", so they are left out. */
+/** The product, with its free plans as offers. Usage-priced and custom plans have no fixed price, so they are left out. */
+const FREE_PLANS = ["cloud-free", "self-host"];
+
 export function softwareApplication() {
   return {
     "@type": "SoftwareApplication",
@@ -37,7 +39,7 @@ export function softwareApplication() {
     isAccessibleForFree: true,
     publisher: { "@id": ORG_ID },
     sameAs: [SITE.github],
-    offers: PLANS.filter((p) => p.available).map((p) => ({
+    offers: PLANS.filter((p) => p.available && FREE_PLANS.includes(p.id)).map((p) => ({
       "@type": "Offer",
       name: p.name,
       price: "0",
