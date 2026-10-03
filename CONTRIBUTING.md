@@ -6,7 +6,7 @@ Thank you for helping build RevenueDot.
 2. Every feature starts with a spec in `prd/<feature>/PRD.md`.
 3. Changes to anything the RevenueCat SDKs call must pass the contract tests.
 4. **Sign the Contributor License Agreement (CLA).** We use the Harmony agreements, version 1.0: the [Individual CLA](.github/CLA.md), or the [Entity CLA](.github/CLA-entity.md) if you contribute for a company. On your first pull request, a bot asks you to sign; sign the individual one by replying with the comment it shows: "I have read the CLA Document and I hereby sign the CLA". The CLA lets Circo, Inc. offer RevenueDot under both the AGPL-3.0 and the Enterprise License; you keep the copyright in your work.
-5. CI (`.github/workflows/ci.yml`) runs `npx tsc -b`, `pnpm vitest run` and the site build on every pull request. A merge to `main` deploys RevenueDot Cloud and the site (`.github/workflows/deploy.yml`), so `main` must always be releasable. Use Node 24 (`.nvmrc`).
+5. CI (`.github/workflows/ci.yml`) runs `npx tsc -b`, `pnpm vitest run` (in parallel shards) and, when the site changes, the site build on every pull request. A merge to `main` deploys RevenueDot Cloud and the site (`.github/workflows/deploy.yml`), so `main` must always be releasable. Use Node 24 (`.nvmrc`).
 
 ## Work you do not own
 

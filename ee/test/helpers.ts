@@ -1,6 +1,7 @@
 // RevenueDot Enterprise (ee/LICENSE). Test server: the real app on in-memory Postgres (PGlite) with the enterprise
 // extension in development mode, a clock the test moves, an in-memory mailer and an injectable outbound fetch.
-import { openDb, type DB } from "@revenuedot/db";
+import { openPgliteDb } from "../../packages/contract/src/test-db.js";
+import type { DB } from "@revenuedot/db";
 import { createApp } from "../../apps/server/src/app.js";
 import type { Deps } from "../../apps/server/src/context.js";
 import { memoryMailer } from "../../apps/server/src/mail/index.js";
@@ -20,7 +21,7 @@ export interface Browser {
 }
 
 export async function eeServer(o: { deps?: Partial<Deps>; extension?: ServerExtension | null; regions?: RegionConfig; fetch?: typeof fetch } = {}) {
-  const opened = await openDb("pglite://memory");
+  const opened = await openPgliteDb();
   const mail = memoryMailer();
   let clock = new Date();
   const pending: Promise<unknown>[] = [];

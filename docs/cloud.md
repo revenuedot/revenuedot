@@ -93,7 +93,8 @@ node scripts/smoke-cloud.mjs https://api.revenuedot.app --read-only --app https:
 Production deploys run from GitHub Actions (`.github/workflows/deploy.yml`) on every push to `main` once CI passes, with
 the GitHub `production` environment's secrets. The workflow looks at the changed paths: server, dashboard, package and
 migration changes run migrations, deploy the Worker and run the read-only smoke test above against production; site,
-design and brand changes deploy the site. `scripts/deploy-cloud.sh` reads the production URL from `CLOUD_DATABASE_URL`
+design and brand changes deploy the site, alongside the server. CI is skipped when the merged tree is the one its pull
+request's CI already passed (main did not move between the two); otherwise the full CI runs first. `scripts/deploy-cloud.sh` reads the production URL from `CLOUD_DATABASE_URL`
 (a manual deploy must set it too). Unless `REVENUEDOT_HYPERDRIVE_ID`
 is set (CI sets it), it looks up the Hyperdrive config named `revenuedot` and passes its id to
 `cloudflare.config.ts` as `REVENUEDOT_HYPERDRIVE_ID`. If there is none, it creates one, writing the connection details

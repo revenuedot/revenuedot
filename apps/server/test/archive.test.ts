@@ -1,7 +1,8 @@
+import { openPgliteDb } from "../../../packages/contract/src/test-db.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
-import { openDb, schema, type DB } from "@revenuedot/db";
+import { schema, type DB } from "@revenuedot/db";
 import { harness, type Harness } from "../../../packages/contract/src/harness.js";
 import { HttpSource, HttpTarget } from "../../../packages/importer/src/move/clients.js";
 import { newMoveState, runMove, type Manifest } from "../../../packages/importer/src/move/core.js";
@@ -46,7 +47,7 @@ beforeEach(async () => {
   k2 = (await secretKeyFrom(K2))!;
   await src.db.insert(schema.users).values({ id: "usr_owner", email: "owner@example.com", name: "Owner" });
   await seedEverything(src.db, k1, { userId: "usr_owner" });
-  dst = await openDb("pglite://memory");
+  dst = await openPgliteDb();
   await dst.db.insert(schema.users).values([{ id: "usr_target", email: "mover@example.com" }, { id: "usr_owner_t", email: "owner@example.com" }]);
   srcApp = createApp({ db: src.db, now: src.now, stores: defaultStores(), encryptionKey: K1, fetch: net, apiUrl: "http://source.test", moveDrainSeconds: 0 });
   dstApp = createApp({ db: dst.db, now: src.now, stores: defaultStores(), encryptionKey: K2, fetch: net, apiUrl: "http://target.test" });

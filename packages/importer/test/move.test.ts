@@ -3,12 +3,13 @@
 // database and sealing key: the dry run's diff, the copy and its verification, resuming, the finish (pause, last copy,
 // go live, forward), an export to a .tar and a move from that archive into a third server.
 // Docs: https://revenuedot.app/docs/guides/move-projects
+import { openPgliteDb } from "../../contract/src/test-db.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { openDb, schema, type DB } from "@revenuedot/db";
+import { schema, type DB } from "@revenuedot/db";
 import { createApp } from "../../../apps/server/src/app.js";
 import { defaultStores } from "../../../apps/server/src/stores/index.js";
 import { createImportToken } from "../../../apps/server/src/services/archive/import.js";
@@ -40,7 +41,7 @@ beforeEach(async () => {
     const r = await src.fetch("/v1/receipts", { method: "POST", key: src.ids.testKey, json: { app_user_id: u, fetch_token: `test_${src.now().getTime()}_${crypto.randomUUID()}`, product_id: "pro_monthly", price: 9.99, currency: "USD" } });
     expect(r.status).toBe(200);
   }
-  dst = await openDb("pglite://memory");
+  dst = await openPgliteDb();
   await dst.db.insert(schema.users).values({ id: "usr_t", email: "mover@example.com" });
   apps = {
     "source.test": createApp({ db: src.db, now: src.now, stores: defaultStores(), encryptionKey: K1, fetch: net, apiUrl: "http://source.test" }),
@@ -53,7 +54,7 @@ afterEach(async () => { await src.close(); await dst.close(); await third?.close
 
 /** The third server (the archive test only): one in-memory database fewer to migrate for every other test. */
 async function openThird() {
-  third = await openDb("pglite://memory");
+  third = await openPgliteDb();
   await third.db.insert(schema.users).values({ id: "usr_t", email: "mover@example.com" });
   apps["third.test"] = createApp({ db: third.db, now: src.now, stores: defaultStores(), encryptionKey: K2, fetch: net, apiUrl: "http://third.test" });
   return third;

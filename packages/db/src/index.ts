@@ -67,6 +67,16 @@ export interface OpenDbOptions {
   migrate?: boolean;
   /** Connections in the pool (default DATABASE_POOL_MAX or 10; at least 2, since locks reserve one). Postgres only. */
   max?: number;
+  /**
+   * In-memory PGlite only: start from this data directory (a `pgliteSnapshot` of a migrated database) instead of an empty
+   * one. Tests open about 1,700 databases a run; loading a snapshot is several times faster than migrating each one.
+   */
+  loadDataDir?: Blob;
+}
+
+/** The data directory of an in-memory PGlite database, for `openDb(..., { loadDataDir })`. */
+export async function pgliteSnapshot(db: DB): Promise<Blob> {
+  return (db as unknown as { $client: PGlite }).$client.dumpDataDir("none");
 }
 
 /**
@@ -100,7 +110,8 @@ export async function openDb(url = process.env.DATABASE_URL ?? "pglite://memory"
   }
   const path = url.replace(/^pglite:\/\//, "");
   if (path !== "memory" && path !== "") mkdirSync(path, { recursive: true });
-  const client = path === "memory" || path === "" ? new PGlite() : new PGlite(path);
+  const memory = path === "memory" || path === "";
+  const client = memory ? new PGlite(opts.loadDataDir ? { loadDataDir: opts.loadDataDir } : {}) : new PGlite(path);
   const db = drizzlePglite(client, { schema }) as unknown as DB;
   if (migrate) {
     await assertNoSkippedMigrations(db);
