@@ -20,6 +20,14 @@ export const MIN_INSIGHTS = 3;
 export const MAX_INSIGHTS = 5;
 /** A "running" row older than this is taken over (the generating isolate died). */
 const STALE_RUN_MS = 10 * 60_000;
+/**
+ * Output tokens per model step. A reasoning model (GPT-6 Luna) spends its reasoning from the same budget before it writes
+ * the JSON, and now and then reasons for more than 4,000 tokens: with a 4,096 cap that step ended at "length" with no
+ * text (SuperScan, 2026-10-02). The answer itself is under 1,000 tokens.
+ */
+export const INSIGHTS_MAX_OUTPUT_TOKENS = 16_000;
+/** The repair attempt reasons briefly: it only has to rewrite the JSON from the pack it already has. */
+export const REPAIR_REASONING = "low";
 
 export interface Insight {
   id: string;
@@ -180,7 +188,7 @@ export async function generateInsights(deps: Deps, projectId: string, o: Generat
     if ("error" in checked) {
       // One repair attempt with the reason, without tools, so the model answers in text.
       messages.push({ role: "assistant", content: result || "(no answer)" }, { role: "user", content: `That answer could not be used: ${checked.error} Answer again with the JSON only.` });
-      result = await ask(ctx, system, messages, {}, usageKey);
+      result = await ask(ctx, system, messages, {}, usageKey, { reasoning: REPAIR_REASONING });
       checked = validateInsights(result, pack);
     }
     if ("error" in checked) throw new Error(checked.error);
@@ -196,7 +204,7 @@ export async function generateInsights(deps: Deps, projectId: string, o: Generat
   }
 }
 
-async function ask(ctx: AssistantContext, system: string, messages: ModelMessage[], tools: ToolSet, usageKey: string): Promise<string> {
+async function ask(ctx: AssistantContext, system: string, messages: ModelMessage[], tools: ToolSet, usageKey: string, o: { reasoning?: string } = {}): Promise<string> {
   const { db } = ctx.deps;
   let failure: unknown = null;
   const result = streamText({
@@ -208,7 +216,9 @@ async function ask(ctx: AssistantContext, system: string, messages: ModelMessage
     // After three steps of looking, the model must write the answer (a model that keeps calling tools would end
     // without one).
     prepareStep: ({ stepNumber }: { stepNumber: number }) => (stepNumber >= 3 ? { toolChoice: "none" } : undefined),
-    maxOutputTokens: 4096,
+    maxOutputTokens: INSIGHTS_MAX_OUTPUT_TOKENS,
+    // Overrides the model's default effort (ai-gateway.ts) for OpenAI reasoning models; other providers ignore it.
+    ...(o.reasoning ? { providerOptions: { openai: { reasoningEffort: o.reasoning } } } : {}),
     onError: ({ error }: { error: unknown }) => { failure = error; },
     onStepEnd: async (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
       try { await addUsage(db, usageKey, ctx.project.id, ctx.deps.now(), { inputTokens: step.usage?.inputTokens ?? 0, outputTokens: step.usage?.outputTokens ?? 0 }); } catch (e) { console.error("insights usage", e); }
@@ -221,10 +231,10 @@ async function ask(ctx: AssistantContext, system: string, messages: ModelMessage
   const texts = steps.map((x) => x.text ?? "").filter((t) => t.trim());
   const answer = [...texts].reverse().find((t) => t.includes("{")) ?? texts[texts.length - 1] ?? "";
   // Logged (never the content) when there is no answer: which step ended how, and how long the reasoning ran.
-  if (!answer.includes("{")) console.warn("insights: no JSON from the model", JSON.stringify(steps.map((x) => ({ finish: x.finishReason, text: x.text?.length ?? 0, reasoning: x.reasoningText?.length ?? 0, tools: x.toolCalls?.length ?? 0, out: x.usage?.outputTokens }))));
+  if (!answer.includes("{")) console.warn("insights: no JSON from the model", JSON.stringify(steps.map((x) => ({ finish: x.finishReason, text: x.text?.length ?? 0, reasoning: x.reasoningText?.length ?? 0, tools: x.toolCalls?.length ?? 0, out: x.usage?.outputTokens, reasoning_tokens: x.usage?.outputTokenDetails?.reasoningTokens }))));
   return answer;
 }
-interface StepLike { text?: string; finishReason?: string; reasoningText?: string; toolCalls?: unknown[]; usage?: { outputTokens?: number } }
+interface StepLike { text?: string; finishReason?: string; reasoningText?: string; toolCalls?: unknown[]; usage?: { outputTokens?: number; outputTokenDetails?: { reasoningTokens?: number } } }
 
 /** A ready row of an earlier week stays visible while this week's is written or failed. */
 export async function displayInsights(db: DB, projectId: string, now: Date) {
