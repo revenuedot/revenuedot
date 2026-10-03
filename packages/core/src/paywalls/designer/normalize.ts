@@ -1,13 +1,18 @@
 /**
  * Deterministic fixes applied to every design before it is checked: what the brief or the form decides exactly does
- * not need a model round. Plans follow the brief's order, selection and trial plans; the form's brand colours are used
+ * not need a model round. Plans follow the brief's order, selection and trial plans (plans the model left out are added); the form's brand colours are used
  * as given; social proof without facts from the developer is removed; sections are listed once.
  */
 import { PAYWALL_ICON_NAMES } from "../icons.js";
+import { planLabel } from "../gallery.js";
 import { cleanHex, luminance, mix } from "./color.js";
 import { SECTION_NAMES, type PaywallBrief, type PaywallDesign, type SectionName } from "./schema.js";
 
-export interface NormalizeInput { brief: PaywallBrief | null; packages: string[]; brandColors?: string[]; locale?: string }
+export interface NormalizeInput {
+  brief: PaywallBrief | null; packages: string[]; brandColors?: string[]; locale?: string;
+  /** One-time purchase packages (`lifetimeIds`): never a trial. */
+  lifetime?: Set<string>;
+}
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
@@ -30,10 +35,15 @@ export function normalizeDesign(raw: PaywallDesign, i: NormalizeInput): { design
     const want = b.plans.order.filter((p) => i.packages.includes(p));
     if (want.length) {
       const have = new Map(d.plans.items.map((p) => [p.package_id, p]));
-      const ordered = want.filter((p) => have.has(p)).map((p) => have.get(p)!);
+      const life = i.lifetime ?? new Set<string>();
+      const missing = want.filter((p) => !have.has(p));
+      // A plan the brief asks for always shows, even when the model left it out.
+      for (const p of missing) have.set(p, { package_id: p, title: planLabel(p), subtitle: life.has(p) ? "Pay once, yours forever" : "{{ product.price_per_period }}", trial_subtitle: "", badge: "", trial: false });
+      if (missing.length) fixes.push("Added the plans the brief asks for.");
+      const ordered = want.map((p) => have.get(p)!);
       if (ordered.map((p) => p.package_id).join() !== d.plans.items.map((p) => p.package_id).join()) {
-        if (d.plans.items.length > ordered.length) fixes.push("Removed plans the brief does not ask for.");
-        if (ordered.length > 1 || d.plans.items.length > 1) fixes.push("Put the plans in the brief's order.");
+        if (d.plans.items.some((p) => !want.includes(p.package_id))) fixes.push("Removed plans the brief does not ask for.");
+        if (!missing.length && (ordered.length > 1 || d.plans.items.length > 1)) fixes.push("Put the plans in the brief's order.");
         d.plans.items = ordered;
       }
     }
@@ -43,7 +53,7 @@ export function normalizeDesign(raw: PaywallDesign, i: NormalizeInput): { design
     }
     const trial = new Set(b.plans.trial_packages);
     for (const p of d.plans.items) {
-      const t = trial.has(p.package_id) && !/life/i.test(p.package_id);
+      const t = trial.has(p.package_id) && !i.lifetime?.has(p.package_id);
       if (p.trial !== t) { p.trial = t; fixes.push("Marked the free trial on the plans the brief names."); }
       if (!t && p.trial_subtitle.trim()) { p.trial_subtitle = ""; }
     }

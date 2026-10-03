@@ -39,12 +39,14 @@ describe("paywall AI providers", () => {
 
   it("REVENUEDOT_PAYWALL_MODEL overrides the model: a gateway model id with the gateway", () => {
     expect(paywallModelFromEnv({ AI_GATEWAY_API_KEY: "g", REVENUEDOT_PAYWALL_MODEL: "anthropic/claude-opus-5.5" })?.model).toBe("anthropic/claude-opus-5.5");
+    // A bare id left over from a direct provider is not a gateway id: the gateway default stays.
+    expect(paywallModelFromEnv({ AI_GATEWAY_API_KEY: "g", REVENUEDOT_AI_MODEL: "gpt-4.1-mini" })?.model).toBe("openai/gpt-6-luna");
     expect(paywallModelFromEnv({ ANTHROPIC_API_KEY: "a", REVENUEDOT_AI_MODEL: "m" })?.model).toBe("m");
   });
 
-  it("AI Gateway: authenticates with the key and asks for the schema as structured output", async () => {
+  it("AI Gateway: authenticates with the key and asks for the schema as structured output with medium reasoning", async () => {
     const { f, calls } = fakeFetch(400, { error: { message: "test stops here", type: "invalid_request_error" } });
-    const m = paywallModelFromEnv({ AI_GATEWAY_API_KEY: "test-gateway-key", REVENUEDOT_PAYWALL_REASONING: "medium" }, { fetch: f })!;
+    const m = paywallModelFromEnv({ AI_GATEWAY_API_KEY: "test-gateway-key" }, { fetch: f })!;
     await expect(m.json({ name: "paywall_brief", system: "sys", user: "u", schema: SCHEMA })).rejects.toThrow(/test stops here/);
     const h = new Headers(calls[0]!.init.headers as HeadersInit);
     expect(new URL(calls[0]!.url).host).toBe("ai-gateway.vercel.sh");
@@ -57,6 +59,9 @@ describe("paywall AI providers", () => {
     });
     expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
     expect(gatewayModel("k", { model: "openai/gpt-6-sol" })).toMatchObject({ provider: "Vercel AI Gateway", model: "openai/gpt-6-sol" });
+    // REVENUEDOT_PAYWALL_REASONING changes the effort; funnels' free text carries it too.
+    await expect(paywallModelFromEnv({ AI_GATEWAY_API_KEY: "k", REVENUEDOT_PAYWALL_REASONING: "low" }, { fetch: f })!.complete("s", "u")).rejects.toThrow();
+    expect(calls.at(-1)!.json).toMatchObject({ providerOptions: { openai: { reasoningEffort: "low" } } });
   });
 
   it("AI SDK models: JSON answers become the value with usage; free text passes through", async () => {
@@ -82,6 +87,28 @@ describe("paywall AI providers", () => {
     await expect(openAiModel("k", { fetch: fakeFetch(429, { error: { message: "slow down" } }).f }).complete("s", "u")).rejects.toThrow(/429: slow down/);
   });
 
+  it("OpenAI direct: older models and compatible servers get max_tokens and no reasoning_effort", async () => {
+    const answer = { choices: [{ message: { content: "{\"a\":\"x\"}" }, finish_reason: "stop" }] };
+    const old = fakeFetch(200, answer);
+    const m = paywallModelFromEnv({ OPENAI_API_KEY: "k", REVENUEDOT_AI_MODEL: "gpt-4.1-mini" }, { fetch: old.f })!;
+    await m.json({ name: "n", system: "s", user: "u", schema: SCHEMA, maxTokens: 100 });
+    await m.complete("s", "u");
+    for (const c of old.calls) {
+      expect(c.json).not.toHaveProperty("reasoning_effort");
+      expect(c.json).not.toHaveProperty("max_completion_tokens");
+    }
+    expect(old.calls[0]!.json).toMatchObject({ model: "gpt-4.1-mini", max_tokens: 100 });
+    // A reasoning model gets max_completion_tokens; free text never sends reasoning_effort.
+    const luna = fakeFetch(200, answer);
+    await openAiModel("k", { fetch: luna.f }).complete("s", "u");
+    expect(luna.calls[0]!.json).toHaveProperty("max_completion_tokens");
+    expect(luna.calls[0]!.json).not.toHaveProperty("reasoning_effort");
+    // An explicit effort is always sent.
+    const forced = fakeFetch(200, answer);
+    await openAiModel("k", { fetch: forced.f, model: "local-llm", reasoning: "high" }).json({ name: "n", system: "s", user: "u", schema: SCHEMA });
+    expect(forced.calls[0]!.json).toMatchObject({ reasoning_effort: "high" });
+  });
+
   it("Anthropic: a forced tool call whose input is the answer", async () => {
     const { f, calls } = fakeFetch(200, { content: [{ type: "tool_use", input: { a: "x" } }], stop_reason: "tool_use" });
     expect((await anthropicModel("key", "claude-test", f).json({ name: "n", system: "s", user: "u", schema: SCHEMA })).value).toEqual({ a: "x" });
@@ -96,6 +123,8 @@ describe("paywall AI providers", () => {
     expect(r.value).toEqual({ a: "x" });
     expect(inputs[0]).toMatchObject({ tool_choice: { type: "function", function: { name: "n" } }, reasoning_effort: "none" });
     expect(await workersAiModel(ai({ response: { a: 1 } })).complete("s", "u")).toBe("{\"a\":1}");
+    expect(inputs.at(-1)).toMatchObject({ reasoning_effort: "none" });
+    expect((await workersAiModel(ai({ tool_calls: [{ arguments: { a: "y" } }] })).json({ name: "n", system: "s", user: "u", schema: SCHEMA })).value).toEqual({ a: "y" });
     await expect(workersAiModel(ai({ choices: [{ message: {}, finish_reason: "length" }] })).json({ name: "n", system: "s", user: "u", schema: SCHEMA })).rejects.toThrow(/output tokens/);
   });
 });

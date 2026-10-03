@@ -13,7 +13,7 @@
 import { forEachComponent, type Json, type PaywallDoc } from "../build.js";
 import { validatePaywall } from "../validate.js";
 import { parseHex, worstContrast } from "./color.js";
-import { packagePrices, type OfferingFacts } from "./prompt.js";
+import { lifetimeIds, packagePrices, type OfferingFacts } from "./prompt.js";
 import type { PaywallBrief, PaywallDesign } from "./schema.js";
 
 export interface DesignIssue { severity: "error" | "warning"; code: string; message: string }
@@ -110,6 +110,7 @@ export function checkDesign(i: CheckInput): DesignIssue[] {
   const err = (code: string, message: string) => out.push({ severity: "error", code, message });
   const warn = (code: string, message: string) => out.push({ severity: "warning", code, message });
   const pkgIds = offering.packages.map((p) => p.id);
+  const lifetime = lifetimeIds(offering);
   const items = d.plans.items;
   const copy = designCopy(d);
   const lang = (brief?.locale ?? d.locale ?? "en_US").slice(0, 2);
@@ -137,7 +138,7 @@ export function checkDesign(i: CheckInput): DesignIssue[] {
   for (const p of items) {
     const pr = prices.find((x) => x.id === p.package_id);
     if (pr && pr.perMonth !== null && pr.perMonth >= top && `${p.badge} ${p.subtitle}`.includes("relative_discount")) err("discount_empty", `${p.package_id} is the most expensive plan per month, so {{ product.relative_discount }} is empty there; move the savings badge to a cheaper plan.`);
-    if (/life/i.test(p.package_id) && /\{\{\s*product\.(period|periodly|price_per_period|price_per_month)/.test(`${p.subtitle} ${p.trial_subtitle}`)) err("lifetime_period", `${p.package_id} is a one-time purchase: its texts cannot use period variables (they are empty). Say "Pay once, yours forever".`);
+    if (lifetime.has(p.package_id) && /\{\{\s*product\.(period|periodly|price_per_period|price_per_month)/.test(`${p.subtitle} ${p.trial_subtitle}`)) err("lifetime_period", `${p.package_id} is a one-time purchase: its texts cannot use period variables (they are empty). Say "Pay once, yours forever".`);
   }
   if (d.plans.layout === "cards" && items.length > 3) warn("plans_cards", "Side-by-side cards fit at most 3 plans; use layout list.");
   if (d.plans.layout === "cards" && items.some((p) => p.title.length > 12)) warn("plans_cards", "Plan titles in side-by-side cards must be short (at most 12 characters); shorten them or use layout list.");

@@ -42,9 +42,23 @@ export interface DesignerInput {
   refine?: { design: PaywallDesign; instruction: string };
 }
 
+/** Whether a package id names a lifetime plan ($rc_lifetime, pro_lifetime); "lifestyle_monthly" does not. */
+const LIFETIME_ID = /(^|[^a-z])lifetime([^a-z]|$)/i;
+
+/**
+ * Whether a package is a one-time (lifetime) purchase: from its product when the offering has one (not a subscription,
+ * or no billing period), else from its id.
+ */
+export function isLifetime(p: PackageFacts): boolean {
+  if (p.product) return p.product.type !== "subscription" || !p.product.duration;
+  return LIFETIME_ID.test(p.id);
+}
+/** The offering's lifetime packages (see `isLifetime`). */
+export const lifetimeIds = (o: OfferingFacts): Set<string> => new Set(o.packages.filter(isLifetime).map((p) => p.id));
+
 /** Sample prices for packages without a Test Store price (the dashboard preview uses the same ones). */
 export function samplePrice(id: string): { amount: number; currency: string; duration: string | null } {
-  if (/life/i.test(id)) return { amount: 99.99, currency: "USD", duration: null };
+  if (LIFETIME_ID.test(id)) return { amount: 99.99, currency: "USD", duration: null };
   if (/annual|year/i.test(id)) return { amount: 39.99, currency: "USD", duration: "P1Y" };
   if (/week/i.test(id)) return { amount: 2.99, currency: "USD", duration: "P1W" };
   if (/six/i.test(id)) return { amount: 24.99, currency: "USD", duration: "P6M" };

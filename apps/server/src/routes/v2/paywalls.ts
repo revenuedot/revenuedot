@@ -48,7 +48,9 @@ const ValidateIn = z.object({
 }).strict();
 const GenerateIn = z.object({
   prompt: z.string().trim().min(3).max(PAYWALL_AI_MAX_PROMPT), app_name: z.string().max(80).optional(), brand_colors: z.array(Hex).max(3).optional(),
-  offering_id: OfferingRef.nullable().optional(), locale: z.string().min(2).max(20).optional(),
+  offering_id: OfferingRef.nullable().optional(),
+  // A locale id such as en_US, pt_BR or zh_Hans; "pt-BR" is accepted and written with an underscore.
+  locale: z.string().max(20).transform((l) => l.trim().replace(/-/g, "_")).refine((l) => /^[a-z]{2,3}(_[A-Za-z]{2,4})?(_[A-Z]{2})?$/.test(l), "must be a locale id such as en_US or pt_BR").optional(),
 }).strict();
 const Attach = z.object({ offering_id: z.string().min(1).max(255) }).strict();
 const NewVersion = z.object({ name: Name }).strict();
@@ -169,6 +171,9 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     if (!deps.ai) throw new V2Error(503, "server_error", "No language model is configured. On a self-hosted server set AI_GATEWAY_API_KEY, OPENAI_API_KEY or ANTHROPIC_API_KEY.");
     const b = await body(c, GenerateIn);
     const offering = b.offering_id ? (await offeringOf(projectId, b.offering_id)).offering : null;
+    // Requests that cannot run are refused before they count against the limits.
+    const facts = offering ? await packageFactsOf(offering.id) : [];
+    if (offering && !facts.length) throw paramError("This offering has no packages. Add packages to it, or generate without an offering.", "offering_id");
     const now = deps.now();
     if (!(await hit(db, `paywall-ai:${projectId}`, 1, 5_000, now))) throw new V2Error(429, "rate_limit_error", "One paywall generation every 5 seconds. Try again in a moment.", undefined, true);
     if (!(await hit(db, `paywall-ai-day:${projectId}`, 60, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "This project has used its 60 paywall generations for today.", undefined, true);
@@ -176,7 +181,6 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     const principal = c.get("principal");
     if (principal.kind === "user" && !(await hit(db, `paywall-ai-user:${principal.userId}`, 100, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "You have used your 100 paywall generations for today.", undefined, true);
     if (!(await hit(db, "paywall-ai-server", 5_000, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "Paywall generation is busy today. Try again tomorrow.", undefined, true);
-    const facts = offering ? await packageFactsOf(offering.id) : [];
     const input = {
       prompt: b.prompt, appName: b.app_name, brandColors: b.brand_colors, locale: b.locale,
       offering: { offering: offering ? { id: offering.id, lookup_key: offering.lookupKey, display_name: offering.displayName } : null, packages: facts },

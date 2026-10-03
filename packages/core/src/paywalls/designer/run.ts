@@ -1,12 +1,12 @@
 /**
- * The AI paywall designer as one pipeline (prd/paywalls/PRD.md §3), shared by the dashboard's background job, the REST
- * endpoint and the evaluation script. Steps, each reported to `onStep`:
+ * The AI paywall designer as one pipeline (prd/paywalls/PRD.md §3), used by `POST /paywalls/generate` (the dashboard's
+ * "Generate with AI") and scripts/paywall-ai/try.ts. Steps, each reported to `onStep`:
  *   brief      the model reads the description into a `PaywallBrief` (strict JSON schema)
  *   packages   the brief is matched to the offering's packages (no model call)
  *   draft      the model designs the paywall as a `PaywallDesign` (strict JSON schema)
  *   check      deterministic fixes, compile to components, `validatePaywall` and the checker
  *   fix        up to `maxFixRounds` repair rounds with the checker's issues (skipped when the draft is clean)
- *   translate  extra languages, when asked (skipped otherwise)
+ *   translate  extra languages, when asked (skipped otherwise; a failed translation keeps the paywall untranslated)
  * The result always passes `validatePaywall`; if it would not, the run fails instead of returning it.
  */
 import type { PaywallDoc } from "../build.js";
@@ -14,7 +14,7 @@ import { validatePaywall } from "../validate.js";
 import { checkDesign, varsIn, type DesignIssue } from "./check.js";
 import { compileDesign, type Compiled } from "./compile.js";
 import { normalizeDesign } from "./normalize.js";
-import { briefMessages, designSystemPrompt, designUserMessage, fixUserMessage, translateMessages, type DesignerInput } from "./prompt.js";
+import { briefMessages, designSystemPrompt, designUserMessage, fixUserMessage, lifetimeIds, translateMessages, type DesignerInput } from "./prompt.js";
 import { STANDARD_PACKAGES, briefSchema, designSchema, translationSchema, type PaywallBrief, type PaywallDesign, type TranslationSet } from "./schema.js";
 import { planLabel } from "../gallery.js";
 
@@ -69,8 +69,8 @@ const oneOf = <T extends string>(x: unknown, all: readonly T[], d: T): T => (all
 const LOCALE = /^[a-z]{2,3}(_[A-Za-z]{2,4})?(_[A-Z]{2})?$/;
 
 /** The longest subscription first, then shorter ones, then lifetime. */
-function defaultOrder(packages: string[]): string[] {
-  const rank = (id: string) => (/life/i.test(id) ? 100 : /annual|year/i.test(id) ? 0 : /six/i.test(id) ? 1 : /three/i.test(id) ? 2 : /two/i.test(id) ? 3 : /month/i.test(id) ? 4 : /week/i.test(id) ? 5 : 50);
+function defaultOrder(packages: string[], lifetime: Set<string>): string[] {
+  const rank = (id: string) => (lifetime.has(id) ? 100 : /annual|year/i.test(id) ? 0 : /six/i.test(id) ? 1 : /three/i.test(id) ? 2 : /two/i.test(id) ? 3 : /month/i.test(id) ? 4 : /week/i.test(id) ? 5 : 50);
   return [...packages].sort((x, y) => rank(x) - rank(y));
 }
 
@@ -78,8 +78,13 @@ export function coerceBrief(raw: unknown, i: DesignerInput, packages: string[]):
   const r = isObj(raw) ? raw : {};
   const pk = (x: unknown) => (typeof x === "string" && packages.includes(x) ? x : null);
   const plans = isObj(r.plans) ? r.plans : {};
+  const lifetime = lifetimeIds(i.offering);
   let order = [...new Set(a(plans.order, pk))];
-  if (!order.length) order = defaultOrder(packages).filter((p) => !/life/i.test(p) || packages.length === 1).slice(0, i.offering.offering ? 3 : 2);
+  if (!order.length) {
+    // Subscriptions first; lifetime only when there is nothing else.
+    const subs = defaultOrder(packages, lifetime).filter((p) => !lifetime.has(p));
+    order = (subs.length ? subs : defaultOrder(packages, lifetime)).slice(0, i.offering.offering ? 3 : 2);
+  }
   const selected = pk(plans.selected) && order.includes(plans.selected) ? plans.selected as string : order[0]!;
   const look = isObj(r.look) ? r.look : {};
   const locale = i.locale || (typeof r.locale === "string" && LOCALE.test(r.locale) ? r.locale : "en_US");
@@ -91,7 +96,7 @@ export function coerceBrief(raw: unknown, i: DesignerInput, packages: string[]):
     locale, extra_locales: extra, tone: s(r.tone).slice(0, 80),
     plans: {
       order, selected,
-      trial_packages: [...new Set(a(plans.trial_packages, pk))].filter((p) => order.includes(p) && !/life/i.test(p)),
+      trial_packages: [...new Set(a(plans.trial_packages, pk))].filter((p) => order.includes(p) && !lifetime.has(p)),
       trial_days: Math.max(0, Math.min(365, Math.round(n(plans.trial_days)))),
       missing: a(plans.missing, (x) => (typeof x === "string" && x.trim() ? x.trim().slice(0, 60) : null)).slice(0, 5),
     },
@@ -187,17 +192,22 @@ export async function runDesigner(input: DesignerInput, model: JsonModel, o: Run
   const label = (id: string) => offering.packages.find((p) => p.id === id)?.label ?? planLabel(id);
   const pkgDetail = brief.plans.order.map((p) => `${label(p)}${p === brief.plans.selected ? " (selected" : ""}${brief.plans.trial_packages.includes(p) ? `${p === brief.plans.selected ? ", " : " ("}${brief.plans.trial_days ? `${brief.plans.trial_days}-day ` : ""}free trial)` : p === brief.plans.selected ? ")" : ""}`).join(" · ");
   const notes: string[] = [];
-  if (!input.offering.packages.length) notes.push("This project has no offering with packages yet, so the preview uses sample prices. Create an offering and pick it here to see real prices.");
+  if (!input.offering.packages.length) {
+    notes.push(input.offering.offering
+      ? `The offering "${input.offering.offering.display_name}" has no packages yet, so the paywall uses standard packages with sample prices. Add packages to the offering to bind real products.`
+      : "This project has no offering with packages yet, so the preview uses sample prices. Create an offering and pick it here to see real prices.");
+  }
   if (brief.plans.missing.length) notes.push(`The brief asks for ${brief.plans.missing.join(", ")}, but the offering has no such package. Add it in the product catalog, then try again.`);
   await step({ id: "packages", status: "done", detail: pkgDetail });
 
   // 3. The draft.
   const system = designSystemPrompt();
   const base = designUserMessage(inp, brief);
+  const lifetime = lifetimeIds(offering);
   const evaluate = (raw: unknown): Attempt => {
     const coerced = coerceDesign(raw, brief, packages);
-    const norm = normalizeDesign(coerced, { brief, packages, brandColors: input.brandColors, locale: input.locale });
-    const compiled = compileDesign(norm.design, { iconBaseUrl: o.iconBaseUrl, now: o.now, trialDays: brief.plans.trial_days || 7 });
+    const norm = normalizeDesign(coerced, { brief, packages, brandColors: input.brandColors, locale: input.locale, lifetime });
+    const compiled = compileDesign(norm.design, { iconBaseUrl: o.iconBaseUrl, now: o.now, trialDays: brief.plans.trial_days || 7, lifetime });
     const issues = checkDesign({ design: norm.design, doc: compiled.doc, brief, offering, appName: input.appName, brandColors: input.brandColors });
     return { design: norm.design, compiled, issues, fixes: [...norm.fixes, ...compiled.fixes] };
   };
@@ -220,9 +230,12 @@ export async function runDesigner(input: DesignerInput, model: JsonModel, o: Run
       rounds++;
       const next = evaluate(await ask("paywall_design", system, fixUserMessage(base, best.design, best.issues), designSchema({ packages }), 6000, "fix"));
       const score = (x: Attempt) => errors(x).length * 10 + x.issues.length;
-      for (const i of best.issues) if (!next.issues.some((j) => j.message === i.message)) allFixes.add(fixedLabel(i));
-      if (score(next) <= score(best)) best = next;
-      for (const f of next.fixes) allFixes.add(f);
+      // Only an accepted round counts: what a rejected attempt changed is not in the result.
+      if (score(next) <= score(best)) {
+        for (const i of best.issues) if (!next.issues.some((j) => j.message === i.message)) allFixes.add(fixedLabel(i));
+        for (const f of next.fixes) allFixes.add(f);
+        best = next;
+      }
     }
     const left = errors(best).length;
     await step({ id: "fix", status: "done", detail: left ? `${left} problem${left === 1 ? "" : "s"} left after ${rounds} round${rounds === 1 ? "" : "s"}` : `Fixed in ${rounds} round${rounds === 1 ? "" : "s"}` });
@@ -234,11 +247,18 @@ export async function runDesigner(input: DesignerInput, model: JsonModel, o: Run
   const doc = best.compiled.doc;
   if (brief.extra_locales.length) {
     await step({ id: "translate", status: "running", detail: brief.extra_locales.join(", ") });
-    const source = Object.fromEntries(Object.entries(doc.components_localizations[doc.default_locale] ?? {}).filter(([, v]) => typeof v === "string" && /\p{L}/u.test(v) && !/^https?:/.test(v))) as Record<string, string>;
+    const source = Object.fromEntries(Object.entries(doc.components_localizations[doc.default_locale] ?? {}).filter(([, v]) => typeof v === "string" && translatable(v))) as Record<string, string>;
     const tm = translateMessages(source, doc.default_locale, brief.extra_locales);
-    const raw = await ask("paywall_translations", tm.system, tm.user, translationSchema(), 8000, "translate");
-    const done = mergeTranslations(doc, raw as TranslationSet, brief.extra_locales);
-    await step({ id: "translate", status: "done", detail: done.map((d) => `${d.locale} (${d.translated}/${d.total})`).join(", ") });
+    try {
+      const raw = await ask("paywall_translations", tm.system, tm.user, translationSchema(), 8000, "translate");
+      const done = mergeTranslations(doc, raw as TranslationSet, brief.extra_locales);
+      await step({ id: "translate", status: "done", detail: done.map((d) => `${d.locale} (${d.translated}/${d.total})`).join(", ") });
+    } catch (e) {
+      // The paywall is finished; a failed translation leaves it in its own language instead of failing the run.
+      if (e instanceof DesignerError && !e.retryable) throw e;
+      notes.push(`Translating into ${brief.extra_locales.join(", ")} failed, so the paywall is only in ${doc.default_locale}. Add the languages in the Localizations tab.`);
+      await step({ id: "translate", status: "error", detail: e instanceof Error ? e.message.slice(0, 200) : undefined });
+    }
   } else {
     await step({ id: "translate", status: "skipped" });
   }
@@ -271,21 +291,33 @@ function fixedLabel(i: DesignIssue): string {
   return m[i.code] ?? "Fixed a problem the check found.";
 }
 
+/** Text worth translating: letters outside {{ variables }}, and not a URL. */
+const translatable = (v: string) => !/^https?:/.test(v) && /\p{L}/u.test(v.replace(/\{\{[^}]*\}\}/g, ""));
+/** zh_Hans and zh_Hans_CN match; zh_Hans and zh_Hant do not; es_ES and es_MX do. */
+function sameLanguage(a: string, b: string): boolean {
+  const parts = (l: string) => l.split(/[_-]/);
+  const [la, ...ra] = parts(a), [lb, ...rb] = parts(b);
+  if (la!.toLowerCase() !== lb!.toLowerCase()) return false;
+  const script = (r: string[]) => r.find((x) => /^[A-Z][a-z]{3}$/.test(x)) ?? "";
+  return script(ra) === script(rb);
+}
+
 /** Adds the translated strings that kept their variables; others fall back to the default locale on serve. */
 export function mergeTranslations(doc: PaywallDoc, raw: TranslationSet | null | undefined, wanted: string[]): { locale: string; translated: number; total: number }[] {
   const source = doc.components_localizations[doc.default_locale] ?? {};
-  const keys = Object.keys(source).filter((k) => typeof source[k] === "string" && /\p{L}/u.test(source[k]!) && !/^https?:/.test(source[k]!));
+  const keys = Object.keys(source).filter((k) => typeof source[k] === "string" && translatable(source[k]!));
   const out: { locale: string; translated: number; total: number }[] = [];
   const sameVars = (x: string, y: string) => varsIn(x).sort().join("|") === varsIn(y).sort().join("|");
   for (const locale of wanted) {
-    const entry = raw?.locales?.find((l) => l?.locale === locale) ?? raw?.locales?.find((l) => l?.locale?.slice(0, 2) === locale.slice(0, 2));
+    // An exact locale, else the same language and script (zh_Hans never fills zh_Hant).
+    const entry = raw?.locales?.find((l) => l?.locale === locale) ?? raw?.locales?.find((l) => typeof l?.locale === "string" && sameLanguage(l.locale, locale));
     const table: Record<string, string> = {};
     for (const st of entry?.strings ?? []) {
       if (!st || typeof st.key !== "string" || typeof st.text !== "string" || !keys.includes(st.key) || !st.text.trim()) continue;
       if (!sameVars(source[st.key]!, st.text)) continue;
       table[st.key] = st.text.trim();
     }
-    // Strings without letters (variables only, URLs) are copied as they are.
+    // Strings with no words outside their variables, and URLs, are copied as they are.
     for (const [k, v] of Object.entries(source)) if (!keys.includes(k)) table[k] = v;
     doc.components_localizations[locale] = table;
     out.push({ locale, translated: Object.keys(table).filter((k) => keys.includes(k)).length, total: keys.length });

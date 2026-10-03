@@ -363,7 +363,7 @@ export function webRoutes(r: V2Router, deps: Deps) {
   // Build with AI: the paywall generator's model and the same caps (prd/paywalls/PRD.md §3).
   r.post(`${P}/funnels/generate`, offWrite, async (c) => {
     const projectId = c.get("projectId");
-    if (!deps.ai) throw new V2Error(503, "server_error", "No language model is configured. On a self-hosted server set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
+    if (!deps.ai) throw new V2Error(503, "server_error", "No language model is configured. On a self-hosted server set AI_GATEWAY_API_KEY, OPENAI_API_KEY or ANTHROPIC_API_KEY.");
     const b = await body(c, GenerateIn);
     const now = deps.now();
     if (!(await hit(db, `paywall-ai:${projectId}`, 1, 5_000, now))) throw new V2Error(429, "rate_limit_error", "One generation every 5 seconds. Try again in a moment.", undefined, true);

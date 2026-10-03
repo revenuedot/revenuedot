@@ -93,8 +93,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
       REVENUEDOT_HYPERDRIVE_ID: ${{ vars.REVENUEDOT_HYPERDRIVE_ID }}
-      # Optional: the deploy puts it on the Worker as a secret ("Generate with AI" through the Vercel AI Gateway).
-      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -104,6 +102,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: bash scripts/deploy-cloud.sh
+        env:
+          # Only this step sees it: the deploy puts it on the Worker as a secret (every AI feature through the Vercel AI Gateway).
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       - name: Live smoke checks
         run: node scripts/smoke-cloud.mjs https://api.revenuedot.app --read-only --app https://app.revenuedot.app --public-key gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=
 

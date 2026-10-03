@@ -158,6 +158,20 @@ describe("AI generator", () => {
     expect((await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "x" } })).status).toBe(400);
   });
 
+  it("refuses an offering without packages and a malformed locale; accepts pt-BR as pt_BR", async () => {
+    const model = fakeModel((_s, user, name) => fakeDesignerAnswer(name, user));
+    await boot({ ai: model });
+    const empty = await offeringWithPackages("empty", []);
+    const r = await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "A calm sleep app", offering_id: empty } });
+    expect(r.status).toBe(400);
+    expect(r.body.message).toMatch(/This offering has no packages/);
+    expect((await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "A calm sleep app", locale: "not a locale" } })).status).toBe(400);
+    expect(model.calls).toHaveLength(0);
+    const ok = await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "A calm sleep app", locale: "pt-BR" } });
+    expect(ok.status).toBe(200);
+    expect(model.calls[0]!.user).toContain("locale pt_BR");
+  });
+
   it("answers 502 (retryable) when the model fails", async () => {
     await boot({ ai: { ...fakeModel("{}"), json: async () => { throw new Error("down"); } } });
     const r = await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "a paywall" } });

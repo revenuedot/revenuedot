@@ -17,6 +17,8 @@ export interface CompileOptions {
   now?: number;
   /** Free trial length for the preview of plans marked `trial` (days). Default 7. */
   trialDays?: number;
+  /** Packages that are one-time purchases (`lifetimeIds`): no period wording and no trial. */
+  lifetime?: Set<string>;
 }
 export interface Compiled {
   doc: PaywallDoc;
@@ -274,7 +276,7 @@ class Compiler {
 
   plan(p: DesignPlanItem, selected: boolean, cards: boolean): Json {
     const b = this.b;
-    const life = /life/i.test(p.package_id);
+    const life = !!this.o.lifetime?.has(p.package_id);
     const price = life ? "{{ product.price }}" : "{{ product.price_per_period_abbreviated }}";
     const badge = p.badge.trim() ? {
       style: "overlay", alignment: cards ? "top" : "top_trailing",
@@ -354,7 +356,7 @@ class Compiler {
     const main = this.b.stack(body, { spacing: 20, padding: pad(top ? 8 : 28, 20, 24), size: sz(FILL, FILL), distribution: "start", scroll: true, name: "Content" });
     const doc = this.b.doc(main, this.footer(), this.background());
     const trial = `P${Math.max(1, Math.round(this.o.trialDays ?? 7))}D`;
-    const previewTrials = Object.fromEntries(this.d.plans.items.filter((p) => p.trial && !/life/i.test(p.package_id)).map((p) => [p.package_id, trial]));
+    const previewTrials = Object.fromEntries(this.d.plans.items.filter((p) => p.trial && !this.o.lifetime?.has(p.package_id)).map((p) => [p.package_id, trial]));
     return { doc, name: this.d.name?.trim() || "AI paywall", fixes: [...this.fixes], previewTrials };
   }
 }

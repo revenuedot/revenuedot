@@ -708,7 +708,7 @@ Yes. RevenueDot serves paywalls in the components format that RevenueCatUI's `Pa
 
 <details><summary><b>Can I generate a paywall with AI on a self-hosted server?</b></summary>
 
-Yes, with your own key: set `AI_GATEWAY_API_KEY` (Vercel AI Gateway, model `openai/gpt-6-luna`), `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. RevenueDot Cloud uses the same gateway. The model first reads your description into a brief, then designs the paywall; a checker holds the design to the brief (plans, trial, prices, contrast) and sends problems back for a fix before you see it.
+Yes, with your own key: set `AI_GATEWAY_API_KEY` (Vercel AI Gateway, model `openai/gpt-6-luna`; it then runs every AI feature, RevenueDot AI included), `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. RevenueDot Cloud uses the same gateway. The model first reads your description into a brief, then designs the paywall; a checker holds the design to the brief (plans, trial, prices, contrast) and sends problems back for a fix before you see it.
 </details>
 
 <details><summary><b>What license is it under?</b></summary>

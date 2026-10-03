@@ -27,6 +27,7 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       REVENUEDOT_PAYWALL_MODEL: ${REVENUEDOT_PAYWALL_MODEL:-}
       REVENUEDOT_AI_MODEL: ${REVENUEDOT_AI_MODEL:-}
+      REVENUEDOT_AI_REASONING: ${REVENUEDOT_AI_REASONING:-}
       REVENUEDOT_ASSISTANT_MODEL: ${REVENUEDOT_ASSISTANT_MODEL:-}
       REVENUEDOT_ASSISTANT_CAPS: ${REVENUEDOT_ASSISTANT_CAPS:-}
       # "on" writes and emails the weekly AI growth insights digest with the model key above (see .env.example).

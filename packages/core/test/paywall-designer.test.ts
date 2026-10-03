@@ -1,7 +1,7 @@
 // The AI paywall designer (prd/paywalls/PRD.md §3) with a scripted JSON model: no network, no provider.
 import { describe, expect, it } from "vitest";
 import {
-  DesignerError, briefMessages, coerceBrief, designSchema, forEachComponent, runDesigner, validatePaywall, type DesignerInput, type JsonModel, type StepEvent,
+  DesignerError, briefMessages, coerceBrief, designSchema, mergeTranslations, forEachComponent, runDesigner, validatePaywall, type DesignerInput, type JsonModel, type StepEvent,
 } from "../src/index.js";
 
 const ICONS = "https://api.example.com/assets/icons";
@@ -90,6 +90,69 @@ describe("AI paywall designer", () => {
     });
     const r = await runDesigner(INPUT, model, { iconBaseUrl: ICONS });
     expect(Object.keys(r.doc.components_localizations)).toEqual(["en_US", "de_DE"]);
+  });
+
+  it("credits fixes only from an accepted repair round", async () => {
+    // The repair answer fixes the plan's typed price but types two others, so it scores worse: the first draft stays,
+    // and nothing may claim the plan's price was fixed.
+    const worse = design();
+    worse.footer.disclosure = "$9.99 a month, renews automatically.";
+    worse.footer.reassurance = "Only $59.99 a year.";
+    const { model } = scripted({ paywall_brief: [brief()], paywall_design: [design("$59.99 a year"), worse, worse] });
+    const r = await runDesigner(INPUT, model, { iconBaseUrl: ICONS });
+    expect(r.rounds).toBe(2);
+    expect(r.warnings.map((w) => w.code)).toContain("price_literal");
+    expect(r.fixes).not.toContain("Replaced typed prices with price variables.");
+  });
+
+  it("adds a plan the brief asks for when the model leaves it out", async () => {
+    const onlyMonthly = design();
+    onlyMonthly.plans.items = onlyMonthly.plans.items.filter((p) => p.package_id === "$rc_monthly");
+    onlyMonthly.plans.selected = "$rc_monthly";
+    const { model } = scripted({ paywall_brief: [brief()], paywall_design: [onlyMonthly] });
+    const r = await runDesigner(INPUT, model, { iconBaseUrl: ICONS });
+    expect(r.design.plans.items.map((p) => p.package_id)).toEqual(["$rc_annual", "$rc_monthly"]);
+    expect(r.design.plans.selected).toBe("$rc_annual");
+    expect(r.fixes).toContain("Added the plans the brief asks for.");
+  });
+
+  it("knows lifetime plans from their products, not from 'life' in the id", () => {
+    const offering: DesignerInput["offering"] = { offering: OFFERING.offering, packages: [
+      { id: "lifestyle_monthly", label: "Monthly", product: { store_identifier: "m", name: null, type: "subscription", duration: "P1M", price: null } },
+      { id: "lifestyle_annual", label: "Yearly", product: { store_identifier: "y", name: null, type: "subscription", duration: "P1Y", price: null } },
+      { id: "forever", label: "Forever", product: { store_identifier: "f", name: null, type: "non_consumable", duration: null, price: null } },
+    ] };
+    const ids = offering.packages.map((p) => p.id);
+    const b = coerceBrief({ plans: { trial_packages: ["lifestyle_annual", "forever"] } }, { ...INPUT, offering }, ids);
+    expect(b.plans.order).toEqual(["lifestyle_annual", "lifestyle_monthly"]);
+    expect(b.plans.selected).toBe("lifestyle_annual");
+    expect(b.plans.trial_packages).toEqual(["lifestyle_annual"]);
+    // Only lifetime packages: the order falls back to them instead of being empty.
+    const only = { offering: OFFERING.offering, packages: [offering.packages[2]!, { id: "$rc_lifetime", label: "Lifetime", product: null }] };
+    expect(coerceBrief({}, { ...INPUT, offering: only }, ["forever", "$rc_lifetime"]).plans.order).toHaveLength(2);
+  });
+
+  it("an offering without packages designs with standard packages and says that offering is empty", async () => {
+    const { model, calls } = scripted({ paywall_brief: [{}], paywall_design: [{}] });
+    const r = await runDesigner({ ...INPUT, offering: { offering: OFFERING.offering, packages: [] } }, model, { iconBaseUrl: ICONS });
+    expect(r.notes[0]).toMatch(/"Default" has no packages yet/);
+    expect(JSON.stringify(calls[1]!.schema)).toContain("$rc_lifetime");
+  });
+
+  it("keeps the finished paywall when translating fails, and says so", async () => {
+    const { model } = scripted({ paywall_brief: [brief({ extra_locales: ["de_DE"] })], paywall_design: [design()], paywall_translations: [new Error("timeout")] });
+    const steps: StepEvent[] = [];
+    const r = await runDesigner(INPUT, model, { iconBaseUrl: ICONS, onStep: (e) => { steps.push(e); } });
+    expect(Object.keys(r.doc.components_localizations)).toEqual(["en_US"]);
+    expect(steps.at(-1)).toMatchObject({ id: "translate", status: "error" });
+    expect(r.notes.join(" ")).toMatch(/Translating into de_DE failed/);
+  });
+
+  it("merges translations of the same script only, and copies variable-only strings", () => {
+    const doc = { components_config: { base: {} }, default_locale: "en_US", components_localizations: { en_US: { a: "Go Pro", b: "{{ product.price_per_period }}" } } } as unknown as Parameters<typeof mergeTranslations>[0];
+    const done = mergeTranslations(doc, { locales: [{ locale: "zh_Hans", strings: [{ key: "a", text: "升级" }] }] }, ["zh_Hant"]);
+    expect(done).toEqual([{ locale: "zh_Hant", translated: 0, total: 1 }]);
+    expect(doc.components_localizations.zh_Hant).toEqual({ b: "{{ product.price_per_period }}" });
   });
 
   it("fails with the step that broke when the model errors", async () => {

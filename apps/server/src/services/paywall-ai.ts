@@ -1,18 +1,19 @@
 /**
  * The language model behind "Generate with AI" for paywalls and funnels (prd/paywalls/PRD.md §3). One small interface,
  * four providers, picked in this order:
- * 1. AI_GATEWAY_API_KEY: Vercel AI Gateway through the AI SDK (`@ai-sdk/gateway`), model `openai/gpt-6-luna`, structured
- *    output with the designer's strict JSON schema. Cloud (a Worker secret) and self-host alike.
+ * 1. AI_GATEWAY_API_KEY: Vercel AI Gateway through the AI SDK (ai-gateway.ts: `openai/gpt-6-luna`, medium reasoning,
+ *    shared with every AI feature), structured output with the designer's strict JSON schema. Cloud and self-host alike.
  * 2. OPENAI_API_KEY: OpenAI GPT-6 Luna (`gpt-6-luna`) directly, Chat Completions with strict structured outputs.
  *    OPENAI_BASE_URL points it at a compatible gateway.
  * 3. Cloud without either key: the Workers AI binding `AI` with Kimi K2.6 (`@cf/moonshotai/kimi-k2.6`), forced function call.
  * 4. Self-host without either key: ANTHROPIC_API_KEY (Claude, forced tool call with the schema as its input).
- * REVENUEDOT_PAYWALL_MODEL overrides the model id (a gateway model id such as `anthropic/claude-opus-5.5` when the
- * gateway is used; REVENUEDOT_AI_MODEL is its old name). With none configured the dashboard hides the button and the API
+ * REVENUEDOT_PAYWALL_MODEL overrides the model id (with the gateway only a gateway id such as `openai/gpt-6-sol` counts;
+ * REVENUEDOT_AI_MODEL is its old name). REVENUEDOT_PAYWALL_REASONING (or REVENUEDOT_AI_REASONING) sets the reasoning
+ * effort of reasoning models. With none configured the dashboard hides the button and the API
  * answers 503. Tests and the e2e server use `fakeModel` below.
  */
-import { createGateway } from "@ai-sdk/gateway";
 import { generateText, jsonSchema, Output, type LanguageModel } from "ai";
+import { DEFAULT_AI_MODEL, GATEWAY_PROVIDER, aiReasoning, gatewayLanguageModel, gatewayModelId, isReasoningModel } from "./ai-gateway.js";
 import { extractJson, type JsonModel } from "@revenuedot/core";
 
 export interface PaywallModel extends JsonModel {
@@ -30,7 +31,7 @@ export interface WorkersAi { run(model: string, input: Record<string, unknown>, 
 const MAX_TOKENS = 4096;
 const TIMEOUT_MS = 120_000;
 
-export const GATEWAY_PAYWALL_MODEL = "openai/gpt-6-luna";
+export const GATEWAY_PAYWALL_MODEL = DEFAULT_AI_MODEL;
 export const OPENAI_PAYWALL_MODEL = "gpt-6-luna";
 export const WORKERS_AI_PAYWALL_MODEL = "@cf/moonshotai/kimi-k2.6";
 export const ANTHROPIC_PAYWALL_MODEL = "claude-sonnet-4-5";
@@ -60,7 +61,8 @@ export function workersAiModel(ai: WorkersAi, model = WORKERS_AI_PAYWALL_MODEL):
   return {
     provider: "Workers AI", model,
     async complete(system, user) {
-      const r = await ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_completion_tokens: MAX_TOKENS, max_tokens: MAX_TOKENS, temperature: 0.4 });
+      // Kimi K2.6 thinks by default; funnels' free-text answer needs no long reasoning either.
+      const r = await ai.run(model, { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_completion_tokens: MAX_TOKENS, temperature: 0.4, reasoning_effort: "none" });
       const { content } = chatChoice(r);
       if (typeof content === "string" && content.trim()) return content;
       if (content && typeof content === "object") return JSON.stringify(content);
@@ -91,14 +93,18 @@ export function workersAiModel(ai: WorkersAi, model = WORKERS_AI_PAYWALL_MODEL):
 export interface OpenAiOptions {
   model?: string;
   baseUrl?: string;
-  /** GPT-6 reasoning effort: none, low (default), medium, high. */
+  /** Reasoning effort (none, low, medium, high) for reasoning models; default low for them, never sent to others. */
   reasoning?: string;
   fetch?: typeof fetch;
 }
 
 export function openAiModel(apiKey: string, o: OpenAiOptions = {}): PaywallModel {
   const model = o.model ?? OPENAI_PAYWALL_MODEL, f = o.fetch ?? fetch, base = (o.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+  // Only reasoning models (GPT-5 and later, o-series) take reasoning_effort and max_completion_tokens; older models and
+  // many OpenAI-compatible servers reject them. An explicit REVENUEDOT_PAYWALL_REASONING is always sent.
+  const reasons = !!o.reasoning || isReasoningModel(model);
   const reasoning = o.reasoning ?? "low";
+  const cap = (n: number, extra: number) => (reasons ? { max_completion_tokens: n + extra } : { max_tokens: n });
   const call = async (body: Record<string, unknown>, signal?: AbortSignal) => {
     const res = await f(`${base}/chat/completions`, {
       method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: signalOf(signal), body: JSON.stringify({ model, ...body }),
@@ -110,7 +116,7 @@ export function openAiModel(apiKey: string, o: OpenAiOptions = {}): PaywallModel
   return {
     provider: "OpenAI", model,
     async complete(system, user) {
-      const body = await call({ max_completion_tokens: MAX_TOKENS * 4, reasoning_effort: reasoning, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] });
+      const body = await call({ ...cap(MAX_TOKENS, MAX_TOKENS * 3), response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] });
       const { content } = chatChoice(body);
       if (typeof content !== "string" || !content) throw new Error("OpenAI returned no answer.");
       return content;
@@ -120,7 +126,7 @@ export function openAiModel(apiKey: string, o: OpenAiOptions = {}): PaywallModel
       const body = await call({
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
         response_format: { type: "json_schema", json_schema: { name, strict: true, schema } },
-        reasoning_effort: reasoning, max_completion_tokens: maxTokens + 16_000,
+        ...(reasons ? { reasoning_effort: reasoning } : {}), ...cap(maxTokens, 16_000),
       }, signal);
       const { content, finish, refusal } = chatChoice(body);
       if (refusal) throw new Error(`OpenAI refused: ${refusal}`);
@@ -130,21 +136,17 @@ export function openAiModel(apiKey: string, o: OpenAiOptions = {}): PaywallModel
   };
 }
 
-export interface AiSdkOptions {
-  /** OpenAI reasoning effort when the model is an OpenAI one: none, low (default), medium, high. */
-  reasoning?: string;
-}
-
 /**
  * A paywall model on any AI SDK language model: free text with `generateText`, JSON with `Output.object` and the
- * designer's JSON schema (OpenAI models get strict structured outputs). The gateway model below uses it; tests pass a mock.
+ * designer's JSON schema (OpenAI models get strict structured outputs). The reasoning effort comes with the language
+ * model (ai-gateway.ts). The gateway model below uses it; tests pass a mock.
  */
-export function aiSdkModel(languageModel: LanguageModel, provider: string, model: string, o: AiSdkOptions = {}): PaywallModel {
-  const providerOptions = { openai: { reasoningEffort: o.reasoning ?? "low", strictJsonSchema: true } };
+export function aiSdkModel(languageModel: LanguageModel, provider: string, model: string): PaywallModel {
+  const providerOptions = { openai: { strictJsonSchema: true } };
   return {
     provider, model,
     async complete(system, user) {
-      const r = await generateText({ model: languageModel, system, prompt: user, maxOutputTokens: MAX_TOKENS * 4, providerOptions, abortSignal: signalOf() });
+      const r = await generateText({ model: languageModel, system, prompt: user, maxOutputTokens: MAX_TOKENS * 4, abortSignal: signalOf() });
       if (!r.text.trim()) throw new Error(`${provider} returned no answer.`);
       return r.text;
     },
@@ -160,11 +162,10 @@ export function aiSdkModel(languageModel: LanguageModel, provider: string, model
   };
 }
 
-/** Vercel AI Gateway (`model` is a gateway id such as `openai/gpt-6-luna`). `f` lets tests check requests offline. */
-export function gatewayModel(apiKey: string, o: AiSdkOptions & { model?: string; fetch?: typeof fetch } = {}): PaywallModel {
+/** Vercel AI Gateway (`model` is a gateway id such as `openai/gpt-6-luna`). `fetch` lets tests check requests offline. */
+export function gatewayModel(apiKey: string, o: { model?: string; reasoning?: string; fetch?: typeof fetch } = {}): PaywallModel {
   const model = o.model ?? GATEWAY_PAYWALL_MODEL;
-  const gateway = createGateway({ apiKey, ...(o.fetch ? { fetch: o.fetch } : {}) });
-  return aiSdkModel(gateway(model), "Vercel AI Gateway", model, o);
+  return aiSdkModel(gatewayLanguageModel(apiKey, { model, reasoning: o.reasoning, fetch: o.fetch }), GATEWAY_PROVIDER, model);
 }
 
 export function anthropicModel(apiKey: string, model = ANTHROPIC_PAYWALL_MODEL, f: typeof fetch = fetch): PaywallModel {
@@ -204,9 +205,13 @@ export function anthropicModel(apiKey: string, model = ANTHROPIC_PAYWALL_MODEL, 
  */
 export function paywallModelFromEnv(env: Record<string, string | undefined>, o: { workersAi?: WorkersAi; fetch?: typeof fetch } = {}): PaywallModel | undefined {
   const override = env.REVENUEDOT_PAYWALL_MODEL?.trim() || env.REVENUEDOT_AI_MODEL?.trim() || undefined;
-  const reasoning = env.REVENUEDOT_PAYWALL_REASONING?.trim() || undefined;
+  const reasoning = env.REVENUEDOT_PAYWALL_REASONING?.trim() || env.REVENUEDOT_AI_REASONING?.trim() || undefined;
   const gateway = env.AI_GATEWAY_API_KEY?.trim();
-  if (gateway) return gatewayModel(gateway, { model: override, reasoning, fetch: o.fetch });
+  if (gateway) {
+    return gatewayModel(gateway, {
+      model: gatewayModelId(override, "REVENUEDOT_PAYWALL_MODEL"), reasoning: aiReasoning(env, "REVENUEDOT_PAYWALL_REASONING", "REVENUEDOT_AI_REASONING"), fetch: o.fetch,
+    });
+  }
   const openai = env.OPENAI_API_KEY?.trim();
   if (openai) return openAiModel(openai, { model: override, baseUrl: env.OPENAI_BASE_URL?.trim() || undefined, reasoning, fetch: o.fetch });
   if (o.workersAi) return workersAiModel(o.workersAi, override);

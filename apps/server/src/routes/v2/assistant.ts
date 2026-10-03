@@ -132,7 +132,7 @@ export function assistantRoutes(r: V2Router, deps: Deps) {
     return p;
   };
   const model = () => {
-    if (!deps.assistant) throw new V2Error(503, "server_error", "RevenueDot AI is not set up on this server. Set ANTHROPIC_API_KEY or OPENAI_API_KEY and restart (prd/ai-assistant/PRD.md).");
+    if (!deps.assistant) throw new V2Error(503, "server_error", "RevenueDot AI is not set up on this server. Set AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY and restart (prd/ai-assistant/PRD.md).");
     return deps.assistant;
   };
   const conversation = async (c: V2Context) => {
