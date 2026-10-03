@@ -25,7 +25,7 @@ export function connectCredentials(app: Pick<AppRow, "credentials">): ConnectCre
 
 /** Why App Store Connect refused: our key (credentials), the product already exists (conflict), bad input (invalid) or Apple is down (unavailable). */
 export class ConnectError extends Error {
-  constructor(public kind: "credentials" | "conflict" | "invalid" | "unavailable", message: string, public status = 0) { super(message); }
+  constructor(public kind: "credentials" | "conflict" | "invalid" | "unavailable", message: string, public status = 0, public code: string | null = null) { super(message); }
 }
 
 export interface Resource { id: string; type: string; attributes?: Record<string, unknown>; relationships?: Record<string, { data?: { id: string; type: string } | { id: string; type: string }[] | null }> }
@@ -87,7 +87,8 @@ export class AppStoreConnectApi {
     const first = json?.errors?.[0] ?? {};
     const title = typeof first.title === "string" ? first.title.trim() : "";
     const detail = (title && first.detail ? `${title}${/[.!?]$/.test(title) ? " " : ": "}${first.detail}` : title || first.detail) || `App Store Connect answered ${res.status}`;
-    if (res.status === 401 || res.status === 403) throw new ConnectError("credentials", `App Store Connect refused the API key (${detail}). It needs the App Manager role.`, res.status);
+    const code = typeof first.code === "string" ? first.code : null;
+    if (res.status === 401 || res.status === 403) throw new ConnectError("credentials", `App Store Connect refused the API key (${detail}). It needs the App Manager role.`, res.status, code);
     if (res.status === 429 || res.status >= 500) throw new ConnectError("unavailable", `App Store Connect is not responding (${detail}). Try again later.`, res.status);
     // 409 is App Store Connect's answer for any entity rule, a duplicate product id among them.
     if (res.status === 409 && /DUPLICATE|already|in use|unique/i.test(`${first.code ?? ""} ${detail}`)) throw new ConnectError("conflict", detail, res.status);

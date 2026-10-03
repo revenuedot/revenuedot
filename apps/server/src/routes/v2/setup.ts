@@ -12,6 +12,7 @@ import { amazonKeyConfigured, appleKeyConfigured, galaxyKeyConfigured, googleKey
 import { notificationHealth } from "./notification-health.js";
 import { apiRole } from "../../services/members.js";
 import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
+import { checkConnectKey } from "../../services/connect-key-check.js";
 import { paddleKeyHintOf, sealStoreSecrets, storeSecretHintOf, storeSecretSet, stripeConnected, stripeKeyHintOf, stripeModeOf, withStoreSecrets } from "../../services/store-secrets.js";
 import { depsSecretKey } from "../../services/secrets.js";
 import { PaddleApiError } from "../../stores/paddle/api.js";
@@ -32,6 +33,7 @@ import { buildSampleApp, SAMPLE_APPS, samplePlatformsFor, type SamplePlatform } 
  *   GET    /v2/projects/{project_id}/collaborators                               RevenueCat's collaborator list
  *   GET    /v2/projects/{project_id}/apps/{app_id}/store_settings                non-secret store setup state (extension)
  *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/verify_credentials    ask the store whether the credentials work (extension)
+ *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/verify_app_store_connect_key    ask App Store Connect whether the API key works (extension)
  *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/apply_notification_settings  Paddle: create or update the notification destination (extension)
  *   POST   /v2/projects/{project_id}/integrations/webhooks/{id}/test             queue a TEST event to one webhook (extension)
  *   POST   /v2/projects/{project_id}/apps/{app_id}/actions/mass_extend           App Store: extend every active subscriber of a product (extension)
@@ -60,6 +62,7 @@ const Verify = z.object({
   roku: z.object({ roku_api_key: str }).optional(),
   galaxy: z.object({ package_name: str, galaxy_service_account_id: str, galaxy_service_account_private_key: str }).optional(),
 });
+const VerifyConnectKey = z.object({ bundle_id: str, app_store_connect_api_key: str, app_store_connect_api_key_id: str, app_store_connect_api_key_issuer: str });
 
 const Reason = z.enum(["undeclared", "customer_satisfaction", "other", "service_issue_or_outage"]);
 const REASON_CODES = { undeclared: 0, customer_satisfaction: 1, other: 2, service_issue_or_outage: 3 } as const;
@@ -348,6 +351,19 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     // A check of what is stored also updates the app's credential health (and the alert it drives).
     if (!overrides) await recordCredentialCheck(db, a.id, r, deps.now());
     return out(r.status, r.message, r.extra);
+  });
+
+  // The App Store Connect API key (Import products, the product editor): values in the body are checked before they are
+  // saved, anything missing falls back to what is stored. Read-only at Apple; the result is not stored. It needs write
+  // access: the stored .p8 with another bundle ID in the body would describe any app of the developer's Apple team.
+  r.post(`${P}/apps/:app_id/actions/verify_app_store_connect_key`, scope("project_configuration:apps:read_write"), async (c) => {
+    const row = await findApp(c);
+    if (row.type !== "app_store" && row.type !== "mac_app_store") throw paramError("Only App Store and Mac App Store apps have an App Store Connect API key.", "app_id");
+    const b = await body(c, VerifyConnectKey);
+    const cr: Record<string, unknown> = { ...(row.credentials ?? {}) };
+    for (const k of ["app_store_connect_api_key", "app_store_connect_api_key_id", "app_store_connect_api_key_issuer"] as const) if (s(b[k])) cr[k] = b[k];
+    const r = await checkConnectKey(deps, { bundleId: s(b.bundle_id) ?? row.bundleId, credentials: cr });
+    return c.json({ object: "credentials_check", app_id: row.id, store: row.type, key: "app_store_connect_api_key", status: r.status, valid: r.status === "valid", message: r.message, checked_at: deps.now().getTime(), ...r.extra });
   });
 
   // Paddle's "Apply in Paddle": a notification destination in the developer's Paddle account pointing at this app's
