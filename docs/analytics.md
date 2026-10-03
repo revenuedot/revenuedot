@@ -21,7 +21,7 @@ Add a goal: dashboard step, one line in `STEPS` in `analytics.ts` (with a test i
 `identify` runs once the dashboard knows the user: `user_id` is the email (the same key the contact-sales form uses, so a lead, the signup and the payment are one profile), plus `name`, `plan`, `projects` (a count) and `email_verified`. It runs again when the plan or project count changes.
 
 ## Stripe revenue attribution
-1. DataFast → Settings → Revenue → Stripe: paste a restricted read key from RevenueDot's Stripe account (the Circo account). Live mode only; DataFast has no test mode.
+1. Done (2026-10-02): DataFast → Settings → Revenue → Stripe holds a restricted read key from RevenueDot's Stripe account (the Circo account). Live mode only; DataFast has no test mode.
 2. Checkout carries `datafast_visitor_id` and `datafast_session_id` in `metadata` and `subscription_data.metadata`. No webhook is needed on the DataFast side.
 3. Cloud Standard is billed monthly at the end of the month, so the first payment shows then; `subscription_started` shows at checkout.
 
