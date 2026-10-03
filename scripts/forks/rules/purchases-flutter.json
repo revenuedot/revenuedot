@@ -3,6 +3,36 @@
   "upstream": "https://github.com/RevenueCat/purchases-flutter",
   "publishes": ["git dependency https://github.com/revenuedot/purchases-flutter (packages purchases_flutter and purchases_ui_flutter; names kept so `package:purchases_flutter/...` imports work), tags <version>-revenuedot; a RevenueDot-hosted pub repository later"],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Flutter SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's Flutter SDK, pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "api_tester",
+        "e2e-tests",
+        "example",
+        "revenuecat_examples",
+        "test",
+        ".aiexclude"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Install as a git dependency on https://github.com/revenuedot/purchases-flutter with a `ref` of the upstream version plus -revenuedot. The pub.dev names purchases_flutter and purchases_ui_flutter belong to RevenueCat.",
+        "The package names stay purchases_flutter and purchases_ui_flutter, so `import 'package:purchases_flutter/purchases_flutter.dart';` keeps working.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, call `await Purchases.setProxyURL('https://revenuedot.example.com')` before `Purchases.configure`.",
+        "Pass each app's public key from the RevenueDot dashboard to `PurchasesConfiguration`: appl_ for iOS and goog_ for Android."
+      ]
+    },
     { "type": "replace", "files": ["lib/web/purchases_flutter_web.dart"], "find": "        case 'setProxyURL':\n", "replace": "        case 'setProxyURLString': // RevenueDot: the Dart API sends this name; upstream web only handled 'setProxyURL'\n        case 'setProxyURL':\n", "done": "case 'setProxyURLString':", "note": "behaviour patch: setProxyURL works on Flutter web" },
     { "type": "replace", "files": ["lib/web/purchases_flutter_web.dart"], "find": "    return _callStaticMethodReturningPromise('setProxyUrl', [proxyURL]);", "replace": "    // RevenueDot: PurchasesCommon.setProxyUrl returns void, not a promise; awaiting it as one threw on every call.\n    _callStaticMethod('setProxyUrl', [proxyURL]);", "done": "RevenueDot: PurchasesCommon.setProxyUrl returns void", "note": "behaviour patch: setProxyURL works on Flutter web (part 2)" },
     { "type": "replace", "files": ["assets/web/purchases_js_hybrid_mappings.js"], "find": "https://api.revenuecat.com", "replace": "{{apiHost}}", "note": "vendored purchases-js bundle; rebuilt from our purchases-js at release" },

@@ -3,6 +3,40 @@
   "upstream": "https://github.com/RevenueCat/purchases-kmp",
   "publishes": ["Maven Central app.revenuedot.purchases:purchases-kmp-core, -ui, -models, -mappings, -either, -result (same artifact ids, Kotlin packages stay com.revenuecat.purchases.kmp.*)"],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Kotlin Multiplatform SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's Kotlin Multiplatform SDK, pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "apiTester",
+        "build-logic",
+        "composeApp",
+        "config",
+        "e2e-tests",
+        "iosApp",
+        "upstream",
+        "watchosTester",
+        ".idea",
+        ".run"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Add `implementation(\"{{mavenGroup}}:purchases-kmp-core:<version>\")` in commonMain, plus `{{mavenGroup}}:purchases-kmp-ui` for paywalls. The artifact ids are the same as RevenueCat's.",
+        "Kotlin packages stay `com.revenuecat.purchases.kmp.*`, so imports such as `import com.revenuecat.purchases.kmp.Purchases` do not change.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, set `Purchases.proxyURL = \"https://revenuedot.example.com\"` before `Purchases.configure`.",
+        "Pass the app's public key from the RevenueDot dashboard to `PurchasesConfiguration`: appl_ on iOS and goog_ on Android."
+      ]
+    },
     { "type": "replace", "files": ["build.gradle.kts"], "find": "    group = \"com.revenuecat.purchases\"\n", "replace": "    group = \"{{mavenGroup}}\"\n" },
     { "type": "replace", "files": ["build.gradle.kts"], "find": "description.set(\"Mobile subscriptions in hours, not months.\")", "replace": "description.set(\"{{disclaimer}}\")" },
     { "type": "replace", "files": ["build.gradle.kts"], "regex": true, "flags": "i", "find": "github\\.com([:/])revenuecat/purchases-kmp", "replace": "github.com$1{{org}}/purchases-kmp", "done": "github.com/{{org}}/purchases-kmp" },

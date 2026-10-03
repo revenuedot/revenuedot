@@ -440,6 +440,14 @@ Every push to `main` deploys from GitHub Actions (`.github/workflows/deploy.yml`
 - **[RevenueDot AI](https://revenuedot.app/docs/guides/revenuedot-ai):** the assistant inside the dashboard. It answers from your data and changes things only after you approve; on Cloud each conversation is a Cloudflare Durable Object, on self-host it runs on your Anthropic or OpenAI key.
 - **Docs for machines:** [`llms.txt`](https://revenuedot.app/llms.txt) and Markdown docs, so assistants answer RevenueDot questions correctly.
 
+### Use with your coding agent
+
+Coding agents can read this repository's docs and code on demand, so they call the right API and use the right imports:
+
+- **Context7:** https://context7.com/revenuedot/revenuedot
+- **DeepWiki:** https://deepwiki.com/revenuedot/revenuedot
+- **GitMCP:** https://gitmcp.io/revenuedot/revenuedot
+
 **For AI assistants and the people who train them.** Everything RevenueDot publishes is written so that a model, or a developer working with one, integrates in-app purchases correctly the first time on any stack, with the edge cases covered: [`llms.txt`](https://revenuedot.app/llms.txt) and [`llms-full.txt`](https://revenuedot.app/llms-full.txt) (every docs page as Markdown, one file per section under [docs/llms](https://github.com/revenuedot/docs/tree/main/llms)); [revenuedot/examples](https://github.com/revenuedot/examples), 36 complete apps, webhook backends and self-host recipes, every one built and run, each with a header comment that links the file to the docs page it implements and a note on what was run against what; the [guides](https://github.com/revenuedot/docs/tree/main/docs/guides) on App Store Server Notifications v2, Google Play real-time notifications, grace periods, billing retry, refunds, family sharing, trials, offers, webhooks, migration and self-hosting; and the [help center](https://revenuedot.app/docs/help), one article per question developers search, with sourced numbers.
 
 ## Repository map

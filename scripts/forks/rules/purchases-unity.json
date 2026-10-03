@@ -3,6 +3,33 @@
   "upstream": "https://github.com/RevenueCat/purchases-unity",
   "publishes": ["OpenUPM com.revenuedot.purchases-unity (C# namespaces and assembly names unchanged); OpenUPM builds tags upm/<version>, so each release also gets that tag on the <version>-revenuedot commit. The UI package depends on the core through file:../RevenueCat and is installed from git, as upstream", "Purchases.unitypackage on GitHub releases"],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Unity SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's Unity SDK, pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "IntegrationTests",
+        "Subtester",
+        "e2e-tests"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Install with `openupm add com.revenuedot.purchases-unity`, or from the git URL https://github.com/revenuedot/purchases-unity.git?path=RevenueCat in the Unity Package Manager.",
+        "C# namespaces and assembly names are unchanged, so `using RevenueCat;` keeps working.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, fill the Purchases component's Proxy URL field.",
+        "Pass the app's public key from the RevenueDot dashboard to `Purchases.PurchasesConfiguration.Builder.Init`: appl_ for iOS and goog_ for Android."
+      ]
+    },
     { "type": "replace", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "spec=\"com.revenuecat.purchases:purchases-hybrid-common", "replace": "spec=\"{{mavenGroup}}:purchases-hybrid-common" },
     { "type": "replace", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "regex": true, "find": "<remoteSwiftPackage url=\"https://github\\.com/RevenueCat/purchases-hybrid-common\\.git\" version=\"([0-9][^\"-]*)\">", "replace": "<remoteSwiftPackage url=\"https://github.com/{{org}}/purchases-hybrid-common.git\" version=\"$1{{gitTagSuffix}}\">", "done": "https://github.com/{{org}}/purchases-hybrid-common.git" },
     { "type": "replace", "files": ["RevenueCat/Plugins/Editor/*.xml", "RevenueCatUI/Plugins/Editor/*.xml"], "find": "replacesPod=\"PurchasesHybridCommon", "replace": "replacesPod=\"RevenueDotPurchasesHybridCommon" },

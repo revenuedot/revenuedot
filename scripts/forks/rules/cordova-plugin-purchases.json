@@ -3,6 +3,33 @@
   "upstream": "https://github.com/RevenueCat/cordova-plugin-purchases",
   "publishes": ["npm @revenuedot/cordova-plugin-purchases (Cordova plugin id and the window.Purchases global unchanged)"],
   "rules": [
+    {
+      "type": "context7",
+      "file": "context7.json",
+      "title": "RevenueDot Cordova SDK",
+      "description": "RevenueDot's MIT fork of RevenueCat's Cordova plugin, pointed at RevenueDot, the open-source RevenueCat alternative for in-app purchases and subscriptions.",
+      "excludeFolders": [
+        ".circleci",
+        ".github",
+        "fastlane",
+        ".revenuedot",
+        "scripts",
+        "apiTester",
+        "e2e-tests",
+        "examples",
+        "tests"
+      ],
+      "excludeFiles": [
+        "CHANGELOG.md",
+        "CHANGELOG.latest.md",
+        "CHANGELOG-LATEST.md"
+      ],
+      "rules": [
+        "Install with `cordova plugin add {{npmScope}}/cordova-plugin-purchases@<version>`. The plugin id stays cordova-plugin-purchases and the global stays `Purchases`.",
+        "Call `Purchases.configureWith` after the `deviceready` event, with the app's public key from the RevenueDot dashboard: appl_ for iOS and goog_ for Android.",
+        "RevenueDot Cloud ({{apiHost}}) is the default API host. For a self-hosted server, call `Purchases.setProxyURL(\"https://revenuedot.example.com\")` before `configureWith`."
+      ]
+    },
     { "type": "replace", "files": ["plugin.xml"], "find": "<framework src=\"com.revenuecat.purchases:purchases-hybrid-common:", "replace": "<framework src=\"{{mavenGroup}}:purchases-hybrid-common:" },
     { "type": "replace", "files": ["plugin.xml"], "find": "<pod name=\"PurchasesHybridCommon\" ", "replace": "<pod name=\"RevenueDotPurchasesHybridCommon\" " },
     { "type": "replace", "files": ["plugin.xml"], "find": "<description>Purchases Cordova Plugin</description>", "replace": "<description>Purchases Cordova Plugin. {{disclaimer}}</description>" },

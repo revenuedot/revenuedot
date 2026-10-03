@@ -52,7 +52,17 @@ export interface ReadmeRule extends Base {
 }
 /** Points a git submodule at our fork, and pins it to our patch branch when that branch contains the pinned commit. */
 export interface SubmoduleRule extends Base { type: "submodule"; path: string; url: string; pinToRepo?: string; /** Branch in pinToRepo to pin to; "{branch}" is the submodule's .gitmodules branch (an upstream tag). Default: the patch branch. */ pinBranch?: string }
-export type Rule = ReplaceRule | JsonRule | RenameRule | CopyRule | DeleteRule | LicenseRule | BannerRule | ReadmeRule | SubmoduleRule;
+/**
+ * Writes `context7.json` (https://context7.com/docs/library-owners, schema https://context7.com/schema/context7.json) so Context7
+ * indexes the repo with our title, description and rules. Limits from the schema are enforced when the rule runs.
+ */
+export interface Context7Rule extends Base {
+  type: "context7"; file: string;
+  title: string; description: string;
+  folders?: string[]; excludeFolders?: string[]; excludeFiles?: string[];
+  rules: string[];
+}
+export type Rule = ReplaceRule | JsonRule | RenameRule | CopyRule | DeleteRule | LicenseRule | BannerRule | ReadmeRule | SubmoduleRule | Context7Rule;
 /** Expands to a shared rule group from rules/_shared.json; "$files" and "$file" in the group are replaced. */
 export interface IncludeRule { type: "include"; group: string; files?: string[]; file?: string }
 
@@ -142,7 +152,27 @@ function describe(r: Rule): string {
     case "banner": return `banner ${r.files.join(",")}`;
     case "readme": return `readme ${r.file}`;
     case "submodule": return `submodule ${r.path}`;
+    case "context7": return `context7 ${r.file}`;
   }
+}
+
+/** The text of `context7.json` for a rule. Throws when a value breaks the Context7 schema limits. */
+export function renderContext7(rule: Context7Rule, vars: Vars): string {
+  const r = (x: string) => render(x, vars);
+  const title = r(rule.title); const description = r(rule.description); const rules = rule.rules.map(r);
+  if (title.length < 1 || title.length > 100) throw new Error(`context7 title must be 1-100 characters (${title.length})`);
+  if (description.length < 10 || description.length > 200) throw new Error(`context7 description must be 10-200 characters (${description.length}): ${description}`);
+  if (rules.length > 50 || rules.some((x) => x.length < 1 || x.length > 255)) throw new Error("context7 rules: at most 50, each 1-255 characters");
+  const obj = {
+    $schema: "https://context7.com/schema/context7.json",
+    projectTitle: title,
+    description,
+    folders: rule.folders ?? [],
+    excludeFolders: rule.excludeFolders ?? [],
+    excludeFiles: rule.excludeFiles ?? [],
+    rules,
+  };
+  return JSON.stringify(obj, null, 2) + "\n";
 }
 
 export interface ApplyContext { root: string; vars: Vars; workspace: string; patchBranch: string; log?: (s: string) => void }
@@ -271,6 +301,12 @@ export function applyRule(rule: Rule, ctx: ApplyContext): Result {
       if (next !== before) { write(p, next); changed.push(rule.file); }
       return { rule: name, changed, status: changed.length ? "applied" : "unchanged" };
     }
+    case "context7": {
+      const p = join(root, rule.file);
+      const next = renderContext7(rule, vars);
+      if (!existsSync(p) || read(p) !== next) { write(p, next); changed.push(rule.file); }
+      return { rule: name, changed, status: changed.length ? "applied" : "unchanged" };
+    }
     case "submodule": {
       const gm = join(root, ".gitmodules");
       if (!existsSync(gm)) return miss(".gitmodules missing");
@@ -361,6 +397,14 @@ export function renderReadme(rule: ReadmeRule, vars: Vars): string {
     "",
     ...adds.map((a) => `- ${r(a)}`),
     "",
+    "## Use with your coding agent",
+    "",
+    `Coding agents can read this repository's docs and code on demand, so they use the right package and imports:`,
+    "",
+    `- **Context7:** https://context7.com/${vars.org}/${vars.repo}`,
+    `- **DeepWiki:** https://deepwiki.com/${vars.org}/${vars.repo}`,
+    `- **GitMCP:** https://gitmcp.io/${vars.org}/${vars.repo}`,
+    "",
     "## Links",
     "",
     ...links,
@@ -400,6 +444,13 @@ export function checkReadme(root: string, rule: ReadmeRule, vars: Vars): string[
   if (!new RegExp(`^# ${render(rule.title, vars).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m").test(ours)) problems.push(`${rule.file}: H1 "${render(rule.title, vars)}" missing`);
   for (const bad of ["app.revenuecat.com", "get started for free", "revenuecat.com/signup"]) if (ours.toLowerCase().includes(bad)) problems.push(`${rule.file}: "${bad}" appears above the upstream section`);
   return problems;
+}
+
+/** Problems with `context7.json` on disk: missing, or different from what the rule renders now. */
+export function checkContext7(root: string, rule: Context7Rule, vars: Vars): string[] {
+  const p = join(root, rule.file);
+  if (!existsSync(p)) return [`${rule.file} missing`];
+  return readFileSync(p, "utf8") === renderContext7(rule, vars) ? [] : [`${rule.file} is stale (run apply.ts)`];
 }
 
 /** Finds RevenueCat hosts and signing keys left in shipped code after the rules ran. */
