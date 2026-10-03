@@ -31,7 +31,9 @@ export function billingConfigFromEnv(env: Record<string, string | undefined>): B
 }
 
 export class BillingStripeError extends Error {
-  constructor(message: string, public status: number | null = null) { super(message); }
+  constructor(message: string, public status: number | null = null, public code: string | null = null) { super(message); }
+  /** The object does not exist on this Stripe account (deleted, or from the other mode): retrying will not help. */
+  get missing() { return this.status === 404 || this.code === "resource_missing"; }
 }
 
 /** Why Stripe cannot be used now (null: ready). */
@@ -80,18 +82,19 @@ export function billingStripe(c: BillingConfig, f: typeof fetch = fetch) {
     const headers: Record<string, string> = { authorization: `Bearer ${c.secretKey}`, "stripe-version": "2025-03-31.basil" };
     let url = `${base}${path}`;
     let body: string | undefined;
-    if (params && method === "GET") url += `?${form(params).join("&")}`;
+    if (params && (method === "GET" || method === "DELETE")) url += `?${form(params).join("&")}`;
     else if (params) { body = form(params).join("&"); headers["content-type"] = "application/x-www-form-urlencoded"; }
     if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
     let res: Response;
     try { res = await f(url, { method, headers, body }); } catch (e) { throw new BillingStripeError(`Stripe did not answer: ${e instanceof Error ? e.message : e}`); }
-    const json = await res.json().catch(() => ({})) as { error?: { message?: string } } & T;
-    if (!res.ok) throw new BillingStripeError(json.error?.message ?? `Stripe answered HTTP ${res.status}.`, res.status);
+    const json = await res.json().catch(() => ({})) as { error?: { message?: string; code?: string } } & T;
+    if (!res.ok) throw new BillingStripeError(json.error?.message ?? `Stripe answered HTTP ${res.status}.`, res.status, json.error?.code ?? null);
     return json;
   };
   return {
-    createCustomer: (o: { email: string; name?: string | null; userId: string }) =>
-      call<{ id: string }>("POST", "/v1/customers", { email: o.email, name: o.name ?? undefined, metadata: { revenuedot_user_id: o.userId } }, `rd-customer-${o.userId}`),
+    /** `replacing`: the old customer is gone, so a new idempotency key (the old one would answer with the deleted customer for 24 hours). */
+    createCustomer: (o: { email: string; name?: string | null; userId: string; replacing?: string | null }) =>
+      call<{ id: string }>("POST", "/v1/customers", { email: o.email, name: o.name ?? undefined, metadata: { revenuedot_user_id: o.userId } }, o.replacing ? `rd-customer-${o.userId}-after-${o.replacing}` : `rd-customer-${o.userId}`),
     /** Checkout for Cloud Standard: monthly, anchored to the 1st of next month (UTC) without proration, so a Stripe period is a calendar month. */
     createCheckout: (o: { customer: string; userId: string; successUrl: string; cancelUrl: string; anchor: Date; datafast?: DatafastIds }) =>
       call<{ id: string; url: string }>("POST", "/v1/checkout/sessions", {
@@ -107,5 +110,21 @@ export function billingStripe(c: BillingConfig, f: typeof fetch = fetch) {
     meterEvent: (o: { customer: string; cents: number; identifier: string; timestamp: Date }) =>
       call("POST", "/v1/billing/meter_events", { event_name: c.meterEvent, payload: { stripe_customer_id: o.customer, value: String(o.cents) }, identifier: o.identifier, timestamp: Math.floor(o.timestamp.getTime() / 1000) }),
     getSubscription: (id: string) => call<Record<string, any>>("GET", `/v1/subscriptions/${encodeURIComponent(id)}`),
+    /** Every subscription of a customer, in any status (newest first), so the account follows Stripe and not the event order. */
+    listSubscriptions: async (customer: string) => {
+      const all: Record<string, any>[] = [];
+      for (let after: string | undefined, page = 0; page < 10; page++) {
+        const r = await call<{ data: Record<string, any>[]; has_more?: boolean }>("GET", "/v1/subscriptions", { customer, status: "all", limit: 100, starting_after: after });
+        all.push(...r.data);
+        if (!r.has_more || !r.data.length) break;
+        after = r.data[r.data.length - 1]!.id;
+      }
+      return all;
+    },
+    getInvoice: (id: string) => call<Record<string, any>>("GET", `/v1/invoices/${encodeURIComponent(id)}`),
+    /** Ends a duplicate subscription at once, without proration or a final invoice. */
+    cancelSubscription: (id: string) => call<Record<string, any>>("DELETE", `/v1/subscriptions/${encodeURIComponent(id)}`, { prorate: false, invoice_now: false }),
+    listOpenCheckouts: async (customer: string) => (await call<{ data: Record<string, any>[] }>("GET", "/v1/checkout/sessions", { customer, status: "open", limit: 100 })).data,
+    expireCheckout: (id: string) => call<Record<string, any>>("POST", `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`),
   };
 }

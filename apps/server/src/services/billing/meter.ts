@@ -1,10 +1,11 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { trySend, type Mailer } from "../../mail/index.js";
 import { billingUsageEmail } from "../../mail/templates.js";
 import { rowsOf } from "../archive/tables.js";
 import { billCents, monthBounds, monthOf, planOf, plansFrom, previousMonth, type Plan } from "./plans.js";
 import { billingStripe, stripeProblem, type BillingConfig } from "./stripe.js";
+import { SYSTEM_USER, claim, reconcileAccounts } from "./webhook.js";
 
 /**
  * Metering for RevenueDot Cloud (prd/cloud-billing/PRD.md): tracked revenue per project and month, the bill per account
@@ -88,15 +89,23 @@ async function usageNotices(rt: BillingRuntime, userId: string, plan: Plan, mont
 /** One billing pass: meter, report each account's bill to Stripe when it changed, send usage emails. */
 export async function runBilling(rt: BillingRuntime): Promise<number> {
   const month = monthOf(rt.now);
-  if (!rt.force) {
-    const [last] = rowsOf<{ at: Date | string | null }>(await rt.db.execute(sql`SELECT max(computed_at) AS at FROM billing_usage WHERE month = ${month}`));
-    if (last?.at && rt.now.getTime() - new Date(last.at).getTime() < EVERY_MS) return 0;
-  }
-  const months = rt.now.getUTCDate() <= 2 ? [previousMonth(month), month] : [month];
-  const plans = plansFrom(rt.config?.plansJson);
   // Usage emails point at the upgrade: none goes out until Stripe is set up (no key on production means no billing yet).
   const ready = !stripeProblem(rt.config);
   let work = 0;
+  // The safety net for lost or failed webhooks: re-read unsettled accounts from Stripe, once an hour. The hour is claimed
+  // with a row (billing_notices, system user), so overlapping cron runs and months without usage rows never run it twice.
+  if (ready && (rt.force || await claim(rt.db, `reconcile:${rt.now.toISOString().slice(0, 13)}`, rt.now))) {
+    try {
+      await rt.db.delete(schema.billingNotices).where(and(eq(schema.billingNotices.userId, SYSTEM_USER), lt(schema.billingNotices.sentAt, new Date(rt.now.getTime() - 7 * 86_400_000))));
+      work += await reconcileAccounts({ db: rt.db, now: rt.now, stripe: billingStripe(rt.config!, rt.fetch), mailer: rt.mailer, publicUrl: rt.publicUrl });
+    } catch (e) { console.error("billing: reconcile failed", e); }
+  }
+  if (!rt.force) {
+    const [last] = rowsOf<{ at: Date | string | null }>(await rt.db.execute(sql`SELECT max(computed_at) AS at FROM billing_usage WHERE month = ${month}`));
+    if (last?.at && rt.now.getTime() - new Date(last.at).getTime() < EVERY_MS) return work;
+  }
+  const months = rt.now.getUTCDate() <= 2 ? [previousMonth(month), month] : [month];
+  const plans = plansFrom(rt.config?.plansJson);
   for (const m of months) {
     work += await meterMonth(rt.db, m, rt.now);
     const owners = await rt.db.selectDistinct({ id: U.ownerUserId }).from(U).where(and(eq(U.month, m), sql`${U.ownerUserId} IS NOT NULL`));

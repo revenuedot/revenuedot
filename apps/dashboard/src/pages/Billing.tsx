@@ -26,8 +26,10 @@ interface Billing {
 }
 
 const STATUS: Record<string, { label: string; tone: "up" | "down" | "info" | "gold" | "muted" }> = {
-  active: { label: "Active", tone: "up" }, past_due: { label: "Payment failed", tone: "down" }, unpaid: { label: "Unpaid", tone: "down" }, canceled: { label: "Cancelled", tone: "muted" }, none: { label: "Free", tone: "muted" },
+  active: { label: "Active", tone: "up" }, past_due: { label: "Payment failed", tone: "down" }, unpaid: { label: "Unpaid", tone: "down" }, canceled: { label: "Cancelled", tone: "muted" }, incomplete: { label: "Checkout not finished", tone: "muted" }, paused: { label: "Paused", tone: "muted" }, none: { label: "Free", tone: "muted" },
 };
+/** Billing dates in UTC: periods run on UTC calendar months, so "Ends Nov 1" matches Stripe's portal and emails everywhere. */
+const utcDate = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—");
 const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
 function Meter({ value, max, label }: { value: number; max: number; label: string }) {
@@ -48,7 +50,9 @@ export function BillingPage() {
   const [error, setError] = useState<string | null>(null);
   const cloud = me.data?.account?.edition === "cloud";
   // Like the Billing link: only on Cloud once RevenueDot's Stripe is set up (`billing_ready`).
-  const q = useQuery({ queryKey: ["billing"], queryFn: () => api<Billing>("/v2/billing"), enabled: cloud && !!me.data?.account?.billing_ready, refetchInterval: params.get("checkout") === "success" ? 3000 : false });
+  // Back from Checkout: ?sync=1 makes the server read Stripe, so the plan shows even if the webhook is late.
+  const returning = params.get("checkout") === "success";
+  const q = useQuery({ queryKey: ["billing", returning], queryFn: () => api<Billing>(returning ? "/v2/billing?sync=1" : "/v2/billing"), enabled: cloud && !!me.data?.account?.billing_ready, refetchInterval: returning ? 3000 : false });
   useEffect(() => {
     const c = params.get("checkout");
     if (c === "success" || c === "cancelled") {
@@ -88,11 +92,11 @@ export function BillingPage() {
             {error && <div className="banner err" role="alert">{error}</div>}
 
             <section className="bl-grid" aria-label="This month">
-              <div><span className="l">Plan</span><span className="v name">{current?.name ?? "Cloud Free"}</span><span className="d"><Tag tone={STATUS[b.account.status]?.tone ?? "muted"}>{STATUS[b.account.status]?.label ?? b.account.status}</Tag>{b.account.cancel_at && <span className="subtle"> Ends {fmt.date(b.account.cancel_at)}</span>}</span></div>
+              <div><span className="l">Plan</span><span className="v name">{current?.name ?? "Cloud Free"}</span><span className="d"><Tag tone={STATUS[b.account.status]?.tone ?? "muted"}>{STATUS[b.account.status]?.label ?? b.account.status}</Tag>{b.account.cancel_at && <span className="subtle"> Ends {utcDate(b.account.cancel_at)}</span>}</span></div>
               <div><span className="l">Tracked revenue, {monthName(b.usage.month)}</span><span className="v" data-tracked>{fmt.usdRaw(b.usage.tracked_revenue_usd, true)}</span>
                 {limit ? <><Meter value={b.usage.tracked_revenue_usd} max={limit} label="Tracked revenue against the plan's limit" /><span className="d mono">{Math.round((b.usage.tracked_revenue_usd / limit) * 100)}% of {fmt.usdRaw(limit)}</span></> : <span className="d">No limit</span>}</div>
               <div><span className="l">Bill so far</span><span className="v" data-bill>{b.account.plan === "enterprise" ? "By contract" : fmt.usdRaw(b.usage.bill_usd, true)}</span><span className="d">{b.account.plan === "standard" ? `0.5% above ${fmt.usdRaw(b.usage.free_limit_usd)}, at most ${fmt.usdRaw(b.usage.cap_usd)}` : b.account.plan === "free" ? `${fmt.usdRaw(b.usage.standard_bill_usd, true)} on Cloud Standard` : ""}</span></div>
-              <div><span className="l">Month ends</span><span className="v">{fmt.date(b.usage.period_end - 1)}</span><span className="d">{b.usage.computed_at ? `Updated ${fmt.ago(b.usage.computed_at)}` : "Measured hourly"}</span></div>
+              <div><span className="l">Month ends</span><span className="v">{utcDate(b.usage.period_end - 1)}</span><span className="d">{b.usage.computed_at ? `Updated ${fmt.ago(b.usage.computed_at)}` : "Measured hourly"}</span></div>
             </section>
 
             <section className="panel" aria-labelledby="bl-projects">
