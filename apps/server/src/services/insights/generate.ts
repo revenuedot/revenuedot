@@ -27,7 +27,10 @@ const STALE_RUN_MS = 10 * 60_000;
  */
 export const INSIGHTS_MAX_OUTPUT_TOKENS = 16_000;
 /** The repair attempt reasons briefly: it only has to rewrite the JSON from the pack it already has. */
-export const REPAIR_REASONING = "low";
+export const REPAIR_REASONING: Reasoning = "low";
+/** Each ask stops after this long, so a first try and the repair both end well before STALE_RUN_MS frees the week's row. */
+export const INSIGHTS_ASK_TIMEOUT_MS = 4 * 60_000;
+type Reasoning = "low" | "medium" | "high";
 
 export interface Insight {
   id: string;
@@ -204,7 +207,7 @@ export async function generateInsights(deps: Deps, projectId: string, o: Generat
   }
 }
 
-async function ask(ctx: AssistantContext, system: string, messages: ModelMessage[], tools: ToolSet, usageKey: string, o: { reasoning?: string } = {}): Promise<string> {
+async function ask(ctx: AssistantContext, system: string, messages: ModelMessage[], tools: ToolSet, usageKey: string, o: { reasoning?: Reasoning } = {}): Promise<string> {
   const { db } = ctx.deps;
   let failure: unknown = null;
   const result = streamText({
@@ -217,9 +220,12 @@ async function ask(ctx: AssistantContext, system: string, messages: ModelMessage
     // without one).
     prepareStep: ({ stepNumber }: { stepNumber: number }) => (stepNumber >= 3 ? { toolChoice: "none" } : undefined),
     maxOutputTokens: INSIGHTS_MAX_OUTPUT_TOKENS,
+    timeout: { totalMs: INSIGHTS_ASK_TIMEOUT_MS },
     // Overrides the model's default effort (ai-gateway.ts) for OpenAI reasoning models; other providers ignore it.
     ...(o.reasoning ? { providerOptions: { openai: { reasoningEffort: o.reasoning } } } : {}),
     onError: ({ error }: { error: unknown }) => { failure = error; },
+    // A timeout after a finished step ends the stream without an error; say so rather than "the model gave no answer".
+    onAbort: () => { failure ??= new Error(`The model took longer than ${INSIGHTS_ASK_TIMEOUT_MS / 60_000} minutes.`); },
     onStepEnd: async (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
       try { await addUsage(db, usageKey, ctx.project.id, ctx.deps.now(), { inputTokens: step.usage?.inputTokens ?? 0, outputTokens: step.usage?.outputTokens ?? 0 }); } catch (e) { console.error("insights usage", e); }
     },

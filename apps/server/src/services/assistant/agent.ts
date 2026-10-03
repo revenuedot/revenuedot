@@ -273,7 +273,9 @@ export async function runAssistantTurn(ctx: AssistantContext, messages: UIMessag
     messages: modelMessages,
     tools: toolSet,
     stopWhen: [isStepCount(8), () => overCap],
-    maxOutputTokens: 8192,
+    // Room for a reasoning model (GPT-6 Luna) to reason and still write: it spends reasoning from this same budget, and
+    // at 8,192 a long think could end the step at "length" with no text (as the insights did at 4,096).
+    maxOutputTokens: 16_000,
     abortSignal: opts.abortSignal,
     experimental_toolApprovalSecret: secret,
     onStepEnd: async (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {

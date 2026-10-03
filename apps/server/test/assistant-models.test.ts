@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { streamText } from "ai";
 import { assistantModelFromEnv, workersAiAssistantModel } from "../src/services/assistant/models.js";
 import { capsFromEnv, DEFAULT_CAPS } from "../src/services/assistant/limits.js";
+import { gatewayLanguageModel } from "../src/services/ai-gateway.js";
 
 describe("assistant models", () => {
   it("self-host: Anthropic (Claude Opus 5.5) first, then OpenAI (GPT-6 Astra), else none; REVENUEDOT_ASSISTANT_MODEL overrides", () => {
@@ -31,6 +32,20 @@ describe("assistant models", () => {
       expect(req.auth).toBe("Bearer test-gateway-key");
       expect(req.body).toMatchObject({ providerOptions: { openai: { reasoningEffort: effort } } });
     }
+  });
+
+  it("a call's own reasoning effort overrides the gateway model's default (the insights repair runs at low)", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const f = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify({ error: { message: "test stops here", type: "invalid_request_error" } }), { status: 400, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+    const model = gatewayLanguageModel("test-gateway-key", { fetch: f });
+    for (const call of [{}, { providerOptions: { openai: { reasoningEffort: "low" } } }]) {
+      const r = streamText({ model, prompt: "hi", maxRetries: 0, ...call } as never) as unknown as { consumeStream(o: { onError: () => void }): Promise<void> };
+      await r.consumeStream({ onError: () => {} });
+    }
+    expect(bodies.map((b) => (b as { providerOptions?: { openai?: { reasoningEffort?: string } } }).providerOptions?.openai?.reasoningEffort)).toEqual(["medium", "low"]);
   });
 
   it("the Anthropic request names the model and sends no temperature", async () => {
