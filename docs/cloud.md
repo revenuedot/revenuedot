@@ -196,6 +196,17 @@ What exists in Stripe (live and sandbox):
    `customer.subscription.created|updated|deleted`, `invoice.created|finalized|paid|payment_failed|voided|marked_uncollectible`.
    DataFast has its own endpoint on the live account for revenue attribution (`docs/analytics.md`).
 
+5. **Branding** (Settings → Branding, live): icon `brand/kit/icon/revenuedot-icon-dark-512.png`, logo
+   `brand/kit/wordmark/revenuedot-lockup-black@2x.png` (logo preferred over icon), brand colour `#FFFFFF`, accent `#0A0A0A`.
+   They show on Checkout, the Customer Portal, invoices and receipts.
+6. **Public details**: RevenueDot (Circo, Inc.), support email `hello@revenuedot.app`, support URL
+   `https://revenuedot.app/docs`, website `https://revenuedot.app`, privacy `https://revenuedot.app/legal/privacy`, terms
+   `https://revenuedot.app/legal/terms`, statement descriptor `REVENUEDOT`.
+7. **Customer emails**: receipts for successful payments and refunds on. **Revenue recovery**: Stripe's smart retries; Stripe
+   emails the customer when a card payment fails (our server also sends one "payment failed" email per invoice); when every
+   retry fails the subscription becomes **unpaid** (not cancelled), so the account drops to Free with an email and paying the
+   open invoice later brings Standard back.
+
 How it runs:
 - **Stripe is the source of truth.** Every event makes the server re-read the customer's subscriptions and the invoice, so
   out-of-order, repeated and late events cannot leave a wrong plan. If Stripe cannot be read the webhook answers 500 and
