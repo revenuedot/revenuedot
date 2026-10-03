@@ -75,9 +75,10 @@ export function retentionRoutes(r: V2Router, deps: Deps) {
     if (a.type !== "app_store" && a.type !== "mac_app_store") throw paramError("Apple's Retention Messaging API is for App Store apps.", "app_id");
     return a;
   };
+  const realtimeBase = (origin: string) => (deps.apiUrl ?? deps.publicUrl ?? origin).replace(/\/+$/, "");
   const shape = (a: typeof schema.apps.$inferSelect, origin: string) => ({
     object: "retention_messaging" as const, app_id: a.id, ...messagingOf(a),
-    realtime_url: `${deps.publicUrl ?? origin}/v1/retention/apple/${a.id}`,
+    realtime_url: `${realtimeBase(origin)}/v1/retention/apple/${a.id}`,
     app_apple_id: (a.credentials?.app_apple_id as string | undefined) ?? null,
     has_in_app_purchase_key: !!(a.credentials?.subscription_private_key || a.credentials?.private_key),
   });
@@ -119,7 +120,7 @@ export function retentionRoutes(r: V2Router, deps: Deps) {
     let api;
     try { api = appleApiFor(deps.stores, a, deps.fetch, deps.now); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
     if (!api) throw new V2Error(422, "unprocessable_entity_error", "Add the app's App Store In-App Purchase key first: the Retention Messaging API uses it.");
-    const res = await syncMessaging(db, a, api, b.environment, `${deps.publicUrl ?? publicOrigin(c)}/v1/retention/apple/${a.id}`, deps.now());
+    const res = await syncMessaging(db, a, api, b.environment, `${realtimeBase(publicOrigin(c))}/v1/retention/apple/${a.id}`, deps.now());
     return c.json({ ...shape({ ...a, retentionMessaging: res.config as unknown as Record<string, unknown> }, publicOrigin(c)), sync: { environment: b.environment, errors: res.errors } });
   });
 }
