@@ -57,7 +57,7 @@ jobs:
           docker=$(has '^(Dockerfile|\.dockerignore|docker-compose\.yml|tsconfig\.base\.json|apps/(server|dashboard)/|packages/|ee/|design/|brand/)')
           infra=$(has '^deploy/')
           # The dashboard in a browser against the real API: anything the dashboard, the server or their packages run.
-          e2e=$(has '^(apps/(server|dashboard)/|packages/|ee/|tsconfig\.base\.json)')
+          e2e=$(has '^(apps/(server|dashboard)/|packages/|ee/|design/|tsconfig\.base\.json)')
           [ "$any" = true ] && { code=true; site=true; docker=true; infra=true; e2e=true; }
           printf 'code=%s\nsite=%s\ndocker=%s\ninfra=%s\ne2e=%s\n' "$code" "$site" "$docker" "$infra" "$e2e" | tee -a "$GITHUB_OUTPUT"
 

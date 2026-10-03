@@ -16,6 +16,8 @@ function free(port: number): Promise<boolean> {
  */
 async function pickPort(): Promise<number> {
   const pinned = process.env.E2E_PORT;
+  // A server you started yourself (E2E_BASE_URL): the specs that build URLs from E2E_PORT use its port.
+  if (!pinned && process.env.E2E_BASE_URL) return Number(new URL(process.env.E2E_BASE_URL).port || 5199);
   if (pinned) {
     const port = Number(pinned);
     if (!Number.isInteger(port) || port < 1 || port > 65534) throw new Error(`E2E_PORT=${pinned} is not a port number.`);
@@ -24,8 +26,9 @@ async function pickPort(): Promise<number> {
     }
     return port;
   }
+  // Below the systems' outgoing-connection ranges (Linux from 32768, macOS from 49152).
   for (let i = 0; i < 50; i++) {
-    const port = 20000 + Math.floor(Math.random() * 30000);
+    const port = 20000 + Math.floor(Math.random() * 12000);
     if (await free(port) && await free(port + 1)) return port;
   }
   throw new Error("No free port pair found for the e2e server. Set E2E_PORT to a free port (it also uses E2E_PORT + 1).");
