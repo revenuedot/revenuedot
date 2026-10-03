@@ -6,7 +6,7 @@
 | Path | Job |
 |---|---|
 | `/` | What RevenueDot is, the one line, how switching works, real dashboard captures, cost table, FAQ |
-| `/pricing` | Self-host free; Cloud Free (available); Cloud Standard and Enterprise marked "Coming"; bill calculator; FAQ |
+| `/pricing` | Self-host free; Cloud Free, Cloud Standard (live billing since 2026-10-03) and Enterprise (contact sales), all available; bill calculator; FAQ |
 | `/revenuedot-vs-revenuecat` | Fair, sourced comparison, including when to stay on RevenueCat; "not affiliated" notice; no RevenueCat logo |
 | `/migrate-from-revenuecat` | Importer, dual-run forwarding, the proxy line for all nine SDKs, fork packages, HowTo JSON-LD |
 | `/self-host` | docker compose, what runs, self-host vs cloud, production checklist |

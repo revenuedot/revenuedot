@@ -80,7 +80,7 @@ export function billingStripe(c: BillingConfig, f: typeof fetch = fetch) {
     const headers: Record<string, string> = { authorization: `Bearer ${c.secretKey}`, "stripe-version": "2025-03-31.basil" };
     let url = `${base}${path}`;
     let body: string | undefined;
-    if (params && method === "GET") url += `?${form(params).join("&")}`;
+    if (params && (method === "GET" || method === "DELETE")) url += `?${form(params).join("&")}`;
     else if (params) { body = form(params).join("&"); headers["content-type"] = "application/x-www-form-urlencoded"; }
     if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
     let res: Response;
@@ -107,5 +107,12 @@ export function billingStripe(c: BillingConfig, f: typeof fetch = fetch) {
     meterEvent: (o: { customer: string; cents: number; identifier: string; timestamp: Date }) =>
       call("POST", "/v1/billing/meter_events", { event_name: c.meterEvent, payload: { stripe_customer_id: o.customer, value: String(o.cents) }, identifier: o.identifier, timestamp: Math.floor(o.timestamp.getTime() / 1000) }),
     getSubscription: (id: string) => call<Record<string, any>>("GET", `/v1/subscriptions/${encodeURIComponent(id)}`),
+    /** Every subscription of a customer, in any status (newest first), so the account follows Stripe and not the event order. */
+    listSubscriptions: async (customer: string) => (await call<{ data: Record<string, any>[] }>("GET", "/v1/subscriptions", { customer, status: "all", limit: 100 })).data,
+    getInvoice: (id: string) => call<Record<string, any>>("GET", `/v1/invoices/${encodeURIComponent(id)}`),
+    /** Ends a duplicate subscription at once, without proration or a final invoice. */
+    cancelSubscription: (id: string) => call<Record<string, any>>("DELETE", `/v1/subscriptions/${encodeURIComponent(id)}`, { prorate: false, invoice_now: false }),
+    listOpenCheckouts: async (customer: string) => (await call<{ data: Record<string, any>[] }>("GET", "/v1/checkout/sessions", { customer, status: "open", limit: 100 })).data,
+    expireCheckout: (id: string) => call<Record<string, any>>("POST", `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`),
   };
 }

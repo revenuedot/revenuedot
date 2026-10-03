@@ -180,26 +180,42 @@ steps below are done, Cloud serves them at `https://api.revenuedot.app/pay/<proj
      account change; until then it is done by hand.
    - Self-hosted servers need none of this: the custom domain points at the server, which answers the verified host.
 
-## Cloud billing on RevenueDot's own Stripe account (manual steps, Kai's)
+## Cloud billing on RevenueDot's own Stripe account (live since 2026-10-03)
 
-`prd/cloud-billing/PRD.md`. Nothing here is set up yet; until it is, the Billing page shows the plan and usage and the
-upgrade button says billing is not set up. Do it in Stripe **test mode** first, then repeat in live mode.
+Spec: `prd/cloud-billing/PRD.md`. Live mode is on: the Worker has a live restricted key with `REVENUEDOT_BILLING_LIVE=true`,
+so Upgrade charges real cards. The Stripe account is **RevenueDot** (`acct_1UM8tn5EyLfuSyjA`, Circo); the test copy is the
+sandbox **RevenueDot sandbox** (`acct_1UMD6673qxAZFIVo`). Keys live in `apps/server/.env.production.local` (live) and
+`apps/server/.env.local` (sandbox), gitignored, master copies in 1Password `RevenueDot`.
 
-1. In the Circo Stripe account create a **Billing Meter**: event name `revenuedot_cloud_bill_cents`, aggregation
-   **Last**, customer mapping `stripe_customer_id`, value key `value`.
-2. Create the product **RevenueDot Cloud Standard** with a monthly **metered** price of **$0.01 per unit** on that meter.
-   The server reports the month's bill in cents, so the invoice equals the bill.
-3. Customer Portal (Settings → Billing → Customer portal): payment method updates on, cancellation at period end on.
-4. Webhook endpoint `https://api.revenuedot.app/v2/billing/stripe/webhook` with `checkout.session.completed`,
-   `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.created`,
-   `invoice.finalized`, `invoice.paid`, `invoice.payment_failed`, `invoice.voided`, `invoice.marked_uncollectible`.
-5. Store the values in 1Password (`RevenueDot` vault) and set them as Worker secrets by piping, never in files:
-   `REVENUEDOT_BILLING_STRIPE_SECRET_KEY` (a restricted key: Customers, Checkout Sessions, Customer Portal, Billing
-   Meter Events write), `REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET` (`whsec_…`), and the variable
-   `REVENUEDOT_BILLING_PRICE_STANDARD` (`price_…`). Optional: `REVENUEDOT_BILLING_METER_EVENT`, `REVENUEDOT_BILLING_PLANS`
-   (JSON plan table, replaces `apps/server/src/services/billing/plans.ts` without a deploy).
-6. Live keys (`sk_live_`, `rk_live_`) are refused unless `REVENUEDOT_BILLING_LIVE=true` is also set, so a test setup can
-   never charge anyone.
+What exists in Stripe (live and sandbox):
+1. **Billing Meter** `revenuedot_cloud_bill_cents`: aggregation **Last**, customer mapping `stripe_customer_id`, value key `value`.
+2. **Product** RevenueDot Cloud Standard, monthly **metered** price of **$0.01 per unit** on that meter (the server reports the
+   month's bill in cents, so the invoice equals the bill).
+3. **Customer Portal** (default configuration): cancel at end of billing period, invoice history, payment-method updates.
+4. **Webhook** `https://api.revenuedot.app/v2/billing/stripe/webhook` with `checkout.session.completed`,
+   `customer.subscription.created|updated|deleted`, `invoice.created|finalized|paid|payment_failed|voided|marked_uncollectible`.
+   DataFast has its own endpoint on the live account for revenue attribution (`docs/analytics.md`).
+
+How it runs:
+- **Stripe is the source of truth.** Every event makes the server re-read the customer's subscriptions and the invoice, so
+  out-of-order, repeated and late events cannot leave a wrong plan. If Stripe cannot be read the webhook answers 500 and
+  Stripe retries. The hourly billing pass re-reads every unsettled account, so a lost webhook is repaired within the hour.
+- **One subscription per account.** Checkout re-reads Stripe first (409 if one is live) and expires the customer's older open
+  sessions; a duplicate that slips through is cancelled at once.
+- **Every endpoint must answer 2xx to `invoice.created`.** Stripe holds an invoice in draft until all endpoints accept it, for
+  up to 72 hours. The sandbox's endpoint points at production, which rejects sandbox signatures, so sandbox invoices wait 72
+  hours; give the sandbox its own endpoint (or a `stripe listen` forward) when testing renewals.
+- **Key permissions** (checked 2026-10-03): read on Subscriptions, Invoices, Checkout Sessions, Customers; write on Customers,
+  Checkout Sessions (create, expire), Subscriptions (cancel a duplicate), Customer portal, Billing Meter Events.
+- **Secrets** on Worker `revenuedot`: `REVENUEDOT_BILLING_STRIPE_SECRET_KEY`, `REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET`,
+  `REVENUEDOT_BILLING_PRICE_STANDARD`, `REVENUEDOT_BILLING_LIVE`. Optional: `REVENUEDOT_BILLING_METER_EVENT`,
+  `REVENUEDOT_BILLING_PLANS` (JSON plan table, replaces `apps/server/src/services/billing/plans.ts` without a deploy). Rotate
+  by piping the new value into `cf workers secrets update --worker revenuedot`, never through a file.
+- A live key (`sk_live_`, `rk_live_`) is refused unless `REVENUEDOT_BILLING_LIVE=true`, so no development machine can charge anyone.
+
+Prove a change before shipping it: `pnpm tsx scripts/e2e/real-stripe/billing.ts` (real sandbox Checkout, webhooks, meter,
+test clock renewal, declined card, recovery, portal), plus `apps/server/test/billing.test.ts` and
+`apps/dashboard/e2e/billing.spec.ts`.
 
 ## Full-export archives in R2 (manual step, needs Kai's approval)
 

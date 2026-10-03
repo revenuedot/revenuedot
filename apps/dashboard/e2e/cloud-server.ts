@@ -74,8 +74,16 @@ export async function startCloud(port: number, dist: string, mail: Mailer & { se
     const b = await c.req.json() as { email: string; outcome: "failed" | "paid" };
     const [u] = await db.select().from(schema.users).where(eq(schema.users.email, b.email));
     const [acct] = await db.select().from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u!.id));
-    const inv = stripe.invoice(acct!.stripeCustomerId!, { amount_due: 1250, status: b.outcome === "paid" ? "paid" : "open" });
+    // As Stripe does it: a failed charge leaves the invoice open and the subscription past due; a later successful retry
+    // pays that same invoice and makes the subscription active again. Both send the invoice and the subscription events.
+    const sub = [...stripe.subscriptions.values()].find((x) => x.customer === acct!.stripeCustomerId && x.status !== "canceled")!;
+    const open = [...stripe.invoices.values()].find((x) => x.customer === acct!.stripeCustomerId && x.status === "open");
+    const inv = b.outcome === "failed" || !open
+      ? stripe.invoice(acct!.stripeCustomerId!, { amount_due: 1250, status: b.outcome === "paid" ? "paid" : "open", subscription: sub?.id, attempt_count: 1 })
+      : stripe.updateInvoice(open.id, { status: "paid", amount_paid: open.amount_due, attempt_count: 2 });
+    if (sub) stripe.updateSubscription(sub.id, { status: b.outcome === "paid" ? "active" : "past_due", latest_invoice: inv.id });
     await send(b.outcome === "paid" ? "invoice.paid" : "invoice.payment_failed", inv);
+    if (sub) await send("customer.subscription.updated", sub);
     return c.json(inv);
   });
   web.post("/__billing/revenue", async (c) => {

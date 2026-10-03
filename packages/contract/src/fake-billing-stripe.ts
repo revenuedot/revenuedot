@@ -31,6 +31,8 @@ export class FakeBillingStripe {
   checkoutUrl = "https://checkout.stripe.com/c/pay/{id}";
   portalUrl = "https://billing.stripe.com/p/session/{id}";
   clock: () => Date = () => new Date();
+  /** When true, reads of subscriptions and invoices fail with a 500, as during a Stripe outage. */
+  failReads = false;
   private seq = 0;
   private idem = new Map<string, Response>();
   private id(prefix: string) { return `${prefix}_test_${(++this.seq).toString(36).padStart(4, "0")}`; }
@@ -86,13 +88,42 @@ export class FakeBillingStripe {
       return json(200, e);
     }
     const sub = /^\/v1\/subscriptions\/([^/]+)$/.exec(path);
-    if (method === "GET" && sub) return this.subscriptions.has(sub[1]!) ? json(200, this.subscriptions.get(sub[1]!)) : err(404, "No such subscription");
+    if (method === "GET" && sub) return this.subscriptions.has(sub[1]!) ? json(200, this.subscriptions.get(sub[1]!)) : err(404, `No such subscription: '${sub[1]}'`);
+    if (method === "DELETE" && sub) {
+      const x = this.subscriptions.get(sub[1]!);
+      if (!x) return err(404, `No such subscription: '${sub[1]}'`);
+      Object.assign(x, { status: "canceled", canceled_at: this.now(), ended_at: this.now(), cancel_at: null, cancel_at_period_end: false });
+      return json(200, x);
+    }
+    if (method === "GET" && path === "/v1/subscriptions") {
+      if (this.failReads) return err(500, "An error occurred with our connection to Stripe.");
+      const data = [...this.subscriptions.values()].filter((x) => !p.customer || x.customer === p.customer).filter((x) => p.status === "all" || (p.status ? x.status === p.status : x.status !== "canceled")).sort((a, b) => b.created - a.created);
+      return json(200, { object: "list", data, has_more: false, url: "/v1/subscriptions" });
+    }
+    const inv = /^\/v1\/invoices\/([^/]+)$/.exec(path);
+    if (method === "GET" && inv) {
+      if (this.failReads) return err(500, "An error occurred with our connection to Stripe.");
+      return this.invoices.has(inv[1]!) ? json(200, this.invoices.get(inv[1]!)) : err(404, `No such invoice: '${inv[1]}'`);
+    }
+    if (method === "GET" && path === "/v1/checkout/sessions") {
+      const data = [...this.sessions.values()].filter((x) => (!p.customer || x.customer === p.customer) && (!p.status || x.status === p.status));
+      return json(200, { object: "list", data, has_more: false, url: "/v1/checkout/sessions" });
+    }
+    const exp = /^\/v1\/checkout\/sessions\/([^/]+)\/expire$/.exec(path);
+    if (method === "POST" && exp) {
+      const x = this.sessions.get(exp[1]!);
+      if (!x) return err(404, `No such checkout session: '${exp[1]}'`);
+      if (x.status !== "open") return err(400, "Only Checkout Sessions with a status in [\"open\"] can be expired.");
+      x.status = "expired";
+      return json(200, x);
+    }
     return err(404, `Unrecognized request URL (${method}: ${path}).`);
   }
 
   /** The customer pays on Checkout: the subscription starts (anchored as asked) and checkout.session.completed is due. */
   complete(sessionId: string): { session: Obj; subscription: Obj } {
     const s = this.sessions.get(sessionId)!;
+    if (s.status !== "open") throw new Error(`Checkout session ${sessionId} is ${s.status}`);
     const anchor = Number(s.subscription_data?.billing_cycle_anchor ?? this.now() + 30 * 86400);
     const subscription = {
       id: this.id("sub"), object: "subscription", customer: s.customer, status: "active", cancel_at: null, cancel_at_period_end: false,
@@ -104,6 +135,16 @@ export class FakeBillingStripe {
     return { session: s, subscription };
   }
 
+  /** Changes an invoice the way a payment retry would (status, amount paid). */
+  updateInvoice(id: string, change: Obj): Obj {
+    const i = this.invoices.get(id)!;
+    Object.assign(i, change);
+    return i;
+  }
+
+  /** A snapshot of an object as an event would carry it (events hold the object as it was then). */
+  snapshot<T>(o: T): T { return JSON.parse(JSON.stringify(o)); }
+
   /** Changes a subscription the way the Customer Portal or dunning would (status, cancel at period end). */
   updateSubscription(id: string, change: Obj): Obj {
     const s = this.subscriptions.get(id)!;
@@ -111,11 +152,14 @@ export class FakeBillingStripe {
     return s;
   }
 
-  invoice(customer: string, o: { amount_due: number; status: "open" | "paid" | "uncollectible"; period_start?: number; period_end?: number }): Obj {
+  invoice(customer: string, o: { amount_due: number; status: "open" | "paid" | "uncollectible"; period_start?: number; period_end?: number; subscription?: string; attempt_count?: number }): Obj {
     const id = this.id("in");
     const inv = {
       id, object: "invoice", customer, number: `RD-${String(this.invoices.size + 1).padStart(4, "0")}`, status: o.status, amount_due: o.amount_due, amount_paid: o.status === "paid" ? o.amount_due : 0,
       currency: "usd", period_start: o.period_start ?? this.now() - 30 * 86400, period_end: o.period_end ?? this.now(), hosted_invoice_url: `https://invoice.stripe.com/i/${id}`, invoice_pdf: `https://pay.stripe.com/invoice/${id}/pdf`, created: this.now(),
+      attempt_count: o.attempt_count ?? (o.status === "open" ? 1 : o.status === "paid" ? 1 : 0),
+      // 2025-03-31.basil: the subscription moved under parent.subscription_details.
+      parent: o.subscription ? { type: "subscription_details", subscription_details: { subscription: o.subscription } } : null,
     };
     this.invoices.set(id, inv);
     return inv;

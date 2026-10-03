@@ -8,7 +8,7 @@ import { linkBase, requestOrigin } from "../services/account-email.js";
 import { accountOf, accountUsage, reportAccountNow } from "../services/billing/meter.js";
 import { billCents, monthBounds, monthOf, planOf, plansFrom } from "../services/billing/plans.js";
 import { BillingStripeError, billingStripe, datafastIds, stripeProblem } from "../services/billing/stripe.js";
-import { handleBillingEvent } from "../services/billing/webhook.js";
+import { handleBillingEvent, syncCustomer } from "../services/billing/webhook.js";
 import { StripeSignatureError, verifyStripeSignature } from "../stores/stripe/signature.js";
 
 /**
@@ -34,7 +34,12 @@ export function billingRoutes(deps: Deps) {
     if (!u) return err(c, 401, "authentication_error", "Sign in to see billing.");
     const now = deps.now();
     const month = monthOf(now);
-    const acct = await accountOf(db, u.id);
+    let acct = await accountOf(db, u.id);
+    // Back from Checkout (?sync=1): read Stripe now, so the new plan shows even before the webhook lands.
+    if (c.req.query("sync") === "1" && acct?.stripeCustomerId && !stripeProblem(deps.billing)) {
+      try { await syncCustomer({ db, now, stripe: billingStripe(deps.billing!, deps.fetch), mailer: deps.mailer, publicUrl: deps.publicUrl }, acct.stripeCustomerId, u.id); acct = await accountOf(db, u.id); }
+      catch (e) { console.error("billing: sync on return from Checkout failed", e); }
+    }
     const all = plans();
     const plan = planOf(all, acct?.plan ?? "free");
     const usage = await accountUsage(db, u.id, month);
@@ -83,6 +88,13 @@ export function billingRoutes(deps: Deps) {
     try {
       const stripe = billingStripe(deps.billing!, deps.fetch);
       let customer = acct?.stripeCustomerId ?? null;
+      if (customer) {
+        // Stripe, not our copy, says whether a subscription is already running (a webhook may still be on its way).
+        const r = await syncCustomer({ db, now: deps.now(), stripe, mailer: deps.mailer, publicUrl: deps.publicUrl }, customer, u.id);
+        if (r && ["active", "past_due"].includes(r.after.status)) return err(c, 409, "resource_already_exists", "You are on Cloud Standard already. Manage it with Manage billing.");
+        // One checkout at a time: an older open session (another tab) could otherwise start a second subscription.
+        for (const s of await stripe.listOpenCheckouts(customer)) await stripe.expireCheckout(s.id).catch((e) => console.error(`billing: could not expire checkout ${s.id}`, e));
+      }
       if (!customer) {
         customer = (await stripe.createCustomer({ email: u.email, name: u.name, userId: u.id })).id;
         const set = { stripeCustomerId: customer, updatedAt: deps.now() };
@@ -122,7 +134,15 @@ export function billingRoutes(deps: Deps) {
     }
     let event: { id: string; type: string; data: { object: Record<string, unknown> } };
     try { event = JSON.parse(raw); } catch { return err(c, 400, "invalid_request", "The body is not JSON."); }
-    const result = await handleBillingEvent({ db, now: deps.now(), mailer: deps.mailer, publicUrl: deps.publicUrl }, event);
+    if (stripeProblem(deps.billing)) return err(c, 503, "server_error", stripeProblem(deps.billing)!);
+    let result: string;
+    try {
+      result = await handleBillingEvent({ db, now: deps.now(), stripe: billingStripe(deps.billing!, deps.fetch), mailer: deps.mailer, publicUrl: deps.publicUrl }, event);
+    } catch (e) {
+      // Stripe could not be read: 500, so Stripe delivers the event again later. Nothing was written from the event body.
+      console.error(`billing: webhook ${event.type} ${event.id} failed`, e);
+      return c.json({ object: "error", type: "server_error", message: "Could not read Stripe; retry." }, 500);
+    }
     // A new subscription gets this month's bill on the meter now, not at the next hourly pass.
     if (event.type === "checkout.session.completed" && result === "subscribed") {
       const userId = String((event.data.object as { client_reference_id?: string }).client_reference_id ?? "");

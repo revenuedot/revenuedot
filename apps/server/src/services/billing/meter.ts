@@ -5,6 +5,7 @@ import { billingUsageEmail } from "../../mail/templates.js";
 import { rowsOf } from "../archive/tables.js";
 import { billCents, monthBounds, monthOf, planOf, plansFrom, previousMonth, type Plan } from "./plans.js";
 import { billingStripe, stripeProblem, type BillingConfig } from "./stripe.js";
+import { reconcileAccounts } from "./webhook.js";
 
 /**
  * Metering for RevenueDot Cloud (prd/cloud-billing/PRD.md): tracked revenue per project and month, the bill per account
@@ -97,6 +98,11 @@ export async function runBilling(rt: BillingRuntime): Promise<number> {
   // Usage emails point at the upgrade: none goes out until Stripe is set up (no key on production means no billing yet).
   const ready = !stripeProblem(rt.config);
   let work = 0;
+  // The safety net for lost or failed webhooks: re-read unsettled accounts from Stripe before billing them.
+  if (ready) {
+    try { work += await reconcileAccounts({ db: rt.db, now: rt.now, stripe: billingStripe(rt.config!, rt.fetch), mailer: rt.mailer, publicUrl: rt.publicUrl }); }
+    catch (e) { console.error("billing: reconcile failed", e); }
+  }
   for (const m of months) {
     work += await meterMonth(rt.db, m, rt.now);
     const owners = await rt.db.selectDistinct({ id: U.ownerUserId }).from(U).where(and(eq(U.month, m), sql`${U.ownerUserId} IS NOT NULL`));
