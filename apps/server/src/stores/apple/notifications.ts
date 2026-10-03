@@ -83,7 +83,8 @@ function checkApp(n: NotificationPayload, app: AppRow) {
   if (typeof n?.notificationType !== "string") throw new UnsignedError("The signed payload is not an App Store notification.");
   const bundleId = n.data?.bundleId ?? n.summary?.bundleId;
   const expected = expectedBundleId(app);
-  if (expected && bundleId && bundleId !== expected) throw new UnsignedError(`The notification is for bundle id ${bundleId}, not ${expected}.`);
+  if (!bundleId) throw new UnsignedError("The notification names no bundle id.");
+  if (expected && bundleId !== expected) throw new UnsignedError(`The notification is for bundle id ${bundleId}, not ${expected}.`);
   const appAppleId = app.credentials?.app_apple_id;
   if (appAppleId && n.data?.environment === "Production" && n.data.appAppleId && String(n.data.appAppleId) !== String(appAppleId)) {
     throw new UnsignedError(`The notification is for Apple app id ${n.data.appAppleId}, not ${appAppleId}.`);

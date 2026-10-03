@@ -563,7 +563,7 @@ export const storeNotifications = pgTable("store_notifications", {
   rejected: boolean("rejected").notNull().default(false),
   forwardStatus: integer("forward_status"),
   receivedAt: created(),
-}, (t) => [index("notifications_app_time").on(t.appId, t.receivedAt)]);
+}, (t) => [index("notifications_app_time").on(t.appId, t.receivedAt), index("notifications_rejected_time").on(t.receivedAt).where(sql`${t.rejected}`)]);
 
 /**
  * OAuth 2.1 clients for MCP clients (Claude, ChatGPT, Cursor ...), registered with dynamic client registration (RFC 7591).

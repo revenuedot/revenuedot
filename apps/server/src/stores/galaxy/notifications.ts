@@ -10,7 +10,8 @@ import { GalaxyApiError } from "./api.js";
 import { galaxyClientFor } from "./index.js";
 import { GalaxyNotificationError, readGalaxyNotification } from "./isn.js";
 import { handleGalaxyNotification } from "./sync.js";
-import { demoteToRejected, logRejected, tooManyRejected } from "../rejected.js";
+import { REJECTED_APP_LIMIT, REJECTED_WINDOW_MS, demoteToRejected, logRejected, tooManyRejected } from "../rejected.js";
+import { hit } from "../../services/rate-limit.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -53,6 +54,8 @@ export function galaxyNotificationRoutes(deps: Deps) {
       const message = e instanceof GalaxyNotificationError ? e.message : String(e);
       if (e instanceof GalaxyNotificationError && e.authenticated) {
         // Signed by the app's key pair but not for this app (or the saved key is broken): a real failure of this app's URL.
+        // Kept within the app's rejected-request allowance, since with a broken key anyone's JWT lands here.
+        if (!(await hit(deps.db, `ntf-invalid:${app.id}`, REJECTED_APP_LIMIT, REJECTED_WINDOW_MS, now))) return c.json({ code: Codes.BAD_REQUEST, message }, 400);
         await deps.db.insert(storeNotifications).values({
           id: `galaxy_${app.id}_invalid_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "galaxy", body: raw.slice(0, 64_000), receivedAt: now, error: message,
         });

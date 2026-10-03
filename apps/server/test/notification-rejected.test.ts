@@ -174,9 +174,15 @@ describe("Amazon Appstore", () => {
   it("with no topic saved, the topic pinned from the first message proves nothing: a message for another package is a rejected request", async () => {
     const e = await amazon.env(keys);
     close = () => e.h.close();
-    const res = await e.sns(await amazon.snsMessage(keys, { message: { appPackageName: "com.other.app", notificationType: "SUBSCRIPTION_RENEWED", receiptId: "r1" } }));
-    expect(res.status).toBe(200);
-    expectRejectedOnly(await status(e.call, e.h.ids.project, e.h.ids.secretKey, e.appId), 1);
+    const other = { appPackageName: "com.other.app", notificationType: "SUBSCRIPTION_RENEWED", receiptId: "r1" };
+    // The second message from the pinned topic proves no more than the first.
+    for (let i = 0; i < 2; i++) expect((await e.sns(await amazon.snsMessage(keys, { message: other }))).status).toBe(200);
+    const confirm = await amazon.snsMessage(keys, { type: "SubscriptionConfirmation", message: "subscribe" });
+    expect((await e.sns({ ...confirm, SubscribeURL: "https://evil.example.com/confirm" })).status).toBe(400);
+    expectRejectedOnly(await status(e.call, e.h.ids.project, e.h.ids.secretKey, e.appId), 3);
+    const [row] = await e.h.db.select().from(schema.apps).where(eq(schema.apps.id, e.appId));
+    expect(row!.credentials).toMatchObject({ sns_topic_arn_auto: amazon.TOPIC });
+    expect(row!.credentials?.sns_topic_arn).toBeUndefined();
   });
 });
 

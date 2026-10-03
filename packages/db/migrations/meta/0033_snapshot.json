@@ -1,5 +1,5 @@
 {
-  "id": "7b2bb4f8-d3e7-4fdf-b19e-89ec739caa28",
+  "id": "619e45ff-aa31-4670-9467-7bcbe2a6e837",
   "prevId": "b7acfc80-3f9f-4612-a6bf-e62508c366ea",
   "version": "7",
   "dialect": "postgresql",
@@ -10673,6 +10673,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notifications_rejected_time": {
+          "name": "notifications_rejected_time",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"store_notifications\".\"rejected\"",
           "concurrently": false,
           "method": "btree",
           "with": {}

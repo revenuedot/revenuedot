@@ -272,7 +272,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         galaxy_iap_public_key: { configured: !!s(cr.galaxy_iap_public_key) },
       },
       // Amazon: the SNS topic notifications must come from (optional).
-      sns_topic_arn: a.type === "amazon" ? s(cr.sns_topic_arn) : null,
+      // The saved topic, else the one pinned from the first verified message.
+      sns_topic_arn: a.type === "amazon" ? s(cr.sns_topic_arn) ?? s(cr.sns_topic_arn_auto) : null,
       // Stripe: how purchases first seen in a webhook find their customer, and when a subscription counts.
       stripe: a.type === "stripe" ? {
         stripe_account_id: s(cr.stripe_account_id), app_user_id_source: s(cr.app_user_id_source) ?? "metadata",

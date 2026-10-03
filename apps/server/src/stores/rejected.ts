@@ -88,7 +88,8 @@ const REJECTED_BACKFILL_WHERE = sql.raw(`n.error LIKE 'rejected:%'
     OR n.error LIKE 'The notification is for bundle id %' OR n.error LIKE 'The notification is for Apple app id %'))
   OR (n.store = 'play_store' AND (coalesce(a.credentials->>'pubsub_audience', '') = '' OR coalesce(a.credentials->>'pubsub_service_account', '') = '')
     AND (n.error LIKE 'invalid purchase token:%' OR n.error LIKE 'package % does not match the app''s %' OR n.error = 'message.data is not a base64 JSON developer notification'))
-  OR (n.store = 'galaxy' AND coalesce(a.credentials->>'galaxy_iap_public_key', '') = '' AND n.error LIKE 'Galaxy Store:%')`);
+  OR (n.store = 'galaxy' AND coalesce(a.credentials->>'galaxy_iap_public_key', '') = '' AND n.error LIKE 'Galaxy Store:%')
+  OR (n.store = 'roku' AND coalesce(a.credentials->>'roku_channel_id', '') = '' AND n.error LIKE 'Roku:%')`);
 
 /** Deletes rejected requests older than REJECTED_KEEP_MS. */
 export async function pruneRejected(db: Deps["db"], now: Date) {
