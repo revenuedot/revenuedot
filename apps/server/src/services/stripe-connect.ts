@@ -35,8 +35,8 @@ export function connectAvailability(deps: Pick<Deps, "stripeConnect" | "edition"
   const modes = connectModes(deps.stripeConnect);
   const available = !missing.length && modes.length > 0;
   const reason = available ? null : deps.edition === "cloud"
-    ? "Connect with Stripe is not available on RevenueDot Cloud yet. Paste a restricted key from your Stripe account instead."
-    : `Connect with Stripe is not set up on this server. Its operator needs a Stripe Connect platform and ${missing.join(", ")}. Paste a restricted key from your Stripe account instead.`;
+    ? "Connect with Stripe is not available on RevenueDot Cloud yet. Paste a restricted key from your Stripe account and the signing secret of your Stripe webhook endpoint on the Stripe app's page instead."
+    : `Connect with Stripe is not set up on this server. Its operator needs a Stripe Connect platform and ${missing.join(", ")}. Paste a restricted key from your Stripe account and the signing secret of your Stripe webhook endpoint on the Stripe app's page instead.`;
   return { available, reason, modes, missing };
 }
 

@@ -3,7 +3,8 @@
  * on the web": connect Stripe, add a web config (checkout look, legal links, success behaviour, the redemption deep link),
  * create web products (RevenueDot creates them in the developer's Stripe account), and put one in an offering. Each step
  * is done or not from GET /v2/projects/:id/web. RevenueCat's equivalent: frame 26 of the contact sheet.
- * Step 1 connects Stripe with "Connect with Stripe" (Stripe Connect OAuth, §8) or a restricted key, on the Stripe app's page.
+ * Step 1 connects Stripe on the Stripe app's page with a restricted key and the webhook signing secret, or with "Connect with
+ * Stripe" (Stripe Connect OAuth, §8) where the server has a Connect platform. RevenueDot Cloud has none yet.
  * GAPS vs RevenueCat: Paddle and RevenueCat Billing providers.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
@@ -36,7 +37,7 @@ export function WebPage() {
   const steps: { key: string; title: string; done: boolean; text: ReactNode; action: ReactNode }[] = c ? [
     {
       key: "stripe", title: "Connect Stripe", done: c.connect_stripe,
-      text: <>Web payments run on your own Stripe account. Add a Stripe app, then click <b>Connect with Stripe</b> on its page, or paste a restricted key with <b>write</b> access to {STRIPE_WRITE}, plus the read permissions listed there.</>,
+      text: <>Web payments run on your own Stripe account. Add a Stripe app, then on its page paste a restricted key with <b>write</b> access to {STRIPE_WRITE}, plus the read permissions listed there, and the signing secret of the Stripe webhook endpoint shown there. Connect with Stripe is not available on RevenueDot Cloud yet; a self-hosted server shows it on the same page once its operator sets it up.</>,
       action: main ? <Link className="btn btn-dark" to={`/projects/${pid}/apps/${main.id}#credentials`}>Connect Stripe</Link> : <button type="button" className="btn btn-dark" onClick={() => setAdding(true)}>Add Stripe app</button>,
     },
     {
