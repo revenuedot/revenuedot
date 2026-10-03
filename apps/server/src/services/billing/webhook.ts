@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, ne, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { trySend, type Mailer } from "../../mail/index.js";
 import { billingPaymentEmail } from "../../mail/templates.js";
@@ -70,6 +70,16 @@ export interface SyncResult { userId: string; before: { plan: string; status: st
  * date. Cancels a duplicate billing subscription. `userId` links a customer the account does not know yet (Checkout).
  */
 export async function syncCustomer(d: BillingWebhookDeps, customer: string, userId?: string | null): Promise<SyncResult | null> {
+  // One sync per customer at a time, reading Stripe inside the lock: Checkout alone fires about ten events at once, and two
+  // syncs that read Stripe in one order and write in the other would leave the older state. Whoever holds the lock last read
+  // Stripe last, so the final write is always the freshest.
+  return d.db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`billing:${customer}`}))`);
+    return syncLocked({ ...d, db: tx as unknown as DB }, customer, userId);
+  });
+}
+
+async function syncLocked(d: BillingWebhookDeps, customer: string, userId?: string | null): Promise<SyncResult | null> {
   const { db, now } = d;
   let acct = await accountFor(db, customer, userId);
   if (!acct) {

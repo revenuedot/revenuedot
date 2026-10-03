@@ -33,6 +33,9 @@ export class FakeBillingStripe {
   clock: () => Date = () => new Date();
   /** When true, reads of subscriptions and invoices fail with a 500, as during a Stripe outage. */
   failReads = false;
+  private listHold: Promise<void> | null = null;
+  /** Holds the next subscriptions list (already read) until the returned function is called, to test concurrent webhooks. */
+  holdNextList(): () => void { let release!: () => void; this.listHold = new Promise<void>((r) => { release = r; }); return release; }
   private seq = 0;
   private idem = new Map<string, Response>();
   private id(prefix: string) { return `${prefix}_test_${(++this.seq).toString(36).padStart(4, "0")}`; }
@@ -50,6 +53,8 @@ export class FakeBillingStripe {
     if (headers.get("authorization") !== `Bearer ${FAKE_BILLING_KEY}`) return err(401, "Invalid API Key provided.");
     if (idempotencyKey && this.idem.has(idempotencyKey)) return this.idem.get(idempotencyKey)!.clone();
     const res = this.route(method, u.pathname, params);
+    // A slow read: the answer is taken now (so it can be stale) and delivered when the test releases it.
+    if (method === "GET" && u.pathname === "/v1/subscriptions" && this.listHold) { const hold = this.listHold; this.listHold = null; await hold; }
     if (idempotencyKey && res.ok) this.idem.set(idempotencyKey, res.clone());
     return res;
   }) as typeof fetch;

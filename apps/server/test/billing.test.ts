@@ -316,6 +316,21 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     expect((await h.db.select().from(schema.billingAccounts))[0]).toMatchObject({ plan: "enterprise", status: "active" });
   });
 
+  it("two webhooks at once: a slow, stale read never overwrites a fresher one", async () => {
+    const { subscription } = await upgrade();
+    await hook("customer.subscription.created", subscription);
+    // Webhook A reads Stripe (active) but its answer is slow; meanwhile the subscription is cancelled and webhook B arrives.
+    const release = stripe.holdNextList();
+    const a = hook("customer.subscription.updated", stripe.snapshot(subscription));
+    await new Promise((r) => setTimeout(r, 50));
+    stripe.updateSubscription(subscription.id, { status: "canceled" });
+    const b = hook("customer.subscription.deleted", stripe.snapshot(stripe.subscriptions.get(subscription.id)!));
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    await Promise.all([a, b]);
+    expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
+  });
+
   it("events about objects Stripe does not know are acknowledged and ignored", async () => {
     await upgrade();
     expect((await hook("invoice.paid", { id: "in_missing", customer: "cus_nobody" })).body.result).toBe("unknown to Stripe");
