@@ -442,7 +442,8 @@ export async function listEdits(deps: Deps, projectId: string, appId?: string) {
 const COMMITTABLE = ["ready", "committing", "partially_committed", "failed"];
 
 /** A row's result; null when the row was not attempted (the time budget ran out) and stays pending. */
-interface Outcome { ok: boolean; error?: string; note?: string }
+/** `unchanged`: the store already had the new price, so nothing was written (audited as "unchanged", not "succeeded"). */
+interface Outcome { ok: boolean; error?: string; note?: string; unchanged?: boolean }
 type MaybeOutcome = Outcome | null;
 /**
  * The store refused the key: the commit stops and every row left fails with this message. `done` keeps the outcomes of
@@ -564,7 +565,7 @@ async function finish(ctx: CommitContext, rows: EditLineRow[], outcomes: MaybeOu
       actionType: "store_price_changed", targetType: "product", targetIdentifier: r.storeIdentifier,
       data: {
         app_id: ctx.app.id, store: ctx.app.type, edit_id: r.editId, line: r.line, territory: r.territory, currency: r.currency,
-        old_amount_micros: r.oldMicros, new_amount_micros: r.newMicros, result: o.ok ? "succeeded" : "failed", ...(o.ok ? {} : { error: o.error }),
+        old_amount_micros: r.oldMicros, new_amount_micros: r.newMicros, result: o.ok ? (o.unchanged ? "unchanged" : "succeeded") : "failed", ...(o.ok ? {} : { error: o.error }),
       },
     });
   }
@@ -684,7 +685,7 @@ async function commitApple(ctx: CommitContext, rows: EditLineRow[]): Promise<May
       if (Date.now() > ctx.deadline) { out.push(null); continue; }
       const now = schedule.current.find((p) => p.territory === r.territory);
       const nowMicros = now ? decimalMicros(now.customerPrice) : null;
-      if (nowMicros !== null && nowMicros === r.newMicros) { out.push({ ok: true, note: "Already at this price." }); continue; }
+      if (nowMicros !== null && nowMicros === r.newMicros) { out.push({ ok: true, unchanged: true, note: "Already at this price." }); continue; }
       const moved = movedSinceUpload("apple", r, nowMicros);
       if (moved) { out.push(moved); continue; }
       try {
@@ -791,7 +792,7 @@ async function commitPlay(ctx: CommitContext, subscriptionId: string, rows: Edit
       const plan = plans.find((b) => b.basePlanId === planOf(r));
       if (!plan) { out[i] = { ok: false, error: `Base plan ${planOf(r)} is no longer in Google Play.` }; return; }
       const cfg = plan.regionalConfigs!.find((c) => c.regionCode === r.territory);
-      if (cfg && moneyMicros(cfg.price) === r.newMicros && cfg.price?.currencyCode === r.currency) { out[i] = { ok: true, note: "Already at this price." }; return; }
+      if (cfg && moneyMicros(cfg.price) === r.newMicros && cfg.price?.currencyCode === r.currency) { out[i] = { ok: true, unchanged: true, note: "Already at this price." }; return; }
       const moved = movedSinceUpload("play", r, cfg ? moneyMicros(cfg.price) : null);
       if (moved) { out[i] = moved; return; }
       changed = setRegion(plan, r) || changed;
