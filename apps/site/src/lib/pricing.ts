@@ -55,7 +55,7 @@ export const PLANS: Plan[] = [
     price: "0.5%",
     priceNote: "of tracked revenue above $10K, capped at $999 a month",
     summary: "For growing apps: 0.5% of tracked revenue above $10,000 a month, never more than $999 a month. The rate is locked and never rises.",
-    available: false,
+    available: true,
     features: [
       "Everything in Cloud Free",
       "Your bill never passes $999 a month",
@@ -63,7 +63,7 @@ export const PLANS: Plan[] = [
       "For apps up to $1M monthly tracked revenue",
       "Email support",
     ],
-    cta: { label: "Start on Cloud Free", href: "https://app.revenuedot.app/signup" },
+    cta: { label: "Start free, upgrade any time", href: "https://app.revenuedot.app/signup" },
   },
   {
     id: "enterprise",

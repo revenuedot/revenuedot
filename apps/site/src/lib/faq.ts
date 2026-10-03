@@ -34,7 +34,7 @@ export const FAQ_GOOGLE: Faq = {
 
 export const FAQ_COST: Faq = {
   q: "How much does RevenueDot cost?",
-  a: "RevenueDot Cloud has a free plan up to $10,000 of monthly tracked revenue. Self-hosting is free forever under AGPL-3.0, with no limits. Cloud Standard (0.5% of tracked revenue above $10,000, capped at $999 a month) are coming. Enterprise has custom pricing starting at $50,000 a year; contact sales at revenuedot.app/contact-sales.",
+  a: "RevenueDot Cloud has a free plan up to $10,000 of monthly tracked revenue. Self-hosting is free forever under AGPL-3.0, with no limits. Cloud Standard costs 0.5% of tracked revenue above $10,000, capped at $999 a month; upgrade any time from Billing in the dashboard. Enterprise has custom pricing starting at $50,000 a year; contact sales at revenuedot.app/contact-sales.",
 };
 
 export const FAQ_READY: Faq = {
