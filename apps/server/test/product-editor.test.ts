@@ -347,6 +347,22 @@ describe("files, roles and errors", () => {
     expect((await download(s, "app_play", "all=true", viewer.browser.cookie!)).status).toBe(200);
     expect((await upload(s, "app_play", `${HEADER}\npremium:monthly,,,,,US,USD,10.99,`, {}, viewer.browser)).status).toBe(403);
     expect((await viewer.browser.call("DELETE", `${s.P}/product_edits/${bad.body.id}`)).status).toBe(403);
+    // Secret keys: the export is a catalog read, like GET /store_prices (same prices) and the import listing (same live
+    // store read), so project_configuration:products:read is enough; a key without it is refused; writes need read_write.
+    const keyWith = async (permissions: string[]) => {
+      const k = await s!.admin.browser.call("POST", `${s!.P}/api_keys`, { name: permissions.join(" "), permissions });
+      return `Bearer ${k.body.key ?? k.body.secret}`;
+    };
+    const asKey = (auth: string, method: string, path: string, data?: unknown) => s!.app.fetch(new Request(`http://localhost${s!.P}${path}`, { method, headers: { authorization: auth, "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) }));
+    const reader = await keyWith(["project_configuration:products:read"]);
+    const exported = await asKey(reader, "GET", "/apps/app_play/store_products/export.csv?all=true");
+    expect(exported.status).toBe(200);
+    expect(await exported.text()).toMatch(/^store_identifier,/);
+    expect((await asKey(reader, "POST", "/product_edits", { app_id: "app_play", csv: `${HEADER}\npremium:monthly,,,,,US,USD,10.99,` })).status).toBe(403);
+    expect((await asKey(reader, "POST", "/apps/app_play/store_prices/actions/refresh")).status).toBe(403);
+    const customersOnly = await asKey(await keyWith(["customer_information:customers:read"]), "GET", "/apps/app_play/store_products/export.csv?all=true");
+    expect(customersOnly.status).toBe(403);
+    expect(await customersOnly.json()).toMatchObject({ message: "This API key is missing the permission(s): project_configuration:products:read." });
     const dev = await s.member("dev@example.com", "developer");
     const mine = await upload(s, "app_play", `${HEADER}\npremium:monthly,,,,,US,USD,10.99,`, {}, dev.browser);
     expect(mine.body.status).toBe("ready");
@@ -406,6 +422,9 @@ describe("review fixes: no lost store prices, one commit per app", () => {
     expect(r.body.rows.map((x: any) => [x.territory, x.status, x.error])).toEqual([
       ["US", "succeeded", "Already at this price."], ["GB", "failed", "Google Play: Request contains an invalid argument."],
     ]);
+    // Nothing was written for US: the audit log says so instead of recording a store write.
+    const priceAudit = await s.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.actionType, "store_price_changed"));
+    expect(Object.fromEntries(priceAudit.map((a) => [(a.additionalData as any).territory, (a.additionalData as any).result]))).toEqual({ US: "unchanged", GB: "failed" });
     const plan = await upload(s, "app_play", `${HEADER}\npremium:biweekly,Focus Premium,subscription,P1W,,US,USD,4.99,create`);
     s.play.fail((m, p) => m === "POST" && p.includes(":activate"), 500, "Backend Error", 1);
     const made = await commit(s, plan.body.id);
