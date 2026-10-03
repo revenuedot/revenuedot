@@ -15,7 +15,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyRule, expandIncludes, git, leakScan, render, sha256, type Config, type RepoSpec, type Result, type Rule } from "./lib/rules.ts";
-import { applyPins, checkPins, type PinContext, type PinProblem } from "./lib/pins.ts";
+import { applyPins, checkPins, installVersion, type PinContext, type PinProblem } from "./lib/pins.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ORDER = ["purchases-ios", "purchases-android", "purchases-hybrid-common", "purchases-js", "react-native-purchases", "purchases-flutter", "purchases-capacitor", "purchases-kmp", "purchases-unity", "cordova-plugin-purchases"];
@@ -40,7 +40,7 @@ export function printPinProblems(problems: PinProblem[]) {
 
 export function applyRepo(repo: string, root: string, cfg: Config, workspace: string): { results: Result[]; leaks: string[]; pinProblems: PinProblem[] } {
   const spec = loadSpec(repo);
-  const vars: Record<string, string> = { ...cfg.vars, org: cfg.org, repo };
+  const vars: Record<string, string> = { ...cfg.vars, org: cfg.org, repo, ...installVersion(root, spec.version, cfg.vars.gitTagSuffix!) };
   const shared = JSON.parse(readFileSync(join(HERE, "rules", "_shared.json"), "utf8")) as Record<string, Rule[]>;
   const results = expandIncludes(spec.rules, shared).map((r) => applyRule(r, { root, vars, workspace, patchBranch: cfg.patchBranch }));
   // Pins run after the rules, which put our registry names in place first.

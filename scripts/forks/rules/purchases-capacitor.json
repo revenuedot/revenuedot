@@ -21,7 +21,43 @@
 
     { "type": "license", "files": ["LICENSE"] },
     { "type": "copy", "from": "LICENSE", "to": "purchases-capacitor-ui/LICENSE", "note": "the UI package shipped without a notice" },
-    { "type": "banner", "files": ["README.md"], "install": "npm aliases keep every import and Capacitor's generated native names: `\"@revenuecat/purchases-capacitor\": \"npm:@revenuedot/purchases-capacitor@<version>\"` (and `-ui`), then `npx cap sync`." },
+    {
+      "type": "readme",
+      "file": "README.md",
+      "title": "RevenueDot Capacitor SDK",
+      "upstreamPackage": "@revenuecat/purchases-capacitor",
+      "docs": "https://revenuedot.app/docs/sdks/capacitor",
+      "badges": [
+        {
+          "alt": "npm",
+          "image": "https://img.shields.io/npm/v/@revenuedot/purchases-capacitor?label=npm",
+          "link": "https://www.npmjs.com/package/@revenuedot/purchases-capacitor"
+        }
+      ],
+      "install": [
+        "Install **only through npm aliases**: Capacitor derives the native pod and Swift package names from the npm package name, and the aliases keep them (and every import) unchanged.",
+        "```json",
+        "{",
+        "  \"dependencies\": {",
+        "    \"@revenuecat/purchases-capacitor\": \"npm:{{npmScope}}/purchases-capacitor@{{version}}\",",
+        "    \"@revenuecat/purchases-capacitor-ui\": \"npm:{{npmScope}}/purchases-capacitor-ui@{{version}}\"",
+        "  }",
+        "}",
+        "```",
+        "Then `npx cap sync`."
+      ],
+      "configure": {
+        "lang": "ts",
+        "code": [
+          "import { Capacitor } from \"@capacitor/core\";",
+          "import { Purchases } from \"@revenuecat/purchases-capacitor\";   // the alias keeps this import",
+          "",
+          "// Self-hosted server only: RevenueDot Cloud ({{apiHost}}) is the default.",
+          "await Purchases.setProxyURL({ url: \"https://revenuedot.example.com\" });",
+          "await Purchases.configure({ apiKey: Capacitor.getPlatform() === \"ios\" ? \"appl_...\" : \"goog_...\" });   // each app's public key"
+        ]
+      }
+    },
     { "type": "banner", "files": ["purchases-capacitor-ui/README.md"], "optional": true, "install": "`\"@revenuecat/purchases-capacitor-ui\": \"npm:@revenuedot/purchases-capacitor-ui@<version>\"` next to the core alias." }
   ],
   "version": {"file": "package.json", "regex": "^  \"version\": \"([^\"]+)\""},

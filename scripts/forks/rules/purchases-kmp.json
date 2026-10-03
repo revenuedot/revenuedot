@@ -12,7 +12,41 @@
     { "type": "delete", "files": ["**/META-INF/com/revenuecat/purchases/**/verification.properties"], "note": "RevenueCat's Play SDK Console tokens do not belong to our coordinates" },
 
     { "type": "license", "files": ["LICENSE"], "note": "copyright holder upstream is JayShortway; kept" },
-    { "type": "banner", "files": ["README.md"], "install": "`implementation(\"app.revenuedot.purchases:purchases-kmp-core:<version>\")`. Kotlin packages stay `com.revenuecat.purchases.kmp.*`, so imports stay as they are." }
+    {
+      "type": "readme",
+      "file": "README.md",
+      "title": "RevenueDot Kotlin Multiplatform SDK",
+      "upstreamPackage": "purchases-kmp",
+      "docs": "https://revenuedot.app/docs/sdks/kotlin-multiplatform",
+      "badges": [
+        {
+          "alt": "Maven Central",
+          "image": "https://img.shields.io/maven-central/v/app.revenuedot.purchases/purchases-kmp-core?label=Maven%20Central",
+          "link": "https://central.sonatype.com/artifact/app.revenuedot.purchases/purchases-kmp-core"
+        }
+      ],
+      "install": [
+        "```kotlin",
+        "// build.gradle.kts, commonMain",
+        "implementation(\"{{mavenGroup}}:purchases-kmp-core:{{version}}\")",
+        "implementation(\"{{mavenGroup}}:purchases-kmp-ui:{{version}}\")   // only if you use paywalls",
+        "```",
+        "Kotlin packages stay `com.revenuecat.purchases.kmp.*`, so imports do not change. The iOS library on Maven Central embeds RevenueDot's host and signing key; no RevenueCat host is left in it."
+      ],
+      "configure": {
+        "lang": "kotlin",
+        "code": [
+          "import com.revenuecat.purchases.kmp.Purchases",
+          "import com.revenuecat.purchases.kmp.PurchasesConfiguration",
+          "",
+          "fun initPurchases(apiKey: String) {   // appl_... on iOS, goog_... on Android, from the RevenueDot dashboard",
+          "    // Self-hosted server only: RevenueDot Cloud ({{apiHost}}) is the default.",
+          "    Purchases.proxyURL = \"https://revenuedot.example.com\"",
+          "    Purchases.configure(PurchasesConfiguration(apiKey))",
+          "}"
+        ]
+      }
+    }
   ],
   "version": {"file": "gradle/libs.versions.toml", "regex": "^revenuecat-kmp = \"([^\"]+)\""},
   "pins": [
