@@ -460,10 +460,33 @@ const scenarios: Record<string, Scenario> = {
       c.has("event: Stripe, trial, web offering", (await events(w, `web_buyer_${stamp}`, "INITIAL_PURCHASE"))[0], { store: "STRIPE", period_type: "TRIAL", presented_offering_id: "web" });
       const disc2 = await S("GET", `/v1/checkout/sessions/${sessionId}`, { expand: ["total_details.breakdown"] });
       console.log("   discounts on the session:", JSON.stringify(disc2.total_details?.breakdown?.discounts?.map((d: any) => d.discount?.coupon?.percent_off)));
-      const mail = await until(async () => w.stack.mails.find((m) => m.to.includes(buyerEmail)), { timeoutMs: 20_000 });
-      c.check("the redemption email reached the buyer", !!mail, w.stack.mails.map((m) => m.to + m.subject));
+      c.check("a purchase made for a named app user sends no redemption email", !w.stack.mails.some((m) => m.to.includes(buyerEmail) && /redeem|purchase/i.test(m.subject)), w.stack.mails.map((m) => m.to + m.subject));
       const dlist = await dev.v2("GET", "/web_discounts");
       c.check("the discount counts the redemption", dlist.items?.[0]?.times_redeemed >= 1, dlist.items?.[0]);
+
+      // An anonymous buyer: redemption link on the success page and by email, redeemed by the iOS app with the SDK's call.
+      const iosApp = await dev.v2("POST", "/apps", { name: "iOS", type: "app_store", app_store: { bundle_id: "com.example.realstripe" } });
+      const iosKey = (await dev.v2("GET", `/apps/${iosApp.id}/public_api_keys`)).items[0].key as string;
+      const anonEmail = `anon-${stamp}@real-stripe.test`;
+      const p3 = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+      await p3.goto(link.url);
+      await p3.getByRole("radio", { name: /Lifetime/ }).click();
+      await p3.getByRole("button", { name: "Continue to payment" }).click();
+      await p3.waitForURL(/checkout\.stripe\.com/, { timeout: 30_000 });
+      const anonUrl = p3.url(); await p3.close();
+      const anonPaid = await payCheckout(anonUrl, { email: anonEmail, expectUrl: /localhost:5710\/pay\/.*success/ });
+      c.check("anonymous buyer paid and reached the success page", /\/success/.test(anonPaid.finalUrl), anonPaid);
+      const rmail = await until(async () => w.stack.mails.find((m) => m.to.includes(anonEmail)), { timeoutMs: 30_000 });
+      const token = /rdrt_[A-Za-z0-9_-]+/.exec((rmail?.text ?? "") + (rmail?.html ?? ""))?.[0];
+      c.check("the redemption email reached the buyer with a link", !!token, w.stack.mails.map((m) => m.to + m.subject));
+      if (token) {
+        const redeemUser = `redeemed_${stamp}`;
+        const rr = await fetch(`${w.stack.base}/v1/subscribers/redeem_purchase`, { method: "POST", headers: { authorization: `Bearer ${iosKey}`, "content-type": "application/json", "x-platform": "ios" }, body: JSON.stringify({ app_user_id: redeemUser, redemption_token: token }) });
+        const rrb: any = await rr.json();
+        c.check("the iOS app redeems the web purchase and gets webpro", rr.status === 200 && !!rrb.subscriber?.entitlements?.webpro, rrb);
+        const again = await fetch(`${w.stack.base}/v1/subscribers/redeem_purchase`, { method: "POST", headers: { authorization: `Bearer ${iosKey}`, "content-type": "application/json", "x-platform": "ios" }, body: JSON.stringify({ app_user_id: `other_${stamp}`, redemption_token: token }) });
+        c.check("another app user redeeming the same link is refused (7852)", again.status === 400 && ((await again.json()) as any).code === 7852);
+      }
 
       // The SDK's hosted checkout (the iOS paywall's web purchase).
       const hcUser = `hc_user_${stamp}`;
@@ -494,8 +517,9 @@ const scenarios: Record<string, Scenario> = {
         const P = `${w.stack.base}/projects/${w.dev.projectId}`;
         const visit = async (path: string, mustHave: RegExp, name: string) => {
           await page.goto(`${P}${path}`, { waitUntil: "networkidle" }).catch(() => {});
-          const ok = await page.getByText(mustHave).first().waitFor({ timeout: 20_000 }).then(() => true, () => false);
-          c.check(`${label}: ${name}`, ok, (await page.locator("body").innerText()).slice(0, 200));
+          let text = "";
+          for (let i = 0; i < 40 && !mustHave.test(text); i++) { text = await page.locator("body").innerText().catch(() => ""); if (!mustHave.test(text)) await page.waitForTimeout(500); }
+          c.check(`${label}: ${name}`, mustHave.test(text), text.slice(0, 300));
           await page.screenshot({ path: join(shots, `ui-${label}-${name.replace(/\W+/g, "-")}.png`), fullPage: true });
         };
         await visit(`/apps/${w.appId}`, /Webhook|Signing secret|webhook/i, "Stripe app page shows its webhook");

@@ -77,7 +77,7 @@ async function main() {
     const cs = await S("GET", `/v1/checkout/sessions/${co.body.id}`);
     c.has("session: subscription mode, metered Standard price, our customer, user id as reference", cs, { mode: "subscription", customer: cu.id, client_reference_id: userId, livemode: false });
     const paid = await payCheckout(co.body.url, { email: dev.email, expectUrl: /localhost:5720\/account\/billing/ });
-    c.check("Checkout paid with 4242 and returned to the Billing page", /checkout=success/.test(paid.finalUrl), paid);
+    c.check("Checkout paid with 4242 and returned to the Billing page", /checkout%3Dsuccess|checkout=success/.test(paid.finalUrl), paid);
     const std = await until(async () => { const a = await acct(stack); return a?.plan === "standard" && a.status === "active" ? a : null; }, { timeoutMs: 30_000 });
     c.check("real webhooks made the account Standard and active", !!std, await acct(stack));
     const sub = await S("GET", `/v1/subscriptions/${std?.stripe_subscription_id}`);
@@ -170,12 +170,13 @@ async function main() {
     await stack.sql`INSERT INTO billing_accounts (user_id, stripe_customer_id, created_at, updated_at) VALUES (${user2}, ${cu2.id}, now(), now())`;
     const co2 = await dev2.call("POST", "/v2/billing/checkout", { plan: "standard" });
     const paid2 = await payCheckout(co2.body.url, { email: dev2.email, expectUrl: /localhost:5720\/account\/billing/ });
-    c.check("second account upgraded through Checkout", /checkout=success/.test(paid2.finalUrl), paid2);
+    c.check("second account paid through Checkout and returned to the success URL", /checkout%3Dsuccess|checkout=success/.test(paid2.finalUrl), paid2);
     const std2 = await until(async () => { const r = await stack.sql`SELECT * FROM billing_accounts WHERE user_id = ${user2}`; return r[0]?.status === "active" ? r[0] : null; }, { timeoutMs: 30_000 });
     c.check("second account is Standard and active", !!std2, std2);
     const sub2 = await S("GET", `/v1/subscriptions/${std2!.stripe_subscription_id}`);
     const bad2 = await S("POST", "/v1/payment_methods/pm_card_chargeCustomerFail/attach", { customer: cu2.id });
     await S("POST", `/v1/customers/${cu2.id}`, { invoice_settings: { default_payment_method: bad2.id } });
+    await S("POST", `/v1/subscriptions/${std2!.stripe_subscription_id}`, { default_payment_method: "" });
     const adv2 = async (t: number) => { await S("POST", `/v1/test_helpers/test_clocks/${clk2.id}/advance`, { frozen_time: t }); await until(async () => (await S("GET", `/v1/test_helpers/test_clocks/${clk2.id}`)).status === "ready", { timeoutMs: 120_000, everyMs: 2000 }); };
     await adv2(sub2.billing_cycle_anchor + 60);
     await adv2(sub2.billing_cycle_anchor + 3 * DAY + 3600);

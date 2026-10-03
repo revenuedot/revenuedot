@@ -107,13 +107,13 @@ export function listenSecret(key: string): string {
   return m[0];
 }
 export function forward(key: string, url: string): { stop: () => void; ready: Promise<void> } {
-  const p = spawn("stripe", ["listen", "--forward-to", url], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, STRIPE_API_KEY: key } });
+  const p = spawn("stripe", ["listen", "--forward-to", url], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, STRIPE_API_KEY: key } });
   const ready = new Promise<void>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error("stripe listen not ready")), 30_000);
     const on = (b: Buffer) => { if (/Ready!/.test(b.toString())) { clearTimeout(t); resolve(); } };
     p.stdout!.on("data", on); p.stderr!.on("data", on);
   });
-  return { stop: () => p.kill("SIGTERM"), ready };
+  return { stop: () => { try { process.kill(-p.pid!, "SIGTERM"); } catch { p.kill("SIGTERM"); } }, ready };
 }
 
 /** Pays a Stripe-hosted Checkout page with a test card in a real browser. `card` defaults to 4242 4242 4242 4242. */
