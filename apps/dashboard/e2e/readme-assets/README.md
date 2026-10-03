@@ -16,8 +16,9 @@ BACKDATE=1 E2E_DATABASE_URL=pglite://$DB npx tsx e2e/readme-assets/enrich.ts   #
 node e2e/readme-assets/capture.mjs [overview charts ...]   # 1440x900 at 2x, light and dark, into .readme-assets/raw/
 node e2e/readme-assets/optimise.mjs .readme-assets/raw ../../docs/assets/readme   # 8-bit PNGs, each about 100 KB
 node e2e/readme-assets/record-hero.mjs                     # 1280x800 tour with a cursor, into .readme-assets/hero.webm
+SCHEME=dark node e2e/readme-assets/record-hero.mjs         # the dark twin, into .readme-assets/hero-dark.webm
 ```
 
-Encode the tour (ffmpeg): `-ss 0.4 … -c:v libx264 -crf 28 -movflags +faststart hero.mp4`; the poster is the frame at 2.5 s as WebP (sharp); the GIF is `fps=15,scale=1280:-1` with `palettegen`/`paletteuse` (bayer dither), under 8 MB. The MP4 is uploaded to Cloudflare Stream and listed in `apps/site/src/lib/videos.mjs`; the log is `company/marketing/videos/README.md`.
+Encode the tour (ffmpeg): `-ss 0.4 … -c:v libx264 -crf 28 -movflags +faststart hero.mp4`; the poster is the frame at 2.5 s as WebP (sharp); the GIF is `fps=15,scale=1280:-1` with `palettegen`/`paletteuse` (bayer dither), under 8 MB. The dark twin (`hero-dark.*`) is encoded the same way, trimmed so it lasts exactly as long as the light one (13.67 s; its `-ss` is where the cursor first moves, about 2 s, since the first page load takes longer in dark). The README shows it through a `<picture>` with `media="(prefers-color-scheme: dark)"`. The MP4 is uploaded to Cloudflare Stream and listed in `apps/site/src/lib/videos.mjs`; the log is `company/marketing/videos/README.md`.
 
 Shots: `overview`, `charts` (MRR by product, Customers tab), `paywall-editor`, `experiments` (results), `funnels` (builder), `customer-center` (editor with the preview open), `integrations`, `customer`, `ai` (the scripted fake model answers "How is revenue doing this month?" with real numbers). `capture.mjs` scrubs this machine's host from the funnel's address.
