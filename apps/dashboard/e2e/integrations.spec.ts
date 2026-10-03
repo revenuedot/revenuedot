@@ -137,6 +137,9 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
       await expect.poll(() => fake.hits.filter((h) => h.path === "/i/v0/e/").length, { timeout: 20_000 }).toBe(1);
       const ev = JSON.parse(fake.hits.find((h) => h.path === "/i/v0/e/")!.body.toString());
       expect(ev).toMatchObject({ api_key: "phc_sandbox_e2e", event: "Subscribed", distinct_id: "posthog_buyer", properties: { environment: "SANDBOX", rc_subscription_status: "active" } });
+      // The delivery log of a new integration with no rows polls every 15 seconds; waiting for that poll left 5 seconds
+      // of a 20-second timeout and failed on a busy machine. Refresh, like a user would (pending rows poll every 2 seconds).
+      await page.getByRole("button", { name: "Refresh deliveries" }).click();
       await expect(page.getByRole("row", { name: /INITIAL_PURCHASE.*Subscribed.*delivered/ })).toBeVisible({ timeout: 20_000 });
       await page.goto(`/projects/${pid}/integrations`);
       await expect(page.getByRole("link", { name: /^PostHog/ })).toContainText("Active · 1");

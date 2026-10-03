@@ -15,10 +15,10 @@ Essential (Tier 1)
 - Migrations run on start: `openDb` in `packages/db/src/index.ts` applies every file in `packages/db/migrations` (0000 to 0005 today) before the server takes requests.
 - Owner-only sign-up: the first account becomes the owner; after that `POST /auth/signup` answers 403 with a message naming `REVENUEDOT_ALLOW_SIGNUP=true`.
 - A background job every 30 seconds for expirations, voided purchases and webhook deliveries, and again a moment after any request that queues a webhook.
-- Upgrade: `git pull && docker compose up -d --build`; `.env` and the database volume stay.
+- Upgrade: `docker compose pull && docker compose up -d`; `.env` and the database volume stay.
+- A published image, `ghcr.io/revenuedot/revenuedot` (amd64 and arm64; `latest`, date, commit and release tags), built and smoke-tested by `.github/workflows/publish-image.yml`, so self-hosters do not build from source. Shipped 2026-10-03.
 
 Later
-- A published image, so self-hosters do not build from source.
 - Backups, point-in-time recovery and monitoring guides.
 
 ## RevenueCat behaviour we match

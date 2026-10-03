@@ -1764,7 +1764,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
     {
       h2: "Where RevenueDot fits",
       paras: [
-        "RevenueDot does RevenueCat's job with an open-source server: App Store, Google Play, Amazon Appstore and Stripe purchases in one customer record, with the RevenueCat SDK in your app. Web checkout runs on your own Stripe account with a restricted key, and [purchase links](/features/purchase-links), [funnels](/features/funnels) and redemption links come included. Stripe Connect sign-in is not built yet.",
+        "RevenueDot does RevenueCat's job with an open-source server: App Store, Google Play, Amazon Appstore and Stripe purchases in one customer record, with the RevenueCat SDK in your app. Web checkout runs on your own Stripe account with a restricted key, and [purchase links](/features/purchase-links), [funnels](/features/funnels) and redemption links come included. Connect with Stripe (sign in to Stripe instead of pasting a key) is not available on RevenueDot Cloud yet.",
         "It is newer than RevenueCat and has no SOC 2 report. [Start free on RevenueDot Cloud](" + SIGNUP + ") or read about [web checkout](/features/web-billing).",
       ],
     },

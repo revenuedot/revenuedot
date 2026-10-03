@@ -63,7 +63,7 @@ Both are checked by `terraform fmt -check`, `terraform validate` and tflint in C
 - `scripts/e2e/cluster/run.ts`: a fresh database on the Railway development Postgres, three real Node replicas started at the same moment (concurrent migrations), a capture server as the webhook receiver and an SMTP sink, 300 Test Store purchases spread over the replicas by a load balancer that health-checks `/readyz`, forced expirations, a failing webhook that opens an alert email, one replica sent SIGTERM mid-run and started again. Checks: every replica started; each migration applied once; every event delivered exactly once to the good endpoint; no delivery row stuck; one alert email; no two job runs overlapped (from the replicas' job logs); `/readyz` 503 during the drain; no failed request at the load balancer level. The database is dropped at the end.
 
 ## Later
-- A published image on GHCR and ECR, signed with cosign; the chart pinned to it.
+- The image is on GHCR since 2026-10-03 (`ghcr.io/revenuedot/revenuedot`, the chart's default). Still to do: an ECR copy, cosign signatures, and the chart pinned to a release tag.
 - An EKS module that installs the chart; Azure (Container Apps and Flexible Server).
 - Read replicas for charts and exports.
 - Leader-aware metrics (`/metrics` for Prometheus).

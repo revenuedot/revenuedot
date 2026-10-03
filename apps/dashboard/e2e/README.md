@@ -1,6 +1,10 @@
 # Dashboard end-to-end tests
 
-Real browser, real API, real database: `e2e/server.ts` boots the API on an in-memory Postgres (PGlite), seeds it, and serves the built dashboard on one port (5199). Nothing touches your dev database.
+Real browser, real API, real database: `e2e/server.ts` boots the API on an in-memory Postgres (PGlite), seeds it, and serves the built dashboard on one port. Nothing touches your dev database, and nothing needs a secret: stores, Stripe, partners and AI answer from in-process fakes.
+
+**Ports.** Playwright picks a free pair of ports for each run (the server on one, the e2e Cloud server on the next), so parallel runs in other worktrees or agents never reach each other's server. `E2E_PORT=<port>` pins it instead; the run stops at once with a clear message if that port or the next one is taken. `E2E_BASE_URL` runs against a server you started yourself (its port becomes `E2E_PORT`). `tsx e2e/server.ts` alone uses `PORT` (default 5199) and exits if it is taken.
+
+**CI.** Every pull request that touches the dashboard, the server, `packages/`, `ee/` or `design/` runs the suite in 4 parallel shards (job `e2e` in `.github/workflows/ci.yml`), and the production deploy waits for it. A failed test uploads its trace as the artifact `e2e-traces-<shard>`: download it and open the zip with `npx playwright show-trace` or at https://trace.playwright.dev.
 
 ## Run
 
@@ -22,7 +26,7 @@ Specs that need their own data sign up a fresh account instead of changing the d
 ## Look at it yourself
 
 ```bash
-pnpm --filter @revenuedot/dashboard build && pnpm --filter @revenuedot/dashboard e2e:server   # then open http://localhost:5199
+pnpm --filter @revenuedot/dashboard build && pnpm --filter @revenuedot/dashboard e2e:server   # then open http://localhost:5199 (PORT=<port> for another)
 pnpm --filter @revenuedot/dashboard seed    # or: fill the dev server (localhost:8787) with the API-made demo data
 ```
 

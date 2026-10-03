@@ -285,7 +285,7 @@ export const SOLUTIONS: Landing[] = [
           },
           {
             name: "Start the stack",
-            text: "Run `docker compose up -d`. It builds the image and starts RevenueDot and Postgres. There is no published image yet.",
+            text: "Run `docker compose up -d`. It pulls `ghcr.io/revenuedot/revenuedot` (built for amd64 and arm64 on every change) and starts RevenueDot and Postgres.",
           },
           {
             name: "Check health and sign up",
@@ -310,7 +310,7 @@ export const SOLUTIONS: Landing[] = [
           code: `git clone https://github.com/revenuedot/revenuedot.git
 cd revenuedot
 cp .env.example .env          # set POSTGRES_PASSWORD before the first start
-docker compose up -d          # builds the image and starts RevenueDot and Postgres
+docker compose up -d          # pulls ghcr.io/revenuedot/revenuedot and starts RevenueDot and Postgres
 curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         },
       },
@@ -586,7 +586,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         label: "Honest notes",
         bullets: [
           "The hosted checkout is a Stripe-hosted page. An embedded checkout (Stripe Elements) is not built.",
-          "Connect with Stripe (OAuth) is not built yet. You paste a restricted key.",
+          "Connect with Stripe (OAuth) is not available on RevenueDot Cloud yet. You paste a restricted key and a webhook signing secret.",
           "Run a purchase in Stripe test mode before you go live.",
           "RevenueCat Web Billing (`rcb_`) purchases are not accepted. Paddle purchases are tracked when your backend posts them, not through purchases-js. See [the web SDK page](/sdks/web).",
         ],

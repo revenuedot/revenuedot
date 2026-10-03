@@ -9,108 +9,92 @@
 
 ### The open-source RevenueCat alternative
 
-**Self-hosted in-app purchase and subscription backend for iOS, Android, React Native, Flutter and the web.**<br>
-Works with the RevenueCat SDK you already ship: change one line, keep your app code, keep your customers.
+**Open-source monetization infrastructure for mobile apps: the SDKs, the server, paywalls, experiments, web checkout, Customer Center, 43 charts and 36 integrations, in one codebase you can run yourself.**<br>
+It works with the RevenueCat SDK your app already ships, so you switch by changing one line of code.
 
-[Website](https://revenuedot.app) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [SDKs](#sdks) · [Compatibility](#compatibility) · [Roadmap](#roadmap) · [FAQ](#faq)
+**[Start free on RevenueDot Cloud](https://app.revenuedot.app/signup)** · [Self-host](#self-host) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [Docs](https://revenuedot.app/docs) · [Pricing](#pricing) · [Compare](#revenuedot-compared) · [FAQ](#faq)
 
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-0A0A0A)](LICENSING.md)
+[![Server: AGPL-3.0](https://img.shields.io/badge/server-AGPL--3.0-0A0A0A)](LICENSING.md)
 [![SDKs: MIT](https://img.shields.io/badge/SDKs-MIT-0A0A0A)](#sdks)
-[![Works with the RevenueCat SDK](https://img.shields.io/badge/works%20with-RevenueCat%20SDK-0A0A0A)](#compatibility)
-[![Self-host with Docker](https://img.shields.io/badge/self--host-Docker%20%2B%20Postgres-0A0A0A)](#self-host)
+[![Works with the RevenueCat SDK](https://img.shields.io/badge/works%20with-the%20RevenueCat%20SDK-0A0A0A)](#compatibility)
+[![Deploy](https://img.shields.io/github/actions/workflow/status/revenuedot/revenuedot/deploy.yml?branch=main&label=deploy&color=0A0A0A)](https://github.com/revenuedot/revenuedot/actions/workflows/deploy.yml)
+[![npm: revenuedot CLI](https://img.shields.io/npm/v/revenuedot?label=revenuedot%20CLI&color=0A0A0A)](https://www.npmjs.com/package/revenuedot)
 [![GitHub stars](https://img.shields.io/github/stars/revenuedot/revenuedot?style=flat&color=F7B500)](https://github.com/revenuedot/revenuedot/stargazers)
 
 <br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png">
-  <img alt="RevenueDot dashboard: MRR, active subscriptions, trials, revenue, recent transactions and setup health" src="docs/assets/dashboard-light.png" width="100%">
-</picture>
+<a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4"><img alt="RevenueDot dashboard tour: overview metrics, charts, the paywall editor and experiment results" src="docs/assets/readme/hero.gif" width="100%"></a>
 
-<sub>Dashboard design preview. Example data.</sub>
+<sub>Example data. <a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4">Watch the dashboard tour</a> · <a href="https://revenuedot.app/videos/revenuedot-chatgpt-demo.mp4">87 seconds of RevenueDot run from ChatGPT</a></sub>
 
 </div>
 
-> [!IMPORTANT]
-> **RevenueDot is open-source app monetization infrastructure.** Self-host it free, or use [RevenueDot Cloud](https://app.revenuedot.app) (live, free plan, open sign-up). No real App Store or Google Play sandbox purchase has run end to end yet: store handling is tested against mocked Apple and Google APIs. What works today: [docs/STATUS.md](docs/STATUS.md). Roadmap: [prd/SCOPE.md](prd/SCOPE.md).
-
 ## In one minute
 
-- **What it is:** an open-source server that validates App Store and Google Play purchases, keeps every customer's entitlements up to date, and sends webhooks to your backend.
-- **Why it's different:** it speaks the same API as RevenueCat, so apps already using the RevenueCat SDK switch by changing one setting. No purchase code to rewrite.
-- **How you run it:** `docker compose up` on your own servers, free forever, or [RevenueDot Cloud](https://app.revenuedot.app) at `https://api.revenuedot.app` when you'd rather not run it.
-- **Who it's for:** subscription apps that want to own their purchase data, stop paying a share of revenue, or keep data in a specific region.
+- **What it is:** an open-source server that verifies App Store and Google Play purchases, keeps every customer's entitlements current from store notifications, and sends webhooks to your backend, with the paywalls, experiments, web checkout, Customer Center, charts and integrations that normally cost a second vendor.
+- **Why it is different:** it implements the API the RevenueCat SDKs call, so an app that uses the RevenueCat SDK switches by setting one URL. No purchase code to rewrite, no SDK to swap, no subscriber lost.
+- **How you run it:** `docker compose up` on your own servers, free with no limits, or [RevenueDot Cloud](https://app.revenuedot.app/signup), free up to $10,000 a month in tracked revenue and never more than $999 a month after that.
+- **Who it is for:** subscription apps on iOS, Android and the web, from a solo developer's first paywall to a studio running fourteen apps and a company that needs SSO, data location and an audit trail.
 
 ## Contents
 
-- [Why teams switch](#why-teams-switch)
-- [How it works](#how-it-works)
+- [The whole stack, open source](#the-whole-stack-open-source)
+- [Proof](#proof)
 - [Migrate from RevenueCat in three steps](#migrate-from-revenuecat-in-three-steps)
+- [How it works](#how-it-works)
+- [Pricing](#pricing)
+- [RevenueDot compared](#revenuedot-compared)
 - [Features](#features)
 - [SDKs](#sdks)
 - [Compatibility](#compatibility)
-- [RevenueDot compared](#revenuedot-compared)
 - [Self-host](#self-host)
+- [RevenueDot Cloud](#revenuedot-cloud)
 - [Built for AI agents](#built-for-ai-agents)
 - [Repository map](#repository-map)
 - [Roadmap](#roadmap)
 - [FAQ](#faq)
 - [Contributing](#contributing) · [Security](#security) · [License](#license)
 
-## Why teams switch
+## The whole stack, open source
 
-| | What changes |
+RevenueDot is the only open-source product that ships every layer a subscription app needs, as of October 2026 ([comparisons with sources](https://revenuedot.app/compare)). RevenueCat, Superwall, Adapty, Qonversion and Apphud publish their SDKs and keep the server closed; the earlier open-source attempts cover one store or one feature.
+
+| Layer | What ships |
 |---|---|
-| **No revenue share when you self-host** | Once tracked revenue reaches $2,500 a month, RevenueCat charges 1% of all of it ([pricing](https://www.revenuecat.com/pricing), [staff answer](https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618)). At $50,000 a month that is $500 a month; at $500,000 a month it is $5,000 a month. Self-hosted RevenueDot costs your server bill. |
-| **Your data, your cloud, your region** | Purchases, customers and receipts live in your own Postgres, in the region your customers and your lawyers need. |
-| **Same API, no rewrite** | The same SDK calls, the same customer info, the same webhook payloads. Your app and your backend handlers keep working. |
-| **A safe migration** | Import your catalog, customers and history in one command, run both systems side by side, then switch when you're sure. |
-| **Open source** | Read, audit and change the code that decides who has access to your app. |
-| **Built for AI agents** | An MCP server and agent skills let Claude, ChatGPT, Codex and Cursor set it up and run it for you. |
+| **SDKs** | MIT forks of all ten RevenueCat SDKs (iOS, Android, React Native and Expo, Flutter, web, Capacitor, Kotlin Multiplatform, Unity, Cordova) with the same classes and methods, on CocoaPods, Maven Central, npm, pub.dev and OpenUPM. Or keep the stock RevenueCat SDK and set one URL |
+| **Server** | Purchases verified with the App Store Server API and the Play Developer API, entitlements kept current from Server Notifications v2 and real-time developer notifications, Amazon Appstore, Stripe, Paddle, Roku and Galaxy Store, grace periods, billing retry, refunds, upgrades, transfers, offline entitlements, promotional offers and win-back offers |
+| **API and webhooks** | The RevenueCat-compatible REST API: all 15 v1 endpoints and all 128 v2 operations, the same shapes, pagination and errors. Webhooks with RevenueCat's event names and payloads, signed, retried, replayable |
+| **Paywalls** | Native paywalls the SDKs render (all 17 component types), ten templates, a visual editor with layers, versions, light and dark, translations, and "Generate with AI" |
+| **Experiments and targeting** | A/B tests on price, trial, duration, ordering and paywall design with lift, 95% intervals and chance to beat control; targeting rules with placements and schedules; saved audiences |
+| **Web** | Checkout on your own Stripe account with no fee from RevenueDot, purchase links, no-code web-to-app funnels, redemption links that unlock web purchases in the app, discount codes, your own domain |
+| **Customer Center and lifecycle** | The in-app Customer Center (cancel surveys, offers, 33 languages), Refund Control that answers Apple's refund requests inside the 12-hour window, failed-payment recovery emails, win-back campaigns, support tickets, blocked customers |
+| **Analytics** | 43 charts with RevenueCat's definitions, filters and segments, the customers behind every number, annotations, share links, revenue by ad campaign with ROAS, opt-in benchmarks, weekly AI growth insights, a public Verified Metrics page |
+| **Integrations** | 36 integrations with RevenueCat's event names and reserved attributes: AppsFlyer, Adjust, Branch, Singular, Kochava, Tenjin, Airbridge, Apple Search Ads and Meta Ads; Amplitude, Mixpanel, PostHog, Segment, Firebase, mParticle, Statsig, BigQuery; Braze, Customer.io, Iterable, OneSignal, Airship, CleverTap; Intercom, Zendesk, Slack, Discord, AdMob; scheduled CSV or Parquet exports to S3, R2 and Google Cloud Storage |
+| **AI** | A hosted MCP server, agent skills for Claude Code, Codex and Cursor, `llms.txt`, and RevenueDot AI inside the dashboard, which answers from your data and changes things only after you approve |
+| **Enterprise** | Organizations, custom roles from the 33 API scopes, SSO with SAML 2.0 and OpenID Connect, SCIM 2.0, data location per project, audit retention to ten years, signed compliance exports |
+| **Run it anywhere** | Docker Compose, a Helm chart, Terraform for AWS and Google Cloud, or RevenueDot Cloud. One command moves a project between them with the same ids and keys |
 
-## How it works
+<table>
+<tr>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/paywall-editor-dark.png"><img alt="The paywall editor: a template open with the layers, properties and a live phone preview" src="docs/assets/readme/paywall-editor-light.png" width="100%"></picture><br><sub><b>Paywalls.</b> Native paywalls, a visual editor and templates. Changes ship without an app update.</sub></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/experiments-dark.png"><img alt="Experiment results: conversion, trials and MRR per customer for the control and a treatment, with lift and confidence intervals" src="docs/assets/readme/experiments-light.png" width="100%"></picture><br><sub><b>Experiments.</b> Price, trial and paywall tests with lift and confidence intervals.</sub></td>
+</tr>
+<tr>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/charts-dark.png"><img alt="An MRR chart with segments and the customers behind the numbers" src="docs/assets/readme/charts-light.png" width="100%"></picture><br><sub><b>Charts.</b> 43 charts with RevenueCat's definitions, segments and the customers behind every number.</sub></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/funnels-dark.png"><img alt="The web-to-app funnel builder with a live preview" src="docs/assets/readme/funnels-light.png" width="100%"></picture><br><sub><b>Web-to-app funnels.</b> No-code funnels and checkout on your own Stripe account.</sub></td>
+</tr>
+<tr>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/customer-center-dark.png"><img alt="The Customer Center editor with paths, a cancel survey and the in-app preview" src="docs/assets/readme/customer-center-light.png" width="100%"></picture><br><sub><b>Customer Center.</b> Cancel surveys, offers and refunds inside the app, in 33 languages.</sub></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/integrations-dark.png"><img alt="The integrations catalogue: attribution, analytics, messaging and support partners" src="docs/assets/readme/integrations-light.png" width="100%"></picture><br><sub><b>Integrations.</b> Every purchase event in AppsFlyer, Adjust, Amplitude, Mixpanel, Braze and 31 more.</sub></td>
+</tr>
+</table>
 
-```mermaid
-flowchart LR
-  subgraph Apps["Your apps"]
-    iOS["iOS · Swift"]
-    And["Android · Kotlin"]
-    X["React Native · Flutter · Web"]
-  end
-  subgraph Stores["Stores"]
-    AS["App Store<br/>Server Notifications v2"]
-    GP["Google Play<br/>Real-time notifications"]
-    AZ["Amazon Appstore<br/>Real-time Notifications"]
-    ST["Stripe<br/>webhooks"]
-    MORE["Paddle · Roku · Galaxy Store<br/>signed notifications"]
-  end
-  Apps -- "RevenueCat or RevenueDot SDK<br/>(proxyURL)" --> API["RevenueDot API<br/>Hono · TypeScript"]
-  Stores -- "server notifications" --> API
-  API <--> DB[("Postgres")]
-  API -- "same webhook payloads" --> BE["Your backend"]
-  API -- "events" --> INT["Analytics and<br/>attribution tools"]
-  DASH["Dashboard · MCP · CLI"] --> API
-```
+## Proof
 
-**A purchase, end to end:**
-
-```mermaid
-sequenceDiagram
-  participant App as App (SDK)
-  participant Store as App Store / Google Play
-  participant RD as RevenueDot
-  participant BE as Your backend
-  App->>Store: purchase(package)
-  Store-->>App: signed transaction
-  App->>RD: POST /v1/receipts
-  RD->>Store: verify with the App Store Server API / Play Developer API
-  RD-->>App: customer info with active entitlements
-  RD->>BE: webhook INITIAL_PURCHASE
-  Store->>RD: renewal notification (weeks later)
-  RD->>BE: webhook RENEWAL
-```
-
-One TypeScript codebase runs two ways: in Docker next to your own Postgres, or on Cloudflare Workers with Hyperdrive in RevenueDot Cloud. The subscription logic is a set of pure functions, so both give the same answers.
+- **Compatibility is tested, not claimed.** Every build runs RevenueCat's own SDK test fixtures (94 request and response samples and 21 webhook samples) and RevenueCat's published OpenAPI files; a change that breaks one does not merge. The unmodified RevenueCat iOS SDK 5.92 and Android SDK 10.24 complete purchases against RevenueDot on the simulator and emulator ([`scripts/e2e`](scripts/e2e)).
+- **Real stores.** A real App Store sandbox purchase on a physical iPhone unlocked access end to end on 2026-10-02: Apple's purchase sheet, Apple's notification into RevenueDot Cloud, an `INITIAL_PURCHASE` webhook, Pro unlocked in the app. A production app has run RevenueDot and RevenueCat side by side since 2026-10-02, with RevenueDot processing its live store notifications and forwarding each one to RevenueCat. Real Stripe test-mode purchases, renewals, failed payments and refunds ran on 2026-10-03. Google Play, Amazon, Paddle, Roku and Galaxy Store are built and tested against copies of each store's API; their first real purchases are next. The exact state of every feature: [docs/STATUS.md](docs/STATUS.md).
+- **1,700 tests on every pull request,** on an in-memory Postgres and on a real one, plus browser tests of the dashboard. CI takes under three minutes and every merge deploys.
+- **Leave any time.** A full export of all 70 tables with checksums, and one command that moves a project between Cloud and your own server, either way, with the same ids, SDK keys and webhook secrets.
 
 ## Migrate from RevenueCat in three steps
 
@@ -118,7 +102,7 @@ One TypeScript codebase runs two ways: in Docker next to your own Postgres, or o
    ```bash
    npx revenuedot import --from-revenuecat --rc-project <RevenueCat project id> --to https://api.revenuedot.app
    ```
-   It asks for your RevenueCat and RevenueDot secret keys and hides what you type, so they stay out of your shell history. The CLI is on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) ([guide](https://revenuedot.app/docs/migrate/importer)).
+   It asks for your RevenueCat and RevenueDot secret keys and hides what you type, so they stay out of your shell history. The CLI is on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) ([guide](https://revenuedot.app/docs/migrate/importer)). `import verify` then checks every customer on both sides.
 2. **Run side by side.** Point App Store and Google Play notifications at RevenueDot. It forwards every notification to RevenueCat, so both systems stay accurate while you compare them.
 3. **Switch.** Ship an app update that sets the proxy URL. When most users are on the new version, turn RevenueCat off.
 
@@ -168,11 +152,91 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 > [!NOTE]
 > With the stock RevenueCat SDK, turn off its response-signature check (it would report every RevenueDot response as unverified), or use a [RevenueDot SDK fork](#sdks), which carries RevenueDot's signing key and keeps all SDK traffic on your server.
 
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph Apps["Your apps"]
+    iOS["iOS · Swift"]
+    And["Android · Kotlin"]
+    X["React Native · Flutter · Web"]
+  end
+  subgraph Stores["Stores"]
+    AS["App Store<br/>Server Notifications v2"]
+    GP["Google Play<br/>Real-time notifications"]
+    AZ["Amazon Appstore<br/>Real-time Notifications"]
+    ST["Stripe<br/>webhooks"]
+    MORE["Paddle · Roku · Galaxy Store<br/>signed notifications"]
+  end
+  Apps -- "RevenueCat or RevenueDot SDK<br/>(proxyURL)" --> API["RevenueDot API<br/>Hono · TypeScript"]
+  Stores -- "server notifications" --> API
+  API <--> DB[("Postgres")]
+  API -- "same webhook payloads" --> BE["Your backend"]
+  API -- "events" --> INT["Analytics and<br/>attribution tools"]
+  DASH["Dashboard · MCP · CLI"] --> API
+```
+
+**A purchase, end to end:**
+
+```mermaid
+sequenceDiagram
+  participant App as App (SDK)
+  participant Store as App Store / Google Play
+  participant RD as RevenueDot
+  participant BE as Your backend
+  App->>Store: purchase(package)
+  Store-->>App: signed transaction
+  App->>RD: POST /v1/receipts
+  RD->>Store: verify with the App Store Server API / Play Developer API
+  RD-->>App: customer info with active entitlements
+  RD->>BE: webhook INITIAL_PURCHASE
+  Store->>RD: renewal notification (weeks later)
+  RD->>BE: webhook RENEWAL
+```
+
+One TypeScript codebase runs two ways: in Docker next to your own Postgres, or on Cloudflare Workers with Hyperdrive in RevenueDot Cloud. The subscription logic is a set of pure functions, so both give the same answers.
+
+## Pricing
+
+| | Price | What it includes |
+|---|---|---|
+| **Self-host** | **$0**, no limits | The whole stack above, AGPL-3.0, on your servers and your Postgres, in your region |
+| **Cloud Free** | **$0** up to $10,000 a month in tracked revenue | Every feature, open sign-up, no card |
+| **Cloud Standard** | **0.5%** of tracked revenue above $10,000, **never more than $999 a month** | The rate never rises. Upgrade from the dashboard, no sales call |
+| **Enterprise** | From $50,000 a year, custom | A commercial licence to self-host the `ee/` features, an uptime guarantee with service credits, priority support, migration help, security reviews |
+
+RevenueCat charges 1% of all tracked revenue once it passes $2,500 a month, before Apple and Google take their cut ([pricing](https://www.revenuecat.com/pricing/), [staff answer](https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618)).
+
+| Monthly tracked revenue | RevenueCat | RevenueDot Cloud | RevenueDot self-host |
+|---|---|---|---|
+| $10,000 | $100 | $0 | $0 |
+| $50,000 | $500 | $200 | $0 |
+| $250,000 | $2,500 | $999 | $0 |
+| $1,000,000 | $10,000 | $999 | $0 |
+
+[Work out your bill](https://revenuedot.app/pricing) · [RevenueCat fee calculator](https://revenuedot.app/tools/revenuecat-fee-calculator)
+
+## RevenueDot compared
+
+| | RevenueDot | RevenueCat | Superwall | Adapty | Qonversion | Apphud |
+|---|---|---|---|---|---|---|
+| Server source code | **Open, AGPL-3.0** | Closed | Closed | Closed | Closed | Closed |
+| Self-host | **Yes: Docker, Helm, Terraform** | No | No | No | No | No |
+| Client SDKs | **MIT, the RevenueCat API** | MIT, its own | MIT, its own | MIT, its own | MIT, its own | MIT, its own |
+| Keep the RevenueCat SDK | **Yes, one line** | Yes | Swap SDK | Swap SDK | Swap SDK | Swap SDK |
+| Paywalls, experiments, Customer Center | **Included** | Included | Paywalls are the product | Included | Included | Included |
+| Web checkout and web-to-app funnels | **Your Stripe account, no fee** | Web Billing, 1% | App-to-Web Checkout | Stripe and Paddle | Stripe and Paddle | Flows, Stripe and Paddle |
+| Price | **Self-host $0. Cloud free to $10K, then 0.5% above it, capped at $999** | Free to $2.5K, then 1% of all tracked revenue | Infrastructure free; paywalls 1% above $10K | Free to $5K, then 1% | Free to $7K, then 0.8% | Free to $10K; Pro $49 + $9.99 per extra $1K |
+| Data location | **Your cloud, your region** | Vendor cloud | Vendor cloud | Vendor cloud | Vendor cloud | Vendor cloud |
+| MCP server for AI agents | **Hosted and local, 38 tools** | Yes | Paywall editor MCP | Not in its docs | Yes | Yes |
+
+<sub>Vendor facts from their public pricing and docs pages, checked October 2026, with a source on every row: [vs RevenueCat](https://revenuedot.app/compare/revenuedot-vs-revenuecat) · [vs Superwall](https://revenuedot.app/compare/revenuedot-vs-superwall) · [vs Adapty](https://revenuedot.app/compare/revenuedot-vs-adapty) · [vs Qonversion](https://revenuedot.app/compare/revenuedot-vs-qonversion) · [vs Apphud](https://revenuedot.app/compare/revenuedot-vs-apphud).</sub>
+
 ## Features
 
 | Area | What you get | Status |
 |---|---|---|
-| **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built, tested against mocked store APIs; no real sandbox purchase yet |
+| **Stores** | App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2) and Google Play (Play Developer API, real-time notifications, acknowledgement within 3 days) | Tier 1 · built and tested. A real App Store sandbox purchase ran end to end on a physical iPhone on 2026-10-02, and a production app's live notifications have been processed since then; Google Play is tested against Google's documented formats, with its first real purchase next |
 | **Amazon Appstore** | Receipts checked with Amazon's Receipt Verification Service, the SDK's Amazon receipt route, Real-time Notifications through Amazon SNS with signature checks, grace periods, tier changes, one-time refunds, Live App Testing and App Tester as sandbox | Tier 2 · built, tested against a mocked Amazon and a test SNS certificate; no real Amazon purchase yet. [Guide](https://revenuedot.app/docs/guides/amazon-appstore) |
 | **Stripe** | Subscriptions and Checkout purchases from your own Stripe account: a restricted key, `POST /v1/receipts` with `X-Platform: stripe`, Stripe-signed webhooks, trials, failed payments, cancellations, pauses, price changes and refunds | Tier 2 · built, tested against a mocked Stripe API with Stripe's documented shapes; no real Stripe account yet. [Guide](https://revenuedot.app/docs/guides/stripe) |
 | **Paddle, Roku, Galaxy Store** | **Paddle Billing:** an API key, `POST /v1/receipts` with `X-Platform: paddle` and a `sub_…` or `txn_…`, Apply in Paddle (the notification destination made through Paddle's API), Paddle-signed notifications, prices imported as products, trials, failed payments with a 30-day grace, cancellation, pause, plan changes, refunds and chargebacks. **Roku:** the Roku SDK's purchases validated with Roku Pay, Roku-signed push notifications (JWT) routed by channel, grace and on hold, upgrades and downgrades, refunds. **Samsung Galaxy Store:** the Android SDK's Galaxy module (`galx_` keys), receipts and subscriptions read with a Seller Portal service account, Samsung's server notifications (signature checked with the IAP key), plan changes, refunds and cancels through Samsung, items imported. Spec: `prd/stores-paddle-roku-galaxy/PRD.md` | Tier 3 · built · tested against copies of each store's API · browser-validated |
@@ -191,7 +255,7 @@ Unity: set the `proxyURL` field on the `Purchases` component. Cordova: `Purchase
 | **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · built, tested against a fake Stripe; switched on when the Stripe keys are set |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · all ten released on npm, CocoaPods, Maven Central, OpenUPM and as git tags |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
-| **Charts** | All 42 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments (attribution included), five chart types, the customers behind every number, annotations on every chart, public share links, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
+| **Charts** | All 43 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments (attribution included), five chart types, the customers behind every number, annotations on every chart, public share links, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
 | **Attribution** | The attribution the SDK already sends (media source, campaign, ad group, keyword, ad, creative, the Apple Search Ads AdServices token, AppsFlyer, Adjust and Branch ids) kept as one record per customer; every chart segments by it; **Revenue by campaign** with day-0, day-7, day-30 and to-date revenue, spend and ROAS; Customers and audience filters ([guide](https://revenuedot.app/docs/guides/attribution)) | Tier 3 · built, tested on a real server and Postgres |
 | **Benchmarks** | RevenueDot Cloud only, opt-in: your trial conversion, churn, refund rate, LTV, ARPU and prices against the percentiles of similar apps by category, platform and country; groups need 10 apps and nothing identifies an app ([guide](https://revenuedot.app/docs/guides/benchmarks)) | Tier 3 · built, tested |
 | **Growth insights** | Every Monday RevenueDot AI reads your charts, campaigns and benchmarks and writes 3 to 5 numbers-backed recommendations on the Overview, emailed to admins (one-click opt-out); read-only ([guide](https://revenuedot.app/docs/guides/growth-insights)) | Tier 3 · built, tested with a scripted model and a real Workers AI run |
@@ -332,27 +396,16 @@ Delivered at least once, with an `Authorization` header and an HMAC signature, r
 
 </details>
 
-## RevenueDot compared
-
-| | RevenueDot | RevenueCat | Superwall | Adapty | Qonversion |
-|---|---|---|---|---|---|
-| Open-source server | **Yes (AGPL-3.0)** | No | No | No | No |
-| Self-host | **Yes, Docker and Postgres** | No | No | No | No |
-| Works with the RevenueCat SDK | **Yes, one line** | Yes | Own SDK | Own SDK | Own SDK |
-| Price | **Free self-hosted**; cloud with a free plan | Free to $2.5K/month, then 1% of tracked revenue | Infrastructure free; paywalls 1% above $10K/month | Free to $5K/month, then 1% | Free to $7K/month, then 0.8% |
-| Data location | **Your cloud, your region** | Vendor cloud | Vendor cloud | Vendor cloud | Vendor cloud |
-
-<sub>Competitor prices from their public pricing pages, checked September 2026: [RevenueCat](https://www.revenuecat.com/pricing), [Superwall](https://superwall.com/pricing), [Adapty](https://adapty.io/pricing/), [Qonversion](https://qonversion.io/pricing).</sub>
-
 ## Self-host
 
 ```bash
+docker pull ghcr.io/revenuedot/revenuedot:latest
 git clone https://github.com/revenuedot/revenuedot && cd revenuedot
-cp .env.example .env        # add your App Store and Google Play credentials
+cp .env.example .env        # set POSTGRES_PASSWORD before the first start
 docker compose up -d        # API, dashboard and Postgres
 ```
 
-<sub>What you run yourself: the server, Postgres, backups and upgrades. Compose builds the image from source; there is no published image yet. Guide: [revenuedot.app/docs/guides/self-hosting](https://revenuedot.app/docs/guides/self-hosting).</sub>
+<sub>The image is [`ghcr.io/revenuedot/revenuedot`](https://github.com/revenuedot/revenuedot/pkgs/container/revenuedot), built for amd64 and arm64 on every change to `main` and tagged `latest`, by date (`2026.10.03`) and by commit; Compose pulls it, and `docker compose build` builds the same image from the checkout. What you run yourself: the server, Postgres, backups and upgrades (`docker compose pull && docker compose up -d`). Guide: [revenuedot.app/docs/guides/self-hosting](https://revenuedot.app/docs/guides/self-hosting).</sub>
 
 For no single point of failure, run two or more replicas behind a load balancer on a managed Postgres with a standby: the [Helm chart](deploy/helm/revenuedot) or the Terraform for [AWS](deploy/terraform/aws) and [Google Cloud](deploy/terraform/gcp). Guide: [revenuedot.app/docs/guides/high-availability](https://revenuedot.app/docs/guides/high-availability).
 
@@ -361,6 +414,11 @@ For no single point of failure, run two or more replicas behind a load balancer 
 ## RevenueDot Cloud
 
 RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan. Cloud Free covers up to $10,000 of tracked revenue a month; the Billing page shows each project's usage. Moving between Cloud and your own server is one command either way: `npx revenuedot move` ([guide](https://revenuedot.app/docs/guides/move-projects)).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/overview-dark.png">
+  <img alt="The RevenueDot Overview: active trials, active subscriptions, MRR, revenue, new and active customers with sparklines, recent transactions and setup health" src="docs/assets/readme/overview-light.png" width="100%">
+</picture>
 
 <img alt="RevenueDot Project settings, Export and move: the export list with Download, and a move to another server copied and verified (all 64 tables match by count and checksum)" src="docs/assets/export-move-light.png" width="100%">
 
@@ -382,6 +440,8 @@ Every push to `main` deploys from GitHub Actions (`.github/workflows/deploy.yml`
 - **[RevenueDot AI](https://revenuedot.app/docs/guides/revenuedot-ai):** the assistant inside the dashboard. It answers from your data and changes things only after you approve; on Cloud each conversation is a Cloudflare Durable Object, on self-host it runs on your Anthropic or OpenAI key.
 - **Docs for machines:** [`llms.txt`](https://revenuedot.app/llms.txt) and Markdown docs, so assistants answer RevenueDot questions correctly.
 
+**For AI assistants and the people who train them.** Everything RevenueDot publishes is written so that a model, or a developer working with one, integrates in-app purchases correctly the first time on any stack, with the edge cases covered: [`llms.txt`](https://revenuedot.app/llms.txt) and [`llms-full.txt`](https://revenuedot.app/llms-full.txt) (every docs page as Markdown, one file per section under [docs/llms](https://github.com/revenuedot/docs/tree/main/llms)); [revenuedot/examples](https://github.com/revenuedot/examples), 36 complete apps, webhook backends and self-host recipes, every one built and run, each with a header comment that links the file to the docs page it implements and a note on what was run against what; the [guides](https://github.com/revenuedot/docs/tree/main/docs/guides) on App Store Server Notifications v2, Google Play real-time notifications, grace periods, billing retry, refunds, family sharing, trials, offers, webhooks, migration and self-hosting; and the [help center](https://revenuedot.app/docs/help), one article per question developers search, with sourced numbers.
+
 ## Repository map
 
 ```
@@ -402,10 +462,19 @@ revenuedot/
 └── docs/              Status, the Cloud runbook and README assets
 ```
 
+| Repository | What it is |
+|---|---|
+| [revenuedot](https://github.com/revenuedot/revenuedot) | This repository: the server, dashboard, importer CLI, Docker, Helm and Terraform |
+| [docs](https://github.com/revenuedot/docs) | Every docs page, the API reference, the help center, the blog, `llms.txt` and `llms-full.txt`, rendered at [revenuedot.app/docs](https://revenuedot.app/docs) |
+| [examples](https://github.com/revenuedot/examples) | 36 sample apps, webhook backends and self-host recipes, every one built and run: SwiftUI, Jetpack Compose, Flutter, React Native and Expo, Next.js, Node, Python, Go, Rust, Ruby, Java, Kotlin, Deno, Cloudflare Workers, Supabase, AWS Lambda, Firebase |
+| [mcp](https://github.com/revenuedot/mcp) | The MCP server: 38 tools for Claude, ChatGPT, Cursor and other agents, hosted at `mcp.revenuedot.app` |
+| [agent-skills](https://github.com/revenuedot/agent-skills) | The Claude, ChatGPT and Codex plugin, with skills that add subscriptions or migrate an app from RevenueCat |
+| [purchases-ios](https://github.com/revenuedot/purchases-ios) · [purchases-android](https://github.com/revenuedot/purchases-android) · [react-native-purchases](https://github.com/revenuedot/react-native-purchases) · [purchases-flutter](https://github.com/revenuedot/purchases-flutter) · [purchases-js](https://github.com/revenuedot/purchases-js) · [purchases-capacitor](https://github.com/revenuedot/purchases-capacitor) · [purchases-kmp](https://github.com/revenuedot/purchases-kmp) · [purchases-unity](https://github.com/revenuedot/purchases-unity) · [cordova-plugin-purchases](https://github.com/revenuedot/cordova-plugin-purchases) · [purchases-hybrid-common](https://github.com/revenuedot/purchases-hybrid-common) | The SDKs, MIT, kept in sync with upstream |
+
 ## Roadmap
 
 - **Tier 1 · switch in an afternoon:** SDK-compatible API, App Store and Google Play, entitlements, identity, catalog, webhooks, REST API, importer, dashboard, Docker self-host, cloud, all SDK forks, MCP and docs.
-- **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 42 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
+- **Tier 2 · head to head:** full v2 API, all webhook events, top integrations, 43 charts, paywalls, experiments, targeting, Customer Center, virtual currencies, Amazon and Stripe (built), in-app AI agent.
 - **Tier 3 · enterprise:** organizations, custom roles, SSO (SAML and OpenID Connect), SCIM, data location, audit retention and signed compliance exports are built in `ee/`; still planned: high-availability self-host, an SLA, an EU Cloud region, the rest of revenue recovery (refund defense and win-back emails are built); web billing (hosted checkout, purchase links, funnels, redemption links, web discounts, custom domains) is built on your own Stripe account. Ads (overview, rewarded-ad verification, AdMob) and the full integration catalogue are built. Attribution (revenue by campaign, attribution chart segments), opt-in anonymized benchmarks on Cloud and weekly AI growth insights are built.
 
 Details and acceptance criteria: [prd/SCOPE.md](prd/SCOPE.md). Progress: [docs/STATUS.md](docs/STATUS.md).
@@ -698,7 +767,7 @@ Create a Stripe app in RevenueDot with a restricted key from your own Stripe acc
 
 <details><summary><b>Does RevenueDot have RevenueCat's charts, like MRR, churn and trial conversion?</b></summary>
 
-Yes. All 42 built-in charts are in the dashboard and at `GET /v2/projects/{project_id}/charts/{chart_name}` with RevenueCat's chart names, parameters and response shape. They follow RevenueCat's definitions: sandbox excluded, USD at the purchase-date rate, refunds on the refund date. The [charts guide](https://revenuedot.app/docs/guides/charts) explains every chart and publishes the SQL behind the core ones.
+Yes. All 43 built-in charts are in the dashboard and at `GET /v2/projects/{project_id}/charts/{chart_name}` with RevenueCat's chart names, parameters and response shape. They follow RevenueCat's definitions: sandbox excluded, USD at the purchase-date rate, refunds on the refund date. The [charts guide](https://revenuedot.app/docs/guides/charts) explains every chart and publishes the SQL behind the core ones.
 </details>
 
 <details><summary><b>Does RevenueDot support RevenueCat paywalls (Paywalls V2) and RevenueCatUI's PaywallView?</b></summary>

@@ -461,7 +461,7 @@ let onboarding = offerings.currentOffering(forPlacement: "onboarding_end")`,
       {
         h2: "What is not built yet?",
         bullets: [
-          "Connect with Stripe (OAuth). Until then you paste a restricted key.",
+          "Connect with Stripe (OAuth) is built but not switched on for RevenueDot Cloud yet. Until it is, you paste a restricted key and a webhook signing secret.",
           "Paddle as a web provider.",
           "An embedded checkout, such as Stripe Elements on your own page, and the purchases-js in-SDK Web Billing checkout. RevenueDot's checkout is a hosted page.",
           "Apple Pay domain registration for a custom domain.",
