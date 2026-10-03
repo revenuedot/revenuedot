@@ -456,6 +456,18 @@ describe("second review: scheduled subscription prices, partial refusals, base p
     expect(s.asc.calls.filter((c) => c.method === "POST" && (c.body as any)?.data?.relationships?.territory?.data?.id === "GBR")).toHaveLength(0);
   });
 
+  it("App Store: a subscription price set in App Store Connect after the upload to the file's new price is not written again, and is audited as unchanged", async () => {
+    s = await storeCatalogServer();
+    const csv = (await download(s, "app_ios", "store_identifiers=focus_pro_monthly")).text;
+    const up = await upload(s, "app_ios", edit(csv, [["focus_pro_monthly", "USA", "10.99"]]));
+    s.asc.subPrices.push({ id: "manual", subscriptionId: s.ids.proMonthly, territory: "USA", tier: s.asc.tierOf(10.99), startDate: s.asc.today(), preserved: false });
+    const r = await commit(s, up.body.id);
+    expect(r.body.rows.map((x: any) => [x.territory, x.status, x.error])).toEqual([["USA", "succeeded", "Already at this price."]]);
+    expect(s.asc.calls.filter((c) => c.method === "POST" && c.path === "/v1/subscriptionPrices")).toHaveLength(0);
+    const audit = await s.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.actionType, "store_price_changed"));
+    expect(audit.map((a) => [(a.additionalData as any).territory, (a.additionalData as any).result])).toEqual([["USA", "unchanged"]]);
+  });
+
   it("App Store: a key refused halfway keeps the prices already written as succeeded, in the rows and the audit log", async () => {
     s = await storeCatalogServer();
     const csv = (await download(s, "app_ios", "store_identifiers=focus_pro_monthly")).text;
