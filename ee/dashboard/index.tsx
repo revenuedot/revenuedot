@@ -6,7 +6,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type List } from "../../apps/dashboard/src/lib/api";
 import { EmptyState, Field, PageHead, useToast } from "../../apps/dashboard/src/components/ui";
 import { OrgShell, TABS, type Tab } from "./shell";
-import { base, errMsg, useOrg, type Org } from "./lib";
+import { base, errMsg, useEnterprise, useOrg, type Org } from "./lib";
+import { LockNote, LockedPanel } from "./locked";
 import { GeneralTab } from "./pages/General";
 import { MembersTab } from "./pages/Members";
 import { ProjectsTab } from "./pages/Projects";
@@ -51,6 +52,9 @@ function CreateOrg({ first }: { first: boolean }) {
 
 function OrgIndex() {
   const [params] = useSearchParams();
+  const ent = useEnterprise();
+  // Cloud Free: organizations are locked, so the page explains the plan instead of offering a form that would be refused.
+  const lock = ent.data?.locked?.find((l) => l.feature === "organizations");
   const list = useQuery({ queryKey: ["orgs"], queryFn: async () => (await api<List<Org>>("/v2/organizations")).items, retry: false });
   const nav = useNavigate();
   if (list.data?.length === 1 && !params.get("new")) return <Navigate to={`/organizations/${list.data[0]!.id}/general`} replace />;
@@ -69,7 +73,7 @@ function OrgIndex() {
             ))}
           </div>
         )}
-        {list.data && <CreateOrg first={!list.data.length} />}
+        {list.data && (lock ? <LockedPanel lock={lock} /> : ent.data && <CreateOrg first={!list.data.length} />)}
         {list.isLoading && <EmptyState title="Loading…" />}
       </div>
     </OrgShell>
@@ -80,14 +84,24 @@ function OrgPage() {
   const { orgId = "", tab = "general" } = useParams();
   const org = useOrg(orgId);
   const t = (TABS.some((x) => x.value === tab) ? tab : "general") as Tab;
-  const title = TABS.find((x) => x.value === t)!.label;
+  const tabDef = TABS.find((x) => x.value === t)!;
+  const title = tabDef.label;
+  const lock = org.data?.locked?.find((l) => "feature" in tabDef && l.feature === tabDef.feature);
+  // After a downgrade the organization itself is locked: it stays readable, and projects can be moved out.
+  const orgLock = org.data?.locked?.find((l) => l.feature === "organizations");
   return (
     <OrgShell org={org.data} title={title}>
       <div className="page narrow">
         <PageHead title={title} sub={org.data ? `${org.data.name} · you are ${org.data.your_role}` : undefined} />
         {org.isLoading && <div className="panel pb subtle">Loading…</div>}
         {org.isError && <div className="banner err" role="alert">The organization could not be loaded: {errMsg(org.error)}</div>}
-        {org.data && (
+        {orgLock && (
+          <div className="banner" role="status" style={{ marginBottom: 16 }}>
+            This organization's owners are on Cloud Free, so it is read-only: you can see it, move projects out and delete it. <LockNote plan={orgLock.plan} />.
+          </div>
+        )}
+        {org.data && lock && <LockedPanel lock={lock} />}
+        {org.data && !lock && (
           <div role="region" aria-label={title}>
             {t === "general" && <GeneralTab org={org.data} />}
             {t === "members" && <MembersTab org={org.data} />}

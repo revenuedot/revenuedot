@@ -4,6 +4,7 @@ import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { eeJobRuns, eeOrgAuditLogs, eeOrgProjects, eeOrganizations, eeSamlAssertions, eeSsoRequests } from "./schema.js";
 import { orgAudit } from "./util.js";
+import { orgsWithPlans, planFeatures, purgeCloudAuditLogs, type CloudPlans } from "./plans.js";
 
 /** Retention an organization may choose, in days (null keeps rows forever, which is the default). */
 export const RETENTION_MIN_DAYS = 30;
@@ -28,8 +29,10 @@ export const PURGE_BATCH = 5000;
  * `budget` rows per call. Organizations without a retention keep everything. Returns the rows deleted and whether
  * older rows are left for the next call.
  */
-export async function purgeAuditLogs(db: DB, now: Date, budget = PURGE_BATCH): Promise<{ deleted: number; more: boolean }> {
-  const orgs = await db.select({ id: eeOrganizations.id, days: eeOrganizations.auditRetentionDays }).from(eeOrganizations).where(isNotNull(eeOrganizations.auditRetentionDays));
+export async function purgeAuditLogs(db: DB, now: Date, budget = PURGE_BATCH, onlyOrgs?: string[]): Promise<{ deleted: number; more: boolean }> {
+  if (onlyOrgs && !onlyOrgs.length) return { deleted: 0, more: false };
+  const orgs = await db.select({ id: eeOrganizations.id, days: eeOrganizations.auditRetentionDays }).from(eeOrganizations)
+    .where(onlyOrgs ? and(isNotNull(eeOrganizations.auditRetentionDays), inArray(eeOrganizations.id, onlyOrgs)) : isNotNull(eeOrganizations.auditRetentionDays));
   let total = 0, more = false;
   for (const o of orgs) {
     const left = budget - total;
@@ -52,13 +55,20 @@ export async function purgeAuditLogs(db: DB, now: Date, budget = PURGE_BATCH): P
   return { deleted: total, more };
 }
 
-export async function enterpriseTick(db: DB, now: Date, features: Set<string>): Promise<Record<string, number>> {
+/**
+ * `cloud`: RevenueDot Cloud. Retention settings apply only to organizations whose plan includes audit retention
+ * (Enterprise), and everything else keeps the plan's `audit_log_days` (90 on Free and Standard; plans.ts).
+ */
+export async function enterpriseTick(db: DB, now: Date, features: Set<string>, cloud?: CloudPlans): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   // Sign-ins that never came back, and SAML assertion ids past their validity (replays of those fail on time anyway).
   await db.delete(eeSsoRequests).where(lt(eeSsoRequests.expiresAt, now));
   await db.delete(eeSamlAssertions).where(lt(eeSamlAssertions.expiresAt, now));
   if (features.has("audit_retention") && (await due(db, "audit_retention", now, HOUR))) {
-    const { deleted, more } = await purgeAuditLogs(db, now);
+    const chooseOwn = cloud ? await orgsWithPlans(db, cloud.plans.filter((p) => planFeatures(p).has("audit_retention")).map((p) => p.id)) : undefined;
+    const own = await purgeAuditLogs(db, now, PURGE_BATCH, chooseOwn);
+    const plan = cloud && own.deleted < PURGE_BATCH ? await purgeCloudAuditLogs(db, now, cloud.plans, PURGE_BATCH - own.deleted) : { deleted: 0, more: false };
+    const deleted = own.deleted + plan.deleted, more = own.more || plan.more || (!!cloud && own.deleted >= PURGE_BATCH);
     if (deleted) out.audit_rows_purged = deleted;
     // Older rows are left: the next tick continues instead of waiting an hour.
     if (more) await db.update(eeJobRuns).set({ lastRunAt: new Date(0) }).where(eq(eeJobRuns.name, "audit_retention"));

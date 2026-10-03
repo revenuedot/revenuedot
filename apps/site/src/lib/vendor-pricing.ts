@@ -52,10 +52,9 @@ export const VENDORS: VendorRule[] = [
   {
     id: "rdcloud",
     name: "RevenueDot Cloud",
-    rule: `Free up to $10,000 a month; planned: ${CLOUD_RATE * 100}% of revenue above $10,000, capped at $${CLOUD_CAP}`,
+    rule: `Free up to $10,000 a month; Cloud Standard: ${CLOUD_RATE * 100}% of revenue above $10,000, capped at $${CLOUD_CAP}`,
     sources: [{ label: "RevenueDot pricing", url: "/pricing" }],
     calc: { from: CLOUD_FREE_UP_TO, rate: CLOUD_RATE, basis: "above", cap: CLOUD_CAP },
-    note: "The paid Cloud plan is planned and not charged yet.",
   },
   {
     id: "rdself",

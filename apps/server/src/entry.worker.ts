@@ -34,7 +34,7 @@ const db = new Proxy({} as DB, {
 });
 
 let app: ReturnType<typeof createApp> | undefined;
-// Enterprise features (ee/, extensions.ts): loaded once per isolate, only when REVENUEDOT_LICENSE_KEY is set.
+// Enterprise features (ee/, extensions.ts): loaded once per isolate. Always on Cloud, where each organization's plan decides.
 let extensions: Promise<ServerExtension[]> | undefined;
 const extensionsFor = (env: Env) => (extensions ??= loadExtensions(env as unknown as Record<string, string | undefined>, { edition: "cloud" }));
 const appFor = (env: Env, ext: ServerExtension[]) => (app ??= createApp({

@@ -75,7 +75,7 @@ export function billingRoutes(deps: Deps) {
     if (!u) return err(c, 401, "authentication_error", "Sign in first.");
     if (writeGuard(c)) return err(c, 403, "authorization_error", "Dashboard requests must come from the dashboard.");
     const b = await c.req.json().catch(() => ({})) as { plan?: string };
-    if (b.plan !== "standard") return err(c, 400, "parameter_error", "Only Cloud Standard has a self-serve checkout. For Enterprise, write to hello@revenuedot.app.");
+    if (b.plan !== "standard") return err(c, 400, "parameter_error", "Only Cloud Standard has a self-serve checkout. For Enterprise, contact sales at https://revenuedot.app/contact-sales.");
     const problem = stripeProblem(deps.billing);
     if (problem) return err(c, 503, "server_error", problem);
     const acct = await accountOf(db, u.id);

@@ -1,15 +1,13 @@
 // RevenueDot Enterprise (ee/LICENSE). Organization settings, General tab: name, licence, seats and billing, delete.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, fmt } from "../../../apps/dashboard/src/lib/api";
 import { ConfirmDialog, CopyField, Field, KeyValue, Tag, useToast } from "../../../apps/dashboard/src/components/ui";
 import { base, errMsg, isAdmin, useEnterprise, type Overview } from "../lib";
+import { FEATURE_LABEL, LockNote } from "../locked";
 
-const FEATURE_LABEL: Record<string, string> = {
-  organizations: "Organizations", custom_roles: "Custom roles", sso: "Single sign-on", scim: "SCIM provisioning",
-  data_location: "Data location", audit_retention: "Audit retention", compliance_exports: "Compliance exports",
-};
+const PLAN_NAME: Record<string, string> = { free: "Cloud Free", standard: "Cloud Standard", enterprise: "Enterprise" };
 
 export function GeneralTab({ org }: { org: Overview }) {
   const qc = useQueryClient();
@@ -56,6 +54,18 @@ export function GeneralTab({ org }: { org: Overview }) {
         </form>
       </section>
 
+      {ent.data?.mode === "cloud" ? (
+        <section className="panel">
+          <div className="ph"><b>Plan</b><Tag tone={org.plan === "free" ? "muted" : "up"}>{PLAN_NAME[org.plan ?? "free"]}</Tag></div>
+          <div className="pb stack">
+            <KeyValue rows={[
+              ["Included", org.features.length ? <span className="hrow" key="f">{org.features.map((f) => <Tag key={f}>{FEATURE_LABEL[f] ?? f}</Tag>)}</span> : "None"],
+              ...org.locked.map((l) => [FEATURE_LABEL[l.feature] ?? l.feature, <span key={l.feature}><LockNote plan={l.plan} /></span>] as [string, ReactNode]),
+            ]} />
+            <p className="section-sub">An organization has the plan of its best-paying owner. Owners change their own plan in Account settings, Billing.</p>
+          </div>
+        </section>
+      ) : (
       <section className="panel">
         <div className="ph"><b>RevenueDot Enterprise licence</b>{ent.data && <Tag tone={ent.data.mode === "licensed" ? "up" : ent.data.mode === "development" ? "info" : "down"}>{ent.data.mode}</Tag>}</div>
         <div className="pb stack">
@@ -65,9 +75,11 @@ export function GeneralTab({ org }: { org: Overview }) {
             ["Features", <span className="hrow" key="f">{ent.data.features.map((f) => <Tag key={f}>{FEATURE_LABEL[f] ?? f}</Tag>)}</span>],
           ]} />}
           {ent.data?.message && <p className="section-sub">{ent.data.message}</p>}
+          {org.locked.length > 0 && <KeyValue rows={org.locked.map((l) => [FEATURE_LABEL[l.feature] ?? l.feature, <span key={l.feature}><LockNote plan={l.plan} /></span>] as [string, ReactNode])} />}
           <p className="section-sub">The server reads the key from <code className="mono">REVENUEDOT_LICENSE_KEY</code>. Talk to <a href="mailto:sales@revenuedot.app" style={{ textDecoration: "underline" }}>sales@revenuedot.app</a> to change features or seats.</p>
         </div>
       </section>
+      )}
 
       {owner && (
         <section className="panel danger">

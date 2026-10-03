@@ -75,7 +75,7 @@ const rdCol = page.columns.indexOf("RevenueDot");
           <thead><tr>{page.price.head.map((h) => <th scope="col">{h}</th>)}</tr></thead>
           <tbody>{page.price.rows.map((r) => <tr>{r.map((c, i) => i === 0 ? <th scope="row" class="num-cell">{c}</th> : <td class="num-cell">{c}</td>)}</tr>)}</tbody>
         </table></div>
-        <p class="tiny caption">Sources: {page.price.sources.map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel="noopener">{s.label}</a></>)}. RevenueDot Cloud paid pricing is planned and not yet available.</p>
+        <p class="tiny caption">Sources: {page.price.sources.map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel="noopener">{s.label}</a></>)}.</p>
       </div>
     </section>
   )}

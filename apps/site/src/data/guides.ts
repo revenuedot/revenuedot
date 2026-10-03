@@ -231,7 +231,7 @@ Purchases.configure(with: Configuration.Builder(withAPIKey: "test_...")
       h2: "What it costs",
       label: "Price",
       paras: [
-        "RevenueDot Cloud is free until your app makes $10,000 a month, counted before Apple and Google take their cut. Above that, the planned price is 0.5% of the revenue above $10,000, capped at $999 a month. It is not charged yet. You can also run RevenueDot on your own servers for free. See [pricing](/pricing).",
+        "RevenueDot Cloud is free until your app makes $10,000 a month, counted before Apple and Google take their cut. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. You can also run RevenueDot on your own servers for free. See [pricing](/pricing).",
         "The stores keep their own commission, usually 15%. See [what Apple and Google charge](/in-app-purchases#what-apple-and-google-charge).",
       ],
     },
@@ -252,7 +252,7 @@ Purchases.configure(with: Configuration.Builder(withAPIKey: "test_...")
     },
     {
       q: "What does RevenueDot cost for a new app?",
-      a: "Nothing until the app makes $10,000 a month in store revenue. Above that, the planned price is 0.5% of the revenue above $10,000, capped at $999 a month, and it is not charged yet. Self-hosting is free.",
+      a: "Nothing until the app makes $10,000 a month in store revenue. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. Self-hosting is free.",
     },
     {
       q: "Can Claude Code or Cursor add subscriptions for me?",
