@@ -27,6 +27,7 @@ export interface AgentEnv {
   // Text bindings in cloudflare.config.ts.
   ELEVENLABS_AGENT_ID?: string;
   ELEVENLABS_PHONE_ID?: string;
+  VOICE_AGENT_OUTBOUND?: string;
 }
 
 export const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -270,8 +271,8 @@ export function meetingSalesEmail(m: Meeting) {
 export function meetingConfirmEmail(m: Meeting) {
   const first = firstName(m.name) || "there";
   const subject = "Your call with RevenueDot";
-  const text = `Hi ${first},\n\nThanks for talking with us. You asked to meet ${m.preferred_times} (${m.timezone}).\n\nI'll send a calendar invite for one of those times shortly. If anything changes, just reply to this email.\n\nKai\nRevenueDot`;
-  const html = `<div style="font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:#0A0A0A"><p>Hi ${esc(first)},</p><p>Thanks for talking with us. You asked to meet ${esc(m.preferred_times)} (${esc(m.timezone)}).</p><p>I'll send a calendar invite for one of those times shortly. If anything changes, just reply to this email.</p><p>Kai<br>RevenueDot</p></div>`;
+  const text = `Hi ${first},\n\nThanks for talking with us. You asked to meet ${m.preferred_times} (${m.timezone}).\n\nI'll send a calendar invite for one of those times shortly. Or pick a slot yourself now: https://calendar.google.com/calendar/appointments/schedules/AcZssZ0IxzgwYNVDGggPF9qelyDSh51L5UzFNcrDE2u3eMTwqpLfGsrRxjx2TxY-WyehZVX1ns8MhQWg\n\nIf anything changes, just reply to this email.\n\nKai\nRevenueDot`;
+  const html = `<div style="font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:#0A0A0A"><p>Hi ${esc(first)},</p><p>Thanks for talking with us. You asked to meet ${esc(m.preferred_times)} (${esc(m.timezone)}).</p><p>I'll send a calendar invite for one of those times shortly. Or <a href="https://calendar.google.com/calendar/appointments/schedules/AcZssZ0IxzgwYNVDGggPF9qelyDSh51L5UzFNcrDE2u3eMTwqpLfGsrRxjx2TxY-WyehZVX1ns8MhQWg">pick a slot yourself now</a>.</p><p>If anything changes, just reply to this email.</p><p>Kai<br>RevenueDot</p></div>`;
   return { subject, text, html };
 }
 
@@ -287,6 +288,7 @@ export const INFO_LINKS: Record<string, [string, string]> = {
   sdks: ["SDKs", "https://revenuedot.app/docs/sdks"],
   enterprise: ["Enterprise: talk to sales", "https://revenuedot.app/contact-sales"],
   signup: ["Start free on RevenueDot Cloud", "https://app.revenuedot.app/signup"],
+  book_call: ["Pick a time for a 30-minute call with Kai", "https://calendar.google.com/calendar/appointments/schedules/AcZssZ0IxzgwYNVDGggPF9qelyDSh51L5UzFNcrDE2u3eMTwqpLfGsrRxjx2TxY-WyehZVX1ns8MhQWg"],
 };
 
 async function sendInfo(request: Request, env: AgentEnv): Promise<Response> {
@@ -505,6 +507,7 @@ export function callEmail(p: PostCall) {
 // ---------------------------------------------------------------------------------------------------------------------
 // Outbound "speed to lead": the agent calls a new hot or warm lead right after the form, during their day.
 export function outboundPlan(l: Lead, s: Score, env: AgentEnv, now = new Date()): { call: boolean; note: string } {
+  if (env.VOICE_AGENT_OUTBOUND !== "on") return { call: false, note: "Not called: automatic calls are off. They were shown your booking page to pick a time." };
   if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_AGENT_ID || !env.ELEVENLABS_PHONE_ID) return { call: false, note: "Not called: the voice agent is not set up." };
   if (s !== "hot" && s !== "warm") return { call: false, note: `Not called: ${SCORE_LABEL[s]} leads are not called automatically.` };
   const zones = zonesFor(l.phone);

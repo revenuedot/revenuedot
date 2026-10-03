@@ -39,6 +39,8 @@ export default defineConfig({
       ELEVENLABS_API_KEY: bindings.secret(),
       ELEVENLABS_AGENT_ID: bindings.text("agent_0801m3xdj6pqffnshp716p97jccc"),
       ELEVENLABS_PHONE_ID: bindings.text("phnum_9001m3zasth9e6r8j4mtkc4m3pfh"),
+      // "on" makes the agent call new hot and warm leads right after the form. Off: they book a time on the thank-you page instead.
+      VOICE_AGENT_OUTBOUND: bindings.text("off"),
     },
   },
 });

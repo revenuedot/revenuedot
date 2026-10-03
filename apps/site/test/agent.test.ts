@@ -235,11 +235,12 @@ describe("agent postcall", () => {
 });
 
 describe("outbound speed to lead", () => {
-  const keys = { ELEVENLABS_API_KEY: "xi", ELEVENLABS_AGENT_ID: "agent_x", ELEVENLABS_PHONE_ID: "phnum_x" };
+  const keys = { VOICE_AGENT_OUTBOUND: "on", ELEVENLABS_API_KEY: "xi", ELEVENLABS_AGENT_ID: "agent_x", ELEVENLABS_PHONE_ID: "phnum_x" };
   const noon = new Date("2026-10-02T19:00:00Z"); // noon in California, 3pm in New York
   it("calls only hot or warm leads, when set up, inside 8am to 8pm their time", () => {
     const yes = lead();
     expect(outboundPlan(yes, "hot", keys as never, noon).call).toBe(true);
+    expect(outboundPlan(yes, "hot", { ...keys, VOICE_AGENT_OUTBOUND: "off" } as never, noon)).toEqual({ call: false, note: "Not called: automatic calls are off. They were shown your booking page to pick a time." });
     expect(outboundPlan(yes, "warm", keys as never, noon).call).toBe(true);
     expect(outboundPlan(yes, "hot", { ...keys, ELEVENLABS_API_KEY: undefined } as never, noon)).toEqual({ call: false, note: "Not called: the voice agent is not set up." });
     expect(outboundPlan(yes, "nurture", keys as never, noon).note).toMatch(/Nurture leads/);
