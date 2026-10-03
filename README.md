@@ -17,7 +17,7 @@ It works with the RevenueCat SDK your app already ships, so you switch by changi
 [![Server: AGPL-3.0](https://img.shields.io/badge/server-AGPL--3.0-0A0A0A)](LICENSING.md)
 [![SDKs: MIT](https://img.shields.io/badge/SDKs-MIT-0A0A0A)](#sdks)
 [![Works with the RevenueCat SDK](https://img.shields.io/badge/works%20with-the%20RevenueCat%20SDK-0A0A0A)](#compatibility)
-[![CI](https://img.shields.io/github/actions/workflow/status/revenuedot/revenuedot/ci.yml?branch=main&label=CI&color=0A0A0A)](https://github.com/revenuedot/revenuedot/actions/workflows/ci.yml)
+[![Deploy](https://img.shields.io/github/actions/workflow/status/revenuedot/revenuedot/deploy.yml?branch=main&label=deploy&color=0A0A0A)](https://github.com/revenuedot/revenuedot/actions/workflows/deploy.yml)
 [![npm: revenuedot CLI](https://img.shields.io/npm/v/revenuedot?label=revenuedot%20CLI&color=0A0A0A)](https://www.npmjs.com/package/revenuedot)
 [![GitHub stars](https://img.shields.io/github/stars/revenuedot/revenuedot?style=flat&color=F7B500)](https://github.com/revenuedot/revenuedot/stargazers)
 
