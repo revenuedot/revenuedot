@@ -35,4 +35,4 @@ datafast analytics realtime --website <websiteId>
 datafast analytics goals --website <websiteId>
 datafast visitors list --completed-goal signup_completed --period today
 ```
-Bot traffic: the Bot traffic card in the DataFast dashboard. Test with `curl -A "GPTBot/1.2" https://revenuedot.app/pricing`.
+Bot traffic: the Bot traffic card in the DataFast dashboard. The allowance (100,000 requests, plus 1,000,000 per $9 pack) is per account, shared with blink.new; when it is used up DataFast answers `crawler_limit_reached` and drops the request until the cycle resets (`GET /api/v1/admin/bot-traffic/usage` shows it). Test with `curl -A "GPTBot/1.2" https://revenuedot.app/pricing`.
