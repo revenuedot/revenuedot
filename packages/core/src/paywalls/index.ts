@@ -6,3 +6,4 @@ export * from "./gallery.js";
 export * from "./ai.js";
 export * from "./locales.js";
 export * from "./editor.js";
+export * from "./designer/index.js";

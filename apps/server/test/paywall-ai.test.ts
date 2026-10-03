@@ -1,5 +1,7 @@
+// The paywall AI's providers (services/paywall-ai.ts). Every provider's fetch or model is replaced: nothing is called.
 import { describe, expect, it } from "vitest";
-import { anthropicModel, modelFromEnv, openAiModel, workersAiModel } from "../src/services/paywall-ai.js";
+import { MockLanguageModelV4 } from "ai/test";
+import { aiSdkModel, anthropicModel, gatewayModel, openAiModel, paywallModelFromEnv, workersAiModel } from "../src/services/paywall-ai.js";
 
 /** A fetch that records the request and answers `body` with `status`. */
 const fakeFetch = (status: number, body: unknown) => {
@@ -10,40 +12,90 @@ const fakeFetch = (status: number, body: unknown) => {
   }) as unknown as typeof fetch;
   return { f, calls };
 };
+const SCHEMA = { type: "object", properties: { a: { type: "string" } }, required: ["a"], additionalProperties: false };
+const usage = { inputTokens: { total: 12, noCache: 12, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 7, text: 7, reasoning: 0 } };
+/** An AI SDK model that answers `text` and records each call's options. */
+const mockModel = (text: string, finish: "stop" | "length" = "stop") => {
+  const calls: Record<string, unknown>[] = [];
+  const m = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      calls.push(options as unknown as Record<string, unknown>);
+      return { content: [{ type: "text", text }], finishReason: { unified: finish, raw: finish }, usage, warnings: [] };
+    },
+  });
+  return { m, calls };
+};
 
 describe("paywall AI providers", () => {
-  it("OpenAI: caps the output, times out, asks for JSON and reads the answer", async () => {
-    const { f, calls } = fakeFetch(200, { choices: [{ message: { content: "{\"a\":1}" } }] });
-    expect(await openAiModel("sk-test", undefined, f, "https://llm.example.com/v1").complete("sys", "user")).toBe("{\"a\":1}");
+  it("picks the AI Gateway, then OpenAI, then Workers AI, then Anthropic, else none", () => {
+    const workersAi = { run: async () => ({}) };
+    expect(paywallModelFromEnv({ AI_GATEWAY_API_KEY: "g", OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a" }, { workersAi }))
+      .toMatchObject({ provider: "Vercel AI Gateway", model: "openai/gpt-6-luna" });
+    expect(paywallModelFromEnv({ OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a" }, { workersAi })).toMatchObject({ provider: "OpenAI", model: "gpt-6-luna" });
+    expect(paywallModelFromEnv({ ANTHROPIC_API_KEY: "a" }, { workersAi })).toMatchObject({ provider: "Workers AI", model: "@cf/moonshotai/kimi-k2.6" });
+    expect(paywallModelFromEnv({ ANTHROPIC_API_KEY: "a" })).toMatchObject({ provider: "Anthropic" });
+    expect(paywallModelFromEnv({ AI_GATEWAY_API_KEY: "  ", OPENAI_API_KEY: " " })).toBeUndefined();
+  });
+
+  it("REVENUEDOT_PAYWALL_MODEL overrides the model: a gateway model id with the gateway", () => {
+    expect(paywallModelFromEnv({ AI_GATEWAY_API_KEY: "g", REVENUEDOT_PAYWALL_MODEL: "anthropic/claude-opus-5.5" })?.model).toBe("anthropic/claude-opus-5.5");
+    expect(paywallModelFromEnv({ ANTHROPIC_API_KEY: "a", REVENUEDOT_AI_MODEL: "m" })?.model).toBe("m");
+  });
+
+  it("AI Gateway: authenticates with the key and asks for the schema as structured output", async () => {
+    const { f, calls } = fakeFetch(400, { error: { message: "test stops here", type: "invalid_request_error" } });
+    const m = paywallModelFromEnv({ AI_GATEWAY_API_KEY: "test-gateway-key", REVENUEDOT_PAYWALL_REASONING: "medium" }, { fetch: f })!;
+    await expect(m.json({ name: "paywall_brief", system: "sys", user: "u", schema: SCHEMA })).rejects.toThrow(/test stops here/);
+    const h = new Headers(calls[0]!.init.headers as HeadersInit);
+    expect(new URL(calls[0]!.url).host).toBe("ai-gateway.vercel.sh");
+    expect(h.get("authorization")).toBe("Bearer test-gateway-key");
+    expect(h.get("ai-language-model-id")).toBe("openai/gpt-6-luna");
+    expect(calls[0]!.json).toMatchObject({
+      responseFormat: { type: "json", name: "paywall_brief", schema: SCHEMA },
+      providerOptions: { openai: { reasoningEffort: "medium", strictJsonSchema: true } },
+      prompt: [{ role: "system", content: "sys" }, { role: "user" }],
+    });
+    expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
+    expect(gatewayModel("k", { model: "openai/gpt-6-sol" })).toMatchObject({ provider: "Vercel AI Gateway", model: "openai/gpt-6-sol" });
+  });
+
+  it("AI SDK models: JSON answers become the value with usage; free text passes through", async () => {
+    const { m, calls } = mockModel("{\"a\":\"x\"}");
+    const model = aiSdkModel(m, "Vercel AI Gateway", "openai/gpt-6-luna");
+    expect(await model.json({ name: "n", system: "s", user: "u", schema: SCHEMA, maxTokens: 100 })).toEqual({ value: { a: "x" }, usage: { input: 12, output: 7 } });
+    expect(calls[0]).toMatchObject({ maxOutputTokens: 16_100, responseFormat: { type: "json", name: "n" } });
+    expect(await aiSdkModel(mockModel("hello").m, "P", "m").complete("s", "u")).toBe("hello");
+  });
+
+  it("AI SDK models: a cut-off or non-JSON answer throws (the designer reports the step)", async () => {
+    await expect(aiSdkModel(mockModel("{\"a\":\"x\"}", "length").m, "P", "m").json({ name: "n", system: "s", user: "u", schema: SCHEMA })).rejects.toThrow();
+    await expect(aiSdkModel(mockModel("sorry").m, "P", "m").json({ name: "n", system: "s", user: "u", schema: SCHEMA })).rejects.toThrow();
+    await expect(aiSdkModel(mockModel("  ").m, "P", "m").complete("s", "u")).rejects.toThrow(/no answer/);
+  });
+
+  it("OpenAI direct: strict JSON schema, reasoning effort, base URL", async () => {
+    const { f, calls } = fakeFetch(200, { choices: [{ message: { content: "{\"a\":\"x\"}" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 } });
+    const m = openAiModel("sk-test", { fetch: f, baseUrl: "https://llm.example.com/v1/" });
+    expect(await m.json({ name: "n", system: "s", user: "u", schema: SCHEMA })).toEqual({ value: { a: "x" }, usage: { input: 3, output: 2 } });
     expect(calls[0]!.url).toBe("https://llm.example.com/v1/chat/completions");
-    expect(calls[0]!.json).toMatchObject({ model: "gpt-4.1-mini", max_tokens: 4096, response_format: { type: "json_object" } });
-    expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
+    expect(calls[0]!.json).toMatchObject({ model: "gpt-6-luna", reasoning_effort: "low", response_format: { type: "json_schema", json_schema: { name: "n", strict: true, schema: SCHEMA } } });
+    await expect(openAiModel("k", { fetch: fakeFetch(429, { error: { message: "slow down" } }).f }).complete("s", "u")).rejects.toThrow(/429: slow down/);
   });
 
-  it("Anthropic: caps the output, times out and joins the text blocks", async () => {
-    const { f, calls } = fakeFetch(200, { content: [{ type: "text", text: "{\"a\"" }, { type: "text", text: ":1}" }] });
-    expect(await anthropicModel("key", "claude-test", f).complete("sys", "user")).toBe("{\"a\":1}");
-    expect(calls[0]!.json).toMatchObject({ model: "claude-test", max_tokens: 4096, system: "sys" });
-    expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it("provider errors throw with the status (the route answers 502)", async () => {
-    await expect(openAiModel("k", undefined, fakeFetch(429, { error: { message: "slow down" } }).f).complete("s", "u")).rejects.toThrow(/429: slow down/);
+  it("Anthropic: a forced tool call whose input is the answer", async () => {
+    const { f, calls } = fakeFetch(200, { content: [{ type: "tool_use", input: { a: "x" } }], stop_reason: "tool_use" });
+    expect((await anthropicModel("key", "claude-test", f).json({ name: "n", system: "s", user: "u", schema: SCHEMA })).value).toEqual({ a: "x" });
+    expect(calls[0]!.json).toMatchObject({ model: "claude-test", tool_choice: { type: "tool", name: "n" }, tools: [{ name: "n", input_schema: SCHEMA }] });
     await expect(anthropicModel("k", undefined, fakeFetch(200, { content: [] }).f).complete("s", "u")).rejects.toThrow(/no answer/);
   });
 
-  it("Workers AI: caps the output and accepts a string or an already-parsed answer", async () => {
-    const inputs: unknown[] = [];
-    const ai = (response: unknown) => ({ run: async (_m: string, input: unknown) => { inputs.push(input); return { response }; } });
-    expect(await workersAiModel(ai("{}")).complete("s", "u")).toBe("{}");
-    expect(await workersAiModel(ai({ a: 1 })).complete("s", "u")).toBe("{\"a\":1}");
-    expect(inputs[0]).toMatchObject({ max_tokens: 4096 });
-    await expect(workersAiModel(ai(undefined)).complete("s", "u")).rejects.toThrow();
-  });
-
-  it("self-host picks OpenAI, then Anthropic, else none", () => {
-    expect(modelFromEnv({ OPENAI_API_KEY: "a", ANTHROPIC_API_KEY: "b" })?.provider).toBe("OpenAI");
-    expect(modelFromEnv({ ANTHROPIC_API_KEY: "b", REVENUEDOT_AI_MODEL: "m" })).toMatchObject({ provider: "Anthropic", model: "m" });
-    expect(modelFromEnv({ OPENAI_API_KEY: "  " })).toBeUndefined();
+  it("Workers AI: a forced function call; arguments as text or parsed", async () => {
+    const inputs: Record<string, unknown>[] = [];
+    const ai = (out: unknown) => ({ run: async (_m: string, input: Record<string, unknown>) => { inputs.push(input); return out; } });
+    const r = await workersAiModel(ai({ choices: [{ message: { tool_calls: [{ function: { arguments: "{\"a\":\"x\"}" } }] }, finish_reason: "tool_calls" }] })).json({ name: "n", system: "s", user: "u", schema: SCHEMA });
+    expect(r.value).toEqual({ a: "x" });
+    expect(inputs[0]).toMatchObject({ tool_choice: { type: "function", function: { name: "n" } }, reasoning_effort: "none" });
+    expect(await workersAiModel(ai({ response: { a: 1 } })).complete("s", "u")).toBe("{\"a\":1}");
+    await expect(workersAiModel(ai({ choices: [{ message: {}, finish_reason: "length" }] })).json({ name: "n", system: "s", user: "u", schema: SCHEMA })).rejects.toThrow(/output tokens/);
   });
 });

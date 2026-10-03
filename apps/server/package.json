@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.41",
+    "@ai-sdk/gateway": "4.0.48",
     "@ai-sdk/openai": "4.0.46",
     "@ai-sdk/provider": "4.0.7",
     "@cloudflare/ai-chat": "0.12.0",

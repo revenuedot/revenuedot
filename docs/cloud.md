@@ -106,6 +106,12 @@ The response-signing root key is the secret `REVENUEDOT_SIGNING_KEY` (public key
 `pnpm deploy:cloud --secrets-file <file>`; later versions keep it. The master copy is kept in the team's password
 manager, not on disk. To rotate it, write a new key to a temp file, pass it with the same flag, then delete the file.
 
+"Generate with AI" on paywalls and RevenueDot AI use the Vercel AI Gateway when the Worker has the secret
+`AI_GATEWAY_API_KEY` (paywalls: `openai/gpt-6-luna`; the assistant: `anthropic/claude-opus-5.5`); without it they fall
+back to Workers AI. The deploy script puts it on the Worker after each deploy when the variable is set (CI: the GitHub
+`production` secret `AI_GATEWAY_API_KEY`; a manual run: `prod.env`), with the per-secret API, so other secrets stay. To
+rotate it, update the GitHub secret and redeploy.
+
 The site and the MCP server also deploy from CI: a push to `main` in [revenuedot/docs](https://github.com/revenuedot/docs)
 runs its `deploy-site.yml` (docs checks, then the site), and a push to `main` in
 [revenuedot/mcp](https://github.com/revenuedot/mcp) runs its `ci.yml` (tests, deploy, then a live check). By hand:

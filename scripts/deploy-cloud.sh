@@ -10,6 +10,8 @@
 # Usage: pnpm deploy:cloud [--dry-run] [--secrets-file "$REVENUEDOT_SIGNING_KEY_FILE"]
 #   --secrets-file  .env file with REVENUEDOT_SIGNING_KEY=..., uploaded with the version. Needed on the first deploy
 #                   only; later versions keep the secret.
+# AI_GATEWAY_API_KEY, when set (CI: the GitHub "production" secret; a manual run: prod.env), is put on the Worker as a
+# secret after the deploy, by name only, so "Generate with AI" uses the Vercel AI Gateway. Other secrets are untouched.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -82,3 +84,13 @@ echo "4/4 cf deploy ${DRY_RUN}"
 DEPLOY_ARGS=($DRY_RUN)
 [[ -n "$SECRETS_FILE" ]] && DEPLOY_ARGS+=(--secrets-file "$SECRETS_FILE")
 "${CF[@]}" deploy ${DEPLOY_ARGS[@]+"${DEPLOY_ARGS[@]}"}
+
+# One secret by name: the per-secret API changes only AI_GATEWAY_API_KEY and keeps every other secret of the Worker.
+# The value goes in a temp file (mode 600), never on the command line or in the log.
+if [[ -z "$DRY_RUN" && -n "${AI_GATEWAY_API_KEY:-}" ]]; then
+  echo "Worker secret AI_GATEWAY_API_KEY"
+  secret=$(mktemp); trap 'rm -f "$secret"' EXIT; chmod 600 "$secret"
+  node -e 'process.stdout.write(JSON.stringify({name:"AI_GATEWAY_API_KEY",type:"secret_text",text:process.env.AI_GATEWAY_API_KEY}))' > "$secret"
+  "${CF[@]}" workers secrets update AI_GATEWAY_API_KEY --worker revenuedot --body "@$secret" > /dev/null
+  rm -f "$secret"
+fi

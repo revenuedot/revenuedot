@@ -21,9 +21,11 @@ services:
       # Seals integration and data export credentials at rest (see .env.example).
       REVENUEDOT_ENCRYPTION_KEY: ${REVENUEDOT_ENCRYPTION_KEY:-}
       # "Generate with AI" on paywalls and RevenueDot AI, the assistant: off without a key (see .env.example).
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      REVENUEDOT_PAYWALL_MODEL: ${REVENUEDOT_PAYWALL_MODEL:-}
       REVENUEDOT_AI_MODEL: ${REVENUEDOT_AI_MODEL:-}
       REVENUEDOT_ASSISTANT_MODEL: ${REVENUEDOT_ASSISTANT_MODEL:-}
       REVENUEDOT_ASSISTANT_CAPS: ${REVENUEDOT_ASSISTANT_CAPS:-}

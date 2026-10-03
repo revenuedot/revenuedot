@@ -13,7 +13,14 @@ export interface Paywall {
 }
 export interface TemplateMeta { id: string; name: string; description: string; screens: number; purchase_method: "in_app" | "web"; packages: number; tiers: number; tags: string[]; evidence: string }
 export interface AiStatus { available: boolean; provider: string | null; model: string | null; max_prompt_length: number }
-export interface Generation { name: string | null; components_config: PaywallDoc["components_config"]; components_localizations: PaywallDoc["components_localizations"]; default_locale: string; fixes: string[]; warnings: { path: string; message: string }[]; provider: string; model: string }
+export interface Generation { name: string | null; components_config: PaywallDoc["components_config"]; components_localizations: PaywallDoc["components_localizations"]; default_locale: string; fixes: string[];
+  /** What the checker still flags in the result, and the designer's notes for the developer (what to set up in the stores …). */
+  warnings: { code: string; severity: "error" | "warning"; message: string }[]; notes: string[];
+  /** Packages that have the free trial the brief asked for, and its length: the preview shows the trial on those only. */
+  preview_trials: Record<string, string>;
+  /** The provider and model that answered, e.g. "Vercel AI Gateway" and "openai/gpt-6-luna". */
+  provider: string; model: string;
+}
 export interface MediaAsset { id: string; object_name: string; original_name: string; original_width: number | null; original_height: number | null; asset_base_url: string }
 
 export const status = (p: Paywall): [string, "up" | "gold" | "muted"] =>

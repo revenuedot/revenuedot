@@ -1,7 +1,7 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
-  PAYWALL_AI_MAX_PROMPT, newId, paywallAiMessages, paywallFromModel, paywallTemplate, paywallTemplateList, repairPaywall, validatePaywall, type PaywallValidation,
+  DesignerError, PAYWALL_AI_MAX_PROMPT, newId, runDesigner, paywallTemplate, paywallTemplateList, repairPaywall, validatePaywall, type PackageFacts, type PaywallValidation, type StepEvent,
 } from "@revenuedot/core";
 import { schema, type PaywallContent } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
@@ -92,6 +92,24 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     const rows = await db.select({ key: schema.packages.lookupKey, name: schema.packages.displayName, position: schema.packages.position }).from(schema.packages).where(eq(schema.packages.offeringId, offeringId));
     return rows.sort((a, b) => a.position - b.position).map((r) => ({ id: r.key, label: r.name }));
   };
+  /** What the AI designer knows about an offering's packages: each package's first product and its Test Store price. */
+  const packageFactsOf = async (offeringId: string): Promise<PackageFacts[]> => {
+    const pk = await db.select({ id: schema.packages.id, key: schema.packages.lookupKey, name: schema.packages.displayName, position: schema.packages.position })
+      .from(schema.packages).where(eq(schema.packages.offeringId, offeringId));
+    if (!pk.length) return [];
+    const links = await db.select({ packageId: schema.packageProducts.packageId, p: schema.products }).from(schema.packageProducts)
+      .innerJoin(schema.products, eq(schema.packageProducts.productId, schema.products.id)).where(inArray(schema.packageProducts.packageId, pk.map((x) => x.id)));
+    return pk.sort((a, b) => a.position - b.position).map((x) => {
+      const p = links.find((l) => l.packageId === x.id)?.p;
+      return {
+        id: x.key, label: x.name,
+        product: p ? {
+          store_identifier: p.storeIdentifier, name: p.displayName, type: p.type, duration: p.duration,
+          price: p.testStorePriceMicros != null && p.testStorePriceCurrency ? { amount: p.testStorePriceMicros / 1_000_000, currency: p.testStorePriceCurrency } : null,
+        } : null,
+      };
+    });
+  };
   /** Paywall images and icons are served from the host apps talk to (the API host on Cloud). */
   const assetOrigin = (c: V2Context) => deps.apiUrl ?? publicOrigin(c);
   const iconBase = (c: V2Context) => `${assetOrigin(c)}/assets/icons`;
@@ -148,10 +166,9 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
 
   r.post(`${P}/generate`, scope("project_configuration:offerings:read_write"), async (c) => {
     const projectId = c.get("projectId");
-    if (!deps.ai) throw new V2Error(503, "server_error", "No language model is configured. On a self-hosted server set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
+    if (!deps.ai) throw new V2Error(503, "server_error", "No language model is configured. On a self-hosted server set AI_GATEWAY_API_KEY, OPENAI_API_KEY or ANTHROPIC_API_KEY.");
     const b = await body(c, GenerateIn);
     const offering = b.offering_id ? (await offeringOf(projectId, b.offering_id)).offering : null;
-    const packages = offering ? (await packagesOf(offering.id)).map((p) => p.id) : [];
     const now = deps.now();
     if (!(await hit(db, `paywall-ai:${projectId}`, 1, 5_000, now))) throw new V2Error(429, "rate_limit_error", "One paywall generation every 5 seconds. Try again in a moment.", undefined, true);
     if (!(await hit(db, `paywall-ai-day:${projectId}`, 60, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "This project has used its 60 paywall generations for today.", undefined, true);
@@ -159,21 +176,25 @@ export function paywallRoutes(r: V2Router, deps: Deps) {
     const principal = c.get("principal");
     if (principal.kind === "user" && !(await hit(db, `paywall-ai-user:${principal.userId}`, 100, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "You have used your 100 paywall generations for today.", undefined, true);
     if (!(await hit(db, "paywall-ai-server", 5_000, 86_400_000, now))) throw new V2Error(429, "rate_limit_error", "Paywall generation is busy today. Try again tomorrow.", undefined, true);
-    const req = { prompt: b.prompt, appName: b.app_name, brandColors: b.brand_colors, packages: packages.length ? packages : undefined, locale: b.locale };
-    const m = paywallAiMessages(req);
-    let answer: string;
-    try { answer = await deps.ai.complete(m.system, m.user); } catch (e) {
-      console.error("paywall AI", e instanceof Error ? e.message : e);
-      throw new V2Error(502, "server_error", "The language model did not answer. Try again.", undefined, true);
-    }
+    const facts = offering ? await packageFactsOf(offering.id) : [];
+    const input = {
+      prompt: b.prompt, appName: b.app_name, brandColors: b.brand_colors, locale: b.locale,
+      offering: { offering: offering ? { id: offering.id, lookup_key: offering.lookupKey, display_name: offering.displayName } : null, packages: facts },
+    };
+    const steps: StepEvent[] = [];
     let out;
-    try { out = paywallFromModel(answer, req, iconBase(c)); } catch {
-      throw new V2Error(502, "server_error", "The language model's answer was not a paywall. Try again or reword the request.", undefined, true);
+    try {
+      out = await runDesigner(input, deps.ai, { iconBaseUrl: iconBase(c), now: now.getTime(), signal: c.req.raw.signal, onStep: (e) => { steps.push(e); } });
+    } catch (e) {
+      console.error("paywall AI", e instanceof DesignerError ? e.step : "", e instanceof Error ? e.message : e);
+      if (e instanceof DesignerError && e.step === "check") throw new V2Error(502, "server_error", e.message, undefined, true);
+      throw new V2Error(502, "server_error", "The language model did not finish the paywall. Try again.", undefined, true);
     }
-    if (!out.validation.valid) throw new V2Error(502, "server_error", `The generated paywall is not valid (${out.validation.errors[0]!.path}: ${out.validation.errors[0]!.message}). Try again.`, undefined, true);
     return c.json({
       object: "paywall_generation", name: out.name, components_config: out.doc.components_config, components_localizations: out.doc.components_localizations, default_locale: out.doc.default_locale,
-      fixes: out.fixes, warnings: out.validation.warnings, provider: deps.ai.provider, model: deps.ai.model,
+      fixes: out.fixes, warnings: out.warnings.map((w) => ({ code: w.code, severity: w.severity, message: w.message })), notes: out.notes, preview_trials: out.previewTrials,
+      steps: steps.filter((e) => e.status !== "running").map((e) => ({ id: e.id, status: e.status, detail: e.detail ?? null })),
+      provider: deps.ai.provider, model: deps.ai.model,
     });
   });
 

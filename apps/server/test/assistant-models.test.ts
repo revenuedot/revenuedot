@@ -12,6 +12,22 @@ describe("assistant models", () => {
     expect(assistantModelFromEnv({ ANTHROPIC_API_KEY: " " })).toBeUndefined();
   });
 
+  it("AI_GATEWAY_API_KEY: the Vercel AI Gateway (Claude Opus 5.5) before every other provider; the override is a gateway id", async () => {
+    expect(assistantModelFromEnv({ AI_GATEWAY_API_KEY: "g", ANTHROPIC_API_KEY: "a", OPENAI_API_KEY: "o" })).toMatchObject({ provider: "Vercel AI Gateway", model: "anthropic/claude-opus-5.5", vision: true });
+    expect(assistantModelFromEnv({ AI_GATEWAY_API_KEY: "g", REVENUEDOT_ASSISTANT_MODEL: "openai/gpt-6-astra" })?.model).toBe("openai/gpt-6-astra");
+    const urls: string[] = [];
+    const auth: (string | null)[] = [];
+    const f = (async (url: string, init: RequestInit) => {
+      urls.push(url); auth.push(new Headers(init.headers as HeadersInit).get("authorization"));
+      return new Response(JSON.stringify({ error: { message: "test stops here", type: "invalid_request_error" } }), { status: 400, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+    const m = assistantModelFromEnv({ AI_GATEWAY_API_KEY: "test-gateway-key" }, f)!;
+    const r = streamText({ model: m.languageModel, prompt: "hi", maxRetries: 0 });
+    await r.consumeStream({ onError: () => {} });
+    expect(new URL(urls[0]!).host).toBe("ai-gateway.vercel.sh");
+    expect(auth[0]).toBe("Bearer test-gateway-key");
+  });
+
   it("the Anthropic request names the model and sends no temperature", async () => {
     const bodies: Record<string, unknown>[] = [];
     const f = (async (_url: string, init: RequestInit) => {

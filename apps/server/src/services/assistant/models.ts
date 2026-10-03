@@ -1,5 +1,6 @@
 import type { LanguageModel } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createWorkersAI } from "workers-ai-provider";
 
@@ -8,6 +9,8 @@ import { createWorkersAI } from "workers-ai-provider";
  * 2026-10-01, overridable with REVENUEDOT_ASSISTANT_MODEL:
  * - Cloud: Workers AI `@cf/moonshotai/kimi-k2.6` through the `AI` binding (1T parameters, 262k context, function calling
  *   and vision; no key, billed to the Circo account).
+ * - AI_GATEWAY_API_KEY (Cloud or self-host) → Vercel AI Gateway with Claude Opus 5.5 (`anthropic/claude-opus-5.5`); the
+ *   override is then a gateway model id. It wins over every other provider; without it nothing below changes.
  * - Self-host: ANTHROPIC_API_KEY → Claude Opus 5.5 (`claude-opus-5-5`), else OPENAI_API_KEY → GPT-6 Astra (`gpt-6-astra`,
  *   OPENAI_BASE_URL for compatible gateways).
  * Without one the assistant is hidden. No temperature is sent (Opus 5.5 rejects it) and tool choice stays automatic.
@@ -24,6 +27,7 @@ export interface AssistantModel {
 export const WORKERS_AI_ASSISTANT_MODEL = "@cf/moonshotai/kimi-k2.6";
 export const ANTHROPIC_ASSISTANT_MODEL = "claude-opus-5-5";
 export const OPENAI_ASSISTANT_MODEL = "gpt-6-astra";
+export const GATEWAY_ASSISTANT_MODEL = "anthropic/claude-opus-5.5";
 
 /** The Workers AI binding, typed only as far as the provider needs (the shared tsconfig has no Workers types). */
 export type WorkersAiBinding = { run(model: string, input: unknown, options?: unknown): Promise<unknown> };
@@ -33,9 +37,14 @@ export function workersAiAssistantModel(binding: WorkersAiBinding, model = WORKE
   return { provider: "Workers AI", model, languageModel: workersai(model as never), vision: true };
 }
 
-/** Self-host: Anthropic, then OpenAI, else none. `f` lets tests check the requests without calling a provider. */
+/** The AI Gateway, then Anthropic, then OpenAI, else none. `f` lets tests check the requests without calling a provider. */
 export function assistantModelFromEnv(env: Record<string, string | undefined>, f?: typeof fetch): AssistantModel | undefined {
   const override = env.REVENUEDOT_ASSISTANT_MODEL?.trim() || undefined;
+  const gatewayKey = env.AI_GATEWAY_API_KEY?.trim();
+  if (gatewayKey) {
+    const model = override ?? GATEWAY_ASSISTANT_MODEL;
+    return { provider: "Vercel AI Gateway", model, languageModel: createGateway({ apiKey: gatewayKey, ...(f ? { fetch: f } : {}) })(model), vision: true };
+  }
   const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
   if (anthropicKey) {
     const model = override ?? ANTHROPIC_ASSISTANT_MODEL;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  PAYWALL_ICONS, PAYWALL_TEMPLATES, blankPaywall, extractJson, fillLocales, forEachComponent, paywallAiMessages, paywallFromModel, paywallIconSvg,
+  PAYWALL_ICONS, PAYWALL_TEMPLATES, blankPaywall, extractJson, fillLocales, forEachComponent, paywallFromModel, paywallIconSvg,
   paywallTemplateList, repairPaywall, uiLocalizations, usedStringKeys, validatePaywall, variableWords, type Json,
 } from "../src/index.js";
 
@@ -191,11 +191,6 @@ describe("repair (AI output, pasted JSON)", () => {
     expect(extractJson('{"components": [{"type": "text", "text": "Hel')).toEqual({ components: [{ type: "text", text: "Hel" }] });
     expect(extractJson("no json")).toBeNull();
     expect(() => paywallFromModel("sorry, I cannot", { prompt: "x" }, ICONS)).toThrow(/JSON/);
-  });
-  it("builds a prompt with the offering, colours and the icon list", () => {
-    const m = paywallAiMessages({ prompt: "fitness app", appName: "Lift", brandColors: ["#ff0000"], packages: ["$rc_annual"], locale: "es_ES" });
-    expect(m.system).toContain("dumbbell");
-    expect(m.user).toMatch(/Lift[\s\S]*#ff0000[\s\S]*\$rc_annual[\s\S]*es_ES/);
   });
 });
 

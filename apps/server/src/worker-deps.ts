@@ -2,7 +2,7 @@
 // Worker's bindings and the app dependencies built from them.
 import { defaultStores } from "./stores/index.js";
 import { cloudflareMailer, logMailer, type SendEmailBinding } from "./mail/index.js";
-import { workersAiModel, type WorkersAi } from "./services/paywall-ai.js";
+import { paywallModelFromEnv, type WorkersAi } from "./services/paywall-ai.js";
 import { assistantModelFromEnv, workersAiAssistantModel, type WorkersAiBinding } from "./services/assistant/models.js";
 import { capsFromEnv } from "./services/assistant/limits.js";
 import { fakeAssistantModel } from "./services/assistant/fake-model.js";
@@ -45,7 +45,11 @@ export interface Env {
   REVENUEDOT_CUSTOM_DOMAIN_TARGET?: string;
   /** RevenueDot AI: one Cloudflare Agents Durable Object per conversation (assistant-agent.worker.ts, prd/ai-assistant/PRD.md). */
   AssistantAgent?: DurableObjectNamespaceLike;
-  /** Optional secrets: a provider key makes RevenueDot AI use it instead of Workers AI. */
+  /**
+   * Optional secrets: a provider key makes "Generate with AI" and RevenueDot AI use it instead of Workers AI.
+   * AI_GATEWAY_API_KEY (Vercel AI Gateway) comes first.
+   */
+  AI_GATEWAY_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
   REVENUEDOT_ASSISTANT_MODEL?: string;
@@ -101,7 +105,8 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY,
   mailer: mailerFor(env),
   publicUrl: publicUrlFor(env),
-  ai: env.AI ? workersAiModel(env.AI) : undefined,
+  // "Generate with AI": the AI Gateway when AI_GATEWAY_API_KEY is set, else OpenAI, else Workers AI (services/paywall-ai.ts).
+  ai: paywallModelFromEnv(env as unknown as Record<string, string | undefined>, { workersAi: env.AI }),
   // Apps reach the API host; paywall images and icons are served from it.
   apiUrl: env.REVENUEDOT_API_URL || "https://api.revenuedot.app",
   googleOAuth: googleOAuthFor(env),

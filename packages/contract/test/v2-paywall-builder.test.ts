@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { PAYWALL_TEMPLATES, forEachComponent, type Json } from "@revenuedot/core";
 import { parseContainer } from "@revenuedot/server/services/remote-config.js";
-import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
+import { fakeDesignerAnswer, fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 import { harness, type Harness, type HarnessOptions } from "../src/harness.js";
 import { v2 } from "./v2-helpers.js";
 
@@ -123,30 +123,27 @@ describe("versions", () => {
 });
 
 describe("AI generator", () => {
-  const answer = JSON.stringify({
-    name: "Calm", background: "#f7f3ee",
-    components: [{ type: "text", text: "Sleep better tonight", font_size: 30, font_weight: "bold" }, { type: "features", items: [{ icon: "moon", text: "Sleep stories" }, { icon: "leaf", text: "Breathing" }] }, { type: "packages" }],
-    footer: [{ type: "purchase_button", text: "Start free trial" }, { type: "button", action: "restore", text: "Restore" }],
-  });
-
   it("is off without a model: status says so and generate answers 503", async () => {
     await boot();
     expect((await call("GET", `${PW}/ai`, {}, { ext: true })).body).toMatchObject({ object: "paywall_ai", available: false, provider: null });
     expect((await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "a calm paywall" } })).status).toBe(503);
   });
 
-  it("generates a valid paywall from the model's answer, bound to the offering, and rate-limits", async () => {
-    const model = fakeModel(`Here you go:\n\`\`\`json\n${answer}\n\`\`\``);
+  it("designs a valid paywall from the brief and the offering's products, names the model, and rate-limits", async () => {
+    const model = fakeModel((_s, user, name) => fakeDesignerAnswer(name, user));
     await boot({ ai: model });
     expect((await call("GET", `${PW}/ai`, {}, { ext: true })).body).toMatchObject({ available: true, provider: "Fake", model: "fake-paywall-model" });
     const o = await offeringWithPackages("ai", ["$rc_weekly", "$rc_annual"]);
     const r = await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "A calm sleep app", app_name: "Calm", brand_colors: ["#0f766e"], offering_id: o } });
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ object: "paywall_generation", name: "Calm", default_locale: "en_US", provider: "Fake" });
-    expect(model.calls[0]!.user).toMatch(/A calm sleep app[\s\S]*Calm[\s\S]*#0f766e[\s\S]*\$rc_weekly, \$rc_annual/);
+    expect(r.body).toMatchObject({ object: "paywall_generation", name: "AI paywall", default_locale: "en_US", provider: "Fake", model: "fake-paywall-model", preview_trials: {} });
+    // Two structured calls: the brief (description, form, offering), then the design.
+    expect(model.calls.map((c) => c.name)).toEqual(["paywall_brief", "paywall_design"]);
+    expect(model.calls[0]!.user).toMatch(/A calm sleep app[\s\S]*Calm[\s\S]*#0f766e[\s\S]*\$rc_weekly[\s\S]*\$rc_annual/);
+    expect(r.body.steps.map((s: { id: string; status: string }) => `${s.id}:${s.status}`)).toEqual(["brief:done", "packages:done", "draft:done", "check:done", "fix:skipped", "translate:skipped"]);
     const all = components(r.body.components_config);
-    expect(all.filter((c) => c.type === "package").map((p) => [p.package_id, p.is_selected_by_default])).toEqual([["$rc_weekly", false], ["$rc_annual", true]]);
-    expect(Object.values(r.body.components_localizations.en_US)).toContain("Sleep better tonight");
+    expect(all.filter((c) => c.type === "package").map((p) => [p.package_id, p.is_selected_by_default])).toEqual([["$rc_weekly", true], ["$rc_annual", false]]);
+    expect(Object.values(r.body.components_localizations.en_US)).toContain("AI: A calm sleep app");
     // Nothing was saved: the answer is a draft for the editor. It saves and publishes as is.
     expect((await call("GET", PW)).body.items).toHaveLength(0);
     const id = (await call("POST", PW, {}, { json: { offering_id: o, name: r.body.name, components_config: r.body.components_config, components_localizations: r.body.components_localizations } })).body.id;
@@ -154,15 +151,15 @@ describe("AI generator", () => {
     // One generation per 5 seconds per project.
     expect((await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "again please" } })).status).toBe(429);
     h.setNow(new Date(h.now().getTime() + 6000));
-    expect((await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "again please" } })).status).toBe(200);
+    const again = await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "again please" } });
+    expect(again.status).toBe(200);
+    // Without an offering the designer uses standard packages with sample prices and says so.
+    expect(again.body.notes.join(" ")).toMatch(/sample prices/);
     expect((await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "x" } })).status).toBe(400);
   });
 
-  it("answers 502 when the model's answer has no JSON or the model fails", async () => {
-    await boot({ ai: fakeModel("I cannot help with that.") });
-    expect((await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "a paywall" } })).status).toBe(502);
-    await h.close();
-    await boot({ ai: { provider: "Broken", model: "x", complete: async () => { throw new Error("down"); } } });
+  it("answers 502 (retryable) when the model fails", async () => {
+    await boot({ ai: { ...fakeModel("{}"), json: async () => { throw new Error("down"); } } });
     const r = await call("POST", `${PW}/generate`, {}, { ext: true, json: { prompt: "a paywall" } });
     expect(r.status).toBe(502);
     expect(r.body.retryable).toBe(true);

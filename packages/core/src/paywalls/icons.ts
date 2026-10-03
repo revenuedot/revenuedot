@@ -52,6 +52,17 @@ export const PAYWALL_ICONS: Record<string, { label: string; d: string }> = {
   devices: { label: "Devices", d: "M7 3h10v18H7zM11 18h2" },
   headphones: { label: "Headphones", d: "M4 18v-5a8 8 0 0 1 16 0v5M4 15h3v6H4zM17 15h3v6h-3z" },
   trophy: { label: "Trophy", d: "M8 4h8v5a4 4 0 0 1-8 0zM8 6H4.5a3.5 3.5 0 0 0 4 4M16 6h3.5a3.5 3.5 0 0 1-4 4M12 13v4M9 21h6M9.5 17h5v4h-5z" },
+  credit_card: { label: "Credit card", d: "M3 6h18v12.5H3zM3 10.5h18M6.5 15h4" },
+  chat: { label: "Chat bubble", d: "M4 5h16v11H10.5L6 19.5V16H4z" },
+  pencil: { label: "Pencil", d: "M4 20l1.2-4.6L15.6 5a2.1 2.1 0 0 1 3 3L8.2 18.8zM13.6 7l3 3" },
+  search: { label: "Search", d: `${circle(10.5, 10.5, 6.5)}M15.3 15.3L20 20` },
+  wind: { label: "Wind", d: "M3 8.5h10a2.5 2.5 0 1 0-2.5-2.5M3 12.5h15.5a2.5 2.5 0 1 1-2.5 2.5M3 16.5h7" },
+  sliders: { label: "Sliders", d: `M4 7h9M17 7h3M4 17h3M11 17h9${circle(15, 7, 2)}${circle(9, 17, 2)}` },
+  layers: { label: "Layers", d: "M12 3.5l8.5 4.5-8.5 4.5L3.5 8zM3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5" },
+  smile: { label: "Smile", d: `${circle(12, 12, 9)}M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5v.5M15 9.5v.5` },
+  file_text: { label: "Document", d: "M6 3h8.5L18 6.5V21H6zM14 3v4h4M9 12h6M9 16h6" },
+  palette: { label: "Palette", d: `M12 3a9 9 0 0 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-1.2-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z${circle(7.5, 11, 1)}${circle(10, 7, 1)}${circle(15, 7.5, 1)}` },
+  rocket: { label: "Rocket", d: "M9 15l-2.5-2.5C8 7.5 12 4 19.5 4 19.5 11.5 16 15.5 11.5 17zM6.5 12.5H3.5l2.5-3.5h4M11.5 17v3l3.5-2.5V14M6 18l-2 2" },
 };
 
 export const PAYWALL_ICON_NAMES = Object.keys(PAYWALL_ICONS);

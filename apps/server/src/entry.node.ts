@@ -15,7 +15,7 @@ import { defaultStores } from "./stores/index.js";
 import { tick } from "./services/tick.js";
 import { runScheduledJobs } from "./services/scheduled.js";
 import { logMailer, type Mailer } from "./mail/index.js";
-import { modelFromEnv } from "./services/paywall-ai.js";
+import { paywallModelFromEnv } from "./services/paywall-ai.js";
 import { assistantModelFromEnv } from "./services/assistant/models.js";
 import { capsFromEnv } from "./services/assistant/limits.js";
 import { stripeConnectFromEnv } from "./services/stripe-connect-config.js";
@@ -108,7 +108,7 @@ const interval = setInterval(() => { void runTick(); void runScheduled(); }, clu
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
 const app = createApp({ db, now: () => new Date(), stores, kick: () => kick(), signup, mailer, publicUrl, archiveStore, edition, billing, encryptionKey: process.env.REVENUEDOT_ENCRYPTION_KEY?.trim() || undefined,
   // "Generate with AI" on paywalls: OPENAI_API_KEY or ANTHROPIC_API_KEY (REVENUEDOT_AI_MODEL to pick the model); off without either.
-  ai: modelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
+  ai: paywallModelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
   // Hosted web pages (purchase links, funnels): REVENUEDOT_PAY_URL, else <this server>/pay; custom domains CNAME to the pay host.
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
   // RevenueDot AI (prd/ai-assistant/PRD.md): ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to

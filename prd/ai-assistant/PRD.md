@@ -23,7 +23,7 @@ Scope rows: `prd/SCOPE.md` Tier 2 "RevenueDot AI: an in-app durable agent (Cloud
 | Where a conversation lives | One Cloudflare Agents Durable Object per conversation (`AssistantAgent`, `@cloudflare/ai-chat` `AIChatAgent`, SQLite storage) | Postgres: `ai_messages`, `ai_streams`, `ai_stream_chunks` |
 | Transport | WebSocket (`useAgentChat`), resumable streams built in | HTTP POST that answers with a UI message stream over SSE; `GET …/stream` resumes from the stored chunks |
 | Crash and deploy recovery | Agents' durable chat turns (`chatRecovery`) | Chunks are written as they stream; a stream with no chunk for 60 s is marked interrupted and the UI offers Retry |
-| Model | Workers AI binding `AI` (no key, billed to the Circo account), `@cf/moonshotai/kimi-k2.6` | `ANTHROPIC_API_KEY` → `claude-opus-5-5`, else `OPENAI_API_KEY` → `gpt-6-astra` |
+| Model | Workers AI binding `AI` (no key, billed to the Circo account), `@cf/moonshotai/kimi-k2.6` | `AI_GATEWAY_API_KEY` → Vercel AI Gateway `anthropic/claude-opus-5.5` (Cloud too: it wins over Workers AI), else `ANTHROPIC_API_KEY` → `claude-opus-5-5`, else `OPENAI_API_KEY` → `gpt-6-astra` |
 
 - Both runtimes call one function, `runAssistantTurn` (`apps/server/src/services/assistant/agent.ts`): AI SDK 7 `streamText` with the same instructions, tools, approval rules and caps. Only storage and transport differ.
 - The conversation list (title, owner, project, dates) is always in Postgres (`ai_conversations`), so the history rail, rename, delete and search work the same on both.
