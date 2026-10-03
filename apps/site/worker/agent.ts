@@ -156,7 +156,7 @@ export async function agent(request: Request, env: AgentEnv, ctx?: Ctx): Promise
 
   const routes: Record<string, [string, (r: Request, e: AgentEnv, c?: Ctx) => Promise<Response>]> = {
     "/api/agent/init": ["POST", init], "/api/agent/lookup": ["POST", lookup], "/api/agent/meeting": ["POST", meeting],
-    "/api/agent/send_info": ["POST", sendInfo], "/api/agent/docs": ["GET", docs],
+    "/api/agent/send_info": ["POST", sendInfo], "/api/agent/docs": ["GET", docs], "/api/agent/relay": ["POST", relay],
   };
   const route = routes[path];
   if (!route) return json({ ok: false, error: "Not found." }, 404);
@@ -501,6 +501,40 @@ export function callEmail(p: PostCall) {
   const subject = oneLine(`[Voice call] ${who}${c.phone ? ` (${c.phone})` : ""}, ${c.direction}, ${mmss(c.duration)}`);
   const text = `${c.summary || "No summary."}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nRecording and full details: ${link}\n\nTranscript\n\n${lines.join("\n") || "(empty)"}`;
   const html = `<div style="font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0A0A0A"><p style="font-weight:700">${esc(who)}</p><p>${esc(c.summary || "No summary.")}</p><table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#525252;vertical-align:top">${esc(k)}</td><td style="padding:4px 0">${k === "Phone" && c.phone ? `<a href="tel:${esc(c.phone)}">${esc(v)}</a>` : esc(v)}</td></tr>`).join("")}</table><p><a href="${esc(link)}">Recording and full details</a></p><p style="color:#525252;margin-top:16px">Transcript</p><pre style="white-space:pre-wrap;font:13px/1.5 ui-monospace,Menlo,monospace">${esc(lines.join("\n") || "(empty)")}</pre></div>`;
+  return { subject, text, html };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Relay: the agent passes a message from the caller to Kai (sales inbox) during the call.
+type Relay = { message: string; subject: string; caller_name: string; caller_email: string; caller_phone: string; company: string; urgency: string; conversation_id: string };
+
+async function relay(request: Request, env: AgentEnv): Promise<Response> {
+  const b = await body(request);
+  const r: Relay = {
+    message: str(b.message, 4000), subject: str(b.subject, 140), caller_name: str(b.caller_name, 120), caller_email: str(b.caller_email, 254).toLowerCase(),
+    caller_phone: normalisePhone(str(b.caller_phone, 40)) ?? str(b.caller_phone, 40), company: str(b.company, 120),
+    urgency: str(b.urgency, 20).toLowerCase() === "urgent" ? "urgent" : "normal", conversation_id: str(b.conversation_id, 80),
+  };
+  if (!r.message) return json({ ok: false, message: "Ask what they'd like passed on to Kai, then try again." }, 400);
+  if (r.caller_email && !isEmail(r.caller_email)) return json({ ok: false, errors: { caller_email: "Not a valid email." }, message: "That email doesn't look right. Read it back to them and try again." }, 400);
+  if (!env.EMAIL || !env.SALES_TO) return json({ ok: false, message: "I couldn't pass that on just now. Please email sales@revenuedot.app." }, 503);
+  try {
+    await env.EMAIL.send({ to: env.SALES_TO, from: AGENT_FROM, ...(r.caller_email ? { replyTo: r.caller_email } : {}), ...relayEmail(r) });
+  } catch (e) {
+    console.error("agent: relay email failed", e);
+    return json({ ok: false, message: "I couldn't pass that on just now. Please email sales@revenuedot.app." }, 503);
+  }
+  console.log(JSON.stringify({ event: "agent_relay", urgency: r.urgency }));
+  return json({ ok: true, message: `Done. I've passed that to Kai${r.caller_email ? `, and he can reply to ${r.caller_email}` : ""}.` });
+}
+
+export function relayEmail(r: Relay) {
+  const who = r.caller_name || "A caller";
+  const subject = oneLine(`${r.urgency === "urgent" ? "[Urgent] " : ""}Message from ${who}${r.company ? `, ${r.company}` : ""}${r.subject ? `: ${r.subject}` : ""}`);
+  const rows: [string, string][] = [["From", r.caller_name || "Not given"], ["Email", r.caller_email || "Not given"], ["Phone", r.caller_phone || "Not given"], ["Company", r.company || "Not given"], ["Urgency", r.urgency]];
+  const link = r.conversation_id ? `https://elevenlabs.io/app/agents/history/${r.conversation_id}` : "";
+  const text = `${r.message}\n\n${rows.map(([k, v]) => `${k}: ${v}`).join("\n")}${link ? `\n\nCall recording and transcript: ${link}` : ""}${r.caller_email ? `\n\nReply to this email to answer ${who} directly.` : ""}`;
+  const html = `<div style="font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0A0A0A"><p style="white-space:pre-wrap">${esc(r.message)}</p><table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#525252">${esc(k)}</td><td style="padding:4px 0">${esc(v)}</td></tr>`).join("")}</table>${link ? `<p><a href="${esc(link)}">Call recording and transcript</a></p>` : ""}${r.caller_email ? `<p style="color:#737373">Reply to this email to answer ${esc(who)} directly.</p>` : ""}</div>`;
   return { subject, text, html };
 }
 

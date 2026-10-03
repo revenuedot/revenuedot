@@ -21,6 +21,8 @@ export const SITE = {
   // Kai's Google Calendar booking page (kai@circo.so, "RevenueDot: 30 min with Kai", weekdays 9 to 5 Pacific, Google Meet).
   booking: "https://calendar.google.com/calendar/appointments/schedules/AcZssZ0IxzgwYNVDGggPF9qelyDSh51L5UzFNcrDE2u3eMTwqpLfGsrRxjx2TxY-WyehZVX1ns8MhQWg",
   login: "https://app.revenuedot.app/login",
+  // The ElevenLabs voice agent's Twilio number (worker/agent.ts). It answers any time and passes messages to sales.
+  phone: { display: "+1 (628) 296-1014", tel: "+16282961014" },
   email: {
     hello: "hello@revenuedot.app",
     sales: "sales@revenuedot.app",
