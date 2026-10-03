@@ -11,6 +11,7 @@ import { AmazonApiError } from "./api.js";
 import { amazonClientFor } from "./index.js";
 import { isSnsHost, parseSns, SnsError, verifySns } from "./sns.js";
 import { syncAmazonNotification, type AmazonNotification } from "./sync.js";
+import { demoteToRejected, logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -43,12 +44,11 @@ export function amazonNotificationRoutes(deps: Deps) {
     if (m.Type === "Notification") { try { n = JSON.parse(m.Message); } catch { n = null; } }
     const type = m.Type === "Notification" ? (n?.notificationType ?? "UNKNOWN") : m.Type === "SubscriptionConfirmation" ? "SUBSCRIPTION_CONFIRMATION" : m.Type === "UnsubscribeConfirmation" ? "UNSUBSCRIBE_CONFIRMATION" : m.Type;
     const subtype = n?.receiptId ? String(n.receiptId).slice(0, 120) : null;
-    // A message that fails the checks is kept (the app's notification status shows why) under an id of its own, so an
-    // unsigned body can never take a real message's id, and it is never forwarded.
+    // A message without a valid SNS signature from the app's topic is a rejected request (stores/rejected.ts): logged
+    // under an id of its own, so an unsigned body can never take a real message's id, never forwarded, and never part
+    // of the app's notification status.
     const reject = async (status: 400 | 503, error: string, message: string) => {
-      await deps.db.insert(storeNotifications).values({
-        id: `amz_${app.id}_rejected_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "amazon", type, subtype, body: raw.slice(0, 64_000), receivedAt: now, error,
-      });
+      if (!(await logRejected(deps, c, app, { store: "amazon", raw, type, subtype, error }))) return tooManyRejected(c);
       return c.json({ code: status === 503 ? Codes.STORE_PROBLEM : Codes.BAD_REQUEST, message }, status);
     };
 
@@ -56,19 +56,24 @@ export function amazonNotificationRoutes(deps: Deps) {
       await verifySns(m, fetchFn, now);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof SnsError && e.transient) return reject(503, msg, "Could not load the SNS signing certificate; SNS will retry.");
+      if (e instanceof SnsError && e.transient) return reject(503, `rejected: ${msg}`, "Could not load the SNS signing certificate; SNS will retry.");
       return reject(400, `rejected: ${msg}`, msg);
     }
     // Any AWS account can sign SNS messages, so the signature alone does not say the message is Amazon's. Messages must
-    // come from the app's topic: the one set in its settings, else the topic of the first verified message (kept).
-    let pinned = typeof creds.sns_topic_arn === "string" && creds.sns_topic_arn.trim() ? creds.sns_topic_arn.trim() : null;
+    // come from the app's topic: the one set in its settings (`sns_topic_arn`), else the topic of the first verified
+    // message, kept apart as `sns_topic_arn_auto`. Only a topic the developer saved proves the sender: a pinned one could be
+    // anyone's, so then a message that cannot be used is a rejected request, not a failure.
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+    const saved = str(creds.sns_topic_arn);
+    const authenticated = !!saved;
+    let pinned = saved ?? str(creds.sns_topic_arn_auto);
     if (!pinned && (m.Type === "SubscriptionConfirmation" || m.Type === "Notification") && /^arn:aws(-cn|-us-gov)?:sns:[a-z0-9-]+:\d{12}:[\w.-]+$/.test(m.TopicArn ?? "")) {
-      const set = await deps.db.update(apps).set({ credentials: sql`${apps.credentials} || ${JSON.stringify({ sns_topic_arn: m.TopicArn })}::jsonb` })
-        .where(and(eq(apps.id, app.id), sql`coalesce(${apps.credentials}->>'sns_topic_arn', '') = ''`)).returning({ id: apps.id });
+      const set = await deps.db.update(apps).set({ credentials: sql`${apps.credentials} || ${JSON.stringify({ sns_topic_arn_auto: m.TopicArn })}::jsonb` })
+        .where(and(eq(apps.id, app.id), sql`coalesce(${apps.credentials}->>'sns_topic_arn', '') = ''`, sql`coalesce(${apps.credentials}->>'sns_topic_arn_auto', '') = ''`)).returning({ id: apps.id });
       if (set.length) pinned = m.TopicArn;
       else {
         const [cur] = await deps.db.select({ cr: apps.credentials }).from(apps).where(eq(apps.id, app.id));
-        pinned = typeof cur?.cr?.sns_topic_arn === "string" ? cur.cr.sns_topic_arn : null;
+        pinned = str(cur?.cr?.sns_topic_arn) ?? str(cur?.cr?.sns_topic_arn_auto);
       }
     }
     if (!pinned || m.TopicArn !== pinned) return reject(400, `rejected: topic ${m.TopicArn} is not the app's SNS topic`, "This SNS topic is not the one configured for the app.");
@@ -85,10 +90,11 @@ export function amazonNotificationRoutes(deps: Deps) {
       forwardStoreNotification(c, { db: deps.db, fetchFn, url: app.notificationForwardUrl, notificationId: id, raw, strict: deps.edition === "cloud", headers: { "content-type": "text/plain; charset=UTF-8", "x-amz-sns-message-type": m.Type } });
     }
     const finish = (set: Partial<typeof storeNotifications.$inferInsert>) => deps.db.update(storeNotifications).set(set).where(eq(storeNotifications.id, id));
+    const settle = (error: string) => authenticated ? finish({ processedAt: now, error }) : demoteToRejected(deps, c, app, "amazon", id, `rejected: ${error}`);
 
     if (m.Type === "SubscriptionConfirmation") {
       if (!m.SubscribeURL || !isSnsHost(m.SubscribeURL)) {
-        await finish({ error: "rejected: SubscribeURL is not an Amazon SNS URL" });
+        await settle("SubscribeURL is not an Amazon SNS URL");
         return c.json({ code: Codes.BAD_REQUEST, message: "SubscribeURL is not an Amazon SNS URL." }, 400);
       }
       try {
@@ -96,7 +102,9 @@ export function amazonNotificationRoutes(deps: Deps) {
         const res = await guardedFetch(fetchFn, m.SubscribeURL, { method: "GET", signal: AbortSignal.timeout(10_000) });
         if (!res.ok) throw new Error(`SNS answered ${res.status}`);
       } catch (e) {
-        await finish({ error: `confirming the SNS subscription failed: ${e instanceof Error ? e.message : e}` });
+        const error = `confirming the SNS subscription failed: ${e instanceof Error ? e.message : e}`;
+        if (authenticated) await finish({ error });
+        else await demoteToRejected(deps, c, app, "amazon", id, `rejected: ${error}`);
         return c.json({ code: Codes.STORE_PROBLEM, message: "Confirming the subscription failed; SNS will retry." }, 503);
       }
       await finish({ processedAt: now, error: null });
@@ -109,11 +117,11 @@ export function amazonNotificationRoutes(deps: Deps) {
       return c.json({ status: "ignored" });
     }
     if (!n || typeof n !== "object") {
-      await finish({ processedAt: now, error: "Message is not an Amazon Real-time Notification" });
+      await settle("Message is not an Amazon Real-time Notification");
       return c.json({ status: "ignored" });
     }
     if (n.appPackageName && app.bundleId && n.appPackageName !== app.bundleId) {
-      await finish({ processedAt: now, error: `package ${n.appPackageName} does not match the app's ${app.bundleId}` });
+      await settle(`package ${n.appPackageName} does not match the app's ${app.bundleId}`);
       return c.json({ status: "ignored" });
     }
 
@@ -127,11 +135,11 @@ export function amazonNotificationRoutes(deps: Deps) {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (e instanceof AmazonApiError && e.kind === "invalid_receipt") {
-        await finish({ processedAt: now, error: `invalid receipt: ${message}` });
+        await settle(`invalid receipt: ${message}`);
         return c.json({ status: "invalid_receipt" });
       }
       if (e instanceof RCError && e.status < 500) {
-        await finish({ processedAt: now, error: message });
+        await settle(message);
         return c.json({ status: "ignored" });
       }
       if (e instanceof AmazonApiError && e.kind === "credentials") await recordCredentialFailure(deps.db, app.id, e.message, now).catch(() => {});

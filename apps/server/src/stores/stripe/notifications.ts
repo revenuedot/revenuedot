@@ -14,6 +14,7 @@ import { handleStripeEvent } from "./sync.js";
 import { completeWebCheckout } from "../../services/web/checkout.js";
 import { mailPayBase } from "../../services/web/domains.js";
 import { publicOrigin } from "../../routes/oauth.js";
+import { logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -38,12 +39,10 @@ export function stripeNotificationRoutes(deps: Deps) {
     const event = parseEvent(raw);
     const objectId = typeof event?.data?.object?.id === "string" ? event.data.object.id : null;
     const signature = c.req.header("stripe-signature");
-    // A body that fails the checks is kept (the app's notification status shows why) under an id of its own, so an
-    // unsigned body can never take a real event's id, and it is never forwarded.
+    // A body without a valid Stripe-Signature is a rejected request (stores/rejected.ts): logged under an id of its own, so
+    // an unsigned body can never take a real event's id, never forwarded, and never part of the app's notification status.
     const reject = async (error: string, message: string) => {
-      await deps.db.insert(storeNotifications).values({
-        id: `stripe_${app.id}_rejected_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "stripe", type: event?.type ?? null, subtype: objectId, body: raw.slice(0, 64_000), receivedAt: now, error,
-      });
+      if (!(await logRejected(deps, c, app, { store: "stripe", raw, type: event?.type ?? null, subtype: objectId, error }))) return tooManyRejected(c);
       return c.json({ code: Codes.BAD_REQUEST, message }, 400);
     };
     // A connected app's events come through the platform's Connect endpoint, signed with the platform's secret. An endpoint
@@ -58,7 +57,13 @@ export function stripeNotificationRoutes(deps: Deps) {
       const message = e instanceof StripeSignatureError ? e.message : String(e);
       return reject(`rejected: ${message}`, message);
     }
-    if (!event) return reject("The body is not a Stripe event.", "The body is not a Stripe event.");
+    if (!event) {
+      // Signed with the app's secret but not an event: a real failure of this app's endpoint.
+      await deps.db.insert(storeNotifications).values({
+        id: `stripe_${app.id}_invalid_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "stripe", body: raw.slice(0, 64_000), receivedAt: now, error: "The body is not a Stripe event.",
+      });
+      return c.json({ code: Codes.BAD_REQUEST, message: "The body is not a Stripe event." }, 400);
+    }
     const out = await processStripeEvent(deps, c, app, { raw, event, signature });
     return c.json(out.body, out.status);
   });

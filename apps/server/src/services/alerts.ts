@@ -31,12 +31,12 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
   // 1. Store notifications: apps with a recent failed notification, and apps whose alert is open.
   const open = await db.select().from(A).where(eq(A.status, "open"));
   const N = schema.storeNotifications;
-  const recent = await db.selectDistinct({ appId: N.appId }).from(N).where(and(isNotNull(N.error), gt(N.receivedAt, new Date(now.getTime() - RECENT_MS))));
+  const recent = await db.selectDistinct({ appId: N.appId }).from(N).where(and(isNotNull(N.error), eq(N.rejected, false), gt(N.receivedAt, new Date(now.getTime() - RECENT_MS))));
   const notifAppIds = [...new Set([...recent.map((r) => r.appId), ...open.filter((a) => a.kind === "store_notifications").map((a) => a.subjectId)])];
   if (notifAppIds.length) {
     const apps = await db.select().from(schema.apps).where(and(inArray(schema.apps.id, notifAppIds), inArray(schema.apps.type, STORE_TYPES)));
     for (const app of apps) {
-      const h = await notificationHealth(db, app);
+      const h = await notificationHealth(db, app, now);
       if (h.notification_status === "failing") failing.push({ projectId: app.projectId, kind: "store_notifications", subjectId: app.id, subjectName: app.name, detail: h.last_notification_error?.message ?? null });
     }
   }

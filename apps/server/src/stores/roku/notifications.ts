@@ -10,6 +10,7 @@ import { RokuApiError } from "./api.js";
 import { rokuClientFor } from "./index.js";
 import { RokuPushError, verifyRokuPush } from "./push.js";
 import { handleRokuPush } from "./sync.js";
+import { demoteToRejected, logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -29,10 +30,9 @@ export function rokuNotificationRoutes(deps: Deps) {
     if (!row || row.type !== "roku") return c.json({ code: Codes.NOT_FOUND, message: "No Roku app with this id." }, 404);
     const { client } = rokuClientFor(deps.stores, deps.fetch);
     const raw = await c.req.text();
+    // A push Roku did not sign is a rejected request (stores/rejected.ts), never part of the app's notification status.
     const reject = async (error: string, message: string) => {
-      await deps.db.insert(storeNotifications).values({
-        id: `roku_${row.id}_rejected_${crypto.randomUUID()}`, projectId: row.projectId, appId: row.id, store: "roku", type: null, subtype: null, body: raw.slice(0, 64_000), receivedAt: now, error,
-      });
+      if (!(await logRejected(deps, c, row, { store: "roku", raw, error }))) return tooManyRejected(c);
       return c.json({ code: Codes.BAD_REQUEST, message }, 400);
     };
     let push;
@@ -73,6 +73,11 @@ export function rokuNotificationRoutes(deps: Deps) {
       await finish({ error: e instanceof Error ? e.message : String(e) });
       return c.json({ code: Codes.STORE_PROBLEM, message: "The app's Roku credentials could not be opened; Roku will retry." }, 500);
     }
+    // Roku signs every developer's pushes with one key set, so the signature alone does not say the push is this
+    // developer's. Only a push for a channel saved on one of the project's Roku apps is; for any other, a transaction Roku
+    // does not know is a rejected request, not a failure.
+    const ownChannel = !!channel && channelOf((target.credentials ?? {}).roku_channel_id) === channel;
+    const settle = (error: string) => ownChannel ? finish({ processedAt: now, error }) : demoteToRejected(deps, c, target, "roku", id, `rejected: ${error}`);
     try {
       const result = await handleRokuPush({ db: deps.db, app, client, now }, m);
       await finish({ processedAt: now, error: null });
@@ -82,11 +87,11 @@ export function rokuNotificationRoutes(deps: Deps) {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (e instanceof RokuApiError && e.kind === "invalid") {
-        await finish({ processedAt: now, error: `Roku: ${message}` });
+        await settle(`Roku: ${message}`);
         return ack();
       }
       if (e instanceof RCError && e.status < 500) {
-        await finish({ processedAt: now, error: message });
+        await settle(message);
         return ack();
       }
       if (e instanceof RokuApiError && e.kind === "credentials") await recordCredentialFailure(deps.db, app.id, e.message, now).catch(() => {});

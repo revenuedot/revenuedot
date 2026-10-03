@@ -25,6 +25,8 @@ export interface StoreSettings {
   /** "Test your setup with the sample app": examples that can buy with this app (GET …/sample_app?platform=). */
   sample_apps?: Array<{ platform: string; name: string; example: string }>;
   last_notification_at: number | null; last_notification_error: string | null;
+  /** Unsigned or badly signed requests of the last 24 hours; they never change the notification status. */
+  rejected_requests?: RejectedRequests;
   last_forward: { status: number; at: number } | null;
   track_new_purchases: boolean; allow_unsigned_receipts: boolean;
   credentials: {
@@ -74,10 +76,13 @@ export interface SdkVersion {
   first_seen_at: number; last_seen_at: number;
 }
 
+export interface RejectedRequests { last_24h: number; last: { at: number; message: string } | null }
+
 export interface SetupHealth {
   apps: {
     id: string; name: string; type: AppType; notification_url: string | null; last_notification_at: number | null; credentials_configured: boolean;
     notification_status?: "ready" | "failing" | "received" | "waiting"; last_notification_error?: { at: number; type: string | null; message: string } | null;
+    rejected_requests?: RejectedRequests;
   }[];
   webhooks: { total: number; failing: { id: string; name: string; last_status: number | null; last_error: string | null }[] };
   sdk_versions?: SdkVersion[];

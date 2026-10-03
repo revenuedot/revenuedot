@@ -190,7 +190,7 @@ describe("dashboard extensions", () => {
     expect(byId.app_ios).toEqual({
       id: "app_ios", name: "Scanner iOS", type: "app_store", notification_url: "https://api.example.com/v1/notifications/apple/app_ios",
       last_notification_at: new Date("2026-09-01T10:00:00Z").getTime(), last_notification_received_at: null, last_notification_error: null,
-      notification_status: "ready", credentials_configured: true,
+      notification_status: "ready", rejected_requests: { last_24h: 0, last: null }, credentials_configured: true,
     });
     expect(byId.app_play).toMatchObject({ notification_url: "https://api.example.com/v1/notifications/google/app_play", last_notification_at: null, credentials_configured: false });
     expect(byId.app_test).toMatchObject({ notification_url: null, credentials_configured: true });

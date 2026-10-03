@@ -218,6 +218,13 @@
       "when": 1790980000000,
       "tag": "0032_account_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791067918476,
+      "tag": "0033_rejected_notifications",
+      "breakpoints": true
     }
   ]
 }

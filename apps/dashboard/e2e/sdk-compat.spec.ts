@@ -1,7 +1,7 @@
 /**
  * Apps page end to end: the SDK compatibility panel fills from real SDK requests (their X-Platform, X-Version and
- * X-Platform-Flavor headers), and an app whose store notifications fail says so in the Apps list and in the Overview's
- * setup health. Runs against e2e/server.ts. SHOTS=<dir> saves desktop and 390px screenshots.
+ * X-Platform-Flavor headers), and an unsigned store notification is rejected without turning the app to failing in the
+ * Apps list or the Overview's setup health. Runs against e2e/server.ts. SHOTS=<dir> saves desktop and 390px screenshots.
  *   pnpm --filter @revenuedot/dashboard e2e
  */
 import { expect, test, type Page } from "@playwright/test";
@@ -21,7 +21,7 @@ async function signIn(page: Page) {
 
 const shot = async (page: Page, name: string) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${name}.png`, fullPage: true }); };
 
-test("apps: SDK compatibility from real SDK calls, and failing store notifications", async ({ page }) => {
+test("apps: SDK compatibility from real SDK calls, and rejected store notifications", async ({ page }) => {
   const pid = await signIn(page);
   const apps = (await (await page.request.get(`/v2/projects/${pid}/apps?limit=100`)).json()).items as { id: string; type: string; name: string }[];
   const testApp = apps.find((a) => a.type === "test_store")!;
@@ -38,12 +38,13 @@ test("apps: SDK compatibility from real SDK calls, and failing store notificatio
   expect((await sdkCall("sdk_rn_1", { "X-Platform": "android", "X-Platform-Flavor": "react-native", "X-Platform-Flavor-Version": "8.11.0", "X-Version": "9.6.0", "X-Platform-Version": "35" })).ok()).toBe(true);
   expect((await sdkCall("sdk_ios_4", { ...ios, "X-Version": "4.43.2" })).ok()).toBe(true);
 
-  // Apple sends a notification this server cannot verify: the app's notifications are failing.
+  // Someone posts a notification this server cannot verify: rejected, and the app's notifications are not failing.
   expect((await page.request.post(`/v1/notifications/apple/${iosApp.id}`, { data: { signedPayload: "not.a.jws" } })).status()).toBe(400);
 
   await page.goto(`/projects/${pid}/apps`);
   const row = page.getByRole("row").filter({ hasText: iosApp.name });
-  await expect(row).toContainText("Notifications failing");
+  await expect(row).toContainText("Add in-app purchase key");
+  await expect(row).not.toContainText("Notifications failing");
   await expect(page.getByRole("row").filter({ hasText: testApp.name })).toContainText("Ready");
 
   const panel = page.getByRole("region", { name: "SDK compatibility" });
@@ -75,14 +76,13 @@ test("apps: SDK compatibility from real SDK calls, and failing store notificatio
   await shot(page, "apps-sdk-390");
   await page.setViewportSize({ width: 1440, height: 1000 });
 
-  // The Overview's setup health shows the same failure, with the store's error.
+  // The Overview's setup health does not show the unsigned request as a failure either.
   await page.goto(`/projects/${pid}/overview`);
   const health = page.getByRole("region", { name: "Setup health" });
-  const failing = health.locator(".hrow").filter({ hasText: "App Store notifications · Scanner Mac" });
-  await expect(failing).toContainText("The last notification failed");
-  await expect(failing).toContainText("Malformed JWS");
-  await expect(failing.locator(".dot")).toHaveClass(/bad/);
-  await shot(page, "overview-failing-notifications");
+  const notifRow = health.locator(".hrow").filter({ hasText: "App Store notifications · Scanner Mac" });
+  await expect(notifRow).toContainText("None received yet");
+  await expect(notifRow).not.toContainText("The last notification failed");
+  await shot(page, "overview-rejected-notifications");
 
   expect(errors).toEqual([]);
 });

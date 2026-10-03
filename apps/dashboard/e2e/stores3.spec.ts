@@ -137,11 +137,12 @@ test("stores: Paddle, Roku and Samsung Galaxy Store apps", async ({ page, baseUR
     expect(r.status).toBe(200);
     expect(r.body.subscriber.entitlements.pro).toMatchObject({ product_identifier: monthly });
     expect(r.body.subscriber.subscriptions[monthly]).toMatchObject({ store: "paddle", is_sandbox: true });
-    // A forged event is refused and the page says so.
+    // A forged event is refused and counted as a rejected request, apart from the status.
     const forged = await api("POST", "/__store3/paddle/deliver", { app_id: paddleId, events: buy.events.slice(0, 1), forged: true });
     expect(forged.body.results[0].status).toBe(400);
     const notif = page.getByRole("region", { name: "Paddle notifications" });
-    await expect(notif.getByText(/The last notification from Paddle could not be processed/)).toBeVisible({ timeout: 15_000 });
+    await expect(notif.getByTestId("rejected-requests")).toContainText("1 rejected request in the last 24 hours", { timeout: 15_000 });
+    await expect(notif.getByText(/The last notification from Paddle could not be processed/)).toHaveCount(0);
     const ok = await api("POST", "/__store3/paddle/deliver", { app_id: paddleId, events: buy.events });
     expect(ok.body.results.map((x: { status: number }) => x.status)).toEqual([200, 200, 200]);
     await expect(notif.getByText(/Paddle notifications are configured correctly\. Last received/)).toBeVisible({ timeout: 15_000 });

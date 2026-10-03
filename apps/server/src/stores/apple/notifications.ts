@@ -11,6 +11,7 @@ import type { AppRow } from "../types.js";
 import { appleStoreOf, expectedBundleId, verifyRenewalJws, verifyTransactionJws, xcodeRootsOf } from "./index.js";
 import { JwsError, verifyAppleJws } from "./jws.js";
 import { fromTransaction, type AppleTransaction, type MapOptions } from "./map.js";
+import { logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications, subscriptions, nonSubscriptions } = schema;
 
@@ -26,8 +27,14 @@ interface NotificationPayload {
   summary?: { bundleId?: string; environment?: string };
 }
 
-/** The payload cannot be trusted or does not belong to this app: 400, so it shows up as failed in App Store Connect. */
+/** The payload does not belong to this app or cannot be applied: 400, so it shows up as failed in App Store Connect. */
 class NotificationError extends Error {}
+
+/**
+ * Apple did not send this to this app: no JSON, no signedPayload, a JWS that does not verify, or a payload Apple signed for
+ * another app (anyone holding any signed App Store payload could post it). A rejected request.
+ */
+class UnsignedError extends Error {}
 
 /** Notification types whose signed transaction and renewal info describe a new state for the purchase. */
 const STATE_CHANGES = new Set([
@@ -58,26 +65,30 @@ function overrides(type: string, subtype?: string): Pick<MapOptions, "autoRenew"
   }
 }
 
-async function decode(raw: string, app: AppRow, now: Date): Promise<NotificationPayload> {
+/** Verifies Apple's signature over the payload; every failure here is an UnsignedError. */
+async function verify(raw: string, app: AppRow, now: Date): Promise<NotificationPayload> {
   let body: { signedPayload?: unknown };
-  try { body = JSON.parse(raw); } catch { throw new NotificationError("The body is not JSON."); }
-  if (typeof body?.signedPayload !== "string") throw new NotificationError("signedPayload is missing.");
-  let n: NotificationPayload;
+  try { body = JSON.parse(raw); } catch { throw new UnsignedError("The body is not JSON."); }
+  if (typeof body?.signedPayload !== "string") throw new UnsignedError("signedPayload is missing.");
   try {
-    n = await verifyAppleJws<NotificationPayload>(body.signedPayload, { xcodeRoots: xcodeRootsOf(app), now });
+    return await verifyAppleJws<NotificationPayload>(body.signedPayload, { xcodeRoots: xcodeRootsOf(app), now });
   } catch (e) {
-    if (e instanceof JwsError) throw new NotificationError(`The signed payload is not valid: ${e.message}.`);
+    if (e instanceof JwsError) throw new UnsignedError(`The signed payload is not valid: ${e.message}.`);
     throw e;
   }
-  if (typeof n?.notificationType !== "string") throw new NotificationError("The signed payload is not an App Store notification.");
+}
+
+/** Checks a verified payload is a notification for this app. */
+function checkApp(n: NotificationPayload, app: AppRow) {
+  if (typeof n?.notificationType !== "string") throw new UnsignedError("The signed payload is not an App Store notification.");
   const bundleId = n.data?.bundleId ?? n.summary?.bundleId;
   const expected = expectedBundleId(app);
-  if (expected && bundleId && bundleId !== expected) throw new NotificationError(`The notification is for bundle id ${bundleId}, not ${expected}.`);
+  if (!bundleId) throw new UnsignedError("The notification names no bundle id.");
+  if (expected && bundleId !== expected) throw new UnsignedError(`The notification is for bundle id ${bundleId}, not ${expected}.`);
   const appAppleId = app.credentials?.app_apple_id;
   if (appAppleId && n.data?.environment === "Production" && n.data.appAppleId && String(n.data.appAppleId) !== String(appAppleId)) {
-    throw new NotificationError(`The notification is for Apple app id ${n.data.appAppleId}, not ${appAppleId}.`);
+    throw new UnsignedError(`The notification is for Apple app id ${n.data.appAppleId}, not ${appAppleId}.`);
   }
-  return n;
 }
 
 async function existingFor(db: DB, projectId: string, store: Store, tx: AppleTransaction) {
@@ -161,7 +172,7 @@ function forward(c: Context, db: DB, url: string, raw: string, contentType: stri
 /**
  * App Store Server Notifications V2: POST /v1/notifications/apple/{appId} with `{ signedPayload }`.
  * Apple retries anything but 2xx, so valid payloads get 200 even when the purchase is unknown; 400 means the payload
- * cannot be verified; 500 only for our own failures.
+ * cannot be verified (a rejected request, stores/rejected.ts) or does not belong to this app; 500 only for our own failures.
  */
 export function appleNotificationRoutes(deps: Deps) {
   const r = new Hono();
@@ -170,15 +181,30 @@ export function appleNotificationRoutes(deps: Deps) {
     const [app] = await db.select().from(apps).where(eq(apps.id, c.req.param("appId"))).limit(1);
     if (!app || (app.type !== "app_store" && app.type !== "mac_app_store")) return c.json({ error: "Unknown App Store app." }, 404);
     const raw = await c.req.text();
+    const store = appleStoreOf(app);
+    const contentType = c.req.header("content-type") ?? "application/json";
+    // Apple's signature and this app first: anything else is a rejected request, which never changes the app's status.
+    // It is still forwarded (within the rejected-request limit), so a dual run's other server decides for itself.
+    let n: NotificationPayload | null = null;
+    let verifyError: unknown = null;
+    try { n = await verify(raw, app, deps.now()); checkApp(n, app); } catch (e) {
+      if (!(e instanceof UnsignedError)) verifyError = e;
+      else {
+        const rejectedId = await logRejected(deps, c, app, { store, raw, error: `rejected: ${e.message}` });
+        if (!rejectedId) return tooManyRejected(c);
+        if (app.notificationForwardUrl) forward(c, db, app.notificationForwardUrl, raw, contentType, rejectedId);
+        return c.json({ error: e.message }, 400);
+      }
+    }
     const id = newId("ntf_", 16);
-    await db.insert(storeNotifications).values({ id, projectId: app.projectId, appId: app.id, store: appleStoreOf(app), body: raw, receivedAt: deps.now() });
-    if (app.notificationForwardUrl) forward(c, db, app.notificationForwardUrl, raw, c.req.header("content-type") ?? "application/json", id);
+    await db.insert(storeNotifications).values({ id, projectId: app.projectId, appId: app.id, store, body: raw, receivedAt: deps.now() });
+    if (app.notificationForwardUrl) forward(c, db, app.notificationForwardUrl, raw, contentType, id);
     const fail = async (status: 400 | 500, message: string) => {
       await db.update(storeNotifications).set({ error: message }).where(eq(storeNotifications.id, id));
       return c.json({ error: message }, status);
     };
     try {
-      const n = await decode(raw, app, deps.now());
+      if (!n) throw verifyError;
       const env = n.data?.environment ?? n.summary?.environment;
       await db.update(storeNotifications).set({ type: n.notificationType, subtype: n.subtype ?? null, environment: env ? env.toLowerCase() : null })
         .where(eq(storeNotifications.id, id));

@@ -230,7 +230,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const [last] = await db.select().from(schema.storeNotifications)
       .where(and(eq(schema.storeNotifications.appId, a.id), isNotNull(schema.storeNotifications.forwardStatus)))
       .orderBy(desc(schema.storeNotifications.receivedAt)).limit(1);
-    const health = await notificationHealth(db, a);
+    const health = await notificationHealth(db, a, deps.now());
     let clientEmail: string | null = null;
     if (googleKeyConfigured(cr)) { try { clientEmail = serviceAccountOf(a).client_email; } catch { /* shown as configured but unreadable */ } }
     return c.json({
@@ -246,6 +246,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       last_notification_error: health.notification_status === "failing" ? health.last_notification_error!.message : null,
       last_notification_received_at: health.last_notification_received_at,
       notification_status: health.notification_status,
+      // Unsigned or badly signed requests of the last 24 hours, shown apart: they never change notification_status.
+      rejected_requests: health.rejected_requests,
       last_forward: last ? { status: last.forwardStatus, at: last.receivedAt.getTime() } : null,
       track_new_purchases: cr.track_new_purchases === true,
       allow_unsigned_receipts: cr.allow_unsigned_receipts === true,
@@ -270,7 +272,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
         galaxy_iap_public_key: { configured: !!s(cr.galaxy_iap_public_key) },
       },
       // Amazon: the SNS topic notifications must come from (optional).
-      sns_topic_arn: a.type === "amazon" ? s(cr.sns_topic_arn) : null,
+      // The saved topic, else the one pinned from the first verified message.
+      sns_topic_arn: a.type === "amazon" ? s(cr.sns_topic_arn) ?? s(cr.sns_topic_arn_auto) : null,
       // Stripe: how purchases first seen in a webhook find their customer, and when a subscription counts.
       stripe: a.type === "stripe" ? {
         stripe_account_id: s(cr.stripe_account_id), app_user_id_source: s(cr.app_user_id_source) ?? "metadata",

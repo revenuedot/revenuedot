@@ -10,6 +10,7 @@ import { PaddleApiError, paddleEnvOf, type PaddleEvent } from "./api.js";
 import { paddleClientFor } from "./index.js";
 import { PaddleSignatureError, verifyPaddleSignature } from "./signature.js";
 import { handlePaddleEvent } from "./sync.js";
+import { logRejected, tooManyRejected } from "../rejected.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -37,12 +38,10 @@ export function paddleNotificationRoutes(deps: Deps) {
     try { const j = JSON.parse(raw); if (j && typeof j === "object" && typeof j.event_id === "string" && typeof j.event_type === "string") event = j; } catch { /* below */ }
     const objectId = typeof event?.data?.id === "string" ? event.data.id : null;
     const signature = c.req.header("paddle-signature");
-    // A body that fails the checks is kept (the app's notification status shows why) under an id of its own, so an
-    // unsigned body can never take a real event's id, and it is never forwarded.
+    // A body without a valid Paddle-Signature is a rejected request (stores/rejected.ts): logged under an id of its own, so
+    // an unsigned body can never take a real event's id, never forwarded, and never part of the app's notification status.
     const reject = async (error: string, message: string) => {
-      await deps.db.insert(storeNotifications).values({
-        id: `paddle_${app.id}_rejected_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "paddle", type: event?.event_type ?? null, subtype: objectId, body: raw.slice(0, 64_000), receivedAt: now, error,
-      });
+      if (!(await logRejected(deps, c, app, { store: "paddle", raw, type: event?.event_type ?? null, subtype: objectId, error }))) return tooManyRejected(c);
       return c.json({ code: Codes.BAD_REQUEST, message }, 400);
     };
 
@@ -54,7 +53,13 @@ export function paddleNotificationRoutes(deps: Deps) {
       const message = e instanceof PaddleSignatureError ? e.message : String(e);
       return reject(`rejected: ${message}`, message);
     }
-    if (!event) return reject("The body is not a Paddle event.", "The body is not a Paddle event.");
+    if (!event) {
+      // Signed with the destination's secret but not an event: a real failure of this app's destination.
+      await deps.db.insert(storeNotifications).values({
+        id: `paddle_${app.id}_invalid_${crypto.randomUUID()}`, projectId: app.projectId, appId: app.id, store: "paddle", body: raw.slice(0, 64_000), receivedAt: now, error: "The body is not a Paddle event.",
+      });
+      return c.json({ code: Codes.BAD_REQUEST, message: "The body is not a Paddle event." }, 400);
+    }
     const environment = paddleEnvOf(app) === "sandbox" ? "sandbox" : "production";
 
     const id = `paddle_${app.id}_${event.event_id}`;

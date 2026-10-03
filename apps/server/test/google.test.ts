@@ -451,13 +451,16 @@ describe("Google real-time developer notifications", () => {
     expect(await e.events("RENEWAL")).toHaveLength(1);
   });
 
-  it("an invalid token or another package is acknowledged (200) and recorded as an error", async () => {
-    let res = await e.rtdn(subNote(2, "tok_missing"));
+  it("without push authentication, an invalid token or another package is acknowledged (200) and kept as a rejected request", async () => {
+    let res = await e.rtdn(subNote(2, "tok_missing"), { messageId: "m-junk-1" });
     expect(res.status).toBe(200);
     res = await e.rtdn({ packageName: "com.other.app", ...subNote(2, "tok_missing") });
     expect(await res.json()).toEqual({ status: "ignored" });
     const rows = await e.h.db.select().from(schema.storeNotifications);
-    expect(rows.every((r) => r.error && r.processedAt)).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.rejected && r.error?.startsWith("rejected: ") && r.id.includes("_rejected_"))).toBe(true);
+    // The message id the junk claimed stays free for Google's real message.
+    expect(rows.some((r) => r.id.endsWith("m-junk-1"))).toBe(false);
     expect((await e.call("/v1/notifications/google/app_ios", { method: "POST", json: {} })).status).toBe(404);
     expect((await e.call("/v1/notifications/google/app_play", { method: "POST", body: "nope" })).status).toBe(400);
   });

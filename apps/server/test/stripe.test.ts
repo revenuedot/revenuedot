@@ -156,9 +156,9 @@ describe("Stripe webhooks", () => {
     res = await e.webhook("customer.subscription.updated", e.st.subs.get(SUB), { tamper: true });
     expect(res.status).toBe(400);
     expect(await e.events("RENEWAL")).toHaveLength(0);
-    // The store settings show the failure until a good event arrives.
+    // Unsigned events are rejected requests, counted apart: they never turn the app's notifications to failing.
     let settings = await (await e.call(`/v2/projects/${e.h.ids.project}/apps/${e.appId}/store_settings`, { key: e.h.ids.secretKey })).json();
-    expect(settings).toMatchObject({ notification_status: "failing", notification_url: `http://localhost/v1/notifications/stripe/${e.appId}`,
+    expect(settings).toMatchObject({ notification_status: "waiting", last_notification_error: null, rejected_requests: { last_24h: 3, last: { message: expect.stringMatching(/^rejected: /) } }, notification_url: `http://localhost/v1/notifications/stripe/${e.appId}`,
       credentials: { stripe_secret_key: { configured: true, mode: "test", kind: "restricted", last4: KEY.slice(-4) }, stripe_webhook_secret: { configured: true } },
       stripe: { app_user_id_source: "metadata", app_user_id_metadata_key: "app_user_id", register_on: "invoice_paid" } });
     expect(JSON.stringify(settings)).not.toContain(KEY);

@@ -262,7 +262,7 @@ describe("rejected notifications", () => {
     const res = await h.notify(forged);
     expect(res.status).toBe(400);
     const [row] = await h.db.select().from(schema.storeNotifications);
-    expect(row).toMatchObject({ body: forged, processedAt: null });
+    expect(row).toMatchObject({ body: forged, rejected: true });
     expect(row!.error).toMatch(/trusted root/);
   });
 

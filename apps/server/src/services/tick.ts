@@ -24,6 +24,8 @@ import { refreshDueStorePrices } from "./store-prices.js";
 import type { Deps } from "../context.js";
 import { ensureFirstSaleCards } from "./assistant/first-sale.js";
 import { pruneStreams } from "./assistant/store.js";
+import { pruneRejected } from "../stores/rejected.js";
+import { pruneRateLimits } from "./rate-limit.js";
 import type { Mailer } from "../mail/index.js";
 import { subRowToDomain } from "../repo/customers.js";
 import { scanDueVoidedPurchases } from "../stores/google/voided.js";
@@ -137,6 +139,11 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   // RevenueDot AI: the first-sale card for projects whose first paid production purchase just arrived, and old stream chunks.
   let firstSales = 0;
   try { firstSales = await ensureFirstSaleCards(db, now); await pruneStreams(db, now); } catch (e) { console.error("tick: first-sale cards failed", e); }
+  // Once an hour: rejected store notification requests older than a week, and rate-limit windows older than two days.
+  if (now.getUTCMinutes() === 7 && lastRejectedPruneHour !== Math.floor(now.getTime() / 3_600_000)) {
+    lastRejectedPruneHour = Math.floor(now.getTime() / 3_600_000);
+    try { await pruneRejected(db, now); await pruneRateLimits(db, now); } catch (e) { console.error("tick: pruning rejected notifications failed", e); }
+  }
   let exports = 0;
   if (opts.exports !== false && secretKey.ok && !draining()) {
     try {
@@ -182,6 +189,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
 }
 
 let lastFunnelPurgeHour = -1;
+let lastRejectedPruneHour = -1;
 
 /** EXPIRATION for every subscription whose access (including any grace period) has ended; optionally one chain only. */
 export async function recordDueExpirations(db: DB, now: Date, only?: { projectId: string; store: string; storeKey: string }) {
