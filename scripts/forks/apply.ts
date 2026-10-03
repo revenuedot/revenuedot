@@ -128,7 +128,8 @@ async function main() {
         git(root, ["add", "-A"]);
         if (git(root, ["diff", "--cached", "--name-only"])) {
           const msg = `RevenueDot fork patches\n\nApplied by https://github.com/revenuedot/revenuedot/tree/main/scripts/forks (rules/${repo}.json).\nDefault API host ${cfg.vars.apiHost}; RevenueDot response-signing key; RevenueDot registry names.\n${cfg.vars.disclaimer}`;
-          execGit(root, ["commit", "-q", "-m", msg]);
+          // --no-verify: a fork's own commit hooks (prettier in purchases-js) would reformat the generated README and break idempotency.
+          execGit(root, ["commit", "-q", "--no-verify", "-m", msg]);
           console.log(`  committed ${git(root, ["rev-parse", "--short", "HEAD"])} on ${branch}`);
         } else console.log(`  nothing to commit on ${branch}`);
         if (args.push) { execGit(root, ["push", "-q", "-u", "origin", `${branch}:${branch}`]); console.log(`  pushed origin/${branch}`); }
