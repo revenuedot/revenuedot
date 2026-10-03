@@ -14,6 +14,8 @@ import { touchConversation } from "./services/assistant/store.js";
 import { refusalResponse } from "./routes/v2/assistant.js";
 import { SESSION_COOKIE, sessionUser } from "./services/sessions.js";
 import { baseDeps, type Env } from "./worker-deps.js";
+import type { ServerExtension } from "./extensions.js";
+import type { Deps } from "./context.js";
 
 /** Set by the Worker after it checked the session; the Durable Object is never reachable without passing through it. */
 const USER_HEADER = "x-revenuedot-ai-user";
@@ -39,7 +41,7 @@ function cookie(req: Request, name: string) {
  * of its project), and a WebSocket must come from the same origin (no cross-site socket hijacking). Then the request
  * goes to the conversation's Durable Object with the user and project in headers the browser cannot set.
  */
-export async function routeAssistantAgent(req: Request, env: Env, db: DB): Promise<Response> {
+export async function routeAssistantAgent(req: Request, env: Env, db: DB, extensions: ServerExtension[] = []): Promise<Response> {
   const url = new URL(req.url);
   const m = PATH.exec(url.pathname);
   if (!m || !env.AssistantAgent) return json(404, "Not found.");
@@ -47,12 +49,19 @@ export async function routeAssistantAgent(req: Request, env: Env, db: DB): Promi
   const origin = req.headers.get("origin");
   if (origin !== null && hostOf(origin) !== url.host) return json(404, "Not found.");
   if (req.headers.get("sec-fetch-site") === "cross-site" || req.headers.get("sec-fetch-site") === "same-site") return json(404, "Not found.");
-  const user = await sessionUser(db, cookie(req, SESSION_COOKIE), new Date());
+  const sessionId = cookie(req, SESSION_COOKIE);
+  const user = await sessionUser(db, sessionId, new Date());
   if (!user) return json(401, "Sign in to use RevenueDot AI.");
-  const [conv] = await db.select({ projectId: schema.aiConversations.projectId }).from(schema.aiConversations)
+  const [conv] = await db.select({ projectId: schema.aiConversations.projectId, role: schema.memberships.role }).from(schema.aiConversations)
     .innerJoin(schema.memberships, and(eq(schema.memberships.projectId, schema.aiConversations.projectId), eq(schema.memberships.userId, user.id)))
     .where(and(eq(schema.aiConversations.id, m[1]!), eq(schema.aiConversations.userId, user.id), eq(schema.aiConversations.runtime, "durable_object"))).limit(1);
   if (!conv) return json(404, "Conversation not found.");
+  // The same project access the dashboard gets (enterprise extension): an organization that requires single sign-on
+  // refuses a password session here too, and deprovisioned people get nothing. Checked on every connection.
+  for (const ext of extensions) {
+    const access = await ext.projectAccess?.({ deps: { db } as unknown as Deps, userId: user.id, sessionId: sessionId ?? null, projectId: conv.projectId, role: conv.role });
+    if (access?.deny) return json(access.deny.status, access.deny.message);
+  }
   const headers = new Headers(req.headers);
   headers.set(USER_HEADER, user.id);
   headers.set(PROJECT_HEADER, conv.projectId);

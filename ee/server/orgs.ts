@@ -137,7 +137,13 @@ export function orgRoutes(ctx: EeCtx) {
     const { user } = await signedIn(c, deps);
     const b = await body(c, OrgCreate);
     // Cloud: creating an organization needs a plan that includes organizations (Cloud Standard or Enterprise).
-    if (ctx.cloud) needFeature(ctx, "organizations", await userFeatures(ctx, user.id));
+    const mine = await userFeatures(ctx, user.id);
+    if (ctx.cloud) needFeature(ctx, "organizations", mine);
+    // A region other than this server's is a data-location setting, like the update route.
+    if (b.region !== undefined && b.region !== ctx.regions.current) {
+      needFeature(ctx, "data_location", mine);
+      if (!selectableRegions(ctx.regions, deps.edition === "cloud").includes(b.region)) throw paramError(`New organizations on this server are created in the ${REGION_NAMES[ctx.regions.current]} region.`, "region");
+    }
     if (ctx.maxOrgs) {
       const [n] = await db.select({ n: count() }).from(eeOrganizations);
       if (Number(n?.n ?? 0) >= ctx.maxOrgs) throw new V2Error(403, "authorization_error", `Your RevenueDot Enterprise licence covers ${ctx.maxOrgs} organization${ctx.maxOrgs === 1 ? "" : "s"} on this server.`);
@@ -461,8 +467,8 @@ export function orgRoutes(ctx: EeCtx) {
   });
 
   r.delete(`${O}/roles/:role_id`, async (c) => {
+    // Deleting a role stays possible after a downgrade (its members become Viewers).
     const m = await admin(c);
-    needFeature(ctx, "custom_roles", m.features);
     const x = await findRole(m.org.id, c.req.param("role_id")!);
     // Members with the role become Viewers; mappings that gave it are removed.
     await demoteRoles(db, (await orgProjects(m.org.id)).map((p) => p.projectId), [x.id]);

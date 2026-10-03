@@ -151,6 +151,10 @@ describe("RevenueDot Cloud: downgrades", () => {
     expect((await x.browser().call("POST", "/sso/lookup", { email: "mia@acme.test" })).body).toEqual({ sso: false });
     // SCIM tokens stop working.
     expect((await scim("/scim/v2/Users")).status).toBe(403);
+    // Admins can still clean up: revoke the token, delete the role, remove the verified domain.
+    expect((await owner.browser.call("DELETE", `${O}/scim/tokens/${token.body.id}`)).status).toBe(200);
+    expect((await owner.browser.call("DELETE", `${O}/sso/domains/acme.test`)).status).toBe(200);
+    expect((await owner.browser.call("POST", `${O}/roles`, { name: "New", scopes: [] })).status).toBe(403);
     // The organization stays readable, shows what is locked, and its projects can be moved out.
     const org = await owner.browser.call("GET", O);
     expect(org.status).toBe(200);
@@ -160,6 +164,7 @@ describe("RevenueDot Cloud: downgrades", () => {
     expect(rename.status).toBe(403);
     expect(rename.body.message).toBe("Organizations are part of Cloud Standard. Upgrade in Billing.");
     expect((await owner.browser.call("DELETE", `${O}/projects/${owner.projectId}`)).status).toBe(200);
+    expect((await owner.browser.call("DELETE", `${O}/roles/${role.body.id}`)).status).toBe(200);
     // Upgrading again brings everything back.
     await setPlan(x, owner.userId, "standard");
     expect((await owner.browser.call("POST", O, { name: "Acme 2" })).status).toBe(200);
@@ -169,6 +174,8 @@ describe("RevenueDot Cloud: downgrades", () => {
 describe("RevenueDot Cloud: audit log retention", () => {
   it("deletes entries older than 90 days on Free and Standard, and keeps Enterprise accounts' and organizations' history", async () => {
     const x = await cloud();
+    // The 90 days count from 2026-10-03, when the plans shipped: nothing is deleted before 2027-01-01.
+    x.setNow(new Date("2027-03-01T00:00:00Z"));
     const free = await x.signup("free@acme.test", "Free app");
     const ent = await x.signup("ent@big.test", "Big app");
     const entOrgMember = await x.signup("member@big.test", "Org app");
@@ -190,6 +197,11 @@ describe("RevenueDot Cloud: audit log retention", () => {
       { id: `oal_new_${o}`, orgId: o, action: "test", actorType: "system", targetType: "organization", targetId: o, occurredAt: recent },
     ]);
 
+    // An account that lapsed 5 days ago keeps its history for 30 days.
+    const lapsed = await x.signup("lapsed@acme.test", "Lapsed app");
+    await x.db.insert(schema.billingAccounts).values({ userId: lapsed.userId, plan: "free", status: "unpaid", updatedAt: new Date(now.getTime() - 5 * DAY) });
+    await x.db.insert(schema.auditLogs).values([row(lapsed.projectId, old)]);
+
     await x.tick();
     const left = async (projectId: string) => (await x.db.select({ id: schema.auditLogs.id }).from(schema.auditLogs)
       .where(sql`${schema.auditLogs.projectId} = ${projectId} and ${schema.auditLogs.actionType} = 'test'`)).length;
@@ -197,10 +209,38 @@ describe("RevenueDot Cloud: audit log retention", () => {
     expect(await left(std.projectId)).toBe(1);
     expect(await left(ent.projectId)).toBe(2);
     expect(await left(entOrgMember.projectId)).toBe(2);
+    expect(await left(lapsed.projectId)).toBe(1);
     const orgRows = async (o: string) => (await x.db.select({ id: eeOrgAuditLogs.id }).from(eeOrgAuditLogs).where(eq(eeOrgAuditLogs.orgId, o))).map((r) => r.id);
     expect(await orgRows(stdOrg)).not.toContain(`oal_old_${stdOrg}`);
     expect(await orgRows(stdOrg)).toContain(`oal_new_${stdOrg}`);
     expect(await orgRows(orgId)).toContain(`oal_old_${orgId}`);
+  });
+});
+
+describe("RevenueDot Cloud: retention starts with the plans", () => {
+  it("deletes nothing before 2027-01-01", async () => {
+    const x = await cloud();
+    x.setNow(new Date("2026-12-15T00:00:00Z"));
+    const free = await x.signup("free@acme.test");
+    await x.db.insert(schema.auditLogs).values({ id: "al_early", projectId: free.projectId, actionType: "test", targetType: "project", targetIdentifier: "p", actorType: "user", actorIdentifier: "u", occurredAt: new Date("2026-06-01T00:00:00Z") });
+    await x.tick();
+    expect((await x.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.id, "al_early"))).length).toBe(1);
+  });
+});
+
+describe("RevenueDot Cloud: Enterprise is never changed by Stripe", () => {
+  it("refuses a Standard checkout and keeps the plan on subscription events", async () => {
+    const x = await cloud();
+    const owner = await x.signup("owner@big.test");
+    await setPlan(x, owner.userId, "enterprise");
+    const { handleBillingEvent } = await import("../../apps/server/src/services/billing/webhook.js");
+    await x.db.update(schema.billingAccounts).set({ stripeCustomerId: "cus_big" }).where(eq(schema.billingAccounts.userId, owner.userId));
+    const r = await handleBillingEvent({ db: x.db, now: x.now(), mailer: x.deps.mailer } as never, { id: "evt_1", type: "customer.subscription.deleted", data: { object: { id: "sub_1", customer: "cus_big", status: "canceled" } } });
+    expect(r).toBe("enterprise kept");
+    const c = await handleBillingEvent({ db: x.db, now: x.now(), mailer: x.deps.mailer } as never, { id: "evt_2", type: "checkout.session.completed", data: { object: { mode: "subscription", client_reference_id: owner.userId, customer: "cus_big", subscription: "sub_2" } } });
+    expect(c).toBe("enterprise kept");
+    const [a] = await x.db.select().from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, owner.userId));
+    expect(a?.plan).toBe("enterprise");
   });
 });
 

@@ -127,14 +127,15 @@ export function ssoRoutes(ctx: EeCtx) {
   const fetchFn = () => deps.fetch ?? fetch;
 
   const admin = async (c: Context) => {
-    if (!ctx.cloud) needFeature(ctx, "sso");
+    if (!ctx.cloud && c.req.method !== "DELETE") needFeature(ctx, "sso");
     const { user, sessionId } = await signedIn(c, deps);
     const orgId = c.req.param("org_id")!;
     const features = await orgFeatures(ctx, orgId);
     const { org, member } = await orgMembership(db, orgId, user.id, { sessionId, features });
     requireOrgAdmin(member.role);
-    // Cloud: the organization's plan must include single sign-on (Cloud Standard or Enterprise).
-    needFeature(ctx, "sso", features);
+    // Cloud: the organization's plan must include single sign-on (Cloud Standard or Enterprise). Removing connections and
+    // domains stays possible after a downgrade, so a domain can move to another organization.
+    if (c.req.method !== "DELETE") needFeature(ctx, "sso", features);
     return { user, org };
   };
   /** Single sign-on works for an organization while its licence or plan includes it; otherwise its connections act as off. */

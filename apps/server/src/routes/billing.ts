@@ -79,6 +79,7 @@ export function billingRoutes(deps: Deps) {
     const problem = stripeProblem(deps.billing);
     if (problem) return err(c, 503, "server_error", problem);
     const acct = await accountOf(db, u.id);
+    if (acct?.plan === "enterprise") return err(c, 409, "resource_already_exists", "You are on Enterprise, which includes everything in Cloud Standard. Contact sales at https://revenuedot.app/contact-sales to change it.");
     if (acct?.plan === "standard" && ["active", "past_due"].includes(acct.status)) return err(c, 409, "resource_already_exists", "You are on Cloud Standard already. Manage it with Manage billing.");
     try {
       const stripe = billingStripe(deps.billing!, deps.fetch);

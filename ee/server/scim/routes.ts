@@ -67,14 +67,14 @@ export function scimRoutes(ctx: EeCtx) {
   // ---- Dashboard: tokens and groups ----
 
   const admin = async (c: Context) => {
-    if (!ctx.cloud) needFeature(ctx, "scim");
+    if (!ctx.cloud && c.req.method !== "DELETE") needFeature(ctx, "scim");
     const { user, sessionId } = await signedIn(c, deps);
     const orgId = c.req.param("org_id")!;
     const features = await orgFeatures(ctx, orgId);
     const { org, member } = await orgMembership(db, orgId, user.id, { sessionId, features });
     requireOrgAdmin(member.role);
-    // Cloud: the organization's plan must include SCIM (Enterprise).
-    needFeature(ctx, "scim", features);
+    // Cloud: the organization's plan must include SCIM (Enterprise). Revoking tokens stays possible after a downgrade.
+    if (c.req.method !== "DELETE") needFeature(ctx, "scim", features);
     return { user, org };
   };
   const tokenShape = (t: typeof eeScimTokens.$inferSelect) => ({

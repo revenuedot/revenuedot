@@ -55,6 +55,10 @@ export interface CloudPlans {
 export const cloudPlansFrom = (json: string | undefined | null): CloudPlans => ({ plans: plansFrom(json) });
 
 const DAY = 86_400_000;
+/** Cloud kept every audit log entry until the plans shipped (2026-10-03); the 90 days count from then, so nothing is deleted before 2027-01-01. */
+export const CLOUD_RETENTION_FROM = Date.UTC(2026, 9, 3);
+/** An account whose plan changed in the last 30 days (a lapsed payment, a cancellation) keeps its history while it sorts that out. */
+export const DOWNGRADE_GRACE_DAYS = 30;
 
 /**
  * Cloud Free and Standard keep audit log entries `audit_log_days` (90) days: deletes older project and organization log
@@ -65,6 +69,8 @@ export async function purgeCloudAuditLogs(db: DB, now: Date, plans: Plan[], budg
   const limited = plans.filter((p) => p.audit_log_days !== null);
   if (!limited.length) return { deleted: 0, more: false };
   const days = Math.max(...limited.map((p) => p.audit_log_days!));
+  if (now.getTime() < CLOUD_RETENTION_FROM + days * DAY) return { deleted: 0, more: false };
+  const graceFrom = new Date(now.getTime() - DOWNGRADE_GRACE_DAYS * DAY).toISOString();
   const keep = plans.filter((p) => p.audit_log_days === null).map((p) => p.id);
   const cutoff = new Date(now.getTime() - days * DAY);
   const keepOrgs = await orgsWithPlans(db, keep);
@@ -77,6 +83,7 @@ export async function purgeCloudAuditLogs(db: DB, now: Date, plans: Plan[], budg
       left join billing_accounts b on b.user_id = p.owner_user_id
       where a.occurred_at < ${cutoff.toISOString()}::timestamptz
         and coalesce(b.plan, 'free') not in (${keepList})
+        and (b.updated_at is null or b.updated_at < ${graceFrom}::timestamptz)
         and not exists (select 1 from ee_org_projects op where op.project_id = a.project_id and op.org_id in (${orgList}))
       limit ${budget}
     ) returning id`);

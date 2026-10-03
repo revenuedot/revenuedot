@@ -55,6 +55,9 @@ export async function handleBillingEvent(d: BillingWebhookDeps, event: { id: str
       if (typeof userId !== "string" || o.mode !== "subscription") return "ignored";
       const [user] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.id, userId));
       if (!user) return "unknown user";
+      // Enterprise is set by RevenueDot staff under a contract; Stripe events never change it (it decides features and audit retention).
+      const [had] = await db.select({ plan: A.plan }).from(A).where(eq(A.userId, userId));
+      if (had?.plan === "enterprise") return "enterprise kept";
       const set = { plan: "standard", status: "active", stripeCustomerId: o.customer, stripeSubscriptionId: o.subscription, updatedAt: now };
       await db.insert(A).values({ userId, ...set, createdAt: now }).onConflictDoUpdate({ target: A.userId, set });
       await db.update(schema.users).set({ plan: "standard" }).where(eq(schema.users.id, userId));
@@ -69,6 +72,7 @@ export async function handleBillingEvent(d: BillingWebhookDeps, event: { id: str
       if (acct.stripeSubscriptionId && o.id !== acct.stripeSubscriptionId && event.type !== "customer.subscription.created") return "other subscription";
       const s = statusOf(event.type === "customer.subscription.deleted" ? "canceled" : String(o.status));
       if (!s) return "ignored status";
+      if (acct.plan === "enterprise") return "enterprise kept";
       const periodEnd = ts(o.current_period_end) ?? ts(o.items?.data?.[0]?.current_period_end);
       const cancelAt = ts(o.cancel_at) ?? (o.cancel_at_period_end ? periodEnd : null);
       await db.update(A).set({ plan: s.plan, status: s.status, stripeSubscriptionId: o.id, currentPeriodEnd: periodEnd, cancelAt: s.status === "canceled" ? null : cancelAt, updatedAt: now }).where(eq(A.userId, acct.userId));

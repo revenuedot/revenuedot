@@ -17,7 +17,7 @@ const FEATURE_TEXT: Record<string, string> = {
   custom_roles: "Build roles from exact API permissions, such as a support role that can refund but not edit the catalog.",
   sso: "Sign in with Okta, Microsoft Entra ID, Google Workspace or any SAML 2.0 or OpenID Connect provider, and require it for your email domain.",
   scim: "Let your identity provider create, update and deactivate people and groups, so leavers lose access the moment they are offboarded.",
-  data_location: "Set where each organization's and project's data is stored.",
+  data_location: "Record and enforce where each organization's and project's data is stored. RevenueDot Cloud runs in the US today.",
   audit_retention: "Keep audit logs from 30 days to 10 years, or forever. Cloud Free and Cloud Standard keep them 90 days.",
   compliance_exports: "Download signed CSV or JSON files of the audit log and an access review for your auditors.",
 };

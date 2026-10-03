@@ -78,7 +78,7 @@ export default {
     // RevenueDot AI conversations: the session and ownership are checked here, then the Durable Object takes the socket.
     if (url.pathname.startsWith("/agents/")) {
       const conn = connectPostgres(env.HYPERDRIVE.connectionString);
-      try { return await routeAssistantAgent(req, env, conn.db); } finally { ctx.waitUntil(conn.close()); }
+      try { return await routeAssistantAgent(req, env, conn.db, await extensionsFor(env)); } finally { ctx.waitUntil(conn.close()); }
     }
     const conn = connectPostgres(env.HYPERDRIVE.connectionString);
     const s: RequestScope = { db: conn.db, pending: [] };
