@@ -23,7 +23,7 @@ It works with the RevenueCat SDK your app already ships, so you switch by changi
 
 <br>
 
-<a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4"><img alt="RevenueDot dashboard tour: overview metrics, charts, the paywall editor and experiment results" src="docs/assets/readme/hero.gif" width="100%"></a>
+<a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.gif"><img alt="RevenueDot dashboard tour: overview metrics, charts, the paywall editor and experiment results" src="docs/assets/readme/hero.gif" width="100%"></picture></a>
 
 <sub>Example data. <a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4">Watch the dashboard tour</a> · <a href="https://revenuedot.app/videos/revenuedot-chatgpt-demo.mp4">87 seconds of RevenueDot run from ChatGPT</a></sub>
 
