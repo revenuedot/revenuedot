@@ -1,7 +1,8 @@
 /**
- * "Generate with AI": a prompt, the app name, up to three brand colours and the offering. The server asks its language
- * model (Workers AI on Cloud, OpenAI or Anthropic on self-host), repairs the answer into components the SDK decodes, and
- * returns it unsaved; the result shows in a phone preview and becomes a paywall (or replaces the editor's draft).
+ * "Generate with AI": a prompt, the app name, up to three brand colours and the offering. The server's paywall designer
+ * (packages/core/src/paywalls/designer) asks its language model (Vercel AI Gateway, OpenAI, Workers AI or Anthropic) for a
+ * brief and a design, checks and repairs it, and returns it unsaved; the result shows in a phone preview with the model
+ * that answered, and becomes a paywall (or replaces the editor's draft).
  */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -56,6 +57,7 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
     setBusy(null);
   };
   const doc = out ? { components_config: out.components_config, components_localizations: out.components_localizations, default_locale: out.default_locale } as PaywallDoc : null;
+  const notes = out ? [...new Set([...(out.notes ?? []), ...(out.warnings ?? []).map((w) => w.message)])] : [];
   const use = async () => {
     if (!doc || !out) return;
     if (onApply) { onApply(doc, out.name); onClose(); return; }
@@ -98,12 +100,13 @@ export function AiDialog({ pid, offerings, onClose, onApply, fixedOffering, appN
             <div className="pw-ai-notes" aria-label="What was fixed">
               <span className="label">Draft from {out.provider} · {out.model}</span>
               {out.fixes.length ? <ul>{out.fixes.map((f) => <li key={f}>{f}</li>)}</ul> : <p className="subtle">The model's answer needed no repairs.</p>}
+              {notes.length > 0 && <ul aria-label="Notes">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}
             </div>
           )}
         </div>
         <div className="pw-ai-prev">
-          {doc ? <Phone doc={doc} width={260} label="Generated paywall preview" prices={preview.prices} /> : (
-            <div className="pw-ai-wait">{busy === "gen" ? <><span className="live" />Writing your paywall…</> : <><Icon name="phone" />The preview shows here.</>}</div>
+          {doc ? <Phone doc={doc} width={260} label="Generated paywall preview" prices={preview.prices} trials={out?.preview_trials} /> : (
+            <div className="pw-ai-wait">{busy === "gen" ? <><span className="live" />Reading the brief, drafting and checking your paywall…</> : <><Icon name="phone" />The preview shows here.</>}</div>
           )}
         </div>
       </div>

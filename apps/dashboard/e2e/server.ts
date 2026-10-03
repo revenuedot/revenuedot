@@ -42,7 +42,7 @@ import { connectPlatform, editorAsc, editorPlay, fakeStoreFetch, fakeStores, res
 import { FAKE_CONNECT_CLIENT_ID, FAKE_CONNECT_WHSEC, FAKE_PLATFORM_KEY, FAKE_PLATFORM_TEST_KEY } from "../../../packages/contract/src/fake-stripe.ts";
 import { signStripePayload } from "@revenuedot/server/stores/stripe/signature.js";
 import type { StripeConnectConfig } from "@revenuedot/server/services/stripe-connect-config.js";
-import { fakeModel } from "@revenuedot/server/services/paywall-ai.js";
+import { fakeDesignerAnswer, fakeModel } from "@revenuedot/server/services/paywall-ai.js";
 import { fakeAssistantModel } from "@revenuedot/server/services/assistant/fake-model.js";
 
 const PORT = Number(process.env.PORT ?? 5199);
@@ -102,9 +102,10 @@ setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
 const mail = memoryMailer();
 // Amazon and Stripe answer from in-process fakes (store-fakes.ts): the e2e run never calls them.
-// "Generate with AI" answers from a fake model (no network): a paywall whose headline echoes the request, written the
-// sloppy way a real model sometimes does, so the server's repair runs. E2E_AI=off turns the generator off.
-const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, user) => {
+// "Generate with AI" answers from a fake model (no network): the paywall designer's structured calls get a brief and a
+// design whose headline echoes the request (fakeDesignerAnswer). E2E_AI=off turns the generator off.
+const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, user, name) => {
+  if (name) return fakeDesignerAnswer(name, user);
   // "Build with AI" for funnels: a short quiz whose question echoes the request.
   const funnelAsk = /Funnel request: (.*)/.exec(user)?.[1]?.slice(0, 60);
   if (funnelAsk) return "```json\n" + JSON.stringify({
@@ -116,18 +117,7 @@ const fakeAi = process.env.E2E_AI === "off" ? undefined : fakeModel((_system, us
       { id: "success", type: "success", title: "You are in", body: "Open the app to start.", show_redemption: true },
     ],
   }) + "\n```";
-  const ask = /Paywall request: (.*)/.exec(user)?.[1]?.slice(0, 60) ?? "Go Pro";
-  return "Here is your paywall:\n```json\n" + JSON.stringify({
-    name: "AI paywall", background: "#0f172a",
-    components: [
-      { type: "title", text: `AI: ${ask}`, color: "#ffffff" },
-      { type: "text", text: "Everything you need, nothing you don't.", color: "#cbd5e1", font_size: "body" },
-      { type: "features", items: [{ icon: "sparkles", text: "Smart suggestions" }, { icon: "cloud", text: "Backup and sync" }, "No ads"] },
-      { type: "timeline", items: [{ icon: "unlock", title: "Today", description: "Full access" }, { icon: "bell", title: "Day 5", description: "A reminder" }] },
-      { type: "packages" },
-    ],
-    footer: [{ type: "cta", text: "Start free trial" }, { type: "button", action: "restore" }],
-  }) + "\n```";
+  return "{}";
 });
 // RevenueDot AI answers from a scripted fake model (services/assistant/fake-model.ts): "how is revenue doing" calls
 // get-metrics, "grant pro to <user>" asks for approval, then grants. Conversations stream over SSE from the database.

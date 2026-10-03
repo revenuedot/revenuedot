@@ -38,6 +38,11 @@ interface Ctx {
   packages: string[];
   /** The previewed locale: price and period words follow it, as on devices. */
   locale: string;
+  /**
+   * Packages that have a free trial (ISO 8601 length), when known (the AI generator's brief). Set: `intro_offer` holds only
+   * for those packages, as on a device. Unset: every package counts as having one while `intro` is on.
+   */
+  trials?: Record<string, string>;
 }
 const C = createContext<Ctx | null>(null);
 const useC = () => useContext(C)!;
@@ -115,6 +120,13 @@ function markdown(text: string): ReactNode[] {
   return out;
 }
 
+/** Whether the package in context (inside a package) or the selected one has an intro offer the customer gets. */
+function introOf(ctx: Ctx): boolean {
+  if (!ctx.intro) return false;
+  if (!ctx.trials) return true;
+  const p = ctx.pkg ?? ctx.selectedPkg;
+  return !!(p && ctx.trials[p]);
+}
 /** The component with its overrides applied for the current state. */
 function resolve(c: Json, ctx: Ctx): Json {
   if (!Array.isArray(c.overrides) || !c.overrides.length) return c;
@@ -123,8 +135,8 @@ function resolve(c: Json, ctx: Ctx): Json {
     const ok = (o.conditions ?? []).every((k: Json) => {
       switch (k.type) {
         case "selected": return ctx.pkgSelected || ctx.tabSelected;
-        case "intro_offer": return ctx.intro;
-        case "intro_offer_condition": return (k.operator === "!=") !== (ctx.intro === k.value);
+        case "intro_offer": return introOf(ctx);
+        case "intro_offer_condition": return (k.operator === "!=") !== (introOf(ctx) === k.value);
         case "promo_offer": return false;
         case "compact": return true;
         case "medium": case "expanded": return false;
@@ -522,6 +534,8 @@ export interface PhoneProps {
   live?: boolean;
   /** The offering's real products by package identifier (previewProducts in preview-values.ts). */
   prices?: Record<string, PreviewProduct>;
+  /** Packages with a free trial and its length; others have none (see Ctx.trials). */
+  trials?: Record<string, string>;
 }
 
 /**
@@ -546,7 +560,14 @@ export function Phone(p: PhoneProps) {
     )}><PhoneView {...p} /></Guard>
   );
 }
-function PhoneView({ doc, state = {}, width = 320, focus, onPick, selectedPkg, onSelectPkg, label = "Paywall preview", live = true, prices }: PhoneProps) {
+function PhoneView({ doc, state = {}, width = 320, focus, onPick, selectedPkg, onSelectPkg, label = "Paywall preview", live = true, prices: realPrices, trials }: PhoneProps) {
+  // Trial lengths the caller knows go into the products, so offer periods show that length.
+  const prices = useMemo(() => {
+    if (!trials) return realPrices;
+    const out: Record<string, PreviewProduct> = { ...(realPrices ?? {}) };
+    for (const [k, v] of Object.entries(trials)) out[k] = { ...(out[k] ?? {}), trial: v };
+    return out;
+  }, [realPrices, trials]);
   const W = 390, H = 844, scale = width / W;
   const [ownPkg, setOwnPkg] = useState<string | null>(null);
   const [tabs, setTabs] = useState<Record<string, string>>({});
@@ -559,7 +580,7 @@ function PhoneView({ doc, state = {}, width = 320, focus, onPick, selectedPkg, o
   const dark = !!state.dark;
   const ctx: Ctx = {
     strings: stringsFor(doc, state.locale ?? doc.default_locale), locale: state.locale ?? doc.default_locale ?? "en_US", dark, intro: state.intro ?? true, selectedPkg: pkg, setSelectedPkg: setPkg,
-    tabs, setTab: (a, b) => setTabs((t) => ({ ...t, [a]: b })), now, focus, onPick, pkg: null, pkgSelected: false, tabSelected: false, remaining: null, control: null, prices, packages,
+    tabs, setTab: (a, b) => setTabs((t) => ({ ...t, [a]: b })), now, focus, onPick, pkg: null, pkgSelected: false, tabSelected: false, remaining: null, control: null, prices, packages, trials,
   };
   const base = doc.components_config?.base;
   const bg = backgroundCss(base?.background, dark);

@@ -68,7 +68,9 @@ secrets:
   smtpUrl: ""
   # REVENUEDOT_LICENSE_KEY: turns on the enterprise features in ee/.
   licenseKey: ""
-  # ANTHROPIC_API_KEY / OPENAI_API_KEY: RevenueDot AI and "Generate with AI". Off without one.
+  # AI_GATEWAY_API_KEY (Vercel AI Gateway, tried first) / ANTHROPIC_API_KEY / OPENAI_API_KEY: RevenueDot AI and
+  # "Generate with AI". Off without one.
+  aiGatewayApiKey: ""
   anthropicApiKey: ""
   openaiApiKey: ""
   # REVENUEDOT_ARCHIVE_S3_ACCESS_KEY_ID / _SECRET_ACCESS_KEY: an access key for archives.s3.bucket. Role credentials

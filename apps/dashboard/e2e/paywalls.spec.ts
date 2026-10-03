@@ -238,7 +238,7 @@ test("paywalls: gallery, create from template, edit, translate, publish to the S
   await ai.getByRole("button", { name: "Generate" }).click();
   const gen = ai.getByRole("figure", { name: "Generated paywall preview" });
   await expect(gen).toContainText("AI: A focus timer for students, calm and simple");
-  await expect(gen).toContainText("Smart suggestions");
+  await expect(gen).toContainText("Unlimited access");
   await expect(ai.getByLabel("What was fixed")).toContainText("Fake");
   await ai.getByRole("button", { name: "Create paywall" }).click();
   await page.waitForURL((u) => /\/paywalls\/pw/.test(u.pathname) && !u.pathname.endsWith(paywallId));

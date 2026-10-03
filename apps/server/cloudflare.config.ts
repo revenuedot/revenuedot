@@ -35,11 +35,12 @@ export default defineConfig({
       // Base64 Ed25519 seed for response signing (Trusted Entitlements). Set by scripts/deploy-cloud.sh from
       // ~/.config/revenuedot/signing-root.key; locally from apps/server/.dev.vars (gitignored).
       REVENUEDOT_SIGNING_KEY: bindings.secret(),
-      // Workers AI for "Generate with AI" on paywalls (prd/paywalls/PRD.md §3). No API key; billed to the Circo account.
+      // Workers AI for "Generate with AI" on paywalls (prd/paywalls/PRD.md §3) when the Worker has no AI_GATEWAY_API_KEY
+      // secret (Vercel AI Gateway, put on the Worker by scripts/deploy-cloud.sh). No API key; billed to the Circo account.
       // `dev.remote`: Workers AI has no local simulation, so `cf dev` calls the real model (billed to the account).
       AI: bindings.ai({ dev: { remote: true } }),
       // RevenueDot AI conversations (prd/ai-assistant/PRD.md); the model is Workers AI through `AI` unless a provider key
-      // (ANTHROPIC_API_KEY or OPENAI_API_KEY) is set as a secret.
+      // (AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY or OPENAI_API_KEY) is set as a secret.
       AssistantAgent: bindings.durableObject({ worker: "revenuedot", exportName: "AssistantAgent" }),
       // Local `cf dev` only: REVENUEDOT_ASSISTANT_FAKE=1 in the shell answers with the scripted fake model (no model call).
       ...(process.env.REVENUEDOT_ASSISTANT_FAKE === "1" ? { REVENUEDOT_ASSISTANT_FAKE: bindings.text("1") } : {}),

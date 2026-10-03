@@ -106,6 +106,16 @@ The response-signing root key is the secret `REVENUEDOT_SIGNING_KEY` (public key
 `pnpm deploy:cloud --secrets-file <file>`; later versions keep it. The master copy is kept in the team's password
 manager, not on disk. To rotate it, write a new key to a temp file, pass it with the same flag, then delete the file.
 
+Every AI feature uses the Vercel AI Gateway with `openai/gpt-6-luna` and medium reasoning when the Worker has the secret
+`AI_GATEWAY_API_KEY`: "Generate with AI" on paywalls, funnels' "Build with AI", RevenueDot AI (the assistant and its
+Create with AI flows for products, experiments and targeting) and the insights. **The key also moves RevenueDot AI on
+Cloud from Workers AI (Kimi K2.6, billed to the Circo account) to GPT-6 Luna billed per token through the gateway.**
+Without the key everything falls back to Workers AI. The deploy script puts the key on the Worker after each deploy when
+the variable is set (CI: the GitHub `production` secret `AI_GATEWAY_API_KEY`, scoped to the deploy step; a manual run:
+`prod.env`), with the per-secret API, so other secrets stay; it then checks by name that `REVENUEDOT_SIGNING_KEY` and
+`AI_GATEWAY_API_KEY` are still on the Worker. To rotate it, update the GitHub secret and redeploy. Removing the GitHub
+secret leaves the Worker's copy; delete it with `cf workers secrets delete AI_GATEWAY_API_KEY --worker revenuedot`.
+
 The site and the MCP server also deploy from CI: a push to `main` in [revenuedot/docs](https://github.com/revenuedot/docs)
 runs its `deploy-site.yml` (docs checks, then the site), and a push to `main` in
 [revenuedot/mcp](https://github.com/revenuedot/mcp) runs its `ci.yml` (tests, deploy, then a live check). By hand:

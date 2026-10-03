@@ -15,7 +15,7 @@ import { defaultStores } from "./stores/index.js";
 import { tick } from "./services/tick.js";
 import { runScheduledJobs } from "./services/scheduled.js";
 import { logMailer, type Mailer } from "./mail/index.js";
-import { modelFromEnv } from "./services/paywall-ai.js";
+import { paywallModelFromEnv } from "./services/paywall-ai.js";
 import { assistantModelFromEnv } from "./services/assistant/models.js";
 import { capsFromEnv } from "./services/assistant/limits.js";
 import { stripeConnectFromEnv } from "./services/stripe-connect-config.js";
@@ -107,11 +107,12 @@ const interval = setInterval(() => { void runTick(); void runScheduled(); }, clu
 // Self-hosted servers let only their first account (the owner) sign up, unless REVENUEDOT_ALLOW_SIGNUP=true.
 const signup = process.env.REVENUEDOT_ALLOW_SIGNUP === "true" ? "open" : "owner_only";
 const app = createApp({ db, now: () => new Date(), stores, kick: () => kick(), signup, mailer, publicUrl, archiveStore, edition, billing, encryptionKey: process.env.REVENUEDOT_ENCRYPTION_KEY?.trim() || undefined,
-  // "Generate with AI" on paywalls: OPENAI_API_KEY or ANTHROPIC_API_KEY (REVENUEDOT_AI_MODEL to pick the model); off without either.
-  ai: modelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
+  // "Generate with AI" on paywalls and funnels (services/paywall-ai.ts): AI_GATEWAY_API_KEY (Vercel AI Gateway, GPT-6 Luna),
+  // else OPENAI_API_KEY, else ANTHROPIC_API_KEY; REVENUEDOT_PAYWALL_MODEL picks the model; off without a key.
+  ai: paywallModelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
   // Hosted web pages (purchase links, funnels): REVENUEDOT_PAY_URL, else <this server>/pay; custom domains CNAME to the pay host.
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
-  // RevenueDot AI (prd/ai-assistant/PRD.md): ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to
+  // RevenueDot AI (prd/ai-assistant/PRD.md): AI_GATEWAY_API_KEY (GPT-6 Luna through the gateway), ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to
   // pick another; hidden without either. Conversations and their streams live in Postgres; caps from REVENUEDOT_ASSISTANT_CAPS.
   assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS), extensions, stripeConnect,
   // The weekly AI growth insights digest spends the owner's model key, so self-host runs it only when asked.

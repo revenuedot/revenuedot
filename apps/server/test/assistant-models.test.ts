@@ -12,6 +12,27 @@ describe("assistant models", () => {
     expect(assistantModelFromEnv({ ANTHROPIC_API_KEY: " " })).toBeUndefined();
   });
 
+  it("AI_GATEWAY_API_KEY: GPT-6 Luna through the Vercel AI Gateway with medium reasoning, before every other provider", async () => {
+    expect(assistantModelFromEnv({ AI_GATEWAY_API_KEY: "g", ANTHROPIC_API_KEY: "a", OPENAI_API_KEY: "o" })).toMatchObject({ provider: "Vercel AI Gateway", model: "openai/gpt-6-luna", vision: true });
+    expect(assistantModelFromEnv({ AI_GATEWAY_API_KEY: "g", REVENUEDOT_ASSISTANT_MODEL: "openai/gpt-6-sol" })?.model).toBe("openai/gpt-6-sol");
+    // A bare id from a direct provider is not a gateway id: the default stays.
+    expect(assistantModelFromEnv({ AI_GATEWAY_API_KEY: "g", REVENUEDOT_ASSISTANT_MODEL: "claude-opus-5-5" })?.model).toBe("openai/gpt-6-luna");
+    const reqs: { url: string; auth: string | null; body: Record<string, unknown> }[] = [];
+    const f = (async (url: string, init: RequestInit) => {
+      reqs.push({ url, auth: new Headers(init.headers as HeadersInit).get("authorization"), body: JSON.parse(String(init.body)) });
+      return new Response(JSON.stringify({ error: { message: "test stops here", type: "invalid_request_error" } }), { status: 400, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+    for (const [env, effort] of [[{}, "medium"], [{ REVENUEDOT_AI_REASONING: "high" }, "high"]] as const) {
+      const m = assistantModelFromEnv({ AI_GATEWAY_API_KEY: "test-gateway-key", ...env }, f)!;
+      const r = streamText({ model: m.languageModel, prompt: "hi", maxRetries: 0 });
+      await r.consumeStream({ onError: () => {} });
+      const req = reqs.at(-1)!;
+      expect(new URL(req.url).host).toBe("ai-gateway.vercel.sh");
+      expect(req.auth).toBe("Bearer test-gateway-key");
+      expect(req.body).toMatchObject({ providerOptions: { openai: { reasoningEffort: effort } } });
+    }
+  });
+
   it("the Anthropic request names the model and sends no temperature", async () => {
     const bodies: Record<string, unknown>[] = [];
     const f = (async (_url: string, init: RequestInit) => {
