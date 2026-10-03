@@ -31,9 +31,12 @@ export default defineConfig({
       LEAD_LIMIT: bindings.rateLimit({ namespace: "1101", simple: { limit: 5, period: 60 } }),
       // Partial answers from the stepped form: one save per step, so a higher limit (30 a minute per IP address).
       DRAFT_LIMIT: bindings.rateLimit({ namespace: "1102", simple: { limit: 30, period: 60 } }),
-      // The ElevenLabs sales voice agent (worker/agent.ts) and the Twilio number it calls from. Its secrets AGENT_TOKEN,
-      // ELEVENLABS_WEBHOOK_SECRET and ELEVENLABS_API_KEY are set on the Worker directly and kept across deploys; without
-      // them /api/agent/* answers 503 and no outbound calls are made.
+      // The ElevenLabs sales voice agent (worker/agent.ts) and the Twilio number it calls from. Without the three secrets
+      // /api/agent/* answers 503 and no outbound calls are made. They are set on the Worker directly (values in 1Password,
+      // "RevenueDot voice agent backend" and "ElevenLabs API key"); declaring them here is what keeps them across deploys.
+      AGENT_TOKEN: bindings.secret(),
+      ELEVENLABS_WEBHOOK_SECRET: bindings.secret(),
+      ELEVENLABS_API_KEY: bindings.secret(),
       ELEVENLABS_AGENT_ID: bindings.text("agent_0801m3xdj6pqffnshp716p97jccc"),
       ELEVENLABS_PHONE_ID: bindings.text("phnum_9001m3zasth9e6r8j4mtkc4m3pfh"),
     },
