@@ -1882,7 +1882,7 @@ export const billingAccounts = pgTable("billing_accounts", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   /** free, standard, enterprise. */
   plan: text("plan").notNull().default("free"),
-  /** none, active, past_due, unpaid, canceled. */
+  /** none, active, past_due, unpaid, incomplete, paused, canceled (Stripe's subscription status, prd/cloud-billing). */
   status: text("status").notNull().default("none"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),

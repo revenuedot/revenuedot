@@ -26,7 +26,7 @@ interface Billing {
 }
 
 const STATUS: Record<string, { label: string; tone: "up" | "down" | "info" | "gold" | "muted" }> = {
-  active: { label: "Active", tone: "up" }, past_due: { label: "Payment failed", tone: "down" }, unpaid: { label: "Unpaid", tone: "down" }, canceled: { label: "Cancelled", tone: "muted" }, none: { label: "Free", tone: "muted" },
+  active: { label: "Active", tone: "up" }, past_due: { label: "Payment failed", tone: "down" }, unpaid: { label: "Unpaid", tone: "down" }, canceled: { label: "Cancelled", tone: "muted" }, incomplete: { label: "Checkout not finished", tone: "muted" }, paused: { label: "Paused", tone: "muted" }, none: { label: "Free", tone: "muted" },
 };
 /** Billing dates in UTC: periods run on UTC calendar months, so "Ends Nov 1" matches Stripe's portal and emails everywhere. */
 const utcDate = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—");

@@ -331,7 +331,7 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
   });
 
-  it("a paying subscription wins over an abandoned or unpaid one; an unpaid account is sent to pay its invoice, not to a second Checkout", async () => {
+  it("a paying subscription wins over an abandoned or unpaid one; an unpaid account can subscribe again without two subscriptions", async () => {
     const { subscription } = await upgrade();
     // An abandoned Checkout left an older incomplete subscription on the same customer: it is neither chosen nor cancelled.
     const stale = { ...stripe.snapshot(subscription), id: "sub_test_incomplete", status: "incomplete", created: subscription.created - 60 };
@@ -340,21 +340,60 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     expect(await account()).toMatchObject({ plan: "standard", status: "active" });
     expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeSubscriptionId).toBe(subscription.id);
     expect(stripe.subscriptions.get(stale.id)!.status).toBe("incomplete");
-    // Every retry failed: unpaid. Upgrade is refused with the way back; paying the invoice makes the same subscription active.
-    await hook("customer.subscription.updated", stripe.updateSubscription(subscription.id, { status: "unpaid" }));
+    // Every retry failed: unpaid, on Free with one email (the amount comes from Stripe's invoice, not a local copy).
+    const inv = stripe.invoice(subscription.customer, { amount_due: 4321, status: "open", subscription: subscription.id, attempt_count: 4 });
+    await hook("customer.subscription.updated", stripe.updateSubscription(subscription.id, { status: "unpaid", latest_invoice: inv.id }));
     expect(await account()).toMatchObject({ plan: "free", status: "unpaid" });
+    const unpaidMail = mail.sent.find((m) => m.subject === "Your RevenueDot subscription moved to Cloud Free")!;
+    expect(unpaidMail.text).toContain("43.21");
+    // Upgrade again: the unpaid subscription is ended first, so only the new one can bill the meter.
     const again = await call("POST", "/v2/billing/checkout", { plan: "standard" });
-    expect(again.status).toBe(409);
-    expect(again.body.message).toMatch(/unpaid/);
-    await hook("invoice.paid", stripe.invoice(subscription.customer, { amount_due: 900, status: "paid", subscription: subscription.id }));
-    stripe.updateSubscription(subscription.id, { status: "active" });
-    await hook("customer.subscription.updated", stripe.subscriptions.get(subscription.id)!);
+    expect(again.status).toBe(200);
+    expect(stripe.subscriptions.get(subscription.id)!.status).toBe("canceled");
+    const next = stripe.complete(again.body.id).subscription;
+    await hook("checkout.session.completed", stripe.sessions.get(again.body.id)!);
     expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeSubscriptionId).toBe(next.id);
+  });
+
+  it("a customer Stripe no longer has moves the account to Free, and Checkout starts over with a new customer", async () => {
+    const { subscription } = await upgrade();
+    await hook("customer.subscription.created", subscription);
+    stripe.customers.delete(subscription.customer);
+    await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, publicUrl: "https://app.revenuedot.test", config: config(), force: true });
+    expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
+    const again = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    expect(again.status).toBe(200);
+    const newCustomer = stripe.sessions.get(again.body.id)!.customer;
+    expect(newCustomer).not.toBe(subscription.customer);
+    expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeCustomerId).toBe(newCustomer);
+  });
+
+  it("the hourly reconcile runs once an hour however often the cron fires, and skips unchanged accounts", async () => {
+    const { subscription } = await upgrade();
+    await hook("customer.subscription.created", subscription);
+    const before = (await h.db.select().from(schema.billingAccounts))[0]!.updatedAt.getTime();
+    const lists = () => stripe.calls.filter((c) => c.method === "GET" && c.path === "/v1/subscriptions").length;
+    const n0 = lists();
+    for (let i = 0; i < 5; i++) await runBilling({ db: h.db, now: new Date(h.now().getTime() + i * 60_000), fetch: stripe.fetch, mailer: mail, config: config() });
+    expect(lists() - n0).toBe(1);
+    // Nothing changed in Stripe, so the row was not touched: a settled account leaves the reconcile set after 7 days.
+    expect((await h.db.select().from(schema.billingAccounts))[0]!.updatedAt.getTime()).toBe(before);
+    await runBilling({ db: h.db, now: new Date(h.now().getTime() + 3_600_000), fetch: stripe.fetch, mailer: mail, config: config() });
+    expect(lists() - n0).toBe(2);
+  });
+
+  it("an Enterprise account cannot open a Standard Checkout", async () => {
+    await h.db.insert(schema.billingAccounts).values({ userId: "usr_1", plan: "enterprise", status: "active" });
+    const r = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    expect(r.status).toBe(409);
+    expect(r.body.message).toMatch(/Enterprise/);
   });
 
   it("events about objects Stripe does not know are acknowledged and ignored", async () => {
     await upgrade();
-    expect((await hook("invoice.paid", { id: "in_missing", customer: "cus_nobody" })).body.result).toBe("unknown to Stripe");
+    expect((await hook("invoice.paid", { id: "in_missing", customer: "cus_nobody" })).body.result).toBe("unknown customer");
+    expect((await hook("invoice.paid", { id: "in_missing" })).body.result).toBe("unknown to Stripe");
     expect((await hook("customer.subscription.updated", { id: "sub_x", customer: "cus_nobody", status: "active" })).body.result).toBe("unknown customer");
   });
 });

@@ -8,7 +8,7 @@ import { linkBase, requestOrigin } from "../services/account-email.js";
 import { accountOf, accountUsage, reportAccountNow } from "../services/billing/meter.js";
 import { billCents, monthBounds, monthOf, planOf, plansFrom } from "../services/billing/plans.js";
 import { BillingStripeError, billingStripe, datafastIds, stripeProblem } from "../services/billing/stripe.js";
-import { handleBillingEvent, syncCustomer } from "../services/billing/webhook.js";
+import { claim, handleBillingEvent, syncCustomer } from "../services/billing/webhook.js";
 import { StripeSignatureError, verifyStripeSignature } from "../stores/stripe/signature.js";
 
 /**
@@ -36,7 +36,8 @@ export function billingRoutes(deps: Deps) {
     const month = monthOf(now);
     let acct = await accountOf(db, u.id);
     // Back from Checkout (?sync=1): read Stripe now, so the new plan shows even before the webhook lands.
-    if (c.req.query("sync") === "1" && acct?.stripeCustomerId && !stripeProblem(deps.billing)) {
+    // At most once every 5 seconds per account: the page polls every 3 s, and Stripe's rate limit is shared by everyone.
+    if (c.req.query("sync") === "1" && acct?.stripeCustomerId && !stripeProblem(deps.billing) && await claim(db, `sync:${u.id}:${Math.floor(now.getTime() / 5000)}`, now)) {
       try { await syncCustomer({ db, now, stripe: billingStripe(deps.billing!, deps.fetch), mailer: deps.mailer, publicUrl: deps.publicUrl }, acct.stripeCustomerId, u.id); acct = await accountOf(db, u.id); }
       catch (e) { console.error("billing: sync on return from Checkout failed", e); }
     }
@@ -84,22 +85,26 @@ export function billingRoutes(deps: Deps) {
     const problem = stripeProblem(deps.billing);
     if (problem) return err(c, 503, "server_error", problem);
     const acct = await accountOf(db, u.id);
+    if (acct?.plan === "enterprise") return err(c, 409, "resource_already_exists", "Your account is on Enterprise, billed by contract. Write to sales@revenuedot.app to change it.");
     if (acct?.plan === "standard" && ["active", "past_due"].includes(acct.status)) return err(c, 409, "resource_already_exists", "You are on Cloud Standard already. Manage it with Manage billing.");
     try {
       const stripe = billingStripe(deps.billing!, deps.fetch);
       let customer = acct?.stripeCustomerId ?? null;
+      let replacing: string | null = null;
       if (customer) {
         // Stripe, not our copy, says whether a subscription is already running (a webhook may still be on its way).
         const r = await syncCustomer({ db, now: deps.now(), stripe, mailer: deps.mailer, publicUrl: deps.publicUrl }, customer, u.id);
         if (r && ["active", "past_due"].includes(r.after.status)) return err(c, 409, "resource_already_exists", "You are on Cloud Standard already. Manage it with Manage billing.");
-        // Unpaid: the subscription still exists with an open invoice. Paying it brings Standard back; a second subscription
-        // would bill the same meter twice.
-        if (r?.after.status === "unpaid") return err(c, 409, "resource_already_exists", "Your last invoice is unpaid. Pay it in Manage billing and Cloud Standard comes back.");
+        // Unpaid (every retry failed, the account is on Free): end that subscription before a new one, so the two never
+        // share the meter. Its open invoice stays open and payable from the Billing page.
+        if (r?.after.status === "unpaid" && r.subscription) await stripe.cancelSubscription(r.subscription);
+        // Stripe no longer has this customer (deleted, or from the other mode): start over with a new one.
+        if (r?.missing) { replacing = customer; customer = null; }
         // One checkout at a time: an older open session (another tab) could otherwise start a second subscription.
-        for (const s of await stripe.listOpenCheckouts(customer)) await stripe.expireCheckout(s.id).catch((e) => console.error(`billing: could not expire checkout ${s.id}`, e));
+        if (customer) for (const s of await stripe.listOpenCheckouts(customer)) await stripe.expireCheckout(s.id).catch((e) => console.error(`billing: could not expire checkout ${s.id}`, e));
       }
       if (!customer) {
-        customer = (await stripe.createCustomer({ email: u.email, name: u.name, userId: u.id })).id;
+        customer = (await stripe.createCustomer({ email: u.email, name: u.name, userId: u.id, replacing })).id;
         const set = { stripeCustomerId: customer, updatedAt: deps.now() };
         await db.insert(schema.billingAccounts).values({ userId: u.id, ...set, createdAt: deps.now() }).onConflictDoUpdate({ target: schema.billingAccounts.userId, set });
       }
@@ -148,7 +153,8 @@ export function billingRoutes(deps: Deps) {
     }
     // A new subscription gets this month's bill on the meter now, not at the next hourly pass.
     if (event.type === "checkout.session.completed" && result === "subscribed") {
-      const userId = String((event.data.object as { client_reference_id?: string }).client_reference_id ?? "");
+      const o = event.data.object as { client_reference_id?: string; metadata?: { revenuedot_user_id?: string } };
+      const userId = String(o.client_reference_id ?? o.metadata?.revenuedot_user_id ?? "");
       const run = reportAccountNow({ db, now: deps.now(), fetch: deps.fetch, config: deps.billing ?? null }, userId).catch((e) => console.error("billing: report after upgrade failed", e));
       if (deps.defer) deps.defer(() => run); else await run;
     }

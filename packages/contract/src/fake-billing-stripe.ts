@@ -12,7 +12,7 @@ export const FAKE_BILLING_PRICE = "price_test_cloud_standard_metered";
 
 type Obj = Record<string, any>;
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const err = (status: number, message: string) => json(status, { error: { type: "invalid_request_error", message } });
+const err = (status: number, message: string, code?: string) => json(status, { error: { type: "invalid_request_error", message, ...(code ? { code } : {}) } });
 
 async function sign(secret: string, payload: string, t: number) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -102,13 +102,15 @@ export class FakeBillingStripe {
     }
     if (method === "GET" && path === "/v1/subscriptions") {
       if (this.failReads) return err(500, "An error occurred with our connection to Stripe.");
+      // Real Stripe: an unknown customer is a 400 with code resource_missing, not an empty list.
+      if (p.customer && !this.customers.has(p.customer)) return err(400, `No such customer: '${p.customer}'`, "resource_missing");
       const data = [...this.subscriptions.values()].filter((x) => !p.customer || x.customer === p.customer).filter((x) => p.status === "all" || (p.status ? x.status === p.status : x.status !== "canceled")).sort((a, b) => b.created - a.created);
       return json(200, { object: "list", data, has_more: false, url: "/v1/subscriptions" });
     }
     const inv = /^\/v1\/invoices\/([^/]+)$/.exec(path);
     if (method === "GET" && inv) {
       if (this.failReads) return err(500, "An error occurred with our connection to Stripe.");
-      return this.invoices.has(inv[1]!) ? json(200, this.invoices.get(inv[1]!)) : err(404, `No such invoice: '${inv[1]}'`);
+      return this.invoices.has(inv[1]!) ? json(200, this.invoices.get(inv[1]!)) : err(404, `No such invoice: '${inv[1]}'`, "resource_missing");
     }
     if (method === "GET" && path === "/v1/checkout/sessions") {
       const data = [...this.sessions.values()].filter((x) => (!p.customer || x.customer === p.customer) && (!p.status || x.status === p.status));
