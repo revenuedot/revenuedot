@@ -586,7 +586,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         label: "Honest notes",
         bullets: [
           "The hosted checkout is a Stripe-hosted page. An embedded checkout (Stripe Elements) is not built.",
-          "Connect with Stripe (OAuth) is not built yet. You paste a restricted key.",
+          "Connect with Stripe (OAuth) is not available on RevenueDot Cloud yet. You paste a restricted key and a webhook signing secret.",
           "Run a purchase in Stripe test mode before you go live.",
           "RevenueCat Web Billing (`rcb_`) purchases are not accepted. Paddle purchases are tracked when your backend posts them, not through purchases-js. See [the web SDK page](/sdks/web).",
         ],
