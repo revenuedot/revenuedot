@@ -22,6 +22,17 @@ async function setup() {
 }
 const percent = (o: Record<string, unknown> = {}) => ({ identifier: "spring20", customer_facing_name: "Spring sale", type: "percentage", percentage: 20, duration_mode: "time_window", time_window: "P3M", eligibility: "everyone", ...o });
 
+describe("promotion codes follow the Stripe account's API version", () => {
+  it.each(["clover", "legacy"] as const)("a code is created on an account that takes the %s shape", async (shape) => {
+    await setup();
+    env.stripe.promotionCodeShape = shape;
+    const id = (await call("POST", D, {}, { json: percent() })).body.id as string;
+    const res = await call("POST", CODES, { discount_id: id }, { json: { codes: ["SPRING20"] } });
+    expect(res.status).toBe(201);
+    expect([...env.stripe.promotionCodes.values()].map((p: any) => p.code)).toEqual(["SPRING20"]);
+  });
+});
+
 describe("v2 discount operations", () => {
   it("create, get, list, update, codes, disable, enable and delete, valid against RevenueCat's schema, mirrored in Stripe", async () => {
     await setup();

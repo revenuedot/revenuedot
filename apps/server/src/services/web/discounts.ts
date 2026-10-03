@@ -143,9 +143,18 @@ export async function syncCodes(deps: Deps, d: DiscountRow, codes: CodeRow[], op
         const have = code.stripe?.[app.id];
         if (have && !opts.recreate) continue;
         if (have && opts.recreate) await client.post(app, `/v1/promotion_codes/${encodeURIComponent(have)}`, { active: false }).catch(() => {});
-        const params: Record<string, unknown> = { coupon, code: code.code, active: !d.disabledAt, metadata: { revenuedot_discount: d.id } };
-        if (d.expiresAt) params.expires_at = Math.floor(d.expiresAt.getTime() / 1000);
-        const pc = await client.post<{ id: string }>(app, "/v1/promotion_codes", params, `rd-promo-${d.id}-${app.id}-${code.codeKey}-${coupon}`);
+        const rest: Record<string, unknown> = { code: code.code, active: !d.disabledAt, metadata: { revenuedot_discount: d.id } };
+        if (d.expiresAt) rest.expires_at = Math.floor(d.expiresAt.getTime() / 1000);
+        // API 2025-09-30 (clover) moved the coupon under `promotion` and refuses `coupon`; older accounts refuse `promotion`.
+        // No API version is pinned, so the account's own decides: try the new shape, then the old one.
+        const key = `rd-promo-${d.id}-${app.id}-${code.codeKey}-${coupon}`;
+        let pc: { id: string };
+        try {
+          pc = await client.post<{ id: string }>(app, "/v1/promotion_codes", { ...rest, promotion: { type: "coupon", coupon } }, key);
+        } catch (e) {
+          if (!(e instanceof StripeApiError && e.kind === "invalid" && /unknown parameter/i.test(e.message))) throw e;
+          pc = await client.post<{ id: string }>(app, "/v1/promotion_codes", { ...rest, coupon }, `${key}-legacy`);
+        }
         const stripe = { ...(code.stripe ?? {}), [app.id]: pc.id };
         await deps.db.update(schema.discountCodes).set({ stripe }).where(and(eq(schema.discountCodes.projectId, d.projectId), eq(schema.discountCodes.codeKey, code.codeKey)));
         code.stripe = stripe;

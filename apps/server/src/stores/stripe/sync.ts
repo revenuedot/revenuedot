@@ -28,6 +28,9 @@ export function appUserIdFor(app: AppRecord, metadata: Record<string, string> | 
   return typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : null;
 }
 
+/** The offering a RevenueDot hosted checkout presented (metadata `rd_offering`, only on sessions that carry `rd_checkout`). */
+const offeringOf = (meta: Record<string, unknown> | null | undefined) => (typeof meta?.rd_checkout === "string" && typeof meta.rd_offering === "string" && meta.rd_offering ? meta.rd_offering.slice(0, 100) : null);
+
 /** Re-reads a subscription from Stripe and applies it. `refund` marks the period paid by that invoice refunded. */
 export async function syncSubscription(ctx: SyncCtx, subId: string, opts: { metadata?: Record<string, string> | null; refund?: { invoiceId: string; at: Date } } = {}): Promise<SyncResult> {
   const { db, app, client, now } = ctx;
@@ -50,8 +53,11 @@ export async function syncSubscription(ctx: SyncCtx, subId: string, opts: { meta
   const meta = { ...(opts.metadata ?? {}), ...(sub.metadata ?? {}) };
   // A subscription from RevenueDot's hosted checkout names its app user id itself and is always tracked (prd/web-billing/PRD.md §2).
   const web = typeof meta.rd_app_user_id === "string" && meta.rd_app_user_id ? meta.rd_app_user_id.slice(0, 100) : null;
-  const hint = !row && (web || track(app)) ? web ?? appUserIdFor(app, meta, idOf(sub.customer)) : null;
-  const applied = await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: track(app) || !!web, appUserIdHint: hint });
+  // Also for a known row: an anonymous owner (the first webhook came before the session's metadata) is merged into the named user.
+  const hint = web || track(app) ? web ?? appUserIdFor(app, meta, idOf(sub.customer)) : null;
+  // Stripe sends customer.subscription.created before checkout.session.completed, so this event can record a hosted checkout's
+  // purchase first: it must carry the offering the buyer saw (rd_offering), as the checkout's own completion does.
+  const applied = await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: track(app) || !!web, appUserIdHint: hint, presentedOfferingId: offeringOf(meta) });
   return { status: applied ? "processed" : "unknown_purchase", sandbox: p.isSandbox };
 }
 
@@ -71,7 +77,7 @@ export async function syncCheckoutSession(ctx: SyncCtx, sessionId: string): Prom
   for (const p of mapCheckoutOneTime(s, { catalog, now })) {
     const row = await nonSubRowOf(db, app.projectId, "stripe", p.storeTransactionId);
     if (row) { p.purchaseDate = row.purchaseDate; p.price = rowPrice(row) ?? p.price; p.refundedAt = row.refundedAt; }
-    applied = (await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: track(app), appUserIdHint: hint })) || applied;
+    applied = (await applyFromStore(db, { projectId: app.projectId, appId: app.id, purchase: p, now, createIfUnknown: track(app), appUserIdHint: hint, presentedOfferingId: offeringOf(s.metadata) })) || applied;
   }
   return { status: applied ? "processed" : "unknown_purchase", sandbox: !s.livemode };
 }

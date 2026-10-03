@@ -39,6 +39,8 @@ export class FakeStripeAccount {
   connect: { accountId: string; platform: FakeStripePlatform } | null = null;
   customers = new Map<string, Obj>();
   portalSessions = new Map<string, Obj>();
+  /** Which promotion code shape the account's API version takes: `promotion[coupon]` (2025-09-30 and later), `coupon` (before), or both (default). */
+  promotionCodeShape: "both" | "clover" | "legacy" = "both";
   /** Whether the customer portal is set up in this account (Stripe refuses sessions until it is). */
   portalConfigured = true;
   /** Where the fake customer portal page lives; `{id}` is the session id. */
@@ -167,6 +169,8 @@ export class FakeStripeAccount {
     if (res === "promotion_codes") {
       if (method === "POST" && !id) {
         // API 2025-09-30 moved the coupon under `promotion`; both shapes are accepted.
+        if (this.promotionCodeShape === "clover" && p.coupon !== undefined) return err(400, "Received unknown parameter: coupon", "parameter_unknown", "coupon");
+        if (this.promotionCodeShape === "legacy" && p.promotion !== undefined) return err(400, "Received unknown parameter: promotion", "parameter_unknown", "promotion");
         const couponId = p.coupon ?? p.promotion?.coupon;
         if (!couponId || !this.coupons.has(couponId)) return err(400, `No such coupon: '${couponId}'`, "resource_missing", "coupon");
         if ([...this.promotionCodes.values()].some((x) => x.active && String(x.code).toUpperCase() === String(p.code).toUpperCase()))
