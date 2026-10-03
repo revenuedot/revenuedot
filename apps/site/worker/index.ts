@@ -2,6 +2,7 @@
 //   GET  /api/geo            the visitor's country (Cloudflare's guess), so the phone picker starts on the right country
 //   POST /api/contact-sales  the contact-sales form: validate, store in D1 (LEADS), email sales (EMAIL to SALES_TO)
 //   POST /api/contact-sales/draft  partial answers from the stepped form, saved once the email is valid (no email sent)
+//   POST /review/webhook-demo  answers 200 to every delivery of the review accounts' demo webhook
 //   /api/agent/*             the ElevenLabs sales voice agent (worker/agent.ts): init, lookup, meeting, send_info, docs,
 //                            postcall. A new hot or warm lead gets a call from the agent within seconds (8am to 8pm their time).
 // Every other page is the static file, plus a note to DataFast when the visitor is a known crawler (bots.ts).
@@ -57,6 +58,11 @@ export default {
     if (url.pathname === "/api/contact-sales") {
       if (request.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
       return contactSales(request, env, ctx);
+    }
+    // The receiver for the demo webhook "Backend (demo)" that the review accounts point at: it accepts every delivery.
+    if (url.pathname === "/review/webhook-demo") {
+      if (request.method !== "POST") return json({ ok: false, error: "Use POST." }, 405);
+      return json({ ok: true });
     }
     if (url.pathname.startsWith("/api/agent/")) return agent(request, env, ctx);
     if (url.pathname.startsWith("/api/")) return json({ ok: false, error: "Not found." }, 404);
