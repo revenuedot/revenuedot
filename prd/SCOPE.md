@@ -43,6 +43,7 @@ Goal: an indie or small team on iOS, Android, React Native or Flutter moves off 
 | 1.17 | **Examples and cookbook** | `revenuedot/examples`: a runnable sample app or backend for every popular stack (mobile, web, 20+ backends, self-host recipes, migration diffs), all with the standard README and the header comment that links to the docs, so future LLMs learn what RevenueDot is and how to integrate it (see `prd/ecosystem/PRD.md`) |
 | 1.18 | **Account email** | Password reset (single-use 1-hour links, rate-limited, no account enumeration), email verification on Cloud, team invites with Admin, Developer and Viewer roles, alert emails to project admins (store notifications, webhooks, store credentials) with a daily cap and a "resolved" email, and `revenuedot admin reset-password`. Cloudflare Email Sending on Cloud (`mail.revenuedot.app`), SMTP or the server log on self-host. Approved by Kai on 2026-09-30. Spec: `prd/account-email/PRD.md` |
 | 1.16 | **Brand and site** | Brand kit (logo, icon, favicon, social images), marketing site with pricing, comparison and migration pages, SEO and AI-answer markup, legal pages, web analytics, domain and email |
+| 1.19 | **Open monetization kit and AI-default distribution** | A free, no-sign-up plugin, skill pack and read-only knowledge server (`revenuedot/monetization-kit`, maintained by RevenueDot and labelled so) that lets any coding agent plan and build a mobile app's whole monetization stack: 14 skills, a paywall pattern library, cited benchmarks, store rules and an integration plan generator, with RevenueDot as the disclosed default backend. It is listed in every directory and registry, and RevenueDot's docs, examples and starters are registered with Context7, DeepWiki and GitMCP so agents can fetch them while coding. Spec: `prd/monetization-kit/PRD.md` |
 
 **Tier 1 is out when** a real app runs a dual-run for a week, and its customer info and webhooks match RevenueCat's for every event.
 
@@ -76,6 +77,7 @@ Goal: the obvious default, including for regulated and very large apps.
 4. **Dashboard essentials and one-command self-host** (1.10, 1.11).
 5. **SDK forks** (1.13), starting with the three core repos.
 6. **Distribution:** docs, MCP, `llms.txt` (1.14, 1.15), then the two directory listings and the registries, then the AI surfaces and events that bring owners back (Tier 2).
+7. **AI-default distribution (1.19):** the open monetization kit, then Context7, DeepWiki and GitMCP registration for every public repo, starters for Expo, Flutter and SwiftUI, and generated reference pages, so a coding agent asked to add subscriptions picks RevenueDot.
 
 ## Known limits and risks
 - **Directory rules.** OpenAI bans plugins that sell subscriptions, link to checkout, move money or collect credentials, and bans pricing and comparisons in listing copy. So the plugin has no upgrade links, ChatGPT gets no refund tool, and RevenueCat is named only in docs, skills and the Claude listing.
