@@ -46,6 +46,7 @@ const LABELS: Record<string, string> = {
   "docs/guides/google-play": "Google Play",
   "docs/guides/amazon-appstore": "Amazon Appstore",
   "docs/guides/stripe": "Stripe",
+  "docs/guides/sla": "SLA",
   "docs/guides/import-products": "Import products",
   "docs/guides/webhooks": "Webhooks",
   "docs/guides/integrations": "Integrations",
