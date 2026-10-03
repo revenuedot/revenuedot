@@ -39,12 +39,12 @@ export const ALTERNATIVES: Alternative[] = [
     bestFor: "Teams that want to keep the RevenueCat SDK and either self-host or cap their bill.",
     summary:
       "An open-source backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call. You change the SDK's proxy URL and keep your app code, then run it on RevenueDot Cloud or on your own servers. It includes 43 charts, paywalls with a visual editor, experiments, web checkout, 36 integrations, Refund Control and win-back.",
-    pricing: "Cloud is free up to $10,000 monthly tracked revenue. The planned paid plan is 0.5% of revenue above $10,000, capped at $999 a month (planned, not charged yet). Self-hosting is free.",
+    pricing: "Cloud is free up to $10,000 monthly tracked revenue. Cloud Standard is 0.5% of revenue above $10,000, capped at $999 a month. Self-hosting is free.",
     openSource: "Yes. Server and dashboard are AGPL-3.0; SDK forks, CLI and MCP server are MIT.",
     selfHost: "Yes, with Docker and Postgres.",
     pros: [
       "Keeps the RevenueCat SDK, so switching is one URL and no purchase-code rewrite.",
-      "Free on Cloud to $10K a month, with a planned cap of $999 and no revenue share when self-hosted.",
+      "Free on Cloud to $10K a month, with a cap of $999 a month and no revenue share when self-hosted.",
       "Purchase data can sit in your own Postgres, in the region you pick.",
       "Importer for RevenueCat projects and side-by-side forwarding of store notifications.",
     ],

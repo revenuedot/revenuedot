@@ -12,7 +12,7 @@
 |---|---|---|
 | Free (`free`) | $0 | $10,000 tracked revenue a month |
 | Standard (`standard`) | 0.5% of tracked revenue above $10,000 a month, capped at $999 a month; the rate never rises | apps up to $1,000,000 a month |
-| Enterprise (`enterprise`) | from $50,000 a year, standard terms | none; set by RevenueDot staff, no self-serve checkout |
+| Enterprise (`enterprise`) | from $50,000 a year, contact sales | none; set by RevenueDot staff, no self-serve checkout |
 
 The table lives in code (`apps/server/src/services/billing/plans.ts`) and can be replaced without a deploy with `REVENUEDOT_BILLING_PLANS` (JSON). **Open for Kai:** the cap is $999 in `business-model.md` and on the live pricing page, but `company/docs/STATUS.md` says $499 (updated the same day). The code uses $999.
 
@@ -34,7 +34,7 @@ Essential (this batch)
 Later
 - Outcome add-ons (a share of recovered revenue, `business-model.md`): needs the revenue recovery features first.
 - Annual prepay, Enterprise self-serve checkout, tax (Stripe Tax) and VAT ids.
-- **Plan gates:** `business-model.md` says Standard does not include an SLA, SSO, audit logs or region choice. SSO, SLA and regions do not exist yet. The audit log already ships to everyone as v2 parity (`prd/SCOPE.md` Tier 2) while the Tier 3 `ee/` folder has "long audit retention", so nothing is gated today; each plan carries `features` for when Kai decides.
+- ~~Plan gates~~ decided 2026-10-02 and built: each plan lists `ee_features` (Standard: organizations, custom roles, single sign-on; Enterprise: all) and `audit_log_days` (90 on Free and Standard), and the Billing page shows each plan's `includes`. Apps, SDK calls and webhooks still never depend on the plan. Spec: `prd/enterprise/PRD.md` §2a.
 - **What happens when a Free account passes $10,000:** today a banner and two emails, never a block. Kai to decide whether a grace period ends in something stronger.
 
 ## RevenueCat behaviour we match

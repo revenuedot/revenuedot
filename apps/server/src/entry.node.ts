@@ -32,7 +32,7 @@ import { flushGoogleForwards } from "./stores/google/notifications.js";
 const cluster = clusterSettingsFromEnv(process.env);
 const replica = process.env.REVENUEDOT_REPLICA_ID?.trim() || `${hostname()}:${process.pid}`;
 const { db, sql: pg, close: closeDb } = await openDb(process.env.DATABASE_URL ?? "pglite://./.data/dev", { migrate: cluster.migrate });
-// Enterprise features (ee/, extensions.ts): only with REVENUEDOT_LICENSE_KEY (or REVENUEDOT_EE_DEV=true for development).
+// Enterprise features (ee/, extensions.ts): with REVENUEDOT_LICENSE_KEY (or REVENUEDOT_EE_DEV=true for development); always with REVENUEDOT_EDITION=cloud.
 // A Node server run as Cloud (REVENUEDOT_EDITION=cloud) is Cloud here too, so development mode stays off there.
 const extensions = await loadExtensions(process.env, { edition: process.env.REVENUEDOT_EDITION === "cloud" ? "cloud" : "self-hosted" });
 const stores = defaultStores();

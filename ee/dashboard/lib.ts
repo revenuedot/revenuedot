@@ -7,7 +7,12 @@ export interface Org {
   object: string; id: string; name: string; your_role: "owner" | "admin" | "member"; region: string; region_name: string; selectable_regions: string[]; region_enforced: boolean; cloud: boolean;
   audit_retention_days: number | null; sso_enforced: boolean; seats: { purchased: number | null; used: number }; billing_email: string | null;
   member_count: number; project_count: number; features: string[]; created_at: number;
+  /** RevenueDot Cloud: the plan that decides this organization's features (its owners' best plan). */
+  plan?: "free" | "standard" | "enterprise";
+  /** Features this organization lacks, with the plan that has each. */
+  locked: Locked[];
 }
+export interface Locked { feature: string; plan: "standard" | "enterprise" }
 export interface Overview extends Org { sso: { connections: number; enabled: number; verified_domains: string[] }; scim: { active_tokens: number } }
 export interface Member { user_id: string; email: string; name: string | null; role: "owner" | "admin" | "member"; source: string; active: boolean; sso_groups: string[]; last_sso_at: number | null; password_sign_in: boolean; created_at: number }
 export interface OrgProject { id: string; name: string; region: string; region_name: string; member_count: number; your_role: string | null; added_at: number }
@@ -15,7 +20,7 @@ export interface ProjectMember { user_id: string; email: string; name: string | 
 export interface CustomRole { id: string; name: string; description: string | null; scopes: string[]; project_id: string | null; member_count: number; updated_at: number }
 export interface ScopeGroup { group: string; scopes: { scope: string; label: string }[] }
 export interface Mapping { id: string; group: string; project_id: string; project_name: string | null; role: string; role_name: string; created_at: number }
-export interface Enterprise { mode: "licensed" | "development" | "invalid"; features: string[]; licensee?: string | null; expires_at?: number | null; message?: string | null }
+export interface Enterprise { mode: "licensed" | "development" | "invalid" | "cloud"; features: string[]; licensee?: string | null; expires_at?: number | null; message?: string | null; plan?: "free" | "standard" | "enterprise"; locked: Locked[] }
 export interface OrgLog { id: string; action: string; actor: { type: string; id: string | null; email: string | null }; target: { type: string; id: string | null }; data: Record<string, unknown>; occurred_at: number }
 
 export const base = (orgId: string) => `/v2/organizations/${encodeURIComponent(orgId)}`;

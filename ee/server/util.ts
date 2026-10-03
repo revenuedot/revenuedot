@@ -9,7 +9,9 @@ import { SESSION_COOKIE, sessionUser } from "../../apps/server/src/services/sess
 import { V2Error } from "../../apps/server/src/routes/v2/common.js";
 import { schema } from "@revenuedot/db";
 import { eeOrgAuditLogs, eeOrgMembers, eeOrganizations, eeSsoDomains, eeSsoSessions } from "./schema.js";
-import type { Feature } from "./license.js";
+import { FEATURES, type Feature } from "./license.js";
+import { orgPlan, planFeatures, planFor, userPlan, type CloudPlans } from "./plans.js";
+import { planOf, type PlanId } from "../../apps/server/src/services/billing/plans.js";
 
 export { V2Error };
 export const ORG_ROLES = ["owner", "admin", "member"] as const;
@@ -29,10 +31,51 @@ export interface EeCtx {
   regions: import("./region.js").RegionConfig;
   /** Organizations the licence allows on this server (null: any number). */
   maxOrgs?: number | null;
+  /** RevenueDot Cloud: each organization's features come from its plan (plans.ts), not from `features`. Absent when self-hosted. */
+  cloud?: CloudPlans;
 }
 
-export function needFeature(ctx: EeCtx, f: Feature) {
-  if (!ctx.features.has(f)) throw new V2Error(403, "authorization_error", `Your RevenueDot Enterprise licence does not include ${f.replace(/_/g, " ")}.`);
+export const FEATURE_NAMES: Record<Feature, string> = {
+  organizations: "Organizations", custom_roles: "Custom roles", sso: "Single sign-on", scim: "SCIM provisioning",
+  data_location: "Data location", audit_retention: "Audit log retention", compliance_exports: "Compliance exports",
+};
+const PLURAL = new Set<Feature>(["organizations", "custom_roles", "compliance_exports"]);
+
+/** "Custom roles are part of Cloud Standard. Upgrade in Billing." The words the dashboard and the API use for a locked feature. */
+export function lockedMessage(f: Feature, plan: PlanId): string {
+  const where = plan === "standard" ? "Cloud Standard. Upgrade in Billing" : "Enterprise. Contact sales at https://revenuedot.app/contact-sales";
+  return `${FEATURE_NAMES[f]} ${PLURAL.has(f) ? "are" : "is"} part of ${where}.`;
+}
+
+/**
+ * Refuses a request whose organization (or server) lacks a feature. `features` is the organization's set (orgFeatures);
+ * it defaults to the licence's, which is all a self-hosted server has.
+ */
+export function needFeature(ctx: EeCtx, f: Feature, features: Set<Feature> = ctx.features) {
+  if (features.has(f)) return;
+  if (ctx.cloud) throw new V2Error(403, "authorization_error", lockedMessage(f, planFor(ctx.cloud.plans, f)));
+  throw new V2Error(403, "authorization_error", `Your RevenueDot Enterprise licence does not include ${f.replace(/_/g, " ")}.`);
+}
+
+/** An organization's features: the licence's on a self-hosted server; on RevenueDot Cloud, those of the best plan among its owners. */
+export async function orgFeatures(ctx: EeCtx, orgId: string): Promise<Set<Feature>> {
+  if (!ctx.cloud) return ctx.features;
+  return planFeatures(planOf(ctx.cloud.plans, await orgPlan(ctx.deps.db, orgId)));
+}
+
+/** A person's own features on RevenueDot Cloud (their account's plan): what they may create. The licence's when self-hosted. */
+export async function userFeatures(ctx: EeCtx, userId: string): Promise<Set<Feature>> {
+  if (!ctx.cloud) return ctx.features;
+  return planFeatures(planOf(ctx.cloud.plans, await userPlan(ctx.deps.db, userId)));
+}
+
+/**
+ * Fields that tell the dashboard what is locked and where to get it: `locked` (features this organization lacks, with the
+ * plan that has each) on every server, and `plan` on Cloud.
+ */
+export async function planFields(ctx: EeCtx, orgId: string, features: Set<Feature>) {
+  const locked = FEATURES.filter((f) => !features.has(f)).map((f) => ({ feature: f, plan: ctx.cloud ? planFor(ctx.cloud.plans, f) : "enterprise" as PlanId }));
+  return ctx.cloud ? { plan: await orgPlan(ctx.deps.db, orgId), locked } : { locked };
 }
 
 /** The signed-in dashboard user (session cookie). Writes must come from the dashboard's own origin, like the core API. */

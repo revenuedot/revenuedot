@@ -26,7 +26,7 @@ import { outboundUrlProblem } from "../../../apps/server/src/services/outbound.j
 import { clientIp, hit } from "../../../apps/server/src/services/rate-limit.js";
 import { eeOrgMembers, eeOrganizations, eeSsoConnections, eeSsoDomains, eeSsoSessions, type OidcConfig, type SamlConfig } from "../schema.js";
 import { domainVerifiedFor, ensureOrgMember, ensureUser, orgForEmail } from "../provision.js";
-import { V2Error, emailDomain, id, needFeature, normEmail, orgAudit, orgMembership, publicBase, requireOrgAdmin, signedIn, type EeCtx } from "../util.js";
+import { V2Error, emailDomain, id, needFeature, normEmail, orgAudit, orgFeatures, orgMembership, publicBase, requireOrgAdmin, signedIn, type EeCtx } from "../util.js";
 import { domainRoutes } from "./domains.js";
 import { SamlConfigError, normalizeCertificate, parseIdpMetadata, samlConsume, samlMetadata, samlStartUrl, samlUrls, type SsoIdentity } from "./saml.js";
 import { DEFAULT_SCOPES, OidcError, oidcFinish, oidcStartUrl, oidcUrls, takeState } from "./oidc.js";
@@ -127,12 +127,19 @@ export function ssoRoutes(ctx: EeCtx) {
   const fetchFn = () => deps.fetch ?? fetch;
 
   const admin = async (c: Context) => {
-    needFeature(ctx, "sso");
+    if (!ctx.cloud && c.req.method !== "DELETE") needFeature(ctx, "sso");
     const { user, sessionId } = await signedIn(c, deps);
-    const { org, member } = await orgMembership(db, c.req.param("org_id")!, user.id, { sessionId, features: ctx.features });
+    const orgId = c.req.param("org_id")!;
+    const features = await orgFeatures(ctx, orgId);
+    const { org, member } = await orgMembership(db, orgId, user.id, { sessionId, features });
     requireOrgAdmin(member.role);
+    // Cloud: the organization's plan must include single sign-on (Cloud Standard or Enterprise). Removing connections and
+    // domains stays possible after a downgrade, so a domain can move to another organization.
+    if (c.req.method !== "DELETE") needFeature(ctx, "sso", features);
     return { user, org };
   };
+  /** Single sign-on works for an organization while its licence or plan includes it; otherwise its connections act as off. */
+  const ssoOn = async (orgId: string) => (await orgFeatures(ctx, orgId)).has("sso");
   const audit = (orgId: string, userId: string, action: string, connId: string, data?: Record<string, unknown>) =>
     orgAudit(db, deps.now(), { orgId, action, actor: { type: "user", id: userId }, target: { type: "sso_connection", id: connId }, data });
 
@@ -243,7 +250,7 @@ export function ssoRoutes(ctx: EeCtx) {
   /** The enabled connection for an address on a verified domain, if any. */
   const connectionForEmail = async (email: string) => {
     const orgId = await orgForEmail(db, email);
-    return orgId ? firstEnabled(orgId) : null;
+    return orgId && (await ssoOn(orgId)) ? firstEnabled(orgId) : null;
   };
   const startUrl = (email: string, next: string) => `/sso/start?email=${encodeURIComponent(email)}${next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}`;
 
@@ -251,7 +258,7 @@ export function ssoRoutes(ctx: EeCtx) {
     const now = deps.now();
     if (!(await hit(db, `sso-start:ip:${clientIp((n) => c.req.header(n))}`, 30, 60_000, now))) return fail(c, "rate_limited");
     if (!conn) return fail(c, "not_set_up");
-    if (!conn.enabled) return fail(c, OFF);
+    if (!conn.enabled || !(await ssoOn(conn.orgId))) return fail(c, OFF);
     const next = safeNext(nextRaw);
     const base = publicBase(deps, c);
     try {
@@ -330,7 +337,7 @@ export function ssoRoutes(ctx: EeCtx) {
   r.post("/sso/saml/:id/acs", async (c) => {
     const conn = await connection(c.req.param("id"));
     if (!conn || conn.kind !== "saml") return fail(c, GENERIC);
-    if (!conn.enabled) return fail(c, OFF);
+    if (!conn.enabled || !(await ssoOn(conn.orgId))) return fail(c, OFF);
     const form = await c.req.parseBody().catch(() => ({} as Record<string, unknown>));
     const samlResponse = form.SAMLResponse, relayState = form.RelayState;
     if (typeof samlResponse !== "string" || !samlResponse || samlResponse.length > 1_000_000) {
@@ -358,7 +365,7 @@ export function ssoRoutes(ctx: EeCtx) {
   r.get("/sso/oidc/:id/callback", async (c) => {
     const conn = await connection(c.req.param("id"));
     if (!conn || conn.kind !== "oidc") return fail(c, GENERIC);
-    if (!conn.enabled) return fail(c, OFF);
+    if (!conn.enabled || !(await ssoOn(conn.orgId))) return fail(c, OFF);
     const now = deps.now();
     if (!bound(c, c.req.query("state") ?? null)) {
       await auditFail(conn, "the sign-in was started in another browser (login CSRF defence)");
@@ -405,6 +412,8 @@ export async function ssoPasswordPolicy(ctx: EeCtx, emailRaw: string): Promise<P
   const [row] = await db.select({ orgId: eeOrganizations.id, name: eeOrganizations.name, enforced: eeOrganizations.ssoEnforced }).from(eeSsoDomains)
     .innerJoin(eeOrganizations, eq(eeOrganizations.id, eeSsoDomains.orgId)).where(and(eq(eeSsoDomains.domain, domain), isNotNull(eeSsoDomains.verifiedAt))).limit(1);
   if (!row?.enforced) return null;
+  // An organization whose plan no longer includes single sign-on does not enforce it (RevenueDot Cloud downgrades).
+  if (!(await orgFeatures(ctx, row.orgId)).has("sso")) return null;
   const [conn] = await db.select({ id: eeSsoConnections.id }).from(eeSsoConnections).where(and(eq(eeSsoConnections.orgId, row.orgId), eq(eeSsoConnections.enabled, true))).limit(1);
   if (!conn) return null;
   const [owner] = await db.select({ id: eeOrgMembers.userId }).from(schema.users)

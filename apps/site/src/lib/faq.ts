@@ -14,7 +14,7 @@ export const FAQ_SELF_HOST: Faq = {
 
 export const FAQ_PRICE_ALT: Faq = {
   q: "What is a cheaper alternative to RevenueCat's pricing?",
-  a: "Once an app reaches $2,500 a month in tracked revenue, RevenueCat charges 1% of all of it, which is $500 a month for an app making $50,000 a month. RevenueDot Cloud is free up to $10,000 a month; the planned paid plan is 0.5% above that, capped at $999 a month. Self-hosted RevenueDot has no revenue share: you pay only for your own servers.",
+  a: "Once an app reaches $2,500 a month in tracked revenue, RevenueCat charges 1% of all of it, which is $500 a month for an app making $50,000 a month. RevenueDot Cloud is free up to $10,000 a month; Cloud Standard is 0.5% above that, capped at $999 a month. Self-hosted RevenueDot has no revenue share: you pay only for your own servers.",
 };
 
 export const FAQ_CHANGE_APP: Faq = {
@@ -44,7 +44,7 @@ export const FAQ_READY: Faq = {
 
 export const FAQ_LICENSE: Faq = {
   q: "What license is RevenueDot under?",
-  a: "The server and dashboard are AGPL-3.0. The SDK forks, CLI, MCP server and agent skills are MIT. The ee/ folder (enterprise features such as SSO and audit logs) is under the RevenueDot Enterprise License.",
+  a: "The server and dashboard are AGPL-3.0. The SDK forks, CLI, MCP server and agent skills are MIT. The ee/ folder (enterprise features such as organizations, custom roles, single sign-on, SCIM and compliance exports) is under the RevenueDot Enterprise License. Cloud Standard includes organizations, custom roles and single sign-on; on a self-hosted server they need an Enterprise license.",
 };
 
 export const FAQ_AFFILIATED: Faq = {
@@ -59,5 +59,5 @@ export const FAQ_STORES: Faq = {
 
 export const FAQ_DATA: Faq = {
   q: "Where does my purchase data live?",
-  a: "In RevenueDot Cloud it runs on Cloudflare's network; EU and US data regions are part of Enterprise. When you self-host, every purchase, customer and receipt lives in your own Postgres database, in the cloud and region you choose, and nothing is sent to RevenueDot.",
+  a: "RevenueDot Cloud runs on Cloudflare's network and stores your data in the US. With Enterprise, you can also run RevenueDot in your own cloud under the commercial license. When you self-host, every purchase, customer and receipt lives in your own Postgres database, in the cloud and region you choose, and nothing is sent to RevenueDot.",
 };

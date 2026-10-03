@@ -14,12 +14,32 @@ const faq = [
   { q: "What counts as tracked revenue?", a: "Tracked revenue is the gross value of the App Store, Google Play and other store purchases RevenueDot Cloud processes for your apps in a calendar month, before store fees and taxes. Sandbox and test purchases never count." },
   { q: "Is self-hosting really free for commercial apps?", a: "Yes. The server and dashboard are AGPL-3.0, so any company can run them for its own apps at any scale without paying us. The AGPL asks that if you modify the server and offer it to others over a network, you share those changes. Enterprise features in the ee/ folder need a commercial license." },
   { q: "Can I move between self-host and cloud?", a: "Yes. Self-host and cloud run the same code, API and database schema, so a project moves either way with a data export and import. Your apps change only the proxy URL." },
+  { q: "Which plan includes single sign-on?", a: "Cloud Standard and Enterprise. Cloud Standard adds single sign-on with SAML 2.0 or OpenID Connect, so your team signs in with Google Workspace, Okta or Microsoft Entra ID, and you can require it for your email domain. It also adds organizations and custom roles. Upgrade any time from Billing in the dashboard; below $10,000 a month of tracked revenue it still costs $0. On a self-hosted server, single sign-on needs an Enterprise license." },
+  { q: "What does Enterprise add?", a: "Enterprise has everything in Cloud Standard with no revenue limit. It adds SCIM provisioning, audit logs kept from 30 days to 10 years, signed compliance exports of the audit log and access review, and a commercial license to self-host without AGPL duties, with every enterprise feature. It includes a 99.9% monthly uptime SLA on the purchase path with service credits (10% below 99.9%, 25% below 99.5%, 50% below 99%). Support answers within 1 hour at any hour when purchases fail, within 4 business hours for a broken feature and within 1 business day for questions, in a private Slack channel with a named engineer. We migrate you from RevenueCat with you, sign a DPA and answer security reviews. Pricing is custom, from $50,000 a year." },
   FAQ_SELF_HOST,
   FAQ_ALTERNATIVE,
   FAQ_DATA,
   FAQ_LICENSE,
 ];
 const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
+const ENT_LICENSE = "With an Enterprise license";
+const planCols = ["Self-host", "Cloud Free", "Cloud Standard", "Enterprise"];
+const planRows: [string, string, string, string, string][] = [
+  ["Price", "Free", "$0", `0.5% of tracked revenue above ${usd(CLOUD_FREE_UP_TO)} a month, never more than ${usd(CLOUD_CAP)} a month`, "Custom, from $50,000 a year"],
+  ["Tracked revenue", "No limit", "Up to $10,000 a month", "Up to $1M a month", "No limit"],
+  ["Open-source core features", "Yes", "Yes", "Yes", "Yes"],
+  ["Apps, projects and teammates", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles"],
+  ["Audit log", "Kept in your own database", "Kept 90 days", "Kept 90 days", "Kept 30 days to 10 years, your choice"],
+  ["Organizations and custom roles", ENT_LICENSE, "No", "Yes", "Yes"],
+  ["Single sign-on (SAML, OpenID Connect)", ENT_LICENSE, "No", "Yes, and you can require it for your email domain", "Yes, and you can require it for your email domain"],
+  ["SCIM provisioning", ENT_LICENSE, "No", "No", "Yes"],
+  ["Compliance exports", ENT_LICENSE, "No", "No", "Signed exports of the audit log and access review"],
+  ["Where your data lives", "Your own servers", "US", "US", "US, or your own cloud with the commercial license"],
+  ["License", "AGPL-3.0", "Not needed: we run it", "Not needed: we run it", "Commercial license to self-host without AGPL duties, with every enterprise feature"],
+  ["Uptime SLA", "No", "No", "No", "99.9% a month on the purchase path, with service credits"],
+  ["Support", "GitHub community", "Community and email", "Email, first reply within 2 business days", "1 hour when purchases fail, at any hour; private Slack channel and a named engineer"],
+];
+const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : undefined);
 ---
 <Base
   title="Pricing"
@@ -53,7 +73,31 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
           </div>
         ))}
       </div></div>
-      <p class="tiny note">Plans marked "Coming" show the price they will launch at. Outcome add-ons (failed-payment recovery, win-backs, refund defense) will be priced as a share of the money they recover.</p>
+      <p class="tiny note">Outcome add-ons (failed-payment recovery, win-backs, refund defense) will be priced as a share of the money they recover.</p>
+    </div>
+  </section>
+
+  <section class="section" id="compare-plans" data-fast-scroll="viewed_pricing_compare">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Compare plans</p>
+        <h2 class="h2">Single sign-on comes with Cloud Standard</h2>
+        <p class="lede">Every plan runs the same open-source core, and the plans differ in revenue covered, team sign-in, compliance and support.</p>
+      </div>
+      <div class="table-wrap plan-table">
+        <table>
+          <caption class="sr-only">What each RevenueDot plan includes</caption>
+          <thead><tr><th scope="col">Feature</th>{planCols.map((c) => <th scope="col">{c}</th>)}</tr></thead>
+          <tbody>
+            {planRows.map(([topic, ...cells]) => (
+              <tr>
+                <th scope="row">{topic}</th>
+                {cells.map((c) => <td class={cellClass(c)}>{c}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -62,7 +106,7 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
       <div class="head">
         <p class="label">Compare your bill</p>
         <h2 class="h2">What you would pay each month</h2>
-        <p class="lede">Once tracked revenue reaches {usd(RC_FREE_UP_TO)} a month, RevenueCat charges {Math.round(RC_RATE * 100)}% of all of it. RevenueDot Cloud Standard will charge {CLOUD_RATE * 100}% above {usd(CLOUD_FREE_UP_TO)}, capped at {usd(CLOUD_CAP)}. Self-hosting costs your servers.</p>
+        <p class="lede">Once tracked revenue reaches {usd(RC_FREE_UP_TO)} a month, RevenueCat charges {Math.round(RC_RATE * 100)}% of all of it. RevenueDot Cloud Standard charges {CLOUD_RATE * 100}% above {usd(CLOUD_FREE_UP_TO)}, capped at {usd(CLOUD_CAP)}. Self-hosting costs your servers.</p>
       </div>
       <div class="grid calc"><div class="gi cols-3">
         <div class="cell span">
@@ -92,7 +136,7 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
           </tbody>
         </table>
       </div>
-      <p class="tiny caption">RevenueCat price from <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>, checked {SITE.pricesChecked}; RevenueCat's paywall and funnel tools are priced separately. RevenueDot Cloud Standard pricing is planned.</p>
+      <p class="tiny caption">RevenueCat price from <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>, checked {SITE.pricesChecked}; RevenueCat's paywall and funnel tools are priced separately.</p>
     </div>
   </section>
 
@@ -132,6 +176,13 @@ const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
   .calc .span { grid-column: 1 / -1; }
   .calc input[type="range"] { width: 100%; accent-color: var(--fg); height: 32px; margin: 4px 0; }
   .examples { margin-top: 32px; }
+  .plan-table table { min-width: 860px; }
+  .plan-table td { color: var(--fg-2); min-width: 150px; }
+  .plan-table td.yes { color: var(--up); }
+  .plan-table td.no { color: var(--fg-3); }
+  .plan-table tbody th { min-width: 160px; position: sticky; left: 0; background: var(--panel); z-index: 1; box-shadow: inset -1px 0 0 var(--border-2); }
+  .plan-table thead th:first-child { position: sticky; left: 0; z-index: 2; box-shadow: inset -1px 0 0 var(--border); }
+  @media (max-width: 640px) { .plan-table table { min-width: 720px; } .plan-table td { min-width: 130px; } .plan-table tbody th { min-width: 120px; } }
   @media (max-width: 1100px) { .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary { min-height: 0; } }
   @media (max-width: 640px) { .plans { grid-template-columns: 1fr; } }
 </style>

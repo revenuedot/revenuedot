@@ -11,12 +11,12 @@ How every landing page, comparison, integration page, chart page and blog post i
 What they want: keep their app code, stop paying a share of revenue, own their purchase data, ship paywalls and web checkout fast. What they fear: losing subscribers or entitlements during a migration, a young vendor disappearing, 4xx errors that make the SDK drop purchases, App Review rejections.
 
 ## Rules
-- **Only features merged to `main`.** Check `docs/STATUS.md` and the code. Never write about RevenueDot AI (the in-app assistant), Cloud paid billing, or enterprise plans.
+- **Only features merged to `main`.** Check `docs/STATUS.md` and the code. Never write about RevenueDot AI (the in-app assistant). Plan facts (Cloud Free, Cloud Standard, Enterprise, Self-host) come only from `src/lib/pricing.ts` and the pricing page.
 - **Every claim about another company links a source** (its pricing page, docs, blog or GitHub). Write the month the fact was checked. If you cannot source it, leave it out.
 - **Cloud first.** Every call to action leads to Cloud sign-up: https://app.revenuedot.app/signup. Self-hosting is the second option.
 - **Honest.** Say where RevenueCat or another vendor is stronger (maturity, SOC 2, years of production). It builds trust and AI engines quote balanced pages.
 - **Never copy** RevenueCat's or anyone's docs text. Never use anything from revenuedot/company verbatim; private numbers stay private.
-- Prices: RevenueDot Cloud is free up to $10,000 monthly tracked revenue (live). The paid Cloud plan (0.5% above $10K, capped at $999 a month) is **planned**: always say "planned" or "coming". Self-host is free (AGPL-3.0).
+- Prices: RevenueDot Cloud is free up to $10,000 monthly tracked revenue (live). Cloud Standard is 0.5% above $10K, capped at $999 a month, for apps up to $1M a month, and adds organizations, custom roles and single sign-on. Enterprise starts at $50K a year (Contact sales). Self-host is free (AGPL-3.0); organizations, SSO and SCIM on a self-hosted server need an Enterprise license. Never claim an EU region, high availability, SOC 2 or HIPAA.
 
 ## Voice
 - **Answer in the first sentence.** The `answer` field fully answers the query in 40 to 70 words, so an AI engine can quote it alone.

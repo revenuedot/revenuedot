@@ -23,7 +23,7 @@ import { body, listOf, v2ErrorResponse } from "../../../apps/server/src/routes/v
 import { eeOrgMembers, eeScimGroupMembers, eeScimGroups, eeScimTokens, eeScimUsers } from "../schema.js";
 import { reconcileMember } from "../access.js";
 import { deprovision, domainVerifiedFor, ensureOrgMember, ensureUser } from "../provision.js";
-import { V2Error, id, ms, needFeature, normEmail, orgAudit, orgMembership, publicBase, randomHex, requireOrgAdmin, sha256Hex, signedIn, type EeCtx } from "../util.js";
+import { V2Error, id, ms, needFeature, normEmail, orgAudit, orgFeatures, orgMembership, publicBase, randomHex, requireOrgAdmin, sha256Hex, signedIn, type EeCtx } from "../util.js";
 import { matches, mentions, parseFilter, ScimFilterError, simpleEq, type Filter } from "./filter.js";
 import { applyPatch, parsePatchBody, ScimPatchError } from "./patch.js";
 import {
@@ -67,10 +67,14 @@ export function scimRoutes(ctx: EeCtx) {
   // ---- Dashboard: tokens and groups ----
 
   const admin = async (c: Context) => {
-    needFeature(ctx, "scim");
+    if (!ctx.cloud && c.req.method !== "DELETE") needFeature(ctx, "scim");
     const { user, sessionId } = await signedIn(c, deps);
-    const { org, member } = await orgMembership(db, c.req.param("org_id")!, user.id, { sessionId, features: ctx.features });
+    const orgId = c.req.param("org_id")!;
+    const features = await orgFeatures(ctx, orgId);
+    const { org, member } = await orgMembership(db, orgId, user.id, { sessionId, features });
     requireOrgAdmin(member.role);
+    // Cloud: the organization's plan must include SCIM (Enterprise). Revoking tokens stays possible after a downgrade.
+    if (c.req.method !== "DELETE") needFeature(ctx, "scim", features);
     return { user, org };
   };
   const tokenShape = (t: typeof eeScimTokens.$inferSelect) => ({
@@ -127,6 +131,8 @@ export function scimRoutes(ctx: EeCtx) {
     if (!TOKEN.test(m[1]!)) throw new ScimError(401, "This SCIM token is not valid.");
     const [t] = await db.select().from(eeScimTokens).where(eq(eeScimTokens.tokenHash, await sha256Hex(m[1]!))).limit(1);
     if (!t || t.revokedAt) throw new ScimError(401, "This SCIM token is not valid or was revoked.");
+    // A token of an organization whose plan no longer includes SCIM stops working until the plan comes back (Cloud).
+    if (!(await orgFeatures(ctx, t.orgId)).has("scim")) throw new ScimError(403, "SCIM provisioning is not part of this organization's RevenueDot plan. Contact sales at https://revenuedot.app/contact-sales.");
     const now = deps.now();
     if (!t.lastUsedAt || now.getTime() - t.lastUsedAt.getTime() >= 60_000) await db.update(eeScimTokens).set({ lastUsedAt: now }).where(eq(eeScimTokens.id, t.id));
     c.set("scim", { orgId: t.orgId, tokenId: t.id });
