@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
 import { schema, type DB, type DeliveryAttempt } from "@revenuedot/db";
+import { webhookStore, type Store } from "@revenuedot/core";
 import { notMoving } from "./archive/moving.js";
 
 const { webhookDeliveries, webhooks, events } = schema;
@@ -264,3 +265,25 @@ export function webhookRequest(w: { url: string; authorizationHeader: string | n
 
 /** The status the API shows: a delivery being sent is still pending. */
 export const apiDeliveryStatus = (status: string) => (status === "sending" ? "pending" : status);
+
+/**
+ * Queues a TEST event to one webhook, signed and logged like any delivery: the dashboard's "Send test", and the probe that
+ * lets a "webhook failing" alert resolve once the endpoint works again (services/alerts.ts). Returns the delivery row.
+ */
+export async function queueTestDelivery(db: DB, w: typeof webhooks.$inferSelect, now: Date) {
+  const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, w.projectId));
+  const app = (w.appId ? apps.find((x) => x.id === w.appId) : apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())[0]) ?? null;
+  const environment = w.environment === "production" ? "PRODUCTION" : "SANDBOX";
+  const id = crypto.randomUUID().toUpperCase();
+  const user = `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`;
+  const event = {
+    id, type: "TEST", event_timestamp_ms: now.getTime(), app_id: app?.id ?? null, app_user_id: user, original_app_user_id: user, aliases: [user],
+    product_id: "test_product", period_type: "NORMAL", purchased_at_ms: now.getTime(), expiration_at_ms: now.getTime() + 30 * 86400_000, environment,
+    entitlement_id: null, entitlement_ids: null, presented_offering_id: null, transaction_id: "test_transaction_id", original_transaction_id: "test_original_transaction_id",
+    is_family_share: false, country_code: "US", currency: "USD", price: 0, price_in_purchased_currency: 0, subscriber_attributes: {},
+    store: webhookStore((app?.type ?? "app_store") as Store), takehome_percentage: 1, tax_percentage: 0, commission_percentage: 0, offer_code: null,
+  };
+  await db.insert(events).values({ id, projectId: w.projectId, customerId: null, type: "TEST", environment: environment.toLowerCase(), appId: app?.id ?? null, payload: { api_version: "1.0", event }, eventTimestampMs: now.getTime() });
+  const [d] = await db.insert(webhookDeliveries).values({ id: crypto.randomUUID(), webhookId: w.id, eventId: id, nextAttemptAt: now, createdAt: now }).returning();
+  return { delivery: d!, eventId: id };
+}

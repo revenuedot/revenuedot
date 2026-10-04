@@ -6,6 +6,7 @@ import { trySend, type Mailer } from "../mail/index.js";
 import { alertEmail, type AlertKind } from "../mail/templates.js";
 import { notificationHealth } from "../routes/v2/notification-health.js";
 import { linkBase } from "./account-email.js";
+import { queueTestDelivery } from "./webhooks.js";
 
 /**
  * Alert emails to project admins (prd/account-email/PRD.md), run by the every-minute tick:
@@ -17,6 +18,9 @@ import { linkBase } from "./account-email.js";
  *                        failed (at least INTEGRATION_MIN_ATTEMPTS attempts). It stays open until a delivery succeeds
  *                        and neither rule holds any more, or the integration is turned off or deleted.
  * One email when an issue opens, at most one reminder per REMIND_AFTER_MS while it stays open, one when it resolves.
+ * A failing webhook only recovers when a delivery succeeds, so an endpoint fixed while no events flow would be reminded
+ * about forever: before a webhook reminder, if nothing is being sent to it, a signed TEST event goes first (at most once
+ * per WEBHOOK_PROBE_EVERY_MS) and the reminder waits for its answer. A 200 resets the webhook and the alert resolves.
  * Admins who turned off alert emails (users.alert_emails) get none; integration alerts also need
  * users.integration_alert_emails.
  */
@@ -33,6 +37,10 @@ export const INTEGRATION_RECOVERED_RATE = 0.25;
 /** An open integration alert with no failed attempt for this long, and no rule holding, closes as idle. */
 export const INTEGRATION_IDLE_MS = 7 * 24 * 3600_000;
 export const REMIND_AFTER_MS = 24 * 3600_000;
+/** At most one TEST probe per failing webhook in this window (services/alerts.ts, webhook reminders). */
+export const WEBHOOK_PROBE_EVERY_MS = 6 * 3600_000;
+/** How long a reminder waits for its probe's answer (the delivery job sends it within a minute). */
+export const WEBHOOK_PROBE_WAIT_MS = 15 * 60_000;
 const RECENT_MS = 7 * 24 * 3600_000;
 const STORE_TYPES = ["app_store", "mac_app_store", "play_store"];
 
@@ -43,6 +51,21 @@ interface Failing {
 }
 
 type AlertDeps = { db: DB; mailer?: Mailer; publicUrl?: string };
+
+/**
+ * Whether a failing webhook should get a TEST probe before its reminder: it is on, nothing is being sent to it, and no
+ * probe went out in the last WEBHOOK_PROBE_EVERY_MS.
+ */
+async function canProbe(db: DB, webhookId: string, now: Date): Promise<boolean> {
+  const D = schema.webhookDeliveries;
+  const [w] = await db.select({ id: schema.webhooks.id }).from(schema.webhooks).where(and(eq(schema.webhooks.id, webhookId), eq(schema.webhooks.enabled, true)));
+  if (!w) return false;
+  const [inFlight] = await db.select({ id: D.id }).from(D).where(and(eq(D.webhookId, webhookId), inArray(D.status, ["pending", "sending"]))).limit(1);
+  if (inFlight) return false;
+  const [recentProbe] = await db.select({ id: D.id }).from(D).innerJoin(schema.events, eq(schema.events.id, D.eventId))
+    .where(and(eq(D.webhookId, webhookId), eq(schema.events.type, "TEST"), gt(D.createdAt, new Date(now.getTime() - WEBHOOK_PROBE_EVERY_MS)))).limit(1);
+  return !recentProbe;
+}
 
 export async function runAlerts(deps: AlertDeps, now: Date) {
   const { db } = deps;
@@ -112,6 +135,18 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
       await notify(deps, f, "open");
       opened++;
     } else if (!row.lastNotifiedAt || now.getTime() - row.lastNotifiedAt.getTime() >= REMIND_AFTER_MS) {
+      // A reminder is due. A failing webhook with nothing in flight gets a TEST probe first, and the reminder moves
+      // WEBHOOK_PROBE_WAIT_MS later to wait for its answer. The conditional update is the claim: one run probes.
+      if (f.kind === "webhook" && await canProbe(db, f.subjectId, now)) {
+        const postponed = new Date(now.getTime() - REMIND_AFTER_MS + WEBHOOK_PROBE_WAIT_MS);
+        const claimed = await db.update(A).set({ lastNotifiedAt: postponed })
+          .where(and(eq(A.id, row.id), eq(A.status, "open"), row.lastNotifiedAt ? eq(A.lastNotifiedAt, row.lastNotifiedAt) : isNull(A.lastNotifiedAt))).returning({ id: A.id });
+        if (claimed.length) {
+          const [w] = await db.select().from(schema.webhooks).where(eq(schema.webhooks.id, f.subjectId));
+          if (w) await queueTestDelivery(db, w, now);
+        }
+        continue;
+      }
       const won = await db.update(A).set({ message: f.detail, lastNotifiedAt: now })
         .where(and(eq(A.id, row.id), eq(A.status, "open"), row.lastNotifiedAt ? eq(A.lastNotifiedAt, row.lastNotifiedAt) : isNull(A.lastNotifiedAt))).returning({ id: A.id });
       if (!won.length) continue;

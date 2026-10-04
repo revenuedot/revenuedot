@@ -145,6 +145,8 @@ jobs:
           for u in / /docs /pricing /sitemap.xml /llms.txt; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://revenuedot.app$u"); echo "$u $code"; [ "$code" = 200 ]
           done
+          # The review accounts' demo webhook posts here; anything but 200 makes RevenueDot email "webhook failing".
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"event":{"type":"TEST"}}' https://revenuedot.app/review/webhook-demo); echo "POST /review/webhook-demo $code"; [ "$code" = 200 ]
       - name: Tell search engines (IndexNow)
         continue-on-error: true
         run: node apps/site/scripts/indexnow.mjs

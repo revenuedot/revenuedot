@@ -108,6 +108,53 @@ describe("webhook failing", () => {
     expect(row!.consecutiveFailures).toBe(0);
   });
 
+  it("an endpoint fixed while no events flow: the reminder sends a TEST probe first, and its 200 resolves the alert", async () => {
+    const { browser, P, s } = await project();
+    const w = (await browser.call("POST", `${P}/integrations/webhooks`, { name: "Backend (demo)", url: "https://hooks.example.com/rd" })).body;
+    const down: typeof fetch = async () => new Response("no", { status: 405 });
+    const seen: string[] = [];
+    const up: typeof fetch = async (_u, init) => { seen.push(JSON.parse(String(init?.body)).event.type); return new Response("ok", { status: 200 }); };
+    const opts = { stores: defaultStores(), mailer: s.mail, publicUrl: "https://dash.example.com" };
+    for (let i = 0; i < 5; i++) await browser.call("POST", `${P}/integrations/webhooks/${w.id}/test`);
+    await tick(s.db, s.now(), down, opts);
+    // Every retry fails over the next hours, then the deliveries give up.
+    for (const m of [5, 10, 20, 40, 80]) { s.advance(m * 60_000 + 1); await tick(s.db, s.now(), down, opts); }
+    expect(alertMails(s)).toEqual(["admin@example.com: Webhook Backend (demo) is failing"]);
+    // The endpoint is fixed, but no new event comes. A day later the reminder is due: a probe goes out instead,
+    s.advance(24 * HOUR);
+    await tick(s.db, s.now(), up, opts);
+    expect(alertMails(s)).toHaveLength(1);
+    // its 200 resets the webhook, and the next run resolves the alert. No "still failing" email.
+    s.advance(60_000);
+    const r = await tick(s.db, s.now(), up, opts);
+    expect(seen).toContain("TEST");
+    expect(r.alerts.resolved).toBe(1);
+    expect(alertMails(s)).toEqual(["admin@example.com: Webhook Backend (demo) is failing", "admin@example.com: Resolved: webhook Backend (demo)"]);
+    const [row] = await s.db.select().from(schema.webhooks).where(eq(schema.webhooks.id, w.id));
+    expect(row!.consecutiveFailures).toBe(0);
+  });
+
+  it("an endpoint still broken: the probe fails, the reminder follows, and probes stay at most one a day", async () => {
+    const { browser, P, s } = await project();
+    const w = (await browser.call("POST", `${P}/integrations/webhooks`, { name: "Backend", url: "https://hooks.example.com/rd" })).body;
+    const down: typeof fetch = async () => new Response("no", { status: 500 });
+    const opts = { stores: defaultStores(), mailer: s.mail, publicUrl: "https://dash.example.com" };
+    await s.db.update(schema.webhooks).set({ consecutiveFailures: 7, lastError: "HTTP 500" }).where(eq(schema.webhooks.id, w.id));
+    await tick(s.db, s.now(), down, opts);
+    s.advance(25 * HOUR);
+    await tick(s.db, s.now(), down, opts); // probe queued and sent (fails)
+    expect(alertMails(s)).toHaveLength(1);
+    s.advance(16 * 60_000);
+    await tick(s.db, s.now(), down, opts); // probe answered with an error: the reminder goes out
+    expect(alertMails(s).at(-1)).toBe("admin@example.com: Still failing: Webhook Backend is failing");
+    const probes = async () => (await s.db.select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.webhookId, w.id))).length;
+    expect(await probes()).toBe(1);
+    // Retries of that probe run their course; the next day brings exactly one more probe, then one more reminder.
+    for (let i = 0; i < 30; i++) { s.advance(HOUR); await tick(s.db, s.now(), down, opts); }
+    expect(await probes()).toBe(2);
+    expect(alertMails(s).filter((m) => m.includes("Still failing"))).toHaveLength(2);
+  });
+
   it("a paused webhook does not alert, and pausing resolves an open alert", async () => {
     const { browser, P, s } = await project();
     const w = (await browser.call("POST", `${P}/integrations/webhooks`, { name: "Backend", url: "https://hooks.example.com/rd" })).body;
@@ -123,7 +170,10 @@ describe("webhook failing", () => {
     await s.db.update(schema.webhooks).set({ consecutiveFailures: 7, lastError: "timeout" }).where(eq(schema.webhooks.id, w.id));
     const both = async (at: Date) => { const [a, b] = await Promise.all([runAlerts({ db: s.db, mailer: s.mail }, at), runAlerts({ db: s.db, mailer: s.mail }, at)]); return { opened: a.opened + b.opened, reminded: a.reminded + b.reminded, resolved: a.resolved + b.resolved }; };
     expect(await both(s.now())).toEqual({ opened: 1, reminded: 0, resolved: 0 });
-    expect(await both(new Date(s.now().getTime() + 25 * HOUR))).toEqual({ opened: 0, reminded: 1, resolved: 0 });
+    // The reminder first waits for one TEST probe (queued once, not twice); with the probe still unanswered it goes out.
+    expect(await both(new Date(s.now().getTime() + 25 * HOUR))).toEqual({ opened: 0, reminded: 0, resolved: 0 });
+    expect((await s.db.select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.webhookId, w.id))).length).toBe(1);
+    expect(await both(new Date(s.now().getTime() + 25 * HOUR + 16 * 60_000))).toEqual({ opened: 0, reminded: 1, resolved: 0 });
     await s.db.update(schema.webhooks).set({ consecutiveFailures: 0, lastError: null }).where(eq(schema.webhooks.id, w.id));
     expect(await both(new Date(s.now().getTime() + 26 * HOUR))).toEqual({ opened: 0, reminded: 0, resolved: 1 });
     expect(alertMails(s)).toEqual(["admin@example.com: Webhook Backend is failing", "admin@example.com: Still failing: Webhook Backend is failing", "admin@example.com: Resolved: webhook Backend"]);
