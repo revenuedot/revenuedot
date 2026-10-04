@@ -190,7 +190,7 @@ export interface DataExport {
     credential_type: "service_account" | "hmac" | null; recipients: string[] | null; subject_prefix: string | null;
   };
   credentials: Record<string, { configured: boolean; hint: string | null }>; format: "csv" | "parquet"; compression: "gzip" | "none"; schedule: "daily" | "weekly" | "interval";
-  hour_utc: number; weekday: number | null; interval_hours: number | null; mode: "incremental" | "full"; tables: string[]; columns: Record<string, string[]>; environment: "production" | "sandbox" | null;
+  hour_utc: number; weekday: number | null; interval_hours: number | null; mode: "incremental" | "full"; split_files: boolean; tables: string[]; columns: Record<string, string[]>; environment: "production" | "sandbox" | null;
   next_run_at: number | null; last_run_at: number | null; last_error: string | null; consecutive_failures: number; created_at: number;
 }
 export interface ExportRun {

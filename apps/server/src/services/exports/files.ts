@@ -16,10 +16,10 @@ function csvCell(v: Value): string {
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export function toCsv(columns: [string, ColumnType][], rows: Row[]): string {
-  const lines = [columns.map(([n]) => csvCell(n)).join(",")];
+export function toCsv(columns: [string, ColumnType][], rows: Row[], header = true): string {
+  const lines = header ? [columns.map(([n]) => csvCell(n)).join(",")] : [];
   for (const r of rows) lines.push(columns.map(([n]) => csvCell(r[n] ?? null)).join(","));
-  return `${lines.join("\r\n")}\r\n`;
+  return lines.length ? `${lines.join("\r\n")}\r\n` : "";
 }
 
 /** Minimal RFC 4180 reader (tests and the dashboard preview): quoted fields, doubled quotes, CRLF. */
@@ -68,9 +68,10 @@ export const gunzip = (b: Uint8Array) => pipe(b, new DecompressionStream("gzip")
 
 export interface ExportFileBytes { bytes: Uint8Array; contentType: string; extension: string }
 
-export async function encodeFile(format: "csv" | "parquet", compression: "gzip" | "none", columns: [string, ColumnType][], rows: Row[]): Promise<ExportFileBytes> {
+/** `header: false` leaves out the header row: a later chunk of a single-file CSV (services/exports/upload.ts). */
+export async function encodeFile(format: "csv" | "parquet", compression: "gzip" | "none", columns: [string, ColumnType][], rows: Row[], header = true): Promise<ExportFileBytes> {
   if (format === "parquet") return { bytes: toParquet(columns, rows), contentType: "application/vnd.apache.parquet", extension: "parquet" };
-  const csv = new TextEncoder().encode(toCsv(columns, rows));
+  const csv = new TextEncoder().encode(toCsv(columns, rows, header));
   if (compression === "gzip") return { bytes: await gzip(csv), contentType: "application/gzip", extension: "csv.gz" };
   return { bytes: csv, contentType: "text/csv", extension: "csv" };
 }

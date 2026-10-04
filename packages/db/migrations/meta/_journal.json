@@ -260,6 +260,13 @@
       "when": 1791087389333,
       "tag": "0039_verified_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791090580475,
+      "tag": "0040_exports_currency_single_file",
+      "breakpoints": true
     }
   ]
 }

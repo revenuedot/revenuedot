@@ -11,6 +11,12 @@ import { baseOrderId } from "../../stores/google/map.js";
  *   RevenueCat's transactions export, so existing warehouse queries keep working. Refunds lower `price_in_usd` to 0 and
  *   set `refunded_at` on the original row instead of adding a negative row.
  * - customers, subscriptions, events: RevenueDot's own tables.
+ * - virtual_currency: the in-app currency ledger with the columns of RevenueCat's In-App Currency export, one row per
+ *   balance change (purchase grant, API grant or deduction, spend from the app, rewarded ad). RevenueCat re-exports the
+ *   whole ledger each time; here incremental runs take the rows added, and the purchase rows whose purchase was refunded,
+ *   since the last run. `updated_balance` is the running balance after the row, floored at zero. A refund
+ *   does not take currency back here, so there are no REFUND_REMOVAL rows: the refunded purchase's row carries the refund
+ *   columns instead.
  * - paywall_events: the SDK's paywall events (`sdk_events` rows whose type starts with `paywall_`: impression, close,
  *   cancel, purchase initiated, purchase error, exit offer, component interactions), incremental by when we received them.
  * Incremental windows: rows recorded, refunded or changed after `since` and up to `until`. A full export has no `since`.
@@ -19,7 +25,7 @@ import { baseOrderId } from "../../stores/google/map.js";
 export type ColumnType = "string" | "bool" | "int" | "float" | "timestamp" | "json";
 export type Value = string | number | boolean | Date | null;
 export type Row = Record<string, Value>;
-export const EXPORT_TABLES = ["transactions", "customers", "subscriptions", "events", "paywall_events"] as const;
+export const EXPORT_TABLES = ["transactions", "customers", "subscriptions", "events", "paywall_events", "virtual_currency"] as const;
 export type ExportTable = (typeof EXPORT_TABLES)[number];
 
 export const COLUMNS: Record<ExportTable, [string, ColumnType][]> = {
@@ -52,6 +58,13 @@ export const COLUMNS: Record<ExportTable, [string, ColumnType][]> = {
     ["event_id", "string"], ["type", "string"], ["event_time", "timestamp"], ["recorded_at", "timestamp"], ["environment", "string"], ["app_id", "string"],
     ["app_user_id", "string"], ["rc_original_app_user_id", "string"], ["product_id", "string"], ["store", "string"], ["price_in_usd", "float"],
     ["currency", "string"], ["price_in_purchased_currency", "float"], ["payload", "json"],
+  ],
+  virtual_currency: [
+    ["rc_original_app_user_id", "string"], ["rc_last_seen_app_user_id_alias", "string"], ["transaction_type", "string"], ["currency_code", "string"],
+    ["adjustment_amount", "int"], ["updated_balance", "int"], ["event_timestamp", "timestamp"], ["updated_at", "timestamp"], ["idempotency_key", "string"],
+    ["store", "string"], ["is_sandbox", "bool"], ["store_transaction_id", "string"], ["product_identifier", "string"], ["price_in_usd", "float"],
+    ["purchase_price_in_usd", "float"], ["purchased_currency", "string"], ["price_in_purchased_currency", "float"], ["purchase_price_in_purchased_currency", "float"],
+    ["refund_amount_usd", "float"], ["refund_amount_in_purchased_currency", "float"], ["refund_type", "string"],
   ],
   paywall_events: [
     ["id", "string"], ["occurred_at", "timestamp"], ["received_at", "timestamp"], ["app_id", "string"], ["app_user_id", "string"], ["customer_id", "string"],
@@ -117,6 +130,7 @@ const maxDate = (...d: (Date | null | undefined)[]) => d.reduce<Date | null>((m,
 export async function readPage(db: DB, projectId: string, table: ExportTable, w: Window, cursor: Cursor | null): Promise<{ rows: Row[]; next: Cursor | null }> {
   if (table === "transactions") return transactionsPage(db, projectId, w, cursor);
   if (table === "paywall_events") return paywallEventsPage(db, projectId, w, cursor);
+  if (table === "virtual_currency") return virtualCurrencyPage(db, projectId, w, cursor);
   if (table === "subscriptions") {
     const page = await db.select({ s: S, k: exact(S.updatedAt) }).from(S).where(and(eq(S.projectId, projectId), envCond(S.isSandbox, w), inWindow(S.updatedAt, w), after(S.updatedAt, S.id, cursor)))
       .orderBy(asc(S.updatedAt), asc(S.id)).limit(PAGE);
@@ -290,4 +304,70 @@ async function paywallEventsPage(db: DB, projectId: string, w: Window, cursor: C
     }),
     next: nextCursor(page, (r) => r.x.id),
   };
+}
+
+/** RevenueCat's transaction_type for a ledger row. */
+function ledgerType(source: string, amount: number): string {
+  if (source === "purchase") return "PURCHASE";
+  if (source === "sdk") return "DEDUCTION";
+  if (source === "ad_reward") return "GRANT";
+  return amount < 0 ? "DEDUCTION" : "GRANT";
+}
+
+async function virtualCurrencyPage(db: DB, projectId: string, w: Window, cursor: Cursor | null) {
+  const V = schema.virtualCurrencyTransactions;
+  // A purchase grant changes when its purchase is refunded (price_in_usd drops to 0), so incremental runs take it again then.
+  const changed = w.since ? or(
+    inWindow(V.createdAt, w),
+    sql`(${V.source} = 'purchase' and exists (select 1 from ${T} r where r.project_id = ${V.projectId} and r.customer_id = ${V.customerId}
+      and r.store_transaction_id = ${V.sourceKey} and r.kind in ('refund', 'refund_reversal')
+      and r.created_at > ${w.since.toISOString()}::timestamptz and r.created_at <= ${w.until.toISOString()}::timestamptz))`,
+  ) : undefined;
+  const page = await db.select({ v: V, k: exact(V.createdAt) }).from(V)
+    .where(and(eq(V.projectId, projectId), lte(V.createdAt, w.until), changed, after(V.createdAt, V.id, cursor)))
+    .orderBy(asc(V.createdAt), asc(V.id)).limit(PAGE);
+  if (!page.length) return { rows: [], next: null };
+  const customerIds = [...new Set(page.map((r) => r.v.customerId))];
+  const keys = [...new Set(page.filter((r) => r.v.source === "purchase" && r.v.sourceKey).map((r) => r.v.sourceKey!))];
+  // Running balance after each row (same customer and currency, in ledger order), floored at zero: one pass over the
+  // page's customers' ledgers up to the page's last row, not a sum per row.
+  const running = db.select({
+    id: V.id, bal: sql<number>`sum(${V.amount}) over (partition by ${V.customerId}, ${V.code} order by ${V.createdAt}, ${V.id})`.as("bal"),
+  }).from(V).where(and(inArray(V.customerId, customerIds), lte(V.createdAt, page[page.length - 1]!.v.createdAt))).as("running");
+  const [info, txs, balances] = await Promise.all([
+    customerInfo(db, customerIds),
+    keys.length ? db.select().from(T).where(and(eq(T.projectId, projectId), inArray(T.customerId, customerIds), inArray(T.storeTransactionId, keys))) : Promise.resolve([] as (typeof T.$inferSelect)[]),
+    db.select({ id: running.id, bal: sql<number>`greatest(0, ${running.bal})::int` }).from(running).where(inArray(running.id, page.map((r) => r.v.id))),
+  ]);
+  const balanceOf = new Map(balances.map((b) => [b.id, Number(b.bal)]));
+  const paid = new Map<string, typeof T.$inferSelect>(), refunds = new Map<string, typeof T.$inferSelect>(), reversed = new Set<string>();
+  for (const t of txs) {
+    const k = `${t.customerId}|${t.storeTransactionId}`;
+    if (PAID.includes(t.kind)) paid.set(k, t);
+    if (t.kind === "refund") refunds.set(k, t);
+    if (t.kind === "refund_reversal") reversed.add(k);
+  }
+  const rows: Row[] = [];
+  for (const { v } of page) {
+    const t = v.source === "purchase" && v.sourceKey ? paid.get(`${v.customerId}|${v.sourceKey}`) : undefined;
+    const refund = t && !reversed.has(`${v.customerId}|${v.sourceKey}`) ? refunds.get(`${v.customerId}|${v.sourceKey}`) ?? null : null;
+    const refundedAt = refund?.createdAt ?? null;
+    // The refund's amounts as the store reported them (refund rows carry the price, revenue negative); FULL when it covers the price.
+    const refundUsd = refund ? Math.abs(refund.revenueUsd) : null;
+    const refundLocal = refund ? (refund.priceAmount === null ? null : Math.abs(refund.priceAmount)) : null;
+    // Only purchase rows know their environment; other rows are in every export.
+    if (t && w.environment !== "both" && t.isSandbox !== (w.environment === "sandbox")) continue;
+    const i = info.get(v.customerId);
+    rows.push({
+      rc_original_app_user_id: i?.c.originalAppUserId ?? null, rc_last_seen_app_user_id_alias: i?.last ?? null,
+      transaction_type: ledgerType(v.source, v.amount), currency_code: v.code, adjustment_amount: v.amount, updated_balance: balanceOf.get(v.id) ?? 0,
+      event_timestamp: v.createdAt, updated_at: maxDate(v.createdAt, refundedAt), idempotency_key: v.sourceKey ?? v.id,
+      store: t?.store ?? null, is_sandbox: t ? t.isSandbox : null, store_transaction_id: t?.storeTransactionId ?? null, product_identifier: t?.productIdentifier ?? null,
+      price_in_usd: t ? (refundedAt ? 0 : t.revenueUsd) : null, purchase_price_in_usd: t?.revenueUsd ?? null,
+      purchased_currency: t?.priceCurrency ?? null, price_in_purchased_currency: t ? (refundedAt ? 0 : t.priceAmount) : null, purchase_price_in_purchased_currency: t?.priceAmount ?? null,
+      refund_amount_usd: refundUsd, refund_amount_in_purchased_currency: refundLocal,
+      refund_type: refund && t ? (refundUsd! + 1e-9 >= t.revenueUsd ? "FULL" : "PARTIAL") : null,
+    });
+  }
+  return { rows, next: nextCursor(page, (r) => r.v.id) };
 }

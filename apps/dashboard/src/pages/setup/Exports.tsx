@@ -13,7 +13,7 @@ import { base, errMsg, useExportColumns, useExports, type DataExport, type Expor
  * Cloud Storage or Azure Blob Storage, or emailed as download links (prd/integrations/PRD.md). List, the new/edit form
  * (destination, credentials, format, schedule, tables and their columns, mode), "Run now", "Check bucket" and the run
  * history with each file written.
- * GAPS vs RevenueCat: no AWS IAM-role credentials, no in-app currency ledger table, no single-file CSV (files split every 10,000 rows).
+ * GAPS vs RevenueCat: no AWS IAM-role credentials.
  */
 
 const DEST_LABEL: Record<DataExport["destination"], string> = { s3: "Amazon S3", r2: "Cloudflare R2", gcs: "Google Cloud Storage", azure: "Azure Blob Storage", email: "Email" };
@@ -24,6 +24,7 @@ const TABLES: [string, string][] = [
   ["subscriptions", "The current state of every subscription."],
   ["events", "Every event webhooks receive, with its JSON body."],
   ["paywall_events", "Paywall impressions, closes, cancels and purchase attempts the SDK reports."],
+  ["virtual_currency", "Every in-app currency balance change, with RevenueCat's In-App Currency columns."],
 ];
 const INTERVALS = [4, 6, 8, 12];
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -67,6 +68,7 @@ function ExportForm({ pid, current }: { pid: string; current?: DataExport }) {
   const [secret, setSecret] = useState("");
   const [format, setFormat] = useState<DataExport["format"]>(current?.format ?? "csv");
   const [gzip, setGzip] = useState((current?.compression ?? "gzip") === "gzip");
+  const [split, setSplit] = useState(current?.split_files ?? false);
   const [schedule, setSchedule] = useState<DataExport["schedule"]>(current?.schedule ?? "daily");
   const [hour, setHour] = useState(current?.hour_utc ?? 3);
   const [weekday, setWeekday] = useState(current?.weekday ?? 1);
@@ -96,7 +98,7 @@ function ExportForm({ pid, current }: { pid: string; current?: DataExport }) {
     if (dest === "gcs") config.credential_type = credType;
     if (dest === "email") config.recipients = recipients.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
     const json: Record<string, unknown> = {
-      name: name.trim() || `${DEST_LABEL[dest]} export`, destination: dest, config, format, compression: gzip ? "gzip" : "none", schedule, hour_utc: hour,
+      name: name.trim() || `${DEST_LABEL[dest]} export`, destination: dest, config, format, compression: gzip ? "gzip" : "none", split_files: format === "csv" && split, schedule, hour_utc: hour,
       weekday: schedule === "weekly" ? weekday : null, interval_hours: schedule === "interval" ? interval : null, mode, tables,
       columns: Object.fromEntries(tables.map((t) => [t, columns[t] ?? []])), environment: env === "both" ? null : env,
     };
@@ -172,6 +174,7 @@ function ExportForm({ pid, current }: { pid: string; current?: DataExport }) {
             <Segmented label="Format" value={format} onChange={setFormat} options={[{ value: "csv", label: "CSV" }, { value: "parquet", label: "Parquet" }]} />
           </div>
           {format === "csv" && <Check checked={gzip} onChange={setGzip} label="Compress with gzip (.csv.gz)" />}
+          {format === "csv" && <Check checked={split} onChange={setSplit} label="Split into files of 10,000 rows" hint="Off: one file per table, however big. Parquet is always split." />}
           <div className="field"><span className="flabel">Schedule</span>
             <Segmented label="Schedule" value={schedule} onChange={setSchedule} options={[{ value: "interval", label: "Every few hours" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }]} />
           </div>
@@ -304,7 +307,7 @@ export function ExportDetail() {
               ["Destination", DEST_LABEL[x.destination]],
               ["Tables", <span className="mono">{x.tables.join(", ")}</span>],
               ["Columns", <span>{x.tables.map((t) => `${t}: ${x.columns[t]?.length ? `${x.columns[t]!.length} chosen` : "all"}`).join(" · ")}</span>],
-              ["Format", `${x.format === "csv" ? `CSV${x.compression === "gzip" ? ", gzip" : ""}` : "Parquet"} · ${x.mode === "incremental" ? "new and changed rows" : "every row, every time"}`],
+              ["Format", `${x.format === "csv" ? `CSV${x.compression === "gzip" ? ", gzip" : ""}${x.split_files ? ", split every 10,000 rows" : ", one file per table"}` : "Parquet, split every 10,000 rows"} · ${x.mode === "incremental" ? "new and changed rows" : "every row, every time"}`],
               ["Schedule", `${scheduleText(x)} · next ${fmt.dateTime(x.next_run_at)}`],
               ["Environment", x.environment === "production" ? "Production" : x.environment === "sandbox" ? "Sandbox" : "Production and sandbox"],
             ]} />

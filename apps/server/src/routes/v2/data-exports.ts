@@ -55,11 +55,11 @@ const Fields = {
   format: z.enum(["csv", "parquet"]), compression: z.enum(["gzip", "none"]), schedule: z.enum(["daily", "weekly", "interval"]),
   hour_utc: z.number().int().min(0).max(23), weekday: z.number().int().min(0).max(6).nullable(),
   interval_hours: z.number().int().refine((n) => (INTERVAL_HOURS as readonly number[]).includes(n), `must be one of ${INTERVAL_HOURS.join(", ")}`).nullable(),
-  mode: z.enum(["incremental", "full"]), tables: z.array(Table).min(1).max(EXPORT_TABLES.length), columns: Columns, environment: z.enum(["production", "sandbox"]).nullable(),
+  mode: z.enum(["incremental", "full"]), split_files: z.boolean(), tables: z.array(Table).min(1).max(EXPORT_TABLES.length), columns: Columns, environment: z.enum(["production", "sandbox"]).nullable(),
 };
 const Create = z.object({ ...Fields, name: Fields.name.optional(), enabled: Fields.enabled.optional(), credentials: Fields.credentials.optional(),
   format: Fields.format.optional(), compression: Fields.compression.optional(), schedule: Fields.schedule.optional(), hour_utc: Fields.hour_utc.optional(),
-  weekday: Fields.weekday.optional(), interval_hours: Fields.interval_hours.optional(), mode: Fields.mode.optional(), tables: Fields.tables.optional(),
+  weekday: Fields.weekday.optional(), interval_hours: Fields.interval_hours.optional(), mode: Fields.mode.optional(), split_files: Fields.split_files.optional(), tables: Fields.tables.optional(),
   columns: Fields.columns.optional(), environment: Fields.environment.optional() }).strict();
 const Update = z.object(Fields).partial().strict();
 const Run = z.object({ mode: z.enum(["incremental", "full"]).optional() }).strict();
@@ -89,7 +89,7 @@ export function exportShape(j: Job) {
     object: "data_export" as const, id: j.id, project_id: j.projectId, name: j.name, enabled: j.enabled, destination: j.destination,
     config: { bucket: null, prefix: null, region: null, endpoint: null, account_id: null, access_key_id: null, credential_type: null, recipients: null, subject_prefix: null, ...j.destinationConfig },
     credentials: field ? { [field]: { configured: field in j.secretHints, hint: j.secretHints[field] ?? null } } : {},
-    format: j.format, compression: j.compression, schedule: j.schedule, hour_utc: j.hourUtc, weekday: j.weekday, interval_hours: j.intervalHours, mode: j.mode, tables: j.tables, columns: j.columns,
+    format: j.format, compression: j.compression, schedule: j.schedule, hour_utc: j.hourUtc, weekday: j.weekday, interval_hours: j.intervalHours, mode: j.mode, split_files: j.splitFiles, tables: j.tables, columns: j.columns,
     environment: j.environment === "both" ? null : j.environment, next_run_at: j.nextRunAt?.getTime() ?? null, last_run_at: j.lastRunAt?.getTime() ?? null,
     last_error: j.lastError, consecutive_failures: j.consecutiveFailures, created_at: j.createdAt.getTime(), updated_at: j.updatedAt?.getTime() ?? null,
   };
@@ -177,7 +177,7 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
     const [row] = await db.insert(schema.exportJobs).values({
       id: newId("export_", 14), projectId: c.get("projectId"), name: b.name ?? DEFAULT_NAME[b.destination], enabled: b.enabled ?? true,
       destination: b.destination, destinationConfig: config, secrets: merged.sealed, secretHints: merged.hints, format: b.format ?? "csv", compression: b.compression ?? "gzip",
-      schedule, hourUtc, weekday, intervalHours, mode: b.mode ?? "incremental", tables: b.tables ?? ["transactions"], columns,
+      schedule, hourUtc, weekday, intervalHours, mode: b.mode ?? "incremental", splitFiles: b.split_files ?? false, tables: b.tables ?? ["transactions"], columns,
       environment: b.environment === undefined ? "both" : b.environment ?? "both",
       nextRunAt: nextRunAt({ schedule, hourUtc, weekday, intervalHours }, now), createdAt: now, updatedAt: now,
     }).returning();
@@ -210,7 +210,7 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
     const [row] = await db.update(schema.exportJobs).set({
       ...(b.name !== undefined ? { name: b.name } : {}), ...(b.enabled !== undefined ? { enabled: b.enabled } : {}), destination, destinationConfig: config,
       secrets: merged.sealed, secretHints: merged.hints, ...(b.format !== undefined ? { format: b.format } : {}), ...(b.compression !== undefined ? { compression: b.compression } : {}),
-      schedule, hourUtc, weekday, intervalHours, ...(b.mode !== undefined ? { mode: b.mode } : {}), ...(b.tables !== undefined ? { tables: b.tables } : {}),
+      schedule, hourUtc, weekday, intervalHours, ...(b.mode !== undefined ? { mode: b.mode } : {}), ...(b.split_files !== undefined ? { splitFiles: b.split_files } : {}), ...(b.tables !== undefined ? { tables: b.tables } : {}),
       ...(b.columns !== undefined ? { columns: normalizeColumns(b.columns) } : {}), ...(b.environment !== undefined ? { environment: b.environment ?? "both" } : {}),
       ...(timing ? { nextRunAt: nextRunAt({ schedule, hourUtc, weekday, intervalHours }, deps.now()) } : {}), updatedAt: deps.now(),
     }).where(eq(schema.exportJobs.id, j.id)).returning();

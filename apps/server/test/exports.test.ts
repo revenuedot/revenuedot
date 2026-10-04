@@ -208,6 +208,32 @@ describe("export runs", () => {
     expect(rows[1]!.start_time).toEqual(new Date(t0.getTime() + 3 * DAY));
   });
 
+  it("writes a big single-file CSV to Google Cloud Storage as an XML API multipart upload with the service account's token", async () => {
+    const call = api();
+    const job = (await call("POST", "/integrations/exports", { destination: "gcs", tables: ["events"], compression: "none", config: { bucket: "acme-gcs", prefix: "rd" }, credentials: { service_account_json: JSON.stringify(keys.sa) } })).body;
+    await h.db.execute(sql`insert into events (id, project_id, type, environment, payload, event_timestamp_ms, created_at)
+      select 'g' || lpad(g::text, 6, '0'), 'proj1', 'TEST', 'production', '{"api_version":"1.0","event":{}}'::jsonb, 0, timestamptz '2026-09-01 11:00:00+00' + g * interval '1 millisecond'
+      from generate_series(1, 10500) g`);
+    const run = (await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" })).body;
+    const { f, puts } = bucket(async (p) => {
+      if (p.url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "ya29.gcs", expires_in: 3600 });
+      if (p.url.endsWith("?uploads")) return new Response("<InitiateMultipartUploadResult><UploadId>gup1</UploadId></InitiateMultipartUploadResult>");
+      if (p.url.includes("partNumber=")) return new Response("", { headers: { etag: `"p${new URL(p.url).searchParams.get("partNumber")}"` } });
+      return new Response("<CompleteMultipartUploadResult/>");
+    });
+    const rt = { fetch: f, now: h.now(), secretKey: await secretKeyFrom(KEY, null), store: dbStore(h.db), minPartBytes: 1 };
+    await runExport(h.db, run.id, rt, 0);
+    await runExport(h.db, run.id, rt, 0);
+    const [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
+    expect([r!.status, r!.files.map((x) => [x.key, x.rows])]).toEqual(["succeeded", [["rd/2026-09-01/events_20260901T120000Z.csv", 10500]]]);
+    const calls = puts.filter((p) => !p.url.startsWith("https://oauth2"));
+    const base = "https://storage.googleapis.com/acme-gcs/rd/2026-09-01/events_20260901T120000Z.csv";
+    expect(calls.map((p) => `${p.method} ${p.url}`)).toEqual([`POST ${base}?uploads`, `PUT ${base}?partNumber=1&uploadId=gup1`, `PUT ${base}?partNumber=2&uploadId=gup1`, `POST ${base}?uploadId=gup1`]);
+    expect(calls.every((p) => p.headers.get("authorization") === "Bearer ya29.gcs")).toBe(true);
+    expect(new TextDecoder().decode(calls[3]!.bytes)).toBe("<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>&quot;p1&quot;</ETag></Part><Part><PartNumber>2</PartNumber><ETag>&quot;p2&quot;</ETag></Part></CompleteMultipartUpload>");
+    expect(parseCsv(new TextDecoder().decode(new Uint8Array([...calls[1]!.bytes, ...calls[2]!.bytes]))).length).toBe(10501);
+  });
+
   it("uploads to Google Cloud Storage with a service-account token", async () => {
     const call = api();
     const job = (await call("POST", "/integrations/exports", { destination: "gcs", tables: ["events"], compression: "none", config: { bucket: "acme-gcs", prefix: "rd" }, credentials: { service_account_json: JSON.stringify(keys.sa) } })).body;
@@ -277,7 +303,7 @@ describe("export runs", () => {
 describe("big exports", () => {
   it("spreads a run over several ticks, one file at a time, with rows that share a microsecond timestamp read once", async () => {
     const call = api();
-    const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["events"], compression: "none" })).body;
+    const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["events"], compression: "none", split_files: true })).body;
     // 10,500 events written by one statement: one created_at, with microseconds, for all of them.
     await h.db.execute(sql`insert into events (id, project_id, type, environment, payload, event_timestamp_ms, created_at)
       select 'bulk' || lpad(g::text, 6, '0'), 'proj1', 'TEST', 'production', '{"api_version":"1.0","event":{}}'::jsonb, 0, timestamptz '2026-09-01 11:00:00.123456+00'
@@ -346,7 +372,7 @@ describe("parity with RevenueCat's export options", () => {
     const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["transactions", "customers"], compression: "none", columns: { transactions: ["store_transaction_id", "price_in_usd", "rc_original_app_user_id", "store", "store"], customers: [] } })).body;
     expect(job.columns).toEqual({ transactions: ["rc_original_app_user_id", "store", "price_in_usd", "store_transaction_id"] });
     const catalog = (await call("GET", "/integrations/exports/columns")).body;
-    expect(catalog.items.map((t: { table: string }) => t.table)).toEqual(["transactions", "customers", "subscriptions", "events", "paywall_events"]);
+    expect(catalog.items.map((t: { table: string }) => t.table)).toEqual(["transactions", "customers", "subscriptions", "events", "paywall_events", "virtual_currency"]);
     expect(catalog.items[0].columns[0]).toEqual({ name: "rc_original_app_user_id", type: "string" });
     await sub("c1");
     await call("POST", `/integrations/exports/${job.id}/actions/run`, {});

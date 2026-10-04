@@ -161,8 +161,12 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
       await page.getByRole("button", { name: "Create export" }).click();
       await expect(page.getByRole("alert")).toContainText("secret access key");
       await page.getByLabel("Secret access key").fill("e2e-secret-key");
+      // One CSV file per table unless split, as RevenueCat; the in-app currency ledger is a table of its own.
+      await expect(page.getByRole("checkbox", { name: /Split into files of 10,000 rows/ })).not.toBeChecked();
+      await expect(page.getByRole("checkbox", { name: /virtual_currency/ })).toBeVisible();
       await page.getByRole("button", { name: "Create export" }).click();
       await expect(page.getByRole("heading", { name: "Warehouse" })).toBeVisible();
+      await expect(page.getByText(/CSV, gzip, one file per table/)).toBeVisible();
       await page.getByRole("button", { name: "Check bucket" }).click();
       await expect(page.getByText("RevenueDot can reach the bucket e2e-bucket.")).toBeVisible();
       expect(fake.hits.some((h) => h.method === "HEAD" && h.path === "/e2e-bucket")).toBe(true);
