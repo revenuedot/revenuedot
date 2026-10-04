@@ -725,6 +725,134 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Apphud ----
+  {
+    vendor: "Apphud",
+    page: "home",
+    url: "https://apphud.com/",
+    captured: DATE,
+    full: asset("apphud", "home-full-1-2026-10-04.png"),
+    fullParts: [asset("apphud", "home-full-1-2026-10-04.png"), asset("apphud", "home-full-2-2026-10-04.png"), asset("apphud", "home-full-3-2026-10-04.png")],
+    crops: [
+      {
+        claim: "hero",
+        file: asset("apphud", "home-hero-2026-10-04.png"),
+        alt: "Apphud homepage hero: 'Skyrocket your app growth with a revenue data suite' for iOS and Android.",
+        caption: "Apphud homepage, captured 2026-10-04: Homepage hero.",
+      },
+    ],
+  },
+  {
+    vendor: "Apphud",
+    page: "pricing",
+    url: "https://apphud.com/pricing",
+    captured: DATE,
+    full: asset("apphud", "pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("apphud", "pricing-full-1-2026-10-04.png"), asset("apphud", "pricing-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "free-10k-pro-expert",
+        file: asset("apphud", "pricing-free-10k-pro-expert-2026-10-04.png"),
+        alt: "Apphud pricing plan cards: Free with $10,000 MTR included and 1 seat; Pro with $5,000 MTR included and 5 seats; Expert with $5,000 MTR included and 10 seats.",
+        caption: "Apphud pricing page, captured 2026-10-04: Free with $10K MTR; Pro and Expert include $5K.",
+      },
+      {
+        claim: "overage-rates",
+        file: asset("apphud", "pricing-overage-rates-2026-10-04.png"),
+        alt: "Apphud pricing FAQ: $9.99 per additional $1,000 MTR on Pro, $11.99 on Expert; MTR is revenue in USD before Apple's cut and sandbox purchases are not counted.",
+        caption: "Apphud pricing page, captured 2026-10-04: $9.99 per extra $1,000 on Pro, $11.99 on Expert.",
+      },
+      {
+        claim: "grace-period",
+        file: asset("apphud", "pricing-grace-period-2026-10-04.png"),
+        alt: "Apphud pricing FAQ on a Free plan over $10,000: a 7-day grace period, then purchases are handled but renewals are not tracked and dashboard access ends.",
+        caption: "Apphud pricing page, captured 2026-10-04: Over the free limit: 7-day grace period, then renewals stop being tracked.",
+      },
+      {
+        claim: "seats-and-webhooks",
+        file: asset("apphud", "pricing-seats-and-webhooks-2026-10-04.png"),
+        alt: "Apphud pricing feature table: server-to-server webhooks, on-demand raw data exports and seats (1, 5, 10) per plan.",
+        caption: "Apphud pricing page, captured 2026-10-04: Webhooks and exports on Expert and above; 1, 5 or 10 seats.",
+      },
+    ],
+  },
+  {
+    vendor: "Apphud",
+    page: "data-protection",
+    url: "https://apphud.com/data-protection",
+    captured: DATE,
+    full: asset("apphud", "data-protection-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "eu-and-us",
+        file: asset("apphud", "data-protection-eu-and-us-2026-10-04.png"),
+        alt: "Apphud data protection page: data is stored in infrastructure located in the EU and US.",
+        caption: "Apphud page /data-protection, captured 2026-10-04: Data stored in the EU and US.",
+      },
+    ],
+  },
+  {
+    vendor: "Apphud",
+    page: "docs-web-payments",
+    url: "https://docs.apphud.com/docs/web-payments",
+    captured: DATE,
+    full: asset("apphud", "docs-web-payments-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "stripe-paddle",
+        file: asset("apphud", "docs-web-payments-stripe-paddle-2026-10-04.png"),
+        alt: "Apphud web payments docs: connect Stripe or Paddle to accept web payments in Apphud Flows.",
+        caption: "Apphud docs page, captured 2026-10-04: Web payments through Stripe or Paddle.",
+      },
+    ],
+  },
+  {
+    vendor: "Apphud",
+    page: "docs-llms-txt",
+    url: "https://docs.apphud.com/llms.txt",
+    captured: DATE,
+    full: asset("apphud", "docs-llms-txt-full-1-2026-10-04.png"),
+    fullParts: [asset("apphud", "docs-llms-txt-full-1-2026-10-04.png"), asset("apphud", "docs-llms-txt-full-2-2026-10-04.png"), asset("apphud", "docs-llms-txt-full-3-2026-10-04.png")],
+    crops: [
+      {
+        claim: "web-payments-and-s3",
+        file: asset("apphud", "docs-llms-txt-web-payments-and-s3-2026-10-04.png"),
+        alt: "Apphud docs index: Amazon S3 export and web payments through Stripe or Paddle for Flows.",
+        caption: "Apphud docs page, captured 2026-10-04: Stripe and Paddle for Flows; Amazon S3 export.",
+      },
+    ],
+  },
+  {
+    vendor: "Apphud",
+    page: "docs-mcp",
+    url: "https://docs.apphud.com/docs/mcp",
+    captured: DATE,
+    full: asset("apphud", "docs-mcp-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "public-mcp",
+        file: asset("apphud", "docs-mcp-public-mcp-2026-10-04.png"),
+        alt: "Apphud docs: a public MCP server lets AI assistants read analytics, inspect customers and manage paywalls.",
+        caption: "Apphud docs page, captured 2026-10-04: A public MCP server.",
+      },
+    ],
+  },
+  {
+    vendor: "Apphud",
+    page: "github-apphudsdk",
+    url: "https://github.com/apphud/ApphudSDK",
+    captured: DATE,
+    full: asset("apphud", "github-apphudsdk-full-1-2026-10-04.png"),
+    fullParts: [asset("apphud", "github-apphudsdk-full-1-2026-10-04.png"), asset("apphud", "github-apphudsdk-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "mit-license",
+        file: asset("apphud", "github-apphudsdk-mit-license-2026-10-04.png"),
+        alt: "GitHub repository page of ApphudSDK with the MIT license shown in the About sidebar.",
+        caption: "Apphud GitHub page, captured 2026-10-04: The iOS SDK is MIT licensed.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */

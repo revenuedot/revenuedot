@@ -1247,5 +1247,226 @@
     "status": 200,
     "title": "GitHub - superwall/Superwall-iOS: Remotely configure every aspect of your paywall and double your revenue. · GitHub",
     "pageHeight": 3509
+  },
+  {
+    "vendor": "apphud",
+    "page": "home",
+    "url": "https://apphud.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 737
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "More than analytics for iOS and Android in-app subscriptions – Apphud",
+    "pageHeight": 10892
+  },
+  {
+    "vendor": "apphud",
+    "page": "pricing",
+    "url": "https://apphud.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-10k-pro-expert",
+        "file": "pricing-free-10k-pro-expert-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 367.3125,
+          "width": 800,
+          "height": 819.953125
+        }
+      },
+      {
+        "claim": "overage-rates",
+        "file": "pricing-overage-rates-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 3042.265625,
+          "width": 1256,
+          "height": 520
+        }
+      },
+      {
+        "claim": "grace-period",
+        "file": "pricing-grace-period-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 3140.265625,
+          "width": 1256,
+          "height": 460
+        }
+      },
+      {
+        "claim": "seats-and-webhooks",
+        "file": "pricing-seats-and-webhooks-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 393.625,
+          "y": 433.3125,
+          "width": 800,
+          "height": 825.953125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Price - Apphud",
+    "pageHeight": 4917
+  },
+  {
+    "vendor": "apphud",
+    "page": "data-protection",
+    "url": "https://apphud.com/data-protection",
+    "ok": true,
+    "full": [
+      "data-protection-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "eu-and-us",
+        "file": "data-protection-eu-and-us-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 44,
+          "y": 1429.5,
+          "width": 1192,
+          "height": 420
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "How Apphud Protects Your Data - GDPR/CCPA Compliance – Apphud",
+    "pageHeight": 3546
+  },
+  {
+    "vendor": "apphud",
+    "page": "docs-web-payments",
+    "url": "https://docs.apphud.com/docs/web-payments",
+    "ok": true,
+    "full": [
+      "docs-web-payments-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe-paddle",
+        "file": "docs-web-payments-stripe-paddle-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 300,
+          "y": 0,
+          "width": 968,
+          "height": 440
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Web Payments",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "apphud",
+    "page": "docs-llms-txt",
+    "url": "https://docs.apphud.com/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png",
+      "docs-llms-txt-full-2-2026-10-04.png",
+      "docs-llms-txt-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "web-payments-and-s3",
+        "file": "docs-llms-txt-web-payments-and-s3-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 7444,
+          "width": 920,
+          "height": 620
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 9152
+  },
+  {
+    "vendor": "apphud",
+    "page": "docs-mcp",
+    "url": "https://docs.apphud.com/docs/mcp",
+    "ok": true,
+    "full": [
+      "docs-mcp-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "public-mcp",
+        "file": "docs-mcp-public-mcp-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 244,
+          "y": 77.21875,
+          "width": 800,
+          "height": 460
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Public MCP",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "apphud",
+    "page": "github-apphudsdk",
+    "url": "https://github.com/apphud/ApphudSDK",
+    "ok": true,
+    "full": [
+      "github-apphudsdk-full-1-2026-10-04.png",
+      "github-apphudsdk-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-apphudsdk-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 13,
+          "y": 734,
+          "width": 942,
+          "height": 460
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - apphud/ApphudSDK: Build, Measure and Grow iOS subscription business · GitHub",
+    "pageHeight": 4928
   }
 ]
