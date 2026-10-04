@@ -225,6 +225,13 @@
       "when": 1791067918476,
       "tag": "0033_rejected_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791082587338,
+      "tag": "0034_events_customer_time",
+      "breakpoints": true
     }
   ]
 }

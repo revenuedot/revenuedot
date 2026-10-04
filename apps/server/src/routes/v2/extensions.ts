@@ -14,7 +14,7 @@ import { HISTORY_METRICS, metricHistory, type HistoryMetric } from "../../servic
 import { customerSummary } from "../../services/customer-summary.js";
 import { sdkVersionsOf } from "../../services/sdk-versions.js";
 import { notificationHealth } from "./notification-health.js";
-import { V2Error, allows, body, listOf, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
+import { V2Error, allows, body, eventTypeFilter, listOf, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { customerShape, loadCatalog, notificationStoreOf, storeCredentialsConfigured, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
 import { apiOriginOf } from "./setup.js";
 
@@ -93,15 +93,15 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     })), rows.length > limit ? page[page.length - 1]!.t.id : null));
   });
 
-  // Event log. `body` is the webhook `event` object exactly as webhooks receive it.
+  // Event log. `body` is the webhook `event` object exactly as webhooks receive it. Paywall events only on request (eventTypeFilter).
   r.get(`${P}/events`, scope("customer_information:customers:read"), async (c) => {
     const projectId = c.get("projectId");
     const { limit, startingAfter } = pageParams(c);
     const env = envOf(c);
     const E = schema.events;
     const conds = [eq(E.projectId, projectId), ...(env ? [eq(E.environment, env)] : [])];
-    const types = (c.req.queries("type") ?? []).flatMap((t) => t.split(",")).map((t) => t.trim().toUpperCase()).filter(Boolean);
-    if (types.length) conds.push(inArray(E.type, types));
+    const types = eventTypeFilter(c, E.type);
+    if (types) conds.push(types);
     const customer = c.req.query("customer");
     if (customer) {
       const cu = await findCustomer(db, projectId, customer);

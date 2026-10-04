@@ -133,6 +133,8 @@ const EXPIRE: Record<string, string> = {
   CUSTOMER_SUPPORT: "after a refund", DEVELOPER_INITIATED: "after the developer cancelled it", SUBSCRIPTION_PAUSED: "because it was paused",
 };
 
+const paywallName = (b: Record<string, unknown>) => (typeof b.paywall_name === "string" && b.paywall_name ? `${b.paywall_name} paywall` : "paywall");
+
 /** The customer-history sentence for a webhook event, following RevenueCat's timeline wording where it has one. */
 export function eventLabel(e: { type: string; body: Record<string, unknown> }, entitlementName?: (lookupKey: string) => string) {
   const b = e.body;
@@ -170,6 +172,13 @@ export function eventLabel(e: { type: string; body: Record<string, unknown> }, e
     case "INVOICE_ISSUANCE": return "Was issued an invoice";
     case "PURCHASE_REDEEMED": return "Redeemed a web purchase";
     case "TEST": return "Test event";
+    case "PAYWALL_IMPRESSION": return `Saw the ${paywallName(b)}`;
+    case "PAYWALL_CLOSE": return `Closed the ${paywallName(b)}`;
+    case "PAYWALL_CANCEL": return `Cancelled a purchase on the ${paywallName(b)}`;
+    case "PAYWALL_EXIT_OFFER": return `Was shown an exit offer on the ${paywallName(b)}`;
+    case "PAYWALL_COMPONENT_INTERACTED": return `Tapped a component on the ${paywallName(b)}`;
+    case "PAYWALL_PURCHASE_INITIATED": return `Started a purchase on the ${paywallName(b)}`;
+    case "PAYWALL_PURCHASE_ERROR": return `Had a purchase error on the ${paywallName(b)}`;
     default: return e.type.toLowerCase().replace(/_/g, " ");
   }
 }

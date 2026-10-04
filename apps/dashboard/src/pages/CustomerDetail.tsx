@@ -18,7 +18,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Shell } from "../components/Shell";
 import { Icon } from "../components/icons";
-import { ConfirmDialog, Dialog, EmptyState, EVENT_TONE, Field, Menu, Panel, Tag, useProjectId, useToast } from "../components/ui";
+import { ConfirmDialog, Dialog, EmptyState, EVENT_TONE, Field, Menu, Panel, Switch, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
 import { getDisplay } from "../lib/prefs";
 import { listAll } from "./catalog/lib";
@@ -174,8 +174,23 @@ function DeleteDialog({ pid, id, onClose }: { pid: string; id: string; onClose: 
 
 /* ---------- Sections ---------- */
 
-function Timeline({ pid, id, entName, productName }: { pid: string; id: string; entName: (k: string) => string; productName: (storeId: string) => string }) {
-  const first = useQuery({ queryKey: ["customer_events", pid, id], queryFn: () => api<List<CustomerEvent>>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/events?limit=25`) });
+type TimelineProps = { pid: string; id: string; entName: (k: string) => string; productName: (storeId: string) => string };
+
+/**
+ * Purchase and lifecycle events by default, like RevenueCat's customer history. A project that forwards paywall events
+ * records one on every paywall view, so they are behind a switch; each setting pages on its own from the server.
+ */
+function Timeline(p: TimelineProps) {
+  const [paywall, setPaywall] = useState(false);
+  return (
+    <Panel title="Customer history" link={<Switch label="Show paywall events" checked={paywall} onChange={setPaywall} />} flush>
+      <TimelineList key={String(paywall)} {...p} paywall={paywall} />
+    </Panel>
+  );
+}
+
+function TimelineList({ pid, id, entName, productName, paywall }: TimelineProps & { paywall: boolean }) {
+  const first = useQuery({ queryKey: ["customer_events", pid, id, paywall], queryFn: () => api<List<CustomerEvent>>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/events?limit=25${paywall ? "&include_paywall_events=true" : ""}`) });
   const [more, setMore] = useState<CustomerEvent[]>([]);
   const [next, setNext] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -198,10 +213,10 @@ function Timeline({ pid, id, entName, productName }: { pid: string; id: string; 
     try { const r = await api<List<CustomerEvent>>(cursor); setMore((m) => [...m, ...r.items]); setNext(r.next_page); } finally { setBusy(false); }
   };
   return (
-    <Panel title="Customer history" flush>
+    <>
       {first.isError ? <Failed error={first.error} retry={() => first.refetch()} />
         : first.isLoading ? <Loading lines={4} />
-        : !items.length ? <div className="pnote">No events yet. Purchases, renewals, cancellations and grants appear here as they happen.</div>
+        : !items.length ? <div className="pnote">{paywall ? "No events yet. Purchases, renewals, cancellations, grants and paywall views appear here as they happen." : "No events yet. Purchases, renewals, cancellations and grants appear here as they happen."}</div>
         : (
           <>
             <ol className="tl" aria-label="Events, newest first">
@@ -236,7 +251,7 @@ function Timeline({ pid, id, entName, productName }: { pid: string; id: string; 
             {cursor && <div className="pfoot"><span>{items.length} events shown</span><button type="button" className="linkbtn" onClick={load} disabled={busy}>{busy ? "Loading…" : "Show older ↓"}</button></div>}
           </>
         )}
-    </Panel>
+    </>
   );
 }
 

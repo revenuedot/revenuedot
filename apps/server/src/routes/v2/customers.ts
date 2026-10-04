@@ -11,7 +11,7 @@ import { applyPurchases } from "../../services/purchases.js";
 import { subscriptionTransactions } from "../../services/subscription-transactions.js";
 import { commissionRateFor } from "../../services/commission.js";
 import { StoreActionError, cancelSubscription, extendSubscription, refundOrder, revokeSubscription } from "../../services/store-actions.js";
-import { V2Error, body, conflict, expands, listOf, monetaryFor, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
+import { V2Error, body, conflict, eventTypeFilter, expands, listOf, monetaryFor, notFound, pageParams, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { activeEntitlements, attributeItems, customerShape, loadCatalog, purchaseShape, subscriptionRevenue, subscriptionShape } from "./shapes.js";
 
 const AttrName = z.string().min(1).max(500);
@@ -163,15 +163,25 @@ export function customerRoutes(r: V2Router, deps: Deps) {
     return c.json(paginate(c, rows, (p) => p.id, (p) => p.purchaseDate.getTime(), (p) => purchaseShape(p, cust.originalAppUserId, cat)));
   });
 
+  // Newest first, keyset-paginated in SQL on (occurred_at, id) over events_customer_time. Paywall events only on request (eventTypeFilter).
   r.get(`${C}/:customer_id/events`, scope("customer_information:customers:read"), async (c) => {
     const cust = await find(c);
     const e = env(c);
-    const rows = await db.select().from(schema.events).where(and(eq(schema.events.projectId, cust.projectId), eq(schema.events.customerId, cust.id), ...(e ? [eq(schema.events.environment, e)] : [])));
-    // Newest first.
-    return c.json(paginate(c, rows, (x) => x.id, (x) => -x.eventTimestampMs, (x) => ({
+    const { limit, startingAfter } = pageParams(c);
+    const E = schema.events;
+    const own = and(eq(E.projectId, cust.projectId), eq(E.customerId, cust.id));
+    const conds = [own, ...(e ? [eq(E.environment, e)] : []), eventTypeFilter(c, E.type)];
+    if (startingAfter) {
+      const [cur] = await db.select({ at: E.eventTimestampMs, id: E.id }).from(E).where(and(own, eq(E.id, startingAfter))).limit(1);
+      if (!cur) throw paramError("starting_after does not match an object in this list.", "starting_after");
+      conds.push(sql`(${E.eventTimestampMs}, ${E.id}) < (${cur.at}, ${cur.id})`);
+    }
+    const rows = await db.select().from(E).where(and(...conds)).orderBy(desc(E.eventTimestampMs), desc(E.id)).limit(limit + 1);
+    const page = rows.slice(0, limit);
+    return c.json(listOf(c, page.map((x) => ({
       object: "customer.event", id: x.id, app_id: x.appId, type: x.type, body: (x.payload as { event?: unknown }).event ?? x.payload,
       created_at: x.createdAt.getTime(), occurred_at: x.eventTimestampMs,
-    })));
+    })), rows.length > limit ? page[page.length - 1]!.id : null));
   });
 
   // Promotional access, same rules as v1: a grant whose expiry is within 2 hours of an existing one is a duplicate.
