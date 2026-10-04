@@ -1733,5 +1733,14 @@
     "full": [],
     "crops": [],
     "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/iaphub/iaphub-ios-sdk\nCall log:\n  - navigating to \"https://github.com/iaphub/iaphub-ios-sdk\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "nami",
+    "page": "pricing",
+    "url": "https://www.nami.ml/pricing",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.nami.ml/pricing\nCall log:\n  - navigating to \"https://www.nami.ml/pricing\", waiting until \"domcontentloaded\"\n"
   }
 ]
