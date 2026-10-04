@@ -1,0 +1,2 @@
+ALTER TABLE "integrations" ADD COLUMN "failed_deliveries_in_row" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "integration_alert_emails" boolean DEFAULT true NOT NULL;

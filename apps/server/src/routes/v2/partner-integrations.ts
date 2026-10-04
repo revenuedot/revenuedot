@@ -50,7 +50,7 @@ export function integrationShape(i: Row) {
     object: "integration" as const, id: i.id, project_id: i.projectId, type: i.kind, name: i.name, enabled: i.enabled,
     environment: i.environment === "both" ? null : i.environment, app_id: i.appId ?? null,
     event_types: (i.eventTypes ?? []).map((t) => t.toLowerCase()), settings: i.settings, secrets, event_names: i.eventNames,
-    status: { last_delivered_at: i.lastDeliveredAt?.getTime() ?? null, last_error: i.lastError, consecutive_failures: i.consecutiveFailures },
+    status: { last_delivered_at: i.lastDeliveredAt?.getTime() ?? null, last_error: i.lastError, consecutive_failures: i.consecutiveFailures, failed_deliveries_in_row: i.failedDeliveriesInRow },
     created_at: i.createdAt.getTime(), updated_at: i.updatedAt?.getTime() ?? null,
   };
 }
@@ -198,7 +198,7 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
       ...(b.name !== undefined ? { name: b.name } : {}), ...(b.enabled !== undefined ? { enabled: b.enabled } : {}),
       ...(b.environment !== undefined ? { environment: b.environment ?? "both" } : {}), ...(b.app_id !== undefined ? { appId: b.app_id } : {}),
       ...(et !== undefined ? { eventTypes: et } : {}), ...(b.event_names !== undefined ? { eventNames: cleanNames(b.event_names) } : {}),
-      ...(b.enabled === true ? { consecutiveFailures: 0 } : {}),
+      ...(b.enabled === true ? { consecutiveFailures: 0, failedDeliveriesInRow: 0 } : {}),
       settings, secrets: merged.sealed, secretHints: merged.hints, updatedAt: deps.now(),
     }).where(eq(schema.integrations.id, i.id)).returning();
     if (b.enabled === true) deps.kick?.();

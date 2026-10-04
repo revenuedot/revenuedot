@@ -1,5 +1,5 @@
 {
-  "id": "4384a731-bdc9-48c3-a71f-dd6435a759aa",
+  "id": "5dfbb75c-b17d-4cb3-82c8-f582768cdc0e",
   "prevId": "619e45ff-aa31-4670-9467-7bcbe2a6e837",
   "version": "7",
   "dialect": "postgresql",
@@ -4308,23 +4308,11 @@
           "method": "btree",
           "with": {}
         },
-        "events_customer_time": {
-          "name": "events_customer_time",
+        "events_customer": {
+          "name": "events_customer",
           "columns": [
             {
               "expression": "customer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "event_timestamp_ms",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -6050,6 +6038,13 @@
         },
         "consecutive_failures": {
           "name": "consecutive_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "failed_deliveries_in_row": {
+          "name": "failed_deliveries_in_row",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -12022,6 +12017,13 @@
         },
         "alert_emails": {
           "name": "alert_emails",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "integration_alert_emails": {
+          "name": "integration_alert_emails",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

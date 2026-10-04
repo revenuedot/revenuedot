@@ -227,10 +227,17 @@
       "breakpoints": true
     },
     {
-      "idx": 34,
+      "idx": 35,
       "version": "7",
-      "when": 1791082587338,
-      "tag": "0034_events_customer_time",
+      "when": 1791069727783,
+      "tag": "0035_integration_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791083829899,
+      "tag": "0036_events_customer_time",
       "breakpoints": true
     }
   ]

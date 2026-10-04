@@ -483,6 +483,8 @@ export const users = pgTable("users", {
   emailVerifiedAt: ts("email_verified_at"),
   /** Alert emails (failing notifications, webhooks, store credentials) for projects this user administers. */
   alertEmails: boolean("alert_emails").notNull().default(true),
+  /** Integration failure alerts (services/alerts.ts, kind "integration"); only when alertEmails is on too. */
+  integrationAlertEmails: boolean("integration_alert_emails").notNull().default(true),
   /** Account settings (prd/account-settings/PRD.md): "system", "light" or "dark". */
   theme: text("theme").notNull().default("system"),
   /** Accent tint "#RRGGBB" replacing the gold accent in the dashboard; null keeps the gold. */
@@ -692,8 +694,8 @@ export const rateLimits = pgTable("rate_limits", {
 });
 
 /**
- * One row per thing that can break: kind "store_notifications" or "store_credentials" (subject = app id) or "webhook"
- * (subject = webhook id). The tick opens, reminds (at most once a day) and resolves it, and emails the project's admins.
+ * One row per thing that can break: kind "store_notifications" or "store_credentials" (subject = app id), "webhook"
+ * (subject = webhook id) or "integration" (subject = integration id). The tick opens, reminds (at most once a day) and resolves it, and emails the project's admins.
  */
 export const alerts = pgTable("alerts", {
   id: text("id").primaryKey(),
@@ -993,7 +995,13 @@ export const integrations = pgTable("integrations", {
   secrets: text("secrets"),
   secretHints: jsonb("secret_hints").$type<Record<string, string>>().notNull().default({}),
   eventNames: jsonb("event_names").$type<Record<string, string>>().notNull().default({}),
+  /** Delivery attempts in a row that failed (each retry counts); 0 after any success. The dashboard shows "Failing" while above 0. */
   consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  /**
+   * Deliveries in a row that ended failed (no retry left, or an error a retry cannot fix); 0 after any delivered one.
+   * 10 or more opens an "integration failing" alert (services/alerts.ts).
+   */
+  failedDeliveriesInRow: integer("failed_deliveries_in_row").notNull().default(0),
   lastError: text("last_error"),
   lastDeliveredAt: ts("last_delivered_at"),
   createdAt: created(),
