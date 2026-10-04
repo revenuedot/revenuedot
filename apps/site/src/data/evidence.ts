@@ -907,6 +907,23 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Apple ----
+  {
+    vendor: "Apple",
+    page: "app-review-guidelines",
+    url: "https://developer.apple.com/app-store/review/guidelines/",
+    captured: DATE,
+    full: asset("apple", "app-review-guidelines-full-1-2026-10-04.png"),
+    fullParts: [asset("apple", "app-review-guidelines-full-1-2026-10-04.png"), asset("apple", "app-review-guidelines-full-2-2026-10-04.png"), asset("apple", "app-review-guidelines-full-3-2026-10-04.png"), asset("apple", "app-review-guidelines-full-4-2026-10-04.png"), asset("apple", "app-review-guidelines-full-5-2026-10-04.png"), asset("apple", "app-review-guidelines-full-6-2026-10-04.png"), asset("apple", "app-review-guidelines-full-7-2026-10-04.png"), asset("apple", "app-review-guidelines-full-8-2026-10-04.png"), asset("apple", "app-review-guidelines-full-9-2026-10-04.png"), asset("apple", "app-review-guidelines-full-10-2026-10-04.png")],
+    crops: [
+      {
+        claim: "3-1-1-in-app-purchase",
+        file: asset("apple", "app-review-guidelines-3-1-1-in-app-purchase-2026-10-04.png"),
+        alt: "Apple App Review Guidelines 3.1.1: apps that unlock features or functionality must use in-app purchase.",
+        caption: "Apple page /app-store/review/guidelines/, captured 2026-10-04: Guideline 3.1.1 requires in-app purchase for digital unlocks.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */

@@ -1572,5 +1572,76 @@
     "full": [],
     "crops": [],
     "error": "Error: page.goto: net::ERR_NETWORK_CHANGED at https://docs.stripe.com/billing/subscriptions/analytics\nCall log:\n  - navigating to \"https://docs.stripe.com/billing/subscriptions/analytics\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "apple",
+    "page": "app-review-guidelines",
+    "url": "https://developer.apple.com/app-store/review/guidelines/",
+    "ok": true,
+    "full": [
+      "app-review-guidelines-full-1-2026-10-04.png",
+      "app-review-guidelines-full-2-2026-10-04.png",
+      "app-review-guidelines-full-3-2026-10-04.png",
+      "app-review-guidelines-full-4-2026-10-04.png",
+      "app-review-guidelines-full-5-2026-10-04.png",
+      "app-review-guidelines-full-6-2026-10-04.png",
+      "app-review-guidelines-full-7-2026-10-04.png",
+      "app-review-guidelines-full-8-2026-10-04.png",
+      "app-review-guidelines-full-9-2026-10-04.png",
+      "app-review-guidelines-full-10-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "3-1-1-in-app-purchase",
+        "file": "app-review-guidelines-3-1-1-in-app-purchase-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 123.9296875,
+          "y": 14019.515625,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "App Review Guidelines - Apple Developer",
+    "pageHeight": 37513
+  },
+  {
+    "vendor": "apple",
+    "page": "subscriptions",
+    "url": "https://developer.apple.com/app-store/subscriptions/",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.apple.com/app-store/subscriptions/\nCall log:\n  - navigating to \"https://developer.apple.com/app-store/subscriptions/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "apple",
+    "page": "storekit-in-app-purchase",
+    "url": "https://developer.apple.com/documentation/storekit/in-app_purchase",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.apple.com/documentation/storekit/in-app_purchase\nCall log:\n  - navigating to \"https://developer.apple.com/documentation/storekit/in-app_purchase\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "apple",
+    "page": "app-store-server-notifications",
+    "url": "https://developer.apple.com/documentation/appstoreservernotifications",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.apple.com/documentation/appstoreservernotifications\nCall log:\n  - navigating to \"https://developer.apple.com/documentation/appstoreservernotifications\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "apple",
+    "page": "github-app-store-server-library-node",
+    "url": "https://github.com/apple/app-store-server-library-node",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/apple/app-store-server-library-node\nCall log:\n  - navigating to \"https://github.com/apple/app-store-server-library-node\", waiting until \"domcontentloaded\"\n"
   }
 ]
