@@ -224,13 +224,14 @@ export const tools: ToolDefinition[] = [
   }),
   define({
     name: "list-events", title: "List events",
-    description: "The event log, newest first: the same events webhooks send (INITIAL_PURCHASE, RENEWAL, CANCELLATION, BILLING_ISSUE, EXPIRATION ...). Filter by customer to read a customer's history and see why they lost access.",
+    description: "The event log, newest first: the same events webhooks send (INITIAL_PURCHASE, RENEWAL, CANCELLATION, BILLING_ISSUE, EXPIRATION ...). Filter by customer to read a customer's history and see why they lost access. Paywall events (PAYWALL_IMPRESSION, PAYWALL_CLOSE ...) are left out unless `types` names them or include_paywall_events is true.",
     inputSchema: {
       customer_id: z.string().optional().describe("Only this app user id."),
-      types: z.array(z.string()).max(20).optional().describe("Only these event types, e.g. [\"CANCELLATION\", \"EXPIRATION\"]."), environment, limit, starting_after: startingAfter,
+      types: z.array(z.string()).max(20).optional().describe("Only these event types, e.g. [\"CANCELLATION\", \"EXPIRATION\"]."),
+      include_paywall_events: z.boolean().optional().describe("Also return paywall views, closes and taps (PAYWALL_*). Default false."), environment, limit, starting_after: startingAfter,
     },
     annotations: READ, scopes: ["customer_information:customers:read"],
-    run: async (c, a) => c.request("GET", `${await P(c)}/events`, { query: { customer: a.customer_id, type: a.types, environment: a.environment, limit: a.limit ?? 20, starting_after: a.starting_after } }),
+    run: async (c, a) => c.request("GET", `${await P(c)}/events`, { query: { customer: a.customer_id, type: a.types, include_paywall_events: a.include_paywall_events ? "true" : undefined, environment: a.environment, limit: a.limit ?? 20, starting_after: a.starting_after } }),
   }),
   define({
     name: "list-transactions", title: "List transactions",
@@ -660,24 +661,29 @@ export const tools: ToolDefinition[] = [
   }),
   define({
     name: "replay-failed-webhook-deliveries", title: "Replay failed webhook deliveries",
-    description: "Sends every failed delivery of one webhook from the last `days` days again (at most 100).",
+    description: "Sends every failed delivery of one webhook from the last `days` days again (at most 100): purchase and lifecycle events first, then paywall events (PAYWALL_*).",
     inputSchema: { webhook_id: z.string().describe("Webhook integration id."), days: z.number().int().min(1).max(30).optional().describe("How far back, default 7.") },
     annotations: { ...ATTACH, openWorldHint: true }, scopes: ["project_configuration:integrations:read_write"],
     run: async (c, a) => {
       const base = await P(c);
       const since = Date.now() - (a.days ?? 7) * 86400_000;
-      const retried: string[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < 5 && retried.length < 100; page++) {
-        const list = await c.request<{ items: { id: string; created_at: number }[]; next_page: string | null }>("GET", `${base}/webhooks/${enc(a.webhook_id)}/deliveries`, { query: { status: "failed", limit: 100, starting_after: cursor } });
-        const fresh = list.items.filter((d) => d.created_at >= since);
-        for (const d of fresh) {
-          if (retried.length >= 100) break;
-          await c.request("POST", `${base}/webhooks/${enc(a.webhook_id)}/deliveries/${enc(d.id)}/retry`);
-          retried.push(d.id);
+      // Purchase and lifecycle failures first, then paywall ones: a webhook that takes paywall events fails many
+      // impressions for every purchase, and they must not use up the 100.
+      const failed: string[] = [];
+      for (const paywall_events of ["exclude", "only"]) {
+        let cursor: string | undefined;
+        for (let page = 0; page < 5 && failed.length < 100; page++) {
+          const list = await c.request<{ items: { id: string; created_at: number }[]; next_page: string | null }>("GET", `${base}/webhooks/${enc(a.webhook_id)}/deliveries`, { query: { status: "failed", paywall_events, limit: 100, starting_after: cursor } });
+          const fresh = list.items.filter((d) => d.created_at >= since);
+          failed.push(...fresh.slice(0, 100 - failed.length).map((d) => d.id));
+          if (!list.next_page || fresh.length < list.items.length) break;
+          cursor = list.items[list.items.length - 1]!.id;
         }
-        if (!list.next_page || fresh.length < list.items.length) break;
-        cursor = list.items[list.items.length - 1]!.id;
+      }
+      const retried: string[] = [];
+      for (const id of failed) {
+        await c.request("POST", `${base}/webhooks/${enc(a.webhook_id)}/deliveries/${enc(id)}/retry`);
+        retried.push(id);
       }
       return { object: "webhook_replay", webhook_id: a.webhook_id, retried: retried.length, delivery_ids: retried };
     },

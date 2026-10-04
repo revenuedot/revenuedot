@@ -410,7 +410,7 @@ export const transactions = pgTable("transactions", {
   createdAt: created(),
 }, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id), index("transactions_customer").on(t.customerId, t.purchasedAt)]);
 
-/** Customer lifecycle events; the source for webhooks and the customer history timeline. */
+/** Customer lifecycle events; the source for webhooks and the customer history timeline (paged newest first on events_customer_time). */
 export const events = pgTable("events", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
@@ -421,7 +421,7 @@ export const events = pgTable("events", {
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
   eventTimestampMs: bigint("event_timestamp_ms", { mode: "number" }).notNull(),
   createdAt: created(),
-}, (t) => [index("events_project_time").on(t.projectId, t.eventTimestampMs), index("events_customer").on(t.customerId), index("events_project_created").on(t.projectId, t.createdAt, t.id)]);
+}, (t) => [index("events_project_time").on(t.projectId, t.eventTimestampMs), index("events_customer_time").on(t.customerId, t.eventTimestampMs, t.id), index("events_project_created").on(t.projectId, t.createdAt, t.id)]);
 
 export const webhooks = pgTable("webhooks", {
   id: text("id").primaryKey(),

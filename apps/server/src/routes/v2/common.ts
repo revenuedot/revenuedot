@@ -1,7 +1,8 @@
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { inArray, notInArray, type AnyColumn, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { commission, type Store } from "@revenuedot/core";
+import { commission, PAYWALL_WEBHOOK_TYPES, type Store } from "@revenuedot/core";
 import type { Deps } from "../../context.js";
 
 /**
@@ -140,6 +141,20 @@ export function paginate<T>(c: Context, rows: T[], key: (r: T) => string, create
   const page = sorted.slice(start, start + limit);
   const more = start + limit < sorted.length;
   return listOf(c, page.map(mapper), more && page.length ? key(page[page.length - 1]!) : null);
+}
+
+/**
+ * The event types an event list returns. `type` (repeated or comma separated) names them. Without it, every type except
+ * the paywall events (PAYWALL_*), which come back with `include_paywall_events=true` or when `type` names them: a
+ * project that forwards paywall events records an impression on every paywall view, and those would push purchases
+ * out of the newest page of a customer's history. RevenueCat's customer history shows no paywall events either.
+ */
+export function eventTypeFilter(c: Context, column: AnyColumn): SQL | undefined {
+  const raw = c.req.query("include_paywall_events");
+  if (raw !== undefined && raw !== "true" && raw !== "false") throw paramError("include_paywall_events must be true or false.", "include_paywall_events");
+  const types = (c.req.queries("type") ?? []).flatMap((t) => t.split(",")).map((t) => t.trim().toUpperCase()).filter(Boolean);
+  if (types.length) return inArray(column, types);
+  return raw === "true" ? undefined : notInArray(column, [...PAYWALL_WEBHOOK_TYPES]);
 }
 
 export const ms = (d: Date | null | undefined) => (d ? d.getTime() : null);
