@@ -120,6 +120,8 @@ export type ComparePage = {
   kind: "vs" | "versus";
   /** Column names, RevenueDot first when it is in the table. */
   columns: string[];
+  /** Short name for breadcrumbs, cards and the social card. Defaults to the first two columns joined with "vs". */
+  short?: string;
   title: string;
   metaTitle: string;
   metaDescription: string;

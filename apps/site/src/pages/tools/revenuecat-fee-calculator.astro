@@ -19,7 +19,7 @@ const faq = [
   metaTitle="RevenueCat fee calculator (2026 pricing)"
   description="Enter your monthly revenue and see RevenueCat's fee next to Adapty, Qonversion, Superwall and RevenueDot, monthly and yearly, with each vendor's pricing source."
   answer="RevenueCat charges **1% of all monthly tracked revenue** once it reaches $2,500, measured before the store's cut. Enter your monthly revenue to see that fee next to Adapty, Qonversion, Superwall and RevenueDot, per month and per year."
-  faq={faq} related={["/compare/revenuedot-vs-revenuecat", "/revenuecat-alternatives", "/blog/revenuecat-pricing-explained", "/pricing", "/migrate-from-revenuecat", "/tools/app-store-fee-calculator"]}>
+  faq={faq} related={["/cheaper-revenuecat-alternatives", "/compare/revenuedot-vs-revenuecat", "/revenuecat-alternatives", "/blog/revenuecat-pricing-explained", "/pricing", "/tools/app-store-fee-calculator"]}>
   <div class="tool" id="fee-tool" data-vendors={JSON.stringify(VENDORS.map((v) => ({ id: v.id, ...v.calc, from: Number.isFinite(v.calc.from) ? v.calc.from : -1 })))}>
     <div class="inputs">
       <label>Monthly tracked revenue (USD)

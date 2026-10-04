@@ -144,7 +144,7 @@ for (const c of COMPARE) {
   const vis = row
     ? `<div><p class="cap">Monthly bill at ${esc(row[0])} tracked revenue</p><div class="cols">${c.price.head.slice(1).map((h, k) => `<div class="${/RevenueDot/.test(h) ? "rd" : ""}"><span>${esc(h.replace(/\s*\(.*\)/, ""))}</span><b>${esc(row[k + 1])}</b></div>`).join("")}</div></div>`
     : `<div class="cols">${c.columns.map((n) => `<div class="${n === "RevenueDot" ? "rd" : ""}"><span>${esc(n)}</span></div>`).join("")}</div>`;
-  add(`/compare/${c.slug}`, page(`${chrome("Comparison · checked " + c.checked, c.columns.slice(0, 2).join(" vs "))}<div class="vis" data-og-safe>${vis}</div>`));
+  add(`/compare/${c.slug}`, page(`${chrome("Comparison · checked " + c.checked, c.short ?? c.columns.slice(0, 2).join(" vs "))}<div class="vis" data-og-safe>${vis}</div>`));
 }
 // Landing pages
 const PLAT = { "app-store": "app-store.svg", "google-play": "google-play.svg", "amazon-appstore": "amazon.svg", stripe: "stripe.svg", ios: "apple.svg", android: "android-icon.svg", "react-native": "react.svg", flutter: "flutter.svg", web: "javascript.svg", capacitor: "ionic-icon.svg", cordova: "cordova.svg", unity: "unity.svg", "kotlin-multiplatform": "kotlin-icon.svg" };
@@ -184,6 +184,13 @@ for (const [p, label, title, s] of [
 // Guides (src/data/guides.ts)
 add("/in-app-purchases", page(`${chrome("Guide", "In-app purchases: how they work")}<div class="vis" data-og-safe><div><p class="cap">What the store keeps</p><div class="cols"><div><span>App Store, first year</span><b>30%</b></div><div><span>App Store, after a year</span><b>15%</b></div><div><span>Small Business Program</span><b>15%</b></div><div><span>Google Play subscriptions</span><b>15%</b></div></div></div></div>`));
 add("/add-in-app-purchases", page(`${chrome("New to in-app purchases", "Add subscriptions free until $10K a month")}<div class="vis" data-og-safe><div style="display:grid;grid-template-columns:repeat(3,120px);gap:14px">${["apple.svg", "android-icon.svg", "react.svg", "flutter.svg", "expo-icon.svg", "javascript.svg"].map((f) => logoFile(f)).filter(Boolean).map((u) => `<div class="tile" style="width:120px;height:120px"><img src="${u}" style="width:60px;height:60px"></div>`).join("")}</div></div>`));
+{
+  const fees = await load("compare.ts", "CHEAPER_FEES");
+  const row = fees.rows.find((r) => /100,000/.test(r[0]));
+  const keep = ["RevenueCat", "Qonversion", "Superwall", "RevenueDot Cloud", "RevenueDot self-host"];
+  const idx = fees.head.map((h, i) => [h, i]).filter(([h]) => keep.some((k) => h.startsWith(k)));
+  add("/cheaper-revenuecat-alternatives", page(`${chrome("Cheaper than RevenueCat · 2026", "Cheaper RevenueCat alternatives, priced")}<div class="vis" data-og-safe><div><p class="cap">Monthly bill at ${esc(row[0])} tracked revenue</p><div class="cols">${idx.map(([h, i]) => `<div class="${/RevenueDot/.test(h) ? "rd" : ""}"><span>${esc(h.replace(/\s*\(.*\)/, ""))}</span><b>${esc(row[i])}</b></div>`).join("")}</div></div></div>`));
+}
 add("/do-i-need-revenuecat", page(`${chrome("Honest answer", "Do you need RevenueCat for an iOS-only app?")}<div class="vis" data-og-safe><div><p class="cap">You need a backend when</p><div class="cols"><div><span>iOS only</span><b>StoreKit 2</b></div><div><span>+ Android or web</span><b>Backend</b></div><div><span>Webhooks, charts</span><b>Backend</b></div><div class="rd"><span>RevenueDot Cloud</span><b>$0 to $10K</b></div></div></div></div>`));
 
 // Glossary
