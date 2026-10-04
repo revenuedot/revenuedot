@@ -268,14 +268,15 @@ test("verified metrics: slug check, metric order and visibility, publish, the pu
   await expect(page.getByText(/last 12 months, one point per month/)).toBeVisible();
   await page.getByRole("button", { name: "Publish changes" }).click();
   await expect(page.getByText("Changes published.")).toBeVisible();
-  await pub.goto(`/verified/${slug}`);
+  // A new query each time: the page is public for 5 minutes in the browser's cache.
+  await pub.goto(`/verified/${slug}?type=line`);
   await expect(pub.locator("svg.line").first()).toBeVisible();
   await expect(pub.getByText("No monthly history for this metric.")).toBeVisible();
   // Only numbers.
   await page.getByLabel("Chart type").selectOption("numbers_only");
   await page.getByRole("button", { name: "Publish changes" }).click();
   await expect(page.getByText("Changes published.")).toBeVisible();
-  await pub.goto(`/verified/${slug}`);
+  await pub.goto(`/verified/${slug}?type=numbers`);
   await expect(pub.locator(".cell svg")).toHaveCount(0);
 
   // A custom domain: the two DNS records to add, pending until verified.
