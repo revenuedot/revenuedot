@@ -853,6 +853,60 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Stripe ----
+  {
+    vendor: "Stripe",
+    page: "pricing",
+    url: "https://stripe.com/pricing",
+    captured: DATE,
+    full: asset("stripe", "pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("stripe", "pricing-full-1-2026-10-04.png"), asset("stripe", "pricing-full-2-2026-10-04.png"), asset("stripe", "pricing-full-3-2026-10-04.png"), asset("stripe", "pricing-full-4-2026-10-04.png"), asset("stripe", "pricing-full-5-2026-10-04.png"), asset("stripe", "pricing-full-6-2026-10-04.png")],
+    crops: [
+      {
+        claim: "card-fee",
+        file: asset("stripe", "pricing-card-fee-2026-10-04.png"),
+        alt: "Stripe pricing: 2.9% + 30¢ per successful card charge.",
+        caption: "Stripe pricing page, captured 2026-10-04: 2.9% + 30¢ per successful US card charge.",
+      },
+      {
+        claim: "international-cards",
+        file: asset("stripe", "pricing-international-cards-2026-10-04.png"),
+        alt: "Stripe pricing: an additional 1.5% for international cards.",
+        caption: "Stripe pricing page, captured 2026-10-04: 1.5% more for international cards.",
+      },
+    ],
+  },
+  {
+    vendor: "Stripe",
+    page: "billing-pricing",
+    url: "https://stripe.com/billing/pricing",
+    captured: DATE,
+    full: asset("stripe", "billing-pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("stripe", "billing-pricing-full-1-2026-10-04.png"), asset("stripe", "billing-pricing-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "0-7-percent",
+        file: asset("stripe", "billing-pricing-0-7-percent-2026-10-04.png"),
+        alt: "Stripe Billing pricing: 0.7% of Billing volume on the pay-as-you-go plan.",
+        caption: "Stripe page /billing/pricing, captured 2026-10-04: Stripe Billing costs 0.7% of volume.",
+      },
+    ],
+  },
+  {
+    vendor: "Stripe",
+    page: "docs-checkout-quickstart",
+    url: "https://docs.stripe.com/checkout/quickstart",
+    captured: DATE,
+    full: asset("stripe", "docs-checkout-quickstart-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "hosted-page",
+        file: asset("stripe", "docs-checkout-quickstart-hosted-page-2026-10-04.png"),
+        alt: "Stripe Checkout quickstart: customers are redirected to a prebuilt payment page hosted by Stripe.",
+        caption: "Stripe docs page, captured 2026-10-04: Checkout is a Stripe-hosted payment page.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */

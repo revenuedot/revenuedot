@@ -1468,5 +1468,109 @@
     "status": 200,
     "title": "GitHub - apphud/ApphudSDK: Build, Measure and Grow iOS subscription business · GitHub",
     "pageHeight": 4928
+  },
+  {
+    "vendor": "stripe",
+    "page": "pricing",
+    "url": "https://stripe.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png",
+      "pricing-full-3-2026-10-04.png",
+      "pricing-full-4-2026-10-04.png",
+      "pricing-full-5-2026-10-04.png",
+      "pricing-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "card-fee",
+        "file": "pricing-card-fee-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 275.4921875,
+          "width": 800,
+          "height": 460
+        }
+      },
+      {
+        "claim": "international-cards",
+        "file": "pricing-international-cards-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 350,
+          "y": 2024.15625,
+          "width": 850,
+          "height": 460
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing & Fees",
+    "pageHeight": 22308
+  },
+  {
+    "vendor": "stripe",
+    "page": "billing-pricing",
+    "url": "https://stripe.com/billing/pricing",
+    "ok": true,
+    "full": [
+      "billing-pricing-full-1-2026-10-04.png",
+      "billing-pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "0-7-percent",
+        "file": "billing-pricing-0-7-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 303,
+          "width": 800,
+          "height": 696.625
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Stripe Billing | Pricing",
+    "pageHeight": 4874
+  },
+  {
+    "vendor": "stripe",
+    "page": "docs-checkout-quickstart",
+    "url": "https://docs.stripe.com/checkout/quickstart",
+    "ok": true,
+    "full": [
+      "docs-checkout-quickstart-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hosted-page",
+        "file": "docs-checkout-quickstart-hosted-page-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 36,
+          "width": 800,
+          "height": 584
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Build a Stripe-hosted checkout page | Stripe Documentation",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "stripe",
+    "page": "docs-billing-analytics",
+    "url": "https://docs.stripe.com/billing/subscriptions/analytics",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_NETWORK_CHANGED at https://docs.stripe.com/billing/subscriptions/analytics\nCall log:\n  - navigating to \"https://docs.stripe.com/billing/subscriptions/analytics\", waiting until \"domcontentloaded\"\n"
   }
 ]
