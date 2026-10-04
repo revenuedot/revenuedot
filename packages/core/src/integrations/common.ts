@@ -178,6 +178,19 @@ export interface EventContext {
 
 export const skip = (reason: string): Plan => ({ skip: reason });
 
+/**
+ * Whether a field applies with these settings: always, or only while the select it depends on (`when`) has the given
+ * value. An unset select counts as its first option, which is what the form shows and the builders assume. A `required`
+ * field is required only while it applies (the API and the dashboard both use this).
+ */
+export function fieldApplies(spec: { fields: IntegrationField[] }, f: IntegrationField, settings: Record<string, unknown>): boolean {
+  if (!f.when) return true;
+  const dep = spec.fields.find((x) => x.key === f.when!.key);
+  const v = settings[f.when.key];
+  const value = v === undefined || v === null || v === "" ? dep?.options?.[0]?.value : v;
+  return value === f.when.value;
+}
+
 export const nameFor = (c: Concept, defaults: (c: Concept) => string | null, overrides?: Record<string, string>) => {
   const o = overrides?.[c]?.trim();
   return o || defaults(c);

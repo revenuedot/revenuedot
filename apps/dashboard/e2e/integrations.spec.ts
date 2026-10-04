@@ -1,7 +1,8 @@
 /**
  * Integrations and scheduled data exports in the browser: connect Slack and PostHog to a local fake partner, send a
  * test event, see real purchases arrive and the delivery log, turn one off; then an S3 export to a local fake bucket:
- * check the bucket, run it, and read the file back. Signs up its own account; nothing leaves this machine.
+ * check the bucket, run it, and read the file back. Then AppsFlyer's web purchase settings and Meta's App Events API, with
+ * test events to the fake AppsFlyer and Meta hosts in e2e/server.ts. Signs up its own account; nothing leaves this machine.
  *   E2E_PORT=5392 pnpm --filter @revenuedot/dashboard e2e -- integrations
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -187,4 +188,102 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
   } finally {
     fake.server.close();
   }
+});
+
+test("attribution: AppsFlyer web routing fields and Meta's App Events API, each with a test event to a fake partner", async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = watchConsole(page);
+  const req = page.request;
+  const stamp = Date.now();
+  await json(req, "POST", "/auth/signup", { email: `attribution-${stamp}@revenuedot.test`, password: `e2e-${stamp}-pw`, name: "Attribution e2e", project_name: "Attribution e2e" });
+  const pid: string = (await json(req, "GET", "/auth/me")).projects[0].id;
+  const P = `/v2/projects/${pid}`;
+  const app = await json(req, "POST", `${P}/apps`, { name: "Test Store", type: "test_store" });
+  await json(req, "POST", `${P}/products`, { app_id: app.id, store_identifier: "pro_monthly", type: "subscription", display_name: "Pro monthly", subscription: { duration: "P1M" } });
+  const key = (await json(req, "GET", `${P}/apps/${app.id}/public_api_keys`)).items[0].key;
+  // A customer on iOS with the ids AppsFlyer and Meta match on, made before either integration exists.
+  const user = `attr_${stamp}`;
+  const attrs = { $appsflyerId: "1700000000000-4242", $fbAnonId: "XZfbanon", $attConsentStatus: "authorized", $ip: "203.0.113.50" };
+  const r = await req.fetch("/v1/receipts", {
+    method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "x-platform": "iOS" },
+    data: { app_user_id: user, fetch_token: `test_${stamp}_${user}`, product_id: "pro_monthly", price: 9.99, currency: "USD", attributes: Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, { value: v, updated_at_ms: stamp }])) },
+  });
+  expect(r.status()).toBe(200);
+  const hits = async (host: string) => (await json<{ url: string; headers: Record<string, string>; body: string }[]>(req, "GET", `/__partners?host=${host}`));
+  const sendTest = async () => {
+    await page.getByRole("button", { name: "Send test event" }).click();
+    await page.getByLabel("App user ID (optional)").fill(user);
+    await page.getByRole("dialog").getByRole("button", { name: "Send test event" }).click();
+  };
+
+  await test.step("AppsFlyer shows the web purchase settings; a test event reaches the mobile API", async () => {
+    await page.goto(`/projects/${pid}/integrations/appsflyer`);
+    await expect(page.getByRole("heading", { name: "AppsFlyer", exact: true })).toBeVisible();
+    for (const label of ["Web SDK ID", "Web S2S API token", "Web (PBA) bundle ID", "Web (PBA) dev key"]) await expect(page.getByLabel(label, { exact: true })).toBeVisible();
+    const routing = page.getByLabel("Web store event routing");
+    await expect(routing).toHaveValue("mobile_s2s");
+    await page.getByLabel("Developer key", { exact: true }).fill("af_dev_key_e2e");
+    await page.getByLabel("iOS app ID").fill("id123456789");
+    await page.getByLabel("Web SDK ID", { exact: true }).fill("web-sdk-e2e");
+    await page.getByLabel("Web S2S API token", { exact: true }).fill("af_web_token_e2e");
+    await routing.selectOption("web_s2s");
+    await page.getByRole("button", { name: "Connect AppsFlyer" }).click();
+    await expect(page.getByText("AppsFlyer is connected.")).toBeVisible();
+    const saved = (await json(req, "GET", `${P}/integrations/partners`)).items.find((x: any) => x.type === "appsflyer");
+    expect(saved).toMatchObject({ settings: { web_app_id: "web-sdk-e2e", web_routing: "web_s2s" }, secrets: { web_s2s_token: { configured: true } } });
+    await page.reload();
+    await expect(page.getByLabel("Web store event routing")).toHaveValue("web_s2s");
+    await sendTest();
+    await expect.poll(async () => (await hits("api2.appsflyer.com")).length, { timeout: 20_000 }).toBe(1);
+    const [hit] = await hits("api2.appsflyer.com");
+    expect(hit!.url).toBe("https://api2.appsflyer.com/inappevent/id123456789");
+    expect(JSON.parse(hit!.body)).toMatchObject({ appsflyer_id: "1700000000000-4242", customer_user_id: user, eventName: "rc_test_event" });
+    await page.getByRole("button", { name: "Refresh deliveries" }).click();
+    await expect(page.getByRole("row", { name: /TEST.*delivered/ })).toBeVisible({ timeout: 20_000 });
+  });
+
+  await test.step("Meta switches between the Conversions API and the App Events API fields", async () => {
+    await page.goto(`/projects/${pid}/integrations/meta`);
+    await expect(page.getByRole("heading", { name: "Meta Ads", exact: true })).toBeVisible();
+    const type = page.getByLabel("Integration type");
+    await expect(type).toHaveValue("conversions");
+    await expect(page.getByLabel("Dataset ID", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Meta app ID")).toHaveCount(0);
+    await type.selectOption("app_events");
+    await expect(page.getByLabel("Dataset ID", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Send iOS events without ATT consent")).toHaveCount(0);
+    for (const label of ["Meta app ID", "Client token", "Sandbox app ID", "Sandbox client token"]) await expect(page.getByLabel(label, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Connect Meta Ads" }).click();
+    await expect(page.getByRole("alert")).toContainText("Client token is required");
+    await page.getByLabel("Meta app ID", { exact: true }).fill("111222333");
+    await page.getByLabel("Client token", { exact: true }).fill("ct_live_e2e");
+    await page.getByLabel("Sandbox app ID", { exact: true }).fill("444555666");
+    await page.getByLabel("Sandbox client token", { exact: true }).fill("ct_sandbox_e2e");
+    // The App Events API has no test mode: test events go to the sandbox app only.
+    await page.getByRole("group", { name: "Environment" }).getByRole("button", { name: "Sandbox" }).click();
+    await page.getByRole("button", { name: "Connect Meta Ads" }).click();
+    await expect(page.getByText("Meta Ads is connected.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("Integration type")).toHaveValue("app_events");
+    await expect(page.getByLabel("Meta app ID", { exact: true })).toHaveValue("111222333");
+  });
+
+  await test.step("a Meta test event goes to the sandbox app's activities with X-Forwarded-For, and the log hides the token", async () => {
+    await sendTest();
+    await expect.poll(async () => (await hits("graph.facebook.com")).length, { timeout: 20_000 }).toBe(1);
+    const [hit] = await hits("graph.facebook.com");
+    expect(hit!.url).toBe("https://graph.facebook.com/v21.0/444555666/activities");
+    expect(hit!.headers["x-forwarded-for"]).toBe("203.0.113.50");
+    expect(JSON.parse(hit!.body)).toMatchObject({ event: "CUSTOM_APP_EVENTS", client_token: "ct_sandbox_e2e", anon_id: "XZfbanon", app_user_id: user, custom_events: [{ _eventName: "Subscribe" }] });
+    await page.getByRole("button", { name: "Refresh deliveries" }).click();
+    const row = page.getByRole("row", { name: /TEST.*Subscribe.*delivered/ });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.getByRole("button", { name: "Details" }).click();
+    const drawer = page.getByRole("dialog", { name: "Delivery details" });
+    await expect(drawer.getByText("POST https://graph.facebook.com/v21.0/444555666/activities")).toBeVisible();
+    await expect(drawer).toContainText(/"client_token": ?"\[redacted\]"/);
+    await expect(drawer).not.toContainText("ct_sandbox_e2e");
+  });
+
+  expect(errors.filter((e) => !/status of (400|409|422)/.test(e))).toEqual([]);
 });

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { ADJUST_STEPS, INTEGRATION_EVENTS, PAYWALL_CONCEPTS, STEP_LABELS, defaultEventName, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
+import { ADJUST_STEPS, INTEGRATION_EVENTS, PAYWALL_CONCEPTS, STEP_LABELS, defaultEventName, fieldApplies, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
 import { Shell } from "../../components/Shell";
 import { DeliveryDrawer } from "../../components/DeliveryDrawer";
 import { Icon } from "../../components/icons";
@@ -60,7 +60,7 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
       if (f.type === "secret") {
         if (secrets[f.key]?.trim()) settings[f.key] = secrets[f.key]!.trim();
         else if (clear[f.key]) settings[f.key] = null;
-        else if (!current && f.required) { setError({ message: `${f.label} is required.`, param: `settings.${f.key}` }); document.getElementById(`f-${f.key}`)?.focus(); return; }
+        else if (!current?.secrets[f.key]?.configured && f.required && fieldApplies(spec, f, values)) { setError({ message: `${f.label} is required.`, param: `settings.${f.key}` }); document.getElementById(`f-${f.key}`)?.focus(); return; }
         continue;
       }
       const v = values[f.key];
@@ -86,7 +86,7 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
     } finally { setBusy(false); }
   }
 
-  const shown = spec.fields.filter((f) => !f.when || values[f.when.key] === f.when.value);
+  const shown = spec.fields.filter((f) => fieldApplies(spec, f, values));
   const fieldErr = (key: string) => (error?.param === `settings.${key}` || error?.param?.startsWith(`settings.${key}.`) ? error.message : null);
   return (
     <form className="stack" onSubmit={submit} noValidate aria-label={`${spec.name} settings`}>
