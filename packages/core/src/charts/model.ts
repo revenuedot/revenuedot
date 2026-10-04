@@ -1,5 +1,6 @@
 import { DAY, HOUR, mrrFactor } from "./time.js";
 import type { ChartAttribution } from "../attribution.js";
+import { offerTypeOf } from "./periods.js";
 
 /**
  * The rows every chart is computed from, already scoped to one project and one environment, with times in epoch ms.
@@ -24,6 +25,8 @@ export interface ChartTx {
   offering?: string | null;
   /** The store's commission rate for this transaction (commission.ts); the store's default rate when absent. */
   commission?: number;
+  /** `transactions.offer_type`: the offer the period was bought with (periods.ts `offerTypeOf`). */
+  offerType?: string | null;
 }
 
 export interface ChartCustomer {
@@ -34,6 +37,8 @@ export interface ChartCustomer {
   appVersion: string | null;
   /** The customer's attribution (customer_attribution), by dimension; absent or null is "no attribution". */
   attribution?: ChartAttribution;
+  /** Custom attributes the project set (keys not starting with `$`), for the `custom_attribute:<key>` dimensions. */
+  attributes?: Record<string, string | null>;
 }
 
 export interface ChartProduct { appId: string | null; storeIdentifier: string; type: string; duration: string | null }
@@ -101,6 +106,11 @@ export interface ChartInput {
   activity: { customerId: string; day: number }[];
   /** USD → display currency multiplier on a date (1 for USD). */
   fx: (at: number) => number;
+  /**
+   * Renewal cycle and offer type filters (periods.ts). They select periods of subscriptions built from the whole ledger,
+   * so `restrict` keeps them here instead of dropping rows; `Prepared` applies them.
+   */
+  periodFilters?: { name: string; values: string[]; exclude?: boolean }[];
 }
 
 /** One paid or trial period of a subscription. */
@@ -114,6 +124,8 @@ export interface Period {
   /** Monthly value in the display currency (0 for trials). */
   monthly: number;
   storeTransactionId: string;
+  /** The offer the period was bought with (periods.ts `OFFER_LABEL` ids). */
+  offerType: string;
 }
 
 /**
@@ -238,7 +250,7 @@ export function buildSubscriptions(input: ChartInput): Sub[] {
     for (const r of raw) {
       const money = r.tx.usd * input.fx(r.tx.at);
       const trial = r.tx.kind === "trial";
-      const period: Period = { start: r.start, end: Math.max(r.start, r.end), trial, money: trial ? 0 : money, monthly: trial ? 0 : money * factorOf(r), storeTransactionId: r.tx.storeTransactionId };
+      const period: Period = { start: r.start, end: Math.max(r.start, r.end), trial, money: trial ? 0 : money, monthly: trial ? 0 : money * factorOf(r), storeTransactionId: r.tx.storeTransactionId, offerType: offerTypeOf(r.tx.kind, r.tx.offerType) };
       if (cur && r.start <= lastEnd + HOUR) {
         cur.periods.push(period);
       } else if (cur && r.tx.kind === "renewal" && r.start - lastEnd <= 60 * DAY
@@ -328,6 +340,8 @@ export interface SubMove {
   actives: number;
   /** Product change from a subscription that was paid at the moment of the change. */
   paidToPaid?: boolean;
+  /** The paid period the move starts, ends or reprices (for the renewal cycle and offer type dimensions). */
+  period: Period;
 }
 
 /** Every paid start, end, lapse, recovery and price change, for the movement and churn charts. Only moves up to `now`. */
@@ -339,22 +353,22 @@ export function subMoves(subs: Sub[], now: number): SubMove[] {
     const first = paid[0]!;
     const predPaid = s.predecessor ? paidAt(s.predecessor, s.start - 1) ?? (s.predecessor.end >= s.start - HOUR ? [...s.predecessor.periods].reverse().find((p) => !p.trial) ?? null : null) : null;
     const type = s.origin === "resubscription" ? "resubscription" : s.origin === "product_change" ? "product_change" : s.trialStart !== null ? "trial_conversion" : "new";
-    if (first.start <= now) out.push({ at: first.start, sub: s, type, mrr: first.monthly, actives: 1, paidToPaid: s.origin === "product_change" && !!predPaid && first.start === s.start });
+    if (first.start <= now) out.push({ at: first.start, sub: s, type, mrr: first.monthly, actives: 1, paidToPaid: s.origin === "product_change" && !!predPaid && first.start === s.start, period: first });
     // Walk the paid timeline: price changes between touching periods, lapses at gaps, the final end.
     let prev = first;
     for (const p of paid.slice(1)) {
       if (p.start > now) break;
       const gap = s.gaps.find((g) => g.to === p.start);
       if (gap || p.start > prev.end + HOUR) {
-        if (prev.end <= now) out.push({ at: prev.end, sub: s, type: "lapse", mrr: -prev.monthly, actives: -1 });
-        out.push({ at: p.start, sub: s, type: "recovery", mrr: p.monthly, actives: 1 });
+        if (prev.end <= now) out.push({ at: prev.end, sub: s, type: "lapse", mrr: -prev.monthly, actives: -1, period: prev });
+        out.push({ at: p.start, sub: s, type: "recovery", mrr: p.monthly, actives: 1, period: p });
       } else if (Math.abs(p.monthly - prev.monthly) > 1e-9) {
-        out.push({ at: p.start, sub: s, type: "reprice", mrr: p.monthly - prev.monthly, actives: 0 });
+        out.push({ at: p.start, sub: s, type: "reprice", mrr: p.monthly - prev.monthly, actives: 0, period: p });
       }
       prev = p;
     }
     const last = paid[paid.length - 1]!;
-    if (last.end <= now && last.end === s.end) out.push({ at: last.end, sub: s, type: s.replacedAt !== null && s.replacedAt === s.end ? "replaced" : "churn", mrr: -last.monthly, actives: -1 });
+    if (last.end <= now && last.end === s.end) out.push({ at: last.end, sub: s, type: s.replacedAt !== null && s.replacedAt === s.end ? "replaced" : "churn", mrr: -last.monthly, actives: -1, period: last });
   }
   return out;
 }

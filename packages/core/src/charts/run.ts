@@ -1,7 +1,8 @@
-import type { ChartDef, Dim } from "./catalog.js";
+import { customAttributeKey, isCustomAttributeDim, type ChartDef, type Dim } from "./catalog.js";
 import { ATTRIBUTION_DIMS, type AttributionDim } from "../attribution.js";
 import { computeChart, Frame, Prepared, type ChartOutput, type ChartRequest } from "./compute.js";
 import { productIndex, type ChartCustomer, type ChartInput } from "./model.js";
+import { isPeriodDim, tagValue, txTag } from "./periods.js";
 
 /** One filter: values are OR-ed; `exclude` keeps everything except them (the "Other" segment). */
 export interface ChartFilter { name: Dim; values: string[]; exclude?: boolean }
@@ -10,6 +11,8 @@ export interface ChartFilter { name: Dim; values: string[]; exclude?: boolean }
 type Getter = (dim: Dim) => string | null | undefined;
 const CUSTOMER_DIMS = new Set<Dim>(["country", "platform", "app_version", ...ATTRIBUTION_DIMS]);
 const isAttribution = (d: Dim): d is AttributionDim => (ATTRIBUTION_DIMS as string[]).includes(d);
+/** Dimensions of the customer (they filter customers and everything they did); custom attributes are customer dimensions. */
+const isCustomerDim = (d: Dim) => CUSTOMER_DIMS.has(d) || isCustomAttributeDim(d);
 
 function getters(input: ChartInput) {
   const customers = new Map<string, ChartCustomer>(input.customers.map((c) => [c.id, c]));
@@ -17,6 +20,7 @@ function getters(input: ChartInput) {
   const fromCustomer = (id: string | null, dim: Dim) => {
     const c = id ? customers.get(id) : undefined;
     if (isAttribution(dim)) return c?.attribution?.[dim] ?? null;
+    if (isCustomAttributeDim(dim)) return c?.attributes?.[customAttributeKey(dim)] ?? null;
     return dim === "country" ? c?.country ?? null : dim === "platform" ? c?.platform ?? null : dim === "app_version" ? c?.appVersion ?? null : undefined;
   };
   const purchase = (x: { customerId: string; appId: string | null; store: string; productId: string; country?: string | null; offering?: string | null }): Getter => (dim) => {
@@ -44,12 +48,17 @@ const matches = (v: string | null | undefined, f: ChartFilter) => {
  * they did; purchase dimensions (store, product …) filter purchases but leave customers alone, so the new-customer
  * denominators of conversion charts do not change (RevenueCat: product filters do not apply to new customers).
  */
-export function restrict(input: ChartInput, filters: ChartFilter[]): ChartInput {
+export function restrict(input: ChartInput, all: ChartFilter[]): ChartInput {
+  if (!all.length) return input;
+  // Renewal cycle and offer type select periods of subscriptions built from every row (periods.ts): kept for Prepared.
+  const period = all.filter((f) => isPeriodDim(f.name));
+  const filters = all.filter((f) => !isPeriodDim(f.name));
+  if (period.length) input = { ...input, periodFilters: [...(input.periodFilters ?? []), ...period] };
   if (!filters.length) return input;
   const g = getters(input);
   const keep = (get: Getter) => filters.every((f) => matches(get(f.name), f));
   const customerOk = new Set(input.customers.filter((c) => keep((d) => g.fromCustomer(c.id, d))).map((c) => c.id));
-  const custFiltered = filters.some((f) => CUSTOMER_DIMS.has(f.name));
+  const custFiltered = filters.some((f) => isCustomerDim(f.name));
   const byCustomer = (id: string | null) => !custFiltered || (id !== null && customerOk.has(id));
   return {
     ...input,
@@ -68,10 +77,18 @@ export function dimValues(input: ChartInput, dim: Dim): string[] {
   const g = getters(input);
   const counts = new Map<string, number>();
   const add = (v: string | null | undefined) => { if (v !== undefined) counts.set(v ?? "", (counts.get(v ?? "") ?? 0) + 1); };
-  if (CUSTOMER_DIMS.has(dim)) for (const c of input.customers) add(g.fromCustomer(c.id, dim));
-  if (!CUSTOMER_DIMS.has(dim) || dim === "country") for (const t of input.txs) if (t.store !== "promotional") add(g.purchase(t)(dim));
+  const sorted = () => [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
+  if (isPeriodDim(dim)) {
+    // Each ledger row's period: trials, paid periods by cycle, one-time purchases ("") and their offer types.
+    const d = new Prepared(input);
+    const { byTx } = d.periodTags;
+    for (const t of d.baseTxs) if (t.kind !== "refund" && t.kind !== "refund_reversal") add(tagValue(txTag(byTx, t), dim));
+    return sorted();
+  }
+  if (isCustomerDim(dim)) for (const c of input.customers) add(g.fromCustomer(c.id, dim));
+  if (!isCustomerDim(dim) || dim === "country") for (const t of input.txs) if (t.store !== "promotional") add(g.purchase(t)(dim));
   for (const e of input.sdkEvents) add(dim === "app" ? e.appId : dim === "paywall" ? e.paywallId ?? null : dim === "survey_option" ? e.surveyOptionId ?? null : undefined);
-  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([v]) => v);
+  return sorted();
 }
 
 export interface SegmentResult { id: string; isOther: boolean; output: ChartOutput }

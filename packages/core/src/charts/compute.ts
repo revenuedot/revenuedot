@@ -3,8 +3,9 @@ import type { Store } from "../types.js";
 import { CANCEL_REASONS, type ChartDef, type MeasureDef } from "./catalog.js";
 import {
   buildSubscriptions, chainKey, isExcludedStore, moneyOf, paidAt, productIndex, purchaseTimes, refundTimes, subMoves, trialAt,
-  type ChartInput, type ChartTx, type Sub, type SubMove,
+  type ChartInput, type ChartTx, type Period, type Sub, type SubMove,
 } from "./model.js";
+import { AD_REVENUE_TAG, periodTags, tagValue, txTag, type PeriodDim, type PeriodTag } from "./periods.js";
 import { addMonths, buckets, DAY, dayStart, type Bucket, type Resolution } from "./time.js";
 
 export interface ChartRequest {
@@ -42,13 +43,21 @@ export const selectorDays = (v: string) => (v === "unbounded" ? Infinity : Numbe
 /** End of a "day 0 through day N" window that starts on the calendar day of `t`. */
 const windowEnd = (t: number, days: number) => (days === Infinity ? Infinity : dayStart(t) + (days + 1) * DAY);
 
+/**
+ * Subscriptions built from one ledger, shared by every Prepared over the same rows: segments and filters by renewal
+ * cycle or offer type differ only in `periodFilters`, so they build the subscriptions once.
+ */
+const built = new WeakMap<ChartTx[], { key: unknown[]; subs: Sub[]; moves: Move[]; tags: ReturnType<typeof periodTags> }>();
+
 /** Rows prepared once per (filtered) input and shared by every chart computation. */
 export class Prepared {
-  readonly txs: ChartTx[];
+  /** Ledger rows the subscriptions are built from: every row but granted access and Family Sharing. */
+  readonly baseTxs: ChartTx[];
   readonly purchases: Map<string, number>;
   readonly refunds: Map<string, number>;
   readonly product: ReturnType<typeof productIndex>;
-  private _subs: Sub[] | null = null;
+  private readonly periodFilters: NonNullable<ChartInput["periodFilters"]>;
+  private _txs: ChartTx[] | null = null;
   private _moves: Move[] | null = null;
   private _cohort: Map<string, number> | null = null;
   private _byCustomer: Map<string, ChartTx[]> | null = null;
@@ -58,14 +67,47 @@ export class Prepared {
   private _sorted = new Map<string, unknown[]>();
   constructor(readonly input: ChartInput) {
     const family = new Set(input.subStates.filter((s) => s.familyShared).map(chainKey));
-    this.txs = input.txs.filter((t) => !isExcludedStore(t.store) && !family.has(chainKey(t)));
-    this.purchases = purchaseTimes(this.txs);
-    this.refunds = refundTimes(this.txs);
+    this.baseTxs = input.txs.filter((t) => !isExcludedStore(t.store) && !family.has(chainKey(t)));
+    this.purchases = purchaseTimes(this.baseTxs);
+    this.refunds = refundTimes(this.baseTxs);
     this.product = productIndex(input.products);
+    this.periodFilters = input.periodFilters ?? [];
   }
+  private get built() {
+    const key = [this.input.subStates, this.input.lifecycle, this.input.products, this.input.fx, this.input.now];
+    const hit = built.get(this.input.txs);
+    if (hit && hit.key.every((k, i) => k === key[i])) return hit;
+    const subs = buildSubscriptions({ ...this.input, txs: this.baseTxs });
+    const v = { key, subs, moves: pairMoves(subMoves(subs, this.input.now)), tags: periodTags(subs) };
+    built.set(this.input.txs, v);
+    return v;
+  }
+  /** Whether the renewal cycle and offer type filters keep a period tag (always, without such filters). */
+  tagOk(tag: PeriodTag): boolean {
+    return this.periodFilters.every((f) => { const hit = f.values.includes(tagValue(tag, f.name as PeriodDim)); return f.exclude ? !hit : hit; });
+  }
+  periodOk(p: Period): boolean {
+    if (!this.periodFilters.length) return true;
+    const tag = this.built.tags.byPeriod.get(p);
+    return !!tag && this.tagOk(tag);
+  }
+  /** The paid period or trial giving access at `t` that the period filters keep. */
+  paidAt(s: Sub, t: number): Period | null { const p = paidAt(s, t); return p && this.periodOk(p) ? p : null; }
+  trialAt(s: Sub, t: number): Period | null { const p = trialAt(s, t); return p && this.periodOk(p) ? p : null; }
+  /** Ledger rows the charts count: by renewal cycle and offer type, each row's period (periods.ts `txTag`). */
+  get txs(): ChartTx[] {
+    if (this._txs) return this._txs;
+    if (!this.periodFilters.length) return (this._txs = this.baseTxs);
+    const { byTx } = this.built.tags;
+    return (this._txs = this.baseTxs.filter((t) => this.tagOk(txTag(byTx, t))));
+  }
+  /** The renewal cycle and offer type of every period and ledger row of the built subscriptions. */
+  get periodTags() { return this.built.tags; }
+  /** Ad revenue belongs to no period: kept unless a renewal cycle or offer type filter excludes "no period". */
+  get adRevenueOk() { return this.tagOk(AD_REVENUE_TAG); }
   get now() { return this.input.now; }
-  get subs() { return (this._subs ??= buildSubscriptions({ ...this.input, txs: this.txs })); }
-  get moves() { return (this._moves ??= pairMoves(subMoves(this.subs, this.now))); }
+  get subs() { return this.built.subs; }
+  get moves() { return (this._moves ??= this.periodFilters.length ? this.built.moves.filter((x) => this.periodOk(x.period)) : this.built.moves); }
   private sortedBy<T>(key: string, rows: () => T[], at: (x: T) => number): T[] {
     let v = this._sorted.get(key) as T[] | undefined;
     if (!v) this._sorted.set(key, (v = [...rows()].sort((a, b) => at(a) - at(b))));
@@ -211,11 +253,11 @@ const revenue = flow((d, w, sel) => {
     money += d.money(t) * (proceeds ? proceedsFactor(t) : 1);
     if (PAID_KINDS.has(t.kind)) count++;
   }
-  for (const e of within(d.sdkByTime, atOf, w)) if (e.type === "rc_ads_ad_revenue") money += (e.revenueUsd ?? 0) * d.input.fx(e.at);
+  if (d.adRevenueOk) for (const e of within(d.sdkByTime, atOf, w)) if (e.type === "rc_ads_ad_revenue") money += (e.revenueUsd ?? 0) * d.input.fx(e.at);
   return [money, count];
 });
 
-const mrrAt = (d: Prepared, at: number) => d.subs.reduce((s, x) => s + (paidAt(x, at)?.monthly ?? 0), 0);
+const mrrAt = (d: Prepared, at: number) => d.subs.reduce((s, x) => s + (d.paidAt(x, at)?.monthly ?? 0), 0);
 const mrr = stock((d, at) => [mrrAt(d, at)]);
 const arr = stock((d, at) => [mrrAt(d, at) * 12]);
 
@@ -259,7 +301,7 @@ const adMonetized = flow((d, w) => { const a = ads(d, w); return w[1] > w[0] ? [
 const adArpdau = flow((d, w) => { const a = ads(d, w); return [div(a.revenue, a.dau)]; });
 
 // ── Subscriptions ──────────────────────────────────────────────────────────────────────────────────────────────────
-const actives = stock((d, at) => [d.subs.filter((s) => paidAt(s, at)).length]);
+const actives = stock((d, at) => [d.subs.filter((s) => d.paidAt(s, at)).length]);
 
 const activesMovement = flow((d, w) => {
   let nw = 0, resub = 0, churned = 0;
@@ -301,7 +343,7 @@ const subscriptionStatus: SeriesFn = (d, f, sel) => {
     points: stock((dd, at) => {
       const out = { set_to_renew: 0, set_to_cancel: 0, billing_issue: 0 };
       for (const s of dd.subs) {
-        const p = what === "trials" ? trialAt(s, at) : paidAt(s, at);
+        const p = what === "trials" ? dd.trialAt(s, at) : dd.paidAt(s, at);
         if (!p) continue;
         out[statusAt(s, at, dd.now)] += what === "mrr" ? p.monthly : what === "arr" ? p.monthly * 12 : 1;
       }
@@ -311,12 +353,12 @@ const subscriptionStatus: SeriesFn = (d, f, sel) => {
 };
 
 // ── Trials ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-const trials = stock((d, at) => [d.subs.filter((s) => trialAt(s, at)).length]);
+const trials = stock((d, at) => [d.subs.filter((s) => d.trialAt(s, at)).length]);
 /** Trial periods with whether a paid period of the same subscription followed. */
 function trialPeriods(d: Prepared) {
   const out: { sub: Sub; start: number; end: number; converted: boolean }[] = [];
   for (const s of d.subs) s.periods.forEach((p, i) => {
-    if (!p.trial) return;
+    if (!p.trial || !d.periodOk(p)) return;
     const next = s.periods[i + 1];
     out.push({ sub: s, start: p.start, end: p.end, converted: !!next && !next.trial && next.end > next.start });
   });
@@ -509,7 +551,7 @@ const paywallAbandonment = cohortSeries(pairMembers(() => 3), (d, ps) => {
 const churn: SeriesFn = (d, f) => ({
   points: f.buckets.map((b) => {
     const w = f.window(b);
-    const atStart = d.subs.filter((s) => paidAt(s, w[0] - 1)).length;
+    const atStart = d.subs.filter((s) => d.paidAt(s, w[0] - 1)).length;
     let churned = 0;
     for (const x of within(d.movesByTime, atOf, w)) if (x.category === "churn" || x.category === "paired_out" || x.category === "recovery") churned -= x.actives;
     return { start: b.start, values: [rate(churned, atStart), atStart, churned], incomplete: f.clipped(b) };

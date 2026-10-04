@@ -38,6 +38,8 @@ const Transaction = z.object({
   expires_at: OptMs,
   revenue_usd: z.number().finite().nullable().optional(),
   price: Price.nullable().optional(),
+  /** The offer the period was bought with. Default: a free trial for a trial, an introductory price for the first period of an `intro` subscription, else none. */
+  offer_type: z.enum(["free_trial", "introductory", "promotional", "offer_code", "win_back"]).nullable().optional(),
 });
 
 const Subscription = z.object({

@@ -114,8 +114,16 @@ Response (`object: "chart_data"`): `category`, `display_type` (`line`, `bar`, `s
 | `paywall` | paywall charts | `paywall_id` of the impression |
 | `survey_option` | Customer Center survey | the option id |
 | `media_source`, `campaign`, `ad_group`, `keyword`, `ad`, `creative` | everything with customer dimensions | the customer's attribution row (`customer_attribution`); Apple Search Ads campaigns and ad groups by name once loaded; no value is "No attribution" |
+| `subscription_renewal_cycle_group` ("Renewal Cycle") | Revenue, ARR, MRR, MRR Movement, Active Subscriptions (and Movement), Paid Subscriptions, Subscription Status, Active Trials (and Movement), New Trials, Churn, Refund Rate, Refunds | the paid period's place in its subscription: "Trial", "Cycle 1" … "Cycle 4", "Cycle 5+"; one-time purchases and ad revenue are "Non-subscription" |
+| `offer_type` ("Offer type") | the same charts except ARR | the period's `transactions.offer_type`: "Free trial", "Introductory price", "Promotional offer", "Offer code", "Win-back offer" or "No offer" |
+| `custom_attribute:<key>` | every chart with customer dimensions | the customer's attribute `<key>` (keys starting with `$` are reserved and not offered); no value is "Not set". The options endpoint lists up to 50 keys, most used first |
 
-Customer dimensions filter customers and everything they did; purchase dimensions filter purchases but never the new-customer denominators (as RevenueCat: product filters do not apply to new customers).
+Customer dimensions (custom attributes too) filter customers and everything they did; purchase dimensions filter purchases but never the new-customer denominators (as RevenueCat: product filters do not apply to new customers).
+
+### Renewal cycle and offer type
+These describe a period, not a ledger row, so they are applied after subscriptions are built from the whole ledger (`packages/core/src/charts/periods.ts`; `Prepared` in compute.ts): a filter keeps the periods, movements and ledger rows whose period matches. Snapshots (MRR, ARR, actives, trials, status) count the period that gives access at the end of each period; movements count the period they start, end or reprice (a churn is the last paid period's); a refund or reversal counts in the refunded period. Cycle 1 is a subscription's first paid period, so a resubscription after a lapse starts again at cycle 1, and a trial is not a cycle.
+
+Offer types come from each store: Apple's `offerType` (1 introductory, or free trial when free; 2 promotional; 3 offer code; 4 win-back), Google's offer phase (free trial, introductory price; other developer offers count as promotional), Stripe (a trial is a free trial; a coupon on the invoice is a promotional offer, or an offer code when the customer redeemed a promotion code), the Test Store (its trials) and imports (`transactions[].offer_type`, else the trial and an `intro` first period). A trial row is always a free trial, so rows recorded before offer types were stored still split correctly.
 
 ## Published SQL
 `apps/server/src/services/charts/reference-sql.ts` holds PostgreSQL for the core charts (revenue, transactions, non-subscription purchases, refunds, new trials, new customers, active subscriptions, active trials, MRR), written against our schema. `packages/contract/test/charts-sql.test.ts` runs each query on the test database and checks it returns the same numbers as the API. The docs page `revenuedot.app/docs/guides/charts` prints them.
@@ -197,6 +205,7 @@ Already built (prd/paywalls/PRD.md §6): "Saved" on top of the rail, opening one
 - `chart_shares` (id, the token and its SHA-256 (unique), project, chart, view, snapshot, the PNG preview, created_by, created time, revoked time). Both travel in project exports (prd/moves-export).
 
 ### Tests
+- `packages/core/test/charts-period-dims.test.ts` and `packages/contract/test/v2-charts-segments.test.ts`: renewal cycle, offer type and custom attribute filters and segments on every kind of chart (flows, snapshots, movements, refunds), segments adding up to the total, the options menus, and the charts that refuse a dimension.
 - `packages/core/test/chart-contributors.test.ts`: contributors for every chart on hand-built ledgers; values add up to the chart.
 - `packages/contract/test/v2-chart-extras.test.ts`: the Customers endpoint for every chart against the chart's totals on the chart fixture, filters, segments, sandbox, CSV export; the published customers SQL equals the API; annotations CRUD, overlap filter, permissions (Viewer, developer, API key scopes), audit log, `include_annotations` against RevenueCat's schema; share links: create, the public page, PNG and SVG without a session, no customer ids in them, the token only in the URL (not the id or the audit log), revoke, viewer refused; a range named like an Object property; the CSV export of 1,200 customers on the Workers request model (the connection stays open until the last row).
 - `apps/dashboard/e2e/charts-page-extras.spec.ts`: every chart type, the Customers tab and export, annotations across charts, share link in a signed-out context and revoke, Ask AI handoff, phone width, dark mode, no console errors.
@@ -204,8 +213,8 @@ Already built (prd/paywalls/PRD.md §6): "Saved" on top of the rail, opening one
 ## Known gaps
 - **Ad revenue in purchase segments:** ad revenue has no product, store or offering, so segmenting Revenue by one of them counts it in every segment (and the Customers tab lists the customer once per segment). Segments by customer dimensions are not affected. The published SQL counts ad revenue reported in USD only; the API converts other currencies.
 - **Taxes:** stores do not report tax, so "revenue net of taxes" equals revenue, and proceeds subtract only the store commission (as `/metrics/revenue` does).
-- **Paid introductory offers** are not told apart from regular paid periods (the ledger has no offer type), so Paid Subscriptions shows them as direct purchases.
-- **Renewal cycle, offer type, first purchase month, install month and custom-attribute dimensions** are not offered yet. Attribution dimensions (media source, campaign, ad group, keyword, ad, creative) are customer dimensions read from `customer_attribution` (prd/attribution-benchmarks-insights).
+- **Paid offers recorded before offer types were stored** (Apple and Google rows before migration 0015, Stripe rows before this change) count as "No offer": the ledger did not keep them.
+- **First purchase month and install month dimensions** are not offered yet. Attribution dimensions (media source, campaign, ad group, keyword, ad, creative) are customer dimensions read from `customer_attribution` (prd/attribution-benchmarks-insights).
 - **Platform and app version** are the customer's last seen values, not the first seen ones RevenueCat uses.
 - **Subscription Status** splits each period by the subscription's current state (as RevenueCat does); past states are not kept.
 - **Prediction Explorer** uses a chain-ladder projection of our own data, not RevenueCat's cross-customer survival model.

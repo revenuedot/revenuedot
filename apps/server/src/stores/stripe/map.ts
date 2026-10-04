@@ -151,11 +151,28 @@ export function mapSubscription(sub: StripeSubscription, ctx: { catalog: Catalog
 
   const periodType: PeriodType = trial ? "trial" : "normal";
   return {
+    ...offerOfInvoice(trial, renewalUnpaid || proration ? null : inv, stored),
     kind: "subscription", store: "stripe", storeKey: sub.id, productIdentifier: productId, productPlanIdentifier: null,
     isSandbox: !sub.livemode, purchaseDate, originalPurchaseDate: origin, expiresDate, periodType,
     unsubscribeDetectedAt, billingIssuesDetectedAt, gracePeriodExpiresDate, refundedAt: null, autoResumeDate,
     storeTransactionId, originalTransactionId: sub.id, price, countryCode: country, autoRenewProductId: productId, cancelReason,
   };
+}
+
+/**
+ * The offer a Stripe period was bought with: a trial is a free trial; an invoice a coupon discounted is an offer code
+ * when the customer redeemed a promotion code, else a promotional offer. `undefined` keeps the stored offer (a
+ * proration or an unpaid renewal is not a new period).
+ */
+export function offerOfInvoice(trial: boolean, inv: StripeInvoice | null, stored?: StoredPeriod | null): Pick<VerifiedSubscription, "offerType" | "offerId"> {
+  if (trial) return { offerType: "free_trial", offerId: null };
+  if (!inv) return stored ? {} : { offerType: null, offerId: null };
+  const discounted = (inv.total_discount_amounts ?? []).some((d) => d.amount > 0) || (inv.discounts ?? []).length > 0;
+  if (!discounted) return { offerType: null, offerId: null };
+  const objects = (inv.discounts ?? []).filter((d): d is Exclude<typeof d, string> => typeof d === "object" && !!d);
+  const code = objects.map((d) => d.promotion_code).find(Boolean);
+  const coupon = objects.map((d) => d.coupon?.id ?? (typeof d.source?.coupon === "string" ? d.source.coupon : d.source?.coupon?.id)).find(Boolean) ?? null;
+  return code ? { offerType: "offer_code", offerId: typeof code === "string" ? code : code.id } : { offerType: "promotional", offerId: coupon };
 }
 
 /** A paid Checkout Session in payment mode: one one-time purchase per line item, keyed by the PaymentIntent. */

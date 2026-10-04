@@ -73,7 +73,7 @@ describe("POST /v1/receipts with X-Platform: stripe", () => {
     expect(ev).toMatchObject({ store: "STRIPE", product_id: "prod_ProMonthly", price: 9.99, currency: "USD", environment: "SANDBOX", transaction_id: "in_1First",
       original_transaction_id: SUB, country_code: "US", app_user_id: "web_user_1", entitlement_ids: ["pro"], commission_percentage: 0 });
     const call = e.st.apiCalls()[0]!;
-    expect(call.url).toBe(`https://api.stripe.com/v1/subscriptions/${SUB}?expand%5B%5D=latest_invoice&expand%5B%5D=items.data.price.currency_options`);
+    expect(call.url).toBe(`https://api.stripe.com/v1/subscriptions/${SUB}?expand%5B%5D=latest_invoice&expand%5B%5D=latest_invoice.discounts&expand%5B%5D=items.data.price.currency_options`);
     expect(call.auth).toBe(`Bearer ${KEY}`);
     expect((await txns())[0]).toMatchObject({ kind: "purchase", revenueUsd: 9.99 });
     // Posting it again changes nothing.
