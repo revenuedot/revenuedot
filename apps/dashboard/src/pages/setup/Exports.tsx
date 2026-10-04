@@ -58,7 +58,8 @@ function ColumnPicker({ table, all, chosen, onChange }: { table: string; all: { 
   );
 }
 
-function ExportForm({ pid, current }: { pid: string; current?: DataExport }) {
+/** `onDone` closes the edit form on the export's own page, where navigating to that page again would leave it open. */
+function ExportForm({ pid, current, onDone }: { pid: string; current?: DataExport; onDone?: () => void }) {
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -109,7 +110,7 @@ function ExportForm({ pid, current }: { pid: string; current?: DataExport }) {
       await qc.invalidateQueries({ queryKey: ["exports", pid] });
       await qc.invalidateQueries({ queryKey: ["export", pid, saved.id] });
       toast(current ? "Export saved." : "Export created. Check the bucket, then run it now or wait for the schedule.");
-      nav(`/projects/${pid}/integrations/exports/${saved.id}`);
+      if (onDone) onDone(); else nav(`/projects/${pid}/integrations/exports/${saved.id}`);
     } catch (x) {
       const b = (x as { body?: { param?: string } }).body;
       setError({ message: errMsg(x), param: b?.param });
@@ -195,7 +196,8 @@ function ExportForm({ pid, current }: { pid: string; current?: DataExport }) {
       {error && !error.param?.startsWith("config.") && !error.param?.startsWith("credentials.") && !error.param?.startsWith("columns.") && error.param !== "tables" && <div className="banner err" role="alert">{error.message}</div>}
       <div className="hrow">
         <button type="submit" className="btn btn-dark" disabled={busy}>{busy ? "Saving…" : current ? "Save changes" : "Create export"}</button>
-        <Link className="btn btn-line" to={current ? `/projects/${pid}/integrations/exports/${current.id}` : `/projects/${pid}/integrations/exports`}>Cancel</Link>
+        {onDone ? <button type="button" className="btn btn-line" onClick={onDone}>Cancel</button>
+          : <Link className="btn btn-line" to={current ? `/projects/${pid}/integrations/exports/${current.id}` : `/projects/${pid}/integrations/exports`}>Cancel</Link>}
       </div>
     </form>
   );
@@ -291,7 +293,7 @@ export function ExportDetail() {
       <div className="page narrow">
         {job.isLoading && <div className="panel pb subtle">Loading…</div>}
         {job.isError && <div className="empty"><h3>This export does not exist</h3><Link className="btn btn-line" to={`/projects/${pid}/integrations/exports`}>Back to exports</Link></div>}
-        {x && editing && <><PageHead title={`Edit ${x.name}`} /><ExportForm pid={pid} current={x} /></>}
+        {x && editing && <><PageHead title={`Edit ${x.name}`} /><ExportForm pid={pid} current={x} onDone={() => setEditing(false)} /></>}
         {x && !editing && (
           <>
             <PageHead title={x.name} sub={<span className="mono">{where(x)}</span>} actions={<>
