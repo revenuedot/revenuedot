@@ -10,7 +10,8 @@ const generateId = ({ entry }: { entry: string }) => entry.replace(/\\/g, "/").r
 
 const docs = defineCollection({
   loader: glob({ base, pattern: ["docs/**/*.md", "api/*.md"], generateId }),
-  schema: z.object({ title: z.string().min(1), description: z.string().min(1) }),
+  // `label` is the short sidebar text of generated pages (the error pages); others use the labels in src/lib/docs.ts.
+  schema: z.object({ title: z.string().min(1), description: z.string().min(1), label: z.string().optional() }),
 });
 
 const blog = defineCollection({
