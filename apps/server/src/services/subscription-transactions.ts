@@ -6,6 +6,7 @@ import { schema, type DB } from "@revenuedot/db";
 import { monetaryFor } from "../routes/v2/common.js";
 import { baseOrderId } from "../stores/google/map.js";
 import { commissionModel, type CommissionModel } from "./commission.js";
+import { taxShare } from "@revenuedot/core";
 
 type SubRow = typeof schema.subscriptions.$inferSelect;
 type TxRow = typeof schema.transactions.$inferSelect;
@@ -54,20 +55,20 @@ export async function subscriptionTransactions(db: DB, s: SubRow, model?: Commis
   for (const t of rows) if (PAID.includes(t.kind) && !paid.has(t.storeTransactionId)) paid.set(t.storeTransactionId, t);
   const items = [...paid.values()].map((t) => shape(s, cm, {
     id: t.storeTransactionId, purchasedAt: t.purchasedAt, product: t.productIdentifier, expires: t.expiresAt,
-    local: t.priceAmount, currency: t.priceCurrency, usd: t.revenueUsd, refundedAt: reversed.has(t.storeTransactionId) ? null : refunds.get(t.storeTransactionId) ?? null,
+    local: t.priceAmount, currency: t.priceCurrency, usd: t.revenueUsd, tax: taxShare({ store: s.store, country: t.countryCode ?? s.countryCode, taxAmount: t.taxAmount, priceAmount: t.priceAmount }), refundedAt: reversed.has(t.storeTransactionId) ? null : refunds.get(t.storeTransactionId) ?? null,
   }));
   // A chain stored without revenue history (no transaction rows yet) still has its current transaction.
   const current = s.storeTransactionId ?? s.storeKey;
   if (!paid.has(current) && s.store !== "promotional") {
     items.push(shape(s, cm, {
       id: current, purchasedAt: s.purchaseDate, product: s.productIdentifier, expires: s.expiresDate,
-      local: s.priceAmount, currency: s.priceCurrency, usd: s.priceUsd, refundedAt: s.refundedAt,
+      local: s.priceAmount, currency: s.priceCurrency, usd: s.priceUsd, tax: taxShare({ store: s.store, country: s.countryCode }), refundedAt: s.refundedAt,
     }));
   }
   return items;
 }
 
-function shape(s: SubRow, cm: CommissionModel, t: { id: string; purchasedAt: Date; product: string; expires: Date | null; local: number | null; currency: string | null; usd: number | null; refundedAt: Date | null }): SubscriptionTransaction {
+function shape(s: SubRow, cm: CommissionModel, t: { id: string; purchasedAt: Date; product: string; expires: Date | null; local: number | null; currency: string | null; usd: number | null; tax: number; refundedAt: Date | null }): SubscriptionTransaction {
   const current = t.id === (s.storeTransactionId ?? s.storeKey);
   const refundedAt = t.refundedAt ?? (current ? s.refundedAt : null);
   const grace = current && s.gracePeriodExpiresDate && t.expires && s.gracePeriodExpiresDate > t.expires ? s.gracePeriodExpiresDate : null;
@@ -75,8 +76,8 @@ function shape(s: SubRow, cm: CommissionModel, t: { id: string; purchasedAt: Dat
   const rate = cm.rate({ store: s.store, appId: s.appId, at: t.purchasedAt, kind: "renewal", isSandbox: s.isSandbox, country: s.countryCode });
   return {
     object: "subscription_transaction", id: t.id, purchased_at: t.purchasedAt.getTime(), product_store_identifier: t.product,
-    revenue_in_local_currency: t.local !== null && t.currency ? monetaryFor(t.local, t.currency, s.store, rate) : null,
-    revenue_in_usd: t.usd !== null ? monetaryFor(t.usd, "USD", s.store, rate) : null,
+    revenue_in_local_currency: t.local !== null && t.currency ? monetaryFor(t.local, t.currency, s.store, rate, t.tax) : null,
+    revenue_in_usd: t.usd !== null ? monetaryFor(t.usd, "USD", s.store, rate, t.tax) : null,
     expiration_date: t.expires ? t.expires.getTime() : null,
     effective_expiration_date: effective ? effective.getTime() : null,
   };

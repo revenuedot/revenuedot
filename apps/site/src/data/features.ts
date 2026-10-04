@@ -333,7 +333,7 @@ let onboarding = offerings.currentOffering(forPlacement: "onboarding_end")`,
       {
         h2: "Where are the gaps in RevenueDot's charts?",
         bullets: [
-          "There is no tax data. Revenue net of taxes equals revenue, because the stores do not report tax per purchase, and proceeds subtract only the store commission.",
+          "Tax is estimated where the store does not report it. Stripe, Paddle and Google Play orders report the tax; other purchases use the standard VAT or GST rate of the buyer's country, without reduced rates or US sales tax.",
           "Paid introductory offers count as direct purchases in Paid Subscriptions.",
           "Renewal cycle, offer type, attribution and custom-attribute dimensions are not available yet. Platform and app version are the customer's latest.",
           "App Store Save Outcomes is always zero, and refund request charts cover the App Store only.",

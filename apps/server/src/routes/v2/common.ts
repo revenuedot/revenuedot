@@ -2,7 +2,7 @@ import type { Context, Hono, MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { inArray, notInArray, type AnyColumn, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { commission, PAYWALL_WEBHOOK_TYPES, type Store } from "@revenuedot/core";
+import { commission, PAYWALL_WEBHOOK_TYPES, splitGross, type Store } from "@revenuedot/core";
 import type { Deps } from "../../context.js";
 
 /**
@@ -159,9 +159,12 @@ export function eventTypeFilter(c: Context, column: AnyColumn): SQL | undefined 
 
 export const ms = (d: Date | null | undefined) => (d ? d.getTime() : null);
 
-/** A MonetaryAmount in any currency: gross, the estimated store commission, no tax, proceeds. */
-export function monetaryFor(gross: number, currency: string, store: string, rate?: number) {
-  const comm = round2(gross * (rate ?? commission(store as Store)));
-  return { currency, gross: round2(gross), commission: comm, tax: 0, proceeds: round2(gross - comm) };
+/**
+ * A MonetaryAmount in any currency: gross, the tax inside it (`taxShareOf`, core tax.ts), the store commission on what is
+ * left, and proceeds, split as the Revenue chart splits them.
+ */
+export function monetaryFor(gross: number, currency: string, store: string, rate?: number, taxShareOf = 0) {
+  const x = splitGross(gross, taxShareOf, rate ?? commission(store as Store));
+  return { currency, gross: round2(gross), commission: round2(x.commission), tax: round2(x.tax), proceeds: round2(x.proceeds) };
 }
 export const round2 = (n: number) => Math.round(n * 100) / 100;

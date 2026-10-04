@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
-import { invoiceTax, mapCheckoutOneTime } from "../src/stores/stripe/map.js";
+import { invoiceTax, mapCheckoutOneTime, paidTax } from "../src/stores/stripe/map.js";
 import { mapOneTime, transactionPrice } from "../src/stores/paddle/map.js";
 import { withOrderTax } from "../src/stores/google/index.js";
+import { taxShare } from "@revenuedot/core";
 import type { PaddleTransaction } from "../src/stores/paddle/api.js";
 import type { VerifiedSubscription } from "../src/stores/types.js";
 import { getOrCreateCustomer } from "../src/repo/customers.js";
@@ -19,6 +20,11 @@ describe("Stripe", () => {
     expect(invoiceTax({ id: "in", tax: 200 })).toBe(200);
     expect(invoiceTax({ id: "in", total: 1190, total_excluding_tax: 1000 })).toBe(190);
     expect(invoiceTax({ id: "in", total: 1000 })).toBeNull();
+  });
+  it("shrinks the tax when a credit balance paid part of the invoice", () => {
+    expect(paidTax({ id: "in", total: 1190, total_taxes: [{ amount: 190 }] }, 1190)).toBe(190);
+    expect(paidTax({ id: "in", total: 1190, total_taxes: [{ amount: 190 }] }, 595)).toBe(95);
+    expect(paidTax({ id: "in", total: 0, total_taxes: [{ amount: 0 }] }, 0)).toBe(0);
   });
   it("puts a Checkout line item's tax inside its price", () => {
     const [p] = mapCheckoutOneTime({ id: "cs", mode: "payment", livemode: true, payment_intent: "pi_1", created: 1, currency: "eur",
@@ -50,6 +56,10 @@ describe("Google Play", () => {
   it("adds the order's tax to the period it paid for", () => {
     expect(withOrderTax(sub, { orderId: "GPA.1234-5678-9012-34567..2", tax: { currencyCode: "EUR", units: "0", nanos: 800_000_000 } })!.price).toEqual({ amount: 4.99, currency: "EUR", tax: 0.8 });
   });
+  it("uses the order total as the price where the tax is added at checkout (US)", () => {
+    const us = { ...sub, price: { amount: 9.99, currency: "USD" } } as VerifiedSubscription;
+    expect(withOrderTax(us, { orderId: sub.storeTransactionId, total: { currencyCode: "USD", units: "10", nanos: 790_000_000 }, tax: { currencyCode: "USD", units: "0", nanos: 800_000_000 } })!.price).toEqual({ amount: 10.79, currency: "USD", tax: 0.8 });
+  });
   it("leaves other periods, other currencies and orders without tax alone", () => {
     expect(withOrderTax(sub, { orderId: "GPA.1234-5678-9012-34567..1", tax: { currencyCode: "EUR", units: "1" } })!.price).toEqual(sub.price);
     expect(withOrderTax(sub, { orderId: sub.storeTransactionId, tax: { currencyCode: "USD", units: "1" } })!.price).toEqual(sub.price);
@@ -67,6 +77,28 @@ describe("the ledger", () => {
     await applyPurchases(h.db, customer, [one("pi_taxed", 1.9), one("pi_plain")], ctx);
     const rows = await h.db.select({ id: schema.transactions.storeTransactionId, tax: schema.transactions.taxAmount, source: schema.transactions.taxSource }).from(schema.transactions).where(eq(schema.transactions.customerId, customer.id));
     expect(rows.sort((a, b) => a.id.localeCompare(b.id))).toEqual([{ id: "pi_plain", tax: null, source: null }, { id: "pi_taxed", tax: 1.9, source: "store" }]);
+    await h.close();
+  });
+
+  it("gives a refund the tax of the sale, so a refunded €11.90 sale with €1.90 tax nets to zero", async () => {
+    const h = await harness();
+    const now = new Date("2026-09-01T00:00:00Z");
+    h.setNow(now);
+    const { customer } = await getOrCreateCustomer(h.db, "proj1", "refunded", now);
+    const ctx = (at: Date) => ({ projectId: "proj1", appId: "app_ios", appUserId: "refunded", now: at, fromDevice: false });
+    const sale = { kind: "non_subscription" as const, store: "stripe" as const, productIdentifier: "lifetime", storeTransactionId: "pi_eur", isSandbox: false, isConsumable: false, purchaseDate: now, price: { amount: 11.9, currency: "EUR", tax: 1.9 }, countryCode: "DE" };
+    await applyPurchases(h.db, customer, [sale], ctx(now));
+    const later = new Date("2026-09-03T00:00:00Z");
+    h.setNow(later);
+    // The refund notification states no tax.
+    await applyPurchases(h.db, customer, [{ ...sale, price: { amount: 11.9, currency: "EUR" }, refundedAt: later }], ctx(later));
+    const T = schema.transactions;
+    const rows = await h.db.select({ kind: T.kind, tax: T.taxAmount, source: T.taxSource, price: T.priceAmount, usd: T.revenueUsd, store: T.store, country: T.countryCode }).from(T).where(eq(T.customerId, customer.id));
+    expect(rows.map((r) => [r.kind, r.tax, r.source]).sort()).toEqual([["one_time", 1.9, "store"], ["refund", 1.9, "store"]]);
+    const net = rows.reduce((s, r) => s + r.usd * (1 - taxShare({ store: r.store, country: r.country, taxAmount: r.tax, priceAmount: r.price })), 0);
+    expect(net).toBeCloseTo(0, 9);
+    const M = await h.fetch("/v2/projects/proj1/metrics/revenue?start_date=2026-09-01&end_date=2026-09-30&revenue_type=revenue_net_of_taxes", { key: h.ids.secretKey });
+    expect(((await M.json()) as { value: number }).value).toBe(0);
     await h.close();
   });
 });

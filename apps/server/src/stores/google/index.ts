@@ -191,5 +191,9 @@ export function withOrderTax<P extends VerifiedPurchase | null>(p: P, order: Ord
   if (!p?.price || p.storeTransactionId !== order.orderId) return p;
   const tax = moneyOf(order.tax);
   if (tax === null || !Number.isFinite(tax) || (order.tax?.currencyCode ?? "").toUpperCase() !== p.price.currency.toUpperCase()) return p;
-  return { ...p, price: { ...p.price, tax: Math.min(Math.abs(p.price.amount), Math.max(0, tax)) } };
+  // The order's total is what the buyer paid, tax included; the product price excludes it where the tax is added at
+  // checkout (the US), so the tax goes with the total.
+  const total = moneyOf(order.total);
+  const amount = total !== null && Number.isFinite(total) && total > 0 && (order.total?.currencyCode ?? "").toUpperCase() === p.price.currency.toUpperCase() ? total : p.price.amount;
+  return { ...p, price: { ...p.price, amount, tax: Math.min(Math.abs(amount), Math.max(0, tax)) } };
 }

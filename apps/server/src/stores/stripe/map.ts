@@ -64,6 +64,16 @@ export function invoiceTax(inv: StripeInvoice): number | null {
   return null;
 }
 
+/**
+ * The tax inside what was paid: a credit balance or a partial payment pays less than the invoice total, and the tax
+ * shrinks in proportion (amount paid ÷ total).
+ */
+export function paidTax(inv: StripeInvoice, paid: number): number | null {
+  const tax = invoiceTax(inv);
+  if (tax === null) return null;
+  return typeof inv.total === "number" && inv.total > 0 && paid < inv.total ? Math.round((tax * paid) / inv.total) : tax;
+}
+
 /** A price with the tax Stripe reported inside it (lowest denomination), never more than the price. */
 const withTax = (price: Price, taxMinor: number | null, currency: string): Price =>
   taxMinor === null || !Number.isFinite(taxMinor) ? price : { ...price, tax: Math.min(Math.abs(price.amount), fromMinor(Math.max(0, taxMinor), currency)) };
@@ -110,7 +120,7 @@ export function mapSubscription(sub: StripeSubscription, ctx: { catalog: Catalog
   let storeTransactionId = inv?.id ?? stored?.storeTransactionId ?? sub.id;
   // A paid invoice costs what was paid; an open one that counts (register_on invoice_created) what is due.
   const invoiceAmount = !inv ? null : invoicePaid(inv) ? inv.amount_paid : inv.amount_due ?? inv.total;
-  let price: Price | null = trial ? { amount: 0, currency } : inv && paid && !proration && typeof invoiceAmount === "number" ? withTax({ amount: fromMinor(invoiceAmount, currency), currency }, invoiceTax(inv), currency) : unitPrice;
+  let price: Price | null = trial ? { amount: 0, currency } : inv && paid && !proration && typeof invoiceAmount === "number" ? withTax({ amount: fromMinor(invoiceAmount, currency), currency }, paidTax(inv, invoiceAmount), currency) : unitPrice;
   let billingIssuesDetectedAt: Date | null = null;
   let gracePeriodExpiresDate: Date | null = null;
   let unsubscribeDetectedAt: Date | null = null;

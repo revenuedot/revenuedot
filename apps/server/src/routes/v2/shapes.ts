@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { accessEndsAt, commission, computeEntitlements, isActive, willRenew, type Store } from "@revenuedot/core";
+import { accessEndsAt, commission, computeEntitlements, isActive, splitGross, taxShare, willRenew, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../../repo/catalog.js";
 import { loadState, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
@@ -228,9 +228,10 @@ export async function loadCatalog(db: DB, projectId: string) {
 }
 export type Catalog = Awaited<ReturnType<typeof loadCatalog>>;
 
-export function monetary(gross: number, store: string, rate?: number) {
-  const comm = round2(gross * (rate ?? commission(store as Store)));
-  return { currency: "USD", gross: round2(gross), commission: comm, tax: 0, proceeds: round2(gross - comm) };
+/** A USD MonetaryAmount; the tax is the country estimate (core tax.ts) when no store figure is at hand. */
+export function monetary(gross: number, store: string, rate?: number, country?: string | null) {
+  const x = splitGross(gross, taxShare({ store, country }), rate ?? commission(store as Store));
+  return { currency: "USD", gross: round2(gross), commission: round2(x.commission), tax: round2(x.tax), proceeds: round2(x.proceeds) };
 }
 
 /** RevenueCat's v2 subscription status from our chain state. */
@@ -265,7 +266,7 @@ export function subscriptionShape(s: SubRow, customerAppUserId: string, cat: Cat
     current_period_ends_at: ms(s.expiresDate), ends_at: ms(s.expiresDate),
     gives_access: st.access && !access?.blocked && (access?.sandbox !== false || !s.isSandbox),
     pending_payment: st.status === "in_billing_retry" || st.status === "in_grace_period", auto_renewal_status: st.renewal, status: st.status,
-    total_revenue_in_usd: monetary(revenueUsd, s.store, cat.commission.rate({ store: s.store, appId: s.appId, at: s.purchaseDate, kind: "renewal", isSandbox: s.isSandbox, country: s.countryCode })), presented_offering_id: cat.offeringId(s.presentedOfferingId),
+    total_revenue_in_usd: monetary(revenueUsd, s.store, cat.commission.rate({ store: s.store, appId: s.appId, at: s.purchaseDate, kind: "renewal", isSandbox: s.isSandbox, country: s.countryCode }), s.countryCode), presented_offering_id: cat.offeringId(s.presentedOfferingId),
     entitlements: embeddedList(`/v2/projects/${s.projectId}/subscriptions/${s.id}/entitlements`, ents.map((e) => entitlementShape(e))),
     environment: s.isSandbox ? "sandbox" : "production", store: s.store, store_subscription_identifier: s.storeTransactionId ?? s.storeKey,
     ownership: s.ownershipType === "FAMILY_SHARED" ? "family_shared" : "purchased",
@@ -279,7 +280,7 @@ export function purchaseShape(p: NonSubRow, customerAppUserId: string, cat: Cata
   const gross = p.priceUsd ?? (p.priceCurrency === "USD" ? p.priceAmount ?? 0 : 0);
   return {
     object: "purchase" as const, id: p.id, customer_id: customerAppUserId, original_customer_id: customerAppUserId,
-    product_id: prod?.id ?? p.productIdentifier, purchased_at: p.purchaseDate.getTime(), revenue_in_usd: monetary(gross, p.store, cat.commission.rate({ store: p.store, appId: p.appId, at: p.purchaseDate, kind: "one_time", isSandbox: p.isSandbox, country: p.countryCode })),
+    product_id: prod?.id ?? p.productIdentifier, purchased_at: p.purchaseDate.getTime(), revenue_in_usd: monetary(gross, p.store, cat.commission.rate({ store: p.store, appId: p.appId, at: p.purchaseDate, kind: "one_time", isSandbox: p.isSandbox, country: p.countryCode }), p.countryCode),
     quantity: 1, status: p.refundedAt ? "refunded" : "owned", presented_offering_id: cat.offeringId(p.presentedOfferingId),
     entitlements: embeddedList(`/v2/projects/${p.projectId}/purchases/${p.id}/entitlements`, ents.map((e) => entitlementShape(e))),
     environment: p.isSandbox ? "sandbox" : "production", store: p.store, store_purchase_identifier: p.storeTransactionId, ownership: "purchased",
