@@ -15,6 +15,9 @@ export const ALL_WEBHOOK_EVENT_TYPES = [
   ...WEBHOOK_EVENT_TYPES, "test", "experiment_enrollment", "purchase_redeemed", "subscriber_alias", "price_increase_consent_required", "price_increase_consent_approved",
   // RevenueDot funnel events (prd/web-billing/PRD.md §5): opt-in, sent only where the filter names them.
   "funnel_viewed", "funnel_step_completed", "funnel_purchase",
+  // Paywall events from the SDKs (services/sdk-events.ts): opt-in, sent only where the filter names them.
+  "paywall_impression", "paywall_close", "paywall_cancel", "paywall_exit_offer", "paywall_component_interacted",
+  "paywall_purchase_initiated", "paywall_purchase_error",
 ] as const;
 
 const url = z.string().url().refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL").refine((u) => u.length <= 2048, "is too long");

@@ -1,4 +1,4 @@
-import { basicAuth, conceptOf, funnelProperties, defaultAnalyticsName, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
+import { PAYWALL_CONCEPTS, basicAuth, conceptOf, funnelProperties, defaultAnalyticsName, isPaywallConcept, paywallProperties, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
 import { isAnonymous } from "../ids.js";
 
 /**
@@ -6,6 +6,7 @@ import { isAnonymous } from "../ids.js";
  * (https://segment.com/docs/connections/sources/catalog/libraries/server/http-api/). Basic auth with the source's write key.
  * Secrets: `write_key`. Settings: `region` (us | eu), `anonymous_id` (send anonymous app
  * user ids as `anonymousId`), `reporting`. `messageId` is the event id, so a retried call is deduplicated by Segment.
+ * Paywall events (opt-in) carry the paywall's fields and no revenue or subscription status.
  */
 
 export const SEGMENT_HOSTS = { us: "https://api.segment.io", eu: "https://events.eu1.segmentapis.com" } as const;
@@ -13,7 +14,7 @@ export const SEGMENT_HOSTS = { us: "https://api.segment.io", eu: "https://events
 export const SEGMENT_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "refund_reversed", "test",
-  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase", ...PAYWALL_CONCEPTS,
 ];
 
 const secs = (ms: unknown) => (typeof ms === "number" ? Math.floor(ms / 1000) : null);
@@ -30,7 +31,8 @@ export async function buildSegment(i: BuildInput): Promise<Plan> {
   const who = i.settings.anonymous_id && isAnonymous(appUserId) ? { anonymousId: appUserId } : { userId: appUserId };
   const context = { environment: String(e.environment ?? "PRODUCTION").toLowerCase(), library: { name: "RevenueDot Segment events", version: "1.0" } };
   const timestamp = new Date(e.event_timestamp_ms ?? i.now.getTime()).toISOString();
-  const properties: Record<string, unknown> = {
+  const paywall = isPaywallConcept(c);
+  const properties: Record<string, unknown> = paywall ? paywallProperties(e) : {
     revenue: revenueUsd(e, i.settings.reporting), currency: "USD", price_in_purchased_currency: e.price_in_purchased_currency ?? null,
     purchased_currency: e.currency ?? null, store: e.store ?? null, product_id: e.product_id ?? null,
     entitlement: e.entitlement_id ?? e.entitlement_ids?.[0] ?? null, entitlements: e.entitlement_ids ?? null,
@@ -39,12 +41,14 @@ export async function buildSegment(i: BuildInput): Promise<Plan> {
     app_user_id: appUserId, original_app_user_id: e.original_app_user_id ?? null, aliases: e.aliases ?? [], app_id: e.app_id ?? null,
     country_code: e.country_code ?? null, subscriber_attributes: e.subscriber_attributes ?? {},
   };
-  if (e.cancel_reason) properties.cancel_reason = e.cancel_reason;
-  if (e.expiration_reason) properties.expiration_reason = e.expiration_reason;
-  if (e.new_product_id) properties.new_product_id = e.new_product_id;
-  if (e.auto_resume_at_ms !== undefined) properties.auto_resumes_at = secs(e.auto_resume_at_ms);
-  if (e.is_trial_conversion !== undefined) properties.is_trial_conversion = e.is_trial_conversion;
-  Object.assign(properties, funnelProperties(e));
+  if (!paywall) {
+    if (e.cancel_reason) properties.cancel_reason = e.cancel_reason;
+    if (e.expiration_reason) properties.expiration_reason = e.expiration_reason;
+    if (e.new_product_id) properties.new_product_id = e.new_product_id;
+    if (e.auto_resume_at_ms !== undefined) properties.auto_resumes_at = secs(e.auto_resume_at_ms);
+    if (e.is_trial_conversion !== undefined) properties.is_trial_conversion = e.is_trial_conversion;
+    Object.assign(properties, funnelProperties(e));
+  }
   const status = subscriptionStatusOf(e);
   const traits: Record<string, unknown> = { last_seen_app_user_id: appUserId, aliases: e.aliases ?? [] };
   if (status) traits.rc_subscription_status = status;
@@ -54,7 +58,8 @@ export async function buildSegment(i: BuildInput): Promise<Plan> {
     name,
     requests: [
       { method: "POST", url: `${host}/v1/track`, headers, body: json({ ...who, event: name, properties, context, timestamp, messageId: id }) },
-      { method: "POST", url: `${host}/v1/identify`, headers, body: json({ ...who, traits, context, timestamp, messageId: `${id}-identify` }) },
+      // Paywall events change no trait: no identify call for them.
+      ...(paywall ? [] : [{ method: "POST" as const, url: `${host}/v1/identify`, headers, body: json({ ...who, traits, context, timestamp, messageId: `${id}-identify` }) }]),
     ],
     redact: [key, btoa(`${key}:`)],
   };

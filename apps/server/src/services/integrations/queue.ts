@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { OPT_IN_EVENT_TYPES } from "@revenuedot/core";
+import { OPT_IN_EVENT_TYPES, PAYWALL_WEBHOOK_TYPES } from "@revenuedot/core";
 import { sendsEvent, type IntegrationKind } from "@revenuedot/core/integrations";
 import { schema, type DB } from "@revenuedot/db";
 
@@ -20,10 +20,21 @@ export async function queueIntegrationDeliveries(db: DB, o: {
 
 type Row = typeof schema.integrations.$inferSelect;
 
+const PAYWALL_TYPES: ReadonlySet<string> = new Set(PAYWALL_WEBHOOK_TYPES);
+
+/**
+ * An integration's event filter: opt-in types are sent only when named. Paywall types named in it add to the other
+ * events instead of narrowing the filter, so ticking "Send paywall events" keeps every purchase event flowing. Every
+ * other type (funnel and alias types included) narrows it as before: a funnel-only filter still means funnel events only.
+ */
 export function matches(i: Row, o: { type: string; environment: string; appId: string | null; event: Record<string, unknown> }) {
   if (i.environment !== "both" && i.environment !== o.environment) return false;
   if (i.appId && i.appId !== o.appId) return false;
-  if (i.eventTypes && i.eventTypes.length && !i.eventTypes.includes(o.type)) return false;
-  if (OPT_IN_EVENT_TYPES.has(o.type) && !(i.eventTypes ?? []).includes(o.type)) return false;
+  const filter = i.eventTypes ?? [];
+  if (OPT_IN_EVENT_TYPES.has(o.type)) { if (!filter.includes(o.type)) return false; }
+  else {
+    const regular = filter.filter((t) => !PAYWALL_TYPES.has(t));
+    if (regular.length && !regular.includes(o.type)) return false;
+  }
   return sendsEvent(i.kind as IntegrationKind, o.event);
 }

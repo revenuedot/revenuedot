@@ -1,4 +1,4 @@
-import { attr, basicAuth, type OutRequest, conceptOf, funnelProperties, defaultAnalyticsName, isSandbox, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
+import { PAYWALL_CONCEPTS, attr, basicAuth, type OutRequest, conceptOf, funnelProperties, defaultAnalyticsName, isPaywallConcept, isSandbox, paywallProperties, json, nameFor, revenueUsd, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
 
 /**
  * Mixpanel: the event through the Ingestion API, then a profile update with `rc_subscription_status` and, for money,
@@ -6,7 +6,8 @@ import { attr, basicAuth, type OutRequest, conceptOf, funnelProperties, defaultA
  * Secrets: `project_token`, `sandbox_project_token` (sandbox events go only to a sandbox project), and optionally
  * `api_secret`: with it events go to `/import` (any age, strict validation); without it to `/track` (last 5 days only).
  * Settings: `region` (us | eu | in), `reporting`. Identity: `$mixpanelDistinctId` when set, else the app user id.
- * `$insert_id` is derived from the event id, so a retried event is deduplicated.
+ * `$insert_id` is derived from the event id, so a retried event is deduplicated. Paywall events (opt-in) carry the
+ * paywall's fields and no revenue, and update no profile.
  */
 
 export const MIXPANEL_HOSTS = { us: "https://api.mixpanel.com", eu: "https://api-eu.mixpanel.com", in: "https://api-in.mixpanel.com" } as const;
@@ -14,7 +15,7 @@ export const MIXPANEL_HOSTS = { us: "https://api.mixpanel.com", eu: "https://api
 export const MIXPANEL_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "purchase_redeemed", "refund_reversed", "test",
-  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase", ...PAYWALL_CONCEPTS,
 ];
 
 /** Mixpanel's $insert_id allows 36 alphanumeric characters or dashes. */
@@ -32,9 +33,16 @@ export async function buildMixpanel(i: BuildInput): Promise<Plan> {
   const revenue = revenueUsd(e, i.settings.reporting);
   const timeMs = e.event_timestamp_ms ?? i.now.getTime();
   const secret = i.secrets.api_secret;
+  const base = { token, distinct_id: distinctId, time: secret ? timeMs : Math.floor(timeMs / 1000), $insert_id: insertId(String(e.id)) };
+  if (isPaywallConcept(c)) {
+    const body = json([{ event: name, properties: { ...base, ...paywallProperties(e) } }]);
+    const track: OutRequest = secret
+      ? { method: "POST", url: `${host}/import?strict=1`, headers: { "content-type": "application/json", authorization: basicAuth(secret) }, body }
+      : { method: "POST", url: `${host}/track?verbose=1`, headers: { "content-type": "application/json" }, body };
+    return { name, requests: [track], redact: [token, ...(secret ? [secret, btoa(`${secret}:`)] : [])] };
+  }
   const properties: Record<string, unknown> = {
-    token, distinct_id: distinctId, time: secret ? timeMs : Math.floor(timeMs / 1000), $insert_id: insertId(String(e.id)),
-    revenue, currency: "USD", product_id: e.product_id ?? null, store: e.store ?? null, offer_code: e.offer_code ?? null,
+    ...base, revenue, currency: "USD", product_id: e.product_id ?? null, store: e.store ?? null, offer_code: e.offer_code ?? null,
     period_type: e.period_type ?? null, environment: e.environment ?? null, entitlement_ids: e.entitlement_ids ?? null,
     presented_offering_id: e.presented_offering_id ?? null, transaction_id: e.transaction_id ?? null, original_transaction_id: e.original_transaction_id ?? null,
     app_user_id: e.app_user_id ?? null, original_app_user_id: e.original_app_user_id ?? null, app_id: e.app_id ?? null,
