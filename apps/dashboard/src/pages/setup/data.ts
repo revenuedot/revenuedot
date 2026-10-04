@@ -177,7 +177,7 @@ export interface IntegrationType { object: "integration_type"; type: string; nam
 export interface Integration {
   object: "integration"; id: string; type: string; name: string; enabled: boolean; environment: "production" | "sandbox" | null; app_id: string | null;
   event_types: string[]; settings: Record<string, unknown>; secrets: Record<string, { configured: boolean; hint: string | null }>; event_names: Record<string, string>;
-  status: { last_delivered_at: number | null; last_error: string | null; consecutive_failures: number }; created_at: number;
+  status: { last_delivered_at: number | null; last_error: string | null; consecutive_failures: number; failed_deliveries_in_row?: number }; created_at: number;
 }
 export interface IntegrationDelivery {
   object: "integration_delivery"; id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed" | "skipped"; attempts: number; sent_as: string | null;

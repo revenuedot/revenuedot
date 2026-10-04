@@ -158,18 +158,26 @@ export function ownershipEmail(o: { base: string; url: string; projectName: stri
   });
 }
 
-export type AlertKind = "store_notifications" | "webhook" | "store_credentials";
+export type AlertKind = "store_notifications" | "webhook" | "store_credentials" | "integration";
 
 export interface AlertInfo {
   kind: AlertKind;
   projectName: string;
-  /** App or webhook name. */
+  /** App, webhook or integration name. */
   subjectName: string;
   /** What the store or the endpoint said, if anything. */
   detail?: string | null;
   /** Where to fix it in the dashboard. */
   url: string;
+  /** Integrations: the partner's name (Amplitude, Appstack …), when it differs from the integration's name. */
+  partner?: string | null;
+  /** Integrations: the numbers that opened the alert, one sentence each. */
+  facts?: string[];
+  /** Resolved because the subject was turned off, not because it works again. */
+  turnedOff?: boolean;
 }
+
+const integrationLabel = (a: AlertInfo) => (a.partner && a.partner !== a.subjectName ? `${a.subjectName} (${a.partner})` : a.subjectName);
 
 const ALERT_COPY: Record<AlertKind, { open: (a: AlertInfo) => { subject: string; heading: string; body: string[] }; resolved: (a: AlertInfo) => { subject: string; heading: string; body: string[] } }> = {
   store_notifications: {
@@ -188,6 +196,20 @@ const ALERT_COPY: Record<AlertKind, { open: (a: AlertInfo) => { subject: string;
     }),
     resolved: (a) => ({ subject: `Resolved: webhook ${a.subjectName}`, heading: `Webhook ${a.subjectName} works again`, body: [`A delivery to ${a.subjectName} in ${a.projectName} succeeded. Check the delivery log for events that failed earlier.`] }),
   },
+  integration: {
+    open: (a) => ({
+      subject: `Integration ${integrationLabel(a)} is failing`,
+      heading: `Integration ${integrationLabel(a)} is failing`,
+      body: [
+        `Events from ${a.projectName} are not reaching the integration ${integrationLabel(a)}.`,
+        ...(a.facts ?? []),
+        "RevenueDot retries an event 5 times over about 2.5 hours when the partner times out or answers with a server error. Fix the settings, then use Replay failed in the delivery log to send the failed events again.",
+      ],
+    }),
+    resolved: (a) => a.turnedOff
+      ? { subject: `Resolved: integration ${integrationLabel(a)}`, heading: `Integration ${integrationLabel(a)} is turned off`, body: [`${integrationLabel(a)} in ${a.projectName} was turned off, so this alert is closed. Failed deliveries wait until you turn it back on.`] }
+      : { subject: `Resolved: integration ${integrationLabel(a)}`, heading: `Integration ${integrationLabel(a)} works again`, body: [`Events from ${a.projectName} reach ${integrationLabel(a)} again. Check the delivery log for events that failed earlier, and replay them.`] },
+  },
   store_credentials: {
     open: (a) => ({
       subject: `The store rejected the credentials for ${a.subjectName}`,
@@ -205,10 +227,12 @@ export function alertEmail(o: AlertInfo & { base: string; state: "open" | "remin
     preheader: c.body[0]!,
     heading: c.heading,
     paragraphs: [...c.body, ...(o.detail && o.state !== "resolved" ? [`Last error: ${o.detail}`] : [])],
-    button: { label: o.state === "resolved" ? "Open the dashboard" : "Fix it in the dashboard", url: o.url },
+    button: { label: o.kind === "integration" ? "Open the delivery log" : o.state === "resolved" ? "Open the dashboard" : "Fix it in the dashboard", url: o.url },
     after: o.state === "resolved" ? [] : ["You get at most one email a day while this stays broken, and one when it recovers."],
     settingsUrl: settingsUrl(o.base),
-    reason: `You received this because you are an admin of ${o.projectName}. Turn these emails off in your notification settings.`,
+    reason: o.kind === "integration"
+      ? `You received this because you are an admin of ${o.projectName}. Turn integration failure emails off in your notification settings.`
+      : `You received this because you are an admin of ${o.projectName}. Turn these emails off in your notification settings.`,
   });
 }
 

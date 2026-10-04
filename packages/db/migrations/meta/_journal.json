@@ -225,6 +225,13 @@
       "when": 1791067918476,
       "tag": "0033_rejected_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791069727783,
+      "tag": "0035_integration_alerts",
+      "breakpoints": true
     }
   ]
 }

@@ -461,7 +461,7 @@ export function accountRoutes(deps: Deps) {
       .leftJoin(N, and(eq(N.projectId, P.id), eq(N.userId, u.id))).where(eq(M.userId, u.id));
     rows.sort((a, b) => a.name.localeCompare(b.name));
     return c.json({
-      object: "notification_settings", alert_emails: u.alertEmails,
+      object: "notification_settings", alert_emails: u.alertEmails, integration_alert_emails: u.integrationAlertEmails,
       projects: rows.map((r) => ({
         project: { id: r.id, name: r.name, role: r.role },
         weekly_summary: r.pref?.weeklySummary ?? false, experiment_results: r.pref?.experimentResults ?? false,
