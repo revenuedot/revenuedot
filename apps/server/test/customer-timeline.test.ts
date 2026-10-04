@@ -91,7 +91,7 @@ describe("customer history", () => {
     await seed("sandy", 2, "sandbox");
     expect((await get("/customers/wren/events?environment=sandbox")).body.items).toEqual([]);
     expect((await get("/customers/sandy/events?environment=sandbox")).body.items).toHaveLength(3);
-    for (const q of ["starting_after=sandy_000", "starting_after=nope", "include_paywall_events=yes"]) {
+    for (const q of ["starting_after=sandy_000", "starting_after=nope", "include_paywall_events=yes", "type=RENEWAL&include_paywall_events=1"]) {
       const r = await get(`/customers/wren/events?${q}`);
       expect(r.status, q).toBe(400);
       expect(r.body.type).toBe("parameter_error");
@@ -132,15 +132,15 @@ describe("RevenueDot AI tools", () => {
     const failed = Array.from({ length: 150 }, (_, i) => ({ id: `d${String(i).padStart(3, "0")}`, created_at: now - i, event_type: i < 140 ? "PAYWALL_IMPRESSION" : "RENEWAL" }));
     const { c, calls } = client((method, _path, q) => {
       if (method === "POST") return {};
-      const start = q.starting_after ? failed.findIndex((d) => d.id === q.starting_after) + 1 : 0;
-      const items = failed.slice(start, start + 100);
-      return { items, next_page: start + 100 < failed.length ? "more" : null };
+      const pool = failed.filter((d) => (q.paywall_events === "only") === d.event_type.startsWith("PAYWALL_"));
+      const start = q.starting_after ? pool.findIndex((d) => d.id === q.starting_after) + 1 : 0;
+      return { items: pool.slice(start, start + 100), next_page: start + 100 < pool.length ? "more" : null };
     });
     const r = await toolsByName.get("replay-failed-webhook-deliveries")!.run(c, { webhook_id: "wh_1" } as never) as any;
     expect(r.retried).toBe(100);
-    expect(r.not_retried).toBe(50);
     const posted = calls.filter((x) => x.method === "POST").map((x) => x.path.split("/").at(-2));
     expect(posted.slice(0, 10)).toEqual(failed.slice(140).map((d) => d.id));
-    expect(posted).toHaveLength(100);
+    expect(posted.slice(10)).toEqual(failed.slice(0, 90).map((d) => d.id));
+    expect(calls.filter((x) => x.method === "GET").map((x) => x.query.paywall_events)).toEqual(["exclude", "only"]);
   });
 });

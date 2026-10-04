@@ -3,6 +3,15 @@ export type Entry = { date: string; title: string; items: string[]; tag: "Server
 
 export const CHANGELOG: Entry[] = [
   {
+    date: "2026-10-04",
+    title: "Customer history keeps purchases in view",
+    tag: "Server",
+    items: [
+      "Event lists (a customer's events and the project event log) leave out paywall events by default. Pass include_paywall_events=true, or name the types in type, to get them.",
+      "The customer history pages from the database, and the Customer page has a Show paywall events switch.",
+    ],
+  },
+  {
     date: "2026-09-30",
     title: "SDK forks and signed responses",
     tag: "SDKs",

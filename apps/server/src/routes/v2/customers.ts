@@ -163,7 +163,7 @@ export function customerRoutes(r: V2Router, deps: Deps) {
     return c.json(paginate(c, rows, (p) => p.id, (p) => p.purchaseDate.getTime(), (p) => purchaseShape(p, cust.originalAppUserId, cat)));
   });
 
-  // Newest first, keyset-paginated in SQL on (occurred_at, id) over events_customer_time. Paywall events only on request (eventTypeFilter).
+  // Newest first, keyset-paginated in SQL on (occurred_at, id) over events_customer_time. Paywall events only with include_paywall_events=true or a `type` that names them (eventTypeFilter).
   r.get(`${C}/:customer_id/events`, scope("customer_information:customers:read"), async (c) => {
     const cust = await find(c);
     const e = env(c);

@@ -661,30 +661,31 @@ export const tools: ToolDefinition[] = [
   }),
   define({
     name: "replay-failed-webhook-deliveries", title: "Replay failed webhook deliveries",
-    description: "Sends every failed delivery of one webhook from the last `days` days again (at most 100).",
+    description: "Sends every failed delivery of one webhook from the last `days` days again (at most 100): purchase and lifecycle events first, then paywall events (PAYWALL_*).",
     inputSchema: { webhook_id: z.string().describe("Webhook integration id."), days: z.number().int().min(1).max(30).optional().describe("How far back, default 7.") },
     annotations: { ...ATTACH, openWorldHint: true }, scopes: ["project_configuration:integrations:read_write"],
     run: async (c, a) => {
       const base = await P(c);
       const since = Date.now() - (a.days ?? 7) * 86400_000;
-      // Collect first, then send purchase and lifecycle deliveries before paywall ones: a webhook that takes paywall events
-      // fails many impressions for every purchase, and they must not use up the 100.
-      const failed: { id: string; event_type: string }[] = [];
-      let cursor: string | undefined;
-      for (let page = 0; page < 5; page++) {
-        const list = await c.request<{ items: { id: string; created_at: number; event_type: string }[]; next_page: string | null }>("GET", `${base}/webhooks/${enc(a.webhook_id)}/deliveries`, { query: { status: "failed", limit: 100, starting_after: cursor } });
-        const fresh = list.items.filter((d) => d.created_at >= since);
-        failed.push(...fresh);
-        if (!list.next_page || fresh.length < list.items.length) break;
-        cursor = list.items[list.items.length - 1]!.id;
+      // Purchase and lifecycle failures first, then paywall ones: a webhook that takes paywall events fails many
+      // impressions for every purchase, and they must not use up the 100.
+      const failed: string[] = [];
+      for (const paywall_events of ["exclude", "only"]) {
+        let cursor: string | undefined;
+        for (let page = 0; page < 5 && failed.length < 100; page++) {
+          const list = await c.request<{ items: { id: string; created_at: number }[]; next_page: string | null }>("GET", `${base}/webhooks/${enc(a.webhook_id)}/deliveries`, { query: { status: "failed", paywall_events, limit: 100, starting_after: cursor } });
+          const fresh = list.items.filter((d) => d.created_at >= since);
+          failed.push(...fresh.slice(0, 100 - failed.length).map((d) => d.id));
+          if (!list.next_page || fresh.length < list.items.length) break;
+          cursor = list.items[list.items.length - 1]!.id;
+        }
       }
-      const paywall = (d: { event_type: string }) => (d.event_type.startsWith("PAYWALL_") ? 1 : 0);
       const retried: string[] = [];
-      for (const d of [...failed].sort((x, y) => paywall(x) - paywall(y)).slice(0, 100)) {
-        await c.request("POST", `${base}/webhooks/${enc(a.webhook_id)}/deliveries/${enc(d.id)}/retry`);
-        retried.push(d.id);
+      for (const id of failed) {
+        await c.request("POST", `${base}/webhooks/${enc(a.webhook_id)}/deliveries/${enc(id)}/retry`);
+        retried.push(id);
       }
-      return { object: "webhook_replay", webhook_id: a.webhook_id, retried: retried.length, not_retried: failed.length - retried.length, delivery_ids: retried };
+      return { object: "webhook_replay", webhook_id: a.webhook_id, retried: retried.length, delivery_ids: retried };
     },
   }),
 ];

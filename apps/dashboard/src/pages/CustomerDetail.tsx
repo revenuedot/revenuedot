@@ -15,7 +15,7 @@
  */
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { Copy, Shell } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { ConfirmDialog, Dialog, EmptyState, EVENT_TONE, Field, Menu, Panel, Switch, Tag, useProjectId, useToast } from "../components/ui";
@@ -182,15 +182,16 @@ type TimelineProps = { pid: string; id: string; entName: (k: string) => string; 
  */
 function Timeline(p: TimelineProps) {
   const [paywall, setPaywall] = useState(false);
+  const first = useQuery({ queryKey: ["customer_events", p.pid, p.id, paywall], queryFn: () => api<List<CustomerEvent>>(`/v2/projects/${p.pid}/customers/${encodeURIComponent(p.id)}/events?limit=25${paywall ? "&include_paywall_events=true" : ""}`) });
+  // A new first page (the switch, or a refetch) drops the older pages loaded under the previous one.
   return (
     <Panel title="Customer history" link={<Switch label="Show paywall events" checked={paywall} onChange={setPaywall} />} flush>
-      <TimelineList key={String(paywall)} {...p} paywall={paywall} />
+      <TimelineList key={`${paywall}-${first.dataUpdatedAt}`} {...p} paywall={paywall} first={first} />
     </Panel>
   );
 }
 
-function TimelineList({ pid, id, entName, productName, paywall }: TimelineProps & { paywall: boolean }) {
-  const first = useQuery({ queryKey: ["customer_events", pid, id, paywall], queryFn: () => api<List<CustomerEvent>>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/events?limit=25${paywall ? "&include_paywall_events=true" : ""}`) });
+function TimelineList({ entName, productName, paywall, first }: TimelineProps & { paywall: boolean; first: UseQueryResult<List<CustomerEvent>> }) {
   const [more, setMore] = useState<CustomerEvent[]>([]);
   const [next, setNext] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);

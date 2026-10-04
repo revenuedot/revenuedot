@@ -42,6 +42,10 @@ test("paywall events: opt PostHog in, post a paywall impression from the SDK, se
   const P = `/v2/projects/${pid}`;
   const app = await json(req, "POST", `${P}/apps`, { name: "Test Store", type: "test_store" });
   const key = (await json(req, "GET", `${P}/apps/${app.id}/public_api_keys`)).items[0].key;
+  // The viewer bought yesterday, before PostHog is connected (so PostHog gets only paywall events): the customer exists
+  // when the first impression arrives, and the purchase is older than every impression.
+  const prod = await json(req, "POST", `${P}/products`, { app_id: app.id, store_identifier: "pw_monthly", type: "subscription", subscription: { duration: "P1M" }, test_store_price: { amount_micros: 4_990_000, currency: "USD" } });
+  await json(req, "POST", `${P}/test_purchases`, { app_user_id: "paywall_viewer", product_id: prod.id, app_id: app.id, offset_days: 1 });
 
   try {
     await test.step("connect PostHog and tick Send paywall events", async () => {
@@ -77,8 +81,6 @@ test("paywall events: opt PostHog in, post a paywall impression from the SDK, se
     });
 
     await test.step("the customer history shows the purchase first; Show paywall events pages through the impressions", async () => {
-      const prod = await json(req, "POST", `${P}/products`, { app_id: app.id, store_identifier: "pw_monthly", type: "subscription", subscription: { duration: "P1M" }, test_store_price: { amount_micros: 4_990_000, currency: "USD" } });
-      await json(req, "POST", `${P}/test_purchases`, { app_user_id: "paywall_viewer", product_id: prod.id, app_id: app.id, offset_days: 1 });
       // 30 more impressions, all newer than the purchase: before the fix they filled the first 25 rows of the history.
       const now = Date.now();
       const r = await req.fetch("/v1/events", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, data: { events: Array.from({ length: 30 }, (_, i) => ({
@@ -92,21 +94,21 @@ test("paywall events: opt PostHog in, post a paywall impression from the SDK, se
       await page.goto(`/projects/${pid}/customers/paywall_viewer`);
       const history = page.getByRole("list", { name: "Events, newest first" });
       await expect(history.getByText("Started a subscription")).toBeVisible();
-      await expect(history.getByText(/^Saw the paywall/)).toHaveCount(0);
+      await expect(history.getByText(/^Saw the .*paywall$/)).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Show older ↓" })).toHaveCount(0);
 
       const toggle = page.getByRole("switch", { name: "Show paywall events" });
       await toggle.click();
       await expect(toggle).toHaveAttribute("aria-checked", "true");
-      await expect(history.getByText("Saw the paywall")).toHaveCount(25);
+      await expect(history.getByText(/^Saw the .*paywall$/)).toHaveCount(25);
       await expect(history.getByText("Started a subscription")).toHaveCount(0);
       await page.getByRole("button", { name: "Show older ↓" }).click();
       await expect(history.getByText("Started a subscription")).toBeVisible();
-      await expect(history.getByText("Saw the paywall")).toHaveCount(31);
+      await expect(history.getByText(/^Saw the .*paywall$/)).toHaveCount(31);
       await expect(page.getByRole("button", { name: "Show older ↓" })).toHaveCount(0);
 
       await toggle.click();
-      await expect(history.getByText("Saw the paywall")).toHaveCount(0);
+      await expect(history.getByText(/^Saw the .*paywall$/)).toHaveCount(0);
       await expect(history.getByText("Started a subscription")).toBeVisible();
     });
     expect(errors).toEqual([]);

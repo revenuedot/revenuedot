@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
+import { PAYWALL_WEBHOOK_TYPES } from "@revenuedot/core";
 import { z } from "zod";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
@@ -93,7 +94,7 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     })), rows.length > limit ? page[page.length - 1]!.t.id : null));
   });
 
-  // Event log. `body` is the webhook `event` object exactly as webhooks receive it. Paywall events only on request (eventTypeFilter).
+  // Event log. `body` is the webhook `event` object exactly as webhooks receive it. Paywall events only with include_paywall_events=true or a `type` that names them (eventTypeFilter).
   r.get(`${P}/events`, scope("customer_information:customers:read"), async (c) => {
     const projectId = c.get("projectId");
     const { limit, startingAfter } = pageParams(c);
@@ -155,6 +156,12 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
       if (!["pending", "delivered", "failed"].includes(status)) throw paramError("status must be pending, delivered or failed.", "status");
       // A delivery being sent right now ("sending", claimed by a job run) is still pending to the API.
       conds.push(status === "pending" ? inArray(D.status, ["pending", "sending"]) : eq(D.status, status));
+    }
+    // `paywall_events=exclude` or `only`: RevenueDot AI's replay sends purchase and lifecycle failures before paywall ones.
+    const pw = c.req.query("paywall_events");
+    if (pw !== undefined) {
+      if (pw !== "exclude" && pw !== "only") throw paramError("paywall_events must be exclude or only.", "paywall_events");
+      conds.push(pw === "only" ? inArray(schema.events.type, [...PAYWALL_WEBHOOK_TYPES]) : notInArray(schema.events.type, [...PAYWALL_WEBHOOK_TYPES]));
     }
     if (startingAfter) {
       const [cur] = await db.select().from(D).where(and(eq(D.webhookId, w.id), eq(D.id, startingAfter))).limit(1);

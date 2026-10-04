@@ -150,10 +150,10 @@ export function paginate<T>(c: Context, rows: T[], key: (r: T) => string, create
  * out of the newest page of a customer's history. RevenueCat's customer history shows no paywall events either.
  */
 export function eventTypeFilter(c: Context, column: AnyColumn): SQL | undefined {
-  const types = (c.req.queries("type") ?? []).flatMap((t) => t.split(",")).map((t) => t.trim().toUpperCase()).filter(Boolean);
-  if (types.length) return inArray(column, types);
   const raw = c.req.query("include_paywall_events");
   if (raw !== undefined && raw !== "true" && raw !== "false") throw paramError("include_paywall_events must be true or false.", "include_paywall_events");
+  const types = (c.req.queries("type") ?? []).flatMap((t) => t.split(",")).map((t) => t.trim().toUpperCase()).filter(Boolean);
+  if (types.length) return inArray(column, types);
   return raw === "true" ? undefined : notInArray(column, [...PAYWALL_WEBHOOK_TYPES]);
 }
 
