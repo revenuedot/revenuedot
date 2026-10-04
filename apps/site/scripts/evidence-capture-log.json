@@ -1,0 +1,485 @@
+[
+  {
+    "vendor": "revenuecat",
+    "page": "home",
+    "url": "https://www.revenuecat.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 132,
+          "width": 800,
+          "height": 672
+        }
+      },
+      {
+        "claim": "apps-and-revenue",
+        "file": "home-apps-and-revenue-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 92,
+          "width": 800,
+          "height": 712
+        }
+      },
+      {
+        "claim": "paywall-templates",
+        "file": "home-paywall-templates-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 3804.78125,
+          "width": 800,
+          "height": 623.015625
+        }
+      },
+      {
+        "claim": "refund-handling",
+        "file": "home-refund-handling-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 7666.234375,
+          "width": 1256,
+          "height": 761.65625
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Build and Grow Your App Business | RevenueCat",
+    "pageHeight": 11773
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "pricing",
+    "url": "https://www.revenuecat.com/pricing/",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-to-2500-then-1-percent",
+        "file": "pricing-free-to-2500-then-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 140,
+          "y": 439,
+          "width": 1000,
+          "height": 673
+        }
+      },
+      {
+        "claim": "growth-tools-1-percent",
+        "file": "pricing-growth-tools-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 1654.5,
+          "width": 800,
+          "height": 503.328125
+        }
+      },
+      {
+        "claim": "features",
+        "file": "pricing-features-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 2384.828125,
+          "width": 1256,
+          "height": 1012
+        }
+      },
+      {
+        "claim": "support",
+        "file": "pricing-support-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 2880.828125,
+          "width": 780,
+          "height": 491
+        }
+      },
+      {
+        "claim": "enterprise",
+        "file": "pricing-enterprise-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 140,
+          "y": 439,
+          "width": 1000,
+          "height": 673
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing & Plans – RevenueCat | RevenueCat",
+    "pageHeight": 7796
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "security-and-compliance",
+    "url": "https://www.revenuecat.com/security-and-compliance/",
+    "ok": true,
+    "full": [
+      "security-and-compliance-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "soc2",
+        "file": "security-and-compliance-soc2-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 220,
+          "y": 344.5,
+          "width": 840,
+          "height": 500
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "RevenueCat Security & Compliance | RevenueCat",
+    "pageHeight": 2939
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "gdpr",
+    "url": "https://www.revenuecat.com/gdpr/",
+    "ok": true,
+    "full": [
+      "gdpr-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "processor",
+        "file": "gdpr-processor-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 220,
+          "y": 140,
+          "width": 840,
+          "height": 467
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GDPR | RevenueCat",
+    "pageHeight": 1612
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "community-pro-plan-payments",
+    "url": "https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618",
+    "ok": true,
+    "full": [
+      "community-pro-plan-payments-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "staff-reply-1-percent-of-whole-mtr",
+        "file": "community-pro-plan-payments-staff-reply-1-percent-of-whole-mtr-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 48,
+          "y": 67,
+          "width": 800,
+          "height": 808
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Questions about PRO plan payments | RevenueCat Community",
+    "pageHeight": 1535
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "github-purchases-ios-license",
+    "url": "https://github.com/RevenueCat/purchases-ios/blob/main/LICENSE",
+    "ok": true,
+    "full": [
+      "github-purchases-ios-license-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit",
+        "file": "github-purchases-ios-license-mit-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 318,
+          "y": 409,
+          "width": 962,
+          "height": 600
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "purchases-ios/LICENSE at main · RevenueCat/purchases-ios · GitHub",
+    "pageHeight": 1028
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-quickstart",
+    "url": "https://www.revenuecat.com/docs/getting-started/quickstart",
+    "ok": true,
+    "full": [
+      "docs-quickstart-full-1-2026-10-04.png",
+      "docs-quickstart-full-2-2026-10-04.png",
+      "docs-quickstart-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "platforms",
+        "file": "docs-quickstart-platforms-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 579.171875,
+          "width": 800,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "SDK Quickstart | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 8019
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-web-overview",
+    "url": "https://www.revenuecat.com/docs/web/overview",
+    "ok": true,
+    "full": [
+      "docs-web-overview-full-1-2026-10-04.png",
+      "docs-web-overview-full-2-2026-10-04.png",
+      "docs-web-overview-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe-paddle-billing",
+        "file": "docs-web-overview-stripe-paddle-billing-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 237.171875,
+          "width": 800,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Getting Started With RevenueCat Web | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 9056
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-web-stripe",
+    "url": "https://www.revenuecat.com/docs/web/integrations/stripe",
+    "ok": true,
+    "full": [
+      "docs-web-stripe-full-1-2026-10-04.png",
+      "docs-web-stripe-full-2-2026-10-04.png",
+      "docs-web-stripe-full-3-2026-10-04.png",
+      "docs-web-stripe-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "unlock-entitlements",
+        "file": "docs-web-stripe-unlock-entitlements-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 199.953125,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Stripe Billing | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 14725
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-third-party-integrations",
+    "url": "https://www.revenuecat.com/docs/integrations/third-party-integrations",
+    "ok": true,
+    "full": [
+      "docs-third-party-integrations-full-1-2026-10-04.png",
+      "docs-third-party-integrations-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "categories",
+        "file": "docs-third-party-integrations-categories-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 770.4765625,
+          "width": 800,
+          "height": 820
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Third Party Integrations | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 5286
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-scheduled-data-exports",
+    "url": "https://www.revenuecat.com/docs/integrations/scheduled-data-exports",
+    "ok": true,
+    "full": [
+      "docs-scheduled-data-exports-full-1-2026-10-04.png",
+      "docs-scheduled-data-exports-full-2-2026-10-04.png",
+      "docs-scheduled-data-exports-full-3-2026-10-04.png",
+      "docs-scheduled-data-exports-full-4-2026-10-04.png",
+      "docs-scheduled-data-exports-full-5-2026-10-04.png",
+      "docs-scheduled-data-exports-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "destinations",
+        "file": "docs-scheduled-data-exports-destinations-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 401.765625,
+          "width": 800,
+          "height": 620
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Scheduled Data Exports | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 21367
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-customer-center",
+    "url": "https://www.revenuecat.com/docs/tools/customer-center",
+    "ok": true,
+    "full": [
+      "docs-customer-center-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "self-service-ui",
+        "file": "docs-customer-center-self-service-ui-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 418.078125,
+          "width": 800,
+          "height": 360
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Customer Center | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 2703
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-llms-txt",
+    "url": "https://www.revenuecat.com/docs/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "virtual-currency",
+        "file": "docs-llms-txt-virtual-currency-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 0,
+          "width": 1240,
+          "height": 937
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 929
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-platform-resources-llms-txt",
+    "url": "https://www.revenuecat.com/docs/platform-resources/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-platform-resources-llms-txt-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "amazon-galaxy",
+        "file": "docs-platform-resources-llms-txt-amazon-galaxy-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 139.5,
+          "width": 1240,
+          "height": 720
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 1241
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-ai-toolkit",
+    "url": "https://www.revenuecat.com/docs/tools/ai-toolkit",
+    "ok": true,
+    "full": [
+      "docs-ai-toolkit-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "toolkit",
+        "file": "docs-ai-toolkit-toolkit-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 0,
+          "width": 800,
+          "height": 500
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "RevenueCat AI Toolkit | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 3606
+  }
+]
