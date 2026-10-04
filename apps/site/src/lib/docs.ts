@@ -15,6 +15,7 @@ const SECTIONS = [
   { id: "guides", title: "Guides", dir: "docs/guides", blurb: "App Store, Google Play, Amazon Appstore and Stripe setup, webhooks, integrations and data exports, testing, self-hosting and production.", order: ["README", "app-store", "google-play", "amazon-appstore", "stripe", "import-products", "webhooks", "integrations", "ads", "trusted-entitlements", "test-store", "sandbox-testing", "self-hosting", "upgrades", "backups", "going-to-production", "enterprise", "single-sign-on", "scim", "data-location", "audit-retention-and-exports"] },
   { id: "migrate", title: "Migrate from RevenueCat", dir: "docs/migrate", blurb: "The importer, a side-by-side run, SDK changes, the cutover checklist and what differs.", order: ["README", "importer", "dual-run", "sdk-changes", "cutover-checklist", "what-differs"] },
   { id: "api", title: "API reference", dir: "api", blurb: "SDK endpoints, REST API v1 and v2, extensions, errors and webhook events, from the OpenAPI document.", order: ["README", "authentication", "errors", "sdk-endpoints", "rest-v1", "rest-v2", "extensions", "enterprise", "webhook-events"] },
+  { id: "errors", title: "Error reference", dir: "docs/errors", blurb: "One page per Apple StoreKit 2 error, Google Play Billing response code and purchases SDK error code: what it means, the cause, the fix and the vendor source.", order: ["README"] },
   { id: "help", title: "Help center", dir: "docs/help", blurb: "Answers to the questions people search: FAQ, troubleshooting and known issues.", order: ["README", "faq", "troubleshooting", "known-issues"] },
 ];
 
@@ -109,7 +110,7 @@ export async function docsNav(): Promise<NavSection[]> {
   const known = new Set(SECTIONS.map((s) => s.dir));
   const stray = [...byDir.keys()].filter((d) => !known.has(d));
   if (stray.length) throw new Error(`Docs folders without a sidebar section: ${stray.join(", ")}. Add them to SECTIONS in src/lib/docs.ts.`);
-  cache = SECTIONS.map((s) => {
+  cache = SECTIONS.filter((s) => (byDir.get(s.dir) ?? []).length > 0).map((s) => {
     const list = byDir.get(s.dir) ?? [];
     const name = (e: DocEntry) => e.id.slice(s.dir.length + 1);
     const ordered = [
@@ -122,7 +123,7 @@ export async function docsNav(): Promise<NavSection[]> {
       blurb: s.blurb,
       dir: s.dir,
       href: pagePath(`${s.dir}/README.md`)!,
-      items: ordered.map((e) => ({ id: e.id, href: pagePath(`${e.id}.md`)!, label: LABELS[e.id] ?? fallbackLabel(e.id), title: e.data.title, description: e.data.description })),
+      items: ordered.map((e) => ({ id: e.id, href: pagePath(`${e.id}.md`)!, label: LABELS[e.id] ?? e.data.label ?? fallbackLabel(e.id), title: e.data.title, description: e.data.description })),
     };
   });
   return cache;
