@@ -105,7 +105,7 @@ export const PAGES = [
   p("qonversion", "pricing", "https://qonversion.io/pricing", {
     crops: [
       c("free-to-7k-then-0-8-percent", "Pro is 0.8% of tracked revenue", "Qonversion pricing headline: 'Pro is 0.8% of tracked revenue — and you pay nothing until you pass $7K MTR.'", "Free to $7K MTR, then 0.8% of tracked revenue", { minH: 380, maxH: 900 }),
-      c("faq-total-tracked-revenue", "Your bill becomes 0.8% of your total tracked revenue", "Qonversion pricing FAQ: 'Your bill becomes 0.8% of your total tracked revenue — not just the amount above $7K. At $8K MTR that's $64 a month; at $50K it's $400.'", "0.8% of all tracked revenue, not only the part above $7K", { minH: 300, extraTop: 80 }),
+      c("faq-total-tracked-revenue", "Your bill becomes 0.8% of your total tracked revenue", "Qonversion pricing FAQ: 'Your bill becomes 0.8% of your total tracked revenue — not just the amount above $7K. At $8K MTR that's $64 a month; at $50K it's $400.'", "0.8% of all tracked revenue, not only the part above $7K", { click: "What happens when I cross $7K MTR?", minH: 300, extraTop: 80 }),
       c("plan-includes", "Unlimited apps & seats", "Qonversion pricing Pro plan list: all analytics with LTV and cohorts, Refund Keeper, unlimited apps and seats; Enterprise with an uptime SLA.", "One Pro plan with every feature, unlimited apps and seats; Refund Keeper included", { minH: 460, extraTop: 200 }),
       c("compliance-and-support", "CCPA Compliance", "Qonversion pricing feature table: GDPR compliance, CCPA compliance, 24/7 priority support, unlimited seats, apps and projects.", "GDPR and CCPA listed; 24/7 priority support; no SOC 2 listed", { minH: 360, extraTop: 160 }),
     ],

@@ -563,6 +563,168 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Superwall ----
+  {
+    vendor: "Superwall",
+    page: "home",
+    url: "https://superwall.com/",
+    captured: DATE,
+    full: asset("superwall", "home-full-1-2026-10-04.png"),
+    fullParts: [asset("superwall", "home-full-1-2026-10-04.png"), asset("superwall", "home-full-2-2026-10-04.png"), asset("superwall", "home-full-3-2026-10-04.png"), asset("superwall", "home-full-4-2026-10-04.png"), asset("superwall", "home-full-5-2026-10-04.png"), asset("superwall", "home-full-6-2026-10-04.png")],
+    crops: [
+      {
+        claim: "hero",
+        file: asset("superwall", "home-hero-2026-10-04.png"),
+        alt: "Superwall homepage hero: 'AI powered monetization stack for mobile apps' with the annual revenue, paywall views and customer stats.",
+        caption: "Superwall homepage, captured 2026-10-04: Homepage hero.",
+      },
+    ],
+  },
+  {
+    vendor: "Superwall",
+    page: "pricing",
+    url: "https://superwall.com/pricing",
+    captured: DATE,
+    full: asset("superwall", "pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("superwall", "pricing-full-1-2026-10-04.png"), asset("superwall", "pricing-full-2-2026-10-04.png"), asset("superwall", "pricing-full-3-2026-10-04.png")],
+    crops: [
+      {
+        claim: "infrastructure-free",
+        file: asset("superwall", "pricing-infrastructure-free-2026-10-04.png"),
+        alt: "Superwall pricing headline: subscription infrastructure (entitlements, purchase APIs, webhooks, SQL access) is free on every plan; only the paywall product is billed.",
+        caption: "Superwall pricing page, captured 2026-10-04: Infrastructure free at any scale; only paywall revenue is billed.",
+      },
+      {
+        claim: "indie-10k-then-1-percent",
+        file: asset("superwall", "pricing-indie-10k-then-1-percent-2026-10-04.png"),
+        alt: "Superwall pricing plan cards: Indie free up to $10k MAR then 1% of total MAR; Startup $49 a month + 1% of MAR; Scale $199 a month + 1% of MAR; Enterprise.",
+        caption: "Superwall pricing page, captured 2026-10-04: Indie free to $10K MAR, then 1%; Startup $49 and Scale $199 a month.",
+      },
+      {
+        claim: "attributed-revenue-only",
+        file: asset("superwall", "pricing-attributed-revenue-only-2026-10-04.png"),
+        alt: "Superwall pricing: 1% of revenue, paywall-attributed only; subscriptions purchased outside Superwall are free; no per-event or webhook fees.",
+        caption: "Superwall pricing page, captured 2026-10-04: Billed only on paywall-attributed revenue.",
+      },
+      {
+        claim: "sql-query-api",
+        file: asset("superwall", "pricing-sql-query-api-2026-10-04.png"),
+        alt: "Superwall pricing: the Query API gives SQL access to subscription data, included on every plan.",
+        caption: "Superwall pricing page, captured 2026-10-04: Row-level SQL access on the Query API.",
+      },
+      {
+        claim: "migration-agent",
+        file: asset("superwall", "pricing-migration-agent-2026-10-04.png"),
+        alt: "Superwall pricing: a coding agent performs the SDK swap, history port, entitlement port and webhook configuration in under an hour.",
+        caption: "Superwall pricing page, captured 2026-10-04: An automated agent ports an app from RevenueCat in under an hour.",
+      },
+    ],
+  },
+  {
+    vendor: "Superwall",
+    page: "docs-pricing-faq",
+    url: "https://superwall.com/docs/support/faq/2801653905-how-does-superwalls-pricing-work",
+    captured: DATE,
+    full: asset("superwall", "docs-pricing-faq-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "mar-definition",
+        file: asset("superwall", "docs-pricing-faq-mar-definition-2026-10-04.png"),
+        alt: "Superwall pricing FAQ: new MAR-based pricing with Indie $0, Startup $49, Scale $199; under $10k MAR is free; MAR is only revenue attributed to a Superwall paywall.",
+        caption: "Superwall docs page, captured 2026-10-04: MAR is only revenue attributed to a Superwall paywall.",
+      },
+    ],
+  },
+  {
+    vendor: "Superwall",
+    page: "blog-new-pricing",
+    url: "https://superwall.com/blog/superwalls-new-pricing-more-aligned-generous-and-transparent",
+    captured: DATE,
+    full: asset("superwall", "blog-new-pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("superwall", "blog-new-pricing-full-1-2026-10-04.png"), asset("superwall", "blog-new-pricing-full-2-2026-10-04.png"), asset("superwall", "blog-new-pricing-full-3-2026-10-04.png")],
+    crops: [
+      {
+        claim: "date",
+        file: asset("superwall", "blog-new-pricing-date-2026-10-04.png"),
+        alt: "Superwall blog post header dated October 29, 2025 announcing the new pricing.",
+        caption: "Superwall blog post, captured 2026-10-04: The pricing change was announced on October 29, 2025.",
+      },
+      {
+        claim: "indie-free-to-10k",
+        file: asset("superwall", "blog-new-pricing-indie-free-to-10k-2026-10-04.png"),
+        alt: "Superwall blog: the Indie plan is 100% free up to $10K in Monthly Attributed Revenue; past $10K MAR the fee is 1% on total MAR.",
+        caption: "Superwall blog post, captured 2026-10-04: Free to $10K MAR, then 1% of total MAR.",
+      },
+    ],
+  },
+  {
+    vendor: "Superwall",
+    page: "llms-txt",
+    url: "https://superwall.com/llms.txt",
+    captured: DATE,
+    full: asset("superwall", "llms-txt-full-1-2026-10-04.png"),
+    fullParts: [asset("superwall", "llms-txt-full-1-2026-10-04.png"), asset("superwall", "llms-txt-full-2-2026-10-04.png"), asset("superwall", "llms-txt-full-3-2026-10-04.png"), asset("superwall", "llms-txt-full-4-2026-10-04.png")],
+    crops: [
+      {
+        claim: "coverage-and-limits",
+        file: asset("superwall", "llms-txt-coverage-and-limits-2026-10-04.png"),
+        alt: "Superwall llms.txt: coverage is the App Store, Google Play and Stripe; SDKs for iOS, Android, React Native, Flutter, Expo, Unity and Web; it does not run virtual currency, does not track ad revenue, and does not support Amazon or Roku.",
+        caption: "Superwall docs page, captured 2026-10-04: No virtual currency, no ad revenue, no Amazon or Roku.",
+      },
+      {
+        claim: "editor-mcp",
+        file: asset("superwall", "llms-txt-editor-mcp-2026-10-04.png"),
+        alt: "Superwall llms.txt: agent tooling with open-source skills, an editor MCP server and SQL access via the Query API.",
+        caption: "Superwall docs page, captured 2026-10-04: An editor MCP server for coding agents.",
+      },
+    ],
+  },
+  {
+    vendor: "Superwall",
+    page: "features-app-to-web-checkout",
+    url: "https://superwall.com/features/app-to-web-checkout",
+    captured: DATE,
+    full: asset("superwall", "features-app-to-web-checkout-full-1-2026-10-04.png"),
+    fullParts: [asset("superwall", "features-app-to-web-checkout-full-1-2026-10-04.png"), asset("superwall", "features-app-to-web-checkout-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "stripe-checkout",
+        file: asset("superwall", "features-app-to-web-checkout-stripe-checkout-2026-10-04.png"),
+        alt: "Superwall App-to-Web Checkout page: a paywall button opens a Stripe checkout in Safari and links the purchase back to the app.",
+        caption: "Superwall page /features/app-to-web-checkout, captured 2026-10-04: App-to-Web Checkout with Stripe.",
+      },
+    ],
+  },
+  {
+    vendor: "Superwall",
+    page: "legal-gdpr",
+    url: "https://superwall.com/legal/gdpr",
+    captured: DATE,
+    full: asset("superwall", "legal-gdpr-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "processor",
+        file: asset("superwall", "legal-gdpr-processor-2026-10-04.png"),
+        alt: "Superwall GDPR page: Superwall is a processor; it links a Data Processing Addendum; no SOC 2 report or hosting region is named.",
+        caption: "Superwall page /legal/gdpr, captured 2026-10-04: GDPR processor with a DPA; no SOC 2 or hosting region named.",
+      },
+    ],
+  },
+  {
+    vendor: "Superwall",
+    page: "github-superwall-ios",
+    url: "https://github.com/superwall/Superwall-iOS",
+    captured: DATE,
+    full: asset("superwall", "github-superwall-ios-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "mit-license",
+        file: asset("superwall", "github-superwall-ios-mit-license-2026-10-04.png"),
+        alt: "GitHub repository page of Superwall-iOS with the MIT license shown in the About sidebar.",
+        caption: "Superwall GitHub page, captured 2026-10-04: The iOS SDK is MIT licensed.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */
