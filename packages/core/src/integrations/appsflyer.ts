@@ -61,7 +61,8 @@ async function mobileS2S(i: BuildInput, c: Concept, platform: string, noAppReaso
   };
   const ids: [string, string][] = [["$idfa", "idfa"], ["$idfv", "idfv"], ["$gpsAdId", "advertising_id"], ["$amazonAdId", "amazon_aid"], ["$ip", "ip"]];
   for (const [a, k] of ids) { const v = attr(e, a); if (v) body[k] = v; }
-  if (i.context?.bundleId) body.bundleIdentifier = i.context.bundleId;
+  // A web purchase routed to the app carries the web app's bundle in its context, not the mobile app's.
+  if (i.context?.bundleId && platformOf(e.store) !== "web") body.bundleIdentifier = i.context.bundleId;
   const filter = attr(e, "$appsflyerSharingFilter");
   if (filter) {
     if (filter === "all") body.sharing_filter = "all";

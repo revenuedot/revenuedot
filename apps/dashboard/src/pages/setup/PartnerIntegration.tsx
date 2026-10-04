@@ -58,9 +58,11 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
     const settings: Record<string, unknown> = {};
     for (const f of spec.fields) {
       if (f.type === "secret") {
-        if (secrets[f.key]?.trim()) settings[f.key] = secrets[f.key]!.trim();
+        const applies = fieldApplies(spec, f, values);
+        // A value typed into a field that the integration type then hid is not saved.
+        if (secrets[f.key]?.trim() && applies) settings[f.key] = secrets[f.key]!.trim();
         else if (clear[f.key]) settings[f.key] = null;
-        else if (!current?.secrets[f.key]?.configured && f.required && fieldApplies(spec, f, values)) { setError({ message: `${f.label} is required.`, param: `settings.${f.key}` }); document.getElementById(`f-${f.key}`)?.focus(); return; }
+        else if (!current?.secrets[f.key]?.configured && f.required && applies) { setError({ message: `${f.label} is required.`, param: `settings.${f.key}` }); document.getElementById(`f-${f.key}`)?.focus(); return; }
         continue;
       }
       const v = values[f.key];

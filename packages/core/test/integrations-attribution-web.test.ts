@@ -64,6 +64,9 @@ describe("AppsFlyer web store purchases", () => {
     expect(r.json).toMatchObject({ appsflyer_id: "1700000000000-999", customer_user_id: "user_7", eventName: "rc_initial_purchase_event", ip: "198.51.100.4" });
     expect(JSON.parse(r.json.eventValue)).toEqual({ af_revenue: "59.99", af_price: 59.99, renewal: "false", af_content_id: "pro_annual", af_currency: "USD", af_order_id: "in_1Pxyz" });
     expect((await one("appsflyer", withAf, af(), { platform: "android" })).url).toBe("https://api2.appsflyer.com/inappevent/com.example.app");
+    // The context's bundle is the web app's, so it is not sent as the mobile app's bundleIdentifier.
+    expect(r.json).not.toHaveProperty("bundleIdentifier");
+    expect((await one("appsflyer", { ...withAf, store: "APP_STORE" }, af(), ios)).json.bundleIdentifier).toBe("com.example.app");
   });
 
   it("mobile S2S routing sends to the web API when the customer's last app has no app id or is unknown", async () => {
@@ -189,9 +192,15 @@ describe("Meta App Events API", () => {
     expect((await one("meta", { ...test, environment: "SANDBOX" }, META_AE, ios)).url).toBe("https://graph.facebook.com/v21.0/333444/activities");
   });
 
-  it("web funnel events still need the Conversions API dataset", async () => {
+  it("web funnel events are skipped, even with a dataset saved before the switch to the App Events API", async () => {
     const funnel = { ...base, type: "FUNNEL_VIEWED" };
     expect(await skipOf("meta", funnel, META_AE)).toMatch(/^Web funnel events are website events, which Meta takes only through the Conversions API/);
+    const stale = { settings: { ...META_AE.settings, dataset_id: "999" }, secrets: { ...META_AE.secrets, access_token: "EAA_old" } };
+    expect(await skipOf("meta", funnel, stale)).toMatch(/^Web funnel events are website events/);
+  });
+
+  it("web store purchases are not sent to the App Events API, which takes app events only", async () => {
+    expect(await skipOf("meta", { ...iosPurchase, store: "STRIPE" }, META_AE, ios)).toBe("STRIPE purchases are web purchases, which Meta's App Events API does not take: it reports app events only.");
   });
 
   it("the Conversions API also sends X-Forwarded-For with $ip", async () => {

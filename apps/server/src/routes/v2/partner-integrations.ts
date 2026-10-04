@@ -96,6 +96,13 @@ function checkField(f: IntegrationField, v: unknown, at: string): unknown {
   return v.trim();
 }
 
+/** A plain setting and the secret that goes with it: both set or neither. */
+function paired(settings: Record<string, unknown>, secrets: Record<string, string>, idKey: string, secretKey: string, idLabel: string, secretLabel: string) {
+  const id = settings[idKey] !== undefined && settings[idKey] !== null && settings[idKey] !== "";
+  if (id && !secrets[secretKey]) throw paramError(`settings.${secretKey}: ${secretLabel} is required with the ${idLabel}.`, `settings.${secretKey}`);
+  if (!id && secrets[secretKey]) throw paramError(`settings.${idKey}: ${idLabel} is required with the ${secretLabel}.`, `settings.${idKey}`);
+}
+
 /** Required fields and cross-field rules, on the merged result. */
 function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>, secrets: Record<string, string>, strictUrls: boolean) {
   for (const f of spec.fields) {
@@ -124,7 +131,16 @@ function checkComplete(spec: IntegrationSpec, settings: Record<string, unknown>,
   if (spec.kind === "firebase" && !(settings.ios_firebase_app_id && secrets.ios_api_secret) && !(settings.android_firebase_app_id && secrets.android_api_secret)) {
     throw paramError("settings: set a Firebase app ID and its API secret for iOS, Android or both.", "settings");
   }
-  if (spec.kind === "appsflyer" && !settings.ios_app_id && !settings.android_app_id && !settings.web_app_id && !settings.web_pba_bundle_id) throw paramError("settings: set the AppsFlyer app ID for iOS, Android, the web, or several.", "settings");
+  if (spec.kind === "appsflyer") {
+    // Each web API is an ID plus its credential; half of a pair could never send anything.
+    paired(settings, secrets, "web_app_id", "web_s2s_token", "Web SDK ID", "Web S2S API token");
+    paired(settings, secrets, "web_pba_bundle_id", "web_pba_dev_key", "Web (PBA) bundle ID", "Web (PBA) dev key");
+    if (!settings.ios_app_id && !settings.android_app_id && !settings.web_app_id && !settings.web_pba_bundle_id) throw paramError("settings: set the AppsFlyer app ID for iOS, Android, the web, or several.", "settings");
+  }
+  if (spec.kind === "meta") {
+    if (settings.api === "app_events") paired(settings, secrets, "sandbox_app_id", "sandbox_client_token", "Sandbox app ID", "Sandbox client token");
+    else paired(settings, secrets, "sandbox_dataset_id", "sandbox_access_token", "Sandbox dataset ID", "Sandbox access token");
+  }
   if (spec.kind === "adjust" && !settings.ios_app_token && !settings.android_app_token) throw paramError("settings: set the Adjust app token for iOS, Android or both.", "settings");
   // Fields the server will call (a Discord webhook, a Tag Manager server container, a partner's webhook URL).
   for (const f of spec.fields) {

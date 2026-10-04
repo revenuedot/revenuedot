@@ -85,6 +85,16 @@ describe("AppsFlyer web store purchases through the sender", () => {
     expect(JSON.stringify(detail)).not.toContain("pba_dev_key_9012");
     expect(detail.curl).toContain("https://webs2s.appsflyer.com/v1/pba-bundle/event");
   });
+
+  it("each web API needs its ID and its credential together", async () => {
+    const call = api();
+    const make = (settings: Record<string, unknown>) => call("POST", "/integrations/partners", { type: "appsflyer", settings: { dev_key: "af_dev_key_1234", ios_app_id: "id1", ...settings } });
+    expect((await make({ web_pba_bundle_id: "pba-bundle" })).body.param).toBe("settings.web_pba_dev_key");
+    expect((await make({ web_pba_dev_key: "pba_dev_key_9012" })).body.param).toBe("settings.web_pba_bundle_id");
+    expect((await make({ web_app_id: "web-sdk-id" })).body.param).toBe("settings.web_s2s_token");
+    expect((await make({ web_s2s_token: "af_web_token_5678" })).body.param).toBe("settings.web_app_id");
+    expect((await make({ web_pba_bundle_id: "pba-bundle", web_pba_dev_key: "pba_dev_key_9012" })).status).toBe(201);
+  });
 });
 
 describe("Meta App Events API through the sender", () => {
@@ -100,6 +110,9 @@ describe("Meta App Events API through the sender", () => {
     expect(res.status).toBe(201);
     // Switching back to the Conversions API without a dataset is refused.
     expect((await call("POST", `/integrations/partners/${res.body.id}`, { settings: { api: "conversions" } })).body.param).toBe("settings.dataset_id");
+    // The sandbox app ID and its client token go together.
+    expect((await call("POST", `/integrations/partners/${res.body.id}`, { settings: { sandbox_app_id: "777888" } })).body.param).toBe("settings.sandbox_client_token");
+    expect((await call("POST", `/integrations/partners/${res.body.id}`, { settings: { sandbox_client_token: "ct_sbx_secret" } })).body.param).toBe("settings.sandbox_app_id");
 
     await buy("meta_1", "app_store", { $fbAnonId: "fb-anon-1", $attConsentStatus: "authorized", $ip: "203.0.113.20" });
     const { f, seen } = fake();

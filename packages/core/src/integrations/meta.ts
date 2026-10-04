@@ -40,17 +40,17 @@ export async function buildMeta(i: BuildInput): Promise<Plan> {
   const c = conceptOf(e);
   const name = c ? nameFor(c, (x) => META_NAMES[x] ?? null, i.eventNames) : null;
   if (!c || !name || !(c in META_NAMES)) return skip(`${e.type} events are not sent to Meta.`);
-  const appEvents = i.settings.api === "app_events";
-  if (appEvents && !isFunnelConcept(c)) return buildMetaAppEvents(i, c, name);
+  if (i.settings.api === "app_events") {
+    // Dataset settings saved before a switch to the App Events API are hidden and unused: funnel events stop too.
+    if (isFunnelConcept(c)) return skip("Web funnel events are website events, which Meta takes only through the Conversions API. Switch the integration type to send them.");
+    return buildMetaAppEvents(i, c, name);
+  }
   // A test event would count as a real conversion and steer ad delivery; send it only to Events Manager's Test Events.
   if (c === "test" && !i.settings.test_event_code) return skip("Test events are sent to Meta only with a test event code, so they never count as real conversions.");
   const sandbox = isSandbox(e);
   const dataset = sandbox ? i.settings.sandbox_dataset_id : i.settings.dataset_id;
   const token = sandbox ? i.secrets.sandbox_access_token : i.secrets.access_token;
-  if (!dataset || !token) {
-    if (appEvents) return skip("Web funnel events are website events, which Meta takes only through the Conversions API. Switch the integration type to send them.");
-    return skip(sandbox ? "Sandbox events need a sandbox dataset ID and access token." : "No Meta dataset ID and access token are saved.");
-  }
+  if (!dataset || !token) return skip(sandbox ? "Sandbox events need a sandbox dataset ID and access token." : "No Meta dataset ID and access token are saved.");
   if (isFunnelConcept(c)) return buildMetaWeb(i, c, name, dataset, token);
   const platform = platformOf(e.store, i.context?.platform);
   const anon = attr(e, "$fbAnonId");
@@ -92,10 +92,12 @@ async function buildMetaAppEvents(i: BuildInput, c: Concept, name: string): Prom
   const e = i.event;
   const sandbox = isSandbox(e);
   if (c === "test" && !sandbox) return skip("Meta's App Events API has no test mode, so a production test event would count as a real conversion. Send the test event to the sandbox app (Sandbox environment) instead.");
-  const appId = typeof (sandbox ? i.settings.sandbox_app_id : i.settings.app_id) === "string" ? String(sandbox ? i.settings.sandbox_app_id : i.settings.app_id).trim() : "";
+  const rawAppId = sandbox ? i.settings.sandbox_app_id : i.settings.app_id;
+  const appId = typeof rawAppId === "string" ? rawAppId.trim() : "";
   const token = sandbox ? i.secrets.sandbox_client_token : i.secrets.client_token;
   if (!appId || !token) return skip(sandbox ? "Sandbox events need a sandbox app ID and client token." : "No Meta app ID and client token are saved.");
   const platform = platformOf(e.store, i.context?.platform);
+  if (platform === "web") return skip(`${e.store} purchases are web purchases, which Meta's App Events API does not take: it reports app events only.`);
   const anon = attr(e, "$fbAnonId");
   const madid = madidOf(e, platform);
   if (!anon && !madid) return skip("The customer has no $fbAnonId or advertising id, so Meta cannot match the event.");
@@ -103,7 +105,7 @@ async function buildMetaAppEvents(i: BuildInput, c: Concept, name: string): Prom
   const value = Math.max(0, revenueUsd(e, i.settings.reporting));
   const body: Record<string, unknown> = {
     event: "CUSTOM_APP_EVENTS", advertiser_tracking_enabled: "1", application_tracking_enabled: "1",
-    app_user_id: String(e.app_user_id ?? e.original_app_user_id), client_token: token,
+    app_user_id: String(e.app_user_id ?? e.original_app_user_id ?? ""), client_token: token,
     ...(madid ? { advertiser_id: madid } : { anon_id: anon }),
     custom_events: [{
       _eventName: name, fb_content: [{ id: e.product_id, quantity: 1 }], _valueToSum: value, fb_content_type: "product", fb_currency: "USD",
