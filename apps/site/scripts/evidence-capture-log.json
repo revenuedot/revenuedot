@@ -1706,5 +1706,32 @@
     "full": [],
     "crops": [],
     "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/Purchasely/Purchasely-iOS\nCall log:\n  - navigating to \"https://github.com/Purchasely/Purchasely-iOS\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "iaphub",
+    "page": "home",
+    "url": "https://www.iaphub.com/",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.iaphub.com/\nCall log:\n  - navigating to \"https://www.iaphub.com/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "iaphub",
+    "page": "pricing",
+    "url": "https://www.iaphub.com/pricing",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.iaphub.com/pricing\nCall log:\n  - navigating to \"https://www.iaphub.com/pricing\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "iaphub",
+    "page": "github-iaphub-ios-sdk",
+    "url": "https://github.com/iaphub/iaphub-ios-sdk",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/iaphub/iaphub-ios-sdk\nCall log:\n  - navigating to \"https://github.com/iaphub/iaphub-ios-sdk\", waiting until \"domcontentloaded\"\n"
   }
 ]
