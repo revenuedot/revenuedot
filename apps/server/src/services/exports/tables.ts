@@ -1,6 +1,6 @@
 import { commissionModel } from "../commission.js";
 import { and, asc, eq, gt, inArray, lte, or, sql, type AnyColumn } from "drizzle-orm";
-import { commission, type Store } from "@revenuedot/core";
+import { commission, splitGross, taxShare, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../../repo/catalog.js";
 import { baseOrderId } from "../../stores/google/map.js";
@@ -240,6 +240,7 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
     const idx = Math.max(0, chain.findIndex((x) => x.id === t.id));
     const comm = cm.rate({ id: t.id, store: t.store, appId: t.appId, at: t.purchasedAt, kind: t.kind, isSandbox: t.isSandbox, country: t.countryCode, firstSeen: i?.c.firstSeen ?? null });
     const usd = t.revenueUsd;
+    const split = splitGross(1, taxShare({ store: t.store, country: t.countryCode, taxAmount: t.taxAmount, priceAmount: t.priceAmount }), comm);
     const grace = current && s?.gracePeriodExpiresDate && t.expiresAt && s.gracePeriodExpiresDate > t.expiresAt ? s.gracePeriodExpiresDate : null;
     const auto = t.kind !== "one_time" && (product ? product.type === "subscription" : !!t.expiresAt);
     return {
@@ -248,7 +249,7 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
       product_identifier: t.productIdentifier, product_display_name: product?.displayName ?? null, product_duration: product?.duration ?? null,
       start_time: t.purchasedAt, end_time: auto ? t.expiresAt : null, grace_period_end_time: grace, effective_end_time: refundedAt ?? grace ?? t.expiresAt,
       store: t.store, is_auto_renewable: auto, is_trial_period: t.kind === "trial", is_in_intro_offer_period: current && s?.periodType === "intro", is_sandbox: t.isSandbox,
-      price_in_usd: refundedAt ? 0 : usd, purchase_price_in_usd: usd, takehome_percentage: 1 - comm, tax_percentage: 0, commission_percentage: comm,
+      price_in_usd: refundedAt ? 0 : usd, purchase_price_in_usd: usd, takehome_percentage: split.proceeds, tax_percentage: split.taxPercentage, commission_percentage: split.commissionPercentage,
       store_transaction_id: t.storeTransactionId,
       original_store_transaction_id: t.store === "play_store" ? baseOrderId(t.storeTransactionId) : s?.originalTransactionId ?? s?.storeKey ?? t.storeTransactionId,
       refunded_at: refundedAt, unsubscribe_detected_at: current ? s?.unsubscribeDetectedAt ?? null : null, billing_issues_detected_at: current ? s?.billingIssuesDetectedAt ?? null : null,

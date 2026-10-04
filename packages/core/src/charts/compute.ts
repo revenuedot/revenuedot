@@ -1,4 +1,5 @@
 import { commission } from "../events.js";
+import { revenueFactor } from "../tax.js";
 import type { Store } from "../types.js";
 import { CANCEL_REASONS, type ChartDef, type MeasureDef } from "./catalog.js";
 import {
@@ -36,7 +37,10 @@ const PAID_KINDS = new Set(["purchase", "renewal", "one_time"]);
 const CONVERSION_KINDS = new Set(["trial", "purchase", "one_time"]);
 const rate = (a: number, b: number) => (b > 0 ? (a / b) * 100 : null);
 const div = (a: number, b: number) => (b > 0 ? a / b : null);
-const proceedsFactor = (t: { store: string; commission?: number }) => 1 - (t.commission ?? commission(t.store as Store));
+const proceedsFactor = (t: { store: string; commission?: number; tax?: number }) => revenueFactor("proceeds", t.tax ?? 0, t.commission ?? commission(t.store as Store));
+/** The share of a row's gross revenue a revenue type counts: all of it, net of taxes, or proceeds (tax.ts). */
+const revenueTypeFactor = (t: { store: string; commission?: number; tax?: number }, type: string | undefined) =>
+  revenueFactor(type, t.tax ?? 0, t.commission ?? commission(t.store as Store));
 
 /** Parses "7_days" / "unbounded" selector values into days (Infinity for unbounded). */
 export const selectorDays = (v: string) => (v === "unbounded" ? Infinity : Number(v.split("_")[0]));
@@ -249,11 +253,10 @@ function cohortSeries<T>(members: (d: Prepared, sel: Record<string, string>) => 
 
 // ── Revenue ────────────────────────────────────────────────────────────────────────────────────────────────────────
 const revenue = flow((d, w, sel) => {
-  const proceeds = sel.revenue_type === "proceeds";
   let money = 0, count = 0;
   for (const t of within(d.txsByTime, atOf, w)) {
     if (t.kind === "trial") continue;
-    money += d.money(t) * (proceeds ? proceedsFactor(t) : 1);
+    money += d.money(t) * revenueTypeFactor(t, sel.revenue_type);
     if (PAID_KINDS.has(t.kind)) count++;
   }
   if (d.adRevenueOk) for (const e of within(d.sdkByTime, atOf, w)) if (e.type === "rc_ads_ad_revenue") money += (e.revenueUsd ?? 0) * d.input.fx(e.at);
@@ -453,9 +456,9 @@ const conversionToPaying = cohortSeries(newCustomers(conversionDays), (d, ids, s
   return [rate(n, ids.length), n, ids.length];
 });
 
-/** Revenue of a customer in [from, to): purchases and renewals minus refunds recorded in it. */
-const revenueIn = (d: Prepared, id: string, from: number, to: number, proceeds = false) =>
-  d.txsOf(id).reduce((s, t) => (t.at >= from && t.at < to && t.at <= d.now && t.kind !== "trial" ? s + d.money(t) * (proceeds ? proceedsFactor(t) : 1) : s), 0);
+/** Revenue of a customer in [from, to): purchases and renewals minus refunds recorded in it, as gross, net of taxes or proceeds. */
+const revenueIn = (d: Prepared, id: string, from: number, to: number, type: string = "revenue") =>
+  d.txsOf(id).reduce((s, t) => (t.at >= from && t.at < to && t.at <= d.now && t.kind !== "trial" ? s + d.money(t) * revenueTypeFactor(t, type) : s), 0);
 
 const ltvPerCustomer = cohortSeries(newCustomers(lifetimeDays), (d, ids, sel) => {
   const days = lifetimeDays(sel);
@@ -672,7 +675,7 @@ const cohortExplorer: CohortFn = (d, f, sel) => {
     for (const id of ids) {
       const c = start.get(id)!;
       const from = cumulative ? c : addMonths(c, n), to = addMonths(c, n + 1);
-      if (money) { v += revenueIn(d, id, from, to, what === "proceeds"); continue; }
+      if (money) { v += revenueIn(d, id, from, to, what === "proceeds" || what === "revenue_net_of_taxes" ? what : "revenue"); continue; }
       const at = Math.min(to, d.now + 1) - 1;
       for (const s of d.subsOf(id)) if (paidAt(s, at) && (what === "retained_subscriptions" || statusAt(s, at, d.now) === "set_to_renew")) v++;
     }
@@ -805,5 +808,5 @@ export const hasComputation = (name: string) => name in SERIES || name in COHORT
 /** Helpers the Customers tab (contributors.ts) shares with the charts above, so both count the same things the same way. */
 export const chartHelpers = {
   within, atOf, trialStarters, oncePerCustomer, pairs, paidInWindow, revenueIn, lastOptOut, billingIssueInTrial, cohortMembers,
-  windowEnd, conversionDays, lifetimeDays, proceedsFactor, statusAt, PAID_KINDS, CONVERSION_KINDS,
+  windowEnd, conversionDays, lifetimeDays, proceedsFactor, revenueTypeFactor, statusAt, PAID_KINDS, CONVERSION_KINDS,
 };

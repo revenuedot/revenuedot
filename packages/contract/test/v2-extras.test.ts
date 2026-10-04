@@ -211,6 +211,15 @@ describe("store kit config, management url, revenue", () => {
     const net = await call("GET", M, {}, { query: "start_date=2026-09-01&end_date=2026-09-30&revenue_type=proceeds" });
     expect(net.body.value).toBeLessThan(30);
     expect(net.body.value).toBeGreaterThan(20);
+    // Net of taxes: r2 bought in Germany (19% VAT inside the price), r1 in the US (no tax in the price).
+    await h.db.update(schema.transactions).set({ countryCode: "DE" }).where(eq(schema.transactions.revenueUsd, 20));
+    await h.db.update(schema.transactions).set({ countryCode: "US" }).where(eq(schema.transactions.revenueUsd, 10));
+    const taxed = await call("GET", M, {}, { query: "start_date=2026-09-01&end_date=2026-09-30&revenue_type=revenue_net_of_taxes" });
+    expect(taxed.body).toMatchObject({ revenue_type: "revenue_net_of_taxes", value: Math.round((10 + 20 / 1.19) * 100) / 100 });
+    // A tax the store reported wins over the estimate: $2 of the $20.
+    await h.db.update(schema.transactions).set({ taxAmount: 2, taxSource: "store", priceAmount: 20 }).where(eq(schema.transactions.revenueUsd, 20));
+    expect((await call("GET", M, {}, { query: "start_date=2026-09-01&end_date=2026-09-30&revenue_type=revenue_net_of_taxes" })).body.value).toBe(28);
+    expect((await call("GET", M, {}, { query: "start_date=2026-09-01&end_date=2026-09-30&revenue_type=proceeds" })).body.value).toBe(Math.round((10 * 0.7 + 18 * 0.7) * 100) / 100);
     for (const q of ["end_date=2026-09-30", "start_date=2026-09-30&end_date=2026-09-01", "start_date=nope&end_date=2026-09-01", "start_date=2026-09-01&end_date=2026-09-30&currency=EUR", "start_date=2026-09-01&end_date=2026-09-30&revenue_type=x"]) {
       expect((await call("GET", M, {}, { query: q })).status, q).toBe(400);
     }

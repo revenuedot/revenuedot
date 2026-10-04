@@ -53,6 +53,31 @@ function unitPriceOf(price: StripePrice, quantity: number, subscriptionCurrency:
 
 export type RegisterOn = "invoice_paid" | "invoice_created";
 
+/**
+ * The tax on an invoice in the lowest denomination: `total_taxes` (API versions from 2025-03-31), `tax` (earlier ones),
+ * else `total` − `total_excluding_tax`. null when the invoice says nothing about tax.
+ */
+export function invoiceTax(inv: StripeInvoice): number | null {
+  if (Array.isArray(inv.total_taxes)) return inv.total_taxes.reduce((s, t) => s + (typeof t?.amount === "number" ? t.amount : 0), 0);
+  if (typeof inv.tax === "number") return inv.tax;
+  if (typeof inv.total === "number" && typeof inv.total_excluding_tax === "number") return Math.max(0, inv.total - inv.total_excluding_tax);
+  return null;
+}
+
+/**
+ * The tax inside what was paid: a credit balance or a partial payment pays less than the invoice total, and the tax
+ * shrinks in proportion (amount paid ÷ total).
+ */
+export function paidTax(inv: StripeInvoice, paid: number): number | null {
+  const tax = invoiceTax(inv);
+  if (tax === null) return null;
+  return typeof inv.total === "number" && inv.total > 0 && paid < inv.total ? Math.round((tax * paid) / inv.total) : tax;
+}
+
+/** A price with the tax Stripe reported inside it (lowest denomination), never more than the price. */
+const withTax = (price: Price, taxMinor: number | null, currency: string): Price =>
+  taxMinor === null || !Number.isFinite(taxMinor) ? price : { ...price, tax: Math.min(Math.abs(price.amount), fromMinor(Math.max(0, taxMinor), currency)) };
+
 /** Thrown when a subscription must not be registered yet (its first invoice is unpaid and the app counts paid invoices only). */
 export class StripeNotYetPaid extends Error {}
 
@@ -95,7 +120,7 @@ export function mapSubscription(sub: StripeSubscription, ctx: { catalog: Catalog
   let storeTransactionId = inv?.id ?? stored?.storeTransactionId ?? sub.id;
   // A paid invoice costs what was paid; an open one that counts (register_on invoice_created) what is due.
   const invoiceAmount = !inv ? null : invoicePaid(inv) ? inv.amount_paid : inv.amount_due ?? inv.total;
-  let price: Price | null = trial ? { amount: 0, currency } : inv && paid && !proration && typeof invoiceAmount === "number" ? { amount: fromMinor(invoiceAmount, currency), currency } : unitPrice;
+  let price: Price | null = trial ? { amount: 0, currency } : inv && paid && !proration && typeof invoiceAmount === "number" ? withTax({ amount: fromMinor(invoiceAmount, currency), currency }, paidTax(inv, invoiceAmount), currency) : unitPrice;
   let billingIssuesDetectedAt: Date | null = null;
   let gracePeriodExpiresDate: Date | null = null;
   let unsubscribeDetectedAt: Date | null = null;
@@ -188,7 +213,7 @@ export function mapCheckoutOneTime(s: StripeCheckoutSession, ctx: { catalog: Cat
       storeTransactionId: i === 0 ? key : `${key}:${i}`,
       isSandbox: !s.livemode, isConsumable: ctx.catalog.productType(productIdentifier) === "consumable",
       purchaseDate: sec(s.created) ?? ctx.now, refundedAt: null,
-      price: typeof li.amount_total === "number" ? { amount: fromMinor(li.amount_total, currency), currency } : null,
+      price: typeof li.amount_total === "number" ? withTax({ amount: fromMinor(li.amount_total, currency), currency }, typeof li.amount_tax === "number" ? li.amount_tax : null, currency) : null,
       countryCode: s.customer_details?.address?.country ?? null,
     };
   });

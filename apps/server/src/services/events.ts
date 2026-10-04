@@ -1,6 +1,6 @@
 import { commissionRateFor } from "./commission.js";
 import { and, eq, sql } from "drizzle-orm";
-import { OPT_IN_EVENT_TYPES, commission, rcDate, webhookStore, type DerivedEvent, type EventType, type Store } from "@revenuedot/core";
+import { OPT_IN_EVENT_TYPES, commission, rcDate, splitGross, taxShare, webhookStore, type DerivedEvent, type EventType, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { aliasesOf, type CustomerRow } from "../repo/customers.js";
 import { entitlementMap } from "../repo/catalog.js";
@@ -37,7 +37,7 @@ export interface EventSubject {
   isSandbox: boolean;
   isFamilyShare: boolean;
   countryCode?: string | null;
-  price?: { amount: number; currency: string } | null;
+  price?: { amount: number; currency: string; tax?: number | null } | null;
   priceUsd?: number | null;
   presentedOfferingId?: string | null;
   /** The store offer id of this period (Apple offerIdentifier, Google offerId): webhooks send it as `offer_code`. */
@@ -104,6 +104,9 @@ export async function recordEvent(db: DB, opts: {
     const usd = subject.priceUsd !== undefined && subject.priceUsd !== null ? subject.priceUsd : subject.price?.currency === "USD" ? subject.price.amount : null;
     const local = subject.price ? subject.price.amount : null;
     const money = (v: number | null) => (v === null ? null : moves ? sign * v : 0);
+    // Shares of the gross price, as RevenueCat sends them: tax (the store's figure, else the country estimate), then the
+    // commission on what is left (core tax.ts).
+    const split = splitGross(1, taxShare({ store: subject.store, country: subject.countryCode, taxAmount: subject.price?.tax, priceAmount: subject.price?.amount }), comm);
     event = {
       ...common, ...identity, product_id: subject.productId,
       period_type: subject.periodType.toUpperCase(), purchased_at_ms: subject.purchasedAt.getTime(),
@@ -113,8 +116,8 @@ export async function recordEvent(db: DB, opts: {
       original_transaction_id: subject.originalTransactionId, is_family_share: subject.isFamilyShare,
       country_code: subject.countryCode ?? null, currency: subject.price?.currency ?? null,
       price: money(usd), price_in_purchased_currency: money(local),
-      subscriber_attributes, store: webhookStore(subject.store), takehome_percentage: 1 - comm,
-      tax_percentage: 0, commission_percentage: comm, offer_code: subject.offerId ?? null,
+      subscriber_attributes, store: webhookStore(subject.store), takehome_percentage: round4(1 - split.taxPercentage - split.commissionPercentage),
+      tax_percentage: round4(split.taxPercentage), commission_percentage: round4(split.commissionPercentage), offer_code: subject.offerId ?? null,
     };
     if (type === "BILLING_ISSUE") event.grace_period_expiration_at_ms = subject.gracePeriodExpiresAt ? subject.gracePeriodExpiresAt.getTime() : null;
     if (type === "SUBSCRIPTION_PAUSED") event.auto_resume_at_ms = subject.autoResumeAt ? subject.autoResumeAt.getTime() : null;

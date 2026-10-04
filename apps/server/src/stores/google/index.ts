@@ -1,6 +1,6 @@
 import type { AppRow, StoreAdapter } from "../types.js";
 import { Codes, RCError } from "../../errors.js";
-import { GoogleApiError, GooglePlayClient, toRCError, type GoogleClientOptions } from "./api.js";
+import { GoogleApiError, GooglePlayClient, toRCError, type GoogleClientOptions, type GoogleMoney, type Order } from "./api.js";
 import type { VerifiedPurchase } from "../types.js";
 import { baseOrderId, mapProduct, mapSubscription, S, type Catalog, type Posted } from "./map.js";
 
@@ -172,11 +172,28 @@ export async function purchaseForGoogleOrder(client: GooglePlayClient, app: AppR
   const kind = li?.subscriptionDetails ? "subscription" : li?.oneTimePurchaseDetails ? "one_time" : catalogType ? (catalogType === "subscription" ? "subscription" : "one_time") : null;
   if (kind !== "one_time") {
     try {
-      return await verifySubscription(client, app, order.purchaseToken, catalog, now, null);
+      return withOrderTax(await verifySubscription(client, app, order.purchaseToken, catalog, now, null), order);
     } catch (e) {
       if (kind === "subscription" || !productId || !(e instanceof GoogleApiError && e.kind === "invalid_token")) throw e;
     }
   }
   if (!productId) return null;
-  return verifyProduct(client, app, productId, order.purchaseToken, catalog, now, null);
+  return withOrderTax(await verifyProduct(client, app, productId, order.purchaseToken, catalog, now, null), order);
+}
+
+const moneyOf = (m: GoogleMoney | undefined) => (m?.units === undefined && m?.nanos === undefined ? null : Number(m?.units ?? 0) + (m?.nanos ?? 0) / 1e9);
+
+/**
+ * The order's tax on the purchase it paid for (core tax.ts): only when the purchase's period is this order and the
+ * price is in the order's currency. Google receipts carry no tax; only the orders API reports it.
+ */
+export function withOrderTax<P extends VerifiedPurchase | null>(p: P, order: Order): P {
+  if (!p?.price || p.storeTransactionId !== order.orderId) return p;
+  const tax = moneyOf(order.tax);
+  if (tax === null || !Number.isFinite(tax) || (order.tax?.currencyCode ?? "").toUpperCase() !== p.price.currency.toUpperCase()) return p;
+  // The order's total is what the buyer paid, tax included; the product price excludes it where the tax is added at
+  // checkout (the US), so the tax goes with the total.
+  const total = moneyOf(order.total);
+  const amount = total !== null && Number.isFinite(total) && total > 0 && (order.total?.currencyCode ?? "").toUpperCase() === p.price.currency.toUpperCase() ? total : p.price.amount;
+  return { ...p, price: { ...p.price, amount, tax: Math.min(Math.abs(amount), Math.max(0, tax)) } };
 }

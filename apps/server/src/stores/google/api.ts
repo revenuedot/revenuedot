@@ -71,10 +71,15 @@ export interface ProductPurchase {
 }
 
 /** orders resource (the fields RevenueDot reads). */
+/** A Money value of the Play Developer API. */
+export interface GoogleMoney { currencyCode?: string; units?: string; nanos?: number }
 export interface Order {
   orderId: string;
   purchaseToken?: string;
   state?: string;
+  /** What the buyer paid and the tax inside it (the order's currency). */
+  total?: GoogleMoney;
+  tax?: GoogleMoney;
   lineItems?: Array<{
     productId?: string;
     productTitle?: string;

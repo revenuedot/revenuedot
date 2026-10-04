@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { newId } from "@revenuedot/core";
+import { newId, taxShare } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { aliasesOf, findCustomer, getOrCreateCustomer, setAttributes, type CustomerRow } from "../../repo/customers.js";
@@ -326,10 +326,11 @@ export function customerRoutes(r: V2Router, deps: Deps) {
     const expires = t?.expiresAt ?? s.expiresDate;
     const local = t?.priceAmount ?? s.priceAmount;
     const currency = t?.priceCurrency ?? s.priceCurrency;
+    const tax = taxShare({ store: s.store, country: t?.countryCode ?? s.countryCode, taxAmount: t?.taxAmount, priceAmount: t?.priceAmount });
     return c.json({
       object: "subscription_transaction", id: txId, purchased_at: purchasedAt.getTime(), product_store_identifier: s.productIdentifier,
-      revenue_in_local_currency: local !== null && currency ? monetaryFor(local, currency, s.store, rate) : null,
-      revenue_in_usd: monetaryFor(t?.revenueUsd ?? s.priceUsd ?? 0, "USD", s.store, rate),
+      revenue_in_local_currency: local !== null && currency ? monetaryFor(local, currency, s.store, rate, tax) : null,
+      revenue_in_usd: monetaryFor(t?.revenueUsd ?? s.priceUsd ?? 0, "USD", s.store, rate, tax),
       expiration_date: expires ? expires.getTime() : null,
       effective_expiration_date: after?.refundedAt && txId === after.storeTransactionId ? after.refundedAt.getTime() : expires ? expires.getTime() : null,
     });

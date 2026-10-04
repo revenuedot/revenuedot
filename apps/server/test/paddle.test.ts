@@ -80,7 +80,9 @@ describe("POST /v1/receipts with X-Platform: paddle", () => {
     expect(ci.subscriber.entitlements.pro).toMatchObject({ product_identifier: PADDLE_PRICES.monthly, expires_date: "2026-10-01T12:00:00Z" });
     const [ev] = await e.events("INITIAL_PURCHASE");
     expect(ev).toMatchObject({ store: "PADDLE", product_id: PADDLE_PRICES.monthly, price: 9.99, currency: "USD", environment: "SANDBOX", transaction_id: transaction.id,
-      original_transaction_id: s.id, country_code: "US", app_user_id: "web_user_1", entitlement_ids: ["pro"], commission_percentage: 0.05 });
+      original_transaction_id: s.id, country_code: "US", app_user_id: "web_user_1", entitlement_ids: ["pro"],
+      // Paddle reported $1.00 of tax inside the $9.99: shares of the gross, the 5% fee taken from what is left.
+      tax_percentage: 0.1001, commission_percentage: 0.045, takehome_percentage: 0.8549 });
     const calls = e.paddle.calls.filter((c) => c.url.includes("/subscriptions/") || c.url.includes("/transactions"));
     expect(calls.every((c) => c.url.startsWith("https://sandbox-api.paddle.com/") && c.auth === `Bearer ${FAKE_PADDLE_KEY}`)).toBe(true);
     // Posting it again changes nothing.

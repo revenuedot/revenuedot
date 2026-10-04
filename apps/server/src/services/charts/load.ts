@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
-import { commissionRates, type ChartInput, type ChartLifecycle, type ChartRefundEvent, type TxKind } from "@revenuedot/core";
+import { commissionRates, taxShare, type ChartInput, type ChartLifecycle, type ChartRefundEvent, type TxKind } from "@revenuedot/core";
 import { commissionSettingsOf } from "../commission.js";
 import { schema, type DB } from "@revenuedot/db";
 import { ensureEcbRange, fxLookup, type FxFetch } from "../fx.js";
@@ -136,7 +136,9 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
   return {
     now: opts.now.getTime(),
     fx: toDisplay,
+    // Tax inside each price: what the store reported, else the country estimate (core tax.ts).
     txs: txs.filter((t) => KINDS.has(t.kind as TxKind)).map((t) => ({ commission: rates.get(t.id),
+      tax: taxShare({ store: t.store, country: t.countryCode, taxAmount: t.taxAmount, priceAmount: t.priceAmount }),
       id: t.id, customerId: t.customerId, appId: t.appId, store: t.store, storeTransactionId: t.storeTransactionId, productId: t.productIdentifier,
       kind: t.kind as TxKind, at: t.purchasedAt.getTime(), expiresAt: t.expiresAt ? t.expiresAt.getTime() : null, usd: t.revenueUsd, country: t.countryCode,
       offerType: t.offerType,
