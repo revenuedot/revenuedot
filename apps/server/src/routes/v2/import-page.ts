@@ -461,7 +461,9 @@ function importTransactions(ws: WorkingSet, ctx: Ctx, customerId: string, s: Imp
   for (const t of txs) {
     const revenue = t.revenue_usd ?? (t.price?.currency === "USD" ? t.price.amount : 0);
     const kind = t.id === first || txs.length === 1 && !s.transactions?.length ? (revenue === 0 && s.status === "trialing" ? "trial" : "purchase") : "renewal";
-    const offerType = ("offer_type" in t ? t.offer_type : undefined) ?? (kind === "trial" ? "free_trial" : kind === "purchase" && s.period_type === "intro" ? "introductory" : null);
+    // An explicit offer_type (null: no offer) wins; without one, a trial is a free trial and an `intro` first period introductory.
+    const given = "offer_type" in t ? t.offer_type : undefined;
+    const offerType = given !== undefined ? given : kind === "trial" ? "free_trial" : kind === "purchase" && s.period_type === "intro" ? "introductory" : null;
     ws.addTxn({
       id: newId("txn_", 16), projectId: ctx.projectId, customerId, appId: v.appId, store: s.store, storeTransactionId: t.id,
       productIdentifier: v.productIdentifier, kind, isSandbox: v.isSandbox, purchasedAt: new Date(t.purchased_at), expiresAt: d(t.expires_at),

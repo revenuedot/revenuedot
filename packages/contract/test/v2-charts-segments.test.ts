@@ -58,11 +58,13 @@ describe("renewal cycle", () => {
     expect(r.body.values.filter((v: any) => v.measure === 0).map((v: any) => v.value)).toEqual([10, 10, 10, 10]);
   });
 
-  it("is offered to ARR but offer type is not", async () => {
+  it("is offered to ARR and MRR but offer type is not, and neither to the movement charts", async () => {
     expect((await chart("arr", `${MONTHS}&segment=subscription_renewal_cycle_group`)).status).toBe(200);
     const r = await chart("arr", `${MONTHS}&segment=offer_type`);
     expect(r.status).toBe(400);
     expect(r.body.message).toContain("offer_type");
+    expect((await chart("mrr", `${MONTHS}&segment=offer_type`)).status).toBe(400);
+    expect((await chart("mrr_movement", `${MONTHS}&segment=subscription_renewal_cycle_group`)).status).toBe(400);
   });
 });
 
@@ -96,5 +98,8 @@ describe("custom attributes", () => {
     expect(s.ios).toEqual([0, 0, 10, 10]);
     expect(s["Not set"]).toEqual([0, 10, 10, 15]);
     expect((await chart("revenue", `${MONTHS}&segment=custom_attribute:`)).status).toBe(400);
+    // Reserved attributes such as $email never become a dimension.
+    expect((await chart("revenue", `${MONTHS}&segment=${encodeURIComponent("custom_attribute:$email")}`)).status).toBe(400);
+    expect((await chart("revenue", `${MONTHS}&filters=${q([{ name: "custom_attribute:$email", values: ["u_a@example.com"] }])}`)).status).toBe(400);
   });
 });

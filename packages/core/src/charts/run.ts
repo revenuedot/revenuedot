@@ -2,7 +2,7 @@ import { customAttributeKey, isCustomAttributeDim, type ChartDef, type Dim } fro
 import { ATTRIBUTION_DIMS, type AttributionDim } from "../attribution.js";
 import { computeChart, Frame, Prepared, type ChartOutput, type ChartRequest } from "./compute.js";
 import { productIndex, type ChartCustomer, type ChartInput } from "./model.js";
-import { isPeriodDim, tagValue, txTag } from "./periods.js";
+import { AD_REVENUE_TAG, isPeriodDim, tagValue, txTag } from "./periods.js";
 
 /** One filter: values are OR-ed; `exclude` keeps everything except them (the "Other" segment). */
 export interface ChartFilter { name: Dim; values: string[]; exclude?: boolean }
@@ -83,6 +83,8 @@ export function dimValues(input: ChartInput, dim: Dim): string[] {
     const d = new Prepared(input);
     const { byTx } = d.periodTags;
     for (const t of d.baseTxs) if (t.kind !== "refund" && t.kind !== "refund_reversal") add(tagValue(txTag(byTx, t), dim));
+    // Ad revenue (Revenue chart) belongs to no period: its value gets a segment too, so segments add up to the total.
+    for (const e of input.sdkEvents) if (e.type === "rc_ads_ad_revenue") add(tagValue(AD_REVENUE_TAG, dim));
     return sorted();
   }
   if (isCustomerDim(dim)) for (const c of input.customers) add(g.fromCustomer(c.id, dim));

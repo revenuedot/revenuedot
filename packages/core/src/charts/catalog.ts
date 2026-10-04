@@ -27,7 +27,9 @@ export type StaticDim = "app" | "store" | "product" | "product_duration" | "offe
 export type CustomAttributeDim = `custom_attribute:${string}`;
 export type Dim = StaticDim | CustomAttributeDim;
 export const CUSTOM_ATTRIBUTE_PREFIX = "custom_attribute:";
-export const isCustomAttributeDim = (d: string): d is CustomAttributeDim => d.startsWith(CUSTOM_ATTRIBUTE_PREFIX) && d.length > CUSTOM_ATTRIBUTE_PREFIX.length;
+/** Reserved `$` attributes ($email, $phoneNumber, attribution …) are never dimensions: they would put personal data in charts. */
+export const isCustomAttributeDim = (d: string): d is CustomAttributeDim =>
+  d.startsWith(CUSTOM_ATTRIBUTE_PREFIX) && d.length > CUSTOM_ATTRIBUTE_PREFIX.length && !d.startsWith(`${CUSTOM_ATTRIBUTE_PREFIX}$`);
 export const customAttributeKey = (d: CustomAttributeDim) => d.slice(CUSTOM_ATTRIBUTE_PREFIX.length);
 export const customAttributeDim = (key: string): CustomAttributeDim => `${CUSTOM_ATTRIBUTE_PREFIX}${key}`;
 export const CUSTOM_ATTRIBUTES_GROUP = "Custom attributes";
@@ -122,7 +124,9 @@ const ADS: StaticDim[] = ["app", "country", "platform", "app_version", ...ATTR];
 const PAYWALL: StaticDim[] = ["paywall", "app", "country", "platform", "app_version", ...ATTR];
 /**
  * Period dimensions, per chart (the allow list; prd/charts/PRD.md "Renewal cycle and offer type"). Offered where the
- * measure comes from paid periods, trials or their transactions; ARR takes the renewal cycle but not the offer type.
+ * measure comes from paid periods, trials or their transactions; ARR and MRR take the renewal cycle but not the offer type.
+ * The movement charts take neither: a renewal moves a subscription from one cycle to the next, which no movement
+ * category (new, expansion, churn …) describes.
  */
 const CYCLE: StaticDim[] = ["subscription_renewal_cycle_group"];
 const PERIOD: StaticDim[] = [...CYCLE, "offer_type"];
@@ -143,10 +147,10 @@ export const CHARTS: ChartDef[] = [
   def({ name: "arr", display_name: "ARR", group: "revenue", display_type: "line", shape: "stock", dims: [...SUBS, ...CYCLE],
     description: "Annual recurring revenue: MRR at the end of each period times 12.",
     measures: [m("arr", "ARR", "$", "MRR at the end of the period × 12.")] }),
-  def({ name: "mrr", display_name: "MRR", group: "revenue", display_type: "line", shape: "stock", dims: [...SUBS, ...PERIOD],
+  def({ name: "mrr", display_name: "MRR", group: "revenue", display_type: "line", shape: "stock", dims: [...SUBS, ...CYCLE],
     description: "Monthly recurring revenue: every active paid subscription's price normalised to one month, at the end of each period.",
     measures: [m("mrr", "MRR", "$", "Sum of the monthly value of each paid subscription with access at the end of the period.")] }),
-  def({ name: "mrr_movement", display_name: "MRR Movement", group: "revenue", display_type: "stacked_bar", shape: "flow", dims: [...SUBS, ...PERIOD],
+  def({ name: "mrr_movement", display_name: "MRR Movement", group: "revenue", display_type: "stacked_bar", shape: "flow", dims: SUBS,
     description: "How MRR changed in each period: new, resubscribed and expanded MRR added; churned and contracted MRR lost.",
     measures: [flowM("new_mrr", "New MRR", "$", "Monthly value of subscriptions that became paid, other than resubscriptions and product changes."),
       flowM("resubscription_mrr", "Resubscription MRR", "$", "Monthly value of subscriptions started by customers whose earlier subscription had ended."),
@@ -164,7 +168,7 @@ export const CHARTS: ChartDef[] = [
   def({ name: "actives", display_name: "Active Subscriptions", group: "subscriptions", display_type: "line", shape: "stock", dims: [...SUBS, ...PERIOD],
     description: "Paid subscriptions with access at the end of each period, including cancelled ones that have not expired and ones in a grace period.",
     measures: [m("actives", "Active Subscriptions", "#", "Paid subscriptions with access at the end of the period. Trials are not counted.")] }),
-  def({ name: "actives_movement", display_name: "Active Subscriptions Movement", group: "subscriptions", display_type: "stacked_bar", shape: "flow", dims: [...SUBS, ...PERIOD],
+  def({ name: "actives_movement", display_name: "Active Subscriptions Movement", group: "subscriptions", display_type: "stacked_bar", shape: "flow", dims: SUBS,
     description: "How the number of active subscriptions changed in each period.",
     measures: [flowM("new_actives", "New Actives", "#", "Subscriptions that became paid, other than resubscriptions and paid-to-paid product changes."),
       flowM("resubscription_actives", "Resubscription Actives", "#", "Paid subscriptions started by customers whose earlier subscription had ended."),

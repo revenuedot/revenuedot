@@ -47,7 +47,8 @@ const windowEnd = (t: number, days: number) => (days === Infinity ? Infinity : d
  * Subscriptions built from one ledger, shared by every Prepared over the same rows: segments and filters by renewal
  * cycle or offer type differ only in `periodFilters`, so they build the subscriptions once.
  */
-const built = new WeakMap<ChartTx[], { key: unknown[]; subs: Sub[]; moves: Move[]; tags: ReturnType<typeof periodTags> }>();
+interface Built { key: unknown[]; subs: Sub[]; moves: Move[]; tags: ReturnType<typeof periodTags> }
+const built = new WeakMap<ChartTx[], Built>();
 
 /** Rows prepared once per (filtered) input and shared by every chart computation. */
 export class Prepared {
@@ -58,6 +59,7 @@ export class Prepared {
   readonly product: ReturnType<typeof productIndex>;
   private readonly periodFilters: NonNullable<ChartInput["periodFilters"]>;
   private _txs: ChartTx[] | null = null;
+  private _built: Built | null = null;
   private _moves: Move[] | null = null;
   private _cohort: Map<string, number> | null = null;
   private _byCustomer: Map<string, ChartTx[]> | null = null;
@@ -73,7 +75,8 @@ export class Prepared {
     this.product = productIndex(input.products);
     this.periodFilters = input.periodFilters ?? [];
   }
-  private get built() {
+  private get built() { return (this._built ??= this.build()); }
+  private build(): Built {
     const key = [this.input.subStates, this.input.lifecycle, this.input.products, this.input.fx, this.input.now];
     const hit = built.get(this.input.txs);
     if (hit && hit.key.every((k, i) => k === key[i])) return hit;

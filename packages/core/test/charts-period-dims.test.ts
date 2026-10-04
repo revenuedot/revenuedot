@@ -66,11 +66,13 @@ describe("renewal cycle and offer type", () => {
     const has = (chart: string, d: string) => supportsDim(chartDef(chart)!, d);
     expect(has("revenue", "subscription_renewal_cycle_group") && has("revenue", "offer_type")).toBe(true);
     expect(has("arr", "subscription_renewal_cycle_group")).toBe(true);
-    expect(has("arr", "offer_type")).toBe(false);
-    expect(has("mrr", "offer_type") && has("actives", "offer_type") && has("trials_new", "offer_type")).toBe(true);
+    expect(has("arr", "offer_type") || has("mrr", "offer_type")).toBe(false);
+    expect(has("mrr", "subscription_renewal_cycle_group") && has("actives", "offer_type") && has("trials_new", "offer_type")).toBe(true);
+    expect(has("mrr_movement", "subscription_renewal_cycle_group") || has("actives_movement", "offer_type")).toBe(false);
     expect(has("customers_new", "subscription_renewal_cycle_group")).toBe(false);
     expect(has("revenue", customAttributeDim("source")) && has("customers_new", customAttributeDim("source"))).toBe(true);
     expect(has("revenue", "custom_attribute:")).toBe(false);
+    expect(has("revenue", "custom_attribute:$email")).toBe(false);
   });
 
   it("maps ledger offer types", () => {
@@ -99,6 +101,12 @@ describe("renewal cycle and offer type", () => {
     }
     expect(dimValues(input(), "subscription_renewal_cycle_group").sort()).toEqual(["", "cycle_1", "cycle_2", "cycle_3", "cycle_4", "cycle_5_plus", "trial"]);
     expect(dimValues(input(), "offer_type").sort()).toEqual(["free_trial", "introductory", "no_offer", "promotional"]);
+    // Ad revenue has no period: a project without one-time purchases still gets its "Non-subscription" segment.
+    const ads = { ...input(ledger().filter((t) => t.kind !== "one_time")), sdkEvents: [{ customerId: "A", appId: "ios", type: "rc_ads_ad_revenue", at: T("2026-05-02"), revenueUsd: 2 }] };
+    const r = runChart(chartDef("revenue")!, ads, req(), { segment: "subscription_renewal_cycle_group" as never });
+    const may = (o: typeof r.output) => (o.kind === "series" ? o.points[4]!.values[0] : null);
+    expect(r.segments!.find((s) => s.id === "")).toBeDefined();
+    expect(r.segments!.reduce((s, x) => s + (may(x.output) ?? 0), 0)).toBeCloseTo(may(r.output)!);
   });
 
   it("counts snapshots by the period that gives access", () => {
@@ -106,18 +114,18 @@ describe("renewal cycle and offer type", () => {
     expect(values("mrr", cycle("cycle_1"))["2026-03"]).toBe(10);
     expect(values("actives", cycle("cycle_2", "cycle_3"))["2026-03"]).toBe(2);
     expect(values("actives", offer("introductory"))).toMatchObject({ "2026-02": 1, "2026-03": 0 });
-    expect(values("mrr", offer("promotional"))).toMatchObject({ "2026-04": 5, "2026-05": 0 });
+    expect(values("actives", offer("promotional"))).toMatchObject({ "2026-04": 1, "2026-05": 0 });
     expect(values("arr", cycle("cycle_4"))["2026-04"]).toBe(120);
     expect(values("trials_new", offer("free_trial"))["2026-03"]).toBe(1);
     expect(values("trials_new", offer("no_offer"))["2026-03"]).toBe(0);
     expect(values("trials", cycle("trial"))["2026-03"]).toBe(0);
   });
 
-  it("tags movements with the period they start or end", () => {
-    // New MRR in February: A renews (not new) and I starts on an introductory price.
-    expect(values("mrr_movement", offer("introductory"))["2026-02"]).toBe(1);
-    // I lapses Apr 1 at the end of cycle 2 (no offer); B lapses May 8 at the end of its refunded cycle 2 (cut Apr 20).
-    expect(values("actives_movement", cycle("cycle_2"), 2)).toMatchObject({ "2026-04": -2 });
+  it("counts new paid subscriptions by their first period and churn by their last", () => {
+    // I starts on an introductory price in February; P on a promotional offer in April; B converts from a trial in March.
+    expect(values("actives_new", offer("introductory"))).toMatchObject({ "2026-02": 1, "2026-03": 0, "2026-04": 0 });
+    expect(values("actives_new", offer("promotional"))["2026-04"]).toBe(1);
+    // I lapses Apr 1 at the end of cycle 2 (no offer); B's refunded cycle 2 is cut short Apr 20.
     expect(values("churn", cycle("cycle_2"), 2)["2026-04"]).toBe(2);
   });
 
