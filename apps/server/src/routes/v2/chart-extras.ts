@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
-import { chartContributors, chartDef, floorTo, newId, viewQuery, type ChartView, type Contributor } from "@revenuedot/core";
+import { AD_REVENUE_VALUE, chartContributors, chartDef, floorTo, newId, viewQuery, type ChartView, type Contributor } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { chartSources, loadChartInput } from "../../services/charts/load.js";
@@ -143,7 +143,8 @@ export function chartExtraRoutes(r: V2Router, deps: Deps) {
     const segmentOf = (x: Contributor) => (x.segment === undefined ? null : x.segmentOther ? "Other" : labels!(x.segment));
     const item = (x: Contributor, info: CustomerInfo | undefined) => ({
       object: "chart_customer" as const, customer_id: x.customerId, app_user_id: info?.appUserId ?? null, status: info?.status ?? "none",
-      store: x.store ?? info?.latest?.store ?? null, product_id: x.productId ?? info?.latest?.productId ?? null,
+      // An "Ad revenue" row has no store or product: never the customer's latest subscription's.
+      store: x.segment === AD_REVENUE_VALUE ? null : x.store ?? info?.latest?.store ?? null, product_id: x.segment === AD_REVENUE_VALUE ? null : x.productId ?? info?.latest?.productId ?? null,
       contributed_at: x.at, first_seen_at: info?.firstSeen ?? null, value: Math.round(x.value * 1e6) / 1e6, segment: segmentOf(x),
     });
     const measure = res.measure ? { id: res.measure.id, display_name: res.measure.display_name, unit: res.measure.unit } : null;

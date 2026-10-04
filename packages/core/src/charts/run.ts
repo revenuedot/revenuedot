@@ -11,6 +11,16 @@ export interface ChartFilter { name: Dim; values: string[]; exclude?: boolean }
 type Getter = (dim: Dim) => string | null | undefined;
 const CUSTOMER_DIMS = new Set<Dim>(["country", "platform", "app_version", ...ATTRIBUTION_DIMS]);
 const isAttribution = (d: Dim): d is AttributionDim => (ATTRIBUTION_DIMS as string[]).includes(d);
+/**
+ * Ad revenue has no store, product or offering. Under those dimensions it takes this value, so a segmented money chart
+ * shows it as its own "Ad revenue" segment (instead of in every segment) and a filter on a product leaves it out.
+ */
+export const AD_REVENUE_VALUE = "$ad_revenue";
+const PURCHASE_DIMS = new Set<string>(["store", "product", "product_duration", "offering"]);
+/** The value of a dimension for an SDK event; undefined when the dimension does not apply to it. */
+const sdkValue = (e: ChartInput["sdkEvents"][number], d: Dim): string | null | undefined =>
+  d === "app" ? e.appId : d === "paywall" ? e.paywallId ?? null : d === "survey_option" ? e.surveyOptionId ?? null
+    : e.type === "rc_ads_ad_revenue" && PURCHASE_DIMS.has(d) ? AD_REVENUE_VALUE : undefined;
 /** Dimensions of the customer (they filter customers and everything they did); custom attributes are customer dimensions. */
 const isCustomerDim = (d: Dim) => CUSTOMER_DIMS.has(d) || isCustomAttributeDim(d);
 
@@ -66,7 +76,7 @@ export function restrict(input: ChartInput, all: ChartFilter[]): ChartInput {
     txs: input.txs.filter((t) => keep(g.purchase(t))),
     subStates: input.subStates.filter((s) => keep(g.purchase({ ...s, offering: s.offering }))),
     lifecycle: input.lifecycle.filter((e) => keep((d) => (d === "app" || d === "offering" ? undefined : g.purchase({ ...e, appId: null })(d)))),
-    sdkEvents: input.sdkEvents.filter((e) => byCustomer(e.customerId) && keep((d) => d === "app" ? e.appId : d === "paywall" ? e.paywallId ?? null : d === "survey_option" ? e.surveyOptionId ?? null : CUSTOMER_DIMS.has(d) ? undefined : undefined)),
+    sdkEvents: input.sdkEvents.filter((e) => byCustomer(e.customerId) && keep((d) => sdkValue(e, d))),
     refundEvents: input.refundEvents.filter((e) => byCustomer(e.customerId) && keep((d) => d === "app" ? e.appId : d === "store" ? e.store : undefined)),
     activity: input.activity.filter((a) => byCustomer(a.customerId)),
   };
@@ -89,7 +99,7 @@ export function dimValues(input: ChartInput, dim: Dim): string[] {
   }
   if (isCustomerDim(dim)) for (const c of input.customers) add(g.fromCustomer(c.id, dim));
   if (!isCustomerDim(dim) || dim === "country") for (const t of input.txs) if (t.store !== "promotional") add(g.purchase(t)(dim));
-  for (const e of input.sdkEvents) add(dim === "app" ? e.appId : dim === "paywall" ? e.paywallId ?? null : dim === "survey_option" ? e.surveyOptionId ?? null : undefined);
+  for (const e of input.sdkEvents) add(sdkValue(e, dim));
   return sorted();
 }
 
