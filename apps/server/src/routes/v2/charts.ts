@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import {
-  addMonths, ATTRIBUTION_DIMS, chartDef, DEFAULT_WEEK_START, DIM_LABEL, NO_ATTRIBUTION, dimValues, floorTo, isoDay, RESOLUTIONS, runChart,
-  type ChartDef, type ChartFilter, type ChartOutput, type ChartRequest, type Dim, type MeasureDef, type Resolution,
+  addMonths, ATTRIBUTION_DIMS, chartDef, customAttributeDim, customAttributeKey, DEFAULT_WEEK_START, dimLabel, NO_ATTRIBUTION, dimValues, floorTo,
+  isCustomAttributeDim, isoDay, isPeriodDim, periodDimLabel, RESOLUTIONS, runChart, supportsDim, type ChartDef, type ChartFilter, type ChartOutput, type ChartRequest, type Dim, type MeasureDef, type Resolution,
 } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { chartSources, loadChartInput } from "../../services/charts/load.js";
+import { chartSources, customAttributeOptions, loadChartInput } from "../../services/charts/load.js";
 import { annotationsBetween, rcAnnotation } from "../../services/charts/annotations.js";
 import { paramError, scope, V2Error, type V2Context, type V2Router } from "./common.js";
 
@@ -87,8 +87,9 @@ function parse(c: V2Context, now: Date): Parsed {
 
   const filters = (json("filters", q("filters"), (x): x is { name: string; values: unknown[] }[] =>
     Array.isArray(x) && x.every((f) => f && typeof f === "object" && typeof (f as any).name === "string" && Array.isArray((f as any).values))) ?? []);
+  const supported = () => [...def.dims, ...(def.customAttributes ? ["custom_attribute:<key>"] : [])].join(", ") || "none";
   for (const f of filters) {
-    if (!def.dims.includes(f.name as Dim)) throw paramError(`Filter "${f.name}" is not supported by ${def.name}. Supported filters: ${def.dims.join(", ") || "none"}.`, "filters");
+    if (!supportsDim(def, f.name)) throw paramError(`Filter "${f.name}" is not supported by ${def.name}. Supported filters: ${supported()}.`, "filters");
   }
   const selectors = json("selectors", q("selectors"), (x): x is Record<string, string> => !!x && typeof x === "object" && !Array.isArray(x)) ?? {};
   for (const [k, v] of Object.entries(selectors)) {
@@ -99,8 +100,8 @@ function parse(c: V2Context, now: Date): Parsed {
   const segRaw = q("segment");
   let segment: Dim | null = null;
   if (segRaw) {
-    if (!def.segmentable || !def.dims.includes(segRaw as Dim)) {
-      throw paramError(def.segmentable ? `Segment "${segRaw}" is not supported by ${def.name}. Supported segments: ${def.dims.join(", ")}.` : `${def.name} cannot be segmented.`, "segment");
+    if (!def.segmentable || !supportsDim(def, segRaw)) {
+      throw paramError(def.segmentable ? `Segment "${segRaw}" is not supported by ${def.name}. Supported segments: ${supported()}.` : `${def.name} cannot be segmented.`, "segment");
     }
     segment = segRaw as Dim;
   }
@@ -117,6 +118,10 @@ function parse(c: V2Context, now: Date): Parsed {
     req: { resolution, rangeStart, rangeEnd, expand: bool("expand_periods", q("expand_periods"), false), selectors: Object.fromEntries(Object.entries(selectors).map(([k, v]) => [k, String(v)])), weekStart },
   };
 }
+/** The custom attribute keys a request's filters and segment use, which the chart input must load. */
+export const attributeKeysOf = (p: Pick<Parsed, "filters" | "segment">) =>
+  [...new Set([...p.filters.map((f) => f.name), ...(p.segment ? [p.segment] : [])].filter(isCustomAttributeDim).map(customAttributeKey))];
+
 function addPeriodsSafe(s: number, r: Resolution) { return r === "day" ? s + DAY : r === "week" ? s + 7 * DAY : addMonths(s, r === "month" ? 1 : r === "quarter" ? 3 : 12); }
 
 const round = (v: number | null, m: Pick<MeasureDef, "unit" | "decimal_precision">) => {
@@ -162,7 +167,7 @@ export function chartRoutes(r: V2Router, deps: Deps) {
   r.get(P, scope("charts_metrics:charts:read"), async (c) => {
     const now = deps.now();
     const p = parse(c, now);
-    const sources = chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution, p.req.weekStart), to: p.req.rangeEnd });
+    const sources = { ...chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution, p.req.weekStart), to: p.req.rangeEnd }), attributeKeys: attributeKeysOf(p) };
     const input = await loadChartInput(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, now, currency: p.currency, fetch: deps.fetch ?? undefined, sources });
     const run = runChart(p.def, input, p.req, { filters: p.filters, segment: p.segment, limit: p.limit });
     const o = run.output;
@@ -213,16 +218,22 @@ export function chartRoutes(r: V2Router, deps: Deps) {
     const projectId = c.get("projectId");
     // The filter values come from the ledger, customers and the chart's SDK events; activity and refund requests add none.
     const sources = { ...chartSources(def.name, null), activity: null, refundRequests: false };
-    const input = await loadChartInput(deps.db, { projectId, sandbox: env === "sandbox", now: deps.now(), currency: "USD", fetch: null, sources });
+    const [input, custom] = await Promise.all([
+      loadChartInput(deps.db, { projectId, sandbox: env === "sandbox", now: deps.now(), currency: "USD", fetch: null, sources }),
+      def.customAttributes ? customAttributeOptions(deps.db, projectId) : Promise.resolve([]),
+    ]);
     const options = await Promise.all(def.dims.map(async (d) => {
       const label = await dimLabels(deps, projectId, d);
       return dimValues(input, d).slice(0, 200).map((v) => ({ id: v, display_name: label(v) }));
     }));
+    // Custom attributes: every key the project set, with its values across all customers (not one environment's).
+    const dims: Dim[] = [...def.dims, ...custom.map((a) => customAttributeDim(a.key))];
+    custom.forEach((a) => options.push(a.values.map((v) => ({ id: v, display_name: v === "" ? "Not set" : v }))));
     return c.json({
       object: "chart_options",
       resolutions: RESOLUTIONS.map((x, i) => ({ id: String(i), display_name: x })),
-      segments: def.segmentable ? def.dims.map((d) => ({ object: "chart_segment_option", id: d, display_name: DIM_LABEL[d].display_name, group_display_name: DIM_LABEL[d].group })) : [],
-      filters: def.dims.map((d, i) => ({ object: "chart_filter_option", id: d, display_name: DIM_LABEL[d].display_name, group_display_name: DIM_LABEL[d].group, options: options[i]! })),
+      segments: def.segmentable ? dims.map((d) => ({ object: "chart_segment_option", id: d, display_name: dimLabel(d).display_name, group_display_name: dimLabel(d).group })) : [],
+      filters: dims.map((d, i) => ({ object: "chart_filter_option", id: d, display_name: dimLabel(d).display_name, group_display_name: dimLabel(d).group, options: options[i]! })),
       user_selectors: def.selectors.length ? Object.fromEntries(def.selectors.map((s) => [s.id, { default: s.default, display_name: s.display_name, options: s.options }])) : null,
     });
   });
@@ -271,6 +282,8 @@ async function dimLabels(deps: Deps, projectId: string, dim: Dim): Promise<(v: s
   if (dim === "country") return (v) => unknown(v, countryName);
   if (dim === "product_duration") return (v) => unknown(v, durationLabel);
   if ((ATTRIBUTION_DIMS as string[]).includes(dim)) return (v) => (v === "" ? NO_ATTRIBUTION : v);
+  if (isPeriodDim(dim)) return (v) => periodDimLabel(dim, v);
+  if (isCustomAttributeDim(dim)) return (v) => (v === "" ? "Not set" : v);
   return (v) => unknown(v, (x) => x);
 }
 

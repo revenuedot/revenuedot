@@ -17,7 +17,10 @@ export interface StripeInvoice {
   id: string; object?: "invoice"; status?: string | null; paid?: boolean; amount_paid?: number; amount_due?: number; total?: number; currency?: string;
   billing_reason?: string | null; subscription?: Expandable<{ id: string }>; parent?: { subscription_details?: { subscription?: Expandable<{ id: string }> } | null } | null;
   period_start?: number; period_end?: number; next_payment_attempt?: number | null; customer_address?: { country?: string | null } | null;
-  status_transitions?: { paid_at?: number | null } | null; livemode?: boolean; lines?: { data?: Array<{ period?: { start?: number; end?: number }; price?: StripePrice | null; pricing?: { price_details?: { price?: string; product?: string } } }> };
+  status_transitions?: { paid_at?: number | null } | null; livemode?: boolean;
+  /** Coupons on the invoice; `promotion_code` is set when the customer redeemed a code (expand `latest_invoice.discounts`). */
+  discounts?: Array<string | { id: string; promotion_code?: string | { id: string } | null; coupon?: { id: string } | null; source?: { coupon?: string | { id: string } | null } | null }> | null;
+  total_discount_amounts?: Array<{ amount: number; discount?: string | { id: string } }> | null; lines?: { data?: Array<{ period?: { start?: number; end?: number }; price?: StripePrice | null; pricing?: { price_details?: { price?: string; product?: string } } }> };
 }
 export interface StripeSubscription {
   id: string; object?: "subscription"; status: string; livemode: boolean; customer: Expandable<{ id: string }>;
@@ -146,7 +149,7 @@ export class StripeClient {
   }
 
   subscription(app: Pick<AppRow, "credentials">, id: string) {
-    return this.get<StripeSubscription>(app, `/v1/subscriptions/${encodeURIComponent(id)}`, { "expand[]": ["latest_invoice", "items.data.price.currency_options"] });
+    return this.get<StripeSubscription>(app, `/v1/subscriptions/${encodeURIComponent(id)}`, { "expand[]": ["latest_invoice", "latest_invoice.discounts", "items.data.price.currency_options"] });
   }
   checkoutSession(app: Pick<AppRow, "credentials">, id: string) {
     return this.get<StripeCheckoutSession>(app, `/v1/checkout/sessions/${encodeURIComponent(id)}`, { "expand[]": ["line_items"] });

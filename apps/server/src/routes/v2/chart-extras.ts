@@ -10,7 +10,7 @@ import { annotationsBetween, authors, MAX_ANNOTATIONS } from "../../services/cha
 import { buildSnapshot, cardPngBase64, type ChartBody, type ChartOptionsBody, type ChartSnapshot } from "../../services/charts/share.js";
 import { sha256Hex } from "../../services/auth.js";
 import { csvCell } from "../../services/customer-lists.js";
-import { chartRoutes, dimLabels, parseChartQuery } from "./charts.js";
+import { attributeKeysOf, chartRoutes, dimLabels, parseChartQuery } from "./charts.js";
 import { View } from "./saved-charts.js";
 import { publicOrigin } from "./setup.js";
 import { body, listOf, notFound, paramError, scope, V2Error, v2ErrorResponse, type Principal, type V2Context, type V2Router, type V2Vars } from "./common.js";
@@ -136,7 +136,7 @@ export function chartExtraRoutes(r: V2Router, deps: Deps) {
     const limit = limRaw === undefined || limRaw === "" ? SAMPLE_MAX : Number(limRaw);
     if (!Number.isInteger(limit) || limit < 1 || limit > SAMPLE_MAX) throw paramError(`limit must be a whole number from 1 to ${SAMPLE_MAX}.`, "limit");
     const projectId = c.get("projectId");
-    const sources = chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution), to: p.req.rangeEnd });
+    const sources = { ...chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution), to: p.req.rangeEnd }), attributeKeys: attributeKeysOf(p) };
     const input = await loadChartInput(db, { projectId, sandbox: p.sandbox, now, currency: p.currency, fetch: deps.fetch ?? undefined, sources });
     const res = chartContributors(p.def, input, p.req, { filters: p.filters, segment: p.segment, limit: p.limit });
     const labels = p.segment ? await dimLabels(deps, projectId, p.segment) : null;

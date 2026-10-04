@@ -36,7 +36,7 @@ export const testStore: StoreAdapter = {
       out.push({
         kind: "subscription", store: "test_store", storeKey: token!, productIdentifier: productId, isSandbox: true,
         purchaseDate, originalPurchaseDate: purchaseDate, expiresDate: addDuration(purchaseDate, dur), periodType: "normal",
-        storeTransactionId: token!, originalTransactionId: token!, price, countryCode: input.storeCountry,
+        storeTransactionId: token!, originalTransactionId: token!, price, countryCode: input.storeCountry, offerType: null, offerId: null,
       });
     } else {
       out.push({
@@ -102,6 +102,8 @@ export function testStoreScenario(o: {
   const period = (from: Date, n: number, trial = false): VerifiedSubscription => ({
     ...base, purchaseDate: from, expiresDate: addDuration(from, trial ? TRIAL : dur), periodType: trial ? "trial" : "normal",
     storeTransactionId: n === 0 ? token : `${token}..${n}`, price: trial ? zero : o.price,
+    // The offer each period was bought with, as the stores state it: the trial is a free trial, paid periods have none.
+    offerType: trial ? "free_trial" : null, offerId: null,
   });
   /** Paid periods from `from` while each starts at or before `until`; returns the last one. */
   const renewUntil = (first: VerifiedSubscription, until: Date) => {

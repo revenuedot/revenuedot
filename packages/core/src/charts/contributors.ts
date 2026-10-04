@@ -1,6 +1,6 @@
 import type { ChartDef, Dim, MeasureDef } from "./catalog.js";
 import { chartHelpers as H, Frame, Prepared, selectorDays, type ChartRequest } from "./compute.js";
-import { paidAt, trialAt, type ChartInput, type Sub } from "./model.js";
+import type { ChartInput, Sub } from "./model.js";
 import { restrict, runChart, type ChartFilter } from "./run.js";
 import { DAY, dayStart } from "./time.js";
 
@@ -62,7 +62,9 @@ const byId = (id: string) => (def: ChartDef) => def.measures.find((x) => x.id ==
 const windows = (f: Frame): Win[] => f.buckets.map((b) => f.window(b));
 
 /** Stock charts: every subscription that gives access (paid, or a trial) at the end of a period; values at the last one. */
-function snapshot(d: Prepared, f: Frame, a: Acc, pick: (s: Sub, at: number) => { monthly: number } | null, value: (p: { monthly: number }) => number, trial = false) {
+function snapshot(d: Prepared, f: Frame, a: Acc, kind: "paid" | "trial", value: (p: { monthly: number }) => number) {
+  const trial = kind === "trial";
+  const pick = (s: Sub, at: number) => (trial ? d.trialAt(s, at) : d.paidAt(s, at));
   const ats = f.buckets.map((b) => f.snapshot(b));
   const last = ats.length - 1;
   for (const s of d.subs) {
@@ -152,14 +154,14 @@ const SPECS: Record<string, Spec> = {
         for (const t of H.within(d.txsByTime, H.atOf, w)) {
           if (t.kind !== "trial") a.add(t.customerId, t.at, d.money(t) * (proceeds ? H.proceedsFactor(t) : 1), t.store, t.productId);
         }
-        for (const e of H.within(d.sdkByTime, H.atOf, w)) if (e.type === "rc_ads_ad_revenue") a.add(e.customerId, e.at, (e.revenueUsd ?? 0) * d.input.fx(e.at));
+        if (d.adRevenueOk) for (const e of H.within(d.sdkByTime, H.atOf, w)) if (e.type === "rc_ads_ad_revenue") a.add(e.customerId, e.at, (e.revenueUsd ?? 0) * d.input.fx(e.at));
       }
     },
   },
-  mrr: { measure: byId("mrr"), sum: "last", dateLabel: "Paid start", run: (d, f, _s, a) => snapshot(d, f, a, paidAt, (p) => p.monthly) },
-  arr: { measure: byId("arr"), sum: "last", dateLabel: "Paid start", run: (d, f, _s, a) => snapshot(d, f, a, paidAt, (p) => p.monthly * 12) },
-  actives: { measure: byId("actives"), sum: "last", dateLabel: "Paid start", run: (d, f, _s, a) => snapshot(d, f, a, paidAt, () => 1) },
-  trials: { measure: byId("trials"), sum: "last", dateLabel: "Trial started", run: (d, f, _s, a) => snapshot(d, f, a, trialAt, () => 1, true) },
+  mrr: { measure: byId("mrr"), sum: "last", dateLabel: "Paid start", run: (d, f, _s, a) => snapshot(d, f, a, "paid", (p) => p.monthly) },
+  arr: { measure: byId("arr"), sum: "last", dateLabel: "Paid start", run: (d, f, _s, a) => snapshot(d, f, a, "paid", (p) => p.monthly * 12) },
+  actives: { measure: byId("actives"), sum: "last", dateLabel: "Paid start", run: (d, f, _s, a) => snapshot(d, f, a, "paid", () => 1) },
+  trials: { measure: byId("trials"), sum: "last", dateLabel: "Trial started", run: (d, f, _s, a) => snapshot(d, f, a, "trial", () => 1) },
   subscription_status: {
     measure: (_def, sel) => {
       const what = sel.status_measure ?? "actives";
@@ -169,7 +171,7 @@ const SPECS: Record<string, Spec> = {
     sum: "last", dateLabel: (sel) => (sel.status_measure === "trials" ? "Trial started" : "Paid start"),
     run: (d, f, sel, a) => {
       const what = sel.status_measure ?? "actives";
-      snapshot(d, f, a, what === "trials" ? trialAt : paidAt, (p) => (what === "mrr" ? p.monthly : what === "arr" ? p.monthly * 12 : 1), what === "trials");
+      snapshot(d, f, a, what === "trials" ? "trial" : "paid", (p) => (what === "mrr" ? p.monthly : what === "arr" ? p.monthly * 12 : 1));
     },
   },
   mrr_movement: moves("movement", "Latest change", (x) => (x.category === "paired_out" ? null : x.mrr)),

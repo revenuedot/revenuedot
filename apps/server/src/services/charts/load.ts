@@ -30,6 +30,8 @@ export interface ChartSources {
   activity: { from: string; to: string } | null;
   /** Apple refund requests and outcomes, for Refund Request Outcomes only. */
   refundRequests: boolean;
+  /** Custom attribute keys a filter or segment uses (`custom_attribute:<key>`); none are loaded otherwise. */
+  attributeKeys?: string[];
 }
 
 /** What one chart reads beyond the ledger. `range` is the [start, end) the chart covers, its first period included. */
@@ -55,8 +57,9 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
   const { projectId, sandbox, sources } = opts;
   const env = sandbox ? "sandbox" : "production";
   const T = schema.transactions, S = schema.subscriptions, N = schema.nonSubscriptions, C = schema.customers, E = schema.events, X = schema.sdkEvents, A = schema.customerAliases;
-  const CA = schema.customerActivity, SN = schema.storeNotifications, CAT = schema.customerAttribution;
-  const [txs, subs, nonSubs, customers, products, lifecycle, sdk, activity, notes] = await Promise.all([
+  const CA = schema.customerActivity, SN = schema.storeNotifications, CAT = schema.customerAttribution, ATTR = schema.customerAttributes;
+  const keys = sources.attributeKeys ?? [];
+  const [txs, subs, nonSubs, customers, products, lifecycle, sdk, activity, notes, attrs] = await Promise.all([
     db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox))),
     db.select().from(S).where(and(eq(S.projectId, projectId), eq(S.isSandbox, sandbox))),
     db.select({ store: N.store, tx: N.storeTransactionId, offering: N.presentedOfferingId }).from(N).where(and(eq(N.projectId, projectId), eq(N.isSandbox, sandbox))),
@@ -79,7 +82,11 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
       .where(and(eq(CA.projectId, projectId), gte(CA.day, sources.activity.from), lt(CA.day, sources.activity.to))) : Promise.resolve([]),
     sources.refundRequests ? db.select({ type: SN.type, body: SN.body, store: SN.store, appId: SN.appId, receivedAt: SN.receivedAt }).from(SN)
       .where(and(eq(SN.projectId, projectId), eq(SN.environment, env), inArray(SN.type, Object.keys(REFUND_TYPES)), isNull(SN.error))) : Promise.resolve([]),
+    keys.length ? db.select({ customerId: ATTR.customerId, key: ATTR.key, value: ATTR.value }).from(ATTR).innerJoin(C, eq(C.id, ATTR.customerId))
+      .where(and(eq(C.projectId, projectId), inArray(ATTR.key, keys))) : Promise.resolve([]),
   ]);
+  const attributesOf = new Map<string, Record<string, string | null>>();
+  for (const a of attrs) { const m = attributesOf.get(a.customerId) ?? {}; m[a.key] = a.value; attributesOf.set(a.customerId, m); }
 
   const currency = opts.currency.toUpperCase();
   if (currency !== "USD" && txs.length) {
@@ -132,11 +139,13 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
     txs: txs.filter((t) => KINDS.has(t.kind as TxKind)).map((t) => ({ commission: rates.get(t.id),
       id: t.id, customerId: t.customerId, appId: t.appId, store: t.store, storeTransactionId: t.storeTransactionId, productId: t.productIdentifier,
       kind: t.kind as TxKind, at: t.purchasedAt.getTime(), expiresAt: t.expiresAt ? t.expiresAt.getTime() : null, usd: t.revenueUsd, country: t.countryCode,
+      offerType: t.offerType,
       offering: t.kind === "one_time" || oneOffering.has(`${t.store}|${t.storeTransactionId}`) ? oneOffering.get(`${t.store}|${t.storeTransactionId}`) ?? null : subOffering.get(`${t.customerId}|${t.store}|${t.productIdentifier}`) ?? null,
     })),
     customers: customers.map((c) => ({
       id: c.id, firstSeen: c.firstSeen.getTime(), country: c.country, platform: c.platform, appVersion: c.appVersion,
       attribution: { media_source: c.mediaSource, campaign: c.campaign, ad_group: c.adGroup, keyword: c.keyword, ad: c.ad, creative: c.creative },
+      ...(keys.length ? { attributes: attributesOf.get(c.id) ?? {} } : {}),
     })),
     products: products.map((p) => ({ appId: p.appId, storeIdentifier: p.storeIdentifier, type: p.type, duration: p.duration })),
     subStates: subs.map((s) => ({
@@ -161,4 +170,23 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
     refundEvents,
     activity: days,
   };
+}
+
+/**
+ * The project's custom attributes for the chart filter and segment menus: keys the project set (not reserved `$` keys),
+ * most used first, each with its most common values.
+ */
+export async function customAttributeOptions(db: DB, projectId: string, o: { keys?: number; values?: number } = {}): Promise<{ key: string; values: string[] }[]> {
+  const ATTR = schema.customerAttributes, C = schema.customers;
+  const rows = await db.select({ key: ATTR.key, value: ATTR.value, n: sql<number>`count(*)::int` }).from(ATTR).innerJoin(C, eq(C.id, ATTR.customerId))
+    .where(and(eq(C.projectId, projectId), sql`left(${ATTR.key}, 1) <> '$'`)).groupBy(ATTR.key, ATTR.value);
+  const byKey = new Map<string, { n: number; values: [string, number][] }>();
+  for (const r of rows) {
+    const k = byKey.get(r.key) ?? { n: 0, values: [] };
+    k.n += r.n;
+    k.values.push([r.value ?? "", r.n]);
+    byKey.set(r.key, k);
+  }
+  return [...byKey].sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0])).slice(0, o.keys ?? 50)
+    .map(([key, k]) => ({ key, values: k.values.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, o.values ?? 200).map(([v]) => v) }));
 }

@@ -20,8 +20,20 @@ export interface MeasureDef {
 }
 export interface SelectorDef { id: string; display_name: string; default: string; options: { id: string; display_name: string }[] }
 
-export type Dim = "app" | "store" | "product" | "product_duration" | "offering" | "country" | "platform" | "app_version" | "paywall" | "survey_option" | AttributionDim;
-export const DIM_LABEL: Record<Dim, { display_name: string; group: string }> = {
+/** Dimensions with a fixed id. Custom attributes are `custom_attribute:<key>` (see `isCustomAttributeDim`). */
+export type StaticDim = "app" | "store" | "product" | "product_duration" | "offering" | "country" | "platform" | "app_version" | "paywall" | "survey_option"
+  | "subscription_renewal_cycle_group" | "offer_type" | AttributionDim;
+/** A customer attribute the project sets (any key not starting with `$`), as a segment or filter: `custom_attribute:<key>`. */
+export type CustomAttributeDim = `custom_attribute:${string}`;
+export type Dim = StaticDim | CustomAttributeDim;
+export const CUSTOM_ATTRIBUTE_PREFIX = "custom_attribute:";
+/** Reserved `$` attributes ($email, $phoneNumber, attribution …) are never dimensions: they would put personal data in charts. */
+export const isCustomAttributeDim = (d: string): d is CustomAttributeDim =>
+  d.startsWith(CUSTOM_ATTRIBUTE_PREFIX) && d.length > CUSTOM_ATTRIBUTE_PREFIX.length && !d.startsWith(`${CUSTOM_ATTRIBUTE_PREFIX}$`);
+export const customAttributeKey = (d: CustomAttributeDim) => d.slice(CUSTOM_ATTRIBUTE_PREFIX.length);
+export const customAttributeDim = (key: string): CustomAttributeDim => `${CUSTOM_ATTRIBUTE_PREFIX}${key}`;
+export const CUSTOM_ATTRIBUTES_GROUP = "Custom attributes";
+export const DIM_LABEL: Record<StaticDim, { display_name: string; group: string }> = {
   app: { display_name: "App", group: "Store and product" },
   store: { display_name: "Store", group: "Store and product" },
   product: { display_name: "Product", group: "Store and product" },
@@ -32,6 +44,9 @@ export const DIM_LABEL: Record<Dim, { display_name: string; group: string }> = {
   app_version: { display_name: "App version", group: "Customer" },
   paywall: { display_name: "Paywall", group: "Paywall" },
   survey_option: { display_name: "Survey option", group: "Customer Center" },
+  // Period dimensions (prd/charts/PRD.md "Renewal cycle and offer type"): the paid period or trial a measure comes from.
+  subscription_renewal_cycle_group: { display_name: "Renewal Cycle", group: "Subscription" },
+  offer_type: { display_name: "Offer type", group: "Products and offerings" },
   // Attribution (prd/attribution-benchmarks-insights §1): the customer's first-class attribution row.
   media_source: { display_name: ATTRIBUTION_DIM_LABEL.media_source, group: "Attribution" },
   campaign: { display_name: ATTRIBUTION_DIM_LABEL.campaign, group: "Attribution" },
@@ -40,6 +55,9 @@ export const DIM_LABEL: Record<Dim, { display_name: string; group: string }> = {
   ad: { display_name: ATTRIBUTION_DIM_LABEL.ad, group: "Attribution" },
   creative: { display_name: ATTRIBUTION_DIM_LABEL.creative, group: "Attribution" },
 };
+/** Display name and menu group of any dimension: a custom attribute is named by its key. */
+export const dimLabel = (d: Dim): { display_name: string; group: string } =>
+  isCustomAttributeDim(d) ? { display_name: customAttributeKey(d), group: CUSTOM_ATTRIBUTES_GROUP } : DIM_LABEL[d];
 
 export type GroupId = "revenue" | "subscriptions" | "ads" | "ltv" | "customers" | "conversion" | "paywalls" | "trials" | "churn" | "retention";
 export const GROUPS: { id: GroupId; display_name: string }[] = [
@@ -72,7 +90,9 @@ export interface ChartDef {
   description: string;
   measures: MeasureDef[];
   selectors: SelectorDef[];
-  dims: Dim[];
+  dims: StaticDim[];
+  /** Offers the project's custom attributes as customer dimensions (every chart whose rows have a customer country). */
+  customAttributes: boolean;
   segmentable: boolean;
   defaultResolution: Resolution;
   /** A RevenueDot name for a chart RevenueCat shows only in its dashboard. */
@@ -95,27 +115,39 @@ export const CUSTOMER_LIFETIME = days([["0_days", "Day 0"], ["7_days", "7 days"]
 const REVENUE_TYPE: SelectorDef = { id: "revenue_type", display_name: "Revenue type", default: "revenue", options: [{ id: "revenue", display_name: "Revenue" }, { id: "revenue_net_of_taxes", display_name: "Revenue (net of taxes)" }, { id: "proceeds", display_name: "Proceeds" }] };
 
 /** Attribution dimensions: customer dimensions, offered wherever the customer's country is. */
-const ATTR: Dim[] = ["media_source", "campaign", "ad_group", "keyword", "ad", "creative"];
-const MONEY: Dim[] = ["app", "store", "product", "product_duration", "offering", "country", "platform", "app_version", ...ATTR];
-const SUBS: Dim[] = MONEY;
-const CUSTOMER: Dim[] = ["country", "platform", "app_version", ...ATTR];
-const CUSTOMER_AND_PURCHASE: Dim[] = MONEY;
-const ADS: Dim[] = ["app", "country", "platform", "app_version", ...ATTR];
-const PAYWALL: Dim[] = ["paywall", "app", "country", "platform", "app_version", ...ATTR];
+const ATTR: StaticDim[] = ["media_source", "campaign", "ad_group", "keyword", "ad", "creative"];
+const MONEY: StaticDim[] = ["app", "store", "product", "product_duration", "offering", "country", "platform", "app_version", ...ATTR];
+const SUBS: StaticDim[] = MONEY;
+const CUSTOMER: StaticDim[] = ["country", "platform", "app_version", ...ATTR];
+const CUSTOMER_AND_PURCHASE: StaticDim[] = MONEY;
+const ADS: StaticDim[] = ["app", "country", "platform", "app_version", ...ATTR];
+const PAYWALL: StaticDim[] = ["paywall", "app", "country", "platform", "app_version", ...ATTR];
+/**
+ * Period dimensions, per chart (the allow list; prd/charts/PRD.md "Renewal cycle and offer type"). Offered where the
+ * measure comes from paid periods, trials or their transactions; ARR and MRR take the renewal cycle but not the offer type.
+ * The movement charts take neither: a renewal moves a subscription from one cycle to the next, which no movement
+ * category (new, expansion, churn …) describes.
+ */
+const CYCLE: StaticDim[] = ["subscription_renewal_cycle_group"];
+const PERIOD: StaticDim[] = [...CYCLE, "offer_type"];
 
-const def = (d: Omit<ChartDef, "selectors" | "segmentable" | "inRail" | "defaultResolution"> & Partial<Pick<ChartDef, "selectors" | "segmentable" | "inRail" | "defaultResolution">>): ChartDef =>
-  ({ selectors: [], segmentable: true, inRail: true, defaultResolution: d.shape === "cohort_table" ? "month" : "day", ...d });
+const def = (d: Omit<ChartDef, "selectors" | "segmentable" | "inRail" | "defaultResolution" | "customAttributes"> & Partial<Pick<ChartDef, "selectors" | "segmentable" | "inRail" | "defaultResolution" | "customAttributes">>): ChartDef =>
+  ({ selectors: [], segmentable: true, inRail: true, defaultResolution: d.shape === "cohort_table" ? "month" : "day", customAttributes: d.dims.includes("country"), ...d });
+
+/** Whether a chart takes this dimension as a filter (and, when segmentable, as a segment). */
+export const supportsDim = (d: Pick<ChartDef, "dims" | "customAttributes">, name: string): name is Dim =>
+  (d.dims as string[]).includes(name) || (d.customAttributes && isCustomAttributeDim(name));
 
 export const CHARTS: ChartDef[] = [
   // Revenue
-  def({ name: "revenue", display_name: "Revenue", group: "revenue", display_type: "bar", shape: "flow", dims: MONEY, selectors: [REVENUE_TYPE],
+  def({ name: "revenue", display_name: "Revenue", group: "revenue", display_type: "bar", shape: "flow", dims: [...MONEY, ...PERIOD], selectors: [REVENUE_TYPE],
     description: "Money received in each period from subscriptions, one-time purchases and ads, minus refunds recorded in the period.",
     measures: [flowM("revenue", "Revenue", "$", "Gross purchases, renewals, one-time purchases and ad revenue, minus refunds recorded in the period."),
       flowM("transactions", "Transactions", "#", "Paid purchases and renewals in the period. Refunds do not reduce it; ad revenue is not a transaction.")] }),
-  def({ name: "arr", display_name: "ARR", group: "revenue", display_type: "line", shape: "stock", dims: SUBS,
+  def({ name: "arr", display_name: "ARR", group: "revenue", display_type: "line", shape: "stock", dims: [...SUBS, ...CYCLE],
     description: "Annual recurring revenue: MRR at the end of each period times 12.",
     measures: [m("arr", "ARR", "$", "MRR at the end of the period × 12.")] }),
-  def({ name: "mrr", display_name: "MRR", group: "revenue", display_type: "line", shape: "stock", dims: SUBS,
+  def({ name: "mrr", display_name: "MRR", group: "revenue", display_type: "line", shape: "stock", dims: [...SUBS, ...CYCLE],
     description: "Monthly recurring revenue: every active paid subscription's price normalised to one month, at the end of each period.",
     measures: [m("mrr", "MRR", "$", "Sum of the monthly value of each paid subscription with access at the end of the period.")] }),
   def({ name: "mrr_movement", display_name: "MRR Movement", group: "revenue", display_type: "stacked_bar", shape: "flow", dims: SUBS,
@@ -133,7 +165,7 @@ export const CHARTS: ChartDef[] = [
     description: "Ad revenue the SDK reported in each period, converted at the date of each ad.",
     measures: [flowM("ad_revenue", "Ad Revenue", "$", "Revenue from rc_ads_ad_revenue events.")] }),
   // Subscriptions
-  def({ name: "actives", display_name: "Active Subscriptions", group: "subscriptions", display_type: "line", shape: "stock", dims: SUBS,
+  def({ name: "actives", display_name: "Active Subscriptions", group: "subscriptions", display_type: "line", shape: "stock", dims: [...SUBS, ...PERIOD],
     description: "Paid subscriptions with access at the end of each period, including cancelled ones that have not expired and ones in a grace period.",
     measures: [m("actives", "Active Subscriptions", "#", "Paid subscriptions with access at the end of the period. Trials are not counted.")] }),
   def({ name: "actives_movement", display_name: "Active Subscriptions Movement", group: "subscriptions", display_type: "stacked_bar", shape: "flow", dims: SUBS,
@@ -142,7 +174,7 @@ export const CHARTS: ChartDef[] = [
       flowM("resubscription_actives", "Resubscription Actives", "#", "Paid subscriptions started by customers whose earlier subscription had ended."),
       flowM("churned_actives", "Churned Actives", "#", "Paid subscriptions that lost access, net of billing recoveries (negative)."),
       flowM("movement", "Active Subscriptions Movement", "#", "New + resubscription − churned actives.", { chartable: false })] }),
-  def({ name: "actives_new", display_name: "Paid Subscriptions", group: "subscriptions", display_type: "stacked_bar", shape: "flow", dims: SUBS,
+  def({ name: "actives_new", display_name: "Paid Subscriptions", group: "subscriptions", display_type: "stacked_bar", shape: "flow", dims: [...SUBS, ...PERIOD],
     description: "Subscriptions whose first paid period started in each period, by how they started.",
     measures: [flowM("new_paid", "New Paid Subscriptions", "#", "All subscriptions whose first paid period started in the period.", { chartable: false }),
       flowM("trial_conversions", "Trial Conversions", "#", "Subscriptions that started with a free trial and converted to paid."),
@@ -153,7 +185,7 @@ export const CHARTS: ChartDef[] = [
     selectors: [{ id: "retention_scale", display_name: "Show", default: "relative", options: [{ id: "relative", display_name: "Relative (%)" }, { id: "absolute", display_name: "Absolute (#)" }] }],
     description: "Paid subscriptions cohorted by their first paid date, and how many reached each later paid period.",
     measures: [m("retention", "Retention", "%", "Subscriptions that reached the paid period, among those that had time to reach it.", { precision: 1 })] }),
-  def({ name: "subscription_status", display_name: "Subscription Status", group: "subscriptions", display_type: "stacked_bar", shape: "stock", dims: SUBS,
+  def({ name: "subscription_status", display_name: "Subscription Status", group: "subscriptions", display_type: "stacked_bar", shape: "stock", dims: [...SUBS, ...PERIOD],
     selectors: [{ id: "status_measure", display_name: "Measure", default: "actives", options: [{ id: "actives", display_name: "Active Subscriptions" }, { id: "trials", display_name: "Active Trials" }, { id: "mrr", display_name: "MRR" }, { id: "arr", display_name: "ARR" }] }],
     description: "Active subscriptions, trials, MRR or ARR at the end of each period, split by each subscription's current renewal state.",
     measures: [m("set_to_renew", "Set to renew", "#", "Will renew at the end of the current period."),
@@ -269,14 +301,14 @@ export const CHARTS: ChartDef[] = [
       flowM("bounces", "Bounced", "#", "Pairs that neither bought nor started a purchase on days 0–3.", { chartable: false }),
       flowM("cancellations", "Purchase Cancellations", "#", "Pairs that started a purchase and did not complete one on days 0–3.", { chartable: false })] }),
   // Trials
-  def({ name: "trials", display_name: "Active Trials", group: "trials", display_type: "line", shape: "stock", dims: SUBS,
+  def({ name: "trials", display_name: "Active Trials", group: "trials", display_type: "line", shape: "stock", dims: [...SUBS, ...PERIOD],
     description: "Free trials with access at the end of each period, whatever their auto-renew state.",
     measures: [m("trials", "Active Trials", "#", "Free trials with access at the end of the period.")] }),
-  def({ name: "trials_movement", display_name: "Active Trials Movement", group: "trials", display_type: "stacked_bar", shape: "flow", dims: SUBS,
+  def({ name: "trials_movement", display_name: "Active Trials Movement", group: "trials", display_type: "stacked_bar", shape: "flow", dims: [...SUBS, ...PERIOD],
     description: "How the number of active trials changed in each period.",
     measures: [flowM("new_trials", "New Trials", "#", "Trials that started."), flowM("converted_trials", "Converted Trials", "#", "Trials that converted to paid (negative)."),
       flowM("expired_trials", "Expired Trials", "#", "Trials that ended without converting (negative)."), flowM("movement", "Active Trials Movement", "#", "New − converted − expired trials.", { chartable: false })] }),
-  def({ name: "trials_new", display_name: "New Trials", group: "trials", display_type: "bar", shape: "flow", dims: SUBS,
+  def({ name: "trials_new", display_name: "New Trials", group: "trials", display_type: "bar", shape: "flow", dims: [...SUBS, ...PERIOD],
     description: "Free trials started in each period.", measures: [flowM("new_trials", "New Trials", "#", "Trials that started in the period.")] }),
   def({ name: "trial_cancellation", display_name: "Trial Cancellation Rate", group: "trials", display_type: "line", shape: "cohort_series", dims: SUBS,
     selectors: [days([["1_days", "1 day"], ["2_days", "2 days"], ["5_days", "5 days"], ["7_days", "7 days"], ["unbounded", "Unbounded"]], "7_days", "cancellation_timeframe", "Cancellation timeframe")],
@@ -287,17 +319,17 @@ export const CHARTS: ChartDef[] = [
       flowM("billing_failures", "Trial Billing Failures", "#", "Trials that ended without converting during a billing issue.", { chartable: false }),
       flowM("elapsed", "Trial Elapsed", "#", "Trials that ended without converting and without an opt-out or billing issue.", { chartable: false })] }),
   // Churn and refunds
-  def({ name: "churn", display_name: "Churn", group: "churn", display_type: "line", shape: "flow", dims: SUBS,
+  def({ name: "churn", display_name: "Churn", group: "churn", display_type: "line", shape: "flow", dims: [...SUBS, ...PERIOD],
     description: "Paid subscriptions that ended in each period as a share of those active when it started.",
     measures: [pct("churn_rate", "Churn Rate", "Churned actives ÷ actives at the start of the period."),
       m("actives", "Actives", "#", "Paid subscriptions active at the start of the period.", { chartable: false }),
       flowM("churned_actives", "Churned Actives", "#", "Paid subscriptions that ended (including product-change replacements), net of billing recoveries.", { chartable: false })] }),
-  def({ name: "refund_rate", display_name: "Refund Rate", group: "churn", display_type: "line", shape: "cohort_series", dims: MONEY,
+  def({ name: "refund_rate", display_name: "Refund Rate", group: "churn", display_type: "line", shape: "cohort_series", dims: [...MONEY, ...PERIOD],
     description: "Paid transactions of each period and the share that has been refunded since.",
     measures: [pct("refund_rate", "Refund Rate", "Refunded transactions ÷ transactions."),
       flowM("transactions", "Transactions", "#", "Paid purchases, renewals and one-time purchases in the period.", { chartable: false }),
       flowM("refunded", "Refunded Transactions", "#", "Of those, transactions refunded since (reversals excluded).", { chartable: false })] }),
-  def({ name: "refunds", display_name: "Refunds", group: "churn", display_type: "bar", shape: "flow", dims: MONEY,
+  def({ name: "refunds", display_name: "Refunds", group: "churn", display_type: "bar", shape: "flow", dims: [...MONEY, ...PERIOD],
     description: "Money refunded and refunded transactions, by refund date, net of reversed refunds.",
     measures: [flowM("refunded_revenue", "Refunded Revenue", "$", "Money refunded in the period, minus refunds reversed in it."),
       flowM("refunded_transactions", "Refunded Transactions", "#", "Transactions refunded in the period, minus reversals.")] }),
