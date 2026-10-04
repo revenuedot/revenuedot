@@ -91,6 +91,12 @@ async function preparePre(page) {
 
 async function cropRect(page, crop) {
   const { text, selector, minH = 320, maxH = 900, climb = 6 } = crop;
+  if (crop.click) {
+    const l = page.getByText(crop.click, { exact: false }).first();
+    await l.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
+    await l.click({ timeout: 4000 }).catch((e) => console.log("  click failed:", crop.click, String(e).slice(0, 80)));
+    await page.waitForTimeout(600);
+  }
   let loc;
   if (selector) loc = page.locator(selector).first();
   else if (crop.pre) loc = page.locator(".__line", { hasText: text }).first();
@@ -118,7 +124,19 @@ async function cropRect(page, crop) {
   x = Math.max(0, x - pad); y = Math.max(0, y - pad); w = Math.min(1280 - x, w + 2 * pad); h = h + 2 * pad;
   if (crop.extraTop) { const t = Math.min(crop.extraTop, y); y -= t; h += t; }
   if (crop.extraBottom) h += crop.extraBottom;
+  // Back to the top so a fixed header is drawn at y=0 only, not across the crop.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(200);
   return { x, y, width: w, height: h };
+}
+
+// Plain-text pages have thousands of line nodes, so a full-page shot at 2x is too slow: scroll a tall viewport instead.
+async function shotRegion(page, rect, fp) {
+  await page.setViewportSize({ width: 1280, height: Math.max(200, Math.ceil(rect.height)) });
+  const sy = await page.evaluate((y) => { window.scrollTo(0, y); return window.scrollY; }, rect.y);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: fp, timeout: 180000, clip: { x: rect.x, y: rect.y - sy, width: rect.width, height: rect.height } });
+  await page.setViewportSize({ width: 1280, height: 800 });
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -162,14 +180,17 @@ for (const p of PAGES) {
       const SEG = 4000;
       if (H <= SEG) {
         const f = `${p.page}-full-${DATE}.png`;
-        await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000 });
+        if (p.pre) await shotRegion(page, { x: 0, y: 0, width: 1280, height: H }, path.join(dir, f));
+        else await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000 });
         await shrink(path.join(dir, f), 1280, 85);
         entry.full.push(f);
       } else {
         let i = 1;
         for (let off = 0; off < H; off += SEG, i++) {
           const f = `${p.page}-full-${i}-${DATE}.png`;
-          await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000, clip: { x: 0, y: off, width: 1280, height: Math.min(SEG, H - off) } });
+          const seg = { x: 0, y: off, width: 1280, height: Math.min(SEG, H - off) };
+          if (p.pre) await shotRegion(page, seg, path.join(dir, f));
+          else await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000, clip: seg });
           await shrink(path.join(dir, f), 1280, 85);
           entry.full.push(f);
         }
@@ -182,7 +203,8 @@ for (const p of PAGES) {
         if (!rect) { entry.crops.push({ claim: c.claim, file: null, found, error: "locator not found" }); continue; }
         const f = `${p.page}-${c.claim}-${DATE}.png`;
         const fp = path.join(dir, f);
-        await page.screenshot({ path: fp, fullPage: true, timeout: 180000, clip: rect });
+        if (p.pre) await shotRegion(page, rect, fp);
+        else await page.screenshot({ path: fp, fullPage: true, timeout: 180000, clip: rect });
         await shrink(fp, 1600, 92);
         entry.crops.push({ claim: c.claim, file: f, found, rect });
       }

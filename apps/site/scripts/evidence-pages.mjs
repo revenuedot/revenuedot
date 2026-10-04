@@ -70,14 +70,15 @@ export const PAGES = [
     crops: [c("hero", "Scale your app business. Run subscriptions", "Adapty homepage hero: 'RevenueOS for subscription apps' with Book a demo and Start for free buttons.", "Homepage hero", { minH: 620, maxH: 1100, extraTop: 120 })],
   }),
   p("adapty", "pricing", "https://adapty.io/pricing/", {
-    click: ["What counts toward my monthly revenue?", "When do I start paying the 1%?", "How hard is it to migrate from another provider"],
+
     crops: [
       c("free-under-5k-then-1-percent", "Of monthly revenue after you pass", "Adapty pricing plan cards: Pro is free while you earn under $5K/month, then 1% of monthly revenue after you pass $5K/month; Enterprise is custom pricing.", "Free under $5K a month, then 1% of monthly revenue", { verify: "$5K/month", minH: 400, maxH: 900 }),
       c("add-ons", "3.5%", "Adapty pricing add-ons: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20%, payout acceleration 2.5% and attribution $0.03 per install, each free up to $5K.", "Add-on fees: Refund Saver 0.2%, Ads Manager 3.5%, Mail 20%, attribution $0.03", { verify: "0.2%", minH: 520, maxH: 1100 }),
       c("templates-and-ab-tests", "custom traffic splits, unlimited variants", "Adapty pricing feature list: 50+ templates and AI generator, A/B tests with custom traffic splits, unlimited variants and early winner predictions.", "A/B tests with unlimited variants; 50+ templates", { minH: 420, extraTop: 160 }),
       c("soc2-and-residency", "Data residency in the US or EU", "Adapty pricing Enterprise section: 24/7 support in a dedicated Slack channel, data residency in the US or EU, SOC2 certified.", "US or EU data residency on Enterprise; SOC 2", { minH: 360, extraTop: 120 }),
-      c("faq-what-counts", "What counts toward my monthly revenue?", "Adapty pricing FAQ, expanded: what counts toward monthly revenue and when the 1% starts.", "Revenue is counted before store fees; the 1% starts after $5K", { minH: 420, extraBottom: 200 }),
-      c("faq-migration", "How hard is it to migrate from another provider", "Adapty pricing FAQ, expanded: how hard it is to migrate from RevenueCat, Superwall or in-house.", "What Adapty says about migrating from RevenueCat", { minH: 320, extraBottom: 160 }),
+      c("faq-what-counts", "What counts toward my monthly revenue?", "Adapty pricing FAQ, expanded: what counts toward monthly revenue.", "Revenue is counted before Apple, Google or Stripe take their share", { click: "What counts toward my monthly revenue?", minH: 300, extraBottom: 220 }),
+      c("faq-when-1-percent", "When do I start paying the 1%?", "Adapty pricing FAQ, expanded: when the 1% starts.", "The 1% starts once monthly revenue passes $5K", { click: "When do I start paying the 1%?", minH: 300, extraBottom: 220 }),
+      c("faq-migration", "How hard is it to migrate from another provider", "Adapty pricing FAQ, expanded: migrating from RevenueCat, Superwall or in-house typically takes a few days to a week.", "Adapty says a migration typically takes a few days to a week", { click: "How hard is it to migrate from another provider", minH: 300, extraBottom: 220 }),
     ],
   }),
   p("adapty", "security-and-compliance", "https://adapty.io/security-and-compliance/", {

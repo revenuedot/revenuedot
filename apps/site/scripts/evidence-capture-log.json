@@ -717,5 +717,248 @@
     "status": 200,
     "title": "Adapty introduces new pricing: Full growth toolkit free up to $5,000 revenue",
     "pageHeight": 4367
+  },
+  {
+    "vendor": "qonversion",
+    "page": "home",
+    "url": "https://qonversion.io/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 108,
+          "y": 114,
+          "width": 1064,
+          "height": 800
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Subscription Growth Platform | Qonversion",
+    "pageHeight": 8504
+  },
+  {
+    "vendor": "qonversion",
+    "page": "pricing",
+    "url": "https://qonversion.io/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-to-7k-then-0-8-percent",
+        "file": "pricing-free-to-7k-then-0-8-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 108,
+          "y": 142,
+          "width": 1064,
+          "height": 566
+        }
+      },
+      {
+        "claim": "faq-total-tracked-revenue",
+        "file": "pricing-faq-total-tracked-revenue-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 236,
+          "y": 3835.578125,
+          "width": 808,
+          "height": 420
+        }
+      },
+      {
+        "claim": "plan-includes",
+        "file": "pricing-plan-includes-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 56,
+          "y": 556,
+          "width": 800,
+          "height": 776
+        }
+      },
+      {
+        "claim": "compliance-and-support",
+        "file": "pricing-compliance-and-support-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 2122.1875,
+          "width": 780,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing for Subscription Infrastructure | Qonversion",
+    "pageHeight": 5921
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-llms-txt",
+    "url": "https://documentation.qonversion.io/llms.txt",
+    "ok": false,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png",
+      "docs-llms-txt-full-2-2026-10-04.png",
+      "docs-llms-txt-full-3-2026-10-04.png"
+    ],
+    "crops": [],
+    "error": "TimeoutError: page.screenshot: Timeout 180000ms exceeded.\nCall log:\n  - taking page screenshot\n  - waiting for fonts to load...\n  - fonts loaded\n",
+    "status": 200,
+    "title": "",
+    "pageHeight": 27176
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-stripe-integration",
+    "url": "https://documentation.qonversion.io/docs/stripe-integration",
+    "ok": true,
+    "full": [
+      "docs-stripe-integration-full-1-2026-10-04.png",
+      "docs-stripe-integration-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe",
+        "file": "docs-stripe-integration-stripe-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 232,
+          "y": 152,
+          "width": 800,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Stripe Integration - Qonversion",
+    "pageHeight": 6176
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-mcp-server",
+    "url": "https://documentation.qonversion.io/docs/mcp-server",
+    "ok": true,
+    "full": [
+      "docs-mcp-server-full-1-2026-10-04.png",
+      "docs-mcp-server-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mcp-server",
+        "file": "docs-mcp-server-mcp-server-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 232,
+          "y": 254,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "MCP Server - Qonversion",
+    "pageHeight": 7887
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-migrating-from-revenuecat",
+    "url": "https://documentation.qonversion.io/docs/migrating-from-revenuecat-to-qonversion",
+    "ok": true,
+    "full": [
+      "docs-migrating-from-revenuecat-full-1-2026-10-04.png",
+      "docs-migrating-from-revenuecat-full-2-2026-10-04.png",
+      "docs-migrating-from-revenuecat-full-3-2026-10-04.png",
+      "docs-migrating-from-revenuecat-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "guide",
+        "file": "docs-migrating-from-revenuecat-guide-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 232,
+          "y": 41,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Migrating from RevenueCat - Qonversion",
+    "pageHeight": 13607
+  },
+  {
+    "vendor": "qonversion",
+    "page": "github-qonversion-ios-sdk",
+    "url": "https://github.com/qonversion/qonversion-ios-sdk",
+    "ok": true,
+    "full": [
+      "github-qonversion-ios-sdk-full-1-2026-10-04.png",
+      "github-qonversion-ios-sdk-full-2-2026-10-04.png",
+      "github-qonversion-ios-sdk-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-qonversion-ios-sdk-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 8908.390625,
+          "width": 878,
+          "height": 320
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - qonversion/qonversion-ios-sdk: iOS SDK for cross-platform in-app purchase and subscription infrastructure, revenue analytics, engagement automation, and integrations · GitHub",
+    "pageHeight": 9307
+  },
+  {
+    "vendor": "qonversion",
+    "page": "revenuecat-alternative",
+    "url": "https://qonversion.io/revenuecat-alternative",
+    "ok": true,
+    "full": [
+      "revenuecat-alternative-full-1-2026-10-04.png",
+      "revenuecat-alternative-full-2-2026-10-04.png",
+      "revenuecat-alternative-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-tier-comparison",
+        "file": "revenuecat-alternative-free-tier-comparison-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 1164,
+          "width": 1280,
+          "height": 496.375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "RevenueCat Alternative | Qonversion",
+    "pageHeight": 9485
   }
 ]
