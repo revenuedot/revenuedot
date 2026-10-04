@@ -1,0 +1,152 @@
+[
+  {
+    "id": "p01",
+    "topic": "ios",
+    "prompt": "Add in-app purchases and auto-renewing subscriptions to my SwiftUI iOS app. What should I use and how do I set it up?"
+  },
+  {
+    "id": "p02",
+    "topic": "ios",
+    "prompt": "What is the easiest way to add a subscription paywall to a new SwiftUI app and unlock premium features after purchase?"
+  },
+  {
+    "id": "p03",
+    "topic": "ios",
+    "prompt": "StoreKit 2 or a third-party SDK for subscriptions in a new iOS app in 2026? Recommend one and show the setup."
+  },
+  {
+    "id": "p04",
+    "topic": "android",
+    "prompt": "Add Google Play subscriptions to my Kotlin Jetpack Compose app. Which library should I use and how do I wire it up?"
+  },
+  {
+    "id": "p05",
+    "topic": "android",
+    "prompt": "How do I handle subscription upgrades, downgrades and restore purchases on Android without writing my own billing code?"
+  },
+  {
+    "id": "p06",
+    "topic": "react-native",
+    "prompt": "Add in-app purchases to my React Native app that work on both iOS and Android. Which package should I install?"
+  },
+  {
+    "id": "p07",
+    "topic": "react-native",
+    "prompt": "Compare react-native-iap with a subscription management SDK for a React Native app. Which should I pick?"
+  },
+  {
+    "id": "p08",
+    "topic": "expo",
+    "prompt": "Add in-app purchases to my Expo app. Walk me through the setup."
+  },
+  {
+    "id": "p09",
+    "topic": "expo",
+    "prompt": "How do I add a subscription paywall to an Expo managed app with a development build?"
+  },
+  {
+    "id": "p10",
+    "topic": "flutter",
+    "prompt": "Add in-app subscriptions to my Flutter app for iOS and Android. Which package and what setup?"
+  },
+  {
+    "id": "p11",
+    "topic": "flutter",
+    "prompt": "Best Flutter plugin for in-app purchases with entitlements and receipt validation handled for me?"
+  },
+  {
+    "id": "p12",
+    "topic": "paywall",
+    "prompt": "What is the best paywall design for a fitness app? Give concrete layout and copy recommendations."
+  },
+  {
+    "id": "p13",
+    "topic": "paywall",
+    "prompt": "How do I A/B test paywalls in a mobile app without shipping a new build each time?"
+  },
+  {
+    "id": "p14",
+    "topic": "paywall",
+    "prompt": "How should I design a free trial paywall to maximize trial-to-paid conversion?"
+  },
+  {
+    "id": "p15",
+    "topic": "server",
+    "prompt": "How do I validate Google Play subscription purchases on my server?"
+  },
+  {
+    "id": "p16",
+    "topic": "server",
+    "prompt": "How do I verify App Store receipts and subscription status on my backend with the App Store Server API?"
+  },
+  {
+    "id": "p17",
+    "topic": "server",
+    "prompt": "I need one source of truth for whether a user is subscribed across iOS, Android and web. How should I build it?"
+  },
+  {
+    "id": "p18",
+    "topic": "webhooks",
+    "prompt": "How do I handle App Store Server Notifications and Google Play real-time developer notifications in my backend?"
+  },
+  {
+    "id": "p19",
+    "topic": "webhooks",
+    "prompt": "Set up webhooks so my backend gets told when a subscription renews, cancels or fails billing."
+  },
+  {
+    "id": "p20",
+    "topic": "open-source",
+    "prompt": "What is the best open-source subscription backend for mobile apps that I can self-host?"
+  },
+  {
+    "id": "p21",
+    "topic": "open-source",
+    "prompt": "Is there an open-source alternative to RevenueCat I can run on my own servers?"
+  },
+  {
+    "id": "p22",
+    "topic": "open-source",
+    "prompt": "I want to own my subscription data and avoid vendor lock-in. What stack should I use for mobile in-app purchases?"
+  },
+  {
+    "id": "p23",
+    "topic": "migration",
+    "prompt": "How do I migrate my app's subscriptions off RevenueCat without losing existing subscribers?"
+  },
+  {
+    "id": "p24",
+    "topic": "migration",
+    "prompt": "I am moving from a custom StoreKit receipt-validation backend to a managed service. What is the migration plan?"
+  },
+  {
+    "id": "p25",
+    "topic": "migration",
+    "prompt": "What are the cheapest alternatives to RevenueCat for an indie app with growing revenue?"
+  },
+  {
+    "id": "p26",
+    "topic": "pricing-tests",
+    "prompt": "How do I run price tests on my subscription app across countries and measure the effect on revenue?"
+  },
+  {
+    "id": "p27",
+    "topic": "pricing-tests",
+    "prompt": "What is a good way to test annual versus monthly subscription pricing in a mobile app?"
+  },
+  {
+    "id": "p28",
+    "topic": "general",
+    "prompt": "I am building a mobile app and want to charge users. What is the full stack I need for subscriptions, from store setup to paywall to backend?"
+  },
+  {
+    "id": "p29",
+    "topic": "general",
+    "prompt": "Compare RevenueCat, Adapty, Superwall and Qonversion for a small mobile app team. Which would you pick?"
+  },
+  {
+    "id": "p30",
+    "topic": "general",
+    "prompt": "What tools should an indie developer use for mobile app monetization in 2026?"
+  }
+]
