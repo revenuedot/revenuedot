@@ -1,19 +1,22 @@
 import { and, asc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
-import { schema, type DB, type ExportFile, type ExportProgress } from "@revenuedot/db";
+import { schema, type DB, type ExportFile, type ExportProgress, type ExportUpload } from "@revenuedot/db";
 import { SecretsError, unseal, type SecretKey } from "../secrets.js";
 import { notMoving } from "../archive/moving.js";
 import { encodeFile } from "./files.js";
-import { putObject, StorageError, type Destination } from "./storage.js";
+import { abortMultipart, putObject, StorageError, type Destination } from "./storage.js";
+import { addChunk, finishUpload, newUpload, stagedBytes, stagingKey, type UploadContext } from "./upload.js";
+import { dbStore } from "../archive/store.js";
 import { columnsFor, readPage, type ExportTable, type Row, type Window } from "./tables.js";
-import { emailFileKey, sendExportEmail } from "./email.js";
+import { emailFileKey, emailJobPrefix, sendExportEmail } from "./email.js";
 import type { ArchiveStore } from "../archive/store.js";
 import type { Mailer } from "../../mail/index.js";
 
 /**
  * Scheduled data exports. The every-minute tick queues a run for each job whose `next_run_at` has passed, then works
- * through queued runs: each table is read in pages and written as one or more files (PART_ROWS rows each) under
- * `<prefix>/<YYYY-MM-DD>/<table>_<YYYYMMDDTHHMMSSZ>[_partN].<csv.gz|csv|parquet>`, with the job's chosen columns.
+ * through queued runs: each table is read in chunks of PART_ROWS rows and written, with the job's chosen columns, as one
+ * CSV file per table (the default, written in pieces across ticks: services/exports/upload.ts) or as one file per chunk
+ * (Parquet, and CSV with `split_files`) under `<prefix>/<YYYY-MM-DD>/<table>_<YYYYMMDDTHHMMSSZ>[_partN].<csv.gz|csv|parquet>`.
  * Incremental runs export what changed since the table's previous successful run; a table's first run is always full.
  * Email exports keep the files in RevenueDot's file store and, once every file is written, email the download links.
  *
@@ -88,6 +91,8 @@ export interface ExportRuntime {
   strictUrls?: boolean;
   /** No new file starts after this many milliseconds (default 20 s). */
   budgetMs?: number;
+  /** Single-file CSV: the smallest piece sent before the last (default 5 MiB, S3's and GCS's minimum part size). */
+  minPartBytes?: number;
   /** Email exports: where RevenueDot keeps the files, who sends the links, the origin the links use and what signs them. */
   store?: ArchiveStore;
   mailer?: Mailer;
@@ -140,9 +145,20 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
   }).where(and(eq(R.id, runId), eq(R.status, row.r.status), lte(R.nextAttemptAt, rt.now))).returning();
   if (!run) return false;
   const files: ExportFile[] = [...run.files];
+  const store = rt.store ?? dbStore(db);
+  // Beside the run's email files (`<job>/<run id>/<key>`), never under them: a job prefix such as "staging/0" cannot reach it.
+  const runStaging = `${emailJobPrefix(job.projectId, job.id)}staging/${run.id}/`;
+  let target: Parameters<typeof abortMultipart>[0] | null = null;
+  // The upload being written, with an upload ID created in this tick too.
+  let live: ExportUpload | undefined = run.progress?.upload;
   const fail = async (message: string, transient: boolean) => {
     const attempts = run.attempts + 1;
     const retryIn = transient && attempts < MAX_ATTEMPTS ? RETRY_MINUTES[attempts - 1] : undefined;
+    if (retryIn === undefined) {
+      // The run is over: drop a half-written upload and the bytes staged for it.
+      if (live?.uploadId && target && target.destination === live.destination) await abortMultipart(target, live.key, live.uploadId, rt.fetch, rt.now);
+      await store.deletePrefix(runStaging).catch(() => undefined);
+    }
     await db.update(R).set({
       status: retryIn === undefined ? "failed" : "queued", attempts, nextAttemptAt: retryIn === undefined ? rt.now : new Date(rt.now.getTime() + retryIn * 60_000),
       error: message.slice(0, 1000), files, finishedAt: retryIn === undefined ? rt.now : null,
@@ -155,10 +171,12 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
   }
   try {
     const secrets = await unseal(job.secrets, rt.secretKey);
-    const target = { destination: job.destination as Destination, config: job.destinationConfig, secrets, strictUrls: rt.strictUrls };
+    target = { destination: job.destination as Destination, config: job.destinationConfig, secrets, strictUrls: rt.strictUrls };
     const tables = job.tables as ExportTable[];
     let progress: ExportProgress = run.progress ?? { table: 0, cursor: null, part: 0 };
     let wrote = false;
+    // Bytes staged for the current single-file chunk, kept in memory between chunks of this tick.
+    let held: { table: number; chunk: number; bytes: Uint8Array } | null = null;
     while (progress.table < tables.length) {
       // Every call writes at least one file, so a run always moves forward however small the budget.
       if (wrote && Date.now() - started >= budgetMs) {
@@ -172,11 +190,58 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
       // Read up to one file's worth of rows, then write it.
       const buffer: Row[] = [];
       let cursor = progress.cursor;
-      do {
+      // A single file whose pieces are all sent only needs completing.
+      if (!progress.upload?.sent) do {
         const page = await readPage(db, job.projectId, table, w, cursor);
         buffer.push(...page.rows);
         cursor = page.next;
       } while (cursor && buffer.length < PART_ROWS);
+      // One CSV file per table unless split (a run that started split stays split).
+      const single = !!progress.upload || (progress.part === 0 && job.format === "csv" && !job.splitFiles);
+      if (single) {
+        const up: ExportUpload = progress.upload
+          ? { ...progress.upload }
+          : newUpload(objectKey(job.destinationConfig.prefix as string | undefined, table, run.windowEnd, 1, job.compression === "gzip" ? "csv.gz" : "csv"), job.compression === "gzip" ? "application/gzip" : "text/csv", job.destination);
+        live = up;
+        // Pieces already went to the destination the run started with; a changed destination cannot carry on the file.
+        if (up.destination && up.destination !== job.destination) throw new StorageError("The export's destination changed while it was running. Run the export again.", false);
+        // The compression and key the file started with, even if the job changed since.
+        const gz = up.contentType === "application/gzip";
+        const stagingPrefix = `${runStaging}${progress.table}/`;
+        const ctx: UploadContext = {
+          target, store, stagingPrefix, emailKey: job.destination === "email" ? emailFileKey(job.projectId, job.id, run.id, up.key) : undefined,
+          fetch: rt.fetch, now: rt.now, minPart: rt.minPartBytes,
+        };
+        if (!up.sent) {
+          const before = { chunks: up.chunks, staged: up.staged };
+          const pending = held && held.table === progress.table && held.chunk === up.chunks ? held.bytes : await stagedBytes(ctx, up);
+          const done = !cursor;
+          const chunk = buffer.length || up.chunks === 0
+            ? (await encodeFile("csv", gz ? "gzip" : "none", columnsFor(table, job.columns[table]), buffer, up.chunks === 0)).bytes : new Uint8Array();
+          const waiting = await addChunk(ctx, up, pending, chunk, buffer.length, done);
+          if (waiting.length) await store.put(stagingKey(stagingPrefix, up.chunks), waiting);
+          up.staged = waiting.length;
+          held = { table: progress.table, chunk: up.chunks, bytes: waiting };
+          if (!done || up.sent) {
+            // Saved before completing, so a retry completes the upload instead of sending parts to a finished one.
+            progress = { table: progress.table, cursor: done ? null : cursor, part: 1, upload: up };
+            await db.update(R).set({ progress, files }).where(eq(R.id, runId));
+            // The previous chunk's staged bytes are no longer needed once progress points past them.
+            if (before.staged && before.chunks !== up.chunks) await store.deletePrefix(stagingKey(stagingPrefix, before.chunks));
+          }
+          if (!done) { wrote = true; continue; }
+        }
+        if (up.sent) await finishUpload(ctx, up);
+        const entry: ExportFile = { table, key: up.key, rows: up.rows, bytes: up.bytes, ...(job.destination === "email" && up.pieces ? { chunks: up.pieces } : {}) };
+        const at = files.findIndex((x) => x.key === up.key);
+        if (at >= 0) files[at] = entry; else files.push(entry);
+        progress = { table: progress.table + 1, cursor: null, part: 0 };
+        live = undefined;
+        await db.update(R).set({ progress, files }).where(eq(R.id, runId));
+        await store.deletePrefix(stagingPrefix);
+        wrote = true;
+        continue;
+      }
       // An empty table still gets one (header-only) file; a table that ends on a file boundary does not get another.
       if (buffer.length || progress.part === 0) {
         const part = progress.part + 1;

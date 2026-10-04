@@ -155,3 +155,90 @@ async function gcsToken(t: StorageTarget, f: typeof fetch, now: Date) {
     throw new StorageError(e instanceof Error ? e.message : String(e), !!(e as { transient?: boolean }).transient);
   }
 }
+
+/*
+ * One file written in pieces across ticks (single-file CSV exports). S3, R2 and Google Cloud Storage speak S3's
+ * multipart upload (GCS through its XML API, with the HMAC key or the service account's token); Azure takes blocks and
+ * a block list. Every piece but the last must be at least MIN_PART_BYTES (S3's and GCS's limit), so the caller buffers.
+ * Part numbers and block ids follow the piece's index, so a piece sent again after a dead tick replaces itself.
+ */
+
+export const MIN_PART_BYTES = 5 * 1024 * 1024;
+
+/** The XML API URL of an object for S3, R2 and GCS (both credential types), and how to sign requests to it. */
+async function multipartRequest(t: StorageTarget, f: typeof fetch, now: Date, method: string, key: string, query: string, body: Uint8Array | string, headers: Record<string, string> = {}): Promise<Response> {
+  const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
+  let url: string, signed: Record<string, string>;
+  if (t.destination === "gcs" && !gcsHmac(t)) {
+    const bucket = String(t.config.bucket ?? "");
+    if (!bucket) throw new StorageError("Set the bucket name.", false);
+    url = `${GCS_XML_ENDPOINT}/${bucket}/${encodePath(key)}${query}`;
+    signed = { ...headers, authorization: `Bearer ${await gcsToken(t, f, now)}` };
+  } else {
+    const b = s3Base(t);
+    const keyId = String(t.config.access_key_id ?? ""), secret = t.secrets.secret_access_key;
+    if (!keyId || !secret) throw new StorageError("Set the access key ID and secret access key.", false);
+    url = `${b.url(key)}${query}`;
+    signed = (await signV4({ method, url, payloadHash: await sha256Hex(bytes), headers, accessKeyId: keyId, secretAccessKey: secret, region: b.region, service: "s3", now, contentSha256Header: true })).headers;
+  }
+  const res = await call(t, f, url, { method, headers: signed, body: method === "GET" || method === "HEAD" || method === "DELETE" ? undefined : bytes as Uint8Array<ArrayBuffer> }, s3Name(t));
+  if (!res.ok) throw await sendErr(s3Name(t), res);
+  return res;
+}
+
+const xmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+export async function createMultipart(t: StorageTarget, key: string, contentType: string, f: typeof fetch, now: Date): Promise<string> {
+  const res = await multipartRequest(t, f, now, "POST", key, "?uploads", "", { "content-type": contentType });
+  const id = /<UploadId>([^<]+)<\/UploadId>/.exec(await res.text())?.[1];
+  if (!id) throw new StorageError(`${s3Name(t)} did not return an upload ID.`, true);
+  return id;
+}
+
+export async function uploadPart(t: StorageTarget, key: string, uploadId: string, n: number, bytes: Uint8Array, f: typeof fetch, now: Date): Promise<string> {
+  const res = await multipartRequest(t, f, now, "PUT", key, `?partNumber=${n}&uploadId=${encodeURIComponent(uploadId)}`, bytes, { "content-length": String(bytes.length) });
+  const etag = res.headers.get("etag");
+  if (!etag) throw new StorageError(`${s3Name(t)} did not return an ETag for part ${n}.`, true);
+  return etag;
+}
+
+export async function completeMultipart(t: StorageTarget, key: string, uploadId: string, parts: { n: number; etag: string }[], f: typeof fetch, now: Date): Promise<void> {
+  const body = `<CompleteMultipartUpload>${parts.map((p) => `<Part><PartNumber>${p.n}</PartNumber><ETag>${xmlEscape(p.etag)}</ETag></Part>`).join("")}</CompleteMultipartUpload>`;
+  const res = await multipartRequest(t, f, now, "POST", key, `?uploadId=${encodeURIComponent(uploadId)}`, body, { "content-type": "application/xml" });
+  // S3 can answer 200 and put the error in the body.
+  const text = await res.text().catch(() => "");
+  const code = /<Error>[\s\S]*?<Code>([^<]+)<\/Code>/.exec(text)?.[1];
+  if (code) throw new StorageError(`${s3Name(t)} could not finish the upload (${code}).`, code === "InternalError" || code === "SlowDown");
+}
+
+/** The object's size, or null when it cannot be read. */
+export async function headObjectSize(t: StorageTarget, key: string, f: typeof fetch, now: Date): Promise<number | null> {
+  try {
+    const len = (await multipartRequest(t, f, now, "HEAD", key, "", "")).headers.get("content-length");
+    return len === null ? null : Number(len);
+  } catch { return null; }
+}
+
+/** Best effort: a failed run leaves no half-written upload behind. */
+export async function abortMultipart(t: StorageTarget, key: string, uploadId: string, f: typeof fetch, now: Date): Promise<void> {
+  await multipartRequest(t, f, now, "DELETE", key, `?uploadId=${encodeURIComponent(uploadId)}`, "").catch(() => undefined);
+}
+
+/** Azure block ids must all have the same length: base64 of "rd-block-NNNNNN". */
+export const azureBlockId = (n: number) => btoa(`rd-block-${String(n).padStart(6, "0")}`);
+
+export async function putBlock(t: StorageTarget, key: string, n: number, bytes: Uint8Array, f: typeof fetch, now: Date): Promise<void> {
+  const a = azureAccount(t);
+  const url = azureUrl(a, azureContainer(t), key, { comp: "block", blockid: azureBlockId(n) });
+  const res = await call(t, f, url, { method: "PUT", headers: await azureHeaders(a, "PUT", url, { "content-length": String(bytes.length) }, now), body: bytes as Uint8Array<ArrayBuffer> }, "Azure Blob Storage");
+  if (!res.ok) throw await sendErr("Azure Blob Storage", res);
+}
+
+export async function putBlockList(t: StorageTarget, key: string, count: number, contentType: string, f: typeof fetch, now: Date): Promise<void> {
+  const a = azureAccount(t);
+  const url = azureUrl(a, azureContainer(t), key, { comp: "blocklist" });
+  const body = new TextEncoder().encode(`<?xml version="1.0" encoding="utf-8"?><BlockList>${Array.from({ length: count }, (_, i) => `<Latest>${azureBlockId(i + 1)}</Latest>`).join("")}</BlockList>`);
+  const headers = await azureHeaders(a, "PUT", url, { "content-length": String(body.length), "content-type": "application/xml", "x-ms-blob-content-type": contentType }, now);
+  const res = await call(t, f, url, { method: "PUT", headers, body: body as Uint8Array<ArrayBuffer> }, "Azure Blob Storage");
+  if (!res.ok) throw await sendErr("Azure Blob Storage", res);
+}

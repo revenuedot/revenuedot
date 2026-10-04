@@ -745,7 +745,9 @@ export const virtualCurrencyTransactions = pgTable("virtual_currency_transaction
   sourceKey: text("source_key"),
   reference: text("reference"),
   createdAt: created(),
-}, (t) => [index("vc_tx_customer").on(t.customerId), uniqueIndex("vc_tx_source_key").on(t.projectId, t.customerId, t.code, t.sourceKey)]);
+}, (t) => [index("vc_tx_customer").on(t.customerId),
+  // Incremental in-app currency exports read one project's ledger by time (services/exports/tables.ts).
+  index("vc_tx_project_created").on(t.projectId, t.createdAt, t.id), uniqueIndex("vc_tx_source_key").on(t.projectId, t.customerId, t.code, t.sourceKey)]);
 
 /** Who changed what in a project. Written by a middleware on every successful v2 write. */
 export const auditLogs = pgTable("audit_logs", {
@@ -1064,6 +1066,8 @@ export const exportJobs = pgTable("export_jobs", {
   /** Schedule "interval": hours between runs (4, 6, 8 or 12), counted from hour_utc. */
   intervalHours: integer("interval_hours"),
   mode: text("mode").notNull().default("incremental"),
+  /** CSV only: false (the default, as RevenueCat) writes one file per table; true splits it every 10,000 rows. Parquet is always split. */
+  splitFiles: boolean("split_files").notNull().default(false),
   tables: jsonb("tables").$type<string[]>().notNull(),
   columns: jsonb("columns").$type<Record<string, string[]>>().notNull().default({}),
   environment: text("environment").notNull().default("both"),
@@ -1076,9 +1080,17 @@ export const exportJobs = pgTable("export_jobs", {
   updatedAt: ts("updated_at"),
 }, (t) => [index("export_jobs_project").on(t.projectId), index("export_jobs_due").on(t.enabled, t.nextRunAt)]);
 
-export interface ExportFile { table: string; key: string; rows: number; bytes: number }
+/** `chunks`: an email export's file kept in that many pieces, served as one file (services/exports/upload.ts). */
+export interface ExportFile { table: string; key: string; rows: number; bytes: number; chunks?: number }
+/**
+ * A single-file CSV being written across ticks: `chunks` pieces of rows encoded so far, `staged` bytes of them held in
+ * RevenueDot's file store until there are enough for a part, and `pieces` uploaded (S3 parts with their ETags, Azure
+ * blocks, or kept pieces of an email export). `destination`: where the pieces went. `sent`: every piece is sent and only
+ * completing the multipart upload or committing the block list is left.
+ */
+export interface ExportUpload { key: string; contentType: string; destination?: string; chunks: number; rows: number; bytes: number; staged: number; pieces: number; uploadId?: string; etags?: string[]; sent?: boolean }
 /** Where an unfinished run stopped: the index into the job's tables, the page cursor inside it, the last part written. */
-export interface ExportProgress { table: number; cursor: { t: string; id: string } | null; part: number }
+export interface ExportProgress { table: number; cursor: { t: string; id: string } | null; part: number; upload?: ExportUpload }
 
 export const exportRuns = pgTable("export_runs", {
   id: text("id").primaryKey(),
