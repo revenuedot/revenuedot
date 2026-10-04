@@ -251,10 +251,26 @@ describe("charts: numbers by hand", () => {
     expect(bad.body.param).toBe("week_start");
   });
 
+  it("puts ad revenue in its own segment when revenue is segmented by product, store or offering", async () => {
+    for (const dim of ["product", "store", "offering"]) {
+      const r = await get("revenue", `${MONTHS}&segment=${dim}`);
+      expect(r.status, dim).toBe(200);
+      const names = r.body.segments.map((s: any) => s.display_name);
+      expect(names, dim).toContain("Ad revenue");
+      const ad = names.indexOf("Ad revenue"), total = names.indexOf("Total");
+      const at = (seg: number) => r.body.values.filter((v: any) => v.segment === seg && v.measure === 0).map((v: any) => v.value);
+      // u_a's $0.02 of ads on Aug 15, and nowhere else.
+      expect(at(ad), dim).toEqual([0, 0, 0, 0.02, 0]);
+      const sums = at(total).map((_: number, k: number) => names.reduce((s: number, n: string, i: number) => (n === "Total" ? s : s + at(i)[k]), 0));
+      sums.forEach((v: number, k: number) => expect(v, `${dim} ${k}`).toBeCloseTo(at(total)[k], 6));
+    }
+  });
+
   it("options list the values in the data", async () => {
     const o = await call("GET", `${P}/options`, { chart_name: "revenue" });
     const store = o.body.filters.find((x: any) => x.id === "store");
-    expect(store.options.map((x: any) => x.display_name).sort()).toEqual(["App Store", "Google Play"]);
+    // Ad revenue has no store: it is its own value.
+    expect(store.options.map((x: any) => x.display_name).sort()).toEqual(["Ad revenue", "App Store", "Google Play"]);
     expect(o.body.segments.map((s: any) => s.id)).toContain("country");
     expect(o.body.user_selectors.revenue_type).toMatchObject({ default: "revenue" });
     const ce = await call("GET", `${P}/options`, { chart_name: "cohort_explorer" });

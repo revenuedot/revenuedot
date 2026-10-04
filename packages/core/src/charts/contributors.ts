@@ -318,8 +318,7 @@ export function chartContributors(def: ChartDef, input: ChartInput, req: ChartRe
     const top = segs.filter((s) => !s.isOther).map((s) => s.id);
     rows = segs.flatMap((s) => compute(restrict(filtered, [s.isOther ? { name: dim, values: top, exclude: true } : { name: dim, values: [s.id] }])).rows
       .map((r) => ({ ...r, segment: s.id, ...(s.isOther ? { segmentOther: true } : {}) })));
-    // What belongs to no customer in the chart's Total. Summing it over segments counted ad revenue once per segment
-    // when the segment is a purchase dimension (store, product, offering), which ad events pass in every segment.
+    // What belongs to no customer in the chart's Total (ad revenue from app users who never became customers).
     unattributed = compute(filtered).unattributed;
   }
   rows.sort((x, y) => y.at - x.at || (x.customerId < y.customerId ? -1 : x.customerId > y.customerId ? 1 : 0));

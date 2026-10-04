@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  chartContributors, chartDef, CHARTS, contributorsMeasure, hasContributors, runChart,
+  AD_REVENUE_VALUE, chartContributors, chartDef, CHARTS, contributorsMeasure, hasContributors, runChart,
   type ChartDef, type ChartInput, type ChartOutput, type ChartRequest, type ChartTx, type Contributor,
 } from "../src/index.js";
 
@@ -145,8 +145,10 @@ describe("chart contributors", () => {
   it("filters by product and segments like the chart: per-segment values add up to each segment", () => {
     const def = chartDef("revenue")!;
     const f = chartContributors(def, input(), req(), { filters: [{ name: "product", values: ["weekly"] }] });
-    // As on the chart, a product filter keeps ad revenue (it has no product): A and H are listed with their ad revenue only.
-    expect(Object.fromEntries(f.rows.map((r) => [r.customerId, Math.round(r.value * 100) / 100]))).toEqual({ E: 25, A: 0.02, H: 0.05 });
+    // As on the chart, a product filter leaves ad revenue out (it has no product; it is its own "Ad revenue" value).
+    expect(Object.fromEntries(f.rows.map((r) => [r.customerId, Math.round(r.value * 100) / 100]))).toEqual({ E: 25 });
+    const ads = chartContributors(def, input(), req(), { filters: [{ name: "product", values: [AD_REVENUE_VALUE] }] });
+    expect(Object.fromEntries(ads.rows.map((r) => [r.customerId, Math.round(r.value * 100) / 100]))).toEqual({ A: 0.02, H: 0.05 });
     const seg = chartContributors(def, input(), req(), { segment: "country", limit: 1 });
     const run = runChart(def, input(), req(), { segment: "country", limit: 1 });
     for (const s of run.segments!) {

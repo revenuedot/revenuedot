@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
-  addMonths, ATTRIBUTION_DIMS, chartDef, customAttributeDim, customAttributeKey, DEFAULT_WEEK_START, dimLabel, NO_ATTRIBUTION, dimValues, floorTo,
+  AD_REVENUE_VALUE, addMonths, ATTRIBUTION_DIMS, chartDef, customAttributeDim, customAttributeKey, DEFAULT_WEEK_START, dimLabel, NO_ATTRIBUTION, dimValues, floorTo,
   isCustomAttributeDim, isoDay, isPeriodDim, periodDimLabel, RESOLUTIONS, runChart, supportsDim, type ChartDef, type ChartFilter, type ChartOutput, type ChartRequest, type Dim, type MeasureDef, type Resolution,
 } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
@@ -256,7 +256,7 @@ const countryName = (code: string) => {
 
 /** Human labels for a dimension's values: app, product, offering and paywall names from the project; countries in English. */
 async function dimLabels(deps: Deps, projectId: string, dim: Dim): Promise<(v: string) => string> {
-  const unknown = (v: string, f: (v: string) => string) => (v === "" ? "Unknown" : f(v));
+  const unknown = (v: string, f: (v: string) => string) => (v === "" ? "Unknown" : v === AD_REVENUE_VALUE ? "Ad revenue" : f(v));
   const { db } = deps;
   if (dim === "app") {
     const rows = await db.select({ id: schema.apps.id, name: schema.apps.name }).from(schema.apps).where(eq(schema.apps.projectId, projectId));
