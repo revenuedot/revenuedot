@@ -405,7 +405,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
       sdk("BigQuery", "BigQuery needs no attributes. Every event RevenueDot records goes into the table."),
       {
         q: "Is it the same as RevenueCat's integrations?",
-        a: "No. BigQuery is an addition beyond RevenueCat's integration catalogue: a live streaming table instead of scheduled files. For files in S3, R2 or GCS, use RevenueDot's scheduled data exports.",
+        a: "No. BigQuery is an addition beyond RevenueCat's integration catalogue: a live streaming table instead of scheduled files. For files in S3, R2, GCS or Azure, or by email, use RevenueDot's scheduled data exports.",
       },
       { q: "Does RevenueDot create the table?", a: "Yes. If the table is missing, RevenueDot creates it with its schema, partitioned by day on `event_timestamp`, the first time an event arrives." },
       { q: "Are sandbox purchases included?", a: "Yes. BigQuery receives every event, so use `WHERE environment = 'PRODUCTION'` to leave sandbox rows out of your reports." },
@@ -415,7 +415,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
       { label: "BigQuery tabledata.insertAll", url: "https://cloud.google.com/bigquery/docs/reference/rest/v2/tabledata/insertAll" },
       RC_LIST,
     ],
-    docs: [{ href: `${GUIDE}#bigquery`, label: "BigQuery setup in the integrations guide" }, { href: `${GUIDE}#scheduled-data-exports`, label: "Scheduled data exports to S3, R2 or GCS" }],
+    docs: [{ href: `${GUIDE}#bigquery`, label: "BigQuery setup in the integrations guide" }, { href: `${GUIDE}#scheduled-data-exports`, label: "Scheduled data exports to S3, R2, GCS, Azure or email" }],
     related: ["/integrations/data-exports", "/integrations/webhooks", "/integrations/segment", "/charts/revenue"],
   },
 

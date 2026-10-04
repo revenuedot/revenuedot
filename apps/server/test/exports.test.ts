@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { jwtVerify } from "jose";
 import { parquetReadObjects } from "hyparquet";
 import { schema } from "@revenuedot/db";
@@ -16,6 +16,10 @@ import { secretKeyFrom } from "../src/services/secrets.js";
 import { sql } from "drizzle-orm";
 import { sha256Hex, signV4 } from "../src/services/exports/sigv4.js";
 import { COLUMNS } from "../src/services/exports/tables.js";
+import { storeSdkEvents } from "../src/services/sdk-events.js";
+import { memoryMailer } from "../src/mail/index.js";
+import { dbStore } from "../src/services/archive/store.js";
+import { sharedKeyAuthorization } from "../src/services/exports/azure.js";
 import type { VerifiedSubscription } from "../src/stores/types.js";
 import { makeKeys, type Keys } from "./google-helpers.js";
 
@@ -328,5 +332,192 @@ describe("big exports", () => {
     const call = api();
     expect((await call("POST", "/integrations/exports", { ...S3, config: { ...S3.config, endpoint: "http://169.254.169.254" } })).body.param).toBe("config.endpoint");
     expect((await call("POST", "/integrations/exports", { ...S3, config: { ...S3.config, prefix: "a/../../other" } })).body.param).toBe("config.prefix");
+  });
+});
+
+const AZ_KEY = btoa(String.fromCharCode(...new Uint8Array(64).map((_, i) => (i * 5) % 256)));
+
+describe("parity with RevenueCat's export options", () => {
+  it("writes only the chosen columns, in catalog order, to CSV and Parquet; validates names; empty means every column", async () => {
+    const call = api();
+    const bad = await call("POST", "/integrations/exports", { ...S3, columns: { transactions: ["store", "nope"] } });
+    expect([bad.status, bad.body.param, bad.body.message]).toEqual([400, "columns.transactions", 'columns.transactions: "nope" is not a column of transactions.']);
+    expect((await call("POST", "/integrations/exports", { ...S3, columns: { invoices: ["x"] } })).body.param).toBe("columns.invoices");
+    const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["transactions", "customers"], compression: "none", columns: { transactions: ["store_transaction_id", "price_in_usd", "rc_original_app_user_id", "store", "store"], customers: [] } })).body;
+    expect(job.columns).toEqual({ transactions: ["rc_original_app_user_id", "store", "price_in_usd", "store_transaction_id"] });
+    const catalog = (await call("GET", "/integrations/exports/columns")).body;
+    expect(catalog.items.map((t: { table: string }) => t.table)).toEqual(["transactions", "customers", "subscriptions", "events", "paywall_events"]);
+    expect(catalog.items[0].columns[0]).toEqual({ name: "rc_original_app_user_id", type: "string" });
+    await sub("c1");
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
+    const { f, puts } = bucket();
+    await run(f);
+    const rows = parseCsv(new TextDecoder().decode(puts[0]!.bytes));
+    expect(rows[0]).toEqual(["rc_original_app_user_id", "store", "price_in_usd", "store_transaction_id"]);
+    expect(rows[1]).toEqual(["c1", "app_store", "9.99", "tx_c1"]);
+    expect(parseCsv(new TextDecoder().decode(puts[1]!.bytes))[0]).toEqual(COLUMNS.customers.map(([n]) => n));
+
+    const pq = (await call("POST", `/integrations/exports/${job.id}`, { format: "parquet", columns: { transactions: ["is_sandbox", "renewal_number"] } })).body;
+    expect(pq.columns.transactions).toEqual(["is_sandbox", "renewal_number"]);
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" });
+    const second = bucket();
+    await run(second.f);
+    const b = second.puts[0]!.bytes;
+    const parquet = await parquetReadObjects({ file: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer });
+    expect(parquet).toEqual([{ is_sandbox: false, renewal_number: 1n }]);
+  });
+
+  it("exports paywall events from the SDK, incrementally by when they arrived", async () => {
+    const call = api();
+    await sub("pw1");
+    await storeSdkEvents(h.db, { projectId: "proj1", app: { id: "app_ios", type: "app_store" }, now: h.now(), body: { events: [
+      { id: "e1", type: "paywall_impression", app_user_id: "pw1", timestamp: h.now().getTime() - 5000, session_id: "s1", offering_id: "default", paywall_id: "pw_main", paywall_revision: 3, locale: "en_US", display_mode: "full_screen", dark_mode: false },
+      { id: "e2", type: "paywall_purchase_initiated", app_user_id: "pw1", timestamp: h.now().getTime() - 4000, session_id: "s1", offering_id: "default", paywall_revision: 3, package_id: "$rc_monthly", product_id: "pro_monthly", presented_offering_context: { paywall_id: "pw_ctx" } },
+      { id: "e3", type: "customer_center_impression", app_user_id: "pw1", timestamp: h.now().getTime() - 3000 },
+      { id: "e4", type: "paywall_close", app_user_id: "unknown_user", timestamp: h.now().getTime() - 2000, session_id: "s2", offering_id: "other", paywall_revision: 1 },
+    ] } });
+    const job = (await call("POST", "/integrations/exports", { ...S3, tables: ["paywall_events"], compression: "none" })).body;
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
+    const first = bucket();
+    await run(first.f);
+    expect(first.puts[0]!.url).toContain("/paywall_events_20260901T120000Z.csv");
+    const rows = parseCsv(new TextDecoder().decode(first.puts[0]!.bytes));
+    expect(rows[0]).toEqual(COLUMNS.paywall_events.map(([n]) => n));
+    const data = rows.slice(1).map((r) => Object.fromEntries(rows[0]!.map((k, i) => [k, r[i]!])));
+    expect(data.map((d) => d.id)).toEqual(["e1", "e2", "e4"]);
+    const [cust] = await h.db.select().from(schema.customers).where(eq(schema.customers.originalAppUserId, "pw1"));
+    expect(data[0]).toMatchObject({ type: "paywall_impression", app_id: "app_ios", app_user_id: "pw1", customer_id: cust!.id, is_sandbox: "false", paywall_id: "pw_main", offering_id: "default", session_id: "s1", paywall_revision: "3", locale: "en_US", display_mode: "full_screen", occurred_at: "2026-09-01 11:59:55", received_at: "2026-09-01 12:00:00" });
+    expect(data[1]).toMatchObject({ paywall_id: "pw_ctx", package_id: "$rc_monthly", product_id: "pro_monthly" });
+    expect(data[2]).toMatchObject({ customer_id: "", offering_id: "other" });
+    expect(JSON.parse(data[0]!.payload!)).toMatchObject({ dark_mode: false });
+    // The next day only the newly received event is exported, even though it happened earlier.
+    h.setNow(new Date(h.now().getTime() + DAY));
+    await storeSdkEvents(h.db, { projectId: "proj1", app: { id: "app_ios", type: "app_store" }, now: h.now(), body: { events: [{ id: "e5", type: "paywall_cancel", app_user_id: "pw1", timestamp: h.now().getTime() - 2 * DAY }] } });
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
+    const second = bucket();
+    await run(second.f);
+    expect(parseCsv(new TextDecoder().decode(second.puts[0]!.bytes)).slice(1).map((r) => r[0])).toEqual(["e5"]);
+  });
+
+  it("runs every 4, 6, 8 or 12 hours from the chosen hour", async () => {
+    const t = new Date("2026-09-01T12:00:00Z");
+    expect(nextRunAt({ schedule: "interval", hourUtc: 3, weekday: null, intervalHours: 6 }, t).toISOString()).toBe("2026-09-01T15:00:00.000Z");
+    expect(nextRunAt({ schedule: "interval", hourUtc: 3, weekday: null, intervalHours: 6 }, new Date("2026-09-01T21:00:00Z")).toISOString()).toBe("2026-09-02T03:00:00.000Z");
+    expect(nextRunAt({ schedule: "interval", hourUtc: 0, weekday: null, intervalHours: 4 }, new Date("2026-09-01T00:00:00Z")).toISOString()).toBe("2026-09-01T04:00:00.000Z");
+    expect(nextRunAt({ schedule: "interval", hourUtc: 23, weekday: null, intervalHours: 12 }, t).toISOString()).toBe("2026-09-01T23:00:00.000Z");
+    // A stored value outside 4, 6, 8 or 12 (0 would never end the loop) runs every 6 hours.
+    expect(nextRunAt({ schedule: "interval", hourUtc: 3, weekday: null, intervalHours: 0 }, t).toISOString()).toBe("2026-09-01T15:00:00.000Z");
+    const call = api();
+    expect((await call("POST", "/integrations/exports", { ...S3, schedule: "interval", interval_hours: 5 })).body.param).toBe("interval_hours");
+    const job = (await call("POST", "/integrations/exports", { ...S3, schedule: "interval", interval_hours: 8, hour_utc: 1 })).body;
+    expect(job).toMatchObject({ schedule: "interval", interval_hours: 8, weekday: null, next_run_at: new Date("2026-09-01T17:00:00Z").getTime() });
+    const daily = (await call("POST", `/integrations/exports/${job.id}`, { schedule: "daily" })).body;
+    expect([daily.interval_hours, daily.next_run_at]).toEqual([null, new Date("2026-09-02T01:00:00Z").getTime()]);
+  });
+
+  it("uploads to Azure Blob Storage with Shared Key, and with a connection string's SAS", async () => {
+    const call = api();
+    const conn = `DefaultEndpointsProtocol=https;AccountName=acmedata;AccountKey=${AZ_KEY};EndpointSuffix=core.windows.net`;
+    expect((await call("POST", "/integrations/exports", { destination: "azure", config: { bucket: "rd-exports" }, credentials: { connection_string: "AccountName=x" } })).body.param).toBe("credentials.connection_string");
+    expect((await call("POST", "/integrations/exports", { destination: "azure", config: { bucket: "Bad_Name" }, credentials: { connection_string: conn } })).body.param).toBe("config.bucket");
+    const job = (await call("POST", "/integrations/exports", { destination: "azure", tables: ["transactions"], config: { bucket: "rd-exports", prefix: "rd" }, credentials: { connection_string: conn } })).body;
+    expect(job).toMatchObject({ destination: "azure", name: "Azure export", credentials: { connection_string: { configured: true } } });
+    expect(JSON.stringify(job)).not.toContain(AZ_KEY);
+    const ok = bucket();
+    expect((await call("POST", `/integrations/exports/${job.id}/actions/check`, {}, ok.f)).body).toMatchObject({ ok: true, message: "RevenueDot can reach the container rd-exports." });
+    expect(`${ok.puts[0]!.method} ${ok.puts[0]!.url}`).toBe("GET https://acmedata.blob.core.windows.net/rd-exports?restype=container");
+    await sub("az1");
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
+    const { f, puts } = bucket(() => new Response("", { status: 201 }));
+    await run(f);
+    const p = puts[0]!;
+    expect(`${p.method} ${p.url}`).toBe("PUT https://acmedata.blob.core.windows.net/rd-exports/rd/2026-09-01/transactions_20260901T120000Z.csv.gz");
+    expect([p.headers.get("x-ms-blob-type"), p.headers.get("x-ms-version"), p.headers.get("x-ms-date"), p.headers.get("content-length")]).toEqual(["BlockBlob", "2021-08-06", h.now().toUTCString(), String(p.bytes.length)]);
+    const headers = Object.fromEntries([...(p.headers as unknown as Iterable<[string, string]>)].filter(([k]) => k !== "authorization"));
+    expect(p.headers.get("authorization")).toBe((await sharedKeyAuthorization({ method: "PUT", url: p.url, headers, accountName: "acmedata", accountKey: AZ_KEY })).authorization);
+    expect((await csvOf(p))[0]).toMatchObject({ rc_original_app_user_id: "az1" });
+
+    // A SAS connection string: no Authorization header, the signature rides on the URL.
+    await call("POST", `/integrations/exports/${job.id}`, { credentials: { connection_string: "BlobEndpoint=https://acmedata.blob.core.windows.net;SharedAccessSignature=sv=2022-11-02&sp=cw&sig=s1g" } });
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" });
+    const sas = bucket(() => new Response("", { status: 201 }));
+    await run(sas.f);
+    expect(sas.puts[0]!.url).toBe("https://acmedata.blob.core.windows.net/rd-exports/rd/2026-09-01/transactions_20260901T120000Z.csv.gz?sv=2022-11-02&sp=cw&sig=s1g");
+    expect(sas.puts[0]!.headers.get("authorization")).toBeNull();
+    const denied = bucket(() => new Response("", { status: 403, headers: { "x-ms-error-code": "AuthorizationPermissionMismatch" } }));
+    expect((await call("POST", `/integrations/exports/${job.id}/actions/check`, {}, denied.f)).body.message).toBe("Azure Blob Storage answered HTTP 403 (AuthorizationPermissionMismatch). Check that the credentials can list and write to the bucket.");
+  });
+
+  it("uploads to Google Cloud Storage with an HMAC key through the XML API", async () => {
+    const call = api();
+    const job = (await call("POST", "/integrations/exports", { destination: "gcs", tables: ["transactions"], config: { bucket: "acme-gcs", credential_type: "hmac", access_key_id: "GOOG1EXAMPLE" }, credentials: { secret_access_key: "gcs-hmac-secret" } })).body;
+    expect(job.credentials).toEqual({ secret_access_key: { configured: true, hint: "••••cret" } });
+    await sub("g2");
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
+    const { f, puts } = bucket();
+    await run(f);
+    expect(puts[0]!.url).toBe("https://storage.googleapis.com/acme-gcs/2026-09-01/transactions_20260901T120000Z.csv.gz");
+    expect(puts[0]!.headers.get("authorization")).toMatch(/^AWS4-HMAC-SHA256 Credential=GOOG1EXAMPLE\/20260901\/auto\/s3\/aws4_request, /);
+    // Switching back to a service account drops the HMAC secret.
+    const sa = await call("POST", `/integrations/exports/${job.id}`, { config: { credential_type: "service_account" }, credentials: { service_account_json: JSON.stringify(keys.sa) } });
+    expect(sa.body.credentials).toEqual({ service_account_json: { configured: true, hint: "rd@scanner.iam.gserviceaccount.com" } });
+  });
+
+  it("email: recipients must be members; files are kept, links emailed, downloaded, and deleted after 7 days", async () => {
+    await h.db.insert(schema.users).values([{ id: "u1", email: "Owner@Acme.test" }, { id: "u2", email: "outsider@acme.test" }]);
+    await h.db.insert(schema.memberships).values({ userId: "u1", projectId: "proj1", role: "admin" });
+    const mailer = memoryMailer();
+    const app = createApp({ db: h.db, now: h.now, stores: defaultStores(), encryptionKey: KEY, mailer, publicUrl: "https://app.example.test" });
+    const call = async (method: string, path: string, json?: unknown) => {
+      const res = await app.fetch(new Request(`http://localhost${path.startsWith("/v2/") ? "" : "/v2/projects/proj1"}${path}`, { method, headers: { Authorization: `Bearer ${h.ids.secretKey}`, ...(json !== undefined ? { "content-type": "application/json" } : {}) }, body: json !== undefined ? JSON.stringify(json) : undefined }));
+      return { status: res.status, res, body: res.headers.get("content-type")?.includes("json") ? await res.json() as any : null };
+    };
+    expect((await call("POST", "/integrations/exports", { destination: "email", config: {} })).body.param).toBe("config.recipients");
+    const outsider = await call("POST", "/integrations/exports", { destination: "email", config: { recipients: ["owner@acme.test", "outsider@acme.test"] } });
+    expect([outsider.body.param, outsider.body.message]).toEqual(["config.recipients", "config.recipients: outsider@acme.test is not a member of this project. Invite them first."]);
+    expect((await call("POST", "/integrations/exports", { destination: "email", config: { recipients: Array.from({ length: 26 }, (_, i) => `u${i}@acme.test`) } })).body.param).toBe("config.recipients");
+    const job = (await call("POST", "/integrations/exports", { destination: "email", tables: ["transactions", "paywall_events"], config: { recipients: ["Owner@acme.test"], subject_prefix: "[Acme]" } })).body;
+    expect(job).toMatchObject({ destination: "email", name: "Email export", credentials: {}, config: { recipients: ["owner@acme.test"], subject_prefix: "[Acme]" } });
+    expect((await call("POST", `/integrations/exports/${job.id}/actions/check`, {})).body).toMatchObject({ ok: true });
+    await sub("mail1");
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
+    const { f, puts } = bucket();
+    await tick(h.db, h.now(), f, { encryptionKey: KEY, mailer, publicUrl: "https://app.example.test" });
+    expect(puts).toHaveLength(0);
+    const [r] = await h.db.select().from(schema.exportRuns);
+    expect([r!.status, r!.notifiedAt?.toISOString(), r!.files.map((x) => x.key)]).toEqual(["succeeded", h.now().toISOString(), ["2026-09-01/transactions_20260901T120000Z.csv.gz", "2026-09-01/paywall_events_20260901T120000Z.csv.gz"]]);
+    expect(mailer.sent.map((m) => [m.to, m.subject])).toEqual([["owner@acme.test", "[Acme] Email export: data export for 2026-09-01 (2 files)"]]);
+    const links = [...mailer.sent[0]!.text.matchAll(/https:\/\/app\.example\.test(\/v2\/data-exports\/download\/\S+)/g)].map((m) => m[1]!);
+    expect(links).toHaveLength(2);
+    expect(mailer.sent[0]!.html).toContain("1 rows");
+    const dl = await call("GET", links[0]!);
+    expect([dl.status, dl.res.headers.get("content-disposition")]).toEqual([200, 'attachment; filename="transactions_20260901T120000Z.csv.gz"']);
+    const csv = parseCsv(new TextDecoder().decode(await gunzip(new Uint8Array(await dl.res.arrayBuffer()))));
+    expect(csv[1]![0]).toBe("mail1");
+    expect((await call("GET", `${links[0]!.slice(0, -2)}xx`)).status).toBe(404);
+    // A member who leaves does not block pausing; a subject prefix must be one line; duplicates collapse.
+    await h.db.insert(schema.users).values({ id: "u3", email: "second@acme.test" });
+    await h.db.insert(schema.memberships).values({ userId: "u3", projectId: "proj1", role: "admin" });
+    expect((await call("POST", `/integrations/exports/${job.id}`, { config: { recipients: ["owner@acme.test", "second@acme.test", "Second@acme.test"] } })).body.config.recipients).toEqual(["owner@acme.test", "second@acme.test"]);
+    await h.db.delete(schema.memberships).where(eq(schema.memberships.userId, "u3"));
+    expect((await call("POST", `/integrations/exports/${job.id}`, { enabled: false })).body.enabled).toBe(false);
+    expect((await call("POST", `/integrations/exports/${job.id}`, { config: { subject_prefix: "a\r\nBcc: x@evil.test" } })).body.param).toBe("config.subject_prefix");
+    // Eight days later the links have expired and the files are gone.
+    h.setNow(new Date(h.now().getTime() + 8 * DAY));
+    expect((await call("GET", links[0]!)).status).toBe(404);
+    await tick(h.db, h.now(), f, { encryptionKey: KEY, mailer, publicUrl: "https://app.example.test", exports: true });
+    const [after] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, r!.id));
+    expect(after!.filesDeletedAt).not.toBeNull();
+    expect(await dbStore(h.db).get(`data-exports/proj1/${job.id}/${r!.id}/${r!.files[0]!.key}`)).toBeNull();
+    // Switching an email export to a bucket deletes the files it kept at once (the 7-day cleanup only looks at email exports).
+    await call("POST", `/integrations/exports/${job.id}`, { enabled: true });
+    await call("POST", `/integrations/exports/${job.id}/actions/run`, {});
+    await tick(h.db, h.now(), f, { encryptionKey: KEY, mailer, publicUrl: "https://app.example.test" });
+    const [r2] = await h.db.select().from(schema.exportRuns).where(and(eq(schema.exportRuns.jobId, job.id), isNull(schema.exportRuns.filesDeletedAt)));
+    const kept = `data-exports/proj1/${job.id}/${r2!.id}/${r2!.files[0]!.key}`;
+    expect(await dbStore(h.db).get(kept)).not.toBeNull();
+    expect((await call("POST", `/integrations/exports/${job.id}`, S3)).status).toBe(200);
+    expect(await dbStore(h.db).get(kept)).toBeNull();
+    expect((await h.db.select().from(schema.exportRuns).where(isNull(schema.exportRuns.filesDeletedAt))).length).toBe(0);
   });
 });

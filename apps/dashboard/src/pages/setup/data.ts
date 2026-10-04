@@ -184,10 +184,13 @@ export interface IntegrationDelivery {
   next_attempt_at: number | null; request: string | null; request_body: string | null; response_status: number | null; response_ms: number | null; response_body: string | null; last_error: string | null; created_at: number;
 }
 export interface DataExport {
-  object: "data_export"; id: string; name: string; enabled: boolean; destination: "s3" | "r2" | "gcs";
-  config: { bucket: string | null; prefix: string | null; region: string | null; endpoint: string | null; account_id: string | null; access_key_id: string | null };
-  credentials: Record<string, { configured: boolean; hint: string | null }>; format: "csv" | "parquet"; compression: "gzip" | "none"; schedule: "daily" | "weekly";
-  hour_utc: number; weekday: number | null; mode: "incremental" | "full"; tables: string[]; environment: "production" | "sandbox" | null;
+  object: "data_export"; id: string; name: string; enabled: boolean; destination: "s3" | "r2" | "gcs" | "azure" | "email";
+  config: {
+    bucket: string | null; prefix: string | null; region: string | null; endpoint: string | null; account_id: string | null; access_key_id: string | null;
+    credential_type: "service_account" | "hmac" | null; recipients: string[] | null; subject_prefix: string | null;
+  };
+  credentials: Record<string, { configured: boolean; hint: string | null }>; format: "csv" | "parquet"; compression: "gzip" | "none"; schedule: "daily" | "weekly" | "interval";
+  hour_utc: number; weekday: number | null; interval_hours: number | null; mode: "incremental" | "full"; tables: string[]; columns: Record<string, string[]>; environment: "production" | "sandbox" | null;
   next_run_at: number | null; last_run_at: number | null; last_error: string | null; consecutive_failures: number; created_at: number;
 }
 export interface ExportRun {
@@ -197,4 +200,6 @@ export interface ExportRun {
 }
 export const useIntegrationTypes = (pid: string) => useQuery({ queryKey: ["integration_types", pid], queryFn: async () => (await api<List<IntegrationType>>(`${base(pid)}/integrations/catalog`)).items, enabled: !!pid, staleTime: 300_000 });
 export const useIntegrations = (pid: string) => useQuery({ queryKey: ["integrations", pid], queryFn: () => all<Integration>(`${base(pid)}/integrations/partners`), enabled: !!pid });
+export interface ExportTableColumns { object: "data_export_table"; table: string; columns: { name: string; type: string }[] }
+export const useExportColumns = (pid: string) => useQuery({ queryKey: ["export_columns", pid], queryFn: async () => (await api<List<ExportTableColumns>>(`${base(pid)}/integrations/exports/columns`)).items, enabled: !!pid, staleTime: 300_000 });
 export const useExports = (pid: string) => useQuery({ queryKey: ["exports", pid], queryFn: () => all<DataExport>(`${base(pid)}/integrations/exports`), enabled: !!pid });

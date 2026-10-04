@@ -324,6 +324,28 @@ export function insightsDigestEmail(o: {
   });
 }
 
+/** A scheduled data export with the email destination: one download link per file, valid for 7 days. */
+export function dataExportEmail(o: {
+  base: string; projectName: string; exportName: string; subjectPrefix: string | null; finishedAt: Date; expiresAt: Date; exportUrl: string;
+  files: { name: string; rows: number; bytes: number; url: string }[];
+}): Rendered {
+  const day = o.finishedAt.toISOString().slice(0, 10);
+  const until = o.expiresAt.toISOString().slice(0, 16).replace("T", " ");
+  const n = o.files.length;
+  const size = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
+  return layout({
+    subject: `${o.subjectPrefix ? `${o.subjectPrefix} ` : ""}${o.exportName}: data export for ${day} (${n} ${n === 1 ? "file" : "files"})`,
+    preheader: `${n} ${n === 1 ? "file is" : "files are"} ready to download until ${until} UTC.`,
+    heading: `Your data export ${o.exportName} is ready`,
+    paragraphs: [`RevenueDot finished the scheduled data export ${o.exportName} of ${o.projectName}. Download each file below. The links work until ${until} UTC; after that the files are deleted.`],
+    blocks: o.files.map((f) => ({ title: f.name, lines: [`${f.rows.toLocaleString("en-US")} rows · ${size(f.bytes)}`], link: { label: "Download", url: f.url } })),
+    button: { label: "Open the export", url: o.exportUrl },
+    after: ["Anyone with these links can download the files until they expire, so do not forward this email."],
+    settingsUrl: settingsUrl(o.base),
+    reason: `You received this because you are a recipient of the data export ${o.exportName} in ${o.projectName}. Remove yourself from its recipients in the dashboard to stop these emails.`,
+  });
+}
+
 /* ---- RevenueDot Cloud billing (prd/cloud-billing/PRD.md) ---- */
 
 export const billingUrl = (base: string) => `${base}/account/billing`;

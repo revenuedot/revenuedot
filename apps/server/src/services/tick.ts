@@ -7,6 +7,8 @@ import { deliverDueIntegrations } from "./integrations/deliver.js";
 import { refreshDueAdMob } from "./ads/admob.js";
 import { purgeFunnelClientContext } from "./web/funnels.js";
 import { processExportRuns, queueDueExports } from "./exports/run.js";
+import { pruneEmailExportFiles } from "./exports/email.js";
+import { linkBase } from "./account-email.js";
 import { depsSecretKey } from "./secrets.js";
 import { notMoving } from "./archive/moving.js";
 import { processExports } from "./archive/export.js";
@@ -148,7 +150,14 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   if (opts.exports !== false && secretKey.ok && !draining()) {
     try {
       await queueDueExports(db, now);
-      exports = await processExportRuns(db, { fetch: fetchImpl, now, secretKey: secretKey.k, strictUrls: opts.strictUrls });
+      // Email exports keep their files where full-export archives go, and sign the download links with the same keys.
+      const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+      const store = opts.archiveStore ?? dbStore(db);
+      exports = await processExportRuns(db, {
+        fetch: fetchImpl, now, secretKey: secretKey.k, strictUrls: opts.strictUrls, store, mailer: opts.mailer, publicUrl: linkBase({ publicUrl: opts.publicUrl }),
+        linkMaterial: opts.encryptionKey || opts.signingKey || env.REVENUEDOT_ENCRYPTION_KEY || env.REVENUEDOT_SIGNING_KEY || undefined,
+      });
+      await pruneEmailExportFiles(db, store, now);
     } catch (e) {
       console.error("tick: data exports failed", e);
     }

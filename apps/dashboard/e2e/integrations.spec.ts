@@ -1,8 +1,10 @@
 /**
  * Integrations and scheduled data exports in the browser: connect Slack and PostHog to a local fake partner, send a
  * test event, see real purchases arrive and the delivery log, turn one off; then an S3 export to a local fake bucket:
- * check the bucket, run it, and read the file back. Then AppsFlyer's web purchase settings and Meta's App Events API, with
- * test events to the fake AppsFlyer and Meta hosts in e2e/server.ts. Signs up its own account; nothing leaves this machine.
+ * check the bucket, run it, and read the file back; an Azure export with chosen columns, paywall events and an 8-hour
+ * schedule; an email export whose download link comes from the e2e mailbox. Then AppsFlyer's web purchase settings and
+ * Meta's App Events API, with test events to the fake AppsFlyer and Meta hosts in e2e/server.ts. Signs up its own account;
+ * nothing leaves this machine.
  *   E2E_PORT=5392 pnpm --filter @revenuedot/dashboard e2e -- integrations
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -50,7 +52,8 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
   const fake = await fakePartners();
   const req = page.request;
   const stamp = Date.now();
-  await json(req, "POST", "/auth/signup", { email: `integrations-${stamp}@revenuedot.test`, password: `e2e-${stamp}-pw`, name: "Integrations e2e", project_name: "Integrations e2e" });
+  const email = `integrations-${stamp}@revenuedot.test`;
+  await json(req, "POST", "/auth/signup", { email, password: `e2e-${stamp}-pw`, name: "Integrations e2e", project_name: "Integrations e2e" });
   const pid: string = (await json(req, "GET", "/auth/me")).projects[0].id;
   const P = `/v2/projects/${pid}`;
   const app = await json(req, "POST", `${P}/apps`, { name: "Test Store", type: "test_store" });
@@ -174,6 +177,82 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
       await expect(page.getByText(/transactions_\d{8}T\d{6}Z\.csv\.gz · 3 rows/)).toBeVisible();
       await page.goto(`/projects/${pid}/integrations/exports`);
       await expect(page.getByRole("row", { name: /Warehouse.*Amazon S3.*transactions/ })).toBeVisible();
+    });
+
+    await test.step("an Azure export with chosen columns and paywall events: create, check the container, run it, read the file", async () => {
+      // A paywall event from the SDK, so the paywall_events table has a row.
+      const ev = await req.fetch("/v1/events", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, data: { events: [{ id: `pw_${stamp}`, type: "paywall_impression", app_user_id: "slack_buyer", timestamp: Date.now(), session_id: "sess_1", offering_id: "default", paywall_revision: 2, locale: "en_US", display_mode: "full_screen" }] } });
+      expect(ev.ok()).toBe(true);
+      await page.goto(`/projects/${pid}/integrations/exports/new`);
+      await page.getByLabel("Name", { exact: true }).fill("Azure warehouse");
+      await page.getByLabel("Storage").selectOption("azure");
+      await page.getByLabel("Container").fill("e2e-container");
+      await page.getByLabel("Path prefix").fill("az");
+      await page.getByLabel("Connection string").fill(`BlobEndpoint=${fake.origin}/e2eacct;AccountName=e2eacct;AccountKey=${Buffer.alloc(32, 7).toString("base64")}`);
+      await page.getByRole("checkbox", { name: /paywall_events/ }).check();
+      await page.getByText(/^transactions columns: all \d+$/).click();
+      await page.getByRole("checkbox", { name: "Every column of transactions" }).uncheck();
+      const group = page.getByRole("group", { name: "transactions columns" });
+      for (const name of ["country", "country_source", "product_display_name", "product_duration"]) await group.getByRole("checkbox", { name: new RegExp(`^${name}\\b`) }).uncheck();
+      await expect(page.getByText(/^transactions columns: \d+ of \d+$/)).toBeVisible();
+      await page.getByRole("button", { name: "Every few hours" }).click();
+      await page.getByLabel("Every", { exact: true }).selectOption("8");
+      // Unticking every column of a table keeps the choice (it does not fall back to every column) and blocks saving.
+      await page.getByText(/^paywall_events columns: all \d+$/).click();
+      await page.getByRole("checkbox", { name: "Every column of paywall_events" }).uncheck();
+      const pw = page.getByRole("group", { name: "paywall_events columns" });
+      for (const box of await pw.getByRole("checkbox").all()) await box.uncheck();
+      await expect(page.getByText(/^paywall_events columns: 0 of \d+$/)).toBeVisible();
+      await expect(page.getByText("Pick at least one column.")).toBeVisible();
+      await page.getByRole("button", { name: "Create export" }).click();
+      await expect(page.getByText("Pick at least one column of paywall_events.")).toBeVisible();
+      await page.getByRole("checkbox", { name: "Every column of paywall_events" }).check();
+      await page.getByRole("button", { name: "Create export" }).click();
+      await expect(page.getByRole("heading", { name: "Azure warehouse" })).toBeVisible();
+      await expect(page.getByText(/Every 8 hours from/)).toBeVisible();
+      await expect(page.getByText(/transactions: \d+ chosen · paywall_events: all/)).toBeVisible();
+      const saved = (await json(req, "GET", `${P}/integrations/exports`)).items.find((x: { name: string }) => x.name === "Azure warehouse");
+      expect(saved.columns.transactions).not.toContain("country");
+      expect(saved.columns.transactions).toContain("store_transaction_id");
+      await page.getByRole("button", { name: "Check container" }).click();
+      await expect(page.getByText("RevenueDot can reach the container e2e-container.")).toBeVisible();
+      await page.getByRole("button", { name: "Run now" }).click();
+      await expect(page.getByRole("row", { name: /succeeded/ })).toBeVisible({ timeout: 30_000 });
+      const puts = fake.hits.filter((h) => h.method === "PUT" && h.path.startsWith("/e2eacct/e2e-container/az/"));
+      expect(puts.map((h) => h.path.split("/").pop()!.replace(/_\d{8}T\d{6}Z/, ""))).toEqual(["transactions.csv.gz", "paywall_events.csv.gz"]);
+      expect(String(puts[0]!.headers.authorization)).toMatch(/^SharedKey e2eacct:/);
+      expect(puts[0]!.headers["x-ms-blob-type"]).toBe("BlockBlob");
+      const header = gunzipSync(puts[0]!.body).toString().split("\r\n")[0]!;
+      expect(header).toMatch(/^rc_original_app_user_id,rc_last_seen_app_user_id_alias,product_identifier,start_time,/);
+      expect(header.split(",")).not.toContain("country");
+      const paywall = gunzipSync(puts[1]!.body).toString();
+      expect(paywall).toContain(`pw_${stamp}`);
+      expect(paywall).toContain("paywall_impression");
+      await expect(page.getByText(/paywall_events_\d{8}T\d{6}Z\.csv\.gz · 1 rows/)).toBeVisible();
+    });
+
+    await test.step("an email export: links arrive by email and download the file", async () => {
+      await page.goto(`/projects/${pid}/integrations/exports/new`);
+      await page.getByLabel("Name", { exact: true }).fill("Inbox export");
+      await page.getByLabel("Storage").selectOption("email");
+      await page.getByLabel("Recipients").fill("someone-else@revenuedot.test");
+      await page.getByRole("button", { name: "Create export" }).click();
+      await expect(page.getByRole("alert")).toContainText("is not a member of this project");
+      await page.getByLabel("Recipients").fill(email);
+      await page.getByLabel("Subject prefix").fill("[E2E]");
+      await page.getByRole("button", { name: "Create export" }).click();
+      await expect(page.getByRole("heading", { name: "Inbox export" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Check bucket" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Run now" }).click();
+      await expect(page.getByRole("row", { name: /succeeded/ })).toBeVisible({ timeout: 30_000 });
+      const mails = await (await req.get(`/__mail?to=${encodeURIComponent(email)}`)).json() as { subject: string; text: string }[];
+      const m = mails.find((x) => x.subject.startsWith("[E2E] Inbox export: data export for"))!;
+      expect(m).toBeTruthy();
+      const link = /(\/v2\/data-exports\/download\/\S+)/.exec(m.text)![1]!;
+      const file = await req.get(link);
+      expect(file.status()).toBe(200);
+      expect(file.headers()["content-disposition"]).toMatch(/transactions_\d{8}T\d{6}Z\.csv\.gz/);
+      expect(gunzipSync(await file.body()).toString()).toContain("slack_buyer");
     });
 
     await test.step("phone width", async () => {

@@ -740,7 +740,7 @@ Yes. **Export project** (or `npx revenuedot export`) writes every table the proj
 
 <details><summary><b>Can I export my subscription data to S3, BigQuery or my warehouse?</b></summary>
 
-Yes. Scheduled data exports write CSV or Parquet files of transactions, customers, subscriptions and events to Amazon S3, Cloudflare R2 or Google Cloud Storage every day or week, and the transactions file uses the column names of RevenueCat's export. The BigQuery integration streams every event into a table as it happens.
+Yes. Scheduled data exports write CSV or Parquet files of transactions, customers, subscriptions, events and paywall events, with the columns you pick, to Amazon S3, Cloudflare R2, Google Cloud Storage or Azure Blob Storage, or email them as download links, every few hours, daily or weekly, and the transactions file uses the column names of RevenueCat's export. The BigQuery integration streams every event into a table as it happens.
 </details>
 
 <details><summary><b>Which stores are supported?</b></summary>

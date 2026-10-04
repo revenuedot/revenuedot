@@ -20,6 +20,7 @@ import { verifiedRoutes } from "./routes/verified.js";
 import { shareRoutes } from "./routes/share.js";
 import { insightsPublicRoutes } from "./routes/insights-public.js";
 import { importRoutes } from "./routes/imports.js";
+import { dataExportDownloadRoutes } from "./routes/data-export-download.js";
 import { billingRoutes } from "./routes/billing.js";
 import { moveGate } from "./services/archive/gate.js";
 
@@ -100,6 +101,7 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
   app.route("/", assetRoutes(deps));
   // Imports into this server (an account-level rdi_ token) and archive downloads: before v2, whose auth is per project.
   app.route("/", importRoutes(deps));
+  app.route("/", dataExportDownloadRoutes(deps));
   // RevenueDot Cloud billing (session auth; 404 on self-host).
   app.route("/", billingRoutes(deps));
   app.route("/", v2Routes(deps));

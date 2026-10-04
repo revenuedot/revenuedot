@@ -99,7 +99,7 @@ const RD = {
   paywalls: "Template gallery (10 templates), visual editor, AI generator, localization, no app release needed",
   experiments: "Audiences, targeting rules with placements and schedules, and offering A/B experiments with chance to win",
   charts: "43 charts with filters, segments, 14 display currencies and CSV export",
-  integrations: "36 integrations, plus webhooks and scheduled data exports (CSV or Parquet to S3, R2 or GCS)",
+  integrations: "36 integrations, plus webhooks and scheduled data exports (CSV or Parquet to S3, R2, GCS, Azure or email)",
   api: "REST API v1, and all 128 operations of RevenueCat's v2 API are routed",
   lifecycle: "Refund Control, win-back campaigns and a Customer Center, all included",
   mcp: "Hosted MCP server at mcp.revenuedot.app, for ChatGPT, Claude and other assistants",

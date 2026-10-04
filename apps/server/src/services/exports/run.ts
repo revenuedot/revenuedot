@@ -5,13 +5,17 @@ import { SecretsError, unseal, type SecretKey } from "../secrets.js";
 import { notMoving } from "../archive/moving.js";
 import { encodeFile } from "./files.js";
 import { putObject, StorageError, type Destination } from "./storage.js";
-import { COLUMNS, readPage, type ExportTable, type Row, type Window } from "./tables.js";
+import { columnsFor, readPage, type ExportTable, type Row, type Window } from "./tables.js";
+import { emailFileKey, sendExportEmail } from "./email.js";
+import type { ArchiveStore } from "../archive/store.js";
+import type { Mailer } from "../../mail/index.js";
 
 /**
  * Scheduled data exports. The every-minute tick queues a run for each job whose `next_run_at` has passed, then works
  * through queued runs: each table is read in pages and written as one or more files (PART_ROWS rows each) under
- * `<prefix>/<YYYY-MM-DD>/<table>_<YYYYMMDDTHHMMSSZ>[_partN].<csv.gz|csv|parquet>`.
+ * `<prefix>/<YYYY-MM-DD>/<table>_<YYYYMMDDTHHMMSSZ>[_partN].<csv.gz|csv|parquet>`, with the job's chosen columns.
  * Incremental runs export what changed since the table's previous successful run; a table's first run is always full.
+ * Email exports keep the files in RevenueDot's file store and, once every file is written, email the download links.
  *
  * Work per tick is bounded, because a Worker has little CPU time and memory: a run writes files until the tick's time
  * budget is spent, saves where it stopped (`progress`: table, page cursor, part number) after every file, and goes
@@ -31,9 +35,21 @@ const MAX_ATTEMPTS = 3;
 
 type Job = typeof J.$inferSelect;
 
-/** The first scheduled time strictly after `after`: daily at hour_utc, or weekly on `weekday` (0 = Sunday) at hour_utc. */
-export function nextRunAt(job: Pick<Job, "schedule" | "hourUtc" | "weekday">, after: Date): Date {
+export const INTERVAL_HOURS = [4, 6, 8, 12] as const;
+
+/**
+ * The first scheduled time strictly after `after`: daily at hour_utc, weekly on `weekday` (0 = Sunday) at hour_utc, or
+ * every `interval_hours` hours (4, 6, 8 or 12) at hour_utc and every interval from it (hour 3 every 6 hours: 03, 09, 15, 21).
+ */
+export function nextRunAt(job: Pick<Job, "schedule" | "hourUtc" | "weekday"> & { intervalHours?: number | null }, after: Date): Date {
   const d = new Date(Date.UTC(after.getUTCFullYear(), after.getUTCMonth(), after.getUTCDate(), job.hourUtc, 0, 0));
+  if (job.schedule === "interval") {
+    // Only divisors of 24 keep the grid on hour_utc every day; anything else (0 would loop forever) falls back to 6.
+    const step = ((INTERVAL_HOURS as readonly number[]).includes(job.intervalHours ?? 0) ? job.intervalHours! : 6) * 3_600_000;
+    let t = d.getTime() - 86_400_000;
+    while (t <= after.getTime()) t += step;
+    return new Date(t);
+  }
   if (job.schedule === "weekly") {
     const wd = job.weekday ?? 1;
     d.setUTCDate(d.getUTCDate() + ((wd - d.getUTCDay() + 7) % 7));
@@ -72,6 +88,11 @@ export interface ExportRuntime {
   strictUrls?: boolean;
   /** No new file starts after this many milliseconds (default 20 s). */
   budgetMs?: number;
+  /** Email exports: where RevenueDot keeps the files, who sends the links, the origin the links use and what signs them. */
+  store?: ArchiveStore;
+  mailer?: Mailer;
+  publicUrl?: string;
+  linkMaterial?: string;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -159,9 +180,14 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
       // An empty table still gets one (header-only) file; a table that ends on a file boundary does not get another.
       if (buffer.length || progress.part === 0) {
         const part = progress.part + 1;
-        const f = await encodeFile(job.format as "csv" | "parquet", job.compression as "gzip" | "none", COLUMNS[table], buffer);
+        const f = await encodeFile(job.format as "csv" | "parquet", job.compression as "gzip" | "none", columnsFor(table, job.columns[table]), buffer);
         const key = objectKey(job.destinationConfig.prefix as string | undefined, table, run.windowEnd, part, f.extension);
-        await putObject(target, key, f.bytes, f.contentType, rt.fetch, rt.now);
+        if (job.destination === "email") {
+          if (!rt.store) throw new Error("No file store is configured for email exports.");
+          await rt.store.put(emailFileKey(job.projectId, job.id, run.id, key), f.bytes);
+        } else {
+          await putObject(target, key, f.bytes, f.contentType, rt.fetch, rt.now);
+        }
         const at = files.findIndex((x) => x.key === key);
         const entry = { table, key, rows: buffer.length, bytes: f.bytes.length };
         if (at >= 0) files[at] = entry; else files.push(entry);
@@ -172,9 +198,18 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
       await db.update(R).set({ progress, files }).where(eq(R.id, runId));
       wrote = true;
     }
+    let notifiedAt: Date | null = run.notifiedAt;
+    if (job.destination === "email" && !notifiedAt) {
+      const n = await sendExportEmail({ db, mailer: rt.mailer, publicUrl: rt.publicUrl ?? "http://localhost:8787", linkMaterial: rt.linkMaterial, now: rt.now }, job, { id: run.id, files });
+      if (n.recipients === 0) throw new StorageError("None of the export's recipients is a member of the project any more. Add a recipient who is.", false);
+      if (n.sent === 0) throw new StorageError("The email with the download links could not be sent.", true);
+      notifiedAt = rt.now;
+      // Saved at once, so a failure below (and the retry it causes) does not email the links a second time.
+      await db.update(R).set({ notifiedAt }).where(eq(R.id, runId));
+    }
     const cursorOut = { ...job.cursor };
     for (const t of job.tables) cursorOut[t] = run.windowEnd.getTime();
-    await db.update(R).set({ status: "succeeded", files, progress: null, rows: files.reduce((n, f) => n + f.rows, 0), bytes: files.reduce((n, f) => n + f.bytes, 0), finishedAt: rt.now, nextAttemptAt: rt.now, error: null }).where(eq(R.id, runId));
+    await db.update(R).set({ status: "succeeded", files, progress: null, notifiedAt, rows: files.reduce((n, f) => n + f.rows, 0), bytes: files.reduce((n, f) => n + f.bytes, 0), finishedAt: rt.now, nextAttemptAt: rt.now, error: null }).where(eq(R.id, runId));
     await db.update(J).set({ cursor: cursorOut, lastRunAt: rt.now, consecutiveFailures: 0, lastError: null }).where(eq(J.id, job.id));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
