@@ -1116,7 +1116,7 @@ export const refundPolicies = pgTable("refund_policies", {
   /** first_purchase_date, platform, recent_renewal or custom (the template the policy started from). */
   template: text("template").notNull().default("custom"),
   rules: jsonb("rules").$type<{ groups: { conditions: { field: string; operator: string; value?: string; currency?: string }[] }[] }>().notNull(),
-  /** prefer_refund, prefer_no_refund, consumption_only or do_not_respond. */
+  /** prefer_refund, prefer_prorated_refund, prefer_no_refund, consumption_only or do_not_respond. */
   preference: text("preference").notNull(),
   position: integer("position").notNull(),
   createdAt: created(),

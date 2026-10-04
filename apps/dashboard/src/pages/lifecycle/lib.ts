@@ -1,9 +1,10 @@
 /** Shapes and wording shared by the Lifecycle pages (prd/lifecycle/PRD.md). The API objects are RevenueDot extensions. */
 import type { Rules } from "../../components/conditions";
 
-export type Preference = "prefer_refund" | "prefer_no_refund" | "consumption_only" | "do_not_respond";
+export type Preference = "prefer_refund" | "prefer_prorated_refund" | "prefer_no_refund" | "consumption_only" | "do_not_respond";
 export const PREFERENCES: { value: Preference; label: string }[] = [
   { value: "prefer_refund", label: "Prefer full refund" },
+  { value: "prefer_prorated_refund", label: "Prefer prorated refund" },
   { value: "prefer_no_refund", label: "Prefer no refund" },
   { value: "consumption_only", label: "Send consumption data only" },
   { value: "do_not_respond", label: "Do not respond to refund requests" },

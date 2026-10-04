@@ -4,7 +4,7 @@ import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { projectContexts } from "../../services/customer-context.js";
-import { PREFERENCES, TEMPLATES, TEMPLATE_RULES, policyCounts, refundStats, settingsOf, type PolicyRow } from "../../services/refunds.js";
+import { PREFERENCES, TEMPLATES, consumptionVersionOf, TEMPLATE_RULES, policyCounts, refundStats, settingsOf, type PolicyRow } from "../../services/refunds.js";
 import { fieldSupported, OPERATORS, type Rules } from "../../services/targeting.js";
 import { body, listOf, pageParams, paramError, scope, type V2Router } from "./common.js";
 
@@ -115,7 +115,7 @@ export function refundControlRoutes(r: V2Router, deps: Deps) {
       object: "refund_request" as const, id: x.id, app_id: x.appId, app_user_id: x.appUserId, store: x.store, environment: x.isSandbox ? "sandbox" : "production",
       transaction_id: x.transactionId, original_transaction_id: x.originalTransactionId, product_id: x.productId, amount_in_usd: x.amountUsd, reason: x.reason,
       requested_at: x.requestedAt.getTime(), deadline_at: x.deadlineAt ? x.deadlineAt.getTime() : null, policy_id: x.policyId, policy_name: x.policyName, preference: x.preference,
-      consumption_status: x.consumptionStatus, consumption: x.consumption, attempts: x.attempts, last_error: x.lastError, sent_at: x.sentAt ? x.sentAt.getTime() : null,
+      consumption_status: x.consumptionStatus, consumption: x.consumption, consumption_version: consumptionVersionOf(x.consumption), attempts: x.attempts, last_error: x.lastError, sent_at: x.sentAt ? x.sentAt.getTime() : null,
       outcome: x.outcome, outcome_at: x.outcomeAt ? x.outcomeAt.getTime() : null,
     })), rows.length > limit ? page[page.length - 1]!.id : null));
   });
