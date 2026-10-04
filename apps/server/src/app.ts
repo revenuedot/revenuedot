@@ -50,7 +50,9 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
       // A verified custom domain serves the project's hosted pages and nothing else: never the API, sign-in or OAuth, whose
       // cookies and pages must not live on a domain a customer controls.
       // A verified custom domain of a Verified Metrics page serves that page and nothing else.
-      const vslug = await verifiedSlugForHost(deps.db, host.replace(/:\d+$/, ""), deps.now().getTime());
+      // On Cloud the Host is Cloudflare's and any client can send X-Forwarded-Host, so only the real host counts there.
+      const vhost = (deps.edition === "cloud" ? url.host.toLowerCase() : host).replace(/:\d+$/, "");
+      const vslug = await verifiedSlugForHost(deps.db, vhost, deps.now().getTime());
       if (vslug) {
         const to = verifiedPathFor(vslug, path);
         if (!to || (c.req.method !== "GET" && c.req.method !== "HEAD")) return c.json({ object: "error", type: "resource_missing", message: "Not found." }, 404);
@@ -59,12 +61,15 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
         target.search = "";
         const req = new Request(target, c.req.raw);
         const proto = (c.req.header("x-forwarded-proto") ?? url.protocol.replace(":", "")).split(",")[0]!.trim();
-        VERIFIED_ORIGIN.set(req, `${proto === "http" ? "http" : "https"}://${host}`);
+        VERIFIED_ORIGIN.set(req, deps.edition === "cloud" ? `https://${vhost}` : `${proto === "http" ? "http" : "https"}://${host}`);
         let ctx: ExecutionContext | undefined;
         try { ctx = c.executionCtx; } catch { ctx = undefined; }
         return verified.fetch(req, c.env, ctx);
       }
       projectSlug = await projectForHost(deps.db, host.replace(/:\d+$/, ""), deps.now().getTime());
+      // With Cloudflare for SaaS, customers' hostnames reach this Worker; one that no longer matches a verified domain
+      // (a failed re-check, a removed page) gets nothing, never the API, sign-in or the dashboard.
+      if (!projectSlug && deps.cloudflareSaas) return c.json({ object: "error", type: "resource_missing", message: "Not found." }, 404);
       if (projectSlug) rewritten = /^\/(api|r)\//.test(path) ? path : `/${projectSlug}${path}`;
     }
     if (rewritten === null) return next();

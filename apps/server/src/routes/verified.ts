@@ -173,7 +173,9 @@ export function verifiedRoutes(deps: Deps) {
     if (!row) return notFound(c);
     const cache = edgeCache();
     const origin = originOf(c);
-    const key = cache ? new Request(`${new URL(c.req.url).origin}/verified/${row.slug}/${kind}?v=${row.updatedAt.getTime()}`, { method: "GET" }) : null;
+    // Keyed by the page's own URL (its custom domain or the API host), so no request header can file one under the other.
+    const pageKey = VERIFIED_ORIGIN.get(c.req.raw) ?? `${originOf(c)}/verified/${row.slug}`;
+    const key = cache ? new Request(`${pageKey}/${kind}?v=${row.updatedAt.getTime()}`, { method: "GET" }) : null;
     if (cache && key && !c.req.header("if-none-match")) {
       const hit = await cache.match(key).catch(() => undefined);
       if (hit) return hit;

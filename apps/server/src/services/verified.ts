@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type DB } from "@revenuedot/db";
 import { overviewValues } from "../routes/v2/metrics.js";
@@ -125,3 +125,19 @@ export function verifiedPathFor(slug: string, path: string): string | null {
 
 /** Where a request for a page came from, set by app.ts for custom domains, so its links name that domain. */
 export const VERIFIED_ORIGIN = new WeakMap<Request, string>();
+
+/**
+ * Removes the Cloudflare for SaaS hostnames of these projects' verified pages before the projects are deleted, so a
+ * customer's domain stops reaching the server. Failures are logged: deleting a project never waits on Cloudflare.
+ */
+export async function releaseVerifiedHostnames(deps: { db: DB; fetch?: typeof fetch; cloudflareSaas?: { zoneId: string; apiToken: string } }, projectIds: string[]) {
+  if (!deps.cloudflareSaas || !projectIds.length) return;
+  const { deleteCustomHostname } = await import("./cloudflare-saas.js");
+  const V = schema.verifiedPages;
+  const rows = await deps.db.select({ id: V.domainHostnameId, domain: V.customDomain }).from(V).where(inArray(V.projectId, projectIds));
+  for (const r of rows) {
+    forgetVerifiedHost(r.domain);
+    if (!r.id) continue;
+    try { await deleteCustomHostname(deps.fetch ?? fetch, deps.cloudflareSaas, r.id); } catch (e) { console.warn(`Removing the custom hostname ${r.domain} failed`, e); }
+  }
+}

@@ -468,7 +468,10 @@ export function webRoutes(r: V2Router, deps: Deps) {
   async function verifiedElsewhere(domain: string, projectId: string) {
     const [other] = await db.select({ p: schema.webDomains.projectId }).from(schema.webDomains)
       .where(and(eq(schema.webDomains.customDomain, domain), eq(schema.webDomains.status, "verified"), ne(schema.webDomains.projectId, projectId))).limit(1);
-    return !!other;
+    // A domain a Verified Metrics page holds (any project's, this one's too) serves that page, never hosted pages.
+    const [page] = await db.select({ p: schema.verifiedPages.projectId }).from(schema.verifiedPages)
+      .where(and(eq(schema.verifiedPages.customDomain, domain), eq(schema.verifiedPages.domainStatus, "verified"))).limit(1);
+    return !!other || !!page;
   }
 
   r.get(`${P}/web_domain`, appsRead, async (c) => c.json(domainShape(c, await domainOf(db, c.get("projectId"), deps.now()))));

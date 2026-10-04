@@ -23,6 +23,7 @@ import { ownershipEmail } from "../../mail/templates.js";
 import { trySend } from "../../mail/index.js";
 import { linkBase, requestOrigin } from "../../services/account-email.js";
 import { buildSampleApp, SAMPLE_APPS, samplePlatformsFor, type SamplePlatform } from "../../services/sample-apps/index.js";
+import { releaseVerifiedHostnames } from "../../services/verified.js";
 
 /**
  * Project setup endpoints for the dashboard (apps, project settings, webhook tests).
@@ -176,6 +177,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const who = c.get("principal");
     if (who.kind !== "user") throw new V2Error(403, "authorization_error", "Projects can only be deleted from the dashboard by an admin.");
     if (who.role !== "admin") throw new V2Error(403, "authorization_error", "Only project admins can delete a project.");
+    await releaseVerifiedHostnames(deps, [p.id]);
     await db.delete(schema.projects).where(eq(schema.projects.id, p.id));
     return c.json({ object: "project", id: p.id, deleted_at: deps.now().getTime() });
   });

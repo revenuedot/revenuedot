@@ -49,7 +49,15 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
   const [slugState, setSlugState] = useState<{ slug: string; available: boolean; reason: string | null } | null>(null);
   const media = useMedia(pid);
   const file = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (q.data) setD(draftOf(q.data)); }, [q.data]);
+  // A newer copy of the settings (another tab's save, the custom domain panel) replaces the draft only when it has no
+  // unsaved edits.
+  const savedDraft = useRef<string | null>(null);
+  useEffect(() => {
+    if (!q.data) return;
+    const next = draftOf(q.data);
+    setD((cur) => (!cur || savedDraft.current === null || JSON.stringify(cur) === savedDraft.current ? next : cur));
+    savedDraft.current = JSON.stringify(next);
+  }, [q.data]);
   // Live slug check, debounced.
   useEffect(() => {
     if (!d || !q.data || d.slug === q.data.slug) { setSlugState(null); return; }
@@ -87,6 +95,7 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
     setBusy(kind); setError(null);
     try {
       const r = await api<Settings>(`${base(pid)}/verified_metrics${kind === "publish" ? "/actions/publish" : ""}`, { method: "POST", json: { ...d, app_store_url: d.app_store_url || null, play_store_url: d.play_store_url || null } });
+      savedDraft.current = null;
       qc.setQueryData(["verified", pid], r);
       toast(kind === "publish" ? (s.status === "published" ? "Changes published." : "Your page is live.") : "Saved.");
     } catch (e) {
@@ -225,7 +234,7 @@ function DomainPanel({ pid, s }: { pid: string; s: Settings }) {
       const r = kind === "verify"
         ? await api<Settings>(`${base(pid)}/verified_metrics/domain/actions/verify`, { method: "POST" })
         : await api<Settings>(`${base(pid)}/verified_metrics/domain`, { method: "PUT", json: { custom_domain: kind === "remove" ? null : value.trim().toLowerCase() } });
-      qc.setQueryData(["verified", pid], r);
+      qc.setQueryData<Settings>(["verified", pid], (old) => (old ? { ...old, custom_domain: r.custom_domain, updated_at: r.updated_at } : r));
       toast(kind === "remove" ? "Custom domain removed." : kind === "save" ? "Domain saved. Add the DNS records, then verify." : r.custom_domain?.status === "verified" ? "Domain verified." : "The DNS records are not there yet.");
     } catch (e) { setErr(errMsg(e)); }
     setBusy(null);

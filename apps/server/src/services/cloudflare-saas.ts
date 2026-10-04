@@ -7,7 +7,7 @@ const API = "https://api.cloudflare.com/client/v4";
 
 export interface CustomHostname { id: string; hostname: string; status: string; sslStatus: string | null; error: string | null }
 
-export class CloudflareSaasError extends Error {}
+export class CloudflareSaasError extends Error { constructor(message: string, readonly status = 0) { super(message); } }
 
 interface CfHostname { id: string; hostname: string; status?: string; ssl?: { status?: string; validation_errors?: { message?: string }[] } | null; verification_errors?: string[] }
 
@@ -22,7 +22,7 @@ async function call<T>(fetchFn: typeof fetch, cfg: { zoneId: string; apiToken: s
     throw new CloudflareSaasError(`Cloudflare could not be reached: ${e instanceof Error ? e.message : String(e)}`);
   }
   const j = (await res.json().catch(() => null)) as { success?: boolean; result?: T; errors?: { message?: string }[] } | null;
-  if (!res.ok || !j?.success) throw new CloudflareSaasError(`Cloudflare answered ${res.status}: ${j?.errors?.map((e) => e.message).filter(Boolean).join("; ") || "no details"}`);
+  if (!res.ok || !j?.success) throw new CloudflareSaasError(`Cloudflare answered ${res.status}: ${j?.errors?.map((e) => e.message).filter(Boolean).join("; ") || "no details"}`, res.status);
   return j.result as T;
 }
 

@@ -24,6 +24,7 @@ import { UNSUBSCRIBE_COLUMN, type NotificationKind } from "../services/account-n
 import { sha256Hex } from "../services/auth.js";
 import { connectAvailability } from "../services/stripe-connect.js";
 import { storeSecretHintOf, stripeConnected } from "../services/store-secrets.js";
+import { releaseVerifiedHostnames } from "../services/verified.js";
 
 /**
  * Account settings (prd/account-settings/PRD.md), all for the signed-in person (session cookie), none per project:
@@ -375,6 +376,7 @@ export function accountRoutes(deps: Deps) {
       if (Number(n) <= 1) solo.push(p);
     }
     const now = deps.now();
+    await releaseVerifiedHostnames(deps, solo.map((p) => p.id));
     await db.transaction(async (tx) => {
       // OAuth keys this person handed to assistants stop working everywhere, then their own projects go.
       const keys = await tx.delete(schema.apiKeys).where(and(eq(schema.apiKeys.createdByUserId, u.id), isNotNull(schema.apiKeys.oauthClientId))).returning({ projectId: schema.apiKeys.projectId });

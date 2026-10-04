@@ -271,23 +271,36 @@ export function projectSettingsRoutes(r: V2Router, deps: Deps) {
     const taken = v.ok ? await usedElsewhere(cur.customDomain, projectId) : null;
     const ok = v.ok && !taken;
     const set: Partial<typeof V.$inferInsert> = { domainStatus: ok ? "verified" : "failed", domainVerifiedAt: ok ? cur.domainVerifiedAt ?? now : null, domainCheckedAt: now, domainError: taken ?? v.error, updatedAt: now };
-    // The certificate: Cloudflare for SaaS adds the hostname once DNS proves the domain, then reports its status.
-    if (ok && deps.cloudflareSaas) {
-      try {
-        const h = cur.domainHostnameId ? await getCustomHostname(fetchFn, deps.cloudflareSaas, cur.domainHostnameId) : await ensureCustomHostname(fetchFn, deps.cloudflareSaas, cur.customDomain);
-        Object.assign(set, { domainHostnameId: h.id, domainSslStatus: h.sslStatus ?? h.status, domainError: h.error });
-      } catch (e) {
-        set.domainError = e instanceof CloudflareSaasError ? `The certificate could not be requested: ${e.message}` : "The certificate could not be requested. Try again in a minute.";
-        if (!(e instanceof CloudflareSaasError)) console.warn("Cloudflare custom hostname failed", e);
-      }
-    }
+    // A domain that no longer proves itself loses its hostname, so its traffic stops reaching this server.
+    if (!ok && cur.domainHostnameId) { await dropHostname(cur); Object.assign(set, { domainHostnameId: null, domainSslStatus: null }); }
+    // The claim is saved before any certificate is requested: the unique index on verified domains decides a race, and
+    // the losing project never touches the winner's hostname.
     let row: VerifiedRow | undefined;
     try {
       [row] = await db.update(V).set(set).where(eq(V.projectId, projectId)).returning();
     } catch (e) {
-      // Another project verified the same domain at the same moment (the unique index on verified domains).
-      if (!ok) throw e;
-      [row] = await db.update(V).set({ ...set, domainStatus: "failed", domainVerifiedAt: null, domainError: "This domain is used by another project's verified page." }).where(eq(V.projectId, projectId)).returning();
+      if (!ok || !/unique|duplicate|23505/i.test(String((e as { cause?: unknown })?.cause ?? e))) throw e;
+      [row] = await db.update(V).set({ ...set, domainStatus: "failed", domainVerifiedAt: null, domainHostnameId: null, domainSslStatus: null, domainError: "This domain is used by another project's verified page." }).where(eq(V.projectId, projectId)).returning();
+    }
+    // The certificate: Cloudflare for SaaS adds the hostname once DNS proves the domain, then reports its status.
+    if (row?.domainStatus === "verified" && deps.cloudflareSaas) {
+      const cfg = deps.cloudflareSaas;
+      let cert: Partial<typeof V.$inferInsert>;
+      try {
+        let h;
+        try {
+          h = cur.domainHostnameId ? await getCustomHostname(fetchFn, cfg, cur.domainHostnameId) : await ensureCustomHostname(fetchFn, cfg, cur.customDomain);
+        } catch (e) {
+          // Removed in Cloudflare since: add it again.
+          if (!(e instanceof CloudflareSaasError && e.status === 404)) throw e;
+          h = await ensureCustomHostname(fetchFn, cfg, cur.customDomain);
+        }
+        cert = { domainHostnameId: h.id, domainSslStatus: h.sslStatus ?? h.status, domainError: h.error };
+      } catch (e) {
+        cert = { domainError: e instanceof CloudflareSaasError ? `The certificate could not be requested: ${e.message}` : "The certificate could not be requested. Try again in a minute." };
+        if (!(e instanceof CloudflareSaasError)) console.warn("Cloudflare custom hostname failed", e);
+      }
+      [row] = await db.update(V).set(cert).where(eq(V.projectId, projectId)).returning();
     }
     forgetVerifiedHost(cur.customDomain);
     return c.json({ ...pageOut(c, row!), found: { cname: v.cname, txt: v.txt } });

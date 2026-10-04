@@ -360,7 +360,10 @@ export async function finishImport(db: DB, imp: ImportRow, o: { now: Date; baseU
   const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, pid));
   const storeApps = apps.filter((a) => ["app_store", "mac_app_store", "play_store", "amazon", "stripe", "paddle", "roku", "galaxy"].includes(a.type));
   const needCreds = storeApps.filter((a) => Object.keys(a.credentials ?? {}).length === 0 && !a.secrets);
-  const domains = await db.select({ d: schema.webDomains.customDomain }).from(schema.webDomains).where(eq(schema.webDomains.projectId, pid));
+  const domains = [
+    ...await db.select({ d: schema.webDomains.customDomain }).from(schema.webDomains).where(eq(schema.webDomains.projectId, pid)),
+    ...await db.select({ d: schema.verifiedPages.customDomain }).from(schema.verifiedPages).where(eq(schema.verifiedPages.projectId, pid)),
+  ];
   await db.update(schema.projects).set({ moveState: null, moveUpdatedAt: o.now }).where(eq(schema.projects.id, pid));
   const report: FinishReport = {
     project_id: pid,

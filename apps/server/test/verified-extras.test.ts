@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { schema } from "@revenuedot/db";
 import { harness, type Harness } from "../../../packages/contract/src/harness.js";
+import { ARCHIVE_TABLES } from "../src/services/archive/tables.js";
 
 /**
  * Verified Metrics (prd/project-settings §4): the three chart types and the page's custom domain (DNS proof, routing by
@@ -179,5 +180,51 @@ describe("custom domain", () => {
     // Removing the domain removes the hostname.
     await v2("PUT", `${P()}/verified_metrics/domain`, { custom_domain: null });
     expect(w.calls.at(-1)).toMatchObject({ method: "DELETE", url: "https://api.cloudflare.com/client/v4/zones/zone1/custom_hostnames/ch_1" });
+  });
+
+  it("drops the hostname when a re-check fails, and answers 404 for hosts it does not serve", async () => {
+    const w = world();
+    h = await harness({ fetch: w.fetchFn, customDomainTarget: TARGET, edition: "cloud", cloudflareSaas: { zoneId: "zone1", apiToken: "tok" } });
+    const set = await v2("PUT", `${P()}/verified_metrics/domain`, { custom_domain: DOMAIN });
+    w.set({ txt: [set.body.custom_domain.dns[1].value], cname: [TARGET] });
+    expect((await v2("POST", `${P()}/verified_metrics/domain/actions/verify`)).body.custom_domain.status).toBe("verified");
+    // The customer removed the TXT record: the check fails and the hostname goes.
+    w.set({ txt: [] });
+    const failed = await v2("POST", `${P()}/verified_metrics/domain/actions/verify`);
+    expect(failed.body.custom_domain).toMatchObject({ status: "failed", certificate: { status: null } });
+    expect(w.calls.at(-1)).toMatchObject({ method: "DELETE", url: "https://api.cloudflare.com/client/v4/zones/zone1/custom_hostnames/ch_1" });
+    // With Cloudflare for SaaS, a host that is no verified domain gets nothing: never the API or sign-in.
+    for (const path of ["/v1/subscribers/x", "/auth/me", "/"]) {
+      expect((await h.fetch(path, { key: h.ids.iosKey, headers: { "x-forwarded-host": DOMAIN } })).status, path).toBe(404);
+    }
+    expect((await h.fetch("/v1/subscribers/x", { key: h.ids.iosKey })).ok).toBe(true);
+  });
+
+  it("re-adds a hostname Cloudflare no longer has", async () => {
+    const w = world();
+    let gone = true;
+    const fetchFn: typeof fetch = async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      if (gone && url.endsWith("/custom_hostnames/ch_gone")) { gone = false; return Response.json({ success: false, errors: [{ message: "not found" }] }, { status: 404 }); }
+      return w.fetchFn(i, init);
+    };
+    h = await harness({ fetch: fetchFn, customDomainTarget: TARGET, edition: "cloud", cloudflareSaas: { zoneId: "zone1", apiToken: "tok" } });
+    const set = await v2("PUT", `${P()}/verified_metrics/domain`, { custom_domain: DOMAIN });
+    w.set({ txt: [set.body.custom_domain.dns[1].value], cname: [TARGET] });
+    await v2("POST", `${P()}/verified_metrics/domain/actions/verify`);
+    await h.db.update(schema.verifiedPages).set({ domainHostnameId: "ch_gone" });
+    const r = await v2("POST", `${P()}/verified_metrics/domain/actions/verify`);
+    expect(r.body.custom_domain).toMatchObject({ status: "verified", error: null, certificate: { status: "pending_validation" } });
+    expect(w.calls.filter((c) => c.method === "POST")).toHaveLength(2);
+  });
+
+  it("keeps hosted web pages off a domain a verified page holds, and an imported domain arrives unproven", async () => {
+    h = await harness({ customDomainTarget: TARGET });
+    await h.db.insert(schema.verifiedPages).values({ projectId: h.ids.project, slug: "scanner", displayName: "S", metrics: [], customDomain: DOMAIN, domainStatus: "verified", domainToken: "t" });
+    const web = await h.fetch(`${P()}/web_domain`, { method: "PUT", key: h.ids.secretKey, json: { custom_domain: DOMAIN } });
+    expect(web.status).toBe(409);
+    const rule = ARCHIVE_TABLES.find((t) => t.name === "verified_pages")!;
+    expect(rule.local).toEqual(expect.arrayContaining(["domain_token", "domain_status", "domain_verified_at", "domain_hostname_id", "domain_ssl_status"]));
+    expect(rule.fill?.domain_status).toContain("'pending'");
   });
 });
