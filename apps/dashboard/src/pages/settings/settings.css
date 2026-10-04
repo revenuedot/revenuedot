@@ -56,3 +56,4 @@
 .pf-preset:hover{border-color:var(--fg)}
 .pf-preset-link{font:600 10px/16px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);margin-left:4px}
 .pf-preset-link:hover{color:var(--fg)}
+.vm-dns-v{word-break:break-all}

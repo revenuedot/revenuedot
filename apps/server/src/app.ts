@@ -15,6 +15,8 @@ import { withCredentialHealth } from "./services/credential-health.js";
 import { resolveSigner, responseSigning, signingKeyHandler, SIGNING_KEY_PATH } from "./services/signing.js";
 import { PAY_CTX, payRoutes } from "./routes/pay.js";
 import { projectForHost } from "./services/web/domains.js";
+import type { ExecutionContext } from "hono";
+import { VERIFIED_ORIGIN, verifiedPathFor, verifiedSlugForHost } from "./services/verified.js";
 import { identityRoutes } from "./routes/identity.js";
 import { verifiedRoutes } from "./routes/verified.js";
 import { shareRoutes } from "./routes/share.js";
@@ -31,6 +33,7 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
   // RevenueDot AI's tools call the API in-process through the app itself (services/assistant/client.ts).
   deps.dispatch = (req) => Promise.resolve(app.fetch(req));
   const pay = payRoutes(deps);
+  const verified = verifiedRoutes(deps);
   // Hosted web pages on the pay host (REVENUEDOT_PAY_URL without a path) and on verified custom domains are served by the
   // pay routes at the root of that host (prd/web-billing/PRD.md §7). Everything else on those hosts is not found.
   const payUrl = deps.payUrl ? new URL(deps.payUrl) : null;
@@ -46,6 +49,21 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
     else if (!known.has(host) && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host) && /^[a-z0-9.-]+(:\d+)?$/.test(host)) {
       // A verified custom domain serves the project's hosted pages and nothing else: never the API, sign-in or OAuth, whose
       // cookies and pages must not live on a domain a customer controls.
+      // A verified custom domain of a Verified Metrics page serves that page and nothing else.
+      const vslug = await verifiedSlugForHost(deps.db, host.replace(/:\d+$/, ""), deps.now().getTime());
+      if (vslug) {
+        const to = verifiedPathFor(vslug, path);
+        if (!to || (c.req.method !== "GET" && c.req.method !== "HEAD")) return c.json({ object: "error", type: "resource_missing", message: "Not found." }, 404);
+        const target = new URL(c.req.url);
+        target.pathname = to;
+        target.search = "";
+        const req = new Request(target, c.req.raw);
+        const proto = (c.req.header("x-forwarded-proto") ?? url.protocol.replace(":", "")).split(",")[0]!.trim();
+        VERIFIED_ORIGIN.set(req, `${proto === "http" ? "http" : "https"}://${host}`);
+        let ctx: ExecutionContext | undefined;
+        try { ctx = c.executionCtx; } catch { ctx = undefined; }
+        return verified.fetch(req, c.env, ctx);
+      }
       projectSlug = await projectForHost(deps.db, host.replace(/:\d+$/, ""), deps.now().getTime());
       if (projectSlug) rewritten = /^\/(api|r)\//.test(path) ? path : `/${projectSlug}${path}`;
     }
@@ -92,7 +110,7 @@ export function createApp(input: Deps): Hono & { deps: Deps } {
   // notification preferences and the display currency's rate.
   app.route("/", accountRoutes(deps));
   // Public Verified Metrics pages (prd/project-settings §4).
-  app.route("/", verifiedRoutes(deps));
+  app.route("/", verified);
   // Public share cards (the first-sale card, prd/ai-assistant/PRD.md).
   app.route("/", shareRoutes(deps));
   // OAuth 2.1 for MCP clients: the access token is a project-scoped secret key.

@@ -1502,9 +1502,24 @@ export const verifiedPages = pgTable("verified_pages", {
   /** "never_published", "published" or "inactive". */
   status: text("status").notNull().default("never_published"),
   publishedAt: ts("published_at"),
+  /** A custom domain for the page (metrics.yourapp.com), proven by DNS like a web domain (services/web/domains.ts). */
+  customDomain: text("custom_domain"),
+  domainToken: text("domain_token"),
+  /** none, pending, verified, failed. */
+  domainStatus: text("domain_status").notNull().default("none"),
+  domainVerifiedAt: ts("domain_verified_at"),
+  domainCheckedAt: ts("domain_checked_at"),
+  domainError: text("domain_error"),
+  /** Cloudflare for SaaS custom hostname (Cloud with CLOUDFLARE_SAAS_*): its id and certificate status. Null elsewhere. */
+  domainHostnameId: text("domain_hostname_id"),
+  domainSslStatus: text("domain_ssl_status"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
   createdAt: created(),
-}, (t) => [uniqueIndex("verified_pages_slug").on(t.slug)]);
+}, (t) => [
+  uniqueIndex("verified_pages_slug").on(t.slug),
+  // As for web domains, only a verified claim is exclusive.
+  uniqueIndex("verified_pages_custom").on(t.customDomain).where(sql`${t.domainStatus} = 'verified'`),
+]);
 
 /** Identity providers for Auth (prd/auth): Firebase or OpenID Connect. */
 export const authProviders = pgTable("auth_providers", {

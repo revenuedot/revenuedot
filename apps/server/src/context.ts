@@ -56,6 +56,12 @@ export interface Deps {
   /** The host custom domains must CNAME to (REVENUEDOT_CUSTOM_DOMAIN_TARGET). Unset: the pay host. */
   customDomainTarget?: string;
   /**
+   * Cloudflare for SaaS (REVENUEDOT_CF_SAAS_ZONE_ID and REVENUEDOT_CF_SAAS_API_TOKEN, a token with "SSL and Certificates:
+   * Edit" on the zone): a verified Verified Metrics custom domain gets its custom hostname and certificate from the API.
+   * Unset: the certificate is a manual step (docs/cloud.md); self-hosted servers need none.
+   */
+  cloudflareSaas?: { zoneId: string; apiToken: string };
+  /**
    * The model behind RevenueDot AI (services/assistant/models.ts): Workers AI on Cloud, Anthropic or OpenAI on self-host.
    * Unset: the assistant is hidden and its routes answer 503.
    */

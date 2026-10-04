@@ -48,10 +48,7 @@ export async function metricHistory(db: DB, projectId: string, now: Date, metric
     };
   }
 
-  const T = schema.transactions;
-  const from = new Date(Math.min(prevSince, starts[0]!));
-  const txns = await db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox), lte(T.purchasedAt, now),
-    or(gte(T.purchasedAt, from), gte(T.expiresAt, from), isNull(T.expiresAt))));
+  const { txns, snapshot: at } = await ledger(db, projectId, now, sandbox, new Date(Math.min(prevSince, starts[0]!)));
 
   if (metric === "revenue") {
     const inRange = (a: number, b: number) => round2(txns.filter((x) => x.purchasedAt.getTime() >= a && x.purchasedAt.getTime() < b).reduce((s, x) => s + x.revenueUsd, 0));
@@ -62,6 +59,22 @@ export async function metricHistory(db: DB, projectId: string, now: Date, metric
   }
 
   const live = await overviewValues(db, projectId, now, environment);
+  const snapshot = (ms: number) => pick(at(ms), metric);
+  const values = starts.map((s, i) => ({ date: day(s), value: i === starts.length - 1 ? live[metric] : snapshot(s + DAY - 1) }));
+  return { metric, value: live[metric], previous_value: snapshot(since), values };
+}
+
+type Snapshot = { trials: number; subs: number; mrr: number };
+const pick = (s: Snapshot, metric: "active_trials" | "active_subscriptions" | "mrr") => metric === "active_trials" ? s.trials : metric === "active_subscriptions" ? s.subs : round2(s.mrr);
+
+/**
+ * The project's transactions of one environment touching [from, now], and a snapshot function over them: trials,
+ * subscriptions and MRR at an instant, rebuilt from each paid period [purchased_at, expires_at) cut short by a refund.
+ */
+async function ledger(db: DB, projectId: string, now: Date, sandbox: boolean, from: Date) {
+  const T = schema.transactions;
+  const txns = await db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox), lte(T.purchasedAt, now),
+    or(gte(T.purchasedAt, from), gte(T.expiresAt, from), isNull(T.expiresAt))));
   const products = await db.select().from(schema.products).where(eq(schema.products.projectId, projectId));
   const refundAt = new Map<string, number>();
   for (const x of txns) if (x.kind === "refund") refundAt.set(`${x.store}:${x.storeTransactionId}`, x.purchasedAt.getTime());
@@ -72,7 +85,7 @@ export async function metricHistory(db: DB, projectId: string, now: Date, metric
     const p = products.find((q) => q.storeIdentifier === x.productIdentifier && q.appId === x.appId) ?? products.find((q) => q.storeIdentifier === x.productIdentifier);
     return monthlyFactor(p?.duration) ?? (x.expiresAt ? 30 * DAY / Math.max(DAY, x.expiresAt.getTime() - x.purchasedAt.getTime()) : 0);
   };
-  const snapshot = (at: number) => {
+  const snapshot = (at: number): Snapshot => {
     const current = new Map<string, typeof periods[number]>();
     for (const x of periods) {
       const start = x.purchasedAt.getTime();
@@ -88,8 +101,42 @@ export async function metricHistory(db: DB, projectId: string, now: Date, metric
       subs++;
       mrr += x.revenueUsd * factor(x);
     }
-    return metric === "active_trials" ? trials : metric === "active_subscriptions" ? subs : round2(mrr);
+    return { trials, subs, mrr };
   };
-  const values = starts.map((s, i) => ({ date: day(s), value: i === starts.length - 1 ? live[metric] : snapshot(s + DAY - 1) }));
-  return { metric, value: live[metric], previous_value: snapshot(since), values };
+  return { txns, snapshot };
+}
+
+/**
+ * One point per UTC calendar month, oldest first, the last being the month so far (Verified Metrics' line charts):
+ * - mrr / active_subscriptions / active_trials: the value at the end of each month; the current month's point is the live value.
+ * - revenue / new_customers: the month's total (the current month up to now).
+ * - active_users: no history is stored (only the latest "last seen"), so null.
+ * One read of the ledger and one of the customers, whatever the number of metrics.
+ */
+export async function monthlyHistories(db: DB, projectId: string, now: Date, metrics: HistoryMetric[], months: number, environment: "production" | "sandbox"): Promise<Partial<Record<HistoryMetric, { date: string; value: number }[] | null>>> {
+  const t = now.getTime();
+  const y = now.getUTCFullYear(), m = now.getUTCMonth();
+  const starts = Array.from({ length: months }, (_, i) => Date.UTC(y, m - (months - 1 - i), 1));
+  const ends = starts.map((s, i) => (i === starts.length - 1 ? t + 1 : starts[i + 1]!));
+  const label = (ms: number) => new Date(ms).toISOString().slice(0, 7);
+  const out: Partial<Record<HistoryMetric, { date: string; value: number }[] | null>> = {};
+  const want = new Set(metrics);
+  if (want.has("active_users")) out.active_users = null;
+  if (want.has("new_customers")) {
+    const first = (await db.select({ firstSeen: schema.customers.firstSeen }).from(schema.customers)
+      .where(and(eq(schema.customers.projectId, projectId), gte(schema.customers.firstSeen, new Date(starts[0]!)), lte(schema.customers.firstSeen, now)))).map((c) => c.firstSeen.getTime());
+    out.new_customers = starts.map((s, i) => ({ date: label(s), value: first.filter((x) => x >= s && x < ends[i]!).length }));
+  }
+  const ledgerMetrics = metrics.filter((x) => x === "revenue" || x === "mrr" || x === "active_subscriptions" || x === "active_trials");
+  if (ledgerMetrics.length) {
+    const { txns, snapshot } = await ledger(db, projectId, now, environment === "sandbox", new Date(starts[0]!));
+    if (want.has("revenue")) out.revenue = starts.map((s, i) => ({ date: label(s), value: round2(txns.filter((x) => x.purchasedAt.getTime() >= s && x.purchasedAt.getTime() < ends[i]!).reduce((a, x) => a + x.revenueUsd, 0)) }));
+    const snaps = ledgerMetrics.some((x) => x !== "revenue") ? starts.map((_, i) => (i === starts.length - 1 ? null : snapshot(ends[i]! - 1))) : [];
+    const live = snaps.length ? await overviewValues(db, projectId, now, environment) : null;
+    for (const metric of ["mrr", "active_subscriptions", "active_trials"] as const) {
+      if (!want.has(metric)) continue;
+      out[metric] = starts.map((s, i) => ({ date: label(s), value: snaps[i] ? pick(snaps[i]!, metric) : live![metric] }));
+    }
+  }
+  return out;
 }

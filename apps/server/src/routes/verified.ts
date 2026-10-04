@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { and, eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../context.js";
-import { publicPage, type PublicMetric, type PublicPage } from "../services/verified.js";
+import { publicPage, VERIFIED_ORIGIN, type PublicMetric, type PublicPage } from "../services/verified.js";
 import { Raster, encodePng, hex } from "../services/og-png.js";
 import { sha256Hex } from "../services/auth.js";
 import { b64decode } from "../services/paywalls.js";
@@ -46,11 +46,41 @@ function sparkSvg(values: number[]): string {
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d} L${lx.toFixed(1)} ${h} L3 ${h} Z" fill="var(--spark-fill)"/><path d="${d}" fill="none" stroke="var(--fg)" stroke-width="1.25" vector-effect="non-scaling-stroke"/><rect x="${(lx - 3).toFixed(1)}" y="${(ly - 3).toFixed(1)}" width="6" height="6" fill="var(--accent)"/></svg>`;
 }
 
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const monthLabel = (ym: string) => `${MONTH[Number(ym.slice(5, 7)) - 1] ?? ym} ${ym.slice(2, 4)}`;
+
+/** The "Line charts" type: the last 12 calendar months, one point per month, with its range and first and last month. */
+function lineSvg(m: PublicMetric): string {
+  const pts = m.history;
+  if (pts.length < 2) return `<div class="cap nohist">No monthly history for this metric.</div>`;
+  const w = 320, h = 120, top = 8, bottom = 22, values = pts.map((x) => x.value);
+  const min = Math.min(0, ...values), max = Math.max(...values), span = max - min || 1;
+  const xy = values.map((v, i) => [(i / (values.length - 1)) * (w - 8) + 4, top + (h - top - bottom) * (1 - (v - min) / span)] as const);
+  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const base = (h - bottom).toFixed(1);
+  const [lx, ly] = xy[xy.length - 1]!;
+  const peak = formatMetric({ unit: m.unit, value: max }, true);
+  const label = `${m.name} by month from ${monthLabel(pts[0]!.date)} to ${monthLabel(pts[pts.length - 1]!.date)}: ${pts.map((x) => formatMetric({ unit: m.unit, value: x.value })).join(", ")}`;
+  return `<svg class="line" viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">`
+    + `<line x1="0" x2="${w}" y1="${top}" y2="${top}" stroke="var(--border)" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>`
+    + `<line x1="0" x2="${w}" y1="${base}" y2="${base}" stroke="var(--border)" vector-effect="non-scaling-stroke"/>`
+    + `<path d="${d} L${lx.toFixed(1)} ${base} L4 ${base} Z" fill="var(--spark-fill)"/><path d="${d}" fill="none" stroke="var(--fg)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
+    + xy.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="var(--fg)"/>`).join("")
+    + `<rect x="${(lx - 3.5).toFixed(1)}" y="${(ly - 3.5).toFixed(1)}" width="7" height="7" fill="var(--accent)"/></svg>`
+    + `<div class="axis"><span>${esc(monthLabel(pts[0]!.date))}</span><span>Peak ${esc(peak)}</span><span>${esc(monthLabel(pts[pts.length - 1]!.date))}</span></div>`;
+}
+
+function chartOf(p: PublicPage, m: PublicMetric): string {
+  if (p.chart_type === "numbers_only") return "";
+  if (p.chart_type === "line") return lineSvg(m);
+  return sparkSvg(m.sparkline);
+}
+
 function html(p: PublicPage, url: string): string {
   const title = `${p.display_name}: verified metrics`;
   const desc = p.metrics.slice(0, 3).map((m) => `${m.name} ${formatMetric(m)}`).join(" · ") || "Verified revenue metrics";
   const when = new Date(p.computed_at).toISOString().replace("T", " ").slice(0, 16) + " UTC";
-  const cells = p.metrics.map((m) => `<div class="cell"><div class="label">${esc(m.name)}</div><div class="value">${esc(formatMetric(m))}</div><div class="cap">${esc(m.caption)}</div>${sparkSvg(m.sparkline)}</div>`).join("");
+  const cells = p.metrics.map((m) => `<div class="cell"><div class="label">${esc(m.name)}</div><div class="value">${esc(formatMetric(m))}</div><div class="cap">${esc(m.caption)}</div>${chartOf(p, m)}</div>`).join("");
   const links = [p.store_links.app_store ? `<a class="btn" href="${esc(p.store_links.app_store)}" rel="noopener">App Store</a>` : "", p.store_links.play_store ? `<a class="btn" href="${esc(p.store_links.play_store)}" rel="noopener">Google Play</a>` : ""].join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><link rel="canonical" href="${esc(url)}">
@@ -70,10 +100,13 @@ h1{margin:0;font-size:34px;line-height:42px;font-weight:600;letter-spacing:-.035
 .grid:before,.grid:after{content:"";position:absolute;width:9px;height:9px;border:0 solid var(--fg)}.grid:before{top:-5px;left:-5px;border-top-width:1px;border-left-width:1px}.grid:after{bottom:-5px;right:-5px;border-bottom-width:1px;border-right-width:1px}
 .cell{padding:20px 20px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)}.cell:nth-child(3n){border-right:0}
 .label{font:600 11px/16px Manrope;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-3)}.value{font-size:34px;line-height:42px;font-weight:600;letter-spacing:-.035em;font-variant-numeric:tabular-nums;margin-top:8px}
-.cap{color:var(--fg-3);font-size:12px;margin-bottom:12px}footer{margin-top:24px;color:var(--fg-3);font:400 12px/18px "Geist Mono",ui-monospace,monospace;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.cap{color:var(--fg-3);font-size:12px;margin-bottom:12px}.nohist{margin:24px 0 0}
+.t-line .grid{grid-template-columns:repeat(2,1fr)}.t-line .cell:nth-child(3n){border-right:1px solid var(--border)}.t-line .cell:nth-child(2n){border-right:0}.t-line .cell{padding:24px 24px 20px}
+.axis{display:flex;justify-content:space-between;color:var(--fg-3);font:400 11px/16px "Geist Mono",ui-monospace,monospace;margin-top:4px}
+.t-numbers_only .cap{margin-bottom:0}footer{margin-top:24px;color:var(--fg-3);font:400 12px/18px "Geist Mono",ui-monospace,monospace;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 footer a{color:var(--fg-2)}.empty{padding:40px;color:var(--fg-2);border:1px solid var(--border)}
-@media (max-width:760px){.grid{grid-template-columns:1fr}.cell{border-right:0}.links{margin-left:0}h1{font-size:28px;line-height:34px}}
-</style></head><body><main>
+@media (max-width:760px){.grid,.t-line .grid{grid-template-columns:1fr}.cell,.t-line .cell,.t-line .cell:nth-child(3n){border-right:0}.links{margin-left:0}h1{font-size:28px;line-height:34px}}
+</style></head><body class="t-${p.chart_type}"><main>
 <div class="top">${p.icon_url ? `<img class="icon" src="${esc(p.icon_url)}" alt="">` : ""}<div><div class="badge"><span class="dot"></span>Verified by RevenueDot</div><h1>${esc(p.display_name)}</h1></div><div class="links">${links}</div></div>
 ${p.metrics.length ? `<div class="grid">${cells}</div>` : `<div class="empty">No metrics are shown on this page.</div>`}
 <footer><span>Production data computed by RevenueDot from store receipts and notifications. Updated ${esc(when)}.</span><a href="https://revenuedot.app">revenuedot.app</a></footer>
@@ -102,7 +135,7 @@ async function ogImage(p: PublicPage): Promise<Uint8Array> {
     const value = formatMetric(m, true);
     const vs = Raster.textWidth(value, 7) <= cw - 56 ? 7 : 5;
     r.text(x + 28, top + 64, value, vs, ink);
-    const pts = m.sparkline;
+    const pts = p.chart_type === "line" ? m.history.map((x) => x.value) : p.chart_type === "numbers_only" ? [] : m.sparkline;
     if (pts.length >= 2) {
       const sx = x + 28, sw = cw - 56, sy = bottom - 90, sh = 60;
       const min = Math.min(...pts), max = Math.max(...pts), span = max - min || 1;
@@ -145,8 +178,9 @@ export function verifiedRoutes(deps: Deps) {
       const hit = await cache.match(key).catch(() => undefined);
       if (hit) return hit;
     }
-    const page = await publicPage(deps.db, row, deps.now(), `${origin}/verified/${row.slug}/icon`);
-    const pageUrl = `${origin}/verified/${row.slug}`;
+    // On the page's custom domain (app.ts) every link names that domain.
+    const pageUrl = VERIFIED_ORIGIN.get(c.req.raw) ?? `${origin}/verified/${row.slug}`;
+    const page = await publicPage(deps.db, row, deps.now(), `${pageUrl}/icon`);
     let bytes: Uint8Array | string, type: string;
     if (kind === "json") { bytes = JSON.stringify({ object: "verified_metrics_page", url: pageUrl, ...page }); type = "application/json; charset=utf-8"; }
     else if (kind === "png") { bytes = await ogImage(page); type = "image/png"; }

@@ -83,7 +83,7 @@ async function doh(fetchFn: typeof fetch, name: string, type: "CNAME" | "TXT"): 
  * Checks the two DNS records: TXT `_revenuedot.<domain>` = `revenuedot-verify=<token>` (ownership) and a CNAME from the
  * domain to the target (traffic). Reads them through DNS over HTTPS, so it works on Workers and Node alike.
  */
-export async function verifyDomain(fetchFn: typeof fetch, d: DomainRow, target: string): Promise<{ ok: boolean; error: string | null; cname: string[]; txt: string[] }> {
+export async function verifyDomain(fetchFn: typeof fetch, d: Pick<DomainRow, "customDomain" | "verificationToken">, target: string): Promise<{ ok: boolean; error: string | null; cname: string[]; txt: string[] }> {
   if (!d.customDomain) return { ok: false, error: "No custom domain is set.", cname: [], txt: [] };
   let cname: string[] = [], txt: string[] = [];
   try {
