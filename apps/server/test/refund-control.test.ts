@@ -4,7 +4,7 @@ import { schema } from "@revenuedot/db";
 import { createSecretKey } from "../src/services/auth.js";
 import { applyPurchases } from "../src/services/purchases.js";
 import { getOrCreateCustomer } from "../src/repo/customers.js";
-import { buildConsumptionRequest, buildConsumptionRequestV2, choosePolicy, consumptionPercentage, consumptionVersionFor, consumptionVersionOf, dollarsBucket, playTimeBucket, retryDueConsumption, tenureBucket, type ConsumptionInput, type PolicyRow } from "../src/services/refunds.js";
+import { buildConsumptionRequest, buildConsumptionRequestV2, choosePolicy, consumptionPercentage, consumptionVersionFor, consumptionVersionOf, spentOfGrant, dollarsBucket, playTimeBucket, retryDueConsumption, tenureBucket, type ConsumptionInput, type PolicyRow } from "../src/services/refunds.js";
 import { emptyContext } from "../src/services/targeting.js";
 import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
 import type { VerifiedPurchase } from "../src/stores/types.js";
@@ -92,8 +92,11 @@ describe("the ConsumptionRequest (V2) payload", () => {
     expect(consumptionPercentage(nonRenewing)).toBe(33333);
     expect(consumptionPercentage({ ...nonRenewing, now: T0 + 30 * DAY })).toBe(100000);
     expect(consumptionPercentage({ ...nonRenewing, expiresAt: null })).toBeNull();
-    const coins = (balance: number, granted = 100) => consumptionPercentage({ ...base, productType: "consumable", customer: { ...base.customer!, currency: { granted, balance } } });
-    expect([coins(100), coins(40), coins(0), coins(250), coins(-5)]).toEqual([0, 60000, 100000, 0, 100000]);
+    const coins = (amount: number, of = 100) => consumptionPercentage({ ...base, productType: "consumable", customer: { ...base.customer!, currency: { granted: of, balance: 0, spent: { amount, of } } } });
+    expect([coins(0), coins(60), coins(100), coins(1, 3)]).toEqual([0, 60000, 100000, 33333]);
+    expect(coins(Number.NaN)).toBeNull();
+    // Without this purchase's grant in the ledger, the balance alone does not say what was spent.
+    expect(consumptionPercentage({ ...base, productType: "consumable", customer: { ...base.customer!, currency: { granted: 100, balance: 40, spent: null } } })).toBeNull();
     expect(consumptionPercentage({ ...base, productType: "consumable" })).toBeNull();
     expect(consumptionPercentage({ ...base, productType: "non_consumable", customer: { ...base.customer!, lastSeenAt: base.purchasedAt } })).toBe(0);
     expect(consumptionPercentage({ ...base, productType: "non_consumable" })).toBeNull();
@@ -103,7 +106,7 @@ describe("the ConsumptionRequest (V2) payload", () => {
   });
 
   it("a prorated preference needs a percentage strictly between 0 and 100000 outside auto-renewable subscriptions", () => {
-    const coins = (balance: number | null) => buildConsumptionRequestV2({ ...base, preference: "prefer_prorated_refund", productType: "consumable", customer: { ...base.customer!, hadFreeTrial: false, currency: balance === null ? null : { granted: 100, balance } } });
+    const coins = (balance: number | null) => buildConsumptionRequestV2({ ...base, preference: "prefer_prorated_refund", productType: "consumable", customer: { ...base.customer!, hadFreeTrial: false, currency: balance === null ? null : { granted: 100, balance, spent: { amount: 100 - balance, of: 100 } } } });
     expect(coins(40)).toEqual({ customerConsented: true, consumptionPercentage: 60000, deliveryStatus: "DELIVERED", refundPreference: "GRANT_PRORATED", sampleContentProvided: false });
     expect(coins(100)).toMatchObject({ consumptionPercentage: 0, refundPreference: "GRANT_FULL" });
     expect(coins(0)).toMatchObject({ consumptionPercentage: 100000, refundPreference: "DECLINE" });
@@ -231,6 +234,30 @@ describe("CONSUMPTION_REQUEST", () => {
     expect((await requests())[0]).toMatchObject({ consumptionStatus: "sent", attempts: 2 });
   });
 
+  it("a queued Advanced Commerce answer is retried by the tick on the V1 path", async () => {
+    const { apple } = await setup();
+    apple.setStatus(503);
+    h!.setNow(T0 + 2 * DAY);
+    await h!.notify(await consumptionNotification(T0 + 2 * DAY, { advancedCommerceInfo: { requestReferenceId: "8f2b" } }));
+    expect((await requests())[0]).toMatchObject({ consumptionStatus: "pending", attempts: 1 });
+    apple.setStatus(202);
+    h!.setNow(T0 + 2 * DAY + 6 * 60_000);
+    expect(await retryDueConsumption({ db: h!.db, stores: {}, now: h!.now, fetch: apple.fetch as unknown as typeof fetch })).toBe(1);
+    expect(apple.calls.filter((c) => c.method === "PUT").map((c) => c.url)).toEqual(Array(2).fill("https://api.storekit.itunes.apple.com/inApps/v1/transactions/consumption/2000000101"));
+    expect((await requests())[0]).toMatchObject({ consumptionStatus: "sent", attempts: 2 });
+  });
+
+  it("a non-renewing subscription reports the share of its period used, from the product's duration (Apple sends no expiry)", async () => {
+    const { apple } = await setup({ defaultPreference: "prefer_prorated_refund" });
+    await h!.db.insert(schema.products).values({ id: "prod_season", projectId: "proj1", appId: APP_ID, storeIdentifier: "season_pass", type: "non_renewing_subscription", duration: "P30D" });
+    h!.setNow(T0 + 5 * DAY);
+    const season = { transactionId: "2000000303", originalTransactionId: "2000000303", productId: "season_pass", type: "Non-Renewing Subscription", expiresDate: undefined };
+    await h!.notify(await consumptionNotification(T0 + 5 * DAY, season));
+    const puts = apple.calls.filter((c) => c.method === "PUT");
+    expect(puts.map((c) => c.url)).toEqual(["https://api.storekit.apple.com/inApps/v2/transactions/consumption/2000000303"]);
+    expect(puts[0]!.body).toEqual({ customerConsented: true, consumptionPercentage: 50000, deliveryStatus: "DELIVERED", refundPreference: "GRANT_PRORATED", sampleContentProvided: false });
+  });
+
   it("Apple refusing the V2 request (400 with an error code) fails it without retrying", async () => {
     const { apple } = await setup();
     apple.setStatus(400);
@@ -342,6 +369,22 @@ describe("CONSUMPTION_REQUEST", () => {
     expect(stats).toMatchObject({ object: "refund_control_stats", days: 28, refund_rate: 0.5, requests: { approved: 1, declined: 1, pending: 0, total: 2 }, amount_in_usd: { approved: 9.99, declined: 29.99 } });
     const sandbox = await (await h!.request("/v2/projects/proj1/refund_control/stats?environment=sandbox", { headers: { Authorization: `Bearer ${key}` } })).json() as any;
     expect(sandbox.requests.total).toBe(0);
+  });
+});
+
+describe("currency spent from one purchase's grant", () => {
+  it("spends the oldest credits first, and knows nothing without the purchase's grant in the ledger", async () => {
+    await setup();
+    const { customer } = await getOrCreateCustomer(h!.db, "proj1", "coin_user", new Date(T0));
+    const vt = schema.virtualCurrencyTransactions;
+    const rows: [string, number, string, string | null][] = [["api", 50, "api", null], ["p1", 100, "purchase", "tx1"], ["s1", -80, "sdk", null], ["p2", 100, "purchase", "tx2"], ["s2", -40, "sdk", null]];
+    for (const [i, [id, amount, source, sourceKey]] of rows.entries()) {
+      await h!.db.insert(vt).values({ id: `vct_${id}`, projectId: "proj1", customerId: customer.id, code: "COIN", amount, source, sourceKey, createdAt: new Date(T0 + i * 1000) });
+    }
+    // 120 spent: the 50 credited first, then 70 of the first pack; the second pack is untouched.
+    expect(await spentOfGrant(h!.db, "proj1", customer.id, "COIN", "tx1")).toEqual({ amount: 70, of: 100 });
+    expect(await spentOfGrant(h!.db, "proj1", customer.id, "COIN", "tx2")).toEqual({ amount: 0, of: 100 });
+    expect(await spentOfGrant(h!.db, "proj1", customer.id, "COIN", "tx3")).toBeNull();
   });
 });
 

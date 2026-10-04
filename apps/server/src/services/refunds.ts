@@ -10,6 +10,7 @@ import type { AppleTransaction } from "../stores/apple/map.js";
 import type { StoreAdapter } from "../stores/types.js";
 import { contextsFor, type CustomerData } from "./customer-context.js";
 import { usdValue } from "./fx.js";
+import { addDuration } from "../stores/test-store.js";
 import { emptyContext, rulesMatch, type CustomerContext, type Rules } from "./targeting.js";
 
 /**
@@ -75,8 +76,11 @@ export interface ConsumptionInput {
   customer: null | {
     firstSeenAt: number; lastSeenAt: number; platform: string | null;
     lifetimePurchasedUsd: number; lifetimeRefundedUsd: number; hadFreeTrial: boolean;
-    /** Consumables that grant an in-app currency: what the purchase granted and what is left. */
-    currency?: { granted: number; balance: number } | null;
+    /**
+     * Consumables that grant an in-app currency: what the purchase grants and the customer's balance (V1), and, when the
+     * ledger has this purchase's grant, how much of that grant is spent, spending the oldest credits first (V2).
+     */
+    currency?: { granted: number; balance: number; spent?: { amount: number; of: number } | null } | null;
     attributes: Record<string, string | null>;
   };
 }
@@ -158,19 +162,21 @@ export function consumptionVersionOf(body: Record<string, unknown> | null | unde
 const FULL = 100_000;
 /**
  * How much of the purchase the customer used, in milliunits, or null when our records cannot say (the field is then left out).
- * Auto-renewable subscriptions: always null, Apple computes it. Non-renewing subscriptions: time elapsed in the period.
- * Consumables that grant an in-app currency: the share of the grant spent. Non-consumables: 0 when the customer never
+ * Auto-renewable subscriptions: always null, Apple computes it. Non-renewing subscriptions: time elapsed in the period
+ * (Apple sends no expiry for them; the period comes from the product's duration). Consumables that grant an in-app
+ * currency: the share of this purchase's grant spent, oldest credits spent first, from the ledger. Non-consumables: 0 when the customer never
  * came back after the purchase, otherwise unknown. Other consumables: unknown.
  */
 export function consumptionPercentage(i: ConsumptionInput): number | null {
-  const clamp = (x: number) => Math.min(FULL, Math.max(0, Math.round(x * FULL)));
+  const clamp = (x: number) => (Number.isFinite(x) ? Math.min(FULL, Math.max(0, Math.round(x * FULL))) : null);
   switch (i.productType) {
     case "subscription": return null;
     case "non_renewing_subscription":
       return i.expiresAt !== null && i.expiresAt > i.purchasedAt ? clamp((i.now - i.purchasedAt) / (i.expiresAt - i.purchasedAt)) : null;
     case "consumable": {
-      const cur = i.customer?.currency;
-      return cur && cur.granted > 0 ? clamp(Math.min(cur.granted, Math.max(0, cur.granted - cur.balance)) / cur.granted) : null;
+      // The balance alone cannot say which purchase was spent (two packs, one spent, look unspent), so only the ledger counts.
+      const spent = i.customer?.currency?.spent;
+      return spent && spent.of > 0 ? clamp(spent.amount / spent.of) : null;
     }
     case "non_consumable":
       return i.customer && i.customer.lastSeenAt <= i.purchasedAt + 60_000 ? 0 : null;
@@ -222,11 +228,11 @@ async function customerFor(db: DB, projectId: string, store: string, tx: { trans
 }
 
 /** Customer facts for the payload, in the request's environment (sandbox requests count sandbox purchases). */
-async function customerFacts(db: DB, projectId: string, appId: string, d: CustomerData, productId: string, sandbox: boolean): Promise<NonNullable<ConsumptionInput["customer"]>> {
+async function customerFacts(db: DB, projectId: string, appId: string, d: CustomerData, productId: string, transactionId: string, sandbox: boolean): Promise<NonNullable<ConsumptionInput["customer"]>> {
   const tx = d.tx.filter((t) => t.sandbox === sandbox);
   const purchased = tx.filter((t) => t.usd > 0).reduce((s, t) => s + t.usd, 0);
   const refunded = -tx.filter((t) => t.kind === "refund").reduce((s, t) => s + t.usd, 0);
-  let currency: { granted: number; balance: number } | null = null;
+  let currency: NonNullable<ConsumptionInput["customer"]>["currency"] = null;
   const [prod] = await db.select().from(schema.products).where(and(eq(schema.products.projectId, projectId), eq(schema.products.appId, appId), eq(schema.products.storeIdentifier, productId))).limit(1);
   if (prod) {
     const vcs = await db.select().from(schema.virtualCurrencies).where(eq(schema.virtualCurrencies.projectId, projectId));
@@ -234,7 +240,7 @@ async function customerFacts(db: DB, projectId: string, appId: string, d: Custom
       const grant = vc.productGrants.find((g) => g.product_ids.includes(prod.id));
       if (!grant) continue;
       const [bal] = await db.select().from(schema.virtualCurrencyBalances).where(and(eq(schema.virtualCurrencyBalances.customerId, d.customer.id), eq(schema.virtualCurrencyBalances.code, vc.code))).limit(1);
-      currency = { granted: grant.amount, balance: bal?.balance ?? 0 };
+      currency = { granted: grant.amount, balance: bal?.balance ?? 0, spent: await spentOfGrant(db, projectId, d.customer.id, vc.code, transactionId) };
       break;
     }
   }
@@ -244,6 +250,32 @@ async function customerFacts(db: DB, projectId: string, appId: string, d: Custom
     hadFreeTrial: tx.some((t) => t.kind === "trial" && t.product === productId) || d.subs.some((s) => s.productIdentifier === productId && s.offerType === "free_trial"),
     currency, attributes: d.attributes,
   };
+}
+
+/**
+ * How much of one purchase's currency grant is spent: spends use the oldest credits first, so this grant is spent once
+ * everything credited before it is. Null when the ledger has no grant for this transaction.
+ */
+export async function spentOfGrant(db: DB, projectId: string, customerId: string, code: string, transactionId: string): Promise<{ amount: number; of: number } | null> {
+  const vt = schema.virtualCurrencyTransactions;
+  const rows = await db.select({ id: vt.id, amount: vt.amount, source: vt.source, sourceKey: vt.sourceKey, createdAt: vt.createdAt }).from(vt)
+    .where(and(eq(vt.projectId, projectId), eq(vt.customerId, customerId), eq(vt.code, code))).orderBy(asc(vt.createdAt), asc(vt.id));
+  const at = rows.findIndex((r) => r.source === "purchase" && r.sourceKey === transactionId && r.amount > 0);
+  if (at < 0) return null;
+  const of = rows[at]!.amount;
+  const creditedBefore = rows.slice(0, at).reduce((s, r) => s + Math.max(0, r.amount), 0);
+  const spentTotal = rows.reduce((s, r) => s + Math.max(0, -r.amount), 0);
+  return { amount: Math.min(of, Math.max(0, spentTotal - creditedBefore)), of };
+}
+
+/** When a non-renewing subscription runs out: Apple's payload has no expiry for it, so the product's duration decides. */
+async function nonRenewingExpiry(db: DB, projectId: string, appId: string, tx: AppleTransaction): Promise<number | null> {
+  if (tx.expiresDate) return tx.expiresDate;
+  if (tx.type !== "Non-Renewing Subscription") return null;
+  const [prod] = await db.select({ duration: schema.products.duration }).from(schema.products)
+    .where(and(eq(schema.products.projectId, projectId), eq(schema.products.appId, appId), eq(schema.products.storeIdentifier, tx.productId))).limit(1);
+  if (!prod?.duration) return null;
+  try { return addDuration(new Date(tx.purchaseDate), prod.duration).getTime(); } catch { return null; }
 }
 
 async function policiesOf(db: DB, projectId: string): Promise<PolicyRow[]> {
@@ -293,10 +325,10 @@ export async function handleConsumptionRequest(deps: RefundDeps, app: AppRecord,
   else if (!settings.customer_consented) { consumptionStatus = "skipped"; lastError = "Customer consent is not confirmed in Refund Control settings, so Apple gets no consumption information."; }
   else if (tx.environment !== "Production" && tx.environment !== "Sandbox") { consumptionStatus = "skipped"; lastError = `Apple's ${tx.environment} environment has no App Store Server API.`; }
   else {
-    const facts = data ? await customerFacts(db, app.projectId, app.id, data, tx.productId, sandbox) : null;
+    const facts = data ? await customerFacts(db, app.projectId, app.id, data, tx.productId, tx.transactionId, sandbox) : null;
     const input: ConsumptionInput = {
       now: now.getTime(), customerConsented: true, preference: decision.preference, appAccountToken: tx.appAccountToken ?? null,
-      productType: PRODUCT_TYPE[tx.type] ?? "subscription", purchasedAt: tx.purchaseDate, expiresAt: tx.expiresDate ?? null, customer: facts,
+      productType: PRODUCT_TYPE[tx.type] ?? "subscription", purchasedAt: tx.purchaseDate, expiresAt: await nonRenewingExpiry(db, app.projectId, app.id, tx), customer: facts,
     };
     consumption = (consumptionVersionFor(tx) === "v1" ? buildConsumptionRequest(input) : buildConsumptionRequestV2(input)) as unknown as Record<string, unknown>;
   }
@@ -352,7 +384,10 @@ export async function sendConsumption(deps: RefundDeps, row: typeof schema.refun
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     // Apple refuses the request itself (4xx other than 401/404/429): retrying cannot help.
-    if (e instanceof AppleApiClientError) return update({ consumptionStatus: "failed", attempts, nextAttemptAt: null, lastError: message });
+    if (e instanceof AppleApiClientError) {
+      const why = e.errorCode === 4000210 ? `Apple says this is an Advanced Commerce API transaction, which only Send Consumption Information V1 accepts, but its signed transaction had no advancedCommerceInfo (${message})` : message;
+      return update({ consumptionStatus: "failed", attempts, nextAttemptAt: null, lastError: why });
+    }
     const wait = RETRY_STEPS_MS[Math.min(attempts - 1, RETRY_STEPS_MS.length - 1)]!;
     const next = new Date(now.getTime() + wait);
     const lastChance = row.deadlineAt ? new Date(row.deadlineAt.getTime() - DEADLINE_MARGIN_MS) : next;
