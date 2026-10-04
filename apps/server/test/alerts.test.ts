@@ -2,7 +2,7 @@
 // This file: alert emails to project admins from the tick (prd/account-email/PRD.md).
 // Docs: https://revenuedot.app/docs/guides/alerts
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { accountServer } from "./account-helpers.js";
 import { tick } from "../src/services/tick.js";
@@ -132,6 +132,21 @@ describe("webhook failing", () => {
     expect(alertMails(s)).toEqual(["admin@example.com: Webhook Backend (demo) is failing", "admin@example.com: Resolved: webhook Backend (demo)"]);
     const [row] = await s.db.select().from(schema.webhooks).where(eq(schema.webhooks.id, w.id));
     expect(row!.consecutiveFailures).toBe(0);
+  });
+
+  it("a last-notified time with microseconds (written by SQL) still gets its probe and reminder", async () => {
+    const { browser, P, s } = await project();
+    const w = (await browser.call("POST", `${P}/integrations/webhooks`, { name: "Backend", url: "https://hooks.example.com/rd" })).body;
+    const down: typeof fetch = async () => new Response("no", { status: 500 });
+    const opts = { stores: defaultStores(), mailer: s.mail, publicUrl: "https://dash.example.com" };
+    await s.db.update(schema.webhooks).set({ consecutiveFailures: 7, lastError: "HTTP 500" }).where(eq(schema.webhooks.id, w.id));
+    await tick(s.db, s.now(), down, opts);
+    await s.db.execute(sql`update alerts set last_notified_at = ${new Date(s.now().getTime() - 25 * HOUR).toISOString()}::timestamptz + interval '123 microseconds'`);
+    await tick(s.db, s.now(), down, opts);
+    expect((await s.db.select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.webhookId, w.id))).length).toBe(1);
+    s.advance(16 * 60_000);
+    await tick(s.db, s.now(), down, opts);
+    expect(alertMails(s).at(-1)).toBe("admin@example.com: Still failing: Webhook Backend is failing");
   });
 
   it("an endpoint still broken: the probe fails, the reminder follows, and probes stay at most one a day", async () => {

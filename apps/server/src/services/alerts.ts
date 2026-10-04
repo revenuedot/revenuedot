@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { integrationSpec } from "@revenuedot/core/integrations";
 import { schema, type DB } from "@revenuedot/db";
@@ -135,12 +135,15 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
       await notify(deps, f, "open");
       opened++;
     } else if (!row.lastNotifiedAt || now.getTime() - row.lastNotifiedAt.getTime() >= REMIND_AFTER_MS) {
+      // The claim: "still due" in the database. Not equality with the value read, which a timestamp with more precision
+      // than JavaScript's milliseconds (written by SQL) would never match, silently skipping every reminder and probe.
+      const stillDue = or(isNull(A.lastNotifiedAt), lte(A.lastNotifiedAt, new Date(now.getTime() - REMIND_AFTER_MS)));
       // A reminder is due. A failing webhook with nothing in flight gets a TEST probe first, and the reminder moves
       // WEBHOOK_PROBE_WAIT_MS later to wait for its answer. The conditional update is the claim: one run probes.
       if (f.kind === "webhook" && await canProbe(db, f.subjectId, now)) {
         const postponed = new Date(now.getTime() - REMIND_AFTER_MS + WEBHOOK_PROBE_WAIT_MS);
         const claimed = await db.update(A).set({ lastNotifiedAt: postponed })
-          .where(and(eq(A.id, row.id), eq(A.status, "open"), row.lastNotifiedAt ? eq(A.lastNotifiedAt, row.lastNotifiedAt) : isNull(A.lastNotifiedAt))).returning({ id: A.id });
+          .where(and(eq(A.id, row.id), eq(A.status, "open"), stillDue)).returning({ id: A.id });
         if (claimed.length) {
           const [w] = await db.select().from(schema.webhooks).where(eq(schema.webhooks.id, f.subjectId));
           if (w) await queueTestDelivery(db, w, now);
@@ -148,7 +151,7 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
         continue;
       }
       const won = await db.update(A).set({ message: f.detail, lastNotifiedAt: now })
-        .where(and(eq(A.id, row.id), eq(A.status, "open"), row.lastNotifiedAt ? eq(A.lastNotifiedAt, row.lastNotifiedAt) : isNull(A.lastNotifiedAt))).returning({ id: A.id });
+        .where(and(eq(A.id, row.id), eq(A.status, "open"), stillDue)).returning({ id: A.id });
       if (!won.length) continue;
       await notify(deps, f, "reminder");
       reminded++;
