@@ -44,7 +44,8 @@ async function appOf(deps: Deps, row: { appId: string | null; projectId: string;
     ? await deps.db.select().from(A).where(and(eq(A.projectId, row.projectId), eq(A.id, row.appId))).limit(1)
     : await deps.db.select().from(A).where(and(eq(A.projectId, row.projectId), eq(A.type, row.store))).limit(1);
   if (!a) throw new StoreActionError("invalid", `The ${storeName(row.store)} app this purchase belongs to no longer exists.`);
-  return a;
+  // Store keys are sealed (services/store-secrets.ts): opened in memory for this action only.
+  return withStoreSecrets(deps, a).catch((e) => { throw new StoreActionError("unavailable", e instanceof Error ? e.message : String(e)); });
 }
 
 /** Google and Apple failures in neutral terms: a 4xx about the purchase is `rejected`, everything else `unavailable` (retry). */
@@ -81,7 +82,7 @@ async function resyncGoogle(deps: Deps, app: AppRecord, token: string, opts: Par
 
 /** The Galaxy Store: one subscription action through Samsung, then the chain read back (a refund marks `refundOrderId`'s period). */
 async function galaxyAction(deps: Deps, sub: SubRow, action: "cancel" | "refund" | "revoke", refundOrderId: string | null) {
-  const app = await withStoreSecrets(deps, await appOf(deps, sub));
+  const app = await appOf(deps, sub);
   const { client } = galaxyClientFor(deps.stores, deps.fetch);
   try { await client.subscriptionAction(app, sub.storeKey, action); } catch (e) { storeFailure(e, sub.store); }
   const now = deps.now();

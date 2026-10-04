@@ -1,4 +1,5 @@
 import { SignJWT, importPKCS8 } from "jose";
+import { assertStoreSecretsOpened } from "../../services/store-secrets.js";
 import type { AppRow } from "../types.js";
 import type { FetchFn } from "./api.js";
 import { outboundUrlProblem } from "../../services/outbound.js";
@@ -14,7 +15,8 @@ const TIMEOUT_MS = 15_000;
 export interface ConnectCredentials { keyId: string; issuerId: string; privateKey: string }
 
 /** The App Store Connect API key, or null when any of its three fields is missing. */
-export function connectCredentials(app: Pick<AppRow, "credentials">): ConnectCredentials | null {
+export function connectCredentials(app: Pick<AppRow, "credentials"> & { secretHints?: Record<string, string> | null }): ConnectCredentials | null {
+  assertStoreSecretsOpened(app, ["app_store_connect_api_key"]);
   const c = app.credentials ?? {};
   const str = (k: string) => (typeof c[k] === "string" ? (c[k] as string).trim() : "");
   const privateKey = str("app_store_connect_api_key").replace(/\\n/g, "\n");

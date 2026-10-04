@@ -7,6 +7,7 @@ import { hasServiceAccount, type GooglePlayClient } from "./api.js";
 import { googleClientFor } from "./index.js";
 import { applyVoided } from "./sync.js";
 import { credentialFailureOf, recordCredentialFailure } from "../../services/credential-health.js";
+import { withStoreSecrets } from "../../services/store-secrets.js";
 
 const { apps, subscriptions, nonSubscriptions } = schema;
 const HOUR = 3_600_000;
@@ -48,7 +49,7 @@ export async function scanVoidedPurchases(db: DB, app: AppRecord, client: Google
 }
 
 /** The daily scan for every Google Play app with a service account whose last scan is a day old. A failed scan retries in an hour. */
-export async function scanDueVoidedPurchases(db: DB, now: Date, stores: Record<string, StoreAdapter>, fetchImpl?: typeof fetch) {
+export async function scanDueVoidedPurchases(db: DB, now: Date, stores: Record<string, StoreAdapter>, fetchImpl?: typeof fetch, keys: { encryptionKey?: string; signingKey?: string } = {}) {
   const due = await db.select().from(apps).where(and(eq(apps.type, "play_store"), notMoving(apps.projectId),
     or(isNull(apps.voidedPurchasesCheckedAt), lte(apps.voidedPurchasesCheckedAt, new Date(now.getTime() - DAY)))));
   let applied = 0;
@@ -56,7 +57,8 @@ export async function scanDueVoidedPurchases(db: DB, now: Date, stores: Record<s
     if (!app.bundleId || !hasServiceAccount(app)) continue;
     const { client } = googleClientFor(stores, fetchImpl);
     try {
-      applied += (await scanVoidedPurchases(db, app, client, now)).applied;
+      // The service account is sealed; opened in memory for this scan only.
+      applied += (await scanVoidedPurchases(db, await withStoreSecrets(keys, app), client, now)).applied;
     } catch (e) {
       console.warn(`Google voided purchases scan failed for ${app.id}: ${e instanceof Error ? e.message : e}`);
       const why = credentialFailureOf(e);

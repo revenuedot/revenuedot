@@ -7,7 +7,7 @@ import type { ExtensionStatus, PasswordRefusal, ProjectAccess, ServerExtension }
 import { v2ErrorResponse } from "../../apps/server/src/routes/v2/common.js";
 import { FEATURES, checkLicense, type LicenseState } from "./license.js";
 import { regionConfigFrom, regionGuard, type RegionConfig } from "./region.js";
-import { eeOrgMembers, eeOrgProjects, eeOrganizations, eeSsoSessions } from "./schema.js";
+import { eeOrgMembers, eeOrgProjects, eeOrganizations, eeSsoConnections, eeSsoSessions } from "./schema.js";
 import { ADMIN_ONLY_SCOPES, customRoleFor, isBuiltin } from "./access.js";
 import { mustUseSso, orgFeatures, signedIn, type EeCtx } from "./util.js";
 import { cloudPlansFrom, planFeatures, planFor, userPlan, type CloudPlans } from "./plans.js";
@@ -102,6 +102,8 @@ export function enterpriseExtension(license: LicenseState, regions: RegionConfig
       return null;
     } : undefined,
 
+    // Always, licensed or not: a key rotation must reach every SSO client secret.
+    sealedColumns: () => [{ table: eeSsoConnections, id: eeSsoConnections.id, column: eeSsoConnections.secret }],
     tick: on ? (db, now) => enterpriseTick(db, now, features, cloud) : undefined,
   };
 }

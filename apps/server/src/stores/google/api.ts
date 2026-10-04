@@ -1,4 +1,5 @@
 import { importPKCS8, SignJWT, type KeyLike } from "jose";
+import { assertStoreSecretsOpened, serviceAccountSet } from "../../services/store-secrets.js";
 import { Codes, RCError } from "../../errors.js";
 import type { AppRow } from "../types.js";
 
@@ -162,10 +163,7 @@ export interface PlayInAppProduct {
 }
 
 /** Whether the app has a service account configured at all (either field name). */
-export const hasServiceAccount = (app: Pick<AppRow, "credentials">) => {
-  const raw = app.credentials?.play_service_account_credentials_json ?? app.credentials?.service_account;
-  return raw !== undefined && raw !== null && raw !== "";
-};
+export const hasServiceAccount = (app: Pick<AppRow, "credentials"> & { secretHints?: Record<string, string> | null }) => serviceAccountSet(app);
 
 /** Why a Google call failed, which decides the HTTP answer: bad token → 400, our setup → 400/500, Google down → 503. */
 export type GoogleErrorKind = "invalid_token" | "credentials" | "transient" | "conflict";
@@ -186,7 +184,8 @@ export function toRCError(e: unknown): RCError {
 }
 
 /** Reads `credentials.service_account` (object or JSON string). */
-export function serviceAccountOf(app: Pick<AppRow, "credentials">): ServiceAccount {
+export function serviceAccountOf(app: Pick<AppRow, "credentials"> & { secretHints?: Record<string, string> | null }): ServiceAccount {
+  assertStoreSecretsOpened(app, ["play_service_account_credentials_json", "service_account"]);
   let raw = (app.credentials?.play_service_account_credentials_json ?? app.credentials?.service_account) as unknown;
   if (raw === undefined || raw === null || raw === "") {
     throw new GoogleApiError("credentials", "no service account is configured for this Play app (credentials.service_account).");

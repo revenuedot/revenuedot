@@ -267,6 +267,13 @@
       "when": 1791090580475,
       "tag": "0040_exports_currency_single_file",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791091789579,
+      "tag": "0041_seal_store_credentials",
+      "breakpoints": true
     }
   ]
 }

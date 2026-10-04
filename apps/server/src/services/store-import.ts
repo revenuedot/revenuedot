@@ -86,7 +86,8 @@ export async function listStoreProducts(deps: Deps, app: App): Promise<StoreList
 
 // ---- App Store Connect --------------------------------------------------------------------------------------------
 
-async function listAppStore(deps: Deps, app: App): Promise<StoreListingResult> {
+async function listAppStore(deps: Deps, a: App): Promise<StoreListingResult> {
+  const app = await withStoreSecrets(deps, a).catch((e) => { throw new StoreOpError("credentials", e instanceof Error ? e.message : String(e)); });
   const creds = connectCredentials(app);
   if (!creds) {
     throw new StoreOpError("credentials", "Importing from App Store Connect needs the app's App Store Connect API key (a team key with the App Manager role): add the .p8 file, its key ID and the issuer ID in the app's settings. The In-App Purchase key cannot read the product list.");
@@ -172,7 +173,8 @@ function fromPlay(e: unknown): unknown {
   return new StoreOpError("invalid", `Google Play refused the request: ${e.message}`);
 }
 
-async function listPlay(deps: Deps, app: App): Promise<StoreListingResult> {
+async function listPlay(deps: Deps, a: App): Promise<StoreListingResult> {
+  const app = await withStoreSecrets(deps, a).catch((e) => { throw new StoreOpError("credentials", e instanceof Error ? e.message : String(e)); });
   if (!hasServiceAccount(app)) {
     throw new StoreOpError("credentials", `Importing from Google Play needs the app's service account JSON, with the ${PLAY_READ_PERMISSION} permission in Play Console. Add it in the app's settings.`);
   }

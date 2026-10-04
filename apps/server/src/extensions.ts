@@ -38,6 +38,8 @@ export interface ServerExtension {
    * when the person is the last owner of an organization that still has members.
    */
   beforeAccountDelete?(a: { deps: Deps; userId: string }): Promise<{ message: string } | null>;
+  /** Sealed text columns of the extension's tables, sealed again with the current key during a rotation (services/seal-backfill.ts). */
+  sealedColumns?(): import("./services/seal-backfill.js").SealedColumn[];
   /** Runs at the end of every tick (services/tick.ts). Errors are logged and never stop the tick. */
   tick?(db: DB, now: Date): Promise<Record<string, number> | void>;
 }

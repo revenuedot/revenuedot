@@ -4,7 +4,8 @@ import { fromBase64, toBase64 } from "./signing.js";
  * Sealed secrets for integrations and data exports (API keys, tokens, service-account JSON): AES-256-GCM with WebCrypto,
  * so the same code runs on Node and Cloudflare Workers.
  *
- * The key comes from REVENUEDOT_ENCRYPTION_KEY (base64 of 32 random bytes). Without it, the key is derived with HKDF
+ * The key comes from REVENUEDOT_ENCRYPTION_KEY (base64 of 32 random bytes; during a rotation "new,old": the first seals,
+ * all open, and the tick re-seals everything with the first, services/seal-backfill.ts). Without it, the key is derived with HKDF
  * from REVENUEDOT_SIGNING_KEY, so RevenueDot Cloud (which always has a signing key) encrypts with no extra setup.
  * A server with neither stores the secrets as plain JSON marked `plain:`; they are still never returned by the API.
  * Stored format: `v1:<key id>:<base64 iv>:<base64 ciphertext>` or `plain:<base64 json>`.
@@ -16,8 +17,8 @@ export interface SecretKey {
   id: string;
   key: CryptoKey;
   /**
-   * Older keys that may still open stored secrets: with REVENUEDOT_ENCRYPTION_KEY set, the key derived from
-   * REVENUEDOT_SIGNING_KEY, so a server that adds a dedicated key later keeps reading what it sealed before.
+   * Older keys that may still open stored secrets: the other keys of a "new,old" REVENUEDOT_ENCRYPTION_KEY, and the key
+   * derived from REVENUEDOT_SIGNING_KEY, so a server that adds a dedicated key later keeps reading what it sealed before.
    */
   previous?: SecretKey[];
 }
@@ -46,10 +47,16 @@ export function secretKeyFrom(encryptionKey?: string | null, signingKey?: string
   if (!p) {
     p = (async () => {
       if (enc) {
-        const raw = fromBase64(enc);
-        if (raw.length !== 32) throw new Error("REVENUEDOT_ENCRYPTION_KEY must be the base64 of 32 random bytes (openssl rand -base64 32).");
-        const primary = await aesKey(raw);
-        if (sign) primary.previous = [await derivedFromSigningKey(sign)];
+        // "new,old,…" during a rotation: the first key seals, every key opens (services/seal-backfill.ts re-seals with the first).
+        const parts = enc.split(",").map((k) => k.trim()).filter(Boolean);
+        if (!parts.length) throw new Error("REVENUEDOT_ENCRYPTION_KEY has no key in it. Set it to the base64 of 32 random bytes (openssl rand -base64 32), or \"new,old\" during a rotation, or leave it unset.");
+        const keys = await Promise.all(parts.map(async (k) => {
+          const raw = fromBase64(k);
+          if (raw.length !== 32) throw new Error("REVENUEDOT_ENCRYPTION_KEY must be the base64 of 32 random bytes (openssl rand -base64 32), or a comma-separated list of such keys during a rotation.");
+          return aesKey(raw);
+        }));
+        const primary = keys[0]!;
+        primary.previous = [...keys.slice(1), ...(sign ? [await derivedFromSigningKey(sign)] : [])];
         return primary;
       }
       return sign ? derivedFromSigningKey(sign) : null;

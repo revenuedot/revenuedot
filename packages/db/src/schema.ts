@@ -57,11 +57,12 @@ export const apps = pgTable("apps", {
   type: text("type").notNull(),
   bundleId: text("bundle_id"),
   publicKey: text("public_key").notNull(),
-  /** Store credentials (App Store in-app purchase key, Google service account, shared secret). Encrypted at rest in the cloud. */
+  /** Store settings that are not secret: key ids, issuer ids, bundle ids, options. Every secret lives sealed in `secrets`. */
   credentials: jsonb("credentials").$type<Record<string, unknown>>().notNull().default({}),
   /**
-   * Amazon and Stripe secrets (shared key, restricted key, webhook signing secret), sealed with AES-GCM like integration
-   * secrets (services/secrets.ts); `secretHints` is what the dashboard may show (set, and a Stripe key's mode and last four).
+   * Every store secret (App Store .p8 keys, Play service account, shared secrets, Stripe, Paddle, Roku and Galaxy keys),
+   * sealed with AES-GCM like integration secrets (services/secrets.ts, migration 0041); `secretHints` is what the dashboard
+   * may show (set, a Stripe key's mode and last four, a service account's client_email).
    */
   secrets: text("secrets"),
   secretHints: jsonb("secret_hints").$type<Record<string, string>>().notNull().default({}),

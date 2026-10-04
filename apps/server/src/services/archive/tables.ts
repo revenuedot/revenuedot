@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0040_exports_currency_single_file";
+export const ARCHIVE_SCHEMA = "0041_seal_store_credentials";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 

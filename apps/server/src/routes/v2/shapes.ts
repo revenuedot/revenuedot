@@ -5,7 +5,7 @@ import { entitlementMap } from "../../repo/catalog.js";
 import { loadState, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
 import type { Access } from "../../repo/access.js";
 import { embeddedList, ms, round2 } from "./common.js";
-import { storeSecretSet } from "../../services/store-secrets.js";
+import { appleKeySet, connectKeySet, storeSecretSet } from "../../services/store-secrets.js";
 import { hasServiceAccount } from "../../stores/google/api.js";
 import { commissionModel } from "../../services/commission.js";
 import { indicativePriceOf, storeDetailsOf, type ListingRow, type SyncRow } from "../../services/store-prices.js";
@@ -33,9 +33,10 @@ export function projectShape(p: typeof schema.projects.$inferSelect) {
  * `app_store_connect_api_key*`, `play_service_account_credentials_json` ...). Secrets are never returned.
  */
 const has = (cr: Record<string, unknown>, ...keys: string[]) => keys.every((k) => typeof cr[k] === "string" && (cr[k] as string).length > 0);
-export const appleKeyConfigured = (cr: Record<string, unknown>) => has(cr, "subscription_private_key", "subscription_key_id", "subscription_key_issuer");
-/** A Play service account under either field the Play adapter reads (RevenueCat's name, or `service_account`, as JSON text or an object). */
-export const googleKeyConfigured = (cr: Record<string, unknown>) => hasServiceAccount({ credentials: cr });
+/** The .p8 keys and the service account are sealed in apps.secrets; ids stay in credentials (services/store-secrets.ts). */
+export const appleKeyConfigured = (a: Pick<AppRow, "credentials" | "secretHints">) => appleKeySet(a);
+/** A Play service account under either field the Play adapter reads (RevenueCat's name, or `service_account`). */
+export const googleKeyConfigured = (a: Pick<AppRow, "credentials" | "secretHints">) => hasServiceAccount(a);
 /** Amazon and Stripe secrets are sealed in apps.secrets; their hints say whether they are set (services/store-secrets.ts). */
 export const amazonKeyConfigured = (a: Pick<AppRow, "type" | "credentials" | "secretHints">) => storeSecretSet(a, "shared_secret");
 /** A Stripe app can reach Stripe: a restricted key, or "Connect with Stripe" (prd/web-billing/PRD.md §8). */
@@ -61,8 +62,8 @@ export const notificationStoreOf = (type: string) =>
 export function storeCredentialsConfigured(a: Pick<AppRow, "type" | "credentials" | "secretHints">): boolean {
   const cr = a.credentials ?? {};
   switch (notificationStoreOf(a.type)) {
-    case "apple": return appleKeyConfigured(cr);
-    case "google": return googleKeyConfigured(cr);
+    case "apple": return appleKeyConfigured(a);
+    case "google": return googleKeyConfigured(a);
     case "amazon": return amazonKeyConfigured(a);
     case "stripe": return stripeKeyConfigured(a);
     case "paddle": return paddleKeyConfigured(a);
@@ -77,11 +78,11 @@ export function appShape(a: AppRow) {
   const common = { object: "app" as const, id: a.id, name: a.name, created_at: a.createdAt.getTime(), type: a.type, project_id: a.projectId, custom_url_scheme: `rc-${a.publicKey.replace(/^[a-z]+_/, "").slice(0, 10).toLowerCase()}` };
   switch (a.type) {
     case "app_store":
-      return { ...common, app_store: { bundle_id: a.bundleId ?? "", app_store_connect_api_key_configured: has(cr, "app_store_connect_api_key", "app_store_connect_api_key_id", "app_store_connect_api_key_issuer"), subscription_key_configured: appleKeyConfigured(cr), app_store_connect_vendor_number: str(cr.app_store_connect_vendor_number) } };
+      return { ...common, app_store: { bundle_id: a.bundleId ?? "", app_store_connect_api_key_configured: connectKeySet(a), subscription_key_configured: appleKeyConfigured(a), app_store_connect_vendor_number: str(cr.app_store_connect_vendor_number) } };
     case "mac_app_store":
       return { ...common, mac_app_store: { bundle_id: a.bundleId ?? "" } };
     case "play_store":
-      return { ...common, play_store: { package_name: a.bundleId ?? "", play_service_account_credentials_configured: googleKeyConfigured(cr) } };
+      return { ...common, play_store: { package_name: a.bundleId ?? "", play_service_account_credentials_configured: googleKeyConfigured(a) } };
     case "amazon":
       return { ...common, amazon: { package_name: a.bundleId ?? "" } };
     case "stripe":
