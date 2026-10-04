@@ -1670,5 +1670,41 @@
     "full": [],
     "crops": [],
     "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.android.com/google/play/billing/integrate\nCall log:\n  - navigating to \"https://developer.android.com/google/play/billing/integrate\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "purchasely",
+    "page": "home",
+    "url": "https://www.purchasely.com/",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.purchasely.com/\nCall log:\n  - navigating to \"https://www.purchasely.com/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "purchasely",
+    "page": "pricing",
+    "url": "https://www.purchasely.com/pricing",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.purchasely.com/pricing\nCall log:\n  - navigating to \"https://www.purchasely.com/pricing\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "purchasely",
+    "page": "docs",
+    "url": "https://docs.purchasely.com/",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://docs.purchasely.com/\nCall log:\n  - navigating to \"https://docs.purchasely.com/\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "purchasely",
+    "page": "github-purchasely-ios",
+    "url": "https://github.com/Purchasely/Purchasely-iOS",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/Purchasely/Purchasely-iOS\nCall log:\n  - navigating to \"https://github.com/Purchasely/Purchasely-iOS\", waiting until \"domcontentloaded\"\n"
   }
 ]
