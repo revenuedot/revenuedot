@@ -5,6 +5,7 @@ export * from "./customer-info.js";
 export * from "./ids.js";
 export * from "./events.js";
 export * from "./commission.js";
+export * from "./tax.js";
 export * from "./paywall-templates.js";
 export * from "./charts/index.js";
 export * from "./paywalls/index.js";

@@ -7,7 +7,12 @@ export type PeriodType = "normal" | "trial" | "intro" | "promotional" | "prepaid
 export type OwnershipType = "PURCHASED" | "FAMILY_SHARED";
 export type Environment = "production" | "sandbox";
 
-export interface Price { amount: number; currency: string }
+export interface Price {
+  amount: number;
+  currency: string;
+  /** Tax inside `amount` (same currency), when the store reported it (Stripe, Paddle, Google orders). See tax.ts. */
+  tax?: number | null;
+}
 
 /** One subscription as the server knows it: the latest state of one store subscription chain. */
 /**

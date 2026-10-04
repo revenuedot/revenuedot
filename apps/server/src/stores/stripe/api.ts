@@ -15,6 +15,8 @@ export interface StripePrice { id: string; product: Expandable<{ id: string }>; 
 export interface StripeSubscriptionItem { id?: string; price: StripePrice; quantity?: number | null; current_period_start?: number; current_period_end?: number }
 export interface StripeInvoice {
   id: string; object?: "invoice"; status?: string | null; paid?: boolean; amount_paid?: number; amount_due?: number; total?: number; currency?: string;
+  /** Tax charged (Stripe Tax or tax rates): `total_taxes` on API versions from 2025-03-31, `tax` before; `total_excluding_tax` on both. */
+  tax?: number | null; total_taxes?: Array<{ amount?: number }> | null; total_excluding_tax?: number | null;
   billing_reason?: string | null; subscription?: Expandable<{ id: string }>; parent?: { subscription_details?: { subscription?: Expandable<{ id: string }> } | null } | null;
   period_start?: number; period_end?: number; next_payment_attempt?: number | null; customer_address?: { country?: string | null } | null;
   status_transitions?: { paid_at?: number | null } | null; livemode?: boolean;
@@ -34,7 +36,7 @@ export interface StripeCheckoutSession {
   livemode: boolean; customer?: Expandable<{ id: string }>; subscription?: Expandable<StripeSubscription>; payment_intent?: Expandable<{ id: string }>;
   client_reference_id?: string | null; metadata?: Record<string, string> | null; created?: number; currency?: string | null; amount_total?: number | null;
   customer_details?: { address?: { country?: string | null } | null } | null;
-  line_items?: { data: Array<{ id?: string; price?: StripePrice | null; quantity?: number | null; amount_total?: number; currency?: string }> };
+  line_items?: { data: Array<{ id?: string; price?: StripePrice | null; quantity?: number | null; amount_total?: number; amount_tax?: number; currency?: string }> };
 }
 export interface StripeCharge {
   id: string; object?: "charge"; amount: number; amount_refunded: number; refunded: boolean; currency?: string; created?: number; livemode?: boolean;

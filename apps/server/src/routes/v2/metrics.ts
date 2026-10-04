@@ -1,6 +1,6 @@
 import { commissionModel } from "../../services/commission.js";
 import { and, eq, gte, lte } from "drizzle-orm";
-import { accessEndsAt, commission, mrrFactor, type Store } from "@revenuedot/core";
+import { accessEndsAt, commission, mrrFactor, revenueFactor, taxShare, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { subRowToDomain } from "../../repo/customers.js";
@@ -107,13 +107,17 @@ export function metricsRoutes(r: V2Router, deps: Deps) {
     const type = c.req.query("revenue_type") ?? "revenue";
     if (!["revenue", "revenue_net_of_taxes", "proceeds"].includes(type)) throw paramError("revenue_type must be revenue, revenue_net_of_taxes or proceeds.", "revenue_type");
     const T = schema.transactions;
-    const rows = await deps.db.select({ id: T.id, store: T.store, usd: T.revenueUsd, appId: T.appId, at: T.purchasedAt, kind: T.kind, country: T.countryCode }).from(T).where(and(
+    const rows = await deps.db.select({ id: T.id, store: T.store, usd: T.revenueUsd, appId: T.appId, at: T.purchasedAt, kind: T.kind, country: T.countryCode, taxAmount: T.taxAmount, priceAmount: T.priceAmount }).from(T).where(and(
       eq(T.projectId, c.get("projectId")), eq(T.isSandbox, false),
       gte(T.purchasedAt, new Date(`${start}T00:00:00Z`)), lte(T.purchasedAt, new Date(`${end}T23:59:59.999Z`))));
-    // We hold no tax data, so revenue net of taxes equals revenue; proceeds subtract the estimated store commission.
+    // Net of taxes takes out the tax inside each price (the store's figure, else the country estimate, core tax.ts);
+    // proceeds then take the store commission from what is left, as the Revenue chart does.
     let total = 0;
     const cm = type === "proceeds" ? await commissionModel(deps.db, c.get("projectId")) : null;
-    for (const x of rows) total += cm ? x.usd * (1 - cm.rate({ ...x, isSandbox: false })) : x.usd;
+    for (const x of rows) {
+      const tax = type === "revenue" ? 0 : taxShare({ store: x.store, country: x.country, taxAmount: x.taxAmount, priceAmount: x.priceAmount });
+      total += x.usd * revenueFactor(type, tax, cm ? cm.rate({ ...x, isSandbox: false }) : 0);
+    }
     return c.json({ object: "revenue_metric", start_date: start, end_date: end, currency: "USD", value: round2(total), revenue_type: type });
   });
 }

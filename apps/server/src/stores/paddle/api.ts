@@ -44,7 +44,7 @@ export interface PaddleTransaction {
   origin: "api" | "subscription_charge" | "subscription_payment_method_change" | "subscription_recurring" | "subscription_update" | "web";
   subscription_id: string | null; invoice_id?: string | null; invoice_number?: string | null; collection_mode?: string;
   billing_period: { starts_at: string; ends_at: string } | null; items: PaddleTransactionItem[];
-  details?: { totals?: { subtotal: string; tax: string; total: string; grand_total?: string; discount?: string; fee?: string | null; earnings?: string | null; currency_code: string }; line_items?: Array<{ price_id: string; quantity: number; totals?: { total: string } }> } | null;
+  details?: { totals?: { subtotal: string; tax: string; total: string; grand_total?: string; discount?: string; fee?: string | null; earnings?: string | null; currency_code: string }; line_items?: Array<{ price_id: string; quantity: number; totals?: { total: string; tax?: string } }> } | null;
   payments?: Array<{ amount: string; status: string; created_at: string; captured_at: string | null; error_code?: string | null }>;
   address?: { country_code?: string | null } | null;
   created_at: string; updated_at?: string; billed_at: string | null;

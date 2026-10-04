@@ -27,12 +27,22 @@ const sameTime = (a: Date | null, b: Date | null) => !!a && !!b && Math.abs(a.ge
 export const isPeriodPayment = (t: PaddleTransaction) =>
   (t.status === "completed" || t.status === "paid") && t.origin !== "subscription_update" && t.origin !== "subscription_payment_method_change";
 
-/** The amount the customer paid: `details.totals.total` (tax included) in the lowest denomination, as a string. */
+const minor = (v: string | undefined | null) => (typeof v === "string" && /^-?\d+$/.test(v) ? Number(v) : null);
+/** A Paddle amount with the tax inside it (both in the lowest denomination, as strings): Paddle is the merchant of record. */
+function paddlePrice(total: string | undefined, tax: string | undefined | null, currency: string): Price | null {
+  const t = minor(total);
+  if (t === null || !currency) return null;
+  const x = minor(tax);
+  const amount = fromMinor(t, currency);
+  return x === null ? { amount, currency } : { amount, currency, tax: Math.min(Math.abs(amount), fromMinor(Math.max(0, x), currency)) };
+}
+
+/** The amount the customer paid: `details.totals.total` (tax included, the tax in `details.totals.tax`) in the lowest denomination, as a string. */
 export function transactionPrice(t: PaddleTransaction): Price | null {
   const totals = t.details?.totals;
   const currency = (totals?.currency_code ?? t.currency_code ?? "").toUpperCase();
-  if (!totals || !currency || !/^-?\d+$/.test(totals.total ?? "")) return null;
-  return { amount: fromMinor(Number(totals.total), currency), currency };
+  if (!totals) return null;
+  return paddlePrice(totals.total, totals.tax, currency);
 }
 
 const unitPrice = (p: PaddlePrice): Price | null =>
@@ -165,8 +175,7 @@ export function mapOneTime(t: PaddleTransaction, ctx: { catalog: Catalog; now: D
   return t.items.map((it, i) => {
     const productIdentifier = productIdOfPrice(it.price, ctx.catalog);
     const line = lines.find((l) => l.price_id === it.price.id) ?? lines[i];
-    const total = line?.totals?.total;
-    const price: Price | null = t.items.length === 1 ? transactionPrice(t) : typeof total === "string" && /^\d+$/.test(total) ? { amount: fromMinor(Number(total), currency), currency } : unitPrice(it.price);
+    const price: Price | null = t.items.length === 1 ? transactionPrice(t) : paddlePrice(line?.totals?.total, line?.totals?.tax, currency) ?? unitPrice(it.price);
     return {
       kind: "non_subscription" as const, store: "paddle" as const, productIdentifier,
       storeTransactionId: i === 0 ? t.id : `${t.id}:${i}`, isSandbox: ctx.sandbox,

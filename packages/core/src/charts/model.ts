@@ -27,6 +27,8 @@ export interface ChartTx {
   commission?: number;
   /** `transactions.offer_type`: the offer the period was bought with (periods.ts `offerTypeOf`). */
   offerType?: string | null;
+  /** The share of the gross price that is tax (tax.ts): the store's figure or the country estimate. 0 when absent. */
+  tax?: number;
 }
 
 export interface ChartCustomer {

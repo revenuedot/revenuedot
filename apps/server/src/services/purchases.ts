@@ -135,7 +135,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
     && existing.periodType !== "trial" && p.periodType !== "trial") {
     // The period was first recorded at a placeholder price of 0 (a Stripe invoice counted while still open); its revenue
     // is what was finally paid.
-    await db.update(transactions).set({ revenueUsd: priceUsd ?? 0, priceAmount: p.price!.amount, priceCurrency: p.price!.currency })
+    await db.update(transactions).set({ revenueUsd: priceUsd ?? 0, priceAmount: p.price!.amount, priceCurrency: p.price!.currency, ...taxColumns(p.price) })
       .where(and(eq(transactions.projectId, ctx.projectId), eq(transactions.store, p.store), eq(transactions.storeTransactionId, p.storeTransactionId),
         inArray(transactions.kind, ["purchase", "renewal"]), eq(transactions.revenueUsd, 0)));
   }
@@ -168,7 +168,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         purchasedAt: refund ? p.refundedAt ?? ctx.now : d.type === "REFUND_REVERSED" ? ctx.now : p.purchaseDate, expiresAt: p.expiresDate,
         revenueUsd: kind === "trial" ? 0 : (refund ? -1 : 1) * (priceUsd ?? 0),
         priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null, createdAt: ctx.now,
-        offerType: values.offerType, offerId: values.offerId,
+        offerType: values.offerType, offerId: values.offerId, ...(kind === "trial" ? {} : taxColumns(p.price)),
       }).onConflictDoNothing().returning({ id: transactions.id });
       if (kind === "refund" && inserted.length) {
         await refundSeen(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, store: p.store, transactionId: p.storeTransactionId, originalTransactionId: p.originalTransactionId ?? p.storeKey, productId: p.productIdentifier, sandbox: p.isSandbox, amountUsd: priceUsd ?? null, at: p.refundedAt ?? ctx.now, now: ctx.now });
@@ -233,6 +233,7 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
       isSandbox: p.isSandbox, purchasedAt: kind === "refund" ? p.refundedAt ?? ctx.now : kind === "refund_reversal" ? ctx.now : p.purchaseDate,
       revenueUsd: (d.isRefund ? -1 : 1) * (priceUsd ?? 0),
       priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: p.countryCode ?? null, createdAt: ctx.now,
+      ...taxColumns(p.price),
     }).onConflictDoNothing().returning({ id: transactions.id });
     if (kind === "refund" && inserted.length) {
       await refundSeen(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, store: p.store, transactionId: p.storeTransactionId, productId: p.productIdentifier, sandbox: p.isSandbox, amountUsd: priceUsd ?? null, at: p.refundedAt ?? ctx.now, now: ctx.now });
@@ -243,6 +244,12 @@ async function applyOneTime(db: DB, customer: CustomerRow, p: Extract<VerifiedPu
   }
   const [o] = await db.select().from(customers).where(eq(customers.id, owner.id));
   return o!;
+}
+
+/** The tax the store reported inside the price (core tax.ts); without one the columns stay null and readers estimate it. */
+function taxColumns(price: { tax?: number | null } | null | undefined): { taxAmount: number; taxSource: "store" } | Record<string, never> {
+  const tax = price?.tax;
+  return typeof tax === "number" && Number.isFinite(tax) && tax >= 0 ? { taxAmount: tax, taxSource: "store" } : {};
 }
 
 /** Refund Control bookkeeping never fails the purchase it rides on. */

@@ -403,6 +403,12 @@ export const transactions = pgTable("transactions", {
   priceAmount: doublePrecision("price_amount"),
   priceCurrency: text("price_currency"),
   countryCode: text("country_code"),
+  /**
+   * Tax inside `price_amount` (same currency) as the store reported it (Stripe, Paddle, Google orders), with
+   * `tax_source` 'store'. Null when the store reported none: readers estimate it from the country (core tax.ts).
+   */
+  taxAmount: doublePrecision("tax_amount"),
+  taxSource: text("tax_source"),
   /** Offer used for this transaction (see subscriptions.offerType) and the store's offer id. */
   offerType: text("offer_type"),
   offerId: text("offer_id"),
