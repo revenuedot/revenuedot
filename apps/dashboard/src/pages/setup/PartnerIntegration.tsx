@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { ADJUST_STEPS, INTEGRATION_EVENTS, STEP_LABELS, defaultEventName, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
+import { ADJUST_STEPS, INTEGRATION_EVENTS, PAYWALL_CONCEPTS, STEP_LABELS, defaultEventName, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
 import { Shell } from "../../components/Shell";
 import { DeliveryDrawer } from "../../components/DeliveryDrawer";
 import { Icon } from "../../components/icons";
@@ -16,11 +16,25 @@ import { AppleAdsPanel } from "../ads/AppleAdsPanel";
  * Firebase, BigQuery, AppsFlyer, Adjust or Meta. The form is drawn from the catalogue (GET …/integrations/catalog);
  * saved secrets show only their last characters. Connected integrations have a deliveries switch, "Send test event",
  * event name overrides, and the delivery log with the request, the partner's answer, Retry and "Replay failed".
+ * Segment, Amplitude, Mixpanel and PostHog also have a "Paywall events" group: the opt-in paywall types, which are
+ * added to the integration's event types (they never narrow it; services/integrations/queue.ts).
  * GAPS vs RevenueCat: one integration per type in this page (the API allows several); no per-event toggles beyond the
  * event-type filter of the API.
  */
 
 type Env = "both" | "production" | "sandbox";
+
+/** RevenueCat sends these five to analytics tools when "Send paywall events" is on; the last two are RevenueDot additions. */
+const RC_PAYWALL: Concept[] = ["paywall_impression", "paywall_close", "paywall_cancel", "paywall_exit_offer", "paywall_component_interacted"];
+const PAYWALL_HINTS: Record<string, string> = {
+  paywall_impression: "A paywall is shown to a customer.",
+  paywall_close: "The customer closes a paywall.",
+  paywall_cancel: "The customer dismisses the store's payment sheet.",
+  paywall_exit_offer: "An exit offer is shown when the customer leaves a paywall.",
+  paywall_component_interacted: "The customer changes a control: a tab, package, button or sheet.",
+  paywall_purchase_initiated: "The customer taps buy on a paywall (RevenueDot).",
+  paywall_purchase_error: "A purchase started on a paywall fails (RevenueDot).",
+};
 const STATUS_TONE: Record<IntegrationDelivery["status"], "up" | "info" | "down" | "muted"> = { delivered: "up", pending: "info", failed: "down", skipped: "muted" };
 
 function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: IntegrationType; current?: Integration; onSaved: (i: Integration) => void }) {
@@ -36,6 +50,8 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
   const [busy, setBusy] = useState(false);
   const kind = spec.type as IntegrationKind;
   const steps = (INTEGRATION_EVENTS[kind] === "all" ? [] : INTEGRATION_EVENTS[kind] as Concept[]).filter((c) => c !== "test");
+  const paywallSteps: Concept[] = steps.filter((c) => PAYWALL_CONCEPTS.includes(c));
+  const [paywall, setPaywall] = useState<string[]>(() => (current?.event_types ?? []).filter((t) => PAYWALL_CONCEPTS.includes(t as Concept)));
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -53,6 +69,8 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
     }
     const json: Record<string, unknown> = { settings, environment: env === "both" ? null : env, app_id: appId || null };
     if (spec.event_names) json.event_names = Object.fromEntries(Object.entries(names).filter(([, v]) => v.trim()));
+    // The paywall types replace the saved ones; every other type in the filter is kept as it is.
+    if (paywallSteps.length) json.event_types = [...(current?.event_types ?? []).filter((t) => !PAYWALL_CONCEPTS.includes(t as Concept)), ...paywallSteps.filter((c) => paywall.includes(c))];
     if (!current) json.type = spec.type;
     setBusy(true);
     setError(null);
@@ -139,6 +157,21 @@ function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: I
               {apps.data?.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </Field>
+          {!!paywallSteps.length && (
+            <fieldset className="stack tight" id="f-paywall" style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend className="flabel">Paywall events</legend>
+              <Check checked={paywall.length > 0} onChange={(v) => setPaywall(v ? RC_PAYWALL.filter((c) => paywallSteps.includes(c)) : [])} label="Send paywall events"
+                hint="What customers do on paywalls the SDK shows. They carry the paywall, offering and session, and no revenue. Purchase events keep flowing either way." />
+              {paywall.length > 0 && (
+                <div className="cols">
+                  {paywallSteps.map((c) => (
+                    <Check key={c} checked={paywall.includes(c)} label={STEP_LABELS[c]} hint={<>{PAYWALL_HINTS[c]} Sent as <span className="mono">{names[c]?.trim() || defaultEventName(kind, c)}</span>.</>}
+                      onChange={(v) => setPaywall((x) => (v ? [...x, c] : x.filter((y) => y !== c)))} />
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          )}
           {spec.event_names && (
             <Disclosure title="Event names" sub="Defaults match RevenueCat's, so existing dashboards keep working. Override any of them.">
               <div className="cols">

@@ -16,14 +16,26 @@ export const EVENT_TYPES: EventType[] = [
   "PRICE_INCREASE_CONSENT_REQUIRED", "PRICE_INCREASE_CONSENT_APPROVED",
 ];
 
-/**
- * Types delivered only to webhooks and integrations whose event filter names them. SUBSCRIBER_ALIAS is deprecated by
- * RevenueCat and "new projects don't receive this webhook", so an endpoint without a filter never gets it.
- */
-export const OPT_IN_EVENT_TYPES: ReadonlySet<string> = new Set(["SUBSCRIBER_ALIAS", "FUNNEL_VIEWED", "FUNNEL_STEP_COMPLETED", "FUNNEL_PURCHASE"]);
-
 /** RevenueDot's own web funnel events (prd/web-billing/PRD.md §5); RevenueCat has no webhook types for them. Opt-in. */
 export const FUNNEL_WEBHOOK_TYPES = ["FUNNEL_VIEWED", "FUNNEL_STEP_COMPLETED", "FUNNEL_PURCHASE"] as const;
+
+/**
+ * Paywall events the SDKs post to /v1/events (services/sdk-events.ts), forwarded to webhooks and integrations whose event
+ * filter names them (prd/integrations/PRD.md "Paywall events"). The first five are the ones RevenueCat sends to Amplitude,
+ * Mixpanel, PostHog and Segment; PAYWALL_PURCHASE_INITIATED and PAYWALL_PURCHASE_ERROR are RevenueDot additions. Opt-in.
+ */
+export const PAYWALL_WEBHOOK_TYPES = [
+  "PAYWALL_IMPRESSION", "PAYWALL_CLOSE", "PAYWALL_CANCEL", "PAYWALL_EXIT_OFFER", "PAYWALL_COMPONENT_INTERACTED",
+  "PAYWALL_PURCHASE_INITIATED", "PAYWALL_PURCHASE_ERROR",
+] as const;
+
+/**
+ * Types delivered only to webhooks and integrations whose event filter names them. SUBSCRIBER_ALIAS is deprecated by
+ * RevenueCat and "new projects don't receive this webhook", so an endpoint without a filter never gets it. For an
+ * integration (not a webhook), naming opt-in types adds them to the other events: they never narrow its filter
+ * (services/integrations/queue.ts).
+ */
+export const OPT_IN_EVENT_TYPES: ReadonlySet<string> = new Set(["SUBSCRIBER_ALIAS", ...FUNNEL_WEBHOOK_TYPES, ...PAYWALL_WEBHOOK_TYPES]);
 
 /** Types RevenueDot never produces, because it never has the fact behind them (prd/webhooks/PRD.md). They stay valid filters. */
 export const NEVER_SENT_EVENT_TYPES: ReadonlySet<string> = new Set(["TEMPORARY_ENTITLEMENT_GRANT", "INVOICE_ISSUANCE"]);
