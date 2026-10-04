@@ -46,7 +46,11 @@ function payloadOf(ev: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(p).slice(0, 40).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 100) : v]));
 }
 
-export async function storeSdkEvents(db: DB, opts: { projectId: string; app: { id: string | null; type: string } | null; body: unknown; now: Date; sandboxHeader?: boolean }): Promise<number> {
+export async function storeSdkEvents(db: DB, opts: {
+  projectId: string; app: { id: string | null; type: string } | null; body: unknown; now: Date; sandboxHeader?: boolean;
+  /** Runs the paywall forwarding after the response (deps.defer); without it the forwarding is awaited. */
+  defer?: (task: () => Promise<unknown>) => void;
+}): Promise<number> {
   const raw = (opts.body as { events?: unknown } | null)?.events;
   if (!Array.isArray(raw)) return 0;
   const events: Record<string, unknown>[] = raw.slice(0, MAX_EVENTS).filter((e): e is Record<string, unknown> => !!e && typeof e === "object" && !Array.isArray(e) && typeof (e as Record<string, unknown>).type === "string" && !!(e as Record<string, unknown>).type);
@@ -62,13 +66,15 @@ export async function storeSdkEvents(db: DB, opts: { projectId: string; app: { i
     for (const r of rows) customers.set(r.appUserId, r.customerId);
   }
 
+  // Only events with the SDK's own id are forwarded (both SDKs always send one): a resend then maps to the same row.
+  const sdkIds = new Set<string>();
   const rows: (typeof schema.sdkEvents.$inferInsert)[] = events.map((ev) => {
     const appUserId = appUserIdOf(ev);
     const ms = Number(ev.timestamp_ms ?? ev.timestamp);
     // Timestamps in the future (a wrong device clock) or before 2015 are replaced by the time we received the event.
     const at = Number.isFinite(ms) && ms > 1_420_070_400_000 && ms <= opts.now.getTime() + 86_400_000 ? new Date(ms) : opts.now;
     return {
-      projectId: opts.projectId, id: typeof ev.id === "string" && clean(ev.id, 64) ? clean(ev.id, 64) : crypto.randomUUID(), appId: opts.app?.id ?? null,
+      projectId: opts.projectId, id: typeof ev.id === "string" && clean(ev.id, 64) ? (sdkIds.add(clean(ev.id, 64)), clean(ev.id, 64)) : crypto.randomUUID(), appId: opts.app?.id ?? null,
       customerId: appUserId !== null ? customers.get(appUserId) ?? null : null, appUserId, type: clean(ev.type as string, 64),
       // iOS sends X-Is-Sandbox for sandbox and TestFlight builds; events never say it themselves.
       isSandbox: typeof ev.is_sandbox === "boolean" ? ev.is_sandbox : !!opts.sandboxHeader || opts.app?.type === "test_store",
@@ -76,8 +82,9 @@ export async function storeSdkEvents(db: DB, opts: { projectId: string; app: { i
     };
   });
   await db.insert(schema.sdkEvents).values(rows).onConflictDoNothing();
-  // Forwarding never fails the batch: the SDK would resend it forever.
-  await forwardPaywallEvents(db, opts, rows).catch((e) => console.error("Forwarding paywall events failed", e));
+  // Forwarding never fails the batch (the SDK would resend it forever) and runs after the response when it can.
+  const forward = () => forwardPaywallEvents(db, opts, rows.filter((r) => sdkIds.has(r.id))).catch((e) => console.error("Forwarding paywall events failed", e));
+  if (opts.defer) opts.defer(forward); else await forward();
   return rows.length;
 }
 
@@ -117,7 +124,8 @@ async function forwardPaywallEvents(db: DB, opts: { projectId: string; app: { id
   if (!todo.length) return;
 
   const customerIds = [...new Set(todo.map((r) => r.customerId).filter((x): x is string => !!x))];
-  const paywallIds = [...new Set(todo.map((r) => (r.payload as Record<string, unknown>).paywall_id).filter((x): x is string => typeof x === "string" && !!x))];
+  const paywallIdOf = (p: Record<string, any>): unknown => p.paywall_id ?? p.presented_offering_context?.paywall_id;
+  const paywallIds = [...new Set(todo.map((r) => paywallIdOf(r.payload as Record<string, unknown>)).filter((x): x is string => typeof x === "string" && !!x))];
   const [customers, aliases, attrs, paywalls] = customerIds.length || paywallIds.length ? await Promise.all([
     customerIds.length ? db.select({ id: schema.customers.id, original: schema.customers.originalAppUserId, sdk: schema.customers.lastSeenSdkVersion, os: schema.customers.lastSeenPlatformVersion }).from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [],
     customerIds.length ? db.select({ c: schema.customerAliases.customerId, a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(inArray(schema.customerAliases.customerId, customerIds)) : [],
@@ -125,19 +133,25 @@ async function forwardPaywallEvents(db: DB, opts: { projectId: string; app: { id
     paywallIds.length ? db.select({ id: schema.paywalls.id, name: schema.paywalls.name }).from(schema.paywalls).where(and(eq(schema.paywalls.projectId, opts.projectId), inArray(schema.paywalls.id, paywallIds))) : [],
   ]) : [[], [], [], []];
   const customer = new Map(customers.map((c) => [c.id, c]));
+  const attrsOf = new Map<string, typeof attrs>();
+  for (const a of attrs) attrsOf.set(a.customerId, [...(attrsOf.get(a.customerId) ?? []), a]);
   const names = new Map(paywalls.map((p) => [p.id, p.name]));
   const store = opts.app?.type ? opts.app.type.toUpperCase() : null;
 
   for (const r of todo) {
+    try { await forwardOne(r); } catch (e) { console.error(`Forwarding paywall event ${r.id} failed`, e); }
+  }
+
+  async function forwardOne(r: (typeof todo)[number]) {
     const type = PAYWALL_TYPE.get(r.type)!;
     const p = r.payload as Record<string, unknown>;
     const c = r.customerId ? customer.get(r.customerId) : undefined;
     const subscriber_attributes: Record<string, { value: string | null; updated_at_ms: number }> = {};
-    for (const a of attrs) if (a.customerId === r.customerId) subscriber_attributes[a.key] = { value: a.value, updated_at_ms: a.updatedAtMs };
+    for (const a of (r.customerId ? attrsOf.get(r.customerId) : undefined) ?? []) subscriber_attributes[a.key] = { value: a.value, updated_at_ms: a.updatedAtMs };
     // The SDK nests the placement and targeting under presented_offering_context; integrations get them flat.
     const ctx = (p.presented_offering_context && typeof p.presented_offering_context === "object" ? p.presented_offering_context : {}) as Record<string, unknown>;
-    const fields: Record<string, unknown> = { ...ctx, ...p };
-    if (typeof p.paywall_id === "string" && names.get(p.paywall_id)) fields.paywall_name = names.get(p.paywall_id);
+    const fields: Record<string, unknown> = { ...ctx, ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== null && v !== undefined)) };
+    if (typeof fields.paywall_id === "string" && names.get(fields.paywall_id)) fields.paywall_name = names.get(fields.paywall_id);
     const paywall: Record<string, unknown> = {};
     for (const k of PAYWALL_EVENT_FIELDS) { const v = scalar(fields[k]); if (v !== undefined) paywall[k] = v; }
     const id = await forwardedId(opts.projectId, r.id);
@@ -154,7 +168,7 @@ async function forwardPaywallEvents(db: DB, opts: { projectId: string; app: { id
       id, projectId: opts.projectId, customerId: r.customerId ?? null, type, environment: environment.toLowerCase(), appId: r.appId ?? null,
       payload: { api_version: "1.0", event }, eventTimestampMs: r.occurredAt.getTime(), createdAt: opts.now,
     }).onConflictDoNothing().returning({ id: schema.events.id });
-    if (!inserted.length) continue;
+    if (!inserted.length) return;
     await queueDeliveries(db, opts.projectId, id, type, environment.toLowerCase(), r.appId ?? null, opts.now, event);
   }
 }

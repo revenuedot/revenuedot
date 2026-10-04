@@ -31,7 +31,7 @@ export async function buildAmplitude(i: BuildInput): Promise<Plan> {
     ? { ...(userId ? { user_id: userId } : {}), ...(deviceId ? { device_id: deviceId } : {}) }
     : { user_id: String(e.app_user_id ?? e.original_app_user_id) };
   const paywall = isPaywallConcept(c);
-  const revenue = paywall ? 0 : revenueUsd(e, i.settings.reporting);
+  const revenue = revenueUsd(e, i.settings.reporting);
   const status = subscriptionStatusOf(e);
   const event: Record<string, unknown> = {
     ...ids, event_type: name, time: e.event_timestamp_ms ?? i.now.getTime(), insert_id: String(e.id), partner_id: "revenuedot",

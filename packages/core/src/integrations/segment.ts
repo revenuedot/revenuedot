@@ -58,7 +58,8 @@ export async function buildSegment(i: BuildInput): Promise<Plan> {
     name,
     requests: [
       { method: "POST", url: `${host}/v1/track`, headers, body: json({ ...who, event: name, properties, context, timestamp, messageId: id }) },
-      { method: "POST", url: `${host}/v1/identify`, headers, body: json({ ...who, traits, context, timestamp, messageId: `${id}-identify` }) },
+      // Paywall events change no trait: no identify call for them.
+      ...(paywall ? [] : [{ method: "POST" as const, url: `${host}/v1/identify`, headers, body: json({ ...who, traits, context, timestamp, messageId: `${id}-identify` }) }]),
     ],
     redact: [key, btoa(`${key}:`)],
   };

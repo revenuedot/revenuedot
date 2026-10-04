@@ -100,7 +100,7 @@ describe("paywall events from /v1/events", () => {
     expect((e!.payload as any).event).toMatchObject({ environment: "SANDBOX", aliases: ["user_42"], original_app_user_id: "user_42", subscriber_attributes: {} });
   });
 
-  it("opt-in types add to an integration's filter instead of narrowing it", () => {
+  it("paywall types add to an integration's filter instead of narrowing it; funnel types still narrow it", () => {
     const row = (eventTypes: string[] | null) => ({ kind: "amplitude", environment: "both", appId: null, eventTypes }) as never;
     const o = (type: string) => ({ type, environment: "production", appId: null, event: { type, period_type: "NORMAL" } });
     expect(matches(row(["PAYWALL_IMPRESSION"]), o("INITIAL_PURCHASE"))).toBe(true);
@@ -109,5 +109,7 @@ describe("paywall events from /v1/events", () => {
     expect(matches(row(null), o("PAYWALL_IMPRESSION"))).toBe(false);
     expect(matches(row(["RENEWAL", "PAYWALL_IMPRESSION"]), o("INITIAL_PURCHASE"))).toBe(false);
     expect(matches(row(["RENEWAL", "PAYWALL_IMPRESSION"]), o("RENEWAL"))).toBe(true);
+    expect(matches(row(["FUNNEL_VIEWED"]), o("INITIAL_PURCHASE"))).toBe(false);
+    expect(matches(row(["FUNNEL_VIEWED", "PAYWALL_IMPRESSION"]), o("INITIAL_PURCHASE"))).toBe(false);
   });
 });

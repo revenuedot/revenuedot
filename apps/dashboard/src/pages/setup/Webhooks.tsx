@@ -158,7 +158,7 @@ function verify(rawBody, header, secret) {
           {mode === "some" && (
             <fieldset className="stack tight" id="wh-types" tabIndex={-1} style={{ border: 0, padding: 0, margin: 0 }}>
               <legend className="sr">Event types to send</legend>
-              <div className="hrow"><button type="button" className="btn btn-ghost" onClick={() => setTypes(EVENT_TYPES.map(([t]) => t))}>Select all</button><button type="button" className="btn btn-ghost" onClick={() => setTypes([])}>Clear</button><span className="subtle mono">{types.length} of {EVENT_TYPES.length}</span></div>
+              <div className="hrow"><button type="button" className="btn btn-ghost" onClick={() => setTypes((x) => [...new Set([...x, ...EVENT_TYPES.filter(([t]) => !t.startsWith("paywall_")).map(([t]) => t)])])} title="Every type except paywall events, which you pick one by one">Select all</button><button type="button" className="btn btn-ghost" onClick={() => setTypes([])}>Clear</button><span className="subtle mono">{types.length} of {EVENT_TYPES.length}</span></div>
               {EVENT_GROUPS.map((g) => (
                 <div key={g.title} className="stack tight" role="group" aria-label={g.title}>
                   <span className="flabel">{g.title}</span>

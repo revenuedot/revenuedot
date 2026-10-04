@@ -32,7 +32,7 @@ export const PAYWALL_WEBHOOK_TYPES = [
 /**
  * Types delivered only to webhooks and integrations whose event filter names them. SUBSCRIBER_ALIAS is deprecated by
  * RevenueCat and "new projects don't receive this webhook", so an endpoint without a filter never gets it. For an
- * integration (not a webhook), naming opt-in types adds them to the other events: they never narrow its filter
+ * integration (not a webhook), naming paywall types adds them to the other events: they never narrow its filter
  * (services/integrations/queue.ts).
  */
 export const OPT_IN_EVENT_TYPES: ReadonlySet<string> = new Set(["SUBSCRIBER_ALIAS", ...FUNNEL_WEBHOOK_TYPES, ...PAYWALL_WEBHOOK_TYPES]);

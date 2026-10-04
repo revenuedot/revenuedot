@@ -83,12 +83,11 @@ describe("paywall events to analytics tools", () => {
     expect(b.properties).not.toHaveProperty("revenue");
   });
 
-  it("Segment: track with the paywall fields, identify without a subscription status", async () => {
+  it("Segment: one track call with the paywall fields, no identify", async () => {
     const { requests } = await sent("segment", impression);
-    expect(requests.map((r) => r.url)).toEqual(["https://api.segment.io/v1/track", "https://api.segment.io/v1/identify"]);
+    expect(requests.map((r) => r.url)).toEqual(["https://api.segment.io/v1/track"]);
     expect(requests[0]!.json).toMatchObject({ userId: "user_42", event: "paywall_impression", messageId: impression.id, properties: { ...PAYWALL_FIELDS, app_id: "app_ios" } });
     expect(requests[0]!.json.properties).not.toHaveProperty("revenue");
-    expect(requests[1]!.json.traits).toEqual({ last_seen_app_user_id: "user_42", aliases: impression.aliases });
   });
 
   it("names are overridable, and sandbox events need the sandbox key like any other event", async () => {
