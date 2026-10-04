@@ -16,6 +16,8 @@ const SECTIONS = [
   { id: "migrate", title: "Migrate from RevenueCat", dir: "docs/migrate", blurb: "The importer, a side-by-side run, SDK changes, the cutover checklist and what differs.", order: ["README", "importer", "dual-run", "sdk-changes", "cutover-checklist", "what-differs"] },
   { id: "api", title: "API reference", dir: "api", blurb: "SDK endpoints, REST API v1 and v2, extensions, errors and webhook events, from the OpenAPI document.", order: ["README", "authentication", "errors", "sdk-endpoints", "rest-v1", "rest-v2", "extensions", "enterprise", "webhook-events"] },
   { id: "errors", title: "Error reference", dir: "docs/errors", blurb: "One page per Apple StoreKit 2 error, Google Play Billing response code and purchases SDK error code: what it means, the cause, the fix and the vendor source.", order: ["README"] },
+  { id: "notifications", title: "Store notification reference", dir: "docs/notifications", blurb: "One page per App Store Server Notifications v2 type and subtype and per Google Play real-time developer notification: what triggers it, what your server should do and how RevenueDot handles it.", order: ["README"] },
+  { id: "webhooks", title: "Webhook event reference", dir: "docs/webhooks", blurb: "One page per RevenueDot webhook event type: when it is sent, what your server should do, a handler you can run and the rule that produces it.", order: ["README"] },
   { id: "help", title: "Help center", dir: "docs/help", blurb: "Answers to the questions people search: FAQ, troubleshooting and known issues.", order: ["README", "faq", "troubleshooting", "known-issues"] },
 ];
 
