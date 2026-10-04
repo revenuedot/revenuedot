@@ -165,6 +165,9 @@ export const STEP_LABELS: Record<Concept, string> = {
   subscription_paused: "Subscription paused", expiration: "Expiration", billing_issue: "Billing issue", product_change: "Product change",
   transfer: "Transfer", purchase_redeemed: "Web purchase redeemed", experiment_enrollment: "Experiment enrollment", refund_reversed: "Refund reversed", test: "Test event",
   funnel_viewed: "Funnel viewed", funnel_step_completed: "Funnel step completed", funnel_purchase: "Funnel purchase",
+  paywall_impression: "Paywall shown", paywall_close: "Paywall closed", paywall_cancel: "Paywall purchase cancelled",
+  paywall_exit_offer: "Paywall exit offer shown", paywall_component_interacted: "Paywall control changed",
+  paywall_purchase_initiated: "Paywall purchase started", paywall_purchase_error: "Paywall purchase failed",
 };
 
 /** The name an integration sends for a step when no override is set (null: the integration has no event names). */

@@ -499,7 +499,7 @@ export function sdkRoutes(deps: Deps) {
           const b = body as { events: Array<{ app_user_id?: unknown } | null> };
           b.events = b.events.filter((ev) => ev?.app_user_id === sub.appUserId);
         }
-        await storeSdkEvents(deps.db, { projectId: c.get("auth").projectId, app: c.get("app")?.id ? c.get("app") : null, body, now: deps.now(), sandboxHeader: c.req.header("x-is-sandbox") === "true" });
+        await storeSdkEvents(deps.db, { projectId: c.get("auth").projectId, app: c.get("app")?.id ? c.get("app") : null, body, now: deps.now(), sandboxHeader: c.req.header("x-is-sandbox") === "true", defer: deps.defer });
       }
     } catch (e) { console.warn("Storing SDK events failed", e); }
     return c.json({});

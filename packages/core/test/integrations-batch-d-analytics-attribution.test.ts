@@ -119,7 +119,7 @@ describe("Batch D catalogue", () => {
       }
     }
     expect(INTEGRATIONS.find((s) => s.kind === "google_tag_manager")!.fields.find((f) => f.key === "server_container_url")).toMatchObject({ url: true, required: true });
-    expect(WEBHOOK_ADAPTER_EVENTS).toEqual(CONCEPTS.filter((c) => c !== "experiment_enrollment"));
+    expect(WEBHOOK_ADAPTER_EVENTS).toEqual(CONCEPTS.filter((c) => c !== "experiment_enrollment" && !c.startsWith("paywall_")));
   });
 
   it("queues only the steps each partner sends", () => {

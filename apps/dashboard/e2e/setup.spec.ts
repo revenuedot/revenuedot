@@ -373,7 +373,7 @@ test("setup: project, apps, credentials, API keys, webhooks, settings", async ({
     await page.getByRole("button", { name: "Only selected events" }).click();
     await page.getByRole("button", { name: "Add webhook" }).click();
     await expect(page.getByText("Pick at least one event, or choose All events.")).toBeVisible();
-    await expect(page.locator("#wh-types .check")).toHaveCount(24);
+    await expect(page.locator("#wh-types .check")).toHaveCount(31);
     await page.getByText("INITIAL_PURCHASE", { exact: true }).click();
     await page.getByText("RENEWAL", { exact: true }).click();
     await shot("webhook-form");

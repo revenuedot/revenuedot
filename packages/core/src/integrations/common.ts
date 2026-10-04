@@ -84,13 +84,17 @@ export type Concept =
   | "initial_purchase" | "trial_started" | "trial_converted" | "trial_cancelled" | "renewal" | "cancellation" | "uncancellation"
   | "non_subscription_purchase" | "subscription_paused" | "expiration" | "billing_issue" | "product_change" | "transfer"
   | "purchase_redeemed" | "experiment_enrollment" | "refund_reversed" | "test"
-  | "funnel_viewed" | "funnel_step_completed" | "funnel_purchase";
+  | "funnel_viewed" | "funnel_step_completed" | "funnel_purchase"
+  | "paywall_impression" | "paywall_close" | "paywall_cancel" | "paywall_exit_offer" | "paywall_component_interacted"
+  | "paywall_purchase_initiated" | "paywall_purchase_error";
 
 export const CONCEPTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "transfer",
   "purchase_redeemed", "experiment_enrollment", "refund_reversed", "test",
   "funnel_viewed", "funnel_step_completed", "funnel_purchase",
+  "paywall_impression", "paywall_close", "paywall_cancel", "paywall_exit_offer", "paywall_component_interacted",
+  "paywall_purchase_initiated", "paywall_purchase_error",
 ];
 
 export function conceptOf(e: WebhookEvent): Concept | null {
@@ -113,12 +117,23 @@ export function conceptOf(e: WebhookEvent): Concept | null {
     case "FUNNEL_VIEWED": return "funnel_viewed";
     case "FUNNEL_STEP_COMPLETED": return "funnel_step_completed";
     case "FUNNEL_PURCHASE": return "funnel_purchase";
+    case "PAYWALL_IMPRESSION": return "paywall_impression";
+    case "PAYWALL_CLOSE": return "paywall_close";
+    case "PAYWALL_CANCEL": return "paywall_cancel";
+    case "PAYWALL_EXIT_OFFER": return "paywall_exit_offer";
+    case "PAYWALL_COMPONENT_INTERACTED": return "paywall_component_interacted";
+    case "PAYWALL_PURCHASE_INITIATED": return "paywall_purchase_initiated";
+    case "PAYWALL_PURCHASE_ERROR": return "paywall_purchase_error";
     default: return null;
   }
 }
 
-/** The analytics tools' default event names (`rc_<step>_event`), the same names RevenueCat's integrations use. */
+/**
+ * The analytics tools' default event names (`rc_<step>_event`), the same names RevenueCat's integrations use. Paywall
+ * events keep their SDK names (`paywall_impression` …), which are RevenueCat's defaults for them too.
+ */
 export function defaultAnalyticsName(c: Concept): string {
+  if (isPaywallConcept(c)) return c;
   if (c === "purchase_redeemed") return "rc_purchase_redeemed";
   if (c === "funnel_viewed" || c === "funnel_step_completed" || c === "funnel_purchase") return `rd_${c}`;
   if (c === "non_subscription_purchase") return "rc_non_subscription_purchase_event";
@@ -285,6 +300,41 @@ export const REPORTING: IntegrationField = {
 /** The integrations guide; each catalogue entry links to its section. */
 export const DOCS = "https://revenuedot.app/docs/guides/integrations";
 
+
+/**
+ * Paywall events (opt-in event types PAYWALL_*): what a customer did on a paywall the SDK showed. They carry the paywall,
+ * offering and session but no transaction, price or revenue.
+ */
+export const PAYWALL_CONCEPTS: Concept[] = [
+  "paywall_impression", "paywall_close", "paywall_cancel", "paywall_exit_offer", "paywall_component_interacted",
+  "paywall_purchase_initiated", "paywall_purchase_error",
+];
+export const isPaywallConcept = (c: Concept | null): c is Concept => !!c && PAYWALL_CONCEPTS.includes(c);
+
+/**
+ * The fields a paywall event carries (services/sdk-events.ts builds them from the SDK's event, with its snake_case keys),
+ * in the order the analytics tools receive them. Fields the SDK did not send are left out.
+ */
+export const PAYWALL_EVENT_FIELDS = [
+  "paywall_id", "paywall_name", "paywall_revision", "offering_id", "session_id", "display_mode", "dark_mode", "locale", "source",
+  "placement_identifier", "targeting_revision", "targeting_rule_id", "workflow_id",
+  "exit_offer_type", "exit_offering_id", "package_id", "product_id", "error_code", "error_message",
+  "component_type", "component_name", "component_value", "component_url",
+  "origin_index", "destination_index", "default_index", "origin_context_name", "destination_context_name",
+  "origin_package_id", "destination_package_id", "default_package_id", "origin_product_id", "destination_product_id", "default_product_id",
+  "current_package_id", "resulting_package_id", "current_product_id", "resulting_product_id",
+] as const;
+
+/** The event properties the analytics tools get for a paywall event: the paywall fields plus who and where. No revenue. */
+export function paywallProperties(e: WebhookEvent): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of PAYWALL_EVENT_FIELDS) if (e[k] !== undefined && e[k] !== null) out[k] = e[k];
+  return {
+    ...out, ...(e.sdk_version ? { sdk_version: e.sdk_version } : {}), ...(e.platform_version ? { platform_version: e.platform_version } : {}),
+    environment: e.environment ?? null, store: e.store ?? null, app_id: e.app_id ?? null,
+    app_user_id: e.app_user_id ?? null, original_app_user_id: e.original_app_user_id ?? null, subscriber_attributes: e.subscriber_attributes ?? {},
+  };
+}
 
 /** RevenueDot web funnel steps (opt-in event types FUNNEL_VIEWED, FUNNEL_STEP_COMPLETED, FUNNEL_PURCHASE). */
 export const FUNNEL_CONCEPTS: Concept[] = ["funnel_viewed", "funnel_step_completed", "funnel_purchase"];

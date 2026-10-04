@@ -42,6 +42,20 @@ export const EVENT_TYPES: [string, string][] = [
   ["funnel_viewed", "A visitor opens a web funnel (RevenueDot; only when selected)."],
   ["funnel_step_completed", "A visitor completes a funnel step (RevenueDot; only when selected)."],
   ["funnel_purchase", "A visitor buys through a web funnel (RevenueDot; only when selected)."],
+  ["paywall_impression", "A paywall is shown to a customer (only when selected)."],
+  ["paywall_close", "The customer closes a paywall (only when selected)."],
+  ["paywall_cancel", "The customer dismisses the store's payment sheet on a paywall (only when selected)."],
+  ["paywall_exit_offer", "An exit offer is shown on a paywall (only when selected)."],
+  ["paywall_component_interacted", "The customer changes a paywall control: a tab, package, button or sheet (only when selected)."],
+  ["paywall_purchase_initiated", "The customer taps buy on a paywall (only when selected)."],
+  ["paywall_purchase_error", "A purchase started on a paywall fails (only when selected)."],
+];
+
+/** The event list in three groups: purchase events, then the opt-in funnel and paywall events (RevenueDot's own types). */
+const EVENT_GROUPS: { title: string; sub?: string; types: [string, string][] }[] = [
+  { title: "Purchase events", types: EVENT_TYPES.filter(([t]) => !/^(funnel|paywall)_/.test(t)) },
+  { title: "Web funnel events", sub: "RevenueDot's own types, sent only when selected.", types: EVENT_TYPES.filter(([t]) => t.startsWith("funnel_")) },
+  { title: "Paywall events", sub: "What customers do on paywalls the SDK shows. Sent only when selected, with no revenue.", types: EVENT_TYPES.filter(([t]) => t.startsWith("paywall_")) },
 ];
 
 const label = (t: string) => t.toUpperCase();
@@ -144,13 +158,19 @@ function verify(rawBody, header, secret) {
           {mode === "some" && (
             <fieldset className="stack tight" id="wh-types" tabIndex={-1} style={{ border: 0, padding: 0, margin: 0 }}>
               <legend className="sr">Event types to send</legend>
-              <div className="hrow"><button type="button" className="btn btn-ghost" onClick={() => setTypes(EVENT_TYPES.map(([t]) => t))}>Select all</button><button type="button" className="btn btn-ghost" onClick={() => setTypes([])}>Clear</button><span className="subtle mono">{types.length} of {EVENT_TYPES.length}</span></div>
-              <div className="cols">
-                {EVENT_TYPES.map(([t, text]) => (
-                  <Check key={t} checked={types.includes(t)} label={<span className="mono">{label(t)}</span>} hint={text}
-                    onChange={(v) => setTypes((x) => (v ? [...x, t] : x.filter((y) => y !== t)))} />
-                ))}
-              </div>
+              <div className="hrow"><button type="button" className="btn btn-ghost" onClick={() => setTypes((x) => [...new Set([...x, ...EVENT_TYPES.filter(([t]) => !t.startsWith("paywall_")).map(([t]) => t)])])} title="Every type except paywall events, which you pick one by one">Select all</button><button type="button" className="btn btn-ghost" onClick={() => setTypes([])}>Clear</button><span className="subtle mono">{types.length} of {EVENT_TYPES.length}</span></div>
+              {EVENT_GROUPS.map((g) => (
+                <div key={g.title} className="stack tight" role="group" aria-label={g.title}>
+                  <span className="flabel">{g.title}</span>
+                  {g.sub && <span className="hint">{g.sub}</span>}
+                  <div className="cols">
+                    {g.types.map(([t, text]) => (
+                      <Check key={t} checked={types.includes(t)} label={<span className="mono">{label(t)}</span>} hint={text}
+                        onChange={(v) => setTypes((x) => (v ? [...x, t] : x.filter((y) => y !== t)))} />
+                    ))}
+                  </div>
+                </div>
+              ))}
               {errors.types && <span className="form-err" role="alert">{errors.types}</span>}
             </fieldset>
           )}
