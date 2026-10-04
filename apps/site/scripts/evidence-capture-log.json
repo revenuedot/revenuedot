@@ -1742,5 +1742,23 @@
     "full": [],
     "crops": [],
     "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.nami.ml/pricing\nCall log:\n  - navigating to \"https://www.nami.ml/pricing\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "revenuedot",
+    "page": "pricing",
+    "url": "https://revenuedot.app/pricing",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://revenuedot.app/pricing\nCall log:\n  - navigating to \"https://revenuedot.app/pricing\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "revenuedot",
+    "page": "github-revenuedot",
+    "url": "https://github.com/revenuedot/revenuedot",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/revenuedot/revenuedot\nCall log:\n  - navigating to \"https://github.com/revenuedot/revenuedot\", waiting until \"domcontentloaded\"\n"
   }
 ]
