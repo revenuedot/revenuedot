@@ -1,6 +1,6 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
-import { webhookStore, type Store } from "@revenuedot/core";
+import { type Store } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { RCError } from "../../errors.js";
@@ -10,6 +10,7 @@ import { serviceAccountOf } from "../../stores/google/api.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Context, type V2Router } from "./common.js";
 import { amazonKeyConfigured, appleKeyConfigured, galaxyKeyConfigured, googleKeyConfigured, notificationStoreOf, paddleIsSandbox, paddleKeyConfigured, projectShape, rokuKeyConfigured, stripeKeyConfigured } from "./shapes.js";
 import { notificationHealth } from "./notification-health.js";
+import { queueTestDelivery } from "../../services/webhooks.js";
 import { apiRole } from "../../services/members.js";
 import { checkStoreCredentials, recordCredentialCheck } from "../../services/credential-health.js";
 import { checkConnectKey } from "../../services/connect-key-check.js";
@@ -468,25 +469,11 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     if (!w) throw notFound("Webhook integration");
     if (!w.enabled) throw new V2Error(422, "unprocessable_entity_error", "Deliveries to this webhook are paused. Turn them on to send a test event.", "enabled");
     const now = deps.now();
-    const apps = await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId));
-    const app = (w.appId ? apps.find((x) => x.id === w.appId) : apps.sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())[0]) ?? null;
-    const environment = w.environment === "production" ? "PRODUCTION" : "SANDBOX";
-    const id = crypto.randomUUID().toUpperCase();
-    const user = `$RCAnonymousID:${crypto.randomUUID().replace(/-/g, "")}`;
-    const event = {
-      id, type: "TEST", event_timestamp_ms: now.getTime(), app_id: app?.id ?? null, app_user_id: user, original_app_user_id: user, aliases: [user],
-      product_id: "test_product", period_type: "NORMAL", purchased_at_ms: now.getTime(), expiration_at_ms: now.getTime() + 30 * 86400_000, environment,
-      entitlement_id: null, entitlement_ids: null, presented_offering_id: null, transaction_id: "test_transaction_id", original_transaction_id: "test_original_transaction_id",
-      is_family_share: false, country_code: "US", currency: "USD", price: 0, price_in_purchased_currency: 0, subscriber_attributes: {},
-      store: webhookStore((app?.type ?? "app_store") as Store), takehome_percentage: 1, tax_percentage: 0, commission_percentage: 0, offer_code: null,
-    };
-    await db.insert(schema.events).values({ id, projectId, customerId: null, type: "TEST", environment: environment.toLowerCase(), appId: app?.id ?? null, payload: { api_version: "1.0", event }, eventTimestampMs: now.getTime() });
-    const deliveryId = crypto.randomUUID();
-    const [d] = await db.insert(schema.webhookDeliveries).values({ id: deliveryId, webhookId: w.id, eventId: id, nextAttemptAt: now, createdAt: now }).returning();
+    const { delivery: d, eventId: id } = await queueTestDelivery(db, w, now);
     deps.kick?.();
     return c.json({
-      object: "webhook_delivery", id: d!.id, webhook_integration_id: w.id, event_id: id, event_type: "TEST", status: d!.status, attempts: d!.attempts,
-      next_attempt_at: d!.nextAttemptAt.getTime(), response_status: null, response_ms: null, last_error: null, created_at: d!.createdAt.getTime(),
+      object: "webhook_delivery", id: d.id, webhook_integration_id: w.id, event_id: id, event_type: "TEST", status: d.status, attempts: d.attempts,
+      next_attempt_at: d.nextAttemptAt.getTime(), response_status: null, response_ms: null, last_error: null, created_at: d.createdAt.getTime(),
     }, 201);
   });
 }
