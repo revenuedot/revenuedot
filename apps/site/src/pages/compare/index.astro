@@ -2,7 +2,7 @@
 import Hub from "../../templates/Hub.astro";
 import { COMPARISONS, comparePath } from "../../data";
 const vs = COMPARISONS.filter((c) => c.kind === "vs").map((c) => ({ href: comparePath(c), title: c.columns.join(" vs "), text: c.card }));
-const versus = COMPARISONS.filter((c) => c.kind === "versus").map((c) => ({ href: comparePath(c), title: c.columns.slice(0, 2).join(" vs "), text: c.card }));
+const versus = COMPARISONS.filter((c) => c.kind === "versus").map((c) => ({ href: comparePath(c), title: c.short ?? c.columns.slice(0, 2).join(" vs "), text: c.card }));
 const lists = [
   { href: "/revenuecat-alternative", title: "The open-source RevenueCat alternative", text: "Keep the RevenueCat SDK, change one line, and own your purchase data." },
   { href: "/revenuecat-alternatives", title: "Best RevenueCat alternatives in 2026", text: "Every credible option compared on price, open source, self-hosting and features." },

@@ -20,7 +20,7 @@ const { page } = Astro.props as { page: ComparePage };
 const path = comparePath(page);
 const image = ogFor(path);
 const faq = page.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
-const crumb = page.columns.slice(0, page.kind === "vs" ? 2 : 2).join(" vs ");
+const crumb = page.short ?? page.columns.slice(0, 2).join(" vs ");
 const rdCol = page.columns.indexOf("RevenueDot");
 ---
 <Base title={page.metaTitle} description={page.metaDescription} path={path} image={image} imageAlt={page.title}

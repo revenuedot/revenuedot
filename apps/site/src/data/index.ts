@@ -89,7 +89,7 @@ export function entry(path: string): Entry | undefined {
   const er = ERRORS.find((x) => `/errors/${x.slug}` === path);
   if (er) return { title: er.swift, card: er.name, label: `SDK error ${er.code}` };
   const v = COMPARISONS.find((x) => comparePath(x) === path);
-  if (v) return { title: v.columns.slice(0, 2).join(" vs "), card: v.card, label: "Comparison" };
+  if (v) return { title: v.short ?? v.columns.slice(0, 2).join(" vs "), card: v.card, label: "Comparison" };
   return undefined;
 }
 

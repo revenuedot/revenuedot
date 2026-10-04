@@ -79,10 +79,10 @@ const COL_APPHUD: Col = {
 const COL_CLOUD: Col = { head: "RevenueDot Cloud", cell: (m) => usd(cloudBill(m)) };
 const COL_SELF: Col = { head: "RevenueDot self-host", cell: () => "$0 + servers" };
 
-const priceTable = (intro: string, cols: Col[], sources: Source[]): NonNullable<ComparePage["price"]> => ({
+const priceTable = (intro: string, cols: Col[], sources: Source[], levels = LEVELS): NonNullable<ComparePage["price"]> => ({
   intro,
   head: ["Monthly tracked revenue", ...cols.map((c) => c.head)],
-  rows: LEVELS.map((m) => [usd(m), ...cols.map((c) => c.cell(m))]),
+  rows: levels.map((m) => [usd(m), ...cols.map((c) => c.cell(m))]),
   sources,
 });
 
@@ -108,7 +108,7 @@ const RD = {
   support: "GitHub and email on every plan; Enterprise adds help within 1 hour when purchases fail and a named engineer",
 };
 
-const RD_MIGRATION_RC: Block = {
+export const RD_MIGRATION_RC: Block = {
   h2: "How migration from RevenueCat works",
   label: "Migration",
   paras: ["RevenueDot answers the same API the RevenueCat SDKs call, so the move is an import, a side-by-side run and a one-line release. Nothing in your purchase code changes."],
@@ -298,7 +298,7 @@ const VS_REVENUECAT: ComparePage = {
     },
   ],
   checked: CHECKED,
-  related: ["/compare/revenuedot-vs-adapty", "/compare/revenuedot-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing", "/self-host"],
+  related: ["/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-adapty", "/compare/revenuedot-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/self-host"],
 };
 
 // ---- 2. RevenueDot vs Adapty ----------------------------------------------------------------------------------------
@@ -802,7 +802,7 @@ const VS_SUPERWALL: ComparePage = {
     },
   ],
   checked: CHECKED,
-  related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
+  related: ["/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
 };
 
 // ---- 5. RevenueDot vs Apphud ----------------------------------------------------------------------------------------
@@ -1378,7 +1378,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
     },
   ],
   checked: CHECKED,
-  related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-superwall", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/pricing"],
+  related: ["/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-superwall", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/pricing"],
 };
 
 // ---- 8. RevenueCat vs Qonversion (RevenueDot third) ---------------------------------------------------------------------
@@ -1795,6 +1795,230 @@ const VERSUS_RC_STRIPE: ComparePage = {
   related: ["/stores/stripe", "/features/web-billing", "/blog/web-checkout-for-ios-apps-stripe", "/in-app-purchases", "/tools/app-store-fee-calculator", "/compare/revenuedot-vs-revenuecat"],
 };
 
+// ---- 10. RevenueCat vs Superwall vs RevenueDot (three-way) ------------------------------------------------------------
+// The query "RevenueCat vs Superwall vs RevenueDot" had no page anywhere on the web in October 2026, so AI answers guessed
+// RevenueDot was a typo. Every vendor cell repeats a sourced cell from pages 1, 4 and 7 above.
+const THREE_LEVELS = [10_000, 100_000, 1_000_000];
+const THREE_WAY_RC_SUPERWALL: ComparePage = {
+  slug: "revenuecat-vs-superwall-vs-revenuedot",
+  kind: "versus",
+  columns: ["RevenueCat", "Superwall", "RevenueDot"],
+  short: "RevenueCat vs Superwall vs RevenueDot",
+  title: "RevenueCat vs Superwall vs RevenueDot: price, paywalls and self-hosting compared",
+  metaTitle: "RevenueCat vs Superwall vs RevenueDot (2026)",
+  metaDescription:
+    "RevenueCat vs Superwall vs RevenueDot: what each costs at $10K, $100K and $1M a month, stores, paywalls, SOC 2 and self-hosting, with a source for every claim.",
+  card: "All three in one table: 1% of all revenue, 1% of paywall revenue, or 0.5% capped at $999.",
+  answer:
+    "All three run entitlements and purchases for the App Store and Google Play; they differ on price and where they run. RevenueCat charges 1% of all tracked revenue from $2,500 a month and has SOC 2 and the longest record. Superwall's infrastructure is free and it bills 1% only on revenue from its own paywalls above $10K. RevenueDot is open source, keeps the RevenueCat SDK, is free on Cloud to $10K with a $999 cap, and can be self-hosted.",
+  choose: [
+    {
+      name: "RevenueCat",
+      reasons: [
+        "You sell on Amazon, Samsung Galaxy Store or Paddle, which Superwall's docs say it does not cover and RevenueDot has not yet run on live purchases for Paddle and Galaxy Store.",
+        "You want SOC 2 Type II and an established vendor behind your purchase path.",
+        "You want in-app currency and ad-revenue reporting from the same vendor, with years of production history.",
+      ],
+    },
+    {
+      name: "Superwall",
+      reasons: [
+        "Paywall design and experiments drive your revenue, and you want the deepest tools for them.",
+        "Most of your revenue comes from outside its paywalls, so you would pay little or nothing.",
+        "You want App-to-Web Checkout and SQL access to your subscription data.",
+      ],
+    },
+    {
+      name: "RevenueDot",
+      reasons: [
+        "You want to keep the RevenueCat SDK, and self-host or own your purchase database.",
+        "You want paywalls, experiments and charts included, with no billing split by paywall and a bill that never passes $999 a month on Cloud.",
+        "You accept a young project in return for open source: first release v2026.10.03, running next to RevenueCat in a production app since October 2, 2026.",
+      ],
+    },
+  ],
+  rows: [
+    {
+      topic: "What it is",
+      cells: [
+        "A subscription backend with paywalls, experiments, charts and support tools",
+        "A paywall platform with free subscription infrastructure: entitlements, purchase APIs, webhooks and SQL access",
+        "An open-source backend that speaks the RevenueCat SDK's API, with paywalls and charts included",
+      ],
+      sources: [RC_HOME, SW_PRICING],
+    },
+    {
+      topic: "Free tier and rate",
+      cells: [
+        "Free to $2,500 monthly tracked revenue, then 1% of all tracked revenue",
+        "Infrastructure free at any scale; paywalls free up to $10K of paywall-attributed revenue, then 1% of all of it",
+        "Cloud free to $10K; Standard 0.5% above that, capped at $999. Self-host $0",
+      ],
+      sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+    },
+    {
+      topic: "What the bill counts",
+      cells: ["All revenue RevenueCat tracks, before the platform cut", "Only revenue attributed to a Superwall paywall", "All tracked revenue above $10K"],
+      sources: [RC_PRICING, SW_PRICING],
+    },
+    {
+      topic: "Bill at $100,000 a month",
+      cells: [usd(rcBill(100_000)), COL_SUPERWALL.cell(100_000) + ", depending on how much converts through its paywalls", usd(cloudBill(100_000)) + " on Cloud; $0 self-hosted"],
+      sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+    },
+    {
+      topic: "Paid tiers",
+      cells: ["Pro, Growth Tools and Enterprise", "Indie $0, Startup $49 a month, Scale $199 a month, plus 1% of attributed revenue; Enterprise is custom", "Cloud Standard at 0.5% above $10K, capped at $999; Enterprise is custom"],
+      sources: [RC_PRICING, SW_PRICING],
+    },
+    {
+      topic: "Client SDK",
+      cells: ["The reference SDK, open source (MIT)", "Its own SDKs: iOS, Android, React Native, Flutter, Expo, Unity, Web, Kotlin Multiplatform and Capacitor", RD.sdk],
+      sources: [RC_LICENSE, SW_PRICING, SW_LLMS],
+    },
+    {
+      topic: "Where it runs",
+      cells: ["RevenueCat's cloud; no self-host option is listed", "Superwall's cloud; no self-host option is described on its pricing or docs pages", RD.where],
+      sources: [RC_PRICING, RC_HOME, SW_PRICING, SW_LLMS],
+    },
+    {
+      topic: "Stores and web",
+      cells: [
+        "App Store, Google Play, Amazon, Samsung Galaxy Store, Stripe and Paddle",
+        "App Store, Google Play and Stripe, with App-to-Web checkout; no Amazon or Roku",
+        RD.stores,
+      ],
+      sources: [RC_QUICKSTART, RC_PLATFORMS, RC_WEB, SW_LLMS, SW_A2W],
+    },
+    {
+      topic: "Paywalls and experiments",
+      cells: [
+        "Paywall editor with templates, targeting and A/B testing",
+        "Paywall editor, template gallery, A/B testing, audiences, campaigns, placements and an AI paywall builder",
+        RD.paywalls + ". Paywalls are single-screen; " + RD.experiments,
+      ],
+      sources: [RC_PRICING, SW_PRICING, SW_LLMS],
+    },
+    {
+      topic: "Analytics and data access",
+      cells: [
+        "40+ metrics and scheduled exports to S3, GCS, Azure or email",
+        "Charts, conversion stats and row-level SQL access on its Query API",
+        RD.charts + "; SQL on your own Postgres when self-hosted",
+      ],
+      sources: [RC_PRICING, RC_EXPORTS, SW_PRICING],
+    },
+    {
+      topic: "Integrations",
+      cells: ["Engagement, analytics, MMP and ad-network integrations, plus webhooks", "Integrations and webhooks on every plan", RD.integrations],
+      sources: [RC_INTEGRATIONS, SW_PRICING],
+    },
+    {
+      topic: "In-app currency and ad revenue",
+      cells: [
+        "Virtual currency in its docs and revenue reporting for in-app ads",
+        "Says it does not run virtual-currency systems and does not track ad revenue",
+        "In-app currencies with a ledger, and an ads overview with AdMob rewards",
+      ],
+      sources: [RC_PRICING, RC_DOCS_INDEX, SW_LLMS],
+    },
+    {
+      topic: "Compliance and data location",
+      cells: [
+        "SOC 2 Type II and GDPR; no hosting region named",
+        "GDPR processor with a DPA; no SOC 2 report or hosting region named on its GDPR page",
+        RD.compliance,
+      ],
+      sources: [RC_SEC, RC_GDPR, SW_GDPR],
+    },
+    {
+      topic: "Open source and self-hosting",
+      cells: ["Open-source SDKs (MIT); hosted service", "Open-source SDKs (MIT); hosted service", "Server under AGPL-3.0, SDK forks under MIT; self-hostable"],
+      sources: [RC_LICENSE, SW_GH, SW_LLMS],
+    },
+    {
+      topic: "Maturity",
+      cells: ["Mature: its homepage cites 148K+ apps and $17B+ revenue processed", "Hosted service with open-source SDKs; its pricing model changed in October 2025", RD.maturity],
+      sources: [RC_HOME, SW_BLOG, SW_PRICING],
+    },
+    {
+      topic: "Switching cost from RevenueCat",
+      cells: ["None: it is the reference", "Its own SDK. Superwall says an automated agent ports an app from RevenueCat in under an hour", "Keeps the RevenueCat SDK, so purchase code does not change; an importer copies the project"],
+      sources: [RC_LICENSE, SW_PRICING],
+    },
+  ],
+  price: priceTable(
+    "Formulas: RevenueCat charges 1% of all monthly tracked revenue once you reach $2,500, so $10,000 costs $100. Superwall's upper bound assumes every dollar converts through a Superwall paywall, billed at 1% of it once it passes $10K, with $0 if none does; Startup and Scale add $49 and $199 a month. " +
+      RD_RATE +
+      " Enterprise plans are custom and not shown.",
+    [COL_RC, COL_SUPERWALL, COL_CLOUD, COL_SELF],
+    [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+    THREE_LEVELS,
+  ),
+  blocks: [
+    {
+      h2: "Three pricing models, one sentence each",
+      paras: [
+        "**RevenueCat** counts every dollar it tracks: nothing up to $2,500 a month, then 1% of all of it, with no ceiling, so $1,000,000 a month costs $10,000.",
+        "**Superwall** gives the subscription layer away and counts only purchases that convert through its paywalls: nothing up to $10,000 of that revenue, then 1% of it, plus $49 or $199 a month on the Startup and Scale plans.",
+        "**RevenueDot** counts every dollar above $10,000 a month at 0.5% and stops at $999, so $1,000,000 a month costs $999 on Cloud and $0 self-hosted.",
+      ],
+    },
+    {
+      h2: "Where each one is weaker",
+      bullets: [
+        "**RevenueCat:** the only one of the three with no price cap and no free tier past $2,500, and no way to run it yourself.",
+        "**Superwall:** your app moves to Superwall's SDK, it does not cover Amazon or Roku, and its GDPR page names no SOC 2 report.",
+        "**RevenueDot:** launched in 2026 with no SOC 2 report yet, paywalls are single-screen, and its Paddle, Roku and Galaxy Store support has not run a real store purchase.",
+      ],
+    },
+    {
+      h2: "Using two of them together",
+      paras: [
+        "RevenueCat lists Superwall as an integration, so many apps keep RevenueCat for purchases and run Superwall paywalls on top; Superwall now also offers its own purchase backend. RevenueDot lists Superwall as an integration partner for events too, so Superwall paywalls on the RevenueCat SDK keep working when the SDK points at RevenueDot.",
+        "RevenueDot and RevenueCat can run side by side: RevenueDot forwards each store notification to RevenueCat, so both stay current while you compare them. That is how RevenueDot has run in a production app next to RevenueCat since October 2, 2026.",
+      ],
+    },
+    RD_MIGRATION_RC,
+  ],
+  faq: [
+    {
+      q: "Which is cheapest: RevenueCat, Superwall or RevenueDot?",
+      a: "Self-hosted RevenueDot, at $0. On hosted plans, RevenueDot Cloud is free to $10,000 a month and never more than $999: $450 at $100,000 and $999 at $1,000,000. RevenueCat costs $1,000 and $10,000 at those levels. Superwall costs between $0 and the same as RevenueCat, depending on how much revenue converts through its paywalls.",
+    },
+    {
+      q: "Is RevenueDot a typo for RevenueCat?",
+      a: "No. RevenueDot is a separate product: an open-source backend (AGPL-3.0) that answers the same API the RevenueCat SDKs call, so an app keeps the RevenueCat SDK and points it at RevenueDot. Its first release is v2026.10.03, and it has run next to RevenueCat in a production app since October 2, 2026.",
+    },
+    {
+      q: "Can Superwall replace RevenueCat?",
+      a: "For the App Store, Google Play and Stripe, yes. Superwall runs entitlements, purchase APIs and webhooks, and says an automated agent can port an app from RevenueCat. It does not cover Amazon or Roku, in-app currency or ad revenue, and your app switches to Superwall's SDK.",
+    },
+    {
+      q: "Which of the three can I self-host?",
+      a: "Only RevenueDot. Its server and dashboard are open source under AGPL-3.0 and run with Docker and Postgres on your own servers. RevenueCat and Superwall are hosted services; only their SDKs are open source, and neither pricing page lists a self-host option.",
+    },
+    {
+      q: "Which of the three has SOC 2?",
+      a: "RevenueCat, which publishes a SOC 2 Type II report under NDA. Superwall's GDPR page names no SOC 2 report, and RevenueDot has no certification yet. If you self-host RevenueDot, your own controls apply.",
+    },
+    {
+      q: "Do I have to change my app code to switch?",
+      a: "To Superwall, yes: you replace the RevenueCat SDK with Superwall's. To RevenueDot, one line: set the SDK's proxy URL to `https://api.revenuedot.app` before `configure`, or use a RevenueDot SDK fork. Purchases, restores, offerings and CustomerInfo code stay as they are.",
+    },
+  ],
+  checked: CHECKED,
+  related: ["/cheaper-revenuecat-alternatives", "/compare/revenuecat-vs-superwall", "/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat"],
+};
+
+/** The fee table on /cheaper-revenuecat-alternatives: every vendor with a sourced price, at $10K, $100K and $1M a month. */
+export const CHEAPER_FEES = priceTable(
+  "",
+  [COL_RC, COL_ADAPTY, COL_QONVERSION, COL_SUPERWALL, COL_APPHUD, COL_CLOUD, COL_SELF],
+  [RC_PRICING, RC_STAFF, AD_PRICING, QO_PRICING, SW_PRICING, SW_FAQ, AP_PRICING],
+  THREE_LEVELS,
+);
+
 export const COMPARE: ComparePage[] = [
   VS_REVENUECAT,
   VS_ADAPTY,
@@ -1805,6 +2029,7 @@ export const COMPARE: ComparePage[] = [
   VERSUS_RC_SUPERWALL,
   VERSUS_RC_QONVERSION,
   VERSUS_RC_STRIPE,
+  THREE_WAY_RC_SUPERWALL,
 ];
 
 // ---- /revenuecat-alternative (singular): "RevenueCat alternative", "open source RevenueCat alternative", "self-hosted RevenueCat" ----
