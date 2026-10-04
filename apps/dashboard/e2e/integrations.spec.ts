@@ -218,6 +218,15 @@ test("integrations: Slack and PostHog with test events, real purchases, delivery
       const saved = (await json(req, "GET", `${P}/integrations/exports`)).items.find((x: { name: string }) => x.name === "Azure warehouse");
       expect(saved.columns.transactions).not.toContain("country");
       expect(saved.columns.transactions).toContain("store_transaction_id");
+      // Editing on the export's own page: Cancel and Save changes both close the form.
+      await page.getByRole("button", { name: "Edit" }).click();
+      await page.getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByRole("button", { name: "Run now" })).toBeVisible();
+      await page.getByRole("button", { name: "Edit" }).click();
+      await page.getByLabel("Name", { exact: true }).fill("Azure lake");
+      await page.getByRole("button", { name: "Save changes" }).click();
+      await expect(page.getByRole("heading", { name: "Azure lake" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
       await page.getByRole("button", { name: "Check container" }).click();
       await expect(page.getByText("RevenueDot can reach the container e2e-container.")).toBeVisible();
       await page.getByRole("button", { name: "Run now" }).click();
