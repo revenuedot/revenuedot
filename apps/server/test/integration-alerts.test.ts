@@ -66,9 +66,9 @@ describe("integration failing: 10 failed deliveries in a row", () => {
     expect(m.text).toContain("The last 10 deliveries failed, one after the other.");
     expect(m.text).not.toContain("in the last hour");
     expect(m.text).toContain('Last error: HTTP 400: {"error":"bad request"}');
-    expect(m.text).toContain(`Open the delivery log: https://dash.example.com/projects/${projectId}/integrations/appstack#deliveries`);
+    expect(m.text).toContain(`Open the delivery log: https://dash.example.com/projects/${projectId}/integrations/appstack?id=${integ.id}#deliveries`);
     expect(m.text).toContain("Turn integration failure emails off in your notification settings.");
-    expect(m.html).toContain(`/projects/${projectId}/integrations/appstack#deliveries`);
+    expect(m.html).toContain(`/projects/${projectId}/integrations/appstack?id=${integ.id}#deliveries`);
 
     // The next ticks (every minute for a day) send nothing new.
     for (let i = 0; i < 3; i++) { s.advance(7 * HOUR); expect((await run(bad)).alerts).toEqual({ opened: 0, reminded: 0, resolved: 0 }); }
@@ -132,15 +132,14 @@ describe("integration failing: more than half of the last hour's attempts", () =
 
   it("does not count skipped deliveries", async () => {
     const { integ, s, run } = await project();
-    // 12 skipped deliveries with no attempts, and 9 failed attempts: below the minimum.
+    // 12 skipped deliveries (a skip logs no attempt), and 9 failed attempts: below the minimum.
     const ev = async (i: number) => {
       const id = `ev_skip_${i}`;
       await s.db.insert(schema.events).values({ id, projectId: integ.project_id, type: "TEST", environment: "PRODUCTION", payload: { event: { type: "TEST" } }, eventTimestampMs: s.now().getTime() });
       return id;
     };
     for (let i = 0; i < 12; i++) {
-      await s.db.insert(schema.integrationDeliveries).values({ id: `d_skip_${i}`, integrationId: integ.id, eventId: await ev(i), status: "skipped", nextAttemptAt: s.now(), lastError: "nothing to send",
-        attemptLog: [{ at: s.now().getTime(), status: 400, ms: 1, error: "old failure", response_body: null }] });
+      await s.db.insert(schema.integrationDeliveries).values({ id: `d_skip_${i}`, integrationId: integ.id, eventId: await ev(i), status: "skipped", nextAttemptAt: s.now(), lastError: "nothing to send" });
     }
     for (let i = 12; i < 21; i++) {
       await s.db.insert(schema.integrationDeliveries).values({ id: `d_fail_${i}`, integrationId: integ.id, eventId: await ev(i), status: "failed", attempts: 1, nextAttemptAt: s.now(), lastError: "HTTP 400",
@@ -222,5 +221,50 @@ describe("integration failure emails setting", () => {
     await s.db.update(schema.webhooks).set({ consecutiveFailures: 5, lastError: "timeout" }).where(eq(schema.webhooks.id, w.id));
     await runAlerts({ db: s.db, mailer: s.mail, publicUrl: "https://dash.example.com" }, s.now());
     expect(mails()).toEqual(["admin@example.com: Webhook Backend is failing", "nointeg@example.com: Webhook Backend is failing"]);
+  });
+});
+
+describe("integration failing: no flapping, idle", () => {
+  it("fail ×10, one success, fail ×10: one email, the alert stays open while the hour is mostly failures", async () => {
+    const { s, events, run, mails } = await project();
+    await events(10);
+    await run(bad);
+    await events(1);
+    expect((await run(ok)).alerts.resolved).toBe(0); // 10 of 11 attempts in the hour failed
+    await events(10);
+    await run(bad);
+    expect(mails()).toEqual(["admin@example.com: Integration Attribution feed (Appstack) is failing"]);
+    expect((await s.db.select().from(schema.alerts))[0]!.status).toBe("open");
+  });
+
+  it("failing again within a day of resolving reopens quietly; the reminder follows 24 hours after the last email", async () => {
+    const { s, events, run, mails } = await project();
+    await events(10);
+    await run(bad);
+    s.advance(2 * HOUR);
+    await events(1);
+    expect((await run(ok)).alerts.resolved).toBe(1);
+    expect(mails()).toHaveLength(2);
+    s.advance(HOUR);
+    await events(10);
+    await run(bad);
+    expect(mails()).toHaveLength(2);
+    expect((await s.db.select().from(schema.alerts))[0]!.status).toBe("open");
+    s.advance(21 * HOUR);
+    expect((await run(bad)).alerts.reminded).toBe(1);
+    expect(mails().at(-1)).toBe("admin@example.com: Still failing: Integration Attribution feed (Appstack) is failing");
+  });
+
+  it("closes as idle when no rule holds and nothing failed for 7 days", async () => {
+    const { s, events, run, mails } = await project();
+    await events(10);
+    let n = 0;
+    await run(() => (n++ < 7 ? bad() : ok())); // 7 of 10 failed: opened by the hourly rule
+    expect(mails()).toHaveLength(1);
+    s.advance(3 * 24 * HOUR);
+    expect((await run(ok)).alerts).toEqual({ opened: 0, reminded: 1, resolved: 0 });
+    s.advance(5 * 24 * HOUR);
+    expect((await run(ok)).alerts.resolved).toBe(1);
+    expect(s.mail.sent.at(-1)!.text).toContain("has failed for 7 days, so this alert is closed");
   });
 });

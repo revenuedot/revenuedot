@@ -61,9 +61,9 @@ test("integration failures: the notification switch saves, and a failing integra
       const m = (await mail())[0]!;
       expect(m.text).toContain("The last 10 deliveries failed, one after the other.");
       const link = /Open the delivery log: (\S+)/.exec(m.text)![1]!;
-      expect(link).toContain(`/projects/${pid}/integrations/appstack#deliveries`);
+      expect(link).toContain(`/projects/${pid}/integrations/appstack?id=${integ.id}#deliveries`);
       const u = new URL(link);
-      await page.goto(`${u.pathname}${u.hash}`);
+      await page.goto(`${u.pathname}${u.search}${u.hash}`);
       await expect(page.getByText(/Failing · HTTP 400/)).toBeVisible();
       const log = page.locator("#deliveries");
       await expect(log.getByRole("row", { name: /failed/ }).first()).toBeVisible({ timeout: 20_000 });

@@ -28,6 +28,10 @@ export const INTEGRATION_FAILURE_RATE = 0.5;
 /** Fewest attempts in the window for the failure-rate rule to count. Skipped deliveries are not attempts. */
 export const INTEGRATION_MIN_ATTEMPTS = 10;
 export const INTEGRATION_WINDOW_MS = 3600_000;
+/** An open integration alert resolves only once the window's failure rate is at or under this share (hysteresis). */
+export const INTEGRATION_RECOVERED_RATE = 0.25;
+/** An open integration alert with no failed attempt for this long, and no rule holding, closes as idle. */
+export const INTEGRATION_IDLE_MS = 7 * 24 * 3600_000;
 export const REMIND_AFTER_MS = 24 * 3600_000;
 const RECENT_MS = 7 * 24 * 3600_000;
 const STORE_TYPES = ["app_store", "mac_app_store", "play_store"];
@@ -35,7 +39,7 @@ const STORE_TYPES = ["app_store", "mac_app_store", "play_store"];
 interface Failing {
   projectId: string; kind: AlertKind; subjectId: string; subjectName: string; detail: string | null;
   /** Integrations: the partner's name, the numbers behind the alert, and the dashboard path of the delivery log. */
-  partner?: string | null; facts?: string[]; path?: string; turnedOff?: boolean;
+  partner?: string | null; facts?: string[]; path?: string; turnedOff?: boolean; idle?: boolean;
 }
 
 type AlertDeps = { db: DB; mailer?: Mailer; publicUrl?: string };
@@ -70,11 +74,22 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
   }
 
   // 4. Integrations: one aggregate over the last hour's attempts, then only the integrations that trip a rule or have an alert open.
-  failing.push(...await failingIntegrations(db, now, open.filter((a) => a.kind === "integration")));
+  const openIntegrations = open.filter((a) => a.kind === "integration");
+  let idle = new Set<string>(), integrationsChecked = true;
+  try {
+    const r = await failingIntegrations(db, now, openIntegrations);
+    failing.push(...r.failing);
+    idle = r.idle;
+  } catch (e) {
+    // Never resolve integration alerts on a failed check: they stay as they are until the next run.
+    console.error("alerts: integration check failed", e);
+    integrationsChecked = false;
+  }
 
   let opened = 0, reminded = 0, resolved = 0;
   const key = (kind: string, id: string) => `${kind}|${id}`;
   const failingKeys = new Set(failing.map((f) => key(f.kind, f.subjectId)));
+  if (!integrationsChecked) for (const a of openIntegrations) failingKeys.add(key(a.kind, a.subjectId));
   const existing = failing.length
     ? await db.select().from(A).where(inArray(A.subjectId, [...new Set(failing.map((f) => f.subjectId))]))
     : [];
@@ -84,6 +99,11 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
   // read), so two runs at once (several replicas, or the Worker's cron and a request-kicked run) never email twice.
   for (const f of failing) {
     const row = byKey.get(key(f.kind, f.subjectId));
+    if (row && row.status !== "open" && f.kind === "integration" && row.resolvedAt && now.getTime() - row.resolvedAt.getTime() < REMIND_AFTER_MS) {
+      // Failing again within a day of resolving: reopen quietly; the reminder schedule continues from the last email.
+      await db.update(A).set({ status: "open", projectId: f.projectId, message: f.detail, openedAt: now, resolvedAt: null }).where(and(eq(A.id, row.id), ne(A.status, "open")));
+      continue;
+    }
     if (!row || row.status !== "open") {
       const won = row
         ? await db.update(A).set({ status: "open", projectId: f.projectId, message: f.detail, openedAt: now, lastNotifiedAt: now, resolvedAt: null }).where(and(eq(A.id, row.id), ne(A.status, "open"))).returning({ id: A.id })
@@ -108,7 +128,7 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
     if (!won.length) continue;
     const subject = await subjectOf(db, row.kind as AlertKind, row.subjectId);
     // A deleted app, webhook or integration resolves without an email.
-    if (subject && row.lastNotifiedAt) await notify(deps, { projectId: row.projectId, kind: row.kind as AlertKind, subjectId: row.subjectId, detail: null, ...subject }, "resolved");
+    if (subject && row.lastNotifiedAt) await notify(deps, { projectId: row.projectId, kind: row.kind as AlertKind, subjectId: row.subjectId, detail: null, ...subject, idle: idle.has(row.subjectId) && !subject.turnedOff }, "resolved");
     resolved++;
   }
   return { opened, reminded, resolved };
@@ -117,7 +137,7 @@ export async function runAlerts(deps: AlertDeps, now: Date) {
 async function subjectOf(db: DB, kind: AlertKind, id: string): Promise<Pick<Failing, "subjectName" | "partner" | "path" | "turnedOff"> | null> {
   if (kind === "integration") {
     const [i] = await db.select({ name: schema.integrations.name, kind: schema.integrations.kind, enabled: schema.integrations.enabled }).from(schema.integrations).where(eq(schema.integrations.id, id));
-    return i ? { subjectName: i.name, partner: integrationSpec(i.kind)?.name ?? i.kind, path: deliveryLogPath(i.kind), turnedOff: !i.enabled } : null;
+    return i ? { subjectName: i.name, partner: integrationSpec(i.kind)?.name ?? i.kind, path: deliveryLogPath(i.kind, id), turnedOff: !i.enabled } : null;
   }
   const row = await subjectRow(db, kind, id);
   return row ? { subjectName: row.name } : null;
@@ -141,7 +161,7 @@ async function notify(deps: AlertDeps, f: Failing, state: "open" | "reminder" | 
   const path = f.path ?? (f.kind === "webhook" ? `integrations/webhooks/${f.subjectId}` : `apps/${f.subjectId}`);
   const mail = alertEmail({
     base, state, kind: f.kind, projectName: project.name, subjectName: f.subjectName, detail: f.detail, url: `${base}/projects/${project.id}/${path}`,
-    partner: f.partner, facts: f.facts, turnedOff: f.turnedOff,
+    partner: f.partner, facts: f.facts, turnedOff: f.turnedOff, idle: f.idle,
   });
   let sent = 0;
   for (const a of admins) if (await trySend(deps.mailer, { to: a.email, ...mail })) sent++;
@@ -149,14 +169,16 @@ async function notify(deps: AlertDeps, f: Failing, state: "open" | "reminder" | 
 }
 
 
-/** The dashboard page of an integration (one per type), scrolled to its delivery log. */
-export const deliveryLogPath = (kind: string) => `integrations/${encodeURIComponent(kind)}#deliveries`;
+/** The dashboard page of an integration, that integration selected, scrolled to its delivery log. */
+export const deliveryLogPath = (kind: string, id: string) => `integrations/${encodeURIComponent(kind)}?id=${encodeURIComponent(id)}#deliveries`;
 
 /**
  * Delivery attempts and failed attempts per enabled integration in the last INTEGRATION_WINDOW_MS, from the deliveries'
  * attempt logs. A delivery with an attempt in the window has next_attempt_at in the window or later (it is the time of
  * the last attempt, plus the retry wait while one is scheduled), so the (status, next_attempt_at) index bounds the scan.
- * Attempts before the integration's last change (settings saved, turned back on) do not count: a fix starts afresh.
+ * Only integrations with a pending or failed delivery in the window are counted: the ones that deliver everything are
+ * skipped. Attempts before the integration's last change (settings saved, turned back on) do not count: a fix starts afresh.
+ * A skipped delivery logs no attempt; one skipped after a replay keeps its earlier, real attempts.
  */
 export async function integrationFailureRates(db: DB, now: Date): Promise<Map<string, { attempts: number; failed: number }>> {
   const since = new Date(now.getTime() - INTEGRATION_WINDOW_MS);
@@ -164,39 +186,65 @@ export async function integrationFailureRates(db: DB, now: Date): Promise<Map<st
     from integration_deliveries d
     join integrations i on i.id = d.integration_id and i.enabled
     cross join lateral jsonb_array_elements(d.attempt_log) as a(x)
-    where d.status in ('pending', 'sending', 'delivered', 'failed') and d.next_attempt_at >= ${since.toISOString()}::timestamptz
+    where d.status in ('pending', 'sending', 'delivered', 'failed', 'skipped') and d.next_attempt_at >= ${since.toISOString()}::timestamptz
+      and exists (select 1 from integration_deliveries h where h.integration_id = d.integration_id and h.status in ('pending', 'sending', 'failed')
+        and h.next_attempt_at >= ${since.toISOString()}::timestamptz)
       and (a.x->>'at')::bigint >= greatest(${since.getTime()}::bigint, (extract(epoch from coalesce(i.updated_at, i.created_at)) * 1000)::bigint)
     group by d.integration_id`);
   const rows = (res as unknown as { rows?: { id: string; attempts: number; failed: number }[] }).rows ?? (res as unknown as { id: string; attempts: number; failed: number }[]);
   return new Map(rows.map((r) => [r.id, { attempts: Number(r.attempts), failed: Number(r.failed) }]));
 }
 
-const tripsRate = (r: { attempts: number; failed: number } | undefined) =>
-  !!r && r.attempts >= INTEGRATION_MIN_ATTEMPTS && r.failed > r.attempts * INTEGRATION_FAILURE_RATE;
+type Rate = { attempts: number; failed: number } | undefined;
+const tripsRate = (r: Rate) => !!r && r.attempts >= INTEGRATION_MIN_ATTEMPTS && r.failed > r.attempts * INTEGRATION_FAILURE_RATE;
+const rateRecovered = (r: Rate) => !r || r.attempts < INTEGRATION_MIN_ATTEMPTS || r.failed <= r.attempts * INTEGRATION_RECOVERED_RATE;
 
-async function failingIntegrations(db: DB, now: Date, open: (typeof schema.alerts.$inferSelect)[]): Promise<Failing[]> {
+/** When each integration last had a failed attempt (a failed delivery, or one waiting to retry after a failure). */
+async function lastFailures(db: DB, ids: string[]): Promise<Map<string, Date>> {
+  if (!ids.length) return new Map();
+  const D = schema.integrationDeliveries;
+  const rows = await db.select({ id: D.integrationId, at: sql<string>`max(${D.nextAttemptAt})` }).from(D)
+    .where(and(inArray(D.integrationId, ids), inArray(D.status, ["pending", "sending", "failed"]), isNotNull(D.lastError))).groupBy(D.integrationId);
+  return new Map(rows.map((r) => [r.id, new Date(r.at)]));
+}
+
+/**
+ * Integrations whose alert should be open. An open alert stays open (hysteresis, so it does not flap) until a delivery
+ * succeeded after it opened, none has ended failed since, and the window's failure rate is at most
+ * INTEGRATION_RECOVERED_RATE. It also closes as idle when no rule holds and no attempt failed in INTEGRATION_IDLE_MS.
+ */
+async function failingIntegrations(db: DB, now: Date, open: (typeof schema.alerts.$inferSelect)[]): Promise<{ failing: Failing[]; idle: Set<string> }> {
   const I = schema.integrations;
   const rates = await integrationFailureRates(db, now);
   const ids = [...new Set([...[...rates].filter(([, r]) => tripsRate(r)).map(([id]) => id), ...open.map((a) => a.subjectId)])];
   const which: SQL[] = [gte(I.failedDeliveriesInRow, INTEGRATION_FAILED_DELIVERIES)];
   if (ids.length) which.push(inArray(I.id, ids));
+  const failed = await lastFailures(db, open.map((a) => a.subjectId));
   const out: Failing[] = [];
+  const idle = new Set<string>();
   // Turned-off integrations never alert, and turning one off resolves its alert (as for paused webhooks).
   for (const i of await db.select().from(I).where(and(eq(I.enabled, true), or(...which)))) {
     const r = rates.get(i.id);
     const inRow = i.failedDeliveriesInRow >= INTEGRATION_FAILED_DELIVERIES, rate = tripsRate(r);
     const alert = open.find((a) => a.subjectId === i.id);
-    // An open alert needs a delivered event after it opened before it can resolve.
-    const waiting = !!alert && !(i.lastDeliveredAt && i.lastDeliveredAt > alert.openedAt);
-    if (!inRow && !rate && !waiting) continue;
+    let holding = false;
+    if (alert && !inRow && !rate) {
+      const recovered = i.failedDeliveriesInRow === 0 && !!i.lastDeliveredAt && i.lastDeliveredAt > alert.openedAt && rateRecovered(r);
+      const lastFailed = failed.get(i.id);
+      const quiet = !lastFailed || now.getTime() - lastFailed.getTime() >= INTEGRATION_IDLE_MS;
+      if (recovered) continue;
+      if (quiet) { idle.add(i.id); continue; }
+      holding = true;
+    }
+    if (!inRow && !rate && !holding) continue;
     const facts: string[] = [];
     if (inRow) facts.push(`The last ${i.failedDeliveriesInRow} deliveries failed, one after the other.`);
     if (rate) facts.push(`${r!.failed} of ${r!.attempts} delivery attempts in the last hour failed (${Math.round((r!.failed / r!.attempts) * 100)}%).`);
-    if (!facts.length) facts.push("No event has been delivered since the first email about this.");
+    if (!facts.length) facts.push(r && r.attempts ? `${r.failed} of ${r.attempts} delivery attempts in the last hour failed.` : "Deliveries are still failing since the first email about this.");
     out.push({
       projectId: i.projectId, kind: "integration", subjectId: i.id, subjectName: i.name, detail: i.lastError,
-      partner: integrationSpec(i.kind)?.name ?? i.kind, facts, path: deliveryLogPath(i.kind),
+      partner: integrationSpec(i.kind)?.name ?? i.kind, facts, path: deliveryLogPath(i.kind, i.id),
     });
   }
-  return out;
+  return { failing: out, idle };
 }

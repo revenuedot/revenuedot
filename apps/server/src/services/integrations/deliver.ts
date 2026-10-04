@@ -134,12 +134,14 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
   const fail = async (error: string, opts: { retry: boolean; status?: number | null; request?: string | null; requestBody?: string | null; responseBody?: string | null; sentAs?: string | null; answer?: string | null }) => {
     const retryIn = opts.retry ? RETRY_MINUTES[attempt - 1] : undefined;
     const message = scrubSecrets(error, redact);
-    await db.update(D).set({
+    const [mine] = await db.update(D).set({
       attemptLog: logged({ status: opts.status ?? null, error: message.slice(0, 500), response_body: opts.answer ?? opts.responseBody ?? null, request: opts.request?.slice(0, LOG_REQUEST) ?? null }),
       attempts: attempt, status: retryIn === undefined ? "failed" : "pending", nextAttemptAt: retryIn === undefined ? rt.now : new Date(rt.now.getTime() + retryIn * 60_000),
       lastError: message.slice(0, 1000), responseStatus: opts.status ?? null, responseMs: Date.now() - started,
       request: opts.request ?? null, requestBody: opts.requestBody ?? null, responseBody: opts.responseBody ?? null, sentAs: opts.sentAs ?? null,
-    }).where(eq(D.id, deliveryId));
+    }).where(and(eq(D.id, deliveryId), eq(D.status, "sending"))).returning({ id: D.id });
+    // A delivery this attempt no longer holds (requeued or deleted meanwhile) is not counted against the integration.
+    if (!mine) return;
     // consecutive_failures counts attempts (the dashboard's "Failing"); failed_deliveries_in_row counts deliveries that
     // ended failed, for the "integration failing" alert (services/alerts.ts).
     await db.update(I).set({

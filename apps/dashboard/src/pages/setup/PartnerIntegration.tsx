@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ADJUST_STEPS, INTEGRATION_EVENTS, STEP_LABELS, defaultEventName, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
 import { Shell } from "../../components/Shell";
@@ -246,7 +246,10 @@ export function PartnerIntegrationPage() {
   const types = useIntegrationTypes(pid);
   const list = useIntegrations(pid);
   const spec = types.data?.find((t) => t.type === type);
-  const current = list.data?.find((i) => i.type === type);
+  // ?id= (alert emails link to one integration) picks that one when the project has several of this type.
+  const [search] = useSearchParams();
+  const wanted = search.get("id");
+  const current = list.data?.find((i) => i.type === type && i.id === wanted) ?? list.data?.find((i) => i.type === type);
   const [testing, setTesting] = useState(false);
   const [testUser, setTestUser] = useState("");
   const [sending, setSending] = useState(false);

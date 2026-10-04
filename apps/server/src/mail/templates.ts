@@ -175,6 +175,8 @@ export interface AlertInfo {
   facts?: string[];
   /** Resolved because the subject was turned off, not because it works again. */
   turnedOff?: boolean;
+  /** Integrations: resolved because nothing failed for 7 days, not because a delivery succeeded. */
+  idle?: boolean;
 }
 
 const integrationLabel = (a: AlertInfo) => (a.partner && a.partner !== a.subjectName ? `${a.subjectName} (${a.partner})` : a.subjectName);
@@ -206,7 +208,9 @@ const ALERT_COPY: Record<AlertKind, { open: (a: AlertInfo) => { subject: string;
         "RevenueDot retries an event 5 times over about 2.5 hours when the partner times out or answers with a server error. Fix the settings, then use Replay failed in the delivery log to send the failed events again.",
       ],
     }),
-    resolved: (a) => a.turnedOff
+    resolved: (a) => a.idle
+      ? { subject: `Resolved: integration ${integrationLabel(a)}`, heading: `No failures for ${integrationLabel(a)} in 7 days`, body: [`No delivery to ${integrationLabel(a)} in ${a.projectName} has failed for 7 days, so this alert is closed. It opens again if deliveries keep failing.`] }
+      : a.turnedOff
       ? { subject: `Resolved: integration ${integrationLabel(a)}`, heading: `Integration ${integrationLabel(a)} is turned off`, body: [`${integrationLabel(a)} in ${a.projectName} was turned off, so this alert is closed. Failed deliveries wait until you turn it back on.`] }
       : { subject: `Resolved: integration ${integrationLabel(a)}`, heading: `Integration ${integrationLabel(a)} works again`, body: [`Events from ${a.projectName} reach ${integrationLabel(a)} again. Check the delivery log for events that failed earlier, and replay them.`] },
   },
