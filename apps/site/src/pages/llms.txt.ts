@@ -24,6 +24,7 @@ export const GET: APIRoute = () => {
     `- [Self-host](${u("/self-host")}): Docker and Postgres setup and a production checklist`,
     `- [The open-source RevenueCat alternative](${u("/revenuecat-alternative")}): keep the RevenueCat SDK, change one line, own your data`,
     `- [Best RevenueCat alternatives in 2026](${u("/revenuecat-alternatives")}): ${ALTERNATIVES.map((a) => a.name).join(", ")}, with sources`,
+    `- [Cheaper RevenueCat alternatives](${u("/cheaper-revenuecat-alternatives")}): RevenueCat, Adapty, Qonversion, Superwall, Apphud and RevenueDot priced at $10K, $100K and $1M a month, with sources`,
     `- [Changelog](${u("/changelog")}): what shipped`,
     `- [Security](${u("/security")}): report vulnerabilities to ${SITE.email.security}`,
     `- [Licensing and trademarks](${u("/legal/licensing")})`,
