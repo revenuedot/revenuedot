@@ -6,18 +6,20 @@ import { entitlementMap } from "../../repo/catalog.js";
 import { baseOrderId } from "../../stores/google/map.js";
 
 /**
- * The four tables a data export can write, read in pages of PAGE rows ordered by a stable key.
+ * The five tables a data export can write, read in pages of PAGE rows ordered by a stable key.
  * - transactions: one row per store transaction (purchase, trial, renewal, one-time purchase) with the column names of
  *   RevenueCat's transactions export, so existing warehouse queries keep working. Refunds lower `price_in_usd` to 0 and
  *   set `refunded_at` on the original row instead of adding a negative row.
  * - customers, subscriptions, events: RevenueDot's own tables.
+ * - paywall_events: the SDK's paywall events (`sdk_events` rows whose type starts with `paywall_`: impression, close,
+ *   cancel, purchase initiated, purchase error, exit offer, component interactions), incremental by when we received them.
  * Incremental windows: rows recorded, refunded or changed after `since` and up to `until`. A full export has no `since`.
  */
 
 export type ColumnType = "string" | "bool" | "int" | "float" | "timestamp" | "json";
 export type Value = string | number | boolean | Date | null;
 export type Row = Record<string, Value>;
-export const EXPORT_TABLES = ["transactions", "customers", "subscriptions", "events"] as const;
+export const EXPORT_TABLES = ["transactions", "customers", "subscriptions", "events", "paywall_events"] as const;
 export type ExportTable = (typeof EXPORT_TABLES)[number];
 
 export const COLUMNS: Record<ExportTable, [string, ColumnType][]> = {
@@ -51,7 +53,23 @@ export const COLUMNS: Record<ExportTable, [string, ColumnType][]> = {
     ["app_user_id", "string"], ["rc_original_app_user_id", "string"], ["product_id", "string"], ["store", "string"], ["price_in_usd", "float"],
     ["currency", "string"], ["price_in_purchased_currency", "float"], ["payload", "json"],
   ],
+  paywall_events: [
+    ["id", "string"], ["occurred_at", "timestamp"], ["received_at", "timestamp"], ["app_id", "string"], ["app_user_id", "string"], ["customer_id", "string"],
+    ["type", "string"], ["is_sandbox", "bool"], ["paywall_id", "string"], ["offering_id", "string"], ["session_id", "string"], ["paywall_revision", "int"],
+    ["locale", "string"], ["display_mode", "string"], ["package_id", "string"], ["product_id", "string"], ["payload", "json"],
+  ],
 };
+
+/**
+ * The columns a job writes for a table, in the catalog's order. `selected` is the job's choice for that table; none (or an
+ * empty list) means every column, so columns added to the catalog later are included too.
+ */
+export function columnsFor(table: ExportTable, selected?: string[] | null): [string, ColumnType][] {
+  const all = COLUMNS[table];
+  if (!selected?.length) return all;
+  const want = new Set(selected);
+  return all.filter(([n]) => want.has(n));
+}
 
 export const PAGE = 2000;
 
@@ -98,6 +116,7 @@ const maxDate = (...d: (Date | null | undefined)[]) => d.reduce<Date | null>((m,
 /** One page of rows and the cursor for the next page (null when done). */
 export async function readPage(db: DB, projectId: string, table: ExportTable, w: Window, cursor: Cursor | null): Promise<{ rows: Row[]; next: Cursor | null }> {
   if (table === "transactions") return transactionsPage(db, projectId, w, cursor);
+  if (table === "paywall_events") return paywallEventsPage(db, projectId, w, cursor);
   if (table === "subscriptions") {
     const page = await db.select({ s: S, k: exact(S.updatedAt) }).from(S).where(and(eq(S.projectId, projectId), envCond(S.isSandbox, w), inWindow(S.updatedAt, w), after(S.updatedAt, S.id, cursor)))
       .orderBy(asc(S.updatedAt), asc(S.id)).limit(PAGE);
@@ -244,4 +263,30 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
     };
   });
   return { rows: out, next: nextCursor(page, (r) => r.t.id) };
+}
+
+const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+
+async function paywallEventsPage(db: DB, projectId: string, w: Window, cursor: Cursor | null) {
+  const X = schema.sdkEvents;
+  const envX = w.environment === "both" ? undefined : eq(X.isSandbox, w.environment === "sandbox");
+  // The customer comes through the alias when the event arrived before the customer existed.
+  const page = await db.select({ x: X, k: exact(X.receivedAt), aliasCustomer: AL.customerId }).from(X)
+    .leftJoin(AL, and(eq(AL.projectId, X.projectId), eq(AL.appUserId, X.appUserId)))
+    .where(and(eq(X.projectId, projectId), sql`${X.type} like 'paywall\\_%'`, envX, inWindow(X.receivedAt, w), after(X.receivedAt, X.id, cursor)))
+    .orderBy(asc(X.receivedAt), asc(X.id)).limit(PAGE);
+  return {
+    rows: page.map(({ x, aliasCustomer }) => {
+      const p = x.payload as Record<string, unknown>;
+      const ctx = (p.presented_offering_context && typeof p.presented_offering_context === "object" ? p.presented_offering_context : {}) as Record<string, unknown>;
+      const rev = Number(p.paywall_revision);
+      return {
+        id: x.id, occurred_at: x.occurredAt, received_at: x.receivedAt, app_id: x.appId, app_user_id: x.appUserId, customer_id: x.customerId ?? aliasCustomer ?? null,
+        type: x.type, is_sandbox: x.isSandbox, paywall_id: str(p.paywall_id) ?? str(ctx.paywall_id), offering_id: str(p.offering_id) ?? str(ctx.offering_identifier),
+        session_id: str(p.session_id), paywall_revision: p.paywall_revision !== undefined && p.paywall_revision !== null && Number.isFinite(rev) ? Math.trunc(rev) : null,
+        locale: str(p.locale), display_mode: str(p.display_mode), package_id: str(p.package_id), product_id: str(p.product_id), payload: JSON.stringify(p),
+      };
+    }),
+    next: nextCursor(page, (r) => r.x.id),
+  };
 }

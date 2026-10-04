@@ -967,7 +967,9 @@ export const sdkEvents = pgTable("sdk_events", {
   receivedAt: ts("received_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.projectId, t.id] }), index("sdk_events_project_time").on(t.projectId, t.occurredAt), index("sdk_events_customer").on(t.customerId),
   // The Ads Overview reads one project's ad events by type and time (prd/ads/PRD.md).
-  index("sdk_events_project_type_time").on(t.projectId, t.type, t.occurredAt)]);
+  index("sdk_events_project_type_time").on(t.projectId, t.type, t.occurredAt),
+  // Incremental paywall event exports read by when events arrived (services/exports/tables.ts).
+  index("sdk_events_project_received").on(t.projectId, t.receivedAt)]);
 
 /** One row per customer per UTC day on which the SDK called us (the Active Customers chart). `day` is YYYY-MM-DD. */
 export const customerActivity = pgTable("customer_activity", {
@@ -1033,9 +1035,11 @@ export const integrationDeliveries = pgTable("integration_deliveries", {
 }, (t) => [index("integration_deliveries_attempt_log_age").on(t.createdAt).where(sql`${t.attemptLog} <> '[]'::jsonb`), index("integration_deliveries_due").on(t.status, t.nextAttemptAt), uniqueIndex("integration_deliveries_unique").on(t.integrationId, t.eventId), index("integration_deliveries_log").on(t.integrationId, t.createdAt)]);
 
 /**
- * Scheduled data exports: CSV or Parquet files of customers, subscriptions, transactions and events, written to S3, R2
- * (S3-compatible) or Google Cloud Storage on a daily or weekly schedule. `cursor` holds each table's high-water mark for
- * incremental runs. `secrets` is sealed like integration secrets.
+ * Scheduled data exports: CSV or Parquet files of transactions, customers, subscriptions, events and paywall events,
+ * written to S3, R2 (S3-compatible), Google Cloud Storage or Azure Blob Storage, or kept by RevenueDot and emailed as
+ * download links, every few hours, daily or weekly. `cursor` holds each table's high-water mark for incremental runs.
+ * `columns` is the chosen columns per table (a table missing from it gets every column, new ones included).
+ * `secrets` is sealed like integration secrets.
  */
 export const exportJobs = pgTable("export_jobs", {
   id: text("id").primaryKey(),
@@ -1051,8 +1055,11 @@ export const exportJobs = pgTable("export_jobs", {
   schedule: text("schedule").notNull().default("daily"),
   hourUtc: integer("hour_utc").notNull().default(3),
   weekday: integer("weekday"),
+  /** Schedule "interval": hours between runs (4, 6, 8 or 12), counted from hour_utc. */
+  intervalHours: integer("interval_hours"),
   mode: text("mode").notNull().default("incremental"),
   tables: jsonb("tables").$type<string[]>().notNull(),
+  columns: jsonb("columns").$type<Record<string, string[]>>().notNull().default({}),
   environment: text("environment").notNull().default("both"),
   cursor: jsonb("cursor").$type<Record<string, number>>().notNull().default({}),
   nextRunAt: ts("next_run_at"),
@@ -1086,6 +1093,9 @@ export const exportRuns = pgTable("export_runs", {
   error: text("error"),
   startedAt: ts("started_at"),
   finishedAt: ts("finished_at"),
+  /** Email destination: when the download links were sent, and when the kept files were deleted (7 days after the run). */
+  notifiedAt: ts("notified_at"),
+  filesDeletedAt: ts("files_deleted_at"),
   createdAt: created(),
 }, (t) => [index("export_runs_job").on(t.jobId, t.createdAt), index("export_runs_due").on(t.status, t.nextAttemptAt)]);
 

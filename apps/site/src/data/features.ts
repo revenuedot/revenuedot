@@ -1451,7 +1451,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
     title: "Integrations for subscription events: 36 partners plus webhooks and data exports",
     metaTitle: "36 Subscription Integrations and Data Exports",
     metaDescription:
-      "Send purchases, trials, renewals and refunds to Segment, Amplitude, Mixpanel, AppsFlyer, Meta, Braze and 30 more, or export CSV and Parquet to S3, R2 or GCS.",
+      "Send purchases, trials, renewals and refunds to Segment, Amplitude, Mixpanel, AppsFlyer, Meta, Braze and 30 more, or export CSV or Parquet to S3, R2, GCS, Azure or email.",
     answer:
       "RevenueDot connects to 36 partners, among them Segment, Amplitude, Mixpanel, PostHog, AppsFlyer, Adjust, Meta, Braze and BigQuery, and sends every purchase, trial, renewal and refund with RevenueCat's event names. Failed sends retry and are logged. Scheduled exports write CSV or Parquet files to Amazon S3, Cloudflare R2 or Google Cloud Storage.",
     points: [
