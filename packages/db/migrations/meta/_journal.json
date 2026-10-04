@@ -246,6 +246,13 @@
       "when": 1791085413529,
       "tag": "0037_data_exports_parity",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791086838362,
+      "tag": "0038_tax_amounts",
+      "breakpoints": true
     }
   ]
 }
