@@ -10,7 +10,7 @@ import { applyTheme, clearCachedPrefs, effectiveTheme } from "../lib/prefs";
 export interface Preferences { theme: "system" | "light" | "dark"; tint: string | null; week_start: number; display_currency: string }
 export interface Me {
   user: {
-    id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean; insights_emails?: boolean;
+    id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean; integration_alert_emails?: boolean; insights_emails?: boolean;
     /** Account settings (prd/account-settings/PRD.md). Optional: older servers do not send them. */
     preferences?: Preferences; has_password?: boolean;
     two_factor?: { enabled: boolean; enabled_at: number | null; recovery_codes_left: number };

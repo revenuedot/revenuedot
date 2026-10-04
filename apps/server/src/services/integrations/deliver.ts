@@ -140,7 +140,12 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
       lastError: message.slice(0, 1000), responseStatus: opts.status ?? null, responseMs: Date.now() - started,
       request: opts.request ?? null, requestBody: opts.requestBody ?? null, responseBody: opts.responseBody ?? null, sentAs: opts.sentAs ?? null,
     }).where(eq(D.id, deliveryId));
-    await db.update(I).set({ consecutiveFailures: sql`${I.consecutiveFailures} + 1`, lastError: message.slice(0, 500) }).where(eq(I.id, row.i.id));
+    // consecutive_failures counts attempts (the dashboard's "Failing"); failed_deliveries_in_row counts deliveries that
+    // ended failed, for the "integration failing" alert (services/alerts.ts).
+    await db.update(I).set({
+      consecutiveFailures: sql`${I.consecutiveFailures} + 1`, lastError: message.slice(0, 500),
+      ...(retryIn === undefined ? { failedDeliveriesInRow: sql`${I.failedDeliveriesInRow} + 1` } : {}),
+    }).where(eq(I.id, row.i.id));
   };
 
   try {
@@ -202,7 +207,7 @@ export async function attemptIntegration(db: DB, deliveryId: string, rt: Integra
       attempts: attempt, status: "delivered", nextAttemptAt: rt.now, lastError: null, responseStatus: last.status, responseMs: Date.now() - started,
       request: lines.join("\n"), requestBody: bodies.join("\n").slice(0, LOG_BODY), responseBody: answer.slice(0, LOG_RESPONSE), sentAs: plan.name,
     }).where(eq(D.id, deliveryId));
-    await db.update(I).set({ consecutiveFailures: 0, lastError: null, lastDeliveredAt: rt.now }).where(eq(I.id, row.i.id));
+    await db.update(I).set({ consecutiveFailures: 0, failedDeliveriesInRow: 0, lastError: null, lastDeliveredAt: rt.now }).where(eq(I.id, row.i.id));
   } catch (e) {
     // A builder or the database threw: record it against this delivery only and move on.
     console.error(`integration delivery ${deliveryId} failed`, e);
@@ -235,7 +240,8 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
         attempted++;
         // A delivery that keeps killing the tick never reaches fail(); stop after the normal number of attempts.
         if (claimed.attempts > RETRY_MINUTES.length + 1) {
-          await db.update(D).set({ status: "failed", nextAttemptAt: rt.now, lastError: "Gave up: the delivery stopped the sender on every attempt." }).where(eq(D.id, id));
+          const [gave] = await db.update(D).set({ status: "failed", nextAttemptAt: rt.now, lastError: "Gave up: the delivery stopped the sender on every attempt." }).where(eq(D.id, id)).returning({ integrationId: D.integrationId });
+          if (gave) await db.update(I).set({ failedDeliveriesInRow: sql`${I.failedDeliveriesInRow} + 1` }).where(eq(I.id, gave.integrationId));
           continue;
         }
         await attemptIntegration(db, id, rt, claimed.attempts);

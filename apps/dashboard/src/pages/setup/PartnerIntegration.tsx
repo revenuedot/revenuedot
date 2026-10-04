@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ADJUST_STEPS, INTEGRATION_EVENTS, STEP_LABELS, defaultEventName, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
 import { Shell } from "../../components/Shell";
@@ -174,6 +174,10 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
     refetchInterval: (s) => (s.state.data?.pages.some((p) => p.items.some((d) => d.status === "pending")) ? 2000 : 15_000),
   });
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
+  // Integration failure emails link to …/integrations/<type>#deliveries: scroll there once the log has loaded.
+  const { hash } = useLocation();
+  const loaded = !!q.data;
+  useEffect(() => { if (loaded && hash === "#deliveries") document.getElementById("deliveries")?.scrollIntoView({ block: "start" }); }, [loaded, hash]);
   // The Status line above (last delivered, failing) comes from the integration: reload it when the newest delivery changes.
   const newest = rows[0] ? `${rows[0].id}:${rows[0].status}` : "";
   useEffect(() => { if (newest) void qc.invalidateQueries({ queryKey: ["integrations", pid] }); }, [newest, pid, qc]);
@@ -191,7 +195,7 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
     } catch (e) { toast(errMsg(e)); } finally { setBusy(null); }
   };
   return (
-    <section className="panel">
+    <section className="panel" id="deliveries">
       <div className="ph wrap">
         <b>Deliveries</b>
         <span className="hrow">
