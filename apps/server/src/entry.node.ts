@@ -112,6 +112,8 @@ const app = createApp({ db, now: () => new Date(), stores, kick: () => kick(), s
   ai: paywallModelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
   // Hosted web pages (purchase links, funnels): REVENUEDOT_PAY_URL, else <this server>/pay; custom domains CNAME to the pay host.
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
+  cloudflareSaas: process.env.REVENUEDOT_CF_SAAS_ZONE_ID?.trim() && process.env.REVENUEDOT_CF_SAAS_API_TOKEN?.trim()
+    ? { zoneId: process.env.REVENUEDOT_CF_SAAS_ZONE_ID.trim(), apiToken: process.env.REVENUEDOT_CF_SAAS_API_TOKEN.trim() } : undefined,
   // RevenueDot AI (prd/ai-assistant/PRD.md): AI_GATEWAY_API_KEY (GPT-6 Luna through the gateway), ANTHROPIC_API_KEY (Claude Opus 5.5) or OPENAI_API_KEY (GPT-6 Astra), REVENUEDOT_ASSISTANT_MODEL to
   // pick another; hidden without either. Conversations and their streams live in Postgres; caps from REVENUEDOT_ASSISTANT_CAPS.
   assistant: assistantModelFromEnv(process.env), assistantRuntime: "sse", assistantCaps: capsFromEnv(process.env.REVENUEDOT_ASSISTANT_CAPS), extensions, stripeConnect,

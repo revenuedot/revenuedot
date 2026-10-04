@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0038_tax_amounts";
+export const ARCHIVE_SCHEMA = "0039_verified_domain";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -104,7 +104,9 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
   { name: "identity_links", scope: { project: "project_id" } },
   { name: "identity_sessions", scope: { project: "project_id" } },
   { name: "blocked_customers", scope: { project: "project_id" } },
-  { name: "verified_pages", scope: { project: "project_id" } },
+  // A custom domain arrives unproven: the new server checks its DNS again, and never inherits a certificate's hostname.
+  { name: "verified_pages", scope: { project: "project_id" }, local: ["domain_token", "domain_status", "domain_verified_at", "domain_checked_at", "domain_error", "domain_hostname_id", "domain_ssl_status"],
+    fill: { domain_token: "CASE WHEN r.custom_domain IS NULL THEN NULL ELSE replace(gen_random_uuid()::text, '-', '') END", domain_status: "CASE WHEN r.custom_domain IS NULL THEN 'none' ELSE 'pending' END" } },
   // Connect with Stripe (prd/web-billing/PRD.md §8): the sealed account id travels in apps.secrets, so its routing row comes
   // too. On a server with another Connect platform the app then says to connect again. A sign-in in progress stays here.
   { name: "stripe_connections", scope: { project: "project_id" }, local: ["pending_state_hash", "pending_nonce_hash", "pending_until", "pending_mode", "redirect_uri", "connected_by"] },

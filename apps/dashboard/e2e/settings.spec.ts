@@ -263,6 +263,34 @@ test("verified metrics: slug check, metric order and visibility, publish, the pu
   expect(html).not.toContain(pid);
   expect(html).not.toContain("qa_tester");
 
+  // Line charts: 12 monthly points per metric on the public page.
+  await page.getByLabel("Chart type").selectOption("line");
+  await expect(page.getByText(/last 12 months, one point per month/)).toBeVisible();
+  await page.getByRole("button", { name: "Publish changes" }).click();
+  await expect(page.getByText("Changes published.")).toBeVisible();
+  // A new query each time: the page is public for 5 minutes in the browser's cache.
+  await pub.goto(`/verified/${slug}?type=line`);
+  await expect(pub.locator("svg.line").first()).toBeVisible();
+  await expect(pub.getByText("No monthly history for this metric.")).toBeVisible();
+  // Only numbers.
+  await page.getByLabel("Chart type").selectOption("numbers_only");
+  await page.getByRole("button", { name: "Publish changes" }).click();
+  await expect(page.getByText("Changes published.")).toBeVisible();
+  await pub.goto(`/verified/${slug}?type=numbers`);
+  await expect(pub.locator(".cell svg")).toHaveCount(0);
+
+  // A custom domain: the two DNS records to add, pending until verified.
+  await page.getByLabel("Domain", { exact: true }).fill("metrics.settings-e2e.example");
+  await page.getByRole("button", { name: "Save domain" }).click();
+  await expect(page.getByText("Domain saved. Add the DNS records, then verify.")).toBeVisible();
+  const dns = page.getByRole("table", { name: "DNS records" });
+  await expect(dns.getByRole("row")).toHaveCount(3);
+  await expect(dns).toContainText("_revenuedot.metrics.settings-e2e.example");
+  await expect(page.getByText("Pending: add the records, then verify.")).toBeVisible();
+  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Custom domain removed.")).toBeVisible();
+  await expect(dns).toHaveCount(0);
+
   await page.getByRole("button", { name: "Unpublish", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Unpublish", exact: true }).click();
   await expect(page.getByText("Your page is offline.")).toBeVisible();

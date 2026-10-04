@@ -253,6 +253,13 @@
       "when": 1791086838362,
       "tag": "0038_tax_amounts",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791087389333,
+      "tag": "0039_verified_domain",
+      "breakpoints": true
     }
   ]
 }

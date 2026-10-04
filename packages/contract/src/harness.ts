@@ -22,6 +22,8 @@ export interface HarnessOptions {
   encryptionKey?: string; googleOAuth?: { clientId?: string; clientSecret?: string };
   /** The response-signing seed (also the root of Auth's token key) and the edition (Cloud uses the strict outbound guard). */
   signingKey?: string; edition?: "cloud" | "self-hosted";
+  /** Custom domains: the CNAME target and Cloudflare for SaaS (Verified Metrics certificates). */
+  customDomainTarget?: string; cloudflareSaas?: { zoneId: string; apiToken: string };
   /** A real Postgres (an empty database) instead of the in-memory one, for tests of concurrency. */
   databaseUrl?: string;
 }

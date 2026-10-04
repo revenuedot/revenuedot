@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "../../components/icons";
-import { ConfirmDialog, CopyButton, Field, Sparkline, Switch, useToast } from "../../components/ui";
+import { ConfirmDialog, CopyButton, Field, Sparkline, StatusLine, Switch, useToast } from "../../components/ui";
 import { api, fmt } from "../../lib/api";
 import { base, errMsg } from "../setup/data";
 import { uploadImage, useMedia } from "../paywalls/lib";
@@ -14,8 +14,19 @@ import "./settings.css";
  */
 
 type MetricId = "mrr" | "revenue" | "active_subscriptions" | "active_trials" | "new_customers" | "active_users";
+type ChartType = "number_sparkline" | "numbers_only" | "line";
+const CHART_TYPES: { id: ChartType; label: string; hint: string }[] = [
+  { id: "number_sparkline", label: "Number & sparklines", hint: "Each number with its last 28 days." },
+  { id: "numbers_only", label: "Only numbers", hint: "The numbers alone." },
+  { id: "line", label: "Line charts", hint: "A larger chart of the last 12 months, one point per month. Active customers has no monthly history." },
+];
+interface CustomDomain {
+  domain: string; status: "pending" | "verified" | "failed"; url: string | null; verified_at: number | null; checked_at: number | null; error: string | null;
+  dns: { type: string; name: string; value: string }[];
+  certificate: { managed: "automatic" | "manual" | "self_hosted"; status: string | null; note: string | null };
+}
 interface Settings {
-  object: "verified_metrics"; status: "never_published" | "published" | "inactive"; slug: string; display_name: string; chart_type: "number_sparkline";
+  object: "verified_metrics"; status: "never_published" | "published" | "inactive"; slug: string; display_name: string; chart_type: ChartType; custom_domain: CustomDomain | null;
   metrics: { id: MetricId; visible: boolean }[]; show_icon: boolean; icon_asset_id: string | null; show_store_links: boolean;
   app_store_url: string | null; play_store_url: string | null; url: string; published_at: number | null; updated_at: number | null;
 }
@@ -38,7 +49,15 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
   const [slugState, setSlugState] = useState<{ slug: string; available: boolean; reason: string | null } | null>(null);
   const media = useMedia(pid);
   const file = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (q.data) setD(draftOf(q.data)); }, [q.data]);
+  // A newer copy of the settings (another tab's save, the custom domain panel) replaces the draft only when it has no
+  // unsaved edits.
+  const savedDraft = useRef<string | null>(null);
+  useEffect(() => {
+    if (!q.data) return;
+    const next = draftOf(q.data);
+    setD((cur) => (!cur || savedDraft.current === null || JSON.stringify(cur) === savedDraft.current ? next : cur));
+    savedDraft.current = JSON.stringify(next);
+  }, [q.data]);
   // Live slug check, debounced.
   useEffect(() => {
     if (!d || !q.data || d.slug === q.data.slug) { setSlugState(null); return; }
@@ -60,6 +79,11 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
     queryFn: () => api<{ values: { value: number }[] | null }>(`/v2/projects/${pid}/metrics/history?metric=${id}&days=28&environment=production`),
   })) });
 
+  // The line type's preview: the same 12 monthly points the page draws.
+  const months = useQuery({
+    queryKey: ["verified-months", pid], enabled: !!pid && d?.chart_type === "line",
+    queryFn: () => api<{ metrics: Partial<Record<MetricId, { date: string; value: number }[] | null>> }>(`${base(pid)}/verified_metrics/monthly_history`).then((r) => r.metrics),
+  });
   if (q.isError) return <div className="banner err" role="alert">Verified Metrics could not be loaded: {errMsg(q.error)}</div>;
   if (!q.data || !d) return <div className="panel pb subtle">Loading…</div>;
   const s = q.data;
@@ -71,6 +95,7 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
     setBusy(kind); setError(null);
     try {
       const r = await api<Settings>(`${base(pid)}/verified_metrics${kind === "publish" ? "/actions/publish" : ""}`, { method: "POST", json: { ...d, app_store_url: d.app_store_url || null, play_store_url: d.play_store_url || null } });
+      savedDraft.current = null;
       qc.setQueryData(["verified", pid], r);
       toast(kind === "publish" ? (s.status === "published" ? "Changes published." : "Your page is live.") : "Saved.");
     } catch (e) {
@@ -98,7 +123,11 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
             <Field label="Display name" htmlFor="vm-name" error={error?.param === "display_name" ? error.message : null}>
               <input id="vm-name" className="input" maxLength={60} value={d.display_name} onChange={(e) => set({ display_name: e.target.value })} />
             </Field>
-            <Field label="Chart type" htmlFor="vm-chart"><select id="vm-chart" className="select" value={d.chart_type} onChange={() => {}}><option value="number_sparkline">Number & sparklines</option></select></Field>
+            <Field label="Chart type" htmlFor="vm-chart" hint={CHART_TYPES.find((t) => t.id === d.chart_type)?.hint}>
+              <select id="vm-chart" className="select" value={d.chart_type} onChange={(e) => set({ chart_type: e.target.value as ChartType })}>
+                {CHART_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </Field>
           </div>
         </section>
 
@@ -144,6 +173,8 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
           </div>
         </section>
 
+        <DomainPanel pid={pid} s={s} />
+
         {error && !["slug", "display_name", "app_store_url", "play_store_url"].includes(error.param ?? "") && <div className="banner err" role="alert">{error.message}</div>}
         <div className="hrow">
           <button type="button" className="btn btn-dark" disabled={!!busy || (!dirty && live)} onClick={() => send("publish")}>{busy === "publish" ? "Publishing…" : live ? "Publish changes" : "Publish"}</button>
@@ -168,7 +199,8 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
                   <div key={m.id}>
                     <div className="l">{LABEL[m.id][0]}</div>
                     <div className="v">{LABEL[m.id][1] === "$" ? fmt.usdRaw(v) : fmt.int(v)}</div>
-                    <Sparkline values={(histories[i]?.data?.values ?? []).map((p) => p.value)} />
+                    {d.chart_type === "number_sparkline" && <Sparkline values={(histories[i]?.data?.values ?? []).map((p) => p.value)} />}
+                    {d.chart_type === "line" && <Sparkline values={(months.data?.[m.id] ?? []).map((p) => p.value)} />}
                   </div>
                 );
               })}
@@ -184,5 +216,66 @@ export function VerifiedMetricsTab({ pid }: { pid: string }) {
         toast("Your page is offline.");
       }}>{s.url} stops answering at once. Links shared before show a "not found" page. You can publish again later with the same URL.</ConfirmDialog>}
     </div>
+  );
+}
+
+/** The page's custom domain: DNS records to add, Verify, and the certificate's state on Cloud. */
+function DomainPanel({ pid, s }: { pid: string; s: Settings }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const cd = s.custom_domain;
+  const [value, setValue] = useState(cd?.domain ?? "");
+  const [busy, setBusy] = useState<"save" | "remove" | "verify" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setValue(cd?.domain ?? ""); }, [cd?.domain]);
+  const run = async (kind: "save" | "remove" | "verify") => {
+    setBusy(kind); setErr(null);
+    try {
+      const r = kind === "verify"
+        ? await api<Settings>(`${base(pid)}/verified_metrics/domain/actions/verify`, { method: "POST" })
+        : await api<Settings>(`${base(pid)}/verified_metrics/domain`, { method: "PUT", json: { custom_domain: kind === "remove" ? null : value.trim().toLowerCase() } });
+      qc.setQueryData<Settings>(["verified", pid], (old) => (old ? { ...old, custom_domain: r.custom_domain, updated_at: r.updated_at } : r));
+      toast(kind === "remove" ? "Custom domain removed." : kind === "save" ? "Domain saved. Add the DNS records, then verify." : r.custom_domain?.status === "verified" ? "Domain verified." : "The DNS records are not there yet.");
+    } catch (e) { setErr(errMsg(e)); }
+    setBusy(null);
+  };
+  const tone = cd?.status === "verified" ? "ok" : cd?.status === "failed" ? "bad" : "idle";
+  const cert = cd?.certificate;
+  return (
+    <section className="panel" aria-labelledby="vm-domain-h">
+      <div className="ph"><b id="vm-domain-h">Custom domain</b>{cd && <span className="subtle">{cd.status === "verified" ? "Verified" : cd.status === "failed" ? "Not verified" : "Pending"}</span>}</div>
+      <div className="pb stack">
+        <form className="stack" onSubmit={(e) => { e.preventDefault(); if (value.trim() && value.trim().toLowerCase() !== cd?.domain) void run("save"); }}>
+          <Field label="Domain" htmlFor="vm-domain" error={err} hint="A subdomain you own, such as metrics.yourapp.com. Your page then also answers at its root.">
+            <div className="hrow"><input id="vm-domain" className="input mono" spellCheck={false} autoCapitalize="off" placeholder="metrics.yourapp.com" value={value} aria-invalid={!!err} onChange={(e) => setValue(e.target.value)} />
+              <button type="submit" className="btn btn-dark" disabled={!!busy || !value.trim() || value.trim().toLowerCase() === cd?.domain}>{busy === "save" ? "Saving…" : "Save domain"}</button>
+              {cd && <button type="button" className="btn btn-line" disabled={!!busy} onClick={() => run("remove")}>Remove</button>}</div>
+          </Field>
+        </form>
+        {cd && <>
+          <p className="section-sub">Add these two records at your DNS provider, then press Verify. DNS changes can take a few minutes to show.</p>
+          <div className="tbl">
+            <table aria-label="DNS records">
+              <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
+              <tbody>{cd.dns.map((r) => (
+                <tr key={r.type}><td className="mono">{r.type}</td>
+                  <td className="id"><span className="hrow">{r.name}<CopyButton value={r.name} label={`Copy ${r.type} name`} /></span></td>
+                  <td className="id"><span className="hrow"><span className="vm-dns-v" title={r.value}>{r.value}</span><CopyButton value={r.value} label={`Copy ${r.type} value`} /></span></td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <div className="hrow between">
+            <StatusLine tone={tone}>
+              {cd.status === "verified" ? <>Verified {fmt.ago(cd.verified_at)}. {s.status === "published" ? <>The page answers on <b>{cd.domain}</b>.</> : "Publish the page to serve it there."}</>
+                : cd.status === "failed" ? <>Not verified{cd.checked_at ? ` (checked ${fmt.ago(cd.checked_at)})` : ""}: {cd.error ?? "the records were not found."}</>
+                : "Pending: add the records, then verify."}
+            </StatusLine>
+            <button type="button" className="btn btn-line" disabled={!!busy} onClick={() => run("verify")}>{busy === "verify" ? "Checking…" : cd.status === "verified" ? "Check again" : "Verify"}</button>
+          </div>
+          {cd.status === "verified" && cert?.managed === "automatic" && <StatusLine tone={cert.status === "active" ? "ok" : "idle"}>{cert.status === "active" ? "TLS certificate active." : `TLS certificate ${cert.status ?? "pending"}. It is issued a few minutes after the CNAME resolves; press Check again to refresh.`}</StatusLine>}
+          {cert?.note && <div className="banner warn" role="note">{cert.note}</div>}
+        </>}
+      </div>
+    </section>
   );
 }

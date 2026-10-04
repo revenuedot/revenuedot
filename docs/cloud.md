@@ -179,6 +179,12 @@ steps below are done, Cloud serves them at `https://api.revenuedot.app/pay/<proj
      CNAME resolves. Automating this needs an API token with "SSL and Certificates: Edit" on the zone, which is an
      account change; until then it is done by hand.
    - Self-hosted servers need none of this: the custom domain points at the server, which answers the verified host.
+3. **Verified Metrics custom domains** use the same fallback origin and custom hostnames. With the Worker secrets
+   `REVENUEDOT_CF_SAAS_ZONE_ID` (the `revenuedot.app` zone id) and `REVENUEDOT_CF_SAAS_API_TOKEN` (a token with
+   "SSL and Certificates: Edit" on that zone, Cloudflare for SaaS enabled), Verify on the Verified Metrics tab adds and
+   checks the custom hostname itself. Until both are set (the current API token gets "Authentication error" on custom
+   hostnames), add the hostname by hand as in step 2 for each domain the dashboard shows as verified; the dashboard tells
+   the developer the certificate is added by hand.
 
 ## Cloud billing on RevenueDot's own Stripe account (live since 2026-10-03)
 
