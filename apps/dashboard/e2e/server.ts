@@ -11,6 +11,7 @@
  * Web billing (web.spec.ts): Stripe calls with FAKE_STRIPE_KEY go to an in-memory Stripe account whose Checkout Sessions
  * open GET /__stripe/checkout/<id>, a fake "Stripe Checkout" page whose Pay button completes the session and redirects
  * (303) to its success_url. Custom domain checks read DNS from POST /__dns instead of Cloudflare's resolver.
+ * AppsFlyer and Meta (integrations.spec.ts) answer from a fake at their real hosts; GET /__partners?host=<host> lists the requests.
  * Stripe Connect (stripe-connect.spec.ts, payment-recovery.spec.ts): the server runs with a fake Connect platform
  * (`connectPlatform`, FAKE_CONNECT_*). Specs route Stripe's authorize page to GET /__stripe/connect/authorize (Connect or
  * Cancel), onboarding links open /__stripe/connect/onboarding/<account>, portal sessions /__stripe/portal/<id> (Update payment
@@ -57,9 +58,16 @@ const extensions = await loadExtensions(process.env);
 // A credential a spec saves (a made-up Google service account) then fails like an outage instead of calling Google.
 // Custom domain verification asks Cloudflare's DNS-over-HTTPS resolver; here it answers from records set with POST /__dns.
 const dns: Record<string, { CNAME?: string[]; TXT?: string[] }> = {};
+// Attribution partners whose API host is fixed (AppsFlyer, Meta): answered here and recorded for GET /__partners.
+const PARTNER_HOSTS = new Set(["api2.appsflyer.com", "api3.appsflyer.com", "events.appsflyer.com", "webs2s.appsflyer.com", "graph.facebook.com"]);
+const partnerHits: { method: string; url: string; headers: Record<string, string>; body: string }[] = [];
 const localFetch: typeof fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
   if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return fetch(input, init);
+  if (PARTNER_HOSTS.has(url.hostname)) {
+    partnerHits.push({ method: (init?.method ?? "GET").toUpperCase(), url: url.href, headers: Object.fromEntries(new Headers(init?.headers).entries()), body: typeof init?.body === "string" ? init.body : "" });
+    return new Response(url.hostname === "graph.facebook.com" ? '{"success":true}' : '{"status":"ok"}', { status: 200, headers: { "content-type": "application/json" } });
+  }
   if (url.hostname === "connect.stripe.com") return fakeStoreFetch(url.href, init);
   // Store import (store-import.spec.ts): App Store Connect and Google Play answer from fakes for the e2e credentials only.
   const store = await storeCatalogFetch(url.href, init ?? {});
@@ -138,6 +146,7 @@ let ready = false;
 const web = new Hono();
 // Playwright waits for this: 503 while seeding, 200 once the data is in.
 web.get("/__ready", (c) => (ready ? c.text("ready") : c.text("seeding", 503)));
+web.get("/__partners", (c) => { const host = c.req.query("host"); return c.json(partnerHits.filter((h) => !host || new URL(h.url).hostname === host)); });
 web.get("/__mail", (c) => { const to = c.req.query("to"); return c.json(mail.sent.filter((m) => !to || m.to === to)); });
 web.post("/__connect", async (c) => {
   const b = await c.req.json() as { available: boolean };

@@ -238,7 +238,7 @@ describe("INITIAL_PURCHASE, exact requests", () => {
     expect(s.requests[0]!.headers.authentication).toBe("af_dev_key");
     expect(s.requests[0]!.json).toEqual({
       appsflyer_id: "1700000000000-1234567", customer_user_id: "user_42", eventName: "rc_initial_purchase_event",
-      eventValue: '{"af_revenue":"10.79","af_price":10.79,"renewal":"false","af_content_id":"pro_monthly","af_currency":"USD"}',
+      eventValue: '{"af_revenue":"10.79","af_price":10.79,"renewal":"false","af_content_id":"pro_monthly","af_currency":"USD","af_order_id":"2000000111"}',
       eventCurrency: "USD", eventTime: "2026-09-21 14:13:20.000", af_events_api: "true", idfa: "AEBE52E7-03EE-455A-B3C4-E57283966239",
       idfv: "7B4E1C2A-19F2-4E0B-9C0F-2D4A7B1E9A11", ip: "203.0.113.7", bundleIdentifier: "com.example.scanner",
     });
@@ -287,7 +287,7 @@ describe("RENEWAL, CANCELLATION, refunds and EXPIRATION", () => {
     expect(await amp(refund)).toMatchObject({ revenue: -10.79, revenueType: "refund", user_properties: { $set: { rc_subscription_status: "expired" } } });
     expect((await amp(expiration)).event_properties).toMatchObject({ expiration_reason: "UNSUBSCRIBE", revenue: 0 });
     const af = JSON.parse((await sent("appsflyer", refund)).requests[0]!.json.eventValue);
-    expect(af).toEqual({ af_revenue: "-10.79", af_price: 10.79, renewal: "false", af_content_id: "pro_monthly", af_currency: "USD" });
+    expect(af).toEqual({ af_revenue: "-10.79", af_price: 10.79, renewal: "false", af_content_id: "pro_monthly", af_currency: "USD", af_order_id: "2000000111" });
     expect(JSON.parse((await sent("appsflyer", renewal)).requests[0]!.json.eventValue).renewal).toBe("true");
     const adj = new URLSearchParams((await sent("adjust", trial)).requests[0]!.body);
     expect([adj.get("event_token"), adj.get("revenue"), adj.get("currency")]).toEqual(["ev_ts", null, null]);
