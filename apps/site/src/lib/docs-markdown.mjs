@@ -22,10 +22,22 @@ function relOf(ctx) {
   return rel.startsWith("..") ? null : rel;
 }
 
+/**
+ * Text with zero-width break points inside long code-like words (Product.PurchaseError.invalidOfferSignature), so a long
+ * title wraps between the parts of the name and not in the middle of a word on a phone. Short words are left alone.
+ */
+export function breakableText(value) {
+  return value.split(/(\S{16,})/).flatMap((part, i) => {
+    if (i % 2 === 0) return part ? [text(part)] : [];
+    const pieces = part.split(/(?<=[._])|(?<=[a-z0-9])(?=[A-Z])/).filter(Boolean);
+    return pieces.flatMap((piece, n) => (n ? [el("wbr", {}), text(piece)] : [text(piece)]));
+  });
+}
+
 const docsPlugin = {
   name: "revenuedot-docs",
   element: {
-    filter: ["a", "img", "table", "pre", "h2", "h3", "h4"],
+    filter: ["a", "img", "table", "pre", "h1", "h2", "h3", "h4"],
     visit(node, ctx) {
       const rel = relOf(ctx);
       if (!rel) return;
@@ -53,6 +65,7 @@ const docsPlugin = {
         ctx.setProperty(node, "decoding", "async");
         return;
       }
+      if (tag === "h1") return { ...node, children: node.children.flatMap((c) => (c.type === "text" ? breakableText(c.value) : [c])) };
       if (tag === "table") return el("div", { className: ["table-wrap"], tabIndex: 0, role: "region", ariaLabel: "Table" }, [node]);
       if (tag === "pre") {
         const lang = String(node.properties?.dataLanguage ?? "text");
