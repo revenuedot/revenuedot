@@ -53,7 +53,7 @@ const journey: Journey = {
     c.check("the server's credential check of the App Store key ran (its call to Apple was blocked)", checked && ctx.server.outbound().some((o) => o.host === "api.storekit.itunes.apple.com" && o.routed === "blocked"), ctx.server.outbound().filter((o) => o.host.endsWith("apple.com")));
     const store = ctx.server.outbound().filter((o) => /(^|\.)apple\.com$|googleapis\.com$/.test(o.host) && !/^oauth2\./.test(o.host));
     c.check("every outbound call to an Apple or Google Play host was blocked by the journey (none reached the internet)", store.every((o) => o.routed === "blocked"), store.filter((o) => o.routed !== "blocked"));
-    c.check("no Send Consumption Information call was attempted (it needs an Apple-signed notification)", !ctx.server.outbound().some((o) => o.path.includes("/inApps/v1/transactions/consumption/")), store.map((o) => o.path));
+    c.check("no Send Consumption Information call was attempted (it needs an Apple-signed notification)", !ctx.server.outbound().some((o) => /\/inApps\/v[12]\/transactions\/consumption\//.test(o.path)), store.map((o) => o.path));
   },
 };
 export default journey;

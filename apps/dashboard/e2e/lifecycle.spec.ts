@@ -30,7 +30,7 @@ async function signIn(page: Page) {
 }
 const toast = (page: Page, text: string | RegExp) => expect(page.getByRole("status").filter({ hasText: text })).toBeVisible();
 
-test("refund control: cards, add a recent-renewal policy, preference, drag and keyboard order, consent, save, cancel", async ({ page }) => {
+test("refund control: cards, add a recent-renewal policy, preference, prorated default, drag and keyboard order, consent, save, cancel", async ({ page }) => {
   await signIn(page);
   await page.goto(`/projects/${pid}/lifecycle/refund-control`);
   await expect(page.getByRole("heading", { name: "Refund Control" })).toBeVisible();
@@ -71,6 +71,11 @@ test("refund control: cards, add a recent-renewal policy, preference, drag and k
   await expect(page.getByLabel("Policy 1 name")).toHaveValue("Renewed in the last day");
   await expect(page.getByLabel("Policy 2 name")).toHaveValue("Recent renewal");
 
+  // The default policy can prefer a prorated refund (Apple's Send Consumption Information V2, GRANT_PRORATED).
+  const defaultPref = page.getByLabel("Default refund preference");
+  await expect(defaultPref.locator("option")).toHaveText(["Prefer full refund", "Prefer prorated refund", "Prefer no refund", "Send consumption data only", "Do not respond to refund requests"]);
+  await defaultPref.selectOption({ label: "Prefer prorated refund" });
+
   // Consent, then Save.
   const consent = page.getByRole("checkbox", { name: /Customers agreed to share consumption data with Apple/ });
   await expect(consent).not.toBeChecked();
@@ -81,13 +86,14 @@ test("refund control: cards, add a recent-renewal policy, preference, drag and k
   const saved = await json(page, "GET", `${P}/refund_control`);
   expect(saved.policies.map((p: any) => p.name)).toEqual(["Renewed in the last day", "Recent renewal", "Spent over $40"]);
   expect(saved.policies[1]).toMatchObject({ template: "recent_renewal", preference: "prefer_refund", rules: { groups: [{ conditions: [{ field: "lastRenewalAt", operator: "within", value: "24h" }] }] } });
-  expect(saved.settings.customer_consented).toBe(true);
+  expect(saved.settings).toEqual({ customer_consented: true, default_preference: "prefer_prorated_refund" });
 
   // Reload: persisted. Cancel throws edits away.
   await page.reload();
   await expect(page.getByLabel("Policy 2 name")).toHaveValue("Recent renewal");
   await expect(page.getByLabel("Refund preference for Recent renewal")).toHaveValue("prefer_refund");
   await expect(consent).toBeChecked();
+  await expect(defaultPref).toHaveValue("prefer_prorated_refund");
   await page.getByLabel("Policy 1 name").fill("Changed name");
   await page.getByRole("button", { name: "Delete Spent over $40" }).click();
   await expect(unsaved).toBeVisible();

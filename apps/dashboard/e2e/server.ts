@@ -546,7 +546,7 @@ async function seedLifecycle() {
       id: `rfr_e2e${String(i).padStart(9, "0")}`, projectId, appId: ios.id, customerId: customerIds[user] ?? null, appUserId: user, store: "app_store", isSandbox: false,
       transactionId: `3000000${i}${Math.floor(daysAgo * 1000)}`, originalTransactionId: `3000000${i}`, productId: product, amountUsd: amount, reason,
       requestedAt, deadlineAt: new Date(requestedAt.getTime() + 12 * 3600_000), policyId, policyName: policy?.name ?? "Default policy", preference,
-      consumptionStatus: status, consumption: status === "sent" ? { consumptionStatus: 2, customerConsented: true, deliveryStatus: 0, platform: 1, refundPreference: preference === "prefer_refund" ? 1 : preference === "prefer_no_refund" ? 2 : 0 } : null,
+      consumptionStatus: status, consumption: status === "sent" ? { customerConsented: true, deliveryStatus: "DELIVERED", ...(preference === "prefer_refund" ? { refundPreference: "GRANT_FULL" } : preference === "prefer_no_refund" ? { refundPreference: "DECLINE" } : {}), sampleContentProvided: false } : null,
       attempts: status === "sent" ? 1 : 0, sentAt: status === "sent" ? new Date(requestedAt.getTime() + 60_000) : null,
       lastError: status === "skipped" ? "Customers have not consented to sharing consumption data." : null,
       nextAttemptAt: status === "pending" ? new Date(Date.now() + 86400_000) : null,

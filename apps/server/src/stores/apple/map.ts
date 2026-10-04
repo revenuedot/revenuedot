@@ -25,6 +25,8 @@ export interface AppleTransaction {
   price?: number;
   currency?: string;
   signedDate?: number;
+  /** Present only for Advanced Commerce API SKUs; picks Send Consumption Information V1 (services/refunds.ts). */
+  advancedCommerceInfo?: unknown;
 }
 
 /** JWSRenewalInfoDecodedPayload (the fields we use). */

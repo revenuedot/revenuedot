@@ -14,12 +14,13 @@ import { emptyContext, rulesMatch, type CustomerContext, type Rules } from "./ta
 
 /**
  * Refund Control (prd/lifecycle/PRD.md): policies decide how RevenueDot answers Apple's CONSUMPTION_REQUEST, with the
- * App Store Server API's Send Consumption Information V1 and the app's In-App Purchase key, inside Apple's 12-hour window.
+ * App Store Server API's Send Consumption Information (V2; V1 for Advanced Commerce API transactions) and the app's
+ * In-App Purchase key, inside Apple's 12-hour window.
  * Every refund we learn of (Apple REFUND or REFUND_DECLINED, Google voided purchases, Stripe and Amazon refunds) is a row in
  * `refund_requests`, which feeds the Refund Control cards.
  */
 
-export const PREFERENCES = ["prefer_refund", "prefer_no_refund", "consumption_only", "do_not_respond"] as const;
+export const PREFERENCES = ["prefer_refund", "prefer_prorated_refund", "prefer_no_refund", "consumption_only", "do_not_respond"] as const;
 export type Preference = (typeof PREFERENCES)[number];
 export const TEMPLATES = ["first_purchase_date", "platform", "recent_renewal", "custom"] as const;
 
@@ -121,9 +122,83 @@ export function buildConsumptionRequest(i: ConsumptionInput): ConsumptionRequest
     lifetimeDollarsRefunded: c ? dollarsBucket(c.lifetimeRefundedUsd) : 0,
     platform,
     playTime: c && c.attributes.rd_play_time_minutes != null && Number.isFinite(minutes) && minutes >= 0 ? playTimeBucket(minutes) : 0,
-    refundPreference: i.preference === "prefer_refund" ? 1 : i.preference === "prefer_no_refund" ? 2 : 0,
+    // V1 has no prorated refund: a prorated preference is sent as "prefer to grant".
+    refundPreference: i.preference === "prefer_refund" || i.preference === "prefer_prorated_refund" ? 1 : i.preference === "prefer_no_refund" ? 2 : 0,
     sampleContentProvided: !!c?.hadFreeTrial,
     userStatus: status && USER_STATUS[status] ? USER_STATUS[status]! : c ? 1 : 0,
+  };
+}
+
+// ---------- Apple's ConsumptionRequest (Send Consumption Information, V2) ----------
+
+/** https://developer.apple.com/documentation/appstoreserverapi/consumptionrequest */
+export interface ConsumptionRequestV2 {
+  customerConsented: boolean;
+  /** Milliunits, 0 to 100000. Never sent for auto-renewable subscriptions (Apple works it out from elapsed time). */
+  consumptionPercentage?: number;
+  deliveryStatus: "DELIVERED" | "UNDELIVERED_QUALITY_ISSUE" | "UNDELIVERED_WRONG_ITEM" | "UNDELIVERED_SERVER_OUTAGE" | "UNDELIVERED_OTHER";
+  refundPreference?: "DECLINE" | "GRANT_FULL" | "GRANT_PRORATED";
+  sampleContentProvided: boolean;
+}
+export type ConsumptionVersion = "v1" | "v2";
+
+/**
+ * Apple's notification does not say which version to answer with. Apple's rule (App Store Server API 1.19, 2025-12-10):
+ * V1 is only for Advanced Commerce API transactions, whose signed transaction carries `advancedCommerceInfo`; every
+ * other In-App Purchase uses V2, which refuses Advanced Commerce transactions (AdvancedCommerceTransactionNotSupportedError).
+ */
+export function consumptionVersionFor(tx: { advancedCommerceInfo?: unknown }): ConsumptionVersion {
+  return tx.advancedCommerceInfo != null ? "v1" : "v2";
+}
+/** The version of a stored payload: only V1 bodies carry `accountTenure` (a required V1 field V2 does not have). */
+export function consumptionVersionOf(body: Record<string, unknown> | null | undefined): ConsumptionVersion | null {
+  return body ? ("accountTenure" in body ? "v1" : "v2") : null;
+}
+
+const FULL = 100_000;
+/**
+ * How much of the purchase the customer used, in milliunits, or null when our records cannot say (the field is then left out).
+ * Auto-renewable subscriptions: always null, Apple computes it. Non-renewing subscriptions: time elapsed in the period.
+ * Consumables that grant an in-app currency: the share of the grant spent. Non-consumables: 0 when the customer never
+ * came back after the purchase, otherwise unknown. Other consumables: unknown.
+ */
+export function consumptionPercentage(i: ConsumptionInput): number | null {
+  const clamp = (x: number) => Math.min(FULL, Math.max(0, Math.round(x * FULL)));
+  switch (i.productType) {
+    case "subscription": return null;
+    case "non_renewing_subscription":
+      return i.expiresAt !== null && i.expiresAt > i.purchasedAt ? clamp((i.now - i.purchasedAt) / (i.expiresAt - i.purchasedAt)) : null;
+    case "consumable": {
+      const cur = i.customer?.currency;
+      return cur && cur.granted > 0 ? clamp(Math.min(cur.granted, Math.max(0, cur.granted - cur.balance)) / cur.granted) : null;
+    }
+    case "non_consumable":
+      return i.customer && i.customer.lastSeenAt <= i.purchasedAt + 60_000 ? 0 : null;
+  }
+}
+
+/**
+ * The V2 body. `deliveryStatus` is DELIVERED (RevenueDot records no failed deliveries), `sampleContentProvided` is a free
+ * trial of the product. A prorated preference follows Apple's rules: auto-renewable subscriptions send GRANT_PRORATED
+ * without a percentage; other products need a percentage above 0 and below 100000, so 0 % used becomes GRANT_FULL,
+ * 100 % used becomes DECLINE (nothing left to refund), and an unknown percentage sends no preference (consumption data only).
+ */
+export function buildConsumptionRequestV2(i: ConsumptionInput): ConsumptionRequestV2 {
+  const pct = consumptionPercentage(i);
+  let refundPreference: ConsumptionRequestV2["refundPreference"];
+  if (i.preference === "prefer_refund") refundPreference = "GRANT_FULL";
+  else if (i.preference === "prefer_no_refund") refundPreference = "DECLINE";
+  else if (i.preference === "prefer_prorated_refund") {
+    if (i.productType === "subscription") refundPreference = "GRANT_PRORATED";
+    else if (pct === null) refundPreference = undefined;
+    else refundPreference = pct === 0 ? "GRANT_FULL" : pct === FULL ? "DECLINE" : "GRANT_PRORATED";
+  }
+  return {
+    customerConsented: i.customerConsented,
+    ...(pct !== null ? { consumptionPercentage: pct } : {}),
+    deliveryStatus: "DELIVERED",
+    ...(refundPreference ? { refundPreference } : {}),
+    sampleContentProvided: !!i.customer?.hadFreeTrial,
   };
 }
 
@@ -219,10 +294,11 @@ export async function handleConsumptionRequest(deps: RefundDeps, app: AppRecord,
   else if (tx.environment !== "Production" && tx.environment !== "Sandbox") { consumptionStatus = "skipped"; lastError = `Apple's ${tx.environment} environment has no App Store Server API.`; }
   else {
     const facts = data ? await customerFacts(db, app.projectId, app.id, data, tx.productId, sandbox) : null;
-    consumption = buildConsumptionRequest({
+    const input: ConsumptionInput = {
       now: now.getTime(), customerConsented: true, preference: decision.preference, appAccountToken: tx.appAccountToken ?? null,
       productType: PRODUCT_TYPE[tx.type] ?? "subscription", purchasedAt: tx.purchaseDate, expiresAt: tx.expiresDate ?? null, customer: facts,
-    }) as unknown as Record<string, unknown>;
+    };
+    consumption = (consumptionVersionFor(tx) === "v1" ? buildConsumptionRequest(input) : buildConsumptionRequestV2(input)) as unknown as Record<string, unknown>;
   }
   const values = {
     projectId: app.projectId, appId: app.id, customerId: customer?.id ?? null,
@@ -268,7 +344,9 @@ export async function sendConsumption(deps: RefundDeps, row: typeof schema.refun
   if (!api) return update({ consumptionStatus: "failed", attempts, nextAttemptAt: null, lastError: "The app has no App Store In-App Purchase key, so RevenueDot cannot call the App Store Server API." });
   const env: AppleEnv = row.isSandbox ? "sandbox" : "production";
   try {
-    const res = await api.sendConsumptionInformation(env, row.transactionId, row.consumption);
+    const res = consumptionVersionOf(row.consumption) === "v1"
+      ? await api.sendConsumptionInformationV1(env, row.transactionId, row.consumption)
+      : await api.sendConsumptionInformation(env, row.transactionId, row.consumption);
     if (res === null) return update({ consumptionStatus: "failed", attempts, nextAttemptAt: null, lastError: "Apple does not know this transaction (404)." });
     return update({ consumptionStatus: "sent", attempts, sentAt: now, nextAttemptAt: null, lastError: null });
   } catch (e) {

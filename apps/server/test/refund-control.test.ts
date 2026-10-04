@@ -4,13 +4,13 @@ import { schema } from "@revenuedot/db";
 import { createSecretKey } from "../src/services/auth.js";
 import { applyPurchases } from "../src/services/purchases.js";
 import { getOrCreateCustomer } from "../src/repo/customers.js";
-import { buildConsumptionRequest, choosePolicy, dollarsBucket, playTimeBucket, retryDueConsumption, tenureBucket, type ConsumptionInput, type PolicyRow } from "../src/services/refunds.js";
+import { buildConsumptionRequest, buildConsumptionRequestV2, choosePolicy, consumptionPercentage, consumptionVersionFor, consumptionVersionOf, dollarsBucket, playTimeBucket, retryDueConsumption, tenureBucket, type ConsumptionInput, type PolicyRow } from "../src/services/refunds.js";
 import { emptyContext } from "../src/services/targeting.js";
 import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
 import type { VerifiedPurchase } from "../src/stores/types.js";
 import { APP_ID, DAY, T0, appleHarness, makeP8, makePki, notificationBody, renewalInfo, signJws, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
 
-/** Refund Control (prd/lifecycle/PRD.md): policies, Apple's Send Consumption Information V1, the 12-hour window, outcomes, cards. */
+/** Refund Control (prd/lifecycle/PRD.md): policies, Apple's Send Consumption Information (V2, and V1 for Advanced Commerce), the 12-hour window, outcomes, cards. */
 
 let pki: Pki;
 let h: AppleHarness | undefined;
@@ -35,8 +35,9 @@ describe("the ConsumptionRequestV1 payload", () => {
     });
   });
 
-  it("maps preferences: full refund 1, no refund 2, consumption data only 0 (undeclared)", () => {
+  it("maps preferences: full refund 1, no refund 2, consumption data only 0 (undeclared); V1 has no prorated refund, so prorated is 1", () => {
     expect(buildConsumptionRequest({ ...base, preference: "prefer_refund" }).refundPreference).toBe(1);
+    expect(buildConsumptionRequest({ ...base, preference: "prefer_prorated_refund" }).refundPreference).toBe(1);
     expect(buildConsumptionRequest({ ...base, preference: "prefer_no_refund" }).refundPreference).toBe(2);
     expect(buildConsumptionRequest({ ...base, preference: "consumption_only" }).refundPreference).toBe(0);
   });
@@ -69,6 +70,55 @@ describe("the ConsumptionRequestV1 payload", () => {
   });
 });
 
+describe("the ConsumptionRequest (V2) payload", () => {
+  const base: ConsumptionInput = {
+    now: T0, customerConsented: true, preference: "prefer_no_refund", appAccountToken: TOKEN, productType: "subscription",
+    purchasedAt: T0 - 10 * DAY, expiresAt: T0 + 20 * DAY,
+    customer: { firstSeenAt: T0 - 40 * DAY, lastSeenAt: T0 - 2 * DAY, platform: "iOS", lifetimePurchasedUsd: 59.94, lifetimeRefundedUsd: 0, hadFreeTrial: true, attributes: {} },
+  };
+
+  it("an auto-renewable subscription sends the five fields Apple documents, with string enums and no consumption percentage", () => {
+    expect(buildConsumptionRequestV2(base)).toEqual({ customerConsented: true, deliveryStatus: "DELIVERED", refundPreference: "DECLINE", sampleContentProvided: true });
+    expect(Object.keys(buildConsumptionRequestV2(base))).toEqual(["customerConsented", "deliveryStatus", "refundPreference", "sampleContentProvided"]);
+    expect(buildConsumptionRequestV2({ ...base, preference: "prefer_refund" }).refundPreference).toBe("GRANT_FULL");
+    expect(buildConsumptionRequestV2({ ...base, preference: "consumption_only" })).not.toHaveProperty("refundPreference");
+    // Apple computes the prorated share of an auto-renewable subscription from elapsed time.
+    expect(buildConsumptionRequestV2({ ...base, preference: "prefer_prorated_refund" })).toEqual({ customerConsented: true, deliveryStatus: "DELIVERED", refundPreference: "GRANT_PRORATED", sampleContentProvided: true });
+    expect(buildConsumptionRequestV2({ ...base, customer: null })).toEqual({ customerConsented: true, deliveryStatus: "DELIVERED", refundPreference: "DECLINE", sampleContentProvided: false });
+  });
+
+  it("consumption percentage in milliunits: time used of a non-renewing period, currency spent of a consumable, unused non-consumables", () => {
+    const nonRenewing = { ...base, productType: "non_renewing_subscription" as const, purchasedAt: T0 - 10 * DAY, expiresAt: T0 + 20 * DAY };
+    expect(consumptionPercentage(nonRenewing)).toBe(33333);
+    expect(consumptionPercentage({ ...nonRenewing, now: T0 + 30 * DAY })).toBe(100000);
+    expect(consumptionPercentage({ ...nonRenewing, expiresAt: null })).toBeNull();
+    const coins = (balance: number, granted = 100) => consumptionPercentage({ ...base, productType: "consumable", customer: { ...base.customer!, currency: { granted, balance } } });
+    expect([coins(100), coins(40), coins(0), coins(250), coins(-5)]).toEqual([0, 60000, 100000, 0, 100000]);
+    expect(consumptionPercentage({ ...base, productType: "consumable" })).toBeNull();
+    expect(consumptionPercentage({ ...base, productType: "non_consumable", customer: { ...base.customer!, lastSeenAt: base.purchasedAt } })).toBe(0);
+    expect(consumptionPercentage({ ...base, productType: "non_consumable" })).toBeNull();
+    expect(consumptionPercentage({ ...base, productType: "non_consumable", customer: null })).toBeNull();
+    expect(consumptionPercentage(base)).toBeNull();
+    expect(buildConsumptionRequestV2({ ...nonRenewing, preference: "consumption_only" })).toEqual({ customerConsented: true, consumptionPercentage: 33333, deliveryStatus: "DELIVERED", sampleContentProvided: true });
+  });
+
+  it("a prorated preference needs a percentage strictly between 0 and 100000 outside auto-renewable subscriptions", () => {
+    const coins = (balance: number | null) => buildConsumptionRequestV2({ ...base, preference: "prefer_prorated_refund", productType: "consumable", customer: { ...base.customer!, hadFreeTrial: false, currency: balance === null ? null : { granted: 100, balance } } });
+    expect(coins(40)).toEqual({ customerConsented: true, consumptionPercentage: 60000, deliveryStatus: "DELIVERED", refundPreference: "GRANT_PRORATED", sampleContentProvided: false });
+    expect(coins(100)).toMatchObject({ consumptionPercentage: 0, refundPreference: "GRANT_FULL" });
+    expect(coins(0)).toMatchObject({ consumptionPercentage: 100000, refundPreference: "DECLINE" });
+    expect(coins(null)).toEqual({ customerConsented: true, deliveryStatus: "DELIVERED", sampleContentProvided: false });
+  });
+
+  it("picks the version: V1 only for Advanced Commerce API transactions; a stored payload tells its version by shape", () => {
+    expect(consumptionVersionFor({})).toBe("v2");
+    expect(consumptionVersionFor({ advancedCommerceInfo: { requestReferenceId: "r1" } })).toBe("v1");
+    expect(consumptionVersionOf(buildConsumptionRequest(base) as unknown as Record<string, unknown>)).toBe("v1");
+    expect(consumptionVersionOf(buildConsumptionRequestV2(base) as unknown as Record<string, unknown>)).toBe("v2");
+    expect(consumptionVersionOf(null)).toBeNull();
+  });
+});
+
 describe("policy evaluation", () => {
   const ctx = { ...emptyContext(), platform: "ios", country: "US", lastRenewalAt: T0 - HOUR, firstPurchaseAt: T0 - 100 * DAY };
   const policy = (id: string, position: number, field: string, operator: string, value: string, preference: string): PolicyRow =>
@@ -89,13 +139,13 @@ function fakeApple() {
   let status = 202;
   const fetch = async (url: string, init?: RequestInit) => {
     calls.push({ method: init?.method ?? "GET", url, auth: new Headers(init?.headers).get("authorization"), body: init?.body ? JSON.parse(String(init.body)) : null });
-    if (url.includes("/inApps/v1/transactions/consumption/")) return new Response(status === 202 ? null : JSON.stringify({ errorCode: 0 }), { status });
+    if (/\/inApps\/v[12]\/transactions\/consumption\//.test(url)) return new Response(status === 202 ? null : JSON.stringify({ errorCode: 0 }), { status });
     return new Response(JSON.stringify({ errorCode: 4040010 }), { status: 404 });
   };
   return { fetch, calls, setStatus: (s: number) => { status = s; } };
 }
 
-const purchase = () => transaction({ transactionId: "2000000101", originalTransactionId: "2000000101", purchaseDate: T0 - 10 * DAY, originalPurchaseDate: T0 - 10 * DAY, expiresDate: T0 + 20 * DAY, appAccountToken: TOKEN });
+const purchase = (over: Record<string, unknown> = {}) => transaction({ transactionId: "2000000101", originalTransactionId: "2000000101", purchaseDate: T0 - 10 * DAY, originalPurchaseDate: T0 - 10 * DAY, expiresDate: T0 + 20 * DAY, appAccountToken: TOKEN, ...over });
 
 async function setup(o: { consent?: boolean; policies?: unknown[]; defaultPreference?: string } = {}) {
   const apple = fakeApple();
@@ -113,8 +163,8 @@ async function setup(o: { consent?: boolean; policies?: unknown[]; defaultPrefer
 }
 
 /** notificationBody's `over` replaces `data`, so the signed transaction goes back in here. */
-async function consumptionNotification(signedDate = T0 + 2 * DAY) {
-  const tx = await signJws(purchase(), pki);
+async function consumptionNotification(signedDate = T0 + 2 * DAY, over: Record<string, unknown> = {}) {
+  const tx = await signJws(purchase(over), pki);
   return notificationBody(pki, "CONSUMPTION_REQUEST", undefined, null, null, {
     signedDate, data: { bundleId: "com.example.scanner", environment: "Production", appAppleId: 1234567890, consumptionRequestReason: "UNSATISFIED_WITH_PURCHASE", signedTransactionInfo: tx },
   });
@@ -123,7 +173,7 @@ async function consumptionNotification(signedDate = T0 + 2 * DAY) {
 const requests = async () => h!.db.select().from(schema.refundRequests);
 
 describe("CONSUMPTION_REQUEST", () => {
-  it("evaluates the policies and sends Apple the consumption information once, with the In-App Purchase key", async () => {
+  it("evaluates the policies and sends Apple the consumption information (V2) once, with the In-App Purchase key", async () => {
     const { apple, key } = await setup({ policies: [
       { name: "Recent renewals", template: "recent_renewal", rules: { groups: [{ conditions: [{ field: "lastRenewalAt", operator: "within", value: "24h" }] }] }, preference: "prefer_refund" },
       { name: "iPhone customers", template: "platform", rules: { groups: [{ conditions: [{ field: "platform", operator: "isAnyOf", value: "ios,ipados" }] }] }, preference: "prefer_no_refund" },
@@ -133,12 +183,9 @@ describe("CONSUMPTION_REQUEST", () => {
     expect(res.status).toBe(200);
     const puts = apple.calls.filter((c) => c.method === "PUT");
     expect(puts).toHaveLength(1);
-    expect(puts[0]!.url).toBe("https://api.storekit.itunes.apple.com/inApps/v1/transactions/consumption/2000000101");
+    expect(puts[0]!.url).toBe("https://api.storekit.apple.com/inApps/v2/transactions/consumption/2000000101");
     expect(puts[0]!.auth).toMatch(/^Bearer ey/);
-    expect(puts[0]!.body).toEqual({
-      accountTenure: 3, appAccountToken: TOKEN, consumptionStatus: 2, customerConsented: true, deliveryStatus: 0,
-      lifetimeDollarsPurchased: 2, lifetimeDollarsRefunded: 1, platform: 1, playTime: 0, refundPreference: 2, sampleContentProvided: false, userStatus: 1,
-    });
+    expect(puts[0]!.body).toEqual({ customerConsented: true, deliveryStatus: "DELIVERED", refundPreference: "DECLINE", sampleContentProvided: false });
     const [row] = await requests();
     expect(row).toMatchObject({
       store: "app_store", transactionId: "2000000101", productId: "pro_monthly", appUserId: "refund_asker", amountUsd: 9.99, reason: "UNSATISFIED_WITH_PURCHASE",
@@ -151,7 +198,48 @@ describe("CONSUMPTION_REQUEST", () => {
     expect(apple.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
 
     const list = await (await h!.request("/v2/projects/proj1/refund_requests", { headers: { Authorization: `Bearer ${key}` } })).json() as any;
-    expect(list.items[0]).toMatchObject({ object: "refund_request", app_user_id: "refund_asker", consumption_status: "sent", policy_name: "iPhone customers", outcome: "pending" });
+    expect(list.items[0]).toMatchObject({ object: "refund_request", app_user_id: "refund_asker", consumption_status: "sent", consumption_version: "v2", policy_name: "iPhone customers", outcome: "pending" });
+  });
+
+  it("an Advanced Commerce API transaction is answered with Send Consumption Information V1 (all 12 fields)", async () => {
+    const { apple, key } = await setup({ defaultPreference: "prefer_prorated_refund" });
+    h!.setNow(T0 + 2 * DAY + 5000);
+    expect((await h!.notify(await consumptionNotification(T0 + 2 * DAY, { advancedCommerceInfo: { requestReferenceId: "8f2b", period: "P1M" } }))).status).toBe(200);
+    const puts = apple.calls.filter((c) => c.method === "PUT");
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.url).toBe("https://api.storekit.itunes.apple.com/inApps/v1/transactions/consumption/2000000101");
+    expect(puts[0]!.body).toEqual({
+      accountTenure: 3, appAccountToken: TOKEN, consumptionStatus: 2, customerConsented: true, deliveryStatus: 0,
+      lifetimeDollarsPurchased: 2, lifetimeDollarsRefunded: 1, platform: 1, playTime: 0, refundPreference: 1, sampleContentProvided: false, userStatus: 1,
+    });
+    const list = await (await h!.request("/v2/projects/proj1/refund_requests", { headers: { Authorization: `Bearer ${key}` } })).json() as any;
+    expect(list.items[0]).toMatchObject({ consumption_status: "sent", consumption_version: "v1", preference: "prefer_prorated_refund" });
+  });
+
+  it("a prorated preference sends GRANT_PRORATED for an auto-renewable subscription, and V2 keeps its version through tick retries", async () => {
+    const { apple } = await setup({ defaultPreference: "prefer_prorated_refund" });
+    apple.setStatus(500);
+    h!.setNow(T0 + 2 * DAY);
+    await h!.notify(await consumptionNotification());
+    expect((await requests())[0]).toMatchObject({ consumptionStatus: "pending", attempts: 1, consumption: { customerConsented: true, deliveryStatus: "DELIVERED", refundPreference: "GRANT_PRORATED", sampleContentProvided: false } });
+    apple.setStatus(202);
+    h!.setNow(T0 + 2 * DAY + 6 * 60_000);
+    expect(await retryDueConsumption({ db: h!.db, stores: {}, now: h!.now, fetch: apple.fetch as unknown as typeof fetch })).toBe(1);
+    const puts = apple.calls.filter((c) => c.method === "PUT");
+    expect(puts.map((c) => c.url)).toEqual(Array(2).fill("https://api.storekit.apple.com/inApps/v2/transactions/consumption/2000000101"));
+    expect(puts[1]!.body).toEqual({ customerConsented: true, deliveryStatus: "DELIVERED", refundPreference: "GRANT_PRORATED", sampleContentProvided: false });
+    expect((await requests())[0]).toMatchObject({ consumptionStatus: "sent", attempts: 2 });
+  });
+
+  it("Apple refusing the V2 request (400 with an error code) fails it without retrying", async () => {
+    const { apple } = await setup();
+    apple.setStatus(400);
+    h!.setNow(T0 + 2 * DAY);
+    await h!.notify(await consumptionNotification());
+    expect((await requests())[0]).toMatchObject({ consumptionStatus: "failed", attempts: 1, nextAttemptAt: null });
+    h!.setNow(T0 + 2 * DAY + HOUR);
+    expect(await retryDueConsumption({ db: h!.db, stores: {}, now: h!.now, fetch: apple.fetch as unknown as typeof fetch })).toBe(0);
+    expect(apple.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
   });
 
   it("sends nothing without the customer-consent confirmation, or when the policy says not to respond", async () => {

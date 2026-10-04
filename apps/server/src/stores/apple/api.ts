@@ -9,7 +9,7 @@ const HOSTS: Record<AppleEnv, string> = {
   production: "https://api.storekit.itunes.apple.com",
   sandbox: "https://api.storekit-sandbox.itunes.apple.com",
 };
-/** The Retention Messaging API's documented hosts. */
+/** The hosts Apple documents for the Retention Messaging API and Send Consumption Information (V2). */
 const MESSAGING_HOSTS: Record<AppleEnv, string> = {
   production: "https://api.storekit.apple.com",
   sandbox: "https://api.storekit-sandbox.apple.com",
@@ -125,9 +125,17 @@ export class AppStoreServerApi {
     }
   }
 
-  /** Send Consumption Information V1 (answer to CONSUMPTION_REQUEST): 202 Accepted, no body. */
-  sendConsumptionInformation(env: AppleEnv, transactionId: string, body: Record<string, unknown>) {
+  /** Send Consumption Information V1 (answer to CONSUMPTION_REQUEST for Advanced Commerce API transactions): 202 Accepted, no body. */
+  sendConsumptionInformationV1(env: AppleEnv, transactionId: string, body: Record<string, unknown>) {
     return this.send<Record<string, never>>(env, "PUT", `/inApps/v1/transactions/consumption/${encodeURIComponent(transactionId)}`, body);
+  }
+
+  /**
+   * Send Consumption Information (V2, every other In-App Purchase): 202 Accepted, no body. Apple documents it on
+   * api.storekit.apple.com: https://developer.apple.com/documentation/appstoreserverapi/send-consumption-information
+   */
+  sendConsumptionInformation(env: AppleEnv, transactionId: string, body: Record<string, unknown>) {
+    return this.call<Record<string, never>>(`${MESSAGING_HOSTS[env]}/inApps/v2/transactions/consumption/${encodeURIComponent(transactionId)}`, "PUT", body);
   }
 
   /** Retention Messaging API (pre-release, needs Apple's approval): Upload Message, Configure Default Message, Configure Realtime URL. */
