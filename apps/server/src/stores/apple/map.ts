@@ -27,6 +27,11 @@ export interface AppleTransaction {
   signedDate?: number;
   /** Present only for Advanced Commerce API SKUs; picks Send Consumption Information V1 (services/refunds.ts). */
   advancedCommerceInfo?: unknown;
+  /**
+   * How this period is billed (App Store Server API 1.21, iOS 26.4): `MONTHLY` for a monthly plan with a 12-month commitment,
+   * `BILLED_UPFRONT` otherwise (https://developer.apple.com/documentation/appstoreserverapi/billingplantype). See `billingPlanOf`.
+   */
+  billingPlanType?: "MONTHLY" | "BILLED_UPFRONT" | string;
 }
 
 /** JWSRenewalInfoDecodedPayload (the fields we use). */
@@ -46,6 +51,8 @@ export interface AppleRenewalInfo {
   signedDate?: number;
   /** Win-back offers the customer may redeem now, best first (App Store Server API 1.12+, iOS 18 offers). */
   eligibleWinBackOfferIds?: string[];
+  /** The billing plan of the next period (App Store Server API 1.21). Entitlements follow the transaction's `billingPlanType`. */
+  renewalBillingPlanType?: "MONTHLY" | "BILLED_UPFRONT" | string;
 }
 
 export const AUTO_RENEWABLE = "Auto-Renewable Subscription";
@@ -66,6 +73,15 @@ export function offerOf(tx: Pick<AppleTransaction, "offerType" | "offerIdentifie
   const type: OfferType | null = tx.offerType === 1 ? (tx.offerDiscountType === "FREE_TRIAL" || tx.price === 0 ? "free_trial" : "introductory")
     : tx.offerType === 2 ? "promotional" : tx.offerType === 3 ? "offer_code" : tx.offerType === 4 ? "win_back" : null;
   return { offerType: type, offerId: type ? tx.offerIdentifier ?? null : null };
+}
+
+/**
+ * The product plan identifier of an App Store transaction: `monthly` for Apple's `MONTHLY` billing plan, the value the iOS SDK
+ * reports as `productPlanIdentifier` and files offline entitlements under (`product:monthly`). Up-front billing, a missing field
+ * (before iOS 26.4) and values Apple may add later give none, as iOS does (`BillingPlanType.swift`). prd/offline-entitlements/PRD.md.
+ */
+export function billingPlanOf(tx: Pick<AppleTransaction, "billingPlanType">): string | null {
+  return tx.billingPlanType === "MONTHLY" ? "monthly" : null;
 }
 
 export interface MapOptions {
@@ -108,8 +124,8 @@ export function fromTransaction(tx: AppleTransaction, o: MapOptions): VerifiedPu
   const failedAt = expiresDate && expiresDate < o.detectedAt ? expiresDate : o.detectedAt;
   const billingIssuesDetectedAt = billingIssue ? o.previous?.billingIssuesDetectedAt ?? failedAt : null;
   const sub: VerifiedSubscription = {
-    kind: "subscription", store: o.store, storeKey: tx.originalTransactionId, productIdentifier: tx.productId, isSandbox,
-    purchaseDate, originalPurchaseDate: new Date(tx.originalPurchaseDate), expiresDate, periodType: periodTypeOf(tx),
+    kind: "subscription", store: o.store, storeKey: tx.originalTransactionId, productIdentifier: tx.productId,
+    productPlanIdentifier: billingPlanOf(tx), isSandbox, purchaseDate, originalPurchaseDate: new Date(tx.originalPurchaseDate), expiresDate, periodType: periodTypeOf(tx),
     ownershipType: tx.inAppOwnershipType === "FAMILY_SHARED" ? "FAMILY_SHARED" : "PURCHASED",
     unsubscribeDetectedAt: unsubscribed ? o.previous?.unsubscribeDetectedAt ?? billingIssuesDetectedAt ?? o.detectedAt : null,
     billingIssuesDetectedAt,

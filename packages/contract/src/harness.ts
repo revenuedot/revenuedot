@@ -26,6 +26,8 @@ export interface HarnessOptions {
   customDomainTarget?: string; cloudflareSaas?: { zoneId: string; apiToken: string };
   /** A real Postgres (an empty database) instead of the in-memory one, for tests of concurrency. */
   databaseUrl?: string;
+  /** Store adapters instead of `defaultStores()`, e.g. an App Store adapter with a stubbed App Store Server API. */
+  stores?: Record<string, import("@revenuedot/server").StoreAdapter>;
 }
 
 /** Boots the server on an empty Postgres (in-memory PGlite, or real Postgres with REVENUEDOT_TEST_PG_URL) with one project, an App Store app, a Play app and a Test Store app. */

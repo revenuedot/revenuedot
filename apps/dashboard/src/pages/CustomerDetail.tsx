@@ -384,7 +384,8 @@ export function CustomerDetail() {
   const entName = (k: string) => ents.find((e) => e.lookup_key === k)?.display_name ?? k;
   const products = d.products.data?.items ?? [];
   const productById = (pidv: string | null) => products.find((p) => p.id === pidv);
-  const productName = (storeId: string) => products.find((p) => p.store_identifier === storeId)?.display_name ?? storeId;
+  // `product:plan` (a Play base plan, an App Store billing plan) before the bare product, the way purchases match the catalog.
+  const productName = (storeId: string) => (products.find((p) => p.store_identifier === storeId) ?? products.find((p) => p.store_identifier === storeId.split(":")[0]))?.display_name ?? storeId;
   const offerings = d.offerings.data?.items ?? [];
   const currentOffering = offerings.find((o) => o.is_current);
 
@@ -464,7 +465,7 @@ export function CustomerDetail() {
                           <div style={{ minWidth: 0 }}>
                             <b>{e.display_name}</b> <span className="mono subtle" style={{ fontSize: 12 }}>{e.lookup_key}</span>
                             <span className="dt">
-                              {e.source === "promotional" ? "Granted" : <>From {productName(e.product_identifier ?? "")}</>}
+                              {e.source === "promotional" ? "Granted" : <>From {productName(e.product_plan_identifier ? `${e.product_identifier}:${e.product_plan_identifier}` : e.product_identifier ?? "")}</>}
                               {" · "}{e.expires_at ? <>{e.expires_at > Date.now() + 50 * 365 * DAY ? "never expires" : <>expires <span title={fmt.dateTime(e.expires_at)}>{fmt.date(e.expires_at)}</span> ({relative(e.expires_at)})</>}</> : "never expires"}
                               {grant && e.source !== "promotional" && <> · also granted until {fmt.date(grant.expires_at)}</>}
                             </span>
@@ -494,7 +495,7 @@ export function CustomerDetail() {
                         const kind = ex && ex.period_type !== "normal" && ex.period_type !== "trial" && !isPromo ? PERIOD_TYPE[ex.period_type] ?? ex.period_type : null;
                         return (
                           <tr key={x.id}>
-                            <td className="subs-prod"><span title={ex ? `${ex.product_identifier} · ${x.store_subscription_identifier}` : x.store_subscription_identifier}>{name}</span> <Env env={x.environment} /><span className="l2">{storeLabel(x.store)}</span></td>
+                            <td className="subs-prod"><span title={ex ? `${ex.product_identifier}${ex.product_plan_identifier ? `:${ex.product_plan_identifier}` : ""} · ${x.store_subscription_identifier}` : x.store_subscription_identifier}>{name}</span> <Env env={x.environment} /><span className="l2">{storeLabel(x.store)}{ex?.product_plan_identifier ? ` · ${ex.product_plan_identifier}` : ""}</span></td>
                             <td className="nw"><Tag tone={st.tone}>{st.label}</Tag>{kind && <span className="l2">{kind}</span>}</td>
                             <td className="nw subtle hide-sm" title={fmt.dateTime(x.starts_at)}>{shortDate(x.starts_at)}</td>
                             <td className="nw subtle" title={x.ends_at ? fmt.dateTime(x.ends_at) : undefined}>{x.ends_at ? shortDate(x.ends_at) : "—"}{x.gives_access && <span className="l2">{RENEWAL[x.auto_renewal_status] ?? x.auto_renewal_status}</span>}</td>

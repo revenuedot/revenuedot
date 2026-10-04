@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { newId, webhookStore, type Store } from "@revenuedot/core";
+import { newId, productKeysFor, webhookStore, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { CustomerRow } from "../repo/customers.js";
 import { recordRawEvent } from "./events.js";
@@ -24,7 +24,7 @@ export async function grantForPurchase(db: DB, opts: {
   // Blocked customers, and sandbox purchases outside the project's sandbox testing access, credit nothing (prd/project-settings).
   const access = await accessOf(db, opts.customer);
   if (access.blocked || (opts.sandbox && access.sandbox === false)) return {};
-  const ids = [opts.productIdentifier, ...(opts.productPlanIdentifier ? [`${opts.productIdentifier}:${opts.productPlanIdentifier}`] : [])];
+  const ids = productKeysFor(opts);
   const products = await db.select({ id: schema.products.id, name: schema.products.displayName }).from(schema.products)
     .where(and(eq(schema.products.projectId, opts.projectId), inArray(schema.products.storeIdentifier, ids), ...(opts.appId ? [eq(schema.products.appId, opts.appId)] : [])));
   const productIds = new Set(products.map((p) => p.id));

@@ -1,5 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
-import { computeEntitlements, isActive } from "@revenuedot/core";
+import { computeEntitlements, isActive, productKeysFor } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../repo/catalog.js";
 import { aliasesOf, loadState, type CustomerRow } from "../repo/customers.js";
@@ -20,11 +20,16 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
     db.select().from(schema.nonSubscriptions).where(eq(schema.nonSubscriptions.customerId, cust.id)),
     db.select().from(schema.transactions).where(eq(schema.transactions.customerId, cust.id)),
   ]);
-  const productIds = [...new Set([...subs.map((s) => s.productIdentifier), ...ones.map((p) => p.productIdentifier)])];
+  const productIds = [...new Set([...subs.flatMap((s) => productKeysFor(s)), ...ones.map((p) => p.productIdentifier)])];
   const products = productIds.length ? await db.select().from(schema.products).where(inArray(schema.products.storeIdentifier, productIds)) : [];
-  const product = (storeId: string, appId: string | null) => {
-    const own = products.filter((p) => p.projectId === cust.projectId && p.storeIdentifier === storeId);
-    return own.find((p) => p.appId === appId) ?? own[0] ?? null;
+  // The catalog product a purchase matches: `product:plan` (a Play base plan, an App Store billing plan) before the bare id.
+  const product = (keys: string[], appId: string | null) => {
+    for (const k of keys) {
+      const own = products.filter((p) => p.projectId === cust.projectId && p.storeIdentifier === k);
+      const hit = own.find((p) => p.appId === appId) ?? own[0];
+      if (hit) return hit;
+    }
+    return null;
   };
   const [override] = cust.offeringOverrideId
     ? await db.select().from(schema.offerings).where(eq(schema.offerings.id, cust.offeringOverrideId)).limit(1) : [];
@@ -64,6 +69,7 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
       return [{
         entitlement_id: row.id, lookup_key: row.lookupKey, display_name: row.displayName, expires_at: e.expiresDate ? e.expiresDate.getTime() : null,
         source: promo ? "promotional" as const : "purchase" as const, product_identifier: promo ? null : e.productIdentifier,
+        product_plan_identifier: promo ? null : e.productPlanIdentifier ?? null,
       }];
     }),
     granted_entitlements: subs.filter((s) => s.store === "promotional" && (s.expiresDate === null || s.expiresDate > now) && s.entitlementIdentifier).flatMap((s) => {
@@ -71,15 +77,16 @@ export async function customerSummary(db: DB, cust: CustomerRow, requestedId: st
       return row ? [{ entitlement_id: row.id, lookup_key: row.lookupKey, display_name: row.displayName, granted_at: s.purchaseDate.getTime(), expires_at: s.expiresDate ? s.expiresDate.getTime() : null }] : [];
     }),
     subscriptions: subs.map((s) => {
-      const p = s.store === "promotional" ? null : product(s.productIdentifier, s.appId);
+      const p = s.store === "promotional" ? null : product(productKeysFor(s), s.appId);
       return {
-        id: s.id, product_identifier: s.productIdentifier, product_display_name: p?.displayName ?? null, duration: p?.duration ?? null,
+        id: s.id, product_identifier: s.productIdentifier, product_plan_identifier: s.productPlanIdentifier ?? null,
+        product_display_name: p?.displayName ?? null, duration: p?.duration ?? null,
         period_type: s.periodType, price: s.priceAmount !== null && s.priceCurrency ? { amount: s.priceAmount, currency: s.priceCurrency } : null,
         price_in_usd: s.priceUsd, will_renew_product_identifier: s.autoRenewProductId,
       };
     }),
     purchases: ones.map((o) => {
-      const p = product(o.productIdentifier, o.appId);
+      const p = product([o.productIdentifier], o.appId);
       return {
         id: o.id, product_identifier: o.productIdentifier, product_display_name: p?.displayName ?? null, is_consumable: o.isConsumable,
         price: o.priceAmount !== null && o.priceCurrency ? { amount: o.priceAmount, currency: o.priceCurrency } : null,

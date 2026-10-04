@@ -6,13 +6,13 @@ import { schema } from "@revenuedot/db";
 import { entitlementMap } from "@revenuedot/server/repo/catalog.js";
 import { harness, type Harness } from "../src/harness.js";
 import { ProductEntitlementMappingSchema } from "../src/sdk-schemas.js";
+import { androidLookup, iosLookup, type Mapping } from "../src/offline-sdk.js";
 
 /**
  * `GET /v1/product_entitlement_mapping` (prd/offline-entitlements/PRD.md): built from the SDK fixtures' catalogs, and run
  * through both SDKs' offline algorithms (re-implemented from purchases-ios Sources/OfflineEntitlements and purchases-android
  * common/offlineentitlements) to compare with the entitlements the server grants online.
  */
-type Mapping = Record<string, { product_identifier: string; base_plan_id?: string; entitlements: string[] }>;
 const fx = (p: string) => JSON.parse(readFileSync(new URL(`../fixtures/${p}`, import.meta.url), "utf8")).product_entitlement_mapping as Mapping;
 
 let h: Harness;
@@ -40,25 +40,12 @@ async function catalog(app: { id: string; type: string; key: string }, products:
   }
 }
 
-/** iOS: every entry re-keyed by product_identifier plus the billing-plan component ("monthly" kept, "upFront" and none dropped). */
-const iosLookup = (m: Mapping, productId: string, billingPlan?: string) => {
-  const byCompound = new Map<string, string[]>();
-  for (const e of Object.values(m)) {
-    const plan = e.base_plan_id && e.base_plan_id !== "upFront" ? e.base_plan_id : null;
-    byCompound.set(plan ? `${e.product_identifier}:${plan}` : e.product_identifier, e.entitlements);
-  }
-  const plan = billingPlan && billingPlan !== "upFront" ? billingPlan : null;
-  return [...(byCompound.get(plan ? `${productId}:${plan}` : productId) ?? [])].sort();
-};
-/** Android: Play purchases carry only the subscription id, looked up by dictionary key. */
-const androidLookup = (m: Mapping, productId: string) => [...(m[productId]?.entitlements ?? [])].sort();
-
 /** The entitlements the server grants online for one active purchase of a product (plan included). */
-async function online(productId: string, plan: string | null, oneTime = false): Promise<string[]> {
+async function online(productId: string, plan: string | null, oneTime = false, store: "app_store" | "play_store" = "app_store"): Promise<string[]> {
   const now = h.now();
   const state: CustomerState = {
     originalAppUserId: "u", firstSeen: now, lastSeen: now, originalApplicationVersion: null, originalPurchaseDate: now, attributes: {},
-    subscriptions: oneTime ? [] : [{ productIdentifier: productId, productPlanIdentifier: plan, store: "app_store", isSandbox: false, purchaseDate: now, originalPurchaseDate: now, expiresDate: new Date(now.getTime() + 86_400_000), periodType: "normal" }],
+    subscriptions: oneTime ? [] : [{ productIdentifier: productId, productPlanIdentifier: plan, store, isSandbox: false, purchaseDate: now, originalPurchaseDate: now, expiresDate: new Date(now.getTime() + 86_400_000), periodType: "normal" }],
     nonSubscriptions: oneTime ? [{ id: "n1", productIdentifier: productId, store: "app_store", isSandbox: false, purchaseDate: now, storeTransactionId: "t1", isConsumable: false }] : [],
   };
   return computeEntitlements(state, await entitlementMap(h.db, "proj1")).filter((e) => isActive(e, now)).map((e) => e.identifier).sort();
@@ -90,6 +77,7 @@ describe("offline entitlements match what the server grants online", () => {
     await catalog({ id: "mix_ios", type: "app_store", key: "appl_mix" }, [
       ["basic_monthly", "subscription", ["basic"]], ["pro_yearly", "subscription", ["pro", "basic"]], ["lifetime_pro", "non_consumable", ["pro"]],
       ["gems_500", "consumable", ["basic"]], ["max:monthly", "subscription", ["max"]], ["max:upFront", "subscription", ["max", "pro"]],
+      ["plus", "subscription", ["plus"]], ["plus:monthly", "subscription", ["plus_extra"]],
     ]);
     await catalog({ id: "mix_play", type: "play_store", key: "goog_mix" }, [
       ["team:monthly", "subscription", ["team"]], ["team:annual", "subscription", ["team", "pro"]], ["solo:monthly", "subscription", ["basic"]], ["legacy_sub", "subscription", ["basic"]],
@@ -113,12 +101,28 @@ describe("offline entitlements match what the server grants online", () => {
     expect(iosLookup(m, "max")).toEqual(["max", "pro"]);
   });
 
+  it("iOS gets the same entitlements offline as online for App Store billing plans (the App Store adapter records Apple's MONTHLY as plan monthly)", async () => {
+    const m = await mappingFor("appl_mix");
+    // Stored only as max:monthly and max:upFront: a monthly purchase unlocks max, an up-front or older purchase max:upFront.
+    expect(await online("max", "monthly")).toEqual(iosLookup(m, "max", "monthly"));
+    expect(await online("max", null)).toEqual(iosLookup(m, "max", "upFront"));
+    expect(await online("max", null)).toEqual(["max", "pro"]);
+    // Bare plus and plus:monthly: online a monthly purchase also matches the bare product, so the plan key carries both.
+    expect(m["plus:monthly"]).toEqual({ product_identifier: "plus", base_plan_id: "monthly", entitlements: ["plus_extra", "plus"] });
+    expect(await online("plus", "monthly")).toEqual(iosLookup(m, "plus", "monthly"));
+    expect(await online("plus", null)).toEqual(iosLookup(m, "plus"));
+    // A product stored only bare and bought on the monthly plan unlocks online; iOS looks up basic_monthly:monthly offline
+    // and finds nothing. Store the product as basic_monthly:monthly too to keep it offline (docs: offline entitlements).
+    expect(await online("basic_monthly", "monthly")).toEqual(["basic"]);
+    expect(iosLookup(m, "basic_monthly", "monthly")).toEqual([]);
+  });
+
   it("Android: equal for a single base plan, a superset for several (the bare id holds the union, so nobody loses access)", async () => {
     const m = await mappingFor("goog_mix");
-    expect(androidLookup(m, "solo")).toEqual(await online("solo", "monthly"));
-    expect(androidLookup(m, "legacy_sub")).toEqual(await online("legacy_sub", null));
+    expect(androidLookup(m, "solo")).toEqual(await online("solo", "monthly", false, "play_store"));
+    expect(androidLookup(m, "legacy_sub")).toEqual(await online("legacy_sub", null, false, "play_store"));
     for (const plan of ["monthly", "annual"]) {
-      const on = await online("team", plan);
+      const on = await online("team", plan, false, "play_store");
       expect(androidLookup(m, "team"), plan).toEqual(expect.arrayContaining(on));
     }
     expect(androidLookup(m, "team")).toEqual(["pro", "team"]);

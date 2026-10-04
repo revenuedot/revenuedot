@@ -19,9 +19,9 @@ export interface CustomerSummary {
   current_offering?: { id: string; lookup_key: string; display_name: string; source: "override" | "experiment" | "targeting" | "default"; rule_id?: string; rule_name?: string | null; experiment_id?: string; experiment_name?: string | null; variant?: string; variant_name?: string } | null;
   /** On the project's block list (through any alias): no entitlements anywhere. */
   blocked?: boolean;
-  active_entitlements: { entitlement_id: string; lookup_key: string; display_name: string; expires_at: number | null; source: "purchase" | "promotional"; product_identifier: string | null }[];
+  active_entitlements: { entitlement_id: string; lookup_key: string; display_name: string; expires_at: number | null; source: "purchase" | "promotional"; product_identifier: string | null; product_plan_identifier?: string | null }[];
   granted_entitlements: { entitlement_id: string; lookup_key: string; display_name: string; granted_at: number; expires_at: number | null }[];
-  subscriptions: { id: string; product_identifier: string; product_display_name: string | null; duration: string | null; period_type: string; price: { amount: number; currency: string } | null; price_in_usd: number | null; will_renew_product_identifier: string | null }[];
+  subscriptions: { id: string; product_identifier: string; product_plan_identifier?: string | null; product_display_name: string | null; duration: string | null; period_type: string; price: { amount: number; currency: string } | null; price_in_usd: number | null; will_renew_product_identifier: string | null }[];
   purchases: { id: string; product_identifier: string; product_display_name: string | null; is_consumable: boolean; price: { amount: number; currency: string } | null }[];
 }
 
