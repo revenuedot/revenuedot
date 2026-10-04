@@ -10,7 +10,7 @@ import { AccountLayout, Row, Section, errText } from "./AccountLayout";
  * experiment results and revenue anomaly alerts with a sensitivity. Everything per person; any member may subscribe.
  */
 interface ProjectPrefs { project: { id: string; name: string; role: string }; weekly_summary: boolean; experiment_results: boolean; anomaly_alerts: boolean; anomaly_sensitivity: "low" | "medium" | "high" }
-interface Settings { alert_emails: boolean; projects: ProjectPrefs[] }
+interface Settings { alert_emails: boolean; integration_alert_emails?: boolean; projects: ProjectPrefs[] }
 type Key = "weekly_summary" | "experiment_results" | "anomaly_alerts";
 
 export function AccountNotificationsPage() {
@@ -24,6 +24,14 @@ export function AccountNotificationsPage() {
       qc.setQueryData<Me>(["me"], (m) => (m ? { ...m, user: { ...m.user, ...r.user } } : m));
       qc.setQueryData<Settings>(["notifications"], (s) => (s ? { ...s, alert_emails: v } : s));
       toast(v ? "Alert emails are on." : "Alert emails are off.");
+    } catch (e) { toast(errText(e)); }
+  };
+  const saveIntegrations = async (v: boolean) => {
+    try {
+      const r = await api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: { integration_alert_emails: v } });
+      qc.setQueryData<Me>(["me"], (m) => (m ? { ...m, user: { ...m.user, ...r.user } } : m));
+      qc.setQueryData<Settings>(["notifications"], (s) => (s ? { ...s, integration_alert_emails: v } : s));
+      toast(v ? "Integration failure emails are on." : "Integration failure emails are off.");
     } catch (e) { toast(errText(e)); }
   };
   const saveDigest = async (v: boolean) => {
@@ -43,8 +51,13 @@ export function AccountNotificationsPage() {
     <AccountLayout section="notifications">
       {me.data && <>
         <Section title="Problems with your projects" id="alerts">
-          <Row label="Alert emails" help="For projects where you are an admin: store notifications failing, a webhook that keeps failing, or store credentials that Apple or Google rejected. At most one email a day per problem, and one when it is fixed.">
+          <Row label="Alert emails" help="For projects where you are an admin: store notifications failing, a webhook or an integration that keeps failing, or store credentials that Apple or Google rejected. At most one email a day per problem, and one when it is fixed.">
             <Switch checked={me.data.user.alert_emails} onChange={saveAlerts} label="Email me about problems with my projects" />
+          </Row>
+          <Row label="Integration failures" help={me.data.user.alert_emails
+            ? "When an integration (Amplitude, Segment, Slack …) failed its last 10 deliveries, or more than half of its delivery attempts in the last hour, with a link to its delivery log."
+            : "Turn on alert emails above to get these."}>
+            <Switch checked={me.data.user.integration_alert_emails ?? true} disabled={!me.data.user.alert_emails} onChange={saveIntegrations} label="Email me when an integration keeps failing" />
           </Row>
           {me.data.account?.features?.insights_digest && (
             <Row label="Weekly growth insights" help="Every Monday, for projects where you are an admin: 3 to 5 things to act on, written by RevenueDot AI from your own charts, with the numbers behind them.">
