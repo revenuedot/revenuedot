@@ -8,6 +8,7 @@ import { createAppleStore } from "../src/stores/apple/index.js";
 import type { FetchFn, StatusesResponse } from "../src/stores/apple/api.js";
 import type { AppleRenewalInfo, AppleTransaction } from "../src/stores/apple/map.js";
 import { openTestDb } from "../../../packages/contract/src/test-db.js";
+import { sealedColumns, TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 
 // ---------- DER encoding ----------
 
@@ -228,11 +229,12 @@ export async function appleHarness(o: { credentials?: Record<string, unknown>; f
   const { db, close } = await openTestDb();
   let clock = new Date(T0);
   const now = () => clock;
-  const app = createApp({ db, now, stores: { ...defaultStores(), app_store: createAppleStore({ fetch: o.fetch, now }) } });
+  // Store keys are sealed the way the API stores them, so every path must open them (services/store-secrets.ts).
+  const app = createApp({ db, now, stores: { ...defaultStores(), app_store: createAppleStore({ fetch: o.fetch, now }) }, encryptionKey: TEST_ENCRYPTION_KEY });
   await db.insert(schema.projects).values({ id: "proj1", name: "Scanner" });
   await db.insert(schema.apps).values({
     id: APP_ID, projectId: "proj1", name: "Scanner iOS", type: "app_store", bundleId: o.bundleId === undefined ? BUNDLE : o.bundleId, publicKey: KEY,
-    credentials: o.credentials ?? {}, notificationForwardUrl: o.forwardUrl ?? null,
+    ...(await sealedColumns("app_store", o.credentials ?? {})), notificationForwardUrl: o.forwardUrl ?? null,
   });
   const prods = [
     { id: "p1", storeIdentifier: "pro_monthly", type: "subscription", duration: "P1M" },

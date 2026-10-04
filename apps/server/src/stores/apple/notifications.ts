@@ -12,6 +12,7 @@ import { appleStoreOf, expectedBundleId, verifyRenewalJws, verifyTransactionJws,
 import { JwsError, verifyAppleJws } from "./jws.js";
 import { fromTransaction, type AppleTransaction, type MapOptions } from "./map.js";
 import { logRejected, tooManyRejected } from "../rejected.js";
+import { withStoreSecretsOrNone } from "../../services/store-secrets.js";
 
 const { apps, storeNotifications, subscriptions, nonSubscriptions } = schema;
 
@@ -208,7 +209,8 @@ export function appleNotificationRoutes(deps: Deps) {
       const env = n.data?.environment ?? n.summary?.environment;
       await db.update(storeNotifications).set({ type: n.notificationType, subtype: n.subtype ?? null, environment: env ? env.toLowerCase() : null })
         .where(eq(storeNotifications.id, id));
-      const known = await processNotification(deps, app, n);
+      // Only a request Apple signed gets the app's sealed In-App Purchase key (refund answers, re-reads), in memory only.
+      const known = await processNotification(deps, await withStoreSecretsOrNone(deps, app), n);
       await db.update(storeNotifications).set({ processedAt: deps.now() }).where(eq(storeNotifications.id, id));
       if (known) await db.update(apps).set({ lastNotificationAt: deps.now() }).where(eq(apps.id, app.id));
     } catch (e) {

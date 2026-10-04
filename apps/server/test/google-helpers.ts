@@ -6,6 +6,7 @@ import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
 import { createGoogleStore, type GoogleStore } from "../src/stores/google/index.js";
 import type { ProductPurchase, SubscriptionPurchaseV2, VoidedPurchase } from "../src/stores/google/api.js";
+import { setAppCredentials, TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 
 export const PKG = "com.example.scanner";
 export const API = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PKG}`;
@@ -196,8 +197,9 @@ export async function env(keys: Keys, credentials: Record<string, unknown> = {},
   const h = await harness();
   const g = new FakeGoogle(keys.publicKey, h.now);
   const store = createGoogleStore({ fetch: g.fetch, now: h.now, timeoutMs: 200 });
-  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), play_store: store }, fetch: opts.depsFetch === false ? undefined : g.fetch });
-  await h.db.update(schema.apps).set({ credentials: { service_account: keys.sa, ...credentials } }).where(eq(schema.apps.id, h.ids.androidApp));
+  const app = createApp({ db: h.db, now: h.now, stores: { ...defaultStores(), play_store: store }, fetch: opts.depsFetch === false ? undefined : g.fetch, encryptionKey: TEST_ENCRYPTION_KEY });
+  // The service account is sealed the way the API stores it (services/store-secrets.ts).
+  await setAppCredentials(h.db, h.ids.androidApp, "play_store", { service_account: keys.sa, ...credentials });
   const extra = [
     { id: "gp_premium", storeIdentifier: "premium:monthly", type: "subscription", duration: "P1M" },
     { id: "gp_lifetime", storeIdentifier: "lifetime_unlock", type: "non_consumable", duration: null },

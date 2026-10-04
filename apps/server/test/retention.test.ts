@@ -133,7 +133,7 @@ describe("Apple Retention Messaging", () => {
     // Duplicate defaults for one product and locale are refused.
     expect((await call("", { defaults: [{ product_id: "pro_monthly", locale: "en-US", message_id: TEXT }, { product_id: "pro_monthly", locale: "en_US", message_id: TEXT }] })).status).toBe(400);
     // A broken In-App Purchase key: Apple gets {} and shows its default message.
-    await h!.db.update(schema.apps).set({ credentials: { key_id: "KEY123", issuer_id: "issuer", private_key: "not a key", app_apple_id: "1234567890" } }).where(eq(schema.apps.id, APP_ID));
+    await h!.db.update(schema.apps).set({ credentials: { key_id: "KEY123", issuer_id: "issuer", private_key: "not a key", app_apple_id: "1234567890" }, secrets: null, secretHints: {} }).where(eq(schema.apps.id, APP_ID));
     const broken = await realtime({ productId: "pro_monthly" });
     expect(broken.status).toBe(200);
     expect(await broken.json()).toEqual({});

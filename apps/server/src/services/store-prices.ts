@@ -6,6 +6,7 @@ import { AppStoreConnectApi, ConnectError, ascToday, connectCredentials, type As
 import { hasServiceAccount, moneyMicros, type PlayBasePlan } from "../stores/google/api.js";
 import { listStoreProducts, type StoreListing } from "./store-import.js";
 import { StoreOpError } from "./store-ops.js";
+import { connectKeySet, withStoreSecrets } from "./store-secrets.js";
 
 /**
  * Store prices and status (prd/catalog/PRD.md "Store prices and status"): what App Store Connect and Google Play charge
@@ -79,8 +80,9 @@ async function inBatches<T, R>(items: T[], fn: (x: T) => Promise<R>): Promise<R[
 }
 
 /** Reads every product of an App Store or Google Play app with its prices, period and state, live from the store. */
-export async function readStorePrices(deps: Deps, app: App): Promise<{ store: string; items: PricedListing[]; warnings: string[] }> {
-  if (!PRICE_STORES.has(app.type)) throw new StoreOpError("unsupported", `Store prices are read from App Store Connect and Google Play; this is a ${app.type} app.`);
+export async function readStorePrices(deps: Deps, row: App): Promise<{ store: string; items: PricedListing[]; warnings: string[] }> {
+  if (!PRICE_STORES.has(row.type)) throw new StoreOpError("unsupported", `Store prices are read from App Store Connect and Google Play; this is a ${row.type} app.`);
+  const app = await withStoreSecrets(deps, row).catch((e) => { throw new StoreOpError("credentials", e instanceof Error ? e.message : String(e)); });
   if (APPLE.has(app.type) && !connectCredentials(app)) {
     throw new StoreOpError("credentials", "Reading prices from App Store Connect needs the app's App Store Connect API key: a team key with the App Manager role (.p8 file, key ID and issuer ID). The In-App Purchase key cannot list or change prices.");
   }
@@ -250,8 +252,9 @@ export async function refreshDueStorePrices(deps: Deps, max = 5, budgetMs = DAIL
       or(isNull(S.refreshedAt), lt(S.refreshedAt, stale)),
       // The same tests as connectCredentials and hasServiceAccount, so an app with an empty key is never picked.
       or(
-        and(inArray(A.type, [...APPLE]), sql`nullif(trim(${A.credentials} ->> 'app_store_connect_api_key'), '') is not null and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_id'), '') is not null and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_issuer'), '') is not null`),
-        and(eq(A.type, "play_store"), sql`coalesce(nullif(${A.credentials} ->> 'play_service_account_credentials_json', ''), nullif(${A.credentials} ->> 'service_account', '')) is not null`),
+        // The .p8 and the service account are sealed: their hint says they are set (or, before the backfill, the plain value).
+        and(inArray(A.type, [...APPLE]), sql`(${A.secretHints} ->> 'app_store_connect_api_key' is not null or nullif(trim(${A.credentials} ->> 'app_store_connect_api_key'), '') is not null) and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_id'), '') is not null and nullif(trim(${A.credentials} ->> 'app_store_connect_api_key_issuer'), '') is not null`),
+        and(eq(A.type, "play_store"), sql`(${A.secretHints} ->> 'play_service_account_credentials_json' is not null or ${A.secretHints} ->> 'service_account' is not null or coalesce(nullif(${A.credentials} ->> 'play_service_account_credentials_json', ''), nullif(${A.credentials} ->> 'service_account', '')) is not null)`),
       ),
     ))
     .orderBy(sql`${S.refreshedAt} asc nulls first`).limit(max * 2);
@@ -260,7 +263,7 @@ export async function refreshDueStorePrices(deps: Deps, max = 5, budgetMs = DAIL
   for (const { app } of due) {
     if (done >= max || Date.now() - started > budgetMs) break;
     if (!(await claimDue(deps, app, now, stale))) continue;
-    if (APPLE.has(app.type) ? !connectCredentials(app) : !hasServiceAccount(app)) {
+    if (APPLE.has(app.type) ? !connectKeySet(app) : !hasServiceAccount(app)) {
       await recordFailure(deps, app, new StoreOpError("credentials", "The app's store key is incomplete."));
       continue;
     }

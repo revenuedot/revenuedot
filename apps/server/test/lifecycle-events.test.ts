@@ -7,6 +7,7 @@ import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
 import { env, makeKeys, sub, type Env, type Keys } from "./google-helpers.js";
 import { DAY as ADAY, T0 as AT0, appleHarness, makePki, notificationBody, renewalInfo, signJws, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
 import type { AppleRenewalInfo, AppleTransaction } from "../src/stores/apple/map.js";
+import { TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 
 const DAY = 86_400_000;
 const T0 = new Date("2026-09-01T12:00:00Z");
@@ -102,7 +103,7 @@ describe("Google Play lifecycle events", () => {
       { purchaseToken: "tok_unknown", orderId: "GPA.X", voidedTimeMillis: String(at(1).getTime()) },
     ];
     const stores = { play_store: e.store };
-    const r = await tick(e.h.db, e.h.now(), e.g.fetch, { stores });
+    const r = await tick(e.h.db, e.h.now(), e.g.fetch, { stores, encryptionKey: TEST_ENCRYPTION_KEY });
     expect(r.voided).toBe(2);
     const cancels = await e.events("CANCELLATION");
     expect(cancels.map((x) => [x.product_id, x.cancel_reason, x.price])).toEqual([["pro", "CUSTOMER_SUPPORT", -9.99], ["lifetime_unlock", "CUSTOMER_SUPPORT", -49.99]]);
@@ -114,7 +115,7 @@ describe("Google Play lifecycle events", () => {
     await tick(e.h.db, at(3.5), e.g.fetch, { stores });
     expect(e.g.calls.filter((c) => c.url.includes("/purchases/voidedpurchases"))).toHaveLength(1);
     e.h.setNow(at(4.1));
-    await tick(e.h.db, e.h.now(), e.g.fetch, { stores });
+    await tick(e.h.db, e.h.now(), e.g.fetch, { stores, encryptionKey: TEST_ENCRYPTION_KEY });
     const scans = e.g.calls.filter((c) => c.url.includes("/purchases/voidedpurchases"));
     expect(scans).toHaveLength(2);
     expect(Number(new URL(scans[1]!.url).searchParams.get("startTime"))).toBe(at(3).getTime() - 3_600_000);

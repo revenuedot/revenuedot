@@ -12,6 +12,7 @@ import { tick } from "../src/services/tick.js";
 import { importedAppleChainKey } from "../src/services/imported-chains.js";
 import { DAY, T0, appleHarness, makeP8, makePki, notificationBody, renewalInfo, signJws, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
 import { env, makeKeys, sub, type Env, type Keys } from "./google-helpers.js";
+import { TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 
 let pki: Pki;
 let keys: Keys;
@@ -25,7 +26,7 @@ type Fetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 /** A second app instance on the harness database, for the REST API with a secret key. */
 async function restFor(db: DB, now: () => Date, fetchFn?: typeof fetch) {
-  const app = createApp({ db, now, stores: { ...defaultStores(), app_store: createAppleStore({ now, fetch: fetchFn }) }, fetch: fetchFn });
+  const app = createApp({ db, now, stores: { ...defaultStores(), app_store: createAppleStore({ now, fetch: fetchFn }) }, fetch: fetchFn, encryptionKey: TEST_ENCRYPTION_KEY });
   const { key } = await createSecretKey(db, "proj1", "import");
   const call: Fetch = (path, init = {}) => Promise.resolve(app.fetch(new Request(`http://localhost${path}`, { ...init, headers: { authorization: `Bearer ${key}`, "content-type": "application/json", ...(init.headers as Record<string, string> ?? {}) } })));
   return {

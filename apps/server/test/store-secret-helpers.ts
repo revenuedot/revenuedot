@@ -1,4 +1,4 @@
-/** Amazon and Stripe apps in tests: secrets sealed the way the API stores them (services/store-secrets.ts). */
+/** Store apps in tests (every store): secrets sealed the way the API stores them (services/store-secrets.ts). */
 import { eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { secretKeyFrom } from "../src/services/secrets.js";

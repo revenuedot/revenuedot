@@ -6,7 +6,7 @@ import { productInfo } from "../repo/catalog.js";
 import type { CustomerRow } from "../repo/customers.js";
 import { applyPurchases } from "./purchases.js";
 import type { AppRow, VerifiedPurchase } from "../stores/types.js";
-import { appleCredentials } from "../stores/apple/api.js";
+import { appleKeySet, withStoreSecrets } from "./store-secrets.js";
 import { appleHttpFor, purchasesForAppleOrder } from "../stores/apple/index.js";
 import { AppStoreConnectApi, ConnectError, connectCredentials } from "../stores/apple/connect.js";
 import { GoogleApiError, hasServiceAccount } from "../stores/google/api.js";
@@ -48,16 +48,18 @@ const fromApple = (e: unknown): unknown => {
 export async function restoreByOrderId(deps: Deps, customer: CustomerRow, appUserId: string, orderId: string): Promise<CustomerRow> {
   const apps = await deps.db.select().from(schema.apps).where(eq(schema.apps.projectId, customer.projectId));
   const google = isGoogleOrderId(orderId);
-  const candidates = apps.filter((a) => (google ? a.type === "play_store" && hasServiceAccount(a) : APPLE.has(a.type) && safeHasAppleKey(a)));
+  const candidates = apps.filter((a) => (google ? a.type === "play_store" && hasServiceAccount(a) : APPLE.has(a.type) && appleKeySet(a)));
   if (!candidates.length) {
     throw new StoreOpError("credentials", google
       ? "Restoring a Google Play order needs a Play app with a service account (\"View financial data\" permission)."
       : "Restoring an App Store order needs an App Store app with its In-App Purchase key.", "order_id");
   }
   const now = deps.now();
-  for (const app of candidates) {
+  for (const row of candidates) {
     let purchases: VerifiedPurchase[] | null;
+    let app = row;
     try {
+      app = await openForStore(deps, row);
       if (google) {
         const p = await purchaseForGoogleOrder(googleClientFor(deps.stores, deps.fetch).client, app as AppRow, orderId, await productInfo(deps.db, app.id), now);
         purchases = p ? [p] : null;
@@ -80,9 +82,9 @@ export async function restoreByOrderId(deps: Deps, customer: CustomerRow, appUse
   throw new StoreOpError("not_found", `No ${google ? "Google Play" : "App Store"} order ${orderId} was found for this project's apps.`, "order_id");
 }
 
-function safeHasAppleKey(app: App) {
-  try { return appleCredentials(app as AppRow) !== null; } catch { return true; }
-}
+/** The app with its sealed store secrets opened (services/store-secrets.ts); a key this server cannot open is a credentials problem. */
+export const openForStore = <T extends App>(deps: Deps, app: T): Promise<T> =>
+  withStoreSecrets(deps, app).catch((e) => { throw new StoreOpError("credentials", e instanceof Error ? e.message : String(e)); });
 
 export interface StoreInformation { duration?: string; subscription_group_name?: string; subscription_group_id?: string | null }
 export interface StoreProduct { object: "store_product"; id: string; name: string | null; product_identifier: string }
@@ -97,8 +99,9 @@ const IAP_TYPES: Record<string, "CONSUMABLE" | "NON_CONSUMABLE" | "NON_RENEWING_
  * the app's default language and no base plan, because the request carries no price.
  */
 export async function createInStore(deps: Deps, product: typeof schema.products.$inferSelect, info: StoreInformation | null): Promise<StoreProduct> {
-  const [app] = await deps.db.select().from(schema.apps).where(and(eq(schema.apps.projectId, product.projectId), eq(schema.apps.id, product.appId))).limit(1);
-  if (!app) throw new StoreOpError("not_found", "The product's app was not found.");
+  const [row] = await deps.db.select().from(schema.apps).where(and(eq(schema.apps.projectId, product.projectId), eq(schema.apps.id, product.appId))).limit(1);
+  if (!row) throw new StoreOpError("not_found", "The product's app was not found.");
+  const app = await openForStore(deps, row);
   const productId = product.storeIdentifier.split(":")[0]!;
   const name = (product.displayName?.trim() || productId);
   if (APPLE.has(app.type)) return createInAppStore(deps, app, product, productId, name, info);

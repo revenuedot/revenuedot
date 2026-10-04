@@ -12,6 +12,7 @@ import { contextsFor, type CustomerData } from "./customer-context.js";
 import { usdValue } from "./fx.js";
 import { addDuration } from "../stores/test-store.js";
 import { emptyContext, rulesMatch, type CustomerContext, type Rules } from "./targeting.js";
+import { withStoreSecrets } from "./store-secrets.js";
 
 /**
  * Refund Control (prd/lifecycle/PRD.md): policies decide how RevenueDot answers Apple's CONSUMPTION_REQUEST, with the
@@ -298,7 +299,7 @@ export async function decide(db: DB, projectId: string, customer: CustomerRow | 
 
 // ---------- CONSUMPTION_REQUEST ----------
 
-export interface RefundDeps { db: DB; stores: Record<string, StoreAdapter>; fetch?: typeof fetch; now: () => Date }
+export interface RefundDeps { db: DB; stores: Record<string, StoreAdapter>; fetch?: typeof fetch; now: () => Date; encryptionKey?: string; signingKey?: string }
 
 /**
  * Apple asks for consumption information: record the request, pick the policy and answer at once. A repeated notification
@@ -372,7 +373,8 @@ export async function sendConsumption(deps: RefundDeps, row: typeof schema.refun
   }
   const attempts = row.attempts + 1;
   let api: ReturnType<typeof appleApiFor> = null;
-  try { api = appleApiFor(deps.stores, app, deps.fetch, deps.now); } catch { /* an incomplete key is reported below */ }
+  // The In-App Purchase key is sealed (services/store-secrets.ts); an app from a notification is already open.
+  try { api = appleApiFor(deps.stores, await withStoreSecrets(deps, app), deps.fetch, deps.now); } catch { /* an incomplete or unopenable key is reported below */ }
   if (!api) return update({ consumptionStatus: "failed", attempts, nextAttemptAt: null, lastError: "The app has no App Store In-App Purchase key, so RevenueDot cannot call the App Store Server API." });
   const env: AppleEnv = row.isSandbox ? "sandbox" : "production";
   try {

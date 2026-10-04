@@ -10,6 +10,7 @@ import { createAppleStore, setAppleRootsForTesting } from "../src/stores/apple/i
 import { AppStoreServerApi, AppleRateLimitError, retryAfterMs } from "../src/stores/apple/api.js";
 import { createSecretKey } from "../src/services/auth.js";
 import { DAY, T0, appleHarness, makeP8, makePki, signJws, transaction, type AppleHarness, type Pki } from "./apple-fixtures.js";
+import { TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 
 let pki: Pki;
 let p8: string;
@@ -40,7 +41,7 @@ const signed = async (transactionId: string, originalTransactionId: string, envi
 const notFound = () => Response.json({ errorCode: 4040010, errorMessage: "Transaction id not found." }, { status: 404 });
 
 async function restFor(db: DB, now: () => Date, fetchFn: typeof fetch) {
-  const app = createApp({ db, now, stores: { ...defaultStores(), app_store: createAppleStore({ now, fetch: fetchFn }) }, fetch: fetchFn });
+  const app = createApp({ db, now, stores: { ...defaultStores(), app_store: createAppleStore({ now, fetch: fetchFn }) }, fetch: fetchFn, encryptionKey: TEST_ENCRYPTION_KEY });
   const { key } = await createSecretKey(db, "proj1", "import");
   return async (customers: unknown[]) => {
     const res = await app.fetch(new Request("http://localhost/v2/projects/proj1/import/customers", {

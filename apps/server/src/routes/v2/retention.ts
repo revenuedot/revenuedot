@@ -7,6 +7,7 @@ import { publicOrigin } from "../oauth.js";
 import { appleApiFor } from "../../stores/apple/index.js";
 import { messageProblems, messagingOf, retentionOffersOf, syncMessaging, type MessagingConfig, type OfferRow } from "../../services/retention.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Router } from "./common.js";
+import { storeSecretSet, withStoreSecrets } from "../../services/store-secrets.js";
 
 /** Retention (RevenueDot extension; prd/lifecycle/PRD.md): Customer Center offers and Apple Retention Messaging per app. */
 
@@ -80,7 +81,7 @@ export function retentionRoutes(r: V2Router, deps: Deps) {
     object: "retention_messaging" as const, app_id: a.id, ...messagingOf(a),
     realtime_url: `${realtimeBase(origin)}/v1/retention/apple/${a.id}`,
     app_apple_id: (a.credentials?.app_apple_id as string | undefined) ?? null,
-    has_in_app_purchase_key: !!(a.credentials?.subscription_private_key || a.credentials?.private_key),
+    has_in_app_purchase_key: storeSecretSet(a, "subscription_private_key") || storeSecretSet(a, "private_key"),
   });
   r.get(A, scope("project_configuration:apps:read"), async (c) => c.json(shape(await appleApp(c.get("projectId"), c.req.param("app_id")), publicOrigin(c))));
   r.post(A, scope("project_configuration:apps:read_write"), async (c) => {
@@ -118,7 +119,7 @@ export function retentionRoutes(r: V2Router, deps: Deps) {
     const a = await appleApp(c.get("projectId"), c.req.param("app_id"));
     const b = await body(c, z.object({ environment: z.enum(["sandbox", "production"]).default("sandbox") }).strict());
     let api;
-    try { api = appleApiFor(deps.stores, a, deps.fetch, deps.now); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
+    try { api = appleApiFor(deps.stores, await withStoreSecrets(deps, a), deps.fetch, deps.now); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
     if (!api) throw new V2Error(422, "unprocessable_entity_error", "Add the app's App Store In-App Purchase key first: the Retention Messaging API uses it.");
     const res = await syncMessaging(db, a, api, b.environment, `${realtimeBase(publicOrigin(c))}/v1/retention/apple/${a.id}`, deps.now());
     return c.json({ ...shape({ ...a, retentionMessaging: res.config as unknown as Record<string, unknown> }, publicOrigin(c)), sync: { environment: b.environment, errors: res.errors } });

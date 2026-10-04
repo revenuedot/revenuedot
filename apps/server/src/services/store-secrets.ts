@@ -1,15 +1,26 @@
 import { Codes, RCError } from "../errors.js";
+import { V2Error } from "../routes/v2/common.js";
 import { depsSecretKey, seal, unseal, type SecretKey, type SecretMap } from "./secrets.js";
 import { platformKeyFor, type StripeConnectConfig } from "./stripe-connect-config.js";
 
 /**
- * Amazon, Stripe, Paddle, Roku and Galaxy Store secrets live sealed in `apps.secrets` (AES-256-GCM, services/secrets.ts), never in
- * `apps.credentials` and never in an API answer. `apps.secret_hints` holds what the dashboard may show: that a secret
- * is set, for a Stripe key its mode, kind and last four characters ("rk_test_…abcd"), for a Paddle key its environment and
- * last four ("pdl_sdbx_apikey_…abcd").
- * Apple and Google credentials are unchanged (they stay in `apps.credentials`).
+ * Every store's secrets live sealed in `apps.secrets` (AES-256-GCM, services/secrets.ts), never in `apps.credentials` and
+ * never in an API answer. `apps.secret_hints` holds what the dashboard may show: that a secret is set, for a Stripe key its
+ * mode, kind and last four characters ("rk_test_…abcd"), for a Paddle key its environment and last four
+ * ("pdl_sdbx_apikey_…abcd"), for a Play service account its client_email.
+ * Identifiers that are not secret (key ids, issuer ids, bundle ids, Pub/Sub audience) stay in `apps.credentials`.
+ * Test Store and RevenueCat Billing apps have no store secrets.
  */
+/** Identifiers that are only meaningful with their sealed key (dropped in memory when the key cannot be opened). */
+const APPLE_KEY_IDS = ["subscription_key_id", "subscription_key_issuer", "key_id", "issuer_id", "app_store_connect_api_key_id", "app_store_connect_api_key_issuer"];
+const KEY_IDS: Record<string, readonly string[]> = { app_store: APPLE_KEY_IDS, mac_app_store: APPLE_KEY_IDS, galaxy: ["galaxy_service_account_id"] };
+const APPLE_SECRETS = ["subscription_private_key", "private_key", "app_store_connect_api_key", "shared_secret"] as const;
 export const STORE_SECRET_FIELDS: Record<string, readonly string[]> = {
+  // In-App Purchase key (.p8, under RevenueCat's name or the short one), App Store Connect API key (.p8), app-specific shared secret.
+  app_store: APPLE_SECRETS,
+  mac_app_store: APPLE_SECRETS,
+  // The service account JSON, under RevenueCat's name or `service_account` (text or an object).
+  play_store: ["play_service_account_credentials_json", "service_account"],
   amazon: ["shared_secret"],
   // `stripe_connect_account_id`: the account "Connect with Stripe" linked (prd/web-billing/PRD.md §8).
   stripe: ["stripe_secret_key", "stripe_webhook_secret", "stripe_connect_account_id"],
@@ -27,6 +38,10 @@ export function storeSecretHint(field: string, value: string): string {
     return `${prefix}…${value.slice(-4)}`;
   }
   if (field === "stripe_connect_account_id") return `acct_…${value.slice(-4)}`;
+  if (field === "play_service_account_credentials_json" || field === "service_account") {
+    try { const j = JSON.parse(value) as { client_email?: unknown }; if (typeof j.client_email === "string" && j.client_email.length <= 320) return j.client_email; } catch { /* not JSON */ }
+    return "set";
+  }
   if (field === "paddle_api_key") {
     const prefix = /^pdl_(live|sdbx)_apikey_/.exec(value)?.[0] ?? "";
     return `${prefix}…${value.slice(-4)}`;
@@ -53,19 +68,25 @@ export function paddleKeyHintOf(hint: string | null | undefined) {
 
 interface SecretApp { type: string; credentials: Record<string, unknown> | null; secrets?: string | null; secretHints?: Record<string, string> | null }
 
+/** A secret value as text: a trimmed string, an object (a service account saved as JSON) as its JSON; anything else is not a secret. */
+export function secretText(v: unknown): string | null {
+  if (typeof v === "string") return v.trim() || null;
+  if (v && typeof v === "object" && !Array.isArray(v)) return JSON.stringify(v);
+  return null;
+}
+
 /** Whether a store secret is saved (sealed, or plain in `credentials` from before sealing). */
-export function storeSecretSet(app: SecretApp, field: string): boolean {
+export function storeSecretSet(app: Pick<SecretApp, "credentials" | "secretHints">, field: string): boolean {
   if (app.secretHints && field in app.secretHints) return true;
-  const v = (app.credentials ?? {})[field];
-  return typeof v === "string" && v.trim() !== "";
+  return secretText((app.credentials ?? {})[field]) !== null;
 }
 
 /** The hint of a store secret, also for one still plain in `credentials`. */
-export function storeSecretHintOf(app: SecretApp, field: string): string | null {
+export function storeSecretHintOf(app: Pick<SecretApp, "credentials" | "secretHints">, field: string): string | null {
   const h = app.secretHints?.[field];
   if (h) return h;
-  const v = (app.credentials ?? {})[field];
-  return typeof v === "string" && v.trim() ? storeSecretHint(field, v.trim()) : null;
+  const v = secretText((app.credentials ?? {})[field]);
+  return v ? storeSecretHint(field, v) : null;
 }
 
 /**
@@ -79,7 +100,7 @@ export function takeStoreSecrets(type: string, rest: Record<string, unknown>): R
     if (!(f in rest)) continue;
     const v = rest[f];
     delete rest[f];
-    out[f] = typeof v === "string" && v.trim() ? v.trim() : null;
+    out[f] = secretText(v);
   }
   return out;
 }
@@ -93,12 +114,21 @@ export async function sealStoreSecrets(app: SecretApp, update: Record<string, st
   const current: SecretMap = {};
   const credentials: Record<string, unknown> = { ...(app.credentials ?? {}) };
   for (const f of fields) {
-    const legacy = credentials[f];
-    if (typeof legacy === "string" && legacy.trim()) current[f] = legacy.trim();
+    const legacy = secretText(credentials[f]);
+    if (legacy) current[f] = legacy;
     delete credentials[f];
   }
-  // Secrets sealed under a key the server no longer has cannot be kept; the ones in this update replace them.
-  Object.assign(current, await unseal(app.secrets, key).catch(() => ({} as SecretMap)));
+  // Secrets sealed under a key the server cannot open are never dropped silently: the save is refused unless it enters
+  // (or clears) every one of them again.
+  let opened: SecretMap;
+  try { opened = await unseal(app.secrets, key); } catch {
+    const lost = Object.keys(app.secretHints ?? {}).filter((f) => fields.includes(f) && !(f in update));
+    if (lost.length) {
+      throw new V2Error(422, "store_error", `The saved ${lost.join(", ")} could not be opened (the server's encryption key changed). Enter ${lost.length > 1 ? "them" : "it"} again in the same save.`, lost[0]);
+    }
+    opened = {};
+  }
+  Object.assign(current, opened);
   for (const [k, v] of Object.entries(update)) {
     if (v === null) delete current[k];
     else current[k] = v;
@@ -144,4 +174,50 @@ export async function withStoreSecrets<T extends SecretApp>(deps: { encryptionKe
     return { ...app, credentials };
   }
   return { ...app, credentials: { ...(app.credentials ?? {}), ...rest } };
+}
+
+/**
+ * Guards the readers of a store secret (the Apple keys, the Play service account): when none of `fields` holds a value but
+ * one is sealed, the app was loaded without `withStoreSecrets`. That is a bug in RevenueDot, never the developer's setup,
+ * so it fails loudly (500) instead of reading as "no key configured".
+ */
+export function assertStoreSecretsOpened(app: Pick<SecretApp, "credentials" | "secretHints">, fields: readonly string[]): void {
+  const cr = app.credentials ?? {};
+  if (fields.some((f) => secretText(cr[f]) !== null)) return;
+  if (fields.some((f) => !!app.secretHints && f in app.secretHints)) {
+    throw new RCError(500, Codes.STORE_PROBLEM, "The app's store credentials are sealed and were not opened for this request.");
+  }
+}
+
+/** Whether the App Store In-App Purchase key is saved: the .p8 (sealed) plus its key id and issuer id. */
+export function appleKeySet(app: Pick<SecretApp, "credentials" | "secretHints">): boolean {
+  const cr = app.credentials ?? {};
+  const has = (k: string) => typeof cr[k] === "string" && (cr[k] as string).trim() !== "";
+  return (storeSecretSet(app, "subscription_private_key") || storeSecretSet(app, "private_key"))
+    && (has("subscription_key_id") || has("key_id")) && (has("subscription_key_issuer") || has("issuer_id"));
+}
+
+/** Whether the App Store Connect API key is saved: the .p8 (sealed) plus its key id and issuer id. */
+export function connectKeySet(app: Pick<SecretApp, "credentials" | "secretHints">): boolean {
+  const cr = app.credentials ?? {};
+  const has = (k: string) => typeof cr[k] === "string" && (cr[k] as string).trim() !== "";
+  return storeSecretSet(app, "app_store_connect_api_key") && has("app_store_connect_api_key_id") && has("app_store_connect_api_key_issuer");
+}
+
+/** Whether a Play service account is saved, under either field name. */
+export const serviceAccountSet = (app: Pick<SecretApp, "credentials" | "secretHints">) =>
+  storeSecretSet(app, "play_service_account_credentials_json") || storeSecretSet(app, "service_account");
+
+/**
+ * For store notifications, which must keep flowing: the app opened, or, when its secrets cannot be opened (the key
+ * changed), the app as if no secret were saved, so only the steps that need a key are skipped. Logs the app id, never a value.
+ */
+export async function withStoreSecretsOrNone<T extends SecretApp>(deps: { encryptionKey?: string; signingKey?: string; stripeConnect?: StripeConnectConfig }, app: T): Promise<T> {
+  try { return await withStoreSecrets(deps, app); } catch (e) {
+    console.warn(`Store secrets of app ${(app as { id?: string }).id ?? "?"} could not be opened: ${e instanceof RCError ? e.message : "unknown error"}`);
+    // In memory only: the ids that belong to the unopened keys go too, so the app reads as "no key", not "incomplete key".
+    const credentials = { ...(app.credentials ?? {}) };
+    for (const f of KEY_IDS[app.type] ?? []) delete credentials[f];
+    return { ...app, credentials, secretHints: {} };
+  }
 }

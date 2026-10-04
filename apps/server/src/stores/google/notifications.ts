@@ -8,6 +8,7 @@ import { GoogleApiError, type GooglePlayClient } from "./api.js";
 import { googleClientFor } from "./index.js";
 import { applyVoided, syncOneTime, syncSubscription, type SyncCtx, type SyncResult } from "./sync.js";
 import { demoteToRejected, logRejected } from "../rejected.js";
+import { withStoreSecretsOrNone } from "../../services/store-secrets.js";
 
 const { apps, storeNotifications } = schema;
 
@@ -135,8 +136,10 @@ export function googleNotificationRoutes(deps: Deps) {
   const r = new Hono();
   r.post("/:appId", async (c) => {
     const now = deps.now();
-    const [app] = await deps.db.select().from(apps).where(eq(apps.id, c.req.param("appId"))).limit(1);
-    if (!app || app.type !== "play_store") return c.json({ code: Codes.NOT_FOUND, message: "No Google Play app with this id." }, 404);
+    const [row] = await deps.db.select().from(apps).where(eq(apps.id, c.req.param("appId"))).limit(1);
+    if (!row || row.type !== "play_store") return c.json({ code: Codes.NOT_FOUND, message: "No Google Play app with this id." }, 404);
+    // The service account is sealed; opened in memory for this request only.
+    const app = await withStoreSecretsOrNone(deps, row);
     const { client } = googleClientFor(deps.stores, deps.fetch);
     const creds = (app.credentials ?? {}) as Record<string, unknown>;
 

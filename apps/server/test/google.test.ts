@@ -120,7 +120,7 @@ describe("POST /v1/receipts with a Google Play purchase token", () => {
   });
 
   it("missing or rejected credentials are 503 with code 7101 (the SDK keeps the purchase unfinished and retries once the operator fixes them) and say what to fix", async () => {
-    await e.h.db.update(schema.apps).set({ credentials: {} }).where(eq(schema.apps.id, e.h.ids.androidApp));
+    await e.h.db.update(schema.apps).set({ credentials: {}, secrets: null, secretHints: {} }).where(eq(schema.apps.id, e.h.ids.androidApp));
     let res = await buyPro("u", "tok_x");
     expect(res.status).toBe(503);
     let b = await res.json();

@@ -235,7 +235,8 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       .orderBy(desc(schema.storeNotifications.receivedAt)).limit(1);
     const health = await notificationHealth(db, a, deps.now());
     let clientEmail: string | null = null;
-    if (googleKeyConfigured(cr)) { try { clientEmail = serviceAccountOf(a).client_email; } catch { /* shown as configured but unreadable */ } }
+    // The service account's client_email is its hint (services/store-secrets.ts): the sealed JSON is not opened to show it.
+    if (googleKeyConfigured(a)) clientEmail = [storeSecretHintOf(a, "play_service_account_credentials_json"), storeSecretHintOf(a, "service_account")].find((h) => !!h && h !== "set") ?? null;
     return c.json({
       object: "app_store_settings", app_id: a.id, type: a.type,
       // What the SDK's proxy URL should be: this server as the outside world reaches it.
@@ -255,13 +256,13 @@ export function setupRoutes(r: V2Router, deps: Deps) {
       track_new_purchases: cr.track_new_purchases === true,
       allow_unsigned_receipts: cr.allow_unsigned_receipts === true,
       credentials: {
-        subscription_key: { configured: appleKeyConfigured(cr), key_id: s(cr.subscription_key_id), issuer_id: s(cr.subscription_key_issuer) },
+        subscription_key: { configured: appleKeyConfigured(a), key_id: s(cr.subscription_key_id), issuer_id: s(cr.subscription_key_issuer) },
         app_store_connect_api_key: {
-          configured: typeof cr.app_store_connect_api_key === "string" && !!cr.app_store_connect_api_key,
+          configured: storeSecretSet(a, "app_store_connect_api_key"),
           key_id: s(cr.app_store_connect_api_key_id), issuer_id: s(cr.app_store_connect_api_key_issuer), vendor_number: s(cr.app_store_connect_vendor_number),
         },
-        shared_secret: { configured: !!s(cr.shared_secret) },
-        play_service_account: { configured: googleKeyConfigured(cr), client_email: clientEmail },
+        shared_secret: { configured: (a.type === "app_store" || a.type === "mac_app_store") && storeSecretSet(a, "shared_secret") },
+        play_service_account: { configured: googleKeyConfigured(a), client_email: clientEmail },
         xcode_certificate: { configured: !!s(cr.xcode_certificate) },
         // Amazon and Stripe secrets are sealed; only whether they are set (and a Stripe key's mode and last four) comes back.
         amazon_shared_secret: { configured: amazonKeyConfigured(a) },
@@ -355,7 +356,9 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     } else {
       throw paramError(`${a.type} apps have no store credentials to check.`, "app_id");
     }
-    const newSecret = a.type === "amazon" ? s(b.amazon?.shared_secret) : a.type === "stripe" ? s(b.stripe?.stripe_secret_key) : a.type === "paddle" ? s(b.paddle?.paddle_api_key)
+    const newSecret = a.type === "app_store" || a.type === "mac_app_store" ? s(b[a.type]?.subscription_private_key)
+      : a.type === "play_store" ? (b.play_store?.play_service_account_credentials_json ? "set" : null)
+      : a.type === "amazon" ? s(b.amazon?.shared_secret) : a.type === "stripe" ? s(b.stripe?.stripe_secret_key) : a.type === "paddle" ? s(b.paddle?.paddle_api_key)
       : a.type === "roku" ? s(b.roku?.roku_api_key) : a.type === "galaxy" ? s(b.galaxy?.galaxy_service_account_private_key) : null;
     if (unopened && !newSecret) return out("invalid", unopened);
     const r = await checkStoreCredentials(deps, app);
@@ -371,7 +374,10 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const row = await findApp(c);
     if (row.type !== "app_store" && row.type !== "mac_app_store") throw paramError("Only App Store and Mac App Store apps have an App Store Connect API key.", "app_id");
     const b = await body(c, VerifyConnectKey);
-    const cr: Record<string, unknown> = { ...(row.credentials ?? {}) };
+    let opened: typeof row = row;
+    // A stored .p8 this server cannot open: only a key in the body can be checked.
+    try { opened = await withStoreSecrets(deps, row); } catch { if (!s(b.app_store_connect_api_key)) throw new V2Error(422, "store_error", "The saved App Store Connect API key could not be opened. Enter it again.", "app_store_connect_api_key"); }
+    const cr: Record<string, unknown> = { ...(opened.credentials ?? {}) };
     for (const k of ["app_store_connect_api_key", "app_store_connect_api_key_id", "app_store_connect_api_key_issuer"] as const) if (s(b[k])) cr[k] = b[k];
     const r = await checkConnectKey(deps, { bundleId: s(b.bundle_id) ?? row.bundleId, credentials: cr });
     return c.json({ object: "credentials_check", app_id: row.id, store: row.type, key: "app_store_connect_api_key", status: r.status, valid: r.status === "valid", message: r.message, checked_at: deps.now().getTime(), ...r.extra });
@@ -409,7 +415,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     }
     const credentials: Record<string, unknown> = { ...(row.credentials ?? {}), paddle_notification_setting_id: setting.id };
     const update: Record<string, string | null> = typeof setting.endpoint_secret_key === "string" && setting.endpoint_secret_key ? { paddle_webhook_secret: setting.endpoint_secret_key } : {};
-    const sealed = await sealStoreSecrets({ type: row.type, credentials, secrets: row.secrets }, update, await depsSecretKey(deps));
+    const sealed = await sealStoreSecrets({ type: row.type, credentials, secrets: row.secrets, secretHints: row.secretHints }, update, await depsSecretKey(deps));
     await db.update(schema.apps).set({ credentials: sealed.credentials, secrets: sealed.secrets, secretHints: sealed.secretHints }).where(eq(schema.apps.id, row.id));
     return c.json({ object: "notification_settings", app_id: row.id, store: "paddle", notification_setting_id: setting.id, destination: url, subscribed_events: PADDLE_EVENTS, secret_saved: !!update.paddle_webhook_secret });
   });
@@ -420,7 +426,7 @@ export function setupRoutes(r: V2Router, deps: Deps) {
     const a = await findApp(c);
     if (a.type !== "app_store" && a.type !== "mac_app_store") throw new V2Error(422, "unprocessable_entity_error", "Mass extensions are only supported for App Store apps.", "app_id");
     let api;
-    try { api = appleApiFor(deps.stores, a, deps.fetch, deps.now); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
+    try { api = appleApiFor(deps.stores, await withStoreSecrets(deps, a), deps.fetch, deps.now); } catch (e) { throw new V2Error(422, "store_error", e instanceof Error ? e.message : String(e)); }
     if (!api) throw new V2Error(422, "store_error", "Mass extensions need the app's in-app purchase key. Add it in the app's settings.");
     return { a, api };
   };

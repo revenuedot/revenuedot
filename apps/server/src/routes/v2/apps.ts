@@ -208,7 +208,7 @@ export function appRoutes(r: V2Router, deps: Deps) {
     // Amazon and Stripe secrets are (re)sealed when one changes or one is still plain in credentials from before sealing.
     let sealed: { secrets: string | null; secretHints: Record<string, string> } | null = null;
     if (Object.keys(secretUpdate).length || storeSecretFields(a.type).some((f) => f in credentials)) {
-      const s = await sealStoreSecrets({ type: a.type, credentials, secrets: a.secrets }, secretUpdate, await depsSecretKey(deps));
+      const s = await sealStoreSecrets({ type: a.type, credentials, secrets: a.secrets, secretHints: a.secretHints }, secretUpdate, await depsSecretKey(deps));
       credentials = s.credentials;
       sealed = { secrets: s.secrets, secretHints: s.secretHints };
     }
