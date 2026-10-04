@@ -306,6 +306,132 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Adapty ----
+  {
+    vendor: "Adapty",
+    page: "home",
+    url: "https://adapty.io/",
+    captured: DATE,
+    full: asset("adapty", "home-full-1-2026-10-04.png"),
+    fullParts: [asset("adapty", "home-full-1-2026-10-04.png"), asset("adapty", "home-full-2-2026-10-04.png"), asset("adapty", "home-full-3-2026-10-04.png"), asset("adapty", "home-full-4-2026-10-04.png"), asset("adapty", "home-full-5-2026-10-04.png"), asset("adapty", "home-full-6-2026-10-04.png")],
+    crops: [
+      {
+        claim: "hero",
+        file: asset("adapty", "home-hero-2026-10-04.png"),
+        alt: "Adapty homepage hero: 'RevenueOS for subscription apps' with Book a demo and Start for free buttons.",
+        caption: "Adapty homepage, captured 2026-10-04: Homepage hero.",
+      },
+    ],
+  },
+  {
+    vendor: "Adapty",
+    page: "pricing",
+    url: "https://adapty.io/pricing/",
+    captured: DATE,
+    full: asset("adapty", "pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("adapty", "pricing-full-1-2026-10-04.png"), asset("adapty", "pricing-full-2-2026-10-04.png"), asset("adapty", "pricing-full-3-2026-10-04.png")],
+    crops: [
+      {
+        claim: "free-under-5k-then-1-percent",
+        file: asset("adapty", "pricing-free-under-5k-then-1-percent-2026-10-04.png"),
+        alt: "Adapty pricing plan cards: Pro is free while you earn under $5K/month, then 1% of monthly revenue after you pass $5K/month; Enterprise is custom pricing.",
+        caption: "Adapty pricing page, captured 2026-10-04: Free under $5K a month, then 1% of monthly revenue.",
+      },
+      {
+        claim: "add-ons",
+        file: asset("adapty", "pricing-add-ons-2026-10-04.png"),
+        alt: "Adapty pricing add-ons: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20%, payout acceleration 2.5% and attribution $0.03 per install, each free up to $5K.",
+        caption: "Adapty pricing page, captured 2026-10-04: Add-on fees: Refund Saver 0.2%, Ads Manager 3.5%, Mail 20%, attribution $0.03.",
+      },
+      {
+        claim: "templates-and-ab-tests",
+        file: asset("adapty", "pricing-templates-and-ab-tests-2026-10-04.png"),
+        alt: "Adapty pricing feature list: 50+ templates and AI generator, A/B tests with custom traffic splits, unlimited variants and early winner predictions.",
+        caption: "Adapty pricing page, captured 2026-10-04: A/B tests with unlimited variants; 50+ templates.",
+      },
+      {
+        claim: "soc2-and-residency",
+        file: asset("adapty", "pricing-soc2-and-residency-2026-10-04.png"),
+        alt: "Adapty pricing Enterprise section: 24/7 support in a dedicated Slack channel, data residency in the US or EU, SOC2 certified.",
+        caption: "Adapty pricing page, captured 2026-10-04: US or EU data residency on Enterprise; SOC 2.",
+      },
+      {
+        claim: "faq-what-counts",
+        file: asset("adapty", "pricing-faq-what-counts-2026-10-04.png"),
+        alt: "Adapty pricing FAQ, expanded: what counts toward monthly revenue and when the 1% starts.",
+        caption: "Adapty pricing page, captured 2026-10-04: Revenue is counted before store fees; the 1% starts after $5K.",
+      },
+      {
+        claim: "faq-migration",
+        file: asset("adapty", "pricing-faq-migration-2026-10-04.png"),
+        alt: "Adapty pricing FAQ, expanded: how hard it is to migrate from RevenueCat, Superwall or in-house.",
+        caption: "Adapty pricing page, captured 2026-10-04: What Adapty says about migrating from RevenueCat.",
+      },
+    ],
+  },
+  {
+    vendor: "Adapty",
+    page: "security-and-compliance",
+    url: "https://adapty.io/security-and-compliance/",
+    captured: DATE,
+    full: asset("adapty", "security-and-compliance-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "soc2-type-ii",
+        file: asset("adapty", "security-and-compliance-soc2-type-ii-2026-10-04.png"),
+        alt: "Adapty security and compliance page: SOC 2 Type II attestation with the report available under NDA, and GDPR (EU and UK).",
+        caption: "Adapty security and compliance page, captured 2026-10-04: SOC 2 Type II and GDPR.",
+      },
+    ],
+  },
+  {
+    vendor: "Adapty",
+    page: "docs-migration-from-revenuecat",
+    url: "https://adapty.io/docs/migration-from-revenuecat",
+    captured: DATE,
+    full: asset("adapty", "docs-migration-from-revenuecat-full-1-2026-10-04.png"),
+    fullParts: [asset("adapty", "docs-migration-from-revenuecat-full-1-2026-10-04.png"), asset("adapty", "docs-migration-from-revenuecat-full-2-2026-10-04.png"), asset("adapty", "docs-migration-from-revenuecat-full-3-2026-10-04.png")],
+    crops: [
+      {
+        claim: "limits",
+        file: asset("adapty", "docs-migration-from-revenuecat-limits-2026-10-04.png"),
+        alt: "Adapty migration guide from RevenueCat: promotional or manually granted entitlements import as profiles without transactions; refund and billing-issue history is not carried over verbatim.",
+        caption: "Adapty docs page, captured 2026-10-04: Promotional entitlements and refund history do not come across.",
+      },
+    ],
+  },
+  {
+    vendor: "Adapty",
+    page: "github-adaptysdk-ios",
+    url: "https://github.com/adaptyteam/AdaptySDK-iOS",
+    captured: DATE,
+    full: asset("adapty", "github-adaptysdk-ios-full-1-2026-10-04.png"),
+    fullParts: [asset("adapty", "github-adaptysdk-ios-full-1-2026-10-04.png"), asset("adapty", "github-adaptysdk-ios-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "mit-license",
+        file: asset("adapty", "github-adaptysdk-ios-mit-license-2026-10-04.png"),
+        alt: "GitHub README of AdaptySDK-iOS: 'Adapty is available under the MIT license.'",
+        caption: "Adapty GitHub page, captured 2026-10-04: The iOS SDK is MIT licensed.",
+      },
+    ],
+  },
+  {
+    vendor: "Adapty",
+    page: "blog-new-pricing-2026",
+    url: "https://adapty.io/blog/adapty-new-pricing-2026/",
+    captured: DATE,
+    full: asset("adapty", "blog-new-pricing-2026-full-1-2026-10-04.png"),
+    fullParts: [asset("adapty", "blog-new-pricing-2026-full-1-2026-10-04.png"), asset("adapty", "blog-new-pricing-2026-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "free-to-5000",
+        file: asset("adapty", "blog-new-pricing-2026-free-to-5000-2026-10-04.png"),
+        alt: "Adapty blog post on its 2026 pricing: free until $5,000 in monthly tracked revenue, then 1% of revenue; Pro and Enterprise plans.",
+        caption: "Adapty blog post, captured 2026-10-04: Free to $5,000 a month, then 1% of revenue.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */

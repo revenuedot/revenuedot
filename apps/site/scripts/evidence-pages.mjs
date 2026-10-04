@@ -36,7 +36,7 @@ export const PAGES = [
     crops: [c("mit", "Permission is hereby granted", "GitHub file view of the purchases-ios LICENSE: MIT License text.", "The iOS SDK is MIT licensed", { verify: "MIT License", minH: 420, extraTop: 120 })],
   }),
   p("revenuecat", "docs-quickstart", "https://www.revenuecat.com/docs/getting-started/quickstart", {
-    crops: [c("platforms", "Choose your mobile app platform", "RevenueCat SDK quickstart: install step with the platform tabs Swift, Obj-C, Kotlin, Kotlin MP, Java, Flutter, React Native, Capacitor, Cordova and Unity.", "SDKs for every mobile platform", { minH: 520 })],
+    crops: [c("platforms", "Choose your mobile app platform", "RevenueCat SDK quickstart: install step with the platform tabs Swift, Obj-C, Kotlin, Kotlin MP, Java, Flutter, React Native, Capacitor, Cordova and Unity.", "SDKs for every mobile platform", { minH: 820, maxH: 1200 })],
   }),
   p("revenuecat", "docs-web-overview", "https://www.revenuecat.com/docs/web/overview", {
     crops: [c("stripe-paddle-billing", "Paddle Billing: Your Paddle Billing catalog", "RevenueCat Web docs overview: RevenueCat Billing (Stripe as gateway), Stripe Billing and Paddle Billing options.", "Web Billing with Stripe and Paddle", { minH: 300, extraTop: 140 })],

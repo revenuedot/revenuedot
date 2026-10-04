@@ -481,5 +481,241 @@
     "status": 200,
     "title": "RevenueCat AI Toolkit | In-App Subscriptions Made Easy – RevenueCat",
     "pageHeight": 3606
+  },
+  {
+    "vendor": "adapty",
+    "page": "home",
+    "url": "https://adapty.io/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png",
+      "home-full-4-2026-10-04.png",
+      "home-full-5-2026-10-04.png",
+      "home-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 80,
+          "y": 0,
+          "width": 1120,
+          "height": 660
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "The Best Solution to Grow Mobile In-App Purchases | Adapty",
+    "pageHeight": 20293
+  },
+  {
+    "vendor": "adapty",
+    "page": "pricing",
+    "url": "https://adapty.io/pricing/",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png",
+      "pricing-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-under-5k-then-1-percent",
+        "file": "pricing-free-under-5k-then-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 120,
+          "y": 234.96875,
+          "width": 800,
+          "height": 470
+        }
+      },
+      {
+        "claim": "add-ons",
+        "file": "pricing-add-ons-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 4908.640625,
+          "width": 1140,
+          "height": 808.8125
+        }
+      },
+      {
+        "claim": "templates-and-ab-tests",
+        "file": "pricing-templates-and-ab-tests-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 150,
+          "y": 2398.1640625,
+          "width": 980,
+          "height": 620
+        }
+      },
+      {
+        "claim": "soc2-and-residency",
+        "file": "pricing-soc2-and-residency-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 3587.71875,
+          "width": 1140,
+          "height": 750.9375
+        }
+      },
+      {
+        "claim": "faq-what-counts",
+        "file": "pricing-faq-what-counts-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 5949.734375,
+          "width": 780,
+          "height": 660
+        }
+      },
+      {
+        "claim": "faq-migration",
+        "file": "pricing-faq-migration-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 6792.703125,
+          "width": 780,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Get free SDK and Grow Mobile In-App Purchases | Adapty",
+    "pageHeight": 8089
+  },
+  {
+    "vendor": "adapty",
+    "page": "security-and-compliance",
+    "url": "https://adapty.io/security-and-compliance/",
+    "ok": true,
+    "full": [
+      "security-and-compliance-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "soc2-type-ii",
+        "file": "security-and-compliance-soc2-type-ii-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 302.578125,
+          "width": 817,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Adapty Security & Compliance: SOC 2 Type II",
+    "pageHeight": 3512
+  },
+  {
+    "vendor": "adapty",
+    "page": "docs-migration-from-revenuecat",
+    "url": "https://adapty.io/docs/migration-from-revenuecat",
+    "ok": true,
+    "full": [
+      "docs-migration-from-revenuecat-full-1-2026-10-04.png",
+      "docs-migration-from-revenuecat-full-2-2026-10-04.png",
+      "docs-migration-from-revenuecat-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "limits",
+        "file": "docs-migration-from-revenuecat-limits-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 244,
+          "y": 9711.765625,
+          "width": 800,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Migrate from RevenueCat to Adapty | Adapty Docs",
+    "pageHeight": 11374
+  },
+  {
+    "vendor": "adapty",
+    "page": "docs-llms-txt",
+    "url": "https://adapty.io/docs/llms.txt",
+    "ok": false,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png"
+    ],
+    "crops": [],
+    "error": "TimeoutError: page.screenshot: Timeout 30000ms exceeded.\nCall log:\n  - taking page screenshot\n  - waiting for fonts to load...\n  - fonts loaded\n",
+    "status": 200,
+    "title": "",
+    "pageHeight": 31505
+  },
+  {
+    "vendor": "adapty",
+    "page": "github-adaptysdk-ios",
+    "url": "https://github.com/adaptyteam/AdaptySDK-iOS",
+    "ok": true,
+    "full": [
+      "github-adaptysdk-ios-full-1-2026-10-04.png",
+      "github-adaptysdk-ios-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-adaptysdk-ios-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 5608.703125,
+          "width": 878,
+          "height": 320
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - adaptyteam/AdaptySDK-iOS: SDK for growing mobile in-app purchases · GitHub",
+    "pageHeight": 6008
+  },
+  {
+    "vendor": "adapty",
+    "page": "blog-new-pricing-2026",
+    "url": "https://adapty.io/blog/adapty-new-pricing-2026/",
+    "ok": true,
+    "full": [
+      "blog-new-pricing-2026-full-1-2026-10-04.png",
+      "blog-new-pricing-2026-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-to-5000",
+        "file": "blog-new-pricing-2026-free-to-5000-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 48,
+          "y": 656.140625,
+          "width": 800,
+          "height": 500
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Adapty introduces new pricing: Full growth toolkit free up to $5,000 revenue",
+    "pageHeight": 4367
   }
 ]

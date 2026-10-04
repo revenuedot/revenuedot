@@ -84,7 +84,7 @@ async function preparePre(page) {
     if (!pre) return;
     const lines = pre.textContent.split("\n");
     pre.textContent = "";
-    pre.style.cssText = "white-space:pre-wrap;word-break:break-word;font:13px/1.5 ui-monospace,Menlo,monospace;max-width:1200px;margin:16px;padding:0";
+    pre.style.cssText = "white-space:pre-wrap;word-break:break-word;font:15px/1.6 ui-monospace,Menlo,monospace;max-width:880px;margin:16px;padding:0";
     for (const l of lines) { const d = document.createElement("div"); d.textContent = l || " "; d.className = "__line"; pre.appendChild(d); }
   });
 }
@@ -162,14 +162,14 @@ for (const p of PAGES) {
       const SEG = 4000;
       if (H <= SEG) {
         const f = `${p.page}-full-${DATE}.png`;
-        await page.screenshot({ path: path.join(dir, f), fullPage: true });
+        await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000 });
         await shrink(path.join(dir, f), 1280, 85);
         entry.full.push(f);
       } else {
         let i = 1;
         for (let off = 0; off < H; off += SEG, i++) {
           const f = `${p.page}-full-${i}-${DATE}.png`;
-          await page.screenshot({ path: path.join(dir, f), fullPage: true, clip: { x: 0, y: off, width: 1280, height: Math.min(SEG, H - off) } });
+          await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000, clip: { x: 0, y: off, width: 1280, height: Math.min(SEG, H - off) } });
           await shrink(path.join(dir, f), 1280, 85);
           entry.full.push(f);
         }
@@ -182,7 +182,7 @@ for (const p of PAGES) {
         if (!rect) { entry.crops.push({ claim: c.claim, file: null, found, error: "locator not found" }); continue; }
         const f = `${p.page}-${c.claim}-${DATE}.png`;
         const fp = path.join(dir, f);
-        await page.screenshot({ path: fp, fullPage: true, clip: rect });
+        await page.screenshot({ path: fp, fullPage: true, timeout: 180000, clip: rect });
         await shrink(fp, 1600, 92);
         entry.crops.push({ claim: c.claim, file: f, found, rect });
       }
