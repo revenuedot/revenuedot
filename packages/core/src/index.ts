@@ -14,3 +14,4 @@ export * from "./anomaly.js";
 export * from "./attribution.js";
 export * from "./benchmarks.js";
 export * from "./experiments/index.js";
+export * from "./test-store-prices.js";

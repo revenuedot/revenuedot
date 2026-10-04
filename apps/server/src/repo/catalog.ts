@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { EntitlementMap } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { brandColors, projectBrand } from "../services/brand.js";
+import { priceFor, pricesOf } from "../services/test-store-prices.js";
 
 const { entitlements, entitlementProducts, products, offerings, packages, packageProducts, apps } = schema;
 
@@ -25,13 +26,18 @@ export async function entitlementMap(db: DB, projectId: string): Promise<Entitle
 export async function productInfo(db: DB, appId: string) {
   const rows = await db.select().from(products).where(eq(products.appId, appId));
   const byId = new Map(rows.map((r) => [r.storeIdentifier, r]));
+  const prices = await pricesOf(db, rows.filter((r) => r.testStorePriceMicros !== null));
   return {
     productType: (id: string) => byId.get(id)?.type ?? byId.get(id.split(":")[0]!)?.type ?? null,
     productDuration: (id: string) => byId.get(id)?.duration ?? null,
-    /** The Test Store price set in the catalog (the SDKs show it; purchases-js posts Test Store receipts without a price). */
-    productPrice: (id: string) => {
+    /**
+     * The Test Store price set in the catalog (the SDKs show it; purchases-js posts Test Store receipts without a price),
+     * in the currency the purchase was shown in (`want`), else the default price.
+     */
+    productPrice: (id: string, want: { currency?: string | null; country?: string | null } = {}) => {
       const p = byId.get(id);
-      return p && p.testStorePriceMicros !== null && p.testStorePriceCurrency ? { amount: p.testStorePriceMicros / 1_000_000, currency: p.testStorePriceCurrency } : null;
+      const chosen = p ? priceFor(prices.get(p.id), want) : null;
+      return chosen ? { amount: chosen.amount_micros / 1_000_000, currency: chosen.currency } : null;
     },
   };
 }

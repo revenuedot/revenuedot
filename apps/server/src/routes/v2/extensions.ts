@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
+import { priceFor, pricesOf } from "../../services/test-store-prices.js";
 import { PAYWALL_WEBHOOK_TYPES } from "@revenuedot/core";
 import { z } from "zod";
 import { schema } from "@revenuedot/db";
@@ -299,13 +300,15 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const start = b.purchased_at !== undefined ? new Date(b.purchased_at) : b.offset_days !== undefined ? new Date(now.getTime() - b.offset_days * 86400_000) : null;
     const scenario = b.scenario ?? "purchase";
     const token = `test_${(start ?? now).getTime()}_${crypto.randomUUID()}`;
+    const chosen = b.price === undefined ? priceFor((await pricesOf(db, [prod])).get(prod.id), { currency: b.currency, country: b.country_code }) : null;
+    const catalogPrice = chosen ? { amount: chosen.amount_micros / 1_000_000, currency: chosen.currency } : null;
     let steps;
     try {
       steps = testStoreScenario({
         scenario, token, productId: prod.storeIdentifier, productType: prod.type, duration: prod.duration, start, now,
-        // Without a price, the product's Test Store price from the catalog (what the SDK shows), as for SDK receipts.
-        price: b.price !== undefined ? { amount: b.price, currency: b.currency ?? "USD" }
-          : prod.testStorePriceMicros !== null && prod.testStorePriceCurrency ? { amount: prod.testStorePriceMicros / 1_000_000, currency: prod.testStorePriceCurrency } : null,
+        // Without a price, the product's Test Store price from the catalog (what the SDK shows), as for SDK receipts: in
+        // `currency` or the country's currency when the product has one, else the default price.
+        price: b.price !== undefined ? { amount: b.price, currency: b.currency ?? "USD" } : catalogPrice,
         countryCode: b.country_code ?? null,
       });
     } catch (e) {

@@ -274,6 +274,13 @@
       "when": 1791091789579,
       "tag": "0041_seal_store_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791161649745,
+      "tag": "0042_test_store_prices",
+      "breakpoints": true
     }
   ]
 }

@@ -1,11 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api } from "../../lib/api";
+import { ApiError, api } from "../../lib/api";
 import { Dialog, Field, STORE_LABEL, useToast } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import {
   COMMON_CURRENCIES, DURATIONS, ISO_PERIOD, PRODUCT_TYPES, STORE_CODE, appIdentifier, durationLabel, errMsg, errParam, isConflict, productName, storeIdHelp, testStorePrice, useApps, useRefreshCatalog, v2,
-  type App, type Product,
+  type App, type Product, type ProductPrice,
 } from "./lib";
 import "./catalog.css";
 
@@ -176,6 +177,51 @@ export function NewProductDialog({ pid, apps, appId, onClose, onCreated }: { pid
   );
 }
 
+/** One currency row of the Test Store price editor. `key` keeps React's row identity while the currency is edited. */
+interface PriceRow { key: number; currency: string; amount: string; saved: { currency: string; amount_micros: number } | null }
+let rowKey = 0;
+const toRow = (p: ProductPrice): PriceRow => ({ key: ++rowKey, currency: p.currency, amount: microsToAmount(p.amount_micros), saved: p });
+
+/** Test Store prices of a product, default first (`GET …/products/{id}/prices`). */
+export function useProductPrices(pid: string, product: Product, enabled: boolean) {
+  return useQuery({ queryKey: ["products", pid, "prices", product.id], enabled, queryFn: () => api<ProductPrice[]>(`${v2(pid)}/products/${product.id}/prices`) });
+}
+
+/**
+ * The Test Store price editor: one row per currency, one of them the default (shown when no price matches the customer's
+ * currency, and the product's `indicative_price`). The SDK shows each customer the price in their storefront's currency.
+ */
+function PriceRows({ rows, def, onRows, onDefault, error }: { rows: PriceRow[]; def: number | null; onRows: (r: PriceRow[]) => void; onDefault: (k: number) => void; error: Record<string, string> }) {
+  const set = (k: number, patch: Partial<PriceRow>) => onRows(rows.map((r) => (r.key === k ? { ...r, ...patch } : r)));
+  return (
+    <div className="field" role="group" aria-labelledby="ep-prices-l">
+      <span className="cat-flabel" id="ep-prices-l">Prices</span>
+      <p className="hint cat-phint">Customers see the price in their store's currency; the default is shown everywhere else. Test purchases record the price shown.</p>
+      {rows.length > 0 && (
+        <div className="cat-prices">
+          {rows.map((r, i) => (
+            <div key={r.key} className="cat-cur" data-testid="price-row">
+              <label className="cat-pdef"><input type="radio" name="ep-default" checked={def === r.key} onChange={() => onDefault(r.key)} aria-label={`Default price ${r.currency || `row ${i + 1}`}`} />Default</label>
+              <input className="input mono" aria-label={`Currency ${i + 1}`} aria-invalid={!!error[`c${r.key}`]} list="ep-currencies" maxLength={3} autoComplete="off" spellCheck={false} placeholder="EUR" value={r.currency} onChange={(e) => set(r.key, { currency: e.target.value.toUpperCase().trim() })} />
+              <input className="input mono" aria-label={`Amount ${i + 1}`} aria-invalid={!!error[`a${r.key}`]} inputMode="decimal" autoComplete="off" placeholder="9.99" value={r.amount} onChange={(e) => set(r.key, { amount: e.target.value })} />
+              <button type="button" className="btn btn-ghost" aria-label={`Remove ${r.currency || `row ${i + 1}`} price`} onClick={() => onRows(rows.filter((x) => x.key !== r.key))}><Icon name="close" /></button>
+              {(error[`c${r.key}`] || error[`a${r.key}`]) && <div className="err cat-perr" role="alert">{error[`c${r.key}`] ?? error[`a${r.key}`]}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {!rows.length && <p className="hint cat-phint">No price. The SDK shows USD 0.00.</p>}
+      <datalist id="ep-currencies">{COMMON_CURRENCIES.map((c) => <option key={c} value={c} />)}</datalist>
+      <div><button type="button" className="btn btn-line" onClick={() => {
+        const used = new Set(rows.map((r) => r.currency));
+        const row = { key: ++rowKey, currency: COMMON_CURRENCIES.find((c) => !used.has(c)) ?? "", amount: "", saved: null };
+        onRows([...rows, row]);
+        if (def === null) onDefault(row.key);
+      }}><Icon name="plus" />Add currency</button></div>
+    </div>
+  );
+}
+
 export function EditProductDialog({ pid, product, onClose }: { pid: string; product: Product; onClose: () => void }) {
   const toast = useToast();
   const refresh = useRefreshCatalog(pid);
@@ -183,27 +229,69 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
   const [type, setType] = useState(product.type);
   const [duration, setDuration] = useState(product.subscription?.duration ?? "P1M");
   const isTestStore = useApps(pid).data?.find((a) => a.id === product.app_id)?.type === "test_store";
-  const [price, setPrice] = useState(microsToAmount(product.indicative_price?.amount_micros));
-  const [currency, setCurrency] = useState(product.indicative_price?.currency ?? "USD");
+  const prices = useProductPrices(pid, product, isTestStore);
+  const [rows, setRows] = useState<PriceRow[] | null>(null);
+  const [def, setDef] = useState<number | null>(null);
+  // The rows start from the saved prices once they load (default first).
+  if (isTestStore && rows === null && prices.data) {
+    const r = prices.data.map(toRow);
+    setRows(r); setDef(r[0]?.key ?? null);
+  }
   const [error, setError] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const editRows = (next: PriceRow[]) => {
+    setRows(next);
+    if (def !== null && !next.some((r) => r.key === def)) setDef(next[0]?.key ?? null);
+  };
+  /** Each row as a price, or the errors keyed by row (`c<key>` currency, `a<key>` amount). */
+  function checkRows(list: PriceRow[]) {
+    const errs: Record<string, string> = {};
+    const out: { key: number; currency: string; amount_micros: number }[] = [];
+    const seen = new Set<string>();
+    for (const r of list) {
+      const v = testStorePrice(r.amount, r.currency);
+      if ("error" in v) { errs[`${v.field === "currency" ? "c" : "a"}${r.key}`] = v.error; continue; }
+      if (!v.value) { errs[`a${r.key}`] = "Enter the price, such as 9.99, or remove the row."; continue; }
+      if (seen.has(v.value.currency)) { errs[`c${r.key}`] = `${v.value.currency} is listed twice.`; continue; }
+      seen.add(v.value.currency);
+      out.push({ key: r.key, ...v.value });
+    }
+    return { errs, out };
+  }
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (type === "subscription" && !ISO_PERIOD.test(duration)) { setError({ duration: "Enter an ISO 8601 period such as P1M, P1Y or P3D." }); return; }
-    const tsp = isTestStore ? testStorePrice(price, currency) : null;
-    if (tsp && "error" in tsp) { setError({ [tsp.field === "currency" ? "test_store_currency" : "test_store_price"]: tsp.error }); return; }
+    if (isTestStore && rows === null) { setError({ form: "Prices are still loading." }); return; }
+    const { errs, out } = isTestStore ? checkRows(rows!) : { errs: {}, out: [] };
+    if (Object.keys(errs).length) { setError(errs); return; }
+    const defPrice = out.find((p) => p.key === def) ?? out[0] ?? null;
     setBusy(true); setError({});
     try {
       await api(`${v2(pid)}/products/${product.id}`, { method: "POST", json: {
         display_name: name.trim(), type, ...(type === "subscription" ? { subscription: { duration } } : {}),
-        ...(tsp && "value" in tsp ? { test_store_price: tsp.value } : {}),
+        ...(isTestStore ? { test_store_price: defPrice ? { amount_micros: defPrice.amount_micros, currency: defPrice.currency } : null } : {}),
       } });
+      if (isTestStore && defPrice) {
+        // The default is saved with the product; the other currencies through the prices endpoints.
+        const saved = new Map((prices.data ?? []).map((p) => [p.currency, p.amount_micros]));
+        const others = out.filter((p) => p.currency !== defPrice.currency);
+        const added = others.filter((p) => !saved.has(p.currency));
+        const changed = others.filter((p) => saved.has(p.currency) && saved.get(p.currency) !== p.amount_micros);
+        const kept = new Set(out.map((p) => p.currency));
+        const base = `${v2(pid)}/products/${product.id}`;
+        if (added.length) await api(`${base}/test_store_prices`, { method: "POST", json: { prices: added.map(({ currency, amount_micros }) => ({ currency, amount_micros })) } });
+        for (const p of changed) await api(`${base}/prices/${p.currency}`, { method: "PATCH", json: { amount_micros: p.amount_micros } });
+        // A currency already removed by an earlier, half-finished save answers 404: it is gone either way.
+        for (const c of saved.keys()) if (!kept.has(c)) await api(`${base}/prices/${c}`, { method: "DELETE" }).catch((e) => { if (!(e instanceof ApiError && e.status === 404)) throw e; });
+      }
       await refresh();
       toast("Product saved");
       onClose();
     } catch (err) {
       const param = errParam(err);
-      setError(param?.startsWith("subscription") ? { duration: errMsg(err) } : param?.startsWith("test_store_price") ? { [param === "test_store_price.currency" ? "test_store_currency" : "test_store_price"]: errMsg(err) } : { form: errMsg(err) });
+      setError(param?.startsWith("subscription") ? { duration: errMsg(err) } : { form: errMsg(err) });
+      // Part of the save may have landed: compare the next try with what the server has now.
+      if (isTestStore) await prices.refetch();
       setBusy(false);
     }
   }
@@ -221,7 +309,9 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
         </Field>
         <TypeRadios value={type} onChange={setType} />
         {type === "subscription" && <DurationField id="ep-dur" value={duration} onChange={setDuration} error={error.duration} />}
-        {isTestStore && <TestStorePriceField id="ep-price" amount={price} currency={currency} onAmount={setPrice} onCurrency={setCurrency} error={error.test_store_price ?? error.test_store_currency} invalid={error.test_store_currency ? "currency" : "amount"} />}
+        {isTestStore && (prices.isError ? <div className="banner err" role="alert">The prices could not be loaded. {errMsg(prices.error)}</div>
+          : rows === null ? <p className="hint">Loading prices…</p>
+          : <PriceRows rows={rows} def={def} onRows={editRows} onDefault={setDef} error={error} />)}
         {error.form && <div className="banner err" role="alert">{error.form}</div>}
       </form>
     </Dialog>

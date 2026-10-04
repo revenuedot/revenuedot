@@ -129,3 +129,8 @@ a.cat-lnk:hover{text-decoration-color:var(--fg)}
 .imp-ids{margin:6px 0 0;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:2px}
 @media (max-width:640px){.imp-table col.imp-hide{width:0!important}.imp-table col.imp-stat{width:112px!important}.imp-table th,.imp-table td{padding-left:8px;padding-right:8px}.imp-table col.imp-prod{width:auto!important}.imp-table th:nth-child(n+3):nth-child(-n+5),.imp-table td:nth-child(n+3):nth-child(-n+5){padding:0;border:0;overflow:hidden;visibility:hidden}.imp-meta{display:block}}
 .cat-price{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px}
+.cat-phint{margin:0}
+.cat-prices{display:flex;flex-direction:column;gap:8px}
+.cat-cur{display:grid;grid-template-columns:auto 88px minmax(0,1fr) auto;gap:8px;align-items:center}
+.cat-pdef{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--fg-2);white-space:nowrap}
+.cat-perr{grid-column:1/-1}
