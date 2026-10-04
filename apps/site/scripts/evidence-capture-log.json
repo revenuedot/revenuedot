@@ -1643,5 +1643,32 @@
     "full": [],
     "crops": [],
     "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/apple/app-store-server-library-node\nCall log:\n  - navigating to \"https://github.com/apple/app-store-server-library-node\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "google",
+    "page": "play-service-fees",
+    "url": "https://support.google.com/googleplay/android-developer/answer/112622?hl=en",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://support.google.com/googleplay/android-developer/answer/112622?hl=en\nCall log:\n  - navigating to \"https://support.google.com/googleplay/android-developer/answer/112622?hl=en\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "google",
+    "page": "play-payments-policy",
+    "url": "https://support.google.com/googleplay/android-developer/answer/9858738",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://support.google.com/googleplay/android-developer/answer/9858738\nCall log:\n  - navigating to \"https://support.google.com/googleplay/android-developer/answer/9858738\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "google",
+    "page": "play-billing-integrate",
+    "url": "https://developer.android.com/google/play/billing/integrate",
+    "ok": false,
+    "full": [],
+    "crops": [],
+    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.android.com/google/play/billing/integrate\nCall log:\n  - navigating to \"https://developer.android.com/google/play/billing/integrate\", waiting until \"domcontentloaded\"\n"
   }
 ]
