@@ -1,5 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { PAYWALL_WEBHOOK_TYPES } from "@revenuedot/core";
+import { PAYWALL_EVENT_FIELDS } from "@revenuedot/core/integrations";
 import { schema, type DB } from "@revenuedot/db";
+import { queueDeliveries } from "./events.js";
 
 /**
  * POST /v1/events: the SDKs batch paywall events (`paywall_impression`, `paywall_close`, `paywall_cancel`,
@@ -11,6 +14,9 @@ import { schema, type DB } from "@revenuedot/db";
  * malformed ones are skipped and duplicates (same event id) are stored once.
  *
  * The endpoint takes a public app key, so anyone holding one can post here: batches, events and payloads are capped.
+ *
+ * Paywall events also go to webhooks and integrations whose event filter names their type (PAYWALL_IMPRESSION …, opt-in;
+ * forwardPaywallEvents below). Nothing else is forwarded.
  */
 export const MAX_BODY_BYTES = 512_000;
 const MAX_EVENTS = 500;
@@ -70,5 +76,85 @@ export async function storeSdkEvents(db: DB, opts: { projectId: string; app: { i
     };
   });
   await db.insert(schema.sdkEvents).values(rows).onConflictDoNothing();
+  // Forwarding never fails the batch: the SDK would resend it forever.
+  await forwardPaywallEvents(db, opts, rows).catch((e) => console.error("Forwarding paywall events failed", e));
   return rows.length;
+}
+
+/** SDK type (`paywall_impression`) → webhook type (`PAYWALL_IMPRESSION`). */
+const PAYWALL_TYPE = new Map<string, string>(PAYWALL_WEBHOOK_TYPES.map((t) => [t.toLowerCase(), t]));
+
+/**
+ * The `events` row id of a forwarded SDK event: a UUID derived from the project and the SDK's event id, so a batch the
+ * SDK sends again finds its rows already there and queues nothing twice.
+ */
+async function forwardedId(projectId: string, sdkId: string): Promise<string> {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`paywall-event:${projectId}:${sdkId}`)));
+  d[6] = (d[6]! & 0x0f) | 0x50;
+  d[8] = (d[8]! & 0x3f) | 0x80;
+  const h = Array.from(d.slice(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`.toUpperCase();
+}
+
+const scalar = (v: unknown) => (typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? v : undefined);
+
+/**
+ * Writes an `events` row for each paywall event whose type an enabled webhook or integration of the project names in its
+ * filter, and queues its deliveries. The event body follows the webhook shape (id, type, event_timestamp_ms, app_id,
+ * app_user_id, original_app_user_id, aliases, environment, store, subscriber_attributes) plus the paywall's fields.
+ * Paywall events carry no transaction, price or revenue. One query decides whether anything in the project wants
+ * paywall events at all; customers, attributes and paywall names are read only then.
+ */
+async function forwardPaywallEvents(db: DB, opts: { projectId: string; app: { id: string | null; type: string } | null; now: Date }, rows: (typeof schema.sdkEvents.$inferInsert)[]) {
+  const candidates = rows.filter((r) => PAYWALL_TYPE.has(r.type));
+  if (!candidates.length) return;
+  const [hooks, ints] = await Promise.all([
+    db.select({ t: schema.webhooks.eventTypes }).from(schema.webhooks).where(and(eq(schema.webhooks.projectId, opts.projectId), eq(schema.webhooks.enabled, true))),
+    db.select({ t: schema.integrations.eventTypes }).from(schema.integrations).where(and(eq(schema.integrations.projectId, opts.projectId), eq(schema.integrations.enabled, true))),
+  ]);
+  const wanted = new Set([...hooks, ...ints].flatMap((x) => x.t ?? []));
+  const todo = candidates.filter((r) => wanted.has(PAYWALL_TYPE.get(r.type)!));
+  if (!todo.length) return;
+
+  const customerIds = [...new Set(todo.map((r) => r.customerId).filter((x): x is string => !!x))];
+  const paywallIds = [...new Set(todo.map((r) => (r.payload as Record<string, unknown>).paywall_id).filter((x): x is string => typeof x === "string" && !!x))];
+  const [customers, aliases, attrs, paywalls] = customerIds.length || paywallIds.length ? await Promise.all([
+    customerIds.length ? db.select({ id: schema.customers.id, original: schema.customers.originalAppUserId, sdk: schema.customers.lastSeenSdkVersion, os: schema.customers.lastSeenPlatformVersion }).from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [],
+    customerIds.length ? db.select({ c: schema.customerAliases.customerId, a: schema.customerAliases.appUserId }).from(schema.customerAliases).where(inArray(schema.customerAliases.customerId, customerIds)) : [],
+    customerIds.length ? db.select().from(schema.customerAttributes).where(inArray(schema.customerAttributes.customerId, customerIds)) : [],
+    paywallIds.length ? db.select({ id: schema.paywalls.id, name: schema.paywalls.name }).from(schema.paywalls).where(and(eq(schema.paywalls.projectId, opts.projectId), inArray(schema.paywalls.id, paywallIds))) : [],
+  ]) : [[], [], [], []];
+  const customer = new Map(customers.map((c) => [c.id, c]));
+  const names = new Map(paywalls.map((p) => [p.id, p.name]));
+  const store = opts.app?.type ? opts.app.type.toUpperCase() : null;
+
+  for (const r of todo) {
+    const type = PAYWALL_TYPE.get(r.type)!;
+    const p = r.payload as Record<string, unknown>;
+    const c = r.customerId ? customer.get(r.customerId) : undefined;
+    const subscriber_attributes: Record<string, { value: string | null; updated_at_ms: number }> = {};
+    for (const a of attrs) if (a.customerId === r.customerId) subscriber_attributes[a.key] = { value: a.value, updated_at_ms: a.updatedAtMs };
+    // The SDK nests the placement and targeting under presented_offering_context; integrations get them flat.
+    const ctx = (p.presented_offering_context && typeof p.presented_offering_context === "object" ? p.presented_offering_context : {}) as Record<string, unknown>;
+    const fields: Record<string, unknown> = { ...ctx, ...p };
+    if (typeof p.paywall_id === "string" && names.get(p.paywall_id)) fields.paywall_name = names.get(p.paywall_id);
+    const paywall: Record<string, unknown> = {};
+    for (const k of PAYWALL_EVENT_FIELDS) { const v = scalar(fields[k]); if (v !== undefined) paywall[k] = v; }
+    const id = await forwardedId(opts.projectId, r.id);
+    const environment = r.isSandbox ? "SANDBOX" : "PRODUCTION";
+    const event: Record<string, unknown> = {
+      id, type, event_timestamp_ms: r.occurredAt.getTime(), app_id: r.appId ?? null, app_user_id: r.appUserId ?? null,
+      original_app_user_id: c?.original ?? r.appUserId ?? null,
+      aliases: r.customerId ? aliases.filter((a) => a.c === r.customerId).map((a) => a.a) : r.appUserId ? [r.appUserId] : [],
+      environment, store, ...paywall,
+      ...(c?.sdk ? { sdk_version: c.sdk } : {}), ...(c?.os ? { platform_version: c.os } : {}),
+      subscriber_attributes,
+    };
+    const inserted = await db.insert(schema.events).values({
+      id, projectId: opts.projectId, customerId: r.customerId ?? null, type, environment: environment.toLowerCase(), appId: r.appId ?? null,
+      payload: { api_version: "1.0", event }, eventTimestampMs: r.occurredAt.getTime(), createdAt: opts.now,
+    }).onConflictDoNothing().returning({ id: schema.events.id });
+    if (!inserted.length) continue;
+    await queueDeliveries(db, opts.projectId, id, type, environment.toLowerCase(), r.appId ?? null, opts.now, event);
+  }
 }

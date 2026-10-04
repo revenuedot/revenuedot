@@ -1,10 +1,11 @@
-import { attr, conceptOf, defaultAnalyticsName, funnelProperties, isSandbox, json, lifecycleProperties, nameFor, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
+import { PAYWALL_CONCEPTS, attr, conceptOf, defaultAnalyticsName, funnelProperties, isPaywallConcept, isSandbox, paywallProperties, json, lifecycleProperties, nameFor, skip, subscriptionStatusOf, type BuildInput, type Concept, type Plan } from "./common.js";
 
 /**
  * PostHog: one event per RevenueDot event through the capture endpoint (https://posthog.com/docs/api/capture).
  * Secrets: `api_key` (the project's public key), `sandbox_api_key` (sandbox events are sent only with it).
  * Settings: `region` (us | eu | custom) and `host` for a self-hosted PostHog, `reporting`.
  * Identity: `$posthogUserId` when set, else the app user id. `uuid` is the event id, so PostHog deduplicates retries.
+ * Paywall events (opt-in) carry the paywall's fields and no revenue or subscription status.
  */
 
 export const POSTHOG_HOSTS = { us: "https://us.i.posthog.com", eu: "https://eu.i.posthog.com" } as const;
@@ -12,7 +13,7 @@ export const POSTHOG_HOSTS = { us: "https://us.i.posthog.com", eu: "https://eu.i
 export const POSTHOG_EVENTS: Concept[] = [
   "initial_purchase", "trial_started", "trial_converted", "trial_cancelled", "renewal", "cancellation", "uncancellation",
   "non_subscription_purchase", "subscription_paused", "expiration", "billing_issue", "product_change", "refund_reversed", "test",
-  "funnel_viewed", "funnel_step_completed", "funnel_purchase",
+  "funnel_viewed", "funnel_step_completed", "funnel_purchase", ...PAYWALL_CONCEPTS,
 ];
 
 const PLATFORMS: Record<string, string> = { APP_STORE: "iOS", MAC_APP_STORE: "macOS", PLAY_STORE: "Android", AMAZON: "Amazon", STRIPE: "Web", RC_BILLING: "Web", PADDLE: "Web" };
@@ -34,8 +35,8 @@ export async function buildPostHog(i: BuildInput): Promise<Plan> {
   const name = nameFor(c, defaultAnalyticsName, i.eventNames)!;
   const status = subscriptionStatusOf(e);
   const properties: Record<string, unknown> = {
-    ...funnelProperties(e),
-    ...lifecycleProperties(e, i.settings.reporting), insert_id: String(e.id), platform: PLATFORMS[e.store as string] ?? null,
+    ...(isPaywallConcept(c) ? paywallProperties(e) : { ...funnelProperties(e), ...lifecycleProperties(e, i.settings.reporting) }),
+    insert_id: String(e.id), platform: PLATFORMS[e.store as string] ?? null,
   };
   if (status) { properties.rc_subscription_status = status; properties.$set = { rc_subscription_status: status }; }
   const body: Record<string, unknown> = {

@@ -114,6 +114,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
       "`userId` is the app user id. Turn on **Send anonymous app user ids as anonymousId** to send `$RCAnonymousID:` customers as `anonymousId`.",
       "`messageId` is the event id (the identify call adds `-identify`), so Segment deduplicates retries. `context.environment` is `production` or `sandbox`.",
       "The three web funnel events (`rd_funnel_viewed`, `rd_funnel_step_completed`, `rd_funnel_purchase`) are opt-in.",
+      "Paywall events are opt-in: tick **Send paywall events** to get `paywall_impression`, `paywall_close`, `paywall_cancel`, `paywall_exit_offer` and `paywall_component_interacted`, plus RevenueDot's `paywall_purchase_initiated` and `paywall_purchase_error`. They carry the paywall, offering and session, and no revenue.",
     ],
     setup: [
       { name: "Add a Segment source", text: "In Segment, add an **HTTP API** source and copy its write key." },
@@ -167,6 +168,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
       "The identity is `$amplitudeUserId` as `user_id` and `$amplitudeDeviceId` as `device_id` when your app sets them, otherwise the app user id as `user_id`.",
       "Each event sets the user property `rc_subscription_status` and carries `platform` (iOS, Android, Web and so on) and `country`.",
       "Sandbox events are sent only when you save a **Sandbox API key** for a second Amplitude project.",
+      "Paywall events are opt-in: tick **Send paywall events** to get `paywall_impression`, `paywall_close`, `paywall_cancel`, `paywall_exit_offer` and `paywall_component_interacted`, plus RevenueDot's `paywall_purchase_initiated` and `paywall_purchase_error`. They carry the paywall, offering and session, and no revenue.",
     ],
     setup: [
       { name: "Copy your API keys", text: "In Amplitude, copy the project's API key. For sandbox events, also copy the key of a second project." },
@@ -220,6 +222,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
       "A profile update sets `rc_subscription_status`. When revenue is not zero, it also appends a `$transactions` entry with `$time`, `$amount`, `product_id` and `store`.",
       "With a **Project API secret**, events go through `/import`, which accepts events of any age. Without it they go through `/track`, which accepts only the last five days.",
       "Sandbox events go only to a project you save as **Sandbox project token**. Data residency can be US, EU or India.",
+      "Paywall events are opt-in: tick **Send paywall events** to get `paywall_impression`, `paywall_close`, `paywall_cancel`, `paywall_exit_offer` and `paywall_component_interacted`, plus RevenueDot's `paywall_purchase_initiated` and `paywall_purchase_error`. They carry the paywall, offering and session, and no revenue.",
     ],
     setup: [
       { name: "Copy the project token", text: "In Mixpanel, open **Project settings** and copy the project token. Copy a second project's token for sandbox events, and optionally the project **API secret**." },
@@ -273,6 +276,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
       "Each event sets `rc_subscription_status` on the person with `$set`.",
       "Sandbox events are sent only when you save a **Sandbox project API key**.",
       "The three web funnel events (`rd_funnel_viewed`, `rd_funnel_step_completed`, `rd_funnel_purchase`) are opt-in.",
+      "Paywall events are opt-in: tick **Send paywall events** to get `paywall_impression`, `paywall_close`, `paywall_cancel`, `paywall_exit_offer` and `paywall_component_interacted`, plus RevenueDot's `paywall_purchase_initiated` and `paywall_purchase_error`. They carry the paywall, offering and session, and no revenue.",
     ],
     setup: [
       { name: "Copy the project API key", text: "In PostHog, copy the **Project API key** (it starts with `phc_`). Copy a second project's key for sandbox events." },

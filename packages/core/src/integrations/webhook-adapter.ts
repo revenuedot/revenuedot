@@ -1,5 +1,5 @@
 import {
-  CONCEPTS, DOCS, FUNNEL_CLIENT_FIELDS, conceptOf, json, skip, type BuildInput, type Concept, type IntegrationField, type IntegrationKind, type IntegrationSpec, type PartnerDef, type Plan,
+  CONCEPTS, DOCS, FUNNEL_CLIENT_FIELDS, conceptOf, isPaywallConcept, json, skip, type BuildInput, type Concept, type IntegrationField, type IntegrationKind, type IntegrationSpec, type PartnerDef, type Plan,
 } from "./common.js";
 
 /**
@@ -11,13 +11,14 @@ import {
  * and before each send). The stored event already is the RevenueCat webhook event, so nothing is mapped; only a funnel visitor's IP address
  * and user agent (`client_ip`, `client_user_agent`) are left out.
  *
- * Steps: every lifecycle step webhooks get except experiment enrollments (CONCEPTS minus `experiment_enrollment`).
+ * Steps: every lifecycle step webhooks get except experiment enrollments (CONCEPTS minus `experiment_enrollment`) and
+ * paywall events (RevenueDot sends those to Segment, Amplitude, Mixpanel and PostHog, like RevenueCat).
  * The partners on the adapter take subscription and revenue events for attribution and paywall revenue; none of them
  * documents RevenueCat Experiments enrollments, which carry no money and would only add noise to their reports.
  * Sandbox events carry `environment: SANDBOX` in the body; whether they are sent is the integration's environment filter.
  */
 
-export const WEBHOOK_ADAPTER_EVENTS: Concept[] = CONCEPTS.filter((c) => c !== "experiment_enrollment");
+export const WEBHOOK_ADAPTER_EVENTS: Concept[] = CONCEPTS.filter((c) => c !== "experiment_enrollment" && !isPaywallConcept(c));
 
 export interface PartnerWebhookOptions {
   /** The partner's name, for skip reasons. */

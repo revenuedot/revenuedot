@@ -1057,6 +1057,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       "Your optional `authorization_header`, sent verbatim as the `Authorization` header. `User-Agent` is `RevenueDot-Webhooks/1.0`.",
       "19 of RevenueCat's 21 event types: `TEST`, `INITIAL_PURCHASE`, `RENEWAL`, `CANCELLATION`, `UNCANCELLATION`, `NON_RENEWING_PURCHASE`, `SUBSCRIPTION_PAUSED`, `EXPIRATION`, `BILLING_ISSUE`, `PRODUCT_CHANGE`, `SUBSCRIPTION_EXTENDED`, `REFUND_REVERSED`, `TRANSFER`, `VIRTUAL_CURRENCY_TRANSACTION`, `EXPERIMENT_ENROLLMENT`, `PRICE_INCREASE_CONSENT_REQUIRED`, `PRICE_INCREASE_CONSENT_APPROVED`, `PURCHASE_REDEEMED` and `SUBSCRIBER_ALIAS` (opt-in).",
       "Opt-in funnel types of RevenueDot's own: `FUNNEL_VIEWED`, `FUNNEL_STEP_COMPLETED` and `FUNNEL_PURCHASE`. Only webhooks that name them in `event_types` get them.",
+      "Opt-in paywall types from the SDK: `PAYWALL_IMPRESSION`, `PAYWALL_CLOSE`, `PAYWALL_CANCEL`, `PAYWALL_EXIT_OFFER`, `PAYWALL_COMPONENT_INTERACTED`, `PAYWALL_PURCHASE_INITIATED` and `PAYWALL_PURCHASE_ERROR`. Only webhooks that name them in `event_types` get them. RevenueCat sends no paywall events to webhooks.",
     ],
     setup: [
       { name: "Add a webhook", text: "In the dashboard, open **Integrations → Webhooks → Add webhook**, or call `POST /v2/projects/{project_id}/integrations/webhooks`." },

@@ -20,10 +20,19 @@ export async function queueIntegrationDeliveries(db: DB, o: {
 
 type Row = typeof schema.integrations.$inferSelect;
 
+/**
+ * An integration's event filter: opt-in types (paywall, funnel, subscriber alias) are sent only when named, and naming
+ * them adds them to the other events instead of narrowing the filter, so ticking "Paywall events" keeps every purchase
+ * event flowing. The filter narrows the other events only when it names at least one of them.
+ */
 export function matches(i: Row, o: { type: string; environment: string; appId: string | null; event: Record<string, unknown> }) {
   if (i.environment !== "both" && i.environment !== o.environment) return false;
   if (i.appId && i.appId !== o.appId) return false;
-  if (i.eventTypes && i.eventTypes.length && !i.eventTypes.includes(o.type)) return false;
-  if (OPT_IN_EVENT_TYPES.has(o.type) && !(i.eventTypes ?? []).includes(o.type)) return false;
+  const filter = i.eventTypes ?? [];
+  if (OPT_IN_EVENT_TYPES.has(o.type)) { if (!filter.includes(o.type)) return false; }
+  else {
+    const regular = filter.filter((t) => !OPT_IN_EVENT_TYPES.has(t));
+    if (regular.length && !regular.includes(o.type)) return false;
+  }
   return sendsEvent(i.kind as IntegrationKind, o.event);
 }

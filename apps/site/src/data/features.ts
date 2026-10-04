@@ -1290,6 +1290,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
           "**Price increases:** `PRICE_INCREASE_CONSENT_REQUIRED` and `PRICE_INCREASE_CONSENT_APPROVED`.",
           "**More:** `VIRTUAL_CURRENCY_TRANSACTION`, `EXPERIMENT_ENROLLMENT`, `PURCHASE_REDEEMED` and `TEST`. `SUBSCRIBER_ALIAS` goes only to webhooks whose filter names it.",
           "**Opt-in RevenueDot types for web funnels:** `FUNNEL_VIEWED`, `FUNNEL_STEP_COMPLETED` and `FUNNEL_PURCHASE`.",
+          "**Opt-in paywall types from the SDK:** `PAYWALL_IMPRESSION`, `PAYWALL_CLOSE`, `PAYWALL_CANCEL`, `PAYWALL_EXIT_OFFER`, `PAYWALL_COMPONENT_INTERACTED`, `PAYWALL_PURCHASE_INITIATED` and `PAYWALL_PURCHASE_ERROR`.",
           "**Never sent:** `TEMPORARY_ENTITLEMENT_GRANT`, because RevenueDot never grants access it has not verified, and `INVOICE_ISSUANCE`, which only RevenueCat Billing issues.",
         ],
         paras: ["Each webhook can filter by environment, app and event type. Two webhooks each receive every event that matches. Order is not guaranteed, so use the timestamps in the event or fetch the customer's current state."],
