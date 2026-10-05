@@ -1574,33 +1574,6 @@
     "pageHeight": 37513
   },
   {
-    "vendor": "iaphub",
-    "page": "home",
-    "url": "https://www.iaphub.com/",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.iaphub.com/\nCall log:\n  - navigating to \"https://www.iaphub.com/\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "iaphub",
-    "page": "pricing",
-    "url": "https://www.iaphub.com/pricing",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.iaphub.com/pricing\nCall log:\n  - navigating to \"https://www.iaphub.com/pricing\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "iaphub",
-    "page": "github-iaphub-ios-sdk",
-    "url": "https://github.com/iaphub/iaphub-ios-sdk",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/iaphub/iaphub-ios-sdk\nCall log:\n  - navigating to \"https://github.com/iaphub/iaphub-ios-sdk\", waiting until \"domcontentloaded\"\n"
-  },
-  {
     "vendor": "nami",
     "page": "pricing",
     "url": "https://www.nami.ml/pricing",
@@ -1996,5 +1969,79 @@
     "status": 200,
     "title": "GitHub - Purchasely/Purchasely-iOS: Purchasely iOS SDK · GitHub",
     "pageHeight": 2336
+  },
+  {
+    "vendor": "iaphub",
+    "page": "home",
+    "url": "https://www.iaphub.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": null,
+        "found": true,
+        "error": "locator not found"
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "IAPHUB | We're making In-app purchases EASY",
+    "pageHeight": 7575
+  },
+  {
+    "vendor": "iaphub",
+    "page": "pricing",
+    "url": "https://www.iaphub.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "plans",
+        "file": "pricing-plans-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 299,
+          "width": 780,
+          "height": 1170.3125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "IAPHUB | Pricing",
+    "pageHeight": 3040
+  },
+  {
+    "vendor": "iaphub",
+    "page": "github-iaphub-ios-sdk",
+    "url": "https://github.com/iaphub/iaphub-ios-sdk",
+    "ok": true,
+    "full": [
+      "github-iaphub-ios-sdk-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-iaphub-ios-sdk-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 714,
+          "width": 944,
+          "height": 690.390625
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - iaphub/iaphub-ios-sdk: The easiest way to implement IAP (In-app purchase) in your iOS app. · GitHub",
+    "pageHeight": 1578
   }
 ]

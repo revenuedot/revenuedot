@@ -1119,6 +1119,47 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- IAPHUB ----
+  {
+    vendor: "IAPHUB",
+    page: "home",
+    url: "https://www.iaphub.com/",
+    captured: DATE,
+    full: asset("iaphub", "home-full-1-2026-10-04.png"),
+    fullParts: [asset("iaphub", "home-full-1-2026-10-04.png"), asset("iaphub", "home-full-2-2026-10-04.png")],
+    crops: [
+    ],
+  },
+  {
+    vendor: "IAPHUB",
+    page: "pricing",
+    url: "https://www.iaphub.com/pricing",
+    captured: DATE,
+    full: asset("iaphub", "pricing-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "plans",
+        file: asset("iaphub", "pricing-plans-2026-10-04.png"),
+        alt: "IAPHUB pricing plans: Sandbox free, Basic $29 a month until $10k/month, Pro 0.7% of MTR with a $59 monthly minimum (0.6% promotional rate before Nov 15, 2026).",
+        caption: "IAPHUB pricing page, captured 2026-10-04: Basic $29 a month; Pro 0.7% with a $59 minimum.",
+      },
+    ],
+  },
+  {
+    vendor: "IAPHUB",
+    page: "github-iaphub-ios-sdk",
+    url: "https://github.com/iaphub/iaphub-ios-sdk",
+    captured: DATE,
+    full: asset("iaphub", "github-iaphub-ios-sdk-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "mit-license",
+        file: asset("iaphub", "github-iaphub-ios-sdk-mit-license-2026-10-04.png"),
+        alt: "GitHub repository page of iaphub-ios-sdk with the MIT license in the About sidebar.",
+        caption: "IAPHUB GitHub page, captured 2026-10-04: The iOS SDK is MIT licensed.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */
