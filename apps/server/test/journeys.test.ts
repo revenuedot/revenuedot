@@ -216,6 +216,24 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     expect((await run()).sent).toBe(0);
   });
 
+  it("records a one-click rating only after the reader confirms it", async () => {
+    await cloud();
+    await signup("rita@notes.app");
+    s!.advance(6 * 60_000);
+    await run();
+    const m = journeyMails("rita@notes.app")[0]!;
+    const token = /\/auth\/journeys\/unsubscribe\/([A-Za-z0-9_-]+)/.exec(m.headers!["List-Unsubscribe"]!)![1]!;
+    const url = `/auth/journeys/feedback/${token}?kind=nps&value=9`;
+    const get = await s!.app.fetch(new Request(`http://localhost${url}`));
+    expect(get.status).toBe(200);
+    expect(await s!.db.select().from(schema.journeyFeedback)).toHaveLength(0);
+    const post = await s!.app.fetch(new Request(`http://localhost/auth/journeys/feedback/${token}`, { method: "POST", body: new URLSearchParams({ kind: "nps", value: "9", comment: "Love the importer" }) }));
+    expect(post.status).toBe(200);
+    const [row] = await s!.db.select().from(schema.journeyFeedback);
+    expect(row).toMatchObject({ kind: "nps", value: "9", comment: "Love the importer" });
+    expect((await s!.app.fetch(new Request(`http://localhost/auth/journeys/feedback/${token}?kind=nps&value=42`))).status).toBe(404);
+  });
+
   it("records the path picked in the welcome and redirects to its guide", async () => {
     await cloud();
     await signup("sam@ai.dev");

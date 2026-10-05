@@ -36,7 +36,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 - **Bounded per pass:** 25 emails and 15 seconds; the job runs every 5 minutes (minute % 5 == 0). Each pass reads the last 3 days' sign-ups and one rotating slice of 200 older accounts. A send that fails gives its claim back, so a later pass retries.
 - **Live means seen live.** A sale counts only when RevenueDot recorded it within 2 days of the purchase and it did not come from an import (`transactions.source = 'import'`), so an imported recent renewal never fires the first-sale email.
 - **From RevenueDot, not a person.** `RevenueDot <hello@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`, so replies reach the team. No founder sign-off (Kai, 2026-10-05: these are lifecycle emails, not personal email).
-- **Built for skimming.** Every email: an eyebrow ("Setup · step 2 of 5"), a heading of a few words, one or two short lines, a visual (the tutorial video's playable cover, or a framed dashboard screenshot from `apps/site/scripts/email-shots.mjs`), numbered steps of one line each with a bold title, one button, an optional "Good to know" box. No paragraph runs longer than two short sentences.
+- **A format for each email's goal** (Kai, 2026-10-05: never one numbered template for everything). Emails are built from blocks in `apps/server/src/mail/journeys.ts`: a setup tracker that shows the account's real progress, a video cover or a dashboard screenshot, a receipt card (first sale, plan), a big number (savings, customers imported), feature cards, a checklist with checkboxes, a timeline, questions and answers, code for every platform, a rendered preview of the email the developer's customers receive, a 0 to 10 rating, one-click reasons. Help offers and check-ins are plain notes signed "The RevenueDot team". Every email explains why the step matters, what the reader will see and the common mistakes; paragraphs stay short.
 - **Unsubscribe.** Every email carries a one-click `List-Unsubscribe` (RFC 8058) that turns off `users.product_emails`, and a footer link to Account settings → Notifications ("Setup help, tips and product news"). Billing, security, verification and alert emails are not affected.
 - **Links** carry `utm_source=revenuedot&utm_medium=email&utm_campaign=journeys&utm_content=<step>`, so DataFast attributes the visit and the goal.
 
@@ -55,8 +55,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 |---|---|---|---|
 | `first_sale` | after the first production sale, within 3 days | live | new developers: what comes next; migrators: "notifications reach RevenueDot, compare with import verify" |
 | `standard_welcome` | after Standard first starts (`billing_accounts.standard_started_at`), within 3 days | started after the launch | SSO, organizations, support promise, billing date |
-| `standard_canceled` | after the subscription is cancelled | Stripe status `canceled` after Standard started (a failed card or an unpaid checkout is not a choice, so it never triggers this) | reply: why? |
-| `referral_joined` | after a friend signs up with their link | | thanks; Kai helps the friend |
+| `standard_canceled` | after the subscription is cancelled (one-click reasons, recorded) | Stripe status `canceled` after Standard started (a failed card or an unpaid checkout is not a choice, so it never triggers this) | reply: why? |
 
 ### C. Switching from RevenueCat
 | Step | When | Condition | Goal | Video |
@@ -94,7 +93,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 | `experiments` | 5 days after the first published paywall | no experiment started | start an experiment | Paywalls and experiments |
 | `recovery` | 10 days after live | payment recovery off | turn it on | none |
 | `team` | 12 days after live | confirmed email, nobody else in their projects | invite a teammate | none |
-| `how_going` | 14 days after live | sales in the last 7 days | reply: how is it going, and may we quote you | none |
+| `how_going` | 14 days after live | sales in the last 7 days | a one-click 0 to 10 rating, recorded, plus a reply | none |
 
 ### G. Referral and win-back
 | Step | When | Condition | Goal |
@@ -112,6 +111,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 ## Data
 - `users.product_emails boolean not null default true`, `users.time_zone text`, `users.journey_path text` (`new` or `revenuecat`), `users.referral_code text unique`, `users.referred_by text`.
 - `projects.rc_import_at timestamptz`: set by the first `POST /v2/projects/{id}/import/customers`.
+- `journey_feedback (user_id, kind, value, comment, created_at)`, primary key `(user_id, kind)`: one-click answers (`nps` 0 to 10, `cancel` reasons). `GET /auth/journeys/feedback/:token?kind=&value=` shows the answer with a confirm button and a comment box (a mail scanner that opens the link records nothing); `POST` records it.
 - `transactions.source text`: `import` for rows an import wrote. Partial indexes `transactions_live_sales` and `transactions_sandbox` let each pass find a project's first and last live sale and first test purchase without reading imported history.
 - `billing_accounts.standard_started_at`: the first time the account became Standard.
 - `journey_sends (user_id, step, sent_at, token_hash)`, primary key `(user_id, step)`; `token_hash` is the unsubscribe token's SHA-256.
