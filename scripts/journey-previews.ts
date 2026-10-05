@@ -18,46 +18,63 @@ const rc = (r: number) => (r >= 2_500 ? r / 100 : 0);
 const app = "https://app.revenuedot.app";
 const token = "preview-token-0123456789abcdef";
 
-/** The account each email is shown for: a Flutter habit app founder, the persona most of these emails speak to. */
-const base = (step: StepId): JourneyCtx => ({
-  step, app, first: "Maya", projectId: "proj_hab1t5", projectName: "Habitly", to: "maya@habitly.app",
+/** Two people the emails are written for: Sam builds a new app and has never used RevenueCat; Maya switches from it. */
+const sam = (step: StepId): JourneyCtx => ({
+  step, app, first: "Sam", projectId: "proj_n0tely", projectName: "Notely", to: "sam@notely.app",
   unsubscribeUrl: `${app}/auth/journeys/unsubscribe/${token}`,
   pathUrl: (p) => `${app}/auth/journeys/path/${token}?path=${p}`,
   verifyUrl: `${app}/verify-email?token=${token}`,
-  testPurchase: true, sdk: { platform: "Flutter", version: "9.6.1" }, importedCustomers: 18_420,
-  sale: { product: "habitly_pro_annual", amount: "$39.99", country: "Germany" },
-  tracked: step === "enterprise" ? 612_400 : step === "pricing_explainer" ? 6_240 : step === "cutover" ? 48_300 : 13_870,
-  month: "October",
-  priceRows: [10_000, 20_000, 50_000, 100_000, 250_000, 500_000].map((r) => [r, rd(r), rc(r)]),
-  lastSaleAt: new Date("2026-09-26T12:00:00Z"),
-  referralUrl: `${app}/signup?ref=k7m2q9xa`,
-  inviter: "Maya Chen",
+  testPurchase: true, sdk: { platform: "React Native", version: "10.10.2" }, migrating: false,
+  sale: { product: "notely_pro_monthly", amount: "$4.99", country: "Canada" },
+  tracked: 13_870, month: "October", overTracked: 13_870, overMonth: "September",
+  inviter: "Sam Rivera",
 });
-const ctxFor = (step: StepId): JourneyCtx => {
-  const c = base(step);
-  c.bills = { revenuedot: rd(c.tracked!), revenuecat: rc(c.tracked!) };
-  if (step === "teammate_welcome") c.first = "Jordan";
-  // The setup tracker as each step would see it.
-  const at = { welcome: 0, first_purchase: 0, connect_app: 1, store_keys: 2, go_live: 3, first_sale: 4 } as Record<string, number>;
-  const n = at[step] ?? 4;
-  c.progress = { testPurchase: n >= 1, app: n >= 2, store: n >= 3, live: n >= 4 };
-  c.feedbackUrl = (kind, value) => `${app}/auth/journeys/feedback/${token}?kind=${kind}&value=${encodeURIComponent(value)}`;
-  c.last7 = 11_270; c.projected = Math.round((c.last7 * 30) / 7);
-  c.overTracked = 13_870; c.overMonth = "September"; c.importedOn = "September 24";
-  c.liveSince = "September 2";
-  if (["need_hand", "import_help", "forwarding_check", "side_by_side", "switch_plan", "cutover"].includes(step)) c.migrating = true;
-  const basis = step === "cutover" ? c.projected : step.startsWith("upgrade") ? c.overTracked : c.tracked!;
-  c.bills = { revenuedot: rd(basis), revenuecat: rc(basis) };
-  return c;
+const maya = (step: StepId): JourneyCtx => ({
+  ...sam(step), first: "Maya", projectId: "proj_hab1t5", projectName: "Habitly", to: "maya@habitly.app", migrating: true,
+  sdk: { platform: "Flutter", version: "9.6.1" }, importedCustomers: 18_420, importedOn: "September 24",
+  sale: { product: "habitly_pro_annual", amount: "$39.99", country: "Germany" },
+  last7: 11_270, projected: Math.round((11_270 * 30) / 7), tracked: 48_300,
+});
+const withBills = (c: JourneyCtx): JourneyCtx => {
+  const basis = c.step === "cutover" ? c.projected! : c.tracked!;
+  return { ...c, bills: { revenuedot: rd(basis), revenuecat: rc(basis) } };
 };
 
-const index: { step: StepId; subject: string; preheader: string; bytes: number }[] = [];
-for (const step of only.length ? only : STEP_IDS) {
-  const m = journeyEmail(ctxFor(step));
-  writeFileSync(join(out, `${step}.html`), m.html);
-  writeFileSync(join(out, `${step}.txt`), `Subject: ${m.subject}\n\n${m.text}`);
+/** Every email in the order a reader meets it, with each variant: [file name, who it goes to]. */
+const at = (c: JourneyCtx, testPurchase: boolean, app: boolean, store: boolean): JourneyCtx => ({ ...c, testPurchase, progress: { testPurchase, app, store, live: false } });
+const VARIANTS: [string, JourneyCtx][] = [
+  ["welcome", sam("welcome")],
+  ["verify_reminder", sam("verify_reminder")],
+  ["connect_app", at(sam("connect_app"), true, false, false)],
+  ["connect_app-seller", { ...at(sam("connect_app"), false, false, true), projectName: "Pocket Yoga", appCreated: true }],
+  ["store_keys", at(sam("store_keys"), true, true, false)],
+  ["paywall", at(sam("paywall"), true, true, true)],
+  ["need_hand-start", at(sam("need_hand"), false, false, false)],
+  ["need_hand-connect", at(sam("need_hand"), true, false, false)],
+  ["need_hand-seller", { ...at(sam("need_hand"), false, false, true), projectName: "Pocket Yoga", appCreated: true }],
+  ["need_hand-store", at(sam("need_hand"), true, true, false)],
+  ["first_sale", { ...sam("first_sale"), progress: { testPurchase: true, app: true, store: true, live: true } }],
+  ["first_sale-existing", { ...sam("first_sale"), projectName: "Pocket Yoga", sale: { product: "yoga_annual", amount: "$59.99", country: "United States", existing: true }, appCreated: true, progress: { testPurchase: false, app: false, store: true, live: true } }],
+  ["standard_welcome", sam("standard_welcome")],
+  ["teammate_welcome", { ...sam("teammate_welcome"), first: "Jordan", to: "jordan@notely.app" }],
+  ["need_hand-switch", { ...maya("need_hand"), importedOn: undefined }],
+  ["side_by_side", maya("side_by_side")],
+  ["need_hand-forwarding", maya("need_hand")],
+  ["first_sale-switch", { ...maya("first_sale"), progress: { testPurchase: false, app: false, store: true, live: true } }],
+  ["first_sale-switch-app", { ...maya("first_sale"), progress: { testPurchase: false, app: true, store: true, live: true } }],
+  ["cutover", maya("cutover")],
+];
+
+const index: { name: string; step: StepId; subject: string; preheader: string; bytes: number }[] = [];
+for (const [name, ctx] of VARIANTS) {
+  if (only.length && !only.includes(ctx.step)) continue;
+  const m = journeyEmail(withBills(ctx));
+  writeFileSync(join(out, `${name}.html`), m.html);
+  writeFileSync(join(out, `${name}.txt`), `Subject: ${m.subject}\n\n${m.text}`);
   const pre = /<div style="display:none[^>]*>([^<&]*)/.exec(m.html)?.[1] ?? "";
-  index.push({ step, subject: m.subject, preheader: pre, bytes: Buffer.byteLength(m.html) });
+  index.push({ name, step: ctx.step, subject: m.subject, preheader: pre, bytes: Buffer.byteLength(m.html) });
 }
+const missing = STEP_IDS.filter((st) => !VARIANTS.some(([, c]) => c.step === st));
+if (missing.length) throw new Error(`No preview for: ${missing.join(", ")}`);
 writeFileSync(join(out, "index.json"), JSON.stringify(index, null, 2));
-console.log(index.map((x) => `${x.step.padEnd(18)} ${String(x.bytes).padStart(6)}  ${x.subject}`).join("\n"));
+console.log(index.map((x) => `${x.name.padEnd(22)} ${String(x.bytes).padStart(6)}  ${x.subject}`).join("\n"));

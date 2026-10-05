@@ -11,9 +11,8 @@ import { esc, type Rendered } from "./templates.js";
 const INK = "#0A0A0A", FG2 = "#4A4A4A", FG3 = "#737373", BORDER = "#E5E5E5", PANEL = "#F7F7F7", GOLD = "#F7B500", UP = "#587A27", DOWN = "#C2410C";
 const FONT = "Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-const LOGO_URL = "https://revenuedot.app/brand/revenuedot-lockup-black@2x.png";
+const LOGO_URL = "https://revenuedot.app/brand/revenuedot-lockup-black%402x.png";
 export const SITE = "https://revenuedot.app";
-export const BOOKING_URL = "https://calendar.google.com/calendar/appointments/schedules/AcZssZ0IxzgwYNVDGggPF9qelyDSh51L5UzFNcrDE2u3eMTwqpLfGsrRxjx2TxY-WyehZVX1ns8MhQWg";
 
 /** The sender. The Cloud binding must allow this address (cloudflare.config.ts); replies reach the team's inbox. */
 export const JOURNEY_FROM = "RevenueDot <hello@mail.revenuedot.app>";
@@ -52,8 +51,8 @@ const shotUrl = (s: Shot) => `${SITE}/email/shots/${s}.jpg`;
 const artUrl = (a: Art) => `${SITE}/email/art/${a}.jpg`;
 
 export type StepId =
-  | "welcome" | "verify_reminder" | "connect_app" | "store_keys" | "need_hand" | "side_by_side" | "cutover"
-  | "first_sale" | "standard_welcome" | "upgrade_nudge" | "teammate_welcome";
+  | "welcome" | "verify_reminder" | "connect_app" | "store_keys" | "paywall" | "need_hand" | "side_by_side" | "cutover"
+  | "first_sale" | "standard_welcome" | "teammate_welcome";
 
 /** What a step's copy may use. Everything optional is filled only for the steps that need it. */
 export interface JourneyCtx {
@@ -73,7 +72,11 @@ export interface JourneyCtx {
   progress?: { testPurchase: boolean; app: boolean; store: boolean; live: boolean };
   testPurchase?: boolean;
   sdk?: { platform: string; version: string } | null;
-  sale?: { product: string; amount: string | null; country: string | null } | null;
+  sale?: { product: string; amount: string | null; country: string | null; existing?: boolean } | null;
+  /** The project has an app (any store), so this is more than an empty sign-up. */
+  appCreated?: boolean;
+  /** Store notifications have reached RevenueDot (since the RevenueCat import, for switchers). */
+  notificationsSeen?: boolean;
   importedCustomers?: number | null;
   /** This month's tracked revenue (USD) and its name ("October"). */
   tracked?: number;
@@ -171,143 +174,200 @@ const mailto = (subject: string) => `mailto:hello@revenuedot.app?subject=${encod
 // ---------- the emails ----------
 
 const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
+  // Everyone, five minutes after sign-up. Written for someone adding purchases for the first time; switching is one link.
   welcome: (c) => ({
     look: "rich",
     subject: "Welcome to RevenueDot",
-    preheader: "Your first test purchase takes about five minutes.",
+    preheader: "Make your first test purchase in about five minutes. No App Store account needed.",
     heading: c.first ? `Welcome to RevenueDot, ${c.first}` : "Welcome to RevenueDot",
     blocks: [
-      { t: "lead", text: "Your project is ready. RevenueDot runs your app's in-app purchases and subscriptions, and it works with the RevenueCat SDK." },
-      { t: "cards", items: [
-        { title: "New to in-app purchases", text: "Make a test purchase with the built-in Test Store. No App Store or Google Play account needed.", link: { label: "Start the quickstart", url: c.pathUrl?.("new") ?? docs("getting-started/quickstart") } },
-        { title: "Moving from RevenueCat", text: "Import your customers and run both side by side until the numbers match.", link: { label: "Plan your switch", url: c.pathUrl?.("revenuecat") ?? docs("migrate") } },
-      ] },
-      { t: "p", text: "Cloud is free until your apps make $10,000 a month." },
+      { t: "lead", text: "RevenueDot runs your app's in-app purchases and subscriptions on the App Store, Google Play and the web. It checks every purchase with the store, unlocks paid features in your app and shows you the revenue." },
+      { t: "picture", video: "first-purchase", shot: "checklist", caption: "A first purchase, from an empty project to a paying test customer." },
+      { t: "p", text: "Start with a test purchase from the dashboard. It needs no App Store or Google Play account, and Cloud is free until your apps make $10,000 a month." },
+      { t: "button", label: "Make your first test purchase", url: dash(c, "/overview"), secondary: { label: "Switching from RevenueCat? Start here", url: c.pathUrl?.("revenuecat") ?? docs("migrate") } },
     ],
   }),
 
   verify_reminder: (c) => ({
-    look: "note",
-    subject: "Confirm your email to create API keys",
-    preheader: "A fresh link that works for 24 hours.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `Please [confirm your email](${c.verifyUrl ?? `${c.app}/`}). RevenueDot needs it before you can create secret API keys. The link works for 24 hours.` },
-    ],
-  }),
-
-  connect_app: (c) => ({
-    look: "note",
-    subject: c.testPurchase ? "Your test purchase worked. Next, connect your app" : "Connect your app to RevenueDot",
-    preheader: "Two settings in the RevenueCat SDK.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${c.testPurchase ? "Your test purchase worked. " : ""}To connect your real app, you keep the RevenueCat SDK and change two settings so it talks to RevenueDot. The [quickstart](${docs("getting-started/quickstart")}) has the current code for each platform.` },
-      { t: "p", text: "Prefer to let your coding agent do it? Point it at https://revenuedot.app/llms.txt." },
-    ],
-  }),
-
-  store_keys: (c) => ({
-    look: "note",
-    subject: "Your app reached RevenueDot. Next, the stores",
-    preheader: "Add store credentials so RevenueDot can check every purchase.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${c.sdk ? `Your ${c.sdk.platform} app just talked to RevenueDot for the first time.` : "Your app just talked to RevenueDot for the first time."} Next, add your store credentials so RevenueDot can check every purchase and hear about renewals and refunds.` },
-      { t: "p", text: `Each app's page in the [dashboard](${dash(c, "/apps")}) shows what's missing. The [App Store](${docs("guides/app-store")}) and [Google Play](${docs("guides/google-play")}) guides walk through it.` },
-    ],
-  }),
-
-  need_hand: (c) => ({
-    look: "note",
-    subject: "Want help with your setup?",
-    preheader: "Book 15 minutes with our team, or reply with where you got stuck.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: c.migrating
-        ? "Your RevenueCat data is in, but the side-by-side run hasn't started yet. Forwarding store notifications is the fiddliest part of the switch, and we're happy to set it up with you."
-        : "In-app purchases have a lot of moving parts: SDK keys, store credentials, notifications. If something's in the way, we'd like to help." },
-      { t: "p", text: `[Book 15 minutes with our team](${BOOKING_URL}) or reply with where you got stuck. A screenshot of the error helps.` },
-    ],
-  }),
-
-  side_by_side: (c) => ({
-    look: "note",
-    subject: "Your RevenueCat data is in. Next, run both side by side",
-    preheader: "Forward store notifications to RevenueCat first.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${c.importedCustomers ? `${c.importedCustomers.toLocaleString("en-US")} customers are now in ${proj(c)}. ` : ""}Next, run RevenueCat and RevenueDot side by side so both see every renewal. Your production app keeps talking to RevenueCat until you're ready.` },
-      { t: "p", text: `Order matters: forward store notifications to RevenueCat first, then point the stores at RevenueDot, or RevenueCat misses renewals. The [side-by-side guide](${docs("migrate/dual-run")}) has the steps.` },
-    ],
-  }),
-
-  cutover: (c) => ({
     look: "rich",
-    subject: c.bills && c.bills.revenuecat > c.bills.revenuedot ? `Ready to turn RevenueCat off? You'd save ${usd((c.bills.revenuecat - c.bills.revenuedot) * 12)} a year` : "Ready to turn RevenueCat off?",
-    preheader: c.bills ? `At your last 7 days' pace: ${usd(c.bills.revenuedot)} a month on RevenueDot, ${usd(c.bills.revenuecat)} on RevenueCat.` : "Your cutover checklist.",
-    heading: "A week of live sales on RevenueDot",
+    subject: "Confirm your email to create secret API keys",
+    preheader: "A fresh link that works for 24 hours.",
+    heading: "Confirm your email",
     blocks: [
-      ...(c.bills && c.bills.revenuecat > c.bills.revenuedot ? [{ t: "stat", value: usd((c.bills.revenuecat - c.bills.revenuedot) * 12), label: `a year saved: ${usd(c.bills.revenuedot)} a month on RevenueDot against ${usd(c.bills.revenuecat)} on RevenueCat, at your last 7 days' pace`, tone: "up" } as Block] : []),
-      { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. When \`npx revenuedot import verify\` shows no differences and most users have updated the app, you can turn RevenueCat off.` },
-      { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
+      { t: "lead", text: "Please confirm your email address. RevenueDot needs it before you can create secret API keys or invite teammates. The link works for 24 hours." },
+      { t: "button", label: "Confirm my email", url: c.verifyUrl ?? `${c.app}/` },
     ],
   }),
 
+  // Building an app, or already selling with your own code: no app has called RevenueDot yet.
+  connect_app: (c) => ({
+    look: "rich",
+    subject: c.testPurchase ? "Your test purchase worked. Next, add RevenueDot to your app" : "Add RevenueDot to your app",
+    preheader: "Install the RevenueDot SDK for your platform and add your API key.",
+    heading: c.testPurchase ? "Your test purchase worked" : "Add RevenueDot to your app",
+    blocks: [
+      { t: "lead", text: "Next, install the RevenueDot SDK in your app and add your API key, so it can load your products, show a paywall and unlock paid features." },
+      { t: "list", items: [
+        ...(c.progress?.store ? ["**Already selling?** Turn on **Track new purchases from server-to-server notifications** on each app's page, so each current subscriber appears at their next renewal or change."] : []),
+        `**Your platform:** iOS, Android, Flutter, React Native, Expo, Capacitor, Unity and the web each have a [setup page](${docs("sdks")}).`,
+        `**Your API key:** copy it from [API keys](${dash(c, "/api-keys")}) in the dashboard.`,
+        `**Using an AI coding tool?** Point it at [revenuedot.app/llms.txt](${SITE}/llms.txt) and ask it to add RevenueDot.`,
+      ] },
+      { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "Your keys, ready to copy." },
+      { t: "button", label: "Add RevenueDot to my app", url: docs("getting-started/connect-your-app") },
+    ],
+  }),
+
+  // Any case: an app has called RevenueDot, but no store is connected.
+  store_keys: (c) => ({
+    look: "rich",
+    subject: "Your app is connected. Next, connect your store",
+    preheader: "Store credentials let RevenueDot check every purchase and hear about renewals and refunds.",
+    heading: "Your app is connected",
+    blocks: [
+      { t: "lead", text: `${c.sdk ? `Your ${c.sdk.platform} app` : "Your app"} is talking to RevenueDot. Next, connect your store, so RevenueDot can check every purchase and hear about renewals and refunds even when nobody opens the app.` },
+      { t: "picture", shot: "app-store", href: dash(c, "/apps"), caption: "Each app's page shows what is still missing." },
+      { t: "list", items: [
+        `**App Store:** add an In-App Purchase key, then paste RevenueDot's notification URL into App Store Connect. The [App Store guide](${docs("guides/app-store")}) shows both.`,
+        `**Google Play:** add a service account and turn on real-time notifications. The [Google Play guide](${docs("guides/google-play")}) covers both.`,
+        `**Products already in the store?** [Import them](${docs("guides/import-products")}) instead of typing them again.`,
+      ] },
+      { t: "button", label: "Connect my store", url: dash(c, "/apps") },
+    ],
+  }),
+
+  // Building an app: store connected, no paywall yet, no sale yet.
+  paywall: (c) => ({
+    look: "rich",
+    subject: "Add a paywall that sells",
+    preheader: "Start from a template and change it from the dashboard, without a new release.",
+    heading: "Add a paywall that sells",
+    blocks: [
+      { t: "lead", text: "Your store is connected. The paywall is the screen where people choose a plan and pay, so it decides how much your app earns." },
+      { t: "picture", video: "paywalls-and-experiments", shot: "paywall-templates", href: dash(c, "/paywalls/templates") },
+      { t: "list", items: [
+        "**Start from a template** and change the words, plans and colors in the dashboard.",
+        "**Add the paywall view from the RevenueDot SDK to your app once.** After that, your changes reach the app without a new release.",
+        `**Want the details?** The [paywall guide](${docs("guides/paywalls")}) walks through it.`,
+      ] },
+      { t: "button", label: "Pick a paywall template", url: dash(c, "/paywalls/templates") },
+    ],
+  }),
+
+  // One email to anyone stuck, written for the step they stalled on.
+  need_hand: (c) => {
+    const p = c.progress ?? { testPurchase: !!c.testPurchase, app: false, store: false, live: false };
+    const stuck = (subject: string, preheader: string, blocks: Block[], label: string, url: string): JourneyMail =>
+      ({ look: "rich", subject, preheader, heading: subject, blocks: [...blocks, { t: "button", label, url }] });
+    if (c.migrating && !c.importedOn) return stuck("Bring your RevenueCat project over", "One command copies your catalog, customers and purchase history.", [
+      { t: "lead", text: `One command copies your apps, products, offerings, customers and purchase history into ${proj(c)}. Running it twice changes nothing, and RevenueCat keeps working while you check the result.` },
+      { t: "picture", video: "switch-from-revenuecat", shot: "customers" }], "Open the import guide", docs("migrate/importer"));
+    if (c.migrating) return stuck("RevenueDot isn't hearing from your stores yet", "Set up forwarding so RevenueCat and RevenueDot both see every renewal.", [
+      { t: "lead", text: `Your RevenueCat data is in ${proj(c)}, but no store notifications have reached RevenueDot since the import. Set RevenueCat's notification URL as the forwarding address on each app's page, then point the stores at RevenueDot, so neither side misses a renewal.` },
+      { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." }], "Open the side-by-side guide", docs("migrate/dual-run"));
+    if (p.app) return stuck("Connect your store to start selling", "Each app's page lists exactly what is missing.", [
+      { t: "lead", text: "Your app talks to RevenueDot, but no store is connected yet, so RevenueDot can't check real purchases. Each app's page in the dashboard lists exactly what is missing, and the store guides walk through every field." },
+      { t: "picture", shot: "app-store", href: dash(c, "/apps") }], "Connect my store", dash(c, "/apps"));
+    if (p.testPurchase || p.store || c.appCreated) return stuck("Let your AI coding tool add RevenueDot", "Paste one prompt into Claude Code, Cursor or Codex.", [
+      { t: "lead", text: `Your app hasn't connected to ${proj(c)} yet. If you use an AI coding tool, paste this prompt and it reads our setup guide and adds RevenueDot to your app:` },
+      { t: "prompts", items: [`${p.store ? "Move my app's in-app purchases to RevenueDot" : "Add in-app purchases to my app with RevenueDot"}. Read https://revenuedot.app/llms.txt, follow the setup for my platform, and use the public API key I copy from the RevenueDot dashboard.`] },
+      { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "Copy your public API key here." }], "Open the setup guide", docs("getting-started/connect-your-app"));
+    return stuck("Your first test purchase takes five minutes", "No App Store or Google Play account needed.", [
+      { t: "lead", text: `${proj(c)} is ready. A test purchase from the dashboard shows how RevenueDot works from start to finish, and it needs no App Store or Google Play account.` },
+      { t: "picture", shot: "checklist", href: dash(c, "/overview"), caption: "Your setup checklist on the Overview." }], "Make a test purchase", dash(c, "/overview"));
+  },
+
+
+  // Switching from RevenueCat: the import is done.
+  side_by_side: (c) => ({
+    look: "rich",
+    subject: "Your RevenueCat data is in. Next, run both side by side",
+    preheader: "Forward store notifications to RevenueCat first, so neither side misses a renewal.",
+    heading: "Your RevenueCat data is in",
+    blocks: [
+      ...(c.importedCustomers ? [{ t: "stat", value: c.importedCustomers.toLocaleString("en-US"), label: `customers imported into ${proj(c)}, with their purchase history` } as Block] : []),
+      { t: "lead", text: "Next, run RevenueCat and RevenueDot side by side so both see every renewal. Your app keeps talking to RevenueCat until you ship the update. Do these in order:" },
+      { t: "ol", items: ["Add each app's store credentials in RevenueDot.", "Forward store notifications to RevenueCat.", "Point the stores at RevenueDot.", "Compare both sides for a week. The guide shows how."] },
+      { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." },
+      { t: "button", label: "Open the side-by-side guide", url: docs("migrate/dual-run") },
+    ],
+  }),
+
+  // Switching from RevenueCat: the app update talks to RevenueDot, and live sales have run for a week.
+  cutover: (c) => {
+    const rdM = Math.round(c.bills?.revenuedot ?? 0), rcM = Math.round(c.bills?.revenuecat ?? 0), save = (rcM - rdM) * 12;
+    return {
+      look: "rich",
+      subject: c.bills && save > 0 ? `Ready to turn RevenueCat off? You could save ${usd(save)} a year` : "Ready to turn RevenueCat off?",
+      preheader: c.bills ? `At your last 7 days' pace: ${usd(rdM)} a month on RevenueDot, ${usd(rcM)} at RevenueCat's list price.` : "Your cutover checklist.",
+      heading: c.liveSince ? `Live sales on RevenueDot since ${c.liveSince}` : "Live sales on RevenueDot",
+      blocks: [
+        ...(c.bills && save > 0 ? [{ t: "stat", value: usd(save), label: `saved a year: ${usd(rdM)} a month on RevenueDot against ${usd(rcM)} at RevenueCat's list price, at your last 7 days' pace`, tone: "up" } as Block] : []),
+        { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot${c.liveSince ? ` since ${c.liveSince}` : ""}, and your app update is reaching your customers. Turn RevenueCat off when all three are true:` },
+        { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Revenue on RevenueDot, updated as sales come in." },
+        { t: "checklist", items: [{ title: "The numbers match", text: "The comparison in the cutover checklist shows no differences." }, { title: "Most users have updated", text: "Older app versions still talk to RevenueCat." }, { title: "Webhooks move together", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." }] },
+        { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
+      ],
+    };
+  },
+
+  // The first live sale. Three cases: a brand-new app, an app that already sold before RevenueDot, and a switch.
   first_sale: (c) => {
-    const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)} · first sale`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
-    return c.migrating ? {
-      look: "rich",
-      subject: `RevenueDot just saw ${proj(c)}'s first live sale`,
-      preheader: "Store notifications are reaching RevenueDot.",
-      heading: "Your first live sale is in",
-      blocks: [...rows, { t: "p", text: "RevenueDot now sees real sales alongside RevenueCat. Let both run for a few days, then compare them." },
-        { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }],
-    } : {
-      look: "rich",
-      subject: "You just made your first real sale",
-      preheader: c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}${c.sale.country ? ` from ${c.sale.country}` : ""}.` : "Your first production purchase came through RevenueDot.",
-      heading: "Your first real sale",
-      blocks: [...rows, { t: "p", text: `Congratulations. A real customer just paid for what you built, and ${proj(c)} is live.` },
+    const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)}: first sale on RevenueDot`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
+    const preheader = c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}.` : "Store notifications are reaching RevenueDot.";
+    const app = !!c.progress?.app;
+    if (c.migrating) return {
+      look: "rich", subject: `RevenueDot recorded its first ${proj(c)} sale`, preheader, heading: "Sales are reaching RevenueDot",
+      blocks: [...rows, { t: "lead", text: app
+        ? "RevenueDot now records sales alongside RevenueCat, and a build of your app talks to RevenueDot. Let both run for a few days, then compare them."
+        : "Store notifications reach RevenueDot, so it records sales alongside RevenueCat. Next, ship the app update that points your app at RevenueDot. Older versions keep using RevenueCat until you turn it off." },
+        { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." },
+        app ? { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }
+          : { t: "button", label: "Plan the app update", url: docs("migrate/sdk-changes") }],
+    };
+    if (c.sale?.existing) return {
+      look: "rich", subject: `RevenueDot recorded its first ${proj(c)} sale`, preheader, heading: "Sales are reaching RevenueDot",
+      blocks: [...rows, { t: "lead", text: `Your store is sending purchases and renewals to RevenueDot, so revenue and subscribers for ${proj(c)} update as sales come in.` },
+        { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Your Overview." },
+        { t: "button", label: "See it on your dashboard", url: dash(c, "/overview"), ...(app ? {} : { secondary: { label: "Next: add RevenueDot to your app", url: docs("getting-started/connect-your-app") } }) }],
+    };
+    return {
+      look: "rich", subject: "You made your first real sale", preheader, heading: "Your first real sale",
+      blocks: [...rows, { t: "lead", text: `Congratulations. A real customer paid for what you built, and ${proj(c)} is live.` },
+        { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Revenue, subscribers and trials update as sales come in." },
         { t: "button", label: "See it on your dashboard", url: dash(c, "/overview") }],
     };
   },
 
   standard_welcome: (c) => ({
-    look: "note",
+    look: "rich",
     subject: "You're on Cloud Standard",
     preheader: "0.5% above $10,000 a month, never more than $999.",
+    heading: "You're on Cloud Standard",
     blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: "Thank you for upgrading. You pay 0.5% of tracked revenue above $10,000 a month, never more than $999, and the rate never rises. Your first invoice comes on the 1st of next month, with no proration." },
-      { t: "p", text: `Your [billing page](${c.app}/account/billing) has invoices and the plan details. For support, reply to this email.` },
-    ],
-  }),
-
-  upgrade_nudge: (c) => ({
-    look: "note",
-    subject: "Your apps outgrew Cloud Free",
-    preheader: c.bills ? `On ${usd(c.overTracked ?? 0)} a month, Standard costs ${usd(c.bills.revenuedot)}.` : "0.5% above $10,000, capped at $999 a month.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `Your apps tracked ${usd(c.overTracked ?? 0)} in ${c.overMonth ?? "a month"}, past Cloud Free's $10,000. Everything keeps working either way.` },
-      { t: "p", text: `${c.bills ? `At that level Standard costs ${usd(c.bills.revenuedot)} a month, against ${usd(c.bills.revenuecat)} on RevenueCat. ` : ""}Standard is 0.5% above $10,000, capped at $999 a month, and billing starts on the 1st of next month. [Upgrade to Standard](${c.app}/account/billing) when you're ready, or reply if anything is in the way.` },
+      { t: "receipt", title: "Your plan", rows: [["Plan", "Cloud Standard"], ["Above $10,000 a month", "0.5%"], ["Never more than", "$999 a month"], ["First invoice", "1st of next month"]] },
+      { t: "lead", text: "Thank you for upgrading. The rate never rises, and there's no proration. Standard adds single sign-on, organizations and custom roles for your team." },
+      { t: "picture", shot: "team", href: `${c.app}/account/billing` },
+      { t: "button", label: "See billing and invoices", url: `${c.app}/account/billing` },
     ],
   }),
 
   teammate_welcome: (c) => ({
-    look: "note",
+    look: "rich",
     subject: `You're in ${proj(c)} on RevenueDot`,
-    preheader: "Where to start.",
+    preheader: "Revenue, subscribers and every purchase, in one place.",
+    heading: `Welcome to ${proj(c)}`,
     blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${c.inviter ? `${c.inviter} added you` : "You were added"} to ${proj(c)} on RevenueDot, where the app's purchases, subscribers and revenue live. The [Overview](${dash(c, "/overview")}) is the best place to start.` },
+      { t: "lead", text: `${c.inviter ? `${c.inviter} added you` : "You were added"} to ${proj(c)} on RevenueDot, where the app's purchases, subscribers and revenue live.` },
+      { t: "picture", shot: "overview", href: dash(c, "/overview") },
+      { t: "list", items: ["**Overview:** revenue, subscribers and trials, compared with the period before.", "**Customers:** look anyone up by user ID, email or transaction ID.", "**Charts:** more than 40, from revenue to trial conversion."] },
+      { t: "button", label: "Open the Overview", url: dash(c, "/overview") },
     ],
   }),
 };
 
 /** Steps whose footer says they stop once the app is live. */
-const ONBOARDING = new Set<StepId>(["welcome", "verify_reminder", "connect_app", "store_keys", "need_hand", "side_by_side"]);
+const ONBOARDING = new Set<StepId>(["welcome", "verify_reminder", "connect_app", "store_keys", "paywall", "need_hand", "side_by_side"]);
 
 // ---------- layout ----------
 
@@ -342,7 +402,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
       case "progress": {
         const items = progressItems(b.current);
         const done = items.filter((x) => x.done).length;
-        return row(box(label(`Your setup · ${done} of ${items.length} done`) +
+        return row(box(label(`Your setup: ${done} of ${items.length} done`) +
           items.map((x) => `<p style="margin:0 0 6px;font-size:14px;line-height:20px;color:${x.done ? FG3 : INK};${x.current ? "font-weight:700;" : ""}">` +
             `<span style="display:inline-block;width:20px;color:${x.done ? UP : x.current ? GOLD : "#BDBDBD"};">${x.done ? "&#10003;" : x.current ? "&#9679;" : "&#9675;"}</span>` +
             `${esc(x.label)}${x.current ? `<span style="font-weight:500;color:${FG3};">&nbsp; &larr; next</span>` : ""}</p>`).join(""),
@@ -355,7 +415,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
         const href = tag(v ? videoUrl(v) : b.href ?? `${c.app}/`, s);
         const alt = v ? `Play the video: ${VIDEOS[v].title} (${VIDEOS[v].length})` : b.art ? ART_ALT[b.art] : SHOT_ALT[b.shot!];
         const caption = v
-          ? `<a href="${esc(href)}" style="color:${INK};text-decoration:none;">&#9654;&nbsp; <strong style="font-weight:700;">Watch: ${esc(VIDEOS[v].title)}</strong> <span style="font-family:${MONO};font-size:12px;color:${FG3};">${VIDEOS[v].length}</span></a> <a href="${esc(VIDEOS[v].youtube)}" style="font-size:12px;color:${FG3};text-decoration:underline;">on YouTube</a>${b.caption ? `<br><span style="color:${FG3};">${h(b.caption)}</span>` : ""}`
+          ? `<a href="${esc(href)}" style="color:${INK};text-decoration:none;"><strong style="font-weight:700;">Watch: ${esc(VIDEOS[v].title)}</strong> <span style="font-family:${MONO};font-size:12px;color:${FG3};">${VIDEOS[v].length}</span></a> <a href="${esc(VIDEOS[v].youtube)}" style="font-size:12px;color:${FG3};text-decoration:underline;">on YouTube</a>${b.caption ? `<br><span style="color:${FG3};">${h(b.caption)}</span>` : ""}`
           : b.caption ? `<span style="color:${FG3};">${h(b.caption)}</span>` : "";
         return row(`<a href="${esc(href)}" style="display:block;text-decoration:none;"><img src="${esc(src)}" width="520" alt="${esc(alt)}" style="display:block;width:100%;max-width:520px;height:auto;border:1px solid ${BORDER};outline:none;background:${PANEL};font-family:${FONT};font-size:14px;color:${FG2};"></a>` +
           (caption ? `<p style="margin:10px 0 0;font-size:14px;line-height:20px;color:${INK};">${caption}</p>` : ""), 26);
@@ -369,7 +429,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
         const card = (x: { title: string; text: string; link?: { label: string; url: string } }) =>
           `<div style="display:inline-block;width:100%;max-width:251px;vertical-align:top;margin:0 0 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border:1px solid ${BORDER};padding:14px 16px;">` +
           `<p style="margin:0 0 6px;font-size:15px;line-height:21px;font-weight:700;color:${INK};">${h(x.title)}</p><p style="margin:0;font-size:14px;line-height:21px;color:${FG2};">${h(x.text)}</p>` +
-          (x.link ? `<p style="margin:10px 0 0;font-size:14px;line-height:20px;"><a href="${esc(tag(x.link.url, s))}" style="color:${INK};font-weight:700;text-decoration:none;">${esc(x.link.label)} &rarr;</a></p>` : "") +
+          (x.link ? `<p style="margin:10px 0 0;font-size:14px;line-height:20px;"><a href="${esc(tag(x.link.url, s))}" style="color:${INK};font-weight:700;text-decoration:none;">${esc(x.link.label)}</a></p>` : "") +
           `</td></tr></table></div>`;
         return `<tr><td style="padding:0 0 10px;font-size:0;line-height:0;">` + b.items.map((x, i) => card(x) + (i % 2 === 0 && i < b.items.length - 1 ? `<div style="display:inline-block;width:18px;"></div>` : "")).join("") + `</td></tr>`;
       }
@@ -384,7 +444,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
         `<td valign="top" style="padding:0 0 ${i < b.items.length - 1 ? 18 : 0}px;"><p style="margin:0;font-size:11px;line-height:16px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${FG3};">${esc(x.when)}</p>` +
         `<p style="margin:2px 0 0;font-size:16px;line-height:22px;font-weight:700;color:${INK};">${h(x.title)}</p><p style="margin:3px 0 0;font-size:14px;line-height:22px;color:${FG2};">${h(x.text)}</p></td></tr></table>`).join(""));
       case "faq": return row(b.items.map((x, i) => `<div style="${i ? `border-top:1px solid ${BORDER};padding-top:14px;margin-top:14px;` : ""}"><p style="margin:0;font-size:15px;line-height:22px;font-weight:700;color:${INK};">${h(x.q)}</p><p style="margin:4px 0 0;font-size:15px;line-height:23px;color:${FG2};">${h(x.a)}</p></div>`).join(""));
-      case "prompts": return row(b.items.map((x) => `<p style="margin:0 0 8px;"><span style="display:inline-block;background:${PANEL};border:1px solid ${BORDER};border-radius:16px;padding:7px 14px;font-size:14px;line-height:20px;color:${INK};">&ldquo;${esc(x)}&rdquo;</span></p>`).join(""), 14);
+      case "prompts": return row(b.items.map((x) => `<p style="margin:0 0 8px;"><span style="display:inline-block;background:${PANEL};border:1px solid ${BORDER};padding:10px 14px;font-size:14px;line-height:21px;color:${INK};">${esc(x)}</span></p>`).join(""), 14);
       case "code": return row(label(b.label) + box(esc(b.text), `background:${INK};padding:14px 16px;font-family:${MONO};font-size:12.5px;line-height:20px;color:#F5F5F5;white-space:pre-wrap;word-break:normal;overflow-wrap:anywhere;`), 16);
       case "table": return row(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid ${BORDER};">` +
         `<tr>${b.head.map((x, i) => `<td style="padding:10px 14px;background:${PANEL};border-bottom:1px solid ${BORDER};font-size:11px;line-height:16px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${FG3};${i ? "text-align:right;" : ""}">${esc(x)}</td>`).join("")}</tr>` +
@@ -395,9 +455,9 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
       case "rating": return row(`<p style="margin:0 0 12px;font-size:16px;line-height:24px;font-weight:700;color:${INK};">${esc(b.question)}</p>` +
         // Inline boxes wrap onto a second line on a narrow phone instead of widening the email.
         `<p style="margin:0;font-size:0;line-height:0;">` + Array.from({ length: 11 }, (_, n) => `<a href="${esc(tag(b.url(n), s))}" style="display:inline-block;width:25px;height:34px;margin:0 2px 4px 0;border:1px solid ${INK};font-family:${MONO};font-size:13px;line-height:34px;text-align:center;color:${INK};text-decoration:none;">${n}</a>`).join("") + `</p>` +
-        `<p style="margin:4px 0 0;font-size:12px;line-height:18px;color:${FG3};">0 = ${esc(b.low)} &middot; 10 = ${esc(b.high)}</p>`);
+        `<p style="margin:4px 0 0;font-size:12px;line-height:18px;color:${FG3};">0 = ${esc(b.low)} | 10 = ${esc(b.high)}</p>`);
       case "choices": return row(b.items.map((x) => `<p style="margin:0 0 8px;"><a href="${esc(tag(x.url, s))}" style="display:inline-block;border:1px solid ${INK};padding:10px 16px;font-size:14px;line-height:20px;font-weight:600;color:${INK};text-decoration:none;">${esc(x.label)}</a></p>`).join(""), 14);
-      case "button": return row(`<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${INK};"><a href="${esc(tag(b.url, s))}" style="display:inline-block;padding:15px 26px;font-family:${FONT};font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(b.label)} &rarr;</a></td></tr></table>` +
+      case "button": return row(`<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${INK};"><a href="${esc(tag(b.url, s))}" style="display:inline-block;padding:15px 26px;font-family:${FONT};font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(b.label)}</a></td></tr></table>` +
         (b.secondary ? `<p style="margin:14px 0 0;font-size:14px;line-height:20px;"><a href="${esc(tag(b.secondary.url, s))}" style="color:${INK};text-decoration:underline;text-underline-offset:2px;">${esc(b.secondary.label)}</a></p>` : ""), 30);
     }
   };
@@ -435,7 +495,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
   const flink = (label: string, url: string) => `<a href="${esc(tag(url, s))}" style="color:${FG3};">${label}</a>`;
   const foot = `<tr><td style="border-top:1px solid ${BORDER};padding:18px 0 0;font-size:12px;line-height:18px;color:${FG3};">${esc(reason)} ` +
     `If you'd rather not get these emails, <a href="${esc(c.unsubscribeUrl)}" style="color:${FG3};">unsubscribe</a> or change your <a href="${esc(prefs)}" style="color:${FG3};">email preferences</a>.` +
-    `<br><br>RevenueDot &middot; ${flink("Docs", `${SITE}/docs`)} &middot; ${flink("Blog", `${SITE}/blog`)} &middot; ${flink("GitHub", "https://github.com/revenuedot/revenuedot")}</td></tr></table></td></tr></table></body></html>`;
+    `<br><br>RevenueDot | ${flink("Docs", `${SITE}/docs`)} | ${flink("Blog", `${SITE}/blog`)} | ${flink("GitHub", "https://github.com/revenuedot/revenuedot")}</td></tr></table></td></tr></table></body></html>`;
 
   let html: string;
   if (m.look === "note") {
@@ -472,7 +532,7 @@ export function journeyEmail(c: JourneyCtx): Rendered {
   const safe: JourneyCtx = {
     ...c, first: plain(c.first), projectName: plain(c.projectName), inviter: plain(c.inviter),
     sdk: c.sdk ? { platform: plain(c.sdk.platform) ?? "", version: plain(c.sdk.version) ?? "" } : c.sdk,
-    sale: c.sale ? { product: plain(c.sale.product) ?? "a product", amount: plain(c.sale.amount), country: plain(c.sale.country) } : c.sale,
+    sale: c.sale ? { product: plain(c.sale.product) ?? "a product", amount: plain(c.sale.amount), country: plain(c.sale.country), existing: c.sale.existing === true } : c.sale,
   };
   return render(safe, EMAILS[safe.step](safe));
 }

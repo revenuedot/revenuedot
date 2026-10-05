@@ -267,7 +267,7 @@ test clock renewal, declined card, recovery, portal), plus `apps/server/test/bil
 `apps/dashboard/e2e/billing.spec.ts`.
 
 ## Onboarding and growth emails (off until `REVENUEDOT_JOURNEYS=on`)
-Spec: `prd/onboarding-emails/PRD.md`. The cron tick picks at most one email per account every 5 minutes from 11 steps
+Spec: `prd/onboarding-emails/PRD.md`. The cron tick picks at most one email per account every 5 minutes from 12 steps
 (welcome to upgrade) and sends it from `RevenueDot <hello@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`.
 - **Secrets** on Worker `revenuedot`: `REVENUEDOT_JOURNEYS` (`on` sends; anything else is off), `REVENUEDOT_JOURNEYS_SINCE`
   (ISO time; onboarding steps go only to accounts created after it), `REVENUEDOT_JOURNEYS_EXCLUDE` (comma list of domains
