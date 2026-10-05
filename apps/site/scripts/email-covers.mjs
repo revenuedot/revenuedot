@@ -17,7 +17,7 @@ mkdirSync(out, { recursive: true });
 const posters = process.argv[2];
 
 const VIDEOS = [
-  { slug: "revenuedot-first-purchase", title: "Your first purchase in 5 minutes", length: "1:30", fallback: "src/assets/screens/overview-light.png" },
+  { slug: "revenuedot-first-purchase", title: "Your first purchase in 5 minutes", length: "1:18", fallback: "src/assets/screens/overview-light.png", titled: true },
   { slug: "revenuedot-connect-your-app", title: "Connect your app with one line", length: "1:30", fallback: "src/assets/screens/offerings-light.png" },
   { slug: "revenuedot-switch-from-revenuecat", title: "Switch from RevenueCat without losing a renewal", length: "1:40", fallback: "src/assets/screens/customers-light.png" },
   { slug: "revenuedot-paywalls-and-experiments", title: "Build a paywall and test it", length: "1:30", fallback: "public/clips/paywalls.webp" },
@@ -40,9 +40,12 @@ for (const v of VIDEOS) {
     .play{position:absolute;left:50%;top:44%;width:132px;height:132px;margin:-66px 0 0 -66px;border-radius:50%;background:#0A0A0A;box-shadow:0 0 0 10px rgba(255,255,255,.22),0 18px 50px rgba(0,0,0,.35)}
     .play:after{content:"";position:absolute;left:52px;top:38px;border-left:44px solid #fff;border-top:28px solid transparent;border-bottom:28px solid transparent}
     .meta{position:absolute;left:48px;right:48px;bottom:40px;color:#fff}
+    /* A poster with its own title: the play button sits on the product shot, and the shade stays light so the title reads. */
+    .titled .play{left:74%;top:50%}
+    .titled .shade{background:linear-gradient(180deg,rgba(10,10,10,0) 60%,rgba(10,10,10,.55) 100%)}
     .tag{display:inline-flex;gap:10px;align-items:center;font:500 18px/1 'Geist Mono',monospace;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.14);padding:9px 12px;margin-bottom:16px}
     h1{font-weight:700;font-size:52px;line-height:1.08;letter-spacing:-.035em;text-wrap:balance;max-width:980px}
-  </style></head><body><div class="shot"></div><div class="shade"></div><div class="play"></div>
+  </style></head><body class="${v.titled ? "titled" : ""}"><div class="shot"></div><div class="shade"></div><div class="play"></div>
   <div class="meta"><div class="tag">&#9654; Video &middot; ${v.length}</div>${v.titled ? "" : `<h1>${v.title}</h1>`}</div></body></html>`, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
   const file = path.join(out, `${v.slug}.jpg`);

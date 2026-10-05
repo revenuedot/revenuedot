@@ -25,7 +25,7 @@ export type VideoId = "first-purchase" | "connect-your-app" | "switch-from-reven
  * the video's page on revenuedot.app. Covers (1200×675 JPEG, play button and length drawn in) live in apps/site/public/email/.
  */
 export const VIDEOS: Record<VideoId, { title: string; length: string; slug: string; youtube?: string; ready: boolean }> = {
-  "first-purchase": { title: "Your first purchase in 5 minutes", length: "1:30", slug: "revenuedot-first-purchase", ready: false },
+  "first-purchase": { title: "Your first purchase in 5 minutes", length: "1:18", slug: "revenuedot-first-purchase", ready: true },
   "connect-your-app": { title: "Connect your app to RevenueDot", length: "1:30", slug: "revenuedot-connect-your-app", ready: false },
   "switch-from-revenuecat": { title: "Switch from RevenueCat without losing a renewal", length: "1:40", slug: "revenuedot-switch-from-revenuecat", ready: false },
   "paywalls-and-experiments": { title: "Build a paywall and test it", length: "1:30", slug: "revenuedot-paywalls-and-experiments", ready: false },

@@ -5,6 +5,7 @@ export const STREAM = "https://customer-fmxk2rh71xv35llp.cloudflarestream.com";
 
 export const VIDEOS = {
   "revenuedot-chatgpt-demo": { uid: "268e07161316f8ff9857a94fe1c7d195", title: "87-second demo: RevenueDot running a subscription app from ChatGPT" },
+  "revenuedot-first-purchase": { uid: "e38ce0c11f5a379b85897f5bde1bf711", title: "78-second tutorial: your first in-app purchase with RevenueDot in 5 minutes, no server and no App Store account" },
   "revenuedot-dashboard-tour": { uid: "39db15d4d7f884f65f53577849b829fb", title: "14-second silent tour of the RevenueDot dashboard: Overview, MRR chart, paywall editor and experiment results" },
 };
 
@@ -13,6 +14,12 @@ export const VIDEOS = {
  * links to YouTube too). `seconds` and `date` feed the VideoObject structured data.
  */
 export const WATCH = {
+  "revenuedot-first-purchase": {
+    heading: "Your first purchase in 5 minutes", seconds: 78, date: "2026-10-04", youtube: null,
+    description: "Make your first in-app purchase with RevenueDot in 5 minutes: a Test Store app, a product, an entitlement and a test purchase.",
+    summary: "Sign up, then follow the Overview checklist: add a Test Store app, a pro_monthly product, a pro entitlement and a default offering, and make a test purchase. The customer test_user_1 gets Pro for a month, with its events. No server and no App Store account needed.",
+    next: { label: "Follow the quickstart", href: "/docs/getting-started/quickstart" },
+  },
   "revenuedot-chatgpt-demo": {
     heading: "Run your subscriptions from ChatGPT", seconds: 87, date: "2026-10-01", youtube: null,
     description: "Watch RevenueDot in ChatGPT: check setup health, find a customer, grant Pro for 7 days and fix a webhook, all in plain words.",
