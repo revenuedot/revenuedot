@@ -429,9 +429,15 @@ export const transactions = pgTable("transactions", {
   /** Offer used for this transaction (see subscriptions.offerType) and the store's offer id. */
   offerType: text("offer_type"),
   offerId: text("offer_id"),
+  /** "import" for rows written by a RevenueCat import (history, not a live sale); null for everything RevenueDot saw happen. */
+  source: text("source"),
   /** When RevenueDot recorded the row (incremental data exports read this; rows from before migration 0013 carry its run time). */
   createdAt: created(),
-}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id), index("transactions_customer").on(t.customerId, t.purchasedAt)]);
+}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id), index("transactions_customer").on(t.customerId, t.purchasedAt),
+  // Onboarding emails (services/journeys.ts) find a project's first and last live sale and first test purchase from these
+  // without reading imported history: each lookup stops at its first row.
+  index("transactions_live_sales").on(t.projectId, t.createdAt).where(sql`${t.source} IS NULL AND NOT ${t.isSandbox} AND ${t.revenueUsd} > 0 AND ${t.kind} IN ('purchase', 'renewal', 'one_time')`),
+  index("transactions_sandbox").on(t.projectId, t.createdAt).where(sql`${t.isSandbox}`)]);
 
 /** Customer lifecycle events; the source for webhooks and the customer history timeline (paged newest first on events_customer_time). */
 export const events = pgTable("events", {
@@ -536,7 +542,7 @@ export const users = pgTable("users", {
   /** The referral code this account signed up with, as given. */
   referredBy: text("referred_by"),
   createdAt: created(),
-}, (t) => [uniqueIndex("users_email").on(t.email), uniqueIndex("users_referral_code").on(t.referralCode)]);
+}, (t) => [uniqueIndex("users_email").on(t.email), uniqueIndex("users_referral_code").on(t.referralCode), index("users_referred_by").on(t.referredBy)]);
 
 /** A user's access to a project. `role`: "admin", "developer" or "viewer". */
 export const memberships = pgTable("memberships", {

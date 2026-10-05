@@ -1,5 +1,5 @@
 {
-  "id": "c82884cf-732c-4586-99fb-e15aa234b543",
+  "id": "a660f6bf-eab9-4441-a427-0e278465f61b",
   "prevId": "492a3968-3470-41a6-8ba5-274dc7ddfb95",
   "version": "7",
   "dialect": "postgresql",
@@ -12053,6 +12053,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -12160,6 +12166,50 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transactions_live_sales": {
+          "name": "transactions_live_sales",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"transactions\".\"source\" IS NULL AND NOT \"transactions\".\"is_sandbox\" AND \"transactions\".\"revenue_usd\" > 0 AND \"transactions\".\"kind\" IN ('purchase', 'renewal', 'one_time')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transactions_sandbox": {
+          "name": "transactions_sandbox",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"transactions\".\"is_sandbox\"",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -12438,6 +12488,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "users_referred_by": {
+          "name": "users_referred_by",
+          "columns": [
+            {
+              "expression": "referred_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

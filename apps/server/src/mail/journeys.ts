@@ -761,9 +761,20 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
   return { subject: m.subject, text, html };
 }
 
+/**
+ * Values other people control (project, inviter and product names, SDK strings) lose web addresses and the characters
+ * the copy's markup uses, so a project called "[Sign in](https://evil.example)" can never become a link in an email from Kai.
+ */
+const plain = (s: string | null | undefined) => (s == null ? s ?? null : s.replace(/\b(?:https?:\/\/|www\.)\S+/gi, "").replace(/[[\]()*`\\]/g, "").replace(/\s+/g, " ").trim().slice(0, 80) || null);
+
 /** The email for one step. */
 export function journeyEmail(c: JourneyCtx): Rendered {
-  return render(c, EMAILS[c.step](c));
+  const safe: JourneyCtx = {
+    ...c, first: plain(c.first), projectName: plain(c.projectName), inviter: plain(c.inviter),
+    sdk: c.sdk ? { platform: plain(c.sdk.platform) ?? "", version: plain(c.sdk.version) ?? "" } : c.sdk,
+    sale: c.sale ? { product: plain(c.sale.product) ?? "a product", amount: plain(c.sale.amount), country: plain(c.sale.country) } : c.sale,
+  };
+  return render(safe, EMAILS[safe.step](safe));
 }
 
 export const STEP_IDS = Object.keys(EMAILS) as StepId[];

@@ -123,7 +123,7 @@ export function authRoutes(deps: Deps) {
       projectName: invite ? undefined : p.data.project_name?.trim() || "My project",
       // The invite link proved the inbox.
       emailVerifiedAt: invite ? now : null,
-      timeZone: p.data.time_zone ?? null, referredBy: p.data.ref || null,
+      timeZone: p.data.time_zone ?? null, referredBy: p.data.ref?.toLowerCase() || null,
     });
     if ("error" in res) return c.json({ type: "conflict", message: invite ? "An account with this email already exists. Sign in to accept the invite." : res.error }, 409);
     if (invite) await acceptInvite(deps.db, invite, res.userId!, now);

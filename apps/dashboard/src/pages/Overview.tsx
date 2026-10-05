@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AskBar, FirstSaleCard, GrowthInsights } from "./ai/OverviewBits";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Shell, useMe } from "../components/Shell";
+import { Shell, useMe, type Me } from "../components/Shell";
 import { Icon } from "../components/icons";
 import { Dialog, Field, Segmented, Sparkline, Switch, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
@@ -401,7 +401,13 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
   const me = useMe();
   const [mode, setModeState] = useState<Mode>(me.data?.user.journey_path === "revenuecat" ? "moving" : "fresh");
   // The choice also picks which onboarding emails come next (prd/onboarding-emails/PRD.md).
-  const setMode = (m: Mode) => { setModeState(m); void api("/auth/me", { method: "POST", json: { journey_path: m === "moving" ? "revenuecat" : "new" } }).catch(() => {}); };
+  const meCache = useQueryClient();
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    const path = m === "moving" ? "revenuecat" : "new";
+    meCache.setQueryData<Me>(["me"], (x) => (x ? { ...x, user: { ...x.user, journey_path: path } } : x));
+    void api("/auth/me", { method: "POST", json: { journey_path: path } }).catch(() => {});
+  };
   const qc = useQueryClient();
   const nav = useNavigate();
   const base = `/projects/${pid}`;

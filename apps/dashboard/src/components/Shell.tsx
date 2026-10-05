@@ -21,13 +21,21 @@ export interface Me {
   /** With an enterprise licence, and always on RevenueDot Cloud, where `mode` is "cloud" and the plan decides (src/extensions.tsx). */
   enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
 }
+let tzSent = false;
 export const browserTimeZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; } };
 export function useMe(enabled = true) {
   const q = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
   useEffect(() => { if (q.data) identifyUser(q.data); }, [q.data]);
-  // Onboarding emails arrive in the reader's daytime (prd/onboarding-emails/PRD.md): store the browser's time zone once.
+  // Onboarding emails arrive in the reader's daytime (prd/onboarding-emails/PRD.md): store the browser's time zone, once per
+  // page load however many components read the account, and keep the answer in the cache.
+  const qc = useQueryClient();
   const tz = q.data && q.data.user.time_zone === null ? browserTimeZone() : null;
-  useEffect(() => { if (tz) void api("/auth/me", { method: "POST", json: { time_zone: tz } }).catch(() => {}); }, [tz]);
+  useEffect(() => {
+    if (!tz || tzSent) return;
+    tzSent = true;
+    void api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: { time_zone: tz } })
+      .then((r) => qc.setQueryData<Me>(["me"], (m) => (m ? { ...m, user: { ...m.user, ...r.user } } : m))).catch(() => {});
+  }, [tz, qc]);
   return q;
 }
 

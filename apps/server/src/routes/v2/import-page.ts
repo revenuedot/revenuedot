@@ -226,7 +226,8 @@ class WorkingSet {
         WHERE t.project_id = ${projectId} AND t.store = v.store AND t.store_transaction_id = v.tx
           AND CASE WHEN v.renewal THEN t.kind IN ('purchase', 'trial') ELSE t.kind = 'renewal' END`);
     }
-    for (const part of rowChunks([...this.txns.values()])) await db.insert(T).values(part).onConflictDoNothing();
+    // Imported history is marked, so onboarding never mistakes a recent imported purchase for a live sale.
+    for (const part of rowChunks([...this.txns.values()])) await db.insert(T).values(part.map((r) => ({ ...r, source: "import" }))).onConflictDoNothing();
     for (const part of chunks([...this.owners.values()], 5000)) {
       const rows = sql.join(part.map((o) => sql`(${o.store}::text, ${o.tx}::text, ${o.customerId}::text)`), sql`, `);
       await db.execute(sql`UPDATE transactions AS t SET customer_id = v.cid FROM (VALUES ${rows}) AS v(store, tx, cid)

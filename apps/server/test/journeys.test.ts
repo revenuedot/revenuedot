@@ -26,7 +26,7 @@ function facts(o: Partial<Facts> = {}): Facts {
     firstAppAt: null, testPurchaseAt: null, sdkFirstAt: null, sdkLastAt: null, sdk: null, storeConnected: false, liveAt: null, lastSaleAt: null,
     firstSale: null, rcImportAt: null, importedCustomers: 0, paywallPublishedAt: null, experimentStartedAt: null, teammates: 0, recoveryOn: false,
     assistantConnected: false, plan: "free", planSince: null, canceledAt: null, tracked: 0, free100At: null, alertAt: null, lastNotificationAt: null,
-    referralJoinedAt: null, last7: 0, overTracked: 0, sent: new Map(), ...o,
+    referralJoinedAt: null, overTracked: 0, sent: new Map(), ...o,
   };
 }
 const sent = (...steps: [StepId, number][]) => new Map<StepId, number>(steps);
@@ -287,6 +287,24 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     expect(sale.text).toContain("Germany");
   });
 
+  it("never counts an imported purchase as a live sale, and gives a failed send's step back", async () => {
+    await cloud();
+    await signup("dana@fit.app");
+    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "dana@fit.app"));
+    const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+    await s!.db.insert(schema.customers).values({ id: "cus_i", projectId: p!.id, originalAppUserId: "i1", firstSeen: s!.now(), lastSeen: s!.now() });
+    // Bought yesterday, written by an import just now.
+    await s!.db.insert(schema.transactions).values({ id: "tx_i", projectId: p!.id, customerId: "cus_i", store: "app_store", storeTransactionId: "i1", productIdentifier: "pro", kind: "renewal",
+      purchasedAt: new Date(s!.now().getTime() - D), revenueUsd: 9.99, isSandbox: false, source: "import", createdAt: s!.now() });
+    const { loadFacts, sendStep } = await import("../src/services/journeys.js");
+    const [f] = await loadFacts(s!.db, [u!.id], s!.now(), SINCE);
+    expect(f!.liveAt).toBeNull();
+    // A mailer that fails: the claim is released, so the step can go out later.
+    const failing = { driver: "memory" as const, send: async () => { throw new Error("rate limited"); } };
+    expect(await sendStep({ db: s!.db, mailer: failing, publicUrl: "https://dash.example.com", config: cfg }, f!, "welcome", s!.now())).toBe(false);
+    expect(await s!.db.select().from(schema.journeySends).where(eq(schema.journeySends.userId, u!.id))).toHaveLength(0);
+  });
+
   it("marks a project as migrating on its first RevenueCat import", async () => {
     await cloud();
     const { client, projectId } = await signup("lena@health.eu").then(async () => {
@@ -320,6 +338,14 @@ describe("templates", () => {
       expect(m.text, step).toMatch(/Hi there,|^Welcome to RevenueDot/m);
       for (const [, url] of m.html.matchAll(/href="(https:\/\/(?:app\.)?revenuedot\.app\/(?!auth\/)[^"]*)"/g)) expect(url, step).toContain("utm_content=" + step);
     }
+  });
+
+  it("never turns a name someone else chose into a link", () => {
+    const m = journeyEmail({ step: "teammate_welcome", app: "https://app.revenuedot.app", first: "Jo", projectId: "p", projectName: "[Your session expired, sign in](https://evil.example)",
+      inviter: "**Admin**", unsubscribeUrl: "https://app.revenuedot.app/auth/journeys/unsubscribe/x" });
+    expect(m.html).not.toContain('href="https://evil.example');
+    expect(m.text).not.toContain("(https://evil.example)");
+    expect(m.html).not.toContain("<strong style=\"font-weight:600;color:#0A0A0A;\">Admin</strong> added");
   });
 
   it("shows a video only once its page is live", () => {

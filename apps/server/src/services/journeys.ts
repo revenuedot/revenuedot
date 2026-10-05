@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { trySend, type Mailer } from "../mail/index.js";
 import { journeyEmail, JOURNEY_FROM, JOURNEY_REPLY_TO, type JourneyCtx, type StepId } from "../mail/journeys.js";
@@ -45,8 +45,8 @@ export interface Facts {
   paywallPublishedAt: number | null; experimentStartedAt: number | null;
   teammates: number; recoveryOn: boolean; assistantConnected: boolean;
   plan: string; planSince: number | null; canceledAt: number | null; tracked: number; free100At: number | null;
-  /** Production revenue recorded in the last 7 days, and the tracked revenue of the month the free_100 email was about. */
-  last7: number; overTracked: number;
+  /** The tracked revenue of the month the free_100 email was about. */
+  overTracked: number;
   alertAt: number | null; lastNotificationAt: number | null; referralJoinedAt: number | null;
   sent: Map<StepId, number>;
 }
@@ -83,7 +83,7 @@ export const STEPS: Step[] = [
   // Celebrations and replies to what just happened.
   { id: "first_sale", anyDay: true, freshFor: 3 * D, due: (f) => f.liveAt },
   { id: "standard_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
-  { id: "standard_canceled", freshFor: 7 * D, due: (f) => (f.plan === "free" ? f.canceledAt : null) },
+  { id: "standard_canceled", anyDay: true, freshFor: 7 * D, due: (f) => (f.plan === "free" ? f.canceledAt : null) },
   { id: "referral_joined", anyDay: true, freshFor: 7 * D, due: (f) => f.referralJoinedAt },
   // Switching from RevenueCat: the cutover is the most valuable email of all, so it outranks the rest.
   { id: "cutover", freshFor: 14 * D, due: (f, now) => (migrating(f) && f.liveAt && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
@@ -91,7 +91,7 @@ export const STEPS: Step[] = [
   { id: "enterprise", freshFor: 20 * D, due: (f, now) => (f.plan !== "enterprise" && f.tracked >= 500_000 ? now : null) },
   { id: "upgrade_personal", freshFor: 10 * D, due: (f) => (f.plan === "free" && f.free100At !== null && f.sent.has("upgrade_nudge") ? f.free100At + 10 * D : null) },
   { id: "upgrade_nudge", freshFor: 10 * D, due: (f) => (f.plan === "free" && f.free100At !== null ? f.free100At + 3 * D : null) },
-  { id: "pricing_explainer", freshFor: 20 * D, due: (f, now) => (f.plan === "free" && f.tracked >= 5_000 && f.free100At === null ? now : null) },
+  { id: "pricing_explainer", freshFor: 20 * D, due: (f, now) => (f.plan === "free" && f.tracked >= 5_000 && f.tracked < 10_000 && f.free100At === null ? now : null) },
   // Switching from RevenueCat, before it is live.
   { id: "forwarding_check", onboarding: true, freshFor: 7 * D,
     due: (f) => (f.rcImportAt && !f.liveAt && (f.lastNotificationAt === null || f.lastNotificationAt < f.rcImportAt) ? f.rcImportAt + 5 * D : null) },
@@ -179,13 +179,25 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
   const month = monthOf(now);
   const ids = sql.join(userIds.map((id) => sql`${id}`), sql`, `);
   const rows = rowsOf<Record<string, unknown>>(await db.execute(sql`
-    WITH owned AS (SELECT p.id, p.name, p.owner_user_id AS uid, p.rc_import_at, p.recovery_settings, p.created_at FROM projects p WHERE p.owner_user_id IN (${ids}))
+    WITH owned AS (SELECT p.id, p.name, p.owner_user_id AS uid, p.rc_import_at, p.recovery_settings, p.created_at FROM projects p WHERE p.owner_user_id IN (${ids})),
+    -- Per project: the first test purchase and the first and last live sale. Each reads a partial index (transactions_sandbox,
+    -- transactions_live_sales) and stops at its first row, so imported history is never read. A live sale is one RevenueDot
+    -- recorded within 2 days of the purchase (a restored old receipt is not a sale).
+    pm AS (SELECT o.id, o.uid,
+      (SELECT t.created_at FROM transactions t WHERE t.project_id = o.id AND t.is_sandbox ORDER BY t.created_at ASC LIMIT 1) AS test_at,
+      (SELECT t.id FROM transactions t WHERE t.project_id = o.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0 AND t.kind IN ('purchase','renewal','one_time')
+          AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at ASC LIMIT 1) AS first_tx,
+      (SELECT t.created_at FROM transactions t WHERE t.project_id = o.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0 AND t.kind IN ('purchase','renewal','one_time')
+          AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at DESC LIMIT 1) AS last_at
+      FROM owned o),
+    firsts AS (SELECT pm.uid, t.created_at, t.product_identifier, t.price_amount, t.price_currency, t.country_code FROM pm JOIN transactions t ON t.id = pm.first_tx)
     SELECT u.id, u.email, u.name, u.created_at, u.email_verified_at, u.time_zone, u.journey_path, u.referral_code, u.product_emails,
       (SELECT count(*) FROM owned o WHERE o.uid = u.id) AS owned,
       -- The project to link to: the oldest one whose app has talked to RevenueDot, else the oldest.
       (SELECT o.id FROM owned o WHERE o.uid = u.id ORDER BY EXISTS (SELECT 1 FROM sdk_versions s WHERE s.project_id = o.id) DESC, o.created_at ASC LIMIT 1) AS project_id,
+      (SELECT o.name FROM owned o WHERE o.uid = u.id ORDER BY EXISTS (SELECT 1 FROM sdk_versions s WHERE s.project_id = o.id) DESC, o.created_at ASC LIMIT 1) AS project_name,
       (SELECT min(a.created_at) FROM apps a JOIN owned o ON o.id = a.project_id WHERE o.uid = u.id) AS first_app_at,
-      (SELECT min(l.at) FROM owned o, LATERAL (SELECT t.created_at AS at FROM transactions t WHERE t.project_id = o.id AND t.is_sandbox ORDER BY t.created_at ASC LIMIT 1) l WHERE o.uid = u.id) AS test_purchase_at,
+      (SELECT min(pm.test_at) FROM pm WHERE pm.uid = u.id) AS test_purchase_at,
       (SELECT min(s.first_seen_at) FROM sdk_versions s JOIN owned o ON o.id = s.project_id WHERE o.uid = u.id) AS sdk_first_at,
       (SELECT max(s.last_seen_at) FROM sdk_versions s JOIN owned o ON o.id = s.project_id WHERE o.uid = u.id) AS sdk_last_at,
       (SELECT json_build_object('platform', s.platform_flavor, 'os', s.platform, 'version', s.sdk_version) FROM sdk_versions s JOIN owned o ON o.id = s.project_id WHERE o.uid = u.id ORDER BY s.first_seen_at ASC LIMIT 1) AS sdk,
@@ -195,16 +207,11 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
           OR a.last_notification_at IS NOT NULL
           OR EXISTS (SELECT 1 FROM stripe_connections sc WHERE sc.app_id = a.id AND sc.status = 'connected')))) AS store_connected,
       -- Live: a paid production sale recorded within 2 days of the purchase (imported history is recorded much later).
-      -- Each reads the (project_id, created_at) index in order and stops at the first match.
-      (SELECT min(l.at) FROM owned o, LATERAL (SELECT t.created_at AS at FROM transactions t WHERE t.project_id = o.id AND NOT t.is_sandbox AND t.revenue_usd > 0
-          AND t.kind IN ('purchase','renewal','one_time') AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at ASC LIMIT 1) l WHERE o.uid = u.id) AS live_at,
-      (SELECT max(l.at) FROM owned o, LATERAL (SELECT t.created_at AS at FROM transactions t WHERE t.project_id = o.id AND NOT t.is_sandbox AND t.revenue_usd > 0
-          AND t.kind IN ('purchase','renewal','one_time') AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at DESC LIMIT 1) l WHERE o.uid = u.id) AS last_sale_at,
-      (SELECT json_build_object('product', t.product_identifier, 'amount', t.price_amount, 'currency', t.price_currency, 'country', t.country_code)
-          FROM transactions t JOIN owned o ON o.id = t.project_id WHERE o.uid = u.id AND NOT t.is_sandbox AND t.revenue_usd > 0
-          AND t.kind IN ('purchase','renewal','one_time') AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at ASC LIMIT 1) AS first_sale,
+      (SELECT min(f.created_at) FROM firsts f WHERE f.uid = u.id) AS live_at,
+      (SELECT max(pm.last_at) FROM pm WHERE pm.uid = u.id) AS last_sale_at,
+      (SELECT json_build_object('product', f.product_identifier, 'amount', f.price_amount, 'currency', f.price_currency, 'country', f.country_code)
+          FROM firsts f WHERE f.uid = u.id ORDER BY f.created_at ASC LIMIT 1) AS first_sale,
       (SELECT min(o.rc_import_at) FROM owned o WHERE o.uid = u.id) AS rc_import_at,
-      (SELECT count(*) FROM customers c JOIN owned o ON o.id = c.project_id WHERE o.uid = u.id AND o.rc_import_at IS NOT NULL) AS imported_customers,
       (SELECT min(pw.published_at) FROM paywalls pw JOIN owned o ON o.id = pw.project_id WHERE o.uid = u.id) AS paywall_published_at,
       (SELECT min(e.started_at) FROM experiments e JOIN owned o ON o.id = e.project_id WHERE o.uid = u.id) AS experiment_started_at,
       (SELECT count(*) FROM memberships m JOIN owned o ON o.id = m.project_id WHERE o.uid = u.id AND m.user_id <> u.id)
@@ -212,8 +219,6 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT EXISTS (SELECT 1 FROM owned o WHERE o.uid = u.id AND o.recovery_settings->>'enabled' = 'true')) AS recovery_on,
       (SELECT EXISTS (SELECT 1 FROM api_keys k WHERE k.created_by_user_id = u.id AND k.oauth_client_id IS NOT NULL)) AS assistant_connected,
       ba.plan AS ba_plan, ba.status AS ba_status, ba.updated_at AS ba_updated_at, ba.standard_started_at AS ba_started, ba.stripe_subscription_id AS ba_sub,
-      (SELECT coalesce(sum(t.revenue_usd), 0) FROM transactions t JOIN owned o ON o.id = t.project_id WHERE o.uid = u.id AND NOT t.is_sandbox AND t.revenue_usd > 0
-          AND t.kind IN ('purchase','renewal','one_time') AND t.purchased_at >= ${new Date(now.getTime() - 7 * D).toISOString()}::timestamptz) AS last7,
       (SELECT coalesce(sum(bu.tracked_revenue_usd), 0) FROM billing_usage bu WHERE bu.owner_user_id = u.id AND bu.month = (
           SELECT split_part(bn.key, ':', 1) FROM billing_notices bn WHERE bn.user_id = u.id AND bn.key LIKE '%:free_100' ORDER BY bn.sent_at DESC LIMIT 1)) AS over_tracked,
       (SELECT max(a.last_notification_at) FROM apps a JOIN owned o ON o.id = a.project_id WHERE o.uid = u.id) AS last_notification_at,
@@ -229,9 +234,6 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT json_object_agg(js.step, js.sent_at) FROM journey_sends js WHERE js.user_id = u.id) AS sent
     FROM users u LEFT JOIN billing_accounts ba ON ba.user_id = u.id
     WHERE u.id IN (${ids})`));
-  const projectNames = new Map<string, string>();
-  const pids = rows.map((r) => r.project_id as string | null).filter((x): x is string => !!x);
-  if (pids.length) for (const p of await db.select({ id: schema.projects.id, name: schema.projects.name }).from(schema.projects).where(inArray(schema.projects.id, pids))) projectNames.set(p.id, p.name);
   return rows.map((r): Facts => {
     const json = <T>(v: unknown): T | null => (v === null || v === undefined ? null : (typeof v === "string" ? JSON.parse(v) : v) as T);
     const sdk = json<{ platform: string; os: string; version: string }>(r.sdk);
@@ -244,19 +246,19 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       userId: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null, createdAt: ts(r.created_at)!, verified: r.email_verified_at !== null,
       timeZone: (r.time_zone as string | null) ?? null, path: r.journey_path === "revenuecat" || r.journey_path === "new" ? r.journey_path : null,
       referralCode: (r.referral_code as string | null) ?? null, productEmails: r.product_emails !== false,
-      projectId: (r.project_id as string | null) ?? null, projectName: r.project_id ? projectNames.get(String(r.project_id)) ?? null : null, ownsProjects: Number(r.owned) > 0,
+      projectId: (r.project_id as string | null) ?? null, projectName: (r.project_name as string | null) ?? null, ownsProjects: Number(r.owned) > 0,
       memberOf: member ? { projectId: member.project_id, projectName: member.project_name, inviter: member.inviter } : null,
       firstAppAt: ts(r.first_app_at), testPurchaseAt: ts(r.test_purchase_at), sdkFirstAt: ts(r.sdk_first_at), sdkLastAt: ts(r.sdk_last_at),
       sdk: sdk ? { platform: sdkLabel(sdk.platform, sdk.os), version: sdk.version } : null,
       storeConnected: r.store_connected === true, liveAt: ts(r.live_at), lastSaleAt: ts(r.last_sale_at), firstSale: sale,
-      rcImportAt: ts(r.rc_import_at), importedCustomers: Number(r.imported_customers ?? 0),
+      rcImportAt: ts(r.rc_import_at), importedCustomers: 0,
       paywallPublishedAt: ts(r.paywall_published_at), experimentStartedAt: ts(r.experiment_started_at),
       teammates: Number(r.teammates ?? 0), recoveryOn: r.recovery_on === true, assistantConnected: r.assistant_connected === true,
       // Standard: thanked once, from the first time it became active, and only when that was after the launch. Asked why only
       // after a real cancellation (a failed card is "unpaid", an unpaid checkout is "incomplete": neither is a choice).
       plan, planSince: plan === "standard" && (ts(r.ba_started) ?? 0) >= sinceMs ? ts(r.ba_started) : null,
       canceledAt: plan === "free" && r.ba_sub && r.ba_started && String(r.ba_status) === "canceled" ? ts(r.ba_updated_at) : null,
-      last7: Number(r.last7 ?? 0), overTracked: Number(r.over_tracked ?? 0),
+      overTracked: Number(r.over_tracked ?? 0),
       tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at),
       lastNotificationAt: ts(r.last_notification_at), referralJoinedAt: ts(r.referral_joined_at), sent,
     };
@@ -300,8 +302,19 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
   // The cutover compares a whole month at this month's pace; the upgrade emails quote the revenue so far.
   // The cutover prices a month at the last 7 days' pace (always at least 7 days live by then); the upgrade emails price the
   // month that passed $10,000, which may be last month.
-  c.last7 = f.last7;
-  c.projected = Math.round((f.last7 * 30) / 7);
+  // Read only for the steps that show them: a big import's customers or a week of revenue are not counted every pass.
+  if (step === "cutover") {
+    const [w] = rowsOf<{ s: number | string | null }>(await db.execute(sql`SELECT coalesce(sum(t.revenue_usd), 0) AS s FROM transactions t JOIN projects p ON p.id = t.project_id
+      WHERE p.owner_user_id = ${f.userId} AND NOT t.is_sandbox AND t.revenue_usd > 0 AND t.kind IN ('purchase','renewal','one_time')
+        AND t.purchased_at >= ${new Date(now.getTime() - 7 * D).toISOString()}::timestamptz`));
+    c.last7 = Number(w?.s ?? 0);
+  }
+  if (step === "side_by_side") {
+    const [n] = rowsOf<{ n: number | string }>(await db.execute(sql`SELECT count(*) AS n FROM (SELECT 1 FROM customers c JOIN projects p ON p.id = c.project_id
+      WHERE p.owner_user_id = ${f.userId} AND p.rc_import_at IS NOT NULL LIMIT 10000000) x`));
+    c.importedCustomers = Number(n?.n ?? 0);
+  }
+  c.projected = Math.round(((c.last7 ?? 0) * 30) / 7);
   c.overTracked = f.overTracked || f.tracked;
   c.overMonth = f.free100At ? new Date(f.free100At).toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }) : c.month;
   const basis = step === "cutover" ? c.projected : step.startsWith("upgrade") ? c.overTracked : f.tracked;
@@ -342,14 +355,19 @@ export async function runJourneys(deps: JourneyDeps, now: Date, limits = JOURNEY
   // (the welcome and the verification reminder ignore the cap). Rotated by the clock so a large list is covered in turn.
   const recent = new Date(now.getTime() - 3 * D);
   const gap = new Date(now.getTime() - MIN_GAP_MS);
-  const candidates = rowsOf<{ id: string; email: string }>(await db.execute(sql`
-    SELECT u.id, u.email FROM users u
+  const candidates = rowsOf<{ id: string; email: string; created_at: string | Date }>(await db.execute(sql`
+    SELECT u.id, u.email, u.created_at FROM users u
     WHERE (u.product_emails OR (u.email_verified_at IS NULL AND u.created_at >= ${recent.toISOString()}::timestamptz)) AND (u.created_at >= ${recent.toISOString()}::timestamptz
       OR NOT EXISTS (SELECT 1 FROM journey_sends js WHERE js.user_id = u.id AND js.sent_at >= ${gap.toISOString()}::timestamptz))
     ORDER BY u.created_at DESC`)).filter((u) => !excluded(u.email, config.exclude));
   if (!candidates.length) return out;
-  const start = Math.floor(now.getTime() / 300_000) * limits.chunk % candidates.length;
-  const order = [...candidates.slice(start), ...candidates.slice(0, start)];
+  // Every pass looks at the last 3 days' sign-ups (the welcome is due 5 minutes in) and one rotating slice of everyone else,
+  // so the work per pass stays bounded however many accounts there are; each older account is looked at in turn.
+  const fresh = candidates.filter((u) => new Date(u.created_at).getTime() >= recent.getTime());
+  const older = candidates.filter((u) => new Date(u.created_at).getTime() < recent.getTime());
+  const slices = Math.max(1, Math.ceil(older.length / limits.chunk));
+  const slice = Math.floor(now.getTime() / 300_000) % slices;
+  const order = [...fresh, ...older.slice(slice * limits.chunk, (slice + 1) * limits.chunk)];
   for (let i = 0; i < order.length && out.sent < limits.emails && Date.now() - t0 < limits.budgetMs; i += limits.chunk) {
     const facts = await loadFacts(db, order.slice(i, i + limits.chunk).map((u) => u.id), now, config.since);
     for (const f of facts) {
@@ -358,7 +376,8 @@ export async function runJourneys(deps: JourneyDeps, now: Date, limits = JOURNEY
       // The verification reminder is account mail, not product mail: it goes even to people who turned tips off.
       const step = pickStep(f, now.getTime(), config, f.productEmails ? undefined : ["verify_reminder"]);
       if (!step) continue;
-      if (await sendStep(deps, f, step, now, base)) out.sent++;
+      try { if (await sendStep(deps, f, step, now, base)) out.sent++; }
+      catch (e) { console.error(`journeys: ${step} to ${f.userId} failed`, e); }
     }
   }
   return out;
@@ -372,12 +391,21 @@ export async function sendStep(deps: JourneyDeps, f: Facts, step: StepId, now: D
   if (!won.length) return false;
   const unsubscribe = `${base}/auth/journeys/unsubscribe/${token}`;
   // The welcome's two path links reuse the unsubscribe token's row to know whose path to record (routes/account.ts).
-  const ctx = await contextFor(db, f, step, base, unsubscribe, step === "welcome" ? token : null, now, deps.config.plansJson);
-  const mail = journeyEmail(ctx);
-  return trySend(deps.mailer, {
-    to: f.email, ...mail, from: JOURNEY_FROM, replyTo: JOURNEY_REPLY_TO,
-    headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-  });
+  // A send that fails (or throws) gives the claim back, so a later pass tries again and the caps are not used up.
+  const release = () => db.delete(schema.journeySends).where(and(eq(schema.journeySends.userId, f.userId), eq(schema.journeySends.step, step), eq(schema.journeySends.sentAt, now)));
+  try {
+    const ctx = await contextFor(db, f, step, base, unsubscribe, step === "welcome" ? token : null, now, deps.config.plansJson);
+    const mail = journeyEmail(ctx);
+    const ok = await trySend(deps.mailer, {
+      to: f.email, ...mail, from: JOURNEY_FROM, replyTo: JOURNEY_REPLY_TO,
+      headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    });
+    if (!ok) await release();
+    return ok;
+  } catch (e) {
+    await release();
+    throw e;
+  }
 }
 
 /** Reads the journey settings from the environment (Cloud only; `REVENUEDOT_JOURNEYS=on` turns the emails on). */

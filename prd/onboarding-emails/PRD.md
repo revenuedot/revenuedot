@@ -25,7 +25,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 ## Who gets them
 - **RevenueDot Cloud only** (`edition === "cloud"`), from the cron tick, and only when `REVENUEDOT_JOURNEYS` is `on` (the kill switch; `off` stops every journey email, the rest of the tick runs).
 - **Account owners**: users who own at least one project. People who joined by invite get one teammate welcome and nothing else.
-- **Not** internal addresses (`REVENUEDOT_JOURNEYS_EXCLUDE`, a comma list of domains and addresses), not users who turned product emails off, not addresses on the suppression list.
+- **Not** internal addresses (`REVENUEDOT_JOURNEYS_EXCLUDE`, a comma list of domains and addresses), and not users who turned product emails off (except the verification reminder). Cloudflare Email Sending drops addresses on its own bounce and complaint suppression list.
 - **No backfill flood.** Onboarding steps (welcome to day 21) go only to accounts created after `REVENUEDOT_JOURNEYS_SINCE` (ISO date, the launch day). Event and revenue steps (first sale, upgrade, referral) go to everyone, and only while the event is recent (each step has a `freshFor` window).
 
 ## Sending rules
@@ -33,7 +33,8 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 - **At most one journey email every 44 hours and three a week**, per person. The welcome ignores the caps and does not count; the verification reminder ignores them but counts. The highest-priority eligible step wins; the others wait and are re-checked next time.
 - **Local daytime.** Nudges go out 09:00 to 17:00 in the person's time zone (`users.time_zone`, sent by the dashboard; unknown means America/New_York), Monday to Friday. Celebrations and the verification reminder go any day, 08:00 to 21:00; the welcome goes at any hour.
 - **Never next to a problem.** No journey email within 24 hours of an alert email to the same person (`alert_states`), except the welcome.
-- **Bounded per tick:** 25 emails and 15 seconds; the job runs every 5 minutes (minute % 5 == 0).
+- **Bounded per pass:** 25 emails and 15 seconds; the job runs every 5 minutes (minute % 5 == 0). Each pass reads the last 3 days' sign-ups and one rotating slice of 200 older accounts. A send that fails gives its claim back, so a later pass retries.
+- **Live means seen live.** A sale counts only when RevenueDot recorded it within 2 days of the purchase and it did not come from an import (`transactions.source = 'import'`), so an imported recent renewal never fires the first-sale email.
 - **From a person.** `Kai from RevenueDot <kai@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`. Replies reach a human.
 - **Unsubscribe.** Every email carries a one-click `List-Unsubscribe` (RFC 8058) that turns off `users.product_emails`, and a footer link to Account settings → Notifications ("Setup help, tips and product news"). Billing, security, verification and alert emails are not affected.
 - **Links** carry `utm_source=revenuedot&utm_medium=email&utm_campaign=journeys&utm_content=<step>`, so DataFast attributes the visit and the goal.
@@ -110,6 +111,8 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 ## Data
 - `users.product_emails boolean not null default true`, `users.time_zone text`, `users.journey_path text` (`new` or `revenuecat`), `users.referral_code text unique`, `users.referred_by text`.
 - `projects.rc_import_at timestamptz`: set by the first `POST /v2/projects/{id}/import/customers`.
+- `transactions.source text`: `import` for rows an import wrote. Partial indexes `transactions_live_sales` and `transactions_sandbox` let each pass find a project's first and last live sale and first test purchase without reading imported history.
+- `billing_accounts.standard_started_at`: the first time the account became Standard.
 - `journey_sends (user_id, step, sent_at, token_hash)`, primary key `(user_id, step)`; `token_hash` is the unsubscribe token's SHA-256.
 
 ## Endpoints and screens
