@@ -1,9 +1,11 @@
 # Type checks and tests on every pull request. On main, deploy.yml runs this first (unless the same tree already passed
 # on its pull request) and deploys only if it passes.
 #
-# Speed: only the jobs a change can affect run; the unit tests run in parallel shards, each on a
-# snapshot of a migrated database instead of migrating per test; the dashboard's browser tests run in 4 shards; the
-# site build reuses Astro's image cache. The last
+# Speed: only the jobs a change can affect run (an image, a site page or an email's wording does not start the browser
+# tests, the Docker build or the real-Postgres suite); the unit tests run in 4 parallel shards, each on a snapshot of a
+# migrated database instead of migrating per test; the real-Postgres run covers only the suites that use a database; the
+# dashboard's browser tests run in 4 shards; the site build reuses Astro's image cache. On main, deploy.yml runs only
+# the jobs that the changes since the last deploy can affect. The last
 # job, "CI result", is the one to watch: it fails when any job failed and, for a branch of this repo, records the
 # tested tree so the deploy on main can skip running the same tests again.
 name: CI
@@ -13,9 +15,13 @@ on:
   workflow_call:
     inputs:
       full:
-        description: Run every job whatever the change (deploy.yml on main). The site job is left to the deploy.
+        description: Run every job whatever the change. The site job is left to the deploy.
         type: boolean
         default: false
+      base:
+        description: Pick the jobs from the changes since this commit (deploy.yml on main passes its last deploy). The site job is left to the deploy.
+        type: string
+        default: ""
 
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
@@ -31,38 +37,57 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.f.outputs.code }}
+      pg: ${{ steps.f.outputs.pg }}
       site: ${{ steps.f.outputs.site }}
       docker: ${{ steps.f.outputs.docker }}
       infra: ${{ steps.f.outputs.infra }}
       e2e: ${{ steps.f.outputs.e2e }}
       server: ${{ steps.f.outputs.server }}
     steps:
+      - if: inputs.base != ''
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - id: f
         env:
           GH_TOKEN: ${{ github.token }}
           FULL: ${{ inputs.full }}
+          BASE: ${{ inputs.base }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          if [ "$FULL" = "true" ] || [ -z "$PR" ]; then
-            printf 'code=true\nsite=%s\ndocker=true\ninfra=true\ne2e=true\nserver=false\n' "$([ "$FULL" = "true" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"; exit 0
+          everything() { printf 'code=true\npg=true\nsite=%s\ndocker=true\ninfra=true\ne2e=true\nserver=false\n' "$1" | tee -a "$GITHUB_OUTPUT"; exit 0; }
+          if [ "$FULL" = "true" ]; then everything false; fi
+          if [ -n "$BASE" ]; then
+            git cat-file -e "$BASE^{commit}" 2>/dev/null || { echo "Base $BASE not found: running everything."; everything false; }
+            files=$(git diff --name-only "$BASE" HEAD); deploy=true
+          elif [ -n "$PR" ]; then
+            files=$(gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate -q '.[].filename'); deploy=false
+          else
+            everything true
           fi
-          files=$(gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate -q '.[].filename')
           echo "$files"
-          has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
+          # Files matching $1 and not matching $2.
+          has() { echo "$files" | grep -E "$1" | grep -vqE "${2:-^$}" && echo true || echo false; }
           # A change to the CI itself or to the workspace runs everything.
-          all='^(\.github/workflows/ci\.yml|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$'
-          any=$(has "$all")
-          # Code: anything but prose and the deploy/ reference setups (vitest also covers apps/site/test).
-          code=$(echo "$files" | grep -vqE '(\.md$|^docs/|^prd/|^deploy/|^LICENSE|^\.github/(CLA|ISSUE_TEMPLATE))' && echo true || echo false)
+          any=$(has '^(\.github/workflows/(ci|deploy)\.yml|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|vitest\.config\.ts|tsconfig(\.base)?\.json)$')
+          # Never code: prose, the deploy/ reference setups, and media or site assets anywhere.
+          prose='(\.md$|^docs/|^prd/|^deploy/|^LICENSE|^\.github/(CLA|ISSUE_TEMPLATE)|\.(png|jpe?g|gif|webp|avif|svg|ico|mp4|webm|mov|woff2?|ttf|otf|pdf)$|^apps/site/public/)'
+          # Type checks and the unit suites: what the root TypeScript project and vitest cover (the site's own pages are
+          # checked by the site job).
+          code=$(has '^(packages/|apps/(server|dashboard)/|ee/|apps/site/(test|scripts|src/lib)/|scripts/)' "$prose")
+          # The suites that use a database, again on real Postgres: data code and server code, not email wording.
+          pg=$(has '^(packages/(db|contract|importer)/|apps/server/(src|test)/|ee/)' "$prose|^apps/server/src/mail/")
           site=$(has '^(apps/site/|design/|brand/|packages/core/src/charts/)')
-          docker=$(has '^(Dockerfile|\.dockerignore|docker-compose\.yml|tsconfig\.base\.json|apps/(server|dashboard)/|packages/|ee/|design/|brand/)')
+          # The self-host image: what the Dockerfile copies that tests and type checks cannot catch (its build and boot).
+          docker=$(has '^(Dockerfile|\.dockerignore|docker-compose\.yml|apps/(server|dashboard)/package\.json|apps/server/src/(entry\.node|migrate\.node|node-dashboard)\.ts|packages/db/)')
           infra=$(has '^deploy/')
-          # The dashboard in a browser against the real API: anything the dashboard, the server or their packages run.
-          e2e=$(has '^(apps/(server|dashboard)/|packages/|ee/|design/|tsconfig\.base\.json)')
-          # The API routes: the docs repo's drift check compares them with its OpenAPI document.
-          server=$(has '^(apps/server/src/|ee/server/)')
-          [ "$any" = true ] && { code=true; site=true; docker=true; infra=true; e2e=true; }
-          printf 'code=%s\nsite=%s\ndocker=%s\ninfra=%s\ne2e=%s\nserver=%s\n' "$code" "$site" "$docker" "$infra" "$e2e" "$server" | tee -a "$GITHUB_OUTPUT"
+          # The dashboard in a browser against the real API: what the dashboard and the API run, not tests or email wording.
+          e2e=$(has '^(apps/(server|dashboard)/|packages/|ee/|design/)' "$prose|(^|/)test/|^apps/server/src/mail/")
+          # The API routes: the docs repo's drift check compares them with its OpenAPI document (pull requests only).
+          server=false; [ "$deploy" = false ] && server=$(has '^(apps/server/src/|ee/server/)' '^apps/server/src/mail/')
+          [ "$any" = true ] && { code=true; pg=true; site=true; docker=true; infra=true; e2e=true; }
+          [ "$deploy" = true ] && site=false
+          printf 'code=%s\npg=%s\nsite=%s\ndocker=%s\ninfra=%s\ne2e=%s\nserver=%s\n' "$code" "$pg" "$site" "$docker" "$infra" "$e2e" "$server" | tee -a "$GITHUB_OUTPUT"
 
   typecheck:
     needs: changes
@@ -85,13 +110,13 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    name: test (${{ matrix.shard }}/6)
+    name: test (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -100,20 +125,21 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm vitest run --shard=${{ matrix.shard }}/6 --maxWorkers=4 --minWorkers=4
+      - run: pnpm vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=4 --minWorkers=4
 
-  # The same contract and server suites on a real Postgres 16 (PGlite above): driver result shapes, concurrent
-  # transactions, deadlocks and timestamp handling only show up here. One database per test file, made by the suite.
+  # The suites that use a database (server, contract, db, importer, ee) again on a real Postgres 16 (PGlite above): driver
+  # result shapes, concurrent transactions, deadlocks and timestamp handling only show up here. The pure suites
+  # (packages/core, the site's and the dashboard's unit tests) would only repeat. One database per test file.
   test-postgres:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
-    name: test-postgres (${{ matrix.shard }}/4)
+    if: needs.changes.outputs.pg == 'true'
+    name: test-postgres (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:16
@@ -131,7 +157,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=4 --minWorkers=1
+      - run: pnpm vitest run apps/server/test packages/contract/test packages/db/test packages/importer/test ee/test --shard=${{ matrix.shard }}/3 --maxWorkers=4 --minWorkers=1
         env:
           REVENUEDOT_TEST_PG_URL: postgres://postgres:ci@localhost:5432/postgres
 
