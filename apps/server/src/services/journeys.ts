@@ -48,7 +48,9 @@ export interface Facts {
   plan: string; planSince: number | null; canceledAt: number | null; tracked: number; free100At: number | null;
   /** The tracked revenue of the month the free_100 email was about. */
   overTracked: number;
-  alertAt: number | null; lastNotificationAt: number | null; referralJoinedAt: number | null;
+  alertAt: number | null; lastNotificationAt: number | null;
+  /** Switchers waiting for the cutover email: customers whose app called RevenueDot, counted up to 25 (else 0). */
+  sdkCustomers: number; referralJoinedAt: number | null;
   sent: Map<StepId, number>;
 }
 
@@ -79,8 +81,9 @@ export const STEPS: Step[] = [
   // Celebrations and receipts answer something that just happened, so they skip the caps.
   { id: "first_sale", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => f.liveAt },
   { id: "standard_welcome", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
-  // Switching from RevenueCat: the cutover, once the app update talks to RevenueDot and sales are live.
-  { id: "cutover", freshFor: 14 * D, due: (f, now) => (migrating(f) && f.liveAt && f.sdkFirstAt && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? Math.max(f.liveAt, f.sdkFirstAt) + 7 * D : null) },
+  // Switching from RevenueCat: the cutover, after a week of live sales and once the app update reaches real customers
+  // (25 customers seen through the SDK; a test build brings one or two). The rollout can take weeks, so it stays fresh for 60 days.
+  { id: "cutover", freshFor: 60 * D, due: (f, now) => (migrating(f) && f.liveAt && f.sdkCustomers >= 25 && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
   { id: "side_by_side", onboarding: true, freshFor: 7 * D, due: (f) => (f.rcImportAt && !f.liveAt ? f.rcImportAt + D : null) },
   // Building an app (or already selling with your own code): the next missing step.
   { id: "store_keys", onboarding: true, freshFor: 10 * D, due: (f) => (f.sdkFirstAt && !f.storeConnected && !f.liveAt ? f.sdkFirstAt + D : null) },
@@ -192,6 +195,11 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
           'existing', f.kind = 'renewal' AND NOT EXISTS (SELECT 1 FROM transactions t2 WHERE t2.project_id = f.project_id AND t2.customer_id = f.customer_id AND t2.created_at < f.created_at))
           FROM firsts f WHERE f.uid = u.id ORDER BY f.created_at ASC LIMIT 1) AS first_sale,
       (SELECT min(o.rc_import_at) FROM owned o WHERE o.uid = u.id) AS rc_import_at,
+      -- Only for switchers who have not had the cutover email: 25 customers seen through the SDK means the app update shipped.
+      CASE WHEN (u.journey_path = 'revenuecat' OR EXISTS (SELECT 1 FROM owned o WHERE o.uid = u.id AND o.rc_import_at IS NOT NULL))
+          AND NOT EXISTS (SELECT 1 FROM journey_sends js WHERE js.user_id = u.id AND js.step = 'cutover')
+        THEN (SELECT count(*) FROM (SELECT 1 FROM customers c JOIN owned o ON o.id = c.project_id WHERE o.uid = u.id AND c.last_seen_sdk_version IS NOT NULL LIMIT 25) x)
+        ELSE 0 END AS sdk_customers,
       (SELECT min(pw.published_at) FROM paywalls pw JOIN owned o ON o.id = pw.project_id WHERE o.uid = u.id) AS paywall_published_at,
       (SELECT min(e.started_at) FROM experiments e JOIN owned o ON o.id = e.project_id WHERE o.uid = u.id) AS experiment_started_at,
       (SELECT count(*) FROM memberships m JOIN owned o ON o.id = m.project_id WHERE o.uid = u.id AND m.user_id <> u.id)
@@ -230,7 +238,9 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       memberOf: member ? { projectId: member.project_id, projectName: member.project_name, inviter: member.inviter } : null,
       firstAppAt: ts(r.first_app_at), testPurchaseAt: ts(r.test_purchase_at), sdkFirstAt: ts(r.sdk_first_at), sdkLastAt: ts(r.sdk_last_at),
       sdk: sdk ? { platform: sdkLabel(sdk.platform, sdk.os), version: sdk.version } : null,
-      storeConnected: r.store_connected === true, liveAt: ts(r.live_at), lastSaleAt: ts(r.last_sale_at), firstSale: sale,
+      storeConnected: r.store_connected === true, liveAt: ts(r.live_at), lastSaleAt: ts(r.last_sale_at),
+      // A brand-new app sells only through the SDK, so a first sale before any SDK call means the app sold before RevenueDot.
+      firstSale: sale ? { ...sale, existing: sale.existing === true || ts(r.sdk_first_at) === null || ts(r.sdk_first_at)! > ts(r.live_at)! } : null,
       rcImportAt: ts(r.rc_import_at), importedCustomers: 0,
       paywallPublishedAt: ts(r.paywall_published_at), experimentStartedAt: ts(r.experiment_started_at),
       teammates: Number(r.teammates ?? 0), recoveryOn: r.recovery_on === true, assistantConnected: r.assistant_connected === true,
@@ -239,7 +249,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       plan, planSince: plan === "standard" && (ts(r.ba_started) ?? 0) >= sinceMs ? ts(r.ba_started) : null,
       canceledAt: plan === "free" && r.ba_sub && r.ba_started && String(r.ba_status) === "canceled" ? ts(r.ba_updated_at) : null,
       overTracked: Number(r.over_tracked ?? 0),
-      tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at),
+      tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at), sdkCustomers: Number(r.sdk_customers ?? 0),
       lastNotificationAt: ts(r.last_notification_at), referralJoinedAt: ts(r.referral_joined_at), sent,
     };
   });

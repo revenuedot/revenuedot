@@ -26,7 +26,7 @@ function facts(o: Partial<Facts> = {}): Facts {
     firstAppAt: null, testPurchaseAt: null, sdkFirstAt: null, sdkLastAt: null, sdk: null, storeConnected: false, liveAt: null, lastSaleAt: null,
     firstSale: null, rcImportAt: null, importedCustomers: 0, paywallPublishedAt: null, experimentStartedAt: null, teammates: 0, recoveryOn: false,
     assistantConnected: false, plan: "free", planSince: null, canceledAt: null, tracked: 0, free100At: null, alertAt: null, lastNotificationAt: null,
-    referralJoinedAt: null, overTracked: 0, sent: new Map(), ...o,
+    referralJoinedAt: null, overTracked: 0, sdkCustomers: 0, sent: new Map(), ...o,
   };
 }
 const sent = (...steps: [StepId, number][]) => new Map<StepId, number>(steps);
@@ -102,11 +102,11 @@ describe("picking the step", () => {
   });
 
   it("sends the cutover email a week after a migrator's first live sale, before anything else", () => {
-    const f = { path: "revenuecat" as const, createdAt: WED - 30 * D, rcImportAt: WED - 25 * D, liveAt: WED - 8 * D, sdkFirstAt: WED - 9 * D, lastSaleAt: WED - H, tracked: 6_000 };
+    const f = { path: "revenuecat" as const, createdAt: WED - 30 * D, rcImportAt: WED - 25 * D, liveAt: WED - 8 * D, sdkFirstAt: WED - 9 * D, sdkCustomers: 25, lastSaleAt: WED - H, tracked: 6_000 };
     expect(pickStep(facts(f), WED, cfg)).toBe("cutover");
-    // Not before the app update talks to RevenueDot, and a week after it does.
-    expect(pickStep(facts({ ...f, sdkFirstAt: null, sent: sent(["first_sale", WED - 8 * D]) }), WED, cfg)).toBeNull();
-    expect(pickStep(facts({ ...f, sdkFirstAt: WED - 3 * D, sent: sent(["first_sale", WED - 8 * D]) }), WED, cfg)).toBeNull();
+    // Not while only a test build talks to RevenueDot; still on time when the update reaches customers weeks later.
+    expect(pickStep(facts({ ...f, sdkCustomers: 2, sent: sent(["first_sale", WED - 8 * D]) }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...f, liveAt: WED - 40 * D }), WED, cfg)).toBe("cutover");
     expect(pickStep(facts({ ...f, sent: sent(["cutover", WED - 2 * D]) }), WED, cfg)).toBeNull();
   });
 
@@ -275,6 +275,7 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     await run(); // welcome
     const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
     await s!.db.insert(schema.apps).values({ id: "app_j", projectId: p!.id, name: "Photo iOS", type: "app_store", publicKey: "appl_j" });
+    await s!.db.insert(schema.sdkVersions).values({ projectId: p!.id, appId: "app_j", platform: "iOS", sdkVersion: "5.91.0", firstSeenAt: new Date(s!.now().getTime() - D), lastSeenAt: s!.now() });
     await s!.db.insert(schema.customers).values({ id: "cus_j", projectId: p!.id, originalAppUserId: "u1", firstSeen: s!.now(), lastSeen: s!.now() });
     await s!.db.insert(schema.transactions).values({ id: "tx_j", projectId: p!.id, customerId: "cus_j", appId: "app_j", store: "app_store", storeTransactionId: "1", productIdentifier: "pro_annual", kind: "purchase", purchasedAt: s!.now(), revenueUsd: 39.99, priceAmount: 39.99, priceCurrency: "USD", countryCode: "DE", isSandbox: false, createdAt: s!.now() });
     s!.advance(H);
@@ -294,16 +295,41 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     const tx = (id: string, customerId: string, kind: string, revenue: number, at: Date) => ({ id, projectId: p!.id, customerId, store: "app_store", storeTransactionId: id, productIdentifier: "yoga_annual",
       kind, purchasedAt: at, revenueUsd: revenue, priceAmount: revenue, priceCurrency: "USD", countryCode: "US", isSandbox: false, createdAt: at });
     const now = s!.now(), earlier = new Date(now.getTime() - 3 * D);
+    await s!.db.insert(schema.sdkVersions).values({ projectId: p!.id, platform: "iOS", sdkVersion: "5.91.0", firstSeenAt: new Date(earlier.getTime() - D), lastSeenAt: now });
     await s!.db.insert(schema.customers).values([{ id: "cus_t", projectId: p!.id, originalAppUserId: "t", firstSeen: earlier, lastSeen: now }, { id: "cus_o", projectId: p!.id, originalAppUserId: "o", firstSeen: now, lastSeen: now }]);
     // A trial that converts: the trial start is an earlier row, so this is still the app's first real sale.
     await s!.db.insert(schema.transactions).values([tx("t1", "cus_t", "purchase", 0, earlier), tx("t2", "cus_t", "renewal", 59.99, now)]);
     let [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
     expect(f!.firstSale!.existing).toBe(false);
+    // A new purchase before any SDK call: the app sold before it came to RevenueDot.
+    await s!.db.delete(schema.transactions).where(eq(schema.transactions.projectId, p!.id));
+    await s!.db.delete(schema.sdkVersions).where(eq(schema.sdkVersions.projectId, p!.id));
+    await s!.db.insert(schema.transactions).values([tx("n1", "cus_o", "purchase", 59.99, now)]);
+    [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
+    expect(f!.firstSale!.existing).toBe(true);
+    await s!.db.insert(schema.sdkVersions).values({ projectId: p!.id, platform: "iOS", sdkVersion: "5.91.0", firstSeenAt: new Date(earlier.getTime() - D), lastSeenAt: now });
     // A renewal from a subscriber RevenueDot never saw start: the app sold before it came to RevenueDot.
     await s!.db.delete(schema.transactions).where(eq(schema.transactions.projectId, p!.id));
     await s!.db.insert(schema.transactions).values([tx("o1", "cus_o", "renewal", 59.99, now)]);
     [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
     expect(f!.firstSale!.existing).toBe(true);
+  });
+
+  it("counts customers seen through the SDK for a switcher, never imported ones, and stops after 25", async () => {
+    await cloud();
+    await signup("maya@habitly.app");
+    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "maya@habitly.app"));
+    const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+    const { loadFacts } = await import("../src/services/journeys.js");
+    const now = s!.now();
+    const customers = (n: number, prefix: string, sdk: string | null) => Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, projectId: p!.id, originalAppUserId: `${prefix}${i}`, firstSeen: now, lastSeen: now, lastSeenSdkVersion: sdk }));
+    await s!.db.insert(schema.customers).values([...customers(40, "imp", null), ...customers(3, "dbg", "5.91.0")]);
+    // Not a switcher yet: nothing counted.
+    expect((await loadFacts(s!.db, [u!.id], now, SINCE))[0]!.sdkCustomers).toBe(0);
+    await s!.db.update(schema.projects).set({ rcImportAt: now }).where(eq(schema.projects.id, p!.id));
+    expect((await loadFacts(s!.db, [u!.id], now, SINCE))[0]!.sdkCustomers).toBe(3);
+    await s!.db.insert(schema.customers).values(customers(30, "app", "5.91.0"));
+    expect((await loadFacts(s!.db, [u!.id], now, SINCE))[0]!.sdkCustomers).toBe(25);
   });
 
   it("never counts an imported purchase as a live sale, and gives a failed send's step back", async () => {

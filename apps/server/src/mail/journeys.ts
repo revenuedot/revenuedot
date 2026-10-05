@@ -208,7 +208,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     blocks: [
       { t: "lead", text: "Next, install the RevenueDot SDK in your app and add your API key, so it can load your products, show a paywall and unlock paid features." },
       { t: "list", items: [
-        ...(c.progress?.store ? ["**Already selling?** Turn on **Track new purchases from server-to-server notifications** on each app's page, so your current subscribers show up before your app update ships."] : []),
+        ...(c.progress?.store ? ["**Already selling?** Turn on **Track new purchases from server-to-server notifications** on each app's page, so each current subscriber appears at their next renewal or change."] : []),
         `**Your platform:** iOS, Android, Flutter, React Native, Expo, Capacitor, Unity and the web each have a [setup page](${docs("sdks")}).`,
         `**Your API key:** copy it from [API keys](${dash(c, "/api-keys")}) in the dashboard.`,
         `**Using an AI coding tool?** Point it at [revenuedot.app/llms.txt](${SITE}/llms.txt) and ask it to add RevenueDot.`,
@@ -270,8 +270,8 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { t: "picture", shot: "app-store", href: dash(c, "/apps") }], "Connect my store", dash(c, "/apps"));
     if (p.testPurchase || p.store || c.appCreated) return stuck("Let your AI coding tool add RevenueDot", "Paste one prompt into Claude Code, Cursor or Codex.", [
       { t: "lead", text: `Your app hasn't connected to ${proj(c)} yet. If you use an AI coding tool, paste this prompt and it reads our setup guide and adds RevenueDot to your app:` },
-      { t: "prompts", items: ["Add in-app purchases to my app with RevenueDot. Read https://revenuedot.app/llms.txt and follow the setup for my platform."] },
-      { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "Your app needs one of these keys." }], "Or follow the setup guide", docs("getting-started/connect-your-app"));
+      { t: "prompts", items: [`${p.store ? "Move my app's in-app purchases to RevenueDot" : "Add in-app purchases to my app with RevenueDot"}. Read https://revenuedot.app/llms.txt, follow the setup for my platform, and use the public API key I copy from the RevenueDot dashboard.`] },
+      { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "Copy your public API key here." }], "Open the setup guide", docs("getting-started/connect-your-app"));
     return stuck("Your first test purchase takes five minutes", "No App Store or Google Play account needed.", [
       { t: "lead", text: `${proj(c)} is ready. A test purchase from the dashboard shows how RevenueDot works from start to finish, and it needs no App Store or Google Play account.` },
       { t: "picture", shot: "checklist", href: dash(c, "/overview"), caption: "Your setup checklist on the Overview." }], "Make a test purchase", dash(c, "/overview"));
@@ -304,6 +304,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       blocks: [
         ...(c.bills && save > 0 ? [{ t: "stat", value: usd(save), label: `saved a year: ${usd(rdM)} a month on RevenueDot against ${usd(rcM)} at RevenueCat's list price, at your last 7 days' pace`, tone: "up" } as Block] : []),
         { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. Turn RevenueCat off when all three are true:` },
+        { t: "picture", shot: "apps", href: dash(c, "/apps"), caption: "Your apps and their status." },
         { t: "checklist", items: [{ title: "The numbers match", text: "The comparison in the cutover checklist shows no differences." }, { title: "Most users have updated", text: "Older app versions still talk to RevenueCat." }, { title: "Webhooks move together", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." }] },
         { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
       ],
@@ -320,6 +321,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       blocks: [...rows, { t: "lead", text: app
         ? "RevenueDot now records sales alongside RevenueCat, and a build of your app talks to RevenueDot. Let both run for a few days, then compare them."
         : "Store notifications reach RevenueDot, so it records sales alongside RevenueCat. Next, ship the app update that points your app at RevenueDot. Older versions keep using RevenueCat until you turn it off." },
+        { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "Each app's page shows the last notification forwarded to RevenueCat." },
         app ? { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }
           : { t: "button", label: "Plan the app update", url: docs("migrate/sdk-changes") }],
     };
@@ -345,6 +347,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     blocks: [
       { t: "receipt", title: "Your plan", rows: [["Plan", "Cloud Standard"], ["Above $10,000 a month", "0.5%"], ["Never more than", "$999 a month"], ["First invoice", "1st of next month"]] },
       { t: "lead", text: "Thank you for upgrading. The rate never rises, and there's no proration. Standard adds single sign-on, organizations and custom roles for your team." },
+      { t: "picture", shot: "team", href: `${c.app}/account/billing` },
       { t: "button", label: "See billing and invoices", url: `${c.app}/account/billing` },
     ],
   }),
