@@ -255,7 +255,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   }),
 
   first_sale: (c) => {
-    const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)} · first sale`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
+    const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)}: first sale`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
     return c.migrating ? {
       look: "rich",
       subject: `RevenueDot just saw ${proj(c)}'s first live sale`,
@@ -342,7 +342,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
       case "progress": {
         const items = progressItems(b.current);
         const done = items.filter((x) => x.done).length;
-        return row(box(label(`Your setup · ${done} of ${items.length} done`) +
+        return row(box(label(`Your setup: ${done} of ${items.length} done`) +
           items.map((x) => `<p style="margin:0 0 6px;font-size:14px;line-height:20px;color:${x.done ? FG3 : INK};${x.current ? "font-weight:700;" : ""}">` +
             `<span style="display:inline-block;width:20px;color:${x.done ? UP : x.current ? GOLD : "#BDBDBD"};">${x.done ? "&#10003;" : x.current ? "&#9679;" : "&#9675;"}</span>` +
             `${esc(x.label)}${x.current ? `<span style="font-weight:500;color:${FG3};">&nbsp; &larr; next</span>` : ""}</p>`).join(""),
@@ -369,7 +369,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
         const card = (x: { title: string; text: string; link?: { label: string; url: string } }) =>
           `<div style="display:inline-block;width:100%;max-width:251px;vertical-align:top;margin:0 0 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border:1px solid ${BORDER};padding:14px 16px;">` +
           `<p style="margin:0 0 6px;font-size:15px;line-height:21px;font-weight:700;color:${INK};">${h(x.title)}</p><p style="margin:0;font-size:14px;line-height:21px;color:${FG2};">${h(x.text)}</p>` +
-          (x.link ? `<p style="margin:10px 0 0;font-size:14px;line-height:20px;"><a href="${esc(tag(x.link.url, s))}" style="color:${INK};font-weight:700;text-decoration:none;">${esc(x.link.label)} &rarr;</a></p>` : "") +
+          (x.link ? `<p style="margin:10px 0 0;font-size:14px;line-height:20px;"><a href="${esc(tag(x.link.url, s))}" style="color:${INK};font-weight:700;text-decoration:none;">${esc(x.link.label)}</a></p>` : "") +
           `</td></tr></table></div>`;
         return `<tr><td style="padding:0 0 10px;font-size:0;line-height:0;">` + b.items.map((x, i) => card(x) + (i % 2 === 0 && i < b.items.length - 1 ? `<div style="display:inline-block;width:18px;"></div>` : "")).join("") + `</td></tr>`;
       }
@@ -395,9 +395,9 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
       case "rating": return row(`<p style="margin:0 0 12px;font-size:16px;line-height:24px;font-weight:700;color:${INK};">${esc(b.question)}</p>` +
         // Inline boxes wrap onto a second line on a narrow phone instead of widening the email.
         `<p style="margin:0;font-size:0;line-height:0;">` + Array.from({ length: 11 }, (_, n) => `<a href="${esc(tag(b.url(n), s))}" style="display:inline-block;width:25px;height:34px;margin:0 2px 4px 0;border:1px solid ${INK};font-family:${MONO};font-size:13px;line-height:34px;text-align:center;color:${INK};text-decoration:none;">${n}</a>`).join("") + `</p>` +
-        `<p style="margin:4px 0 0;font-size:12px;line-height:18px;color:${FG3};">0 = ${esc(b.low)} &middot; 10 = ${esc(b.high)}</p>`);
+        `<p style="margin:4px 0 0;font-size:12px;line-height:18px;color:${FG3};">0 = ${esc(b.low)} | 10 = ${esc(b.high)}</p>`);
       case "choices": return row(b.items.map((x) => `<p style="margin:0 0 8px;"><a href="${esc(tag(x.url, s))}" style="display:inline-block;border:1px solid ${INK};padding:10px 16px;font-size:14px;line-height:20px;font-weight:600;color:${INK};text-decoration:none;">${esc(x.label)}</a></p>`).join(""), 14);
-      case "button": return row(`<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${INK};"><a href="${esc(tag(b.url, s))}" style="display:inline-block;padding:15px 26px;font-family:${FONT};font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(b.label)} &rarr;</a></td></tr></table>` +
+      case "button": return row(`<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${INK};"><a href="${esc(tag(b.url, s))}" style="display:inline-block;padding:15px 26px;font-family:${FONT};font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(b.label)}</a></td></tr></table>` +
         (b.secondary ? `<p style="margin:14px 0 0;font-size:14px;line-height:20px;"><a href="${esc(tag(b.secondary.url, s))}" style="color:${INK};text-decoration:underline;text-underline-offset:2px;">${esc(b.secondary.label)}</a></p>` : ""), 30);
     }
   };
@@ -435,7 +435,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
   const flink = (label: string, url: string) => `<a href="${esc(tag(url, s))}" style="color:${FG3};">${label}</a>`;
   const foot = `<tr><td style="border-top:1px solid ${BORDER};padding:18px 0 0;font-size:12px;line-height:18px;color:${FG3};">${esc(reason)} ` +
     `If you'd rather not get these emails, <a href="${esc(c.unsubscribeUrl)}" style="color:${FG3};">unsubscribe</a> or change your <a href="${esc(prefs)}" style="color:${FG3};">email preferences</a>.` +
-    `<br><br>RevenueDot &middot; ${flink("Docs", `${SITE}/docs`)} &middot; ${flink("Blog", `${SITE}/blog`)} &middot; ${flink("GitHub", "https://github.com/revenuedot/revenuedot")}</td></tr></table></td></tr></table></body></html>`;
+    `<br><br>RevenueDot | ${flink("Docs", `${SITE}/docs`)} | ${flink("Blog", `${SITE}/blog`)} | ${flink("GitHub", "https://github.com/revenuedot/revenuedot")}</td></tr></table></td></tr></table></body></html>`;
 
   let html: string;
   if (m.look === "note") {
