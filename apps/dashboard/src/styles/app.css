@@ -407,7 +407,8 @@ td .cellsub{display:block;font-size:12px;color:var(--fg-3);white-space:normal}
 /* Cells that may wrap onto two lines, so a table fits its panel instead of scrolling sideways. */
 td.w2{white-space:normal;padding-top:8px;padding-bottom:8px}
 td.w2 code,td.w2 .mono{overflow-wrap:anywhere}
-td.rq-pol{min-width:160px}
+/* Refund requests at phone width: product ids on one line, policy names readable; the table scrolls sideways. */
+@media (max-width:640px){td.rq-prod{white-space:nowrap}td.rq-prod .mono{overflow-wrap:normal}td.rq-pol{min-width:160px}}
 .secret code{overflow-wrap:anywhere;white-space:normal}
 td.url{max-width:320px;overflow:hidden;text-overflow:ellipsis;font:400 12px/16px var(--mono);color:var(--fg-2)}
 .center-card{min-height:100%;display:grid;place-items:center;padding:24px}

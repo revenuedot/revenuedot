@@ -47,7 +47,7 @@ async function unreachable(page: Page): Promise<string[]> {
       const x = (left + right) / 2, y = r.top + r.height / 2;
       const hit = document.elementFromPoint(x, y);
       if (!hit) { out.push(`${name(el)} is outside the viewport`); continue; }
-      if (!(proxy.contains(hit) || hit.contains(proxy) || (el instanceof HTMLInputElement && [...(el.labels ?? [])].some((l) => l.contains(hit))))) {
+      if (!(proxy.contains(hit) || (el instanceof HTMLInputElement && [...(el.labels ?? [])].some((l) => l.contains(hit))))) {
         out.push(`${name(el)} is covered by ${hit.tagName.toLowerCase()}.${String((hit as HTMLElement).className).trim().replace(/\s+/g, ".")}`);
       }
     }
@@ -61,17 +61,26 @@ async function unreachable(page: Page): Promise<string[]> {
 /** The checks for one page state at 390px, plus a screenshot when SHOTS is set. */
 async function check(page: Page, name: string) {
   await page.waitForLoadState("networkidle");
-  const { sw, iw } = await page.evaluate(() => ({ sw: document.scrollingElement!.scrollWidth, iw: innerWidth }));
+  // The document, and the shell's own page scroller (.scroll), which is where a too-wide page would show.
+  const { sw, iw, inner } = await page.evaluate(() => {
+    const s = document.querySelector<HTMLElement>(".main .scroll, .scroll");
+    return { sw: document.scrollingElement!.scrollWidth, iw: innerWidth, inner: s ? s.scrollWidth - s.clientWidth : 0 };
+  });
   expect(sw, `${name}: the page scrolls sideways (${sw}px wide at ${iw}px)`).toBeLessThanOrEqual(iw);
+  expect(inner, `${name}: the page scroller is ${inner}px too wide`).toBeLessThanOrEqual(0);
   expect(await unreachable(page), `${name}: controls a phone cannot tap`).toEqual([]);
   if (process.env.SHOTS) {
     // The page scrolls inside the shell (and dialogs inside themselves): grow the viewport to the tallest scroller for one shot.
     const tall = await page.evaluate(() => Math.max(innerHeight, ...[...document.querySelectorAll<HTMLElement>("*")]
       .filter((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight)
       .map((el) => innerHeight + el.scrollHeight - el.clientHeight)));
-    await page.setViewportSize({ width: 390, height: Math.min(tall, 6000) });
-    await page.screenshot({ path: `${process.env.SHOTS}/${name}.png` });
-    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      await page.setViewportSize({ width: 390, height: Math.min(tall, 6000) });
+      await page.evaluate(() => new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(null)))));
+      await page.screenshot({ path: `${process.env.SHOTS}/${name}.png` });
+    } finally {
+      await page.setViewportSize({ width: 390, height: 844 });
+    }
   }
 }
 
@@ -81,8 +90,6 @@ function watchErrors(page: Page) {
   page.on("console", (m) => { if (m.type() === "error") errors.push(`${page.url()}: ${m.text()}`); });
   return errors;
 }
-
-test.describe.configure({ mode: "serial" });
 
 test("phone width: Charts segment pickers and Refund Control on the demo project", async ({ page }) => {
   test.setTimeout(120_000);
@@ -109,6 +116,8 @@ test("phone width: Charts segment pickers and Refund Control on the demo project
     await page.goto(`/projects/${pid}/lifecycle/refund-control`);
     await expect(page.getByRole("heading", { name: "Refund Control" })).toBeVisible();
     await page.getByLabel("Default refund preference").selectOption({ label: "Prefer prorated refund" });
+    // lifecycle.spec.ts may have saved prorated already: flipping the consent box always leaves a change, so the save bar shows.
+    await page.getByRole("checkbox", { name: /Customers agreed to share consumption data with Apple/ }).click();
     await expect(page.getByRole("region", { name: "Unsaved changes" })).toBeVisible();
     await check(page, "refund-control-prorated");
   });
@@ -201,7 +210,7 @@ test("phone width: integrations, catalog, exports, customer history, notificatio
       paywall_revision: 1, timestamp: now - 60_000 + i * 1000, display_mode: "full_screen", dark_mode: false, locale: "en_US",
     })) } });
     expect(sent.status()).toBe(200);
-    await expect.poll(async () => (await json(req, "GET", `${P}/customers/phone_viewer/events?limit=100&include_paywall_events=true`)).items.length, { timeout: 20_000 }).toBe(4);
+    await expect.poll(async () => (await json(req, "GET", `${P}/customers/phone_viewer/events?limit=100&include_paywall_events=true`)).items.filter((e: any) => /paywall/i.test(String(e.type))).length, { timeout: 20_000 }).toBe(3);
 
     await page.goto(`/projects/${pid}/customers/phone_viewer`);
     const toggle = page.getByRole("switch", { name: "Show paywall events" });
