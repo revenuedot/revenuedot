@@ -52,12 +52,8 @@ const shotUrl = (s: Shot) => `${SITE}/email/shots/${s}.jpg`;
 const artUrl = (a: Art) => `${SITE}/email/art/${a}.jpg`;
 
 export type StepId =
-  | "welcome" | "verify_reminder" | "first_purchase" | "checkin" | "connect_app" | "ai_setup" | "store_keys" | "go_live" | "need_hand" | "last_call"
-  | "switch_plan" | "import_help" | "side_by_side" | "forwarding_check" | "cutover"
-  | "first_sale" | "standard_welcome" | "standard_canceled"
-  | "paywalls" | "experiments" | "recovery" | "team" | "how_going" | "assistant"
-  | "pricing_explainer" | "upgrade_nudge" | "upgrade_personal" | "enterprise"
-  | "referral" | "went_quiet" | "teammate_welcome" | "sandbox_only";
+  | "welcome" | "verify_reminder" | "connect_app" | "store_keys" | "need_hand" | "side_by_side" | "cutover"
+  | "first_sale" | "standard_welcome" | "upgrade_nudge" | "teammate_welcome";
 
 /** What a step's copy may use. Everything optional is filled only for the steps that need it. */
 export interface JourneyCtx {
@@ -178,154 +174,47 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   welcome: (c) => ({
     look: "rich",
     subject: "Welcome to RevenueDot",
-    preheader: "Your account is ready. Here's how to get your first purchase working today.",
+    preheader: "Your first test purchase takes about five minutes.",
     heading: c.first ? `Welcome to RevenueDot, ${c.first}` : "Welcome to RevenueDot",
     blocks: [
-      { t: "lead", text: "RevenueDot runs your app's in-app purchases and subscriptions. It checks every purchase with Apple and Google, keeps each customer's access in sync across devices, sends webhooks to your backend and charts your revenue." },
-      { t: "p", text: "It works with the RevenueCat SDK, so if you've used RevenueCat before, there's nothing new to learn. Here's where you are:" },
-      { t: "progress", current: "test" },
-      { t: "h2", text: "Where do you want to start?" },
+      { t: "lead", text: "Your project is ready. RevenueDot runs your app's in-app purchases and subscriptions, and it works with the RevenueCat SDK." },
       { t: "cards", items: [
-        { title: "I'm new to in-app purchases", text: "Make a test purchase in 5 minutes with the built-in Test Store. You don't need an App Store or Google Play account yet.", link: { label: "Start the quickstart", url: c.pathUrl?.("new") ?? docs("getting-started/quickstart") } },
-        { title: "I'm moving from RevenueCat", text: "Keep the SDK your app ships, import your customers, and run both side by side until the numbers match.", link: { label: "Plan your switch", url: c.pathUrl?.("revenuecat") ?? docs("migrate") } },
+        { title: "New to in-app purchases", text: "Make a test purchase with the built-in Test Store. No App Store or Google Play account needed.", link: { label: "Start the quickstart", url: c.pathUrl?.("new") ?? docs("getting-started/quickstart") } },
+        { title: "Moving from RevenueCat", text: "Import your customers and run both side by side until the numbers match.", link: { label: "Plan your switch", url: c.pathUrl?.("revenuecat") ?? docs("migrate") } },
       ] },
-      { t: "picture", video: "first-purchase", caption: "The whole first purchase, from an empty project to an active subscriber." },
-      { t: "callout", text: "**Cloud is free until your apps make $10,000 a month.** That includes paywalls, experiments, more than 40 charts, webhooks and integrations, for unlimited apps and teammates. No card needed." },
+      { t: "p", text: "Cloud is free until your apps make $10,000 a month." },
     ],
   }),
 
   verify_reminder: (c) => ({
-    look: "rich",
-    subject: "Confirm your email to create secret API keys",
-    preheader: "A fresh link that works for 24 hours.",
-    heading: "Confirm your email address",
-    blocks: [
-      { t: "lead", text: "Your account works, but two things wait for a confirmed email: **secret API keys** for your server and the REST API, and **inviting teammates**." },
-      { t: "p", text: "Your first confirmation link has expired, so here is a new one. It works for 24 hours." },
-      { t: "button", label: "Confirm my email", url: c.verifyUrl ?? `${c.app}/` },
-      { t: "p", text: "If you didn't create a RevenueDot account, you can ignore this email and nothing will happen." },
-    ],
-  }),
-
-  first_purchase: (c) => ({
-    look: "rich",
-    subject: "Your first test purchase takes 5 minutes",
-    preheader: "No App Store account and no code. Here's exactly what to set up and click.",
-    eyebrow: "Getting started",
-    heading: "Make your first test purchase",
-    blocks: [
-      { t: "progress", current: "test" },
-      { t: "lead", text: "The fastest way to understand RevenueDot is to buy something. The built-in **Test Store** behaves like the App Store: a purchase creates a customer, unlocks access and fires the same webhooks a real sale does." },
-      { t: "picture", video: "first-purchase" },
-      { t: "h2", text: "What you'll set up" },
-      { t: "defs", items: [
-        { term: "A Test Store app", text: "A store that needs no Apple or Google account. Add it under **Apps**." },
-        { term: "A product", text: "What the customer buys, such as `pro_monthly`, a subscription that lasts a month." },
-        { term: "An entitlement", text: "The access your app checks, such as `pro`. Attach the product to it." },
-        { term: "An offering", text: "The set of products your paywall shows. Add one called `default` and make it current." },
-      ] },
-      { t: "h2", text: "Then buy it" },
-      { t: "p", text: "On **Overview**, click **Make a test purchase**, keep the user `test_user_1` and click **Purchase**. Open **Customers** and then `test_user_1`: the `pro` entitlement is active for a month, and every event is listed." },
-      { t: "callout", text: `Prefer the terminal? [One script](${docs("getting-started/quickstart")}#2-add-a-test-store-app-a-product-and-an-entitlement) creates the app, three products, the \`pro\` entitlement and a \`default\` offering for you.` },
-      { t: "button", label: "Make a test purchase", url: dash(c, "/overview") },
-    ],
-  }),
-
-  checkin: (c) => ({
     look: "note",
-    subject: "What are you building?",
-    preheader: "Tell us your stack and we'll send the shortest setup path.",
+    subject: "Confirm your email to create API keys",
+    preheader: "A fresh link that works for 24 hours.",
     blocks: [
       { t: "p", text: hi(c) },
-      { t: "p", text: `${proj(c)} doesn't have an app in it yet, so we wanted to check in. Setup looks different for a Swift app, a Flutter app and an Expo app, and very different if you're moving from RevenueCat.` },
-      { t: "p", text: "Reply with your platform and whether you use RevenueCat today, and we'll send back the exact steps for your stack. One line is enough." },
+      { t: "p", text: `Please [confirm your email](${c.verifyUrl ?? `${c.app}/`}). RevenueDot needs it before you can create secret API keys. The link works for 24 hours.` },
     ],
   }),
 
   connect_app: (c) => ({
-    look: "rich",
-    subject: c.testPurchase ? "Your test purchase worked. Now connect your app" : "Connect your app to RevenueDot",
-    preheader: "Two settings in the RevenueCat SDK, with code for iOS, Android, React Native and Flutter.",
-    eyebrow: "Getting started",
-    heading: c.testPurchase ? "Your test purchase worked" : "Connect your app",
+    look: "note",
+    subject: c.testPurchase ? "Your test purchase worked. Next, connect your app" : "Connect your app to RevenueDot",
+    preheader: "Two settings in the RevenueCat SDK.",
     blocks: [
-      { t: "progress", current: "app" },
-      { t: "lead", text: `${c.testPurchase ? "That purchase ran through the same steps a real App Store sale does. " : ""}Next, connect your real app: you use the official RevenueCat SDK and change two settings, the server address and, on iOS and Android, the signature check. You don't need a RevenueCat account.` },
-      { t: "picture", video: "connect-your-app" },
-      { t: "h2", text: "Copy the code for your platform" },
-      { t: "code", label: "iOS · Swift", text: 'Purchases.proxyURL = URL(\n  string: "https://api.revenuedot.app")!\nPurchases.configure(with:\n  .init(withAPIKey: "test_...")\n  .with(entitlementVerificationMode:\n    .disabled)\n  .build())' },
-      { t: "code", label: "Android · Kotlin", text: 'import com.revenuecat.purchases\n  .EntitlementVerificationMode.DISABLED\n\nPurchases.proxyURL =\n  URL("https://api.revenuedot.app")\nPurchases.configure(\n  PurchasesConfiguration\n    .Builder(context, "test_...")\n    .entitlementVerificationMode(\n      DISABLED)\n    .build())' },
-      { t: "code", label: "React Native · Expo", text: 'await Purchases.setProxyURL(\n  "https://api.revenuedot.app");\nPurchases.configure({\n  apiKey: "test_...",\n});' },
-      { t: "code", label: "Flutter", text: "await Purchases.setProxyURL(\n  'https://api.revenuedot.app');\nawait Purchases.configure(\n  PurchasesConfiguration('test_...'));" },
-      { t: "h2", text: "How you'll know it worked" },
-      { t: "p", text: "Open the app once. Within a minute the customer appears in **Customers**, and the SDK version shows on the app's page under **Apps**." },
-      { t: "callout", tone: "warn", text: "**Test keys only work in debug builds.** A `test_` key in a release build stops the app on purpose. Release builds use your App Store (`appl_`) or Google Play (`goog_`) key." },
-      { t: "button", label: "Get your test key", url: dash(c, "/api-keys"), secondary: { label: "Full SDK guides", url: docs("sdks") } },
-    ],
-  }),
-
-  ai_setup: (c) => ({
-    look: "rich",
-    subject: "Set up RevenueDot from Claude Code, Cursor or Codex",
-    preheader: "One prompt, and your coding agent follows the same quickstart you would.",
-    eyebrow: "Getting started",
-    heading: "Let your coding agent do the setup",
-    blocks: [
-      { t: "lead", text: "If an AI agent writes most of your code, it can add purchases too. RevenueDot's docs ship an `llms.txt` file written for agents, so they follow the same quickstart you would." },
-      { t: "code", label: "Paste this into your agent", text: "Add in-app purchases with RevenueDot.\nRead https://revenuedot.app/llms.txt\nand follow the quickstart." },
-      { t: "h2", text: "What a good run looks like" },
-      { t: "list", items: [
-        "It installs the RevenueCat SDK for your platform.",
-        "It points the SDK at RevenueDot and turns the signature check off where needed.",
-        "It loads your current offering and checks the `pro` entitlement before unlocking paid features.",
-      ] },
-      { t: "callout", text: "**Want the agent to manage RevenueDot too?** Connect `https://mcp.revenuedot.app/mcp` and it can create products, look up customers and check your setup. Anything that moves money waits for your approval." },
-      { t: "button", label: "Open the quickstart", url: docs("getting-started/quickstart"), secondary: { label: "Agent skills", url: "https://github.com/revenuedot/agent-skills" } },
+      { t: "p", text: hi(c) },
+      { t: "p", text: `${c.testPurchase ? "Your test purchase worked. " : ""}To connect your real app, you keep the RevenueCat SDK and change two settings so it talks to RevenueDot. The [quickstart](${docs("getting-started/quickstart")}) has the current code for each platform.` },
+      { t: "p", text: "Prefer to let your coding agent do it? Point it at https://revenuedot.app/llms.txt." },
     ],
   }),
 
   store_keys: (c) => ({
-    look: "rich",
-    subject: "Your app is connected. Next: the App Store and Google Play",
-    preheader: "Store credentials let RevenueDot check every purchase and hear about renewals and refunds.",
-    eyebrow: "Getting started",
-    heading: "Your app reached RevenueDot",
+    look: "note",
+    subject: "Your app reached RevenueDot. Next, the stores",
+    preheader: "Add store credentials so RevenueDot can check every purchase.",
     blocks: [
-      { t: "progress", current: "store" },
-      { t: "lead", text: c.sdk ? `Your ${c.sdk.platform} app (SDK ${c.sdk.version}) just talked to RevenueDot for the first time.` : "Your app just talked to RevenueDot for the first time." },
-      { t: "p", text: "Now connect your stores. With store credentials, RevenueDot checks every purchase with Apple and Google, and hears about renewals, refunds and billing problems the moment they happen, even when nobody opens the app." },
-      { t: "picture", shot: "app-store", href: dash(c, "/apps"), caption: "Each app's page shows exactly what's still missing." },
-      { t: "h2", text: "App Store" },
-      { t: "ol", items: [
-        "In App Store Connect, open **Users and Access → Integrations → In-App Purchase** and generate a key.",
-        "Download the `.p8` file (Apple lets you download it only once) and note the **Key ID** and **Issuer ID**.",
-        "In RevenueDot, open the app, add the file and both IDs, and click **Check credentials**.",
-        "Paste the app's notification URL into **App Store Server Notifications**, as both the Production and Sandbox URL, Version 2.",
-      ] },
-      { t: "h2", text: "Google Play" },
-      { t: "p", text: `Add a service account with access to your app, then point real-time developer notifications at RevenueDot. The [Google Play guide](${docs("guides/google-play")}) walks through both.` },
-      { t: "button", label: "Add store credentials", url: dash(c, "/apps"), secondary: { label: "App Store guide", url: docs("guides/app-store") } },
-    ],
-  }),
-
-  go_live: (c) => ({
-    look: "rich",
-    subject: "Before you ship: your go-live checklist",
-    preheader: "Four checks that catch most launch problems.",
-    eyebrow: "Getting started",
-    heading: "Ready for real customers?",
-    blocks: [
-      { t: "progress", current: "live" },
-      { t: "lead", text: "Your store is connected. Most launch-day problems come from one of these four, so tick them off before you submit your release." },
-      { t: "checklist", items: [
-        { title: "Credentials pass", text: "Each store app shows a valid result for **Check credentials**." },
-        { title: "Store notifications arrive", text: "The app's status reads **Ready**, and App Store Connect sends both Production and Sandbox notifications to RevenueDot, Version 2." },
-        { title: "Release builds use store keys", text: "`appl_` or `goog_`, never a `test_` key, and no secret `sk_` key anywhere in the app." },
-        { title: "Product IDs match the store exactly", text: "Google Play subscriptions are written as `subscriptionId:basePlanId`." },
-      ] },
-      { t: "picture", shot: "apps", href: dash(c, "/apps"), caption: "Apps shows each store's status at a glance." },
-      { t: "callout", text: "**Try the whole flow in the sandbox first.** A sandbox purchase from a TestFlight or internal-testing build shows up in **Customers**, in the **Sandbox** list." },
-      { t: "button", label: "Check your apps", url: dash(c, "/apps"), secondary: { label: "The full checklist", url: `${docs("guides/going-to-production")}#stores` } },
+      { t: "p", text: hi(c) },
+      { t: "p", text: `${c.sdk ? `Your ${c.sdk.platform} app just talked to RevenueDot for the first time.` : "Your app just talked to RevenueDot for the first time."} Next, add your store credentials so RevenueDot can check every purchase and hear about renewals and refunds.` },
+      { t: "p", text: `Each app's page in the [dashboard](${dash(c, "/apps")}) shows what's missing. The [App Store](${docs("guides/app-store")}) and [Google Play](${docs("guides/google-play")}) guides walk through it.` },
     ],
   }),
 
@@ -338,95 +227,18 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { t: "p", text: c.migrating
         ? "Your RevenueCat data is in, but the side-by-side run hasn't started yet. Forwarding store notifications is the fiddliest part of the switch, and we're happy to set it up with you."
         : "In-app purchases have a lot of moving parts: SDK keys, store credentials, notifications. If something's in the way, we'd like to help." },
-      { t: "p", text: `[Book 15 minutes with our team](${BOOKING_URL}) and we'll ${c.migrating ? "set up forwarding" : "get your app connected"} on the call. Or reply with where you got stuck; a screenshot of the error helps.` },
-    ],
-  }),
-
-  last_call: (c) => ({
-    look: "note",
-    subject: "Your project is ready whenever you are",
-    preheader: "This is our last setup email. Your project stays free.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${c.migrating ? (c.importedOn ? "Your side-by-side run hasn't started yet" : "Your RevenueCat import hasn't run yet") : "Your app hasn't connected to RevenueDot yet"}, so this is our last setup email. ${proj(c)} stays free and ready, and you can [pick up where you left off](${dash(c, "/overview")}) any time.` },
-      { t: "p", text: "If something didn't work, or RevenueDot is missing something you need, we'd really like to know. Reply with one line; it goes straight to the people who build it." },
-    ],
-  }),
-
-  switch_plan: (c) => ({
-    look: "rich",
-    subject: "How to switch from RevenueCat safely, step by step",
-    preheader: "Import, run both side by side, then switch. Your app keeps its SDK the whole time.",
-    eyebrow: "Switching from RevenueCat",
-    heading: "Your switch, step by step",
-    blocks: [
-      { t: "lead", text: "A safe switch takes a few hours of work spread over a week or two. Your app keeps the RevenueCat SDK, and RevenueCat keeps running until you turn it off, so there's no big-bang moment." },
-      { t: "picture", video: "switch-from-revenuecat" },
-      { t: "timeline", items: [
-        { when: "Day 1", title: "Import", text: "One command copies your apps, products, offerings, customers and purchase history. Running it twice changes nothing." },
-        { when: "Day 1 or 2", title: "Run both side by side", text: "Forward store notifications so RevenueCat and RevenueDot both see every renewal. Your app still talks to RevenueCat." },
-        { when: "Your next release", title: "Point the SDK at RevenueDot", text: "Set the server address and turn the signature check off, then call `syncPurchases()` once on first launch." },
-        { when: "When it matches", title: "Turn RevenueCat off", text: "Once `import verify` shows no differences and few users still run the old version." },
-      ] },
-      { t: "code", label: "The import", text: "npx revenuedot import \\\n  --from-revenuecat \\\n  --rc-project <your project id> \\\n  --to https://api.revenuedot.app" },
-      { t: "p", text: "It asks for a RevenueCat v2 secret key and a RevenueDot secret key, so confirm your email first." },
-      { t: "h2", text: "Questions teams ask" },
-      { t: "faq", items: [
-        { q: "Will our customers notice?", a: "They shouldn't. The app keeps the same SDK and the same products; only the server it talks to changes. Older app versions keep using RevenueCat until you turn it off." },
-        { q: "What if the numbers don't match?", a: "Keep RevenueCat on, run `npx revenuedot import verify`, and reply to this email. We'll look at it with you." },
-        { q: "Can we leave later?", a: "Yes. RevenueDot is open source, and one command, `npx revenuedot move`, copies your whole project to a RevenueDot server you run yourself." },
-      ] },
-      { t: "button", label: "Start the import", url: docs("migrate/importer"), secondary: { label: "See what you'd save", url: `${SITE}/tools/revenuecat-fee-calculator` } },
-    ],
-  }),
-
-  import_help: (c) => ({
-    look: "note",
-    subject: "Want help with the RevenueCat import?",
-    preheader: "Book 15 minutes and we'll run it with you.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${proj(c)} doesn't have your RevenueCat data in it yet. The import is one command, but it needs two secret keys and a project ID, and it's easier with someone who has done it before.` },
-      { t: "p", text: `[Book 15 minutes with our team](${BOOKING_URL}) and we'll run it together. If you already tried and saw an error, reply with it and we'll take a look.` },
+      { t: "p", text: `[Book 15 minutes with our team](${BOOKING_URL}) or reply with where you got stuck. A screenshot of the error helps.` },
     ],
   }),
 
   side_by_side: (c) => ({
-    look: "rich",
-    subject: "Your RevenueCat data is in. Now run both side by side",
-    preheader: "Forward store notifications, then point a test build at RevenueDot.",
-    eyebrow: "Switching from RevenueCat",
-    heading: "Your import is done",
+    look: "note",
+    subject: "Your RevenueCat data is in. Next, run both side by side",
+    preheader: "Forward store notifications to RevenueCat first.",
     blocks: [
-      ...(c.importedCustomers ? [{ t: "stat", value: c.importedCustomers.toLocaleString("en-US"), label: `customers imported into ${proj(c)}, with their purchase history` } as Block] : []),
-      { t: "lead", text: "Next, run RevenueCat and RevenueDot side by side. Both see every renewal, and your production app keeps talking to RevenueCat until you're ready." },
-      { t: "checklist", items: [
-        { title: "Forward store notifications", text: "On each app's page, paste RevenueCat's notification URL into **Forward notifications to RevenueCat**, then point App Store Connect and Google Play at RevenueDot." },
-        { title: "Track new purchases", text: "Turn on **Track new purchases from server-to-server notifications** for each app." },
-        { title: "Point a test build at RevenueDot", text: "The server address, and the signature check turned off." },
-        { title: "Compare for a week", text: "`npx revenuedot import verify` lists every difference between the two." },
-      ] },
-      { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." },
-      { t: "button", label: "Set up the side-by-side run", url: docs("migrate/dual-run"), secondary: { label: "What differs from RevenueCat", url: docs("migrate/what-differs") } },
-    ],
-  }),
-
-  forwarding_check: (c) => ({
-    look: "rich",
-    subject: "No store notifications have reached RevenueDot yet",
-    preheader: "Turn on forwarding to RevenueCat first, then point the stores at RevenueDot.",
-    eyebrow: "Switching from RevenueCat",
-    heading: "RevenueDot can't see renewals yet",
-    blocks: [
-      { t: "lead", text: `Your import finished${c.importedOn ? ` on ${c.importedOn}` : ""}, but no App Store or Google Play notification has arrived since. Without them, RevenueDot only learns about renewals, refunds and cancellations when a customer opens the app.` },
-      { t: "callout", tone: "warn", text: "**Do these in this order.** If the stores point at RevenueDot before forwarding is on, RevenueCat stops hearing about renewals." },
-      { t: "ol", items: [
-        "On each app's page in RevenueDot, paste RevenueCat's notification URL into **Forward notifications to RevenueCat or your own server**.",
-        "In App Store Connect, set RevenueDot's notification URL as the Production and Sandbox URL, Version 2.",
-        "In Google Cloud, add a second Pub/Sub push subscription that points at RevenueDot.",
-      ] },
-      { t: "picture", shot: "forwarding", href: dash(c, "/apps") },
-      { t: "button", label: "Open your apps", url: dash(c, "/apps"), secondary: { label: "Forwarding guide", url: docs("migrate/dual-run") } },
+      { t: "p", text: hi(c) },
+      { t: "p", text: `${c.importedCustomers ? `${c.importedCustomers.toLocaleString("en-US")} customers are now in ${proj(c)}. ` : ""}Next, run RevenueCat and RevenueDot side by side so both see every renewal. Your production app keeps talking to RevenueCat until you're ready.` },
+      { t: "p", text: `Order matters: forward store notifications to RevenueCat first, then point the stores at RevenueDot, or RevenueCat misses renewals. The [side-by-side guide](${docs("migrate/dual-run")}) has the steps.` },
     ],
   }),
 
@@ -434,319 +246,68 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     look: "rich",
     subject: c.bills && c.bills.revenuecat > c.bills.revenuedot ? `Ready to turn RevenueCat off? You'd save ${usd((c.bills.revenuecat - c.bills.revenuedot) * 12)} a year` : "Ready to turn RevenueCat off?",
     preheader: c.bills ? `At your last 7 days' pace: ${usd(c.bills.revenuedot)} a month on RevenueDot, ${usd(c.bills.revenuecat)} on RevenueCat.` : "Your cutover checklist.",
-    eyebrow: "Switching from RevenueCat",
     heading: "A week of live sales on RevenueDot",
     blocks: [
-      ...(c.bills && c.bills.revenuecat > c.bills.revenuedot ? [{ t: "stat", value: usd((c.bills.revenuecat - c.bills.revenuedot) * 12), label: "a year saved at your last 7 days' pace", tone: "up" } as Block] : []),
-      ...(c.bills ? [{ t: "table", head: ["", "A month", "A year"], rows: [["RevenueCat", usd(c.bills.revenuecat), usd(c.bills.revenuecat * 12)], ["RevenueDot Cloud", usd(c.bills.revenuedot), usd(c.bills.revenuedot * 12)]],
-        note: `Based on ${usd(c.projected ?? 0)} a month (${usd(c.last7 ?? 0)} in the last 7 days). RevenueCat charges 1% of all revenue once you pass $2,500 a month; RevenueDot 0.5% above $10,000, capped at $999.` } as Block] : []),
-      { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. Before you turn RevenueCat off:` },
-      { t: "checklist", items: [
-        { title: "The numbers match", text: "`npx revenuedot import verify` shows no differences." },
-        { title: "Few users run the old version", text: "Older versions still talk to RevenueCat, so wait until most users have updated." },
-        { title: "Move your webhooks in the same hour", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." },
-      ] },
-      { t: "p", text: "Then stop forwarding, and turn RevenueCat off." },
+      ...(c.bills && c.bills.revenuecat > c.bills.revenuedot ? [{ t: "stat", value: usd((c.bills.revenuecat - c.bills.revenuedot) * 12), label: `a year saved: ${usd(c.bills.revenuedot)} a month on RevenueDot against ${usd(c.bills.revenuecat)} on RevenueCat, at your last 7 days' pace`, tone: "up" } as Block] : []),
+      { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. When \`npx revenuedot import verify\` shows no differences and most users have updated the app, you can turn RevenueCat off.` },
       { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
     ],
   }),
 
-  first_sale: (c) => (c.migrating ? {
-    look: "rich",
-    subject: `RevenueDot just saw ${proj(c)}'s first live sale`,
-    preheader: "Store notifications are reaching RevenueDot. Next, compare both sides.",
-    eyebrow: "Switching from RevenueCat",
-    heading: "Your first live sale is in",
-    blocks: [
-      ...(c.sale ? [{ t: "receipt", title: "First live sale", rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Country", c.sale.country] as [string, string]] : [])] } as Block] : []),
-      { t: "lead", text: "Store notifications are reaching RevenueDot, so it now sees sales as they happen, alongside RevenueCat." },
-      { t: "p", text: "Let both run for a few days, then compare them with `npx revenuedot import verify`. When there are no differences for a week, you're ready to switch." },
-      { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` },
-    ],
-  } : {
-    look: "rich",
-    subject: "You just made your first real sale",
-    preheader: c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}${c.sale.country ? ` from ${c.sale.country}` : ""}.` : "Your first production purchase came through RevenueDot.",
-    heading: "Your first real sale",
-    blocks: [
-      ...(c.sale ? [{ t: "receipt", title: `${proj(c)} · first sale`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] } as Block] : []),
-      { t: "lead", text: `Congratulations. A real customer just paid for what you built, and ${proj(c)} is live.` },
-      { t: "progress", current: "live" },
-      { t: "h2", text: "Make the next hundred sales easier" },
-      { t: "cards", items: [
-        { title: "A paywall you can change", text: "Start from a tested template and change it from the dashboard after one app release.", link: { label: "Paywall templates", url: dash(c, "/paywalls/templates") } },
-        { title: "Save failed renewals", text: "Email customers whose card was declined a link to fix it, in your app's name.", link: { label: "Payment recovery", url: dash(c, "/lifecycle/payment-recovery") } },
-      ] },
-      { t: "button", label: "See it on your dashboard", url: dash(c, "/overview") },
-    ],
-  }),
+  first_sale: (c) => {
+    const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)} · first sale`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
+    return c.migrating ? {
+      look: "rich",
+      subject: `RevenueDot just saw ${proj(c)}'s first live sale`,
+      preheader: "Store notifications are reaching RevenueDot.",
+      heading: "Your first live sale is in",
+      blocks: [...rows, { t: "p", text: "RevenueDot now sees real sales alongside RevenueCat. Let both run for a few days, then compare them." },
+        { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }],
+    } : {
+      look: "rich",
+      subject: "You just made your first real sale",
+      preheader: c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}${c.sale.country ? ` from ${c.sale.country}` : ""}.` : "Your first production purchase came through RevenueDot.",
+      heading: "Your first real sale",
+      blocks: [...rows, { t: "p", text: `Congratulations. A real customer just paid for what you built, and ${proj(c)} is live.` },
+        { t: "button", label: "See it on your dashboard", url: dash(c, "/overview") }],
+    };
+  },
 
   standard_welcome: (c) => ({
-    look: "rich",
+    look: "note",
     subject: "You're on Cloud Standard",
-    preheader: "0.5% above $10,000 a month, never more than $999. The rate never rises.",
-    heading: "Thank you for upgrading",
-    blocks: [
-      { t: "receipt", title: "Your plan", rows: [["Plan", "Cloud Standard"], ["Under $10,000 a month", "$0"], ["Above $10,000", "0.5%"], ["Never more than", "$999 a month"], ["First invoice", "1st of next month"]] },
-      { t: "lead", text: "The rate never rises, and there's no proration: each month you're billed on what your apps tracked." },
-      { t: "h2", text: "What Standard adds" },
-      { t: "cards", items: [
-        { title: "Single sign-on", text: "SAML or OpenID Connect for your team, and you can require it.", link: { label: "Set up SSO", url: docs("guides/single-sign-on") } },
-        { title: "Organizations and roles", text: "Group projects into organizations, and give people custom roles." },
-        { title: "Email support", text: "A first reply within 2 business days. Reply to any of our emails to reach us." },
-      ] },
-      { t: "button", label: "See billing and invoices", url: `${c.app}/account/billing` },
-    ],
-  }),
-
-  standard_canceled: (c) => ({
-    look: "note",
-    subject: "What made you leave Standard?",
-    preheader: "One click helps. Your apps keep working on Cloud Free.",
+    preheader: "0.5% above $10,000 a month, never more than $999.",
     blocks: [
       { t: "p", text: hi(c) },
-      { t: "p", text: "Your account is back on Cloud Free. Your apps, customers and data are unchanged, and nothing stops working." },
-      { t: "p", text: "Could you tell us what made you leave? One click is enough:" },
-      { t: "choices", items: ["It costs too much", "A feature is missing", "Something didn't work", "We moved to another tool", "We're just pausing"].map((label) => ({ label, url: c.feedbackUrl?.("cancel", label) ?? mailto(`Why I left Standard: ${label}`) })) },
-      { t: "p", text: "Or reply with more detail. Every answer reaches the people who build RevenueDot." },
-    ],
-  }),
-
-  paywalls: (c) => ({
-    look: "rich",
-    subject: "Hard paywall or free first? What the data says",
-    preheader: "Hard-paywall apps convert about five times more users. Here's when free first still wins.",
-    eyebrow: "Grow your revenue",
-    heading: "Hard paywall or free first?",
-    blocks: [
-      { t: "lead", text: `Quick question: does ${proj(c)} ask for a subscription before people use it (a hard paywall), or let them use a free version first (freemium)?` },
-      { t: "p", text: "There's no universal answer, but across the median app the numbers are hard to ignore:" },
-      { t: "table", head: ["", "Hard paywall", "Freemium"], rows: [["Paying by day 35", "10.7%", "2.1%"], ["Revenue per install, day 60", "$3.09", "$0.38"], ["Yearly subscribers after a year", "27%", "28%"], ["Refund rate", "5.8%", "3.4%"]],
-        note: "Medians from RevenueCat's State of Subscription Apps 2026 (refunds: 2025 edition)." },
-      { t: "p", text: "Free first still wins when your growth comes from the free tier, such as users who invite friends or share what they make. For most other apps, the offer belongs in the first session: about 89% of trials start on install day." },
-      { t: "p", text: "The hard paywall's cost is refunds, so make the terms impossible to miss. For example, a trial timeline: **Today: full access. Day 2: we remind you. Day 3: you're charged $39.99 a year.**" },
-      { t: "picture", video: "paywalls-and-experiments", caption: "Build that paywall from a template, then test it." },
-      { t: "callout", text: "**One release first.** Your app needs one update that shows paywalls with RevenueCatUI's `PaywallView` (iOS SDK 5.83 or later). After that, every change reaches your app on its next launch." },
-      { t: "button", label: "Pick a paywall template", url: dash(c, "/paywalls/templates"), secondary: { label: "Read the full comparison", url: `${SITE}/blog/hard-paywall-vs-freemium` } },
-    ],
-  }),
-
-  experiments: (c) => ({
-    look: "rich",
-    subject: "Annual first or monthly first?",
-    preheader: "The plan you select by default shapes what people buy. An experiment settles which one is right for you.",
-    eyebrow: "Grow your revenue",
-    heading: "Annual first or monthly first?",
-    blocks: [
-      { t: "lead", text: `Quick question: on ${proj(c)}'s paywall, which plan is selected when it opens, annual or monthly?` },
-      { t: "p", text: "The default shapes both how many people start and how much each one pays, and the right answer differs from app to app. That's what an experiment settles: RevenueDot shows each version to part of your new customers and tells you which earns more." },
-      { t: "p", text: "Example: **Annual first** against **Monthly first**, each shown to half of your new customers until both have enough data." },
-      { t: "h2", text: "Three tests worth running first" },
-      { t: "cards", items: [
-        { title: "Plan order", text: "The same plans in another order; the first is the one selected. Judged on how many start a purchase." },
-        { title: "Trial length", text: "Each plan swapped for a store product with another trial length, which you create in App Store Connect or Google Play first. Judged on how many end up paying." },
-        { title: "Paywall design", text: "A copy of your paywall to change freely. Judged on how many start a purchase." },
-      ] },
-      { t: "p", text: "Results show the lift with a confidence interval and the chance each version wins, and RevenueDot tells you when a test has enough customers to read." },
-      { t: "picture", shot: "experiments", href: dash(c, "/experiments"), caption: "Each test starts from a template that fills in its metrics." },
-      { t: "button", label: "Start an experiment", url: dash(c, "/experiments/new"), secondary: { label: "How experiments work", url: docs("guides/experiments") } },
-    ],
-  }),
-
-  recovery: (c) => ({
-    look: "rich",
-    subject: "What happens when a subscriber's card fails?",
-    preheader: "When a renewal fails, email the customer a link to fix their payment, in your app's name.",
-    eyebrow: "Grow your revenue",
-    heading: "Save renewals that fail",
-    blocks: [
-      { t: "lead", text: `Quick question: what happens today when a ${proj(c)} subscriber's card fails at renewal?` },
-      { t: "p", text: "Usually the card expired or the bank said no, and the customer never chose to leave. Apple and Google retry the charge for a while. RevenueDot can also ask the customer to fix it, with an email in your app's name." },
-      { t: "picture", art: "recovery-email", href: dash(c, "/lifecycle/payment-recovery"), caption: "What your customer receives, from your app's name. You can edit every word." },
-      { t: "h2", text: "How it works" },
-      { t: "defs", items: [
-        { term: "A case opens", text: "The moment a store reports a billing problem: App Store billing retry, Google Play grace period or account hold, or a Stripe past-due." },
-        { term: "Emails go out", text: "Three by default, on days 0, 3 and 7, each with a link to fix the payment. You can change the days and words, and add up to five." },
-        { term: "You see what came back", text: "A case counts as recovered when the subscription renews within the recovery window, 30 days by default, with the revenue it saved." },
-      ] },
-      { t: "callout", text: "Emails go only to customers with an email address on file, set as the `$email` attribute from your app or backend." },
-      { t: "button", label: "Turn on payment recovery", url: dash(c, "/lifecycle/payment-recovery") },
-    ],
-  }),
-
-  team: (c) => ({
-    look: "rich",
-    subject: `Invite your team to ${proj(c)}`,
-    preheader: "Seats are free, and each person gets the access they need.",
-    eyebrow: "Grow your revenue",
-    heading: "Bring your team in",
-    blocks: [
-      { t: "lead", text: `${proj(c)} has one person in it so far. Seats are free and unlimited, so bring in whoever touches revenue, with the access they need and nothing more.` },
-      { t: "cards", items: [
-        { title: "Developer", text: "For engineers. Apps, products, customers and integrations, but no secret keys or member changes." },
-        { title: "Viewer", text: "For founders, growth and finance. Every chart and customer, with no way to change anything." },
-        { title: "Admin", text: "For whoever owns the account. Everything, including keys and members." },
-      ] },
-      { t: "picture", shot: "team", href: dash(c, "/settings/collaborators") },
-      { t: "button", label: "Invite a teammate", url: dash(c, "/settings/collaborators") },
-    ],
-  }),
-
-  how_going: (c) => ({
-    look: "note",
-    subject: "A quick question about RevenueDot",
-    preheader: "One click: how likely are you to recommend RevenueDot?",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${proj(c)} has been selling through RevenueDot since ${c.liveSince ?? "your first sale"}. Thank you for building on us.` },
-      { t: "rating", question: "How likely are you to recommend RevenueDot to another developer?", low: "Not likely", high: "Very likely", url: (n) => c.feedbackUrl?.("nps", String(n)) ?? mailto(`My score: ${n}`) },
-      { t: "p", text: "If there's one thing you'd change, reply and tell us. We read every answer." },
-    ],
-  }),
-
-  assistant: (c) => ({
-    look: "rich",
-    subject: "Ask ChatGPT or Claude about your subscriptions",
-    preheader: "Look up customers, grant access and check your setup in plain words.",
-    eyebrow: "Grow your revenue",
-    heading: "Run your subscriptions from chat",
-    blocks: [
-      { t: "lead", text: "Connect RevenueDot to ChatGPT, Claude or Cursor, and handle the everyday work in plain words." },
-      { t: "picture", video: "chatgpt-demo" },
-      { t: "h2", text: "Things you can ask" },
-      { t: "prompts", items: ["Why didn't user_42 get Pro?", "Give this customer 7 days of Pro.", "Which webhooks failed today?", "How did MRR change this week?"] },
-      { t: "h2", text: "You decide what it may do" },
-      { t: "defs", items: [
-        { term: "Read only", text: "Catalog, customers, events, transactions, webhooks and metrics." },
-        { term: "Read and change", text: "Also create products and offerings, grant access and manage webhooks." },
-        { term: "Money actions", text: "A separate switch for refunds, cancellations and extensions. Each one still asks you first." },
-      ] },
-      { t: "code", label: "Connector URL", text: "https://mcp.revenuedot.app/mcp" },
-      { t: "button", label: "Connect an assistant", url: docs("guides/connect-ai-assistants") },
-    ],
-  }),
-
-  pricing_explainer: (c) => ({
-    look: "rich",
-    subject: "Your apps passed $5,000 this month. Here's how your bill works",
-    preheader: "Cloud is free under $10,000 a month. Here's exactly what it costs as you grow.",
-    eyebrow: "Billing",
-    heading: "No surprises on your bill",
-    blocks: [
-      { t: "stat", value: usd(c.tracked ?? 0), label: `tracked so far in ${c.month ?? "this month"}`, tone: "up" },
-      { t: "lead", text: "Congratulations on the growth. Cloud stays free until your apps track $10,000 in a month. Above that, Cloud Standard costs 0.5% of the revenue above $10,000, and never more than $999 a month." },
-      ...(c.priceRows ? [{ t: "table", head: ["Monthly revenue", "RevenueDot", "RevenueCat"], rows: c.priceRows.map(([r, rd, rc]) => [usd(r), usd(rd), usd(rc)] as [string, string, string]),
-        note: "Tracked revenue is store revenue before Apple and Google take their cut. RevenueCat charges 1% of all revenue once you pass $2,500 a month." } as Block] : []),
-      { t: "p", text: "You can add a card now and pay nothing: Standard is $0 until you pass $10,000, and your apps keep working on either plan." },
-      { t: "button", label: "See plans and usage", url: `${c.app}/account/billing` },
+      { t: "p", text: "Thank you for upgrading. You pay 0.5% of tracked revenue above $10,000 a month, never more than $999, and the rate never rises. Your first invoice comes on the 1st of next month, with no proration." },
+      { t: "p", text: `Your [billing page](${c.app}/account/billing) has invoices and the plan details. For support, reply to this email.` },
     ],
   }),
 
   upgrade_nudge: (c) => ({
-    look: "rich",
+    look: "note",
     subject: "Your apps outgrew Cloud Free",
     preheader: c.bills ? `On ${usd(c.overTracked ?? 0)} a month, Standard costs ${usd(c.bills.revenuedot)}.` : "0.5% above $10,000, capped at $999 a month.",
-    eyebrow: "Billing",
-    heading: "Time to move to Cloud Standard",
-    blocks: [
-      { t: "lead", text: `Your apps tracked **${usd(c.overTracked ?? 0)}** in ${c.overMonth ?? "a month"}, past Cloud Free's $10,000. Your apps keep working either way; Standard is the plan built for apps your size.` },
-      ...(c.bills ? [{ t: "table", head: [`At ${usd(c.overTracked ?? 0)} a month`, "A month", "A year"], rows: [["RevenueCat", usd(c.bills.revenuecat), usd(c.bills.revenuecat * 12)], ["RevenueDot Standard", usd(c.bills.revenuedot), usd(c.bills.revenuedot * 12)]] } as Block] : []),
-      { t: "h2", text: "What changes when you upgrade" },
-      { t: "list", items: ["Single sign-on, organizations and custom roles for your team.", "Email support with a first reply within 2 business days.", "A bill that's capped at $999 a month, with a rate that never rises."] },
-      { t: "p", text: "Billing starts on the 1st of next month, with no proration. Checkout takes your company name and tax ID for invoices." },
-      { t: "button", label: "Upgrade to Standard", url: `${c.app}/account/billing` },
-    ],
-  }),
-
-  upgrade_personal: (c) => ({
-    look: "note",
-    subject: "Anything in the way of upgrading?",
-    preheader: "If checkout or invoices are a problem, reply and we'll sort it out.",
     blocks: [
       { t: "p", text: hi(c) },
-      { t: "p", text: `Your apps passed $10,000 in tracked revenue in ${c.overMonth ?? "a recent month"} (${usd(c.overTracked ?? 0)}), and the account is still on Cloud Free. Congratulations on the growth.` },
-      { t: "p", text: `If something is in the way of [upgrading to Standard](${c.app}/account/billing), such as your company name and tax ID on invoices, a different billing email, or a question about how the bill works, reply and tell us. We'll sort it out.` },
-    ],
-  }),
-
-  enterprise: (c) => ({
-    look: "rich",
-    subject: "An SLA and a named engineer for your apps",
-    preheader: `Your apps tracked ${usd(c.tracked ?? 0)} this month. Here's what Enterprise adds at that size.`,
-    eyebrow: "Enterprise",
-    heading: "Built for apps your size",
-    blocks: [
-      { t: "stat", value: usd(c.tracked ?? 0), label: "tracked so far this month", tone: "up" },
-      { t: "lead", text: "At this size, a failed purchase costs real money every minute, and procurement starts asking about contracts. That's what our Enterprise plan is for." },
-      { t: "cards", items: [
-        { title: "Uptime SLA", text: "99.9% a month on the purchase path, with service credits." },
-        { title: "A named engineer", text: "Faster support, including for purchases that fail at any hour." },
-        { title: "Your paperwork", text: "A DPA, security reviews and questionnaires, done with your team." },
-        { title: "Your own cloud", text: "Run RevenueDot yourself under a commercial licence, with every Enterprise feature." },
-      ] },
-      { t: "button", label: "Book a call", url: BOOKING_URL },
-    ],
-  }),
-
-  referral: (c) => ({
-    look: "rich",
-    subject: "Know a team paying RevenueCat 1%?",
-    preheader: "Share your link with a founder who should switch. We'll help them move.",
-    eyebrow: "Share RevenueDot",
-    heading: "Know a team that should switch?",
-    blocks: [
-      { t: "lead", text: `${proj(c)} has been selling through RevenueDot since ${c.liveSince ?? "your first sale"}. If you know a founder still paying 1% of revenue for subscriptions, send them your link.` },
-      ...(c.referralUrl ? [{ t: "copy", label: "Your link", text: c.referralUrl } as Block] : []),
-      { t: "h2", text: "What they get" },
-      { t: "list", items: ["Free until their apps make $10,000 a month, then 0.5% above that, capped at $999.", "The same RevenueCat SDK they ship today, pointed at RevenueDot.", "Our team's help with the import and the side-by-side run."] },
-      ...(c.referralUrl ? [{ t: "button", label: "Share on X", url: `https://x.com/intent/post?text=${encodeURIComponent(`I run my app's subscriptions on @revenuedot: open source, works with the RevenueCat SDK, free up to $10K a month. ${c.referralUrl}`)}`, secondary: { label: "Share on LinkedIn", url: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(c.referralUrl)}` } } as Block] : []),
-    ],
-  }),
-
-  sandbox_only: (c) => ({
-    look: "note",
-    subject: "Your sandbox purchases work. Is your release live yet?",
-    preheader: "Everything's connected. Here's what usually holds up the first real sale.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${proj(c)}'s store is connected and its sandbox purchases come through, but no real sale has arrived yet. Usually that just means the release with RevenueDot is still waiting for App Review.` },
-      { t: "p", text: `If it's already live, check two things: the release build uses your store key (\`appl_\` or \`goog_\`), not the \`test_\` one, and your products are approved in the store. You can see what has arrived so far in [Customers](${dash(c, "/customers")}).` },
-      { t: "p", text: "If anything looks off, reply and we'll take a look with you." },
-    ],
-  }),
-
-  went_quiet: (c) => ({
-    look: "note",
-    subject: `Is everything OK with ${proj(c)}?`,
-    preheader: "Your app hasn't reached RevenueDot for a week.",
-    blocks: [
-      { t: "p", text: hi(c) },
-      { t: "p", text: `${proj(c)}'s app hasn't talked to RevenueDot for a week${c.lastSaleAt ? `, and its last sale was on ${c.lastSaleAt.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" })}` : ""}. That can mean a paused app, a release that changed the server address, or a problem on our side.` },
-      { t: "p", text: `If something broke, reply and we'll look into it within one business day. You can also check each app's status on the [Apps page](${dash(c, "/apps")}). If you moved to something else, we'd be grateful to hear why.` },
+      { t: "p", text: `Your apps tracked ${usd(c.overTracked ?? 0)} in ${c.overMonth ?? "a month"}, past Cloud Free's $10,000. Everything keeps working either way.` },
+      { t: "p", text: `${c.bills ? `At that level Standard costs ${usd(c.bills.revenuedot)} a month, against ${usd(c.bills.revenuecat)} on RevenueCat. ` : ""}Standard is 0.5% above $10,000, capped at $999 a month, and billing starts on the 1st of next month. [Upgrade to Standard](${c.app}/account/billing) when you're ready, or reply if anything is in the way.` },
     ],
   }),
 
   teammate_welcome: (c) => ({
-    look: "rich",
+    look: "note",
     subject: `You're in ${proj(c)} on RevenueDot`,
-    preheader: "Where things are, in one minute.",
-    heading: `Welcome to ${proj(c)}`,
+    preheader: "Where to start.",
     blocks: [
-      { t: "lead", text: `${c.inviter ? `${c.inviter} added you` : "You were added"} to ${proj(c)} on RevenueDot, where the app's purchases, subscribers and revenue live. Here's where to find things.` },
-      { t: "picture", shot: "overview", href: dash(c, "/overview") },
-      { t: "cards", items: [
-        { title: "Overview", text: "Revenue, MRR, trials and new customers, compared with the period before." },
-        { title: "Customers", text: "Anyone by app user ID, email or transaction ID, with their full history." },
-        { title: "Charts", text: "More than 40 charts, from MRR to trial conversion and cohorts." },
-        { title: "Paywalls and experiments", text: "The screens customers buy on, and the tests running on them." },
-      ] },
-      { t: "button", label: "Open the project", url: dash(c, "/overview") },
+      { t: "p", text: hi(c) },
+      { t: "p", text: `${c.inviter ? `${c.inviter} added you` : "You were added"} to ${proj(c)} on RevenueDot, where the app's purchases, subscribers and revenue live. The [Overview](${dash(c, "/overview")}) is the best place to start.` },
     ],
   }),
 };
 
 /** Steps whose footer says they stop once the app is live. */
-const ONBOARDING = new Set<StepId>(["sandbox_only", "welcome", "verify_reminder", "first_purchase", "checkin", "connect_app", "ai_setup", "store_keys", "go_live", "need_hand", "last_call", "switch_plan", "import_help", "side_by_side", "forwarding_check"]);
+const ONBOARDING = new Set<StepId>(["welcome", "verify_reminder", "connect_app", "store_keys", "need_hand", "side_by_side"]);
 
 // ---------- layout ----------
 
