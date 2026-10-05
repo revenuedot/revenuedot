@@ -8,7 +8,7 @@ import { defaultStores } from "../src/stores/index.js";
 import { memoryMailer } from "../src/mail/index.js";
 import { createSession } from "../src/services/sessions.js";
 import { runGate } from "../src/services/billing/meter.js";
-import { GRACE_DAYS, HOLD_DAYS, gateOf, holdAndRelease, markLive } from "../src/services/billing/gate.js";
+import { EXISTING_GRACE_DAYS, GATE_SHIPPED, GRACE_DAYS, HOLD_DAYS, gateOf, holdAndRelease, markLive } from "../src/services/billing/gate.js";
 import { needsPlan } from "../src/routes/v2/live-gate.js";
 import { PRO_CHECKOUT_TEXT, type BillingConfig } from "../src/services/billing/stripe.js";
 import { tick } from "../src/services/tick.js";
@@ -160,6 +160,13 @@ describe("building: no live sale yet", () => {
     expect((await call("GET", "/auth/me")).body.account.gate.stage).toBe("building");
     await expectAllOpen();
     await expectAllOpen({ key: h.ids.secretKey });
+  });
+
+  it("an account already live before the gate shipped gets 30 days, as the Terms of Service promise", async () => {
+    await txn({ usd: 9.99, createdAt: new Date(GATE_SHIPPED.getTime() - 3 * DAY) });
+    expect(await markLive(h.db, h.now())).toEqual(["usr_1"]);
+    const [a] = await h.db.select().from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, "usr_1"));
+    expect(a!.graceEndsAt!.getTime()).toBe(h.now().getTime() + EXISTING_GRACE_DAYS * DAY);
   });
 
   it("a moved-in project's own later sale does make the account live", async () => {

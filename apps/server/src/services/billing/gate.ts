@@ -58,21 +58,30 @@ export function pausedMessage(owner: { id: string; name: string | null; email: s
 }
 
 /**
+ * The day the gate shipped. Accounts whose first live sale came before it get 30 days instead of 14: the Terms of Service
+ * (section 5) promise at least 30 days before anything changes for an account past a free limit.
+ */
+export const GATE_SHIPPED = new Date("2026-10-06T00:00:00Z");
+export const EXISTING_GRACE_DAYS = 30;
+
+/**
  * Records accounts that went live: owners of a project with a live sale (production money, not imported, not copied in
- * by a move) and no `live_at` yet. Their 14 days start now, so accounts that were live before the gate shipped get them
- * too. Returns the accounts marked.
+ * by a move) and no `live_at` yet. Their days to start Pro count from now (when the sale is seen), 14 of them, or 30 for
+ * accounts that were live before the gate shipped. Returns the accounts marked.
  */
 export async function markLive(db: DB, now: Date): Promise<string[]> {
   const kinds = sql.join(PAID_KINDS.map((k) => sql`${k}`), sql`, `);
-  const owners = rowsOf<{ owner: string }>(await db.execute(sql`
-    SELECT DISTINCT p.owner_user_id AS owner FROM projects p
+  const owners = rowsOf<{ owner: string; first: Date | string }>(await db.execute(sql`
+    SELECT p.owner_user_id AS owner, min(t.created_at) AS first FROM projects p
+    JOIN transactions t ON t.project_id = p.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0
+      AND t.kind IN (${kinds}) AND t.created_at >= coalesce(p.moved_in_at, '-infinity'::timestamptz)
     WHERE p.owner_user_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM billing_accounts b WHERE b.user_id = p.owner_user_id AND b.live_at IS NOT NULL)
-      AND EXISTS (SELECT 1 FROM transactions t WHERE t.project_id = p.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0
-        AND t.kind IN (${kinds}) AND t.created_at >= coalesce(p.moved_in_at, '-infinity'::timestamptz))`)).map((r) => r.owner);
+    GROUP BY p.owner_user_id`));
   const marked: string[] = [];
-  for (const userId of owners) {
-    const v = { liveAt: now, graceEndsAt: new Date(now.getTime() + GRACE_DAYS * DAY) };
+  for (const { owner: userId, first } of owners) {
+    const days = new Date(first).getTime() < GATE_SHIPPED.getTime() ? EXISTING_GRACE_DAYS : GRACE_DAYS;
+    const v = { liveAt: now, graceEndsAt: new Date(now.getTime() + days * DAY) };
     const [row] = await db.insert(schema.billingAccounts).values({ userId, ...v, createdAt: now, updatedAt: now })
       .onConflictDoUpdate({ target: schema.billingAccounts.userId, set: v, setWhere: sql`${schema.billingAccounts.liveAt} IS NULL` }).returning({ userId: schema.billingAccounts.userId });
     if (row) marked.push(row.userId);

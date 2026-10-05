@@ -30,7 +30,7 @@ The table lives in `apps/server/src/services/billing/plans.ts`; `REVENUEDOT_BILL
 4. **Nobody's end users are punished.** Purchases are always verified and access always granted: an app's paying customers must never lose what they bought because their developer skipped a form. The gate falls on the developer's tools (live data, exports, webhooks, integrations, paywall and experiment editing), exactly the surfaces a real business cannot run without.
 
 ## The go-live gate
-**Live** means the account's first live sale: a production transaction that earned money (`purchase`, `renewal`, `one_time`, `revenue_usd > 0`, not imported, not copied in by a move) in any project it owns. The billing pass records it on `billing_accounts.live_at` and sets `grace_ends_at` to 14 days after it was seen (accounts that were already live when the gate shipped get 14 days from the first pass).
+**Live** means the account's first live sale: a production transaction that earned money (`purchase`, `renewal`, `one_time`, `revenue_usd > 0`, not imported, not copied in by a move) in any project it owns. The billing pass records it on `billing_accounts.live_at` and sets `grace_ends_at` to 14 days after it was seen. Accounts whose first live sale came before the gate shipped (2026-10-06) get 30 days from the first pass, because the Terms of Service (section 5) promise at least 30 days before anything changes for an account past a free limit.
 
 | Stage | When | What the developer sees |
 |---|---|---|
