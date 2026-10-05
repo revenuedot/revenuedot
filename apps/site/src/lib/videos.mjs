@@ -7,6 +7,8 @@ export const VIDEOS = {
   "revenuedot-chatgpt-demo": { uid: "268e07161316f8ff9857a94fe1c7d195", title: "87-second demo: RevenueDot running a subscription app from ChatGPT" },
   "revenuedot-first-purchase": { uid: "e38ce0c11f5a379b85897f5bde1bf711", title: "78-second tutorial: your first in-app purchase with RevenueDot in 5 minutes, no server and no App Store account" },
   "revenuedot-switch-from-revenuecat": { uid: "25e90e770134f68c17f037fe5650a0d9", title: "94-second tutorial: switch from RevenueCat to RevenueDot without losing a renewal: import, run both side by side, cut over" },
+  "revenuedot-connect-your-app": { uid: "25d6e9a0dfc6d8d22ddedd1cf5ab5df2", title: "77-second tutorial: connect your iOS, Android, React Native or Flutter app to RevenueDot with the RevenueCat SDK" },
+  "revenuedot-paywalls-and-experiments": { uid: "fc337fd585bac5568eccf00313394e5c", title: "64-second tutorial: build a paywall from a template in RevenueDot and test it with an experiment" },
   "revenuedot-dashboard-tour": { uid: "39db15d4d7f884f65f53577849b829fb", title: "14-second silent tour of the RevenueDot dashboard: Overview, MRR chart, paywall editor and experiment results" },
 };
 
@@ -15,6 +17,18 @@ export const VIDEOS = {
  * links to YouTube too). `seconds` and `date` feed the VideoObject structured data.
  */
 export const WATCH = {
+  "revenuedot-connect-your-app": {
+    heading: "Connect your app to RevenueDot", seconds: 77, date: "2026-10-05", youtube: null,
+    description: "Connect an iOS, Android, React Native or Flutter app to RevenueDot: the SDK URL, the signature check and your key.",
+    summary: "Add the RevenueCat SDK to your app and change two settings: point it at https://api.revenuedot.app and turn the signature check off. Start with your test key from API keys, watch the first customer arrive, then add your App Store or Google Play credentials.",
+    next: { label: "Read the SDK guides", href: "/docs/sdks" },
+  },
+  "revenuedot-paywalls-and-experiments": {
+    heading: "Build a paywall and test it", seconds: 64, date: "2026-10-05", youtube: null,
+    description: "Build a paywall from a template in RevenueDot, publish it, then run an experiment to see which version earns more.",
+    summary: "Start from a paywall template, edit the words and prices, preview light and dark, and publish. After one app release that shows the paywall view, changes need no app update. Then start an experiment and read the lift, the confidence interval and the chance each version wins.",
+    next: { label: "How experiments work", href: "/docs/guides/experiments" },
+  },
   "revenuedot-switch-from-revenuecat": {
     heading: "Switch from RevenueCat without losing a renewal", seconds: 94, date: "2026-10-05", youtube: null,
     description: "Move from RevenueCat to RevenueDot safely: keep the SDK, import your data, run both side by side, then cut over.",
