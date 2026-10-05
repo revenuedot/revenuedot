@@ -1051,7 +1051,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
       {
         h2: "How do you present the Customer Center in your app?",
         paras: [
-          "Present the SDK's view. The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCatUI` and needs no RevenueCat account. The configuration it reads is `GET /v1/customercenter/{app_user_id}`, served by RevenueDot. Edit it under Lifecycle, then Customer Center: the paths on each screen and their order, Custom URL and Custom Action paths, a cancel feedback survey with an offer per answer, colours for light and dark mode, and custom strings in 33 languages, with a live preview. Without changes, a built-in default is used.",
+          "Present the SDK's view. The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCatUI` and needs no RevenueCat account. The configuration it reads is `GET /v1/customercenter/{app_user_id}`, served by RevenueDot. Edit it under Lifecycle, then Customer Center: the paths on each screen and their order, Custom URL and Custom Action paths, a cancel feedback survey with an offer per answer, colors for light and dark mode, and custom strings in 33 languages, with a live preview. Without changes, a built-in default is used.",
         ],
         code: {
           title: "SettingsView.swift",
@@ -1476,7 +1476,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
     },
     points: [
       { title: "36 partners", text: "Analytics, attribution, marketing, support, ads and BigQuery. Browse them all at /integrations." },
-      { title: "Your event names", text: "Each integration has default event names, and you can rename any event to match your tracking plan." },
+      { title: "Your event names", text: "Each integration has default event names, and most analytics, attribution and marketing integrations let you rename each event to match your tracking plan." },
       { title: "Retries and a delivery log", text: "Each integration retries on the webhook schedule, shows the request and the partner's answer, and replays failed sends." },
       { title: "Scheduled exports", text: "Transactions, customers, subscriptions and events as CSV or Parquet, daily or weekly." },
     ],
@@ -1554,7 +1554,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
       },
       {
         q: "Will my Amplitude or Mixpanel charts keep working if I switch from RevenueCat?",
-        a: "Yes. RevenueDot uses RevenueCat's event names and reserved attributes, such as rc_initial_purchase_event, $amplitudeUserId and $mixpanelDistinctId, so charts and funnels built on them keep working. You can rename any event on the integration's page.",
+        a: "Yes. RevenueDot uses RevenueCat's event names and reserved attributes, such as rc_initial_purchase_event, $amplitudeUserId and $mixpanelDistinctId, so charts and funnels built on them keep working. Most analytics integrations also let you rename each event on the integration's page.",
       },
       {
         q: "How do I export my subscription data to a data warehouse?",

@@ -34,7 +34,7 @@ RevenueDot is the open-source RevenueCat alternative: the first release is [v202
 ## In one minute
 
 - **What it is:** an open-source server that verifies App Store and Google Play purchases, keeps every customer's entitlements current from store notifications, and sends webhooks to your backend, with the paywalls, experiments, web checkout, Customer Center, charts and integrations that normally cost a second vendor.
-- **Why it is different:** it implements the API the RevenueCat SDKs call, so an app that uses the RevenueCat SDK switches by setting one URL. No purchase code to rewrite, no SDK to swap, no subscriber lost.
+- **Why it is different:** it is open source, free until $10,000 a month, and includes paywalls, experiments and charts. A new app installs the RevenueDot SDK for its platform. An app that already ships the RevenueCat SDK keeps it and switches by setting one URL, with no purchase code to rewrite and no subscriber lost.
 - **How you run it:** `docker compose up` on your own servers, free with no limits, or [RevenueDot Cloud](https://app.revenuedot.app/signup), free up to $10,000 a month in tracked revenue and never more than $999 a month after that.
 - **Who it is for:** subscription apps on iOS, Android and the web, from a solo developer's first paywall to a studio running fourteen apps and a company that needs SSO, data location and an audit trail.
 - **Status:** first release [v2026.10.03](https://github.com/revenuedot/revenuedot/releases/tag/v2026.10.03). A real App Store sandbox purchase ran end to end on a physical iPhone on 2026-10-02, a production app has run RevenueDot beside RevenueCat since 2026-10-02, and RevenueDot Cloud has billed real cards through Stripe since 2026-10-03. Google Play, Amazon, Paddle, Roku and Galaxy Store are tested against copies of each store's API; their first real purchases are next. Feature by feature: [docs/STATUS.md](docs/STATUS.md).
@@ -346,11 +346,11 @@ RevenueCat charges 1% of all tracked revenue once it passes $2,500 a month, befo
 
 ## SDKs
 
-Keep the RevenueCat SDK you already ship, or switch to our MIT forks. They keep RevenueCat's class and method names (`Purchases`, `CustomerInfo`, `Offerings`), so the swap is a package change.
+Every platform has a RevenueDot SDK. A new app installs it and passes its key: it talks to `https://api.revenuedot.app` by default and needs no RevenueCat account. The SDKs are MIT forks of RevenueCat's SDKs and keep their class and method names (`Purchases`, `CustomerInfo`, `Offerings`), so an app that already ships the RevenueCat SDK can swap the package, or keep it and set the proxy URL (last column).
 
 Video: [Connect your iOS or Android app to RevenueDot](https://www.youtube.com/watch?v=M_D0YodECkU) (1:17).
 
-| Platform | Repository | Install the fork | Proxy-URL migration |
+| Platform | Repository | Install the RevenueDot SDK | Keep the RevenueCat SDK and set the proxy URL |
 |---|---|---|---|
 | iOS, macOS, tvOS, watchOS, visionOS | [revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios) | CocoaPods `pod 'RevenueDotPurchases', '5.91.0'` (and `RevenueDotPurchasesUI`), or Swift Package Manager `https://github.com/revenuedot/purchases-ios` at `5.91.0-revenuedot` | Yes |
 | Android | [revenuedot/purchases-android](https://github.com/revenuedot/purchases-android) | `implementation("app.revenuedot.purchases:purchases:10.23.3")` | Yes |

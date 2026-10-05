@@ -66,7 +66,7 @@ export const SDK_PAGES: Landing[] = [
         paras: [
           "The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCat` and calls `Purchases`. It sends every request to RevenueDot and needs no RevenueCat account.",
           "For paywalls, add the `RevenueCatUI` product or the `RevenueDotPurchasesUI` pod. It shows the [paywalls](/features/paywalls) you design in the dashboard.",
-          "Self-hosting? Set `Purchases.proxyURL` to your server's HTTPS URL before `configure`, and keep entitlement verification `.disabled`. Your server signs responses with its own key, which the SDK does not trust unless you build it with your public key. See [Trusted Entitlements](/docs/guides/trusted-entitlements).",
+          "Self-hosting? Set `Purchases.proxyURL` to your server's HTTPS URL before `configure`, and set entitlement verification to `.disabled` (the default is `.informational`). Your server signs responses with its own key, which the SDK does not trust unless you build it with your public key. See [Trusted Entitlements](/docs/guides/trusted-entitlements).",
         ],
         code: {
           title: "Install, then configure at launch",
@@ -586,11 +586,13 @@ dependencies:
       ref: 10.13.2-revenuedot
 
 // lib/main.dart
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 Future<void> initPurchases() async {
-  await Purchases.configure(PurchasesConfiguration(Platform.isIOS ? 'appl_...' : 'goog_...'));
+  // Flutter web takes a Test Store key; iOS and Android take their store keys.
+  final key = kIsWeb ? 'test_...' : defaultTargetPlatform == TargetPlatform.iOS ? 'appl_...' : 'goog_...';
+  await Purchases.configure(PurchasesConfiguration(key));
 }`,
         },
       },

@@ -276,16 +276,16 @@ const CLOUD_API = "https://api.revenuedot.app";
  */
 const SETUP: Record<Lang, { install: string; installHint: string; configure: (u: string, k: string) => string; proxy: (u: string, k: string) => string; use: string }> = {
   swift: {
-    install: `.package(url: "https://github.com/revenuedot/purchases-ios", exact: "5.91.0-revenuedot")`,
-    installHint: "Xcode: File > Add Package Dependencies, paste github.com/revenuedot/purchases-ios, pick Exact Version 5.91.0-revenuedot and add the RevenueCat library. CocoaPods: pod 'RevenueDotPurchases'.",
-    configure: (u, k) => `import RevenueCat   // the RevenueDot SDK keeps this module name\n\n// In your App's init or application(_:didFinishLaunchingWithOptions:)\n${u === CLOUD_API ? "" : `Purchases.proxyURL = URL(string: "${u}")!   // your server, before configure\n`}Purchases.configure(withAPIKey: "${k}")`,
-    proxy: (u, k) => `Purchases.proxyURL = URL(string: "${u}")!\nPurchases.configure(withAPIKey: "${k}")`,
+    install: "https://github.com/revenuedot/purchases-ios",
+    installHint: "Xcode: File > Add Package Dependencies, paste this URL, pick Exact Version 5.91.0-revenuedot and add the RevenueCat library. CocoaPods: pod 'RevenueDotPurchases', '5.91.0'.",
+    configure: (u, k) => `import RevenueCat   // the RevenueDot SDK keeps this module name\n\n// In your App's init or application(_:didFinishLaunchingWithOptions:)\n${u === CLOUD_API ? `Purchases.configure(withAPIKey: "${k}")` : `Purchases.proxyURL = URL(string: "${u}")!   // your server, before configure\n// Your server signs with its own key, so turn the SDK's signature check off.\nPurchases.configure(with: Configuration.Builder(withAPIKey: "${k}").with(entitlementVerificationMode: .disabled).build())`}`,
+    proxy: (u, k) => `Purchases.proxyURL = URL(string: "${u}")!\nPurchases.configure(with: Configuration.Builder(withAPIKey: "${k}").with(entitlementVerificationMode: .disabled).build())`,
     use: `let offerings = try await Purchases.shared.offerings()\nlet result = try await Purchases.shared.purchase(package: offerings.current!.availablePackages[0])\nlet isPro = result.customerInfo.entitlements["pro"]?.isActive == true`,
   },
   kotlin: {
     install: `implementation("app.revenuedot.purchases:purchases:10.23.3")`, installHint: "Add it to your app module's build.gradle.kts dependencies. It comes from Maven Central.",
-    configure: (u, k) => `// In Application.onCreate()\n${u === CLOUD_API ? "" : `Purchases.proxyURL = URL("${u}")   // your server, before configure\n`}Purchases.configure(PurchasesConfiguration.Builder(this, "${k}").build())`,
-    proxy: (u, k) => `Purchases.proxyURL = URL("${u}")\nPurchases.configure(PurchasesConfiguration.Builder(this, "${k}").build())`,
+    configure: (u, k) => `// In Application.onCreate()\n${u === CLOUD_API ? `Purchases.configure(PurchasesConfiguration.Builder(this, "${k}").build())` : `Purchases.proxyURL = URL("${u}")   // your server, before configure\n// Your server signs with its own key, so turn the SDK's signature check off.\nPurchases.configure(PurchasesConfiguration.Builder(this, "${k}").entitlementVerificationMode(EntitlementVerificationMode.DISABLED).build())`}`,
+    proxy: (u, k) => `Purchases.proxyURL = URL("${u}")\nPurchases.configure(PurchasesConfiguration.Builder(this, "${k}").entitlementVerificationMode(EntitlementVerificationMode.DISABLED).build())`,
     use: `val offerings = Purchases.sharedInstance.awaitOfferings()\nval result = Purchases.sharedInstance.awaitPurchase(PurchaseParams.Builder(activity, offerings.current!!.availablePackages[0]).build())\nval isPro = result.customerInfo.entitlements["pro"]?.isActive == true`,
   },
   rn: {
@@ -295,7 +295,7 @@ const SETUP: Record<Lang, { install: string; installHint: string; configure: (u:
     use: `const offerings = await Purchases.getOfferings();\nconst { customerInfo } = await Purchases.purchasePackage(offerings.current.availablePackages[0]);\nconst isPro = customerInfo.entitlements.active["pro"] !== undefined;`,
   },
   flutter: {
-    install: "purchases_flutter:\n  git:\n    url: https://github.com/revenuedot/purchases-flutter.git\n    ref: 10.13.2-revenuedot", installHint: "Add it under dependencies in pubspec.yaml, then run flutter pub get. It is a git dependency because the pub.dev names belong to RevenueCat.",
+    install: "dependencies:\n  purchases_flutter:\n    git:\n      url: https://github.com/revenuedot/purchases-flutter.git\n      ref: 10.13.2-revenuedot", installHint: "Add it under dependencies in pubspec.yaml, then run flutter pub get. It is a git dependency because the pub.dev names belong to RevenueCat.",
     configure: (u, k) => `import 'package:purchases_flutter/purchases_flutter.dart';\n\n${u === CLOUD_API ? "" : `await Purchases.setProxyURL("${u}");   // your server, before configure\n`}await Purchases.configure(PurchasesConfiguration("${k}"));`,
     proxy: (u, k) => `await Purchases.setProxyURL("${u}");\nawait Purchases.configure(PurchasesConfiguration("${k}"));`,
     use: `final offerings = await Purchases.getOfferings();\nfinal info = await Purchases.purchasePackage(offerings.current!.availablePackages.first);\nfinal isPro = info.entitlements.active.containsKey("pro");`,
@@ -345,7 +345,7 @@ function SdkSnippet({ pid, apps, mode, setMode }: { pid: string; apps: App[]; mo
         </>
       ) : (
         <>
-          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}>Keep the RevenueCat SDK and your code. Add one line before configure and use this project's key instead of the RevenueCat one (or keep your old key with the importer).</p>
+          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}>Keep the RevenueCat SDK and your code. Add one line before configure, turn the SDK's signature check off, and use this project's key instead of the RevenueCat one (or keep your old key with the importer).</p>
           <CodeCard label={`${label} setup code`} code={s.proxy(url, k)} hint={proxyHint} />
           <p className="muted" style={{ margin: "10px 0 0", fontSize: 13 }}>Moving customers and subscriptions too? <a className="ul" href="https://revenuedot.app/docs/migrate" target="_blank" rel="noreferrer">Migrate from RevenueCat</a>.</p>
         </>

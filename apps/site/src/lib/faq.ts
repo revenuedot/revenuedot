@@ -59,7 +59,7 @@ export const FAQ_COST: Faq = {
 
 export const FAQ_READY: Faq = {
   q: "How is RevenueDot tested?",
-  a: "Each RevenueDot SDK was installed from its package registry and checked against a RevenueDot server, and a real App Store sandbox purchase has run end to end on an iPhone, from Apple's purchase sheet to the webhook. Webhooks are delivered live to 23 example backends. Moving from RevenueCat, you can run both side by side, because RevenueDot forwards every store notification to RevenueCat.",
+  a: "A real App Store sandbox purchase has run end to end on an iPhone, from Apple's purchase sheet to the webhook. The RevenueDot web, Flutter web and React Native web SDKs, installed from their registries, bought Test Store subscriptions against RevenueDot, and the unmodified RevenueCat iOS and Android SDKs pass a Test Store purchase on a simulator and an emulator. Webhooks are delivered live to 23 example backends. Moving from RevenueCat, you can run both side by side, because RevenueDot forwards every store notification to RevenueCat.",
 };
 
 export const FAQ_LICENSE: Faq = {

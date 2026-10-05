@@ -71,9 +71,11 @@ implementation("app.revenuedot.purchases:purchases:<version>")
     repo: `${R}/react-native-purchases`,
     install: `npm install react-native-purchases@npm:@revenuedot/react-native-purchases@10.10.2`,
     installLabel: "terminal",
-    configure: `import Purchases from "react-native-purchases";
+    configure: `import { Platform } from "react-native";
+import Purchases from "react-native-purchases";
 
-Purchases.configure({ apiKey: Platform.OS === "ios" ? "appl_..." : "goog_..." });`,
+Purchases.configure({ apiKey: Platform.OS === "ios" ? "appl_..." : "goog_..." });
+// Expo Go and the web take a test_ key; real store purchases need a development build.`,
     proxy: `await Purchases.setProxyURL("https://api.revenuedot.app");`,
     fork: `// package.json: an npm alias keeps every import
 "react-native-purchases": "npm:@revenuedot/react-native-purchases@<version>"`,
@@ -86,14 +88,17 @@ Purchases.configure({ apiKey: Platform.OS === "ios" ? "appl_..." : "goog_..." })
     language: "Dart",
     repo: `${R}/purchases-flutter`,
     install: `# pubspec.yaml
-purchases_flutter:
-  git:
-    url: "https://github.com/revenuedot/purchases-flutter.git"
-    ref: 10.13.2-revenuedot`,
+dependencies:
+  purchases_flutter:
+    git:
+      url: "https://github.com/revenuedot/purchases-flutter.git"
+      ref: 10.13.2-revenuedot`,
     installLabel: "YAML",
-    configure: `import 'package:purchases_flutter/purchases_flutter.dart';
+    configure: `import 'package:flutter/foundation.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
-await Purchases.configure(PurchasesConfiguration(Platform.isIOS ? "appl_..." : "goog_..."));`,
+final key = kIsWeb ? "test_..." : defaultTargetPlatform == TargetPlatform.iOS ? "appl_..." : "goog_...";
+await Purchases.configure(PurchasesConfiguration(key));`,
     proxy: `await Purchases.setProxyURL("https://api.revenuedot.app");`,
     fork: `# pubspec.yaml
 purchases_flutter:

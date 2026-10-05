@@ -28,7 +28,7 @@ for (const scheme of ["light", "dark"]) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, colorScheme: scheme, reducedMotion: "reduce" });
   const page = await ctx.newPage();
   await page.goto(`${base}/login`);
-  await page.getByLabel("Work email").fill(email);
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(/\/projects\/[^/]+\//);
@@ -43,10 +43,13 @@ for (const scheme of ["light", "dark"]) {
     console.log("wrote", file);
   }
   // Customer detail: open the first customer in the list.
-  if (scheme === "light") {
-    await page.goto(`${base}/projects/${projectId}/customers`);
-    await page.waitForLoadState("networkidle");
-    await page.locator("table tbody tr", { hasText: "iOS" }).filter({ hasText: "$39.99" }).first().click();
+  // The seed changes over time; if no row matches, keep the existing capture instead of stopping the run.
+  const row = page.locator("table tbody tr", { hasText: "iOS" }).filter({ hasText: "$39.99" }).first();
+  if (scheme === "light") await page.goto(`${base}/projects/${projectId}/customers`);
+  if (scheme === "light") await page.waitForLoadState("networkidle");
+  if (scheme === "light" && !(await row.count())) console.warn("no iOS $39.99 customer row; customer-light.png not updated");
+  else if (scheme === "light") {
+    await row.click();
     await page.waitForURL(/\/customers\/.+/);
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(600);

@@ -1,10 +1,27 @@
 ---
+// The solutions hub, grouped by the customer cases in company/docs/marketing/positioning.md (2026-10-05): where the
+// app is today first (new, built with AI, already selling, on RevenueCat), then what the team needs, then data control.
 import Hub from "../../templates/Hub.astro";
 import { LANDINGS, landingPath } from "../../data";
 import { platformLogo } from "../../lib/platform-logos";
-const cards = LANDINGS.filter((l) => l.section === "solutions").map((l) => ({ href: landingPath(l), title: l.name, text: l.card, logo: platformLogo(l.slug) }));
+const bySlug = (slug: string) => {
+  const l = LANDINGS.find((x) => x.section === "solutions" && x.slug === slug)!;
+  return { href: landingPath(l), title: l.name, text: l.card, logo: platformLogo(l.slug) };
+};
+const start = [
+  { href: "/add-in-app-purchases", title: "New to in-app purchases", text: "Add subscriptions to an iOS, Android, Flutter, React Native or web app, free until it makes $10K a month." },
+  bySlug("ai-built-apps"),
+  bySlug("existing-apps"),
+  { href: "/migrate-from-revenuecat", title: "Switching from RevenueCat", text: "Keep the SDK your app ships and change one line. Import customers and run both side by side first." },
+];
+const team = ["indie-developers", "app-studios", "web-to-app", "receipt-validation"].map(bySlug);
+const data = ["self-hosted-in-app-purchases", "eu-data-residency"].map(bySlug);
 ---
-<Hub path="/solutions" name="Solutions" label="Solutions" title={"Solutions for subscription app teams"} metaTitle={"Solutions: indie apps, studios, self-hosting, web-to-app"}
-  description={"How indie developers, app studios and teams with data rules use RevenueDot: start free, run many apps, sell on the web, self-host and keep data in their region."}
-  answer={"RevenueDot fits any app that sells subscriptions or in-app purchases: indie developers who want a free backend until $10,000 a month, apps that already sell with their own store code, studios running many apps, teams that must keep data in their own region, and apps selling on the web. Apps on RevenueCat can switch by changing one line."}
-  groups={[{ title: "All solutions", cards }]} />
+<Hub path="/solutions" name="Solutions" label="Solutions" title={"Solutions for subscription app teams"} metaTitle={"Solutions: new apps, existing apps, studios, self-hosting"}
+  description={"How new apps, apps already selling, indie developers, studios and teams with data rules use RevenueDot: start free, sell on the web, self-host or switch."}
+  answer={"RevenueDot fits any app that sells subscriptions or in-app purchases: new apps adding purchases for the first time, apps that already sell with their own store code, indie developers who want a free backend until $10,000 a month, studios running many apps, and teams that must keep data in their own region. Apps on RevenueCat can switch by changing one line."}
+  groups={[
+    { title: "Start from where your app is today", cards: start },
+    { title: "Fit the way your team sells", cards: team },
+    { title: "Keep purchase data under your control", cards: data },
+  ]} />

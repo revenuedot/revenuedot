@@ -3,12 +3,16 @@
 How every landing page, comparison, integration page, chart page and blog post is written. Types: `src/data/types.ts`. Data files: `src/data/*.ts`. Blog posts live in the revenuedot/docs repo (`blog/`).
 
 ## Who reads this
-1. **Indie and small-team app developers** (iOS, Android, Flutter, React Native, Expo) who already use RevenueCat and hit its bill: free to $2,500 monthly tracked revenue, then 1% of all of it. They search "RevenueCat alternative", "RevenueCat pricing", "open source RevenueCat", "self-hosted in-app purchase server".
-2. **Developers adding subscriptions for the first time.** They search "how to add subscriptions to a Flutter app", "StoreKit 2 server-side validation", "Google Play real-time developer notifications", "paywall that converts".
-3. **Growth and product people at subscription apps** who need charts, paywalls, experiments, web checkout and win-back. They search "MRR chart", "trial conversion rate", "web to app funnel", "Apple refund request consumption".
-4. **Teams that must own their data**: EU data residency, regulated apps, agencies running many apps.
+The five customer cases, in priority order (company `docs/marketing/positioning.md`, 2026-10-05). Every page that is not about switching is written for reader 1 first.
+1. **Developers adding in-app purchases for the first time** (iOS, Android, Flutter, React Native, Expo, web, often with an AI coding tool). They have never used RevenueCat. They search "in app purchases", "how to add subscriptions to a Flutter app", "expo in app purchases", "paywall that converts". They install the RevenueDot SDK.
+2. **Apps already selling with their own StoreKit or Play Billing code, or another tool** (Adapty, Qonversion, Stripe). They search "StoreKit 2 server-side validation", "Google Play real-time developer notifications", "adapty alternative". They import their products and install the RevenueDot SDK.
+3. **Apps on RevenueCat that hit its bill**: free to $2,500 monthly tracked revenue, then 1% of all of it. They search "RevenueCat alternative", "RevenueCat pricing", "open source RevenueCat". They keep their SDK and change one line.
+4. **Growth and product people at subscription apps** who need charts, paywalls, experiments, web checkout and win-back. They search "MRR chart", "trial conversion rate", "web to app funnel", "Apple refund request consumption".
+5. **Teams that must own their data**: self-hosting, EU data residency, regulated apps, agencies running many apps.
 
-What they want: keep their app code, stop paying a share of revenue, own their purchase data, ship paywalls and web checkout fast. What they fear: losing subscribers or entitlements during a migration, a young vendor disappearing, 4xx errors that make the SDK drop purchases, App Review rejections.
+What they want: a backend that just works on both stores, free until the app earns, paywalls and web checkout fast, their own purchase data, and (for switchers) no app rewrite. What they fear: a silent purchase bug, losing subscribers during a move, a young vendor disappearing, 4xx errors that make the SDK drop purchases, App Review rejections.
+
+**Switching notes.** Outside the switching pages (`/revenuecat-alternative(s)`, `/migrate-from-revenuecat`, `/compare/*`, `/cheaper-revenuecat-alternatives`, `/do-i-need-revenuecat`, the RevenueCat fee calculator), mention RevenueCat only in a clearly marked "Switching from RevenueCat? Keep your SDK and change one line" note after the main path, or where a compatibility fact matters to a switcher. New apps install the RevenueDot SDK; explain once per page that its code says `import RevenueCat` because it is built from RevenueCat's MIT SDK, and that it needs no RevenueCat account.
 
 ## Rules
 - **Only features merged to `main`.** Check `docs/STATUS.md` and the code. Never write about RevenueDot AI (the in-app assistant). Plan facts (Cloud Free, Cloud Standard, Enterprise, Self-host) come only from `src/lib/pricing.ts` and the pricing page.

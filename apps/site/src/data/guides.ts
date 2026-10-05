@@ -355,7 +355,7 @@ const IOS_ONLY: Guide = {
       h2: "If you need a backend, where RevenueDot fits",
       label: "RevenueDot",
       paras: [
-        "RevenueDot is an open-source backend that works with the RevenueCat SDK, so you get the same SDK and paywalls without a RevenueCat account. It handles the App Store, Google Play, Amazon Appstore and Stripe in one customer record, with webhooks, 43 charts, paywalls and Refund Control. RevenueDot Cloud is free up to $10,000 a month, and you can self-host it.",
+        "RevenueDot is an open-source backend with its own SDK, built from RevenueCat's open-source SDK, so you get the same SDK API and paywalls without a RevenueCat account. It handles the App Store, Google Play, Amazon Appstore and Stripe in one customer record, with webhooks, 43 charts, paywalls and Refund Control. RevenueDot Cloud is free up to $10,000 a month, and you can self-host it.",
         "It is new: it launched in 2026, has far less production history than RevenueCat, and has no SOC 2 report. Test your app in Apple's sandbox before launch. You can also start with StoreKit 2 today and add a backend when you add Android. See [how to add subscriptions](/add-in-app-purchases).",
       ],
     },
@@ -375,11 +375,11 @@ const IOS_ONLY: Guide = {
     },
     {
       q: "Can I start with StoreKit 2 and add a backend later?",
-      a: "Yes. Your products and subscribers stay in App Store Connect. When you add the RevenueCat SDK pointed at RevenueDot, call its restore or sync method so existing subscribers are recorded on the server, and set Apple's server notification URL to RevenueDot.",
+      a: "Yes. Your products and subscribers stay in App Store Connect. When you add the RevenueDot SDK, call its restore or sync method so existing subscribers are recorded on the server, and set Apple's server notification URL to RevenueDot.",
     },
     {
       q: "Does RevenueDot need a RevenueCat account?",
-      a: "No. RevenueDot uses the open-source RevenueCat SDK with its own keys and its own server. You never sign up with RevenueCat. RevenueDot is not affiliated with RevenueCat.",
+      a: "No. Your app installs the RevenueDot SDK, built from RevenueCat's open-source SDK, with RevenueDot's keys and server. You never sign up with RevenueCat. RevenueDot is not affiliated with RevenueCat.",
     },
   ],
   docs: [

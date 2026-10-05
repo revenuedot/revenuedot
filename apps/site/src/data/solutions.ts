@@ -19,7 +19,7 @@ export const SOLUTIONS: Landing[] = [
       "If your app already sells subscriptions with its own StoreKit or Google Play Billing code, or with another tool, you can move it to RevenueDot without losing a subscriber. Import your products from App Store Connect, Google Play or Stripe, install the RevenueDot SDK, and call `syncPurchases()` once in the update. Each subscriber's purchases are checked with the store, and their access carries over.",
     shot: {
       src: "screens/offerings-light.png",
-      alt: "The Offerings page in RevenueDot: the default offering with its monthly and yearly packages",
+      alt: "The Offerings page in RevenueDot: the default offering with three packages, and a win-back offering",
     },
     points: [
       { title: "Products imported", text: "One click reads App Store Connect, Google Play or Stripe and fills your catalog." },
@@ -508,7 +508,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           `Self-host and RevenueDot Cloud run the same code, API and schema, so a project can move either way. Cloud is free up to $10,000 of monthly tracked revenue and needs no servers: [start free on Cloud](${SIGNUP}). Self-hosting is free forever and costs your own infrastructure. Self-hosted servers send no telemetry, and talk only to Apple, Google, Stripe or Amazon if you connect them, your webhook endpoints and any forwarding URL you set.`,
         ],
         bullets: [
-          "**Signatures:** a self-hosted server signs with its own key, so keep the SDK's entitlement verification disabled, or build the RevenueDot SDK with your own public key.",
+          "**Signatures:** a self-hosted server signs with its own key, so set the SDK's entitlement verification to disabled on iOS and Android, or build the RevenueDot SDK with your own public key.",
           "**Status:** the Docker image builds on `node:24-slim`, and CI starts it against Postgres 16 on every pull request.",
         ],
       },

@@ -328,7 +328,8 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/store_settings" \\
         code: {
           title: "Amazon configuration",
           label: "Kotlin",
-          code: `Purchases.proxyURL = URL("https://api.revenuedot.app")   // or your own server
+          code: `// Only on your own server, or with the stock RevenueCat SDK:
+// Purchases.proxyURL = URL("https://your-server")
 Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
         },
       },
@@ -382,7 +383,7 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
       },
       {
         q: "Does RevenueDot work on Fire tablets?",
-        a: "Yes. Configure the Android SDK with AmazonConfiguration and your amzn_ key. An app on the stock RevenueCat SDK also sets the proxy URL to RevenueDot before configure, and nothing else changes.",
+        a: "Yes. Configure the Android SDK with AmazonConfiguration and your amzn_ key. An app on the stock RevenueCat SDK also sets the proxy URL to RevenueDot before configure, sets entitlement verification to DISABLED and calls syncPurchases() once after the update.",
       },
       {
         q: "How do Amazon Real-time Notifications reach RevenueDot?",
