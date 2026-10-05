@@ -1168,10 +1168,10 @@ function AppForm({ app, s }: { app: App; s: StoreSettings }) {
           : paddle
             ? <>After Paddle confirms a purchase (<span className="mono">transaction.completed</span>), post its subscription id (<span className="mono">sub_…</span>) or transaction id (<span className="mono">txn_…</span>) with the customer's app user ID. Put the app user ID in the checkout's <span className="mono">customData</span> too, so notifications can find the customer.</>
             : roku
-              ? <>Your channel keeps using RevenueCat's Roku SDK. Set <span className="mono">proxyUrl</span> to this server (ending in <span className="mono">/v1/</span>) and use this app's key. Sideloaded builds record sandbox purchases.</>
+              ? <>Your channel uses RevenueCat's open-source Roku SDK. Set <span className="mono">proxyUrl</span> to this server (ending in <span className="mono">/v1/</span>) and use this app's key. Sideloaded builds record sandbox purchases.</>
               : galaxy
                 ? <>Build your Galaxy Store app with the RevenueCat SDK's Galaxy module (<span className="mono">purchases-store-galaxy</span>, or <span className="mono">react-native-purchases-store-galaxy</span>), point it at this server and use this app's <span className="mono">galx_</span> key.</>
-                : <>Your app keeps using the RevenueCat SDK. Add one line that points it at this server, before <span className="mono">configure</span>, and use this app's key.</>}</p>
+                : <>Install the <a className="ul" href="https://revenuedot.app/docs/sdks" target="_blank" rel="noreferrer">RevenueDot SDK</a> for your platform and configure it with this app's key. The proxy line points it at this server; on RevenueDot Cloud the SDK already does. Switching from RevenueCat? Keep your SDK and add the same line before <span className="mono">configure</span>.</>}</p>
         {key && <SdkSetup type={app.type} origin={origin} publicKey={key} />}
       </Section>
 

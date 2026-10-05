@@ -31,7 +31,7 @@ const newer = (name: string) =>
 
 const sdk = (name: string, more: string) => ({
   q: `Does the ${name} integration work with the RevenueCat SDK?`,
-  a: `Yes. RevenueDot speaks the RevenueCat SDK protocol, so your app keeps the RevenueCat SDK and only the server address changes. ${more}`,
+  a: `Yes. RevenueDot speaks the RevenueCat SDK protocol, so an app on the RevenueCat SDK keeps it and only the server address changes. New apps use the RevenueDot SDK, which is built from it. ${more}`,
 });
 
 export const INTEGRATIONS_A: IntegrationPage[] = [
@@ -45,7 +45,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Post new purchases, trials, cancellations, refunds and billing issues to a Slack channel.",
     title: "Slack notifications for in-app purchases and subscriptions",
     metaTitle: "Slack alerts for in-app purchases and subscriptions",
-    metaDescription: "Post every new subscription, trial, renewal, cancellation, refund and billing issue to a Slack channel. Works with the RevenueCat SDK. Open source.",
+    metaDescription: "Post every new subscription, trial, renewal, cancellation, refund and billing issue to a Slack channel. Included on every plan, and open source.",
     answer:
       "RevenueDot posts one Slack message for each new subscription, trial start, trial conversion, renewal, cancellation, refund, one-time purchase, billing issue and product change. Each message names the customer, product, revenue in US dollars, store and country, and links to the customer's page. You connect it with a Slack incoming webhook URL, and failed posts retry automatically.",
     uses: [
@@ -98,14 +98,14 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "A track and identify call for every subscription event, for every destination in your Segment workspace.",
     title: "Send in-app subscription events to Segment",
     metaTitle: "Send in-app subscription events to Segment",
-    metaDescription: "Send every subscription, trial, renewal and refund to Segment as a track call plus an identify call, with RevenueCat event names. Open source.",
+    metaDescription: "Send every subscription, trial, renewal and refund to Segment as a track call plus an identify call, with event names you can rename. Open source.",
     answer:
       "RevenueDot sends each purchase, trial, renewal, cancellation and refund to Segment as a `track` call named like `rc_renewal_event`, plus an `identify` call that sets `rc_subscription_status`. Events carry revenue in US dollars, product, store, entitlements and transaction ids. They go to your Segment HTTP API source as they happen, and `messageId` lets Segment drop retried duplicates.",
     uses: [
       "Fan subscription revenue out to every Segment destination, such as your warehouse, ad networks and email tool.",
       "Join app behavior and subscription status in one customer profile.",
       "Trigger lifecycle campaigns from `rc_billing_issue_event` or `rc_trial_cancelled_event`.",
-      "Keep the RevenueCat event names your downstream dashboards already use.",
+      "Moving from RevenueCat? Keep the event names your downstream dashboards already use.",
     ],
     sends: [
       "A `track` call per event, named `rc_initial_purchase_event`, `rc_trial_started_event`, `rc_trial_converted_event`, `rc_renewal_event`, `rc_cancellation_event` and so on. Rename any of them under **Event names**.",
@@ -152,7 +152,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Subscription events and revenue next to your product analytics in Amplitude.",
     title: "Send in-app subscription events to Amplitude",
     metaTitle: "Send in-app subscription events to Amplitude",
-    metaDescription: "Send subscription events and revenue to Amplitude with RevenueCat's event names and $amplitudeDeviceId, so revenue charts match your product analytics.",
+    metaDescription: "Send subscription events and revenue to Amplitude, matched on $amplitudeDeviceId, so revenue charts line up with your product analytics. Retried and logged.",
     answer:
       "RevenueDot sends every purchase, trial, renewal, cancellation and refund to Amplitude's HTTP V2 API as events like `rc_initial_purchase_event`. Money events carry `revenue`, `price`, `productId` and a `revenueType` of purchase, renewal or refund, so they feed Amplitude's revenue charts. The user is `$amplitudeUserId` and `$amplitudeDeviceId` when your app sets them.",
     uses: [
@@ -204,11 +204,11 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     category: "analytics",
     logo: "mixpanel.svg",
     card: "Events, revenue and subscription status on Mixpanel profiles.",
-    title: "RevenueCat-compatible Mixpanel integration for subscription revenue",
+    title: "Mixpanel integration for subscription events and revenue",
     metaTitle: "Mixpanel integration for in-app subscription revenue",
-    metaDescription: "Send subscription events to Mixpanel with RevenueCat's event names, revenue in USD, rc_subscription_status on profiles and $transactions for revenue reports.",
+    metaDescription: "Send subscription events to Mixpanel with revenue in USD, subscription status on each profile and $transactions entries, so Mixpanel's revenue reports work.",
     answer:
-      "RevenueDot sends every subscription event to Mixpanel with RevenueCat's names, such as `rc_initial_purchase_event` and `rc_renewal_event`, each with revenue in US dollars. The customer's profile gets `rc_subscription_status` and an entry in the reserved `$transactions` list, so Mixpanel's revenue reports work. Add your project API secret to also accept events older than five days.",
+      "RevenueDot sends every subscription event to Mixpanel, such as `rc_initial_purchase_event` and `rc_renewal_event`, each with revenue in US dollars. The customer's profile gets `rc_subscription_status` and an entry in the reserved `$transactions` list, so Mixpanel's revenue reports work. Add your project API secret to also accept events older than five days.",
     uses: [
       "Run Mixpanel's revenue and LTV reports on real subscription transactions.",
       "Break down trial conversion by country, store or product.",
@@ -260,7 +260,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Revenue events for PostHog funnels, retention and session replays.",
     title: "Track in-app subscription revenue in PostHog",
     metaTitle: "Track in-app subscription revenue in PostHog",
-    metaDescription: "Send purchases, trials, renewals and refunds to PostHog with RevenueCat's event names and subscription status on the person.",
+    metaDescription: "Send purchases, trials, renewals and refunds to PostHog, with event names you can rename and subscription status on the person.",
     answer:
       "RevenueDot sends every purchase, trial, renewal, cancellation and refund to PostHog's capture endpoint as events like `rc_renewal_event`, with revenue in US dollars and the product, store and entitlements as properties. The person's `rc_subscription_status` is set on each event. It works with PostHog US Cloud, EU Cloud and self-hosted PostHog, and `uuid` stops duplicates.",
     uses: [
@@ -429,9 +429,9 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Report purchases, trials and renewals to AppsFlyer with the customer's AppsFlyer id.",
     title: "Report in-app subscription revenue to AppsFlyer from your server",
     metaTitle: "Send subscription revenue events to AppsFlyer",
-    metaDescription: "Send purchases, trials and renewals to AppsFlyer's server-to-server API with $appsflyerId and RevenueCat's event names, so installs get credited with revenue.",
+    metaDescription: "Send purchases, trials and renewals to AppsFlyer's server-to-server API with $appsflyerId and revenue on each event, so installs get credited with revenue.",
     answer:
-      "RevenueDot reports purchases, trial starts, conversions, renewals and refunds to AppsFlyer's server-to-server in-app events API with the customer's `$appsflyerId`. Each event uses RevenueCat's names, such as `rc_renewal_event`, and an `eventValue` with `af_revenue`, `af_price`, `af_content_id`, `renewal` and `af_currency`. Refunds carry negative revenue.",
+      "RevenueDot reports purchases, trial starts, conversions, renewals and refunds to AppsFlyer's server-to-server in-app events API with the customer's `$appsflyerId`. Each event has a name such as `rc_renewal_event` and an `eventValue` with `af_revenue`, `af_price`, `af_content_id`, `renewal` and `af_currency`. Refunds carry negative revenue.",
     uses: [
       "Credit subscription revenue to the campaign or media source that drove the install.",
       "Optimize ad campaigns for trial starts and paid conversions, not just installs.",
@@ -647,7 +647,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Custom events, purchases and rc_subscription_status on Braze user profiles.",
     title: "Send subscription events and revenue to Braze user profiles",
     metaTitle: "Send in-app subscription events to Braze",
-    metaDescription: "Send subscription events to Braze with RevenueCat's event names, rc_subscription_status on the profile and order placed events for revenue. Open source.",
+    metaDescription: "Send subscription events to Braze with each customer's subscription status on their profile and order placed events for revenue. Retried, logged, open source.",
     answer:
       "RevenueDot sends each subscription event to Braze in one `/users/track` request: a custom event named like `rc_trial_started_event`, the `rc_subscription_status` attribute, and for paid events an `ecommerce.order_placed` event or a legacy purchase object. The user is a Braze alias when you set one, otherwise the app user id as `external_id`.",
     uses: [
@@ -699,7 +699,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Subscription events and rc_subscription_status on CleverTap profiles.",
     title: "Send subscription events to CleverTap profiles",
     metaTitle: "Send in-app subscription events to CleverTap",
-    metaDescription: "Send subscription events to CleverTap's Upload API with RevenueCat's event names and rc_subscription_status on the profile, in any CleverTap region.",
+    metaDescription: "Send subscription events to CleverTap's Upload API with each customer's subscription status on their profile, in any CleverTap region. Retried and logged.",
     answer:
       "RevenueDot sends each subscription event to CleverTap's Upload API as an event named like `rc_renewal_event`, together with a profile update that sets `rc_subscription_status`. The event carries revenue in US dollars, product, store and transaction ids. The user is `$clevertapId` as `objectId` when set, otherwise the app user id as `identity`.",
     uses: [
@@ -751,7 +751,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Subscription events and rc_subscription_status on Customer.io people, for campaigns and segments.",
     title: "Send subscription events to Customer.io people for campaigns",
     metaTitle: "Send in-app subscription events to Customer.io",
-    metaDescription: "Send subscription events to Customer.io's Track API with RevenueCat's event names, rc_subscription_status on the person and dedupe-safe event ids.",
+    metaDescription: "Send subscription events to Customer.io's Track API with subscription status on the person and dedupe-safe event ids, so campaigns react to each change.",
     answer:
       "RevenueDot sends each subscription event to Customer.io's Track API in two calls: an identify call that updates the person's `rc_subscription_status`, `app_user_id` and email, then the event, named like `rc_trial_converted_event`, with purchase details as event data. The person's id is `$customerioId` when set, otherwise the app user id.",
     uses: [
@@ -907,7 +907,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Subscription events on Intercom contacts, for series, segments and messages.",
     title: "Send subscription events to Intercom contacts",
     metaTitle: "Send in-app subscription events to Intercom",
-    metaDescription: "Send subscription events to Intercom contacts with RevenueCat's event names, subscription_status and the price in cents, for series, segments and messages.",
+    metaDescription: "Send subscription events to Intercom contacts with subscription_status and the price in cents, for series, segments and messages about each subscription.",
     answer:
       "RevenueDot sends each subscription event to Intercom as a data event on the contact, named like `rc_initial_purchase_event`, with the product, entitlement, store, `subscription_status` and, on paid events, the price in cents. The contact is found by user id, which is your app user id. Anonymous customers need the `$email` attribute. It works in US, EU and Australia workspaces.",
     uses: [

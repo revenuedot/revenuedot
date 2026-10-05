@@ -171,8 +171,8 @@ add("/revenuecat-alternative", page(`${chrome("RevenueCat alternative", "The ope
 add("/revenuecat-alternatives", page(`${chrome("Alternatives · 2026", `The ${ALTS.length} best RevenueCat alternatives`)}<div class="vis" data-og-safe><div class="cols">${ALTS.slice(0, 6).map((a, k) => `<div class="${k === 0 ? "rd" : ""}"><span>${esc(a.name)}</span><b style="font-size:18px;color:#737373">${String(k + 1).padStart(2, "0")}</b></div>`).join("")}</div></div>`));
 for (const [p, label, title, s] of [
   ["/features", "Features", "Everything a subscription app needs", "paywalls-editor-light.png"],
-  ["/solutions", "Solutions", "Keep the RevenueCat SDK, not the bill", "screens/overview-light.png"],
-  ["/", "Open source", "The open-source RevenueCat alternative", "screens/overview-light.png"],
+  ["/solutions", "Solutions", "A path for every kind of app", "screens/overview-light.png"],
+  ["/", "Open source", "In-app purchases and subscriptions for every app", "screens/overview-light.png"],
   ["/pricing", "Pricing", "Free on Cloud up to $10K a month", "screens/overview-light.png"],
   ["/migrate-from-revenuecat", "Migrate", "Move off RevenueCat in an afternoon", "screens/customers-light.png"],
   ["/self-host", "Self-host", "Run it on your own servers", "dashboard-light.png"],

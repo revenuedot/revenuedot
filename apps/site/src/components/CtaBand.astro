@@ -1,7 +1,16 @@
 ---
 import { SITE } from "../site";
-interface Props { title?: string; body?: string }
-const { title = "Run subscriptions without the revenue share.", body = "Start free on RevenueDot Cloud, free up to $10,000 a month in tracked revenue, or move an existing RevenueCat app with one line of code." } = Astro.props;
+// The closing call to action. The default speaks to every app developer; switching pages pass `switching` so the
+// second button leads to the migration guide instead of the quickstart.
+interface Props { title?: string; body?: string; switching?: boolean }
+const { switching = false } = Astro.props;
+const {
+  title = switching ? "Switch from RevenueCat without losing a subscriber." : "Start selling subscriptions in your app today.",
+  body = switching
+    ? "Start free on RevenueDot Cloud, import your RevenueCat project with one command, and change one line in your app."
+    : "RevenueDot Cloud is free until your app makes $10,000 a month, and you can test your first purchase before you have a store account.",
+} = Astro.props;
+const second = switching ? { href: "/migrate-from-revenuecat", label: "Migrate from RevenueCat" } : { href: "/docs/getting-started/quickstart", label: "Read the quickstart" };
 ---
 <section class="dark cta">
   <div class="wrap inner">
@@ -12,9 +21,9 @@ const { title = "Run subscriptions without the revenue share.", body = "Start fr
     </div>
     <div class="btns">
       <a class="btn" href={SITE.signup}>Start free on Cloud</a>
-      <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
+      <a class="btn secondary" href={second.href}>{second.label} <span class="arrow">→</span></a>
     </div>
-    <p class="small alt">Already have an account? <a href={SITE.login}>Sign in</a></p>
+    <p class="small alt">Already have an account? <a href={SITE.login}>Sign in</a>{!switching && <> · Switching from RevenueCat? <a href="/migrate-from-revenuecat">Change one line</a></>}</p>
   </div>
 </section>
 <style>

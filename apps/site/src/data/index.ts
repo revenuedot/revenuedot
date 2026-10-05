@@ -52,9 +52,9 @@ export const COMPARISONS: ComparePage[] = COMPARE;
 export const comparePath = (c: ComparePage) => `/compare/${c.slug}`;
 
 export const TOOLS = [
-  { path: "/tools/revenuecat-fee-calculator", title: "RevenueCat fee calculator", card: "RevenueCat's fee at your revenue, next to Adapty, Qonversion, Superwall and RevenueDot." },
   { path: "/tools/app-store-fee-calculator", title: "App Store and Google Play fee calculator", card: "What you keep from a subscription after Apple's or Google's commission and your backend's fee." },
   { path: "/tools/subscription-revenue-calculator", title: "Subscription revenue calculator", card: "Project MRR, ARR and LTV over 12 months from installs, trial and paid conversion, price and churn." },
+  { path: "/tools/revenuecat-fee-calculator", title: "RevenueCat fee calculator", card: "RevenueCat's fee at your revenue, next to Adapty, Qonversion, Superwall and RevenueDot." },
 ];
 
 /** Title, card text and label for every page that related links can point to. */

@@ -10,12 +10,12 @@ export const FEATURES: Landing[] = [
     name: "Paywalls",
     card: "Build native paywalls from ten templates or a visual editor and publish them without an app release.",
     label: "Feature",
-    title: "Paywall builder for iOS and Android apps that works with the RevenueCat SDK",
+    title: "Paywall builder for iOS and Android apps: native paywalls you change without an app release",
     metaTitle: "Paywall Builder for iOS and Android Apps",
     metaDescription:
-      "Build native paywalls from ten templates, a visual editor or AI, translate them and publish without an app release. Renders in the RevenueCat SDK's PaywallView.",
+      "Build native paywalls from ten templates, a visual editor or AI, translate them and publish without an app release. The RevenueDot SDK shows them in one view.",
     answer:
-      "RevenueDot's paywall builder makes native paywalls for iOS and Android in the format the RevenueCat SDKs already render. Pick one of ten templates, edit it in the visual editor, translate it, and publish it to an offering. Your app shows it with one view, PaywallView, and you ship no app release to change it.",
+      "RevenueDot's paywall builder makes native paywalls for iOS and Android. Pick one of ten templates, edit it in the visual editor, translate it, and publish it to an offering, the set of products a paywall shows. Your app shows it with one view from the RevenueDot SDK, PaywallView, and you ship no app release to change it.",
     shot: {
       src: "paywalls-editor-light.png",
       alt: "The RevenueDot paywall editor for a paywall named Annual first. The layer tree is on the left, a phone preview in the middle shows a headline, four benefit lines, a selected yearly plan at $39.99 and a Start free trial button, and the properties of the selected package are on the right.",
@@ -75,7 +75,8 @@ export const FEATURES: Landing[] = [
       {
         h2: "How do you show a RevenueDot paywall in your app?",
         paras: [
-          "Add the RevenueCat UI library next to the SDK and present the paywall. `PaywallView()` shows the current offering's paywall, and you can pass an offering to show another one. Android uses `PaywallDialog`, React Native uses `RevenueCatUI.presentPaywall()` and Flutter uses `RevenueCatUI.presentPaywall()` from `purchases_ui_flutter`.",
+          "Add the RevenueDot SDK's paywall library (`RevenueCatUI` on iOS, `purchases-ui` on Android) and present the paywall. `PaywallView()` shows the current offering's paywall, and you can pass an offering to show another one. Android uses `PaywallDialog`, React Native uses `RevenueCatUI.presentPaywall()` and Flutter uses `RevenueCatUI.presentPaywall()` from `purchases_ui_flutter`.",
+          "The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCatUI` and calls `PaywallView`. It sends every request to RevenueDot and needs no RevenueCat account. An app that already ships the RevenueCat SDK shows the same paywall with the same code.",
         ],
         code: {
           title: "PaywallScreen.swift",
@@ -118,12 +119,12 @@ struct HomeView: View {
     howTo: "How to build and publish a paywall",
     faq: [
       {
-        q: "How do I build a paywall for the RevenueCat SDK without writing UI code?",
-        a: "Open Paywalls in the RevenueDot dashboard, choose a template, pick your offering and publish. The paywall is served in the format the RevenueCat SDKs render natively, so your app only calls PaywallView on iOS, PaywallDialog on Android, or presentPaywall in React Native and Flutter. You write no layout code.",
+        q: "How do I build a paywall for my iOS or Android app without writing UI code?",
+        a: "Open Paywalls in the RevenueDot dashboard, choose a template, pick your offering and publish. The RevenueDot SDK renders it natively, and so does the RevenueCat SDK, so your app only calls PaywallView on iOS, PaywallDialog on Android, or presentPaywall in React Native and Flutter. You write no layout code.",
       },
       {
         q: "Can I change a paywall without releasing a new app version?",
-        a: "Yes. Apps fetch offerings, which carry the published paywall, at launch and when they return to the foreground. A change you publish reaches users within one session. The app needs a RevenueCat SDK version that renders paywall components, which for iOS is 5.83 or later.",
+        a: "Yes. Apps fetch offerings, which carry the published paywall, at launch and when they return to the foreground. A change you publish reaches users within one session. The app needs an SDK version that renders paywall components: on iOS, version 5.83 or later of the RevenueDot or RevenueCat SDK.",
       },
       {
         q: "Can I A/B test paywalls?",
@@ -186,7 +187,7 @@ struct HomeView: View {
       },
       {
         h2: "How do you read the targeted offering in your app?",
-        paras: ["Your app code stays the same. It reads the offering the way it does today, and RevenueDot decides which one comes back."],
+        paras: ["Your app reads the current offering with one SDK call, and RevenueDot decides which one comes back. The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCat` and calls `Purchases`. It sends every request to RevenueDot and needs no RevenueCat account."],
         code: {
           title: "Offerings.swift",
           label: "Swift",
@@ -273,7 +274,7 @@ let onboarding = offerings.currentOffering(forPlacement: "onboarding_end")`,
     metaDescription:
       "43 subscription analytics charts for apps: MRR, ARR, churn, trial conversion, LTV, retention and refunds. Sandbox excluded, USD, API and published SQL.",
     answer:
-      "RevenueDot has 43 subscription analytics charts for apps, including MRR, ARR, churn, trial conversion, refund rate, LTV and retention. They use RevenueCat's Charts v3 names and definitions, run on your own purchase data, and come from one REST endpoint with RevenueCat's parameters. Sandbox purchases are excluded and money is in US dollars.",
+      "RevenueDot has 43 subscription analytics charts for apps, including MRR, ARR, churn, trial conversion, refund rate, LTV and retention. Each chart has a written formula, runs on your own purchase data and comes from one REST endpoint. Sandbox purchases are excluded and money is in US dollars. Moving from RevenueCat? The charts use its Charts v3 names, definitions and API parameters.",
     shot: {
       src: "charts-light.png",
       alt: "The RevenueDot Charts page showing MRR Movement for 90 days by week. A chart list on the left is grouped as Revenue, Subscriptions, Ads and LTV. Summary cards show New MRR $96.52, Resubscription MRR $0.00, Expansion MRR $0.00 and Churned MRR minus $3.33, above a bar chart and a table of weekly values.",
@@ -283,7 +284,7 @@ let onboarding = offerings.currentOffering(forPlacement: "onboarding_end")`,
       { title: "43 charts", text: "Revenue, subscriptions, ads, LTV, customers, conversion, paywalls, trials, churn and refunds, and retention." },
       { title: "One definition per number", text: "Each chart's formula is written down, and the SQL for 8 core charts is published and tested equal to the API." },
       { title: "Filters and segments", text: "Slice by app, store, product, offering, country, platform and app version. Compare to the previous period, save views and export CSV." },
-      { title: "Same API as RevenueCat", text: "GET /v2/projects/{id}/charts/{chart_name} takes RevenueCat's parameters and returns its response shape." },
+      { title: "One chart API", text: "GET /v2/projects/{id}/charts/{chart_name} returns any chart as a time series or cohort table, with filters and segments." },
     ],
     blocks: [
       {
@@ -693,6 +694,7 @@ let onboarding = offerings.currentOffering(forPlacement: "onboarding_end")`,
         h2: "How does a redemption link open your app?",
         paras: [
           "A buyer who paid without an app user id gets a deep link such as `scanner://redeem_web_purchase?redemption_token=rdrt_...` and an https link at `/pay/r/<token>` for emails and QR codes. Register your URL scheme in the app, then pass the link to the SDK. The link works for 24 hours by default, and only the token's hash is stored.",
+          "The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCat` and calls `Purchases`. It sends every request to RevenueDot and needs no RevenueCat account.",
         ],
         code: {
           title: "ContentView.swift",
@@ -741,7 +743,7 @@ struct ContentView: View {
         a: "Create a purchase link for an offering in the RevenueDot dashboard and share its URL, such as https://api.revenuedot.app/pay/scanner/spring-sale. The page shows the offering's web plans and sends buyers to Stripe Checkout. Add ?app_user_id= to buy for a signed-in user.",
       },
       {
-        q: "How do I redeem a web purchase in my app with the RevenueCat SDK?",
+        q: "How do I redeem a web purchase in my iOS or Android app?",
         a: "Register a URL scheme, parse the incoming link with asWebPurchaseRedemption on iOS or Android, and call redeemWebPurchase. The purchase moves to the app's user and the entitlement becomes active at once. The result is success, invalidToken, purchaseBelongsToOtherUser, expired or error.",
       },
       {
@@ -893,9 +895,9 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
     title: "Win-back campaigns and Apple win-back offers for lapsed subscribers",
     metaTitle: "Win-Back Campaigns for Lapsed Subscribers",
     metaDescription:
-      "Email lapsed subscribers a link back to the store once each, with click tracking and one-click unsubscribe. Apple win-back offers work with the RevenueCat SDK.",
+      "Email lapsed subscribers a link back to the store once each, with click tracking and one-click unsubscribe. Apple win-back offers need no extra app code.",
     answer:
-      "RevenueDot has two win-back tools. Win-back campaigns email customers whose subscription ended a button back to the store, once per customer, with click tracking and one-click unsubscribe. Apple's iOS 18 win-back offers work with the RevenueCat SDK unchanged, and RevenueDot records each offer on the purchase and in webhooks.",
+      "RevenueDot has two win-back tools. Win-back campaigns email customers whose subscription ended a button back to the store, once per customer, with click tracking and one-click unsubscribe. Apple's iOS 18 win-back offers need no extra app code, because the SDK handles them on the device, and RevenueDot records each offer on the purchase and in webhooks.",
     shot: {
       src: "lifecycle/winback-editor.png",
       alt: "The RevenueDot win-back campaign editor for a campaign named Lapsed Pro subscribers. Counters show sent, opened, clicked, reactivated and revenue. The audience is subscribers whose last subscription ended between 1 and 90 days ago, with product and store tick boxes, and an email preview with a Resubscribe button.",
@@ -934,7 +936,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
       {
         h2: "How do Apple win-back offers work with RevenueDot?",
         paras: [
-          "Win-back offers are discounted or free periods Apple shows to customers whose subscription lapsed, on iOS 18 and later. The RevenueCat SDK does the win-back work on the device, so your app code stays the same and the offer needs no signature from the server. RevenueDot grants access, records the offer and keeps Apple's eligibility list.",
+          "Win-back offers are discounted or free periods Apple shows to customers whose subscription lapsed, on iOS 18 and later. The SDK, RevenueDot's or RevenueCat's, does the win-back work on the device, so you write no extra code and the offer needs no signature from the server. RevenueDot grants access, records the offer and keeps Apple's eligibility list.",
           "A win-back purchase arrives as a `RENEWAL` with the offer id in `offer_code`. A paid win-back period has `period_type: NORMAL` and a free one has `TRIAL`.",
         ],
         code: {
@@ -986,7 +988,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
       },
       {
         q: "What are Apple win-back offers?",
-        a: "They are discounted or free periods that Apple shows to customers whose subscription lapsed, on iOS 18 and later. You create them in App Store Connect. The RevenueCat SDK handles them on the device, and RevenueDot records the offer on the resulting RENEWAL.",
+        a: "They are discounted or free periods that Apple shows to customers whose subscription lapsed, on iOS 18 and later. You create them in App Store Connect. The SDK handles them on the device, and RevenueDot records the offer on the resulting RENEWAL.",
       },
       {
         q: "Does RevenueDot track win-back offer purchases?",
@@ -1019,9 +1021,9 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
     title: "Customer Center for iOS and Android apps: retention offers, cancel flows and Apple Retention Messaging",
     metaTitle: "Customer Center: Retention Offers and Cancel Flows",
     metaDescription:
-      "Serve the RevenueCat SDK's Customer Center from RevenueDot Cloud. Add cancel and refund retention offers, Apple Retention Messaging and support tickets.",
+      "Give your app a subscription screen with cancel and refund retention offers, Apple Retention Messaging and support tickets, set up in the RevenueDot dashboard.",
     answer:
-      "RevenueDot serves the configuration for the RevenueCat SDK's Customer Center, the subscription screen inside your app. You add a promotional offer to the cancel path or the refund path, so customers see it before they leave. RevenueDot also answers Apple's Retention Messaging API in real time and stores support tickets customers send from the screen.",
+      "The Customer Center is a subscription screen inside your app, shown by the RevenueDot SDK and set up in the RevenueDot dashboard. You add a promotional offer to the cancel path or the refund path, so customers see it before they leave. RevenueDot also answers Apple's Retention Messaging API in real time and stores support tickets customers send from the screen.",
     shot: {
       src: "lifecycle/retention-customer-center.png",
       alt: "The RevenueDot Retention Offers page on the Customer Center tab. A Cancellation Retention Discount section lists an offer named Half off for 3 months for the App Store, mapping two Scanner Pro products to offer ids, switched on. A Refunds Retention Discount section below has no offer yet.",
@@ -1037,7 +1039,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
       {
         h2: "How to add a retention offer to the Customer Center",
         label: "Steps",
-        paras: ["The Customer Center is the subscription screen the RevenueCat SDK shows in your app, `CustomerCenterView` on iOS and `CustomerCenter` on Android. Its configuration comes from your RevenueDot server."],
+        paras: ["The Customer Center is the subscription screen the RevenueDot SDK shows in your app, `CustomerCenterView` on iOS and `CustomerCenter` on Android. The RevenueCat SDK shows the same screen. Its configuration comes from RevenueDot."],
         steps: [
           { name: "Create the store offer", text: "Create a promotional offer in App Store Connect, or a developer-determined offer in Google Play Console, on each subscription you want to discount." },
           { name: "Add the offer in RevenueDot", text: "Open Lifecycle, then Retention, then the Customer Center tab. Select New offer under Cancellation Retention Discount or Refunds Retention Discount." },
@@ -1049,7 +1051,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
       {
         h2: "How do you present the Customer Center in your app?",
         paras: [
-          "Present the SDK's view as usual. The configuration it reads is `GET /v1/customercenter/{app_user_id}`, served by RevenueDot. Edit it under Lifecycle, then Customer Center: the paths on each screen and their order, Custom URL and Custom Action paths, a cancel feedback survey with an offer per answer, colours for light and dark mode, and custom strings in 33 languages, with a live preview. Without changes, a built-in default is used.",
+          "Present the SDK's view. The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCatUI` and needs no RevenueCat account. The configuration it reads is `GET /v1/customercenter/{app_user_id}`, served by RevenueDot. Edit it under Lifecycle, then Customer Center: the paths on each screen and their order, Custom URL and Custom Action paths, a cancel feedback survey with an offer per answer, colors for light and dark mode, and custom strings in 33 languages, with a live preview. Without changes, a built-in default is used.",
         ],
         code: {
           title: "SettingsView.swift",
@@ -1228,14 +1230,14 @@ struct SettingsView: View {
     slug: "webhooks",
     section: "features",
     name: "Webhooks",
-    card: "Signed subscription webhooks in RevenueCat's format, with retries, a delivery log and 19 of 21 event types.",
+    card: "Signed webhooks for every purchase, renewal, cancellation and refund, with retries and a delivery log.",
     label: "Feature",
-    title: "Subscription webhooks for iOS and Android purchases in RevenueCat's format",
-    metaTitle: "Subscription Webhooks in RevenueCat's Format",
+    title: "Subscription webhooks for iOS and Android purchases: signed, retried and logged",
+    metaTitle: "Subscription Webhooks for iOS and Android Apps",
     metaDescription:
-      "Receive purchase, renewal, cancellation and refund webhooks in RevenueCat's format. HMAC-signed, retried 5 times, with a delivery log and test events.",
+      "Receive purchase, renewal, cancellation and refund webhooks as signed JSON, retried 5 times, with a delivery log and test events. Same format as RevenueCat's.",
     answer:
-      "RevenueDot sends each subscription event to your URL as JSON in RevenueCat's webhook format, so handlers written for RevenueCat work unchanged. It sends 19 of RevenueCat's 21 event types. Each delivery carries an HMAC signature, is retried after 5, 10, 20, 40 and 80 minutes, and shows in a delivery log with a Retry button.",
+      "RevenueDot sends each subscription event, such as a purchase, renewal, cancellation or refund, to your URL as JSON. Each delivery carries an HMAC signature, is retried after 5, 10, 20, 40 and 80 minutes, and shows in a delivery log with a Retry button. Moving from RevenueCat? The payload follows its webhook format, so existing handlers work unchanged.",
     shot: {
       src: "screens/webhooks-light.png",
       dark: "screens/webhooks-dark.png",
@@ -1243,7 +1245,7 @@ struct SettingsView: View {
       caption: "A webhook with its delivery log: every event, its response code and how long it took. Captured with example data.",
     },
     points: [
-      { title: "RevenueCat's format", text: "The same field names and values, so existing handlers keep working." },
+      { title: "Every lifecycle event", text: "Purchases, renewals, cancellations, billing issues, product changes and transfers, each with the customer and the product." },
       { title: "HMAC signature", text: "Verify X-RevenueCat-Webhook-Signature against the raw body. A timestamp stops replays." },
       { title: "Retries and a log", text: "Six attempts in all, each with its status, duration and error, and a Retry button." },
       { title: "Test events", text: "Send a TEST event, or make real events with Test Store scenarios such as renewal, cancel and refund." },
@@ -1344,17 +1346,17 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
     slug: "rest-api",
     section: "features",
     name: "REST API",
-    card: "REST API v1 and all 128 v2 operations of RevenueCat's spec, plus extensions, in one OpenAPI document.",
+    card: "REST API v1 and v2 for customers, subscriptions, catalog and charts, described in one OpenAPI document.",
     label: "Feature",
-    title: "REST API for in-app purchases: RevenueCat-compatible v1 and v2 for subscription apps",
-    metaTitle: "RevenueCat-Compatible REST API v1 and v2",
+    title: "REST API for in-app purchases and subscriptions: customers, catalog, charts and store actions",
+    metaTitle: "REST API for In-App Purchases and Subscriptions",
     metaDescription:
-      "REST API v1 and all 128 operations of RevenueCat's REST API v2, with the same paths and errors. Change the base URL and key and your server code keeps working.",
+      "Manage customers, subscriptions, products, offerings and charts over REST with scoped secret keys and an OpenAPI 3.1 document. Compatible with RevenueCat's API.",
     answer:
-      "RevenueDot serves REST API v1 and every one of the 128 operations in RevenueCat's REST API v2, with the same paths, list envelope and error format. Server code written for RevenueCat works after you change the base URL and the secret key. Of the 128, 126 do real work and 2 invoice operations answer on purpose.",
+      "RevenueDot's REST API lets your server read and change customers, subscriptions, products, offerings, charts and more, with secret keys that carry permissions. It serves REST API v1 and v2, described in one OpenAPI 3.1 document. Moving from RevenueCat? It covers all 128 operations of RevenueCat's REST API v2 with the same paths and errors, so you change only the base URL and the key.",
     points: [
       { title: "All 128 v2 operations", text: "Projects, apps, products, entitlements, offerings, packages, customers, subscriptions, purchases, charts, discounts and more." },
-      { title: "Secret keys with permissions", text: "Keys carry RevenueCat-style permissions such as customer_information:customers:read_write." },
+      { title: "Secret keys with permissions", text: "Each key carries only the permissions you give it, such as customer_information:customers:read_write." },
       { title: "One OpenAPI 3.1 document", text: "Every operation names its source file and permissions, and a script checks the document against the server's routes." },
       { title: "Extensions marked", text: "Operations that exist only in RevenueDot carry x-revenuedot-extension: true." },
     ],
@@ -1383,7 +1385,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
           { name: "Create a secret key", text: "Open API keys in the dashboard or call POST /v2/projects/{project_id}/api_keys. The key starts with sk_ and is shown once. Give it only the permissions it needs." },
           { name: "Set the base URL", text: "Use https://api.revenuedot.app. Send the key as Authorization: Bearer sk_..." },
           { name: "Call an endpoint", text: "Lists return an object, items, next_page and url. limit is 1 to 100 with a default of 20. Follow next_page to page." },
-          { name: "Handle errors", text: "Errors use RevenueCat's v2 body: object, type, message, param, doc_url and retryable. A missing permission answers 403 and names it." },
+          { name: "Handle errors", text: "Every error has the same body: object, type, message, param, doc_url and retryable, as in RevenueCat's v2. A missing permission answers 403 and names it." },
         ],
       },
       {
@@ -1458,14 +1460,14 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
     slug: "integrations",
     section: "features",
     name: "Integrations",
-    card: "36 partner integrations with RevenueCat's event names, plus webhooks and scheduled CSV or Parquet exports.",
+    card: "36 partner integrations, plus webhooks and scheduled CSV or Parquet exports to your own bucket.",
     label: "Feature",
     title: "Integrations for subscription events: 36 partners plus webhooks and data exports",
     metaTitle: "36 Subscription Integrations and Data Exports",
     metaDescription:
-      "Send purchases, trials, renewals and refunds to Segment, Amplitude, Mixpanel, AppsFlyer, Meta, Braze and 30 more, or export CSV or Parquet to S3, R2, GCS, Azure or email.",
+      "Send purchases, trials, renewals and refunds to Segment, Amplitude, Mixpanel, AppsFlyer, Meta, Braze and 30 more, or export CSV or Parquet to S3, R2 or GCS.",
     answer:
-      "RevenueDot connects to 36 partners, among them Segment, Amplitude, Mixpanel, PostHog, AppsFlyer, Adjust, Meta, Braze and BigQuery, and sends every purchase, trial, renewal and refund with RevenueCat's event names. Failed sends retry and are logged. Scheduled exports write CSV or Parquet files to Amazon S3, Cloudflare R2 or Google Cloud Storage.",
+      "RevenueDot connects to 36 partners, among them Segment, Amplitude, Mixpanel, PostHog, AppsFlyer, Adjust, Meta, Braze and BigQuery, and sends them every purchase, trial, renewal and refund. Failed sends retry and are logged. Scheduled exports write CSV or Parquet files to Amazon S3, Cloudflare R2 or Google Cloud Storage. Moving from RevenueCat? Events keep RevenueCat's names.",
     shot: {
       src: "screens/integrations-light.png",
       dark: "screens/integrations-dark.png",
@@ -1474,7 +1476,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
     },
     points: [
       { title: "36 partners", text: "Analytics, attribution, marketing, support, ads and BigQuery. Browse them all at /integrations." },
-      { title: "RevenueCat's event names", text: "Charts and funnels built on rc_initial_purchase_event keep working after you switch." },
+      { title: "Your event names", text: "Each integration has default event names, and most analytics, attribution and marketing integrations let you rename each event to match your tracking plan." },
       { title: "Retries and a delivery log", text: "Each integration retries on the webhook schedule, shows the request and the partner's answer, and replays failed sends." },
       { title: "Scheduled exports", text: "Transactions, customers, subscriptions and events as CSV or Parquet, daily or weekly." },
     ],
@@ -1552,7 +1554,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
       },
       {
         q: "Will my Amplitude or Mixpanel charts keep working if I switch from RevenueCat?",
-        a: "Yes. RevenueDot uses RevenueCat's event names and reserved attributes, such as rc_initial_purchase_event, $amplitudeUserId and $mixpanelDistinctId, so charts and funnels built on them keep working. You can rename any event on the integration's page.",
+        a: "Yes. RevenueDot uses RevenueCat's event names and reserved attributes, such as rc_initial_purchase_event, $amplitudeUserId and $mixpanelDistinctId, so charts and funnels built on them keep working. Most analytics integrations also let you rename each event on the integration's page.",
       },
       {
         q: "How do I export my subscription data to a data warehouse?",
@@ -1587,7 +1589,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
     metaDescription:
       "See ad revenue, eCPM and impressions in US dollars next to subscription revenue, and verify AdMob rewarded ads on your server to grant currency or access.",
     answer:
-      "RevenueDot shows your app's ad revenue next to its subscription revenue, in US dollars, from the ad events the RevenueCat SDK already sends. It also verifies AdMob rewarded ads on the server. Google signs a callback, a reward rule grants in-app currency or a few days of access, and your app only asks whether the reward went through.",
+      "RevenueDot shows your app's ad revenue next to its subscription revenue, in US dollars, from the ad events the SDK sends. It also verifies AdMob rewarded ads on the server. Google signs a callback, a reward rule grants in-app currency or a few days of access, and your app only asks whether the reward went through.",
     points: [
       { title: "Ad revenue in dollars", text: "Revenue, impressions, eCPM, clicks, CTR and ad share of revenue, with change from the previous period." },
       { title: "Breakdowns", text: "By network, format, placement, ad unit and mediator, with AdMob ad unit names once connected." },
@@ -1596,9 +1598,10 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
     ],
     blocks: [
       {
-        h2: "How do you track ad revenue with the RevenueCat SDK?",
+        h2: "How do you track ad revenue with the SDK?",
         paras: [
-          "Ad revenue reaches RevenueDot through the SDK's ad tracker, which posts ad events to `POST /v1/events` at your proxy URL. On iOS the stock SDK sends them to the proxy URL. The stock Android SDK sends ad events to RevenueCat's hosts even with a proxy URL, so use the RevenueDot Android fork.",
+          "Ad revenue reaches RevenueDot through the SDK's ad tracker, which posts ad events to `POST /v1/events`. The RevenueDot SDK sends them to RevenueDot. It is built from RevenueCat's open-source SDK (MIT license), so your code calls `Purchases` and needs no RevenueCat account.",
+          "Switching from RevenueCat? On iOS the stock RevenueCat SDK sends ad events to the proxy URL. The stock Android SDK sends them to RevenueCat's hosts even with a proxy URL, so use the RevenueDot Android SDK.",
           "Use RevenueCat's AdMob adapter to track loads, impressions, clicks and revenue for you, or call the tracker yourself from any network's or mediator's callbacks.",
         ],
         code: {
@@ -1666,7 +1669,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
     faq: [
       {
         q: "How do I track ad revenue next to subscription revenue?",
-        a: "Report ad impressions and revenue through the RevenueCat SDK's ad tracker, directly or with RevenueCat's AdMob adapter, and point the SDK at RevenueDot. The Ads overview shows ad revenue, impressions and eCPM in US dollars next to subscription revenue, and the charts add fill rate and ARPDAU.",
+        a: "Report ad impressions and revenue through the SDK's ad tracker, directly or with RevenueCat's AdMob adapter. The Ads overview shows ad revenue, impressions and eCPM in US dollars next to subscription revenue, and the charts add fill rate and ARPDAU.",
       },
       {
         q: "How do I verify AdMob rewarded ads on my server?",
@@ -1703,9 +1706,9 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
     title: "Offline entitlements: keep paying customers' access when your purchase server is down",
     metaTitle: "Offline Entitlements for In-App Subscriptions",
     metaDescription:
-      "The RevenueCat SDKs keep paying customers' access during a 5xx outage using a product-to-entitlement mapping that RevenueDot serves for each app and store.",
+      "The SDK keeps paying customers' access during a server outage with a product-to-entitlement mapping that RevenueDot serves for each app and store.",
     answer:
-      "Paying customers keep their access when RevenueDot is down. The RevenueCat SDKs cache a product-to-entitlement mapping from your server and, when it answers with a 5xx, work out the customer's entitlements on the device from the store's own record of their purchases. RevenueDot serves the mapping for each app and answers 5xx, never 4xx, for its own failures.",
+      "Paying customers keep their access when RevenueDot is down. The SDK caches a mapping from each product to the access it gives, its entitlements. When the server answers with a 5xx, the SDK works out the customer's entitlements on the device from the store's own record of their purchases. RevenueDot serves the mapping for each app and answers 5xx, never 4xx, for its own failures.",
     points: [
       { title: "No extra setup", text: "The SDK fetches and caches the mapping by itself and refreshes it when the copy is 25 hours old." },
       { title: "Per app and store", text: "Each app key gets its own app's products, keyed the way that app's SDK looks them up." },
@@ -1767,11 +1770,11 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
     faq: [
       {
         q: "What happens to my subscribers' access if my purchase server goes down?",
-        a: "Paying customers keep access. When the server answers 5xx, the RevenueCat SDK reads the customer's active purchases from StoreKit or Google Play and maps each product to entitlements with a mapping it cached from RevenueDot. Access is computed on the device until the server is back.",
+        a: "Paying customers keep access. When the server answers 5xx, the SDK reads the customer's active purchases from StoreKit or Google Play and maps each product to entitlements with a mapping it cached from RevenueDot. Access is computed on the device until the server is back.",
       },
       {
         q: "Do I need to change my app code for offline entitlements?",
-        a: "No. It is a feature of the RevenueCat SDKs and needs only the normal setup. RevenueDot serves the mapping at GET /v1/product_entitlement_mapping for each app, and the SDK fetches and refreshes it by itself.",
+        a: "No. It is built into the SDK, both RevenueDot's and RevenueCat's, and needs only the normal setup. RevenueDot serves the mapping at GET /v1/product_entitlement_mapping for each app, and the SDK fetches and refreshes it by itself.",
       },
       {
         q: "Why does RevenueDot answer 5xx and not 4xx when it fails?",
@@ -1795,14 +1798,14 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
     slug: "trusted-entitlements",
     section: "features",
     name: "Trusted Entitlements",
-    card: "RevenueDot signs every SDK response in the format the RevenueCat SDKs verify, with your own key.",
+    card: "RevenueDot signs every SDK response, so the RevenueDot SDK can tell a real answer from a forged one.",
     label: "Feature",
-    title: "Trusted Entitlements: signed responses for the RevenueCat SDK",
+    title: "Trusted Entitlements: signed SDK responses that your app can verify",
     metaTitle: "Trusted Entitlements: Signed SDK Responses",
     metaDescription:
-      "RevenueDot signs every SDK response with Ed25519 in the format the RevenueCat SDKs verify. Set REVENUEDOT_SIGNING_KEY, or use a fork that trusts your key.",
+      "RevenueDot signs every SDK response with Ed25519, and the RevenueDot SDK verifies it on RevenueDot Cloud. Self-hosted servers sign with their own key.",
     answer:
-      "RevenueDot signs every SDK response with an Ed25519 signature in the format the RevenueCat SDKs verify, once you set REVENUEDOT_SIGNING_KEY. The stock SDK trusts only RevenueCat's key, so against RevenueDot it reports verification FAILED. Turn verification off in the stock SDK, or use a RevenueDot fork that trusts your key.",
+      "RevenueDot signs every SDK response with an Ed25519 signature, so your app can check that its access data came from RevenueDot unchanged. On RevenueDot Cloud the RevenueDot SDK verifies it and reports VERIFIED. A self-hosted server signs once you set REVENUEDOT_SIGNING_KEY. The stock RevenueCat SDK trusts only RevenueCat's key, so apps that keep it turn verification off.",
     points: [
       { title: "Signed responses", text: "Every 2xx and 3xx response under /v1 and /rcbilling carries an X-Signature header." },
       { title: "Intermediate keys", text: "The server makes a new intermediate key every 30 days. Only the root seed is configured." },
@@ -1815,11 +1818,11 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
         table: {
           head: ["App uses", "Server", "Result"],
           rows: [
+            ["RevenueDot SDK, official build", "RevenueDot Cloud", "VERIFIED"],
+            ["RevenueDot SDK built with your public key", "Your server with REVENUEDOT_SIGNING_KEY", "VERIFIED"],
             ["Stock RevenueCat SDK, verification DISABLED", "Any", "No check. Everything works. Recommended for proxy mode."],
             ["Stock SDK, INFORMATIONAL (the iOS and Android default)", "Any", "Entitlements work, but each carries verification FAILED and the SDK logs an error."],
             ["Stock SDK, ENFORCED", "Any", "Every request fails. Never use it against RevenueDot."],
-            ["RevenueDot fork, official build", "RevenueDot Cloud", "VERIFIED"],
-            ["RevenueDot fork built with your public key", "Your server with REVENUEDOT_SIGNING_KEY", "VERIFIED"],
           ],
         },
         paras: ["Defaults differ per SDK. iOS and Android are informational, React Native, Flutter and Kotlin Multiplatform default to disabled, and purchases-js does not verify."],
@@ -1831,7 +1834,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
           { name: "Generate a key pair", text: "In a checkout of the server repository run pnpm tsx scripts/signing-keygen.ts. It prints the REVENUEDOT_SIGNING_KEY seed and the public key." },
           { name: "Give the seed to the server", text: "Set REVENUEDOT_SIGNING_KEY as an environment variable and keep it in your password manager. Anyone with the seed can sign responses your apps trust." },
           { name: "Restart and check the public key", text: "Call /.well-known/revenuedot-signing-key. Without a key it answers 404 and responses are not signed." },
-          { name: "Choose the app side", text: "Turn verification off in the stock SDK, or build the SDK forks with your public key to get VERIFIED." },
+          { name: "Choose the app side", text: "Build the RevenueDot SDK with your public key to get VERIFIED, or turn verification off in the app." },
         ],
       },
       {
@@ -1848,7 +1851,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
         h2: "What does the signature cover?",
         paras: [
           "The X-Signature value is base64 of 180 bytes: an intermediate Ed25519 public key, its expiry in days, the root key's signature over both, a random salt, and the intermediate key's signature over the message. The message is the salt, the API key, the nonce, the request path, the request hash headers, the response time and ETag headers, and the body. The SDK sends a random `X-Nonce` with requests it verifies, and the nonce is part of the message.",
-          "RevenueDot Cloud signs with the public key `gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=`, and the official forks verify against that key. Rotating the root key means shipping new SDK builds, because the key is compiled into the app.",
+          "RevenueDot Cloud signs with the public key `gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=`, and the official RevenueDot SDK builds verify against that key. Rotating the root key means shipping new SDK builds, because the key is compiled into the app.",
         ],
       },
     ],
@@ -1856,19 +1859,19 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
     faq: [
       {
         q: "Why does the RevenueCat SDK report signature verification FAILED with RevenueDot?",
-        a: "The stock SDK checks responses against RevenueCat's public key, and RevenueDot cannot sign with RevenueCat's private key. Set verification to disabled in the SDK, or use a RevenueDot fork that trusts RevenueDot's key. Access still works in informational mode, but the SDK logs errors.",
+        a: "The stock SDK checks responses against RevenueCat's public key, and RevenueDot cannot sign with RevenueCat's private key. Set verification to disabled in the SDK, or use the RevenueDot SDK, which trusts RevenueDot Cloud's key. Access still works in informational mode, but the SDK logs errors.",
       },
       {
         q: "Should I use ENFORCED entitlement verification with RevenueDot?",
-        a: "Not with the stock SDK. Every request would fail, because the stock SDK trusts only RevenueCat's key. Use DISABLED in proxy mode, or a RevenueDot fork, which verifies RevenueDot's signatures.",
+        a: "Not with the stock SDK. Every request would fail, because the stock SDK trusts only RevenueCat's key. Use DISABLED in proxy mode, or the RevenueDot SDK, which verifies RevenueDot's signatures.",
       },
       {
         q: "How do I get VERIFIED entitlements on my own server?",
-        a: "Generate a signing key pair, set REVENUEDOT_SIGNING_KEY on the server, and build the RevenueDot SDK forks with your public key and host using the fork pipeline. The official forks trust only RevenueDot Cloud's key.",
+        a: "Generate a signing key pair, set REVENUEDOT_SIGNING_KEY on the server, and build the RevenueDot SDK with your public key and host using the fork pipeline. The official RevenueDot SDK builds trust only RevenueDot Cloud's key.",
       },
       {
         q: "Does RevenueDot Cloud sign its responses?",
-        a: "Yes. RevenueDot Cloud signs every SDK response, and its public key is served at /.well-known/revenuedot-signing-key. The official RevenueDot forks trust that key and report VERIFIED.",
+        a: "Yes. RevenueDot Cloud signs every SDK response, and its public key is served at /.well-known/revenuedot-signing-key. The official RevenueDot SDK trusts that key and reports VERIFIED.",
       },
     ],
     docs: [
@@ -2128,7 +2131,7 @@ pnpm --filter revenuedot cli import plan --to https://revenuedot.example.com --r
     metaDescription:
       "Receive support tickets from the Customer Center and show each customer's subscription, entitlements, spend and refunds in Intercom or Zendesk.",
     answer:
-      "RevenueDot stores the support requests customers send from the RevenueCat SDK's Customer Center, emails each one to your support address and lists it in the dashboard. Its Intercom inbox app and Zendesk sidebar app show the customer's subscription, entitlements, total spent, refunds and open tickets next to the conversation.",
+      "RevenueDot stores the support requests customers send from the Customer Center, the subscription screen the SDK shows in your app, emails each one to your support address and lists it in the dashboard. Its Intercom inbox app and Zendesk sidebar app show the customer's subscription, entitlements, total spent, refunds and open tickets next to the conversation.",
     shot: {
       src: "lifecycle/support-tickets.png",
       alt: "The RevenueDot Support page on the Tickets tab. An open ticket from wren@example.com says they were charged twice for the weekly plan. A side panel shows the sender, app user ID, time received and status, with Reply by email and Close ticket buttons.",
@@ -2187,7 +2190,7 @@ pnpm --filter revenuedot cli import plan --to https://revenuedot.example.com --r
     faq: [
       {
         q: "How do I let customers contact support from my iOS or Android app?",
-        a: "Turn on tickets under Lifecycle, Support, Customer Center in RevenueDot, enter your support email and choose who may write. The RevenueCat SDK's Customer Center then shows a write-to-us option, and each ticket is stored, emailed to you with Reply-To set to the customer, and listed in the dashboard.",
+        a: "Turn on tickets under Lifecycle, Support, Customer Center in RevenueDot, enter your support email and choose who may write. The SDK's Customer Center then shows a write-to-us option, and each ticket is stored, emailed to you with Reply-To set to the customer, and listed in the dashboard.",
       },
       {
         q: "Can I see a customer's subscription in Intercom?",

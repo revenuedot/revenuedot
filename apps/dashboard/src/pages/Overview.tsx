@@ -266,29 +266,38 @@ type Lang = "swift" | "kotlin" | "rn" | "flutter";
 type Mode = "fresh" | "moving";
 const LANGS: { value: Lang; label: string }[] = [{ value: "swift", label: "Swift" }, { value: "kotlin", label: "Kotlin" }, { value: "rn", label: "React Native" }, { value: "flutter", label: "Flutter" }];
 
+/** RevenueDot Cloud's API host. The RevenueDot SDKs already point here, so a Cloud app needs no proxy line. */
+const CLOUD_API = "https://api.revenuedot.app";
+
 /**
- * Setup code per platform. `install` adds the open-source RevenueCat SDK (MIT), which RevenueDot answers; `configure`
- * points it at this server. Apps that already ship the RevenueCat SDK only need `configure`'s first line and the new key.
+ * Setup code per platform. `install` adds the RevenueDot SDK (built from RevenueCat's MIT SDK, so the code still imports
+ * RevenueCat). `configure` passes this project's key; on a self-hosted server it also points the SDK at that server.
+ * `proxy` is the one line an app that already ships the RevenueCat SDK adds when it switches.
  */
-const SETUP: Record<Lang, { install: string; installHint: string; configure: (u: string, k: string) => string; use: string }> = {
+const SETUP: Record<Lang, { install: string; installHint: string; configure: (u: string, k: string) => string; proxy: (u: string, k: string) => string; use: string }> = {
   swift: {
-    install: "https://github.com/RevenueCat/purchases-ios-spm.git", installHint: "Xcode: File > Add Package Dependencies, paste this URL, add the RevenueCat library.",
-    configure: (u, k) => `import RevenueCat\n\n// In your App's init or application(_:didFinishLaunchingWithOptions:)\nPurchases.proxyURL = URL(string: "${u}")!\nPurchases.configure(withAPIKey: "${k}")`,
+    install: "https://github.com/revenuedot/purchases-ios",
+    installHint: "Xcode: File > Add Package Dependencies, paste this URL, pick Exact Version 5.91.0-revenuedot and add the RevenueCat library. CocoaPods: pod 'RevenueDotPurchases', '5.91.0'.",
+    configure: (u, k) => `import RevenueCat   // the RevenueDot SDK keeps this module name\n\n// In your App's init or application(_:didFinishLaunchingWithOptions:)\n${u === CLOUD_API ? `Purchases.configure(withAPIKey: "${k}")` : `Purchases.proxyURL = URL(string: "${u}")!   // your server, before configure\n// Your server signs with its own key, so turn the SDK's signature check off.\nPurchases.configure(with: Configuration.Builder(withAPIKey: "${k}").with(entitlementVerificationMode: .disabled).build())`}`,
+    proxy: (u, k) => `Purchases.proxyURL = URL(string: "${u}")!\nPurchases.configure(with: Configuration.Builder(withAPIKey: "${k}").with(entitlementVerificationMode: .disabled).build())`,
     use: `let offerings = try await Purchases.shared.offerings()\nlet result = try await Purchases.shared.purchase(package: offerings.current!.availablePackages[0])\nlet isPro = result.customerInfo.entitlements["pro"]?.isActive == true`,
   },
   kotlin: {
-    install: `implementation("com.revenuecat.purchases:purchases:10.24.0")`, installHint: "Add it to your app module's build.gradle.kts dependencies.",
-    configure: (u, k) => `// In Application.onCreate()\nPurchases.proxyURL = URL("${u}")\nPurchases.configure(PurchasesConfiguration.Builder(this, "${k}").build())`,
+    install: `implementation("app.revenuedot.purchases:purchases:10.23.3")`, installHint: "Add it to your app module's build.gradle.kts dependencies. It comes from Maven Central.",
+    configure: (u, k) => `// In Application.onCreate()\n${u === CLOUD_API ? `Purchases.configure(PurchasesConfiguration.Builder(this, "${k}").build())` : `Purchases.proxyURL = URL("${u}")   // your server, before configure\n// Your server signs with its own key, so turn the SDK's signature check off.\nPurchases.configure(PurchasesConfiguration.Builder(this, "${k}").entitlementVerificationMode(EntitlementVerificationMode.DISABLED).build())`}`,
+    proxy: (u, k) => `Purchases.proxyURL = URL("${u}")\nPurchases.configure(PurchasesConfiguration.Builder(this, "${k}").entitlementVerificationMode(EntitlementVerificationMode.DISABLED).build())`,
     use: `val offerings = Purchases.sharedInstance.awaitOfferings()\nval result = Purchases.sharedInstance.awaitPurchase(PurchaseParams.Builder(activity, offerings.current!!.availablePackages[0]).build())\nval isPro = result.customerInfo.entitlements["pro"]?.isActive == true`,
   },
   rn: {
-    install: "npm install react-native-purchases", installHint: "Then run pod install in ios/.",
-    configure: (u, k) => `import Purchases from "react-native-purchases";\n\nawait Purchases.setProxyURL("${u}");\nPurchases.configure({ apiKey: "${k}" });`,
+    install: "npm install react-native-purchases@npm:@revenuedot/react-native-purchases@10.10.2", installHint: "The alias keeps import Purchases from \"react-native-purchases\". Then run pod install in ios/. Works with Expo development builds.",
+    configure: (u, k) => `import Purchases from "react-native-purchases";\n\n${u === CLOUD_API ? "" : `await Purchases.setProxyURL("${u}");   // your server, before configure\n`}Purchases.configure({ apiKey: "${k}" });`,
+    proxy: (u, k) => `await Purchases.setProxyURL("${u}");\nPurchases.configure({ apiKey: "${k}" });`,
     use: `const offerings = await Purchases.getOfferings();\nconst { customerInfo } = await Purchases.purchasePackage(offerings.current.availablePackages[0]);\nconst isPro = customerInfo.entitlements.active["pro"] !== undefined;`,
   },
   flutter: {
-    install: "flutter pub add purchases_flutter", installHint: "Run it in your Flutter project.",
-    configure: (u, k) => `import 'package:purchases_flutter/purchases_flutter.dart';\n\nawait Purchases.setProxyURL("${u}");\nawait Purchases.configure(PurchasesConfiguration("${k}"));`,
+    install: "dependencies:\n  purchases_flutter:\n    git:\n      url: https://github.com/revenuedot/purchases-flutter.git\n      ref: 10.13.2-revenuedot", installHint: "Add it under dependencies in pubspec.yaml, then run flutter pub get. It is a git dependency because the pub.dev names belong to RevenueCat.",
+    configure: (u, k) => `import 'package:purchases_flutter/purchases_flutter.dart';\n\n${u === CLOUD_API ? "" : `await Purchases.setProxyURL("${u}");   // your server, before configure\n`}await Purchases.configure(PurchasesConfiguration("${k}"));`,
+    proxy: (u, k) => `await Purchases.setProxyURL("${u}");\nawait Purchases.configure(PurchasesConfiguration("${k}"));`,
     use: `final offerings = await Purchases.getOfferings();\nfinal info = await Purchases.purchasePackage(offerings.current!.availablePackages.first);\nfinal isPro = info.entitlements.active.containsKey("pro");`,
   },
 };
@@ -315,27 +324,29 @@ function SdkSnippet({ pid, apps, mode, setMode }: { pid: string; apps: App[]; mo
   const k = key.data?.items[0]?.key ?? "your_public_api_key";
   const url = apiOrigin();
   const s = SETUP[lang];
-  const keyHint = app ? <>Key of <b style={{ color: "var(--fg-2)" }}>{app.name}</b>. Set the proxy URL before configure.</> : "Add an app to get its public API key. Set the proxy URL before configure.";
+  const cloud = url === CLOUD_API;
+  const keyHint = app ? <>Key of <b style={{ color: "var(--fg-2)" }}>{app.name}</b>.{cloud ? "" : " Set the proxy URL before configure."}</> : `Add an app to get its public API key.${cloud ? "" : " Set the proxy URL before configure."}`;
+  const proxyHint = app ? <>Key of <b style={{ color: "var(--fg-2)" }}>{app.name}</b>. Set the proxy URL before configure.</> : "Add an app to get its public API key. Set the proxy URL before configure.";
   const label = LANGS.find((x) => x.value === lang)!.label;
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Segmented label="Your app" value={mode} options={[{ value: "fresh", label: "New to in-app purchases" }, { value: "moving", label: "Already on RevenueCat" }]} onChange={setMode} />
+        <Segmented label="Your app" value={mode} options={[{ value: "fresh", label: "Install the RevenueDot SDK" }, { value: "moving", label: "Switching from RevenueCat" }]} onChange={setMode} />
         <Segmented label="SDK" value={lang} options={LANGS} onChange={setLang} />
       </div>
       {mode === "fresh" ? (
         <>
-          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}><b>1. Add the SDK.</b> RevenueDot works with the open-source RevenueCat SDK (MIT), so you install that package.</p>
+          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}><b>1. Add the RevenueDot SDK.</b> It is built from RevenueCat's open-source SDK (MIT), so the code says RevenueCat and Purchases, but it talks only to RevenueDot. You do not need a RevenueCat account.</p>
           <CodeCard label={`${label} install`} code={s.install} hint={s.installHint} />
-          <p className="muted" style={{ margin: "14px 0 0", fontSize: 13 }}><b>2. Configure it at launch</b>, pointed at RevenueDot.</p>
+          <p className="muted" style={{ margin: "14px 0 0", fontSize: 13 }}><b>2. Configure it at launch</b> with this project's key{cloud ? "." : ", pointed at this server."}</p>
           <CodeCard label={`${label} setup code`} code={s.configure(url, k)} hint={keyHint} />
           <p className="muted" style={{ margin: "14px 0 0", fontSize: 13 }}><b>3. Show the offering, buy, and check access.</b></p>
           <CodeCard label={`${label} purchase code`} code={s.use} hint={<>Full guide: <a className="ul" href={`https://revenuedot.app/docs/sdks/${lang === "kotlin" ? "android" : lang === "swift" ? "ios" : lang === "rn" ? "react-native" : "flutter"}`} target="_blank" rel="noreferrer">{label} SDK</a></>} />
         </>
       ) : (
         <>
-          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}>Keep your code. Add one line before configure and use this project's key instead of the RevenueCat one (or keep your old key with the importer).</p>
-          <CodeCard label={`${label} setup code`} code={s.configure(url, k).split("\n").filter((l) => /proxy|ProxyURL|configure/i.test(l)).join("\n")} hint={keyHint} />
+          <p className="muted" style={{ margin: "12px 0 0", fontSize: 13 }}>Keep the RevenueCat SDK and your code. Add one line before configure, turn the SDK's signature check off, and use this project's key instead of the RevenueCat one (or keep your old key with the importer).</p>
+          <CodeCard label={`${label} setup code`} code={s.proxy(url, k)} hint={proxyHint} />
           <p className="muted" style={{ margin: "10px 0 0", fontSize: 13 }}>Moving customers and subscriptions too? <a className="ul" href="https://revenuedot.app/docs/migrate" target="_blank" rel="noreferrer">Migrate from RevenueCat</a>.</p>
         </>
       )}
@@ -425,9 +436,9 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
     { key: "offering", title: "Create an offering", done: s.offerings.some((o) => o.is_current),
       text: "An offering is the set of packages your paywall shows. Mark one as current and change it later without an app release.",
       action: <Link className="btn btn-line" to={`${base}/product-catalog/offerings`}>{s.offerings.length ? "View offerings" : "Add an offering"}</Link> },
-    { key: "sdk", title: mode === "fresh" ? "Add the SDK to your app" : "Point your SDK at RevenueDot", done: s.hasCustomer,
+    { key: "sdk", title: mode === "fresh" ? "Add the RevenueDot SDK to your app" : "Point your SDK at RevenueDot", done: s.hasCustomer,
       text: mode === "fresh"
-        ? "Install the SDK, configure it with this project's key, and show your offering. Customers appear here after the app's first call."
+        ? "Install the RevenueDot SDK, configure it with this project's key, and show your offering. Customers appear here after the app's first call."
         : "Keep the RevenueCat SDK you already ship and change one line. Customers appear here after the app's first call.",
       body: <SdkSnippet pid={pid} apps={s.apps} mode={mode} setMode={setMode} /> },
     { key: "purchase", title: "Send a test purchase", done: s.hasPurchase,

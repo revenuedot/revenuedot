@@ -5,6 +5,6 @@ import { platformLogo } from "../../lib/platform-logos";
 const cards = LANDINGS.filter((l) => l.section === "sdks").map((l) => ({ href: landingPath(l), title: l.name, text: l.card, logo: platformLogo(l.slug) }));
 ---
 <Hub path="/sdks" name="SDKs" label="SDKs" title={"SDKs: in-app purchases for every platform"} metaTitle={"SDKs: iOS, Android, Flutter, React Native and more"}
-  description={"Use the RevenueCat SDK you already ship, or our MIT forks, on iOS, Android, React Native, Flutter, web, Capacitor, Cordova, Unity and Kotlin Multiplatform."}
-  answer={"RevenueDot works with the RevenueCat SDKs on every platform they support. Set the SDK's proxy URL to RevenueDot and your purchase code stays the same. If you prefer packages that point at RevenueDot out of the box, use our MIT-licensed forks of all ten SDKs."}
+  description={"RevenueDot has an SDK for every platform: iOS, Android, React Native and Expo, Flutter, web, Capacitor, Cordova, Unity and Kotlin Multiplatform."}
+  answer={"RevenueDot has an SDK for every platform: iOS, Android, React Native and Expo, Flutter, web, Capacitor, Cordova, Unity and Kotlin Multiplatform. Install the SDK for your platform and configure it with your app's key from a free RevenueDot Cloud project. RevenueDot checks each purchase with the store and keeps each customer's access in sync. Switching from RevenueCat? Keep your SDK and change one line."}
   groups={[{ title: "All SDKs", cards }]} />

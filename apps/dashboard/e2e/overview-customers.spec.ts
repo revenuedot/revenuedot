@@ -28,24 +28,24 @@ test("first run: an empty project shows the setup checklist, the SDK line and th
   await expect(setup).toBeVisible();
   await expect(setup.getByLabel("0 of 6 steps done")).toBeVisible();
   await expect(page.getByRole("region", { name: "Key metrics" })).toHaveCount(0);
-  // A new app gets install, configure and purchase code; an app on RevenueCat gets the one-line change.
-  await expect(setup.getByRole("heading", { name: "Add the SDK to your app" })).toBeVisible();
-  await expect(setup.getByLabel("Swift install", { exact: true })).toContainText("https://github.com/RevenueCat/purchases-ios-spm.git");
+  // A new app gets the RevenueDot SDK's install, configure and purchase code; an app on RevenueCat gets the one-line change.
+  await expect(setup.getByRole("heading", { name: "Add the RevenueDot SDK to your app" })).toBeVisible();
+  await expect(setup.getByLabel("Swift install", { exact: true })).toContainText("https://github.com/revenuedot/purchases-ios");
   await expect(setup.getByLabel("Swift setup code", { exact: true })).toContainText(`Purchases.proxyURL = URL(string: "${new URL(page.url()).origin}")!`);
   await expect(setup.getByLabel("Swift purchase code", { exact: true })).toContainText("Purchases.shared.purchase(package:");
   await setup.getByRole("button", { name: "Kotlin" }).click();
-  await expect(setup.getByLabel("Kotlin install", { exact: true })).toContainText("com.revenuecat.purchases:purchases:");
+  await expect(setup.getByLabel("Kotlin install", { exact: true })).toContainText("app.revenuedot.purchases:purchases:");
   await expect(setup.getByLabel("Kotlin setup code", { exact: true })).toContainText("Purchases.proxyURL = URL(");
   await setup.getByRole("button", { name: "React Native" }).click();
-  await expect(setup.getByLabel("React Native install", { exact: true })).toContainText("npm install react-native-purchases");
+  await expect(setup.getByLabel("React Native install", { exact: true })).toContainText("npm install react-native-purchases@npm:@revenuedot/react-native-purchases");
   await setup.getByRole("button", { name: "Flutter" }).click();
-  await expect(setup.getByLabel("Flutter install", { exact: true })).toContainText("flutter pub add purchases_flutter");
-  await setup.getByRole("button", { name: "Already on RevenueCat" }).click();
+  await expect(setup.getByLabel("Flutter install", { exact: true })).toContainText("https://github.com/revenuedot/purchases-flutter.git");
+  await setup.getByRole("button", { name: "Switching from RevenueCat" }).click();
   await expect(setup.getByRole("heading", { name: "Point your SDK at RevenueDot" })).toBeVisible();
   await expect(setup.getByLabel("Flutter install", { exact: true })).toHaveCount(0);
   await expect(setup.getByLabel("Flutter setup code", { exact: true })).toContainText("await Purchases.setProxyURL(");
   await expect(setup.getByLabel("Flutter setup code", { exact: true })).not.toContainText("import");
-  await setup.getByRole("button", { name: "New to in-app purchases" }).click();
+  await setup.getByRole("button", { name: "Install the RevenueDot SDK" }).click();
   await expect(page.getByRole("region", { name: "Setup health" })).toContainText("No apps connected");
 
   await setup.getByRole("button", { name: "Make a test purchase" }).click();

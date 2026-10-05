@@ -32,7 +32,7 @@ import { SITE } from "../site";
   <h2>In scope</h2>
   <ul>
     <li>The open-source server, dashboard, importer, CLI and MCP server in <a href={SITE.org} rel="noopener">github.com/revenuedot</a>.</li>
-    <li>The RevenueDot SDK forks, for issues our patches introduce. Issues in upstream RevenueCat code should also go to RevenueCat.</li>
+    <li>The RevenueDot SDKs, for issues our patches introduce. They are built from RevenueCat's open-source SDKs, so issues in that upstream code should also go to RevenueCat.</li>
     <li>RevenueDot Cloud and revenuedot.app, including api.revenuedot.app.</li>
   </ul>
   <p>We are especially interested in: granting or keeping entitlements without a valid purchase, bypassing receipt or notification signature checks, reading another project's data, webhook signature bypass, and authentication or session flaws.</p>
@@ -54,7 +54,7 @@ import { SITE } from "../site";
     <li>App Store notifications are checked against Apple's signature, Google Play pushes can require a Google-signed token, and every Google notification is confirmed with the Play Developer API before it changes state.</li>
     <li>Webhooks carry an Authorization header and an HMAC signature so your backend can verify them.</li>
     <li>Passwords are hashed with PBKDF2; sessions use HttpOnly cookies.</li>
-    <li>SDK responses are signed so the SDKs' Trusted Entitlements verification works with the RevenueDot forks.</li>
+    <li>SDK responses are signed, so the RevenueDot SDK's Trusted Entitlements verification can check them.</li>
   </ul>
   <p>A machine-readable contact file is at <a href="/.well-known/security.txt">/.well-known/security.txt</a>.</p>
 </Legal>

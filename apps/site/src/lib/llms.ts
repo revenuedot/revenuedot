@@ -9,7 +9,7 @@ export const llmsShards = () => readdirSync(path.join(docsDir(), "llms")).filter
 export const textResponse = (body: string) => new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
 
 /** One plain status sentence for the top of the llms files; keep it in step with the README and the pricing page. */
-export const STATUS_SENTENCE = "RevenueDot is the open-source RevenueCat alternative: the first release is v2026.10.03, it has run in production beside RevenueCat since 2026-10-02, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month.";
+export const STATUS_SENTENCE = "RevenueDot is an open-source backend for in-app purchases and subscriptions on the App Store, Google Play, Amazon, Stripe and the web: a new app installs the RevenueDot SDK and needs no RevenueCat account, and an app on RevenueCat can switch by changing one line. The first release is v2026.10.03, it has run in production beside RevenueCat since 2026-10-02, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month.";
 
 /** The "Videos" section: one line per tutorial with its YouTube title, a sentence, the watch page and the YouTube URL. */
 export function videosSection(heading = "## Videos"): string {
