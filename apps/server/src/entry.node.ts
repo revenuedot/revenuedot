@@ -111,6 +111,9 @@ const app = createApp({ db, now: () => new Date(), stores, kick: () => kick(), s
   // else OPENAI_API_KEY, else ANTHROPIC_API_KEY; REVENUEDOT_PAYWALL_MODEL picks the model; off without a key.
   ai: paywallModelFromEnv(process.env), apiUrl: process.env.REVENUEDOT_API_URL?.trim() || undefined, googleOAuth,
   // Hosted web pages (purchase links, funnels): REVENUEDOT_PAY_URL, else <this server>/pay; custom domains CNAME to the pay host.
+  // Daily chart rollups (services/charts/rollups.ts): REVENUEDOT_CHART_ROLLUPS=off turns them off; the budget is per run.
+  chartRollups: process.env.REVENUEDOT_CHART_ROLLUPS?.trim() !== "off",
+  chartRollupBudgetMs: Number(process.env.REVENUEDOT_CHART_ROLLUP_BUDGET_MS) > 0 ? Number(process.env.REVENUEDOT_CHART_ROLLUP_BUDGET_MS) : undefined,
   payUrl: process.env.REVENUEDOT_PAY_URL?.trim() || undefined, customDomainTarget: process.env.REVENUEDOT_CUSTOM_DOMAIN_TARGET?.trim() || undefined,
   cloudflareSaas: process.env.REVENUEDOT_CF_SAAS_ZONE_ID?.trim() && process.env.REVENUEDOT_CF_SAAS_API_TOKEN?.trim()
     ? { zoneId: process.env.REVENUEDOT_CF_SAAS_ZONE_ID.trim(), apiToken: process.env.REVENUEDOT_CF_SAAS_API_TOKEN.trim() } : undefined,

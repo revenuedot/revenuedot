@@ -235,14 +235,21 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   if (segment) { query.set("segment", segment); query.set("limit_num_segments", "5"); }
   if (filters.length) query.set("filters", JSON.stringify(filters));
   if (Object.keys(selectors).length) query.set("selectors", JSON.stringify(selectors));
-  const data = useQuery({ queryKey: ["chart", pid, def.name, query.toString()], queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${query}`), placeholderData: keepPreviousData });
+  // The page reads the daily rollups when they are fresh (`realtime=false`); Refresh asks once for numbers computed from
+  // the rows (`realtime=true`) and shows that answer, the comparison too, until the view changes.
+  const base = query.toString();
+  const [liveFor, setLiveFor] = useState<{ q: string; n: number } | null>(null);
+  const [toastPending, setToastPending] = useState(false);
+  const live = liveFor?.q === base;
+  query.set("realtime", live ? "true" : "false");
+  const data = useQuery({ queryKey: ["chart", pid, def.name, query.toString(), live ? liveFor!.n : 0], queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${query}`), placeholderData: keepPreviousData });
   // Compare: the window of the same length that ends the day before this one starts, at the same resolution.
   // A hand-edited or saved URL can carry any start and end; iso() throws on an invalid date, so compare needs valid days.
   const startMs = Date.parse(`${start}T00:00:00Z`), span = Date.parse(`${end}T00:00:00Z`) - startMs;
   const canCompare = compare && Number.isFinite(startMs) && Number.isFinite(span) && span >= 0;
   const prevQuery = new URLSearchParams(query);
   if (canCompare) { prevQuery.set("end_date", iso(startMs - DAY)); prevQuery.set("start_date", iso(startMs - DAY - span)); }
-  const prev = useQuery({ queryKey: ["chart", pid, def.name, prevQuery.toString()], enabled: canCompare, queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${prevQuery}`) });
+  const prev = useQuery({ queryKey: ["chart", pid, def.name, prevQuery.toString(), live ? liveFor!.n : 0], enabled: canCompare, queryFn: () => api<ChartData>(`/v2/projects/${pid}/charts/${def.name}?${prevQuery}`) });
   const annotations = useAnnotations(pid, start, end);
   const saved = useSaved(pid);
   const savedNow = saved.data?.items.find((x) => x.id === savedId) ?? null;
@@ -269,9 +276,15 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
   const seriesCount = segmented ? body!.segments!.filter((x) => !x.is_total).length : groups[gi]?.length ?? 1;
   const chartType = chartTypeFor(def, sp.get("type"), seriesCount, segmented);
   const refresh = async () => {
-    await Promise.all([["chart", pid, def.name], ["chart-options", pid, def.name], ["chart-customers", pid, def.name], annotationsKey(pid)].map((queryKey) => qc.invalidateQueries({ queryKey })));
-    toast("Chart recomputed");
+    setLiveFor({ q: base, n: Date.now() });
+    setToastPending(true);
+    await Promise.all([["chart-options", pid, def.name], ["chart-customers", pid, def.name], annotationsKey(pid)].map((queryKey) => qc.invalidateQueries({ queryKey })));
   };
+  // "Chart recomputed" once the live answer is here.
+  useEffect(() => { if (!live && toastPending) setToastPending(false); }, [live, toastPending]);
+  useEffect(() => {
+    if (toastPending && live && data.isSuccess && !data.isFetching && (!canCompare || (prev.isSuccess && !prev.isFetching))) { setToastPending(false); toast("Chart recomputed"); }
+  }, [toastPending, live, data.isSuccess, data.isFetching, canCompare, prev.isSuccess, prev.isFetching, toast]);
   const askAi = () => {
     const params = Object.fromEntries(query.entries());
     const label = def.display_name;

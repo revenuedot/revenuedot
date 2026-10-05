@@ -25,6 +25,8 @@ services:
       REVENUEDOT_PUBLIC_URL: ${REVENUEDOT_PUBLIC_URL:-}
       REVENUEDOT_PAY_URL: ${REVENUEDOT_PAY_URL:-}
       REVENUEDOT_CUSTOM_DOMAIN_TARGET: ${REVENUEDOT_CUSTOM_DOMAIN_TARGET:-}
+      REVENUEDOT_CHART_ROLLUPS: ${REVENUEDOT_CHART_ROLLUPS:-}
+      REVENUEDOT_CHART_ROLLUP_BUDGET_MS: ${REVENUEDOT_CHART_ROLLUP_BUDGET_MS:-}
       # Seals integration and data export credentials at rest (see .env.example).
       REVENUEDOT_ENCRYPTION_KEY: ${REVENUEDOT_ENCRYPTION_KEY:-}
       # "Generate with AI" on paywalls and RevenueDot AI, the assistant: off without a key (see .env.example).
