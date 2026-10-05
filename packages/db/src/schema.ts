@@ -712,6 +712,18 @@ export const journeySends = pgTable("journey_sends", {
   sentAt: ts("sent_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.userId, t.step] }), uniqueIndex("journey_sends_token").on(t.tokenHash), index("journey_sends_time").on(t.userId, t.sentAt)]);
 
+/**
+ * One-click answers from onboarding and growth emails (prd/onboarding-emails/PRD.md): `kind` "nps" (value 0 to 10) or
+ * "cancel" (the reason a customer left Cloud Standard), with an optional comment. The latest answer per user and kind wins.
+ */
+export const journeyFeedback = pgTable("journey_feedback", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  value: text("value").notNull(),
+  comment: text("comment"),
+  createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.userId, t.kind] })]);
+
 /** The daily revenue anomaly check per project and UTC day (YYYY-MM-DD): run once, emailed from the result. */
 export const anomalyChecks = pgTable("anomaly_checks", {
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),

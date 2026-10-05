@@ -20,7 +20,7 @@ const token = "preview-token-0123456789abcdef";
 
 /** The account each email is shown for: a Flutter habit app founder, the persona most of these emails speak to. */
 const base = (step: StepId): JourneyCtx => ({
-  step, app, first: "Maya", projectId: "proj_hab1t5", projectName: "Habitly",
+  step, app, first: "Maya", projectId: "proj_hab1t5", projectName: "Habitly", to: "maya@habitly.app",
   unsubscribeUrl: `${app}/auth/journeys/unsubscribe/${token}`,
   pathUrl: (p) => `${app}/auth/journeys/path/${token}?path=${p}`,
   verifyUrl: `${app}/verify-email?token=${token}`,
@@ -37,6 +37,11 @@ const ctxFor = (step: StepId): JourneyCtx => {
   const c = base(step);
   c.bills = { revenuedot: rd(c.tracked!), revenuecat: rc(c.tracked!) };
   if (step === "teammate_welcome") c.first = "Jordan";
+  // The setup tracker as each step would see it.
+  const at = { welcome: 0, first_purchase: 0, connect_app: 1, store_keys: 2, go_live: 3, first_sale: 4 } as Record<string, number>;
+  const n = at[step] ?? 4;
+  c.progress = { testPurchase: n >= 1, app: n >= 2, store: n >= 3, live: n >= 4 };
+  c.feedbackUrl = (kind, value) => `${app}/auth/journeys/feedback/${token}?kind=${kind}&value=${encodeURIComponent(value)}`;
   c.last7 = 11_270; c.projected = Math.round((c.last7 * 30) / 7);
   c.overTracked = 13_870; c.overMonth = "September"; c.importedOn = "September 24";
   c.liveSince = "September 2";

@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0045_chart_rollups";
+export const ARCHIVE_SCHEMA = "0046_journey_feedback";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -153,6 +153,7 @@ export const NOT_EXPORTED: Record<string, string> = {
   notification_prefs: "Each person's email choices stay with their account; they choose again on the target.",
   notification_sends: "Which summary and alert emails this server already sent.",
   journey_sends: "Which onboarding and growth emails RevenueDot Cloud already sent to this account.",
+  journey_feedback: "Answers to RevenueDot Cloud's own emails (ratings, reasons for leaving).",
   anomaly_checks: "Daily revenue anomaly results of this server; the target checks again.",
   store_listings: "A cache of App Store and Google Play prices; the target reads them from the stores again.",
   store_listing_syncs: "When this server last read each app's store prices.",

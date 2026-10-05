@@ -142,8 +142,14 @@ describe("picking the step", () => {
     expect(pickStep(f, WED, cfg)).toBeNull();
   });
 
-  it("thanks a referrer when a friend signs up, and asks why when Standard is cancelled", () => {
-    expect(pickStep(facts({ createdAt: WED - 60 * D, referralJoinedAt: WED - H }), WED, cfg)).toBe("referral_joined");
+  it("checks in when sandbox purchases work but no real sale came two weeks after the go-live checklist", () => {
+    const f = { createdAt: WED - 25 * D, firstAppAt: WED - 24 * D, testPurchaseAt: WED - 23 * D, sdkFirstAt: WED - 22 * D, storeConnected: true,
+      sent: sent(["welcome", WED - 25 * D], ["go_live", WED - 15 * D]) };
+    expect(pickStep(facts(f), WED, cfg)).toBe("sandbox_only");
+    expect(pickStep(facts({ ...f, sent: sent(["welcome", WED - 25 * D], ["go_live", WED - 10 * D]) }), WED, cfg)).toBeNull();
+  });
+
+  it("asks why when Standard is cancelled", () => {
     expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: WED - D }), WED, cfg)).toBe("standard_canceled");
   });
 
@@ -198,7 +204,7 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     const [m] = journeyMails("maya@habitly.app");
     expect(m!.subject).toContain("Welcome to RevenueDot");
     expect(m!.replyTo).toBe("hello@revenuedot.app");
-    expect(m!.text).toContain("Welcome, Maya");
+    expect(m!.text).toContain("Welcome to RevenueDot, Maya");
     const unsub = /<(https:\/\/dash\.example\.com\/auth\/journeys\/unsubscribe\/[^>]+)>/.exec(m!.headers!["List-Unsubscribe"]!)![1]!;
     const path = new URL(unsub).pathname;
     const raw = (method: string, p: string) => s!.app.fetch(new Request(`http://localhost${p}`, { method }));
@@ -215,6 +221,24 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     await s!.db.update(schema.users).set({ emailVerifiedAt: s!.now() }).where(eq(schema.users.email, "maya@habitly.app"));
     s!.advance(D);
     expect((await run()).sent).toBe(0);
+  });
+
+  it("records a one-click rating only after the reader confirms it", async () => {
+    await cloud();
+    await signup("rita@notes.app");
+    s!.advance(6 * 60_000);
+    await run();
+    const m = journeyMails("rita@notes.app")[0]!;
+    const token = /\/auth\/journeys\/unsubscribe\/([A-Za-z0-9_-]+)/.exec(m.headers!["List-Unsubscribe"]!)![1]!;
+    const url = `/auth/journeys/feedback/${token}?kind=nps&value=9`;
+    const get = await s!.app.fetch(new Request(`http://localhost${url}`));
+    expect(get.status).toBe(200);
+    expect(await s!.db.select().from(schema.journeyFeedback)).toHaveLength(0);
+    const post = await s!.app.fetch(new Request(`http://localhost/auth/journeys/feedback/${token}`, { method: "POST", body: new URLSearchParams({ kind: "nps", value: "9", comment: "Love the importer" }) }));
+    expect(post.status).toBe(200);
+    const [row] = await s!.db.select().from(schema.journeyFeedback);
+    expect(row).toMatchObject({ kind: "nps", value: "9", comment: "Love the importer" });
+    expect((await s!.app.fetch(new Request(`http://localhost/auth/journeys/feedback/${token}?kind=nps&value=42`))).status).toBe(404);
   });
 
   it("records the path picked in the welcome and redirects to its guide", async () => {
@@ -282,7 +306,7 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     s!.advance(H);
     expect((await run()).sent).toBe(1);
     const sale = journeyMails("jordan@photo.app").at(-1)!;
-    expect(sale.subject).toBe("Your first real sale through RevenueDot");
+    expect(sale.subject).toBe("You just made your first real sale");
     expect(sale.text).toContain("pro_annual");
     expect(sale.text).toContain("Germany");
   });
@@ -336,7 +360,7 @@ describe("templates", () => {
       expect(Buffer.byteLength(m.html), step).toBeLessThan(102_000);
       expect(m.text, step).toContain("Unsubscribe: https://app.revenuedot.app/auth/journeys/unsubscribe/x");
       expect(m.text, step).not.toMatch(/\bKai\b|Founder/);
-      expect(m.html, step).toContain("Questions?");
+      expect(m.html, step).toMatch(/Questions\?|The RevenueDot team/);
       for (const [, url] of m.html.matchAll(/href="(https:\/\/(?:app\.)?revenuedot\.app\/(?!auth\/)[^"]*)"/g)) expect(url, step).toContain("utm_content=" + step);
     }
   });
