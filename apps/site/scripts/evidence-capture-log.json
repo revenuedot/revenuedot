@@ -237,34 +237,6 @@
   },
   {
     "vendor": "revenuecat",
-    "page": "docs-quickstart",
-    "url": "https://www.revenuecat.com/docs/getting-started/quickstart",
-    "ok": true,
-    "full": [
-      "docs-quickstart-full-1-2026-10-04.png",
-      "docs-quickstart-full-2-2026-10-04.png",
-      "docs-quickstart-full-3-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "platforms",
-        "file": "docs-quickstart-platforms-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 267.5,
-          "y": 579.171875,
-          "width": 800,
-          "height": 560
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "SDK Quickstart | In-App Subscriptions Made Easy – RevenueCat",
-    "pageHeight": 8019
-  },
-  {
-    "vendor": "revenuecat",
     "page": "docs-web-overview",
     "url": "https://www.revenuecat.com/docs/web/overview",
     "ok": true,
@@ -406,58 +378,6 @@
   },
   {
     "vendor": "revenuecat",
-    "page": "docs-llms-txt",
-    "url": "https://www.revenuecat.com/docs/llms.txt",
-    "ok": true,
-    "full": [
-      "docs-llms-txt-full-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "virtual-currency",
-        "file": "docs-llms-txt-virtual-currency-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 4,
-          "y": 0,
-          "width": 1240,
-          "height": 937
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "",
-    "pageHeight": 929
-  },
-  {
-    "vendor": "revenuecat",
-    "page": "docs-platform-resources-llms-txt",
-    "url": "https://www.revenuecat.com/docs/platform-resources/llms.txt",
-    "ok": true,
-    "full": [
-      "docs-platform-resources-llms-txt-full-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "amazon-galaxy",
-        "file": "docs-platform-resources-llms-txt-amazon-galaxy-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 4,
-          "y": 139.5,
-          "width": 1240,
-          "height": 720
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "",
-    "pageHeight": 1241
-  },
-  {
-    "vendor": "revenuecat",
     "page": "docs-ai-toolkit",
     "url": "https://www.revenuecat.com/docs/tools/ai-toolkit",
     "ok": true,
@@ -515,89 +435,6 @@
   },
   {
     "vendor": "adapty",
-    "page": "pricing",
-    "url": "https://adapty.io/pricing/",
-    "ok": true,
-    "full": [
-      "pricing-full-1-2026-10-04.png",
-      "pricing-full-2-2026-10-04.png",
-      "pricing-full-3-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "free-under-5k-then-1-percent",
-        "file": "pricing-free-under-5k-then-1-percent-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 120,
-          "y": 234.96875,
-          "width": 800,
-          "height": 470
-        }
-      },
-      {
-        "claim": "add-ons",
-        "file": "pricing-add-ons-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 70,
-          "y": 4908.640625,
-          "width": 1140,
-          "height": 808.8125
-        }
-      },
-      {
-        "claim": "templates-and-ab-tests",
-        "file": "pricing-templates-and-ab-tests-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 150,
-          "y": 2398.1640625,
-          "width": 980,
-          "height": 620
-        }
-      },
-      {
-        "claim": "soc2-and-residency",
-        "file": "pricing-soc2-and-residency-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 70,
-          "y": 3587.71875,
-          "width": 1140,
-          "height": 750.9375
-        }
-      },
-      {
-        "claim": "faq-what-counts",
-        "file": "pricing-faq-what-counts-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 500,
-          "y": 5949.734375,
-          "width": 780,
-          "height": 660
-        }
-      },
-      {
-        "claim": "faq-migration",
-        "file": "pricing-faq-migration-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 500,
-          "y": 6792.703125,
-          "width": 780,
-          "height": 520
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "Get free SDK and Grow Mobile In-App Purchases | Adapty",
-    "pageHeight": 8089
-  },
-  {
-    "vendor": "adapty",
     "page": "security-and-compliance",
     "url": "https://adapty.io/security-and-compliance/",
     "ok": true,
@@ -649,20 +486,6 @@
     "status": 200,
     "title": "Migrate from RevenueCat to Adapty | Adapty Docs",
     "pageHeight": 11374
-  },
-  {
-    "vendor": "adapty",
-    "page": "docs-llms-txt",
-    "url": "https://adapty.io/docs/llms.txt",
-    "ok": false,
-    "full": [
-      "docs-llms-txt-full-1-2026-10-04.png"
-    ],
-    "crops": [],
-    "error": "TimeoutError: page.screenshot: Timeout 30000ms exceeded.\nCall log:\n  - taking page screenshot\n  - waiting for fonts to load...\n  - fonts loaded\n",
-    "status": 200,
-    "title": "",
-    "pageHeight": 31505
   },
   {
     "vendor": "adapty",
@@ -745,82 +568,6 @@
     "status": 200,
     "title": "Subscription Growth Platform | Qonversion",
     "pageHeight": 8504
-  },
-  {
-    "vendor": "qonversion",
-    "page": "pricing",
-    "url": "https://qonversion.io/pricing",
-    "ok": true,
-    "full": [
-      "pricing-full-1-2026-10-04.png",
-      "pricing-full-2-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "free-to-7k-then-0-8-percent",
-        "file": "pricing-free-to-7k-then-0-8-percent-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 108,
-          "y": 142,
-          "width": 1064,
-          "height": 566
-        }
-      },
-      {
-        "claim": "faq-total-tracked-revenue",
-        "file": "pricing-faq-total-tracked-revenue-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 236,
-          "y": 3835.578125,
-          "width": 808,
-          "height": 420
-        }
-      },
-      {
-        "claim": "plan-includes",
-        "file": "pricing-plan-includes-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 56,
-          "y": 556,
-          "width": 800,
-          "height": 776
-        }
-      },
-      {
-        "claim": "compliance-and-support",
-        "file": "pricing-compliance-and-support-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 500,
-          "y": 2122.1875,
-          "width": 780,
-          "height": 560
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "Pricing for Subscription Infrastructure | Qonversion",
-    "pageHeight": 5921
-  },
-  {
-    "vendor": "qonversion",
-    "page": "docs-llms-txt",
-    "url": "https://documentation.qonversion.io/llms.txt",
-    "ok": false,
-    "full": [
-      "docs-llms-txt-full-1-2026-10-04.png",
-      "docs-llms-txt-full-2-2026-10-04.png",
-      "docs-llms-txt-full-3-2026-10-04.png"
-    ],
-    "crops": [],
-    "error": "TimeoutError: page.screenshot: Timeout 180000ms exceeded.\nCall log:\n  - taking page screenshot\n  - waiting for fonts to load...\n  - fonts loaded\n",
-    "status": 200,
-    "title": "",
-    "pageHeight": 27176
   },
   {
     "vendor": "qonversion",
@@ -932,34 +679,6 @@
     "status": 200,
     "title": "GitHub - qonversion/qonversion-ios-sdk: iOS SDK for cross-platform in-app purchase and subscription infrastructure, revenue analytics, engagement automation, and integrations · GitHub",
     "pageHeight": 9307
-  },
-  {
-    "vendor": "qonversion",
-    "page": "revenuecat-alternative",
-    "url": "https://qonversion.io/revenuecat-alternative",
-    "ok": true,
-    "full": [
-      "revenuecat-alternative-full-1-2026-10-04.png",
-      "revenuecat-alternative-full-2-2026-10-04.png",
-      "revenuecat-alternative-full-3-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "free-tier-comparison",
-        "file": "revenuecat-alternative-free-tier-comparison-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 0,
-          "y": 1164,
-          "width": 1280,
-          "height": 496.375
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "RevenueCat Alternative | Qonversion",
-    "pageHeight": 9485
   },
   {
     "vendor": "superwall",
@@ -1275,92 +994,6 @@
     "status": 200,
     "title": "More than analytics for iOS and Android in-app subscriptions – Apphud",
     "pageHeight": 10892
-  },
-  {
-    "vendor": "apphud",
-    "page": "pricing",
-    "url": "https://apphud.com/pricing",
-    "ok": true,
-    "full": [
-      "pricing-full-1-2026-10-04.png",
-      "pricing-full-2-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "free-10k-pro-expert",
-        "file": "pricing-free-10k-pro-expert-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 0,
-          "y": 367.3125,
-          "width": 800,
-          "height": 819.953125
-        }
-      },
-      {
-        "claim": "overage-rates",
-        "file": "pricing-overage-rates-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 12,
-          "y": 3042.265625,
-          "width": 1256,
-          "height": 520
-        }
-      },
-      {
-        "claim": "grace-period",
-        "file": "pricing-grace-period-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 12,
-          "y": 3140.265625,
-          "width": 1256,
-          "height": 460
-        }
-      },
-      {
-        "claim": "seats-and-webhooks",
-        "file": "pricing-seats-and-webhooks-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 393.625,
-          "y": 433.3125,
-          "width": 800,
-          "height": 825.953125
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "Price - Apphud",
-    "pageHeight": 4917
-  },
-  {
-    "vendor": "apphud",
-    "page": "data-protection",
-    "url": "https://apphud.com/data-protection",
-    "ok": true,
-    "full": [
-      "data-protection-full-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "eu-and-us",
-        "file": "data-protection-eu-and-us-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 44,
-          "y": 1429.5,
-          "width": 1192,
-          "height": 420
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "How Apphud Protects Your Data - GDPR/CCPA Compliance – Apphud",
-    "pageHeight": 3546
   },
   {
     "vendor": "apphud",
@@ -2104,5 +1737,422 @@
     "status": 200,
     "title": "GitHub - revenuedot/revenuedot: The open-source RevenueCat alternative. Open-source SDKs, server, paywalls, experiments, web checkout, Customer Center, 43 charts and 36 integrations for subscription apps on iOS, Android and the web. Works with the RevenueCat SDK: switch with one line, self-host free or use RevenueDot Cloud. · GitHub",
     "pageHeight": 35112
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-quickstart",
+    "url": "https://www.revenuecat.com/docs/getting-started/quickstart",
+    "ok": true,
+    "full": [
+      "docs-quickstart-full-1-2026-10-04.png",
+      "docs-quickstart-full-2-2026-10-04.png",
+      "docs-quickstart-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "platforms",
+        "file": "docs-quickstart-platforms-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 429.171875,
+          "width": 800,
+          "height": 860
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "SDK Quickstart | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 8019
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-llms-txt",
+    "url": "https://www.revenuecat.com/docs/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "virtual-currency",
+        "file": "docs-llms-txt-virtual-currency-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 422,
+          "width": 920,
+          "height": 340
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 1448
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-platform-resources-llms-txt",
+    "url": "https://www.revenuecat.com/docs/platform-resources/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-platform-resources-llms-txt-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "amazon-galaxy",
+        "file": "docs-platform-resources-llms-txt-amazon-galaxy-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 492,
+          "width": 920,
+          "height": 720
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 2000
+  },
+  {
+    "vendor": "adapty",
+    "page": "pricing",
+    "url": "https://adapty.io/pricing/",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-under-5k-then-1-percent",
+        "file": "pricing-free-under-5k-then-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 120,
+          "y": 234.96875,
+          "width": 800,
+          "height": 470
+        }
+      },
+      {
+        "claim": "add-ons",
+        "file": "pricing-add-ons-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 4908.640625,
+          "width": 1140,
+          "height": 808.8125
+        }
+      },
+      {
+        "claim": "templates-and-ab-tests",
+        "file": "pricing-templates-and-ab-tests-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 150,
+          "y": 2398.1640625,
+          "width": 980,
+          "height": 620
+        }
+      },
+      {
+        "claim": "soc2-and-residency",
+        "file": "pricing-soc2-and-residency-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 3587.71875,
+          "width": 1140,
+          "height": 750.9375
+        }
+      },
+      {
+        "claim": "faq-what-counts",
+        "file": "pricing-faq-what-counts-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 6084.046875,
+          "width": 780,
+          "height": 560
+        }
+      },
+      {
+        "claim": "faq-when-1-percent",
+        "file": "pricing-faq-when-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 6162.125,
+          "width": 780,
+          "height": 560
+        }
+      },
+      {
+        "claim": "faq-migration",
+        "file": "pricing-faq-migration-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 6802.703125,
+          "width": 780,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Get free SDK and Grow Mobile In-App Purchases | Adapty",
+    "pageHeight": 7890
+  },
+  {
+    "vendor": "adapty",
+    "page": "docs-llms-txt",
+    "url": "https://adapty.io/docs/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png",
+      "docs-llms-txt-full-2-2026-10-04.png",
+      "docs-llms-txt-full-3-2026-10-04.png",
+      "docs-llms-txt-full-4-2026-10-04.png",
+      "docs-llms-txt-full-5-2026-10-04.png",
+      "docs-llms-txt-full-6-2026-10-04.png",
+      "docs-llms-txt-full-7-2026-10-04.png",
+      "docs-llms-txt-full-8-2026-10-04.png",
+      "docs-llms-txt-full-9-2026-10-04.png",
+      "docs-llms-txt-full-10-2026-10-04.png",
+      "docs-llms-txt-full-11-2026-10-04.png",
+      "docs-llms-txt-full-12-2026-10-04.png",
+      "docs-llms-txt-full-13-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe-paddle",
+        "file": "docs-llms-txt-stripe-paddle-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 5028,
+          "width": 920,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 50792
+  },
+  {
+    "vendor": "qonversion",
+    "page": "pricing",
+    "url": "https://qonversion.io/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-to-7k-then-0-8-percent",
+        "file": "pricing-free-to-7k-then-0-8-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 108,
+          "y": 142,
+          "width": 1064,
+          "height": 566
+        }
+      },
+      {
+        "claim": "faq-total-tracked-revenue",
+        "file": "pricing-faq-total-tracked-revenue-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 236,
+          "y": 3797.1875,
+          "width": 808,
+          "height": 736.78125
+        }
+      },
+      {
+        "claim": "plan-includes",
+        "file": "pricing-plan-includes-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 56,
+          "y": 556,
+          "width": 800,
+          "height": 776
+        }
+      },
+      {
+        "claim": "compliance-and-support",
+        "file": "pricing-compliance-and-support-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 2122.1875,
+          "width": 780,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing for Subscription Infrastructure | Qonversion",
+    "pageHeight": 5921
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-llms-txt",
+    "url": "https://documentation.qonversion.io/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png",
+      "docs-llms-txt-full-2-2026-10-04.png",
+      "docs-llms-txt-full-3-2026-10-04.png",
+      "docs-llms-txt-full-4-2026-10-04.png",
+      "docs-llms-txt-full-5-2026-10-04.png",
+      "docs-llms-txt-full-6-2026-10-04.png",
+      "docs-llms-txt-full-7-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "sdks-and-stores",
+        "file": "docs-llms-txt-sdks-and-stores-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 132,
+          "width": 920,
+          "height": 760
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 27176
+  },
+  {
+    "vendor": "qonversion",
+    "page": "revenuecat-alternative",
+    "url": "https://qonversion.io/revenuecat-alternative",
+    "ok": true,
+    "full": [
+      "revenuecat-alternative-full-1-2026-10-04.png",
+      "revenuecat-alternative-full-2-2026-10-04.png",
+      "revenuecat-alternative-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-tier-comparison",
+        "file": "revenuecat-alternative-free-tier-comparison-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 1164,
+          "width": 1280,
+          "height": 496.375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "RevenueCat Alternative | Qonversion",
+    "pageHeight": 9485
+  },
+  {
+    "vendor": "apphud",
+    "page": "pricing",
+    "url": "https://apphud.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-10k-pro-expert",
+        "file": "pricing-free-10k-pro-expert-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 367.3125,
+          "width": 800,
+          "height": 819.953125
+        }
+      },
+      {
+        "claim": "overage-rates",
+        "file": "pricing-overage-rates-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 3001.265625,
+          "width": 1256,
+          "height": 838
+        }
+      },
+      {
+        "claim": "grace-period",
+        "file": "pricing-grace-period-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 3041.265625,
+          "width": 1256,
+          "height": 916
+        }
+      },
+      {
+        "claim": "seats-and-webhooks",
+        "file": "pricing-seats-and-webhooks-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 393.625,
+          "y": 433.3125,
+          "width": 800,
+          "height": 825.953125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Price - Apphud",
+    "pageHeight": 4917
+  },
+  {
+    "vendor": "apphud",
+    "page": "data-protection",
+    "url": "https://apphud.com/data-protection",
+    "ok": true,
+    "full": [
+      "data-protection-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "eu-and-us",
+        "file": "data-protection-eu-and-us-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 44,
+          "y": 1330.75,
+          "width": 1192,
+          "height": 721.5
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "How Apphud Protects Your Data - GDPR/CCPA Compliance – Apphud",
+    "pageHeight": 3546
   }
 ]

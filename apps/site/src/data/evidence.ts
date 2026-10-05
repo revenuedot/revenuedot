@@ -329,7 +329,7 @@ export const EVIDENCE: Evidence[] = [
     url: "https://adapty.io/pricing/",
     captured: DATE,
     full: asset("adapty", "pricing-full-1-2026-10-04.png"),
-    fullParts: [asset("adapty", "pricing-full-1-2026-10-04.png"), asset("adapty", "pricing-full-2-2026-10-04.png"), asset("adapty", "pricing-full-3-2026-10-04.png")],
+    fullParts: [asset("adapty", "pricing-full-1-2026-10-04.png"), asset("adapty", "pricing-full-2-2026-10-04.png")],
     crops: [
       {
         claim: "free-under-5k-then-1-percent",
@@ -360,6 +360,12 @@ export const EVIDENCE: Evidence[] = [
         file: asset("adapty", "pricing-faq-what-counts-2026-10-04.png"),
         alt: "Adapty pricing FAQ, expanded: what counts toward monthly revenue.",
         caption: "Adapty pricing page, captured 2026-10-04: Revenue is counted before Apple, Google or Stripe take their share.",
+      },
+      {
+        claim: "faq-when-1-percent",
+        file: asset("adapty", "pricing-faq-when-1-percent-2026-10-04.png"),
+        alt: "Adapty pricing FAQ, expanded: when the 1% starts.",
+        caption: "Adapty pricing page, captured 2026-10-04: The 1% starts once monthly revenue passes $5K.",
       },
       {
         claim: "faq-migration",
@@ -397,6 +403,22 @@ export const EVIDENCE: Evidence[] = [
         file: asset("adapty", "docs-migration-from-revenuecat-limits-2026-10-04.png"),
         alt: "Adapty migration guide from RevenueCat: promotional or manually granted entitlements import as profiles without transactions; refund and billing-issue history is not carried over verbatim.",
         caption: "Adapty docs page, captured 2026-10-04: Promotional entitlements and refund history do not come across.",
+      },
+    ],
+  },
+  {
+    vendor: "Adapty",
+    page: "docs-llms-txt",
+    url: "https://adapty.io/docs/llms.txt",
+    captured: DATE,
+    full: asset("adapty", "docs-llms-txt-full-1-2026-10-04.png"),
+    fullParts: [asset("adapty", "docs-llms-txt-full-1-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-2-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-3-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-4-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-5-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-6-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-7-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-8-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-9-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-10-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-11-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-12-2026-10-04.png"), asset("adapty", "docs-llms-txt-full-13-2026-10-04.png")],
+    crops: [
+      {
+        claim: "stripe-paddle",
+        file: asset("adapty", "docs-llms-txt-stripe-paddle-2026-10-04.png"),
+        alt: "Adapty docs index: API operations for validating Stripe and Paddle purchases.",
+        caption: "Adapty docs page, captured 2026-10-04: Web payments through Stripe and Paddle.",
       },
     ],
   },
@@ -480,6 +502,22 @@ export const EVIDENCE: Evidence[] = [
         file: asset("qonversion", "pricing-compliance-and-support-2026-10-04.png"),
         alt: "Qonversion pricing feature table: GDPR compliance, CCPA compliance, 24/7 priority support, unlimited seats, apps and projects.",
         caption: "Qonversion pricing page, captured 2026-10-04: GDPR and CCPA listed; 24/7 priority support; no SOC 2 listed.",
+      },
+    ],
+  },
+  {
+    vendor: "Qonversion",
+    page: "docs-llms-txt",
+    url: "https://documentation.qonversion.io/llms.txt",
+    captured: DATE,
+    full: asset("qonversion", "docs-llms-txt-full-1-2026-10-04.png"),
+    fullParts: [asset("qonversion", "docs-llms-txt-full-1-2026-10-04.png"), asset("qonversion", "docs-llms-txt-full-2-2026-10-04.png"), asset("qonversion", "docs-llms-txt-full-3-2026-10-04.png"), asset("qonversion", "docs-llms-txt-full-4-2026-10-04.png"), asset("qonversion", "docs-llms-txt-full-5-2026-10-04.png"), asset("qonversion", "docs-llms-txt-full-6-2026-10-04.png"), asset("qonversion", "docs-llms-txt-full-7-2026-10-04.png")],
+    crops: [
+      {
+        claim: "sdks-and-stores",
+        file: asset("qonversion", "docs-llms-txt-sdks-and-stores-2026-10-04.png"),
+        alt: "Qonversion docs index: SDKs for iOS, Android, Flutter, React Native, Unity, Cordova, Capacitor, Web and macOS; products map Apple, Google, Stripe or Paddle.",
+        caption: "Qonversion docs page, captured 2026-10-04: SDKs for nine platforms; App Store, Google Play, Stripe and Paddle.",
       },
     ],
   },
@@ -1189,7 +1227,7 @@ export const EVIDENCE: Evidence[] = [
       {
         claim: "plans",
         file: asset("revenuedot", "pricing-plans-2026-10-04.png"),
-        alt: "RevenueDot pricing: Cloud Free up to $10,000 a month, Cloud Standard 0.5% above $10,000 capped at $999 a month, self-hosting free.",
+        alt: "RevenueDot pricing plan cards: Cloud Free $0 up to $10K monthly tracked revenue, Cloud Standard 0.5% of tracked revenue above $10K capped at $999 a month, Enterprise from $50K a year, Self-host $0 under AGPL-3.0.",
         caption: "RevenueDot pricing page, captured 2026-10-04: Cloud free to $10K; Standard 0.5% capped at $999; self-host free.",
       },
     ],
@@ -1205,7 +1243,7 @@ export const EVIDENCE: Evidence[] = [
       {
         claim: "license",
         file: asset("revenuedot", "github-revenuedot-license-2026-10-04.png"),
-        alt: "GitHub repository page of revenuedot/revenuedot with the AGPL-3.0 license in the About sidebar.",
+        alt: "GitHub repository page of revenuedot/revenuedot with the AGPL-3.0 license shown next to the README tab.",
         caption: "RevenueDot GitHub page, captured 2026-10-04: Server and dashboard under AGPL-3.0.",
       },
     ],
