@@ -10,6 +10,8 @@
  *   E2E_PORT=5413 pnpm --filter @revenuedot/dashboard e2e -- billing
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+/** services/billing/gate.ts GATE_SHIPPED: sales before it get 30 days instead of 14. */
+const GATE_SHIPPED = new Date("2026-10-06T00:00:00Z");
 
 test.describe.configure({ mode: "serial" });
 
@@ -80,12 +82,14 @@ test("building, then live with 14 days, then Start Pro from the banner through C
   await expect(state).toHaveAttribute("data-stage", "grace");
   await expect(state.getByRole("heading", { name: "Your app is live" })).toBeVisible();
   await expect(state).toContainText(/Start Pro by \w{3} \d{1,2}, \d{4} to keep live charts, customer data and webhooks running/);
-  await expect(state).toContainText(/1[34] days left/);
+  // 14 days, or 30 for a sale from before the gate shipped (Terms of Service section 5).
+  await expect(state).toContainText(Date.now() < GATE_SHIPPED.getTime() ? /(29|30) days left/ : /1[34] days left/);
   await expect(page.locator("[data-tracked]")).toHaveText("$12,000.00");
   await expect(page.locator("[data-bill]")).toHaveText("$10.00");
   await expect(page.getByRole("meter", { name: /Tracked revenue against the \$10,000 that costs nothing/ })).toHaveAttribute("aria-valuenow", "12000");
   await expect(page.getByRole("row", { name: /Paid app 1 \$12,000\.00/ })).toBeVisible();
-  expect(await mails(page.request)).toContain("RevenueDot recorded your first live sale");
+  // An account live before the gate shipped gets the "now need Pro" email instead of the first-sale one.
+  expect((await mails(page.request)).some((m) => (Date.now() < GATE_SHIPPED.getTime() ? /^Live apps on RevenueDot now need Pro, by / : /^RevenueDot recorded your first live sale$/).test(m))).toBe(true);
   await fits(page, "billing-grace");
 
   // Every page shows the date, with Start Pro; it goes straight to Stripe Checkout.
