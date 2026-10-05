@@ -53,6 +53,22 @@ test("refund control: cards, add a recent-renewal policy, preference, prorated d
   const unsaved = page.getByRole("region", { name: "Unsaved changes" });
   await expect(unsaved).toHaveCount(0);
 
+  // Policy counts are exact. In a large project they come from the background count: "Counting…" first, then the number.
+  const rc = await json(page, "GET", `${P}/refund_control`);
+  const firstCount = page.locator(".policy-list > li").nth(0).locator(".count");
+  const want = `${rc.policies[0].customer_count.toLocaleString("en-US")} customer${rc.policies[0].customer_count === 1 ? "" : "s"}`;
+  await expect(firstCount).toHaveText(want);
+  await page.request.post("/__counts", { data: { inline_limit: 0 } });
+  try {
+    await page.reload();
+    await expect(firstCount).toHaveText("Counting…");
+    await expect(page.getByTestId("count-note")).toBeVisible();
+    await expect(firstCount).toHaveText(want, { timeout: 30_000 });
+    await expect(page.getByTestId("count-note")).toHaveCount(0);
+  } finally {
+    await page.request.post("/__counts", { data: { inline_limit: null } });
+  }
+
   // Add a "Recent renewal" policy: the template's condition, then a preference.
   await page.getByRole("button", { name: "Add policy: Recent renewal" }).click();
   await expect(page.getByLabel("Policy 3 name")).toHaveValue("Recent renewal");
@@ -316,6 +332,20 @@ test("customers: lists, summary cards, filter, save audience, export, search", a
   expect(us.summary.customers).toBeGreaterThan(0);
   await expect(card("Customers")).toHaveText(us.summary.customers.toLocaleString("en-US"));
   await expect(page.getByTestId("filter-count")).toHaveText("1");
+
+  // A large project counts filtered cards in the background: "Counting…", then the exact number once the tick has
+  // walked every customer (the page polls while it counts).
+  await page.request.post("/__counts", { data: { inline_limit: 0 } });
+  try {
+    await page.reload();
+    await expect(card("Customers")).toHaveText("Counting…");
+    await expect(page.getByTestId("count-note")).toHaveText("Counting every customer. The numbers appear here in a minute or two.");
+    await expect(page.locator("table tbody tr").first()).toBeVisible();
+    await expect(card("Customers")).toHaveText(us.summary.customers.toLocaleString("en-US"), { timeout: 30_000 });
+    await expect(page.getByTestId("count-note")).toHaveCount(0);
+  } finally {
+    await page.request.post("/__counts", { data: { inline_limit: null } });
+  }
 
   // Save audience: the list's condition plus the filter.
   await page.getByRole("button", { name: "Save audience" }).click();

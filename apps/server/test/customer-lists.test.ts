@@ -52,7 +52,7 @@ describe("customer lists", () => {
     const all = await get("list=all");
     expect(all.status).toBe(200);
     expect(all.body.items.map((r: any) => r.id)).toEqual(["paying", "trialing", "cancelled", "lapsed", "tester", "buyer", "browser"]);
-    expect(all.body.summary).toEqual({ object: "customer_list_summary", customers: 7, trialing_subscribers: 1, paid_subscribers: 2, total_revenue_in_usd: 79.96, is_approximate: false });
+    expect(all.body.summary).toEqual({ object: "customer_list_summary", customers: 7, trialing_subscribers: 1, paid_subscribers: 2, total_revenue_in_usd: 79.96, is_approximate: false, is_counting: false, counted_at: NOW });
     const row = (id: string) => all.body.items.find((r: any) => r.id === id);
     expect(row("paying")).toMatchObject({ subscription_status: "active", auto_renewal_status: "on", email: "pay@example.com", spent_in_usd: 9.99, latest_purchase: { product_id: "pro_monthly", store: "app_store", environment: "production" }, country: "US", platform: "iOS" });
     expect(row("trialing")).toMatchObject({ subscription_status: "trialing", auto_renewal_status: "on" });

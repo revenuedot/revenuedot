@@ -37,6 +37,10 @@ API v2 under `/v2/projects/{project_id}` (`apps/server/src/routes/v2/customers.t
 - `POST /customers/{id}/actions/grant_entitlement`, `/revoke_granted_entitlement`, `/assign_offering`.
 - `GET /subscriptions`, `/subscriptions/{id}`, `/subscriptions/{id}/entitlements`, `/subscriptions/{id}/transactions`; `GET /purchases`, `/purchases/{id}`, `/purchases/{id}/entitlements`.
 - RevenueDot extension: `GET /customer_summaries?ids=a,b` (revenue, entitlement sources, prices, override) for the dashboard rows.
+- Customer lists (built-in lists, saved audiences, filters, cards, CSV) are specified in `prd/lifecycle/PRD.md` item 5.
+
+## Scale
+`GET /customers` pages with SQL over the whole project. Customer lists, filters and their counts also cover every customer: built-in lists, search and sorting are SQL with keyset pagination, audience conditions run on pages of 1,000 customers, and their exact counts are made in the request for projects up to 5,000 customers and by the tick for larger ones, a page at a time within the Worker's CPU limit. The design and its measurements are in `prd/lifecycle/PRD.md` ("Scale").
 
 API v1 (`apps/server/src/routes/rest-v1.ts`, secret key): `DELETE /v1/subscribers/{id}`, `POST /v1/subscribers/{id}/entitlements/{ent}/promotional`, `/revoke_promotionals`, `POST /v1/subscribers/{id}/offerings/{offering}/override`, `DELETE /v1/subscribers/{id}/offerings/override`.
 
@@ -49,7 +53,7 @@ Dashboard: `/projects/:projectId/customers` (`pages/Customers.tsx`, `?q=` and `?
 - `apps/dashboard/e2e/overview-customers.spec.ts`: list, pagination, exact search and top-bar search; the customer page's history labels, grant and revoke, override, attribute, delete; phone width at 390px.
 
 ## Known gaps
-- Search is exact only; there are no filters or saved lists.
+- The customer search (`GET /customers?search=`) is exact; the Customers lists add filters, saved audiences and a contains-search over IDs and emails.
 - The page has no notes, no purchase transfer and no store action buttons, although the API has refund, cancel and extend.
 - Each event shows its raw body, not which integrations it was sent to.
 - Total spent is in USD only.

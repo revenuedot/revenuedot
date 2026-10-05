@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0043_journeys";
+export const ARCHIVE_SCHEMA = "0044_customer_counts";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -128,6 +128,7 @@ export const NOT_EXPORTED: Record<string, string> = {
   auth_tokens: "Password reset and verification links belong to one server.",
   invites: "Pending invites are sent again from the target.",
   rate_limits: "Counters of one server.",
+  customer_counts: "A cache of counts, made again on the target from its own customers.",
   config_blobs: "Remote-config blobs are shared and rebuilt by the target on the first request.",
   ai_conversations: "RevenueDot AI conversations belong to one person (and on Cloud live in Durable Objects).",
   ai_messages: "Part of RevenueDot AI conversations.",

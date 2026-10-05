@@ -19,6 +19,9 @@ export interface RefundControl {
   policies: RefundPolicy[];
   templates: Record<Template, Rules>;
   counts_are_approximate: boolean;
+  /** A large project's first exact count is still running (services/customer-counts.ts); the counts are 0 until then. */
+  counts_are_counting: boolean;
+  counts_counted_at: number | null;
 }
 export interface RefundStats {
   refund_rate: number | null;

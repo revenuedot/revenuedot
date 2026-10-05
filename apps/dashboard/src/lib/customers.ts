@@ -204,3 +204,15 @@ export function attributeLabel(name: string) {
   if (name.startsWith("$")) return { label: name.slice(1).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase()), group: "Integrations" as const };
   return { label: name, group: "Custom" as const };
 }
+
+/**
+ * Exact counts of a large project are made by the server's background job (prd/lifecycle/PRD.md "Scale"): the note under
+ * a count while the first one runs, or how old a stored one is. Nothing for a count made just now.
+ */
+export function countNote(counting: boolean | undefined, countedAt: number | null | undefined, now = Date.now()): string | null {
+  if (counting) return "Counting every customer. The numbers appear here in a minute or two.";
+  if (countedAt && now - countedAt > 120_000) return `Exact count of every customer, made ${relative(countedAt, now)}.`;
+  return null;
+}
+/** Polls every 10 seconds while a background count runs. */
+export const pollWhileCounting = (counting: boolean | undefined) => (counting ? 10_000 : false);

@@ -3,8 +3,8 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { projectContexts } from "../../services/customer-context.js";
-import { PREFERENCES, TEMPLATES, consumptionVersionOf, TEMPLATE_RULES, policyCounts, refundStats, settingsOf, type PolicyRow } from "../../services/refunds.js";
+import { exactCount } from "../../services/customer-counts.js";
+import { PREFERENCES, TEMPLATES, consumptionVersionOf, TEMPLATE_RULES, refundStats, settingsOf, type PolicyRow } from "../../services/refunds.js";
 import { fieldSupported, OPERATORS, type Rules } from "../../services/targeting.js";
 import { body, listOf, pageParams, paramError, scope, type V2Router } from "./common.js";
 
@@ -39,8 +39,9 @@ export function refundControlRoutes(r: V2Router, deps: Deps) {
     const rows = await db.select().from(schema.refundPolicies).where(eq(schema.refundPolicies.projectId, projectId)).orderBy(asc(schema.refundPolicies.position));
     const now = deps.now();
     const policies: PolicyRow[] = rows.map((x) => ({ id: x.id, name: x.name, rules: x.rules as Rules, preference: x.preference, position: x.position }));
-    const { items, truncated } = await projectContexts(db, projectId, now);
-    const counts = policyCounts(policies, items.map((i) => i.ctx), now.getTime());
+    // Exact over every customer: counted now in a small project, by the tick in a large one (services/customer-counts.ts).
+    const counted = await exactCount(db, projectId, "refund_policies", { policies: policies.map((x) => ({ id: x.id, rules: x.rules })) }, now, deps.countInlineLimit);
+    const counts = counted.result;
     return {
       object: "refund_control" as const,
       settings: settingsOf(p?.s ?? null),
@@ -50,7 +51,9 @@ export function refundControlRoutes(r: V2Router, deps: Deps) {
         customer_count: counts.byPolicy[x.id] ?? 0, created_at: x.createdAt.getTime(), updated_at: x.updatedAt ? x.updatedAt.getTime() : null,
       })),
       templates: Object.fromEntries(Object.entries(TEMPLATE_RULES).map(([k, v]) => [k, v])),
-      counts_are_approximate: truncated,
+      counts_are_approximate: false,
+      counts_are_counting: counted.counting,
+      counts_counted_at: counted.countedAt,
     };
   };
 

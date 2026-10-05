@@ -13,7 +13,7 @@ import { Shell } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { Check, DataTable, EmptyState, PageHead, Panel, Segmented, Tag, useProjectId, useToast } from "../../components/ui";
 import { ConditionBuilder, fromRules, incomplete, toRules, type Groups } from "../../components/conditions";
-import { money, relative, storeLabel } from "../../lib/customers";
+import { countNote, money, pollWhileCounting, relative, storeLabel } from "../../lib/customers";
 import { errMsg, v2 } from "../catalog/lib";
 import { PREFERENCES, pct, preferenceLabel, type Preference, type RefundControl, type RefundRequest, type RefundStats, type Template } from "./lib";
 
@@ -45,7 +45,8 @@ export function RefundControlPage() {
   const pid = useProjectId();
   const toast = useToast();
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["refund-control", pid], enabled: !!pid, queryFn: () => api<RefundControl>(`${v2(pid)}/refund_control`) });
+  const q = useQuery({ queryKey: ["refund-control", pid], enabled: !!pid, queryFn: () => api<RefundControl>(`${v2(pid)}/refund_control`),
+    refetchInterval: (query) => pollWhileCounting(query.state.data?.counts_are_counting) });
   const stats = useQuery({ queryKey: ["refund-stats", pid], enabled: !!pid, queryFn: () => api<RefundStats>(`${v2(pid)}/refund_control/stats?days=28&environment=production`) });
   const reqs = useQuery({ queryKey: ["refund-requests", pid], enabled: !!pid, queryFn: () => api<List<RefundRequest>>(`${v2(pid)}/refund_requests?limit=20`) });
   const [state, setState] = useState<State | null>(null);
@@ -129,8 +130,9 @@ export function RefundControlPage() {
   };
 
   const s = stats.data;
-  const approx = q.data?.counts_are_approximate;
-  const countLabel = (n: number | null) => (n === null ? "Save to count" : `${approx ? "≈" : ""}${fmt.int(n)} customer${n === 1 ? "" : "s"}`);
+  const counting = q.data?.counts_are_counting;
+  const note = countNote(counting, q.data?.counts_counted_at);
+  const countLabel = (n: number | null) => (n === null ? "Save to count" : counting ? "Counting…" : `${fmt.int(n)} customer${n === 1 ? "" : "s"}`);
 
   return (
     <Shell title="Refund Control">
@@ -183,7 +185,7 @@ export function RefundControlPage() {
                       <span className="ib grip" draggable onDragStart={onDragStart(i)} onDragEnd={() => { setDrag(null); setOver(null); }} title="Drag to reorder" aria-hidden><Icon name="grip" /></span>
                       <span className="pos">{i + 1}</span>
                       <input id={`policy-name-${p.key}`} className="input pname" aria-label={`Policy ${i + 1} name`} value={p.name} onChange={(e) => setPolicy(p.key, { name: e.target.value })} />
-                      <span className="count" title={approx ? "Counted over the 10,000 most recently seen customers" : undefined}><Icon name="customers" />{countLabel(p.count)}</span>
+                      <span className="count" title={note ?? undefined}><Icon name="customers" />{countLabel(p.count)}</span>
                       <select className="select pref" aria-label={`Refund preference for ${p.name || `policy ${i + 1}`}`} value={p.preference} onChange={(e) => setPolicy(p.key, { preference: e.target.value as Preference })}>
                         {PREFERENCES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
                       </select>
@@ -219,7 +221,7 @@ export function RefundControlPage() {
                 {!state.consented && <p className="subtle" style={{ margin: 0, fontSize: 12 }}>Add the consent to your terms or privacy policy before you tick this box.</p>}
               </div>
             </Panel>
-            {approx && <p className="subtle" style={{ margin: 0, fontSize: 12 }}>Customer counts look at the 10,000 most recently seen customers.</p>}
+            {note && <p className="subtle" style={{ margin: 0, fontSize: 12 }} data-testid="count-note">{note}</p>}
           </>
         )}
 

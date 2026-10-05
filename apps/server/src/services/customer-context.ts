@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { computeEntitlements, isActive, type CustomerState } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../repo/catalog.js";
@@ -9,7 +9,8 @@ import { accessFor, projectAccess } from "../repo/access.js";
 /**
  * Everything the audience condition builder can ask about customers, loaded for many customers in a handful of queries.
  * Targeting (one customer per SDK request), audience previews, Refund Control policies, win-back audiences and the
- * Customers lists all build their CustomerContext here, so a condition means the same thing on every page.
+ * Customers lists all build their CustomerContext here (whole projects page by page: services/customer-scan.ts), so a
+ * condition means the same thing on every page.
  */
 
 export type SubRow = typeof schema.subscriptions.$inferSelect;
@@ -28,7 +29,8 @@ export interface CustomerData {
   attribution: typeof schema.customerAttribution.$inferSelect | null;
 }
 
-const CHUNK = 500;
+// One query per table for a whole scan page (services/customer-scan.ts PAGE_SIZE): each round trip to Postgres counts.
+const CHUNK = 1_000;
 async function chunked<T>(ids: string[], load: (part: string[]) => Promise<T[]>): Promise<T[]> {
   const out: T[] = [];
   for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await load(ids.slice(i, i + CHUNK))));
@@ -116,23 +118,19 @@ export function buildContext(d: CustomerData, now: Date, activeEntitlements: str
 
 export interface LoadedContext { data: CustomerData; ctx: CustomerContext }
 
-/** Contexts for these customers, active entitlements included (one catalog read per project). */
-export async function contextsFor(db: DB, projectId: string, customers: CustomerRow[], now: Date): Promise<LoadedContext[]> {
-  const data = await loadCustomerData(db, customers);
-  const [map, pa] = await Promise.all([entitlementMap(db, projectId), projectAccess(db, projectId)]);
-  return customers.map((c) => {
-    const d = data.get(c.id)!;
-    const ents = computeEntitlements({ ...stateOf(d), access: accessFor(pa, d.aliases) }, map).filter((e) => isActive(e, now)).map((e) => e.identifier);
-    return { data: d, ctx: buildContext(d, now, ents) };
-  });
+/** The project's catalog and access lists, read once and shared by every page of a scan. */
+export interface ProjectCatalog { map: Awaited<ReturnType<typeof entitlementMap>>; access: Awaited<ReturnType<typeof projectAccess>> }
+export async function projectCatalog(db: DB, projectId: string): Promise<ProjectCatalog> {
+  const [map, access] = await Promise.all([entitlementMap(db, projectId), projectAccess(db, projectId)]);
+  return { map, access };
 }
 
-/** Most customers a list, preview or policy count looks at. */
-export const SCAN_LIMIT = 10_000;
-
-/** The project's most recently seen customers (up to `limit`), with their contexts; `truncated` when there are more. */
-export async function projectContexts(db: DB, projectId: string, now: Date, limit = SCAN_LIMIT): Promise<{ items: LoadedContext[]; truncated: boolean }> {
-  const rows = await db.select().from(schema.customers).where(eq(schema.customers.projectId, projectId)).orderBy(desc(schema.customers.lastSeen), desc(schema.customers.id)).limit(limit + 1);
-  const truncated = rows.length > limit;
-  return { items: await contextsFor(db, projectId, rows.slice(0, limit), now), truncated };
+/** Contexts for these customers, active entitlements included (one catalog read per project unless `catalog` is given). */
+export async function contextsFor(db: DB, projectId: string, customers: CustomerRow[], now: Date, catalog?: ProjectCatalog): Promise<LoadedContext[]> {
+  const [data, cat] = await Promise.all([loadCustomerData(db, customers), catalog ?? projectCatalog(db, projectId)]);
+  return customers.map((c) => {
+    const d = data.get(c.id)!;
+    const ents = computeEntitlements({ ...stateOf(d), access: accessFor(cat.access, d.aliases) }, cat.map).filter((e) => isActive(e, now)).map((e) => e.identifier);
+    return { data: d, ctx: buildContext(d, now, ents) };
+  });
 }

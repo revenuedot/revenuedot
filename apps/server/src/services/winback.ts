@@ -4,7 +4,9 @@ import { schema, type DB } from "@revenuedot/db";
 import { notMoving } from "./archive/moving.js";
 import { isEmailAddress, oneClickUnsubscribeHeaders, trySend, type Mailer } from "../mail/index.js";
 import { winbackEmail } from "../mail/templates.js";
-import { projectContexts, subActive, type LoadedContext } from "./customer-context.js";
+import { subActive, type LoadedContext } from "./customer-context.js";
+import { exactCount } from "./customer-counts.js";
+import { contextPages, firstMatches, type ScanFilter } from "./customer-scan.js";
 import { supportSettingsFor } from "./customer-center.js";
 import { rulesMatch, type Rules } from "./targeting.js";
 
@@ -92,23 +94,61 @@ async function suppressedOf(db: DB, projectId: string) {
   return new Set(rows.map((r) => r.e.toLowerCase()));
 }
 
-/** Everyone the campaign would email now (and the share of the project looked at). */
-export async function candidatesFor(db: DB, c: CampaignRow, now: Date) {
+/** What a campaign's eligible count depends on (services/customer-counts.ts keys stored counts by it). */
+export interface WinbackCountSpec { campaign_id: string; audience: WinbackAudience; audience_rules: Rules | null }
+interface WinbackPrep { suppressed: Set<string>; alreadySent: Set<string>; audienceRules: Rules | null; bundleIds: Map<string, string | null> }
+
+/** Only customers with an `$email` and a production subscription can be candidates: the scan reads no one else. */
+const CANDIDATE_FILTER: ScanFilter = {
+  where: sql`EXISTS (SELECT 1 FROM customer_attributes x WHERE x.customer_id = c.id AND x.key = '$email' AND x.value IS NOT NULL)
+    AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.customer_id = c.id AND s.store <> 'promotional' AND NOT s.is_sandbox)`,
+};
+
+async function specOf(db: DB, c: CampaignRow): Promise<WinbackCountSpec> {
   const a = audienceOf(c);
-  const [{ items, truncated }, suppressed, sent, apps] = await Promise.all([
-    projectContexts(db, c.projectId, now), suppressedOf(db, c.projectId),
-    db.select({ c: schema.winbackSends.customerId }).from(schema.winbackSends).where(eq(schema.winbackSends.campaignId, c.id)),
-    db.select({ id: schema.apps.id, b: schema.apps.bundleId }).from(schema.apps).where(eq(schema.apps.projectId, c.projectId)),
-  ]);
   let audienceRules: Rules | null = null;
   if (a.audience_id) {
     const [aud] = await db.select().from(schema.audiences).where(and(eq(schema.audiences.projectId, c.projectId), eq(schema.audiences.id, a.audience_id))).limit(1);
     audienceRules = aud ? aud.rules as Rules : { groups: [{ conditions: [{ field: "customerId", operator: "is", value: "\u0000none" }] }] };
   }
-  const candidates = selectCandidates(items, a, now.getTime(), {
-    suppressed, alreadySent: new Set(sent.map((s) => s.c).filter((x): x is string => !!x)), audienceRules, bundleIds: new Map(apps.map((x) => [x.id, x.b])),
-  });
-  return { candidates, truncated };
+  return { campaign_id: c.id, audience: a, audience_rules: audienceRules };
+}
+
+async function prepOf(db: DB, projectId: string, s: WinbackCountSpec): Promise<WinbackPrep> {
+  const [suppressed, sent, apps] = await Promise.all([
+    suppressedOf(db, projectId),
+    db.select({ c: schema.winbackSends.customerId }).from(schema.winbackSends).where(eq(schema.winbackSends.campaignId, s.campaign_id)),
+    db.select({ id: schema.apps.id, b: schema.apps.bundleId }).from(schema.apps).where(eq(schema.apps.projectId, projectId)),
+  ]);
+  return { suppressed, alreadySent: new Set(sent.map((x) => x.c).filter((x): x is string => !!x)), audienceRules: s.audience_rules, bundleIds: new Map(apps.map((x) => [x.id, x.b])) };
+}
+
+/** The eligible count, page by page (services/customer-counts.ts). */
+export const winbackCounter = {
+  filter: () => CANDIDATE_FILTER,
+  prepare: (db: DB, projectId: string, s: WinbackCountSpec) => prepOf(db, projectId, s),
+  empty: () => ({ eligible: 0 }),
+  add(acc: { eligible: number }, i: LoadedContext, s: WinbackCountSpec, now: Date, p: WinbackPrep) { acc.eligible += selectCandidates([i], s.audience, now.getTime(), p).length; },
+};
+
+/** Everyone the campaign would email now, over every customer of the project, a page at a time. */
+export async function candidatesFor(db: DB, c: CampaignRow, now: Date) {
+  const spec = await specOf(db, c);
+  const prep = await prepOf(db, c.projectId, spec);
+  const candidates: Candidate[] = [];
+  for await (const page of contextPages(db, c.projectId, now, CANDIDATE_FILTER)) candidates.push(...selectCandidates(page.items, spec.audience, now.getTime(), prep));
+  return { candidates };
+}
+
+/** The preview: the exact eligible count (counted now, or by the tick in a large project) and 10 recently seen candidates. */
+export async function previewCampaign(db: DB, c: CampaignRow, now: Date, inlineLimit?: number) {
+  const spec = await specOf(db, c);
+  const prep = await prepOf(db, c.projectId, spec);
+  const [count, sample] = await Promise.all([
+    exactCount(db, c.projectId, "winback", spec, now, inlineLimit),
+    firstMatches(db, c.projectId, now, CANDIDATE_FILTER, (i) => selectCandidates([i], spec.audience, now.getTime(), prep).length > 0, 10),
+  ]);
+  return { eligible: count.result.eligible, counting: count.counting, countedAt: count.countedAt, sample: selectCandidates(sample, spec.audience, now.getTime(), prep) };
 }
 
 export interface SendDeps { db: DB; mailer?: Mailer; now: () => Date }

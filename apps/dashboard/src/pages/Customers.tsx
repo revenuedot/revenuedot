@@ -15,7 +15,7 @@ import { Icon } from "../components/icons";
 import { DataTable, Dialog, EmptyState, Field, PageHead, Tag, useProjectId, useToast, type Column } from "../components/ui";
 import { ConditionBuilder, describeRules, incomplete, toRules, useFieldSuggestions, type Condition, type Groups, type Rules } from "../components/conditions";
 import { api, fmt, type List } from "../lib/api";
-import { isAnonymous, money, relative, shortId, storeLabel, type Customer } from "../lib/customers";
+import { countNote, isAnonymous, money, pollWhileCounting, relative, shortId, storeLabel, type Customer } from "../lib/customers";
 import { errMsg, v2 } from "./catalog/lib";
 import type { Audience } from "./lifecycle/lib";
 
@@ -38,7 +38,7 @@ interface Row {
   auto_renewal_status: "on" | "off" | null; first_seen_at: number; last_seen_at: number; spent_in_usd: number;
   latest_purchase: { product_id: string; store: string; purchased_at: number; environment: "production" | "sandbox" } | null; country: string | null; platform: string | null;
 }
-interface ListResp extends List<Row> { summary: { customers: number; trialing_subscribers: number; paid_subscribers: number; total_revenue_in_usd: number; is_approximate: boolean } }
+interface ListResp extends List<Row> { summary: { customers: number; trialing_subscribers: number; paid_subscribers: number; total_revenue_in_usd: number; is_approximate: boolean; is_counting: boolean; counted_at: number | null } }
 const STATUS: Record<Row["subscription_status"], { label: string; tone: "up" | "down" | "info" | "muted" }> = {
   active: { label: "Active", tone: "up" }, trialing: { label: "Trial", tone: "info" }, grace_period: { label: "Grace period", tone: "down" },
   billing_issue: { label: "Billing issue", tone: "down" }, expired: { label: "Expired", tone: "muted" }, none: { label: "None", tone: "muted" },
@@ -108,6 +108,7 @@ export function Customers() {
     return p;
   };
   const res = useQuery({ queryKey: ["customer-list", pid, list, q, after, sortKey, direction, JSON.stringify(applied)], enabled: !!pid, placeholderData: (p) => p,
+    refetchInterval: (query) => pollWhileCounting(query.state.data?.summary.is_counting),
     queryFn: () => api<ListResp>(`${v2(pid)}/customer_lists?${params(true)}`) });
   // A whole store transaction ID (or alias) that the list search does not cover: RevenueCat's exact search.
   const exact = useQuery({ queryKey: ["customer-exact", pid, q], enabled: !!q && res.data?.items.length === 0 && !after,
@@ -223,10 +224,10 @@ export function Customers() {
           <div className="stack" style={{ minWidth: 0 }}>
             <section className="kpis" aria-label={`${listName} summary`}>
               {[["Customers", s ? fmt.int(s.customers) : null], ["Trialing subscribers", s ? fmt.int(s.trialing_subscribers) : null], ["Paid subscribers", s ? fmt.int(s.paid_subscribers) : null], ["Total revenue", s ? money(s.total_revenue_in_usd) : null]].map(([label, v]) => (
-                <div key={label} className="kpi" data-kpi={label}><div className="lab">{label}</div>{v === null ? <span className="sk num" /> : <div className="v" style={{ fontSize: 28, lineHeight: "36px" }}>{v}</div>}</div>
+                <div key={label} className="kpi" data-kpi={label}><div className="lab">{label}</div>{v === null ? <span className="sk num" /> : s?.is_counting ? <div className="v subtle" style={{ fontSize: 20, lineHeight: "36px" }}>Counting…</div> : <div className="v" style={{ fontSize: 28, lineHeight: "36px" }}>{v}</div>}</div>
               ))}
             </section>
-            {s?.is_approximate && <p className="subtle" style={{ margin: "-8px 0 0", fontSize: 12 }}>Counted over the 10,000 most recently seen customers.</p>}
+            {countNote(s?.is_counting, s?.counted_at) && <p className="subtle" style={{ margin: "-8px 0 0", fontSize: 12 }} data-testid="count-note">{countNote(s?.is_counting, s?.counted_at)}</p>}
 
             <div className="filterbar">
               <form role="search" onSubmit={search}>

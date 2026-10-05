@@ -67,14 +67,24 @@ From the live walkthrough (2026-10-01, Test project, nothing saved) and frames 1
    - Ticket settings live in the Customer Center config the SDK reads: `support.support_tickets` (`allow_creation`, `customer_type`: active, not_active, all or none, `customer_details`).
    - Dashboard ticket list with open and closed states.
    - `GET /v2/projects/{id}/customers/{customer_id}/support_summary` and `GET /v2/projects/{id}/support_summaries?email=` return what a help desk sidebar shows: status, entitlements, subscriptions with auto-renew and store, total spent, refunds, open tickets and a dashboard link.
-5. **Customers**: built-in lists (All, Active subscribers, Sandbox, Non-subscription, Expired), saved audiences in the rail, filters from the condition builder, "Save audience" (creates a v2 audience), four summary cards, the RevenueCat columns, and CSV export. Lists scan the 10,000 most recently seen customers and say so when a project has more.
+5. **Customers**: built-in lists (All, Active subscribers, Sandbox, Non-subscription, Expired), saved audiences in the rail, filters from the condition builder, "Save audience" (creates a v2 audience), four summary cards, the RevenueCat columns, and CSV export, over every customer of the project (see "Scale").
 6. **Identity fix**: `mergeCustomers` moves in-app currency balances (summed) and ledger rows, so an anonymous customer's coins survive `logIn`. A ledger row whose source key the surviving customer already has is not counted twice. Support tickets, refund requests and win-back sends move too. The whole merge is one database transaction.
+
+## Scale: every customer, exact counts, inside Worker limits
+Lists, audience previews, Refund Control policy counts and win-back previews look at every customer of the project and their counts are exact. The design follows from the Worker's limits on Cloud ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/)): 30 seconds of CPU per request and per cron run by default (network waits do not count), 128 MB of memory, 6 open connections, and Hyperdrive's 60-second query limit ([Hyperdrive limits](https://developers.cloudflare.com/hyperdrive/platform/limits/)). Postgres queries over Hyperdrive are not subrequests.
+
+1. **SQL where a condition maps to SQL.** Built-in lists (Active, Expired, Sandbox, Non-subscription), search and every sort column are SQL (`services/customer-scan.ts` `filterSql` and `orderedPage`). A list page reads `limit + 1` customers in list order with keyset pagination (the sort value, then last seen and id, newest first; `starting_after` stays the customer id), then loads contexts for that page only. The four cards of a list without audience conditions are one aggregate query (`customer-lists.ts` `summaryOf`). The CSV export streams the list a page at a time, so no request holds the whole project.
+2. **JavaScript conditions on bounded pages.** Audience conditions need the full customer context (entitlements, totals, attributes), so they run in JavaScript on pages of 1,000 customers loaded in bulk (one query per table per page). A filtered list page reads pages until `limit + 1` customers match; memory stays at one page. A sample (10 audience members, 10 win-back candidates) reads at most 10 pages.
+3. **Exact counts of JavaScript conditions** (`services/customer-counts.ts`): a project with at most 5,000 customers (`INLINE_LIMIT`, `countInlineLimit` in the server's options) is counted in the request. A larger project is counted by the tick: the request stores what to count (`customer_counts`, keyed by the project, kind and conditions) and answers "counting"; each cron tick walks the project in customer id order (id order never changes while customers are seen again) for up to 15 seconds, saving the cursor and running totals after every page under a 2-minute lease, so a stopped Worker loses one page and two ticks never count the same pass. Conditions are evaluated at the time the pass started. Once stored, a count is served with `counted_at`; after 10 minutes the next request asks the tick to refresh it and keeps showing the stored one. Counts no one asked for in 7 days are removed.
+4. **Responses.** The list summary has `is_counting` and `counted_at` (`is_approximate` is always false). Refund Control has `counts_are_counting` and `counts_counted_at`. The win-back preview has `is_counting` and `counted_at`. RevenueCat's audience `stats` shape has no room for more fields: while the first count runs, the totals are 0 and `is_approximate` is true. The dashboard shows "Counting…", polls every 10 seconds, and says how old a stored count is when it is more than 2 minutes old.
+5. **Indexes** (migration 0044): `customers (project_id, last_seen, id)` for list order and `customers (project_id, id)` for counts.
+
+Measured on a Railway Postgres with 50,000 customers (`apps/server/test/customer-scale-pg.test.ts`, run from a laptop): every list query runs in under 0.2 s in Postgres (sorting by spent or status 0.2 s, the cards 0.1 s, a page 0.1 ms); one page of 1,000 customers costs about 4 ms of query time, three round trips and about 95 ms of CPU to build contexts. A tick's 15-second share therefore counts tens of thousands of customers with under 10 seconds of CPU, and 5,000 customers in a request take 5 pages. Wall time from the laptop is dominated by its distance to Railway; Hyperdrive keeps pooled connections near the database.
 
 ## Later
 - A `deliveryStatus` other than `DELIVERED` (needs a way for the app to report failed deliveries).
 - Retention Messaging images and bullet points, the performance test from the dashboard, per-locale rules.
 - Win-back: web checkout links (needs Web Billing, batch C), custom sending domains, multi-step sequences, A/B subject lines.
-- Customer lists over the whole project with SQL filters instead of a 10,000-customer scan.
 - Intercom and Zendesk apps of our own in their marketplaces.
 
 ## Endpoints (all RevenueDot extensions under `/v2/projects/{project_id}`)
@@ -89,8 +99,8 @@ From the live walkthrough (2026-10-01, Test project, nothing saved) and frames 1
 | `GET /support_tickets?status=`; `POST /support_tickets/{id}` | customers read / read_write | tickets |
 | `GET /customers/{customer_id}/support_summary`; `GET /support_summaries?email=` | `customer_information:customers:read` | help desk sidebar data |
 | `GET`, `POST /winback_campaigns`; `GET`, `POST`, `DELETE /winback_campaigns/{id}`; `POST .../actions/preview`, `.../actions/send_test`, `.../actions/run` | projects read / read_write | campaigns |
-| `GET /customer_lists?list=&rules=&search=&limit=&starting_after=` | `customer_information:customers:read` | rows and summary cards |
-| `GET /customer_lists/export?list=&rules=` | `customer_information:customers:read` | CSV |
+| `GET /customer_lists?list=&rules=&search=&sort=&direction=&limit=&starting_after=` | `customer_information:customers:read` | rows and exact summary cards (`is_counting`, `counted_at`) |
+| `GET /customer_lists/export?list=&rules=` | `customer_information:customers:read` | CSV of every matching customer, streamed |
 
 Public (no key): `POST /v1/retention/apple/{app_id}` (Apple), `GET /v1/winback/c/{token}` (click), `GET /v1/winback/o/{token}` (open pixel), `GET`/`POST /v1/winback/u/{token}` (unsubscribe).
 
@@ -105,12 +115,13 @@ Public (no key): `POST /v1/retention/apple/{app_id}` (Apple), `GET /v1/winback/c
 - `apps/server/test/mail.test.ts`: the SMTP driver's raw MIME has `List-Unsubscribe` and `List-Unsubscribe-Post`; the Cloudflare driver passes them in the binding's `headers`; none for an http link.
 - `packages/contract/test/list-unsubscribe.test.ts`: the RFC 8058 exchange as a mail provider performs it (headers read from the message, a credential-less form POST to the URI, 200 without redirect, idempotent, GET never unsubscribes, unknown token rejected).
 - `apps/server/test/customer-lists.test.ts`: built-in lists, rules, search, summary cards, CSV.
+- `apps/server/test/customer-scale.test.ts`: 12,000 customers seeded with SQL: exact cards for every built-in list, SQL lists agree with the JavaScript conditions, a filtered list paged to its last customer, customers beyond the 10,000 most recently seen found, the export, audience previews, Refund Control policy counts and win-back previews exact; above the in-request limit the API answers "counting", the tick counts in resumable pages, and the stored count is served and refreshed.
+- `apps/server/test/customer-scale-pg.test.ts` (opt-in, `REVENUEDOT_SCALE_PG_URL`): timings on a real Postgres with 50,000 customers.
 - `apps/server/test/merge-currency.test.ts`: logIn merges balances and ledger rows.
-- `apps/dashboard/e2e/lifecycle.spec.ts`: each page end to end on the e2e server (Refund Control: the prorated default preference saves and survives a reload).
+- `apps/dashboard/e2e/lifecycle.spec.ts`: each page end to end on the e2e server (Refund Control: the prorated default preference saves and survives a reload; policy counts and filtered Customers cards show "Counting…" and then the exact number when counted in the background).
 
 ## Known gaps
 - Send Consumption Information (V1 and V2) is proven against a stubbed App Store only; Apple does not send a CONSUMPTION_REQUEST on demand.
 - Apple's Retention Messaging API needs Apple's approval for each developer account; the code follows Apple's published contract but has not been called by Apple.
 - `playTime` is undeclared unless the app reports `rd_play_time_minutes`; RevenueDot does not measure session length.
 - Win-back on Cloud sends from `no-reply@mail.revenuedot.app` (Reply-To the project's support email); custom sending domains are not built.
-- Customer lists, policy counts and win-back previews scan at most 10,000 customers per project.

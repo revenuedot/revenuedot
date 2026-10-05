@@ -338,6 +338,14 @@ web.post("/__revenue", async (c) => {
   await db.insert(schema.transactions).values({ id: `txn_${id}`, projectId: p!.id, customerId: `cus_${id}`, store: "app_store", storeTransactionId: id, productIdentifier: "pro_yearly", kind: "purchase", isSandbox: false, purchasedAt: at, revenueUsd: b.usd, priceAmount: b.usd, priceCurrency: "USD" });
   return c.json({ ok: true, project: p!.id, customer: `buyer_${id}` });
 });
+// Exact customer counts (lifecycle.spec.ts): POST /__counts { inline_limit: 0 } makes every project count its list cards,
+// previews and policy counts in the background like a large project on Cloud (the 5-second tick counts them);
+// { inline_limit: null } restores counting in the request.
+web.post("/__counts", async (c) => {
+  const b = await c.req.json() as { inline_limit: number | null };
+  api.deps.countInlineLimit = b.inline_limit ?? undefined;
+  return c.json({ inline_limit: b.inline_limit });
+});
 // The account notification emails (weekly summary, experiment results, anomalies) at a chosen time, like the tick would.
 web.post("/__notifications/run", async (c) => {
   const b = await c.req.json().catch(() => ({})) as { at?: string };

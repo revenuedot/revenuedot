@@ -4,7 +4,8 @@ import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { fieldSupported, OPERATORS, rulesMatch, type Rules } from "../../services/targeting.js";
-import { projectContexts } from "../../services/customer-context.js";
+import { exactCount } from "../../services/customer-counts.js";
+import { firstMatches } from "../../services/customer-scan.js";
 import { V2Error, body, embeddedList, expands, listOf, notFound, paginate, paramError, scope, type V2Context, type V2Router } from "./common.js";
 
 /** Audiences (RevenueCat's v2 shape) and targeting rules (RevenueDot extension). Experiments: ./experiments.ts. */
@@ -21,8 +22,6 @@ const RuleIn = z.object({
 }).strict();
 const RuleUpdate = RuleIn.partial().strict();
 const Order = z.object({ rule_ids: z.array(z.string()).min(1) }).strict();
-
-const SAMPLE_LIMIT = 5000;
 
 export function targetingRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -41,17 +40,19 @@ export function targetingRoutes(r: V2Router, deps: Deps) {
     return a;
   };
 
-  /** Matches the audience against the project's most recently seen customers (up to 5,000) and summarises them. */
+  /** The audience's exact counts over the whole project (services/customer-counts.ts) and its 10 most recently seen members. */
   const preview = async (projectId: string, rules: Rules) => {
     const now = deps.now();
-    const { items, truncated: approximate } = await projectContexts(db, projectId, now, SAMPLE_LIMIT);
-    const matched = items.filter((m) => rulesMatch(m.ctx, rules, now.getTime())).map((m) => ({ cu: m.data.customer, ctx: m.ctx }));
+    const t = now.getTime();
+    const [counts, sample] = await Promise.all([
+      exactCount(db, projectId, "audience", { rules }, now, deps.countInlineLimit),
+      firstMatches(db, projectId, now, {}, (m) => rulesMatch(m.ctx, rules, t), 10),
+    ]);
     return {
-      stats: {
-        total_customers: matched.length, active_subscriptions: matched.filter((m) => m.ctx.status === "active").length, active_trials: matched.filter((m) => m.ctx.status === "trialing").length,
-        total_revenue: Math.round(matched.reduce((s, m) => s + m.ctx.totalSpent, 0) * 100) / 100, currency: "USD", is_approximate: approximate,
-      },
-      customer_sample: matched.slice(0, 10).map((m) => ({
+      // RevenueCat's stats shape has no room for more fields: while a large project's first count runs (services/customer-counts.ts)
+      // the totals are 0 and `is_approximate` is true; otherwise they are exact.
+      stats: { ...counts.result, currency: "USD", is_approximate: counts.counting },
+      customer_sample: sample.map(({ data: { customer: cu }, ctx }) => ({ cu, ctx })).map((m) => ({
         object: "audience_member" as const, app_user_id: m.cu.originalAppUserId, app_uuid: m.cu.id, email: m.ctx.attributes.$email ?? null,
         first_seen_at: m.cu.firstSeen.getTime(), last_seen_at: m.cu.lastSeen.getTime(), status: m.ctx.status, total_spent: m.ctx.totalSpent, currency: "USD", latest_product_name: m.ctx.latestProduct,
       })),

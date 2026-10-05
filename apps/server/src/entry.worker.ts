@@ -53,7 +53,7 @@ async function runTick(env: Env, db: DB, why: string) {
     // Credential re-checks call Apple and Google; only the cron does them, not the ticks kicked by requests.
     // Data exports (file uploads) run on the cron only, never in a tick kicked by a request.
     const r = await tick(db, new Date(), fetch, {
-      stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", storePrices: why === "cron", exports: why === "cron", winback: why === "cron", consumption: why === "cron",
+      stores, mailer: mailerFor(env), publicUrl: publicUrlFor(env), checkCredentials: why === "cron", storePrices: why === "cron", exports: why === "cron", winback: why === "cron", counts: why === "cron", consumption: why === "cron",
       // Weekly summaries, experiment results and anomaly alerts (chart computations) from the cron only.
       accountNotifications: why === "cron",
       encryptionKey: env.REVENUEDOT_ENCRYPTION_KEY, signingKey: env.REVENUEDOT_SIGNING_KEY, strictUrls: true, googleOAuth: googleOAuthFor(env), admob: why === "cron", recovery: why === "cron", pruneDeliveryLogs: why === "cron", stripeConnect: stripeConnectFor(env),

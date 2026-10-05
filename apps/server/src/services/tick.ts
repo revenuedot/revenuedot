@@ -20,6 +20,7 @@ import { runAccountNotifications } from "./account-notifications.js";
 import { runJourneys } from "./journeys.js";
 import { retryDueConsumption } from "./refunds.js";
 import { runDueCampaigns } from "./winback.js";
+import { runCountJobs } from "./customer-counts.js";
 import { runPaymentRecovery } from "./payment-recovery.js";
 import type { StripeConnectConfig } from "./stripe-connect-config.js";
 import { recheckDueCredentials } from "./credential-health.js";
@@ -62,6 +63,10 @@ export interface TickOptions {
   exports?: boolean;
   /** Win-back campaigns send here unless false (the Worker sends them from the cron only, like exports). */
   winback?: boolean;
+  /** Exact customer counts of large projects go on here unless false (the Worker counts from the cron only). */
+  counts?: boolean;
+  /** Wall-clock budget for those counts per tick (default 15 seconds; the Worker's cron has 30 seconds of CPU). */
+  countBudgetMs?: number;
   /** Refund Control retries call the App Store here unless false (the Worker retries from the cron only). */
   consumption?: boolean;
   /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
@@ -141,6 +146,11 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   if (opts.winback !== false) {
     try { winback = await runDueCampaigns({ db, mailer: opts.mailer, now: () => now }, opts.publicUrl); } catch (e) { console.error("tick: win-back campaigns failed", e); }
   }
+  // Exact counts of large projects' lists, previews and policies (services/customer-counts.ts), within a time budget.
+  let counts = 0;
+  if (opts.counts !== false && !draining()) {
+    try { counts = (await runCountJobs(db, now, { budgetMs: opts.countBudgetMs })).pages; } catch (e) { console.error("tick: customer counts failed", e); }
+  }
   // Payment recovery: close cases whose window passed, email the due steps (prd/payment-recovery/PRD.md).
   let recovery = { sent: 0, failed: 0, skipped: 0, closed: 0 };
   if (opts.recovery !== false) {
@@ -208,7 +218,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, counts, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

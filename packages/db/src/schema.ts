@@ -288,7 +288,7 @@ export const customers = pgTable("customers", {
   originalPurchaseDate: ts("original_purchase_date"),
   /** Offering forced for this customer by the REST API (overrides the current offering). */
   offeringOverrideId: text("offering_override_id"),
-}, (t) => [index("customers_project").on(t.projectId, t.lastSeen), index("customers_project_first_seen").on(t.projectId, t.firstSeen, t.id)]);
+}, (t) => [index("customers_project").on(t.projectId, t.lastSeen, t.id), index("customers_project_first_seen").on(t.projectId, t.firstSeen, t.id), index("customers_project_id").on(t.projectId, t.id)]);
 
 /** Every app user id that points at a customer (the original id is an alias too). */
 export const customerAliases = pgTable("customer_aliases", {
@@ -1172,6 +1172,31 @@ export const exportRuns = pgTable("export_runs", {
  * Refund Control policies, evaluated in `position` order when Apple asks about a refund (CONSUMPTION_REQUEST): the first
  * policy whose rules match the customer decides the refund preference; no match uses the project's default.
  */
+/**
+ * Exact customer counts of large projects (prd/lifecycle/PRD.md "Scale"): list cards, audience previews, Refund Control
+ * policy counts and win-back previews whose conditions run in JavaScript. The tick walks the project page by page from
+ * `cursor`, adding to `partial`, and stores `result` with `counted_at`; small projects are counted in the request instead.
+ */
+export const customerCounts = pgTable("customer_counts", {
+  /** sha-256 of the project, kind and spec. */
+  key: text("key").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  spec: jsonb("spec").notNull(),
+  result: jsonb("result"),
+  countedAt: ts("counted_at"),
+  /** "pending" while a count is wanted (first one, or a refresh of a stale one); "idle" otherwise. */
+  state: text("state").notNull().default("pending"),
+  /** The time conditions are evaluated at, fixed for a whole pass. */
+  asOf: ts("as_of"),
+  /** Last customer id counted in this pass, and the running totals. */
+  cursor: text("cursor"),
+  partial: jsonb("partial"),
+  leaseUntil: ts("lease_until"),
+  requestedAt: ts("requested_at").notNull().defaultNow(),
+  readAt: ts("read_at").notNull().defaultNow(),
+}, (t) => [index("customer_counts_due").on(t.state, t.requestedAt), index("customer_counts_project").on(t.projectId)]);
+
 export const refundPolicies = pgTable("refund_policies", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
