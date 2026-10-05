@@ -22,6 +22,8 @@ const SHOTS = [
   { name: "customers", path: "customers", clip: { x: 236, y: 56, width: 1100, height: 608 } },
   { name: "apps", path: "apps", clip: { x: 236, y: 56, width: 1100, height: 608 } },
   { name: "app-store", path: "apps", open: (p) => p.locator("table tbody tr, a", { hasText: /App Store/ }).first(), clip: { x: 430, y: 60, width: 900, height: 497 } },
+  // The app page's forwarding field, centred in the frame (the page scrolls to it first).
+  { name: "forwarding", path: "apps", open: (p) => p.locator("table tbody tr, a", { hasText: /App Store/ }).first(), around: (p) => p.getByLabel("Forward notifications to RevenueCat or your own server") },
   { name: "api-keys", path: "api-keys", clip: { x: 236, y: 56, width: 900, height: 497 } },
   { name: "paywall-templates", path: "paywalls/templates", clip: { x: 500, y: 150, width: 940, height: 519 } },
   { name: "experiments", path: "experiments", clip: { x: 236, y: 56, width: 960, height: 530 } },
@@ -48,8 +50,23 @@ for (const account of ["seeded", "fresh"]) {
     await page.goto(`${base}/projects/${projectId}/${s.path}`);
     await page.waitForLoadState("networkidle");
     if (s.open) { await s.open(page).click(); await page.waitForLoadState("networkidle"); }
+    let clip = s.clip;
+    if (s.around) {
+      const el = s.around(page);
+      await el.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      const b = await el.boundingBox();
+      clip = { x: 430, y: Math.max(56, Math.round(b.y + b.height / 2 - 248)), width: 900, height: 497 };
+    }
     await page.waitForTimeout(700);
-    const png = await page.screenshot({ type: "png", clip: s.clip });
+    // The test server's own address shows as Cloud's, as customers see it.
+    await page.evaluate((origin) => {
+      const swap = (v) => v.split(origin).join("https://api.revenuedot.app");
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.nodeValue.includes(origin)) n.nodeValue = swap(n.nodeValue);
+      for (const el of document.querySelectorAll("input, textarea")) if (el.value.includes(origin)) el.value = swap(el.value);
+    }, new URL(base).origin);
+    const png = await page.screenshot({ type: "png", clip });
     // The frame: a window holding the clipped part of the dashboard, on a light ground, running off the bottom edge.
     await shotPage.setContent(`<!doctype html><html><head><style>
       *{margin:0;box-sizing:border-box}body{width:1200px;height:675px;overflow:hidden;background:#F2F2F2}

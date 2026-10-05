@@ -36,8 +36,17 @@ export const videoUrl = (id: VideoId) => VIDEOS[id].youtube ?? `${SITE}/watch/${
 export const videoCover = (id: VideoId) => `${SITE}/email/${VIDEOS[id].slug}.jpg`;
 
 /** Dashboard screenshots framed for email (apps/site/scripts/email-shots.mjs), 1200×675 in apps/site/public/email/shots/. */
-export type Shot = "checklist" | "overview" | "customers" | "apps" | "app-store" | "api-keys" | "paywall-templates" | "experiments" | "recovery" | "team" | "charts";
+export type Shot = "checklist" | "overview" | "customers" | "apps" | "app-store" | "forwarding" | "api-keys" | "paywall-templates" | "experiments" | "recovery" | "team" | "charts";
 export const shotUrl = (s: Shot) => `${SITE}/email/shots/${s}.jpg`;
+/** What each screenshot shows, for readers whose email client blocks images. */
+const SHOT_ALT: Record<Shot, string> = {
+  checklist: "The setup checklist on the RevenueDot Overview", overview: "The RevenueDot Overview with revenue, MRR and trials",
+  customers: "The Customers list in RevenueDot", apps: "The Apps page in RevenueDot with each app's status",
+  "app-store": "An App Store app's setup checklist in RevenueDot", forwarding: "The field that forwards store notifications to RevenueCat",
+  "api-keys": "The API keys page in RevenueDot", "paywall-templates": "Paywall templates in RevenueDot",
+  experiments: "Experiment templates in RevenueDot", recovery: "Payment recovery in RevenueDot", team: "Project members and roles in RevenueDot",
+  charts: "A revenue chart in RevenueDot",
+};
 
 export type StepId =
   | "welcome" | "verify_reminder" | "first_purchase" | "checkin" | "connect_app" | "ai_setup" | "store_keys" | "go_live" | "need_hand" | "last_call"
@@ -168,7 +177,6 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     eyebrow: "Your account",
     heading: "Confirm your email",
     intro: ["Secret API keys and team invites need a confirmed email. Your first link expired, so here's a new one."],
-    visual: { shot: "api-keys" },
     button: { label: "Confirm my email", url: c.verifyUrl ?? `${c.app}/` },
     tips: ["The link works for **24 hours**.", "Didn't sign up? Ignore this email and nothing happens."],
   }),
@@ -192,7 +200,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   checkin: (c) => ({
     subject: "What are you building?",
     preheader: "Reply with your stack and we'll send the fastest setup path.",
-    eyebrow: setup(1),
+    eyebrow: "Setup",
     heading: "What are you building?",
     intro: [`${proj(c)} has no app yet. Reply with your stack, and we'll send you the fastest setup path.`],
     visual: { shot: "checklist" },
@@ -201,8 +209,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { title: "Your store", text: "App Store, Google Play or web." },
       { title: "RevenueCat today?", text: "Yes or no." },
     ],
-    button: { label: "Add your first app", url: dash(c, "/apps") },
-    tips: ["Just reply to this email. One line is enough."],
+    button: { label: "Reply with your stack", url: "mailto:hello@revenuedot.app?subject=What%20I'm%20building" },
   }),
 
   connect_app: (c) => ({
@@ -213,11 +220,11 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     intro: ["RevenueDot works with the RevenueCat SDK. You don't need a RevenueCat account."],
     visual: { video: "connect-your-app", shot: "api-keys" },
     steps: [
-      { title: "Add the SDK to your app", text: "The open-source RevenueCat SDK, or our fork." },
+      { title: "Add the SDK to your app", text: "The RevenueCat SDK for your platform." },
       { title: "Point it at RevenueDot", text: "Set the URL and turn the signature check off." },
       { title: "Use your `test_` key", text: "Copy it from **API keys**." },
     ],
-    code: { label: "iOS (Swift)", text: 'Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!\nPurchases.configure(with: Configuration.Builder(withAPIKey: "test_...").with(entitlementVerificationMode: .disabled).build())' },
+    code: { label: "iOS (Swift)", text: 'Purchases.proxyURL = URL(\n  string: "https://api.revenuedot.app")!\nPurchases.configure(with:\n  .init(withAPIKey: "test_...")\n  .with(entitlementVerificationMode:\n    .disabled)\n  .build())' },
     button: { label: "Get your API key", url: dash(c, "/api-keys") },
     links: [{ label: "iOS", url: docs("sdks/ios") }, { label: "Android", url: docs("sdks/android") }, { label: "React Native", url: docs("sdks/react-native") }, { label: "Flutter", url: docs("sdks/flutter") }],
   }),
@@ -229,7 +236,6 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     heading: "Let your AI tool do the setup",
     intro: ["Claude Code, Cursor and Codex can add purchases to your app. Our docs are written for them."],
     code: { label: "Paste this prompt", text: "Add in-app purchases with RevenueDot. Read https://revenuedot.app/llms.txt and follow the quickstart." },
-    visual: { shot: "api-keys" },
     button: { label: "Open the quickstart", url: docs("getting-started/quickstart") },
     links: [{ label: "llms.txt", url: `${SITE}/llms.txt` }, { label: "Agent skills", url: "https://github.com/revenuedot/agent-skills" }],
   }),
@@ -301,7 +307,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { title: "Run both", text: "Forward store notifications so both see every renewal." },
       { title: "Switch", text: "Point the SDK at RevenueDot in your next release." },
     ],
-    code: { label: "Import command", text: "npx revenuedot import --from-revenuecat --rc-project <your project id> --to https://api.revenuedot.app" },
+    code: { label: "Import command", text: "npx revenuedot import \\\n  --from-revenuecat \\\n  --rc-project <your project id> \\\n  --to https://api.revenuedot.app" },
     button: { label: "Start the import", url: docs("migrate/importer") },
     tips: ["The import needs a **RevenueCat v2 secret key** and a **RevenueDot secret key**, so confirm your email first."],
     links: [{ label: "See what you'd save", url: `${SITE}/tools/revenuecat-fee-calculator` }, { label: "Side-by-side run", url: docs("migrate/dual-run") }],
@@ -342,7 +348,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     eyebrow: SWITCH,
     heading: "Point the stores at RevenueDot",
     intro: [`Your import finished${c.importedOn ? ` on ${c.importedOn}` : ""}, but no store notification has arrived since. RevenueDot can't see renewals without them.`],
-    visual: { shot: "app-store" },
+    visual: { shot: "forwarding" },
     steps: [
       { title: "Forward to RevenueCat first", text: "Paste RevenueCat's URL on each app's page." },
       { title: "Then App Store Connect", text: "Set RevenueDot's notification URL." },
@@ -364,11 +370,11 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       rows: [["RevenueCat", usd(c.bills.revenuecat), usd(c.bills.revenuecat * 12)], ["RevenueDot Cloud", usd(c.bills.revenuedot), usd(c.bills.revenuedot * 12)]],
       note: c.projected !== undefined ? `Based on ${usd(c.projected)} a month (${usd(c.last7 ?? 0)} in the last 7 days). RevenueCat: 1% of all revenue past $2,500. RevenueDot: 0.5% above $10,000, capped at $999.` : undefined,
     } : undefined,
-    visual: { video: "switch-from-revenuecat", shot: "charts" },
+    visual: { video: "switch-from-revenuecat" },
     steps: [
-      { title: "Check the numbers", text: "`import verify` shows no differences." },
+      { title: "Check the numbers", text: "`import verify` shows no differences, and few users still run the old app version." },
       { title: "Move your webhooks", text: "In the same hour you turn RevenueCat's off." },
-      { title: "Turn RevenueCat off", text: "Then stop forwarding." },
+      { title: "Stop forwarding, then turn RevenueCat off" },
     ],
     button: { label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
   }),
@@ -417,9 +423,8 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     eyebrow: BILLING,
     heading: "Your apps keep working",
     intro: ["Your account moved to **Cloud Free**. Your apps and data are unchanged."],
-    visual: { shot: "overview" },
-    steps: [{ title: "Tell us why", text: "Price, a missing feature or a bug. Just reply." }],
-    button: { label: "Open the dashboard", url: dash(c, "/overview") },
+    steps: [{ title: "Tell us why", text: "Price, a missing feature or a bug. One line helps." }],
+    button: { label: "Tell us why", url: "mailto:hello@revenuedot.app?subject=Why%20I%20left%20Standard" },
   }),
 
   paywalls: (c) => ({
@@ -492,9 +497,8 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     eyebrow: "Quick question",
     heading: "How is it going?",
     intro: [`${proj(c)} has been selling through RevenueDot since ${c.liveSince ?? "your first sale"}. Thank you.`],
-    visual: { shot: "charts" },
-    steps: [{ title: "What's one thing you'd change?", text: "Reply with one line. We read every answer." }],
-    button: { label: "See your revenue", url: dash(c, "/charts") },
+    steps: [{ title: "What's one thing you'd change?", text: "One line back is plenty. We read every answer." }],
+    button: { label: "Reply in one line", url: "mailto:hello@revenuedot.app?subject=How%20RevenueDot%20is%20going" },
   }),
 
   assistant: (c) => ({
@@ -523,7 +527,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       rows: c.priceRows.map(([r, rd, rc]) => [usd(r), usd(rd), usd(rc)]),
       note: "Revenue before Apple and Google take their cut. RevenueDot never charges more than $999 a month.",
     } : undefined,
-    button: { label: "Upgrade to Standard ($0 today)", url: `${c.app}/account/billing` },
+    button: { label: "Upgrade for $0 today", url: `${c.app}/account/billing` },
     tips: ["Adding a card now costs nothing. Standard is $0 until you pass $10,000."],
   }),
 
@@ -532,7 +536,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     preheader: c.bills ? `On ${usd(c.overTracked ?? 0)} a month: ${usd(c.bills.revenuedot)} on Standard.` : "0.5% above $10,000, capped at $999 a month.",
     eyebrow: BILLING,
     heading: "Your apps outgrew Cloud Free",
-    intro: [`Your apps tracked **${usd(c.overTracked ?? 0)}** in ${c.overMonth ?? "a month"}. Your apps keep working either way.`],
+    intro: [`Your apps tracked **${usd(c.overTracked ?? 0)}** in ${c.overMonth ?? "a month"}. Cloud Free covers up to $10,000 a month, so Standard is your plan now. Your apps keep working either way.`],
     table: c.bills ? { head: ["On " + usd(c.overTracked ?? 0), "A month", "A year"], rows: [["RevenueCat", usd(c.bills.revenuecat), usd(c.bills.revenuecat * 12)], ["RevenueDot Standard", usd(c.bills.revenuedot), usd(c.bills.revenuedot * 12)]] } : undefined,
     button: { label: "Upgrade to Standard", url: `${c.app}/account/billing` },
     tips: ["Billing starts on the **1st of next month**, with no proration.", "Checkout takes your company name and tax ID for invoices."],
@@ -545,7 +549,6 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     heading: "Anything in the way?",
     intro: [`Your apps passed $10,000 in ${c.overMonth ?? "a recent month"} (${usd(c.overTracked ?? 0)}). Congratulations.`],
     steps: [{ title: "Checkout or invoices in the way?", text: "Reply and we'll sort it out." }],
-    visual: { shot: "charts" },
     button: { label: "Upgrade to Standard", url: `${c.app}/account/billing` },
   }),
 
@@ -560,7 +563,6 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { title: "A named engineer", text: "And faster support." },
       { title: "DPA and security review", text: "Done with your team." },
     ],
-    visual: { shot: "charts" },
     button: { label: "Book a call", url: BOOKING_URL },
   }),
 
@@ -572,7 +574,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     intro: [`${proj(c)} has sold through RevenueDot since ${c.liveSince ?? "your first sale"}. Share your link with a founder who should switch.`],
     copyBox: c.referralUrl ? { label: "Your link", text: c.referralUrl } : undefined,
     steps: [
-      { title: "They keep their SDK", text: "And change one setting." },
+      { title: "They keep their SDK", text: "And point it at RevenueDot." },
       { title: "We help them switch", text: "Import, side by side, cutover." },
     ],
     button: c.referralUrl ? { label: "Share on X", url: `https://x.com/intent/post?text=${encodeURIComponent(`I run my app's subscriptions on @revenuedot: open source, works with the RevenueCat SDK, free up to $10K a month. ${c.referralUrl}`)}` } : undefined,
@@ -641,12 +643,16 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
   const video = v?.video && VIDEOS[v.video].ready ? v.video : null;
   const pic = video
     ? { src: videoCover(video), href: tag(videoUrl(video), s), alt: `Play the video: ${VIDEOS[video].title} (${VIDEOS[video].length})`, caption: `&#9654;&nbsp; <strong style="color:${INK};font-weight:700;">Watch: ${esc(VIDEOS[video].title)}</strong> <span style="font-family:${MONO};font-size:12px;color:${FG3};">${VIDEOS[video].length}</span>` }
-    : v?.shot ? { src: shotUrl(v.shot), href: tag(v.href ?? m.button?.url ?? `${c.app}/`, s), alt: m.heading, caption: "" } : null;
+    : v?.shot ? { src: shotUrl(v.shot), href: tag(v.href ?? m.button?.url ?? `${c.app}/`, s), alt: SHOT_ALT[v.shot], caption: "" } : null;
   const visual = pic
     ? `<tr><td style="padding:0 0 ${pic.caption ? 10 : 24}px;"><a href="${esc(pic.href)}" style="display:block;text-decoration:none;"><img src="${esc(pic.src)}" width="520" alt="${esc(pic.alt)}" style="display:block;width:100%;max-width:520px;height:auto;border:1px solid ${BORDER};outline:none;background:${PANEL};font-family:${FONT};font-size:14px;color:${FG2};"></a></td></tr>` +
       (pic.caption ? `<tr><td style="padding:0 0 24px;font-size:14px;line-height:20px;color:${INK};"><a href="${esc(pic.href)}" style="color:${INK};text-decoration:none;">${pic.caption}</a></td></tr>` : "")
     : "";
-  const steps = m.steps?.length
+  // One item is a bold line, not a list with a lone "1".
+  const steps = m.steps?.length === 1
+    ? `<tr><td style="padding:0 0 22px;"><p style="margin:0;font-size:16px;line-height:23px;font-weight:700;color:${INK};">${h(m.steps[0]!.title)}</p>` +
+      (m.steps[0]!.text ? `<p style="margin:2px 0 0;font-size:14px;line-height:21px;color:${FG2};">${h(m.steps[0]!.text)}</p>` : "") + `</td></tr>`
+    : m.steps?.length
     ? `<tr><td style="padding:0 0 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">` +
       m.steps.map((x, i) => `<tr><td valign="top" style="width:40px;padding:0 0 14px;"><div style="width:26px;height:26px;background:${INK};color:#FFFFFF;font-family:${MONO};font-size:13px;line-height:26px;font-weight:600;text-align:center;">${i + 1}</div></td>` +
         `<td valign="top" style="padding:2px 0 14px;"><p style="margin:0;font-size:16px;line-height:22px;font-weight:700;color:${INK};">${h(x.title)}</p>` +
@@ -654,7 +660,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
       `</table></td></tr>`
     : "";
   const code = m.code
-    ? `<tr><td style="padding:0 0 22px;">${label(m.code.label)}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${INK};padding:14px 16px;font-family:${MONO};font-size:12.5px;line-height:20px;color:#F5F5F5;word-break:break-word;white-space:pre-wrap;">${esc(m.code.text)}</td></tr></table></td></tr>`
+    ? `<tr><td style="padding:0 0 22px;">${label(m.code.label)}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${INK};padding:14px 16px;font-family:${MONO};font-size:12.5px;line-height:20px;color:#F5F5F5;white-space:pre-wrap;word-break:normal;overflow-wrap:anywhere;">${esc(m.code.text)}</td></tr></table></td></tr>`
     : "";
   const table = m.table
     ? `<tr><td style="padding:0 0 22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid ${BORDER};">` +
@@ -687,7 +693,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
     `<tr><td style="padding:0 0 6px;">${label(m.eyebrow, FG3)}</td></tr>` +
     `<tr><td style="padding:0 0 12px;"><h1 style="margin:0;font-size:28px;line-height:34px;font-weight:700;letter-spacing:-0.03em;color:${INK};">${esc(m.heading)}</h1></td></tr>` +
     `<tr><td style="padding:0 0 22px;">${m.intro.map((x) => `<p style="margin:0 0 8px;font-size:16px;line-height:25px;color:${FG2};">${h(x)}</p>`).join("")}</td></tr>` +
-    visual + steps + code + table + copyBox + button + links + tips +
+    table + visual + steps + code + copyBox + button + links + tips +
     `<tr><td style="border-top:1px solid ${BORDER};padding:18px 0 0;font-size:13px;line-height:20px;color:${FG2};"><strong style="color:${INK};">Questions?</strong> Reply to this email and our team will help.</td></tr>` +
     `<tr><td style="padding:12px 0 0;font-size:12px;line-height:18px;color:${FG3};">${esc(reason)}<br>RevenueDot &middot; <a href="${esc(prefs)}" style="color:${FG3};">Email preferences</a> &middot; <a href="${esc(c.unsubscribeUrl)}" style="color:${FG3};">Unsubscribe</a></td></tr>` +
     `</table></td></tr></table></body></html>`;
