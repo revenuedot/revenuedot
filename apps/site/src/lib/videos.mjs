@@ -46,37 +46,37 @@ export const CHAPTERS = {
  */
 export const WATCH = {
   "revenuedot-platform-demo": {
-    heading: "See the whole RevenueDot platform in 2½ minutes", seconds: 152, date: "2026-10-05", youtube: null,
+    heading: "See the whole RevenueDot platform in 2½ minutes", seconds: 152, date: "2026-10-05", youtube: "https://www.youtube.com/watch?v=iZH8eTC5B1c",
     description: "Switch from RevenueCat in one line, then tour RevenueDot: import, charts, paywalls, experiments, integrations, AI, enterprise roles, self-hosting and pricing.",
     summary: "Change one line to point the RevenueCat SDK at RevenueDot, import your customers and verify the numbers, then see the dashboard: 43 charts, customers, paywalls, experiments, refund rules and win-back, 38 integrations and the AI assistant. It ends with enterprise roles, single sign-on and audit logs, self-hosting with Docker, and a bill that is free up to $10,000 a month and capped at $999 a month.",
     next: { label: "Start free on Cloud", href: "https://app.revenuedot.app/signup" },
   },
   "revenuedot-connect-your-app": {
-    heading: "Connect your app to RevenueDot", seconds: 77, date: "2026-10-05", youtube: null,
+    heading: "Connect your app to RevenueDot", seconds: 77, date: "2026-10-05", youtube: "https://www.youtube.com/watch?v=M_D0YodECkU",
     description: "Connect an iOS, Android, React Native or Flutter app to RevenueDot: the SDK URL, the signature check and your key.",
     summary: "Add the RevenueCat SDK to your app and change two settings: point it at https://api.revenuedot.app and turn the signature check off. Start with your test key from API keys, watch the first customer arrive, then add your App Store or Google Play credentials.",
     next: { label: "Read the SDK guides", href: "/docs/sdks" },
   },
   "revenuedot-paywalls-and-experiments": {
-    heading: "Build a paywall and test it", seconds: 64, date: "2026-10-05", youtube: null,
+    heading: "Build a paywall and test it", seconds: 64, date: "2026-10-05", youtube: "https://www.youtube.com/watch?v=daXVK_4XD8I",
     description: "Build a paywall from a template in RevenueDot, publish it, then run an experiment to see which version earns more.",
     summary: "Start from a paywall template, edit the words and prices, preview light and dark, and publish. After one app release that shows the paywall view, changes need no app update. Then start an experiment and read the lift, the confidence interval and the chance each version wins.",
     next: { label: "How experiments work", href: "/docs/guides/experiments" },
   },
   "revenuedot-switch-from-revenuecat": {
-    heading: "Switch from RevenueCat without losing a renewal", seconds: 94, date: "2026-10-05", youtube: null,
+    heading: "Switch from RevenueCat without losing a renewal", seconds: 94, date: "2026-10-05", youtube: "https://www.youtube.com/watch?v=Smjskzwwo7o",
     description: "Move from RevenueCat to RevenueDot safely: keep the SDK, import your data, run both side by side, then cut over.",
     summary: "Keep the RevenueCat SDK your app ships. Import products, offerings, customers and purchase history with one command, forward store notifications so RevenueCat and RevenueDot both see every renewal, compare the numbers, then point the SDK at RevenueDot and turn RevenueCat off.",
     next: { label: "Start the migration guide", href: "/docs/migrate" },
   },
   "revenuedot-first-purchase": {
-    heading: "Your first purchase in 5 minutes", seconds: 78, date: "2026-10-04", youtube: null,
+    heading: "Your first purchase in 5 minutes", seconds: 78, date: "2026-10-04", youtube: "https://www.youtube.com/watch?v=1YLygdbWOKM",
     description: "Make your first in-app purchase with RevenueDot in 5 minutes: a Test Store app, a product, an entitlement and a test purchase.",
     summary: "Sign up, then follow the Overview checklist: add a Test Store app, a pro_monthly product, a pro entitlement and a default offering, and make a test purchase. The customer test_user_1 gets Pro for a month, with its events. No server and no App Store account needed.",
     next: { label: "Follow the quickstart", href: "/docs/getting-started/quickstart" },
   },
   "revenuedot-chatgpt-demo": {
-    heading: "Run your subscriptions from ChatGPT", seconds: 87, date: "2026-10-01", youtube: null,
+    heading: "Run your subscriptions from ChatGPT", seconds: 87, date: "2026-10-01", youtube: "https://www.youtube.com/watch?v=bq8JAlei4x8",
     description: "Watch RevenueDot in ChatGPT: check setup health, find a customer, grant Pro for 7 days and fix a webhook, all in plain words.",
     summary: "Connect RevenueDot to ChatGPT and run your app's subscriptions in plain words: a health check finds a broken webhook, a customer lookup by email, a 7-day Pro grant with ChatGPT's approval prompt, a new weekly plan, a webhook retry, and a refund that waits for your permission.",
     next: { label: "Connect ChatGPT, Claude or Cursor", href: "/docs/guides/connect-ai-assistants" },
