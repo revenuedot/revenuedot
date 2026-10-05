@@ -35,6 +35,7 @@ jobs:
       docker: ${{ steps.f.outputs.docker }}
       infra: ${{ steps.f.outputs.infra }}
       e2e: ${{ steps.f.outputs.e2e }}
+      server: ${{ steps.f.outputs.server }}
     steps:
       - id: f
         env:
@@ -43,7 +44,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [ "$FULL" = "true" ] || [ -z "$PR" ]; then
-            printf 'code=true\nsite=%s\ndocker=true\ninfra=true\ne2e=true\n' "$([ "$FULL" = "true" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"; exit 0
+            printf 'code=true\nsite=%s\ndocker=true\ninfra=true\ne2e=true\nserver=false\n' "$([ "$FULL" = "true" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"; exit 0
           fi
           files=$(gh api "repos/${{ github.repository }}/pulls/$PR/files" --paginate -q '.[].filename')
           echo "$files"
@@ -58,8 +59,10 @@ jobs:
           infra=$(has '^deploy/')
           # The dashboard in a browser against the real API: anything the dashboard, the server or their packages run.
           e2e=$(has '^(apps/(server|dashboard)/|packages/|ee/|design/|tsconfig\.base\.json)')
+          # The API routes: the docs repo's drift check compares them with its OpenAPI document.
+          server=$(has '^(apps/server/src/|ee/server/)')
           [ "$any" = true ] && { code=true; site=true; docker=true; infra=true; e2e=true; }
-          printf 'code=%s\nsite=%s\ndocker=%s\ninfra=%s\ne2e=%s\n' "$code" "$site" "$docker" "$infra" "$e2e" | tee -a "$GITHUB_OUTPUT"
+          printf 'code=%s\nsite=%s\ndocker=%s\ninfra=%s\ne2e=%s\nserver=%s\n' "$code" "$site" "$docker" "$infra" "$e2e" "$server" | tee -a "$GITHUB_OUTPUT"
 
   typecheck:
     needs: changes
@@ -180,10 +183,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      # The site renders the docs repo at /docs and /blog.
+      # The site renders the docs repo at /docs and /blog: the docs branch with this pull request's name when there is
+      # one (a site change that goes with a docs change), else docs main.
+      - name: Pick the docs branch
+        id: docs
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if git ls-remote --exit-code --heads https://github.com/revenuedot/docs "refs/heads/$HEAD_REF" >/dev/null 2>&1; then ref="$HEAD_REF"; else ref=main; fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"; echo "docs branch: $ref"
       - uses: actions/checkout@v5
         with:
           repository: revenuedot/docs
+          ref: ${{ steps.docs.outputs.ref }}
           path: docs-repo
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
@@ -205,6 +217,42 @@ jobs:
         env:
           DOCS_DIR: ${{ github.workspace }}/docs-repo
           CHECK_WORKSPACE: "0"
+
+  # Every API route has an entry in the docs repo's OpenAPI document, and the other way round. Without this the drift
+  # showed up only after the merge, as a failed docs deploy (five of them between 2026-10-02 and 2026-10-05). Open the
+  # docs pull request from a branch with the same name as this one and this job checks against it; merge this one first.
+  docs-drift:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: revenuedot
+      - name: Pick the docs branch
+        id: docs
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if git ls-remote --exit-code --heads https://github.com/revenuedot/docs "refs/heads/$HEAD_REF" >/dev/null 2>&1; then ref="$HEAD_REF"; else ref=main; fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"; echo "docs branch: $ref"
+      - uses: actions/checkout@v5
+        with:
+          repository: revenuedot/docs
+          ref: ${{ steps.docs.outputs.ref }}
+          path: docs
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: revenuedot/.nvmrc
+      - name: Drift between the routes and the OpenAPI document
+        working-directory: docs
+        env:
+          REVENUEDOT_SERVER_DIR: ${{ github.workspace }}/revenuedot
+        run: |
+          npm ci --no-audit --no-fund --prefer-offline
+          npm run build:openapi
+          npm run check:drift || { echo "::error::A route changed without the docs. Add it in revenuedot/docs (scripts/openapi/*.mjs, then npm run build) on a branch named ${{ github.head_ref }}."; exit 1; }
 
   docker:
     needs: changes
@@ -303,7 +351,7 @@ jobs:
   # One check for the whole run. Skipped jobs (the change could not affect them) count as passed.
   result:
     name: CI result
-    needs: [changes, typecheck, test, test-postgres, e2e, site, docker, deploy]
+    needs: [changes, typecheck, test, test-postgres, e2e, site, docs-drift, docker, deploy]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

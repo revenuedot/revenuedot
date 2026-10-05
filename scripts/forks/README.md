@@ -45,3 +45,12 @@ Every fork has a Release on its newest `<v>-revenuedot` tag, marked latest, whos
 ```
 gh release create <v>-revenuedot --repo revenuedot/<repo> --title <v>-revenuedot --latest --notes-file <notes.md>
 ```
+
+## Upstream workflows we delete
+
+RevenueCat's own housekeeping workflows run in the forks too, and some cannot work there. A `delete` rule in the repo's rules file removes them, so the failure does not come back after an upstream merge:
+
+- `.github/workflows/lock.yml` (six forks: iOS, Android, Flutter, React Native, Cordova, Unity): `dessant/lock-threads` v2 rejects GitHub's current installation tokens (over 100 characters), so the daily run failed in every fork (seen 2026-10-02 to 2026-10-05).
+- `.github/workflows/main.yml` (purchases-kmp): submits a Gradle dependency graph, which needs the dependency graph switched on for the repo; every push to `main` failed.
+
+When a fork's scheduled or push workflow fails, check `gh run list --repo revenuedot/<repo>` before anything else: if the workflow is RevenueCat's own and we do not need it, add a `delete` rule rather than fixing it.
