@@ -24,7 +24,7 @@ export function website() {
 }
 
 /** The product, with its free plans as offers. Usage-priced and custom plans have no fixed price, so they are left out. */
-const FREE_PLANS = ["cloud-free", "self-host"];
+const FREE_PLANS = ["cloud-free"];
 
 export function softwareApplication() {
   return {
@@ -34,7 +34,7 @@ export function softwareApplication() {
     url: SITE.url,
     description: SITE.description,
     applicationCategory: "DeveloperApplication",
-    operatingSystem: "Web (RevenueDot Cloud); self-host with Docker",
+    operatingSystem: "Web (RevenueDot Cloud)",
     license: "https://www.gnu.org/licenses/agpl-3.0.html",
     isAccessibleForFree: true,
     publisher: { "@id": ORG_ID },

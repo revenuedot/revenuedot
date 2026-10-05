@@ -1,5 +1,5 @@
 ---
-// The singular alternative page: "RevenueCat alternative", "open-source RevenueCat alternative", "self-hosted RevenueCat".
+// The singular alternative page: "RevenueCat alternative", "open-source RevenueCat alternative".
 import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Points from "../components/Points.astro";
@@ -32,17 +32,17 @@ const faq = P.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
         <a class="btn" href={SITE.signup}>Start free on Cloud</a>
         <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
       </div>
-      <p class="small muted">Prefer your own servers? <a href="/self-host">Self-host free</a> · <a href="/revenuecat-alternatives">See every alternative</a></p>
+      <p class="small muted">Free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month. <a href="/revenuecat-alternatives">See every alternative</a></p>
     </PageHead>
-    <div class="line"><Code title="The one line" label="Swift" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!  // or your own server
-Purchases.configure(withAPIKey: "appl_...")                       // unchanged`} /></div>
+    <div class="line"><Code title="The one line" label="Swift" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!
+Purchases.configure(withAPIKey: "appl_...")  // unchanged`} /></div>
     <div class="hero-shot"><Shot light={overview} dark={overviewDark} eager alt="RevenueDot dashboard overview with MRR, active subscriptions, trials, revenue and recent transactions" caption="The RevenueDot dashboard, captured from the running app with demo data." /></div>
   </div>
   <Points points={P.points} />
   <Blocks blocks={P.blocks} />
   <SeeIt features={["paywalls", "charts", "experiments", "web-checkout"]} title="The features you pay RevenueCat for, in RevenueDot" />
   <section class="section" id="faq"><div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">RevenueCat alternative: questions people ask</h2></div><Faq items={faq} open={0} /></div></section>
-  <Related items={["/tools/revenuecat-fee-calculator", "/compare/revenuedot-vs-revenuecat", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing", "/self-host"]} />
+  <Related items={["/tools/revenuecat-fee-calculator", "/compare/revenuedot-vs-revenuecat", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"]} />
   <CtaBand />
 </Base>
 <style>

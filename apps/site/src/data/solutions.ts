@@ -14,18 +14,18 @@ export const SOLUTIONS: Landing[] = [
     title: "Cut your RevenueCat bill: a free in-app purchase backend for indie developers",
     metaTitle: "Cut your RevenueCat bill as an indie developer",
     metaDescription:
-      "Once you reach $2,500 a month, RevenueCat charges 1% of all tracked revenue. RevenueDot Cloud is free up to $10,000 a month, and self-hosting is free. Keep your SDK code.",
+      "Once you reach $2,500 a month, RevenueCat charges 1% of all tracked revenue. RevenueDot Cloud is free up to $10,000 a month, then 0.5%, max $999. Keep your SDK code.",
     answer:
-      "Once an app reaches $2,500 a month, RevenueCat charges 1% of all monthly tracked revenue. RevenueDot Cloud is free up to $10,000 a month, so an app making $10,000 a month saves $100 every month, and self-hosting costs nothing but your server. You keep the RevenueCat SDK and change one proxy URL line. Cloud Standard is 0.5% above $10,000, capped at $999 a month.",
+      "Once an app reaches $2,500 a month, RevenueCat charges 1% of all monthly tracked revenue. RevenueDot Cloud is free up to $10,000 a month, so an app making $10,000 a month saves $100 every month. You keep the RevenueCat SDK and change one proxy URL line. Cloud Standard is 0.5% above $10,000, capped at $999 a month.",
     shot: {
       src: "screens/overview-light.png",
       alt: "The RevenueDot dashboard overview with monthly revenue, active subscriptions and a sandbox switch",
     },
     points: [
       { title: "Free to $10K a month", text: "RevenueDot Cloud costs $0 while your app tracks up to $10,000 a month." },
-      { title: "Self-host for $0", text: "The server is AGPL-3.0, with no revenue share and no limits." },
+      { title: "Capped at $999 a month", text: "Above $10,000 a month Cloud Standard charges 0.5%, and the bill never passes $999." },
       { title: "Same SDK, one line", text: "Keep your offerings, entitlements and purchase code. Set the SDK's proxy URL." },
-      { title: "Your data stays yours", text: "Customers and purchases live in Postgres tables you can query, on Cloud or on your server." },
+      { title: "Your data stays yours", text: "Customers and purchases live in Postgres tables you can query through the REST API and the dashboard." },
     ],
     blocks: [
       {
@@ -35,13 +35,13 @@ export const SOLUTIONS: Landing[] = [
           "RevenueCat is free up to $2,500 of monthly tracked revenue and then charges 1% of the revenue above that, according to its [pricing page](https://www.revenuecat.com/pricing) (checked September 2026). Its paywall and funnel tools are priced separately.",
         ],
         table: {
-          head: ["Monthly tracked revenue", "RevenueCat", "RevenueDot Cloud", "RevenueDot self-hosted"],
+          head: ["Monthly tracked revenue", "RevenueCat", "RevenueDot Cloud"],
           rows: [
-            ["$5,000", "$25", "$0", "$0 plus your server"],
-            ["$10,000", "$100", "$0", "$0 plus your server"],
-            ["$25,000", "$250", "$75", "$0 plus your server"],
-            ["$50,000", "$500", "$200", "$0 plus your server"],
-            ["$100,000", "$1,000", "$450", "$0 plus your server"],
+            ["$5,000", "$25", "$0"],
+            ["$10,000", "$100", "$0"],
+            ["$25,000", "$250", "$75"],
+            ["$50,000", "$500", "$200"],
+            ["$100,000", "$1,000", "$450"],
           ],
           caption: "Cloud Standard is 0.5% of tracked revenue above $10,000, capped at $999 a month.",
         },
@@ -102,11 +102,11 @@ export const SOLUTIONS: Landing[] = [
       },
       {
         q: "Is there a free alternative to RevenueCat?",
-        a: "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and self-hosted RevenueDot is free with no limits under AGPL-3.0. Both work with the RevenueCat SDK, so you change one proxy URL line.",
+        a: "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month. It works with the RevenueCat SDK, so you change one proxy URL line. Start free at https://app.revenuedot.app/signup.",
       },
       {
         q: "What does RevenueDot Cloud cost above $10,000 a month?",
-        a: "Cloud Standard is 0.5% of tracked revenue above $10,000, capped at $999 a month, and the rate never rises. The Cloud free plan covers up to $10,000 a month, and self-hosting costs only your own server.",
+        a: "Cloud Standard is 0.5% of tracked revenue above $10,000, capped at $999 a month, and the rate never rises. The Cloud free plan covers up to $10,000 a month.",
       },
       {
         q: "Do I have to rewrite my app to leave RevenueCat?",
@@ -124,25 +124,25 @@ export const SOLUTIONS: Landing[] = [
       { href: "/docs/migrate/what-differs", label: "What differs from RevenueCat" },
       { href: "/docs/getting-started/quickstart", label: "First purchase in 5 minutes" },
     ],
-    related: ["/pricing", "/compare/revenuedot-vs-revenuecat", "/migrate-from-revenuecat", "/self-host", "/solutions/self-hosted-in-app-purchases", "/stores/test-store"],
+    related: ["/pricing", "/compare/revenuedot-vs-revenuecat", "/migrate-from-revenuecat", "/stores/test-store"],
   },
 
   {
     slug: "app-studios",
     section: "solutions",
     name: "App studios",
-    card: "Run every client app on one server with one project each, team roles and no revenue share on self-host.",
+    card: "Run every client app on RevenueDot Cloud with one project each and team roles. Free up to $10K a month.",
     label: "Solution",
     title: "In-app purchase backend for app studios: many apps, one server, team roles",
     metaTitle: "In-app purchase backend for app studios and agencies",
     metaDescription:
-      "Run many apps on one RevenueDot server. One project per product, Admin, Developer and Viewer roles per project, and no revenue share when you self-host.",
+      "Run many apps on RevenueDot Cloud. One project per product, Admin, Developer and Viewer roles per project, free up to $10,000 a month.",
     answer:
-      "An app studio can run every app on one RevenueDot server. Each product is a project with its own catalog, customers, webhooks and API keys, and each person has an Admin, Developer or Viewer role per project. Self-hosting takes no share of any app's revenue, and RevenueDot Cloud is free up to $10,000 a month.",
+      "An app studio can run every app on RevenueDot Cloud. Each product is a project with its own catalog, customers, webhooks and API keys, and each person has an Admin, Developer or Viewer role per project. RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month.",
     points: [
       { title: "One project per product", text: "Each project owns its catalog, customers, webhooks and secret keys, so clients never see each other's data." },
       { title: "Roles per project", text: "Admin, Developer and Viewer. A person can hold a different role in each project." },
-      { title: "One server", text: "A self-hosted server holds any number of projects, and its cost does not grow with client revenue." },
+      { title: "Many projects", text: "One RevenueDot server holds any number of projects, one per client app." },
       { title: "Same SDK for all", text: "Every app keeps the RevenueCat SDK and sets one proxy URL." },
     ],
     blocks: [
@@ -178,7 +178,7 @@ export const SOLUTIONS: Landing[] = [
         h2: "What one server costs against one bill per app",
         label: "Cost",
         paras: [
-          "Self-hosted RevenueDot is AGPL-3.0 and takes no share of revenue, so adding a client app adds database rows, not a bill that grows with that client's sales. You pay for your own server and Postgres. If you prefer not to run servers, RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and Cloud Standard is capped at $999 a month. See [pricing](/pricing).",
+          "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month. [Start free on Cloud](https://app.revenuedot.app/signup). See [pricing](/pricing).",
           "For comparison, RevenueCat charges 1% of all monthly tracked revenue once it reaches $2,500 ([pricing](https://www.revenuecat.com/pricing), checked October 2026).",
         ],
       },
@@ -188,7 +188,7 @@ export const SOLUTIONS: Landing[] = [
         steps: [
           {
             name: "Create a project for the client",
-            text: `In the dashboard click **New project**, on [Cloud](${SIGNUP}) or on your own server.`,
+            text: `In the dashboard click **New project** on [RevenueDot Cloud](${SIGNUP}).`,
           },
           {
             name: "Invite the team",
@@ -204,7 +204,7 @@ export const SOLUTIONS: Landing[] = [
           },
           {
             name: "Set the proxy URL in the client app",
-            text: "Ship the app with the RevenueCat SDK and the proxy URL for your server. For a client already on RevenueCat, import their project first.",
+            text: "Ship the app with the RevenueCat SDK and the RevenueDot proxy URL. For a client already on RevenueCat, import their project first.",
           },
         ],
       },
@@ -213,7 +213,6 @@ export const SOLUTIONS: Landing[] = [
         label: "Honest notes",
         bullets: [
           "**One container per database.** The background job has no lock across processes, so run one RevenueDot container per Postgres for now.",
-          "**Backups are yours** on a self-hosted server. Use the managed database's point-in-time recovery and daily dumps. See [Backups](/docs/guides/backups).",
           "**Roles are three** today: Admin, Developer and Viewer.",
           "**Store credentials** for Apple and Google are stored in the project's database. Encrypt backups and limit who can read them.",
         ],
@@ -222,16 +221,12 @@ export const SOLUTIONS: Landing[] = [
     howTo: "How to onboard a new client app",
     faq: [
       {
-        q: "Can I run multiple apps on one RevenueDot server?",
-        a: "Yes. Create one project per product, and add an app per store inside it. Each project has its own catalog, customers, webhooks and API keys. A self-hosted server holds any number of projects.",
+        q: "Can I run multiple apps on one RevenueDot account?",
+        a: "Yes. Create one project per product, and add an app per store inside it. Each project has its own catalog, customers, webhooks and API keys.",
       },
       {
         q: "How do I give a client read-only access to their revenue?",
         a: "Invite them to their project with the Viewer role. A Viewer can read everything the dashboard shows and change nothing. A person can have a different role in each project.",
-      },
-      {
-        q: "Does self-hosted RevenueDot charge a share of each client's revenue?",
-        a: "No. Self-hosting is free under AGPL-3.0, with no limits and no revenue share. You pay for your own server and Postgres.",
       },
       {
         q: "Are one client's customers visible to another client's team?",
@@ -245,38 +240,37 @@ export const SOLUTIONS: Landing[] = [
     docs: [
       { href: "/docs/guides/team", label: "Invite your team" },
       { href: "/docs/concepts/projects-and-apps", label: "Projects, apps and API keys" },
-      { href: "/docs/guides/self-hosting", label: "Self-hosting" },
       { href: "/docs/guides/going-to-production", label: "Going to production" },
       { href: "/docs/migrate/importer", label: "The importer" },
     ],
-    related: ["/self-host", "/solutions/self-hosted-in-app-purchases", "/solutions/indie-developers", "/pricing", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat"],
+    related: ["/solutions/indie-developers", "/pricing", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat"],
   },
 
   {
     slug: "self-hosted-in-app-purchases",
     section: "solutions",
-    name: "Self-hosted in-app purchases",
-    card: "One Docker image and Postgres run your own in-app purchase server for the RevenueCat SDK.",
+    name: "Running the server yourself",
+    card: "Most teams start on RevenueDot Cloud. These are the technical notes for running the open-source server yourself.",
     label: "Solution",
-    title: "Self-hosted in-app purchase server with Docker and Postgres",
-    metaTitle: "Self-hosted in-app purchase server (Docker, Postgres)",
+    title: "RevenueDot Cloud, or the open-source server on Docker and Postgres",
+    metaTitle: "RevenueDot Cloud, or run the server yourself",
     metaDescription:
-      "Run a self-hosted in-app purchase server for the RevenueCat SDK. One Docker image plus Postgres 16, AGPL-3.0, no revenue share and no telemetry.",
+      "Start free on RevenueDot Cloud with no servers to run. The open-source server (AGPL-3.0) also runs from one Docker image plus Postgres 16.",
     answer:
-      "A self-hosted in-app purchase server is one Docker image next to Postgres 16. Clone RevenueDot, copy .env.example to .env, run docker compose up -d, and the SDK API, REST API, store notifications and dashboard answer on port 8787. It is AGPL-3.0, takes no revenue share and works with the RevenueCat SDK.",
+      "RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month, and needs no servers: sign up at https://app.revenuedot.app/signup. The same open-source code (AGPL-3.0) also runs as one Docker image next to Postgres 16 for teams that need their own infrastructure.",
     shot: {
       src: "dashboard-light.png",
-      alt: "The RevenueDot dashboard served by a self-hosted server, showing customers, revenue and setup health",
+      alt: "The RevenueDot dashboard showing customers, revenue and setup health",
     },
     points: [
       { title: "One image, one database", text: "A single container plus Postgres 16 with a persistent volume." },
       { title: "Migrations on start", text: "Upgrades are a rebuild and a restart. The server applies database migrations itself." },
-      { title: "No revenue share", text: "AGPL-3.0, free for any company to run for its own apps at any scale." },
-      { title: "Your data, your region", text: "Every purchase and customer lives in your Postgres. The server never calls RevenueDot." },
+      { title: "Open source", text: "The server and dashboard are AGPL-3.0, and the SDK forks are MIT." },
+      { title: "Your Postgres", text: "When you run the server yourself, every purchase and customer lives in your Postgres, and the server never calls RevenueDot." },
     ],
     blocks: [
       {
-        h2: "How to self-host an in-app purchase server with RevenueDot",
+        h2: "How to run the RevenueDot server yourself",
         label: "Steps",
         steps: [
           {
@@ -327,7 +321,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         },
       },
       {
-        h2: "A production checklist for your own server",
+        h2: "Production checklist for a server you run",
         label: "Before production",
         bullets: [
           "A managed Postgres with point-in-time recovery, daily dumps copied off the server, and one test restore.",
@@ -336,68 +330,68 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           "Store credentials checked in the dashboard, and notification status showing **Ready** for each app.",
           "Uptime monitoring on `GET /v1/health`.",
         ],
-        paras: ["The full list is in [Going to production](/docs/guides/going-to-production). The existing [self-host page](/self-host) covers the same stack with a Cloud comparison."],
+        paras: ["The full list is in [Going to production](/docs/guides/going-to-production). The [technical notes page](/self-host) covers the same stack."],
       },
       {
-        h2: "Self-host or Cloud",
+        h2: "RevenueDot Cloud or your own server",
         label: "Choice",
         paras: [
-          `Self-host and RevenueDot Cloud run the same code, API and schema, so a project can move either way. Cloud is free up to $10,000 of monthly tracked revenue and needs no servers: [start free on Cloud](${SIGNUP}). Self-hosting is free forever and costs your own infrastructure. Self-hosted servers send no telemetry, and talk only to Apple, Google, Stripe or Amazon if you connect them, your webhook endpoints and any forwarding URL you set.`,
+          `RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month, and needs no servers: [start free on Cloud](${SIGNUP}). Cloud and a server you run use the same code, API and schema. A server you run sends no telemetry, and talks only to Apple, Google, Stripe or Amazon if you connect them, your webhook endpoints and any forwarding URL you set.`,
         ],
         bullets: [
-          "**Signatures:** a self-hosted server signs with its own key, so keep the stock SDK's verification disabled, or build the SDK forks with your own public key.",
+          "**Signatures:** a server you run signs with its own key, so keep the stock SDK's verification disabled, or build the SDK forks with your own public key.",
           "**Status:** the Docker image builds on `node:24-slim`, and CI starts it against Postgres 16 on every pull request.",
         ],
       },
     ],
-    howTo: "How to self-host an in-app purchase server with RevenueDot",
+    howTo: "How to run the RevenueDot server yourself",
     faq: [
       {
-        q: "Can I self-host an in-app purchase server?",
-        a: "Yes. RevenueDot is an open-source server you run with Docker Compose next to Postgres 16. It implements the API the RevenueCat SDKs call, so your app keeps its SDK and sets one proxy URL to your server.",
+        q: "Can I run the RevenueDot server myself?",
+        a: "Yes. RevenueDot Cloud needs no servers, and the open-source server also runs with Docker Compose next to Postgres 16. It implements the API the RevenueCat SDKs call, so your app keeps its SDK and sets one proxy URL.",
       },
       {
         q: "What do I need to run RevenueDot on my own server?",
         a: "A machine with Docker and Compose v2, plus Postgres 16, which Compose starts for you. For production use a managed Postgres with backups and put the server behind HTTPS.",
       },
       {
-        q: "Is self-hosted RevenueDot free for commercial apps?",
-        a: "Yes. The server and dashboard are AGPL-3.0. Any company can run them for its own apps at any scale without paying. The AGPL asks you to share changes if you modify the server and offer it to others over a network.",
+        q: "What license is the RevenueDot server under?",
+        a: "The server and dashboard are AGPL-3.0, and any company can run them for its own apps. The AGPL asks you to share changes if you modify the server and offer it to others over a network.",
       },
       {
-        q: "How do I upgrade a self-hosted RevenueDot?",
+        q: "How do I upgrade a RevenueDot server I run?",
         a: "Pull the new code, rebuild the image and restart. Database migrations run automatically when the server starts. Back up Postgres first.",
       },
       {
-        q: "Does the self-hosted server send my data to RevenueDot?",
+        q: "Does a RevenueDot server I run send my data to RevenueDot?",
         a: "No. It has no telemetry and never calls RevenueDot's servers. It talks to the stores you connect, your webhook endpoints and any forwarding URL you set.",
       },
     ],
     docs: [
-      { href: "/docs/guides/self-hosting", label: "Self-hosting guide" },
+      { href: "/docs/guides/self-hosting", label: "Running the server yourself" },
       { href: "/docs/guides/going-to-production", label: "Going to production" },
       { href: "/docs/guides/backups", label: "Back up and restore" },
       { href: "/docs/guides/upgrades", label: "Upgrades" },
       { href: "/docs/getting-started/quickstart", label: "Quickstart" },
     ],
-    related: ["/self-host", "/solutions/eu-data-residency", "/solutions/app-studios", "/pricing", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat"],
+    related: ["/solutions/eu-data-residency", "/solutions/app-studios", "/pricing", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat"],
   },
 
   {
     slug: "eu-data-residency",
     section: "solutions",
     name: "EU data residency",
-    card: "Keep purchase data in your own EU region by running RevenueDot on your Postgres. No certifications claimed.",
+    card: "What RevenueDot Cloud does and does not offer for EU data location. No certifications claimed.",
     label: "Solution",
-    title: "EU data residency for in-app purchase data: run RevenueDot in your own EU region",
+    title: "EU data residency for in-app purchase data: what RevenueDot offers today",
     metaTitle: "EU data residency for in-app purchase data",
     metaDescription:
-      "Keep customer and purchase data in your chosen EU region by self-hosting RevenueDot on your own Postgres. Plain notes on GDPR and what we do not claim.",
+      "RevenueDot Cloud does not pin data to an EU region today. Plain notes on where data sits, GDPR and what we do not claim.",
     answer:
-      "To keep in-app purchase data in the EU, self-host RevenueDot in a region you choose, such as Frankfurt or Dublin. Every customer, purchase and receipt then lives in your own Postgres database, and the server never calls RevenueDot. RevenueDot Cloud does not pin data to an EU region today. This page is not legal advice.",
+      "RevenueDot Cloud does not pin data to an EU region today. Teams that must keep in-app purchase data in the EU can run the open-source server in a region they choose, such as Frankfurt or Dublin, so every customer, purchase and receipt lives in their own Postgres database. This page is not legal advice.",
     points: [
-      { title: "Your region", text: "Run the server and Postgres in any cloud region you pick, in or outside the EU." },
-      { title: "No data to us", text: "A self-hosted server has no telemetry and never calls RevenueDot's servers." },
+      { title: "Cloud location", text: "RevenueDot Cloud runs on Cloudflare's network and does not offer an EU-only region today." },
+      { title: "Your own region", text: "A server you run yourself sits in any cloud region you pick, has no telemetry and never calls RevenueDot's servers." },
       { title: "Data you can delete", text: "The REST API has a delete-customer call, and your database is yours to query and purge." },
       { title: "No certification claims", text: "RevenueDot claims no SOC 2, ISO 27001 or similar certification." },
     ],
@@ -410,7 +404,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         ],
       },
       {
-        h2: "How to keep in-app purchase data in the EU with RevenueDot",
+        h2: "How to keep in-app purchase data in the EU with a server you run",
         label: "Steps",
         steps: [
           {
@@ -423,7 +417,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           },
           {
             name: "Run RevenueDot there",
-            text: "Clone the repository, set `DATABASE_URL` and a strong password in `.env`, and run `docker compose up -d`. See [self-hosted in-app purchases](/solutions/self-hosted-in-app-purchases).",
+            text: "Clone the repository, set `DATABASE_URL` and a strong password in `.env`, and run `docker compose up -d`. See [running the server yourself](/solutions/self-hosted-in-app-purchases).",
           },
           {
             name: "Put HTTPS and backups in the same region",
@@ -449,7 +443,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         h2: "RevenueDot Cloud and data location",
         label: "Cloud",
         paras: [
-          "RevenueDot Cloud runs on Cloudflare's network, and Cloudflare is its only listed subprocessor, with locations described as a global network and the United States. Cloud does not offer an EU-only region today. For transfers from the EEA, UK or Switzerland to countries without an adequacy decision, the EU Standard Contractual Clauses apply, according to the [data processing summary](/legal/dpa), which is a summary and not the signed agreement. If you need data to stay in the EU, self-host.",
+          "RevenueDot Cloud runs on Cloudflare's network, and Cloudflare is its only listed subprocessor, with locations described as a global network and the United States. Cloud does not offer an EU-only region today. For transfers from the EEA, UK or Switzerland to countries without an adequacy decision, the EU Standard Contractual Clauses apply, according to the [data processing summary](/legal/dpa), which is a summary and not the signed agreement. If you need data to stay in the EU, the open-source server can run in a region you choose.",
         ],
       },
       {
@@ -458,40 +452,40 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         bullets: [
           "Hosting in the EU helps with where data sits. It does not make an app GDPR compliant. Lawful basis, notices, retention and requests from users are still your job, and your lawyer's call.",
           "RevenueDot holds no compliance certification. It publishes its [security policy](/security) and its code, which you can read.",
-          "You are the controller. A self-hosted deployment involves no processing by RevenueDot.",
+          "You are the controller. A deployment you run yourself involves no processing by RevenueDot.",
         ],
       },
     ],
-    howTo: "How to keep in-app purchase data in the EU with RevenueDot",
+    howTo: "How to keep in-app purchase data in the EU with a server you run",
     faq: [
       {
         q: "Can I keep in-app purchase data in the EU?",
-        a: "Yes, by self-hosting RevenueDot on a server and Postgres database in an EU region. Customer, purchase and receipt data then stays in your database. The stores, integrations and email provider you connect are separate processors.",
+        a: "Yes, by running the open-source RevenueDot server and a Postgres database in an EU region. Customer, purchase and receipt data then stays in your database. The stores, integrations and email provider you connect are separate processors.",
       },
       {
         q: "Does RevenueDot Cloud have an EU region?",
-        a: "Not today. RevenueDot Cloud runs on Cloudflare's network, with the United States listed as a location. If you need purchase data kept in the EU, self-host RevenueDot in your own EU region.",
+        a: "Not today. RevenueDot Cloud runs on Cloudflare's network, with the United States listed as a location. If you need purchase data kept in the EU, you can run the open-source server in your own EU region.",
       },
       {
-        q: "Is self-hosted RevenueDot GDPR compliant?",
+        q: "Is RevenueDot GDPR compliant?",
         a: "Hosting in the EU helps with data location, but compliance covers more, such as a lawful basis, privacy notices and responding to user requests. RevenueDot claims no certification. Ask your lawyer about your own obligations.",
       },
       {
         q: "How do I delete a customer's data from RevenueDot?",
-        a: "The REST API v2 has a Delete a customer call, and on a self-hosted server the database is yours, so you can also remove rows directly. Deleted customers stay in older backups until those backups expire.",
+        a: "The REST API v2 has a Delete a customer call, and on a server you run the database is yours, so you can also remove rows directly. Deleted customers stay in older backups until those backups expire.",
       },
       {
-        q: "Does a self-hosted RevenueDot server send data to RevenueDot?",
+        q: "Does a RevenueDot server I run send data to RevenueDot?",
         a: "No. It has no telemetry and never calls RevenueDot's servers. It talks to the stores you connect, your webhook endpoints, the integrations you enable and your SMTP server.",
       },
     ],
     docs: [
-      { href: "/docs/guides/self-hosting", label: "Self-hosting guide" },
+      { href: "/docs/guides/self-hosting", label: "Running the server yourself" },
       { href: "/docs/guides/backups", label: "Back up and restore" },
       { href: "/docs/guides/going-to-production", label: "Going to production" },
       { href: "/docs/api/rest-v2", label: "REST API v2" },
     ],
-    related: ["/self-host", "/solutions/self-hosted-in-app-purchases", "/solutions/app-studios", "/pricing", "/compare/revenuedot-vs-revenuecat"],
+    related: ["/solutions/app-studios", "/pricing", "/compare/revenuedot-vs-revenuecat"],
   },
 
   {
@@ -763,7 +757,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
       "To add subscriptions to an app built with an AI agent, connect the agent to RevenueDot's hosted MCP server at https://mcp.revenuedot.app/mcp, install the add-subscriptions skill, and let it set up products, entitlements and the SDK's proxy URL. The agent signs in with OAuth, and you choose what it may do.",
     points: [
       { title: "Hosted MCP server", text: "One connector for Claude, ChatGPT in developer mode, Cursor and other MCP clients." },
-      { title: "Agent skills", text: "add-subscriptions, migrate-from-revenuecat, support-playbook, weekly-revenue-check and self-host." },
+      { title: "Agent skills", text: "add-subscriptions, migrate-from-revenuecat, support-playbook, and weekly-revenue-check." },
       { title: "llms.txt and Markdown docs", text: "Agents read the docs as plain text at revenuedot.app/llms.txt and in the docs' Markdown copies." },
       { title: "You set the limits", text: "Read only, read and change, or money actions, per project." },
     ],
@@ -825,7 +819,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         h2: "What agents read: skills and llms.txt",
         label: "Context",
         bullets: [
-          "**Skills:** [add-subscriptions](https://github.com/revenuedot/agent-skills) covers iOS, Android, React Native and Flutter. Others cover migrating from RevenueCat, answering a support ticket, a weekly revenue check and self-hosting.",
+          "**Skills:** [add-subscriptions](https://github.com/revenuedot/agent-skills) covers iOS, Android, React Native and Flutter. Others cover migrating from RevenueCat, answering a support ticket, and a weekly revenue check.",
           "**llms.txt:** [revenuedot.app/llms.txt](/llms.txt) and [llms-full.txt](/llms-full.txt) give the whole docs in agent-friendly text.",
           "**Markdown docs:** every docs page has a plain `.md` copy.",
           "**REST API:** an OpenAPI 3.1 reference, so an agent can call the API directly with a secret key.",

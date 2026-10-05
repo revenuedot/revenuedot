@@ -77,7 +77,7 @@ Purchases.configure(
 )`,
         },
         paras: [
-          "Self-hosting? Use your own server's HTTPS URL instead of `https://api.revenuedot.app`. Never use `.enforced` with the stock SDK: RevenueDot cannot sign with RevenueCat's key, so every request would fail.",
+          "Never use `.enforced` with the stock SDK: RevenueDot cannot sign with RevenueCat's key, so every request would fail.",
         ],
       },
       {
@@ -222,7 +222,7 @@ Purchases.configure(
 )`,
         },
         paras: [
-          "The Android emulator reaches your computer at `http://10.0.2.2:8787` when you self-host locally. Plain `http` needs a network security config that allows cleartext traffic to that host.",
+          "The Android emulator reaches your computer at `http://10.0.2.2:8787` when you test against a local server. Plain `http` needs a network security config that allows cleartext traffic to that host.",
         ],
       },
       {
@@ -967,7 +967,7 @@ if (aPackage) {
         h2: "Cordova details worth knowing",
         label: "Notes",
         bullets: [
-          "**Signature log:** `configureWith` takes no verification mode, so every RevenueDot response is logged as a failed check with the stock plugin. A self-hosted server signs with its own key, so the noise stays unless you build the forks with your key.",
+          "**Signature log:** `configureWith` takes no verification mode, so every RevenueDot response is logged as a failed check with the stock plugin. The noise stays unless you build the forks with your own signing key.",
           "**Migrating from RevenueCat?** Call `Purchases.syncPurchases()` once on the first launch of the update.",
           "**Test Store keys** work in debug builds only.",
           "**Status:** there is no Cordova example app yet.",
@@ -1245,7 +1245,7 @@ val nowPro = result.customerInfo.entitlements.active.containsKey("pro")`,
         label: "Notes",
         bullets: [
           "**Migrating from RevenueCat?** Call `Purchases.sharedInstance.awaitSyncPurchases()` once from a coroutine on the first launch of the update.",
-          "**Test Store keys** work in debug builds only. iOS servers older than the 2026-09-30 fix could not serve Test Store products to the native iOS SDK, so update a self-hosted server.",
+          "**Test Store keys** work in debug builds only. iOS servers older than the 2026-09-30 fix could not serve Test Store products to the native iOS SDK.",
           "**Android:** see the [Android SDK page](/sdks/android) for the diagnostics caveat of the stock SDK.",
           "**Status:** there is no Kotlin Multiplatform example app yet. The calls match the Android guide.",
         ],

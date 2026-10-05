@@ -106,7 +106,7 @@ export const ERRORS: ErrorPage[] = [
       { name: "Read the underlying error", text: "On iOS read `NSUnderlyingErrorKey` and `rc_backend_error_code` in `userInfo`. On Android read `underlyingErrorMessage`. They tell a StoreKit failure from a backend 7101." },
       { name: "Retry once after a pause", text: "Wait a few seconds and let the customer try again. Google recommends retries with backoff for `ERROR` and for service disconnects ([Google docs](https://developer.android.com/google/play/billing/errors))." },
       { name: "Check the store account on the device", text: "Open the App Store or Google Play app once and confirm the account works and the store is up to date, then retry the purchase." },
-      { name: "If the backend sent 7101, read its message", text: "The message names the store problem. For a self-hosted or Cloud RevenueDot server, use **Verify credentials** on the app page and fix the store key or service account it flags." },
+      { name: "If the backend sent 7101, read its message", text: "The message names the store problem. On RevenueDot Cloud, use **Verify credentials** on the app page and fix the store key or service account it flags." },
     ],
     handling: [
       "Retrying once is reasonable. The failures behind this error are mostly temporary, and the customer confirms every purchase in the store sheet again.",
@@ -421,7 +421,7 @@ export const ERRORS: ErrorPage[] = [
     ],
     revenuedot: "If RevenueDot is unreachable, the SDK sees a connection error. If it answers 5xx, which it does for its own failures and store outages, the SDK keeps the purchase unfinished and computes access on the device from the product-to-entitlement mapping the server provides. See [offline entitlements](/features/offline-entitlements) and [4xx or 5xx on a receipt](/docs/help/receipt-errors-4xx-vs-5xx).",
     faq: [
-      { q: "What causes networkError in the RevenueCat SDK?", a: "A request failed on the network: a timeout, a dropped connection, an unreachable host, a TLS failure or an unreadable response. With a self-hosted server, a wrong proxy URL is the most common cause." },
+      { q: "What causes networkError in the RevenueCat SDK?", a: "A request failed on the network: a timeout, a dropped connection, an unreachable host, a TLS failure or an unreadable response. A wrong proxy URL is the most common cause." },
       { q: "Will a customer lose a purchase because of networkError?", a: "No. The SDK keeps the store transaction unfinished when it cannot post it, and posts it again later. The customer's access appears once the post succeeds." },
       { q: "Why does my Android emulator get networkError with a local server?", a: "On an emulator, `localhost` is the emulator itself. Use `http://10.0.2.2:<port>` for a server on your computer, and allow cleartext HTTP for that host or use HTTPS." },
       hy("networkError", "NETWORK_ERROR", "networkError", 10),
@@ -1203,7 +1203,7 @@ export const ERRORS: ErrorPage[] = [
     name: "API endpoint blocked",
     metaTitle: "apiEndpointBlockedError (code 33): causes and fixes",
     metaDescription: "apiEndpointBlockedError (code 33) means the SDK host resolved to 127.0.0.1 or 0.0.0.0, like an ad blocker. See why a local RevenueDot proxy URL triggers it.",
-    answer: "apiEndpointBlockedError (code 33) means the SDK could not connect to its host and that host resolves to 127.0.0.1 or 0.0.0.0, the way a DNS ad blocker answers. With a self-hosted server, it also fires when the proxy URL is `localhost` and the server is down or unreachable from the device. Use a host the device can reach, and turn off DNS blocking.",
+    answer: "apiEndpointBlockedError (code 33) means the SDK could not connect to its host and that host resolves to 127.0.0.1 or 0.0.0.0, the way a DNS ad blocker answers. It also fires when the proxy URL is `localhost` and nothing the device can reach is listening there. Use a host the device can reach, and turn off DNS blocking.",
     causes: [
       "The SDK's DNS check saw a failed connection (`cannotConnectToHost`) to a URL whose host resolves to `127.0.0.1` or `0.0.0.0`, and then reports a blocked endpoint ([DNSChecker.swift](https://github.com/RevenueCat/purchases-ios/blob/main/Sources/Networking/HTTPClient/DNSChecker.swift)). Apple describes `cannotConnectToHost` as a failed attempt to connect to a host ([Apple docs](https://developer.apple.com/documentation/foundation/urlerror/cannotconnecttohost)).",
       "A DNS-level ad blocker or content filter that answers the SDK's host with `0.0.0.0`. The SDK's own message says requests to RevenueCat are being blocked ([rev.cat/dnsBlocking](https://rev.cat/dnsBlocking)).",
@@ -1213,7 +1213,7 @@ export const ERRORS: ErrorPage[] = [
     fixes: [
       { name: "Test the host from the device", text: "Open the SDK's host or your proxy URL in the device's browser. If it does not load, the problem is the network path, not your app." },
       { name: "Turn off DNS blocking for the host", text: "Allow the SDK's host in the ad blocker or private DNS profile, or test on another network." },
-      { name: "Use a reachable proxy URL", text: "For a self-hosted RevenueDot server, use an address the device can reach, such as your computer's LAN address, a tunnel, or your deployed HTTPS URL. On an Android emulator use `10.0.2.2`." },
+      { name: "Use a reachable proxy URL", text: "Use `https://api.revenuedot.app` on RevenueDot Cloud. For a local test server, use an address the device can reach, such as your computer's LAN address or a tunnel. On an Android emulator use `10.0.2.2`." },
       { name: "Start the server", text: "If the URL is right, check that the server is running and listening on that port." },
     ],
     handling: [

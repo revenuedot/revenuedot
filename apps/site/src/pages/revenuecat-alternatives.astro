@@ -17,7 +17,7 @@ import { SITE } from "../site";
 const path = "/revenuecat-alternatives";
 const image = ogFor(path);
 const title = `The ${ALTERNATIVES.length} best RevenueCat alternatives in 2026`;
-const description = "RevenueDot, Adapty, Superwall, Qonversion, Apphud, Purchasely and building in-house, compared on price, open source, self-hosting and features, with sources.";
+const description = "RevenueDot, Adapty, Superwall, Qonversion, Apphud, Purchasely and building in-house, compared on price, open source and features, with sources.";
 const faq = I.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
 const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 // The pricing page of every vendor in the table, RevenueCat first, as captured on 4 October 2026.
@@ -45,8 +45,8 @@ const PRICING_CROPS = [
   <section class="section tight first" id="summary">
     <div class="wrap">
       <div class="table-wrap"><table>
-        <thead><tr><th scope="col">Option</th><th scope="col">Best for</th><th scope="col">Pricing</th><th scope="col">Open source</th><th scope="col">Self-host</th></tr></thead>
-        <tbody>{ALTERNATIVES.map((a) => <tr><th scope="row"><a href={`#${id(a.name)}`}>{a.name}</a></th><td set:html={md(a.bestFor)} /><td set:html={md(a.pricing)} /><td set:html={md(a.openSource)} /><td set:html={md(a.selfHost)} /></tr>)}</tbody>
+        <thead><tr><th scope="col">Option</th><th scope="col">Best for</th><th scope="col">Pricing</th><th scope="col">Open source</th></tr></thead>
+        <tbody>{ALTERNATIVES.map((a) => <tr><th scope="row"><a href={`#${id(a.name)}`}>{a.name}</a></th><td set:html={md(a.bestFor)} /><td set:html={md(a.pricing)} /><td set:html={md(a.openSource)} /></tr>)}</tbody>
       </table></div>
       <div class="price-ev">
         <p class="label">The pricing pages behind the table, as captured on 4 October 2026</p>

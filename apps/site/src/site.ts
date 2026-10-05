@@ -6,7 +6,7 @@ export const SITE = {
   url: "https://revenuedot.app",
   tagline: "The open-source RevenueCat alternative",
   description:
-    "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Start free on RevenueDot Cloud or self-host it. Change one line and keep your app code.",
+    "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Start free on RevenueDot Cloud. Change one line and keep your app code.",
   github: "https://github.com/revenuedot/revenuedot",
   org: "https://github.com/revenuedot",
   docs: "https://github.com/revenuedot/docs",
@@ -77,7 +77,6 @@ export const FOOTER = [
       { href: "/compare/revenuedot-vs-qonversion", label: "RevenueDot vs Qonversion" },
       { href: "/compare/revenuecat-vs-stripe", label: "RevenueCat vs Stripe" },
       { href: "/migrate-from-revenuecat", label: "Migrate from RevenueCat" },
-      { href: "/self-host", label: "Self-host" },
     ],
   },
   {

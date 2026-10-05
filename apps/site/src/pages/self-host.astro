@@ -20,14 +20,14 @@ const faq = [
 ---
 <Base
   title="Self-host an in-app purchase backend with Docker"
-  description="Self-host RevenueDot, the open-source RevenueCat alternative, with docker compose and Postgres. Free forever under AGPL-3.0, no revenue share, your data in your region."
+  description="How to run the RevenueDot server yourself with docker compose and Postgres, for teams that must. Most apps should start free on RevenueDot Cloud instead."
   path="/self-host"
   crumbs={[{ name: "Self-host", path: "/self-host" }]}
   faq={faq}
 >
   <div class="wrap">
-    <PageHead label="Self-host" title="Run your own purchase backend in three commands" lede="One Docker image serves the RevenueCat-compatible API and the dashboard, next to your own Postgres. Free forever under AGPL-3.0, with no limits and no share of your revenue.">
-      <p class="small muted">Rather not run servers? <a href={SITE.signup}>Start free on Cloud</a>.</p>
+    <PageHead label="Self-host" title="Run your own purchase backend in three commands" lede="This page is for teams whose rules require their own server. One Docker image serves the RevenueCat-compatible API and the dashboard, next to your own Postgres.">
+      <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud instead</a></div>
     </PageHead>
   </div>
 
@@ -58,16 +58,16 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
 
   <section class="section" id="compare">
     <div class="wrap">
-      <div class="head"><p class="label">Self-host or cloud</p><h2 class="h2">Same code, your choice of who runs it</h2><p class="lede">Self-host and RevenueDot Cloud share the code, API and schema, so a project moves either way with an export and import.</p></div>
+      <div class="head"><p class="label">Cloud or your own server</p><h2 class="h2">Cloud runs it for you, the same code runs on your server</h2><p class="lede">RevenueDot Cloud and a self-hosted server share the code, API and schema, so a project moves either way with an export and import.</p></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col"></th><th scope="col">Self-host</th><th scope="col">RevenueDot Cloud</th></tr></thead>
+          <thead><tr><th scope="col"></th><th scope="col">RevenueDot Cloud</th><th scope="col">Your own server</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Price</th><td>Free, AGPL-3.0</td><td>Free up to $10K monthly tracked revenue, then 0.5% above it, capped at $999 a month</td></tr>
-            <tr><th scope="row">Who runs it</th><td>You: server, Postgres, backups, upgrades</td><td>RevenueDot</td></tr>
-            <tr><th scope="row">Data location</th><td>Any cloud and region you choose</td><td>The US, on Cloudflare's network</td></tr>
-            <tr><th scope="row">Extras</th><td>Everything in the open-source server</td><td>Point-in-time recovery, edge caching, monitoring, support</td></tr>
-            <tr><th scope="row">Enterprise features</th><td>Organizations, custom roles, SSO, SCIM and compliance exports with an Enterprise license</td><td>Organizations, custom roles and SSO with Cloud Standard; SCIM and compliance exports with Enterprise</td></tr>
+            <tr><th scope="row">Price</th><td>Free up to $10K monthly tracked revenue, then 0.5% above it, capped at $999 a month</td><td>The software is AGPL-3.0; you pay for servers and your own time</td></tr>
+            <tr><th scope="row">Who runs it</th><td>RevenueDot</td><td>You: server, Postgres, backups, upgrades</td></tr>
+            <tr><th scope="row">Data location</th><td>The US, on Cloudflare's network</td><td>Any cloud and region you choose</td></tr>
+            <tr><th scope="row">Extras</th><td>Point-in-time recovery, edge caching, monitoring, support</td><td>Everything in the open-source server</td></tr>
+            <tr><th scope="row">Enterprise features</th><td>Organizations, custom roles and SSO with Cloud Standard; SCIM and compliance exports with Enterprise</td><td>Organizations, custom roles, SSO, SCIM and compliance exports with an Enterprise license</td></tr>
           </tbody>
         </table>
       </div>
@@ -95,7 +95,7 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
     </div>
   </section>
 
-  <CtaBand title="Moving from RevenueCat?" body="Run it yourself with the steps above, or skip the servers: start free on RevenueDot Cloud and import your RevenueCat project with one command." />
+  <CtaBand title="Moving from RevenueCat?" body="Start free on RevenueDot Cloud and import your RevenueCat project with one command. There are no servers to run." />
 </Base>
 <style>
   .two { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: start; }

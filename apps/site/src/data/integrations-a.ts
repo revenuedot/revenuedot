@@ -260,14 +260,14 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
     card: "Revenue events for PostHog funnels, retention and session replays.",
     title: "Track in-app subscription revenue in PostHog",
     metaTitle: "Track in-app subscription revenue in PostHog",
-    metaDescription: "Send purchases, trials, renewals and refunds to PostHog Cloud or self-hosted PostHog with RevenueCat's event names and subscription status on the person.",
+    metaDescription: "Send purchases, trials, renewals and refunds to PostHog with RevenueCat's event names and subscription status on the person.",
     answer:
       "RevenueDot sends every purchase, trial, renewal, cancellation and refund to PostHog's capture endpoint as events like `rc_renewal_event`, with revenue in US dollars and the product, store and entitlements as properties. The person's `rc_subscription_status` is set on each event. It works with PostHog US Cloud, EU Cloud and self-hosted PostHog, and `uuid` stops duplicates.",
     uses: [
       "Build funnels from a paywall view to a paid subscription.",
       "Compare retention of trial users and paying users in PostHog.",
       "Watch session replays of users who hit `rc_billing_issue_event`.",
-      "Send subscription events to a self-hosted PostHog you run yourself.",
+      "Send subscription events to PostHog.",
     ],
     sends: [
       "One event per RevenueDot event through the capture endpoint, named `rc_initial_purchase_event`, `rc_trial_started_event`, `rc_renewal_event` and so on. Rename them under **Event names**.",
@@ -986,7 +986,7 @@ export const INTEGRATIONS_A: IntegrationPage[] = [
         h2: "How RevenueDot checks each Intercom request",
         paras: [
           "Intercom signs the raw request body with your app's client secret. RevenueDot computes the same signature with the secret you saved and answers 401 when it is missing or does not match.",
-          "The client secret is sealed with AES-256-GCM on the server and is never shown again after you save it. Self-hosted servers use `<your server>/v1/support/intercom/{project_id}/canvas` as the initialize URL.",
+          "The client secret is sealed with AES-256-GCM on the server and is never shown again after you save it.",
         ],
       },
     ],

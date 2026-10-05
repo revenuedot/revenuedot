@@ -53,7 +53,7 @@ const faq = [
   { q: "Does RevenueCat have an MCP server?", a: `Yes. RevenueCat's docs describe a cloud-hosted MCP server at https://mcp.revenuecat.ai/mcp that authenticates with OAuth or a RevenueCat API v2 secret key and documents Claude, Claude Code, Codex, Cursor and VS Code Copilot as clients (checked ${CHECKED}). It manages a RevenueCat project. RevenueDot's server at ${URL_MCP} is the open-source counterpart for apps that use the RevenueCat SDK with a RevenueDot backend.` },
   { q: "Which MCP server do I use if my app ships the RevenueCat SDK?", a: "The one that matches your backend. If RevenueCat is your backend, use RevenueCat's server. If RevenueDot is your backend, or you are running both side by side during a migration, use RevenueDot's server: the app keeps the RevenueCat SDK, and the assistant manages the project the SDK talks to. Tool names match RevenueCat's where the tool does the same thing, so prompts written for one work on the other." },
   { q: "Can an assistant refund or cancel a subscription by itself?", a: "No. Extend, cancel, refund and Test Store purchases sit behind a separate Money actions permission (the project:support scope). A first connection asks for read and change only; when a tool needs more, the server answers with the missing scope and the assistant asks you to approve it. Refunds and cancels work for Google Play; Apple does not let any server refund or cancel." },
-  { q: "Does the RevenueDot MCP server work for a self-hosted server?", a: "Yes. Run npx -y @revenuedot/mcp --http --url https://your-server and point the client at it, or use the stdio form with REVENUEDOT_URL. Your own RevenueDot server is the OAuth authorization server, so sign-in works the same way. The package is MIT licensed on npm." },
+  { q: "Is the RevenueDot MCP server open source?", a: "Yes. The package is MIT licensed on npm. The hosted server at mcp.revenuedot.app signs you in through your RevenueDot Cloud account, and the same package can run locally with npx -y @revenuedot/mcp." },
   { q: "Is there a version that needs no account?", a: `Yes. ${URL_KIT} serves six read-only tools with sourced paywall patterns, App Store and Google Play rules and code snippets. It needs no sign-in and never touches a RevenueDot project. It is the free half of the RevenueDot App Monetization plugin.` },
   { q: "How do I disconnect an assistant?", a: "The OAuth connection is a secret API key named OAuth plus the client's name, limited to the project and the access you chose. Delete it under API keys in the RevenueDot dashboard. It does not expire on its own." },
 ];
@@ -68,7 +68,7 @@ const jsonld = [
   crumbs={[{ name: "AI connectors", path: "/features/ai-connectors" }, { name: "RevenueCat MCP", path }]} faq={faq} jsonld={jsonld}>
   <div class="wrap">
     <PageHead label={`MCP · checked ${CHECKED}`} title={title}
-      lede={`RevenueCat runs a hosted MCP server for RevenueCat projects. RevenueDot runs an open-source one at ${URL_MCP}, with 38 tools, for any app that ships the RevenueCat SDK with a RevenueDot backend: reads are free, writes wait for your approval, and the same server works self-hosted.`}>
+      lede={`RevenueCat runs a hosted MCP server for RevenueCat projects. RevenueDot runs an open-source one at ${URL_MCP}, with 38 tools, for any app that ships the RevenueCat SDK with a RevenueDot backend: reads are free, writes wait for your approval.`}>
       <div class="btns">
         <a class="btn" href={SITE.signup}>Start free on Cloud</a>
         <a class="btn secondary" href="#config">Copy the config <span class="arrow">↓</span></a>
@@ -164,9 +164,9 @@ url = "${URL_MCP}"
         <Code title="Any client, with your own key" label="bearer header" code={`# A secret key from API keys, limited to the scopes you want the assistant to have
 Authorization: Bearer sk_...
 
-# Self-hosted RevenueDot (stdio form; REVENUEDOT_URL defaults to https://api.revenuedot.app)
+# Local stdio form (REVENUEDOT_URL defaults to https://api.revenuedot.app)
 npx -y @revenuedot/mcp
-#   env: REVENUEDOT_API_KEY=sk_...  REVENUEDOT_URL=https://your-server`} />
+#   env: REVENUEDOT_API_KEY=sk_...  REVENUEDOT_URL=https://api.revenuedot.app`} />
       </div>
       <p class="tiny caption">Sources: <a href="https://code.claude.com/docs/en/mcp" rel="noopener">Claude Code MCP docs</a>, <a href="https://modelcontextprotocol.io/docs/develop/connect-remote-servers" rel="noopener">MCP: connect to remote servers (Claude custom connectors)</a>, <a href="https://learn.chatgpt.com/docs/extend/mcp?surface=cli" rel="noopener">Codex MCP docs</a>, <a href="https://cursor.com/docs/context/mcp" rel="noopener">Cursor MCP docs</a>, <a href="https://developers.openai.com/api/docs/guides/developer-mode" rel="noopener">ChatGPT developer mode</a>, <a href="https://docs.windsurf.com/windsurf/cascade/mcp" rel="noopener">Windsurf MCP docs</a>. The Claude Code plugin is another route: <code>/plugin marketplace add revenuedot/agent-skills</code>, then <code>/plugin install revenuedot@revenuedot</code>.</p>
     </div>
@@ -227,7 +227,7 @@ npx -y @revenuedot/mcp
   "bearer_methods_supported": ["header"],
   "resource_name": "RevenueDot"
 }`} />
-        <p class="tiny">Both responses as returned by the live server on {CHECKED}. OAuth 2.1 with PKCE and dynamic client registration; your own RevenueDot server is the authorization server when you self-host.</p>
+        <p class="tiny">Both responses as returned by the live server on {CHECKED}. OAuth 2.1 with PKCE and dynamic client registration</p>
       </div>
     </div>
   </section>
@@ -243,12 +243,12 @@ npx -y @revenuedot/mcp
         <table>
           <thead><tr><th scope="col"></th><th scope="col">RevenueCat MCP</th><th scope="col">RevenueDot MCP</th></tr></thead>
           <tbody>
-            <tr><th scope="row">URL</th><td><code>https://mcp.revenuecat.ai/mcp</code>, cloud-hosted</td><td><code>{URL_MCP}</code>, hosted; or <code>npx -y @revenuedot/mcp</code> locally or against your own server</td></tr>
+            <tr><th scope="row">URL</th><td><code>https://mcp.revenuecat.ai/mcp</code>, cloud-hosted</td><td><code>{URL_MCP}</code>, hosted; or <code>npx -y @revenuedot/mcp</code> locally</td></tr>
             <tr><th scope="row">Sign-in</th><td>OAuth with a RevenueCat account, or a bearer token with a RevenueCat API v2 secret key</td><td>OAuth 2.1 with a RevenueDot account (one project, chosen scopes), or a bearer secret key</td></tr>
             <tr><th scope="row">Clients the docs list</th><td>Claude (web, Desktop, Code), Codex, Cursor, VS Code Copilot, MCP Inspector; "the recommended way to get started" is its AI Toolkit plugin</td><td>Claude, Claude Code, ChatGPT, Codex, Cursor, Windsurf and any streamable HTTP client; the Claude connector and ChatGPT plugin are the same server</td></tr>
             <tr><th scope="row">Tools</th><td>A tools reference grouped into projects and apps, products and prices, entitlements, offerings and packages, targeting and audiences, paywalls, customers and subscriptions, in-app currencies, charts and experiments, integrations and webhooks, and SDK compatibility; each tool marked Read or Write</td><td>38 tools in the table above: apps and store connections, catalog, customers and access, subscriptions and money, webhooks, revenue. No paywall, experiment, targeting or currency tools yet</td></tr>
             <tr><th scope="row">Permissions</th><td>"Access follows your RevenueCat account permissions"; a read-only API key works for viewing</td><td>Three scopes chosen at sign-in; money actions behind a separate permission the assistant must ask for</td></tr>
-            <tr><th scope="row">Plan note</th><td>"Custom remote MCP connectors are in beta on Claude; free plans can use one custom connector"</td><td>Same Claude limit applies to any custom connector. RevenueDot Cloud is free up to $10,000 a month; self-host is free</td></tr>
+            <tr><th scope="row">Plan note</th><td>"Custom remote MCP connectors are in beta on Claude; free plans can use one custom connector"</td><td>Same Claude limit applies to any custom connector. RevenueDot Cloud is free up to $10,000 a month, then 0.5%, never more than $999 a month</td></tr>
             <tr><th scope="row">Source</th><td>Closed</td><td>Open source, MIT, on <a href={SITE.mcp} rel="noopener">GitHub</a> and <a href="https://www.npmjs.com/package/@revenuedot/mcp" rel="noopener">npm</a></td></tr>
           </tbody>
         </table>
@@ -279,7 +279,7 @@ get-store-guideline             get-code-snippet        list-skills`} />
     </div>
   </section>
 
-  <Related items={["/features/ai-connectors", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat", "/features/rest-api", "/features/webhooks", "/self-host"]}
+  <Related items={["/features/ai-connectors", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat", "/features/rest-api", "/features/webhooks"]}
     docs={[{ href: "/docs/guides/connect-ai-assistants", label: "Connect AI assistants" }, { href: "/docs/api/authentication", label: "API keys and permissions" }, { href: SITE.mcp, label: "MCP server on GitHub" }]} />
   <CtaBand title="Connect an assistant to your project today." body="Create a free Cloud account, paste one URL into Claude, ChatGPT, Codex or Cursor, and ask whether everything is connected." />
 </Base>

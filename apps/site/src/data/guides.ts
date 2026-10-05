@@ -121,7 +121,7 @@ const IN_APP_PURCHASES: Guide = {
       label: "RevenueDot",
       paras: [
         "RevenueDot is an open-source backend for in-app purchases and subscriptions. Your app uses the RevenueCat SDK, an open-source library, pointed at RevenueDot with one line of code. RevenueDot validates App Store, Google Play, Amazon Appstore and Stripe purchases, keeps entitlements, receives store notifications and sends webhooks.",
-        "RevenueDot Cloud is free up to $10,000 a month in revenue, and you can run the same code on your own servers. Start with [the step-by-step setup](/add-in-app-purchases), or read [whether an iOS-only app needs a backend at all](/do-i-need-revenuecat).",
+        "RevenueDot Cloud is free up to $10,000 a month in revenue, then 0.5%, never more than $999 a month. Start with [the step-by-step setup](/add-in-app-purchases), or read [whether an iOS-only app needs a backend at all](/do-i-need-revenuecat).",
       ],
     },
   ],
@@ -232,7 +232,7 @@ Purchases.configure(with: Configuration.Builder(withAPIKey: "test_...")
       h2: "What it costs",
       label: "Price",
       paras: [
-        "RevenueDot Cloud is free until your app makes $10,000 a month, counted before Apple and Google take their cut. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. You can also run RevenueDot on your own servers for free. See [pricing](/pricing).",
+        "RevenueDot Cloud is free until your app makes $10,000 a month, counted before Apple and Google take their cut. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. See [pricing](/pricing).",
         "The stores keep their own commission, usually 15%. See [what Apple and Google charge](/in-app-purchases#what-apple-and-google-charge).",
       ],
     },
@@ -253,7 +253,7 @@ Purchases.configure(with: Configuration.Builder(withAPIKey: "test_...")
     },
     {
       q: "What does RevenueDot cost for a new app?",
-      a: "Nothing until the app makes $10,000 a month in store revenue. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. Self-hosting is free.",
+      a: "Nothing until the app makes $10,000 a month in store revenue. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month.",
     },
     {
       q: "Can Claude Code or Cursor add subscriptions for me?",
@@ -351,7 +351,7 @@ const IOS_ONLY: Guide = {
       h2: "If you need a backend, where RevenueDot fits",
       label: "RevenueDot",
       paras: [
-        "RevenueDot is an open-source backend that works with the RevenueCat SDK, so you get the same SDK and paywalls without a RevenueCat account. It handles the App Store, Google Play, Amazon Appstore and Stripe in one customer record, with webhooks, 43 charts, paywalls and Refund Control. RevenueDot Cloud is free up to $10,000 a month, and you can self-host it.",
+        "RevenueDot is an open-source backend that works with the RevenueCat SDK, so you get the same SDK and paywalls without a RevenueCat account. It handles the App Store, Google Play, Amazon Appstore and Stripe in one customer record, with webhooks, 43 charts, paywalls and Refund Control. RevenueDot Cloud is free up to $10,000 a month, then 0.5%, never more than $999 a month.",
         "It is new: it launched in 2026, has far less production history than RevenueCat, and has no SOC 2 report. Test your app in Apple's sandbox before launch. You can also start with StoreKit 2 today and add a backend when you add Android. See [how to add subscriptions](/add-in-app-purchases).",
       ],
     },
@@ -400,14 +400,14 @@ const CHEAPER: Guide = {
   metaDescription:
     "Cheaper RevenueCat alternatives compared by monthly fee at $10K, $100K and $1M: RevenueDot, Superwall, Qonversion, Adapty and Apphud, from each vendor's pricing page.",
   answer:
-    "Self-hosted RevenueDot is the cheapest RevenueCat alternative at every size, at $0. Among hosted plans, RevenueDot Cloud, Superwall and Apphud all cost $0 at $10,000 a month; at $100,000 RevenueDot Cloud costs $450 against $800 for Qonversion and $1,000 for RevenueCat; at $1,000,000 it costs $999 against $8,000 for Qonversion and $10,000 for RevenueCat. Superwall can be $0 at any size if no purchases go through its paywalls.",
+    "RevenueDot Cloud is the cheapest hosted RevenueCat alternative at large sizes: free up to $10,000 a month, then 0.5% of the revenue above $10,000, never more than $999 a month. At $10,000 a month RevenueDot Cloud, Superwall and Apphud all cost $0; at $100,000 RevenueDot Cloud costs $450 against $800 for Qonversion and $1,000 for RevenueCat; at $1,000,000 it costs $999 against $8,000 for Qonversion and $10,000 for RevenueCat. Superwall can be $0 at any size if no purchases go through its paywalls.",
   secondary: { href: "/tools/revenuecat-fee-calculator", label: "Calculate your own bill" },
   note: "Prices come from each vendor's public pricing page, checked October 2026, and the sources are linked under the table.",
   points: [
     { title: "RevenueCat: 1% of everything from $2,500", text: "Free below $2,500 a month, then 1% of all tracked revenue with no ceiling: $1,000 at $100,000 and $10,000 at $1,000,000." },
     { title: "RevenueDot Cloud: $0 to $10K, then 0.5%, capped at $999", text: "The only hosted plan here with a ceiling. Above $10,000 a month, 0.5% of the revenue past $10,000, never more than $999." },
     { title: "Superwall: $0 unless its paywalls make the sale", text: "Its subscription infrastructure is free; it bills 1% only on revenue that converts through a Superwall paywall, above $10,000 of that revenue." },
-    { title: "Self-host RevenueDot: $0 at any size", text: "The server is open source under AGPL-3.0 and works with the RevenueCat SDK. You pay only for your own server and Postgres." },
+    { title: "RevenueDot works with the RevenueCat SDK", text: "Keep your RevenueCat SDK code and change one proxy URL line. The server is open source under AGPL-3.0." },
   ],
   blocks: [
     {
@@ -429,7 +429,7 @@ const CHEAPER: Guide = {
         "**At $10,000 a month:** RevenueDot Cloud, Superwall and Apphud's free plan all cost $0. Qonversion costs $80, and RevenueCat and Adapty $100 each.",
         "**At $100,000 a month:** RevenueDot Cloud costs $450. Qonversion is next at $800, then Apphud at about $998 on its Pro list rate, and RevenueCat and Adapty at $1,000. Superwall is anywhere from $0 to $1,000.",
         "**At $1,000,000 a month:** RevenueDot Cloud costs $999, its cap. Qonversion costs $8,000, Apphud about $9,989 at its Pro list rate, and RevenueCat and Adapty $10,000 each. Superwall is anywhere from $0 to $10,000.",
-        "**At every size:** self-hosted RevenueDot costs $0 beyond your own server, and it keeps the RevenueCat SDK.",
+        "**At every size:** RevenueDot keeps the RevenueCat SDK, so switching does not change your app code beyond one proxy URL line.",
       ],
     },
     {
@@ -441,7 +441,7 @@ const CHEAPER: Guide = {
         "**Qonversion:** free up to $7,000 a month, then 0.8% of all tracked revenue with no ceiling, per its [pricing page](https://qonversion.io/pricing). Every feature is in the one plan.",
         "**Superwall:** subscription infrastructure is free at any scale. Paywalls are free up to $10,000 a month of paywall-attributed revenue, then 1% of that revenue; Startup adds $49 a month and Scale $199, per its [pricing page](https://superwall.com/pricing) and [pricing FAQ](https://superwall.com/docs/support/faq/2801653905-how-does-superwalls-pricing-work).",
         "**Apphud:** a free plan with $10,000 of monthly tracked revenue; Pro is $49 a month with $5,000 included, then $9.99 per extra $1,000; Enterprise from $100,000 a month is quoted, per its [pricing page](https://apphud.com/pricing).",
-        "**RevenueDot:** Cloud is free up to $10,000 a month; Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month, per [RevenueDot pricing](/pricing). Self-hosting is free under AGPL-3.0.",
+        "**RevenueDot:** Cloud is free up to $10,000 a month; Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month, per [RevenueDot pricing](/pricing). The server is open source under AGPL-3.0.",
       ],
     },
     {
@@ -468,7 +468,7 @@ const CHEAPER: Guide = {
   faq: [
     {
       q: "What is the cheapest RevenueCat alternative?",
-      a: "Self-hosted RevenueDot, which costs nothing beyond your own server and works with the RevenueCat SDK. Among hosted plans, RevenueDot Cloud is free up to $10,000 a month and never more than $999. Superwall is free unless purchases convert through its paywalls, Qonversion charges 0.8% above $7,000, and Adapty 1% above $5,000.",
+      a: "RevenueDot Cloud, which works with the RevenueCat SDK, is free up to $10,000 a month and never more than $999 a month. Superwall is free unless purchases convert through its paywalls, Qonversion charges 0.8% above $7,000, and Adapty 1% above $5,000.",
     },
     {
       q: "Is Superwall cheaper than RevenueCat?",
@@ -488,14 +488,13 @@ const CHEAPER: Guide = {
     },
     {
       q: "Is there a free RevenueCat alternative?",
-      a: "Yes. RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and self-hosting it is free with no limit, under AGPL-3.0. Superwall offers free subscription infrastructure and bills only on paywall revenue above $10,000, and Apphud has a free plan with $10,000 of tracked revenue.",
+      a: "Yes. RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month. Superwall offers free subscription infrastructure and bills only on paywall revenue above $10,000, and Apphud has a free plan with $10,000 of tracked revenue.",
     },
   ],
   docs: [
-    { href: "/docs/guides/self-hosting", label: "Self-hosting guide" },
     { href: "/docs/getting-started/quickstart", label: "Quickstart" },
   ],
-  related: ["/tools/revenuecat-fee-calculator", "/revenuecat-alternatives", "/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/pricing", "/self-host"],
+  related: ["/tools/revenuecat-fee-calculator", "/revenuecat-alternatives", "/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/pricing"],
 };
 
 export const GUIDES: Guide[] = [IN_APP_PURCHASES, ADD_IAP, IOS_ONLY, CHEAPER];
