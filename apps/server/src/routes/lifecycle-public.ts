@@ -136,7 +136,7 @@ export function lifecyclePublicRoutes(deps: Deps) {
   });
   // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also RFC 8058 one-click
   // (the token is the only credential: no session, cookie or key, and no confirmation page or redirect).
-  const TEST_PAGE = () => page("This was a test email", "Unsubscribe links in test emails change nothing. In a real email, this link stops that project's win-back emails to the address.");
+  const TEST_PAGE = () => page("This was a test email", "Unsubscribe links in test emails change nothing. In a real email, this link unsubscribes the address.");
   r.get("/v1/winback/u/:token", async (c) => {
     if (c.req.param("token") === TEST_EMAIL_TOKEN) return c.html(TEST_PAGE());
     const s = await sendByToken(db, c.req.param("token"));
@@ -171,12 +171,14 @@ export function lifecyclePublicRoutes(deps: Deps) {
   });
   // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also RFC 8058 one-click.
   r.get("/v1/recovery/u/:token", async (c) => {
+    if (c.req.param("token") === TEST_EMAIL_TOKEN) return c.html(TEST_PAGE());
     const rc = await caseByToken(db, c.req.param("token"));
     if (!rc) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
     if (rc.unsubscribedAt) return c.html(page("You are unsubscribed", "You will get no more of these emails."));
     return c.html(page("Unsubscribe?", `Stop emails about failed payments${rc.email ? ` to ${rc.email}` : ""}.`, `<form method="post"><button type="submit">Unsubscribe</button></form>`));
   });
   r.post("/v1/recovery/u/:token", async (c) => {
+    if (c.req.param("token") === TEST_EMAIL_TOKEN) return c.html(TEST_PAGE());
     const rc = await caseByToken(db, c.req.param("token"));
     if (!rc) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
     await unsubscribeCase(db, rc, deps.now());
