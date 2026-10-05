@@ -3,11 +3,11 @@ import { newId } from "@revenuedot/core";
 import { schema, type DB, type ExportFile, type ExportProgress, type ExportUpload } from "@revenuedot/db";
 import { SecretsError, unseal, type SecretKey } from "../secrets.js";
 import { notMoving } from "../archive/moving.js";
-import { encodeFile } from "./files.js";
+import { encodeCsvChunk, encodeFile, gunzip, gzip, toCsv } from "./files.js";
 import { abortMultipart, putObject, StorageError, type Destination } from "./storage.js";
 import { addChunk, finishUpload, newUpload, stagedBytes, stagingKey, type UploadContext } from "./upload.js";
 import { dbStore } from "../archive/store.js";
-import { columnsFor, readPage, type ExportTable, type Row, type Window } from "./tables.js";
+import { COLUMNS, columnsFor, readPage, type ExportTable, type Row, type Window } from "./tables.js";
 import { emailFileKey, emailJobPrefix, sendExportEmail } from "./email.js";
 import type { ArchiveStore } from "../archive/store.js";
 import type { Mailer } from "../../mail/index.js";
@@ -30,6 +30,9 @@ import type { Mailer } from "../../mail/index.js";
 
 const { exportJobs: J, exportRuns: R } = schema;
 export const PART_ROWS = 10_000;
+/** Rows read per page before the read time is known, and the fewest a page asks for once it is. */
+export const START_PAGE_ROWS = 2_000;
+const MIN_PAGE_ROWS = 200;
 const RETRY_MINUTES = [10, 30];
 /** A run claimed by a tick that died (out of CPU or memory) is picked up again after this long. */
 const LEASE_MS = 15 * 60_000;
@@ -91,6 +94,8 @@ export interface ExportRuntime {
   strictUrls?: boolean;
   /** No new file starts after this many milliseconds (default 20 s). */
   budgetMs?: number;
+  /** Rows per page, fixed (tests); by default pages are sized from the measured time per row. */
+  pageRows?: number;
   /** Single-file CSV: the smallest piece sent before the last (default 5 MiB, S3's and GCS's minimum part size). */
   minPartBytes?: number;
   /** Email exports: where RevenueDot keeps the files, who sends the links, the origin the links use and what signs them. */
@@ -174,28 +179,79 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
     target = { destination: job.destination as Destination, config: job.destinationConfig, secrets, strictUrls: rt.strictUrls };
     const tables = job.tables as ExportTable[];
     let progress: ExportProgress = run.progress ?? { table: 0, cursor: null, part: 0 };
-    let wrote = false;
+    // Whether this tick has moved the run forward: a tick always reads or writes something, however small its budget.
+    let moved = false;
+    const pace: NonNullable<ExportProgress["pace"]> = { ...(run.progress?.pace ?? {}) };
     // Bytes staged for the current single-file chunk, kept in memory between chunks of this tick.
     let held: { table: number; chunk: number; bytes: Uint8Array } | null = null;
     while (progress.table < tables.length) {
       // Every call writes at least one file, so a run always moves forward however small the budget.
-      if (wrote && Date.now() - started >= budgetMs) {
+      if (moved && Date.now() - started >= budgetMs) {
         // Out of time for this tick: carry on from here in the next one, behind runs that are already waiting.
-        await db.update(R).set({ status: "queued", nextAttemptAt: rt.now, progress, files }).where(eq(R.id, runId));
+        await db.update(R).set({ status: "queued", nextAttemptAt: rt.now, progress: { ...progress, pace }, files }).where(eq(R.id, runId));
         return true;
       }
       const table = tables[progress.table]!;
       const since = run.mode === "full" || job.cursor[table] === undefined ? null : new Date(job.cursor[table]!);
       const w: Window = { since, until: run.windowEnd, environment: job.environment as Window["environment"] };
       // Read up to one file's worth of rows, then write it.
-      const buffer: Row[] = [];
       let cursor = progress.cursor;
+      const columns = columnsFor(table, job.columns[table]);
+      const csv = job.format === "csv";
+      // Rows a tick read for this chunk before it ran out of time: CSV text (without the header) for CSV, rows for Parquet.
+      const carried = progress.buffered ? await loadCarried(store, rowsKey(runStaging, progress.table, progress.buffered.seq), table, csv) : { text: "", rows: [] as Row[] };
+      if (progress.buffered && csv && progress.buffered.columns !== columns.map(([n]) => n).join(",")) {
+        throw new StorageError("The export's columns changed while it was running. Run the export again.", false);
+      }
+      const carriedRows = csv ? progress.buffered?.rows ?? 0 : 0;
+      const buffer: Row[] = carried.rows;
+      const chunkRows = () => carriedRows + buffer.length;
       // A single file whose pieces are all sent only needs completing.
-      if (!progress.upload?.sent) do {
-        const page = await readPage(db, job.projectId, table, w, cursor);
-        buffer.push(...page.rows);
-        cursor = page.next;
-      } while (cursor && buffer.length < PART_ROWS);
+      if (!progress.upload?.sent) {
+        // A new chunk always reads once (an empty table still gets its header-only file).
+        let first = !progress.buffered;
+        while ((first || cursor) && chunkRows() < PART_ROWS) {
+          // Pages are sized from the measured time per row so a tick stays within its budget: a chunk is still exactly
+          // PART_ROWS rows (the file's bytes do not depend on how it was read), but it may be read over several ticks.
+          const left = budgetMs - (Date.now() - started);
+          const rate = pace.msPerRow;
+          const n = Math.min(PART_ROWS - chunkRows(), rt.pageRows ?? (rate ? Math.max(MIN_PAGE_ROWS, Math.floor((left * 0.6) / rate)) : START_PAGE_ROWS));
+          // The page, then either writing the chunk it completes or keeping the rows for the next tick.
+          const predicted = (rate ?? 0) * n + (chunkRows() + n >= PART_ROWS ? pace.chunkMs ?? 0 : pace.stashMs ?? 0);
+          if (moved && Date.now() - started + predicted > budgetMs) {
+            // Not enough time left for this page: keep what was read and carry on in the next tick.
+            const seq = (progress.buffered?.seq ?? 0) + 1;
+            const old = progress.buffered;
+            const stashStarted = Date.now();
+            const total = chunkRows();
+            if (total) {
+              const bytes = csv ? await gzip(new TextEncoder().encode(carried.text + toCsv(columns, buffer, false))) : new TextEncoder().encode(JSON.stringify(buffer));
+              await store.put(rowsKey(runStaging, progress.table, seq), bytes);
+            }
+            pace.stashMs = Math.max(Date.now() - stashStarted, (pace.stashMs ?? 0) * 0.8);
+            progress = { ...progress, cursor, ...(total ? { buffered: { seq, rows: total, ...(csv ? { columns: columns.map(([n]) => n).join(",") } : {}) } } : { buffered: undefined }) };
+            await db.update(R).set({ status: "queued", nextAttemptAt: rt.now, progress: { ...progress, pace }, files }).where(eq(R.id, runId));
+            if (old && (old.seq !== seq || !total)) await store.deletePrefix(rowsKey(runStaging, progress.table, old.seq));
+            return true;
+          }
+          const t0 = Date.now();
+          const page = await readPage(db, job.projectId, table, w, cursor, n);
+          const per = (Date.now() - t0) / Math.max(page.rows.length, 1);
+          pace.msPerRow = rate ? rate * 0.5 + per * 0.5 : per;
+          buffer.push(...page.rows);
+          cursor = page.next;
+          first = false;
+          moved = true;
+        }
+      }
+      // Writing a chunk (encoding and uploading) is timed too, so a tick does not start reading one it cannot finish.
+      const chunkStarted = Date.now();
+      const wroteChunk = () => {
+        const ms = Date.now() - chunkStarted;
+        // A slowly fading maximum: writing gets slower as the staged bytes grow, and underestimating it overruns the tick.
+        pace.chunkMs = Math.max(ms, (pace.chunkMs ?? 0) * 0.8);
+        moved = true;
+      };
       // One CSV file per table unless split (a run that started split stays split).
       const single = !!progress.upload || (progress.part === 0 && job.format === "csv" && !job.splitFiles);
       if (single) {
@@ -216,20 +272,19 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
           const before = { chunks: up.chunks, staged: up.staged };
           const pending = held && held.table === progress.table && held.chunk === up.chunks ? held.bytes : await stagedBytes(ctx, up);
           const done = !cursor;
-          const chunk = buffer.length || up.chunks === 0
-            ? (await encodeFile("csv", gz ? "gzip" : "none", columnsFor(table, job.columns[table]), buffer, up.chunks === 0)).bytes : new Uint8Array();
-          const waiting = await addChunk(ctx, up, pending, chunk, buffer.length, done);
+          const chunk = chunkRows() || up.chunks === 0 ? (await encodeCsvChunk(gz ? "gzip" : "none", columns, carried.text, buffer, up.chunks === 0)).bytes : new Uint8Array();
+          const waiting = await addChunk(ctx, up, pending, chunk, chunkRows(), done);
           if (waiting.length) await store.put(stagingKey(stagingPrefix, up.chunks), waiting);
           up.staged = waiting.length;
           held = { table: progress.table, chunk: up.chunks, bytes: waiting };
           if (!done || up.sent) {
             // Saved before completing, so a retry completes the upload instead of sending parts to a finished one.
             progress = { table: progress.table, cursor: done ? null : cursor, part: 1, upload: up };
-            await db.update(R).set({ progress, files }).where(eq(R.id, runId));
+            await db.update(R).set({ progress: { ...progress, pace }, files }).where(eq(R.id, runId));
             // The previous chunk's staged bytes are no longer needed once progress points past them.
             if (before.staged && before.chunks !== up.chunks) await store.deletePrefix(stagingKey(stagingPrefix, before.chunks));
           }
-          if (!done) { wrote = true; continue; }
+          if (!done) { wroteChunk(); continue; }
         }
         if (up.sent) await finishUpload(ctx, up);
         const entry: ExportFile = { table, key: up.key, rows: up.rows, bytes: up.bytes, ...(job.destination === "email" && up.pieces ? { chunks: up.pieces } : {}) };
@@ -237,15 +292,15 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
         if (at >= 0) files[at] = entry; else files.push(entry);
         progress = { table: progress.table + 1, cursor: null, part: 0 };
         live = undefined;
-        await db.update(R).set({ progress, files }).where(eq(R.id, runId));
+        await db.update(R).set({ progress: { ...progress, pace }, files }).where(eq(R.id, runId));
         await store.deletePrefix(stagingPrefix);
-        wrote = true;
+        wroteChunk();
         continue;
       }
       // An empty table still gets one (header-only) file; a table that ends on a file boundary does not get another.
-      if (buffer.length || progress.part === 0) {
+      if (chunkRows() || progress.part === 0) {
         const part = progress.part + 1;
-        const f = await encodeFile(job.format as "csv" | "parquet", job.compression as "gzip" | "none", columnsFor(table, job.columns[table]), buffer);
+        const f = csv ? await encodeCsvChunk(job.compression as "gzip" | "none", columns, carried.text, buffer, true) : await encodeFile("parquet", "none", columns, buffer);
         const key = objectKey(job.destinationConfig.prefix as string | undefined, table, run.windowEnd, part, f.extension);
         if (job.destination === "email") {
           if (!rt.store) throw new Error("No file store is configured for email exports.");
@@ -254,14 +309,14 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
           await putObject(target, key, f.bytes, f.contentType, rt.fetch, rt.now);
         }
         const at = files.findIndex((x) => x.key === key);
-        const entry = { table, key, rows: buffer.length, bytes: f.bytes.length };
+        const entry = { table, key, rows: chunkRows(), bytes: f.bytes.length };
         if (at >= 0) files[at] = entry; else files.push(entry);
         progress = cursor ? { table: progress.table, cursor, part } : { table: progress.table + 1, cursor: null, part: 0 };
       } else {
         progress = { table: progress.table + 1, cursor: null, part: 0 };
       }
-      await db.update(R).set({ progress, files }).where(eq(R.id, runId));
-      wrote = true;
+      await db.update(R).set({ progress: { ...progress, pace }, files }).where(eq(R.id, runId));
+      wroteChunk();
     }
     let notifiedAt: Date | null = run.notifiedAt;
     if (job.destination === "email" && !notifiedAt) {
@@ -274,6 +329,7 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
     }
     const cursorOut = { ...job.cursor };
     for (const t of job.tables) cursorOut[t] = run.windowEnd.getTime();
+    await store.deletePrefix(`${runStaging}rows/`);
     await db.update(R).set({ status: "succeeded", files, progress: null, notifiedAt, rows: files.reduce((n, f) => n + f.rows, 0), bytes: files.reduce((n, f) => n + f.bytes, 0), finishedAt: rt.now, nextAttemptAt: rt.now, error: null }).where(eq(R.id, runId));
     await db.update(J).set({ cursor: cursorOut, lastRunAt: rt.now, consecutiveFailures: 0, lastError: null }).where(eq(J.id, job.id));
   } catch (e) {
@@ -283,4 +339,22 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
     if (!(e instanceof StorageError) && !(e instanceof SecretsError)) console.error(`data export run ${runId} failed`, e);
   }
   return true;
+}
+
+/** Where a tick keeps the rows it read for an unfinished chunk. */
+const rowsKey = (runStaging: string, table: number, seq: number) => `${runStaging}rows/${table}/${String(seq).padStart(7, "0")}`;
+
+/** Reads what a tick kept for an unfinished chunk: CSV text, or rows with their timestamps as dates again (Parquet). */
+async function loadCarried(store: ArchiveStore, key: string, table: ExportTable, csv: boolean): Promise<{ text: string; rows: Row[] }> {
+  const bytes = await store.get(key);
+  if (!bytes) throw new StorageError("Rows read in an earlier tick went missing from RevenueDot's file store. Run the export again.", false);
+  if (csv) return { text: new TextDecoder().decode(await gunzip(bytes)), rows: [] };
+  const times = COLUMNS[table].filter(([, t]) => t === "timestamp").map(([n]) => n);
+  return {
+    text: "",
+    rows: (JSON.parse(new TextDecoder().decode(bytes)) as Row[]).map((r) => {
+      for (const n of times) if (typeof r[n] === "string") r[n] = new Date(r[n] as string);
+      return r;
+    }),
+  };
 }

@@ -222,8 +222,8 @@ describe("export runs", () => {
       return new Response("<CompleteMultipartUploadResult/>");
     });
     const rt = { fetch: f, now: h.now(), secretKey: await secretKeyFrom(KEY, null), store: dbStore(h.db), minPartBytes: 1 };
-    await runExport(h.db, run.id, rt, 0);
-    await runExport(h.db, run.id, rt, 0);
+    await runExport(h.db, run.id, { pageRows: 10_000, ...rt }, 0);
+    await runExport(h.db, run.id, { pageRows: 10_000, ...rt }, 0);
     const [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
     expect([r!.status, r!.files.map((x) => [x.key, x.rows])]).toEqual(["succeeded", [["rd/2026-09-01/events_20260901T120000Z.csv", 10500]]]);
     const calls = puts.filter((p) => !p.url.startsWith("https://oauth2"));
@@ -311,10 +311,10 @@ describe("big exports", () => {
     const run = (await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" })).body;
     const { f, puts } = bucket();
     const rt = { fetch: f, now: h.now(), secretKey: await secretKeyFrom(KEY, null) };
-    expect(await runExport(h.db, run.id, rt, 0)).toBe(true);
+    expect(await runExport(h.db, run.id, { pageRows: 10_000, ...rt }, 0)).toBe(true);
     let [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
     expect([r!.status, r!.progress?.part, r!.files.length]).toEqual(["queued", 1, 1]);
-    expect(await runExport(h.db, run.id, rt, 0)).toBe(true);
+    expect(await runExport(h.db, run.id, { pageRows: 10_000, ...rt }, 0)).toBe(true);
     [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
     expect([r!.status, r!.progress, r!.attempts]).toEqual(["succeeded", null, 0]);
     expect(puts.map((p) => p.url.split("/").pop())).toEqual(["events_20260901T120000Z.csv", "events_20260901T120000Z_part2.csv"]);

@@ -108,7 +108,8 @@ async function manyEvents(n = 25_000) {
 /** Runs the export one chunk per tick until it is done. Returns how many ticks it took. */
 async function runToEnd(runId: string, rt: ExportRuntime) {
   for (let i = 1; i <= 20; i++) {
-    await runExport(h.db, runId, rt, 0);
+    // One 10,000-row chunk per tick: these tests are about pieces and staging, not pacing (exports-pacing.test.ts).
+    await runExport(h.db, runId, { pageRows: 10_000, ...rt }, 0);
     const [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, runId));
     if (r!.status !== "queued") return { ticks: i, run: r! };
   }
@@ -140,11 +141,11 @@ describe("single-file CSV", () => {
     expect(a.log.filter((l) => l.includes("partNumber")).length).toBe(3);
 
     // Now with a part size just above the first chunk: chunk 1 waits in the file store, chunks 1 and 2 make part 1, chunk 3 is the last part.
-    const firstChunk = await (async () => { const b = objectStore(1); const r2 = (await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" })).body; await runExport(h.db, r2.id, { ...rt, fetch: b.f }, 0); const [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, r2.id)); await h.db.delete(schema.exportRuns).where(eq(schema.exportRuns.id, r2.id)); return r!.progress!.upload!.bytes; })();
+    const firstChunk = await (async () => { const b = objectStore(1); const r2 = (await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" })).body; await runExport(h.db, r2.id, { pageRows: 10_000, ...rt, fetch: b.f }, 0); const [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, r2.id)); await h.db.delete(schema.exportRuns).where(eq(schema.exportRuns.id, r2.id)); return r!.progress!.upload!.bytes; })();
     const b = objectStore(firstChunk + 1);
     run = (await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" })).body;
     const rt2 = { ...rt, fetch: b.f, minPartBytes: firstChunk + 1 };
-    await runExport(h.db, run.id, rt2, 0);
+    await runExport(h.db, run.id, { pageRows: 10_000, ...rt2 }, 0);
     let [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
     expect([r!.status, r!.progress!.upload!.chunks, r!.progress!.upload!.staged, r!.progress!.upload!.pieces]).toEqual(["queued", 1, firstChunk, 0]);
     expect(b.log.some((l) => l.includes("uploads"))).toBe(false);
@@ -166,12 +167,12 @@ describe("single-file CSV", () => {
     const run = (await call("POST", `/integrations/exports/${job.id}/actions/run`, { mode: "full" })).body;
     const a = objectStore(1000, { uniform: true, loseComplete: true });
     const rt = { fetch: a.f, now: h.now(), secretKey: await secretKeyFrom(KEY, null), store: dbStore(h.db), minPartBytes: 1000 };
-    for (let i = 0; i < 3; i++) await runExport(h.db, run.id, rt, 0);
+    for (let i = 0; i < 3; i++) await runExport(h.db, run.id, { pageRows: 10_000, ...rt }, 0);
     let [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
     // Every part went up and the object exists, but the answer was lost: the run waits for its retry with `sent` saved.
     expect([r!.status, r!.progress!.upload!.sent]).toEqual(["queued", true]);
     await h.db.update(schema.exportRuns).set({ nextAttemptAt: h.now() }).where(eq(schema.exportRuns.id, run.id));
-    await runExport(h.db, run.id, rt, 0);
+    await runExport(h.db, run.id, { pageRows: 10_000, ...rt }, 0);
     [r] = await h.db.select().from(schema.exportRuns).where(eq(schema.exportRuns.id, run.id));
     expect(r!.status).toBe("succeeded");
     const file = a.objects.get("/acme-r2/rd/2026-09-01/events_20260901T120000Z.csv.gz")!;
