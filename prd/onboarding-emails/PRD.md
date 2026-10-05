@@ -8,7 +8,7 @@
 > | `verify_reminder` | unconfirmed accounts, day 1 |
 > | `connect_app` | test purchase done, SDK not seen |
 > | `store_keys` | SDK seen, no store credentials |
-> | `need_hand` | no SDK call by day 10, one offer of a call |
+> | `need_hand` | no SDK call by day 10, one self-serve nudge (no call booking: the product is product-led) |
 > | `side_by_side` | RevenueCat import done, not live |
 > | `first_sale` | first real sale |
 > | `cutover` | migrators, a week after the first live sale |

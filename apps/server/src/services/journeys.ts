@@ -86,7 +86,7 @@ export const STEPS: Step[] = [
   { id: "store_keys", onboarding: true, freshFor: 10 * D, due: (f) => (f.sdkFirstAt && !f.storeConnected && !f.liveAt ? f.sdkFirstAt + D : null) },
   { id: "connect_app", onboarding: true, freshFor: 10 * D,
     due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
-  // One offer of a call to anyone stuck for ten days (migrators who have not imported yet get no offer).
+  // One self-serve nudge on day 10 to anyone whose app has not connected (migrators who have not imported yet get none).
   { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt && !(migrating(f) && !f.rcImportAt) ? f.createdAt + 10 * D : null) },
 ];
 

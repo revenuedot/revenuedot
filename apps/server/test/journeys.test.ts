@@ -247,7 +247,7 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     const c = await contextFor(s!.db, f!, "upgrade_nudge", "https://dash.example.com", "u", null, s!.now());
     expect(c.overMonth).toBe("September");
     expect(c.bills!.revenuedot).toBe(20);
-    expect(journeyEmail(c).text).toContain("tracked $14,000 in September");
+    expect(journeyEmail(c).text).toContain("$14,000");
   });
 
   it("keeps the referral code from sign-up and celebrates the first live sale", async () => {
