@@ -20,7 +20,7 @@ const jsonld = [{
   contentUrl: `https://revenuedot.app/videos/${name}.mp4`, embedUrl: playerUrl(name), publisher: { "@type": "Organization", name: "RevenueDot", url: "https://revenuedot.app" },
 }];
 ---
-<Base title={w.heading} description={w.summary} path={path} image={poster} imageAlt={v.title} jsonld={jsonld}
+<Base title={w.heading} description={w.description} path={path} image={poster} imageAlt={v.title} jsonld={jsonld}
   crumbs={[{ name: "Docs", path: "/docs" }, { name: w.heading, path }]}>
   <section class="watch">
     <div class="wrap">

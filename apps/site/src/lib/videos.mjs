@@ -15,6 +15,7 @@ export const VIDEOS = {
 export const WATCH = {
   "revenuedot-chatgpt-demo": {
     heading: "Run your subscriptions from ChatGPT", seconds: 87, date: "2026-10-01", youtube: null,
+    description: "Watch RevenueDot in ChatGPT: check setup health, find a customer, grant Pro for 7 days and fix a webhook, all in plain words.",
     summary: "Connect RevenueDot to ChatGPT and run your app's subscriptions in plain words: a health check finds a broken webhook, a customer lookup by email, a 7-day Pro grant with ChatGPT's approval prompt, a new weekly plan, a webhook retry, and a refund that waits for your permission.",
     next: { label: "Connect ChatGPT, Claude or Cursor", href: "/docs/guides/connect-ai-assistants" },
   },
