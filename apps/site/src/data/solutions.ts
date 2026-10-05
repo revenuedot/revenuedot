@@ -124,7 +124,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
       },
       {
         q: "What does RevenueDot cost for an app that already sells?",
-        a: "RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. Self-hosting is free.",
+        a: "RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue. Above that, it charges 0.5% of the revenue above $10,000, capped at $999 a month.",
       },
     ],
     docs: [
@@ -188,7 +188,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
         ],
       },
       {
-        h2: "What an indie app gets on the free plan",
+        h2: "An indie app gets paywalls, charts and web checkout before it earns $10,000 a month",
         label: "Included",
         bullets: [
           "Offerings, entitlements and a REST API, plus webhooks with a delivery log.",

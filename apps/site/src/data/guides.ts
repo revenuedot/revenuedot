@@ -171,7 +171,7 @@ const ADD_IAP: Guide = {
   answer:
     "RevenueDot is a backend for in-app purchases and subscriptions. You install the RevenueDot SDK for your platform, configure it with your app's key, and sell on the App Store and Google Play, and on the web with Stripe. RevenueDot checks every purchase with the store and keeps each customer's access in sync. RevenueDot Cloud is free until your app makes $10,000 a month.",
   secondary: { href: "/docs/getting-started/quickstart", label: "Read the 5-minute quickstart" },
-  note: "No credit card needed. Test purchases work before you have an App Store or Google Play account.",
+  note: "Building and testing are free, no card needed. Test purchases work before you have an App Store or Google Play account.",
   points: [
     { title: "One SDK per platform", text: "The RevenueDot SDK covers iOS, Android, React Native and Expo, Flutter, the web and four more platforms." },
     { title: "Free until it earns", text: "RevenueDot Cloud costs nothing up to $10,000 a month in store revenue, counted before Apple and Google take their cut." },
