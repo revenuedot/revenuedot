@@ -1,6 +1,6 @@
 {
-  "id": "4ec9a1ca-25c0-47e3-8a50-adf3df9cf934",
-  "prevId": "c4330b63-b1d9-488f-98c9-173a7d259974",
+  "id": "55c8520c-7978-4a15-8168-f9e7135d47d3",
+  "prevId": "4ec9a1ca-25c0-47e3-8a50-adf3df9cf934",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6708,6 +6708,72 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.journey_feedback": {
+      "name": "journey_feedback",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "journey_feedback_user_id_users_id_fk": {
+          "name": "journey_feedback_user_id_users_id_fk",
+          "tableFrom": "journey_feedback",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "journey_feedback_user_id_kind_pk": {
+          "name": "journey_feedback_user_id_kind_pk",
+          "columns": [
+            "user_id",
+            "kind"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

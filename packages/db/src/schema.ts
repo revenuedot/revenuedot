@@ -926,6 +926,53 @@ export const chartShares = pgTable("chart_shares", {
   revokedAt: ts("revoked_at"),
 }, (t) => [index("chart_shares_project").on(t.projectId, t.createdAt), uniqueIndex("chart_shares_token_hash").on(t.tokenHash)]);
 
+/**
+ * Daily chart rollups (prd/charts/PRD.md "Daily rollups", core charts/rollup.ts): per project, environment, generation
+ * and UTC day, the day's values of the charts that add up over days, in USD. Each build writes a new generation from
+ * scratch; the state switches to it when it is complete, and the replaced one is deleted when the next build starts.
+ */
+export const chartRollups = pgTable("chart_rollups", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  isSandbox: boolean("is_sandbox").notNull(),
+  generation: integer("generation").notNull(),
+  /** The UTC day's start (ms). */
+  dayMs: bigint("day_ms", { mode: "number" }).notNull(),
+  /** `chart` or `chart:selector value` → the measures' values. */
+  data: jsonb("data").$type<Record<string, (number | null)[]>>().notNull(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.isSandbox, t.generation, t.dayMs] })]);
+
+/** Each project and environment's rollups: the generation served, the one being built, the lease and when charts were viewed. */
+export const chartRollupState = pgTable("chart_rollup_state", {
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  isSandbox: boolean("is_sandbox").notNull(),
+  /**
+   * The complete generation that is served, the code fingerprint it was built with, the `now` it was built as of, and
+   * when it was switched to (freshness and the rebuild interval are measured from this).
+   */
+  generation: integer("generation"),
+  version: text("version"),
+  computedAt: ts("computed_at"),
+  switchedAt: ts("switched_at"),
+  /** The database's clock when the served generation's build started: it read the rows recorded by then. */
+  rowsAt: ts("rows_at"),
+  /** The generation being built (null: none), the `now` it is built as of, the next day to build, and its cost so far. */
+  buildGeneration: integer("build_generation"),
+  /** The code fingerprint of the build in progress (the served one keeps `version` until the switch). */
+  buildVersion: text("build_version"),
+  buildNow: ts("build_now"),
+  /** The database's clock at the build's start: every run of the build reads only rows recorded by then. */
+  buildRowsAt: ts("build_rows_at"),
+  buildFromMs: bigint("build_from_ms", { mode: "number" }),
+  buildRuns: integer("build_runs").notNull().default(0),
+  buildMs: integer("build_ms").notNull().default(0),
+  /** When a chart of this project and environment was last asked for with realtime=false: only those are built. */
+  viewedAt: ts("viewed_at"),
+  /** One run at a time: the run holding the lease, and until when. */
+  leaseToken: text("lease_token"),
+  leaseUntil: ts("lease_until"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.projectId, t.isSandbox] })]);
+
 /** A saved set of conditions on customers (RevenueCat's audience rules: groups OR-ed, conditions in a group AND-ed). */
 export const audiences = pgTable("audiences", {
   id: text("id").primaryKey(),

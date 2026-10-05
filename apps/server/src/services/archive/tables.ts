@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0045_journey_feedback";
+export const ARCHIVE_SCHEMA = "0046_journey_feedback";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -118,6 +118,8 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
 
 /** Tables that are not in an archive, and why (the manifest's `excluded`). */
 export const NOT_EXPORTED: Record<string, string> = {
+  chart_rollups: "Daily chart rollups are derived from the ledger; the target builds its own.",
+  chart_rollup_state: "Where the rollups stand on this server; the target builds its own.",
   users: "Accounts stay on their server; members.json lists collaborators by email and role.",
   memberships: "Collaborators come over by email (members.json); people with an account on the target are added with their role.",
   sessions: "Dashboard sign-ins belong to one server.",

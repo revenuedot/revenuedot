@@ -5,6 +5,7 @@ import {
 } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
+import { chartFromRollups } from "../../services/charts/rollups.js";
 import { chartSources, customAttributeOptions, loadChartInput } from "../../services/charts/load.js";
 import { annotationsBetween, rcAnnotation } from "../../services/charts/annotations.js";
 import { paramError, scope, V2Error, type V2Context, type V2Router } from "./common.js";
@@ -47,7 +48,7 @@ function json<T>(name: string, v: string | undefined, check: (x: unknown) => x i
 }
 
 interface Parsed {
-  def: ChartDef; req: ChartRequest; filters: ChartFilter[]; segment: Dim | null; limit: number | null; currency: string;
+  realtime: boolean; def: ChartDef; req: ChartRequest; filters: ChartFilter[]; segment: Dim | null; limit: number | null; currency: string;
   sandbox: boolean; aggregate: ("average" | "total")[] | null; annotations: boolean; rangeStart: number; lastDay: number;
 }
 
@@ -111,9 +112,10 @@ function parse(c: V2Context, now: Date): Parsed {
   const aggRaw = q("aggregate");
   const aggregate = aggRaw ? aggRaw.split(",").map((x) => x.trim()).filter(Boolean) : null;
   if (aggregate && (!aggregate.length || aggregate.some((a) => a !== "average" && a !== "total"))) throw paramError("aggregate must be average, total or both, comma separated.", "aggregate");
-  bool("realtime", q("realtime"), true);
+  // RevenueCat's `realtime` (default true): false lets the daily rollups answer (services/charts/rollups.ts).
+  const realtime = bool("realtime", q("realtime"), true);
   return {
-    def, filters: filters.map((f) => ({ name: f.name as Dim, values: f.values.map(String) })), segment, limit, currency, sandbox: env === "sandbox",
+    realtime, def, filters: filters.map((f) => ({ name: f.name as Dim, values: f.values.map(String) })), segment, limit, currency, sandbox: env === "sandbox",
     aggregate: aggregate as Parsed["aggregate"], annotations: bool("include_annotations", q("include_annotations"), false), rangeStart, lastDay,
     req: { resolution, rangeStart, rangeEnd, expand: bool("expand_periods", q("expand_periods"), false), selectors: Object.fromEntries(Object.entries(selectors).map(([k, v]) => [k, String(v)])), weekStart },
   };
@@ -167,15 +169,22 @@ export function chartRoutes(r: V2Router, deps: Deps) {
   r.get(P, scope("charts_metrics:charts:read"), async (c) => {
     const now = deps.now();
     const p = parse(c, now);
-    const sources = { ...chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution, p.req.weekStart), to: p.req.rangeEnd }), attributeKeys: attributeKeysOf(p) };
-    const input = await loadChartInput(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, now, currency: p.currency, fetch: deps.fetch ?? undefined, sources });
-    const run = runChart(p.def, input, p.req, { filters: p.filters, segment: p.segment, limit: p.limit });
+    // With realtime=false, the daily rollups answer a request without filters or segments (services/charts/rollups.ts).
+    const rolled = p.realtime ? null : await chartFromRollups(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, def: p.def, req: p.req, now, currency: p.currency, filtered: p.filters.length > 0, segmented: !!p.segment });
+    let run: { output: ChartOutput; segments: ReturnType<typeof runChart>["segments"] };
+    if (rolled) run = { output: rolled.output, segments: null };
+    else {
+      const sources = { ...chartSources(p.def.name, { from: floorTo(p.rangeStart, p.req.resolution, p.req.weekStart), to: p.req.rangeEnd }), attributeKeys: attributeKeysOf(p) };
+      const input = await loadChartInput(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, now, currency: p.currency, fetch: deps.fetch ?? undefined, sources });
+      run = runChart(p.def, input, p.req, { filters: p.filters, segment: p.segment, limit: p.limit });
+    }
+    c.header("x-revenuedot-chart-source", rolled ? "rollups" : "live");
     const o = run.output;
     const labels = p.segment ? await dimLabels(deps, c.get("projectId"), p.segment) : null;
     const measures = o.kind === "series" ? o.measures : [o.measure];
     const body: Record<string, unknown> = {
       object: "chart_data", category: p.def.group, display_type: p.def.display_type, display_name: p.def.display_name, description: p.def.description,
-      documentation_link: `${DOCS}#${p.def.name}`, last_computed_at: now.getTime(), start_date: p.rangeStart, end_date: p.lastDay,
+      documentation_link: `${DOCS}#${p.def.name}`, last_computed_at: (rolled?.computedAt ?? now).getTime(), start_date: p.rangeStart, end_date: p.lastDay,
       yaxis_currency: p.currency, filtering_allowed: p.def.dims.length > 0, segmenting_allowed: p.def.segmentable && p.def.dims.length > 0,
       resolution: p.req.resolution, values: [] as unknown[], summary: summaryOf(o, p.aggregate ?? ["average", "total"]),
       yaxis: measures[0]?.unit ?? "#", segments: null, segments_limit: p.limit,
