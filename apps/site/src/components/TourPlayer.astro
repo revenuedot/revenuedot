@@ -1,0 +1,105 @@
+---
+// A narrated video (src/lib/videos.mjs), with chapter buttons when it has chapters. Nothing loads from Cloudflare Stream until the reader
+// presses play or a chapter: the page shows our own lazy poster, then one click creates Stream's player (with sound and
+// controls) at that chapter. Later chapter clicks seek the running player; the current chapter is highlighted.
+import { CHAPTERS, STREAM, VIDEOS, clock, playerUrl } from "../lib/videos.mjs";
+interface Props { name: keyof typeof VIDEOS; seconds: number; /** The play button text. */ label?: string; /** Where the player sits, for the analytics goal. */ location?: string }
+const { name, seconds, label = "Watch the demo", location = "page" } = Astro.props;
+const chapters = (CHAPTERS as Record<string, { title: string; start: number }[]>)[name] ?? [];
+const video = VIDEOS[name];
+const length = clock(seconds);
+---
+<div class="tour" data-tour data-name={name} data-src={playerUrl(name)} data-origin={STREAM} data-title={video.title} data-location={location}>
+  <div class="shot stream stage">
+    <button type="button" class="play" aria-label={`Play the ${length} video with sound: ${video.title}`}>
+      <img src={`/videos/${name}.webp`} alt="" width="1280" height="720" loading="lazy" decoding="async" />
+      <span class="badge"><span class="tri" aria-hidden="true"></span>{label} · {length}</span>
+    </button>
+  </div>
+  {chapters.length > 0 && <ol class="chapters" aria-label="Chapters">
+    {chapters.map((c) => (
+      <li><button type="button" data-t={c.start} data-title={c.title}><span class="time">{clock(c.start)}</span><span class="name">{c.title}</span></button></li>
+    ))}
+  </ol>}
+</div>
+<script>
+  type Msg = { __privateUnstableMessageType?: string; property?: string; value?: unknown };
+  document.querySelectorAll<HTMLElement>("[data-tour]").forEach((root) => {
+    const stage = root.querySelector<HTMLElement>(".stage")!;
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>("ol button[data-t]")];
+    const starts = buttons.map((b) => Number(b.dataset.t));
+    const base = root.dataset.src!;
+    const origin = root.dataset.origin!;
+    let frame: HTMLIFrameElement | null = null;
+    let ready = false;
+    let played = false;
+
+    const mark = (t: number) => {
+      let at = 0;
+      starts.forEach((s, i) => { if (s <= t + 0.25) at = i; });
+      buttons.forEach((b, i) => { if (i === at) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); });
+    };
+    const urlAt = (t: number) => {
+      const u = new URL(base);
+      u.searchParams.set("autoplay", "true");
+      if (t > 0) u.searchParams.set("startTime", `${t}s`);
+      return u.toString();
+    };
+    const goal = (chapter: number) => {
+      if (played) return;
+      played = true;
+      const w = window as unknown as { datafast?: (name: string, data?: Record<string, string>) => void };
+      if (typeof w.datafast === "function") w.datafast("demo_played", { video: root.dataset.name!, chapter: buttons[chapter]?.dataset.title ?? "", location: root.dataset.location! });
+    };
+    const send = (m: Record<string, unknown>) => frame?.contentWindow?.postMessage(m, origin);
+    const play = (t: number) => {
+      if (!frame) {
+        frame = document.createElement("iframe");
+        frame.src = urlAt(t);
+        frame.title = root.dataset.title ?? "Video";
+        frame.allow = "accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen";
+        frame.setAttribute("allowfullscreen", "");
+        stage.replaceChildren(frame);
+      } else if (ready) {
+        send({ __privateUnstableMessageType: "setProperty", property: "currentTime", value: t });
+        send({ __privateUnstableMessageType: "playCommand", promiseId: 1 });
+      } else {
+        frame.src = urlAt(t);
+      }
+      mark(t);
+    };
+
+    window.addEventListener("message", (e: MessageEvent<Msg>) => {
+      if (!frame || e.source !== frame.contentWindow || e.origin !== origin || !e.data) return;
+      if (e.data.__privateUnstableMessageType === "iframeReady") ready = true;
+      if (e.data.__privateUnstableMessageType === "propertyChange" && e.data.property === "currentTime" && typeof e.data.value === "number") mark(e.data.value);
+    });
+
+    root.querySelector(".play")?.addEventListener("click", () => { goal(0); play(0); });
+    buttons.forEach((b, i) => b.addEventListener("click", () => { goal(i); play(starts[i]); }));
+  });
+</script>
+<style>
+  .tour { display: grid; gap: 16px; min-width: 0; }
+  .play { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: pointer; position: relative; }
+  .play img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 10px; padding: 12px 18px; background: rgba(0, 0, 0, .82); color: #fff; font: 600 15px/1 var(--font); letter-spacing: -0.01em; border: 1px solid rgba(255, 255, 255, .4); white-space: nowrap; }
+  .tri { width: 0; height: 0; border-style: solid; border-width: 7px 0 7px 12px; border-color: transparent transparent transparent #fff; }
+  .play:hover .badge, .play:focus-visible .badge { background: #000; border-color: #fff; }
+  .chapters { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); background: var(--panel); }
+  .chapters li { border-right: 1px solid var(--border-2); border-bottom: 1px solid var(--border-2); min-width: 0; }
+  .chapters li:nth-child(4n) { border-right: 0; }
+  .chapters li:nth-last-child(-n + 4) { border-bottom: 0; }
+  .chapters button { display: grid; gap: 4px; width: 100%; height: 100%; padding: 12px 14px; text-align: left; background: transparent; border: 0; border-left: 2px solid transparent; color: var(--fg-2); font: inherit; cursor: pointer; transition: background var(--fast) var(--ease); }
+  .chapters button:hover, .chapters button:focus-visible { background: var(--hover); color: var(--fg); }
+  .chapters button[aria-current="true"] { border-left-color: var(--accent); color: var(--fg); background: var(--hover); }
+  .time { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--fg-3); }
+  .name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+  @media (max-width: 900px) {
+    .chapters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .chapters li:nth-child(4n) { border-right: 1px solid var(--border-2); }
+    .chapters li:nth-child(2n) { border-right: 0; }
+    .chapters li:nth-last-child(-n + 4) { border-bottom: 1px solid var(--border-2); }
+    .chapters li:nth-last-child(-n + 2) { border-bottom: 0; }
+  }
+</style>

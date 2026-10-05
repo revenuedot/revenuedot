@@ -1,7 +1,7 @@
 // First-party visuals for every feature the comparison, alternatives, pricing and migration pages talk about, so a page
 // can put a real picture or clip next to each claim. Every screenshot is the real dashboard (or the real hosted pay
 // page, or the real CLI output) captured from the seeded demo project "Scanner" at 1440x900, device scale 2, in both
-// colour schemes; the clips are 1280x800 silent recordings of the same app with a cursor (apps/site/public/clips).
+// colour schemes; the clips are silent recordings of the same app with a cursor (apps/site/public/clips; the `revenuedot-loop-*-v1` loops are 1440x900 seamless loops from the platform demo, with their posters in src/assets/clips).
 // Shots are imported with `import light from "../assets/screens/<file>"` and shown with components/Shot.astro; clips are
 // shown with components/Clip.astro by name; videos are the Cloudflare Stream videos in lib/videos.mjs.
 export type FeatureKey =
@@ -55,7 +55,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "The RevenueDot paywall editor with the Trial timeline template open: layers on the left, a phone preview of the paywall in the middle with the headline selected, and the selected layer's text, colour and spacing controls on the right.",
       caption: DEMO,
     },
-    clip: { name: "paywalls", alt: "Picking the Trial timeline template, creating the paywall, selecting its headline and yearly plan layers and switching the preview between dark and light.", caption: DEMO_CLIP },
+    clip: { name: "revenuedot-loop-paywalls-v1", alt: "The paywall editor with the Trial timeline template open: the phone preview switches from light to dark and back while the layers and their properties stay in view.", caption: DEMO_CLIP },
     video: "revenuedot-dashboard-tour",
     docs: "https://revenuedot.app/docs/guides/paywalls",
   },
@@ -66,7 +66,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "An experiment page in RevenueDot, 'Annual plan first on the paywall': the results panel compares the control and treatment offerings on customers, paywall views, purchases, conversion and revenue, with the treatment's lift and chance to win.",
       caption: DEMO,
     },
-    clip: { name: "experiments", alt: "Opening the 'Annual plan first on the paywall' experiment from the list and moving across its results table of control and treatment.", caption: DEMO_CLIP },
+    clip: { name: "revenuedot-loop-experiments-v1", alt: "The results of the 'Annual plan first on the paywall' experiment: customers in the control and the treatment, conversion to paying and revenue per customer, with the treatment's lift.", caption: DEMO_CLIP },
     video: "revenuedot-dashboard-tour",
     docs: "https://revenuedot.app/docs/guides/experiments",
   },
@@ -87,7 +87,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "The RevenueDot MRR chart segmented by product, with weekly, monthly and yearly plans stacked over the last months, the chart's filters and segment picker above it and the Customers tab below.",
       caption: DEMO,
     },
-    clip: { name: "charts", alt: "Moving through the Revenue, Active subscriptions, Trial conversion funnel, Subscription status and MRR movement charts.", caption: DEMO_CLIP },
+    clip: { name: "revenuedot-loop-charts-v1", alt: "The MRR chart with its weekly, monthly and yearly range, then the Trial Conversion Funnel chart with its counts of new customers, trials started and converted, picked from the chart list.", caption: DEMO_CLIP },
     video: "revenuedot-dashboard-tour",
     docs: "https://revenuedot.app/charts",
   },
@@ -108,6 +108,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "The RevenueDot Refund Control page: a 64% refund rate over 28 days, declined amount and requests, the four policy templates, and the ordered policies 'Renewed in the last day' (prefer full refund) and 'Spent over $40' (prefer no refund) with their conditions.",
       caption: DEMO,
     },
+    clip: { name: "revenuedot-loop-lifecycle-v1", alt: "The Refund Control page with its refund rate and ordered policies, then the Payment recovery page: subscribers in billing retry, how recovered money is counted, and the recovery email settings.", caption: DEMO_CLIP },
     docs: "https://revenuedot.app/docs/guides/refund-control",
   },
   "win-back": {
@@ -126,6 +127,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "The RevenueDot Payment recovery page: 3 subscribers at risk for $29.97 in failed renewals, 3 emails sent, 1 recovered (a 50% recovery rate, $9.99 recovered), and the list of App Store subscribers in billing retry with their grace period end and next email date.",
       caption: DEMO,
     },
+    clip: { name: "revenuedot-loop-lifecycle-v1", alt: "The Refund Control page with its refund rate and ordered policies, then the Payment recovery page: subscribers in billing retry, how recovered money is counted, and the recovery email settings.", caption: DEMO_CLIP },
     docs: "https://revenuedot.app/docs/guides/payment-recovery",
   },
   "web-checkout": {
@@ -164,7 +166,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "The RevenueDot Integrations page scrolled to the Analytics section: cards for Amplitude, Mixpanel, PostHog, Segment, Firebase and the other analytics, engagement and attribution tools, each with its connection status.",
       caption: DEMO,
     },
-    clip: { name: "integrations", alt: "Scrolling the Integrations page and opening the Amplitude integration's settings.", caption: DEMO_CLIP },
+    clip: { name: "revenuedot-loop-integrations-v1", alt: "Scrolling the Integrations page through the analytics, attribution and marketing integrations, then opening the Meta Ads integration's settings.", caption: DEMO_CLIP },
     docs: "https://revenuedot.app/integrations",
   },
   webhooks: {
@@ -184,6 +186,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "A customer page in RevenueDot: the app user ID and aliases, the active entitlement and its App Store subscription, attributes such as email and country, the purchase history with renewals, and the events and webhook deliveries for that customer.",
       caption: DEMO,
     },
+    clip: { name: "revenuedot-loop-customers-v1", alt: "The Customers list with its filters, then one customer's page: the app user ID, the active entitlement and subscription, attributes and history.", caption: DEMO_CLIP },
     docs: "https://revenuedot.app/docs/concepts/customers-and-app-user-ids",
   },
   importer: {
@@ -230,6 +233,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "The RevenueDot AI page: the question 'How is revenue doing this month?' answered with the month's revenue, MRR, new and churned subscribers and a comparison with last month, with the suggested questions below.",
       caption: DEMO,
     },
+    clip: { name: "revenuedot-loop-ai-v1", alt: "The RevenueDot AI page: the question 'How is revenue doing this month?' is typed and answered with the month's revenue, MRR, new and churned subscribers and a comparison with last month.", caption: DEMO_CLIP },
     video: "revenuedot-chatgpt-demo",
     docs: "https://revenuedot.app/docs/guides/revenuedot-ai",
   },
@@ -258,7 +262,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
       alt: "Organization settings, Single sign-on, in RevenueDot Enterprise: an OpenID Connect connection named Okta turned on, the verified domain acme-visuals.test, and the Require single sign-on switch.",
       caption: "Captured from the real RevenueDot dashboard with the enterprise extension in development mode.",
     },
-    clip: { name: "enterprise-roles", alt: "On the organization's Roles page: opening New role, typing a name and description and ticking the View customers, View subscriptions and View purchases scopes.", caption: "Recorded from the real RevenueDot dashboard with the enterprise extension in development mode; silent." },
+    clip: { name: "revenuedot-loop-sso-v1", alt: "Organization settings, Single sign-on: an OpenID Connect connection and its verified domain, then turning on Require single sign-on and confirming it in the dialog.", caption: "Recorded from the real RevenueDot dashboard with example data; silent." },
     docs: "https://revenuedot.app/docs/guides/enterprise",
   },
 };

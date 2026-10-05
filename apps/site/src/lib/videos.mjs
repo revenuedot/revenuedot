@@ -4,13 +4,40 @@
 export const STREAM = "https://customer-fmxk2rh71xv35llp.cloudflarestream.com";
 
 export const VIDEOS = {
-  "revenuedot-platform-demo": { uid: "4122bc21c1ebbdd9019d9003326be207", title: "RevenueDot in 2 minutes 32: switch from RevenueCat in one line, run every subscription from one dashboard, self-host or Cloud with a bill that stops at $999 a month" },
   "revenuedot-chatgpt-demo": { uid: "268e07161316f8ff9857a94fe1c7d195", title: "87-second demo: RevenueDot running a subscription app from ChatGPT" },
   "revenuedot-first-purchase": { uid: "e38ce0c11f5a379b85897f5bde1bf711", title: "78-second tutorial: your first in-app purchase with RevenueDot in 5 minutes, no server and no App Store account" },
   "revenuedot-switch-from-revenuecat": { uid: "25e90e770134f68c17f037fe5650a0d9", title: "94-second tutorial: switch from RevenueCat to RevenueDot without losing a renewal: import, run both side by side, cut over" },
   "revenuedot-connect-your-app": { uid: "25d6e9a0dfc6d8d22ddedd1cf5ab5df2", title: "77-second tutorial: connect your iOS, Android, React Native or Flutter app to RevenueDot with the RevenueCat SDK" },
   "revenuedot-paywalls-and-experiments": { uid: "fc337fd585bac5568eccf00313394e5c", title: "64-second tutorial: build a paywall from a template in RevenueDot and test it with an experiment" },
+  "revenuedot-platform-demo": { uid: "2c1ee96b760bade2f41b145246e5a4d7", title: "2½-minute demo of the RevenueDot platform: switch from RevenueCat in one line, import and verify, then the dashboard, enterprise controls, self-hosting and pricing" },
+  "revenuedot-platform-teaser": { uid: "40f7c65df9139dc6285edd5b7e0e1081", title: "43-second teaser of the RevenueDot platform: switch from RevenueCat in one line, one dashboard for everything, enterprise roles and audit log, and a bill capped at $999 a month" },
+  "revenuedot-platform-teaser-vertical": { uid: "560f8087cfcee1f20b0dbbce1f5cea54", title: "43-second vertical teaser of the RevenueDot platform for phones and social posts: switch from RevenueCat in one line, one dashboard, enterprise controls and a bill capped at $999 a month" },
   "revenuedot-dashboard-tour": { uid: "39db15d4d7f884f65f53577849b829fb", title: "14-second silent tour of the RevenueDot dashboard: Overview, MRR chart, paywall editor and experiment results" },
+};
+
+/**
+ * Chapters of a long video, for the chapter buttons under its player (components/TourPlayer.astro). `start` is in
+ * seconds. The platform demo's come from company/marketing/videos/2026-10-03-platform-demo/chapters.json.
+ */
+export const CHAPTERS = {
+  "revenuedot-platform-demo": [
+    { title: "The fee problem", start: 0 },
+    { title: "Meet RevenueDot", start: 12.8 },
+    { title: "Switch in one line", start: 20.97 },
+    { title: "Import and verify", start: 30.17 },
+    { title: "Overview", start: 39.37 },
+    { title: "Charts", start: 47.53 },
+    { title: "Customers", start: 55.7 },
+    { title: "Paywalls", start: 64.9 },
+    { title: "Experiments", start: 73.07 },
+    { title: "Win money back", start: 81.23 },
+    { title: "Integrations", start: 91.47 },
+    { title: "AI assistant", start: 101.67 },
+    { title: "Enterprise", start: 111.9 },
+    { title: "Self-host", start: 124.13 },
+    { title: "Pricing", start: 132.33 },
+    { title: "Start free", start: 140.5 },
+  ],
 };
 
 /**
@@ -19,9 +46,9 @@ export const VIDEOS = {
  */
 export const WATCH = {
   "revenuedot-platform-demo": {
-    heading: "RevenueDot in two and a half minutes", seconds: 152, date: "2026-10-05", youtube: null,
-    description: "The whole platform in 2:32: switch from RevenueCat in one line, import and verify, charts, paywalls, experiments, refunds, enterprise, self-host and the $999 cap.",
-    summary: "The 1% fee problem, then the fix: change one Purchases.proxyURL line, import your RevenueCat data and verify it, and run everything from one dashboard: Overview, 43 charts, the customer page, the paywall editor, experiment results, refund rules and payment recovery, enterprise SSO and roles, self-hosting with Docker, and a Cloud bill that never passes $999 a month.",
+    heading: "See the whole RevenueDot platform in 2½ minutes", seconds: 152, date: "2026-10-05", youtube: null,
+    description: "Switch from RevenueCat in one line, then tour RevenueDot: import, charts, paywalls, experiments, integrations, AI, enterprise roles, self-hosting and pricing.",
+    summary: "Change one line to point the RevenueCat SDK at RevenueDot, import your customers and verify the numbers, then see the dashboard: 43 charts, customers, paywalls, experiments, refund rules and win-back, 38 integrations and the AI assistant. It ends with enterprise roles, single sign-on and audit logs, self-hosting with Docker, and a bill that is free up to $10,000 a month and capped at $999 a month.",
     next: { label: "Start free on Cloud", href: "https://app.revenuedot.app/signup" },
   },
   "revenuedot-connect-your-app": {
@@ -61,6 +88,12 @@ export function playerUrl(name) {
   const v = VIDEOS[name];
   const poster = encodeURIComponent(`https://revenuedot.app/videos/${name}.webp`);
   return `${STREAM}/${v.uid}/iframe?poster=${poster}&preload=metadata`;
+}
+
+/** `m:ss` for a number of seconds, rounded down. */
+export function clock(seconds) {
+  const s = Math.floor(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 /** The video name for a revenuedot.app/videos/<name>.mp4 link, or null. */

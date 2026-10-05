@@ -22,7 +22,7 @@ const sizes = `(max-width: 640px) calc(100vw - 32px), ${width}px`;
 <div class="vis">
   {titled && <p class="label">RevenueDot: {v.title}</p>}
   {useClip && v.clip ? (
-    <Clip name={v.clip.name} alt={v.clip.alt} caption={v.clip.caption} />
+    <Clip name={v.clip.name} alt={v.clip.alt} caption={v.clip.caption} sizes={sizes} />
   ) : v.light ? (
     <Shot light={v.light} dark={v.dark} alt={v.shot!.alt} caption={v.shot!.caption} sizes={sizes} />
   ) : null}
