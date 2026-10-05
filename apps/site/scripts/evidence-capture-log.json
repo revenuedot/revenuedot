@@ -1539,41 +1539,6 @@
     "pageHeight": 4874
   },
   {
-    "vendor": "stripe",
-    "page": "docs-checkout-quickstart",
-    "url": "https://docs.stripe.com/checkout/quickstart",
-    "ok": true,
-    "full": [
-      "docs-checkout-quickstart-full-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "hosted-page",
-        "file": "docs-checkout-quickstart-hosted-page-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 0,
-          "y": 36,
-          "width": 800,
-          "height": 584
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "Build a Stripe-hosted checkout page | Stripe Documentation",
-    "pageHeight": 800
-  },
-  {
-    "vendor": "stripe",
-    "page": "docs-billing-analytics",
-    "url": "https://docs.stripe.com/billing/subscriptions/analytics",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_NETWORK_CHANGED at https://docs.stripe.com/billing/subscriptions/analytics\nCall log:\n  - navigating to \"https://docs.stripe.com/billing/subscriptions/analytics\", waiting until \"domcontentloaded\"\n"
-  },
-  {
     "vendor": "apple",
     "page": "app-review-guidelines",
     "url": "https://developer.apple.com/app-store/review/guidelines/",
@@ -1607,42 +1572,6 @@
     "status": 200,
     "title": "App Review Guidelines - Apple Developer",
     "pageHeight": 37513
-  },
-  {
-    "vendor": "apple",
-    "page": "subscriptions",
-    "url": "https://developer.apple.com/app-store/subscriptions/",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.apple.com/app-store/subscriptions/\nCall log:\n  - navigating to \"https://developer.apple.com/app-store/subscriptions/\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "apple",
-    "page": "storekit-in-app-purchase",
-    "url": "https://developer.apple.com/documentation/storekit/in-app_purchase",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.apple.com/documentation/storekit/in-app_purchase\nCall log:\n  - navigating to \"https://developer.apple.com/documentation/storekit/in-app_purchase\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "apple",
-    "page": "app-store-server-notifications",
-    "url": "https://developer.apple.com/documentation/appstoreservernotifications",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.apple.com/documentation/appstoreservernotifications\nCall log:\n  - navigating to \"https://developer.apple.com/documentation/appstoreservernotifications\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "apple",
-    "page": "github-app-store-server-library-node",
-    "url": "https://github.com/apple/app-store-server-library-node",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/apple/app-store-server-library-node\nCall log:\n  - navigating to \"https://github.com/apple/app-store-server-library-node\", waiting until \"domcontentloaded\"\n"
   },
   {
     "vendor": "google",
@@ -1760,5 +1689,182 @@
     "full": [],
     "crops": [],
     "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/revenuedot/revenuedot\nCall log:\n  - navigating to \"https://github.com/revenuedot/revenuedot\", waiting until \"domcontentloaded\"\n"
+  },
+  {
+    "vendor": "stripe",
+    "page": "docs-checkout-quickstart",
+    "url": "https://docs.stripe.com/checkout/quickstart",
+    "ok": true,
+    "full": [
+      "docs-checkout-quickstart-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hosted-page",
+        "file": "docs-checkout-quickstart-hosted-page-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 36,
+          "width": 800,
+          "height": 584
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Build a Stripe-hosted checkout page | Stripe Documentation",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "stripe",
+    "page": "docs-billing-analytics",
+    "url": "https://docs.stripe.com/billing/subscriptions/analytics",
+    "ok": true,
+    "full": [
+      "docs-billing-analytics-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mrr-churn",
+        "file": "docs-billing-analytics-mrr-churn-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 240,
+          "y": 100.03125,
+          "width": 800,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Analytics | Stripe Documentation",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "apple",
+    "page": "subscriptions",
+    "url": "https://developer.apple.com/app-store/subscriptions/",
+    "ok": true,
+    "full": [
+      "subscriptions-full-1-2026-10-04.png",
+      "subscriptions-full-2-2026-10-04.png",
+      "subscriptions-full-3-2026-10-04.png",
+      "subscriptions-full-4-2026-10-04.png",
+      "subscriptions-full-5-2026-10-04.png",
+      "subscriptions-full-6-2026-10-04.png",
+      "subscriptions-full-7-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "85-percent-after-one-year",
+        "file": "subscriptions-85-percent-after-one-year-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 362.5,
+          "y": 2354.375,
+          "width": 800,
+          "height": 500
+        }
+      },
+      {
+        "claim": "small-business-program",
+        "file": "subscriptions-small-business-program-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 372.5,
+          "y": 2678.15625,
+          "width": 800,
+          "height": 360
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Auto-renewable Subscriptions - App Store - Apple Developer",
+    "pageHeight": 25062
+  },
+  {
+    "vendor": "apple",
+    "page": "storekit-in-app-purchase",
+    "url": "https://developer.apple.com/documentation/storekit/in-app_purchase",
+    "ok": true,
+    "full": [
+      "storekit-in-app-purchase-full-1-2026-10-04.png",
+      "storekit-in-app-purchase-full-2-2026-10-04.png",
+      "storekit-in-app-purchase-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "overview",
+        "file": "storekit-in-app-purchase-overview-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 440,
+          "y": 117.09375,
+          "width": 800,
+          "height": 600
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Apple In-App Purchase | Apple Developer Documentation",
+    "pageHeight": 8928
+  },
+  {
+    "vendor": "apple",
+    "page": "app-store-server-notifications",
+    "url": "https://developer.apple.com/documentation/appstoreservernotifications",
+    "ok": true,
+    "full": [
+      "app-store-server-notifications-full-1-2026-10-04.png",
+      "app-store-server-notifications-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "overview",
+        "file": "app-store-server-notifications-overview-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 440,
+          "y": 137.09375,
+          "width": 800,
+          "height": 600
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "App Store Server Notifications | Apple Developer Documentation",
+    "pageHeight": 4205
+  },
+  {
+    "vendor": "apple",
+    "page": "github-app-store-server-library-node",
+    "url": "https://github.com/apple/app-store-server-library-node",
+    "ok": true,
+    "full": [
+      "github-app-store-server-library-node-full-1-2026-10-04.png",
+      "github-app-store-server-library-node-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "readme",
+        "file": "github-app-store-server-library-node-readme-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 994.59375,
+          "width": 878,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - apple/app-store-server-library-node: The Node.js server library for the App Store Server API and App Store Server Notifications. · GitHub",
+    "pageHeight": 4548
   }
 ]

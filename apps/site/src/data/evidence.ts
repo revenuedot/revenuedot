@@ -907,6 +907,21 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  {
+    vendor: "Stripe",
+    page: "docs-billing-analytics",
+    url: "https://docs.stripe.com/billing/subscriptions/analytics",
+    captured: DATE,
+    full: asset("stripe", "docs-billing-analytics-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "mrr-churn",
+        file: asset("stripe", "docs-billing-analytics-mrr-churn-2026-10-04.png"),
+        alt: "Stripe Billing analytics docs: MRR, churn and active subscriber metrics for Stripe subscriptions, with downloadable reports.",
+        caption: "Stripe docs page, captured 2026-10-04: Billing analytics for Stripe subscriptions only.",
+      },
+    ],
+  },
   // ---- Apple ----
   {
     vendor: "Apple",
@@ -921,6 +936,76 @@ export const EVIDENCE: Evidence[] = [
         file: asset("apple", "app-review-guidelines-3-1-1-in-app-purchase-2026-10-04.png"),
         alt: "Apple App Review Guidelines 3.1.1: apps that unlock features or functionality must use in-app purchase.",
         caption: "Apple page /app-store/review/guidelines/, captured 2026-10-04: Guideline 3.1.1 requires in-app purchase for digital unlocks.",
+      },
+    ],
+  },
+  {
+    vendor: "Apple",
+    page: "subscriptions",
+    url: "https://developer.apple.com/app-store/subscriptions/",
+    captured: DATE,
+    full: asset("apple", "subscriptions-full-1-2026-10-04.png"),
+    fullParts: [asset("apple", "subscriptions-full-1-2026-10-04.png"), asset("apple", "subscriptions-full-2-2026-10-04.png"), asset("apple", "subscriptions-full-3-2026-10-04.png"), asset("apple", "subscriptions-full-4-2026-10-04.png"), asset("apple", "subscriptions-full-5-2026-10-04.png"), asset("apple", "subscriptions-full-6-2026-10-04.png"), asset("apple", "subscriptions-full-7-2026-10-04.png")],
+    crops: [
+      {
+        claim: "85-percent-after-one-year",
+        file: asset("apple", "subscriptions-85-percent-after-one-year-2026-10-04.png"),
+        alt: "Apple auto-renewable subscriptions page: 70% in the first year, then 85% after one year of paid service.",
+        caption: "Apple page /app-store/subscriptions/, captured 2026-10-04: 70% in year one, 85% after one year.",
+      },
+      {
+        claim: "small-business-program",
+        file: asset("apple", "subscriptions-small-business-program-2026-10-04.png"),
+        alt: "Apple subscriptions page: Small Business Program members receive 85% of the subscription price at each billing cycle.",
+        caption: "Apple page /app-store/subscriptions/, captured 2026-10-04: 85% (a 15% fee) under the Small Business Program.",
+      },
+    ],
+  },
+  {
+    vendor: "Apple",
+    page: "storekit-in-app-purchase",
+    url: "https://developer.apple.com/documentation/storekit/in-app_purchase",
+    captured: DATE,
+    full: asset("apple", "storekit-in-app-purchase-full-1-2026-10-04.png"),
+    fullParts: [asset("apple", "storekit-in-app-purchase-full-1-2026-10-04.png"), asset("apple", "storekit-in-app-purchase-full-2-2026-10-04.png"), asset("apple", "storekit-in-app-purchase-full-3-2026-10-04.png")],
+    crops: [
+      {
+        claim: "overview",
+        file: asset("apple", "storekit-in-app-purchase-overview-2026-10-04.png"),
+        alt: "Apple StoreKit In-App Purchase documentation overview.",
+        caption: "Apple page /documentation/storekit/in-app_purchase, captured 2026-10-04: StoreKit in-app purchase docs.",
+      },
+    ],
+  },
+  {
+    vendor: "Apple",
+    page: "app-store-server-notifications",
+    url: "https://developer.apple.com/documentation/appstoreservernotifications",
+    captured: DATE,
+    full: asset("apple", "app-store-server-notifications-full-1-2026-10-04.png"),
+    fullParts: [asset("apple", "app-store-server-notifications-full-1-2026-10-04.png"), asset("apple", "app-store-server-notifications-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "overview",
+        file: asset("apple", "app-store-server-notifications-overview-2026-10-04.png"),
+        alt: "Apple App Store Server Notifications documentation: a server-to-server service sending real-time notifications for in-app purchase events.",
+        caption: "Apple page /documentation/appstoreservernotifications, captured 2026-10-04: App Store Server Notifications.",
+      },
+    ],
+  },
+  {
+    vendor: "Apple",
+    page: "github-app-store-server-library-node",
+    url: "https://github.com/apple/app-store-server-library-node",
+    captured: DATE,
+    full: asset("apple", "github-app-store-server-library-node-full-1-2026-10-04.png"),
+    fullParts: [asset("apple", "github-app-store-server-library-node-full-1-2026-10-04.png"), asset("apple", "github-app-store-server-library-node-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "readme",
+        file: asset("apple", "github-app-store-server-library-node-readme-2026-10-04.png"),
+        alt: "GitHub README of Apple's app-store-server-library-node.",
+        caption: "Apple GitHub page, captured 2026-10-04: Apple's App Store Server Library for Node.js.",
       },
     ],
   },
