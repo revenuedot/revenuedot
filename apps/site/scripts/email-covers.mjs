@@ -19,7 +19,7 @@ const posters = process.argv[2];
 const VIDEOS = [
   { slug: "revenuedot-first-purchase", title: "Your first purchase in 5 minutes", length: "1:18", fallback: "src/assets/screens/overview-light.png", titled: true },
   { slug: "revenuedot-connect-your-app", title: "Connect your app with one line", length: "1:30", fallback: "src/assets/screens/offerings-light.png" },
-  { slug: "revenuedot-switch-from-revenuecat", title: "Switch from RevenueCat without losing a renewal", length: "1:40", fallback: "src/assets/screens/customers-light.png" },
+  { slug: "revenuedot-switch-from-revenuecat", title: "Switch from RevenueCat without losing a renewal", length: "1:34", fallback: "src/assets/screens/customers-light.png", titled: true },
   { slug: "revenuedot-paywalls-and-experiments", title: "Build a paywall and test it", length: "1:30", fallback: "public/clips/paywalls.webp" },
   { slug: "revenuedot-chatgpt-demo", title: "Run your subscriptions from ChatGPT", length: "1:27", fallback: "public/videos/revenuedot-chatgpt-demo.webp", titled: true },
 ];

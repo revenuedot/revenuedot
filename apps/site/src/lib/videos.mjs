@@ -6,6 +6,7 @@ export const STREAM = "https://customer-fmxk2rh71xv35llp.cloudflarestream.com";
 export const VIDEOS = {
   "revenuedot-chatgpt-demo": { uid: "268e07161316f8ff9857a94fe1c7d195", title: "87-second demo: RevenueDot running a subscription app from ChatGPT" },
   "revenuedot-first-purchase": { uid: "e38ce0c11f5a379b85897f5bde1bf711", title: "78-second tutorial: your first in-app purchase with RevenueDot in 5 minutes, no server and no App Store account" },
+  "revenuedot-switch-from-revenuecat": { uid: "25e90e770134f68c17f037fe5650a0d9", title: "94-second tutorial: switch from RevenueCat to RevenueDot without losing a renewal: import, run both side by side, cut over" },
   "revenuedot-dashboard-tour": { uid: "39db15d4d7f884f65f53577849b829fb", title: "14-second silent tour of the RevenueDot dashboard: Overview, MRR chart, paywall editor and experiment results" },
 };
 
@@ -14,6 +15,12 @@ export const VIDEOS = {
  * links to YouTube too). `seconds` and `date` feed the VideoObject structured data.
  */
 export const WATCH = {
+  "revenuedot-switch-from-revenuecat": {
+    heading: "Switch from RevenueCat without losing a renewal", seconds: 94, date: "2026-10-05", youtube: null,
+    description: "Move from RevenueCat to RevenueDot safely: keep the SDK, import your data, run both side by side, then cut over.",
+    summary: "Keep the RevenueCat SDK your app ships. Import products, offerings, customers and purchase history with one command, forward store notifications so RevenueCat and RevenueDot both see every renewal, compare the numbers, then point the SDK at RevenueDot and turn RevenueCat off.",
+    next: { label: "Start the migration guide", href: "/docs/migrate" },
+  },
   "revenuedot-first-purchase": {
     heading: "Your first purchase in 5 minutes", seconds: 78, date: "2026-10-04", youtube: null,
     description: "Make your first in-app purchase with RevenueDot in 5 minutes: a Test Store app, a product, an entitlement and a test purchase.",
