@@ -12,7 +12,7 @@ import CtaBand from "../components/CtaBand.astro";
 import { SDKS } from "../lib/sdks";
 import { softwareApplication } from "../lib/jsonld";
 import { cloudBill, revenueCatBill, usd, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE } from "../lib/pricing";
-import { FAQ_WHAT, FAQ_NO_RC_ACCOUNT, FAQ_COST, FAQ_STORES, FAQ_EXISTING, FAQ_NO_LOSS, FAQ_ALTERNATIVE, FAQ_OWN_SERVERS, FAQ_READY, FAQ_AFFILIATED } from "../lib/faq";
+import { FAQ_WHAT, FAQ_NO_RC_ACCOUNT, FAQ_COST, FAQ_STORES, FAQ_EXISTING, FAQ_NO_LOSS, FAQ_ALTERNATIVE, FAQ_READY, FAQ_AFFILIATED } from "../lib/faq";
 import { SITE } from "../site";
 import { playerUrl, VIDEOS } from "../lib/videos.mjs";
 import overviewLight from "../assets/screens/overview-light.png";
@@ -22,7 +22,7 @@ import { INTEGRATIONS, integrationPath, CHART_PAGES } from "../data";
 import { logo } from "../lib/logos";
 import { ogFor } from "../lib/og";
 
-const faq = [FAQ_WHAT, FAQ_NO_RC_ACCOUNT, FAQ_COST, FAQ_STORES, FAQ_EXISTING, FAQ_NO_LOSS, FAQ_ALTERNATIVE, FAQ_OWN_SERVERS, FAQ_READY, FAQ_AFFILIATED];
+const faq = [FAQ_WHAT, FAQ_NO_RC_ACCOUNT, FAQ_COST, FAQ_STORES, FAQ_EXISTING, FAQ_NO_LOSS, FAQ_ALTERNATIVE, FAQ_READY, FAQ_AFFILIATED];
 const quick = SDKS.filter((s) => ["ios", "android", "react-native", "flutter"].includes(s.id));
 const tiers = [10_000, 50_000, 250_000, 1_000_000];
 const partners = INTEGRATIONS.filter((i) => !["webhooks", "data-exports"].includes(i.kind));
@@ -36,7 +36,7 @@ const paths = [
   { href: "/migrate-from-revenuecat", label: "On RevenueCat", title: "Switching from RevenueCat", text: "Keep the SDK your app already ships and change one line. Import your customers and run both side by side until the numbers match.", go: "See the switch" },
   { href: "/solutions/ai-built-apps", label: "Built with AI", title: "Building with Claude Code or Cursor", text: "Connect your coding tool to RevenueDot and paste one prompt. It creates the products and writes the purchase code for you.", go: "Use your AI tool" },
   { href: "/features", label: "Growing", title: "Growing revenue with paywalls and tests", text: `Change paywalls and prices without an app release, sell on the web with Stripe, and read ${CHART_PAGES.length} revenue charts.`, go: "See the features" },
-  { href: "/self-host", label: "Own your data", title: "Keeping purchase data on your own servers", text: "Run the same open-source server on your own Postgres, in your region, with no share of your revenue.", go: "Self-host free" },
+  { href: "/pricing#compare-plans", label: "Larger teams", title: "Teams that need SSO, audits and data control", text: "Cloud Standard adds single sign-on and custom roles at the same capped price. Enterprise adds an uptime SLA, audit exports and your own server if your rules require it.", go: "Compare the plans" },
 ];
 const resources = [
   { href: "/in-app-purchases", label: "Guide", title: "How in-app purchases work", text: "Products, subscriptions, store fees and what needs a server, on iOS, Android and the web." },
@@ -75,7 +75,7 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
         <a class="btn" href={SITE.signup}>Start free</a>
         <a class="btn secondary" href="/docs/getting-started/quickstart">Read the 5-minute quickstart <span class="arrow">→</span></a>
       </div>
-      <p class="small muted rise d3 alt">Already have an account? <a href={SITE.login}>Sign in</a> · Switching from RevenueCat? <a href="/migrate-from-revenuecat">Change one line</a> · Prefer your own servers? <a href="/self-host">Self-host free</a></p>
+      <p class="small muted rise d3 alt">Already have an account? <a href={SITE.login}>Sign in</a> · Switching from RevenueCat? <a href="/migrate-from-revenuecat">Change one line</a></p>
     </div>
     <div class="wrap hero-shot">
       <Shot light={overviewLight} dark={overviewDark} eager alt="RevenueDot dashboard overview: active trials, active subscriptions, MRR, revenue, new and active customers with sparklines, recent transactions and setup health" caption="The RevenueDot dashboard, captured from the running app with demo data." />
@@ -159,7 +159,7 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
         <div class="cell"><p class="label">SDK calls</p><p class="stat">55 of 58</p><p>The calls the RevenueCat SDKs make, answered in the same format.</p></div>
         <div class="cell"><p class="label">In production</p><p class="stat">Since Oct 2</p><p>A live app has run RevenueDot beside RevenueCat since October 2, 2026.</p></div>
         <div class="cell"><p class="label">Integrations</p><p class="stat">Same events</p><p>Integrations send RevenueCat's event names, so your dashboards keep working.</p></div>
-        <div class="cell"><p class="label">Leave any time</p><p class="stat">1 command</p><p><code>npx revenuedot export</code> saves every customer and purchase, and <code>move</code> puts the project on your own server.</p></div>
+        <div class="cell"><p class="label">Leave any time</p><p class="stat">1 command</p><p><code>npx revenuedot export</code> saves everything a project owns, with the same ids, SDK keys and webhook secrets.</p></div>
       </div></div>
     </div>
   </section>
@@ -240,17 +240,16 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
       <div class="head">
         <p class="label">What it costs</p>
         <h2 class="h2">Free until {usd(CLOUD_FREE_UP_TO)} a month, then never more than {usd(CLOUD_CAP)}</h2>
-        <p class="lede">Tracked revenue is your store revenue before Apple and Google take their cut. Above {usd(CLOUD_FREE_UP_TO)} a month, Cloud Standard charges {CLOUD_RATE * 100}% of the revenue above it. Self-hosting costs only your servers. RevenueCat's price, from its public pricing checked {SITE.pricesChecked}, is shown for comparison.</p>
+        <p class="lede">Tracked revenue is your store revenue before Apple and Google take their cut. Above {usd(CLOUD_FREE_UP_TO)} a month, Cloud Standard charges {CLOUD_RATE * 100}% of the revenue above it. RevenueCat's price, from its public pricing checked {SITE.pricesChecked}, is shown for comparison.</p>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueDot self-hosted</th><th scope="col">RevenueCat</th></tr></thead>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueCat</th></tr></thead>
           <tbody>
             {tiers.map((t) => (
               <tr>
                 <th scope="row" class="num-cell">{usd(t)}</th>
                 <td class="num-cell">{usd(cloudBill(t))}</td>
-                <td class="num-cell">$0 + your servers</td>
                 <td class="num-cell">{usd(revenueCatBill(t))}</td>
               </tr>
             ))}

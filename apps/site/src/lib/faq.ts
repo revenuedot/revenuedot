@@ -24,22 +24,22 @@ export const FAQ_OWN_SERVERS: Faq = {
 
 export const FAQ_ALTERNATIVE: Faq = {
   q: "Is there an open-source RevenueCat alternative?",
-  a: "Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call. You keep the RevenueCat SDK in your app, point it at RevenueDot with one line (the SDK's proxy URL), and keep your purchase code, offerings and customers. Start free on RevenueDot Cloud, free up to $10,000 a month in tracked revenue, or self-host it.",
+  a: "Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call. You keep the RevenueCat SDK in your app, point it at RevenueDot with one line (the SDK's proxy URL), and keep your purchase code, offerings and customers. Start free on RevenueDot Cloud, free up to $10,000 a month in tracked revenue, then 0.5% and never more than $999 a month.",
 };
 
 export const FAQ_SELF_HOST: Faq = {
   q: "Can I self-host RevenueCat?",
-  a: "RevenueCat itself is closed source and runs only in RevenueCat's cloud. RevenueDot is a self-hostable server that works with the RevenueCat SDK, so self-hosting means running RevenueDot with Docker and Postgres on your own servers, in the region you choose.",
+  a: "No. RevenueCat itself is closed source and runs only in RevenueCat's cloud. The simplest open-source option that works with the RevenueCat SDK is RevenueDot Cloud, free up to $10,000 a month in tracked revenue. Teams whose rules require their own server can also run the RevenueDot server with Docker and Postgres.",
 };
 
 export const FAQ_PRICE_ALT: Faq = {
   q: "What is a cheaper alternative to RevenueCat's pricing?",
-  a: "Once an app reaches $2,500 a month in tracked revenue, RevenueCat charges 1% of all of it, which is $500 a month for an app making $50,000 a month. RevenueDot Cloud is free up to $10,000 a month; Cloud Standard is 0.5% above that, capped at $999 a month. Self-hosted RevenueDot has no revenue share: you pay only for your own servers.",
+  a: "Once an app reaches $2,500 a month in tracked revenue, RevenueCat charges 1% of all of it, which is $500 a month for an app making $50,000 a month. RevenueDot Cloud is free up to $10,000 a month; Cloud Standard is 0.5% above that, capped at $999 a month.",
 };
 
 export const FAQ_CHANGE_APP: Faq = {
   q: "Do I have to change my app to switch?",
-  a: "One line. Set the SDK's proxy URL to https://api.revenuedot.app (or your own server) before configure. Offerings, purchases, restores, entitlements and customer info work as before. With the stock SDK you also turn off its response-signature check, or you use a RevenueDot SDK fork, which verifies RevenueDot's signatures.",
+  a: "One line. Set the SDK's proxy URL to https://api.revenuedot.app before configure. Offerings, purchases, restores, entitlements and customer info work as before. With the stock SDK you also turn off its response-signature check, or you use a RevenueDot SDK fork, which verifies RevenueDot's signatures.",
 };
 
 export const FAQ_NO_LOSS: Faq = {
@@ -54,7 +54,7 @@ export const FAQ_GOOGLE: Faq = {
 
 export const FAQ_COST: Faq = {
   q: "How much does RevenueDot cost?",
-  a: "RevenueDot Cloud has a free plan up to $10,000 of monthly tracked revenue. Self-hosting is free forever under AGPL-3.0, with no limits. Cloud Standard costs 0.5% of tracked revenue above $10,000, capped at $999 a month; upgrade any time from Billing in the dashboard. Enterprise has custom pricing starting at $50,000 a year; contact sales at revenuedot.app/contact-sales.",
+  a: "RevenueDot Cloud has a free plan up to $10,000 of monthly tracked revenue. Cloud Standard costs 0.5% of tracked revenue above $10,000, capped at $999 a month; upgrade any time from Billing in the dashboard. Enterprise has custom pricing starting at $50,000 a year; contact sales at revenuedot.app/contact-sales.",
 };
 
 export const FAQ_READY: Faq = {
@@ -64,7 +64,7 @@ export const FAQ_READY: Faq = {
 
 export const FAQ_LICENSE: Faq = {
   q: "What license is RevenueDot under?",
-  a: "The server and dashboard are AGPL-3.0. The SDK forks, CLI, MCP server and agent skills are MIT. The ee/ folder (enterprise features such as organizations, custom roles, single sign-on, SCIM and compliance exports) is under the RevenueDot Enterprise License. Cloud Standard includes organizations, custom roles and single sign-on; on a self-hosted server they need an Enterprise license.",
+  a: "The server and dashboard are AGPL-3.0. The SDK forks, CLI, MCP server and agent skills are MIT. The ee/ folder (enterprise features such as organizations, custom roles, single sign-on, SCIM and compliance exports) is under the RevenueDot Enterprise License. Cloud Standard includes organizations, custom roles and single sign-on.",
 };
 
 export const FAQ_AFFILIATED: Faq = {
@@ -79,5 +79,5 @@ export const FAQ_STORES: Faq = {
 
 export const FAQ_DATA: Faq = {
   q: "Where does my purchase data live?",
-  a: "RevenueDot Cloud runs on Cloudflare's network and stores your data in the US. With Enterprise, you can also run RevenueDot in your own cloud under the commercial license. When you self-host, every purchase, customer and receipt lives in your own Postgres database, in the cloud and region you choose, and nothing is sent to RevenueDot.",
+  a: "RevenueDot Cloud runs on Cloudflare's network and stores your data in the US. Enterprise adds data location settings, and you can export everything a project owns at any time. Teams that run their own server keep every purchase, customer and receipt in their own Postgres database.",
 };

@@ -238,7 +238,7 @@ export const VISUALS: Record<FeatureKey, Visual> = {
     docs: "https://revenuedot.app/docs/guides/revenuedot-ai",
   },
   "self-host": {
-    title: "Self-host",
+    title: "Server you run yourself",
     shot: {
       ...screens("self-host"),
       alt: "The Billing page of a self-hosted RevenueDot server: the owned project Scanner on the Self-hosted plan and the line 'Billing is only on RevenueDot Cloud. This server is self-hosted: free and unmetered, with no limits.'",

@@ -20,7 +20,6 @@ const current = (href: string) => path === href || path.startsWith(href + "/");
         <nav class="sheet" aria-label="Mobile">
           <div class="sheet-cta"><a class="btn" href={SITE.signup}>Start free on Cloud</a><a class="btn secondary" href={SITE.login}>Sign in</a></div>
           {NAV.map((n) => <a href={n.href} aria-current={current(n.href) ? "page" : undefined}>{n.label}</a>)}
-          <a href="/self-host">Self-host</a>
           <a href="/changelog">Changelog</a>
           <a href={SITE.github} rel="noopener">GitHub</a>
         </nav>

@@ -5,7 +5,7 @@ import Faq from "../components/Faq.astro";
 import CtaBand from "../components/CtaBand.astro";
 import { PLANS, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE, RC_FREE_UP_TO, RC_RATE, cloudBill, revenueCatBill, usd } from "../lib/pricing";
 import { softwareApplication } from "../lib/jsonld";
-import { FAQ_COST, FAQ_PRICE_ALT, FAQ_SELF_HOST, FAQ_DATA, FAQ_LICENSE } from "../lib/faq";
+import { FAQ_COST, FAQ_PRICE_ALT, FAQ_DATA, FAQ_LICENSE } from "../lib/faq";
 import Visual from "../components/Visual.astro";
 import Clip from "../components/Clip.astro";
 import TourPlayer from "../components/TourPlayer.astro";
@@ -16,53 +16,51 @@ const faq = [
   FAQ_COST,
   { q: "What counts as tracked revenue?", a: "Tracked revenue is the gross value of the App Store, Google Play and other store purchases RevenueDot Cloud processes for your apps in a calendar month, before store fees and taxes. Sandbox and test purchases never count." },
   { q: "Do I pay anything while I build and test my app?", a: "No. Sandbox and Test Store purchases never count as tracked revenue, and RevenueDot Cloud is free until your app makes $10,000 a month from real customers. You do not need a credit card to sign up." },
-  { q: "Is self-hosting really free for commercial apps?", a: "Yes. The server and dashboard are AGPL-3.0, so any company can run them for its own apps at any scale without paying us. The AGPL asks that if you modify the server and offer it to others over a network, you share those changes. Enterprise features in the ee/ folder need a commercial license." },
-  { q: "Can I move between self-host and cloud?", a: "Yes. Self-host and cloud run the same code, API and database schema, so a project moves either way with a data export and import. Your apps change only the address their SDK points at." },
-  { q: "Which plan includes single sign-on?", a: "Cloud Standard and Enterprise. Cloud Standard adds single sign-on with SAML 2.0 or OpenID Connect, so your team signs in with Google Workspace, Okta or Microsoft Entra ID, and you can require it for your email domain. It also adds organizations and custom roles. Upgrade any time from Billing in the dashboard; below $10,000 a month of tracked revenue it still costs $0. On a self-hosted server, single sign-on needs an Enterprise license." },
-  { q: "What does Enterprise add?", a: "Enterprise has everything in Cloud Standard with no revenue limit. It adds SCIM provisioning, audit logs kept from 30 days to 10 years, signed compliance exports of the audit log and access review, and a commercial license to self-host without AGPL duties, with every enterprise feature. It includes a 99.9% monthly uptime SLA on the purchase path with service credits (10% below 99.9%, 25% below 99.5%, 50% below 99%). Support answers within 1 hour at any hour when purchases fail, within 4 business hours for a broken feature and within 1 business day for questions, in a private Slack channel with a named engineer. If you are moving from RevenueCat, we run the migration with you. We also sign a DPA and answer security reviews. Pricing is custom, from $50,000 a year." },
+  { q: "Can I export my data?", a: "Yes. You can export everything a project owns at any time, with the same ids, SDK keys and webhook secrets, so you are never locked in. Your apps change only the proxy URL." },
+  { q: "Which plan includes single sign-on?", a: "Cloud Standard and Enterprise. Cloud Standard adds single sign-on with SAML 2.0 or OpenID Connect, so your team signs in with Google Workspace, Okta or Microsoft Entra ID, and you can require it for your email domain. It also adds organizations and custom roles. Upgrade any time from Billing in the dashboard; below $10,000 a month of tracked revenue it still costs $0." },
+  { q: "What does Enterprise add?", a: "Enterprise has everything in Cloud Standard with no revenue limit. It adds SCIM provisioning, audit logs kept from 30 days to 10 years, signed compliance exports of the audit log and access review, and a commercial license if your company must run its own server. It includes a 99.9% monthly uptime SLA on the purchase path with service credits (10% below 99.9%, 25% below 99.5%, 50% below 99%). Support answers within 1 hour at any hour when purchases fail, within 4 business hours for a broken feature and within 1 business day for questions, in a private Slack channel with a named engineer. If you are moving from RevenueCat, we run the migration with you. We also sign a DPA and answer security reviews. Pricing is custom, from $50,000 a year." },
   FAQ_DATA,
   FAQ_LICENSE,
-  FAQ_SELF_HOST,
   FAQ_PRICE_ALT,
 ];
 const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
 const ENT_LICENSE = "With an Enterprise license";
-const planCols = ["Self-host", "Cloud Free", "Cloud Standard", "Enterprise"];
+const planCols = ["Cloud Free", "Cloud Standard", "Enterprise", "Own server (advanced)"];
 const planRows: [string, string, string, string, string][] = [
-  ["Price", "Free", "$0", `0.5% of tracked revenue above ${usd(CLOUD_FREE_UP_TO)} a month, never more than ${usd(CLOUD_CAP)} a month`, "Custom, from $50,000 a year"],
-  ["Tracked revenue", "No limit", "Up to $10,000 a month", "Up to $1M a month", "No limit"],
+  ["Price", "$0", `0.5% of tracked revenue above ${usd(CLOUD_FREE_UP_TO)} a month, never more than ${usd(CLOUD_CAP)} a month`, "Custom, from $50,000 a year", "Free"],
+  ["Tracked revenue", "Up to $10,000 a month", "Up to $1M a month", "No limit", "No limit"],
   ["Open-source core features", "Yes", "Yes", "Yes", "Yes"],
   ["Apps, projects and teammates", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles"],
-  ["Audit log", "Kept in your own database", "Kept 90 days", "Kept 90 days", "Kept 30 days to 10 years, your choice"],
-  ["Organizations and custom roles", ENT_LICENSE, "No", "Yes", "Yes"],
-  ["Single sign-on (SAML, OpenID Connect)", ENT_LICENSE, "No", "Yes, and you can require it for your email domain", "Yes, and you can require it for your email domain"],
-  ["SCIM provisioning", ENT_LICENSE, "No", "No", "Yes"],
-  ["Compliance exports", ENT_LICENSE, "No", "No", "Signed exports of the audit log and access review"],
-  ["Where your data lives", "Your own servers", "US", "US", "US, or your own cloud with the commercial license"],
-  ["License", "AGPL-3.0", "Not needed: we run it", "Not needed: we run it", "Commercial license to self-host without AGPL duties, with every enterprise feature"],
-  ["Uptime SLA", "No", "No", "No", "99.9% a month on the purchase path, with service credits"],
-  ["Support", "GitHub community", "Community and email", "Email, first reply within 2 business days", "1 hour when purchases fail, at any hour; private Slack channel and a named engineer"],
+  ["Audit log", "Kept 90 days", "Kept 90 days", "Kept 30 days to 10 years, your choice", "Kept in your own database"],
+  ["Organizations and custom roles", "No", "Yes", "Yes", ENT_LICENSE],
+  ["Single sign-on (SAML, OpenID Connect)", "No", "Yes, and you can require it for your email domain", "Yes, and you can require it for your email domain", ENT_LICENSE],
+  ["SCIM provisioning", "No", "No", "Yes", ENT_LICENSE],
+  ["Compliance exports", "No", "No", "Signed exports of the audit log and access review", ENT_LICENSE],
+  ["Where your data lives", "US", "US", "US, or your own cloud with the commercial license", "Your own servers"],
+  ["License", "Not needed: we run it", "Not needed: we run it", "Commercial license to self-host without AGPL duties, with every enterprise feature", "AGPL-3.0"],
+  ["Uptime SLA", "No", "No", "99.9% a month on the purchase path, with service credits", "No"],
+  ["Support", "Community and email", "Email, first reply within 2 business days", "1 hour when purchases fail, at any hour; private Slack channel and a named engineer", "GitHub community"],
 ];
 const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : undefined);
 ---
 <Base
   title="Pricing"
-  fullTitle="Pricing: RevenueDot Cloud free up to $10K a month, self-host free"
-  description="RevenueDot Cloud is free up to $10,000 monthly tracked revenue, and paid plans cap at $999 a month. Self-host RevenueDot free forever with no revenue share."
+  fullTitle="Pricing: RevenueDot Cloud free up to $10K a month"
+  description="RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, and never more than $999 a month. Start free and run nothing yourself."
   path="/pricing"
   crumbs={[{ name: "Pricing", path: "/pricing" }]}
   faq={faq}
   jsonld={[softwareApplication()]}
 >
   <div class="wrap">
-    <PageHead label="Pricing" title="Free on Cloud up to $10K a month. Free forever to self-host." lede={`RevenueDot Cloud is free while your app tracks up to ${usd(CLOUD_FREE_UP_TO)} a month, and paid plans are capped at ${usd(CLOUD_CAP)}. Self-hosting takes no share of your revenue.`}>
+    <PageHead label="Pricing" title="Free on Cloud up to $10K a month." lede={`RevenueDot Cloud is free while your app tracks up to ${usd(CLOUD_FREE_UP_TO)} a month, and paid plans are capped at ${usd(CLOUD_CAP)} a month.`}>
       <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud</a></div>
     </PageHead>
   </div>
 
   <section class="section first plans-section" aria-label="Plans" data-fast-scroll="viewed_pricing_plans">
     <div class="wrap">
-      <div class="grid"><div class="gi cols-4 plans">
+      <div class="grid"><div class="gi cols-3 plans">
         {PLANS.map((p) => (
           <div class="cell plan">
             <div class="plan-top">
@@ -141,7 +139,7 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
       <div class="head">
         <p class="label">Your bill</p>
         <h2 class="h2">You pay nothing until {usd(CLOUD_FREE_UP_TO)} a month, and never more than {usd(CLOUD_CAP)}</h2>
-        <p class="lede">RevenueDot Cloud charges {CLOUD_RATE * 100}% of the revenue above {usd(CLOUD_FREE_UP_TO)} a month, capped at {usd(CLOUD_CAP)}. Self-hosting costs only your servers. For comparison, RevenueCat charges {Math.round(RC_RATE * 100)}% of all tracked revenue once it reaches {usd(RC_FREE_UP_TO)} a month.</p>
+        <p class="lede">RevenueDot Cloud charges {CLOUD_RATE * 100}% of the revenue above {usd(CLOUD_FREE_UP_TO)} a month, capped at {usd(CLOUD_CAP)}. For comparison, RevenueCat charges {Math.round(RC_RATE * 100)}% of all tracked revenue once it reaches {usd(RC_FREE_UP_TO)} a month.</p>
       </div>
       <div class="grid calc"><div class="gi cols-3">
         <div class="cell span">
@@ -151,19 +149,17 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
           <p id="mtr-help" class="tiny">Drag to set your app's monthly revenue from the stores, before fees.</p>
         </div>
         <div class="cell"><p class="label">RevenueDot Cloud</p><p class="stat" id="cloud">{usd(cloudBill(50_000))}</p><p>a month (Cloud Standard)</p></div>
-        <div class="cell"><p class="label">RevenueDot self-hosted</p><p class="stat">$0</p><p>plus your own server and database</p></div>
         <div class="cell"><p class="label">RevenueCat, for comparison</p><p class="stat" id="rc">{usd(revenueCatBill(50_000))}</p><p>a month, from its public pricing</p></div>
       </div></div>
       <div class="table-wrap examples">
         <table>
           <caption class="sr-only">Monthly price at common revenue levels</caption>
-          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueDot self-hosted</th><th scope="col">RevenueCat</th><th scope="col">Cloud saves you vs RevenueCat</th></tr></thead>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueCat</th><th scope="col">Cloud saves you vs RevenueCat</th></tr></thead>
           <tbody>
             {examples.map((m) => (
               <tr>
                 <th scope="row" class="num-cell">{usd(m)}</th>
                 <td class="num-cell">{usd(cloudBill(m))}</td>
-                <td class="num-cell">$0</td>
                 <td class="num-cell">{usd(revenueCatBill(m))}</td>
                 <td class="num-cell">{usd(revenueCatBill(m) - cloudBill(m))}</td>
               </tr>

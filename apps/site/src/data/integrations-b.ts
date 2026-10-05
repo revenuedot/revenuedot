@@ -60,7 +60,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send in-app purchase events to mParticle?", a: "Add a Custom Feed (server-to-server) under Setup → Inputs → Feeds in mParticle, then paste its key and secret into Integrations → mParticle in RevenueDot and click Connect mParticle. Every purchase, trial, renewal, cancellation and refund then reaches mParticle's Events API." },
       { q: "Does RevenueDot send revenue to mParticle as commerce events?", a: "Yes. Any event with revenue other than zero is a `commerce_event` with a `purchase` product action, in US dollars. A refund is a `refund` action. Steps with no money, such as a cancellation or an expiration, are custom events." },
       { q: "How does mParticle know which user a purchase belongs to?", a: "RevenueDot sends your app user ID as `customer_id` and the `$email` attribute as `email`. If your app sets `$mparticleId`, it is sent as `mpid`, as a JSON integer, so mParticle matches the profile at once." },
-      { q: "Is there a RevenueCat mParticle integration alternative?", a: "Yes. RevenueDot uses the event names of [RevenueCat's mParticle integration](https://www.revenuecat.com/docs/integrations/third-party-integrations) (`initial_purchase`, `renewal`, `non_renewing_purchase` and so on), so audiences built on them keep working. RevenueDot is open source and free to self-host (AGPL-3.0). Checked October 2026." },
+      { q: "Is there a RevenueCat mParticle integration alternative?", a: "Yes. RevenueDot uses the event names of [RevenueCat's mParticle integration](https://www.revenuecat.com/docs/integrations/third-party-integrations) (`initial_purchase`, `renewal`, `non_renewing_purchase` and so on), so audiences built on them keep working. RevenueDot is open source (AGPL-3.0), and RevenueDot Cloud is free up to $10,000 a month in tracked revenue. Checked October 2026." },
     ],
     partner: [
       { label: "mParticle", url: "https://www.mparticle.com" },
@@ -111,7 +111,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send subscription revenue to Statsig?", a: "Copy the Server Secret Key from Settings → Keys & Environments in Statsig, paste it as Server secret key under Integrations → Statsig in RevenueDot and click Connect Statsig. Each purchase, renewal and refund is then logged as a custom event with `value` set to the revenue." },
       { q: "Which user ID does Statsig see for a purchase?", a: "Your app user ID, sent as `userID`. It has to match the `userID` your app gives the Statsig SDK, or the revenue lands on a different user than the one in your experiment." },
       { q: "Does Statsig get refunds as negative revenue?", a: "Yes. A refund is a cancellation event with a negative `value`, which Statsig accepts. Events without money send no `value`." },
-      { q: "Is there a RevenueCat Statsig integration alternative?", a: "RevenueDot logs the same `rc_<step>_event` names that RevenueCat's analytics integrations use, so metrics built on them keep working. See [RevenueCat's list of integrations](https://www.revenuecat.com/docs/integrations/third-party-integrations), checked October 2026. RevenueDot is open source and free to self-host." },
+      { q: "Is there a RevenueCat Statsig integration alternative?", a: "RevenueDot logs the same `rc_<step>_event` names that RevenueCat's analytics integrations use, so metrics built on them keep working. See [RevenueCat's list of integrations](https://www.revenuecat.com/docs/integrations/third-party-integrations), checked October 2026. RevenueDot is open source, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue." },
     ],
     partner: [
       { label: "Statsig", url: "https://www.statsig.com" },
@@ -168,7 +168,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I connect Superwall to RevenueDot?", a: "Ask Superwall support for the URL that receives RevenueCat webhooks, then paste it under Integrations → Superwall in RevenueDot as Superwall webhook URL. If Superwall gives you a token, enter it as Authorization header value. Click Connect Superwall." },
       { q: "Does Superwall need a RevenueCat account to get revenue from RevenueDot?", a: "No. RevenueDot sends the RevenueCat-format webhook body itself, so the revenue arrives without RevenueCat. The `app_user_id` in the body must match the user ID your Superwall SDK uses." },
       { q: "Are sandbox purchases sent to Superwall?", a: "They are when the integration's Environment includes sandbox. Each carries `environment: SANDBOX` in the body, so Superwall can tell them apart." },
-      { q: "Is there a RevenueCat Superwall integration alternative?", a: "Yes. RevenueDot sends the same webhook shape that Superwall's RevenueCat setup expects, from an open source backend you can self-host. Superwall's own steps are in its [revenue tracking guide](https://superwall.com/docs/overview-settings-revenue-tracking), checked October 2026." },
+      { q: "Is there a RevenueCat Superwall integration alternative?", a: "Yes. RevenueDot sends the same webhook shape that Superwall's RevenueCat setup expects, from an open source backend. Superwall's own steps are in its [revenue tracking guide](https://superwall.com/docs/overview-settings-revenue-tracking), checked October 2026." },
     ],
     partner: [
       { label: "Superwall", url: "https://superwall.com" },
@@ -323,7 +323,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send in-app purchase events to Singular?", a: "Paste your Singular SDK Key under Integrations → Singular in RevenueDot, set `$singularDeviceId` in your app and click Connect Singular. Each subscription step then goes to Singular's server-to-server EVENT endpoint with the revenue in US dollars." },
       { q: "Should I use the V2 or the V1 Singular endpoint?", a: "Use V2 unless your Singular account is older and still uses V1. V2 matches on `$singularDeviceId`. V1 matches on advertising IDs. Singular accounts created from July 15, 2026 must use V2." },
       { q: "Does Singular get refunds as negative revenue?", a: "Yes. Singular accepts negative revenue, so a refund is sent as a cancellation event with a negative `amt`." },
-      { q: "Is there a RevenueCat Singular integration alternative?", a: "Yes. RevenueDot sends the parameters that [RevenueCat documents for its own Singular delivery](https://www.revenuecat.com/docs/integrations/attribution/reference/singular) (checked October 2026) to [Singular's EVENT endpoint](https://support.singular.net/hc/en-us/articles/31496864868635), from an open source backend you can self-host." },
+      { q: "Is there a RevenueCat Singular integration alternative?", a: "Yes. RevenueDot sends the parameters that [RevenueCat documents for its own Singular delivery](https://www.revenuecat.com/docs/integrations/attribution/reference/singular) (checked October 2026) to [Singular's EVENT endpoint](https://support.singular.net/hc/en-us/articles/31496864868635), from an open source backend." },
     ],
     partner: [
       { label: "Singular", url: "https://www.singular.net" },
@@ -379,7 +379,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send in-app purchase events to SolarEngine?", a: "Ask SolarEngine support for the URL that receives RevenueCat webhooks for your app, paste it under Integrations → SolarEngine in RevenueDot and click Connect SolarEngine. Set the SolarEngine IDs as attributes in your app so SolarEngine can match customers." },
       { q: "Does SolarEngine get sandbox purchases?", a: "Not by default. The integration sends production events only, because SolarEngine documents no sandbox handling. If you widen the Environment filter, sandbox events carry `environment: SANDBOX` in the body." },
       { q: "Why does RevenueDot use a webhook for SolarEngine?", a: "SolarEngine's server receiving API is not public, so there is no documented request to build. The webhook body is the format SolarEngine's RevenueCat setup reads." },
-      { q: "Is there a RevenueCat SolarEngine integration alternative?", a: "Yes. RevenueDot sends the same webhook body that RevenueCat sends to SolarEngine's URL, from an open source backend that you can self-host. Facts about RevenueCat's setup are from its [SolarEngine page](https://www.revenuecat.com/docs/integrations/attribution/reference/solarengine), checked October 2026." },
+      { q: "Is there a RevenueCat SolarEngine integration alternative?", a: "Yes. RevenueDot sends the same webhook body that RevenueCat sends to SolarEngine's URL, from an open source backend. Facts about RevenueCat's setup are from its [SolarEngine page](https://www.revenuecat.com/docs/integrations/attribution/reference/solarengine), checked October 2026." },
     ],
     partner: [
       { label: "SolarEngine", url: "https://www.solar-engine.com" },
@@ -434,7 +434,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send subscription revenue to SplitMetrics Acquire?", a: "SplitMetrics shows a Client ID for RevenueCat, not a URL. Ask SplitMetrics support for the URL that receives RevenueCat webhooks, paste it under Integrations → SplitMetrics Acquire in RevenueDot and click Connect SplitMetrics Acquire." },
       { q: "How does SplitMetrics match a purchase to a campaign?", a: "By the Apple Search Ads attributes in the body's `subscriber_attributes`. RevenueDot stores them when your iOS app turns on AdServices token collection." },
       { q: "Does RevenueDot send sandbox purchases to SplitMetrics?", a: "Yes by default: the integration's Environment is both production and sandbox, and each sandbox event carries `environment: SANDBOX`. Narrow the Environment filter to production if you want only real purchases." },
-      { q: "Is there a RevenueCat SplitMetrics Acquire integration alternative?", a: "Yes. RevenueDot sends the same webhook body from an open source backend you can self-host. SplitMetrics' own steps for RevenueCat are in its [help article](https://help.splitmetrics.com/en/articles/5817211-how-to-link-revenuecat-partner-integration), checked October 2026." },
+      { q: "Is there a RevenueCat SplitMetrics Acquire integration alternative?", a: "Yes. RevenueDot sends the same webhook body from an open source backend. SplitMetrics' own steps for RevenueCat are in its [help article](https://help.splitmetrics.com/en/articles/5817211-how-to-link-revenuecat-partner-integration), checked October 2026." },
     ],
     partner: [
       { label: "SplitMetrics", url: "https://splitmetrics.com" },
@@ -484,7 +484,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send in-app purchase events to Tenjin?", a: "Paste your Tenjin SDK keys under Integrations → Tenjin in RevenueDot, set `$tenjinId` and call `collectDeviceIdentifiers()` in your app, and click Connect Tenjin. Paid steps go to Tenjin's purchase endpoint and the rest go as events." },
       { q: "Why does Tenjin not show my refunds as negative revenue?", a: "Tenjin takes no negative revenue. RevenueDot sends a refund as an event named `rc_cancellation_event` without money instead of a negative purchase." },
       { q: "Are sandbox purchases sent to Tenjin?", a: "No. Tenjin keeps no sandbox data apart from production, so RevenueDot skips sandbox events and the delivery log says why." },
-      { q: "Is there a RevenueCat Tenjin integration alternative?", a: "Yes. RevenueDot sends [Tenjin's server-to-server events](https://tenjin.com/docs/server-to-server-s2s-setup/) for the same attribution purpose as [RevenueCat's attribution integrations](https://www.revenuecat.com/docs/integrations/attribution) (checked October 2026), from an open source backend you can self-host." },
+      { q: "Is there a RevenueCat Tenjin integration alternative?", a: "Yes. RevenueDot sends [Tenjin's server-to-server events](https://tenjin.com/docs/server-to-server-s2s-setup/) for the same attribution purpose as [RevenueCat's attribution integrations](https://www.revenuecat.com/docs/integrations/attribution) (checked October 2026), from an open source backend." },
     ],
     partner: [
       { label: "Tenjin", url: "https://tenjin.com" },
@@ -590,7 +590,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send in-app purchase events to Appstack?", a: "In Appstack open Integrations → RevenueCat and copy the Webhook URL and the Authorization Header. Paste them under Integrations → Appstack in RevenueDot and click Connect Appstack. Set `$appstackId` in your app." },
       { q: "Does Appstack need RevenueCat to receive RevenueDot events?", a: "No. RevenueDot sends the RevenueCat-format webhook body itself, to the URL you copied from Appstack." },
       { q: "Does Appstack get sandbox events?", a: "Yes, by default. Each carries `environment: SANDBOX` in the body, which Appstack keeps apart from production. Narrow the Environment filter to production to stop them." },
-      { q: "Is there a RevenueCat Appstack integration alternative?", a: "Yes. RevenueDot sends the same webhook body that [RevenueCat's Appstack setup](https://www.revenuecat.com/docs/integrations/attribution/appstack) uses (checked October 2026), from an open source backend you can self-host." },
+      { q: "Is there a RevenueCat Appstack integration alternative?", a: "Yes. RevenueDot sends the same webhook body that [RevenueCat's Appstack setup](https://www.revenuecat.com/docs/integrations/attribution/appstack) uses (checked October 2026), from an open source backend." },
     ],
     partner: [
       { label: "Appstack", url: "https://appstack.tech" },
@@ -639,7 +639,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send subscription revenue to Asapty?", a: "Copy your Asapty ID from Settings → General in Asapty, enter it under Integrations → Asapty in RevenueDot and click Connect Asapty. Your iOS app must call `enableAdServicesAttributionTokenCollection()` so each customer has an Apple Search Ads campaign." },
       { q: "Why was an Asapty event skipped?", a: "The customer has no `$appleAdsCampaignId`, so Asapty cannot attribute the event. That happens for customers who did not come from an Apple Search Ads ad, or whose token was never collected." },
       { q: "Does Asapty get sandbox purchases or refunds?", a: "Sandbox events are skipped, because Asapty takes production events only. A refund is sent with revenue `0.00`, because Asapty takes no negative revenue." },
-      { q: "Is there a RevenueCat Asapty integration alternative?", a: "Yes. RevenueDot sends the request that [RevenueCat documents for Asapty](https://www.revenuecat.com/docs/integrations/attribution/reference/asapty) (checked October 2026), from an open source backend you can self-host." },
+      { q: "Is there a RevenueCat Asapty integration alternative?", a: "Yes. RevenueDot sends the request that [RevenueCat documents for Asapty](https://www.revenuecat.com/docs/integrations/attribution/reference/asapty) (checked October 2026), from an open source backend." },
     ],
     partner: [
       { label: "Asapty", url: "https://asapty.com" },
@@ -709,7 +709,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I track Apple Search Ads attribution for subscriptions?", a: "Call `enableAdServicesAttributionTokenCollection()` in your iOS app. RevenueDot resolves the AdServices token with Apple and saves the campaign, ad group and keyword on the customer. Open Integrations → Apple Search Ads to see revenue by campaign." },
       { q: "Do I need an Apple Search Ads API user?", a: "Only to see campaign names. Attribution and the revenue report work without one, but show campaign IDs. A read-only API user is enough for names." },
       { q: "Does the report include sandbox purchases?", a: "No. It counts production purchases only, in US dollars, with refunds as negative revenue." },
-      { q: "Is there a RevenueCat Apple Search Ads integration alternative?", a: "Yes. RevenueDot resolves the [AdServices attribution token](https://developer.apple.com/documentation/adservices) on its own and reports revenue by campaign, from an open source backend you can self-host. Apple's own API steps are in its [Apple Search Ads documentation](https://developer.apple.com/documentation/apple_search_ads)." },
+      { q: "Is there a RevenueCat Apple Search Ads integration alternative?", a: "Yes. RevenueDot resolves the [AdServices attribution token](https://developer.apple.com/documentation/adservices) on its own and reports revenue by campaign, from an open source backend. Apple's own API steps are in its [Apple Search Ads documentation](https://developer.apple.com/documentation/apple_search_ads)." },
     ],
     partner: [
       { label: "Apple Search Ads", url: "https://searchads.apple.com" },
@@ -763,7 +763,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I send in-app purchase events to Iterable?", a: "Create a server-side API key in Iterable, open Integrations → Iterable in RevenueDot, paste it, pick the data center and click Connect Iterable. Every purchase, trial, renewal, cancellation, refund and billing issue is then sent as an `rc_*_event` custom event, and `rc_subscription_status` is updated on the user." },
       { q: "Should purchases go to Iterable as events or as purchases?", a: "Both are available. By default every step is a custom event. Tick Send paid events as Iterable purchases and initial purchases, trial conversions, renewals and one-time purchases with revenue above 0 go to Track Purchase for Iterable's revenue reports. Refunds always go as events with negative revenue." },
       { q: "Which user does Iterable update, the email or the user ID?", a: "Iterable takes one of the two per request. RevenueDot uses the `$email` attribute when your app set it, else `$iterableUserId`, else the app user ID as `userId`." },
-      { q: "Is there a RevenueCat Iterable integration alternative?", a: "Yes. RevenueDot follows [RevenueCat's Iterable integration](https://www.revenuecat.com/docs/integrations/third-party-integrations/iterable): the same `rc_*_event` names, the `rc_subscription_status` attribute and the email or user ID rule. Checked October 2026. RevenueDot is open source and free to self-host." },
+      { q: "Is there a RevenueCat Iterable integration alternative?", a: "Yes. RevenueDot follows [RevenueCat's Iterable integration](https://www.revenuecat.com/docs/integrations/third-party-integrations/iterable): the same `rc_*_event` names, the `rc_subscription_status` attribute and the email or user ID rule. Checked October 2026. RevenueDot is open source, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue." },
       { q: "Are sandbox purchases sent to Iterable?", a: "Only when a Sandbox server-side API key is saved, which should belong to a second Iterable project. Without it, sandbox events are skipped and the delivery log says why." },
     ],
     partner: [
@@ -815,7 +815,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "How do I sync subscription status to OneSignal?", a: "Enter your OneSignal App ID and App API key under Integrations → OneSignal in RevenueDot and click Connect OneSignal. Each purchase, renewal, cancellation and expiration then updates the user's tags, such as `subscription_status` and `active_subscription`." },
       { q: "Does OneSignal get events or tags from RevenueDot?", a: "Tags. OneSignal gets no events: each step updates the user's tags through the Update user API, which is what segments and messages read." },
       { q: "Why was a OneSignal update skipped?", a: "The customer is anonymous and has no `$onesignalUserId`. OneSignal knows an anonymous customer only by its OneSignal ID, or by the external ID you set with `OneSignal.login`." },
-      { q: "Is there a RevenueCat OneSignal integration alternative?", a: "Yes. RevenueDot uses the tag names of [RevenueCat's OneSignal integration](https://www.revenuecat.com/docs/integrations/third-party-integrations/onesignal) (checked October 2026), so existing segments keep working. RevenueDot is open source and free to self-host." },
+      { q: "Is there a RevenueCat OneSignal integration alternative?", a: "Yes. RevenueDot uses the tag names of [RevenueCat's OneSignal integration](https://www.revenuecat.com/docs/integrations/third-party-integrations/onesignal) (checked October 2026), so existing segments keep working. RevenueDot is open source, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue." },
     ],
     partner: [
       { label: "OneSignal", url: "https://onesignal.com" },
@@ -915,7 +915,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
         h2: "Why the secret key stays out of the agent's browser",
         paras: [
           "Zendesk keeps the key as a secure app setting and adds it to the request on Zendesk's servers, so an agent's browser never receives it ([Zendesk: making API requests from an app](https://developer.zendesk.com/documentation/apps/app-developer-guide/making-api-requests-from-a-zendesk-app/), checked October 2026).",
-          "On a self-hosted server, add your server's host name to `domainWhitelist` in the app's `manifest.json` before you upload it. Zendesk sends a secure setting only to the domains listed there, and the manifest lists `api.revenuedot.app` by default.",
+          "Zendesk sends a secure setting only to the domains listed in `domainWhitelist` in the app's `manifest.json`, and the manifest lists `api.revenuedot.app` by default.",
         ],
       },
     ],
@@ -947,7 +947,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
     card: "Rewarded ads verified on the server with AdMob's signed callback, plus ad unit names for the Ads Overview.",
     title: "Server-verified AdMob rewarded ads",
     metaTitle: "Server-Verified AdMob Rewarded Ads and Reward Rules",
-    metaDescription: "Verify AdMob rewarded ads on your own server with Google's signed callback, then grant in-app currency or temporary access by rules. Open source.",
+    metaDescription: "Verify AdMob rewarded ads on RevenueDot with Google's signed callback, then grant in-app currency or temporary access by rules. Open source.",
     answer: "RevenueDot verifies AdMob rewarded ads on its own server. AdMob calls RevenueDot's callback URL with a request signed by Google, a reward rule grants in-app currency or temporary access once, and your app polls for the result. A modified app cannot grant itself a reward. Connecting your AdMob account is optional and only loads ad unit names.",
     uses: [
       "Grant in-app currency, such as 10 gems, once per watched rewarded ad.",
@@ -956,7 +956,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       "Show ad unit names such as \"Level end rewarded\" instead of `ca-app-pub-…/5224354917`.",
     ],
     sends: [
-      "This is a connection: it sends no events. AdMob calls `https://api.revenuedot.app/v1/ads/admob/ssv` on RevenueDot Cloud, or `<your server>/v1/ads/admob/ssv` when self-hosted.",
+      "This is a connection: it sends no events. AdMob calls `https://api.revenuedot.app/v1/ads/admob/ssv` on RevenueDot Cloud.",
       "RevenueDot checks Google's ECDSA (P-256, SHA-256) signature with the keys at `https://www.gstatic.com/admob/reward/verifier-keys.json` and records each reward once.",
       "The first matching reward rule grants **In-app currency** (a fixed amount, or AdMob's `reward_amount` times a multiplier) or **Temporary access** to an entitlement. A project can have up to 200 rules.",
       "The SDK polls `GET /v1/subscribers/{app_user_id}/ads/reward_verifications/{client_transaction_id}` up to 10 times and gets `pending`, `verified` (with the reward) or `failed`.",
@@ -1008,7 +1008,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
         h2: "Where the AdMob connection fits",
         bullets: [
           "**Optional.** Ad revenue works without it, and rewarded ads work when each reward rule names its ad unit.",
-          "**Your Google OAuth client.** RevenueDot Cloud has one. A self-hosted server uses `REVENUEDOT_GOOGLE_OAUTH_CLIENT_ID` and `REVENUEDOT_GOOGLE_OAUTH_CLIENT_SECRET`, or each project enters its own **Google OAuth client ID** and **Google OAuth client secret** on the AdMob page.",
+          "**Your Google OAuth client.** RevenueDot Cloud has one. Each project can also enter its own **Google OAuth client ID** and **Google OAuth client secret** on the AdMob page.",
           "**Read-only.** The scope is `https://www.googleapis.com/auth/admob.readonly`, and the refresh token is stored encrypted. **Disconnect** deletes the tokens and the loaded ad units.",
           "**Only AdMob is verified today.** AppLovin MAX, ironSource and Unity Ads callbacks are not.",
         ],
@@ -1244,7 +1244,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
         bullets: [
           "**Retries:** a run that hits a temporary error (a 5xx, a timeout or a token endpoint outage) retries after 10 and 30 minutes. Files are overwritten, so a retry never duplicates. A 4xx or a credential error fails the run.",
           "**Run history:** each run shows its status, trigger, window, files, rows, bytes and any error. **Run now** queues a run at once.",
-          "**Signed requests:** S3, R2 and GCS HMAC requests are signed with AWS Signature Version 4, GCS can also use a service-account token, and Azure requests use Shared Key or the connection string's signature, all in WebCrypto. Parquet works on RevenueDot Cloud and self-hosted servers.",
+          "**Signed requests:** S3, R2 and GCS HMAC requests are signed with AWS Signature Version 4, GCS can also use a service-account token, and Azure requests use Shared Key or the connection string's signature, all in WebCrypto. Parquet works on RevenueDot Cloud.",
           "**Sealed credentials:** the secret access key or service account JSON is encrypted with AES-256-GCM and never returned. The API shows only whether it is configured and its last four characters.",
         ],
       },
@@ -1255,7 +1255,7 @@ export const INTEGRATIONS_B: IntegrationPage[] = [
       { q: "Can I get the export by email instead of a bucket?", a: "Yes. Pick **Email** as the destination and add up to 25 members of the project. After each run they get one download link per file. The links and files last 7 days." },
       { q: "Should I export CSV or Parquet?", a: "Use Parquet if your warehouse reads it, because its columns are typed: timestamps, integers, decimals, booleans and JSON. Use CSV if you load files by hand. CSV is gzip by default, one file per table with a header row and UTC times." },
       { q: "Does an incremental export include refunds and changes?", a: "Yes. Each run exports rows that changed since the last successful run, including a transaction refunded or reversed in that window. The refunded row has `price_in_usd` 0 and `refunded_at` set, so keep the latest row per `store_transaction_id` by `updated_at`." },
-      { q: "Is there a RevenueCat scheduled data exports alternative?", a: "Yes. RevenueDot's `transactions` table uses the column names of [RevenueCat's scheduled data exports](https://www.revenuecat.com/docs/integrations/scheduled-data-exports) that it can fill (checked October 2026), so SQL written against them keeps working. RevenueDot is open source and free to self-host." },
+      { q: "Is there a RevenueCat scheduled data exports alternative?", a: "Yes. RevenueDot's `transactions` table uses the column names of [RevenueCat's scheduled data exports](https://www.revenuecat.com/docs/integrations/scheduled-data-exports) that it can fill (checked October 2026), so SQL written against them keeps working. RevenueDot is open source, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue." },
     ],
     partner: [
       { label: "RevenueCat: scheduled data exports", url: "https://www.revenuecat.com/docs/integrations/scheduled-data-exports" },
