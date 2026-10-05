@@ -21,6 +21,7 @@ import { DB_PREFIX, PORT_BASE, PORTS, RdServer, ROOT, createDatabase, dropDataba
 import { FAKE_STRIPE_KEY } from "../../../packages/contract/src/fake-stripe.ts";
 import { FAKE_BILLING_KEY, FAKE_BILLING_PRICE, FAKE_BILLING_WEBHOOK_SECRET, FakeBillingStripe } from "../../../packages/contract/src/fake-billing-stripe.ts";
 import { PRO_CHECKOUT_TEXT } from "../../../apps/server/src/services/billing/stripe.ts";
+import { EXISTING_GRACE_DAYS, GATE_SHIPPED, GRACE_DAYS } from "../../../apps/server/src/services/billing/gate.ts";
 
 const chromium = () => (createRequire(join(ROOT, "apps/dashboard/package.json"))("playwright") as typeof import("playwright")).chromium;
 const DAY = 86400_000;
@@ -124,7 +125,9 @@ const journey: Journey = {
       // The gate marks live accounts once every 10 minutes (services/billing/gate.ts), so this can take that long.
       const live = await until(async () => { const r = await call("GET", "/v2/billing"); return r.body.gate.stage === "grace" ? r.body : null; }, { timeoutMs: 11 * 60_000, everyMs: 5000 });
       c.has("the first live sale starts 14 days: the grace stage and its flag", live, { gate: { stage: "grace", grace_days: 14 }, flags: ["live_grace"] });
-      c.check("grace ends 14 days after the sale was seen", !!live && live.gate.grace_ends_at - live.gate.live_at === 14 * DAY, live?.gate);
+      // 14 days; a sale from before the gate shipped gets 30 (Terms of Service section 5).
+      const graceDays = Date.now() < GATE_SHIPPED.getTime() ? EXISTING_GRACE_DAYS : GRACE_DAYS;
+      c.check(`grace ends ${graceDays} days after the sale was seen`, !!live && live.gate.grace_ends_at - live.gate.live_at === graceDays * DAY, live?.gate);
       const liveMail = await until(async () => ctx.mails.find((m) => m.to.includes(email) && m.subject === "RevenueDot recorded your first live sale"), { timeoutMs: 20_000 });
       c.check("the first-live-sale email arrived through SMTP, with the Billing link", !!liveMail && linksOf(liveMail).some((l) => l.endsWith("/account/billing")), liveMail?.subject);
       c.check("no Free usage email any more", !ctx.mails.some((m) => m.to.includes(email) && /Cloud Free/.test(m.subject)), ctx.mails.map((m) => m.subject));
