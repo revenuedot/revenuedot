@@ -917,7 +917,7 @@ export const chartShares = pgTable("chart_shares", {
 /**
  * Daily chart rollups (prd/charts/PRD.md "Daily rollups", core charts/rollup.ts): per project, environment, generation
  * and UTC day, the day's values of the charts that add up over days, in USD. Each build writes a new generation from
- * scratch; the state flips to it when it is complete and the older one is deleted.
+ * scratch; the state switches to it when it is complete, and the replaced one is deleted when the next build starts.
  */
 export const chartRollups = pgTable("chart_rollups", {
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
@@ -933,15 +933,23 @@ export const chartRollups = pgTable("chart_rollups", {
 export const chartRollupState = pgTable("chart_rollup_state", {
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   isSandbox: boolean("is_sandbox").notNull(),
-  /** The complete generation that is served, the code fingerprint it was built with, and the `now` it was built as of. */
+  /**
+   * The complete generation that is served, the code fingerprint it was built with, the `now` it was built as of, and
+   * when it was switched to (freshness and the rebuild interval are measured from this).
+   */
   generation: integer("generation"),
   version: text("version"),
   computedAt: ts("computed_at"),
+  switchedAt: ts("switched_at"),
+  /** The database's clock when the served generation's build started: it read the rows recorded by then. */
+  rowsAt: ts("rows_at"),
   /** The generation being built (null: none), the `now` it is built as of, the next day to build, and its cost so far. */
   buildGeneration: integer("build_generation"),
   /** The code fingerprint of the build in progress (the served one keeps `version` until the switch). */
   buildVersion: text("build_version"),
   buildNow: ts("build_now"),
+  /** The database's clock at the build's start: every run of the build reads only rows recorded by then. */
+  buildRowsAt: ts("build_rows_at"),
   buildFromMs: bigint("build_from_ms", { mode: "number" }),
   buildRuns: integer("build_runs").notNull().default(0),
   buildMs: integer("build_ms").notNull().default(0),

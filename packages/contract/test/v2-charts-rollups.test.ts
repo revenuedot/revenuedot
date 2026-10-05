@@ -48,13 +48,14 @@ const reqs = (end: number) => [
  * Every rollup chart (and each selector value) for several ranges, in both environments: the served generation equals
  * the live computation at its build time. In process, so it stays fast on a real Postgres server.
  */
-async function expectSameAsLive() {
+async function expectSameAsLive(o: { asOf?: boolean } = {}) {
   let compared = 0;
   for (const sandbox of [false, true]) {
     const st = await state(sandbox);
     expect(st?.computedAt, "a complete generation").toBeTruthy();
     const asOf = st!.computedAt!;
-    const input = await loadChartInput(h.db, { projectId: h.ids.project, sandbox, now: asOf, asOf, currency: "USD", fetch: null, sources: { sdkTypes: AD, activity: null, refundRequests: false } });
+    // A build finished in one run equals the live computation at its start; one over several runs, the rows recorded by then.
+    const input = await loadChartInput(h.db, { projectId: h.ids.project, sandbox, now: asOf, ...(o.asOf ? { asOf: st!.rowsAt! } : {}), currency: "USD", fetch: null, sources: { sdkTypes: AD, activity: null, refundRequests: false } });
     for (const name of ROLLUP_CHARTS) {
       const def = CHARTS.find((c) => c.name === name)!;
       const sels = def.selectors.length ? def.selectors[0]!.options.map((o) => ({ [def.selectors[0]!.id]: o.id })) : [{}];
@@ -125,10 +126,16 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
     expect(gens.map((g) => g.g).sort()).toEqual([1, 2]);
   });
 
-  it("rebuild only after someone looked at the charts since the last build", async () => {
+  it("rebuild only after someone looked at the charts since the last build, and skip projects with no work", async () => {
     h.setNow(new Date(h.now().getTime() + 16 * 60_000));
-    expect((await runRollupJob({ db: h.db }, h.now())).builds).toBe(0);
+    const r0 = await runRollupJob({ db: h.db }, h.now());
+    // Not even visited: nothing due.
+    expect(r0).toMatchObject({ builds: 0, skipped: 0, busy: 0 });
+    // A project whose lease another run holds is not visited either.
     await get("revenue", PROD(), false);
+    await h.db.update(schema.chartRollupState).set({ leaseToken: "other", leaseUntil: new Date(Date.now() + 60_000) }).where(eq(schema.chartRollupState.isSandbox, false));
+    expect(await runRollupJob({ db: h.db }, h.now())).toMatchObject({ builds: 0, busy: 0 });
+    await h.db.update(schema.chartRollupState).set({ leaseToken: null, leaseUntil: null });
     expect((await runRollupJob({ db: h.db }, h.now())).builds).toBe(1);
   });
 
@@ -164,10 +171,21 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
     expect((await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { force: true })).done).toBe(false);
     // A refund recorded after the build started, for a purchase made before it.
     const [ua] = await h.db.select().from(schema.transactions).where(and(eq(schema.transactions.projectId, h.ids.project), eq(schema.transactions.storeTransactionId, "u_a_key_3")));
-    await h.db.insert(schema.transactions).values({ ...ua!, id: "txn_refund_late", kind: "refund", purchasedAt: new Date(h.now().getTime() - 60_000), revenueUsd: -10, createdAt: new Date(Date.now() + 60_000) });
-    while (!(await refreshRollups(h.db, h.ids.project, false, h.now(), 0)).done) { /* next slice */ }
+    await h.db.insert(schema.transactions).values({ ...ua!, id: "txn_refund_late", kind: "refund", purchasedAt: new Date(h.now().getTime() - 60_000), revenueUsd: -10, createdAt: new Date((await state())!.buildRowsAt!.getTime() + 1) });
+    // Fifteen minutes between runs: the build ends more than 20 minutes after it started. Freshness counts from the
+    // switch, not from the build's start, and the slow build is logged.
+    const warn = console.warn;
+    const warned: unknown[] = [];
+    console.warn = (...a: unknown[]) => { warned.push(a.join(" ")); };
+    try {
+      let runs = 0;
+      while (!(await refreshRollups(h.db, h.ids.project, false, h.now(), 0)).done) { runs++; h.setNow(new Date(h.now().getTime() + 15 * 60_000)); }
+      expect(runs).toBeGreaterThanOrEqual(2);
+    } finally { console.warn = warn; }
+    expect(warned.join("\n")).toContain("rollups: slow build");
+    expect((await get("revenue", PROD(), false)).source).toBe("rollups");
     await refreshRollups(h.db, h.ids.project, true, h.now(), Date.now() + 600_000, { force: true });
-    expect(await expectSameAsLive()).toBeGreaterThan(200);
+    expect(await expectSameAsLive({ asOf: true })).toBeGreaterThan(200);
   });
 
   it("compute live for realtime, filters, segments, other currencies, the charts they do not keep and old builds", async () => {
@@ -201,6 +219,9 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
             transactions: [{ id: "imp_1", purchased_at: Date.parse("2026-04-02T00:00:00Z"), expires_at: Date.parse("2026-05-02T00:00:00Z"), revenue_usd: 8 }, { id: "imp_2", purchased_at: Date.parse("2026-05-02T00:00:00Z"), expires_at: Date.parse("2026-06-02T00:00:00Z"), revenue_usd: 8 }] }],
         }] } });
         expect(res.status).toBe(200);
+        // Recorded on the app's clock, like every other writer.
+        const [imp] = await h.db.select({ c: schema.transactions.createdAt }).from(schema.transactions).where(eq(schema.transactions.storeTransactionId, "imp_1"));
+        expect(imp!.c.getTime()).toBe(h.now().getTime());
       }],
       ["merge", async () => {
         const { customer } = await getOrCreateCustomer(h.db, h.ids.project, "$RCAnonymousID:merge1", new Date("2026-06-20T00:00:00Z"));
@@ -253,10 +274,12 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
   });
 
   it("around midnight: answer live until the day's first build, then equal again", async () => {
-    h.setNow(new Date("2026-09-01T23:50:00Z"));
+    const night = dayOf(h.now()) + DAY;
+    h.setNow(new Date(night + 23 * 3_600_000 + 50 * 60_000));
     await job();
     expect((await get("mrr", PROD(), false)).source).toBe("rollups");
-    h.setNow(new Date("2026-09-02T00:05:00Z"));
+    // Ten minutes later, after midnight: due at once, not 15 minutes after the switch.
+    h.setNow(new Date(night + DAY + 5 * 60_000));
     // Built yesterday: today is not in it.
     expect((await get("mrr", PROD(), false)).source).toBe("live");
     await job();

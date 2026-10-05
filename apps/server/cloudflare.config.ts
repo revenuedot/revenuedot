@@ -20,6 +20,9 @@ export default defineConfig({
     domains: ["app.revenuedot.app", "api.revenuedot.app"],
     // The one periodic job: expirations, Google voided purchases, webhook deliveries.
     triggers: [triggers.scheduled({ schedule: "* * * * *" })],
+    // CPU time per invocation: the cron's work (the tick, then daily chart rollups within a 20-second budget) needs
+    // headroom over the default 30 seconds.
+    limits: { cpuMs: 60_000 },
     observability: { enabled: true },
     // RevenueDot AI: one Cloudflare Agents Durable Object per conversation (src/assistant-agent.worker.ts, SQLite storage).
     exports: { AssistantAgent: exports.durableObject({ storage: "sqlite" }) },

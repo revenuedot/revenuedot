@@ -1,5 +1,5 @@
 {
-  "id": "9f6e372a-0e18-4a99-9b88-8b4e46e47043",
+  "id": "4ec9a1ca-25c0-47e3-8a50-adf3df9cf934",
   "prevId": "c4330b63-b1d9-488f-98c9-173a7d259974",
   "version": "7",
   "dialect": "postgresql",
@@ -3032,6 +3032,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "switched_at": {
+          "name": "switched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rows_at": {
+          "name": "rows_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "build_generation": {
           "name": "build_generation",
           "type": "integer",
@@ -3046,6 +3058,12 @@
         },
         "build_now": {
           "name": "build_now",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "build_rows_at": {
+          "name": "build_rows_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

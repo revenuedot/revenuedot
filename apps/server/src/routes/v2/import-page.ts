@@ -472,6 +472,8 @@ function importTransactions(ws: WorkingSet, ctx: Ctx, customerId: string, s: Imp
       id: newId("txn_", 16), projectId: ctx.projectId, customerId, appId: v.appId, store: s.store, storeTransactionId: t.id,
       productIdentifier: v.productIdentifier, kind, isSandbox: v.isSandbox, purchasedAt: new Date(t.purchased_at), expiresAt: d(t.expires_at),
       revenueUsd: revenue, priceAmount: t.price?.amount ?? null, priceCurrency: t.price?.currency ?? null, countryCode: v.countryCode, offerType,
+      // When RevenueDot recorded the row, on the app's clock like every other writer (exports and rollups read it).
+      createdAt: ctx.now,
     });
     if (isApple(s.store) && v.originalTransactionId) ws.settleKind(s.store, t.id, kind === "renewal");
   }
@@ -506,7 +508,7 @@ async function importPurchase(ws: WorkingSet, ctx: Ctx, customerId: string, cu: 
   const row = (kind: string, sign: number, at: Date): TxnRow => ({
     id: newId("txn_", 16), projectId, customerId, appId: values.appId, store: p.store, storeTransactionId: p.store_purchase_identifier,
     productIdentifier: p.product_identifier, kind, isSandbox: v.isSandbox, purchasedAt: at, revenueUsd: sign * (revenueUsd ?? 0),
-    priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: v.countryCode ?? null,
+    priceAmount: p.price?.amount ?? null, priceCurrency: p.price?.currency ?? null, countryCode: v.countryCode ?? null, createdAt: ctx.now,
   });
   ws.addTxn(row("one_time", 1, v.purchaseDate));
   if (values.refundedAt) ws.addTxn(row("refund", -1, values.refundedAt));
