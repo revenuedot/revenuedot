@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  CHARTS, chartDef, chartFromRollup, computeRollupDays, firstDataDay, isEmptyDay, isRollupChart, ROLLUP_CHARTS, ROLLUP_VERSION, runChart,
-  type ChartInput, type ChartOutput, type ChartRequest, type ChartTx, type Resolution,
+  addRollupDays, CHARTS, chartDef, chartFromRollup, commissionRates, computeRollupDays, finishRollupDays, playTierCrossings, firstDataDay, isEmptyDay, isRollupChart, ROLLUP_CHARTS, ROLLUP_VERSION, runChart,
+  type ChartInput, type ChartOutput, type ChartRequest, type ChartTx, type Resolution, type RollupDay,
 } from "../src/index.js";
 
 // Daily rollups (prd/charts/PRD.md "Daily rollups") must answer exactly as the live computation does.
@@ -143,6 +143,55 @@ describe("daily rollups", () => {
     // @ts-expect-error a plain script
     const { chartFingerprint } = await import("../../../scripts/chart-fingerprint.mjs");
     expect(ROLLUP_VERSION, "Run node scripts/chart-fingerprint.mjs").toBe(chartFingerprint());
+  });
+
+  // The server builds a large project's rollups customer batch by customer batch (bounded memory) and adds the days up.
+  for (const k of [3, 160]) it(`customers in ${k} batches add up to the days of all of them, and answer every chart as live`, () => {
+    // An ad event of no known customer goes with the first batch.
+    const all = { ...input, sdkEvents: [...input.sdkEvents, { customerId: null, appId: "ios", type: "rc_ads_ad_revenue", at: T("2026-02-03T10:00:00Z"), revenueUsd: 0.25 }] };
+    const group = new Map(all.customers.map((c, i) => [c.id, i % k]));
+    const of = (id: string | null) => (id === null ? 0 : group.get(id)!);
+    const end = Math.floor(NOW / DAY) * DAY + DAY;
+    const acc = new Map<number, RollupDay>();
+    for (let g = 0; g < k; g++) {
+      const part: ChartInput = { ...all, customers: all.customers.filter((c) => of(c.id) === g), txs: all.txs.filter((t) => of(t.customerId) === g),
+        subStates: all.subStates.filter((x) => of(x.customerId) === g), lifecycle: all.lifecycle.filter((x) => of(x.customerId) === g), sdkEvents: all.sdkEvents.filter((x) => of(x.customerId) === g) };
+      const from = firstDataDay(part);
+      if (from !== null) addRollupDays(acc, computeRollupDays(part, from, end));
+    }
+    const merged = finishRollupDays(acc);
+    const whole = new Map([...computeRollupDays(all, firstDataDay(all)!, end)].filter(([, v]) => !isEmptyDay(v)));
+    expect([...merged.keys()].sort()).toEqual([...whole.keys()].sort());
+    for (const [d, v] of whole) for (const [key, vals] of Object.entries(v)) {
+      const m = merged.get(d)![key] ?? vals.map((x) => (x === null ? null : 0));
+      vals.forEach((x, i) => (x === null ? expect(m[i], `${key} ${new Date(d).toISOString()}`).toBeNull() : expect(m[i], `${key} ${new Date(d).toISOString()} #${i}`).toBeCloseTo(x, 6)));
+    }
+    for (const name of ROLLUP_CHARTS) {
+      const def = chartDef(name)!;
+      const variants = def.selectors.length ? def.selectors[0]!.options.map((o) => ({ [def.selectors[0]!.id]: o.id })) : [{}];
+      for (const sel of variants) for (const [label, r] of requests) {
+        const req = { ...r, selectors: sel };
+        close(runChart(def, all, req).output, chartFromRollup(def, req, NOW, merged)!, `${name} ${JSON.stringify(sel)} ${label} in ${k} batches`);
+      }
+    }
+  });
+
+  it("gives a batch of transactions the Google Play $1M-tier rates the whole environment gives them", () => {
+    const txs = [] as Parameters<typeof commissionRates>[0];
+    // Two apps, two years: one-time purchases of $300,000 cross $1M on the fourth; ties in time are ordered by id.
+    for (const app of ["a", "b"]) for (const y of [2025, 2026]) for (let i = 0; i < 6; i++) {
+      const at = Date.UTC(y, 2, 1 + (i === 4 ? 3 : i));
+      txs.push({ id: `${app}${y}-${i}`, store: "play_store", appId: app, at, usd: 300_000, kind: i === 1 && app === "b" ? "refund" : "one_time", country: "BR" });
+    }
+    txs.push({ id: "ios", store: "app_store", appId: "a", at: Date.UTC(2026, 2, 2), usd: 5, kind: "purchase" });
+    const whole = commissionRates(txs);
+    const crossings = playTierCrossings(txs);
+    expect(crossings.size).toBe(4);
+    expect([...whole.values()]).toContain(0.3);
+    for (let s = 0; s < txs.length; s += 5) {
+      const batch = commissionRates(txs.slice(s, s + 5), {}, crossings);
+      for (const [id, r] of batch) expect(r, id).toBe(whole.get(id));
+    }
   });
 
   it("a slice of days equals the same days of a full rebuild", () => {

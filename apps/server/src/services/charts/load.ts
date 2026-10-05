@@ -1,5 +1,5 @@
-import { and, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
-import { commissionRates, taxShare, type ChartInput, type ChartLifecycle, type ChartRefundEvent, type TxKind } from "@revenuedot/core";
+import { and, eq, gte, inArray, isNull, lt, lte, sql, type AnyColumn, type SQL } from "drizzle-orm";
+import { commissionRates, taxShare, type ChartInput, type ChartLifecycle, type ChartRefundEvent, type PlayTierCrossings, type TxKind } from "@revenuedot/core";
 import { commissionSettingsOf } from "../commission.js";
 import { schema, type DB } from "@revenuedot/db";
 import { ensureEcbRange, fxLookup, type FxFetch } from "../fx.js";
@@ -53,32 +53,72 @@ export function chartSources(name: string, range: { from: number; to: number } |
  * of one environment, customers, lifecycle events, and what `sources` asks for (SDK events, activity days, Apple refund
  * requests), plus a USD → display currency rate per date.
  */
-export async function loadChartInput(db: DB, opts: { projectId: string; sandbox: boolean; now: Date; currency: string; fetch?: FxFetch | null; sources: ChartSources; asOf?: Date }): Promise<ChartInput> {
+/**
+ * A batch of customers (daily rollups build a large project batch by batch): ids in (after, upTo], by the database's
+ * ordering of ids; null is unbounded. Rows without a customer (SDK events of no known user) go with the first batch.
+ */
+export interface CustomerRange { after: string | null; upTo: string | null }
+
+/** Rows whose customer id falls in the range (and, in the first batch, rows of no customer). */
+function inRange(c: AnyColumn | SQL, r: CustomerRange | undefined): SQL[] {
+  if (!r) return [];
+  const within = sql`${r.after !== null ? sql`${c} > ${r.after}` : sql`true`} AND ${r.upTo !== null ? sql`${c} <= ${r.upTo}` : sql`true`}`;
+  return [r.after === null ? sql`(${c} IS NULL OR (${within}))` : sql`(${within})`];
+}
+
+/**
+ * Per app and year, the Google Play transaction that takes the environment's sales to $1M (core playTierCrossings), in
+ * SQL: a batch of customers' transactions then get the rates all of them give (commissionRates).
+ */
+export async function playTierCrossingsOf(db: DB, o: { projectId: string; sandbox: boolean; asOf?: Date }): Promise<PlayTierCrossings> {
+  // Ordered as commissionRates orders them: the time in whole milliseconds, then the id by code point.
+  const res = await db.execute<{ app: string; yr: number; at_ms: string | number; id: string }>(sql`
+    SELECT DISTINCT ON (app, yr) app, yr, at_ms, id FROM (
+      SELECT app, yr, at_ms, id, sum(revenue_usd) OVER (PARTITION BY app, yr ORDER BY at_ms, id COLLATE "C" ROWS UNBOUNDED PRECEDING) AS ytd FROM (
+        SELECT coalesce(app_id, '') AS app, extract(year FROM purchased_at AT TIME ZONE 'UTC')::int AS yr,
+          floor(extract(epoch FROM purchased_at) * 1000)::bigint AS at_ms, id, revenue_usd
+        FROM transactions
+        WHERE project_id = ${o.projectId} AND is_sandbox = ${o.sandbox} AND store = 'play_store' AND kind IN ('purchase', 'renewal', 'one_time') AND revenue_usd > 0
+          ${o.asOf ? sql`AND created_at <= ${o.asOf.toISOString()}::timestamptz` : sql``}) t) w
+    WHERE ytd >= 1000000
+    ORDER BY app, yr, at_ms, id COLLATE "C"`);
+  const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as { app: string; yr: number; at_ms: string | number; id: string }[];
+  return new Map(rows.map((r) => [`${r.app}|${r.yr}`, { at: Number(r.at_ms), id: r.id }]));
+}
+
+export async function loadChartInput(db: DB, opts: { projectId: string; sandbox: boolean; now: Date; currency: string; fetch?: FxFetch | null; sources: ChartSources; asOf?: Date; customers?: CustomerRange; playTier?: PlayTierCrossings }): Promise<ChartInput> {
   const { projectId, sandbox, sources } = opts;
   const env = sandbox ? "sandbox" : "production";
   const T = schema.transactions, S = schema.subscriptions, N = schema.nonSubscriptions, C = schema.customers, E = schema.events, X = schema.sdkEvents, A = schema.customerAliases;
   const CA = schema.customerActivity, SN = schema.storeNotifications, CAT = schema.customerAttribution, ATTR = schema.customerAttributes;
   const keys = sources.attributeKeys ?? [];
+  const range = opts.customers;
+  // A batch of customers needs the Google Play tier of the whole environment.
+  if (range && (!opts.playTier || sources.activity || sources.refundRequests || keys.length)) throw new Error("loadChartInput: a customer range needs playTier and reads only the ledger, lifecycle and SDK events");
   const [txs, subs, nonSubs, customers, products, lifecycle, sdk, activity, notes, attrs] = await Promise.all([
     // `asOf` (daily rollups, a build over several runs): only rows recorded by then, where the table says when.
-    db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox), ...(opts.asOf ? [lte(T.createdAt, opts.asOf)] : []))),
-    db.select().from(S).where(and(eq(S.projectId, projectId), eq(S.isSandbox, sandbox))),
-    db.select({ store: N.store, tx: N.storeTransactionId, offering: N.presentedOfferingId }).from(N).where(and(eq(N.projectId, projectId), eq(N.isSandbox, sandbox))),
+    // Only the columns the charts read: a large project's ledger is most of a build's memory.
+    db.select({ id: T.id, customerId: T.customerId, appId: T.appId, store: T.store, storeTransactionId: T.storeTransactionId, productIdentifier: T.productIdentifier, kind: T.kind,
+      purchasedAt: T.purchasedAt, expiresAt: T.expiresAt, revenueUsd: T.revenueUsd, countryCode: T.countryCode, offerType: T.offerType, taxAmount: T.taxAmount, priceAmount: T.priceAmount }).from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox), ...(opts.asOf ? [lte(T.createdAt, opts.asOf)] : []), ...inRange(T.customerId, range))),
+    db.select({ customerId: S.customerId, store: S.store, appId: S.appId, productIdentifier: S.productIdentifier, presentedOfferingId: S.presentedOfferingId, expiresDate: S.expiresDate,
+      unsubscribeDetectedAt: S.unsubscribeDetectedAt, billingIssuesDetectedAt: S.billingIssuesDetectedAt, gracePeriodExpiresDate: S.gracePeriodExpiresDate, ownershipType: S.ownershipType, cancelSurveyReason: S.cancelSurveyReason }).from(S).where(and(eq(S.projectId, projectId), eq(S.isSandbox, sandbox), ...inRange(S.customerId, range))),
+    db.select({ store: N.store, tx: N.storeTransactionId, offering: N.presentedOfferingId }).from(N).where(and(eq(N.projectId, projectId), eq(N.isSandbox, sandbox), ...inRange(N.customerId, range))),
     // project_id in the join lets Postgres read only this project's attribution rows (customer_attribution_media index).
     db.select({
       id: C.id, firstSeen: C.firstSeen, lastSeen: C.lastSeen, country: C.lastSeenCountry, platform: C.lastSeenPlatform, appVersion: C.lastSeenAppVersion,
       mediaSource: CAT.mediaSource, campaign: CAT.campaign, adGroup: CAT.adGroup, keyword: CAT.keyword, ad: CAT.ad, creative: CAT.creative,
-    }).from(C).leftJoin(CAT, and(eq(CAT.customerId, C.id), eq(CAT.projectId, projectId))).where(eq(C.projectId, projectId)),
+    }).from(C).leftJoin(CAT, and(eq(CAT.customerId, C.id), eq(CAT.projectId, projectId))).where(and(eq(C.projectId, projectId), ...inRange(C.id, range))),
     db.select().from(schema.products).where(eq(schema.products.projectId, projectId)),
     db.select({ customerId: E.customerId, type: E.type, at: E.eventTimestampMs, store: sql<string | null>`${E.payload}->'event'->>'store'`, productId: sql<string | null>`${E.payload}->'event'->>'product_id'`, cancelReason: sql<string | null>`${E.payload}->'event'->>'cancel_reason'` }).from(E)
-      .where(and(eq(E.projectId, projectId), eq(E.environment, env), inArray(E.type, ["CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE"]), ...(opts.asOf ? [lte(E.createdAt, opts.asOf)] : []))),
+      .where(and(eq(E.projectId, projectId), eq(E.environment, env), inArray(E.type, ["CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE"]), ...(opts.asOf ? [lte(E.createdAt, opts.asOf)] : []), ...inRange(E.customerId, range))),
     // Only the fields the charts read, with the customer resolved through the alias when the event came before it.
     sources.sdkTypes.length ? db.select({
       customerId: sql<string | null>`coalesce(${X.customerId}, ${A.customerId})`, appId: X.appId, type: X.type, at: X.occurredAt,
       paywallId: sql<string | null>`coalesce(${X.payload}->>'paywall_id', ${X.payload}->'presented_offering_context'->>'paywall_id', ${X.payload}->>'offering_id')`,
       surveyOptionId: sql<string | null>`${X.payload}->>'survey_option_id'`, revenueMicros: sql<string | null>`${X.payload}->>'revenue_micros'`, currency: sql<string | null>`${X.payload}->>'currency'`,
     }).from(X).leftJoin(A, and(eq(A.projectId, X.projectId), eq(A.appUserId, X.appUserId)))
-      .where(and(eq(X.projectId, projectId), eq(X.isSandbox, sandbox), inArray(X.type, sources.sdkTypes), ...(opts.asOf ? [lte(X.receivedAt, opts.asOf)] : []))) : Promise.resolve([]),
+      .where(and(eq(X.projectId, projectId), eq(X.isSandbox, sandbox), inArray(X.type, sources.sdkTypes), ...(opts.asOf ? [lte(X.receivedAt, opts.asOf)] : []),
+        ...inRange(sql`coalesce(${X.customerId}, ${A.customerId})`, range))) : Promise.resolve([]),
     sources.activity ? db.select({ customerId: CA.customerId, day: CA.day }).from(CA)
       .where(and(eq(CA.projectId, projectId), gte(CA.day, sources.activity.from), lt(CA.day, sources.activity.to))) : Promise.resolve([]),
     sources.refundRequests ? db.select({ type: SN.type, body: SN.body, store: SN.store, appId: SN.appId, receivedAt: SN.receivedAt }).from(SN)
@@ -133,7 +173,7 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
   // Each transaction's store commission: program dates per app and Google Play's yearly tier (core commission.ts).
   const firstSeenOf = new Map(customers.map((c) => [c.id, c.firstSeen.getTime()]));
   const rates = commissionRates(txs.map((t) => ({ id: t.id, store: t.store, appId: t.appId, at: t.purchasedAt.getTime(), usd: t.revenueUsd, kind: t.kind, country: t.countryCode, firstSeen: firstSeenOf.get(t.customerId) ?? null })),
-    await commissionSettingsOf(db, projectId));
+    await commissionSettingsOf(db, projectId), opts.playTier);
   return {
     now: opts.now.getTime(),
     fx: toDisplay,

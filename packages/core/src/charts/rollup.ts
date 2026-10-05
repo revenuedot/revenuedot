@@ -121,6 +121,37 @@ export function computeRollupDays(input: ChartInput, from: number, to: number, p
   return out;
 }
 
+/**
+ * Adds one group of customers' days (computeRollupDays of their rows) into `acc`. Every stored value is a sum over
+ * customers (amounts, counts, a rate's parts), so the days of disjoint groups add up to the days of all of them; a rate
+ * itself is recomputed from its summed parts by finishRollupDays.
+ */
+export function addRollupDays(acc: Map<number, RollupDay>, part: Map<number, RollupDay>): void {
+  for (const [day, data] of part) {
+    if (isEmptyDay(data)) continue;
+    const into = acc.get(day);
+    if (!into) { acc.set(day, Object.fromEntries(Object.entries(data).map(([k, v]) => [k, [...v]]))); continue; }
+    for (const [k, v] of Object.entries(data)) {
+      const a = into[k];
+      if (!a) { into[k] = [...v]; continue; }
+      for (let i = 0; i < Math.max(a.length, v.length); i++) {
+        const x = a[i] ?? null, y = v[i] ?? null;
+        a[i] = x === null && y === null ? null : (x ?? 0) + (y ?? 0);
+      }
+    }
+  }
+}
+
+/** The rate charts' values of each day again from their summed parts (after addRollupDays), as one computation gives them. */
+export function finishRollupDays(acc: Map<number, RollupDay>): Map<number, RollupDay> {
+  const get = (chart: string, r: Row) => r.data[chart] ?? [0, 0, 0];
+  for (const [day, data] of acc) {
+    const row = { day, data };
+    for (const c of CHARTS) if (c.agg.kind === "custom" && data[c.name]) data[c.name] = c.agg.combine([row], [day, day + DAY], get);
+  }
+  return acc;
+}
+
 /** New Customers per day in [from, to), from each customer's cohort date as the chart counts them (days with none left out). */
 export function newCustomerDays(prepared: Prepared, from: number, to: number): Map<number, number> {
   const nc = new Map<number, number>();

@@ -943,14 +943,17 @@ export const chartRollupState = pgTable("chart_rollup_state", {
   switchedAt: ts("switched_at"),
   /** The database's clock when the served generation's build started: it read the rows recorded by then. */
   rowsAt: ts("rows_at"),
-  /** The generation being built (null: none), the `now` it is built as of, the next day to build, and its cost so far. */
+  /** The generation being built (null: none), the `now` it is built as of, and its cost so far. */
   buildGeneration: integer("build_generation"),
   /** The code fingerprint of the build in progress (the served one keeps `version` until the switch). */
   buildVersion: text("build_version"),
   buildNow: ts("build_now"),
   /** The database's clock at the build's start: every run of the build reads only rows recorded by then. */
   buildRowsAt: ts("build_rows_at"),
-  buildFromMs: bigint("build_from_ms", { mode: "number" }),
+  /** A paused build's place: the last customer id of the batches added so far (services/charts/rollups.ts). */
+  buildCursor: text("build_cursor"),
+  /** A paused build's running total: each day's values of the batches added so far. */
+  buildPartial: jsonb("build_partial").$type<[number, Record<string, (number | null)[]>][]>(),
   buildRuns: integer("build_runs").notNull().default(0),
   buildMs: integer("build_ms").notNull().default(0),
   /** When a chart of this project and environment was last asked for with realtime=false: only those are built. */

@@ -1,43 +1,53 @@
 import { and, asc, eq, gte, isNull, lt, ne, or, sql } from "drizzle-orm";
 import {
-  buckets, chartFromRollup, computeRollupDays, firstDays, isEmptyDay, isRollupChart, newCustomerDays, newId, Prepared, ROLLUP_VERSION, rollupKeys,
+  addRollupDays, buckets, chartFromRollup, computeRollupDays, finishRollupDays, firstDataDay, isRollupChart, newId, ROLLUP_VERSION, rollupKeys,
   type ChartDef, type ChartOutput, type ChartRequest, type RollupDay,
 } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
-import { loadChartInput } from "./load.js";
+import { loadChartInput, playTierCrossingsOf } from "./load.js";
 
 /**
  * Daily chart rollups (prd/charts/PRD.md "Daily rollups"; the arithmetic is core charts/rollup.ts).
  *
  * Nothing is incremental. For each project and environment whose charts were viewed (realtime=false) since its last
  * build, and in the last day, the scheduled job rebuilds every day from scratch at most every REBUILD_MS into a new
- * generation, as of one `now` (the build's start). A build that does not fit in a run's budget continues on the next
- * run under a lease, reading only rows recorded by its start (where the table says when). When the last day is written
- * the state switches to the new generation in one statement; the replaced generation is deleted when the next build
- * starts, so a request reading during the switch still finds its days. A build finished in one run equals the live
- * computation at its start; one spread over several runs is accurate as of its build window (a subscription's state can
- * change meanwhile), and the next build corrects any drift.
+ * generation, as of one `now` (the build's start). Memory stays bounded whatever the project's size: the build reads
+ * BATCH_CUSTOMERS customers at a time with their rows, computes their days, and adds them into a running total (every
+ * stored value is a sum over customers; rates are recomputed from their summed parts). A build that does not fit in a
+ * run's budget saves its place and total and continues on the next run under a lease, reading only rows recorded by its
+ * start (where the table says when). When the last batch is added the days are written and the state switches to the
+ * new generation in one statement; the replaced generation is deleted when the next build starts, so a request reading
+ * during the switch still finds its days. A build finished in one run equals the live computation at its start; one
+ * spread over several runs is accurate as of its build window (a customer's rows can change between batches), and the
+ * next build corrects any drift.
  *
  * A request with realtime=false, no filter or segment, in USD, for a rollup chart is answered from the newest complete
  * generation when it was built today (UTC) at most STALE_MS ago and with this code; otherwise the chart is computed live.
  */
 export const REBUILD_MS = 15 * 60_000;
 export const STALE_MS = 20 * 60_000;
+/** Customers per batch: a 200,000-customer project builds within a 96 MB heap at this size (scripts/bench/rollups.ts). */
+export const BATCH_CUSTOMERS = 2_000;
 const VIEW_WINDOW_MS = 24 * 3_600_000;
 const FORGET_MS = 7 * 24 * 3_600_000;
 const LEASE_MS = 3 * 60_000;
-const SLICE_DAYS = 31;
 const DAY = 86_400_000;
 const dayStart = (t: number) => Math.floor(t / DAY) * DAY;
 const AD_TYPES = ["rc_ads_ad_displayed", "rc_ads_ad_opened", "rc_ads_ad_loaded", "rc_ads_ad_failed_to_load", "rc_ads_ad_revenue"];
 
 class LeaseLost extends Error {}
 
+const rowsOf = <T>(res: unknown) => (Array.isArray(res) ? res : (res as { rows: T[] }).rows) as T[];
+
 /** The database's clock. */
 async function dbNow(db: DB): Promise<Date> {
-  const res = await db.execute<{ now: string | Date }>(sql`SELECT now() AS now`);
-  const row = (Array.isArray(res) ? res : (res as { rows: { now: string | Date }[] }).rows)[0]!;
-  return new Date(row.now);
+  return new Date(rowsOf<{ now: string | Date }>(await db.execute(sql`SELECT now() AS now`))[0]!.now);
+}
+
+/** The last customer id of the batch after `after` (by the database's ordering, as the batch's range compares), or null when fewer than `size` remain. */
+export async function batchEnd(db: DB, projectId: string, after: string | null, size: number): Promise<string | null> {
+  const rows = rowsOf<{ id: string }>(await db.execute(sql`SELECT id FROM customers WHERE project_id = ${projectId} ${after !== null ? sql`AND id > ${after}` : sql``} ORDER BY id LIMIT 1 OFFSET ${size - 1}`));
+  return rows[0]?.id ?? null;
 }
 
 type State = typeof schema.chartRollupState.$inferSelect;
@@ -59,91 +69,88 @@ async function claim(db: DB, projectId: string, sandbox: boolean) {
   return row ? { row, token } : null;
 }
 
-export interface BuildResult { days: number; done: boolean; started: boolean; skipped: boolean; busy?: boolean; runs?: number; ms?: number }
+export interface BuildResult { days: number; done: boolean; started: boolean; skipped: boolean; busy?: boolean; runs?: number; ms?: number; batches?: number }
 
 /**
  * Works on one project and environment until `deadline` (a Date.now() value): starts a new generation when the served
  * one is older than REBUILD_MS (or was built by other code), continues a generation in progress, and flips to it when
- * it is complete. `force` starts a new generation now.
+ * it is complete. `force` starts a new generation now; `batchCustomers` sets the batch size (tests).
  */
-export async function refreshRollups(db: DB, projectId: string, sandbox: boolean, now: Date, deadline: number, o: { force?: boolean } = {}): Promise<BuildResult> {
+export async function refreshRollups(db: DB, projectId: string, sandbox: boolean, now: Date, deadline: number, o: { force?: boolean; batchCustomers?: number } = {}): Promise<BuildResult> {
   const R = schema.chartRollups, ST = schema.chartRollupState;
   const claimed = await claim(db, projectId, sandbox);
   if (!claimed) return { days: 0, done: false, started: false, skipped: true, busy: true };
   const { row: state, token } = claimed;
   const mine = and(eq(ST.projectId, projectId), eq(ST.isSandbox, sandbox), eq(ST.leaseToken, token));
   const release = (v: Partial<typeof ST.$inferInsert> = {}) => db.update(ST).set({ ...v, leaseToken: null, leaseUntil: null, updatedAt: new Date() }).where(mine);
+  const renew = async (tx: Pick<DB, "update"> = db) => {
+    const held = await tx.update(ST).set({ leaseUntil: new Date(Date.now() + LEASE_MS) }).where(mine).returning({ p: ST.projectId });
+    if (!held.length) throw new LeaseLost();
+  };
   const runStarted = Date.now();
   try {
-    let gen = state.buildGeneration, buildNow = state.buildNow, rowsAt = state.buildRowsAt, from = state.buildFromMs;
-    // A build of other code is dropped and started again.
-    const inProgress = gen !== null && buildNow !== null && rowsAt !== null && from !== null && state.buildVersion === ROLLUP_VERSION;
+    let gen = state.buildGeneration, buildNow = state.buildNow, rowsAt = state.buildRowsAt;
+    // A paused build always has a place (the last customer of a batch that was not the last) and a running total.
+    const inProgress = gen !== null && buildNow !== null && rowsAt !== null && state.buildCursor !== null && state.buildPartial !== null && state.buildVersion === ROLLUP_VERSION;
     // Due when the served generation is missing, of other code, or switched to REBUILD_MS ago and looked at since.
     const due = rebuildDue(state, now);
     let started = false;
+    let after: string | null = null;
+    const acc = new Map<number, RollupDay>();
     if (!inProgress || o.force) {
       if (!due && !o.force) { await release(); return { days: 0, done: true, started: false, skipped: true }; }
       gen = Math.max(state.generation ?? 0, state.buildGeneration ?? 0) + 1;
       buildNow = now;
       // Rows are stamped by the database (or the app, whose clock agrees): the database's clock bounds what this build reads.
       rowsAt = await dbNow(db);
-      from = null;
       started = true;
       // Every generation but the served one: the one it replaced, and rows a stopped build left behind.
       await db.delete(R).where(and(eq(R.projectId, projectId), eq(R.isSandbox, sandbox), ne(R.generation, state.generation ?? -1)));
+    } else {
+      after = state.buildCursor;
+      for (const [d, v] of state.buildPartial!) acc.set(d, v);
     }
     const asOf = buildNow!;
-    // Every run of a build reads the rows as of the build's `now`, so the generation is one computation at that time.
-    const input = await loadChartInput(db, { projectId, sandbox, now: asOf, asOf: rowsAt!, currency: "USD", fetch: null, sources: { sdkTypes: AD_TYPES, activity: null, refundRequests: false } });
-    const prepared = new Prepared(input);
-    const f = firstDays(input);
     const end = dayStart(asOf.getTime()) + DAY;
-    let start = from ?? Math.min(f.activity ?? end, f.customers ?? end, end);
-    const write = async (rows: { projectId: string; isSandbox: boolean; generation: number; dayMs: number; data: RollupDay }[]) => {
-      // Under the lease, renewed by each slice: a run that lost it (it took too long) stops instead of writing on.
-      await db.transaction(async (tx) => {
-        const held = await tx.update(ST).set({ leaseUntil: new Date(Date.now() + LEASE_MS) }).where(mine).returning({ p: ST.projectId });
-        if (!held.length) throw new LeaseLost();
-        for (let k = 0; k < rows.length; k += 200) await tx.insert(R).values(rows.slice(k, k + 200)).onConflictDoUpdate({ target: [R.projectId, R.isSandbox, R.generation, R.dayMs], set: { data: sql`excluded.data` } });
-      });
-    };
-    let days = 0;
-    // Before the first purchase, lifecycle or SDK event only New Customers has values: one pass, not slices.
-    const activity = f.activity ?? end;
-    if (start < activity) {
-      const to = Math.min(activity, end);
-      await write([...newCustomerDays(prepared, start, to)].filter(([, n]) => n > 0).map(([dayMs, n]) => ({ projectId, isSandbox: sandbox, generation: gen!, dayMs, data: { customers_new: [n] } as RollupDay })));
-      days += Math.round((to - start) / DAY);
-      start = to;
-    }
-    // Slices shrink when one takes more than a quarter of the budget, so the deadline is checked often enough.
-    let slice = SLICE_DAYS;
-    const budget = Math.max(1, deadline - runStarted);
-    while (start < end) {
-      const to = Math.min(end, start + slice * DAY);
-      const t0 = Date.now();
-      await write([...computeRollupDays(input, start, to, prepared)].filter(([, d]) => !isEmptyDay(d)).map(([dayMs, data]) => ({ projectId, isSandbox: sandbox, generation: gen!, dayMs, data })));
-      days += Math.round((to - start) / DAY);
-      start = to;
-      if (Date.now() - t0 > budget / 4) slice = Math.max(1, Math.floor(slice / 2));
-      if (start < end && Date.now() > deadline) {
+    const size = Math.max(1, o.batchCustomers ?? BATCH_CUSTOMERS);
+    // Google Play's $1M tier depends on all of the environment's sales, not only a batch's.
+    const playTier = await playTierCrossingsOf(db, { projectId, sandbox, asOf: rowsAt! });
+    let batches = 0;
+    for (;;) {
+      const upTo = await batchEnd(db, projectId, after, size);
+      // Every batch reads the rows as of the build's `now`, so the generation is one computation at that time.
+      const input = await loadChartInput(db, { projectId, sandbox, now: asOf, asOf: rowsAt!, currency: "USD", fetch: null, customers: { after, upTo }, playTier, sources: { sdkTypes: AD_TYPES, activity: null, refundRequests: false } });
+      const from = firstDataDay(input);
+      if (from !== null && from < end) addRollupDays(acc, computeRollupDays(input, from, end));
+      batches++;
+      // A run that lost the lease (it took too long) stops instead of writing on.
+      await renew();
+      if (upTo === null) break;
+      after = upTo;
+      if (Date.now() > deadline) {
         const ms = Date.now() - runStarted;
         // Paused: only the build's own columns; the served generation and its version stay as they are.
-        await release({ buildVersion: ROLLUP_VERSION, buildGeneration: gen, buildNow: asOf, buildRowsAt: rowsAt, buildFromMs: start, buildRuns: (started ? 0 : state.buildRuns) + 1, buildMs: (started ? 0 : state.buildMs) + ms });
-        return { days, done: false, started, skipped: false };
+        await release({ buildVersion: ROLLUP_VERSION, buildGeneration: gen, buildNow: asOf, buildRowsAt: rowsAt, buildCursor: after, buildPartial: [...acc],
+          buildRuns: (started ? 0 : state.buildRuns) + 1, buildMs: (started ? 0 : state.buildMs) + ms });
+        return { days: 0, done: false, started, skipped: false, batches };
       }
     }
+    const days = [...finishRollupDays(acc)].map(([dayMs, data]) => ({ projectId, isSandbox: sandbox, generation: gen!, dayMs, data }));
+    await db.transaction(async (tx) => {
+      await renew(tx);
+      for (let k = 0; k < days.length; k += 200) await tx.insert(R).values(days.slice(k, k + 200)).onConflictDoUpdate({ target: [R.projectId, R.isSandbox, R.generation, R.dayMs], set: { data: sql`excluded.data` } });
+    });
     // Complete: serve the new generation, in one statement and only if this run still holds the lease. The replaced
     // generation stays until the next build starts.
     const runs = (started ? 0 : state.buildRuns) + 1, ms = (started ? 0 : state.buildMs) + (Date.now() - runStarted);
     // On the app's clock, like the requests that measure freshness from it.
     const switchedAt = now;
-    const switched = await db.update(ST).set({ generation: gen, version: ROLLUP_VERSION, computedAt: asOf, switchedAt, rowsAt, buildGeneration: null, buildVersion: null, buildNow: null, buildRowsAt: null, buildFromMs: null, buildRuns: 0, buildMs: 0, leaseToken: null, leaseUntil: null, updatedAt: new Date() })
+    const switched = await db.update(ST).set({ generation: gen, version: ROLLUP_VERSION, computedAt: asOf, switchedAt, rowsAt, buildGeneration: null, buildVersion: null, buildNow: null, buildRowsAt: null, buildCursor: null, buildPartial: null, buildRuns: 0, buildMs: 0, leaseToken: null, leaseUntil: null, updatedAt: new Date() })
       .where(mine).returning({ p: ST.projectId });
-    if (!switched.length) return { days, done: false, started, skipped: true, busy: true };
+    if (!switched.length) return { days: 0, done: false, started, skipped: true, busy: true };
     // A build that took longer than its answers stay fresh: logged, so the cost shows.
     if (switchedAt.getTime() - asOf.getTime() > STALE_MS) console.warn("rollups: slow build", JSON.stringify({ project: projectId, env: sandbox ? "sandbox" : "production", runs, ms, wall_ms: switchedAt.getTime() - asOf.getTime() }));
-    return { days, done: true, started, skipped: false, runs, ms };
+    return { days: days.length, done: true, started, skipped: false, runs, ms, batches };
   } catch (e) {
     if (e instanceof LeaseLost) return { days: 0, done: false, started: false, skipped: true, busy: true };
     await release().catch(() => undefined);
@@ -157,7 +164,7 @@ export interface RollupRun { builds: number; days: number; skipped: number; pend
  * The scheduled job: the projects and environments whose charts were viewed in the last day, the least recently worked
  * on first, within `budgetMs`. Rollups of projects not viewed for a week are deleted.
  */
-export async function runRollupJob(d: { db: DB }, now: Date, o: { budgetMs?: number } = {}): Promise<RollupRun> {
+export async function runRollupJob(d: { db: DB }, now: Date, o: { budgetMs?: number; batchCustomers?: number } = {}): Promise<RollupRun> {
   const deadline = Date.now() + (o.budgetMs ?? 20_000);
   const ST = schema.chartRollupState, R = schema.chartRollups;
   const out: RollupRun = { builds: 0, days: 0, skipped: 0, pending: 0, busy: 0, forgotten: 0 };
@@ -182,7 +189,7 @@ export async function runRollupJob(d: { db: DB }, now: Date, o: { budgetMs?: num
   for (const p of pairs) {
     if (Date.now() > deadline) break;
     try {
-      const r = await refreshRollups(d.db, p.id, p.sandbox, now, deadline);
+      const r = await refreshRollups(d.db, p.id, p.sandbox, now, deadline, { batchCustomers: o.batchCustomers });
       if (r.busy) out.busy++;
       else if (r.skipped) out.skipped++;
       else if (!r.done) out.pending++;

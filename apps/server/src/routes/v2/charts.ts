@@ -170,7 +170,9 @@ export function chartRoutes(r: V2Router, deps: Deps) {
     const now = deps.now();
     const p = parse(c, now);
     // With realtime=false, the daily rollups answer a request without filters or segments (services/charts/rollups.ts).
-    const rolled = p.realtime ? null : await chartFromRollups(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, def: p.def, req: p.req, now, currency: p.currency, filtered: p.filters.length > 0, segmented: !!p.segment });
+    // Rollups only make charts faster: when reading them fails, the chart is computed live.
+    const rolled = p.realtime ? null : await chartFromRollups(deps.db, { projectId: c.get("projectId"), sandbox: p.sandbox, def: p.def, req: p.req, now, currency: p.currency, filtered: p.filters.length > 0, segmented: !!p.segment })
+      .catch((e) => { console.error("rollups: read failed", e); return null; });
     let run: { output: ChartOutput; segments: ReturnType<typeof runChart>["segments"] };
     if (rolled) run = { output: rolled.output, segments: null };
     else {

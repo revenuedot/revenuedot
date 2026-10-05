@@ -73,18 +73,47 @@ export function commissionRate(tx: Omit<CommissionTx, "id" | "usd"> & { usd?: nu
 
 /** The calendar year (UTC) a time falls in, for the $1M tier. */
 const yearOf = (at: number) => new Date(at).getUTCFullYear();
+/** An app's calendar year (UTC), the $1M tier's scope. */
+export const playTierKey = (appId: string | null, at: number) => `${appId ?? ""}|${yearOf(at)}`;
+
+/**
+ * Per app and calendar year (playTierKey), the Google Play transaction whose sales take the year to $1M, in the order
+ * commissionRates reads them (time, then id): every Google Play transaction after it is above the tier. Lets a subset of
+ * an environment's transactions (daily rollups build customers in batches) get the rates the whole set gives them.
+ */
+export type PlayTierCrossings = Map<string, { at: number; id: string }>;
+
+/** The crossings of a whole environment's transactions (what the server computes in SQL for a batched build). */
+export function playTierCrossings(txs: CommissionTx[]): PlayTierCrossings {
+  const out: PlayTierCrossings = new Map();
+  const ytd = new Map<string, number>();
+  for (const t of txs.filter((x) => x.store === "play_store").sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1))) {
+    const key = playTierKey(t.appId, t.at);
+    if (out.has(key) || !countsTowardTier(t.kind) || !(t.usd > 0)) continue;
+    const sum = (ytd.get(key) ?? 0) + t.usd;
+    ytd.set(key, sum);
+    if (sum >= PLAY_REDUCED_TIER_USD) out.set(key, { at: t.at, id: t.id });
+  }
+  return out;
+}
 
 /**
  * Rates for a set of transactions (one environment of one project), keyed by transaction id. Google Play one-time
  * purchases see the app's sales earlier in the same calendar year: everything in `txs` counts, so pass every Google
  * Play transaction of the environment, not only the ones being reported.
  */
-export function commissionRates(txs: CommissionTx[], settings: CommissionSettings = {}): Map<string, number> {
+export function commissionRates(txs: CommissionTx[], settings: CommissionSettings = {}, crossings?: PlayTierCrossings): Map<string, number> {
   const out = new Map<string, number>();
   const play = txs.filter((t) => t.store === "play_store").sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1));
   const ytd = new Map<string, number>();
   for (const t of play) {
-    const key = `${t.appId ?? ""}|${yearOf(t.at)}`;
+    const key = playTierKey(t.appId, t.at);
+    if (crossings) {
+      // Known from every transaction of the environment (playTierCrossings): above the tier after the crossing one.
+      const c = crossings.get(key);
+      out.set(t.id, commissionRate(t, settings, c && (t.at > c.at || (t.at === c.at && t.id > c.id)) ? PLAY_REDUCED_TIER_USD : 0));
+      continue;
+    }
     const before = ytd.get(key) ?? 0;
     out.set(t.id, commissionRate(t, settings, before));
     if (countsTowardTier(t.kind) && t.usd > 0) ytd.set(key, before + t.usd);

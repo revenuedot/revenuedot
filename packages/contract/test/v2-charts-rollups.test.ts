@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { CHARTS, ROLLUP_CHARTS, runChart, type ChartRequest } from "@revenuedot/core";
+import { CHARTS, playTierCrossings, ROLLUP_CHARTS, runChart, type ChartRequest } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import { chartFromRollups, refreshRollups, runRollupJob } from "@revenuedot/server/services/charts/rollups.js";
-import { loadChartInput } from "@revenuedot/server/services/charts/load.js";
+import { loadChartInput, playTierCrossingsOf } from "@revenuedot/server/services/charts/load.js";
 import { getOrCreateCustomer } from "@revenuedot/server/repo/customers.js";
 import { applyPurchases } from "@revenuedot/server/services/purchases.js";
 import type { VerifiedPurchase } from "@revenuedot/server/stores/types.js";
@@ -32,10 +32,12 @@ const PROD = () => `resolution=2&start_date=2026-05-01&end_date=${today()}`;
 const SANDBOX = () => `${PROD()}&environment=sandbox`;
 const state = async (sandbox = false) => (await h.db.select().from(schema.chartRollupState).where(and(eq(schema.chartRollupState.projectId, h.ids.project), eq(schema.chartRollupState.isSandbox, sandbox))))[0];
 /** The dashboard opens a chart (realtime=false) in each environment, which keeps them built; then the job runs. */
-const job = async () => {
+const job = async (batchCustomers?: number) => {
   for (const q of [PROD(), SANDBOX()]) await get("revenue", q, false);
-  return runRollupJob({ db: h.db }, h.now(), { budgetMs: 600_000 });
+  return runRollupJob({ db: h.db }, h.now(), { budgetMs: 600_000, batchCustomers });
 };
+/** Batches of two customers: a build over many batches, as for a large project. */
+const SMALL = 2;
 const AD = ["rc_ads_ad_displayed", "rc_ads_ad_opened", "rc_ads_ad_loaded", "rc_ads_ad_failed_to_load", "rc_ads_ad_revenue"];
 const reqs = (end: number) => [
   { resolution: "month", rangeStart: Date.parse("2026-05-01"), rangeEnd: end, expand: false, selectors: {} },
@@ -82,10 +84,10 @@ async function expectSameAsLive(o: { asOf?: boolean } = {}) {
   }
   return compared;
 }
-/** Advances past the rebuild interval, lets the job build, and checks the new generation. */
+/** Advances past the rebuild interval, lets the job build in batches of two customers, and checks the new generation. */
 const rebuildAndCompare = async () => {
   h.setNow(new Date(h.now().getTime() + 16 * 60_000));
-  const r = await job();
+  const r = await job(SMALL);
   expect(r.builds, "both environments rebuilt").toBe(2);
   expect(await expectSameAsLive()).toBeGreaterThan(200);
 };
@@ -143,13 +145,13 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
     // The served generation was built by other code: answered live.
     await h.db.update(schema.chartRollupState).set({ version: "older-code" }).where(eq(schema.chartRollupState.isSandbox, false));
     expect((await get("mrr", PROD(), false)).source).toBe("live");
-    // A build of this code pauses after its first slice: still the old generation's version, so still live.
+    // A build of this code pauses after its first batch: still the old generation's version, so still live.
     await getOrCreateCustomer(h.db, h.ids.project, "old_timer", new Date("2023-09-01T00:00:00Z"));
-    const r = await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { force: true });
+    const r = await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { force: true, batchCustomers: SMALL });
     expect(r.done).toBe(false);
     expect(await state()).toMatchObject({ version: "older-code" });
     expect((await get("mrr", PROD(), false)).source).toBe("live");
-    while (!(await refreshRollups(h.db, h.ids.project, false, h.now(), 0)).done) { /* next slice */ }
+    while (!(await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { batchCustomers: SMALL })).done) { /* next batch */ }
     expect((await get("mrr", PROD(), false)).source).toBe("rollups");
   });
 
@@ -168,7 +170,7 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
 
   it("a build over several runs reads only rows recorded by its start", async () => {
     h.setNow(new Date(h.now().getTime() + 16 * 60_000));
-    expect((await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { force: true })).done).toBe(false);
+    expect((await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { force: true, batchCustomers: SMALL })).done).toBe(false);
     // A refund recorded after the build started, for a purchase made before it.
     const [ua] = await h.db.select().from(schema.transactions).where(and(eq(schema.transactions.projectId, h.ids.project), eq(schema.transactions.storeTransactionId, "u_a_key_3")));
     await h.db.insert(schema.transactions).values({ ...ua!, id: "txn_refund_late", kind: "refund", purchasedAt: new Date(h.now().getTime() - 60_000), revenueUsd: -10, createdAt: new Date((await state())!.buildRowsAt!.getTime() + 1) });
@@ -179,7 +181,7 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
     console.warn = (...a: unknown[]) => { warned.push(a.join(" ")); };
     try {
       let runs = 0;
-      while (!(await refreshRollups(h.db, h.ids.project, false, h.now(), 0)).done) { runs++; h.setNow(new Date(h.now().getTime() + 15 * 60_000)); }
+      while (!(await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { batchCustomers: SMALL })).done) { runs++; h.setNow(new Date(h.now().getTime() + 15 * 60_000)); }
       expect(runs).toBeGreaterThanOrEqual(2);
     } finally { console.warn = warn; }
     expect(warned.join("\n")).toContain("rollups: slow build");
@@ -251,7 +253,7 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
   });
 
   it("keep the served generation while a new one is built over several runs, then flip to it", async () => {
-    // A customer first seen three years ago adds days; every run stops after one slice.
+    // A customer first seen three years ago adds days; every run stops after one batch of two customers.
     await getOrCreateCustomer(h.db, h.ids.project, "old_timer", new Date("2023-09-01T00:00:00Z"));
     h.setNow(new Date(h.now().getTime() + 16 * 60_000));
     await get("revenue", PROD(), false);
@@ -259,7 +261,7 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
     let runs = 0, done = false;
     while (!done && runs < 100) {
       runs++;
-      done = (await refreshRollups(h.db, h.ids.project, false, h.now(), 0)).done;
+      done = (await refreshRollups(h.db, h.ids.project, false, h.now(), 0, { batchCustomers: SMALL })).done;
       if (!done) {
         // Still serving the previous generation.
         expect((await state())!.generation).toBe(before);
@@ -268,7 +270,7 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
     }
     expect(done).toBe(true);
     expect(runs).toBeGreaterThan(1);
-    expect(await state()).toMatchObject({ generation: before! + 1, buildGeneration: null, buildFromMs: null });
+    expect(await state()).toMatchObject({ generation: before! + 1, buildGeneration: null, buildCursor: null, buildPartial: null });
     await refreshRollups(h.db, h.ids.project, true, h.now(), Date.now() + 600_000, { force: true });
     expect(await expectSameAsLive()).toBeGreaterThan(200);
   });
@@ -292,5 +294,34 @@ describe("daily rollups", { timeout: 1_800_000 }, () => {
     expect(r.forgotten).toBe(2);
     expect(await state()).toBeUndefined();
     expect(await h.db.select().from(schema.chartRollups).where(eq(schema.chartRollups.projectId, h.ids.project))).toHaveLength(0);
+  });
+  it("give customer batches the Google Play $1M-tier commission of the whole environment, ordered as the core orders it", async () => {
+    const T = schema.transactions;
+    const [ua] = await h.db.select().from(T).where(and(eq(T.projectId, h.ids.project), eq(T.storeTransactionId, "u_a_key_2")));
+    // $400,000 one-time purchases: the third crosses $1M. Two share a millisecond; their ids differ in case, which a
+    // locale-aware ordering sorts the other way round from the core's code-point ordering.
+    const at = (s: string) => new Date(s);
+    const rows = [["play_1", "u_a", "2026-03-01T10:00:00.000Z"], ["play_B", "u_a", "2026-03-02T10:00:00.000Z"], ["play_a", "u_c", "2026-03-02T10:00:00.000Z"], ["play_4", "u_c", "2026-03-03T10:00:00.250Z"]] as const;
+    for (const [id, customer, t] of rows) {
+      const [c] = await h.db.select({ id: schema.customers.id }).from(schema.customers).where(and(eq(schema.customers.projectId, h.ids.project), eq(schema.customers.originalAppUserId, customer)));
+      await h.db.insert(T).values({ ...ua!, id, customerId: c!.id, store: "play_store", kind: "one_time", storeTransactionId: id, productIdentifier: "coins", isSandbox: true, purchasedAt: at(t), expiresAt: null, revenueUsd: 400_000, countryCode: "BR" });
+    }
+    const all = await h.db.select().from(T).where(and(eq(T.projectId, h.ids.project), eq(T.isSandbox, true)));
+    const js = playTierCrossings(all.map((t) => ({ id: t.id, store: t.store, appId: t.appId, at: t.purchasedAt.getTime(), usd: t.revenueUsd, kind: t.kind })));
+    const sqlTier = await playTierCrossingsOf(h.db, { projectId: h.ids.project, sandbox: true });
+    expect(sqlTier.size).toBe(1);
+    expect(sqlTier).toEqual(js);
+    const sources = { sdkTypes: [], activity: null, refundRequests: false };
+    const whole = await loadChartInput(h.db, { projectId: h.ids.project, sandbox: true, now: h.now(), currency: "USD", fetch: null, sources });
+    const rate = new Map(whole.txs.map((t) => [t.id, t.commission]));
+    expect([...rate.values()]).toContain(0.3);
+    // The customers in two batches, split at u_a's id.
+    const [split] = await h.db.select({ id: schema.customers.id }).from(schema.customers).where(and(eq(schema.customers.projectId, h.ids.project), eq(schema.customers.originalAppUserId, "u_a")));
+    let seen = 0;
+    for (const range of [{ after: null, upTo: split!.id }, { after: split!.id, upTo: null }]) {
+      const part = await loadChartInput(h.db, { projectId: h.ids.project, sandbox: true, now: h.now(), currency: "USD", fetch: null, sources, customers: range, playTier: sqlTier });
+      for (const t of part.txs) { expect(t.commission, t.id).toBe(rate.get(t.id)); seen++; }
+    }
+    expect(seen).toBe(whole.txs.length);
   });
 });
