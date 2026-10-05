@@ -6,6 +6,9 @@ import Faq from "../components/Faq.astro";
 import Related from "../components/Related.astro";
 import CtaBand from "../components/CtaBand.astro";
 import Md from "../components/Md.astro";
+import Evidence from "../components/Evidence.astro";
+import Visual from "../components/Visual.astro";
+import YouTube from "../components/YouTube.astro";
 import { ALTERNATIVES, ALTERNATIVES_INTRO as I } from "../data";
 import { md, plain } from "../lib/md";
 import { ogFor } from "../lib/og";
@@ -17,6 +20,18 @@ const title = `The ${ALTERNATIVES.length} best RevenueCat alternatives in 2026`;
 const description = "RevenueDot, Adapty, Superwall, Qonversion, Apphud, Purchasely and building in-house, compared on price, open source, self-hosting and features, with sources.";
 const faq = I.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
 const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+// The pricing page of every vendor in the table, RevenueCat first, as captured on 4 October 2026.
+const PRICING_CROPS = [
+  "RevenueCat/pricing/free-to-2500-then-1-percent",
+  "RevenueDot/pricing/plans",
+  "Adapty/pricing/free-under-5k-then-1-percent",
+  "Superwall/pricing/indie-10k-then-1-percent",
+  "Qonversion/pricing/free-to-7k-then-0-8-percent",
+  "Apphud/pricing/free-10k-pro-expert",
+  "Purchasely/pricing/no-public-price",
+  "IAPHUB/pricing/plans",
+  "Nami ML/pricing/enterprise-only",
+];
 ---
 <Base title="Best RevenueCat alternatives in 2026, compared" description={description} path={path} image={image} imageAlt={title}
   crumbs={[{ name: "RevenueCat alternatives", path }]} faq={faq}
@@ -33,6 +48,11 @@ const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^
         <thead><tr><th scope="col">Option</th><th scope="col">Best for</th><th scope="col">Pricing</th><th scope="col">Open source</th><th scope="col">Self-host</th></tr></thead>
         <tbody>{ALTERNATIVES.map((a) => <tr><th scope="row"><a href={`#${id(a.name)}`}>{a.name}</a></th><td set:html={md(a.bestFor)} /><td set:html={md(a.pricing)} /><td set:html={md(a.openSource)} /><td set:html={md(a.selfHost)} /></tr>)}</tbody>
       </table></div>
+      <div class="price-ev">
+        <p class="label">The pricing pages behind the table, as captured on 4 October 2026</p>
+        <p class="small muted">RevenueCat first, then each alternative. Each crop links to the live page and to the full-page capture.</p>
+        <Evidence keys={PRICING_CROPS} layout="grid" width={300} />
+      </div>
     </div>
   </section>
   {ALTERNATIVES.map((a, i) => (
@@ -49,11 +69,25 @@ const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^
             <div class="cell"><p class="label">Strengths</p><ul class="ticks">{a.pros.map((p) => <Md as="li" text={p} />)}</ul></div>
             <div class="cell"><p class="label">Watch out for</p><ul class="ticks neg">{a.cons.map((p) => <Md as="li" text={p} />)}</ul></div>
           </div></div>
+          {a.visual && <Visual name={a.visual} width={860} titled />}
+          {a.clip && <Visual name={a.clip} clip width={860} titled />}
+          {a.evidence && a.evidence.length > 0 && (
+            <div class="ent-ev">
+              <p class="label">{a.name === "RevenueDot" ? "Our own pages, as captured" : "Its pages, as captured"}</p>
+              <Evidence keys={a.evidence} layout="grid" width={300} />
+            </div>
+          )}
           <p class="tiny">Sources: {a.sources.map((s, j) => <>{j > 0 && " · "}<a href={s.url} rel="noopener">{s.label}</a></>)}{a.compare && <> · <a href={a.compare}>Full comparison →</a></>}</p>
         </div>
       </div>
     </section>
   ))}
+  <section class="section" id="video">
+    <div class="wrap">
+      <div class="head"><p class="label">From a third party</p><h2 class="h2 sm">An indie developer compares StoreKit, RevenueCat, Adapty and Qonversion</h2><p class="lede">An independent video on the same shortlist. We did not make it and the opinions in it are the creator's.</p></div>
+      <div class="video"><YouTube url="https://www.youtube.com/watch?v=OpVzL6kBMn4" /></div>
+    </div>
+  </section>
   <section class="section" id="faq"><div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">RevenueCat alternatives: questions people ask</h2></div><Faq items={faq} open={0} /><p class="tiny caption">RevenueDot is not affiliated with any company on this page. Names are trademarks of their owners.</p></div></section>
   <Related items={["/cheaper-revenuecat-alternatives", "/revenuecat-alternative", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-superwall-vs-revenuedot", "/migrate-from-revenuecat", "/pricing"]} />
   <CtaBand />
@@ -70,5 +104,9 @@ const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^
   .ticks.neg :global(li)::before { background: var(--fg-3); }
   .tiny a { color: var(--fg-2); }
   .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  .price-ev { margin-top: 32px; display: grid; gap: 12px; }
+  .price-ev .small { margin-top: -4px; }
+  .ent-ev { display: grid; gap: 12px; }
+  .video { max-width: 860px; }
   @media (max-width: 900px) { .alt { grid-template-columns: minmax(0, 1fr); gap: 20px; } .alt .head { position: static; } }
 </style>

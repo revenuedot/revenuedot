@@ -6,6 +6,8 @@ import CtaBand from "../components/CtaBand.astro";
 import { PLANS, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE, RC_FREE_UP_TO, RC_RATE, cloudBill, revenueCatBill, usd } from "../lib/pricing";
 import { softwareApplication } from "../lib/jsonld";
 import { FAQ_COST, FAQ_PRICE_ALT, FAQ_SELF_HOST, FAQ_ALTERNATIVE, FAQ_DATA, FAQ_LICENSE } from "../lib/faq";
+import Visual from "../components/Visual.astro";
+import Evidence from "../components/Evidence.astro";
 import { SITE } from "../site";
 
 const faq = [
@@ -74,6 +76,11 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
         ))}
       </div></div>
       <p class="tiny note">Outcome add-ons (failed-payment recovery, win-backs, refund defense) will be priced as a share of the money they recover.</p>
+      <div class="billing-shot">
+        <p class="label">What the Billing page shows</p>
+        <p class="small muted">Tracked revenue by project, the bill so far and the cap, on the real Billing page of a Cloud Standard account.</p>
+        <Visual name="cloud-billing" />
+      </div>
     </div>
   </section>
 
@@ -137,6 +144,10 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
         </table>
       </div>
       <p class="tiny caption">RevenueCat price from <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>, checked {SITE.pricesChecked}; RevenueCat's paywall and funnel tools are priced separately. Adapty, Qonversion, Superwall and Apphud at the same levels: <a href="/cheaper-revenuecat-alternatives">cheaper RevenueCat alternatives</a>.</p>
+      <div class="rc-ev">
+        <p class="label">RevenueCat's pricing page, as captured</p>
+        <Evidence keys={["RevenueCat/pricing/free-to-2500-then-1-percent", "RevenueCat/community-pro-plan-payments/staff-reply-1-percent-of-whole-mtr", "RevenueDot/pricing/plans"]} layout="grid" width={340} />
+      </div>
     </div>
   </section>
 
@@ -173,6 +184,9 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
   .plan li::before { content: ""; position: absolute; left: 0; top: .65em; width: 6px; height: 6px; background: var(--fg); }
   .plan .btn { justify-content: center; margin-top: auto; }
   .note { margin-top: 20px; max-width: 820px; }
+  .billing-shot { margin-top: 48px; display: grid; gap: 8px; }
+  .billing-shot .small { margin-bottom: 8px; }
+  .rc-ev { margin-top: 32px; display: grid; gap: 16px; }
   .calc .span { grid-column: 1 / -1; }
   .calc input[type="range"] { width: 100%; accent-color: var(--fg); height: 32px; margin: 4px 0; }
   .examples { margin-top: 32px; }
