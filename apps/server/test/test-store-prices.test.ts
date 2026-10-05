@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { openTestDb } from "../../../packages/contract/src/test-db.js";
+import { parseWrite } from "../src/routes/v2/audit.js";
 import { addPrices, pricesOf, priceFor, removePrice, setDefaultPrice, updatePrice } from "../src/services/test-store-prices.js";
 
 let db: DB, close: () => Promise<void>;
@@ -37,9 +38,9 @@ describe("Test Store price writes", () => {
     expect(await updatePrice(db, await product(), "JPY", 1)).toBeNull();
     expect(await updatePrice(db, await product(), "USD", 6)).toMatchObject({ currency: "USD", amount_micros: 6 });
     expect(await state()).toEqual({ default: "USD", list: ["USD 6", "EUR 2", "GBP 3"] });
-    expect(await removePrice(db, await product(), "USD")).toBe(true);
+    expect(await removePrice(db, await product(), "USD")).toMatchObject({ currency: "USD", amount_micros: 6, id: expect.stringMatching(/^prc/) });
     expect(await state()).toEqual({ default: "EUR", list: ["EUR 2", "GBP 3"] });
-    expect(await removePrice(db, await product(), "USD")).toBe(false);
+    expect(await removePrice(db, await product(), "USD")).toBeNull();
     await setDefaultPrice(db, await product(), null);
     expect(await state()).toEqual({ default: null, list: [] });
   });
@@ -50,5 +51,29 @@ describe("Test Store price writes", () => {
     expect(priceFor(prices, { country: "AT" })?.currency).toBe("EUR");
     expect(priceFor(prices, { country: "JP" })?.currency).toBe("USD");
     expect(priceFor(undefined, { country: "JP" })).toBeNull();
+  });
+});
+
+describe("audit log entries for prices", () => {
+  it("names PATCH and DELETE of one price product_price_updated and product_price_deleted on the product", () => {
+    const one = "/v2/projects/proj/products/prod/prices/EUR";
+    expect(parseWrite("PATCH", one)).toEqual({ actionType: "product_price_updated", targetType: "product", targetId: "prod" });
+    expect(parseWrite("DELETE", one)).toEqual({ actionType: "product_price_deleted", targetType: "product", targetId: "prod" });
+    expect(parseWrite("POST", "/v2/projects/proj/products/prod/test_store_prices")).toEqual({ actionType: "product_test_store_price_created", targetType: "product", targetId: "prod" });
+  });
+});
+
+describe("concurrent price writes", () => {
+  it("two writes at once on a stale product leave the default equal to a row", async () => {
+    const stale = await product();
+    await Promise.all([
+      addPrices(db, stale, [{ currency: "EUR", amount_micros: 2 }]),
+      addPrices(db, stale, [{ currency: "USD", amount_micros: 1 }]),
+    ]);
+    const s = await state();
+    expect(s.list).toHaveLength(2);
+    expect(["EUR", "USD"]).toContain(s.default);
+    expect(await removePrice(db, stale, s.default!)).not.toBeNull();
+    expect((await state()).list).toHaveLength(1);
   });
 });

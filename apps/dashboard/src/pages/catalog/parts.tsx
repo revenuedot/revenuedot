@@ -232,10 +232,12 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
   const prices = useProductPrices(pid, product, isTestStore);
   const [rows, setRows] = useState<PriceRow[] | null>(null);
   const [def, setDef] = useState<number | null>(null);
+  // The currencies the rows were built from: a save removes only a currency the editor showed.
+  const [shown, setShown] = useState<string[]>([]);
   // The rows start from the saved prices once they load (default first).
   if (isTestStore && rows === null && prices.data) {
     const r = prices.data.map(toRow);
-    setRows(r); setDef(r[0]?.key ?? null);
+    setRows(r); setDef(r[0]?.key ?? null); setShown(prices.data.map((p) => p.currency));
   }
   const [error, setError] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -249,6 +251,13 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
     const out: { key: number; currency: string; amount_micros: number }[] = [];
     const seen = new Set<string>();
     for (const r of list) {
+      // A row left as saved is kept as is, even when it has more decimals than the editor would accept for a new price.
+      if (r.saved && r.currency === r.saved.currency && r.amount === microsToAmount(r.saved.amount_micros)) {
+        if (seen.has(r.currency)) { errs[`c${r.key}`] = `${r.currency} is listed twice.`; continue; }
+        seen.add(r.currency);
+        out.push({ key: r.key, currency: r.saved.currency, amount_micros: r.saved.amount_micros });
+        continue;
+      }
       const v = testStorePrice(r.amount, r.currency);
       if ("error" in v) { errs[`${v.field === "currency" ? "c" : "a"}${r.key}`] = v.error; continue; }
       if (!v.value) { errs[`a${r.key}`] = "Enter the price, such as 9.99, or remove the row."; continue; }
@@ -261,18 +270,21 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (type === "subscription" && !ISO_PERIOD.test(duration)) { setError({ duration: "Enter an ISO 8601 period such as P1M, P1Y or P3D." }); return; }
-    if (isTestStore && rows === null) { setError({ form: "Prices are still loading." }); return; }
-    const { errs, out } = isTestStore ? checkRows(rows!) : { errs: {}, out: [] };
+    // Prices that could not be loaded are left as they are; the name, type and duration still save.
+    const withPrices = isTestStore && rows !== null;
+    if (isTestStore && rows === null && !prices.isError) { setError({ form: "Prices are still loading." }); return; }
+    const { errs, out } = withPrices ? checkRows(rows!) : { errs: {}, out: [] };
     if (Object.keys(errs).length) { setError(errs); return; }
     const defPrice = out.find((p) => p.key === def) ?? out[0] ?? null;
     setBusy(true); setError({});
     try {
       await api(`${v2(pid)}/products/${product.id}`, { method: "POST", json: {
         display_name: name.trim(), type, ...(type === "subscription" ? { subscription: { duration } } : {}),
-        ...(isTestStore ? { test_store_price: defPrice ? { amount_micros: defPrice.amount_micros, currency: defPrice.currency } : null } : {}),
+        ...(withPrices ? { test_store_price: defPrice ? { amount_micros: defPrice.amount_micros, currency: defPrice.currency } : null } : {}),
       } });
-      if (isTestStore && defPrice) {
-        // The default is saved with the product; the other currencies through the prices endpoints.
+      if (withPrices && defPrice) {
+        // The default is saved with the product; the other currencies through the prices endpoints. Adds and changes are
+        // compared with the server's latest prices; removals cover only currencies this editor showed.
         const saved = new Map((prices.data ?? []).map((p) => [p.currency, p.amount_micros]));
         const others = out.filter((p) => p.currency !== defPrice.currency);
         const added = others.filter((p) => !saved.has(p.currency));
@@ -282,7 +294,7 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
         if (added.length) await api(`${base}/test_store_prices`, { method: "POST", json: { prices: added.map(({ currency, amount_micros }) => ({ currency, amount_micros })) } });
         for (const p of changed) await api(`${base}/prices/${p.currency}`, { method: "PATCH", json: { amount_micros: p.amount_micros } });
         // A currency already removed by an earlier, half-finished save answers 404: it is gone either way.
-        for (const c of saved.keys()) if (!kept.has(c)) await api(`${base}/prices/${c}`, { method: "DELETE" }).catch((e) => { if (!(e instanceof ApiError && e.status === 404)) throw e; });
+        for (const c of shown) if (!kept.has(c)) await api(`${base}/prices/${c}`, { method: "DELETE" }).catch((e) => { if (!(e instanceof ApiError && e.status === 404)) throw e; });
       }
       await refresh();
       toast("Product saved");
@@ -309,7 +321,12 @@ export function EditProductDialog({ pid, product, onClose }: { pid: string; prod
         </Field>
         <TypeRadios value={type} onChange={setType} />
         {type === "subscription" && <DurationField id="ep-dur" value={duration} onChange={setDuration} error={error.duration} />}
-        {isTestStore && (prices.isError ? <div className="banner err" role="alert">The prices could not be loaded. {errMsg(prices.error)}</div>
+        {isTestStore && (rows === null && prices.isError ? (
+          <div className="banner err" role="alert">
+            The prices could not be loaded, so saving keeps them as they are. {errMsg(prices.error)}{" "}
+            <button type="button" className="btn btn-line" onClick={() => void prices.refetch()} disabled={prices.isFetching}>Retry</button>
+          </div>
+        )
           : rows === null ? <p className="hint">Loading prices…</p>
           : <PriceRows rows={rows} def={def} onRows={editRows} onDefault={setDef} error={error} />)}
         {error.form && <div className="banner err" role="alert">{error.form}</div>}

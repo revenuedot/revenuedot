@@ -8,6 +8,8 @@ describe("currencyOfCountry", () => {
   it("knows the euro area, shared currencies and single-country currencies", () => {
     expect(["DE", "fr", "HR", "XK"].map(currencyOfCountry)).toEqual(["EUR", "EUR", "EUR", "EUR"]);
     expect(["US", "EC", "PR", "GB", "JP", "CH", "LI", "SN", "BR", "IN", "KR"].map(currencyOfCountry)).toEqual(["USD", "USD", "USD", "GBP", "JPY", "CHF", "CHF", "XOF", "BRL", "INR", "KRW"]);
+    // Bulgaria has used the euro since 2026-01-01; Curaçao and Sint Maarten the Caribbean guilder (XCG) since 2025-03-31.
+    expect(["BG", "CW", "SX"].map(currencyOfCountry)).toEqual(["EUR", "XCG", "XCG"]);
     expect([null, "", "ZZ", "DEU"].map(currencyOfCountry)).toEqual([null, null, null, null]);
   });
 });

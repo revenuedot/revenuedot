@@ -336,6 +336,36 @@ test("product catalog: products, entitlement, offerings, default offering and th
     await expect(page.getByTestId("test-store-prices")).toHaveText("€74.99 default · $89.99");
     expect((await json(req, "GET", `${P}/products/${lifetime.id}?expand=indicative_price`)).indicative_price).toMatchObject({ currency: "EUR", amount_micros: 74_990_000 });
     expect((await json(req, "GET", `${P}/products/${lifetime.id}/prices`)).map((p: any) => [p.currency, p.amount_micros])).toEqual([["EUR", 74_990_000], ["USD", 89_990_000]]);
+    const amounts = async () => (await json(req, "GET", `${P}/products/${lifetime.id}/prices`)).map((p: any) => [p.currency, p.amount_micros]);
+
+    // A price saved through the API with more decimals than the editor takes (¥1500.5) is kept when its row is left as is.
+    await json(req, "POST", `${P}/products/${lifetime.id}/test_store_prices`, { prices: [{ currency: "JPY", amount_micros: 1_500_500_000 }] });
+    await page.reload();
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(rows).toHaveCount(3);
+    // A currency added elsewhere while the editor is open (another tab, the API) is not removed by its save.
+    await json(req, "POST", `${P}/products/${lifetime.id}/test_store_prices`, { prices: [{ currency: "CHF", amount_micros: 70_000_000 }] });
+    await d.getByRole("button", { name: "Save" }).click();
+    await expect(d).toBeHidden();
+    expect(await amounts()).toEqual([["EUR", 74_990_000], ["CHF", 70_000_000], ["JPY", 1_500_500_000], ["USD", 89_990_000]]);
+
+    // Prices that cannot be loaded: Retry is offered, and the name still saves without touching the prices.
+    const pricesUrl = `**/products/${lifetime.id}/prices`;
+    await page.route(pricesUrl, (r) => (r.request().method() === "GET" ? r.fulfill({ status: 503, contentType: "application/json", body: '{"message":"Unavailable"}' }) : r.continue()));
+    await page.reload();
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(d.getByText("The prices could not be loaded, so saving keeps them as they are.")).toBeVisible({ timeout: 20_000 });
+    await expect(d.getByRole("button", { name: "Retry" })).toBeVisible();
+    await d.getByLabel("Display name").fill("Lifetime access");
+    await d.getByRole("button", { name: "Save" }).click();
+    await expect(d).toBeHidden();
+    await page.unroute(pricesUrl);
+    expect((await json(req, "GET", `${P}/products/${lifetime.id}`)).display_name).toBe("Lifetime access");
+    expect(await amounts()).toEqual([["EUR", 74_990_000], ["CHF", 70_000_000], ["JPY", 1_500_500_000], ["USD", 89_990_000]]);
+    // The browser logs the 503s answered above on purpose.
+    errors.splice(0, errors.length, ...errors.filter((e) => !/status of 503/.test(e)));
+    // Back to the two prices the later steps expect.
+    for (const c of ["CHF", "JPY"]) await json(req, "DELETE", `${P}/products/${lifetime.id}/prices/${c}`);
   });
 
   await test.step("products: archive, unarchive and delete with confirmation", async () => {

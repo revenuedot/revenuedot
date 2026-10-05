@@ -7,12 +7,12 @@ export interface CurrencyPrice { currency: string; amount_micros: number }
 /** ISO 4217 currency of each country (ISO 3166-1 alpha-2), grouped by currency. */
 const BY_CURRENCY: Record<string, string> = {
   USD: "US AS BQ EC FM GU IO MH MP PR PW SV TC TL UM VG VI",
-  EUR: "AD AT AX BE BL CY DE EE ES FI FR GF GP GR HR IE IT LT LU LV MC ME MF MQ MT NL PM PT RE SI SK SM TF VA XK YT",
+  EUR: "AD AT AX BE BG BL CY DE EE ES FI FR GF GP GR HR IE IT LT LU LV MC ME MF MQ MT NL PM PT RE SI SK SM TF VA XK YT",
   GBP: "GB GG IM JE GS", AUD: "AU CC CX HM KI NF NR TV", NZD: "NZ CK NU PN TK", CHF: "CH LI", NOK: "NO SJ BV", DKK: "DK FO GL",
-  XOF: "BF BJ CI GW ML NE SN TG", XAF: "CF CG CM GA GQ TD", XCD: "AG AI DM GD KN LC MS VC", XPF: "NC PF WF", ANG: "CW SX",
+  XOF: "BF BJ CI GW ML NE SN TG", XAF: "CF CG CM GA GQ TD", XCD: "AG AI DM GD KN LC MS VC", XPF: "NC PF WF", XCG: "CW SX",
   MAD: "MA EH", ZAR: "ZA", INR: "IN", ILS: "IL PS",
   AED: "AE", AFN: "AF", ALL: "AL", AMD: "AM", AOA: "AO", ARS: "AR", AWG: "AW", AZN: "AZ", BAM: "BA", BBD: "BB", BDT: "BD",
-  BGN: "BG", BHD: "BH", BIF: "BI", BMD: "BM", BND: "BN", BOB: "BO", BRL: "BR", BSD: "BS", BTN: "BT", BWP: "BW", BYN: "BY",
+  BHD: "BH", BIF: "BI", BMD: "BM", BND: "BN", BOB: "BO", BRL: "BR", BSD: "BS", BTN: "BT", BWP: "BW", BYN: "BY",
   BZD: "BZ", CAD: "CA", CDF: "CD", CLP: "CL", CNY: "CN", COP: "CO", CRC: "CR", CUP: "CU", CVE: "CV", CZK: "CZ", DJF: "DJ",
   DOP: "DO", DZD: "DZ", EGP: "EG", ERN: "ER", ETB: "ET", FJD: "FJ", FKP: "FK", GEL: "GE", GHS: "GH", GIP: "GI", GMD: "GM",
   GNF: "GN", GTQ: "GT", GYD: "GY", HKD: "HK", HNL: "HN", HTG: "HT", HUF: "HU", IDR: "ID", IQD: "IQ", IRR: "IR", ISK: "IS",

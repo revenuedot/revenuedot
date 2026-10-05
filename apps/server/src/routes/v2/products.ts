@@ -163,8 +163,9 @@ export function productRoutes(r: V2Router, deps: Deps) {
   r.delete(`${P}/:product_id/prices/:currency`, scope("project_configuration:products:read_write"), async (c) => {
     const p = await testStoreProduct(c, "product_id");
     const currency = currencyParam(c.req.param("currency"));
-    if (!(await removePrice(db, p, currency))) throw notFound(`${currency} price`);
-    return c.json({ object: "product_price", currency, deleted_at: deps.now().getTime() });
+    const gone = await removePrice(db, p, currency);
+    if (!gone) throw notFound(`${currency} price`);
+    return c.json({ object: "product_price", id: gone.id, currency, deleted_at: deps.now().getTime() });
   });
 
   // Deleting a product detaches it from entitlements and packages (FK cascade). Purchase history keeps the store id.

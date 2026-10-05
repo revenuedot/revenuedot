@@ -96,13 +96,34 @@ describe("v2 Test Store prices", () => {
     await call("POST", CREATE, { product_id: "p4" }, { ...ext, json: { prices: [{ currency: "GBP", amount_micros: 1_000_000 }, { currency: "EUR", amount_micros: 2_000_000 }, { currency: "USD", amount_micros: 3_000_000 }] } });
     await call("POST", PRODUCT, { product_id: "p4" }, { json: { test_store_price: { amount_micros: 1_000_000, currency: "GBP" } } });
     const del = await call("DELETE", ONE, { product_id: "p4", currency: "GBP" }, ext);
-    expect(del.body).toMatchObject({ object: "product_price", currency: "GBP" });
+    expect(del.body).toMatchObject({ object: "product_price", id: expect.stringMatching(/^prc/), currency: "GBP", deleted_at: expect.any(Number) });
     expect(await indicative("p4")).toMatchObject({ currency: "USD", amount_micros: 3_000_000 });
     await call("DELETE", ONE, { product_id: "p4", currency: "USD" }, ext);
     expect(await indicative("p4")).toMatchObject({ currency: "EUR" });
     expect((await call("DELETE", ONE, { product_id: "p4", currency: "USD" }, ext)).status).toBe(404);
     await call("DELETE", ONE, { product_id: "p4", currency: "EUR" }, ext);
     expect(await indicative("p4")).toBeNull();
+  });
+
+  it("PATCH and DELETE of one price are in the audit log as product_price_updated and product_price_deleted", async () => {
+    await call("POST", CREATE, { product_id: "p4" }, { ...ext, json: { prices: [{ currency: "USD", amount_micros: 1_000_000 }, { currency: "EUR", amount_micros: 2_000_000 }] } });
+    h.setNow(new Date(h.now().getTime() + 1000));
+    await call("PATCH", ONE, { product_id: "p4", currency: "EUR" }, { ...ext, json: { amount_micros: 3_000_000 } });
+    h.setNow(new Date(h.now().getTime() + 1000));
+    await call("DELETE", ONE, { product_id: "p4", currency: "EUR" }, ext);
+    const log = await call("GET", "/v2/projects/{project_id}/audit_logs");
+    expect(log.body.items.slice(0, 2).map((x: any) => [x.action_type, x.target_type, x.target_identifier]))
+      .toEqual([["product_price_deleted", "product", "p4"], ["product_price_updated", "product", "p4"]]);
+  });
+
+  it("GET …/prices on a Stripe web product lists its Stripe price; JPY has no minor unit", async () => {
+    await h.db.insert(schema.apps).values({ id: "app_stripe", projectId: h.ids.project, name: "Web", type: "stripe", publicKey: "strp_prices" });
+    await h.db.insert(schema.products).values({ id: "p_web", projectId: h.ids.project, appId: "app_stripe", storeIdentifier: "price_1Web", type: "subscription", duration: "P1M" });
+    await h.db.insert(schema.webProducts).values({ productId: "p_web", projectId: h.ids.project, appId: "app_stripe", stripeProductId: "prod_W", stripePriceId: "price_1Web", amountMinor: 1200, currency: "jpy", interval: "month", intervalCount: 1 });
+    const r = await call("GET", PRICES, { product_id: "p_web" }, ext);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual([{ id: "price_1Web", currency: "JPY", amount_micros: 1_200_000_000 }]);
+    expect((await call("POST", CREATE, { product_id: "p_web" }, { ...ext, json: { prices: [{ currency: "USD", amount_micros: 1 }] } })).status).toBe(400);
   });
 
   it("deleting the product deletes its prices", async () => {
