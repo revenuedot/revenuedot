@@ -2226,6 +2226,16 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
       visual: "integrations",
     },
     {
+      topic: "MCP and AI tools",
+      cells: [
+        "An AI toolkit with plugins, skills, an MCP server and a CLI",
+        "An editor MCP server that lets coding agents build and change paywalls",
+        RD.mcp,
+      ],
+      sources: [RC_AI, SW_LLMS],
+      evidence: [E.rcAi, E.swEditorMcp],
+    },
+    {
       topic: "In-app currency and ad revenue",
       cells: [
         "Virtual currency in its docs and revenue reporting for in-app ads",
@@ -2304,6 +2314,10 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
     {
       q: "Which is cheapest: RevenueCat, Superwall or RevenueDot?",
       a: "Self-hosted RevenueDot, at $0. On hosted plans, RevenueDot Cloud is free to $10,000 a month and never more than $999: $450 at $100,000 and $999 at $1,000,000. RevenueCat costs $1,000 and $10,000 at those levels. Superwall costs between $0 and the same as RevenueCat, depending on how much revenue converts through its paywalls.",
+    },
+    {
+      q: "What is RevenueDot?",
+      a: "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. You point the SDK at RevenueDot Cloud, free up to $10,000 a month in tracked revenue, or at your own server, and you get entitlements, paywalls, experiments, charts and web checkout. The code is on GitHub at github.com/revenuedot/revenuedot.",
     },
     {
       q: "Is RevenueDot a typo for RevenueCat?",
