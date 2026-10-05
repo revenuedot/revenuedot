@@ -21,6 +21,7 @@ export const GET: APIRoute = () => {
     `- [In-app purchases: how they work](${u("/in-app-purchases")}): types, Apple and Google fees, store rules and what a backend does`,
     `- [Do I need RevenueCat for an iOS-only app?](${u("/do-i-need-revenuecat")}): when StoreKit 2 is enough and when you need a backend, with a decision table`,
     `- [Migrate from RevenueCat](${u("/migrate-from-revenuecat")}): importer, side-by-side run, the proxy line for every SDK`,
+    `- [RevenueCat MCP server, official and open source](${u("/revenuecat-mcp")}): what RevenueCat's docs say about its MCP server, and RevenueDot's open-source one with 38 tools, OAuth scopes and config for Claude Code, Claude, Codex, Cursor, ChatGPT and Windsurf`,
     `- [Self-host](${u("/self-host")}): Docker and Postgres setup and a production checklist`,
     `- [The open-source RevenueCat alternative](${u("/revenuecat-alternative")}): keep the RevenueCat SDK, change one line, own your data`,
     `- [Best RevenueCat alternatives in 2026](${u("/revenuecat-alternatives")}): ${ALTERNATIVES.map((a) => a.name).join(", ")}, with sources`,
