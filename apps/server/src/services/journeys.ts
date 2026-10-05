@@ -86,8 +86,12 @@ export const STEPS: Step[] = [
   { id: "store_keys", onboarding: true, freshFor: 10 * D, due: (f) => (f.sdkFirstAt && !f.storeConnected && !f.liveAt ? f.sdkFirstAt + D : null) },
   { id: "connect_app", onboarding: true, freshFor: 10 * D,
     due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
-  // One self-serve nudge on day 10 to anyone whose app has not connected (migrators who have not imported yet get none).
-  { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt && !(migrating(f) && !f.rcImportAt) ? f.createdAt + 10 * D : null) },
+  // Building an app: the store is connected, but there is no paywall and no sale yet.
+  { id: "paywall", onboarding: true, freshFor: 10 * D,
+    due: (f) => (!migrating(f) && f.sdkFirstAt && f.storeConnected && !f.paywallPublishedAt && !f.liveAt ? Math.max(f.sdkFirstAt + 3 * D, f.createdAt + 3 * D, (f.sent.get("store_keys") ?? 0) + 2 * D) : null) },
+  // One email to anyone stuck, matched to their step: switchers who never imported (day 3), builders whose app never connected (day 5).
+  { id: "need_hand", onboarding: true, freshFor: 6 * D,
+    due: (f) => (f.liveAt || f.sdkFirstAt ? null : migrating(f) ? (f.rcImportAt ? null : f.createdAt + 3 * D) : f.createdAt + 5 * D) },
 ];
 
 /** Hour (0–23) and weekday (0 = Sunday) in a time zone; an unknown zone falls back to the default. */

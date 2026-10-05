@@ -53,16 +53,26 @@ describe("picking the step", () => {
     expect(pickStep(facts({ createdAt: created, sent: welcomed }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ createdAt: created, sent: welcomed, firstAppAt: created, testPurchaseAt: WED - 21 * H }), WED, cfg)).toBe("connect_app");
     expect(pickStep(facts({ createdAt: created, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 25 * H, sdk: { platform: "Flutter", version: "9.6.1" } }), WED, cfg)).toBe("store_keys");
-    // Store connected: nothing more to say until the first sale.
-    expect(pickStep(facts({ createdAt: WED - 5 * D, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 3 * D, storeConnected: true }), WED, cfg)).toBeNull();
+    // Store connected and no paywall: the paywall email, but not for someone switching (they already have one).
+    const ready = { createdAt: WED - 5 * D, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 3 * D - H, storeConnected: true };
+    expect(pickStep(facts(ready), WED, cfg)).toBe("paywall");
+    expect(pickStep(facts({ ...ready, paywallPublishedAt: WED - D }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...ready, path: "revenuecat" }), WED, cfg)).toBeNull();
+    // The paywall email waits two days after the store email.
+    expect(pickStep(facts({ ...ready, sent: sent(["welcome", WED - 5 * D], ["store_keys", WED - D]) }), WED, cfg)).toBeNull();
   });
 
-  it("offers a call once, on day 10, to someone whose app never connected", () => {
-    const f = facts({ createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D]) });
-    expect(pickStep(f, WED, cfg)).toBe("need_hand");
-    expect(pickStep({ ...f, sent: sent(["welcome", WED - 10 * D], ["need_hand", WED - H]) }, WED, cfg)).toBeNull();
-    expect(pickStep({ ...f, sdkFirstAt: WED - 2 * D, storeConnected: true }, WED, cfg)).toBeNull();
+  it("sends one email matched to where someone is stuck: day 5 for builders, day 3 for switchers who never imported", () => {
+    const builder = facts({ createdAt: WED - 5 * D - H, sent: sent(["welcome", WED - 5 * D]) });
+    expect(pickStep(builder, WED, cfg)).toBe("need_hand");
+    expect(pickStep({ ...builder, createdAt: WED - 4 * D }, WED, cfg)).toBeNull();
+    expect(pickStep({ ...builder, sent: sent(["welcome", WED - 5 * D], ["need_hand", WED - H]) }, WED, cfg)).toBeNull();
+    expect(pickStep({ ...builder, sdkFirstAt: WED - 2 * D, storeConnected: true, paywallPublishedAt: WED - D }, WED, cfg)).toBeNull();
+    const switcher = facts({ path: "revenuecat", createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D]) });
+    expect(pickStep(switcher, WED, cfg)).toBe("need_hand");
+    expect(pickStep({ ...switcher, rcImportAt: WED - 2 * D, sent: sent(["welcome", WED - 3 * D], ["side_by_side", WED - D - H]) }, WED, cfg)).toBeNull();
   });
+
 
   it("never nudges for a step already done", () => {
     const f = facts({ createdAt: WED - 2 * D, sent: sent(["welcome", WED - 2 * D]), testPurchaseAt: WED - 30 * H, firstAppAt: WED - 31 * H, sdkFirstAt: WED - 2 * H });
@@ -74,8 +84,8 @@ describe("picking the step", () => {
     const base = { createdAt: WED - 2 * D, sent: sent(["welcome", WED - 2 * D]) };
     expect(pickStep(facts({ ...base, path: "revenuecat" }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...base, rcImportAt: WED - 25 * H, firstAppAt: WED - D }), WED, cfg)).toBe("side_by_side");
-    // No import after 10 days: no "need help" offer either, since they chose to move from RevenueCat on their own pace.
-    expect(pickStep(facts({ path: "revenuecat", createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D]) }), WED, cfg)).toBeNull();
+    // Never the new-developer emails: no connect_app even with an app and a test purchase.
+    expect(pickStep(facts({ ...base, path: "revenuecat", firstAppAt: WED - D, testPurchaseAt: WED - 21 * H }), WED, cfg)).toBeNull();
   });
 
   it("sends the cutover email a week after a migrator's first live sale, before anything else", () => {
@@ -321,6 +331,21 @@ describe("templates", () => {
       expect(m.text, step).not.toMatch(/\bKai\b|Founder/);
       expect(m.html, step).toMatch(/Questions\?|The RevenueDot team/);
       for (const [, url] of m.html.matchAll(/href="(https:\/\/(?:app\.)?revenuedot\.app\/(?!auth\/)[^"]*)"/g)) expect(url, step).toContain("utm_content=" + step);
+    }
+  });
+
+  it("never mentions RevenueCat to someone who is not switching, and uses plain characters only", () => {
+    const base = { app: "https://app.revenuedot.app", first: "Sam", projectId: "p", projectName: "Notes", unsubscribeUrl: "https://app.revenuedot.app/auth/journeys/unsubscribe/x",
+      sdk: { platform: "Flutter", version: "9.6.1" }, sale: { product: "pro_annual", amount: "$39.99", country: "Germany" }, overTracked: 12_000, overMonth: "September",
+      bills: { revenuedot: 10, revenuecat: 120 }, testPurchase: true };
+    for (const step of STEP_IDS.filter((x) => !["side_by_side", "cutover"].includes(x))) {
+      const m = journeyEmail({ ...base, step, migrating: false });
+      const text = step === "welcome" ? m.text.replace("Switching from RevenueCat? Start here", "") : m.text;
+      expect(`${m.subject}\n${text}`, step).not.toMatch(/RevenueCat/);
+    }
+    for (const step of STEP_IDS) for (const migrating of [false, true]) {
+      const m = journeyEmail({ ...base, step, migrating });
+      expect(`${m.subject}${m.text}${m.html}`, step).not.toMatch(/[^\x00-\x7F]/);
     }
   });
 
