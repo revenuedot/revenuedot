@@ -7,6 +7,7 @@
     "SPM https://github.com/revenuedot/purchases-ios (products RevenueCat, RevenueCatUI), tags <version>-revenuedot"
   ],
   "rules": [
+    { "type": "delete", "files": [".github/workflows/lock.yml"], "note": "RevenueCat housekeeping: dessant/lock-threads v2 rejects GitHub's current 100+ character tokens, so the daily run failed in every fork" },
     {
       "type": "context7",
       "file": "context7.json",

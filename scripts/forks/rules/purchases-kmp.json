@@ -3,6 +3,7 @@
   "upstream": "https://github.com/RevenueCat/purchases-kmp",
   "publishes": ["Maven Central app.revenuedot.purchases:purchases-kmp-core, -ui, -models, -mappings, -either, -result (same artifact ids, Kotlin packages stay com.revenuecat.purchases.kmp.*)"],
   "rules": [
+    { "type": "delete", "files": [".github/workflows/main.yml"], "note": "RevenueCat's Gradle dependency-graph submission; the dependency graph is off for our repo, so every push to main failed" },
     {
       "type": "context7",
       "file": "context7.json",
