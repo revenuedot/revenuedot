@@ -183,7 +183,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     blocks: [
       { t: "lead", text: "RevenueDot runs your app's in-app purchases and subscriptions on the App Store, Google Play and the web. It checks every purchase with the store, unlocks paid features in your app and shows you the revenue." },
       { t: "picture", video: "first-purchase", shot: "checklist", caption: "A first purchase, from an empty project to a paying test customer." },
-      { t: "p", text: "Start with a test purchase from the dashboard. It needs no App Store or Google Play account, and Cloud is free until your apps make $10,000 a month." },
+      { t: "p", text: "Start with a test purchase from the dashboard. It needs no App Store or Google Play account, and you pay nothing until your apps make $10,000 a month." },
       { t: "button", label: "Make your first test purchase", url: dash(c, "/overview"), secondary: { label: "Switching from RevenueCat? Start here", url: c.pathUrl?.("revenuecat") ?? docs("migrate") } },
     ],
   }),
@@ -269,7 +269,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { t: "lead", text: "Your app talks to RevenueDot, but no store is connected yet, so RevenueDot can't check real purchases. Each app's page in the dashboard lists exactly what is missing, and the store guides walk through every field." },
       { t: "picture", shot: "app-store", href: dash(c, "/apps") }], "Connect my store", dash(c, "/apps"));
     if (p.testPurchase || p.store || c.appCreated) return stuck("Let your AI coding tool add RevenueDot", "Paste one prompt into Claude Code, Cursor or Codex.", [
-      { t: "lead", text: `Your app hasn't connected to ${proj(c)} yet. If you use an AI coding tool, paste this prompt and it reads our setup guide and adds RevenueDot to your app:` },
+      { t: "lead", text: `Your app hasn't connected to RevenueDot yet. If you use an AI coding tool, paste this prompt and it reads our setup guide and adds RevenueDot to your app:` },
       { t: "prompts", items: [`${p.store ? "Move my app's in-app purchases to RevenueDot" : "Add in-app purchases to my app with RevenueDot"}. Read https://revenuedot.app/llms.txt, follow the setup for my platform, and use the public API key I copy from the RevenueDot dashboard.`] },
       { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "Copy your public API key here." }], "Open the setup guide", docs("getting-started/connect-your-app"));
     return stuck("Your first test purchase takes five minutes", "No App Store or Google Play account needed.", [
