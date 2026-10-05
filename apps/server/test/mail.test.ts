@@ -119,7 +119,7 @@ describe("templates", () => {
       // One remote image is allowed: the fixed brand lockup. No per-recipient URL, no query string, no tracking pixel.
       const imgs = [...m.html.matchAll(/<img[^>]*>/gi)].map((x) => x[0]);
       expect(imgs).toHaveLength(1);
-      expect(imgs[0]).toContain('src="https://revenuedot.app/brand/revenuedot-lockup-black@2x.png"');
+      expect(imgs[0]).toContain('src="https://revenuedot.app/email/brand/revenuedot-lockup-email.png"');
       expect(imgs[0]).toContain('alt="RevenueDot"');
       expect(m.html).not.toMatch(/url\(|<script|pixel|\.gif|[?&]utm_|track/i);
       expect(m.html).toContain("#0A0A0A"); // the ink colour
