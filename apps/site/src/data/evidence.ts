@@ -1166,6 +1166,12 @@ export const EVIDENCE: Evidence[] = [
     full: asset("iaphub", "home-full-1-2026-10-04.png"),
     fullParts: [asset("iaphub", "home-full-1-2026-10-04.png"), asset("iaphub", "home-full-2-2026-10-04.png")],
     crops: [
+      {
+        claim: "hero",
+        file: asset("iaphub", "home-hero-2026-10-04.png"),
+        alt: "IAPHUB homepage hero: 'The easiest in-app purchase SDK that just works, on all platforms'.",
+        caption: "IAPHUB homepage, captured 2026-10-04: Homepage hero.",
+      },
     ],
   },
   {
