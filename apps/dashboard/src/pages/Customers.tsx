@@ -98,9 +98,13 @@ export function Customers() {
   }, [q]);
   useEffect(() => { if (!after) setTrail([]); }, [after]);
 
-  const audiences = useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
+  // The Sandbox list asks as a sandbox request (environment=sandbox), which Cloud's go-live gate always lets through.
+  const sandbox = list === "sandbox";
+  const sbx = sandbox ? "environment=sandbox" : "";
+  const audiences = useQuery({ queryKey: ["audiences", pid, sandbox], enabled: !!pid, meta: { gate: "ignore" }, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences${sbx ? `?${sbx}` : ""}`)).items });
   const params = (paged: boolean) => {
     const p = new URLSearchParams({ list });
+    if (sandbox) p.set("environment", "sandbox");
     if (applied.groups.length) p.set("rules", JSON.stringify(applied));
     if (q) p.set("search", q);
     if (sortKey) { p.set("sort", sortKey); p.set("direction", direction); }
@@ -112,7 +116,7 @@ export function Customers() {
     queryFn: () => api<ListResp>(`${v2(pid)}/customer_lists?${params(true)}`) });
   // A whole store transaction ID (or alias) that the list search does not cover: RevenueCat's exact search.
   const exact = useQuery({ queryKey: ["customer-exact", pid, q], enabled: !!q && res.data?.items.length === 0 && !after,
-    queryFn: async () => (await api<List<Customer>>(`${v2(pid)}/customers?search=${encodeURIComponent(q)}&limit=1`)).items[0] ?? null });
+    queryFn: async () => (await api<List<Customer>>(`${v2(pid)}/customers?search=${encodeURIComponent(q)}&limit=1${sbx ? `&${sbx}` : ""}`)).items[0] ?? null });
 
   const setParams = (patch: Record<string, string | null>) => {
     const n = new URLSearchParams(sp);
@@ -170,7 +174,7 @@ export function Customers() {
 
   const nextCursor = res.data?.next_page ? new URL(res.data.next_page, window.location.origin).searchParams.get("starting_after") : null;
   const page = trail.length + 1;
-  const customerUrl = (id: string) => `/projects/${pid}/customers/${encodeURIComponent(id)}`;
+  const customerUrl = (id: string) => `/projects/${pid}/customers/${encodeURIComponent(id)}${sbx ? `?${sbx}` : ""}`;
   const to = (r: Row) => customerUrl(r.id);
   const open = (id: string) => (e: MouseEvent) => { e.stopPropagation(); nav(customerUrl(id)); };
   const s = res.data?.summary;
@@ -212,7 +216,7 @@ export function Customers() {
   return (
     <Shell title="Customers">
       <div className="page">
-        <PageHead title="Customers" sub="Everyone who has opened your app with the SDK, most recently seen first. Click a column to sort by it. Pick a list, filter it, save it as an audience or export it." />
+        <PageHead title="Customers" sub="Everyone who has opened your app with the SDK, most recently seen first. Click a column to sort by it. Pick a list, filter it, save it as an audience or export it." sandbox={() => pickList("sandbox")} />
         <div className="integ cust">
           <nav className="rail" aria-label="Customer lists">
             {BUILT_IN.map((b) => <button key={b.id} type="button" aria-pressed={list === b.id} onClick={() => pickList(b.id)}>{b.label}</button>)}

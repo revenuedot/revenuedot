@@ -13,7 +13,8 @@ import { Checks, ROOT, cleanupStripe, forward, listenSecret, payCheckout, signUp
 const c = new Checks("real-stripe-billing");
 const key = testKey("REVENUEDOT_BILLING_STRIPE_SECRET_KEY");
 const S = stripeApi(key);
-const price = process.env.REVENUEDOT_BILLING_PRICE_STANDARD ?? "";
+// Pro's metered price (REVENUEDOT_BILLING_PRICE_STANDARD is its old name and still read).
+const price = process.env.REVENUEDOT_BILLING_PRICE_PRO ?? process.env.REVENUEDOT_BILLING_PRICE_STANDARD ?? "";
 const stamp = Date.now().toString(36);
 const DAY = 86400;
 const startedAt = Math.floor(Date.now() / 1000) - 5;
@@ -44,7 +45,7 @@ const meterCents = async (customer: string, meterId: string) => {
 async function main() {
   const whsec = listenSecret(key);
   const stack = await startStack("rd_stripe_real_cloud", PORT, {
-    REVENUEDOT_EDITION: "cloud", REVENUEDOT_BILLING_STRIPE_SECRET_KEY: key, REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET: whsec, REVENUEDOT_BILLING_PRICE_STANDARD: price,
+    REVENUEDOT_EDITION: "cloud", REVENUEDOT_BILLING_STRIPE_SECRET_KEY: key, REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET: whsec, REVENUEDOT_BILLING_PRICE_PRO: price,
   });
   const fwd = forward(key, `${stack.base}/v2/billing/stripe/webhook`);
   const clocks: string[] = [];
@@ -53,16 +54,18 @@ async function main() {
     const price0 = await S("GET", `/v1/prices/${price}`);
     const meterId = price0.recurring.meter as string;
 
-    c.begin("Cloud Free, tracked revenue and the real meter");
+    c.begin("No plan (building), tracked revenue and the real meter");
     const dev = await signUp(stack.base, "clouddev");
     let b = await billing(dev);
-    c.has("starts on Cloud Free, Stripe ready", b, { account: { plan: "free", status: "none" }, stripe_ready: true });
+    c.has("starts with no plan, building, Stripe ready", b, { account: { plan: "none", status: "none" }, gate: { stage: "building" }, stripe_ready: true });
     await seedRevenue(stack, dev, 12_000);
     await openGate(stack);
     b = await until(async () => { const r = await billing(dev); return r.usage.tracked_revenue_usd === 12_000 ? r : null; }, { timeoutMs: 100_000, everyMs: 3000 });
-    c.has("the tick metered $12,000; Standard would cost $10.00", b, { usage: { tracked_revenue_usd: 12_000, standard_bill_usd: 10, bill_usd: 0 }, flags: ["over_free_limit"] });
-    const mail = await until(async () => stack.mails.find((m) => m.to.includes(dev.email) && /passed|Cloud Free/i.test(m.subject)), { timeoutMs: 10_000 });
-    c.check("the 'passed Cloud Free' email arrived", !!mail, stack.mails.map((m) => m.subject));
+    c.has("the tick metered $12,000; no bill without a plan, Pro would cost $10.00", b, { usage: { tracked_revenue_usd: 12_000, pro_bill_usd: 10, bill_usd: 0, free_up_to_usd: 10_000 } });
+    // The go-live gate may already have seen the sale (it looks every 10 minutes): building or grace, never paused yet.
+    c.check("the account is building or in its 14 days, nothing paused", ["building", "grace"].includes(b.gate.stage) && b.flags.every((f: string) => f === "live_grace"), { gate: b.gate, flags: b.flags });
+    await sleep(3000);
+    c.check("no Free usage email any more", !stack.mails.some((m) => m.to.includes(dev.email) && /Cloud Free|passed RevenueDot/i.test(m.subject)), stack.mails.map((m) => m.subject));
 
     // A customer on a Stripe test clock so month-end can really happen. RevenueDot reuses the customer saved on the account.
     const clk = await S("POST", "/v1/test_helpers/test_clocks", { frozen_time: Math.floor(Date.now() / 1000), name: `rd-billing-${stamp}` });
@@ -71,22 +74,24 @@ async function main() {
     const cu = await S("POST", "/v1/customers", { email: dev.email, name: "clouddev", test_clock: clk.id, metadata: { revenuedot_user_id: userId } });
     await stack.sql`INSERT INTO billing_accounts (user_id, stripe_customer_id, created_at, updated_at) VALUES (${userId}, ${cu.id}, now(), now())`;
 
-    c.begin("Upgrade through real Stripe Checkout");
-    const co = await dev.call("POST", "/v2/billing/checkout", { plan: "standard" });
+    c.begin("Start Pro through real Stripe Checkout");
+    const co = await dev.call("POST", "/v2/billing/checkout", { plan: "pro" });
     c.check("checkout answers with a Stripe-hosted URL", co.status === 200 && /^https:\/\/checkout\.stripe\.com\//.test(co.body?.url ?? ""), co);
     const cs = await S("GET", `/v1/checkout/sessions/${co.body.id}`);
-    c.has("session: subscription mode, metered Standard price, our customer, user id as reference", cs, { mode: "subscription", customer: cu.id, client_reference_id: userId, livemode: false });
+    c.has("session: subscription mode, our customer, user id as reference, card always collected, plan pro", cs, { mode: "subscription", customer: cu.id, client_reference_id: userId, livemode: false, payment_method_collection: "always", metadata: { plan: "pro" } });
+    c.check("session: the $0-today note under the button", /^\$0 today\./.test(cs.custom_text?.submit?.message ?? ""), cs.custom_text);
     const paid = await payCheckout(co.body.url, { email: dev.email, expectUrl: /localhost:5720\/account\/billing/ });
     c.check("Checkout paid with 4242 and returned to the Billing page", /checkout%3Dsuccess|checkout=success/.test(paid.finalUrl), paid);
-    const std = await until(async () => { const a = await acct(stack); return a?.plan === "standard" && a.status === "active" ? a : null; }, { timeoutMs: 30_000 });
-    c.check("real webhooks made the account Standard and active", !!std, await acct(stack));
+    const std = await until(async () => { const a = await acct(stack); return a?.plan === "pro" && a.status === "active" ? a : null; }, { timeoutMs: 30_000 });
+    c.check("real webhooks started Pro (active)", !!std, await acct(stack));
     const sub = await S("GET", `/v1/subscriptions/${std?.stripe_subscription_id}`);
-    c.has("Stripe subscription: active, the Standard price, anchored to the 1st of next month, no trial", sub, { status: "active", customer: cu.id });
+    c.has("Stripe subscription: active, the Pro price, anchored to the 1st of next month, no trial, plan pro", sub, { status: "active", customer: cu.id, metadata: { plan: "pro" } });
     const anchor = new Date(sub.billing_cycle_anchor * 1000);
     c.check("billing cycle anchor is the 1st of next month 00:00 UTC", anchor.getUTCDate() === 1 && anchor.getUTCHours() === 0 && anchor > new Date(), anchor.toISOString());
     c.eq("exactly one item at the configured price", sub.items.data.map((i: any) => i.price.id), [price]);
-    const again = await dev.call("POST", "/v2/billing/checkout", { plan: "standard" });
-    c.eq("a second Checkout while Standard is 409", again.status, 409);
+    const again = await dev.call("POST", "/v2/billing/checkout", { plan: "pro" });
+    c.eq("a second Checkout while on Pro is 409", again.status, 409);
+    c.eq("Pro's old name answers the same", (await dev.call("POST", "/v2/billing/checkout", { plan: "standard" })).status, 409);
 
     c.begin("Metered usage reported to the real Billing Meter");
     const metered = await until(async () => (await stack.sql`SELECT cents FROM billing_meter_reports`)[0] ?? null, { timeoutMs: 30_000 });
@@ -123,13 +128,14 @@ async function main() {
     const list = (await S("GET", "/v1/invoices", { customer: cu.id, limit: 5 })).data;
     console.log("   invoices after 3 days and an hour:", list.map((i: any) => `${i.status}/${i.amount_due}/attempts ${i.attempt_count}`).join(", "));
     const failed = await until(async () => { const a = await acct(stack); return a?.status === "past_due" ? a : null; }, { timeoutMs: 60_000 });
-    c.check("invoice.payment_failed made the account past_due (still Standard)", !!failed && failed.plan === "standard", await acct(stack));
+    c.check("invoice.payment_failed made the account past_due (still Pro)", !!failed && failed.plan === "pro", await acct(stack));
     const invs = await stack.sql`SELECT id, status, amount_due, amount_paid FROM billing_invoices ORDER BY created_at`;
     console.log("   invoices:", JSON.stringify(invs));
     const bb = await billing(dev);
     c.check("Billing page flags past_due and lists the invoice", bb.flags.includes("past_due") && bb.invoices.length >= 1, { flags: bb.flags, invoices: bb.invoices.length });
-    const failMail = await until(async () => stack.mails.find((m) => m.to.includes(dev.email) && /payment|failed/i.test(m.subject) && !/Cloud Free|capped/i.test(m.subject)), { timeoutMs: 15_000 });
-    c.check("the failed-payment email arrived (once)", !!failMail && stack.mails.filter((m) => /failed|payment/i.test(m.subject) && !/Free|cap/i.test(m.subject)).length >= 1, stack.mails.map((m) => m.subject));
+    const failMail = await until(async () => stack.mails.find((m) => m.to.includes(dev.email) && m.subject === "Your RevenueDot payment failed"), { timeoutMs: 15_000 });
+    c.check("the failed-payment email arrived (once)", !!failMail && stack.mails.filter((m) => m.to.includes(dev.email) && m.subject === "Your RevenueDot payment failed").length === 1, stack.mails.map((m) => m.subject));
+    c.check("past due keeps Pro: live data still opens", (await dev.call("GET", `/v2/projects/${dev.projectId}/metrics/overview`)).status === 200);
     const stillWorks = await fetch(`${stack.base}/v1/health`);
     c.check("apps keep working while past_due", stillWorks.ok);
     const open = (await S("GET", "/v1/invoices", { customer: cu.id, status: "open" })).data[0];
@@ -139,7 +145,7 @@ async function main() {
     await S("POST", `/v1/invoices/${open.id}/pay`, { payment_method: good.id });
     const rec = await until(async () => { const a = await acct(stack); return a?.status === "active" ? a : null; }, { timeoutMs: 60_000 });
     c.check("paying the invoice returns the account to active", !!rec, await acct(stack));
-    const recMail = await until(async () => stack.mails.find((m) => m.to.includes(dev.email) && /went through|paid|thank|recover/i.test(m.subject) && !/Cloud Free|capped/i.test(m.subject)), { timeoutMs: 15_000 });
+    const recMail = await until(async () => stack.mails.find((m) => m.to.includes(dev.email) && m.subject === "Your RevenueDot payment went through"), { timeoutMs: 15_000 });
     c.check("the payment-recovered email arrived", !!recMail, stack.mails.map((m) => m.subject));
     const paidInv = await stack.sql`SELECT status, amount_paid FROM billing_invoices WHERE id = ${open.id}`;
     c.check("the invoice is stored as paid", paidInv[0]?.status === "paid" && paidInv[0]?.amount_paid === 99_900, paidInv);
@@ -148,18 +154,23 @@ async function main() {
     const portal = await dev.call("POST", "/v2/billing/portal");
     c.check("portal answers with a real Stripe billing portal link", portal.status === 200 && /^https:\/\/billing\.stripe\.com\//.test(portal.body?.url ?? ""), portal);
     const portalPage = await payCheckoutLike(portal.body.url);
-    c.check("the portal page opens and shows this customer's plan", /Standard|Cancel plan|Update payment|Billing/i.test(portalPage), portalPage.slice(0, 200));
+    c.check("the portal page opens and shows this customer's plan", /Pro|Cancel plan|Update payment|Billing/i.test(portalPage), portalPage.slice(0, 200));
     // Cancel at period end (what the portal's Cancel plan does), then cancel now.
     await S("POST", `/v1/subscriptions/${std!.stripe_subscription_id}`, { cancel_at_period_end: true });
     const canc = await until(async () => { const a = await acct(stack); return a?.cancel_at ? a : null; }, { timeoutMs: 30_000 });
-    c.check("cancel at period end shows cancel_at and stays Standard until then", !!canc && canc.plan === "standard", await acct(stack));
+    c.check("cancel at period end shows cancel_at and stays on Pro until then", !!canc && canc.plan === "pro", await acct(stack));
     await S("DELETE", `/v1/subscriptions/${std!.stripe_subscription_id}`);
     const gone = await until(async () => { const a = await acct(stack); return a?.status === "canceled" ? a : null; }, { timeoutMs: 30_000 });
-    c.check("cancelling now puts the account back on Free (canceled)", !!gone && gone.plan === "free", await acct(stack));
+    c.check("cancelling now leaves the account with no plan (canceled)", !!gone && gone.plan === "none", await acct(stack));
     const after = await billing(dev);
-    c.check("Billing page shows Free again, apps unaffected", after.account.plan === "free" && (await fetch(`${stack.base}/v1/health`)).ok, after.account);
+    c.check("Billing page shows no plan again, apps unaffected", after.account.plan === "none" && (await fetch(`${stack.base}/v1/health`)).ok, after.account);
+    // A live account whose Pro ended goes straight to paused once its 14 days are used (here moved into the past in SQL).
+    await stack.sql`UPDATE billing_accounts SET live_at = coalesce(live_at, now() - interval '30 days'), grace_ends_at = now() - interval '1 minute' WHERE stripe_customer_id = ${cu.id}`;
+    const pausedRead = await dev.call("GET", `/v2/projects/${dev.projectId}/metrics/overview`);
+    c.check("live data answers 402 plan_required after Pro ends", pausedRead.status === 402 && pausedRead.body?.type === "plan_required", pausedRead.body);
+    c.check("the SDK and health still answer", (await fetch(`${stack.base}/v1/health`)).ok);
 
-    c.begin("Stripe gives up: retries run out, the account goes back to Free (second account, test clock)");
+    c.begin("Stripe gives up: retries run out and Pro ends (second account, test clock)");
     const dev2 = await signUp(stack.base, "dunnydev");
     await seedRevenue(stack, dev2, 20_000); await openGate(stack);
     await until(async () => (await billing(dev2)).usage.tracked_revenue_usd === 20_000, { timeoutMs: 100_000, everyMs: 3000 });
@@ -168,11 +179,11 @@ async function main() {
     const user2 = (await stack.sql`SELECT id FROM users WHERE email = ${dev2.email}`)[0]!.id as string;
     const cu2 = await S("POST", "/v1/customers", { email: dev2.email, test_clock: clk2.id, metadata: { revenuedot_user_id: user2 } });
     await stack.sql`INSERT INTO billing_accounts (user_id, stripe_customer_id, created_at, updated_at) VALUES (${user2}, ${cu2.id}, now(), now())`;
-    const co2 = await dev2.call("POST", "/v2/billing/checkout", { plan: "standard" });
+    const co2 = await dev2.call("POST", "/v2/billing/checkout", { plan: "pro" });
     const paid2 = await payCheckout(co2.body.url, { email: dev2.email, expectUrl: /localhost:5720\/account\/billing/ });
     c.check("second account paid through Checkout and returned to the success URL", /checkout%3Dsuccess|checkout=success/.test(paid2.finalUrl), paid2);
     const std2 = await until(async () => { const r = await stack.sql`SELECT * FROM billing_accounts WHERE user_id = ${user2}`; return r[0]?.status === "active" ? r[0] : null; }, { timeoutMs: 30_000 });
-    c.check("second account is Standard and active", !!std2, std2);
+    c.check("second account is on Pro and active", !!std2 && std2.plan === "pro", std2);
     const sub2 = await S("GET", `/v1/subscriptions/${std2!.stripe_subscription_id}`);
     const bad2 = await S("POST", "/v1/payment_methods/pm_card_chargeCustomerFail/attach", { customer: cu2.id });
     await S("POST", `/v1/customers/${cu2.id}`, { invoice_settings: { default_payment_method: bad2.id } });
@@ -188,10 +199,10 @@ async function main() {
       await sleep(4000);
       const st = (await S("GET", `/v1/subscriptions/${std2!.stripe_subscription_id}`)).status;
       console.log(`   +${3 + d} days after month end: Stripe says ${st}`);
-      if (st === "unpaid" || st === "canceled") { final = await until(async () => { const r = (await stack.sql`SELECT plan, status FROM billing_accounts WHERE user_id = ${user2}`)[0] as any; return r?.plan === "free" ? r : null; }, { timeoutMs: 30_000 }); break; }
+      if (st === "unpaid" || st === "canceled") { final = await until(async () => { const r = (await stack.sql`SELECT plan, status FROM billing_accounts WHERE user_id = ${user2}`)[0] as any; return r?.plan === "none" ? r : null; }, { timeoutMs: 30_000 }); break; }
     }
-    c.check("when Stripe gives up the account is back on Free (unpaid or canceled)", !!final && ["unpaid", "canceled"].includes(final.status), final);
-    c.check("an 'unpaid' email went out", !!stack.mails.find((m) => m.to.includes(dev2.email) && /unpaid|stopped|ended|failed/i.test(m.subject) && !/Free|cap/i.test(m.subject)), stack.mails.filter((m) => m.to.includes(dev2.email)).map((m) => m.subject));
+    c.check("when Stripe gives up the account has no plan (unpaid or canceled)", !!final && ["unpaid", "canceled"].includes(final.status), final);
+    c.check("an 'unpaid' email went out", !!stack.mails.find((m) => m.to.includes(dev2.email) && (m.subject === "Your RevenueDot Pro plan ended" || /unpaid|stopped|ended|failed/i.test(m.subject))), stack.mails.filter((m) => m.to.includes(dev2.email)).map((m) => m.subject));
     c.check("the second customer's apps still work", (await fetch(`${stack.base}/v1/health`)).ok);
 
     c.begin("Webhook endpoint safety");

@@ -13,7 +13,7 @@ import type { Deps } from "../../context.js";
 export type ErrorType =
   | "parameter_error" | "resource_already_exists" | "resource_missing" | "idempotency_error" | "rate_limit_error"
   | "authentication_error" | "authorization_error" | "store_error" | "server_error" | "resource_locked_error"
-  | "unprocessable_entity_error" | "invalid_request" | "entity_references_archived_entities";
+  | "unprocessable_entity_error" | "invalid_request" | "entity_references_archived_entities" | "plan_required";
 
 export class V2Error extends Error {
   constructor(public status: ContentfulStatusCode, public type: ErrorType, message: string, public param?: string, public retryable = false) {
@@ -25,7 +25,9 @@ export class V2Error extends Error {
 const docUrl = (type: ErrorType) => `https://revenuedot.app/docs/api/errors#${type.replace(/_/g, "-")}`;
 
 export function v2ErrorBody(e: V2Error) {
-  return { object: "error" as const, type: e.type, message: e.message, ...(e.param ? { param: e.param } : {}), doc_url: docUrl(e.type), retryable: e.retryable };
+  return { object: "error" as const, type: e.type, message: e.message, ...(e.param ? { param: e.param } : {}), doc_url: docUrl(e.type), retryable: e.retryable,
+    // The go-live gate (live-gate.ts): where the owner starts Pro.
+    ...(e.type === "plan_required" ? { upgrade_url: "https://app.revenuedot.app/account/billing" } : {}) };
 }
 
 export function v2ErrorResponse(c: Context, e: unknown) {

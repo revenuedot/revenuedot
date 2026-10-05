@@ -7,7 +7,7 @@ Web analytics and revenue attribution for RevenueDot Cloud run on [DataFast](htt
 |---|---|
 | `revenuedot.app` pages and docs | `apps/site/src/components/Analytics.astro` (in `Base.astro`): the script, a goal for each tracked link, `data-fast-scroll` on sections. Constants in `apps/site/src/datafast.ts` |
 | `app.revenuedot.app` dashboard | `apps/dashboard/src/lib/analytics.ts`: loads the script only on that host, identifies the user, records a goal for each step (`goalFor`) after the API call succeeds |
-| Stripe Checkout (Cloud Standard) | `apps/server/src/services/billing/stripe.ts` `datafastIds` and `createCheckout`: the visitor and session cookies go into the session and subscription metadata |
+| Stripe Checkout (Pro) | `apps/server/src/services/billing/stripe.ts` `datafastIds` and `createCheckout`: the visitor and session cookies go into the session and subscription metadata |
 | Crawlers | `apps/site/worker/bots.ts`: the site Worker tells DataFast when a known AI, search or training crawler requests a page |
 
 ## Goals
@@ -23,7 +23,7 @@ Add a goal: dashboard step, one line in `STEPS` in `analytics.ts` (with a test i
 ## Stripe revenue attribution
 1. Done (2026-10-02): DataFast → Settings → Revenue → Stripe holds a restricted read key from RevenueDot's Stripe account (the Circo account). Live mode only; DataFast has no test mode.
 2. Checkout carries `datafast_visitor_id` and `datafast_session_id` in `metadata` and `subscription_data.metadata`. No webhook is needed on the DataFast side.
-3. Cloud Standard is billed monthly at the end of the month, so the first payment shows then; `subscription_started` shows at checkout.
+3. Pro is billed monthly at the end of the month, and it costs $0 until an account's apps make $10,000 a month, so the first payment shows only then; `subscription_started` shows at checkout.
 
 
 ## Cookies and Europe

@@ -14,7 +14,7 @@ import { notMoving } from "./archive/moving.js";
 import { processExports } from "./archive/export.js";
 import { dbStore } from "./archive/store.js";
 import { processServerMoves } from "./archive/server-move.js";
-import { runBilling } from "./billing/meter.js";
+import { runBilling, runGate } from "./billing/meter.js";
 import { runAlerts } from "./alerts.js";
 import { runAccountNotifications } from "./account-notifications.js";
 import { runJourneys } from "./journeys.js";
@@ -90,6 +90,11 @@ export interface TickOptions {
   edition?: "cloud" | "self-hosted";
   /** RevenueDot Cloud billing (prd/cloud-billing/PRD.md): metering, the Stripe meter and usage emails. Cloud only. */
   billing?: import("./billing/stripe.js").BillingConfig | null;
+  /**
+   * RevenueDot Cloud's go-live gate holds deliveries on this run even without `edition: "cloud"`: the Worker's
+   * request-kicked runs send new deliveries at once, so they must hold a paused account's first (services/billing/gate.ts).
+   */
+  liveGate?: boolean;
   /** Weekly summaries, experiment results and anomaly alerts (prd/account-settings §4) run here unless false. */
   accountNotifications?: boolean;
   /** Onboarding and growth emails to Cloud accounts (prd/onboarding-emails/PRD.md), every 5 minutes; null or unset: off. Cloud only. */
@@ -112,6 +117,12 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   let consumption = 0;
   if (opts.consumption !== false) {
     try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }); } catch (e) { console.error("tick: consumption information retries failed", e); }
+  }
+  // Cloud's go-live gate holds production deliveries of paused accounts and sends held ones once Pro starts, before anything
+  // goes out. Request-kicked runs (liveGate without the cloud edition) only hold and release; the cron does the rest.
+  let gate = 0;
+  if (opts.edition === "cloud" || opts.liveGate) {
+    try { gate = await runGate({ db, now, mailer: opts.mailer, publicUrl: opts.publicUrl, config: opts.billing ?? null, holdOnly: opts.edition !== "cloud" }); } catch (e) { console.error("tick: go-live gate failed", e); }
   }
   const sent = await deliverDue(db, fetchImpl, now, 50, 20_000, opts.signal);
   // Draining (SIGTERM): the long steps below (integrations, exports, AdMob, full exports and moves) wait for the next run.
@@ -218,7 +229,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, counts, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, counts, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, gate, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

@@ -4,9 +4,13 @@
  * e2e server (self-hosted) to it, and its Billing page runs against an in-process fake of RevenueDot's own Stripe account
  * (packages/contract/src/fake-billing-stripe.ts): Checkout and the Customer Portal are small local pages, and every
  * Stripe event reaches the webhook signed with the fake's secret. Stripe is never called.
- *   POST /__billing/meter     runs metering now (the Cloud tick does it hourly)
+ *   POST /__billing/meter     runs metering and the go-live gate's pass now (the Cloud tick does them hourly and every 10 minutes)
  *   POST /__billing/invoice   { email, outcome: "failed" | "paid" }: an invoice payment fails or succeeds
  *   POST /__billing/revenue   { email, usd }: a production App Store purchase of that amount in the account's first project
+ *   POST /__billing/gate      { email, stage: "grace" | "paused" | "building" }: puts the account in that go-live stage (its
+ *                             first live sale 2 days or 20 days ago), as the billing pass would after a live sale
+ *   POST /__billing/held      { email }: a production event whose delivery to the first webhook of the account's first project
+ *                             is held, as the gate holds deliveries of a paused account
  */
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -16,7 +20,7 @@ import { eq } from "drizzle-orm";
 import { openDb, schema } from "@revenuedot/db";
 import { createApp, defaultStores } from "@revenuedot/server";
 import type { Mailer } from "@revenuedot/server/mail/index.js";
-import { runBilling } from "@revenuedot/server/services/billing/meter.js";
+import { runBilling, runGate } from "@revenuedot/server/services/billing/meter.js";
 import { tick } from "@revenuedot/server/services/tick.js";
 import { FAKE_BILLING_KEY, FAKE_BILLING_PRICE, FAKE_BILLING_WEBHOOK_SECRET, FakeBillingStripe } from "../../../packages/contract/src/fake-billing-stripe.ts";
 
@@ -29,7 +33,7 @@ export async function startCloud(port: number, dist: string, mail: Mailer & { se
   const stripe = new FakeBillingStripe();
   stripe.checkoutUrl = `${base}/__billing/checkout/{id}`;
   stripe.portalUrl = `${base}/__billing/portal/{id}`;
-  const billing = { secretKey: FAKE_BILLING_KEY, webhookSecret: FAKE_BILLING_WEBHOOK_SECRET, priceStandard: FAKE_BILLING_PRICE, meterEvent: "revenuedot_cloud_bill_cents", live: false };
+  const billing = { secretKey: FAKE_BILLING_KEY, webhookSecret: FAKE_BILLING_WEBHOOK_SECRET, pricePro: FAKE_BILLING_PRICE, meterEvent: "revenuedot_cloud_bill_cents", live: false };
   const f: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     if (url.host === "api.stripe.com") return stripe.fetch(input, init);
@@ -49,7 +53,7 @@ export async function startCloud(port: number, dist: string, mail: Mailer & { se
   web.get("/__billing/checkout/:id", (c) => {
     const s = stripe.sessions.get(c.req.param("id"));
     if (!s) return c.text("No such checkout session", 404);
-    return c.html(page("Fake Stripe Checkout", `<p>RevenueDot Cloud Standard, billed monthly by usage.</p><pre data-session-metadata>${JSON.stringify({ metadata: s.metadata ?? {}, subscription: s.subscription_data?.metadata ?? {} })}</pre><form method="post"><button type="submit">Subscribe</button></form><p><a href="${s.cancel_url}">Back</a></p>`));
+    return c.html(page("Fake Stripe Checkout", `<p>RevenueDot Pro, billed monthly by usage. $0 today.</p><pre data-session-metadata>${JSON.stringify({ metadata: s.metadata ?? {}, subscription: s.subscription_data?.metadata ?? {} })}</pre><form method="post"><button type="submit">Subscribe</button></form><p><a href="${s.cancel_url}">Back</a></p>`));
   });
   web.post("/__billing/checkout/:id", async (c) => {
     const id = c.req.param("id");
@@ -69,7 +73,12 @@ export async function startCloud(port: number, dist: string, mail: Mailer & { se
     await send("customer.subscription.updated", stripe.updateSubscription(sub.id, { cancel_at_period_end: true }));
     return c.redirect(s.return_url, 303);
   });
-  web.post("/__billing/meter", async (c) => c.json({ work: await runBilling({ db, now: new Date(), fetch: f, mailer: mail, publicUrl: base, config: billing, force: true }), meter: stripe.meterEvents }));
+  // The billing pass and the go-live gate's pass (marks accounts that went live, sends the gate's emails), both now.
+  web.post("/__billing/meter", async (c) => {
+    const rt = { db, now: new Date(), fetch: f, mailer: mail, publicUrl: base, config: billing, force: true };
+    const work = await runBilling(rt) + await runGate(rt);
+    return c.json({ work, meter: stripe.meterEvents });
+  });
   web.post("/__billing/invoice", async (c) => {
     const b = await c.req.json() as { email: string; outcome: "failed" | "paid" };
     const [u] = await db.select().from(schema.users).where(eq(schema.users.email, b.email));
@@ -94,6 +103,30 @@ export async function startCloud(port: number, dist: string, mail: Mailer & { se
     await db.insert(schema.customers).values({ id: `cus_${id}`, projectId: p!.id, originalAppUserId: `buyer_${id}` });
     await db.insert(schema.transactions).values({ id: `txn_${id}`, projectId: p!.id, customerId: `cus_${id}`, store: "app_store", storeTransactionId: id, productIdentifier: "pro_yearly", kind: "purchase", isSandbox: false, purchasedAt: new Date(), revenueUsd: b.usd, priceAmount: b.usd, priceCurrency: "USD" });
     return c.json({ ok: true, project: p!.id });
+  });
+  web.post("/__billing/gate", async (c) => {
+    const b = await c.req.json() as { email: string; stage: "grace" | "paused" | "building" };
+    const [u] = await db.select().from(schema.users).where(eq(schema.users.email, b.email));
+    if (!u) return c.json({ error: "no such user" }, 404);
+    const now = Date.now(), DAY = 86_400_000;
+    const v = b.stage === "building" ? { liveAt: null, graceEndsAt: null }
+      : b.stage === "grace" ? { liveAt: new Date(now - 2 * DAY), graceEndsAt: new Date(now + 12 * DAY) }
+      : { liveAt: new Date(now - 20 * DAY), graceEndsAt: new Date(now - 6 * DAY) };
+    await db.insert(schema.billingAccounts).values({ userId: u.id, ...v, createdAt: new Date(), updatedAt: new Date() })
+      .onConflictDoUpdate({ target: schema.billingAccounts.userId, set: { ...v, updatedAt: new Date() } });
+    return c.json({ ok: true });
+  });
+  web.post("/__billing/held", async (c) => {
+    const b = await c.req.json() as { email: string };
+    const [u] = await db.select().from(schema.users).where(eq(schema.users.email, b.email));
+    const [p] = await db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+    const [w] = await db.select().from(schema.webhooks).where(eq(schema.webhooks.projectId, p!.id));
+    if (!w) return c.json({ error: "the project has no webhook" }, 404);
+    const eventId = crypto.randomUUID();
+    await db.insert(schema.events).values({ id: eventId, projectId: p!.id, type: "INITIAL_PURCHASE", environment: "production", payload: { type: "INITIAL_PURCHASE", environment: "PRODUCTION" }, eventTimestampMs: Date.now() });
+    const id = `whd_${crypto.randomUUID()}`;
+    await db.insert(schema.webhookDeliveries).values({ id, webhookId: w.id, eventId, status: "held", lastError: "Held: the project owner has no plan. Start Pro to send it." });
+    return c.json({ ok: true, id, webhook: w.id });
   });
   web.all("/*", async (c) => {
     const path = c.req.path;

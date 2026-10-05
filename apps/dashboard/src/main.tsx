@@ -18,14 +18,15 @@ import { ReceiveProject } from "./pages/ReceiveProject";
 import { routes } from "./routes";
 import { useMe } from "./components/Shell";
 import { ToastProvider } from "./components/ui";
-import { api } from "./lib/api";
+import { api, ApiError } from "./lib/api";
 import { initAnalytics } from "./lib/analytics";
 import { EnterpriseRoutes } from "./extensions";
 
 initAnalytics();
 // The theme, tint, currency and week start of the last visit, before the first paint (lib/prefs.ts).
 loadCachedPrefs();
-const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } } });
+// A 402 (Cloud's go-live gate, components/PlanRequired.tsx) answers the same until Pro starts: no retries.
+const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false, retry: (n, e) => !(e instanceof ApiError && e.status === 402) && n < 3 } } });
 
 function Home() {
   // Ask /auth/config first: /auth/me answers 401 when signed out, which the browser logs as an error.

@@ -7,7 +7,7 @@ import type { Deps } from "./context.js";
  *
  * A self-hosted server behaves exactly as it does without `ee/`: unless REVENUEDOT_LICENSE_KEY or REVENUEDOT_EE_DEV is
  * set, `loadExtensions` returns no extensions and never imports anything from `ee/`. RevenueDot Cloud always loads it:
- * there each organization's plan decides which features it has (Cloud Standard: organizations, custom roles, single
+ * there each organization's plan decides which features it has (Pro: organizations, custom roles, single
  * sign-on; Enterprise: all), so Free accounts see the features as locked rather than missing. Every hook below is optional and is
  * called only when an extension is loaded. This file is licensed under AGPL-3.0 with the rest of the core.
  */

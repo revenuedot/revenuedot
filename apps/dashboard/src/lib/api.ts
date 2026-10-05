@@ -15,6 +15,12 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
   if (!res.ok) {
     const msg = (data && typeof data === "object" && "message" in data ? String((data as { message: unknown }).message) : null) ?? `Request failed (${res.status})`;
+    // Cloud's go-live gate refused an edit (paywalls, experiments, targeting): the Shell explains it and offers Pro.
+    // Previews and estimates fail quietly in their own forms instead.
+    const method = (init.method ?? "GET").toUpperCase();
+    if (res.status === 402 && method !== "GET" && data && typeof data === "object" && (data as { type?: unknown }).type === "plan_required" && /^\/v2\/projects\/[^/]+\/(paywalls|experiments|targeting_rules|audiences)(\/|\?|$)/.test(path) && !/\/(preview|estimate)\b/.test(path) && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("rd:plan-required", { detail: msg }));
+    }
     throw new ApiError(res.status, msg, data);
   }
   trackRequest(init.method ?? "GET", path, init.json);

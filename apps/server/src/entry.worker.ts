@@ -61,6 +61,9 @@ async function runTick(env: Env, db: DB, why: string) {
       // Full exports, server-run moves and billing run from the cron only.
       archives: why === "cron", archiveStore: archiveStoreFor(env), edition: why === "cron" ? "cloud" : undefined,
       billing: billingConfigFromEnv(env as unknown as Record<string, string | undefined>),
+      // The go-live gate holds a paused account's new production deliveries on every run, kicked ones too: a kicked run
+      // sends them at once, before the next cron could hold them.
+      liveGate: true,
       // Onboarding and growth emails: REVENUEDOT_JOURNEYS=on turns them on (prd/onboarding-emails/PRD.md).
       journeys: journeyConfig(env as unknown as Record<string, string | undefined>),
     });

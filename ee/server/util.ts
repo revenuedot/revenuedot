@@ -41,9 +41,9 @@ export const FEATURE_NAMES: Record<Feature, string> = {
 };
 const PLURAL = new Set<Feature>(["organizations", "custom_roles", "compliance_exports"]);
 
-/** "Custom roles are part of Cloud Standard. Upgrade in Billing." The words the dashboard and the API use for a locked feature. */
+/** "Custom roles are part of Pro. Start Pro in Billing." The words the dashboard and the API use for a locked feature. */
 export function lockedMessage(f: Feature, plan: PlanId): string {
-  const where = plan === "standard" ? "Cloud Standard. Upgrade in Billing" : "Enterprise. Contact sales at https://revenuedot.app/contact-sales";
+  const where = plan === "pro" ? "Pro, which costs $0 until your apps make $10,000 a month. Start Pro in Billing" : "Enterprise. Contact sales at https://revenuedot.app/contact-sales";
   return `${FEATURE_NAMES[f]} ${PLURAL.has(f) ? "are" : "is"} part of ${where}.`;
 }
 

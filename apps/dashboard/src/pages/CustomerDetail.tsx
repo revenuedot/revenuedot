@@ -14,9 +14,10 @@
  *   in the currency the customer paid.
  */
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { Copy, Shell } from "../components/Shell";
+import { isPlanRequired, PlanSlot } from "../components/PlanRequired";
 import { Icon } from "../components/icons";
 import { ConfirmDialog, Dialog, EmptyState, EVENT_TONE, Field, Menu, Panel, Switch, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
@@ -40,14 +41,22 @@ const until = (d: (typeof DURATIONS)[number], from = Date.now()) => {
   const x = new Date(from); x.setUTCMonth(x.getUTCMonth() + d.months); return x.getTime();
 };
 
+/**
+ * `?environment=sandbox` (a link from the Sandbox list, or "Show sandbox data"): the customer's records are read as sandbox
+ * requests, which Cloud's go-live gate always lets through.
+ */
+const useSandboxCustomer = () => useSearchParams()[0].get("environment") === "sandbox";
+const sbxQ = (sandbox: boolean, sep: "?" | "&") => (sandbox ? `${sep}environment=sandbox` : "");
+
 function useCustomerData(pid: string, id: string) {
   const P = `/v2/projects/${pid}`;
   const C = `${P}/customers/${encodeURIComponent(id)}`;
+  const sbx = useSandboxCustomer();
   return {
-    customer: useQuery({ queryKey: ["customer", pid, id], queryFn: () => api<Customer>(`${C}?expand=attributes`), retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2 }),
-    summary: useQuery({ queryKey: ["customer_summary", pid, id], queryFn: async () => (await api<List<CustomerSummary>>(`${P}/customer_summaries?ids=${encodeURIComponent(id)}`)).items[0] ?? null }),
-    subs: useQuery({ queryKey: ["customer_subs", pid, id], queryFn: () => api<List<Subscription>>(`${C}/subscriptions?limit=100`) }),
-    purchases: useQuery({ queryKey: ["customer_purchases", pid, id], queryFn: () => api<List<Purchase>>(`${C}/purchases?limit=100`) }),
+    customer: useQuery({ queryKey: ["customer", pid, id, sbx], queryFn: () => api<Customer>(`${C}?expand=attributes${sbxQ(sbx, "&")}`), retry: (n, e) => !(e instanceof ApiError && (e.status === 404 || e.status === 402)) && n < 2 }),
+    summary: useQuery({ queryKey: ["customer_summary", pid, id, sbx], queryFn: async () => (await api<List<CustomerSummary>>(`${P}/customer_summaries?ids=${encodeURIComponent(id)}${sbxQ(sbx, "&")}`)).items[0] ?? null }),
+    subs: useQuery({ queryKey: ["customer_subs", pid, id, sbx], queryFn: () => api<List<Subscription>>(`${C}/subscriptions?limit=100${sbxQ(sbx, "&")}`) }),
+    purchases: useQuery({ queryKey: ["customer_purchases", pid, id, sbx], queryFn: () => api<List<Purchase>>(`${C}/purchases?limit=100${sbxQ(sbx, "&")}`) }),
     entitlements: useQuery({ queryKey: ["entitlements", pid], queryFn: () => api<List<Entitlement>>(`${P}/entitlements?limit=100`) }),
     offerings: useQuery({ queryKey: ["offerings", pid], queryFn: () => api<List<Offering>>(`${P}/offerings?limit=100`) }),
     products: useQuery({ queryKey: ["products", pid], queryFn: () => api<List<Product>>(`${P}/products?limit=100`) }),
@@ -182,7 +191,8 @@ type TimelineProps = { pid: string; id: string; entName: (k: string) => string; 
  */
 function Timeline(p: TimelineProps) {
   const [paywall, setPaywall] = useState(false);
-  const first = useQuery({ queryKey: ["customer_events", p.pid, p.id, paywall], queryFn: () => api<List<CustomerEvent>>(`/v2/projects/${p.pid}/customers/${encodeURIComponent(p.id)}/events?limit=25${paywall ? "&include_paywall_events=true" : ""}`) });
+  const sbx = useSandboxCustomer();
+  const first = useQuery({ queryKey: ["customer_events", p.pid, p.id, paywall, sbx], queryFn: () => api<List<CustomerEvent>>(`/v2/projects/${p.pid}/customers/${encodeURIComponent(p.id)}/events?limit=25${paywall ? "&include_paywall_events=true" : ""}${sbxQ(sbx, "&")}`) });
   // A new first page (the switch, or a refetch) drops the older pages loaded under the previous one.
   return (
     <Panel title="Customer history" link={<Switch label="Show paywall events" checked={paywall} onChange={setPaywall} />} flush>
@@ -260,7 +270,8 @@ interface AttributionRow { media_source: string | null; campaign: string | null;
 
 /** Where the customer came from (prd/attribution-benchmarks-insights §1): the first-class attribution row, names resolved. */
 function AttributionPanel({ pid, id, version }: { pid: string; id: string; version: string }) {
-  const q = useQuery({ queryKey: ["customer_attribution", pid, id, version], queryFn: () => api<{ attribution: AttributionRow | null }>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/attribution`) });
+  const sbx = useSandboxCustomer();
+  const q = useQuery({ queryKey: ["customer_attribution", pid, id, version, sbx], meta: { gate: "ignore" }, queryFn: () => api<{ attribution: AttributionRow | null }>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/attribution${sbxQ(sbx, "?")}`) });
   const a = q.data?.attribution;
   if (!a) return null;
   const rows: [string, string | null][] = [
@@ -320,7 +331,8 @@ interface Currency { code: string; name: string; state?: string }
 function Currencies({ pid, id, onDone }: { pid: string; id: string; onDone: (msg: string) => void }) {
   // Same key and shape (an array) as the In-app currencies page, which shares this cache.
   const currencies = useQuery({ queryKey: ["virtual-currencies", pid], queryFn: () => listAll<Currency>(`/v2/projects/${pid}/virtual_currencies`) });
-  const balances = useQuery({ queryKey: ["customer-balances", pid, id], queryFn: () => api<List<Balance>>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/virtual_currencies`) });
+  const sbx = useSandboxCustomer();
+  const balances = useQuery({ queryKey: ["customer-balances", pid, id, sbx], queryFn: () => api<List<Balance>>(`/v2/projects/${pid}/customers/${encodeURIComponent(id)}/virtual_currencies${sbxQ(sbx, "?")}`) });
   const [open, setOpen] = useState(false);
   const list = currencies.data ?? [];
   if (!list.length) return null;
@@ -371,6 +383,7 @@ export function CustomerDetail() {
   const qc = useQueryClient();
   const toast = useToast();
   const d = useCustomerData(pid, id);
+  const [, setSp] = useSearchParams();
   const [dialog, setDialog] = useState<null | { kind: "grant" } | { kind: "offering" } | { kind: "attr"; attr?: Attribute } | { kind: "delete" } | { kind: "revoke"; ent: CustomerSummary["granted_entitlements"][number] }>(null);
   const refresh = async (msg?: string) => {
     setDialog(null);
@@ -396,7 +409,8 @@ export function CustomerDetail() {
     return (
       <Shell title="Customer" crumbs={<><Link to={`/projects/${pid}/customers`}>Customers</Link> <span>/</span> <b className="mono">{id}</b></>}>
         <div className="page narrow">
-          {missing ? <EmptyState title="Customer not found" text={`No customer in this project has the app user ID or alias "${id}". It may have been deleted, or it belongs to another project.`} action={<Link className="btn btn-line" to={`/projects/${pid}/customers`}>Back to customers</Link>} />
+          {isPlanRequired(d.customer.error) ? <PlanSlot onSandbox={() => setSp((n) => { const x = new URLSearchParams(n); x.set("environment", "sandbox"); return x; }, { replace: true })} />
+            : missing ? <EmptyState title="Customer not found" text={`No customer in this project has the app user ID or alias "${id}". It may have been deleted, or it belongs to another project.`} action={<Link className="btn btn-line" to={`/projects/${pid}/customers`}>Back to customers</Link>} />
             : <Failed error={d.customer.error} retry={() => d.customer.refetch()} />}
         </div>
       </Shell>

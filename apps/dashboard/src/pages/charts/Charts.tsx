@@ -21,6 +21,7 @@ import { currencyDigits, currencySymbol, getDisplay } from "../../lib/prefs";
 import { DateField } from "../../components/DateField";
 import { Legend, Plot, seriesColor, type PlotAnnotation, type Series } from "./plot";
 import { AnnotationDialog, AnnotationsTab, CustomersTab, ShareDialog, annotationsKey, customersKey, useAnnotations, whenText, type Annotation } from "./extras";
+import { PlanSlot } from "../../components/PlanRequired";
 
 interface Measure { id: string; display_name: string; description: string; unit: "$" | "#" | "%"; decimal_precision: number; chartable: boolean; tabulable: boolean }
 interface SeriesMeta { id?: string; display_name: string; unit?: string; scale?: string; is_total?: boolean; is_other?: boolean; decimal_precision?: number }
@@ -318,6 +319,7 @@ function ChartView({ pid, def }: { pid: string; def: ChartDef }) {
               ]} />
             </div>
           </div>
+          <PlanSlot onSandbox={() => set({ env: "sandbox", environment: null })} />
           <div className="ctools" role="group" aria-label="Chart controls">
             <Segmented label="Date range" value={range} options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
               onChange={(v) => set({ range: v === (cohortTable ? "12m" : "30d") ? null : v, start: v === "custom" ? start : null, end: v === "custom" ? end : null, res: null })} />

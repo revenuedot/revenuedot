@@ -3,7 +3,8 @@ import { schema, type DB } from "@revenuedot/db";
 import { trySend, type Mailer } from "../../mail/index.js";
 import { billingUsageEmail } from "../../mail/templates.js";
 import { rowsOf } from "../archive/tables.js";
-import { billCents, monthBounds, monthOf, planOf, plansFrom, previousMonth, type Plan } from "./plans.js";
+import { PAID_KINDS, billCents, monthBounds, monthOf, planOf, plansFrom, previousMonth, type Plan } from "./plans.js";
+import { holdAndRelease, liveNotices, markLive } from "./gate.js";
 import { billingStripe, stripeProblem, type BillingConfig } from "./stripe.js";
 import { SYSTEM_USER, claim, reconcileAccounts } from "./webhook.js";
 
@@ -14,12 +15,14 @@ import { SYSTEM_USER, claim, reconcileAccounts } from "./webhook.js";
  */
 
 const U = schema.billingUsage;
-export const PAID_KINDS = ["purchase", "renewal", "one_time"];
+export { PAID_KINDS };
 const EVERY_MS = 3_600_000;
 
-export interface BillingRuntime { db: DB; now: Date; fetch?: typeof fetch; mailer?: Mailer; publicUrl?: string; config: BillingConfig | null; force?: boolean }
+export interface BillingRuntime { db: DB; now: Date; fetch?: typeof fetch; mailer?: Mailer; publicUrl?: string; config: BillingConfig | null; force?: boolean;
+  /** runGate only: hold and release deliveries, nothing else (the Worker's request-kicked runs). */
+  holdOnly?: boolean }
 
-/** Tracked revenue of every project in a month: production money, refunds not subtracted, moved-in history left out. */
+/** Tracked revenue of every project in a month: production money, refunds not subtracted, imported and moved-in history left out. */
 export async function meterMonth(db: DB, month: string, now: Date): Promise<number> {
   // Dates go in as ISO text: postgres-js (the real driver) does not take a Date in a raw query, PGlite does.
   const { start, end } = monthBounds(month);
@@ -28,7 +31,7 @@ export async function meterMonth(db: DB, month: string, now: Date): Promise<numb
       coalesce(sum(t.revenue_usd) FILTER (WHERE t.id IS NOT NULL), 0)::float8 AS usd, count(t.id)::int AS n
     FROM projects p
     JOIN transactions t ON t.project_id = p.id
-      AND t.purchased_at >= ${start.toISOString()}::timestamptz AND t.purchased_at < ${end.toISOString()}::timestamptz AND t.is_sandbox = false AND t.revenue_usd > 0
+      AND t.purchased_at >= ${start.toISOString()}::timestamptz AND t.purchased_at < ${end.toISOString()}::timestamptz AND t.is_sandbox = false AND t.revenue_usd > 0 AND t.source IS NULL
       AND t.kind IN (${sql.join(PAID_KINDS.map((k) => sql`${k}`), sql`, `)})
       AND (p.moved_in_at IS NULL OR t.created_at >= p.moved_in_at)
     GROUP BY p.id, p.name, p.owner_user_id`));
@@ -58,14 +61,10 @@ export async function accountOf(db: DB, userId: string) {
   return a ?? null;
 }
 
-/** Usage emails once per account, month and threshold. */
+/** Pro's usage emails once per account, month and threshold: the cap, and near and past the Enterprise ceiling. */
 async function usageNotices(rt: BillingRuntime, userId: string, plan: Plan, month: string, tracked: number, cents: number) {
-  const keys: { key: "free_80" | "free_100" | "cap" | "ceiling_80" | "ceiling_100"; limit: number }[] = [];
-  if (plan.id === "free" && plan.limit_usd) {
-    if (tracked >= plan.limit_usd) keys.push({ key: "free_100", limit: plan.limit_usd });
-    else if (tracked >= 0.8 * plan.limit_usd) keys.push({ key: "free_80", limit: plan.limit_usd });
-  }
-  if (plan.id === "standard") {
+  const keys: { key: "cap" | "ceiling_80" | "ceiling_100"; limit: number }[] = [];
+  if (plan.rate > 0) {
     if (plan.cap_usd !== null && cents >= Math.round(plan.cap_usd * 100)) keys.push({ key: "cap", limit: plan.cap_usd });
     if (plan.limit_usd && tracked >= plan.limit_usd) keys.push({ key: "ceiling_100", limit: plan.limit_usd });
     else if (plan.limit_usd && tracked >= 0.8 * plan.limit_usd) keys.push({ key: "ceiling_80", limit: plan.limit_usd });
@@ -76,7 +75,7 @@ async function usageNotices(rt: BillingRuntime, userId: string, plan: Plan, mont
   let sent = 0;
   for (const k of keys) {
     // 100% implies 80%: do not send both the same hour.
-    const extra = k.key === "free_100" ? ["free_80"] : k.key === "ceiling_100" ? ["ceiling_80"] : [];
+    const extra = k.key === "ceiling_100" ? ["ceiling_80"] : [];
     const [won] = await rt.db.insert(schema.billingNotices).values({ userId, key: `${month}:${k.key}`, sentAt: rt.now }).onConflictDoNothing().returning();
     for (const x of extra) await rt.db.insert(schema.billingNotices).values({ userId, key: `${month}:${x}`, sentAt: rt.now }).onConflictDoNothing();
     if (!won) continue;
@@ -84,6 +83,22 @@ async function usageNotices(rt: BillingRuntime, userId: string, plan: Plan, mont
     if (await trySend(rt.mailer, { to: user.email, ...mail })) sent++;
   }
   return sent;
+}
+
+/**
+ * The go-live gate's part of a tick (services/billing/gate.ts), every tick and before deliveries go out: holds and sends
+ * deliveries; every 10 minutes, marks accounts that went live and sends the gate's emails. Only with Stripe set up.
+ */
+export async function runGate(rt: BillingRuntime): Promise<number> {
+  if (stripeProblem(rt.config)) return 0;
+  const r = await holdAndRelease(rt.db, rt.now);
+  let work = r.held + r.released + r.expired;
+  if (rt.holdOnly) return work;
+  if (rt.force || await claim(rt.db, `gate:${Math.floor(rt.now.getTime() / 600_000)}`, rt.now)) {
+    work += (await markLive(rt.db, rt.now)).length;
+    work += await liveNotices({ db: rt.db, now: rt.now, mailer: rt.mailer, publicUrl: rt.publicUrl });
+  }
+  return work;
 }
 
 /** One billing pass: meter, report each account's bill to Stripe when it changed, send usage emails. */
@@ -113,7 +128,7 @@ export async function runBilling(rt: BillingRuntime): Promise<number> {
     const accounts = ids.length ? await rt.db.select().from(schema.billingAccounts).where(inArray(schema.billingAccounts.userId, ids)) : [];
     for (const userId of ids) {
       const acct = accounts.find((a) => a.userId === userId) ?? null;
-      const plan = planOf(plans, acct?.plan ?? "free");
+      const plan = planOf(plans, acct?.plan);
       const usage = await accountUsage(rt.db, userId, m);
       const cents = billCents(plan, usage.tracked_revenue_usd);
       if (m === month && ready) await usageNotices(rt, userId, plan, m, usage.tracked_revenue_usd, cents);
@@ -125,7 +140,7 @@ export async function runBilling(rt: BillingRuntime): Promise<number> {
 
 /** Sends the month's bill (cents) to Stripe's meter when it changed since the last report. */
 async function reportMeter(rt: BillingRuntime, acct: typeof schema.billingAccounts.$inferSelect | null, plan: Plan, month: string, cents: number) {
-  if (!acct?.stripeCustomerId || plan.id !== "standard" || !["active", "past_due"].includes(acct.status) || stripeProblem(rt.config)) return;
+  if (!acct?.stripeCustomerId || plan.rate <= 0 || !["active", "past_due"].includes(acct.status) || stripeProblem(rt.config)) return;
   const R = schema.billingMeterReports;
   const [prev] = await rt.db.select().from(R).where(and(eq(R.userId, acct.userId), eq(R.month, month)));
   if (prev && prev.cents === cents) return;
@@ -148,7 +163,7 @@ export async function reportAccountNow(rt: BillingRuntime, userId: string): Prom
   const month = monthOf(rt.now);
   await meterMonth(rt.db, month, rt.now);
   const acct = await accountOf(rt.db, userId);
-  const plan = planOf(plansFrom(rt.config?.plansJson), acct?.plan ?? "free");
+  const plan = planOf(plansFrom(rt.config?.plansJson), acct?.plan);
   const usage = await accountUsage(rt.db, userId, month);
   await reportMeter(rt, acct, plan, month, billCents(plan, usage.tracked_revenue_usd));
 }

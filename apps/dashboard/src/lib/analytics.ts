@@ -61,7 +61,7 @@ export function identifyUser(me: { user: { email: string; name: string | null; e
     df()?.("identify", {
       user_id: me.user.email,
       ...(me.user.name ? { name: me.user.name } : {}),
-      plan: me.account?.plan ?? "free",
+      plan: me.account?.plan ?? "none",
       projects: String(me.projects.length),
       email_verified: String(me.user.email_verified),
     });
@@ -82,7 +82,7 @@ const STEPS: { method: string; path: RegExp; goal: string; params?: Record<strin
   { method: "POST", path: /^\/v2\/projects\/[^/]+\/integrations\/webhooks$/, goal: "webhook_created" },
   { method: "POST", path: /^\/v2\/projects\/[^/]+\/test_purchases$/, goal: "test_purchase_made" },
   { method: "POST", path: /^\/v2\/projects\/[^/]+\/apps\/[^/]+\/stripe_connect\/actions\/finish$/, goal: "stripe_connected" },
-  { method: "POST", path: /^\/v2\/billing\/checkout$/, goal: "checkout_started", params: { plan: "standard" } },
+  { method: "POST", path: /^\/v2\/billing\/checkout$/, goal: "checkout_started", params: { plan: "pro" } },
   { method: "POST", path: /^\/v2\/billing\/portal$/, goal: "billing_portal_opened" },
 ];
 

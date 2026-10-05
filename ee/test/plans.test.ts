@@ -1,5 +1,5 @@
 // RevenueDot Enterprise (ee/LICENSE). Which plan gets which feature (company decision 2026-10-02): on RevenueDot Cloud
-// the account's plan decides per organization (Free: none; Standard: organizations, custom roles, single sign-on;
+// the account's plan decides per organization (no plan: none; Pro: organizations, custom roles, single sign-on;
 // Enterprise: everything); self-hosted servers keep the licence key. Spec: prd/enterprise/PRD.md §2a.
 import { afterEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
@@ -15,7 +15,7 @@ let s: EeServer | undefined;
 afterEach(async () => { await s?.close(); s = undefined; });
 
 const DAY = 86_400_000;
-const STANDARD_LOCKED = [
+const PRO_LOCKED = [
   { feature: "scim", plan: "enterprise" }, { feature: "data_location", plan: "enterprise" },
   { feature: "audit_retention", plan: "enterprise" }, { feature: "compliance_exports", plan: "enterprise" },
 ];
@@ -26,25 +26,27 @@ async function cloud(dns: FakeDns = new Map()) {
   s = await eeServer({ extension: await createEnterprise({ env: {}, edition: "cloud" }), deps: { edition: "cloud" }, fetch: dnsFetch(dns) });
   return s;
 }
-const setPlan = (x: EeServer, userId: string, plan: "free" | "standard" | "enterprise") =>
-  x.db.insert(schema.billingAccounts).values({ userId, plan, status: plan === "free" ? "none" : "active" })
-    .onConflictDoUpdate({ target: schema.billingAccounts.userId, set: { plan, status: plan === "free" ? "canceled" : "active" } });
+// "standard" is Pro's id before 2026-10-05: a row that still says it must count as Pro.
+const setPlan = (x: EeServer, userId: string, plan: "none" | "pro" | "standard" | "enterprise") =>
+  x.db.insert(schema.billingAccounts).values({ userId, plan, status: plan === "none" ? "none" : "active" })
+    .onConflictDoUpdate({ target: schema.billingAccounts.userId, set: { plan, status: plan === "none" ? "canceled" : "active" } });
+const PRO_MESSAGE = "Organizations are part of Pro, which costs $0 until your apps make $10,000 a month. Start Pro in Billing.";
 
-describe("RevenueDot Cloud: Free", () => {
+describe("RevenueDot Cloud: no plan", () => {
   it("loads without a licence key, shows every feature as locked with the plan that has it, and refuses to create an organization", async () => {
     const x = await cloud();
     const free = await x.signup("free@acme.test");
     const me = await free.browser.call("GET", "/auth/me");
-    expect(me.body.enterprise).toMatchObject({ mode: "cloud", plan: "free", features: [], organizations: [] });
+    expect(me.body.enterprise).toMatchObject({ mode: "cloud", plan: "none", features: [], organizations: [] });
     expect(me.body.enterprise.locked).toEqual([
-      { feature: "organizations", plan: "standard" }, { feature: "custom_roles", plan: "standard" }, { feature: "sso", plan: "standard" }, ...STANDARD_LOCKED,
+      { feature: "organizations", plan: "pro" }, { feature: "custom_roles", plan: "pro" }, { feature: "sso", plan: "pro" }, ...PRO_LOCKED,
     ]);
-    expect((await free.browser.call("GET", "/v2/enterprise")).body).toMatchObject({ object: "enterprise", mode: "cloud", plan: "free", features: [] });
+    expect((await free.browser.call("GET", "/v2/enterprise")).body).toMatchObject({ object: "enterprise", mode: "cloud", plan: "none", features: [] });
     expect((await free.browser.call("GET", "/v2/organizations")).body.items).toEqual([]);
     const create = await free.browser.call("POST", "/v2/organizations", { name: "Acme" });
     expect(create.status).toBe(403);
-    expect(create.body.message).toBe("Organizations are part of Cloud Standard. Upgrade in Billing.");
-    // The sign-in page offers SSO on Cloud; a Free account's domain has none, so lookup says no.
+    expect(create.body.message).toBe(PRO_MESSAGE);
+    // The sign-in page offers SSO on Cloud; the domain of an account with no plan has none, so lookup says no.
     expect((await x.browser().call("GET", "/auth/config")).body.sso).toBe(true);
     expect((await x.browser().call("POST", "/sso/lookup", { email: "free@acme.test" })).body).toEqual({ sso: false });
   });
@@ -57,17 +59,17 @@ describe("RevenueDot Cloud: Free", () => {
   });
 });
 
-describe("RevenueDot Cloud: Standard", () => {
+describe("RevenueDot Cloud: Pro", () => {
   it("gets organizations, custom roles and single sign-on; SCIM, retention, data location and exports say Enterprise", async () => {
     const dns: FakeDns = new Map();
     const x = await cloud(dns);
     const owner = await x.signup("owner@acme.test");
-    await setPlan(x, owner.userId, "standard");
-    expect((await owner.browser.call("GET", "/v2/enterprise")).body).toMatchObject({ plan: "standard", features: ["organizations", "custom_roles", "sso"], locked: STANDARD_LOCKED });
+    await setPlan(x, owner.userId, "pro");
+    expect((await owner.browser.call("GET", "/v2/enterprise")).body).toMatchObject({ plan: "pro", features: ["organizations", "custom_roles", "sso"], locked: PRO_LOCKED });
     const orgId = await x.createOrg(owner.browser, "Acme", [owner.projectId]);
     const O = `/v2/organizations/${orgId}`;
     const org = await owner.browser.call("GET", O);
-    expect(org.body).toMatchObject({ plan: "standard", features: ["organizations", "custom_roles", "sso"], locked: STANDARD_LOCKED });
+    expect(org.body).toMatchObject({ plan: "pro", features: ["organizations", "custom_roles", "sso"], locked: PRO_LOCKED });
 
     expect((await owner.browser.call("POST", `${O}/roles`, { name: "Support", scopes: ["customer_information:customers:read"] })).status).toBe(201);
     expect((await owner.browser.call("POST", `${O}/sso/connections`, { kind: "saml", name: "Okta", enabled: true, saml: samlBody })).status).toBe(201);
@@ -88,14 +90,14 @@ describe("RevenueDot Cloud: Standard", () => {
     }
   });
 
-  it("an organization gets its best owner's plan: a Free member works under a Standard owner", async () => {
+  it("an organization gets its best owner's plan: a member with no plan works under a Pro owner", async () => {
     const x = await cloud();
     const owner = await x.signup("owner@acme.test");
-    await setPlan(x, owner.userId, "standard");
+    await setPlan(x, owner.userId, "pro");
     const orgId = await x.createOrg(owner.browser, "Acme", [owner.projectId]);
     const dev = await x.signup("dev@acme.test", "Side");
     expect((await owner.browser.call("POST", `/v2/organizations/${orgId}/members`, { email: "dev@acme.test", role: "admin" })).status).toBe(201);
-    // The Free admin manages the organization's roles because the organization is on Standard.
+    // The admin with no plan manages the organization's roles because the organization is on Pro.
     expect((await dev.browser.call("POST", `/v2/organizations/${orgId}/roles`, { name: "Viewer plus", scopes: ["charts_metrics:overview:read"] })).status).toBe(201);
     // But cannot create an organization of their own.
     expect((await dev.browser.call("POST", "/v2/organizations", { name: "Mine" })).status).toBe(403);
@@ -140,8 +142,8 @@ describe("RevenueDot Cloud: downgrades", () => {
     expect((await scim("/scim/v2/Users")).status).toBe(200);
     void mia;
 
-    // The contract ends: the account goes back to Free.
-    await setPlan(x, owner.userId, "free");
+    // The contract ends: the account has no plan.
+    await setPlan(x, owner.userId, "none");
     // The project keeps working for its owner with the built-in roles.
     expect((await owner.browser.call("GET", `/v2/projects/${owner.projectId}/apps`)).status).toBe(200);
     // A custom role gives no access until an admin picks a built-in role.
@@ -158,21 +160,22 @@ describe("RevenueDot Cloud: downgrades", () => {
     // The organization stays readable, shows what is locked, and its projects can be moved out.
     const org = await owner.browser.call("GET", O);
     expect(org.status).toBe(200);
-    expect(org.body).toMatchObject({ plan: "free", features: [] });
-    expect(org.body.locked).toContainEqual({ feature: "organizations", plan: "standard" });
+    expect(org.body).toMatchObject({ plan: "none", features: [] });
+    expect(org.body.locked).toContainEqual({ feature: "organizations", plan: "pro" });
     const rename = await owner.browser.call("POST", O, { name: "Acme 2" });
     expect(rename.status).toBe(403);
-    expect(rename.body.message).toBe("Organizations are part of Cloud Standard. Upgrade in Billing.");
+    expect(rename.body.message).toBe(PRO_MESSAGE);
     expect((await owner.browser.call("DELETE", `${O}/projects/${owner.projectId}`)).status).toBe(200);
     expect((await owner.browser.call("DELETE", `${O}/roles/${role.body.id}`)).status).toBe(200);
-    // Upgrading again brings everything back.
+    // Starting Pro brings the organization features back; a row that still says "standard" (Pro's old id) counts as Pro.
     await setPlan(x, owner.userId, "standard");
     expect((await owner.browser.call("POST", O, { name: "Acme 2" })).status).toBe(200);
+    expect((await owner.browser.call("GET", O)).body).toMatchObject({ plan: "pro", features: ["organizations", "custom_roles", "sso"] });
   });
 });
 
 describe("RevenueDot Cloud: audit log retention", () => {
-  it("deletes entries older than 90 days on Free and Standard, and keeps Enterprise accounts' and organizations' history", async () => {
+  it("deletes entries older than 90 days with no plan and on Pro, and keeps Enterprise accounts' and organizations' history", async () => {
     const x = await cloud();
     // The 90 days count from 2026-10-03, when the plans shipped: nothing is deleted before 2027-01-01.
     x.setNow(new Date("2027-03-01T00:00:00Z"));
@@ -183,8 +186,8 @@ describe("RevenueDot Cloud: audit log retention", () => {
     const orgId = await x.createOrg(ent.browser, "Big", []);
     await x.db.insert(schema.memberships).values({ userId: ent.userId, projectId: entOrgMember.projectId, role: "admin" });
     expect((await ent.browser.call("POST", `/v2/organizations/${orgId}/projects`, { project_id: entOrgMember.projectId })).status).toBeLessThan(300);
-    const std = await x.signup("std@acme.test", "Standard app");
-    await setPlan(x, std.userId, "standard");
+    const std = await x.signup("std@acme.test", "Pro app");
+    await setPlan(x, std.userId, "pro");
     const stdOrg = await x.createOrg(std.browser, "Std", [std.projectId]);
 
     const now = x.now();
@@ -199,7 +202,7 @@ describe("RevenueDot Cloud: audit log retention", () => {
 
     // An account that lapsed 5 days ago keeps its history for 30 days.
     const lapsed = await x.signup("lapsed@acme.test", "Lapsed app");
-    await x.db.insert(schema.billingAccounts).values({ userId: lapsed.userId, plan: "free", status: "unpaid", updatedAt: new Date(now.getTime() - 5 * DAY) });
+    await x.db.insert(schema.billingAccounts).values({ userId: lapsed.userId, plan: "none", status: "unpaid", updatedAt: new Date(now.getTime() - 5 * DAY) });
     await x.db.insert(schema.auditLogs).values([row(lapsed.projectId, old)]);
 
     await x.tick();
@@ -229,7 +232,7 @@ describe("RevenueDot Cloud: retention starts with the plans", () => {
 });
 
 describe("RevenueDot Cloud: Enterprise is never changed by Stripe", () => {
-  it("refuses a Standard checkout and keeps the plan on subscription events", async () => {
+  it("refuses a Pro checkout and keeps the plan on subscription events", async () => {
     const x = await cloud();
     const owner = await x.signup("owner@big.test");
     await setPlan(x, owner.userId, "enterprise");

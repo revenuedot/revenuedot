@@ -18,6 +18,7 @@ import { AskBar, FirstSaleCard, GrowthInsights } from "./ai/OverviewBits";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell, useMe, type Me } from "../components/Shell";
+import { isPlanRequired, PlanSlot, StartPro } from "../components/PlanRequired";
 import { Icon } from "../components/icons";
 import { Dialog, Field, Segmented, Sparkline, Switch, Tag, useProjectId, useToast } from "../components/ui";
 import { api, ApiError, fmt, type List } from "../lib/api";
@@ -87,6 +88,9 @@ interface AccountOverview {
   projects: { id: string; name: string; included: boolean; reason?: string }[];
   metrics: (OverviewMetric & { history: Omit<History, "id"> })[];
 }
+/** Cloud's go-live gate answers 402 for live records once a live account is paused: such a project has them. */
+const live = (p: Promise<List<unknown>>) => p.catch((e) => { if (isPlanRequired(e)) return { object: "list", items: [{}], next_page: null, url: "" } as List<unknown>; throw e; });
+
 const useAccountOverview = (env: string, days: number, enabled: boolean) => useQuery({
   queryKey: ["overview-all", env, days], enabled, refetchInterval: 60_000,
   queryFn: () => api<AccountOverview>(`/v2/overview?environment=${env}&days=${days}`),
@@ -396,6 +400,19 @@ function TestPurchaseDialog({ pid, apps, products, onClose, onDone }: { pid: str
   );
 }
 
+/**
+ * The checklist's last step on RevenueDot Cloud with billing set up: Start Pro before release. Done once the project's owner
+ * is on Pro or Enterprise (or the gate is off). Not shown on self-hosted servers.
+ */
+function proStep(me: Me | undefined, pid: string): { done: boolean; owner: boolean; ownerName: string | null } | null {
+  const a = me?.account;
+  if (!a || a.edition !== "cloud" || !a.billing_ready) return null;
+  const g = a.project_gates?.[pid];
+  const owner = g ? g.owner_is_you : true;
+  const done = (owner && (a.plan === "pro" || a.plan === "enterprise")) || (!!g && (g.stage === "active" || g.stage === "off"));
+  return { done, owner, ownerName: g?.owner_name ?? null };
+}
+
 function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupState; onHide?: () => void; firstRun: boolean }) {
   const [buying, setBuying] = useState(false);
   const me = useMe();
@@ -412,6 +429,7 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
   const nav = useNavigate();
   const base = `/projects/${pid}`;
   const stores = s.apps.filter((a) => a.type !== "test_store");
+  const pro = proStep(me.data, pid);
   const steps = [
     { key: "store", title: "Connect a store", done: s.apps.length > 0,
       text: stores.length ? `${stores.map((a) => a.name).join(", ")} connected.` : s.apps.length ? "The Test Store is ready. Add your App Store or Google Play app when you are ready to sell." : "Add your App Store or Google Play app with its in-app purchase credentials, or start with the Test Store.",
@@ -433,6 +451,9 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
     { key: "purchase", title: "Send a test purchase", done: s.hasPurchase,
       text: "Buy a product through the Test Store to see a customer, an entitlement and the events a real purchase creates.",
       action: <button type="button" className="btn btn-dark" onClick={() => setBuying(true)}>Make a test purchase</button> },
+    ...(pro ? [{ key: "pro", title: "Start Pro before you release", done: pro.done,
+      text: pro.owner ? "$0 until your apps make $10,000 a month. Card required to go live." : `$0 until your apps make $10,000 a month. Ask ${pro.ownerName ?? "the project owner"} to start it before the app goes live.`,
+      action: pro.owner && !pro.done ? <StartPro /> : undefined }] : []),
   ];
   const done = steps.filter((x) => x.done).length;
   const next = steps.findIndex((x) => !x.done);
@@ -441,7 +462,7 @@ function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupSta
       <div className="setup-h">
         <div>
           <h2>{firstRun ? "Set up your project" : "Finish setting up"}</h2>
-          <p>{firstRun ? "Six steps from an empty project to your first purchase. Most apps finish in under an hour." : "A few steps are left before this project is ready for real customers."}</p>
+          <p>{firstRun ? `${steps.length === 7 ? "Seven" : "Six"} steps from an empty project to your first purchase and your release. Most apps finish in under an hour.` : "A few steps are left before this project is ready for real customers."}</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span className="meter" aria-label={`${done} of ${steps.length} steps done`}><i>{steps.map((x) => <b key={x.key} className={x.done ? "on" : ""} />)}</i>{done}/{steps.length}</span>
@@ -517,7 +538,7 @@ export function Overview() {
       const P = `/v2/projects/${pid}`;
       const [apps, products, entitlements, offerings, customers, tx] = await Promise.all([
         api<List<App>>(`${P}/apps?limit=100`), api<List<Product>>(`${P}/products?limit=100&expand=items.indicative_price`), api<List<SetupState["entitlements"][number]>>(`${P}/entitlements?limit=100&expand=items.product`),
-        api<List<Offering>>(`${P}/offerings?limit=100`), api<List<unknown>>(`${P}/customers?limit=1`), api<List<unknown>>(`${P}/transactions?limit=1`),
+        api<List<Offering>>(`${P}/offerings?limit=100`), live(api<List<unknown>>(`${P}/customers?limit=1`)), live(api<List<unknown>>(`${P}/transactions?limit=1`)),
       ]);
       return { apps: apps.items, products: products.items, entitlements: entitlements.items, offerings: offerings.items, hasCustomer: customers.items.length > 0, hasPurchase: tx.items.length > 0 };
     },
@@ -530,7 +551,8 @@ export function Overview() {
   const names = useMemo(() => new Map(myProjects.map((x) => [x.id, x.name])), [myProjects]);
 
   const s = setup.data;
-  const allDone = s ? s.apps.length > 0 && s.products.length > 0 && s.entitlements.some((e) => (e.products?.items.length ?? 0) > 0) && s.offerings.some((o) => o.is_current) && s.hasCustomer && s.hasPurchase : true;
+  const proDone = proStep(me.data, pid)?.done ?? true;
+  const allDone = s ? s.apps.length > 0 && s.products.length > 0 && s.entitlements.some((e) => (e.products?.items.length ?? 0) > 0) && s.offerings.some((o) => o.is_current) && s.hasCustomer && s.hasPurchase && proDone : true;
   const firstRun = !all && !!s && !s.hasPurchase && !s.hasCustomer;
   // Granted entitlements are production records but not purchases.
   const onlySandbox = !all && env === "production" && prodTx.data && !prodTx.data.items.some((t) => t.store !== "promotional");
@@ -551,6 +573,7 @@ export function Overview() {
             </div>
           )}
         </div>
+        <PlanSlot onSandbox={() => set("environment", "sandbox")} />
 
         {myProjects.length > 1 && <ProjectChips pid={pid} all={all} projects={myProjects} onAll={() => set("projects", "all")} />}
 

@@ -86,7 +86,8 @@ export function PaymentRecoveryPage() {
   const [editing, setEditing] = useState(false);
   const [running, setRunning] = useState(false);
   const env = sandbox ? "sandbox" : "production";
-  const settings = useQuery({ queryKey: ["recovery-settings", pid], enabled: !!pid, queryFn: () => api<Settings>(`${v2(pid)}/payment_recovery`) });
+  // With the Sandbox switch on, the settings are read as a sandbox request, so Cloud's go-live gate lets them through.
+  const settings = useQuery({ queryKey: ["recovery-settings", pid, env], enabled: !!pid, queryFn: () => api<Settings>(`${v2(pid)}/payment_recovery${sandbox ? "?environment=sandbox" : ""}`) });
   const stats = useQuery({ queryKey: ["recovery-stats", pid, period, env], enabled: !!pid, queryFn: () => api<Stats>(`${v2(pid)}/payment_recovery/stats?days=${period}&environment=${env}`) });
   const cases = useQuery({
     queryKey: ["recovery-cases", pid, env, filter], enabled: !!pid,
@@ -108,7 +109,7 @@ export function PaymentRecoveryPage() {
   return (
     <Shell title="Payment recovery">
       <div className="page">
-        <PageHead title="Payment recovery" sub="Email subscribers whose payment failed a link to fix it, and count the revenue that comes back." actions={<>
+        <PageHead title="Payment recovery" sub="Email subscribers whose payment failed a link to fix it, and count the revenue that comes back." sandbox={() => setSandbox(true)} actions={<>
           <Segmented label="Period" value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.value, label: p.label }))} />
           <Switch label="Sandbox data" checked={sandbox} onChange={setSandbox} />
           {s && (s.enabled

@@ -10,7 +10,8 @@ import { BillingStripeError, type billingStripe } from "./stripe.js";
  * customer's subscriptions and invoice from Stripe, under a per-customer lock, and writes what Stripe says now. A late,
  * repeated, concurrent or out-of-order event therefore always ends in the current state. Payment emails follow the
  * invoice's real status, once per invoice, and go out after the database commit.
- * Nothing here changes how a customer's apps work: plan and payment status never touch SDK, REST or webhook behaviour.
+ * Nothing here changes how a customer's apps work: the SDK, purchases and entitlements never depend on the plan. Losing Pro
+ * only brings back the go-live gate (gate.ts) for live accounts: live data and outbound deliveries pause.
  */
 
 const A = schema.billingAccounts;
@@ -28,14 +29,14 @@ const LIVE = ["active", "trialing", "past_due", "unpaid", "incomplete", "paused"
 const BILLING = ["active", "trialing", "past_due"];
 
 /** Stripe's subscription status as the account's plan and status. */
-export function statusOf(stripeStatus: string): { status: string; plan: "standard" | "free" } {
+export function statusOf(stripeStatus: string): { status: string; plan: "pro" | "none" } {
   switch (stripeStatus) {
-    case "active": case "trialing": return { status: "active", plan: "standard" };
-    case "past_due": return { status: "past_due", plan: "standard" };
-    case "unpaid": return { status: "unpaid", plan: "free" };
-    case "incomplete": return { status: "incomplete", plan: "free" };
-    case "paused": return { status: "paused", plan: "free" };
-    default: return { status: "canceled", plan: "free" };
+    case "active": case "trialing": return { status: "active", plan: "pro" };
+    case "past_due": return { status: "past_due", plan: "pro" };
+    case "unpaid": return { status: "unpaid", plan: "none" };
+    case "incomplete": return { status: "incomplete", plan: "none" };
+    case "paused": return { status: "paused", plan: "none" };
+    default: return { status: "canceled", plan: "none" };
   }
 }
 
@@ -109,7 +110,7 @@ export interface SyncResult { userId: string; before: { plan: string; status: st
 /**
  * Reads the customer's subscriptions from Stripe and writes the account's plan, status, subscription, period end and end
  * date (only when something changed). Cancels a duplicate paying subscription. `userId` links a customer the account does
- * not know yet (Checkout). A customer Stripe no longer has (deleted, or from the other mode) puts the account on Free.
+ * not know yet (Checkout). A customer Stripe no longer has (deleted, or from the other mode) leaves the account with no plan.
  */
 export async function syncCustomer(d: BillingWebhookDeps, customer: string, userId?: string | null): Promise<SyncResult | null> {
   return locked(d, customer, (dd, out) => syncLocked(dd, out, customer, userId));
@@ -133,15 +134,15 @@ async function syncLocked(d: BillingWebhookDeps, out: Outbox, customer: string, 
   try { subs = await d.stripe.listSubscriptions(customer); }
   catch (e) {
     if (!(e instanceof BillingStripeError && e.missing)) throw e;
-    // Stripe has no such customer: nothing can bill it, so Free; the next Checkout makes a new customer. The customer id is
+    // Stripe has no such customer: nothing can bill it, so no plan; the next Checkout makes a new customer. The customer id is
     // kept, so a mistaken key (the other mode) heals itself on the next sync once the right key is back.
-    console.error(`billing: Stripe has no customer ${customer} (account ${acct.userId}); moving the account to Free`);
-    const changed = acct.plan !== "free" || acct.status !== "canceled";
+    console.error(`billing: Stripe has no customer ${customer} (account ${acct.userId}); leaving the account with no plan`);
+    const changed = acct.plan !== "none" || acct.status !== "canceled";
     if (changed) {
-      await db.update(A).set({ plan: "free", status: "canceled", cancelAt: null, updatedAt: now }).where(eq(A.userId, acct.userId));
-      await db.update(schema.users).set({ plan: "free" }).where(eq(schema.users.id, acct.userId));
+      await db.update(A).set({ plan: "none", status: "canceled", cancelAt: null, updatedAt: now }).where(eq(A.userId, acct.userId));
+      await db.update(schema.users).set({ plan: "none" }).where(eq(schema.users.id, acct.userId));
     }
-    return { userId: acct.userId, before, after: { plan: "free", status: "canceled" }, subscription: null, missing: true };
+    return { userId: acct.userId, before, after: { plan: "none", status: "canceled" }, subscription: null, missing: true };
   }
   const { current, duplicates } = currentSubscription(subs, acct.stripeSubscriptionId);
   for (const dup of duplicates) {
@@ -160,7 +161,7 @@ async function syncLocked(d: BillingWebhookDeps, out: Outbox, customer: string, 
   // Only a real change touches the row, so a settled account leaves the reconcile set after 7 days.
   if (changed) {
     await db.update(A).set({ plan: s.plan, status: s.status, stripeCustomerId: customer, stripeSubscriptionId: current.id, currentPeriodEnd: periodEnd, cancelAt, updatedAt: now,
-      ...(s.plan === "standard" && !acct.standardStartedAt ? { standardStartedAt: now } : {}) }).where(eq(A.userId, acct.userId));
+      ...(s.plan === "pro" && !acct.standardStartedAt ? { standardStartedAt: now } : {}) }).where(eq(A.userId, acct.userId));
     await db.update(schema.users).set({ plan: s.plan }).where(eq(schema.users.id, acct.userId));
   }
   // Past due or unpaid: the latest invoice from Stripe too, so its row and emails are right even if invoice webhooks were lost.
@@ -222,7 +223,7 @@ export async function handleBillingEvent(d: BillingWebhookDeps, event: { id: str
         const r = await syncCustomer(d, o.customer, typeof userId === "string" ? userId : null);
         if (!r) return "unknown user";
         if (r.enterprise) return "enterprise kept";
-        return r.after.plan === "standard" ? "subscribed" : r.after.status;
+        return r.after.plan === "pro" ? "subscribed" : r.after.status;
       }
       case "customer.subscription.created":
       case "customer.subscription.updated":

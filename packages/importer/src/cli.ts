@@ -1,4 +1,4 @@
-// RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
+// RevenueDot: the open-source RevenueCat alternative. Same SDK API; RevenueDot Cloud Pro is free until your apps make $10,000 a month.
 // This file: the `revenuedot` command line (import, import verify, import plan, move, export).
 // Docs: https://revenuedot.app/docs/migrate
 import { readFileSync } from "node:fs";

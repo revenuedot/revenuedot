@@ -25,8 +25,8 @@ function facts(o: Partial<Facts> = {}): Facts {
     path: null, referralCode: null, productEmails: true, projectId: "proj_1", projectName: "Habitly", ownsProjects: true, memberOf: null,
     firstAppAt: null, testPurchaseAt: null, sdkFirstAt: null, sdkLastAt: null, sdk: null, storeConnected: false, liveAt: null, lastSaleAt: null,
     firstSale: null, rcImportAt: null, importedCustomers: 0, paywallPublishedAt: null, experimentStartedAt: null, teammates: 0, recoveryOn: false,
-    assistantConnected: false, plan: "free", planSince: null, canceledAt: null, tracked: 0, free100At: null, alertAt: null, lastNotificationAt: null,
-    referralJoinedAt: null, overTracked: 0, sdkCustomers: 0, customers: 0, sent: new Map(), ...o,
+    assistantConnected: false, plan: "none", planSince: null, canceledAt: null, tracked: 0, alertAt: null, lastNotificationAt: null,
+    referralJoinedAt: null, sdkCustomers: 0, customers: 0, sent: new Map(), ...o,
   };
 }
 const sent = (...steps: [StepId, number][]) => new Map<StepId, number>(steps);
@@ -38,12 +38,19 @@ describe("picking the step", () => {
     expect(pickStep(facts({ sent: sent(["welcome", WED - 5 * 60_000]) }), WED, cfg)).toBeNull();
   });
 
-  it("sends no onboarding to accounts created before the launch, but still celebrates a first sale", () => {
-    const old = { createdAt: Date.parse("2026-08-01T00:00:00Z") };
+  it("sends no onboarding to accounts created before the launch, but still celebrates a Pro account's first sale", () => {
+    const old = { createdAt: Date.parse("2026-08-01T00:00:00Z"), plan: "pro" };
     expect(pickStep(facts(old), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...old, liveAt: WED - H }), WED, cfg)).toBe("first_sale");
+    expect(pickStep(facts({ ...old, plan: "enterprise", liveAt: WED - H }), WED, cfg)).toBe("first_sale");
     // A celebration older than 3 days is stale.
     expect(pickStep(facts({ ...old, liveAt: WED - 4 * D }), WED, cfg)).not.toBe("first_sale");
+  });
+
+  it("leaves the first sale of an account with no plan to the go-live gate's email, so it gets one email, not two", () => {
+    const old = { createdAt: Date.parse("2026-08-01T00:00:00Z") };
+    expect(pickStep(facts({ ...old, liveAt: WED - H }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...old, plan: "none", liveAt: WED - H }), WED, cfg)).not.toBe("first_sale");
   });
 
   it("nudges only when the next step is missing: connect the app, then the stores", () => {
@@ -138,10 +145,12 @@ describe("picking the step", () => {
     expect(pickStep(facts({ alertAt: WED - H }), WED, cfg)).toBe("welcome");
   });
 
-  it("sends a first sale and the Standard receipt right away, even inside the 44-hour gap", () => {
+  it("sends a first sale and the Pro receipt right away, even inside the 44-hour gap", () => {
     const recent = sent(["welcome", WED - 6 * D], ["store_keys", WED - H]);
-    expect(pickStep(facts({ createdAt: WED - 6 * D, sdkFirstAt: WED - 2 * D, storeConnected: true, liveAt: WED - H, lastSaleAt: WED - H, sent: recent }), WED, cfg)).toBe("first_sale");
-    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "standard", planSince: WED - H, sent: recent }), WED, cfg)).toBe("standard_welcome");
+    expect(pickStep(facts({ createdAt: WED - 6 * D, sdkFirstAt: WED - 2 * D, storeConnected: true, liveAt: WED - H, lastSaleAt: WED - H, plan: "pro", sent: recent }), WED, cfg)).toBe("first_sale");
+    // Without a plan, the go-live gate's email says it (services/billing/gate.ts): no second email.
+    expect(pickStep(facts({ createdAt: WED - 6 * D, sdkFirstAt: WED - 2 * D, storeConnected: true, liveAt: WED - H, lastSaleAt: WED - H, sent: recent }), WED, cfg)).not.toBe("first_sale");
+    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "pro", planSince: WED - H, sent: recent }), WED, cfg)).toBe("standard_welcome");
   });
 
 
@@ -157,8 +166,11 @@ describe("picking the step", () => {
     expect(pickStep(f, WED, cfg)).toBeNull();
   });
 
-  it("thanks Standard once from its first start after launch", () => {
-    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "standard", planSince: WED - D }), WED, cfg)).toBe("standard_welcome");
+  it("thanks Pro once from its first start after launch, and never an account without it", () => {
+    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "pro", planSince: WED - D }), WED, cfg)).toBe("standard_welcome");
+    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "pro", planSince: WED - D, sent: sent(["standard_welcome", WED - H]) }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "none", planSince: WED - D }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "enterprise", planSince: WED - D }), WED, cfg)).toBeNull();
   });
 
   it("gives a teammate who joined by invite one welcome and nothing else", () => {
@@ -269,7 +281,7 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     expect(journeyMails("lena@health.eu")[0]!.subject).toContain("Confirm your email");
   });
 
-  it("keeps the referral code from sign-up and celebrates the first live sale", async () => {
+  it("keeps the referral code from sign-up and celebrates the first live sale of a Pro account; without a plan the gate's email covers it", async () => {
     await cloud();
     await signup("jordan@photo.app", { ref: "k7m2q9xa", time_zone: "Nowhere/Invalid" });
     const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "jordan@photo.app"));
@@ -283,6 +295,10 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     await s!.db.insert(schema.customers).values({ id: "cus_j", projectId: p!.id, originalAppUserId: "u1", firstSeen: s!.now(), lastSeen: s!.now() });
     await s!.db.insert(schema.transactions).values({ id: "tx_j", projectId: p!.id, customerId: "cus_j", appId: "app_j", store: "app_store", storeTransactionId: "1", productIdentifier: "pro_annual", kind: "purchase", purchasedAt: s!.now(), revenueUsd: 39.99, priceAmount: 39.99, priceCurrency: "USD", countryCode: "DE", isSandbox: false, createdAt: s!.now() });
     s!.advance(H);
+    // No plan yet: the journey stays quiet (the go-live gate sends "RevenueDot recorded your first live sale").
+    expect((await run()).sent).toBe(0);
+    // Pro started before launch day's sale is celebrated (standard_started_at before the launch: no Pro welcome).
+    await s!.db.insert(schema.billingAccounts).values({ userId: u!.id, plan: "pro", status: "active", standardStartedAt: new Date("2026-08-01T00:00:00Z") });
     expect((await run()).sent).toBe(1);
     const sale = journeyMails("jordan@photo.app").at(-1)!;
     expect(sale.subject).toBe("You made your first real sale");
@@ -394,7 +410,7 @@ describe("templates", () => {
 
   it("never mentions RevenueCat to someone who is not switching, and uses plain characters only", () => {
     const base = { app: "https://app.revenuedot.app", first: "Sam", projectId: "p", projectName: "Notes", unsubscribeUrl: "https://app.revenuedot.app/auth/journeys/unsubscribe/x",
-      sdk: { platform: "Flutter", version: "9.6.1" }, sale: { product: "pro_annual", amount: "$39.99", country: "Germany" }, overTracked: 12_000, overMonth: "September",
+      sdk: { platform: "Flutter", version: "9.6.1" }, sale: { product: "pro_annual", amount: "$39.99", country: "Germany" },
       bills: { revenuedot: 10, revenuecat: 120 }, testPurchase: true };
     for (const step of STEP_IDS.filter((x) => !["side_by_side", "cutover"].includes(x))) {
       const m = journeyEmail({ ...base, step, migrating: false });

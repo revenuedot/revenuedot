@@ -135,7 +135,7 @@ function Form({ pid, existing, offerings, startType, readOnly }: { pid: string; 
   const [debounced, setDebounced] = useState(estimateBody);
   useEffect(() => { const t = setTimeout(() => setDebounced(estimateBody), 350); return () => clearTimeout(t); }, [estimateBody]);
   const estimate = useQuery({
-    queryKey: ["experiment-estimate", pid, debounced], enabled: !locked && !readOnly && estimable,
+    queryKey: ["experiment-estimate", pid, debounced], enabled: !locked && !readOnly && estimable, meta: { gate: "ignore" },
     queryFn: () => api<{ matching_customers: number; enrolled_customers: number; customers_per_variant: number; is_approximate: boolean }>(`${v2(pid)}/experiments/actions/estimate`, { method: "POST", json: debounced }),
   });
 

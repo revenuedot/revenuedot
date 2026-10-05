@@ -78,7 +78,7 @@ version:
 
 pricing:
   # Decision pending (submission-checklist.md, "Pricing"). Public price today: Enterprise from $50,000 a year, contact sales.
-  model: TBD   # options: contract (annual, AWS License Manager) with private offers | BYOL | free (open-source only)
+  model: TBD   # options: contract (annual, AWS License Manager) with private offers | BYOL (an Enterprise licence). Self-hosting is sold only as part of Enterprise
   refund_policy: TBD   # decided with the pricing model; nothing is promised until it is
   eula: standard-contract-for-aws-marketplace   # SCMP, with the RevenueDot Enterprise License as an addendum for ee/
 

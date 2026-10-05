@@ -472,14 +472,15 @@ test("Billing: owned projects with role and plan; Cloud billing only on Cloud", 
   await expect(own).toContainText("Own project");
   await expect(own).toContainText("Admin");
   await expect(own).toContainText("Self-hosted");
-  await expect(page.getByText("Billing is only on RevenueDot Cloud. This server is self-hosted: free and unmetered, with no limits.")).toBeVisible();
+  await expect(page.getByText("Billing is only on RevenueDot Cloud. This server is self-hosted, so it has no billing.")).toBeVisible();
   await phone(page, "account-billing-selfhost");
   // Cloud with billing set up: the same table plus the Cloud plan and usage.
   await page.goto(`${CLOUD}/login`);
   await signup(page.request, `cloud-${email}`, "Bea Cloud", "Cloud project", CLOUD);
   await page.goto(`${CLOUD}/account/billing`);
-  await expect(page.locator("[data-account-project]")).toContainText("Cloud Free");
-  await expect(page.locator("[data-plan=free]").getByText("Current")).toBeVisible();
+  await expect(page.locator("[data-account-project]")).toContainText("No plan");
+  await expect(page.locator("[data-stage=building]")).toContainText("Building and testing are free");
+  await expect(page.locator("[data-plan=pro]").getByRole("button", { name: "Start Pro" })).toBeVisible();
   await expect(page.locator("[data-tracked]")).toHaveText("$0.00");
   await shot(page, "account-billing-cloud");
   await phone(page, "account-billing-cloud");

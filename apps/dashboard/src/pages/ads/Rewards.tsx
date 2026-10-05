@@ -7,6 +7,7 @@ import { CodeBlock, ConfirmDialog, CopyField, Dialog, Field, Panel, Segmented, S
 import { api, fmt, type List } from "../../lib/api";
 import { errMsg, useApps } from "../setup/data";
 import { rewardText, ruleGrantText, useAdMob, useRewardRules, v2, type RewardRule, type RewardVerification } from "./data";
+import { PlanSlot } from "../../components/PlanRequired";
 
 /**
  * Ads Rewards (/projects/:projectId/ads/rewards; prd/ads/PRD.md): server-side verification of rewarded ads. The AdMob
@@ -307,6 +308,7 @@ export function RewardsPage() {
           </div>
           <div className="actions"><button type="button" className="btn btn-line" onClick={() => setTesting(true)}><Icon name="send" />Send a test reward</button></div>
         </div>
+        <PlanSlot />
         <Panel title="Server-side verification" link={<a className="link" href={GUIDE} target="_blank" rel="noreferrer">Setup guide →</a>}>
           <div className="stack">
             <ol className="steps">

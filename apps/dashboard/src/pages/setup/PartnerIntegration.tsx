@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ADJUST_STEPS, INTEGRATION_EVENTS, PAYWALL_CONCEPTS, STEP_LABELS, defaultEventName, fieldApplies, type Concept, type IntegrationKind } from "@revenuedot/core/integrations";
 import { Shell } from "../../components/Shell";
-import { DeliveryDrawer } from "../../components/DeliveryDrawer";
+import { DeliveryDrawer, DeliveryStatus } from "../../components/DeliveryDrawer";
 import { Icon } from "../../components/icons";
 import { Check, ConfirmDialog, Dialog, Disclosure, EVENT_TONE, Field, KeyValue, Menu, PageHead, Segmented, StatusLine, Switch, Tag, useProjectId, useToast } from "../../components/ui";
 import { api, fmt, type List } from "../../lib/api";
@@ -35,7 +35,6 @@ const PAYWALL_HINTS: Record<string, string> = {
   paywall_purchase_initiated: "The customer taps buy on a paywall (RevenueDot).",
   paywall_purchase_error: "A purchase started on a paywall fails (RevenueDot).",
 };
-const STATUS_TONE: Record<IntegrationDelivery["status"], "up" | "info" | "down" | "muted"> = { delivered: "up", pending: "info", failed: "down", skipped: "muted" };
 
 function IntegrationForm({ pid, spec, current, onSaved }: { pid: string; spec: IntegrationType; current?: Integration; onSaved: (i: Integration) => void }) {
   const qc = useQueryClient();
@@ -250,13 +249,13 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
               <tr key={d.id} className="row" tabIndex={0} onClick={() => setOpen(d)} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setOpen(d); }}>
                 <td><Tag tone={EVENT_TONE[d.event_type] ?? "muted"}>{d.event_type}</Tag><span className="cellsub mono" title={d.event_id}>{d.event_id.slice(0, 8)}…</span></td>
                 <td className="mono">{d.sent_as ?? "—"}</td>
-                <td><Tag tone={STATUS_TONE[d.status]}>{d.status}</Tag>{d.last_error && d.status !== "delivered" && <span className="cellsub">{d.last_error}</span>}</td>
+                <td><DeliveryStatus status={d.status} lastError={d.last_error} /></td>
                 <td className="num">{d.attempts}</td>
                 <td className="num">{d.response_status ?? (d.attempts ? "No answer" : "—")}{d.response_ms !== null && <span className="subtle"> · {d.response_ms} ms</span>}</td>
                 <td title={fmt.dateTime(d.created_at)}>{fmt.ago(d.created_at)}</td>
                 <td className="amt"><span className="hrow" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }} onClick={(e) => e.stopPropagation()}>
                   <button type="button" className="btn btn-ghost" onClick={() => setOpen(d)}>Details</button>
-                  {d.status !== "delivered" && d.status !== "pending" && <button type="button" className="btn btn-line" disabled={busy === d.id} onClick={() => retry(d)}>{busy === d.id ? "Retrying…" : "Retry"}</button>}
+                  {d.status !== "delivered" && d.status !== "pending" && d.status !== "held" && <button type="button" className="btn btn-line" disabled={busy === d.id} onClick={() => retry(d)}>{busy === d.id ? "Retrying…" : "Retry"}</button>}
                 </span></td>
               </tr>
             ))}</tbody>
@@ -266,7 +265,7 @@ function Deliveries({ pid, integration }: { pid: string; integration: Integratio
       {q.hasNextPage && <div className="pb"><button type="button" className="btn btn-line" disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>{q.isFetchingNextPage ? "Loading…" : "Load more"}</button></div>}
       {open && (
         <DeliveryDrawer path={`${base(pid)}/integrations/partners/${id}/deliveries/${open.id}`} title={`${open.event_type} · ${open.sent_as ?? `${open.event_id.slice(0, 8)}…`}`}
-          onClose={() => setOpen(null)} onRetry={() => retry(open)} canRetry={(x) => x.status !== "delivered" && !(x.status === "pending" && (x.next_attempt_at ?? 0) <= Date.now())} />
+          onClose={() => setOpen(null)} onRetry={() => retry(open)} canRetry={(x) => x.status !== "delivered" && x.status !== "held" && !(x.status === "pending" && (x.next_attempt_at ?? 0) <= Date.now())} />
       )}
     </section>
   );

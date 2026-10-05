@@ -1,6 +1,6 @@
 # Cloud (scope 1.12)
 
-**Status: live since 2026-09-30.** The same Hono app runs on Cloudflare Workers with Postgres through Hyperdrive; one worker serves https://api.revenuedot.app and https://app.revenuedot.app, anyone can sign up, and every account is on the free plan. Every push to `main` deploys from GitHub Actions (`.github/workflows/deploy.yml`): CI, migrations, the Worker, then a read-only smoke test against production. Runbook: [`docs/cloud.md`](../../docs/cloud.md).
+**Status: live since 2026-09-30.** The same Hono app runs on Cloudflare Workers with Postgres through Hyperdrive; one worker serves https://api.revenuedot.app and https://app.revenuedot.app, anyone can sign up, and building and testing are free with no card (an account starts Pro when its apps go live, `prd/cloud-billing/PRD.md`). Every push to `main` deploys from GitHub Actions (`.github/workflows/deploy.yml`): CI, migrations, the Worker, then a read-only smoke test against production. Runbook: [`docs/cloud.md`](../../docs/cloud.md).
 
 ## Users and jobs
 - **A developer who does not want to run servers** signs up at `app.revenuedot.app`, creates a project and points the SDK at `api.revenuedot.app`.
@@ -16,7 +16,7 @@ Essential (Tier 1)
 - Migrations run from Node before each deploy: `scripts/migrate.ts` (`pnpm migrate`) calls `openDb`, which applies `packages/db/migrations`.
 - `scripts/deploy-cloud.sh` (`pnpm deploy:cloud`): builds the dashboard, finds or creates the Hyperdrive config `revenuedot`, migrates the production Postgres and runs `cf deploy`. `--dry-run` builds and bundles without migrating or deploying; `--secrets-file` uploads the signing key.
 - Open sign-up: the cloud edition ignores `REVENUEDOT_ALLOW_SIGNUP`, and `GET /auth/config` answers `{ edition: "cloud", signup: "open" }`.
-- Free plan: `users.plan` (migration `0002_account_plan.sql`) defaults to `free`, and `GET /auth/me` returns `account: { edition, plan }`.
+- Plan: `users.plan` (migration `0002_account_plan.sql`) defaults to `none` since migration `0047_pro_live_gate.sql` (it was `free`), and `GET /auth/me` returns `account: { edition, plan }` with `plan` one of `none`, `pro`, `enterprise`.
 
 Later
 - Paid plans and billing (Tier 2); the dashboard does not show the plan yet.

@@ -136,7 +136,7 @@ export function orgRoutes(ctx: EeCtx) {
   r.post("/v2/organizations", async (c) => {
     const { user } = await signedIn(c, deps);
     const b = await body(c, OrgCreate);
-    // Cloud: creating an organization needs a plan that includes organizations (Cloud Standard or Enterprise).
+    // Cloud: creating an organization needs a plan that includes organizations (Pro or Enterprise).
     const mine = await userFeatures(ctx, user.id);
     if (ctx.cloud) needFeature(ctx, "organizations", mine);
     // A region other than this server's is a data-location setting, like the update route.

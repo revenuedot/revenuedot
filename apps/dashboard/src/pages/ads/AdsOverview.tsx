@@ -9,6 +9,7 @@ import { currencySymbol, displayRate, formatDisplay } from "../../lib/prefs";
 import { Legend, Plot, type Series } from "../charts/plot";
 import { errMsg, useApps } from "../setup/data";
 import { FORMAT_LABEL, v2, type AdsOverview as Overview, type Breakdown } from "./data";
+import { PlanSlot } from "../../components/PlanRequired";
 
 /**
  * Ads Overview (/projects/:projectId/ads; prd/ads/PRD.md): ad revenue from the SDKs' ad events in US dollars, next to
@@ -180,6 +181,7 @@ export function AdsOverviewPage() {
             <Switch label="Sandbox data" checked={env === "sandbox"} onChange={(v) => set("environment", v ? "sandbox" : null)} />
           </div>
         </div>
+        <PlanSlot onSandbox={() => set("environment", "sandbox")} />
         {q.isError && <div className="banner err" role="alert" style={{ alignItems: "center" }}><span style={{ flex: 1 }}>The ad numbers could not be loaded: {errMsg(q.error)}</span><button type="button" className="btn btn-line" onClick={() => q.refetch()}>Retry</button></div>}
         {q.isLoading && <div className="panel pb" aria-busy="true"><span className="sk line" /></div>}
         {onboarding && <Onboarding pid={pid} />}

@@ -17,7 +17,7 @@ import { normEmail } from "../services/members.js";
 import { hit } from "../services/rate-limit.js";
 import { SESSION_COOKIE, hashPassword, publicSessionId, sessionUser, verifyPassword } from "../services/sessions.js";
 import { newTotpSecret, otpauthUrl } from "../services/totp.js";
-import { planOf, plansFrom } from "../services/billing/plans.js";
+import { accountPlanOf, planOf, plansFrom } from "../services/billing/plans.js";
 import { OAUTH_SCOPES } from "./oauth.js";
 import { page } from "./lifecycle-public.js";
 import { UNSUBSCRIBE_COLUMN, type NotificationKind } from "../services/account-notifications.js";
@@ -344,7 +344,9 @@ export function accountRoutes(deps: Deps) {
     const planName = (owner: string | null) => {
       if (!cloud) return { id: "self_hosted", name: "Self-hosted" };
       const a = accts.find((x) => x.u === owner);
-      const p = planOf(plans, a && ["active", "past_due"].includes(a.status) ? a.plan : a?.plan === "enterprise" ? "enterprise" : "free");
+      const id = accountPlanOf(a?.plan);
+      if (id === "none") return { id: "none", name: "No plan" };
+      const p = planOf(plans, id);
       return { id: p.id, name: p.name };
     };
     const items = mine.map((p) => {
@@ -426,8 +428,8 @@ export function accountRoutes(deps: Deps) {
     }
     if (deps.edition === "cloud") {
       const [acct] = await db.select().from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)).limit(1);
-      if (acct && acct.plan === "standard" && ["active", "past_due"].includes(acct.status) && !acct.cancelAt) {
-        return (c) => err(c, 409, "billing_active", "Cancel your Cloud Standard plan on the Billing page first, so you are not charged for a deleted account.");
+      if (acct && accountPlanOf(acct.plan) === "pro" && ["active", "past_due"].includes(acct.status) && !acct.cancelAt) {
+        return (c) => err(c, 409, "billing_active", "Cancel your Pro plan on the Billing page first, so you are not charged for a deleted account.");
       }
     }
     for (const x of deps.extensions ?? []) {
@@ -550,11 +552,11 @@ export function accountRoutes(deps: Deps) {
     return c.redirect(`https://revenuedot.app/docs/migrate?${utm("revenuecat")}`, 302);
   });
 
-  // One-click answers (a 0 to 10 rating, a reason for leaving Standard). GET shows the answer with a confirm button and a
+  // One-click answers (a 0 to 10 rating, a reason for leaving Pro). GET shows the answer with a confirm button and a
   // comment box, so a mail scanner that opens the link records nothing; POST records it (the latest answer per kind wins).
   const FEEDBACK: Record<string, { title: string; ok: (v: string) => boolean; show: (v: string) => string }> = {
     nps: { title: "How likely are you to recommend RevenueDot?", ok: (v) => /^(10|[0-9])$/.test(v), show: (v) => `Your answer: ${v} out of 10.` },
-    cancel: { title: "Why did you leave Cloud Standard?", ok: (v) => v.length > 0 && v.length <= 80, show: (v) => `Your answer: ${v}.` },
+    cancel: { title: "Why did you leave Pro?", ok: (v) => v.length > 0 && v.length <= 80, show: (v) => `Your answer: ${v}.` },
   };
   r.get("/auth/journeys/feedback/:token", async (c) => {
     const kind = c.req.query("kind") ?? "", value = (c.req.query("value") ?? "").trim();

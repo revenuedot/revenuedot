@@ -38,13 +38,13 @@ Not matched: RevenueCat's "Experiment Performance Alerts" column (alerts while a
 - **Delete account**: `POST /auth/account/delete { email, password?, code? }`.
   - The typed email must match; the password is needed when the account has one; a code when two-factor is on.
   - **Refused (409 `ownership_transfer_required`, with the projects listed)** while the user owns a project that has other members, or is the last admin of a project that has other members. The message says to transfer ownership (Project settings → General) or remove the members first.
-  - **Refused (409 `billing_active`)** while a Cloud Standard subscription is active or past due: cancel it on the Billing page first, so nobody is charged for a deleted account.
+  - **Refused (409 `billing_active`)** while a Pro subscription is active or past due: cancel it on the Billing page first, so nobody is charged for a deleted account.
   - Enterprise extensions may refuse too (`beforeAccountDelete`, for example the last owner of an organization with members).
   - **What goes:** projects where the user is the only member (with everything in them), the OAuth keys the user granted (in any project), the user's memberships, sessions, links, recovery codes, notification preferences and sends, AI conversations and the Cloud billing account (foreign keys cascade). **What stays:** audit log entries, and projects other people still use. Each project the user leaves gets a `collaborator_account_deleted` entry with the email and name, because older entries name the actor by a user id that no longer resolves. A "Your account was deleted" email goes to the address. The response clears the cookie.
 - **Stripe accounts**: RevenueCat connects Stripe at account level. RevenueDot's Connect with Stripe (PR #32) is per app and not merged, so the section is a placeholder that stays hidden until the server reports `account.features.stripe_connect: true`. When #32 merges, the section lists each connected account across the user's admin projects (app, project, mode Live/Test, status, Disconnect) from #32's `stripe_connections`.
 
 ### 2. Billing (`/account/billing`)
-- **Owned projects**: `GET /auth/account/projects` lists every project the user belongs to with `role`, `is_owner`, `members`, the owner's name, and `plan` (Cloud: the owner's plan, "Cloud Free" / "Cloud Standard" / "Enterprise"; self-host: "Self-hosted"). Owned projects first, then the rest ("Projects you are a member of").
+- **Owned projects**: `GET /auth/account/projects` lists every project the user belongs to with `role`, `is_owner`, `members`, the owner's name, and `plan` (Cloud: the owner's plan, "No plan" / "Pro" / "Enterprise"; self-host: "Self-hosted"). Owned projects first, then the rest ("Projects you are a member of").
 - **Billing & Payments**: the merged Cloud billing (`GET /v2/billing`, prd/cloud-billing) on the same page: plan and status, tracked revenue against the limit, the bill so far, plans with Upgrade or Manage billing, invoices. Shown only on Cloud with `billing_ready`, exactly like the existing Billing link; self-host shows "free and unmetered".
 
 ### 3. Security (`/account/security`)

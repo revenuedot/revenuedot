@@ -112,7 +112,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
         <Mark size={36} />
         <div>
           <h1>{signup ? "Create your account" : "Sign in to RevenueDot"}</h1>
-          <p>{signup ? (cloud ? "Subscriptions and in-app purchases for your apps. Free up to $10,000 a month in tracked revenue." : "Subscriptions and in-app purchases for your apps.") : "Welcome back."}</p>
+          <p>{signup ? (cloud ? "Building and testing are free. Pro is $0 until your apps make $10,000 a month." : "Subscriptions and in-app purchases for your apps.") : "Welcome back."}</p>
         </div>
         {signup && <div className="field"><label htmlFor="name">Your name</label><input id="name" className="input" autoComplete="name" value={form.name} onChange={set("name")} /></div>}
         <div className="field"><label htmlFor="email">Email</label><input id="email" className="input" type="email" autoComplete="email" required value={form.email} onChange={set("email")} /></div>

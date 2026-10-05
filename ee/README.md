@@ -6,7 +6,7 @@ Paid enterprise features: organizations, custom roles, single sign-on (SAML 2.0 
 - `REVENUEDOT_LICENSE_KEY=rdl1_…` turns on the features the key lists (`server/license.ts` checks its Ed25519 signature).
 - `REVENUEDOT_EE_DEV=true` turns on every feature for development and testing (refused on RevenueDot Cloud).
 - With neither, nothing in this folder is imported and a self-hosted server behaves exactly like the open-source build.
-- **RevenueDot Cloud always loads it** and ignores the key: each organization gets the features of its owners' best plan (`server/plans.ts`). Cloud Standard: organizations, custom roles, single sign-on. Enterprise: everything. Cloud Free sees them as locked. Spec: `prd/enterprise/PRD.md` §2a.
+- **RevenueDot Cloud always loads it** and ignores the key: each organization gets the features of its owners' best plan (`server/plans.ts`). Pro: organizations, custom roles, single sign-on. Enterprise: everything. An account with no plan sees them as locked. Spec: `prd/enterprise/PRD.md` §2a.
 
 ## Extension points
 Nothing outside `ee/` imports from `ee/`, except these two files:

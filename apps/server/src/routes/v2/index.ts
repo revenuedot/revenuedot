@@ -35,6 +35,7 @@ import { storeOpRoutes } from "./store-ops.js";
 import { storeImportRoutes } from "./store-import.js";
 import { productEditorRoutes } from "./product-editor.js";
 import { subscriberAuthRoutes } from "./subscriber-auth.js";
+import { liveGateMiddleware } from "./live-gate.js";
 import { billingExcludedRoutes } from "./billing-excluded.js";
 import { discountRoutes } from "./discounts.js";
 import { webRoutes } from "./web.js";
@@ -113,6 +114,8 @@ export function v2Routes(deps: Deps) {
   });
 
   r.use("/v2/projects/:project_id/*", auditMiddleware(deps));
+  // Cloud's go-live gate: live data needs a plan once the 14 days after the first live sale are over (live-gate.ts).
+  liveGateMiddleware(r);
 
   // Across every project the signed-in user can open (Overview → All projects).
   accountOverviewRoutes(r, deps);

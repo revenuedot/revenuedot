@@ -508,8 +508,8 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   name: text("name"),
   passwordHash: text("password_hash"),
-  /** RevenueDot Cloud plan for this account. Every account is on "free" until billing plans ship (Tier 2). */
-  plan: text("plan").notNull().default("free"),
+  /** RevenueDot Cloud plan for this account, copied from billing_accounts: none (building, no card), pro or enterprise. */
+  plan: text("plan").notNull().default("none"),
   /** When the user proved they read this inbox (verification link, password reset or invite). Cloud gates secret keys and invites on it. */
   emailVerifiedAt: ts("email_verified_at"),
   /** Alert emails (failing notifications, webhooks, store credentials) for projects this user administers. */
@@ -716,7 +716,7 @@ export const journeySends = pgTable("journey_sends", {
 
 /**
  * One-click answers from onboarding and growth emails (prd/onboarding-emails/PRD.md): `kind` "nps" (value 0 to 10) or
- * "cancel" (the reason a customer left Cloud Standard), with an optional comment. The latest answer per user and kind wins.
+ * "cancel" (the reason a customer left Pro), with an optional comment. The latest answer per user and kind wins.
  */
 export const journeyFeedback = pgTable("journey_feedback", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -2070,19 +2070,25 @@ export const projectMoves = pgTable("project_moves", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("project_moves_project").on(t.projectId, t.createdAt)]);
 
-/** RevenueDot Cloud billing per account (a user who owns projects). No row: Free with no Stripe customer. */
+/** RevenueDot Cloud billing per account (a user who owns projects). No row: no plan, no Stripe customer, not live. */
 export const billingAccounts = pgTable("billing_accounts", {
   userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  /** free, standard, enterprise. */
-  plan: text("plan").notNull().default("free"),
+  /** none (building: free, no card), pro (Stripe subscription with a card on file) or enterprise (set by hand). */
+  plan: text("plan").notNull().default("none"),
   /** none, active, past_due, unpaid, incomplete, paused, canceled (Stripe's subscription status, prd/cloud-billing). */
   status: text("status").notNull().default("none"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   currentPeriodEnd: ts("current_period_end"),
   cancelAt: ts("cancel_at"),
-  /** When the account first became Standard (onboarding emails thank it once, prd/onboarding-emails/PRD.md). Kept when it lapses. */
+  /** When the account first started Pro (onboarding emails thank it once, prd/onboarding-emails/PRD.md). Kept when it lapses. The column keeps Pro's old name, Standard. */
   standardStartedAt: ts("standard_started_at"),
+  /**
+   * The go-live gate (prd/cloud-billing/PRD.md): when the billing pass first saw a live sale in a project this account owns,
+   * and when the 14 days to start Pro end. Without a plan after `grace_ends_at`, live data and outbound deliveries pause.
+   */
+  liveAt: ts("live_at"),
+  graceEndsAt: ts("grace_ends_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
   createdAt: created(),
 }, (t) => [uniqueIndex("billing_accounts_customer").on(t.stripeCustomerId)]);

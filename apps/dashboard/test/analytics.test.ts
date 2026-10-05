@@ -10,7 +10,7 @@ describe("goalFor: the steps toward paying", () => {
     expect(goalFor("POST", "/v2/projects/proj_1/products")?.goal).toBe("product_created");
     expect(goalFor("POST", "/v2/projects/proj_1/integrations/webhooks")?.goal).toBe("webhook_created");
     expect(goalFor("POST", "/v2/projects/proj_1/apps/app_1/stripe_connect/actions/finish")?.goal).toBe("stripe_connected");
-    expect(goalFor("POST", "/v2/billing/checkout")).toEqual({ goal: "checkout_started", params: { plan: "standard" } });
+    expect(goalFor("POST", "/v2/billing/checkout")).toEqual({ goal: "checkout_started", params: { plan: "pro" } });
   });
   it("a signup through an invite is not a new customer", () => {
     expect(goalFor("POST", "/auth/signup", { email: "a@b.co", invite_token: "tok" })?.goal).toBe("invite_signup_completed");
@@ -60,10 +60,10 @@ describe("sending to DataFast", () => {
     expect(calls).toEqual([["project_created"]]);
   });
   it("identifyUser uses the email as user id, sends no project names, and repeats only when something changed", () => {
-    const me = { user: { email: "founder@example.com", name: "Founder", email_verified: false }, account: { plan: "free" }, projects: [{ id: "p1", name: "Secret Name" }] };
+    const me = { user: { email: "founder@example.com", name: "Founder", email_verified: false }, account: { plan: "none" }, projects: [{ id: "p1", name: "Secret Name" }] };
     identifyUser(me);
     identifyUser(me);
-    expect(calls).toEqual([["identify", { user_id: "founder@example.com", name: "Founder", plan: "free", projects: "1", email_verified: "false" }]]);
+    expect(calls).toEqual([["identify", { user_id: "founder@example.com", name: "Founder", plan: "none", projects: "1", email_verified: "false" }]]);
     identifyUser({ ...me, user: { ...me.user, email_verified: true } });
     expect(calls).toHaveLength(2);
     expect(JSON.stringify(calls)).not.toContain("Secret Name");

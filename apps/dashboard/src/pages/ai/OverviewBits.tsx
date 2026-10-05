@@ -73,7 +73,7 @@ function priceOf(card: FirstSale) {
 
 /** The first-sale card (prd/ai-assistant/PRD.md §4): shown on the Overview until dismissed, with a public share link. */
 export function FirstSaleCard({ pid }: { pid: string }) {
-  const q = useQuery({ queryKey: ["first-sale", pid], queryFn: () => api<{ card: FirstSale | null }>(`${aiBase(pid)}/first_sale`).then((r) => r.card), enabled: !!pid });
+  const q = useQuery({ queryKey: ["first-sale", pid], queryFn: () => api<{ card: FirstSale | null }>(`${aiBase(pid)}/first_sale`).then((r) => r.card), enabled: !!pid, meta: { gate: "ignore" } });
   const qc = useQueryClient();
   const status = useAiStatus(pid);
   const [copied, setCopied] = useState(false);
@@ -124,7 +124,7 @@ const weekLabel = (w: string) => new Date(`${w}T00:00:00Z`).toLocaleDateString("
  * (admins and developers, once an hour) writes them again. Ask about this opens a conversation with the question.
  */
 export function GrowthInsights({ pid }: { pid: string }) {
-  const q = useQuery({ queryKey: ["ai-insights", pid], enabled: !!pid, queryFn: () => api<InsightsResp>(`${aiBase(pid)}/insights`) });
+  const q = useQuery({ queryKey: ["ai-insights", pid], enabled: !!pid, meta: { gate: "ignore" }, queryFn: () => api<InsightsResp>(`${aiBase(pid)}/insights`) });
   const qc = useQueryClient();
   const nav = useNavigate();
   const toast = useToast();

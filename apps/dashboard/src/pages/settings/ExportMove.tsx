@@ -176,11 +176,11 @@ function MovePanel({ pid, state }: { pid: string; state: MoveState }) {
         ) : (
           <>
             <div role="radiogroup" aria-label="Destination" className="stack">
-              {!cloud && <label className="check"><input type="radio" name="dest" checked={dest === "cloud"} onChange={() => setDest("cloud")} /><span><b>RevenueDot Cloud</b><small>{CLOUD_API}: hosted for you, free up to $10,000 tracked revenue a month.</small></span></label>}
+              {!cloud && <label className="check"><input type="radio" name="dest" checked={dest === "cloud"} onChange={() => setDest("cloud")} /><span><b>RevenueDot Cloud</b><small>{CLOUD_API}: hosted for you. Building and testing are free; Pro is $0 until your apps make $10,000 a month.</small></span></label>}
               <label className="check"><input type="radio" name="dest" checked={dest === "other"} onChange={() => setDest("other")} /><span><b>{cloud ? "Your own server" : "Another RevenueDot server"}</b><small>{cloud ? "A self-hosted RevenueDot (docker compose up) reachable from the internet. Behind a firewall, use the command line below." : "Another self-hosted RevenueDot."}</small></span></label>
             </div>
             {dest === "other" && <Field label="Server URL" htmlFor="move-url" hint="The address your apps would use as the SDK proxy URL, e.g. https://revenuedot.example.com."><input id="move-url" className="input mono" placeholder="https://revenuedot.example.com" value={url} onChange={(e) => setUrl(e.target.value)} /></Field>}
-            <Field label="Import token" htmlFor="move-token" hint={<>On the destination, sign in and open <b>Receive a project</b> to create one. It starts with rdi_ and lasts 24 hours.{dest === "cloud" && <> <a href="https://app.revenuedot.app/signup" target="_blank" rel="noreferrer">Create a free Cloud account</a>.</>}</>}>
+            <Field label="Import token" htmlFor="move-token" hint={<>On the destination, sign in and open <b>Receive a project</b> to create one. It starts with rdi_ and lasts 24 hours.{dest === "cloud" && <> <a href="https://app.revenuedot.app/signup" target="_blank" rel="noreferrer">Create a Cloud account</a>.</>}</>}>
               <input id="move-token" className="input mono" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />
             </Field>
             {error && <div className="banner err" role="alert">{error}</div>}

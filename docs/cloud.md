@@ -1,7 +1,8 @@
 # RevenueDot Cloud (Cloudflare Workers)
 
 RevenueDot Cloud is the same Hono app as self-host, run on Cloudflare Workers with Postgres through Hyperdrive. It has
-been live since 2026-09-30: sign-up is open at https://app.revenuedot.app and every account is on the free plan.
+been live since 2026-09-30: sign-up is open at https://app.revenuedot.app. Building and testing are free with no card;
+an account starts Pro (a card on file, $0 until its apps make $10,000 a month) when its apps go live.
 Everything is built and deployed with the [`cf` CLI](https://www.npmjs.com/package/cf) (not wrangler), on the
 Cloudflare account **Circo** (`5a8f4d72ace5f438725e1dfd1b0380ff`), zone `revenuedot.app`. Production deploys run from
 GitHub Actions on every push to `main` (see [Deploy](#deploy)).
@@ -24,7 +25,9 @@ GitHub Actions on every push to `main` (see [Deploy](#deploy)).
 | Deploy | `scripts/deploy-cloud.sh` (`pnpm deploy:cloud`) |
 | Smoke test | `scripts/smoke-cloud.mjs <base URL>` |
 
-Every account is on Cloud Free until it upgrades (`billing_accounts`, `prd/cloud-billing/PRD.md`). `/auth/me` returns
+Two plans since 2026-10-05: **Pro** ($0 until an account's apps make $10,000 a month, then 0.5% of revenue above $10,000,
+never more than $999 a month) and **Enterprise** (custom, from $50,000 a year). An account starts with no plan (`none`,
+the build stage) until it starts Pro (`billing_accounts`, `prd/cloud-billing/PRD.md`). `/auth/me` returns
 `account: { edition: "cloud", plan, billing_status }` on the cloud build. Billing stays off (the Billing page says "not set
 up yet") until the Stripe secrets below are set.
 
@@ -226,7 +229,8 @@ sandbox **RevenueDot sandbox** (`acct_1UMD6673qxAZFIVo`). Keys live in `apps/ser
 
 What exists in Stripe (live and sandbox):
 1. **Billing Meter** `revenuedot_cloud_bill_cents`: aggregation **Last**, customer mapping `stripe_customer_id`, value key `value`.
-2. **Product** RevenueDot Cloud Standard, monthly **metered** price of **$0.01 per unit** on that meter (the server reports the
+2. **Product** RevenueDot Pro (renamed from "RevenueDot Cloud Standard" on 2026-10-05; rename it in the Stripe
+   dashboard, live and sandbox, so Checkout, invoices and receipts say Pro), monthly **metered** price of **$0.01 per unit** on that meter (the server reports the
    month's bill in cents, so the invoice equals the bill).
 3. **Customer Portal** (default configuration): cancel at end of billing period, invoice history, payment-method updates.
 4. **Webhook** `https://api.revenuedot.app/v2/billing/stripe/webhook` with `checkout.session.completed`,
@@ -241,8 +245,8 @@ What exists in Stripe (live and sandbox):
    `https://revenuedot.app/legal/terms`, statement descriptor `REVENUEDOT`.
 7. **Customer emails**: receipts for successful payments and refunds on. **Revenue recovery**: Stripe's smart retries; Stripe
    emails the customer when a card payment fails (our server also sends one "payment failed" email per invoice); when every
-   retry fails the subscription becomes **unpaid** (not cancelled), so the account drops to Free with an email and paying the
-   open invoice later brings Standard back.
+   retry fails the subscription becomes **unpaid** (not cancelled), so the account drops to no plan with an email (a live account
+   is then paused at once) and paying the open invoice later brings Pro back.
 
 How it runs:
 - **Stripe is the source of truth.** Every event makes the server re-read the customer's subscriptions and the invoice, so
@@ -257,10 +261,34 @@ How it runs:
 - **Key permissions** (checked 2026-10-03): read on Subscriptions, Invoices, Checkout Sessions, Customers; write on Customers,
   Checkout Sessions (create, expire), Subscriptions (cancel a duplicate), Customer portal, Billing Meter Events.
 - **Secrets** on Worker `revenuedot`: `REVENUEDOT_BILLING_STRIPE_SECRET_KEY`, `REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET`,
-  `REVENUEDOT_BILLING_PRICE_STANDARD`, `REVENUEDOT_BILLING_LIVE`. Optional: `REVENUEDOT_BILLING_METER_EVENT`,
+  `REVENUEDOT_BILLING_PRICE_PRO` (the metered price; the server falls back to the old name `REVENUEDOT_BILLING_PRICE_STANDARD`,
+  so the existing secret keeps working until it is renamed), `REVENUEDOT_BILLING_LIVE`. Optional: `REVENUEDOT_BILLING_METER_EVENT`,
   `REVENUEDOT_BILLING_PLANS` (JSON plan table, replaces `apps/server/src/services/billing/plans.ts` without a deploy). Rotate
   by piping the new value into `cf workers secrets update --worker revenuedot`, never through a file.
 - A live key (`sk_live_`, `rk_live_`) is refused unless `REVENUEDOT_BILLING_LIVE=true`, so no development machine can charge anyone.
+
+### The go-live gate (operations)
+The gate is on wherever billing is on: the Cloud edition with working Stripe secrets (`gateOn` in
+`apps/server/src/services/billing/gate.ts`). A self-hosted server, or Cloud without Stripe set up, has no gate.
+- **Live.** Each billing pass marks an owner live at its first live sale: a production `purchase`, `renewal` or `one_time`
+  with `revenue_usd > 0`, not imported and not moved in. It sets `billing_accounts.live_at` and `grace_ends_at` (14 days
+  later). Accounts already live when the gate shipped got their 14 days from the first pass.
+- **Stages.** Building (no live sale), grace (live, no plan, before `grace_ends_at`), paused (live, no plan, after it) and
+  active (Pro `active` or `past_due`, or Enterprise). Find paused accounts with
+  `SELECT user_id, live_at, grace_ends_at FROM billing_accounts WHERE plan NOT IN ('pro','enterprise') AND grace_ends_at <= now()`.
+- **What pauses.** API v2 and dashboard reads of live data answer `402 plan_required` (`routes/v2/live-gate.ts` lists the
+  paths); paywall, experiment and targeting edits answer 402; production webhook and integration deliveries are set to
+  `held`. Held deliveries go out oldest first on the first tick after the owner starts Pro; after 30 days they are marked
+  failed.
+- **What never pauses.** The SDK and every SDK endpoint, purchase verification, entitlements, store notifications, REST v1
+  subscriber reads, REST v2 reads of one customer with a secret key, and every sandbox read.
+- **Emails.** At most three per go-live, recorded in `billing_notices`: `live_grace` at the first live sale, `live_reminder`
+  two days before `grace_ends_at`, `live_paused` when paused.
+- **Give an account more time.** Move its date forward:
+  `UPDATE billing_accounts SET grace_ends_at = now() + interval '14 days' WHERE user_id = '...'`. Held deliveries release on
+  the next tick. Do this only on Kai's say-so.
+- **Enterprise.** Set `plan = 'enterprise'` on the account's `billing_accounts` row when the contract is signed; the gate
+  then never applies.
 
 Prove a change before shipping it: `pnpm tsx scripts/e2e/real-stripe/billing.ts` (real sandbox Checkout, webhooks, meter,
 test clock renewal, declined card, recovery, portal), plus `apps/server/test/billing.test.ts` and

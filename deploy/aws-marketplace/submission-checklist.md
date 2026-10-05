@@ -20,7 +20,9 @@ Marketplace seller account exists yet. Spec: `prd/ha-self-host/PRD.md`.
      entitlement in place of, or next to, `REVENUEDOT_LICENSE_KEY`.
    - **BYOL**: a free listing; the customer buys the licence from us and sets `REVENUEDOT_LICENSE_KEY`. Fastest to ship,
      no AWS integration, but no purchase through the customer's AWS bill.
-   - **Free** (open-source only): discovery only, no revenue through AWS.
+   - **Free** (open-source only): discovery only, no revenue through AWS. Not recommended: self-hosting is not a plan
+     RevenueDot sells (Kai, 2026-10-05). The commercial licence to self-host is part of Enterprise, so this listing is an
+     Enterprise channel (contract pricing or BYOL).
    Hourly or per-pod usage pricing does not fit: it needs the AWS Marketplace Metering Service in the image and prices
    the infrastructure rather than the licence.
 2. **Seller registration (an owner).** Register the company that sells RevenueDot as an AWS Marketplace seller in the AWS Marketplace Management

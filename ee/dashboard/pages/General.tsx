@@ -7,7 +7,7 @@ import { ConfirmDialog, CopyField, Field, KeyValue, Tag, useToast } from "../../
 import { base, errMsg, isAdmin, useEnterprise, type Overview } from "../lib";
 import { FEATURE_LABEL, LockNote } from "../locked";
 
-const PLAN_NAME: Record<string, string> = { free: "Cloud Free", standard: "Cloud Standard", enterprise: "Enterprise" };
+const PLAN_NAME: Record<string, string> = { none: "No plan", pro: "Pro", enterprise: "Enterprise" };
 
 export function GeneralTab({ org }: { org: Overview }) {
   const qc = useQueryClient();
@@ -56,7 +56,7 @@ export function GeneralTab({ org }: { org: Overview }) {
 
       {ent.data?.mode === "cloud" ? (
         <section className="panel">
-          <div className="ph"><b>Plan</b><Tag tone={org.plan === "free" ? "muted" : "up"}>{PLAN_NAME[org.plan ?? "free"]}</Tag></div>
+          <div className="ph"><b>Plan</b><Tag tone={!org.plan || org.plan === "none" ? "muted" : "up"}>{PLAN_NAME[org.plan ?? "none"] ?? org.plan}</Tag></div>
           <div className="pb stack">
             <KeyValue rows={[
               ["Included", org.features.length ? <span className="hrow" key="f">{org.features.map((f) => <Tag key={f}>{FEATURE_LABEL[f] ?? f}</Tag>)}</span> : "None"],

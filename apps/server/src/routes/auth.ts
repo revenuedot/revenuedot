@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { schema } from "@revenuedot/db";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -14,6 +14,8 @@ import {
 import { acceptInvite, inviteByToken, normEmail } from "../services/members.js";
 import { clientIp, hit } from "../services/rate-limit.js";
 import { stripeProblem } from "../services/billing/stripe.js";
+import { accountPlanOf } from "../services/billing/plans.js";
+import { gateOf, gateOn, type Gate } from "../services/billing/gate.js";
 
 const Password = z.string().min(8, "Use at least 8 characters for your password.").max(200, "Use at most 200 characters for your password.");
 const Email = z.string().trim().toLowerCase().email("Enter a valid email address.");
@@ -204,17 +206,21 @@ export function authRoutes(deps: Deps) {
   r.get("/auth/me", async (c) => {
     const u = await me(c);
     if (!u) return c.json({ type: "authentication_error", message: "Not signed in." }, 401);
+    const projects = await projectsForUser(deps.db, u.id);
+    const gates = await projectGates(deps, u.id, projects.map((p: { id: string }) => p.id));
     return c.json({
       user: await userOut(u),
       // Cloud: the plan and billing status (prd/cloud-billing/PRD.md); self-hosted servers have no plan. `billing_ready`:
       // RevenueDot's Stripe is set up; until then the dashboard links no Billing page, as before billing existed.
       account: {
-        edition: deps.edition ?? "self-hosted", plan: u.plan, billing_ready: deps.edition === "cloud" && !stripeProblem(deps.billing),
+        edition: deps.edition ?? "self-hosted", plan: deps.edition === "cloud" ? accountPlanOf(u.plan) : u.plan, billing_ready: deps.edition === "cloud" && !stripeProblem(deps.billing),
+        // The go-live gate of this account and of each project's owner (prd/cloud-billing/PRD.md): banners and the 402 panels.
+        gate: gates.own, project_gates: gates.projects,
         billing_status: deps.edition === "cloud" ? (await deps.db.select({ s: schema.billingAccounts.status }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, u.id)))[0]?.s ?? "none" : null, email_verification_required: needsVerification(deps, u),
         // Account settings → General lists the Stripe accounts connected with Connect with Stripe (prd/web-billing §8); the rest are cloud-only features (prd/attribution-benchmarks-insights).
         features: { stripe_connect: true, benchmarks: !!deps.benchmarks, insights_digest: !!deps.insightsDigest && !!deps.assistant },
       },
-      projects: await projectsForUser(deps.db, u.id),
+      projects,
       ...(await meExtras(c, u.id)),
     });
   });
@@ -335,4 +341,23 @@ export function authRoutes(deps: Deps) {
     return c.json({ ok: true, project_id: found.invite.projectId });
   });
   return r;
+}
+
+/** The go-live gate of the signed-in account and of the owner of every project it can open (Cloud with billing set up). */
+async function projectGates(deps: Deps, userId: string, projectIds: string[]): Promise<{ own: Gate; projects: Record<string, Gate & { owner_is_you: boolean; owner_name: string | null }> }> {
+  const now = deps.now();
+  const on = gateOn(deps);
+  const A = schema.billingAccounts;
+  const [mine] = on ? await deps.db.select({ plan: A.plan, liveAt: A.liveAt, graceEndsAt: A.graceEndsAt }).from(A).where(eq(A.userId, userId)) : [];
+  const projects: Record<string, Gate & { owner_is_you: boolean; owner_name: string | null }> = {};
+  if (on && projectIds.length) {
+    const rows = await deps.db.select({ id: schema.projects.id, owner: schema.projects.ownerUserId, name: schema.users.name, email: schema.users.email, plan: A.plan, liveAt: A.liveAt, graceEndsAt: A.graceEndsAt })
+      .from(schema.projects).leftJoin(schema.users, eq(schema.users.id, schema.projects.ownerUserId)).leftJoin(A, eq(A.userId, schema.projects.ownerUserId))
+      .where(inArray(schema.projects.id, projectIds));
+    for (const r of rows) {
+      const g = r.owner ? gateOf(r.plan === null ? null : { plan: r.plan, liveAt: r.liveAt, graceEndsAt: r.graceEndsAt }, now, on) : gateOf(null, now, false);
+      projects[r.id] = { ...g, owner_is_you: r.owner === userId, owner_name: r.owner ? r.name || r.email : null };
+    }
+  }
+  return { own: gateOf(mine ?? null, now, on), projects };
 }

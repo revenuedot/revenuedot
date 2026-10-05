@@ -96,7 +96,7 @@ export interface Webhook {
 }
 
 export interface Delivery {
-  object: "webhook_delivery"; id: string; webhook_integration_id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed";
+  object: "webhook_delivery"; id: string; webhook_integration_id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed" | "held";
   attempts: number; next_attempt_at: number | null; response_status: number | null; response_ms: number | null; last_error: string | null; created_at: number;
 }
 
@@ -180,7 +180,7 @@ export interface Integration {
   status: { last_delivered_at: number | null; last_error: string | null; consecutive_failures: number; failed_deliveries_in_row?: number }; created_at: number;
 }
 export interface IntegrationDelivery {
-  object: "integration_delivery"; id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed" | "skipped"; attempts: number; sent_as: string | null;
+  object: "integration_delivery"; id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed" | "skipped" | "held"; attempts: number; sent_as: string | null;
   next_attempt_at: number | null; request: string | null; request_body: string | null; response_status: number | null; response_ms: number | null; response_body: string | null; last_error: string | null; created_at: number;
 }
 export interface DataExport {
