@@ -33,7 +33,7 @@ describe.skipIf(!URL_)("customer scans on real Postgres", () => {
   const get = async (path: string, init: Parameters<Harness["fetch"]>[1] = {}) => (await h.fetch(path, { key: h.ids.secretKey, ...init })).json() as Promise<any>;
   const DE_WITH_EMAIL = { groups: [{ conditions: [{ field: "country", operator: "is", value: "DE" }, { field: "email", operator: "isNotEmpty" }] }] };
 
-  it("SQL lists, sorts and cards stay well under a second", async () => {
+  it("SQL lists, sorts and cards use little CPU at any size", async () => {
     const all = await timed("list all, first page + cards", () => get("/v2/projects/proj1/customer_lists?list=all&limit=50"));
     expect(all.value.summary.customers).toBe(N);
     const sorted = await timed("list all sorted by spent", () => get("/v2/projects/proj1/customer_lists?list=all&limit=50&sort=spent_in_usd&direction=desc"));
@@ -46,7 +46,8 @@ describe.skipIf(!URL_)("customer scans on real Postgres", () => {
     expect(deep.value.items[0].id).toBe("user4999");
     const search = await timed("search", () => get(`/v2/projects/proj1/customer_lists?list=all&search=user${N - 2}%40`));
     expect(search.value.items).toHaveLength(1);
-    for (const t of [all, sorted, status, deep, search]) expect(t.wallMs).toBeLessThan(5_000);
+    // Wall time from a laptop is mostly its distance to the database; the Worker is limited on CPU.
+    for (const t of [all, sorted, status, deep, search]) expect(t.cpuMs).toBeLessThan(1_000);
   }, 600_000);
 
   it("a condition-filtered page, the whole-project count, and the tick's pages fit Worker limits", async () => {
@@ -63,7 +64,7 @@ describe.skipIf(!URL_)("customer scans on real Postgres", () => {
     while (!(await exactCount(h.db, "proj1", "audience", { rules: DE_WITH_EMAIL }, NOW, 0)).countedAt) { await runCountJobs(h.db, NOW, { budgetMs: 15_000 }); ticks++; }
     console.log(`[scale ${N}] background count finished after ${ticks} tick(s)`);
     const pv = await timed("audience preview served from the stored count", () => get("/v2/projects/proj1/audiences/actions/preview", { method: "POST", json: { rules: DE_WITH_EMAIL } }));
-    expect(pv.wallMs).toBeLessThan(5_000);
+    expect(pv.cpuMs).toBeLessThan(1_000);
   }, 900_000);
 
   it("CSV export streams every row", async () => {

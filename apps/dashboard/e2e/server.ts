@@ -101,10 +101,11 @@ let ticking = false;
 // A fixed sealing key, for the API and the background tick alike: integration secrets are encrypted with it (deliveries
 // unseal them in the tick), and Auth (prd/auth) derives its token key from it.
 const SEALING_KEY = "ZTJlLWlkZW50aXR5LWtleS1mb3ItdGVzdHMtb25seSE=";
+let countsPaused = false;
 const runTick = async () => {
   if (!ready || ticking) return;
   ticking = true;
-  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY, extensions, stores, stripeConnect: connectConfig }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
+  try { await tick(db, now(), localFetch, { mailer: mail, encryptionKey: SEALING_KEY, extensions, stores, stripeConnect: connectConfig, counts: !countsPaused }); } catch (e) { console.error("tick failed", e); } finally { ticking = false; }
 };
 setInterval(runTick, 5_000);
 // Emails (password resets, invites, alerts) are kept in memory; specs read them from GET /__mail?to=<address>.
@@ -340,11 +341,12 @@ web.post("/__revenue", async (c) => {
 });
 // Exact customer counts (lifecycle.spec.ts): POST /__counts { inline_limit: 0 } makes every project count its list cards,
 // previews and policy counts in the background like a large project on Cloud (the 5-second tick counts them);
-// { inline_limit: null } restores counting in the request.
+// { inline_limit: null } restores counting in the request. { paused: true } holds the tick's counts so a spec sees "Counting…".
 web.post("/__counts", async (c) => {
-  const b = await c.req.json() as { inline_limit: number | null };
-  api.deps.countInlineLimit = b.inline_limit ?? undefined;
-  return c.json({ inline_limit: b.inline_limit });
+  const b = await c.req.json() as { inline_limit?: number | null; paused?: boolean };
+  if (b.inline_limit !== undefined) api.deps.countInlineLimit = b.inline_limit ?? undefined;
+  if (b.paused !== undefined) countsPaused = b.paused;
+  return c.json({ inline_limit: api.deps.countInlineLimit ?? null, paused: countsPaused });
 });
 // The account notification emails (weekly summary, experiment results, anomalies) at a chosen time, like the tick would.
 web.post("/__notifications/run", async (c) => {
