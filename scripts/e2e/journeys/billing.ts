@@ -128,7 +128,7 @@ const journey: Journey = {
       // 14 days; a sale from before the gate shipped gets 30 (Terms of Service section 5).
       const graceDays = Date.now() < GATE_SHIPPED.getTime() ? EXISTING_GRACE_DAYS : GRACE_DAYS;
       c.check(`grace ends ${graceDays} days after the sale was seen`, !!live && live.gate.grace_ends_at - live.gate.live_at === graceDays * DAY, live?.gate);
-      const liveMail = await until(async () => ctx.mails.find((m) => m.to.includes(email) && m.subject === "RevenueDot recorded your first live sale"), { timeoutMs: 20_000 });
+      const liveMail = await until(async () => ctx.mails.find((m) => m.to.includes(email) && (Date.now() < GATE_SHIPPED.getTime() ? /^Live apps on RevenueDot now need Pro, by / : /^RevenueDot recorded your first live sale$/).test(m.subject)), { timeoutMs: 20_000 });
       c.check("the first-live-sale email arrived through SMTP, with the Billing link", !!liveMail && linksOf(liveMail).some((l) => l.endsWith("/account/billing")), liveMail?.subject);
       c.check("no Free usage email any more", !ctx.mails.some((m) => m.to.includes(email) && /Cloud Free/.test(m.subject)), ctx.mails.map((m) => m.subject));
       const overview = await dev.v2r("GET", "/metrics/overview");
