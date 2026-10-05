@@ -1009,6 +1009,53 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Google ----
+  {
+    vendor: "Google",
+    page: "play-service-fees",
+    url: "https://support.google.com/googleplay/android-developer/answer/112622?hl=en",
+    captured: DATE,
+    full: asset("google", "play-service-fees-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "service-fees",
+        file: asset("google", "play-service-fees-service-fees-2026-10-04.png"),
+        alt: "Google Play service fees help page: 15% for the first $1M of revenue a year, 30% above that, and 15% for automatically renewing subscriptions regardless of revenue.",
+        caption: "Google page /googleplay/android-developer/answer/112622, captured 2026-10-04: Google Play charges 15% on subscriptions.",
+      },
+    ],
+  },
+  {
+    vendor: "Google",
+    page: "play-payments-policy",
+    url: "https://support.google.com/googleplay/android-developer/answer/9858738",
+    captured: DATE,
+    full: asset("google", "play-payments-policy-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "billing-system",
+        file: asset("google", "play-payments-policy-billing-system-2026-10-04.png"),
+        alt: "Google Play Payments policy: apps charging for in-app features, digital content or goods must use Google Play's billing system.",
+        caption: "Google page /googleplay/android-developer/answer/9858738, captured 2026-10-04: Digital purchases must use Google Play's billing system.",
+      },
+    ],
+  },
+  {
+    vendor: "Google",
+    page: "play-billing-integrate",
+    url: "https://developer.android.com/google/play/billing/integrate",
+    captured: DATE,
+    full: asset("google", "play-billing-integrate-full-1-2026-10-04.png"),
+    fullParts: [asset("google", "play-billing-integrate-full-1-2026-10-04.png"), asset("google", "play-billing-integrate-full-2-2026-10-04.png"), asset("google", "play-billing-integrate-full-3-2026-10-04.png"), asset("google", "play-billing-integrate-full-4-2026-10-04.png"), asset("google", "play-billing-integrate-full-5-2026-10-04.png"), asset("google", "play-billing-integrate-full-6-2026-10-04.png")],
+    crops: [
+      {
+        claim: "guide",
+        file: asset("google", "play-billing-integrate-guide-2026-10-04.png"),
+        alt: "Google Play Billing Library integration guide: how to integrate the library to start selling products.",
+        caption: "Google page /google/play/billing/integrate, captured 2026-10-04: Play Billing Library integration guide.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */

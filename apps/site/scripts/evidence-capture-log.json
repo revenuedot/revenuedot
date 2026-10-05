@@ -1574,33 +1574,6 @@
     "pageHeight": 37513
   },
   {
-    "vendor": "google",
-    "page": "play-service-fees",
-    "url": "https://support.google.com/googleplay/android-developer/answer/112622?hl=en",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://support.google.com/googleplay/android-developer/answer/112622?hl=en\nCall log:\n  - navigating to \"https://support.google.com/googleplay/android-developer/answer/112622?hl=en\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "google",
-    "page": "play-payments-policy",
-    "url": "https://support.google.com/googleplay/android-developer/answer/9858738",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://support.google.com/googleplay/android-developer/answer/9858738\nCall log:\n  - navigating to \"https://support.google.com/googleplay/android-developer/answer/9858738\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "google",
-    "page": "play-billing-integrate",
-    "url": "https://developer.android.com/google/play/billing/integrate",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://developer.android.com/google/play/billing/integrate\nCall log:\n  - navigating to \"https://developer.android.com/google/play/billing/integrate\", waiting until \"domcontentloaded\"\n"
-  },
-  {
     "vendor": "purchasely",
     "page": "home",
     "url": "https://www.purchasely.com/",
@@ -1866,5 +1839,88 @@
     "status": 200,
     "title": "GitHub - apple/app-store-server-library-node: The Node.js server library for the App Store Server API and App Store Server Notifications. · GitHub",
     "pageHeight": 4548
+  },
+  {
+    "vendor": "google",
+    "page": "play-service-fees",
+    "url": "https://support.google.com/googleplay/android-developer/answer/112622?hl=en",
+    "ok": true,
+    "full": [
+      "play-service-fees-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "service-fees",
+        "file": "play-service-fees-service-fees-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 71,
+          "y": 1090.3203125,
+          "width": 800,
+          "height": 680
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Service fees - Play Console Help",
+    "pageHeight": 2606
+  },
+  {
+    "vendor": "google",
+    "page": "play-payments-policy",
+    "url": "https://support.google.com/googleplay/android-developer/answer/9858738",
+    "ok": true,
+    "full": [
+      "play-payments-policy-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "billing-system",
+        "file": "play-payments-policy-billing-system-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 71,
+          "y": 140,
+          "width": 800,
+          "height": 660
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Payments - Play Console Help",
+    "pageHeight": 2615
+  },
+  {
+    "vendor": "google",
+    "page": "play-billing-integrate",
+    "url": "https://developer.android.com/google/play/billing/integrate",
+    "ok": true,
+    "full": [
+      "play-billing-integrate-full-1-2026-10-04.png",
+      "play-billing-integrate-full-2-2026-10-04.png",
+      "play-billing-integrate-full-3-2026-10-04.png",
+      "play-billing-integrate-full-4-2026-10-04.png",
+      "play-billing-integrate-full-5-2026-10-04.png",
+      "play-billing-integrate-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "guide",
+        "file": "play-billing-integrate-guide-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 294.5,
+          "y": 322,
+          "width": 800,
+          "height": 660
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Integrate the Google Play Billing Library into your app  |  Android Developers",
+    "pageHeight": 21888
   }
 ]
