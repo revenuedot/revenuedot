@@ -3,6 +3,7 @@
   "upstream": "https://github.com/RevenueCat/purchases-flutter",
   "publishes": ["git dependency https://github.com/revenuedot/purchases-flutter (packages purchases_flutter and purchases_ui_flutter; names kept so `package:purchases_flutter/...` imports work), tags <version>-revenuedot; a RevenueDot-hosted pub repository later"],
   "rules": [
+    { "type": "delete", "files": [".github/workflows/lock.yml"], "note": "RevenueCat housekeeping: dessant/lock-threads v2 rejects GitHub's current 100+ character tokens, so the daily run failed in every fork" },
     {
       "type": "context7",
       "file": "context7.json",

@@ -37,9 +37,9 @@ const faq = [
 cp .env.example .env        # set POSTGRES_PASSWORD
 docker compose up -d        # API, dashboard and Postgres on http://localhost:8787`} />
       <div class="copy">
-        <p class="muted">Open <code>http://localhost:8787</code>, create your account and project, and add your App Store and Google Play credentials. Then point your app's SDK at your server:</p>
+        <p class="muted">Open <code>http://localhost:8787</code>, create your account and project, and add your App Store and Google Play credentials. Then install the RevenueDot SDK in your app and set its proxy URL to your server before <code>configure</code>:</p>
         <Code title="Your app" label="Swift" code={`Purchases.proxyURL = URL(string: "https://iap.example.com")!`} />
-        <p class="tiny">Set <code>REVENUEDOT_PORT</code> to change the host port. <a href="/migrate-from-revenuecat#switch">The line for every SDK</a>.</p>
+        <p class="tiny">Set entitlement verification to <code>disabled</code> on iOS and Android, because a self-hosted server signs responses with its own key. An app that already ships the RevenueCat SDK sets the same line. Set <code>REVENUEDOT_PORT</code> to change the host port. <a href="/migrate-from-revenuecat#switch">The line for every SDK</a>.</p>
       </div>
     </div>
   </section>
@@ -48,7 +48,7 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
     <div class="wrap">
       <div class="head"><p class="label">What you run</p><h2 class="h2">One image, one database, one config file</h2></div>
       <div class="grid"><div class="gi cols-3">
-        <div class="cell"><h3 class="h3">The server</h3><p>A TypeScript (Hono) API that answers every endpoint the RevenueCat SDKs call, the REST API and store notifications.</p></div>
+        <div class="cell"><h3 class="h3">The server</h3><p>A TypeScript (Hono) API that answers every endpoint the RevenueDot and RevenueCat SDKs call, the REST API and store notifications.</p></div>
         <div class="cell"><h3 class="h3">The dashboard</h3><p>Customers, catalog, apps, API keys, webhooks with a delivery log, and setup health, served by the same image.</p></div>
         <div class="cell"><h3 class="h3">Postgres</h3><p>Every purchase, customer and receipt, in tables you can query with SQL. Migrations run on start.</p></div>
       </div></div>

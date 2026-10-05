@@ -2,6 +2,26 @@
 // render on the page and go into FAQPage JSON-LD.
 import type { Faq } from "../site";
 
+export const FAQ_WHAT: Faq = {
+  q: "What is RevenueDot?",
+  a: "RevenueDot is an open-source backend for in-app purchases and subscriptions on the App Store, Google Play, Amazon, Stripe and the web. Your app installs the RevenueDot SDK. RevenueDot checks every purchase with the store, keeps each customer's access in sync, sends webhooks to your server, and gives you paywalls, experiments and revenue charts. RevenueDot Cloud is free until your app makes $10,000 a month.",
+};
+
+export const FAQ_NO_RC_ACCOUNT: Faq = {
+  q: "Do I need a RevenueCat account to use RevenueDot?",
+  a: "No. You install the RevenueDot SDK for your platform and use the keys RevenueDot gives each app. The SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports RevenueCat and calls Purchases, but it sends every request to RevenueDot. RevenueDot is not affiliated with RevenueCat.",
+};
+
+export const FAQ_EXISTING: Faq = {
+  q: "Can I move an app that already sells in-app purchases with its own code?",
+  a: "Yes. Import your products from App Store Connect, Google Play or Stripe, replace your purchase code with the RevenueDot SDK, and call syncPurchases() once on the first launch of the update. Each subscriber's purchases are checked with the store and their access carries over. RevenueDot can also forward store notifications to your old server while you move.",
+};
+
+export const FAQ_OWN_SERVERS: Faq = {
+  q: "Can I run RevenueDot on my own servers?",
+  a: "Yes. The server and dashboard are open source (AGPL-3.0) and run as one Docker image next to your own Postgres, in the region you choose. Self-hosting is free with no revenue limit; your app's SDK points at your server with one line of setup. RevenueDot Cloud runs the same code if you would rather not run servers.",
+};
+
 export const FAQ_ALTERNATIVE: Faq = {
   q: "Is there an open-source RevenueCat alternative?",
   a: "Yes. RevenueDot is an open-source (AGPL-3.0) backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call. You keep the RevenueCat SDK in your app, point it at RevenueDot with one line (the SDK's proxy URL), and keep your purchase code, offerings and customers. Start free on RevenueDot Cloud, free up to $10,000 a month in tracked revenue, then 0.5% and never more than $999 a month.",
@@ -39,7 +59,7 @@ export const FAQ_COST: Faq = {
 
 export const FAQ_READY: Faq = {
   q: "How is RevenueDot tested?",
-  a: "Every endpoint is checked against real RevenueCat responses, the unmodified RevenueCat iOS SDK runs a full purchase against it on the iPhone simulator, and webhooks are delivered live to 23 example backends. For a switch with no risk, run RevenueDot side by side with RevenueCat: it forwards every store notification to RevenueCat, so you can compare both before you cut over.",
+  a: "A real App Store sandbox purchase has run end to end on an iPhone, from Apple's purchase sheet to the webhook. The RevenueDot web, Flutter web and React Native web SDKs, installed from their registries, bought Test Store subscriptions against RevenueDot, and the unmodified RevenueCat iOS and Android SDKs pass a Test Store purchase on a simulator and an emulator. Webhooks are delivered live to 23 example backends. Moving from RevenueCat, you can run both side by side, because RevenueDot forwards every store notification to RevenueCat.",
 };
 
 export const FAQ_LICENSE: Faq = {
@@ -53,8 +73,8 @@ export const FAQ_AFFILIATED: Faq = {
 };
 
 export const FAQ_STORES: Faq = {
-  q: "Which stores and SDK features are supported?",
-  a: "The App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2), Google Play (Play Developer API, real-time notifications), the Amazon Appstore, Stripe and a Test Store. Because RevenueDot serves the API the RevenueCat SDKs call, Expo, StoreKit 2 and current Google Play Billing work through the SDKs you already use. Web checkout with Stripe, purchase links and web funnels are built in.",
+  q: "Which stores and platforms does RevenueDot support?",
+  a: "The App Store (StoreKit 1 and 2, App Store Server API, Server Notifications v2), Google Play (Play Developer API, real-time notifications), the Amazon Appstore, Stripe and a Test Store. There is a RevenueDot SDK for iOS, Android, React Native and Expo, Flutter, the web, Capacitor, Cordova, Unity and Kotlin Multiplatform. Apps that already ship the RevenueCat SDK work too, after one line of setup. Web checkout with Stripe, purchase links and web funnels are built in.",
 };
 
 export const FAQ_DATA: Faq = {

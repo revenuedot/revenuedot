@@ -5,6 +5,7 @@
     "Maven Central app.revenuedot.purchases:purchases, purchases-ui, purchases-store-amazon, purchases-store-galaxy, purchases-bom, … (same artifact ids, Kotlin packages stay com.revenuecat.purchases.*)"
   ],
   "rules": [
+    { "type": "delete", "files": [".github/workflows/lock.yml"], "note": "RevenueCat housekeeping: dessant/lock-threads v2 rejects GitHub's current 100+ character tokens, so the daily run failed in every fork" },
     {
       "type": "context7",
       "file": "context7.json",

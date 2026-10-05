@@ -4,9 +4,9 @@ import { DATAFAST } from "./datafast";
 export const SITE = {
   name: "RevenueDot",
   url: "https://revenuedot.app",
-  tagline: "The open-source RevenueCat alternative",
+  tagline: "In-app purchases and subscriptions for every app",
   description:
-    "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Start free on RevenueDot Cloud. Change one line and keep your app code.",
+    "RevenueDot is an open-source backend for in-app purchases and subscriptions on the App Store, Google Play, Amazon, Stripe and the web. It checks every purchase, keeps each customer's access in sync and runs your paywalls and revenue charts. Start free on RevenueDot Cloud. Apps on RevenueCat switch by changing one line.",
   github: "https://github.com/revenuedot/revenuedot",
   org: "https://github.com/revenuedot",
   docs: "https://github.com/revenuedot/docs",
@@ -30,7 +30,7 @@ export const SITE = {
     legal: "legal@revenuedot.app",
   },
   ogImage: "/og.png",
-  ogImageAlt: "RevenueDot: the open-source RevenueCat alternative",
+  ogImageAlt: "RevenueDot: in-app purchases and subscriptions for every app",
   // Cookieless Cloudflare Web Analytics. Set PUBLIC_CF_WEB_ANALYTICS_TOKEN at build time to turn it on; unset = no beacon.
   analyticsToken: (import.meta.env.PUBLIC_CF_WEB_ANALYTICS_TOKEN as string | undefined) || "",
   datafast: DATAFAST,
@@ -38,14 +38,16 @@ export const SITE = {
   pricesChecked: "October 2026",
 } as const;
 
+// Main navigation: what RevenueDot is (features, solutions by case), what it costs, how to build with it. Switching
+// from RevenueCat is one solution among several, reached from Solutions, the home page and the footer.
 export const NAV = [
   { href: "/features", label: "Features" },
-  { href: "/integrations", label: "Integrations" },
+  { href: "/solutions", label: "Solutions" },
+  { href: "/sdks", label: "SDKs" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/migrate-from-revenuecat", label: "Migrate" },
-  { href: "/compare", label: "Compare" },
   { href: "/docs", label: "Docs" },
   { href: "/blog", label: "Blog" },
+  { href: "/migrate-from-revenuecat", label: "Switch from RevenueCat" },
 ] as const;
 
 export const FOOTER = [
@@ -67,6 +69,17 @@ export const FOOTER = [
     ],
   },
   {
+    title: "Start",
+    links: [
+      { href: "/add-in-app-purchases", label: "Add in-app purchases" },
+      { href: "/solutions/existing-apps", label: "Move your own purchase code" },
+      { href: "/migrate-from-revenuecat", label: "Switch from RevenueCat" },
+      { href: "/solutions/ai-built-apps", label: "Build with an AI coding tool" },
+      { href: "/solutions/web-to-app", label: "Sell on the web" },
+      { href: "/solutions", label: "All solutions" },
+    ],
+  },
+  {
     title: "Compare",
     links: [
       { href: "/revenuecat-alternative", label: "RevenueCat alternative" },
@@ -76,13 +89,12 @@ export const FOOTER = [
       { href: "/compare/revenuedot-vs-superwall", label: "RevenueDot vs Superwall" },
       { href: "/compare/revenuedot-vs-qonversion", label: "RevenueDot vs Qonversion" },
       { href: "/compare/revenuecat-vs-stripe", label: "RevenueCat vs Stripe" },
-      { href: "/migrate-from-revenuecat", label: "Migrate from RevenueCat" },
+      { href: "/compare", label: "All comparisons" },
     ],
   },
   {
     title: "Developers",
     links: [
-      { href: "/add-in-app-purchases", label: "New to in-app purchases?" },
       { href: "/in-app-purchases", label: "In-app purchases guide" },
       { href: "/do-i-need-revenuecat", label: "Do I need RevenueCat?" },
       { href: "/docs", label: "Docs" },
@@ -90,7 +102,6 @@ export const FOOTER = [
       { href: "/sdks", label: "SDKs" },
       { href: "/stores", label: "Stores" },
       { href: "/errors", label: "SDK error codes" },
-      { href: "/solutions", label: "Solutions" },
       { href: "/blog", label: "Blog" },
       { href: "/watch", label: "Videos" },
       { href: "https://github.com/revenuedot/revenuedot", label: "GitHub" },
