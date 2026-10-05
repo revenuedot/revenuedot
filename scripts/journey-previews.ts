@@ -37,6 +37,11 @@ const ctxFor = (step: StepId): JourneyCtx => {
   const c = base(step);
   c.bills = { revenuedot: rd(c.tracked!), revenuecat: rc(c.tracked!) };
   if (step === "teammate_welcome") c.first = "Jordan";
+  // The setup tracker as each step would see it.
+  const at = { welcome: 0, first_purchase: 0, connect_app: 1, store_keys: 2, go_live: 3, first_sale: 4 } as Record<string, number>;
+  const n = at[step] ?? 4;
+  c.progress = { testPurchase: n >= 1, app: n >= 2, store: n >= 3, live: n >= 4 };
+  c.feedbackUrl = (kind, value) => `${app}/auth/journeys/feedback/${token}?kind=${kind}&value=${encodeURIComponent(value)}`;
   c.last7 = 11_270; c.projected = Math.round((c.last7 * 30) / 7);
   c.overTracked = 13_870; c.overMonth = "September"; c.importedOn = "September 24";
   c.liveSince = "September 2";

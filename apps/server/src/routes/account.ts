@@ -542,6 +542,31 @@ export function accountRoutes(deps: Deps) {
     return c.redirect(`${guide}?utm_source=revenuedot&utm_medium=email&utm_campaign=journeys&utm_content=welcome_${path}`, 302);
   });
 
+  // One-click answers (a 0 to 10 rating, a reason for leaving Standard). GET shows the answer with a confirm button and a
+  // comment box, so a mail scanner that opens the link records nothing; POST records it (the latest answer per kind wins).
+  const FEEDBACK: Record<string, { title: string; ok: (v: string) => boolean; show: (v: string) => string }> = {
+    nps: { title: "How likely are you to recommend RevenueDot?", ok: (v) => /^(10|[0-9])$/.test(v), show: (v) => `Your answer: ${v} out of 10.` },
+    cancel: { title: "Why did you leave Cloud Standard?", ok: (v) => v.length > 0 && v.length <= 80, show: (v) => `Your answer: ${v}.` },
+  };
+  r.get("/auth/journeys/feedback/:token", async (c) => {
+    const kind = c.req.query("kind") ?? "", value = (c.req.query("value") ?? "").trim();
+    const f = FEEDBACK[kind];
+    const u = await journeyTokenUser(db, c.req.param("token"));
+    if (!u || !f || !f.ok(value)) return c.html(JOURNEY_NOT_FOUND(), 404);
+    return c.html(page(f.title, f.show(value), `<form method="post"><input type="hidden" name="kind" value="${kind}"><input type="hidden" name="value" value="${value.replace(/[&<>"']/g, "")}">` +
+      `<p><textarea name="comment" rows="4" maxlength="2000" placeholder="Anything you'd like to add? (optional)" style="width:100%;font:inherit;padding:10px;border:1px solid #E5E5E5;box-sizing:border-box"></textarea></p><button type="submit">Send</button></form>`));
+  });
+  r.post("/auth/journeys/feedback/:token", async (c) => {
+    const body = await c.req.parseBody().catch(() => ({} as Record<string, unknown>));
+    const kind = String(body.kind ?? ""), value = String(body.value ?? "").trim(), comment = String(body.comment ?? "").trim().slice(0, 2000) || null;
+    const f = FEEDBACK[kind];
+    const u = await journeyTokenUser(db, c.req.param("token"));
+    if (!u || !f || !f.ok(value)) return c.html(JOURNEY_NOT_FOUND(), 404);
+    const F = schema.journeyFeedback;
+    await db.insert(F).values({ userId: u.userId, kind, value, comment, createdAt: deps.now() }).onConflictDoUpdate({ target: [F.userId, F.kind], set: { value, comment, createdAt: deps.now() } });
+    return c.html(page("Thank you", "Your answer reached the people who build RevenueDot. If you'd like to say more, reply to our email."));
+  });
+
   // ---------- General: Stripe accounts (RevenueCat's account-level list; RevenueDot connects per app, prd/web-billing §8) ----------
   r.get("/auth/stripe_accounts", async (c) => {
     const u = user(c);

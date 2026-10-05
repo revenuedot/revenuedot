@@ -84,7 +84,6 @@ export const STEPS: Step[] = [
   { id: "first_sale", anyDay: true, freshFor: 3 * D, due: (f) => f.liveAt },
   { id: "standard_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
   { id: "standard_canceled", anyDay: true, freshFor: 7 * D, due: (f) => (f.plan === "free" ? f.canceledAt : null) },
-  { id: "referral_joined", anyDay: true, freshFor: 7 * D, due: (f) => f.referralJoinedAt },
   // Switching from RevenueCat: the cutover is the most valuable email of all, so it outranks the rest.
   { id: "cutover", freshFor: 14 * D, due: (f, now) => (migrating(f) && f.liveAt && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
   // Revenue.
@@ -282,7 +281,7 @@ const COUNTRY = (code: string | null) => {
 };
 
 /** The context a step's copy needs. Creates the verification token and referral code for the steps that show them. */
-export async function contextFor(db: DB, f: Facts, step: StepId, base: string, unsubscribeUrl: string, pathToken: string | null, now: Date, plansJson?: string | null): Promise<JourneyCtx> {
+export async function contextFor(db: DB, f: Facts, step: StepId, base: string, unsubscribeUrl: string, token: string | null, now: Date, plansJson?: string | null): Promise<JourneyCtx> {
   const plans = plansFrom(plansJson);
   const std = planOf(plans, "standard");
   const rd = (r: number) => billCents(std, r) / 100;
@@ -320,7 +319,10 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
   const basis = step === "cutover" ? c.projected : step.startsWith("upgrade") ? c.overTracked : f.tracked;
   c.bills = { revenuedot: rd(basis), revenuecat: rc(basis) };
   c.importedOn = f.rcImportAt ? new Date(f.rcImportAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : undefined;
-  if (pathToken) c.pathUrl = (p) => `${base}/auth/journeys/path/${pathToken}?path=${p}`;
+  // The send's token (the unsubscribe link's) also identifies the reader for the welcome's path links and one-click answers.
+  if (token && step === "welcome") c.pathUrl = (p) => `${base}/auth/journeys/path/${token}?path=${p}`;
+  if (token) c.feedbackUrl = (kind, value) => `${base}/auth/journeys/feedback/${token}?kind=${kind}&value=${encodeURIComponent(value)}`;
+  c.progress = { testPurchase: f.testPurchaseAt !== null, app: f.sdkFirstAt !== null, store: f.storeConnected, live: f.liveAt !== null };
   if (step === "verify_reminder") {
     await retireTokens(db, "email_verify", f.userId, now);
     const token = await issueToken(db, "email_verify", { id: f.userId, email: f.email }, now);
@@ -394,7 +396,7 @@ export async function sendStep(deps: JourneyDeps, f: Facts, step: StepId, now: D
   // A send that fails (or throws) gives the claim back, so a later pass tries again and the caps are not used up.
   const release = () => db.delete(schema.journeySends).where(and(eq(schema.journeySends.userId, f.userId), eq(schema.journeySends.step, step), eq(schema.journeySends.sentAt, now)));
   try {
-    const ctx = await contextFor(db, f, step, base, unsubscribe, step === "welcome" ? token : null, now, deps.config.plansJson);
+    const ctx = await contextFor(db, f, step, base, unsubscribe, token, now, deps.config.plansJson);
     const mail = journeyEmail(ctx);
     const ok = await trySend(deps.mailer, {
       to: f.email, ...mail, from: JOURNEY_FROM, replyTo: JOURNEY_REPLY_TO,

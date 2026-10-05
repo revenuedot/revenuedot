@@ -142,8 +142,7 @@ describe("picking the step", () => {
     expect(pickStep(f, WED, cfg)).toBeNull();
   });
 
-  it("thanks a referrer when a friend signs up, and asks why when Standard is cancelled", () => {
-    expect(pickStep(facts({ createdAt: WED - 60 * D, referralJoinedAt: WED - H }), WED, cfg)).toBe("referral_joined");
+  it("asks why when Standard is cancelled", () => {
     expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: WED - D }), WED, cfg)).toBe("standard_canceled");
   });
 
@@ -198,7 +197,7 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     const [m] = journeyMails("maya@habitly.app");
     expect(m!.subject).toContain("Welcome to RevenueDot");
     expect(m!.replyTo).toBe("hello@revenuedot.app");
-    expect(m!.text).toContain("Welcome, Maya");
+    expect(m!.text).toContain("Welcome to RevenueDot, Maya");
     const unsub = /<(https:\/\/dash\.example\.com\/auth\/journeys\/unsubscribe\/[^>]+)>/.exec(m!.headers!["List-Unsubscribe"]!)![1]!;
     const path = new URL(unsub).pathname;
     const raw = (method: string, p: string) => s!.app.fetch(new Request(`http://localhost${p}`, { method }));
@@ -282,7 +281,7 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     s!.advance(H);
     expect((await run()).sent).toBe(1);
     const sale = journeyMails("jordan@photo.app").at(-1)!;
-    expect(sale.subject).toBe("Your first real sale through RevenueDot");
+    expect(sale.subject).toBe("You just made your first real sale");
     expect(sale.text).toContain("pro_annual");
     expect(sale.text).toContain("Germany");
   });
@@ -336,7 +335,7 @@ describe("templates", () => {
       expect(Buffer.byteLength(m.html), step).toBeLessThan(102_000);
       expect(m.text, step).toContain("Unsubscribe: https://app.revenuedot.app/auth/journeys/unsubscribe/x");
       expect(m.text, step).not.toMatch(/\bKai\b|Founder/);
-      expect(m.html, step).toContain("Questions?");
+      expect(m.html, step).toMatch(/Questions\?|The RevenueDot team/);
       for (const [, url] of m.html.matchAll(/href="(https:\/\/(?:app\.)?revenuedot\.app\/(?!auth\/)[^"]*)"/g)) expect(url, step).toContain("utm_content=" + step);
     }
   });
