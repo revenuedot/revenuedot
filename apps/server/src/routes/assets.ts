@@ -67,6 +67,7 @@ export function assetRoutes(deps: Deps) {
     return res;
   });
   // Remote-config blobs by content ref. Public: the SDK downloads them without credentials; a ref is a SHA-256 of the bytes.
+  r.get("/ci-drift-test/:x", (c) => c.text("x"));
   r.get("/blobs/:ref", async (c) => {
     const [b] = await deps.db.select().from(schema.configBlobs).where(eq(schema.configBlobs.ref, c.req.param("ref"))).limit(1);
     if (!b) return c.json({ object: "error", type: "resource_missing", message: "Blob not found." }, 404);
