@@ -172,8 +172,9 @@ const shotCount = (r: ComparePage["rows"][number]) => (r.evidence?.length ?? 0) 
   .evs-count { font-family: var(--mono); }
   .evs-pages { flex-basis: 100%; }
   .evd summary:hover .evs-label { color: var(--fg); }
-  .evd-body { display: grid; gap: 16px; padding: 10px 0 6px; }
-  .rdv { max-width: 480px; }
+  .evd-body { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-start; padding: 10px 0 6px; }
+  .evd-body > :global(.ev) { flex: 1 1 320px; min-width: 0; }
+  .rdv { flex: 0 1 440px; min-width: 0; }
   .price-ev { margin-top: 32px; display: grid; gap: 16px; }
   .video { max-width: 860px; }
   @media (max-width: 640px) {
