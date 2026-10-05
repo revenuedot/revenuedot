@@ -1224,22 +1224,6 @@ export const EVIDENCE: Evidence[] = [
   // ---- RevenueDot ----
   {
     vendor: "RevenueDot",
-    page: "pricing",
-    url: "https://revenuedot.app/pricing",
-    captured: DATE,
-    full: asset("revenuedot", "pricing-full-1-2026-10-04.png"),
-    fullParts: [asset("revenuedot", "pricing-full-1-2026-10-04.png"), asset("revenuedot", "pricing-full-2-2026-10-04.png")],
-    crops: [
-      {
-        claim: "plans",
-        file: asset("revenuedot", "pricing-plans-2026-10-04.png"),
-        alt: "RevenueDot pricing plan cards: Cloud Free $0 up to $10K monthly tracked revenue, Cloud Standard 0.5% of tracked revenue above $10K capped at $999 a month, Enterprise from $50K a year, Self-host $0 under AGPL-3.0.",
-        caption: "RevenueDot pricing page, captured 2026-10-04: Cloud free to $10K; Standard 0.5% capped at $999.",
-      },
-    ],
-  },
-  {
-    vendor: "RevenueDot",
     page: "github-revenuedot",
     url: "https://github.com/revenuedot/revenuedot",
     captured: DATE,

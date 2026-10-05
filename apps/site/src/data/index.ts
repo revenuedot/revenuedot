@@ -60,11 +60,11 @@ export const TOOLS = [
 /** Title, card text and label for every page that related links can point to. */
 type Entry = { title: string; card: string; label: string };
 const STATIC: Record<string, Entry> = {
-  "/pricing": { title: "Pricing", card: "Free on RevenueDot Cloud up to $10K a month in tracked revenue, then 0.5%, never more than $999 a month.", label: "Pricing" },
+  "/pricing": { title: "Pricing", card: "Pro is free until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month.", label: "Pricing" },
   "/migrate-from-revenuecat": { title: "Migrate from RevenueCat", card: "Import everything, run both side by side, then switch with one line.", label: "Guide" },
   "/self-host": { title: "Run the server yourself", card: "Technical notes for running the open-source server yourself.", label: "Technical" },
   "/revenuecat-mcp": { title: "RevenueCat MCP server, official and open source", card: "RevenueCat's MCP server and RevenueDot's open-source one: 38 tools, OAuth, config for six clients.", label: "MCP" },
-  "/revenuecat-alternative": { title: "The open-source RevenueCat alternative", card: "Keep the RevenueCat SDK, change one line, start free on Cloud.", label: "Alternative" },
+  "/revenuecat-alternative": { title: "The open-source RevenueCat alternative", card: "Keep the RevenueCat SDK, change one line and start for free on RevenueDot Cloud.", label: "Alternative" },
   "/revenuecat-alternatives": { title: "Best RevenueCat alternatives in 2026", card: "RevenueDot, Adapty, Superwall, Qonversion, Apphud and more, compared with sources.", label: "Alternatives" },
   "/integrations": { title: "Integrations", card: "Send subscription events to 36 analytics, attribution, messaging and support tools.", label: "Hub" },
   "/charts": { title: "Subscription charts", card: "All 43 subscription charts, from MRR to trial conversion, defined and explained.", label: "Hub" },

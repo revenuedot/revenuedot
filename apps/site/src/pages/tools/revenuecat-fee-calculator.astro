@@ -9,8 +9,8 @@ const rc = VENDORS.find((v) => v.id === "revenuecat")!;
 const faq = [
   { q: "How much does RevenueCat cost?", a: "RevenueCat is free while monthly tracked revenue is under $2,500. From $2,500 a month it charges 1% of all tracked revenue, not only the part above $2,500: $25 at $2,500, $500 at $50,000 and $10,000 at $1,000,000. Tracked revenue is measured before Apple's and Google's commission, per [RevenueCat's pricing page](https://www.revenuecat.com/pricing)." },
   { q: "Does RevenueCat charge on revenue before or after the App Store cut?", a: "Before. Monthly tracked revenue is the gross amount customers pay, before the 15% or 30% store commission and taxes, so RevenueCat's 1% is about 1.2% of what you receive after a 15% commission." },
-  { q: "What is the cheapest RevenueCat alternative?", a: "RevenueDot Cloud is free up to $10,000 a month in tracked revenue; Cloud Standard is 0.5% above that, capped at $999 a month, and it works with the RevenueCat SDK you already ship. Among hosted vendors, Qonversion charges 0.8% above $7,000 and Adapty 1% above $5,000." },
-  { q: "How much would I save by switching from RevenueCat?", a: "Enter your monthly tracked revenue above. At $50,000 a month RevenueCat costs $500 a month, or $6,000 a year. RevenueDot Cloud Standard costs $200 a month at that level." },
+  { q: "What is the cheapest RevenueCat alternative?", a: "RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue. Then its Pro plan charges 0.5% of revenue above $10,000, never more than $999 a month, and it works with the RevenueCat SDK you already ship. Among hosted vendors, Qonversion charges 0.8% above $7,000 and Adapty 1% above $5,000." },
+  { q: "How much would I save by switching from RevenueCat?", a: "Enter your monthly tracked revenue above. At $50,000 a month RevenueCat costs $500 a month, or $6,000 a year. RevenueDot Pro costs $200 a month at that level." },
   { q: "Where do these prices come from?", a: "Each vendor's public pricing page, checked in October 2026. The links are under the calculator. Vendors change prices, so check the page before you decide." },
 ];
 ---
@@ -33,7 +33,7 @@ const faq = [
     </div>
     <div class="out" aria-live="polite">
       <div><p class="label">RevenueCat would charge</p><p class="big" id="rc-out">{usd(cost(rc, start))}</p><p class="small muted" id="rc-save">With RevenueDot Cloud you would pay {usd(cost(VENDORS[4], start))}.</p></div>
-      <div class="go-cta"><a class="btn sm" href="https://app.revenuedot.app/signup">Start free on Cloud</a><a class="btn secondary sm" href="/migrate-from-revenuecat">Move off RevenueCat <span class="arrow">→</span></a></div>
+      <div class="go-cta"><a class="btn sm" href="https://app.revenuedot.app/signup">Start for free</a><a class="btn secondary sm" href="/migrate-from-revenuecat">Move off RevenueCat <span class="arrow">→</span></a></div>
       <div class="rows" id="rows">
         {VENDORS.map((v) => {
           const c = cost(v, start), max = Math.max(...VENDORS.map((x) => cost(x, start)), 1);
@@ -67,7 +67,7 @@ const faq = [
       vendors.forEach((v, i) => { const row = root.querySelector(`[data-id="${v.id}"]`); row.querySelector(".bar").style.width = (costs[i] / max) * 100 + "%"; row.querySelector(".amt").textContent = fmt(costs[i]); });
       const rc = costs[vendors.findIndex((v) => v.id === "revenuecat")], cloud = costs[vendors.findIndex((v) => v.id === "rdcloud")];
       $("rc-out").textContent = fmt(rc) + (k === 12 ? " a year" : " a month");
-      $("rc-save").textContent = rc > 0 ? `RevenueDot Cloud: ${fmt(cloud)}, so you keep ${fmt(rc - cloud)}.` : "Under $2,500 a month, RevenueCat is free. RevenueDot Cloud is free up to $10,000 a month.";
+      $("rc-save").textContent = rc > 0 ? `RevenueDot Cloud: ${fmt(cloud)}, so you keep ${fmt(rc - cloud)}.` : "Under $2,500 a month, RevenueCat is free. RevenueDot Cloud is free until your app makes $10,000 a month.";
     };
     $("mtr").addEventListener("input", () => { $("mtr-range").value = $("mtr").value; render(); });
     $("mtr-range").addEventListener("input", () => { $("mtr").value = $("mtr-range").value; render(); });

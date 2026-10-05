@@ -7,6 +7,7 @@ import CtaBand from "../components/CtaBand.astro";
 import { FAQ_SELF_HOST, FAQ_DATA, FAQ_LICENSE, FAQ_READY } from "../lib/faq";
 import Visual from "../components/Visual.astro";
 import { SITE } from "../site";
+import { SIGNUP_CTA } from "../lib/pricing";
 
 const faq = [
   FAQ_SELF_HOST,
@@ -20,14 +21,14 @@ const faq = [
 ---
 <Base
   title="Self-host an in-app purchase backend with Docker"
-  description="How to run the RevenueDot server yourself with docker compose and Postgres, for teams that must. Most apps should start free on RevenueDot Cloud instead."
+  description="How to run the RevenueDot server yourself with docker compose and Postgres, what the AGPL-3.0 license covers, and when you need an Enterprise license."
   path="/self-host"
   crumbs={[{ name: "Self-host", path: "/self-host" }]}
   faq={faq}
 >
   <div class="wrap">
     <PageHead label="Self-host" title="Run your own purchase backend in three commands" lede="This page is for teams whose rules require their own server. One Docker image serves the RevenueCat-compatible API and the dashboard, next to your own Postgres.">
-      <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud instead</a></div>
+      <div class="btns"><a class="btn" href={SITE.signup}>{SIGNUP_CTA}</a></div>
     </PageHead>
   </div>
 
@@ -52,7 +53,6 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
         <div class="cell"><h3 class="h3">The dashboard</h3><p>Customers, catalog, apps, API keys, webhooks with a delivery log, and setup health, served by the same image.</p></div>
         <div class="cell"><h3 class="h3">Postgres</h3><p>Every purchase, customer and receipt, in tables you can query with SQL. Migrations run on start.</p></div>
       </div></div>
-      <div class="sh-shot"><Visual name="self-host" /></div>
     </div>
   </section>
 
@@ -63,11 +63,11 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
         <table>
           <thead><tr><th scope="col"></th><th scope="col">RevenueDot Cloud</th><th scope="col">Your own server</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Price</th><td>Free up to $10K monthly tracked revenue, then 0.5% above it, capped at $999 a month</td><td>The software is AGPL-3.0; you pay for servers and your own time</td></tr>
+            <tr><th scope="row">License</th><td>Not needed: RevenueDot runs it</td><td>AGPL-3.0 for the open-source server; enterprise features need an Enterprise license</td></tr>
             <tr><th scope="row">Who runs it</th><td>RevenueDot</td><td>You: server, Postgres, backups, upgrades</td></tr>
             <tr><th scope="row">Data location</th><td>The US, on Cloudflare's network</td><td>Any cloud and region you choose</td></tr>
             <tr><th scope="row">Extras</th><td>Point-in-time recovery, edge caching, monitoring, support</td><td>Everything in the open-source server</td></tr>
-            <tr><th scope="row">Enterprise features</th><td>Organizations, custom roles and SSO with Cloud Standard; SCIM and compliance exports with Enterprise</td><td>Organizations, custom roles, SSO, SCIM and compliance exports with an Enterprise license</td></tr>
+            <tr><th scope="row">Enterprise features</th><td>Organizations, custom roles and SSO with Pro; SCIM and compliance exports with Enterprise</td><td>Organizations, custom roles, SSO, SCIM and compliance exports with an Enterprise license</td></tr>
           </tbody>
         </table>
       </div>
@@ -95,7 +95,7 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
     </div>
   </section>
 
-  <CtaBand title="Moving from RevenueCat?" body="Start free on RevenueDot Cloud and import your RevenueCat project with one command. There are no servers to run." />
+  <CtaBand title="Moving from RevenueCat?" body="Start for free on RevenueDot Cloud and import your RevenueCat project with one command. There are no servers to run." />
 </Base>
 <style>
   .two { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: start; }

@@ -36,7 +36,7 @@ export const CHAPTERS = {
     { title: "Enterprise", start: 111.9 },
     { title: "Self-host", start: 124.13 },
     { title: "Pricing", start: 132.33 },
-    { title: "Start free", start: 140.5 },
+    { title: "Start for free", start: 140.5 },
   ],
 };
 
@@ -47,8 +47,8 @@ export const WATCH = {
   "revenuedot-platform-demo": {
     heading: "See the whole RevenueDot platform in 2½ minutes", seconds: 152, date: "2026-10-05", youtube: "https://www.youtube.com/watch?v=iZH8eTC5B1c", ytTitle: "RevenueCat Alternative (Open Source): Full Product Demo",
     description: "Switch from RevenueCat in one line, then tour RevenueDot: import, charts, paywalls, experiments, integrations, AI, enterprise roles, self-hosting and pricing.",
-    summary: "Change one line to point the RevenueCat SDK at RevenueDot, import your customers and verify the numbers, then see the dashboard: 43 charts, customers, paywalls, experiments, refund rules and win-back, 38 integrations and the AI assistant. It ends with enterprise roles, single sign-on and audit logs, self-hosting with Docker, and a bill that is free up to $10,000 a month and capped at $999 a month.",
-    next: { label: "Start free on Cloud", href: "https://app.revenuedot.app/signup" },
+    summary: "Change one line to point the RevenueCat SDK at RevenueDot, import your customers and verify the numbers, then see the dashboard: 43 charts, customers, paywalls, experiments, refund rules and win-back, 38 integrations and the AI assistant. It ends with enterprise roles, single sign-on and audit logs, self-hosting with Docker, and a bill that is free until your apps make $10,000 a month and capped at $999 a month.",
+    next: { label: "Start for free", href: "https://app.revenuedot.app/signup" },
   },
   "revenuedot-connect-your-app": {
     heading: "Connect your app to RevenueDot", seconds: 77, date: "2026-10-05", youtube: "https://www.youtube.com/watch?v=M_D0YodECkU", ytTitle: "Connect Your iOS or Android App to RevenueDot (RevenueCat SDK)",

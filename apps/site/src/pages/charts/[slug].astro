@@ -38,7 +38,7 @@ const shape = d.shape === "stock" ? "A snapshot at the end of each period" : d.s
     <PageHead label={`Chart · ${group}`} title={page.title}>
       <Md class="lede answer" text={page.answer} />
       <div class="btns">
-        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn" href={SITE.signup}>Start for free</a>
         <a class="btn secondary" href="/charts">All {CHART_PAGES.length} charts <span class="arrow">→</span></a>
       </div>
     </PageHead>
@@ -108,7 +108,7 @@ const shape = d.shape === "stock" ? "A snapshot at the end of each period" : d.s
     <div class="wrap"><div class="head"><p class="label">FAQ</p><h2 class="h2 sm">{d.display_name}: questions people ask</h2></div><Faq items={faq} open={0} /></div>
   </section>
   <Related items={page.related} docs={[{ href: "/docs/guides/charts", label: "Charts guide" }]} title="Related charts" />
-  <CtaBand title={`See your ${d.display_name} in minutes.`} body="Connect your app to RevenueDot Cloud, free up to $10,000 a month in tracked revenue. All 43 charts fill as purchases arrive, and an app moving from RevenueCat brings its history with it." />
+  <CtaBand title={`See your ${d.display_name} in minutes.`} body="Connect your app to RevenueDot Cloud, which is free until your app makes $10,000 a month. All 43 charts fill as purchases arrive, and an app moving from RevenueCat brings its history with it." />
 </Base>
 <style>
   .answer { max-width: 760px; }

@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { SITE } from "../site";
-import { PLANS } from "../lib/pricing";
+import { CARD_RULE, STATUS_PRICE } from "../lib/pricing";
 import { llmsFile, textResponse, videosSection, withStatus } from "../lib/llms";
 import { TOOLS, ALTERNATIVES, CHART_PAGES, COMPARISONS, INTEGRATIONS, LANDINGS, SECTIONS, chartPath, comparePath, integrationPath, landingPath } from "../data";
 import { plain } from "../lib/md";
@@ -14,15 +14,15 @@ export const GET: APIRoute = () => {
   const site = [
     "## Website",
     "",
-    `- [Sign up for RevenueDot Cloud](${SITE.signup}): free up to $10,000 monthly tracked revenue`,
-    `- [Home](${u("/")}): what RevenueDot is, what it does for any app with in-app purchases, and how to start free or switch from RevenueCat`,
-    `- [Pricing](${u("/pricing")}): ${PLANS.map((p) => `${p.name} ${p.price} ${p.priceNote}${p.available ? "" : " (coming)"}`).join("; ")}`,
+    `- [Sign up for RevenueDot Cloud](${SITE.signup}): start for free; Pro costs $0 until your apps make $10,000 a month`,
+    `- [Home](${u("/")}): what RevenueDot is, what it does for any app with in-app purchases, and how to start for free or switch from RevenueCat`,
+    `- [Pricing](${u("/pricing")}): two plans, Pro and Enterprise. ${STATUS_PRICE} ${CARD_RULE}`,
     `- [Add in-app purchases to your app](${u("/add-in-app-purchases")}): for first-time builders; install the RevenueDot SDK, no RevenueCat account needed, a prompt for Claude Code or Cursor`,
     `- [In-app purchases: how they work](${u("/in-app-purchases")}): types, Apple and Google fees, store rules and what a backend does`,
     `- [Do I need RevenueCat for an iOS-only app?](${u("/do-i-need-revenuecat")}): when StoreKit 2 is enough and when you need a backend, with a decision table`,
     `- [Migrate from RevenueCat](${u("/migrate-from-revenuecat")}): importer, side-by-side run, the proxy line for every SDK`,
     `- [RevenueCat MCP server, official and open source](${u("/revenuecat-mcp")}): what RevenueCat's docs say about its MCP server, and RevenueDot's open-source one with 38 tools, OAuth scopes and config for Claude Code, Claude, Codex, Cursor, ChatGPT and Windsurf`,
-    `- [Self-host](${u("/self-host")}): Docker and Postgres setup and a production checklist`,
+    `- [Run it on your own servers](${u("/self-host")}): Docker and Postgres setup, the AGPL-3.0 license and when you need an Enterprise license`,
     `- [The open-source RevenueCat alternative](${u("/revenuecat-alternative")}): keep the RevenueCat SDK, change one line, own your data`,
     `- [Best RevenueCat alternatives in 2026](${u("/revenuecat-alternatives")}): ${ALTERNATIVES.map((a) => a.name).join(", ")}, with sources`,
     `- [Cheaper RevenueCat alternatives](${u("/cheaper-revenuecat-alternatives")}): RevenueCat, Adapty, Qonversion, Superwall, Apphud and RevenueDot priced at $10K, $100K and $1M a month, with sources`,

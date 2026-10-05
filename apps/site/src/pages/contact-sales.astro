@@ -117,7 +117,7 @@ const KEYS = "ABCDEFGHIJ";
               <iframe src={`${SITE.booking}?gv=true`} title="Book a 30-minute call with Kai" loading="lazy"></iframe>
             </div>
             <div class="btns" id="cs-done-cloud" hidden>
-              <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+              <a class="btn" href={SITE.signup}>Start for free</a>
               <a class="btn secondary" href="/pricing">See pricing</a>
             </div>
           </div>
@@ -141,12 +141,12 @@ const KEYS = "ABCDEFGHIJ";
           </ul>
         </div>
         <div>
-          <p class="label">Also in Enterprise</p>
-          <ul class="cs-list"><li>Single sign-on (SAML or OpenID Connect) and SCIM provisioning</li><li>Audit logs kept up to 10 years, with signed compliance exports</li><li>A private Slack channel and a named engineer</li><li>No revenue limit</li></ul>
+          <p class="label">Everything in Pro, plus</p>
+          <ul class="cs-list"><li>SCIM provisioning</li><li>Audit logs kept up to 10 years, with signed compliance exports</li><li>A private Slack channel and a named engineer</li><li>Volume pricing with no revenue limit</li><li>A commercial license to run RevenueDot on your own servers</li></ul>
         </div>
         <p class="tiny">Prefer email? Write to <a href={`mailto:${SITE.email.sales}`}>{SITE.email.sales}</a>.</p>
         <p class="tiny">Prefer to talk now? Call our AI assistant at <a href={`tel:${SITE.phone.tel}`}>{SITE.phone.display}</a>, any time. It answers questions and passes messages to Kai.</p>
-        <p class="tiny">Smaller app? <a href={SITE.signup}>RevenueDot Cloud</a> is free up to $10,000 a month, with no call needed.</p>
+        <p class="tiny">Smaller app? <a href={SITE.signup}>RevenueDot Pro</a> costs $0 until your apps make $10,000 a month, and you can start for free with no call.</p>
       </aside>
     </div>
   </section>
@@ -386,7 +386,7 @@ const KEYS = "ABCDEFGHIJ";
         const book = out.next !== "self_serve";
         document.getElementById("cs-done-title")!.textContent = book ? `Thanks, ${first}. Pick a time for a 30-minute call with Kai.` : `Thanks, ${first}. We will reply within one business day.`;
         document.getElementById("cs-done-body")!.textContent = out.next === "self_serve"
-          ? `We will email ${lead.email}. Your apps fit RevenueDot Cloud, which is free up to $10,000 a month, so you can start now while you wait.`
+          ? `We will email ${lead.email}. Your apps fit RevenueDot Pro, which costs $0 until your apps make $10,000 a month, so you can start for free now while you wait.`
           : `Kai, RevenueDot's founder, already has your answers. Choose any slot below and you'll get a Google Meet invite at ${lead.email}. No time that works? Just reply to our email.`;
         document.getElementById("cs-done-book")!.hidden = !book;
         document.getElementById("cs-done-cloud")!.hidden = out.next !== "self_serve";

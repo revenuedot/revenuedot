@@ -35,7 +35,7 @@ export const STORES: Landing[] = [
         steps: [
           {
             name: "Create the App Store app",
-            text: `In the dashboard open **Apps**, add an **App Store** app and enter your bundle ID. The app's public SDK key starts with \`appl_\`. [Start free on Cloud](${SIGNUP}) if you do not have an account yet.`,
+            text: `In the dashboard open **Apps**, add an **App Store** app and enter your bundle ID. The app's public SDK key starts with \`appl_\`. [Start for free on RevenueDot Cloud](${SIGNUP}) if you do not have an account yet.`,
           },
           {
             name: "Generate an In-App Purchase key",
@@ -165,7 +165,7 @@ curl -s -X POST "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/actions/ve
         steps: [
           {
             name: "Create the Google Play app",
-            text: `Add a **Google Play** app in RevenueDot with your package name. Its public SDK key starts with \`goog_\`. [Start free on Cloud](${SIGNUP}) first if you have no account.`,
+            text: `Add a **Google Play** app in RevenueDot with your package name. Its public SDK key starts with \`goog_\`. [Start for free on RevenueDot Cloud](${SIGNUP}) first if you have no account.`,
           },
           {
             name: "Create a service account",
@@ -302,7 +302,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/store_settings" \\
         steps: [
           {
             name: "Create the Amazon app",
-            text: `Add an **Amazon** app in RevenueDot with your package name. Its public SDK key starts with \`amzn_\`. [Start free on Cloud](${SIGNUP}) if you have no account.`,
+            text: `Add an **Amazon** app in RevenueDot with your package name. Its public SDK key starts with \`amzn_\`. [Start for free on RevenueDot Cloud](${SIGNUP}) if you have no account.`,
           },
           {
             name: "Copy the shared key",
@@ -432,7 +432,7 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
         steps: [
           {
             name: "Create the Stripe app",
-            text: `Add a **Stripe** app in RevenueDot. Its public key starts with \`strp_\`. Create products with \`store_identifier\` set to the Stripe product ID (\`prod_…\`), or a price ID (\`price_…\`) to sell several prices of one product separately. [Start free on Cloud](${SIGNUP}) first if you have no account.`,
+            text: `Add a **Stripe** app in RevenueDot. Its public key starts with \`strp_\`. Create products with \`store_identifier\` set to the Stripe product ID (\`prod_…\`), or a price ID (\`price_…\`) to sell several prices of one product separately. [Start for free on RevenueDot Cloud](${SIGNUP}) first if you have no account.`,
           },
           {
             name: "Save a restricted API key",
