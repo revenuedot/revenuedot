@@ -137,7 +137,7 @@ curl -s -X POST "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/actions/ve
       { href: "/docs/guides/win-back-offers", label: "Win-back offers" },
       { href: "/docs/help/store-notifications-not-arriving", label: "Store notifications not arriving" },
     ],
-    related: ["/sdks/ios", "/stores/test-store", "/solutions/receipt-validation", "/features/refund-control", "/migrate-from-revenuecat", "/self-host"],
+    related: ["/sdks/ios", "/stores/test-store", "/solutions/receipt-validation", "/features/refund-control", "/migrate-from-revenuecat"],
   },
 
   {
@@ -270,7 +270,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/store_settings" \\
       { href: "/docs/guides/sandbox-testing", label: "Test with Play license testers" },
       { href: "/docs/help/store-notifications-not-arriving", label: "Store notifications not arriving" },
     ],
-    related: ["/sdks/android", "/stores/test-store", "/solutions/receipt-validation", "/migrate-from-revenuecat", "/self-host", "/compare/revenuedot-vs-revenuecat"],
+    related: ["/sdks/android", "/stores/test-store", "/solutions/receipt-validation", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat"],
   },
 
   {
@@ -328,7 +328,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/store_settings" \\
         code: {
           title: "Amazon configuration",
           label: "Kotlin",
-          code: `Purchases.proxyURL = URL("https://api.revenuedot.app")   // or your own server
+          code: `Purchases.proxyURL = URL("https://api.revenuedot.app")
 Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
         },
       },

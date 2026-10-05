@@ -56,13 +56,6 @@ export const VENDORS: VendorRule[] = [
     sources: [{ label: "RevenueDot pricing", url: "/pricing" }],
     calc: { from: CLOUD_FREE_UP_TO, rate: CLOUD_RATE, basis: "above", cap: CLOUD_CAP },
   },
-  {
-    id: "rdself",
-    name: "RevenueDot self-hosted",
-    rule: "Free and open source (AGPL-3.0); you pay for your own server",
-    sources: [{ label: "Self-host RevenueDot", url: "/self-host" }],
-    calc: { from: Infinity, rate: 0, basis: "all" },
-  },
 ];
 
 export function cost(v: VendorRule, mtr: number): number {

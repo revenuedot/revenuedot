@@ -9,7 +9,7 @@ import CtaBand from "../components/CtaBand.astro";
 import { SDKS } from "../lib/sdks";
 import { softwareApplication } from "../lib/jsonld";
 import { cloudBill, revenueCatBill, usd, CLOUD_CAP, CLOUD_FREE_UP_TO } from "../lib/pricing";
-import { FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED } from "../lib/faq";
+import { FAQ_ALTERNATIVE, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED } from "../lib/faq";
 import { SITE } from "../site";
 import { playerUrl, VIDEOS } from "../lib/videos.mjs";
 import overviewLight from "../assets/screens/overview-light.png";
@@ -19,7 +19,7 @@ import { INTEGRATIONS, integrationPath, CHART_PAGES } from "../data";
 import { logo } from "../lib/logos";
 import { ogFor } from "../lib/og";
 
-const faq = [FAQ_ALTERNATIVE, FAQ_SELF_HOST, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED];
+const faq = [FAQ_ALTERNATIVE, FAQ_PRICE_ALT, FAQ_CHANGE_APP, FAQ_NO_LOSS, FAQ_READY, FAQ_LICENSE, FAQ_AFFILIATED];
 const quick = SDKS.filter((s) => ["ios", "android", "react-native", "flutter"].includes(s.id));
 const tiers = [10_000, 50_000, 250_000, 1_000_000];
 const partners = INTEGRATIONS.filter((i) => !["webhooks", "data-exports"].includes(i.kind));
@@ -46,7 +46,7 @@ const features = [
 ---
 <Base
   title="RevenueDot | Open-source RevenueCat alternative for in-app purchases"
-  description="Open-source in-app purchase backend that works with the RevenueCat SDK. Start free on RevenueDot Cloud or self-host it. Change one line, keep your app code."
+  description="Open-source in-app purchase backend that works with the RevenueCat SDK. Start free on RevenueDot Cloud. Change one line, keep your app code."
   path="/"
   faq={faq}
   image={ogFor("/")}
@@ -61,10 +61,10 @@ const features = [
         <a class="btn" href={SITE.signup}>Start free on Cloud</a>
         <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
       </div>
-      <p class="small muted rise d3 alt">Already have an account? <a href={SITE.login}>Sign in</a> · Prefer your own servers? <a href="/self-host">Self-host free</a> · <a href="#demo">Watch the 2½-minute demo</a></p>
+      <p class="small muted rise d3 alt">Already have an account? <a href={SITE.login}>Sign in</a> · <a href="#demo">Watch the 2½-minute demo</a></p>
       <p class="small rise d3 new"><a href="/add-in-app-purchases"><strong>New to in-app purchases?</strong> Add subscriptions to your app for free <span class="arrow">→</span></a></p>
       <div class="hero-code rise d3">
-        <Code title="The one line" label="Swift · AppDelegate" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!  // or your own server
+        <Code title="The one line" label="Swift · AppDelegate" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!
 Purchases.configure(withAPIKey: "appl_...")                       // unchanged`} />
       </div>
     </div>
@@ -78,7 +78,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
       <div class="grid"><div class="gi cols-4">
         <div class="cell"><p class="label">SDK endpoints</p><p class="stat">55</p><p>Of the 58 calls the RevenueCat SDKs make, answered in the same shape.</p></div>
         <div class="cell"><p class="label">SDKs supported</p><p class="stat">10</p><p>iOS, Android, React Native, Flutter, web and five more, stock or forked.</p></div>
-        <div class="cell"><p class="label">Free on Cloud</p><p class="stat">$10K</p><p>a month in tracked revenue, then capped at {usd(CLOUD_CAP)} a month. Self-hosting costs only your servers.</p></div>
+        <div class="cell"><p class="label">Free on Cloud</p><p class="stat">$10K</p><p>a month in tracked revenue, then capped at {usd(CLOUD_CAP)} a month.</p></div>
         <div class="cell"><p class="label">Lines of app code to change</p><p class="stat">1</p><p>The SDK's proxy URL. Purchases, offerings and entitlements stay as they are.</p></div>
       </div></div>
     </div>
@@ -89,7 +89,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
       <div class="head">
         <p class="label">See the whole platform in 2½ minutes</p>
         <h2 class="h2">Switch in one line, then run everything</h2>
-        <p class="lede">Watch an app move from RevenueCat to RevenueDot: change the SDK's URL, import the customers, then open the dashboard for charts, paywalls, experiments, integrations and the AI assistant. It ends with enterprise roles, single sign-on, self-hosting and a bill that stops at {usd(CLOUD_CAP)} a month.</p>
+        <p class="lede">Watch an app move from RevenueCat to RevenueDot: change the SDK's URL, import the customers, then open the dashboard for charts, paywalls, experiments, integrations and the AI assistant. It ends with enterprise roles, single sign-on and a bill that stops at {usd(CLOUD_CAP)} a month.</p>
       </div>
       <TourPlayer name="revenuedot-platform-demo" seconds={152} location="home" />
       <div class="btns demo-cta">
@@ -122,11 +122,11 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
     <div class="wrap">
       <div class="head">
         <p class="label">Why teams switch</p>
-        <h2 class="h2">Your purchases, your servers, your bill</h2>
+        <h2 class="h2">A bill that stops at $999 a month</h2>
       </div>
       <div class="grid"><div class="gi cols-3">
-        <div class="cell"><h3 class="h3">Free until you make $10K a month</h3><p>RevenueDot Cloud costs nothing up to {usd(CLOUD_FREE_UP_TO)} a month in tracked revenue, and Cloud Standard is capped at {usd(CLOUD_CAP)} a month. Self-hosting costs only your servers.</p></div>
-        <div class="cell"><h3 class="h3">Your data, your region</h3><p>Self-host, and purchases, customers and receipts live in your own Postgres, in the region your customers and your lawyers need.</p></div>
+        <div class="cell"><h3 class="h3">Free until you make $10K a month</h3><p>RevenueDot Cloud costs nothing up to {usd(CLOUD_FREE_UP_TO)} a month in tracked revenue, and Cloud Standard is capped at {usd(CLOUD_CAP)} a month.</p></div>
+        <div class="cell"><h3 class="h3">Nothing to run</h3><p>RevenueDot Cloud hosts the API, the dashboard and the database for you, and you can export everything a project owns at any time.</p></div>
         <div class="cell"><h3 class="h3">Same API, no rewrite</h3><p>The same SDK calls, customer info and webhook payloads, checked against RevenueCat's own SDK test fixtures.</p></div>
         <div class="cell"><h3 class="h3">A safe migration</h3><p>Import everything, run both systems side by side with forwarded store notifications, then switch when the numbers match.</p></div>
         <div class="cell"><h3 class="h3">Open source</h3><p>Read, audit and change the code that decides who has access to your app. AGPL-3.0 server, MIT SDKs.</p></div>
@@ -216,14 +216,13 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueCat</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueDot self-hosted</th></tr></thead>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueCat</th><th scope="col">RevenueDot Cloud</th></tr></thead>
           <tbody>
             {tiers.map((t) => (
               <tr>
                 <th scope="row" class="num-cell">{usd(t)}</th>
                 <td class="num-cell">{usd(revenueCatBill(t))}</td>
                 <td class="num-cell">{usd(cloudBill(t))}</td>
-                <td class="num-cell">$0 + your servers</td>
               </tr>
             ))}
           </tbody>

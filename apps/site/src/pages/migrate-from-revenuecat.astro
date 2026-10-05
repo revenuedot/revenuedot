@@ -61,7 +61,7 @@ const faq = [
       <div class="copy">
         <p class="label">Step 1</p>
         <h2 class="h2">Import your RevenueCat project</h2>
-        <p class="muted">First, create a free <a href={SITE.signup}>RevenueDot Cloud account</a> and copy a secret key from API keys. Self-hosting? Use your own server's URL and key instead.</p>
+        <p class="muted">First, create a free <a href={SITE.signup}>RevenueDot Cloud account</a> and copy a secret key from API keys.</p>
         <p class="muted">The importer runs on your own machine with your own RevenueCat secret key (read-only is enough). It reads RevenueCat's REST API v2 and writes to your RevenueDot server:</p>
         <ul class="list">
           <li>Apps and their public SDK keys, so shipped builds keep working</li>
@@ -120,7 +120,7 @@ https://api.revenuedot.app/v1/notifications/google/<app id>
       <div class="head">
         <p class="label">Step 3</p>
         <h2 class="h2">Switch: one line in every SDK</h2>
-        <p class="lede">Set the proxy URL before <code>configure</code> in your next release. Self-hosting? Use your own server's URL. When most active users are on the new version, turn RevenueCat off.</p>
+        <p class="lede">Set the proxy URL before <code>configure</code> in your next release. When most active users are on the new version, turn RevenueCat off.</p>
       </div>
       <div class="sdk-grid">
         {SDKS.map((s) => <Code title={s.name} label={s.language} code={s.proxy} />)}

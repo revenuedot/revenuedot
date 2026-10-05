@@ -14,7 +14,7 @@ const partners = INTEGRATIONS.filter((i) => !["webhooks", "data-exports"].includ
 const faq = [
   { q: "Which integrations does RevenueDot support?", a: `RevenueDot sends subscription events to ${partners} tools, including Amplitude, Mixpanel, PostHog, Segment, Firebase, BigQuery, AppsFlyer, Adjust, Branch, Meta, Braze, OneSignal, Slack, Intercom and Zendesk, plus RevenueCat-compatible webhooks and scheduled exports to S3, R2 and Google Cloud Storage.` },
   { q: "Are RevenueDot integrations compatible with RevenueCat's?", a: "Yes. Integrations get the same events webhooks get, with RevenueCat's event names and reserved attributes, so dashboards and pipelines built on RevenueCat's integrations keep working after you switch." },
-  { q: "Do integrations cost extra?", a: "No. Every integration is included on RevenueDot Cloud, which is free up to $10,000 a month in tracked revenue, and in the self-hosted server." },
+  { q: "Do integrations cost extra?", a: "No. Every integration is included on RevenueDot Cloud, which is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month." },
   { q: "What happens when a partner's API is down?", a: "RevenueDot retries on the webhook schedule and keeps a delivery log with the scrubbed request, the partner's answer and the reason for any skip. You can retry or replay events from the dashboard." },
 ];
 ---

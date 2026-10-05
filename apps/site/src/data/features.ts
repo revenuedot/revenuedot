@@ -609,7 +609,7 @@ let onboarding = offerings.currentOffering(forPlacement: "onboarding_end")`,
       },
       {
         q: "Can I build the funnel with AI?",
-        a: "Yes. Select Build with AI and describe who the funnel is for, the questions and the offer. RevenueDot returns a funnel it has checked and repaired, and opens it as a draft for you to edit. Nothing is published until you publish it. Self-hosted servers need an OpenAI or Anthropic key for this.",
+        a: "Yes. Select Build with AI and describe who the funnel is for, the questions and the offer. RevenueDot returns a funnel it has checked and repaired, and opens it as a draft for you to edit. Nothing is published until you publish it.",
       },
       {
         q: "Can I send funnel events to Meta or Google Ads?",
@@ -1019,7 +1019,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/refund_requests" \\
     title: "Customer Center for iOS and Android apps: retention offers, cancel flows and Apple Retention Messaging",
     metaTitle: "Customer Center: Retention Offers and Cancel Flows",
     metaDescription:
-      "Serve the RevenueCat SDK's Customer Center from your own server. Add cancel and refund retention offers, Apple Retention Messaging and support tickets.",
+      "Serve the RevenueCat SDK's Customer Center from RevenueDot Cloud. Add cancel and refund retention offers, Apple Retention Messaging and support tickets.",
     answer:
       "RevenueDot serves the configuration for the RevenueCat SDK's Customer Center, the subscription screen inside your app. You add a promotional offer to the cancel path or the refund path, so customers see it before they leave. RevenueDot also answers Apple's Retention Messaging API in real time and stores support tickets customers send from the screen.",
     shot: {
@@ -1097,7 +1097,7 @@ struct SettingsView: View {
     faq: [
       {
         q: "What is the RevenueCat Customer Center and does it work with RevenueDot?",
-        a: "The Customer Center is a subscription management screen inside the RevenueCat SDK, with paths for cancelling, refunds and support. RevenueDot serves its configuration from your own server, so the unmodified SDK shows your retention offers and sends tickets to RevenueDot.",
+        a: "The Customer Center is a subscription management screen inside the RevenueCat SDK, with paths for cancelling, refunds and support. RevenueDot Cloud serves its configuration, so the unmodified SDK shows your retention offers and sends tickets to RevenueDot.",
       },
       {
         q: "How do I show a discount when a customer tries to cancel?",
@@ -1381,7 +1381,7 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
         label: "Steps",
         steps: [
           { name: "Create a secret key", text: "Open API keys in the dashboard or call POST /v2/projects/{project_id}/api_keys. The key starts with sk_ and is shown once. Give it only the permissions it needs." },
-          { name: "Set the base URL", text: "Use https://api.revenuedot.app on RevenueDot Cloud, or your own server. Send the key as Authorization: Bearer sk_..." },
+          { name: "Set the base URL", text: "Use https://api.revenuedot.app. Send the key as Authorization: Bearer sk_..." },
           { name: "Call an endpoint", text: "Lists return an object, items, next_page and url. limit is 1 to 100 with a default of 20. Follow next_page to page." },
           { name: "Handle errors", text: "Errors use RevenueCat's v2 body: object, type, message, param, doc_url and retryable. A missing permission answers 403 and names it." },
         ],
@@ -1797,7 +1797,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
     name: "Trusted Entitlements",
     card: "RevenueDot signs every SDK response in the format the RevenueCat SDKs verify, with your own key.",
     label: "Feature",
-    title: "Trusted Entitlements: signed responses for the RevenueCat SDK on your own server",
+    title: "Trusted Entitlements: signed responses for the RevenueCat SDK",
     metaTitle: "Trusted Entitlements: Signed SDK Responses",
     metaDescription:
       "RevenueDot signs every SDK response with Ed25519 in the format the RevenueCat SDKs verify. Set REVENUEDOT_SIGNING_KEY, or use a fork that trusts your key.",
@@ -1848,7 +1848,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
         h2: "What does the signature cover?",
         paras: [
           "The X-Signature value is base64 of 180 bytes: an intermediate Ed25519 public key, its expiry in days, the root key's signature over both, a random salt, and the intermediate key's signature over the message. The message is the salt, the API key, the nonce, the request path, the request hash headers, the response time and ETag headers, and the body. The SDK sends a random `X-Nonce` with requests it verifies, and the nonce is part of the message.",
-          "RevenueDot Cloud signs with the public key `gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=`. A self-hosted server signs with its own key, so the official forks verify only against RevenueDot Cloud. Rotating the root key means shipping new SDK builds, because the key is compiled into the app.",
+          "RevenueDot Cloud signs with the public key `gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=`, and the official forks verify against that key. Rotating the root key means shipping new SDK builds, because the key is compiled into the app.",
         ],
       },
     ],
@@ -1876,7 +1876,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
       { href: "/docs/help/signature-verification-failed", label: "Why does the SDK report FAILED?" },
       { href: "/docs/getting-started/connect-your-app", label: "Connect your app" },
     ],
-    related: ["/features/offline-entitlements", "/features/migration", "/self-host", "/sdks/ios", "/compare/revenuedot-vs-revenuecat"],
+    related: ["/features/offline-entitlements", "/features/migration", "/sdks/ios", "/compare/revenuedot-vs-revenuecat"],
   },
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -1979,7 +1979,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
       },
       {
         q: "Can I use my own API key instead of OAuth?",
-        a: "Yes. Send Authorization: Bearer sk_ with a secret key from API keys and give the key only the permissions you want the assistant to have. A self-hosted server can run the MCP server with its own URL.",
+        a: "Yes. Send Authorization: Bearer sk_ with a secret key from API keys and give the key only the permissions you want the assistant to have.",
       },
     ],
     docs: [
@@ -2168,7 +2168,6 @@ pnpm --filter revenuedot cli import plan --to https://revenuedot.example.com --r
           "In RevenueDot, create a secret key with only the `customer_information:customers:read` permission.",
           "Zip the app folder and upload it as a private app in Zendesk's Admin Center.",
           "Fill in the RevenueDot API URL, the project ID and the secret key. Zendesk keeps the key as a secure setting, so agents' browsers never see it.",
-          "Self-hosted servers add their host name to the manifest's `domainWhitelist` before uploading.",
         ],
       },
       {

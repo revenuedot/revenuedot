@@ -9,7 +9,7 @@ const faq = [
   { q: "Which subscription metrics should an app track first?", a: "Start with MRR, active subscriptions, trial conversion rate, churn and refund rate. They tell you how much recurring revenue you have, whether trials turn into payers, and how fast paying customers leave. Add realized LTV and cohort retention once you have a few months of data." },
   { q: "Are RevenueDot charts the same as RevenueCat's?", a: "RevenueDot has all 41 charts RevenueCat's Charts API names plus Google Play cancel reasons and Customer Center survey responses. The API at GET /v2/projects/{project_id}/charts/{name} returns the same response shape, so scripts and dashboards built on RevenueCat's Charts API keep working." },
   { q: "Is sandbox data included in charts?", a: "No. Charts count production purchases only, so test purchases never inflate revenue or conversion. You can switch a chart to sandbox data to check your setup." },
-  { q: "Can I get chart data with SQL?", a: "Self-hosted RevenueDot keeps every purchase in your own Postgres, and the repository publishes reference SQL for eight core charts that is tested to match the API." },
+  { q: "Can I get chart data with SQL?", a: "Yes. The open-source repository publishes reference SQL for eight core charts, tested to match the API, and RevenueDot Cloud serves the same numbers through the REST API." },
 ];
 ---
 <Hub path="/charts" name="Charts" label="Subscription analytics" cols={3}
