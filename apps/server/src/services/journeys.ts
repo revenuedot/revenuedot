@@ -184,7 +184,8 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT max(s.last_seen_at) FROM sdk_versions s JOIN owned o ON o.id = s.project_id WHERE o.uid = u.id) AS sdk_last_at,
       (SELECT json_build_object('platform', s.platform_flavor, 'os', s.platform, 'version', s.sdk_version) FROM sdk_versions s JOIN owned o ON o.id = s.project_id WHERE o.uid = u.id ORDER BY s.first_seen_at ASC LIMIT 1) AS sdk,
       (SELECT EXISTS (SELECT 1 FROM apps a JOIN owned o ON o.id = a.project_id WHERE o.uid = u.id AND (
-          (a.type IN ('app_store','mac_app_store','play_store','amazon') AND a.credentials IS NOT NULL AND a.credentials::text NOT IN ('{}','null'))
+          -- Store secrets (the .p8 key, the Play service account) are sealed in apps.secrets since migration 0041.
+          (a.type IN ('app_store','mac_app_store','play_store','amazon') AND (a.secrets IS NOT NULL OR a.credentials_status = 'ok'))
           OR a.last_notification_at IS NOT NULL
           OR EXISTS (SELECT 1 FROM stripe_connections sc WHERE sc.app_id = a.id AND sc.status = 'connected')))) AS store_connected,
       -- Live: a paid production sale recorded within 2 days of the purchase (imported history is recorded much later).
