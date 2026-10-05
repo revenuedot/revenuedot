@@ -20,7 +20,7 @@ export const VIDEOS = {
 export const WATCH = {
   "revenuedot-platform-demo": {
     heading: "RevenueDot in two and a half minutes", seconds: 152, date: "2026-10-05", youtube: null,
-    description: "The whole platform in 2:32: switch from RevenueCat in one line, import and verify, charts, customers, paywalls, experiments, refunds, enterprise, self-host and the $999 cap.",
+    description: "The whole platform in 2:32: switch from RevenueCat in one line, import and verify, charts, paywalls, experiments, refunds, enterprise, self-host and the $999 cap.",
     summary: "The 1% fee problem, then the fix: change one Purchases.proxyURL line, import your RevenueCat data and verify it, and run everything from one dashboard: Overview, 43 charts, the customer page, the paywall editor, experiment results, refund rules and payment recovery, enterprise SSO and roles, self-hosting with Docker, and a Cloud bill that never passes $999 a month.",
     next: { label: "Start free on Cloud", href: "https://app.revenuedot.app/signup" },
   },
