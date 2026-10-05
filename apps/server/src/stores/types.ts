@@ -87,5 +87,5 @@ export interface VerifyExtra {
 
 export interface StoreAdapter {
   /** Verifies what the device posted and returns every purchase it proves. Throws RCError on invalid receipts. */
-  verify(app: AppRow, input: ReceiptInput, catalog: { productType: (storeId: string) => string | null; productDuration: (storeId: string) => string | null; productPrice?: (storeId: string) => Price | null }, extra?: VerifyExtra): Promise<VerifiedPurchase[]>;
+  verify(app: AppRow, input: ReceiptInput, catalog: { productType: (storeId: string) => string | null; productDuration: (storeId: string) => string | null; productPrice?: (storeId: string, want?: { currency?: string | null; country?: string | null }) => Price | null }, extra?: VerifyExtra): Promise<VerifiedPurchase[]>;
 }

@@ -98,7 +98,7 @@ test("export: the archive downloads as a tar with a manifest, every table and no
   const files = untar(await res.body());
   const manifest = JSON.parse(files.get("manifest.json")!.toString("utf8"));
   expect(manifest).toMatchObject({ format: "revenuedot-export", version: 1, project: { id: pid, name: "Moving app" }, secrets: { included: false } });
-  expect(manifest.tables).toHaveLength(70);
+  expect(manifest.tables).toHaveLength(71);
   expect(manifest.tables.find((t: { name: string }) => t.name === "customers").rows).toBe(3);
   const all = [...files.values()].map((b) => b.toString("latin1")).join("");
   expect(all).not.toContain("whsec_");
@@ -170,7 +170,7 @@ test("move to Cloud: check (nothing written), copy and verify, finish; the old s
 
   await page.getByRole("button", { name: "Copy data" }).click();
   await expect(page.getByText("Copied", { exact: true })).toBeVisible({ timeout: 90_000 });
-  await expect(page.getByText(/Verified: all 70 tables and [\d,]+ rows match/)).toBeVisible();
+  await expect(page.getByText(/Verified: all 71 tables and [\d,]+ rows match/)).toBeVisible();
   await fits(page, "move-copied");
   // On Cloud the copy exists but is held: the project is incoming, and its dashboard says so.
   const cloudProjects = (await json(cloudReq, "GET", "/auth/me")).projects;

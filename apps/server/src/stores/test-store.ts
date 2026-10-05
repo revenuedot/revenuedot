@@ -1,5 +1,6 @@
 import { Codes, RCError } from "../errors.js";
 import type { Price } from "@revenuedot/core";
+import { alpha2 } from "./apple/map.js";
 import type { StoreAdapter, VerifiedPurchase, VerifiedSubscription } from "./types.js";
 
 /** ISO 8601 duration (P1W, P1M, P1Y, P3D) added to a date. */
@@ -28,8 +29,10 @@ export const testStore: StoreAdapter = {
     const purchaseDate = new Date(Number(m[1]));
     const type = catalog.productType(productId) ?? (input.normalDuration ? "subscription" : "non_consumable");
     // The native SDKs post the price they showed; purchases-js posts Test Store receipts with `price: null` and only the
-    // currency, as RevenueCat's backend knows the price from the product. Fall back to the catalog's Test Store price.
-    const price = input.price !== null && input.currency ? { amount: input.price, currency: input.currency } : catalog.productPrice?.(productId) ?? null;
+    // currency, as RevenueCat's backend knows the price from the product. Fall back to the catalog's Test Store price in
+    // that currency (or the store country's), else the default price.
+    const price = input.price !== null && input.currency ? { amount: input.price, currency: input.currency }
+      : catalog.productPrice?.(productId, { currency: input.currency, country: alpha2(input.storeCountry) }) ?? null;
     const out: VerifiedPurchase[] = [];
     if (type === "subscription") {
       const dur = catalog.productDuration(productId) ?? input.normalDuration ?? "P1M";

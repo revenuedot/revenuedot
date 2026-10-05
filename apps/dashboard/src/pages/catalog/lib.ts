@@ -7,6 +7,9 @@ export interface App {
   object: "app"; id: string; name: string; type: string; created_at: number; project_id: string;
   app_store?: { bundle_id: string }; mac_app_store?: { bundle_id: string }; play_store?: { package_name: string }; amazon?: { package_name: string }; galaxy?: { package_name: string };
 }
+/** One Test Store price (`GET …/products/{id}/prices`). */
+export interface ProductPrice { id: string | null; currency: string; amount_micros: number }
+
 export interface Product {
   object: "product"; id: string; store_identifier: string; type: string; state: "active" | "inactive"; created_at: number; app_id: string;
   display_name: string | null; subscription?: { duration: string | null }; one_time?: { is_consumable: boolean | null };

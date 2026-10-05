@@ -9,7 +9,7 @@ import { schema } from "@revenuedot/db";
  */
 
 /** The last migration of this build. Archives say which schema wrote them; a target refuses a newer one. */
-export const ARCHIVE_SCHEMA = "0041_seal_store_credentials";
+export const ARCHIVE_SCHEMA = "0042_test_store_prices";
 export const ARCHIVE_FORMAT = "revenuedot-export";
 export const ARCHIVE_VERSION = 1;
 
@@ -38,6 +38,7 @@ export const ARCHIVE_TABLES: ArchiveTable[] = [
   // Who granted an OAuth key, and to which client, stays on this server (accounts and OAuth clients are not moved).
   { name: "api_keys", scope: { project: "project_id" }, local: ["created_by_user_id", "oauth_client_id"] },
   { name: "products", scope: { project: "project_id" } },
+  { name: "product_prices", scope: { project: "project_id" } },
   { name: "entitlements", scope: { project: "project_id" } },
   { name: "entitlement_products", scope: { via: "entitlement_id", parent: "entitlements" } },
   { name: "offerings", scope: { project: "project_id" } },

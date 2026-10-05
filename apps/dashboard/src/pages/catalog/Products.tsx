@@ -18,7 +18,7 @@ import { Copy, Shell } from "../../components/Shell";
 import { ConfirmDialog, Dialog, EmptyState, Field, KeyValue, Menu, PageHead, Panel, Segmented, Tag, useProjectId, useToast, type MenuItem } from "../../components/ui";
 import { Icon } from "../../components/icons";
 import { IMPORT_STORES, NO_CATALOG_API, ImportProductsDialog } from "./ImportProducts";
-import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog } from "./parts";
+import { AppName, CatalogCrumbs, EditProductDialog, LoadError, LoadingRows, NewProductDialog, useProductPrices } from "./parts";
 import { PRICE_STORES, count, durationLabel, errMsg, isConflict, lookupKeyError, priceAndPeriod, priceLabel, productName, typeLabel, useApps, useEntitlements, useOfferings, useProducts, useRefreshCatalog, useStorePrices, v2, type Entitlement, type Offering, type Product } from "./lib";
 import { NewMenu, PriceCell, PriceSource, StoreStatus, useCanEdit } from "./store-parts";
 import { CreateWithAiDialog } from "./CreateWithAi";
@@ -177,6 +177,19 @@ export function ProductsPage() {
   );
 }
 
+/** Every Test Store price of a product, the default first. */
+function TestStorePrices({ pid, product }: { pid: string; product: Product }) {
+  const prices = useProductPrices(pid, product, true);
+  const list = prices.data ?? (product.indicative_price ? [{ id: null, ...product.indicative_price }] : []);
+  if (prices.isError && !list.length) return <span className="subtle">Could not be loaded.</span>;
+  if (!list.length) return <span className="subtle">None. The SDK shows USD 0.00; edit the product to set a price.</span>;
+  return (
+    <span className="mono" data-testid="test-store-prices">
+      {list.map((x, i) => <span key={x.currency}>{i > 0 && " · "}{priceLabel(x)}{i === 0 && list.length > 1 && <span className="subtle"> default</span>}</span>)}
+    </span>
+  );
+}
+
 export function ProductDetail() {
   const pid = useProjectId();
   const { productId = "" } = useParams();
@@ -214,7 +227,7 @@ export function ProductDetail() {
         ["App", <AppName key="a" app={app} sub />],
         ["Type", typeLabel(p.type)],
         ...(p.type === "subscription" ? [["Duration", p.subscription?.duration ? <span key="d">{durationLabel(p.subscription.duration)} <span className="mono subtle">{p.subscription.duration}</span></span> : <span key="d" className="subtle">Not set. Edit the product to set it; MRR uses it.</span>] as [string, ReactNode]] : []),
-        ...(app?.type === "test_store" ? [["Test Store price", p.indicative_price ? <span key="tp" className="mono">{priceLabel(p.indicative_price)}</span> : <span key="tp" className="subtle">None. The SDK shows USD 0.00; edit the product to set a price.</span>] as [string, ReactNode]] : []),
+        ...(app?.type === "test_store" ? [["Test Store prices", <TestStorePrices key="tp" pid={pid} product={p} />] as [string, ReactNode]] : []),
         ...(app && PRICE_STORES.has(app.type) ? [
           ["Store price", priceAndPeriod(p) ? <span key="sp" className="mono">{priceAndPeriod(p)}{p.store_details?.price?.territory ? <span className="subtle"> · {p.store_details.price.territory}</span> : null}</span> : <span key="sp" className="subtle">{p.store_details ? "No price in the store yet." : "Not read from the store yet."}</span>] as [string, ReactNode],
           ["Store status", <StoreStatus key="ss" p={p} app={app} />] as [string, ReactNode],

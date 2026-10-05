@@ -54,6 +54,11 @@ export function parseWrite(method: string, path: string): Parsed | null {
   if (tail[0] === "actions" && tail[1]) return QUIET.has(tail[1]) ? null : { actionType: `${target}_${tail[1]}`, targetType: target, targetId: id };
   // A sub-collection's action: POST /v2/projects/p/apps/a/store_products/actions/import is app_store_products_import on a.
   if (tail.length === 3 && tail[1] === "actions") return method === "POST" && !QUIET.has(tail[2]!) ? { actionType: `${target}_${tail[0]}_${tail[2]}`, targetType: target, targetId: id } : null;
+  // One price of a product: PATCH or DELETE /v2/projects/p/products/x/prices/EUR is product_price_updated or _deleted on x.
+  if (coll === "products" && tail.length === 2 && tail[0] === "prices") {
+    return method === "PATCH" ? { actionType: "product_price_updated", targetType: target, targetId: id }
+      : method === "DELETE" ? { actionType: "product_price_deleted", targetType: target, targetId: id } : null;
+  }
   if (tail.length) return method === "POST" ? { actionType: `${target}_${tail.join("_").replace(/s$/, "")}_created`, targetType: target, targetId: id } : null;
   if (method === "POST" && SINGLETONS.has(target)) return { actionType: `${target}_updated`, targetType: target, targetId: seg[2] };
   if (method === "POST") return id ? { actionType: `${target}_updated`, targetType: target, targetId: id } : { actionType: `${target}_created`, targetType: target, targetId: null };

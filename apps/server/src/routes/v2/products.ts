@@ -4,8 +4,10 @@ import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { CONVERTIBLE_CURRENCIES } from "../../services/fx.js";
+import { fromMinor } from "../../stores/stripe/map.js";
 import { body, conflict, expands, notFound, paginate, paramError, scope, type V2Router } from "./common.js";
 import { appsById, priceContext, productShape } from "./shapes.js";
+import { addPrices, priceShape, pricesOf, removePrice, setDefaultPrice, updatePrice } from "../../services/test-store-prices.js";
 
 export const PRODUCT_TYPES = ["subscription", "one_time", "consumable", "non_consumable", "non_renewing_subscription"] as const;
 /**
@@ -15,17 +17,22 @@ export const PRODUCT_TYPES = ["subscription", "one_time", "consumable", "non_con
  */
 const Duration = z.string().trim().regex(/^P(?=\d)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?$/, "must be an ISO 8601 period such as P1M, P1Y or P3D");
 
+const Micros = z.number().int().min(0).max(1e15);
+const Currency = z.string().trim().regex(/^[A-Za-z]{3}$/, "must be an ISO 4217 code such as USD").transform((c) => c.toUpperCase())
+  .refine((c) => CONVERTIBLE_CURRENCIES.has(c), "is not a currency RevenueDot can convert to USD; use an ISO 4217 code such as USD or EUR");
 /**
- * Test Store price in RevenueCat's price field names (`amount_micros`, `currency`). RevenueCat sets Test Store prices with
- * `POST …/products/{id}/test_store_prices`; RevenueDot takes one price on product create and update instead (null clears it).
- * Responses carry it as RevenueCat's `indicative_price` with `expand=indicative_price` (`items.indicative_price` on lists),
- * and the SDK shows it for Test Store products (`/rcbilling/v1/subscribers/:id/products`).
+ * Test Store price in RevenueCat's price field names (`amount_micros`, `currency`). A product has one price per currency
+ * (`…/test_store_prices`, `…/prices` below); `test_store_price` on product create and update sets the default one (null
+ * clears every price). Responses carry the default as RevenueCat's `indicative_price` with `expand=indicative_price`
+ * (`items.indicative_price` on lists). The SDK shows the price in the customer's currency (`/rcbilling/v1/subscribers/:id/products`).
  */
-const TestStorePrice = z.object({
-  amount_micros: z.number().int().min(0).max(1e15),
-  currency: z.string().trim().regex(/^[A-Za-z]{3}$/, "must be an ISO 4217 code such as USD").transform((c) => c.toUpperCase())
-    .refine((c) => CONVERTIBLE_CURRENCIES.has(c), "is not a currency RevenueDot can convert to USD; use an ISO 4217 code such as USD or EUR"),
-}).nullable();
+const TestStorePrice = z.object({ amount_micros: Micros, currency: Currency }).nullable();
+/** `POST …/test_store_prices` body, as the RevenueCat CLI sends it (`rc products prices set`). */
+const PricesCreate = z.object({
+  prices: z.array(z.object({ amount_micros: Micros, currency: Currency })).min(1).max(200)
+    .refine((ps) => new Set(ps.map((p) => p.currency)).size === ps.length, "must list each currency once"),
+});
+const PriceUpdate = z.object({ amount_micros: Micros });
 
 const ProductCreate = z.object({
   store_identifier: z.string().trim().min(1).max(255),
@@ -43,8 +50,12 @@ const ProductUpdate = z.object({
   subscription: z.object({ duration: Duration.nullable() }).optional(),
   test_store_price: TestStorePrice.optional(),
 });
-const priceColumns = (p: z.infer<typeof TestStorePrice>) => ({ testStorePriceMicros: p?.amount_micros ?? null, testStorePriceCurrency: p?.currency ?? null });
-const onlyTestStore = () => paramError("test_store_price is only supported for Test Store products.", "test_store_price");
+const onlyTestStore = (param = "test_store_price") => paramError(`${param === "test_store_price" ? "test_store_price is" : "Prices by currency are"} only supported for Test Store products.`, param);
+const currencyParam = (raw: string) => {
+  const r = Currency.safeParse(raw);
+  if (!r.success) throw paramError(`currency ${r.error.issues[0]!.message}.`, "currency");
+  return r.data;
+};
 
 export function productRoutes(r: V2Router, deps: Deps) {
   const { db } = deps;
@@ -80,10 +91,10 @@ export function productRoutes(r: V2Router, deps: Deps) {
     const [row] = await db.insert(schema.products).values({
       id: newId("prod", 10), projectId, appId: app.id, storeIdentifier: b.store_identifier, type: b.type,
       displayName: b.display_name ?? b.title ?? null, duration: b.subscription?.duration ?? null, createdAt: deps.now(),
-      ...priceColumns(b.test_store_price ?? null),
     }).returning();
+    const saved = b.test_store_price ? await setDefaultPrice(db, row!, b.test_store_price) : row!;
     const exp = expands(c);
-    return c.json(productShape(row!, null, exp.has("indicative_price"), await single(c.get("projectId"), row!, exp)), 201);
+    return c.json(productShape(saved, null, exp.has("indicative_price"), await single(c.get("projectId"), row!, exp)), 201);
   });
 
   r.get(`${P}/:product_id`, scope("project_configuration:products:read"), async (c) => {
@@ -100,15 +111,61 @@ export function productRoutes(r: V2Router, deps: Deps) {
       const [app] = await db.select({ type: schema.apps.type }).from(schema.apps).where(eq(schema.apps.id, p.appId)).limit(1);
       if (app?.type !== "test_store") throw onlyTestStore();
     }
-    const [row] = await db.update(schema.products).set({
+    const fields = {
       ...(b.display_name !== undefined ? { displayName: b.display_name } : {}), ...(b.type ? { type: b.type } : {}),
       ...(b.subscription ? { duration: b.subscription.duration } : {}),
-      ...(b.test_store_price !== undefined ? priceColumns(b.test_store_price) : {}),
-    })
-      .where(and(eq(schema.products.projectId, p.projectId), eq(schema.products.id, p.id))).returning();
+    };
+    let [row] = Object.keys(fields).length
+      ? await db.update(schema.products).set(fields).where(and(eq(schema.products.projectId, p.projectId), eq(schema.products.id, p.id))).returning()
+      : [p];
+    if (b.test_store_price !== undefined) row = await setDefaultPrice(db, row!, b.test_store_price);
     const exp = expands(c);
     const apps = await withApp(c, exp, "app");
     return c.json(productShape(row!, apps?.get(row!.appId), exp.has("indicative_price"), await single(c.get("projectId"), row!, exp)));
+  });
+
+  // Prices by currency (RevenueCat's beta `list-prices`, `create-product-prices`, `update-product-price`). Bodies follow the
+  // RevenueCat CLI (internal/api/products.go): lists are bare arrays of `{ id, currency, amount_micros }`, default first.
+  const testStoreProduct = async (c: { get: (k: "projectId") => string; req: { param: (k: "product_id") => string } }, param: string) => {
+    const p = await find(c.get("projectId"), c.req.param("product_id"));
+    const [app] = await db.select({ type: schema.apps.type }).from(schema.apps).where(eq(schema.apps.id, p.appId)).limit(1);
+    if (app?.type !== "test_store") throw onlyTestStore(param);
+    return p;
+  };
+  const listPrices = async (c: Parameters<typeof testStoreProduct>[0]) => {
+    const p = await find(c.get("projectId"), c.req.param("product_id"));
+    const [app] = await db.select({ type: schema.apps.type }).from(schema.apps).where(eq(schema.apps.id, p.appId)).limit(1);
+    if (app?.type === "test_store") return (await pricesOf(db, [p])).get(p.id)!.map(priceShape);
+    // Web Billing: the Stripe price the product was created from (RevenueCat lists "Web Billing and Test Store" prices).
+    const [web] = await db.select().from(schema.webProducts).where(eq(schema.webProducts.productId, p.id)).limit(1);
+    if (web) return [{ id: web.stripePriceId, currency: web.currency.toUpperCase(), amount_micros: Math.round(fromMinor(web.amountMinor, web.currency) * 1_000_000) }];
+    throw paramError("Prices are only listed for Test Store and Web Billing products.", "product_id");
+  };
+  r.get(`${P}/:product_id/prices`, scope("project_configuration:products:read"), async (c) => c.json(await listPrices(c)));
+  // Deprecated alias of GET …/prices in RevenueCat.
+  r.get(`${P}/:product_id/test_store_prices`, scope("project_configuration:products:read"), async (c) => c.json(await listPrices(c)));
+  r.post(`${P}/:product_id/test_store_prices`, scope("project_configuration:products:read_write"), async (c) => {
+    const p = await testStoreProduct(c, "product_id");
+    const b = await body(c, PricesCreate);
+    const saved = await addPrices(db, p, b.prices.map((x) => ({ currency: x.currency, amount_micros: x.amount_micros })));
+    const all = (await pricesOf(db, [saved])).get(saved.id)!;
+    return c.json(b.prices.map((x) => priceShape(all.find((a) => a.currency === x.currency)!)), 201);
+  });
+  r.patch(`${P}/:product_id/prices/:currency`, scope("project_configuration:products:read_write"), async (c) => {
+    const p = await testStoreProduct(c, "product_id");
+    const currency = currencyParam(c.req.param("currency"));
+    const b = await body(c, PriceUpdate);
+    const out = await updatePrice(db, p, currency, b.amount_micros);
+    if (!out) throw notFound(`${currency} price`);
+    return c.json(priceShape(out));
+  });
+  // Extension: RevenueCat has no way to remove a currency; the dashboard's price editor needs one.
+  r.delete(`${P}/:product_id/prices/:currency`, scope("project_configuration:products:read_write"), async (c) => {
+    const p = await testStoreProduct(c, "product_id");
+    const currency = currencyParam(c.req.param("currency"));
+    const gone = await removePrice(db, p, currency);
+    if (!gone) throw notFound(`${currency} price`);
+    return c.json({ object: "product_price", id: gone.id, currency, deleted_at: deps.now().getTime() });
   });
 
   // Deleting a product detaches it from entitlements and packages (FK cascade). Purchase history keeps the store id.
