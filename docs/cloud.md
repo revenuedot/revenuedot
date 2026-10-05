@@ -280,3 +280,8 @@ as `EXPORTS`.
   iterations by older self-host builds cannot be verified on Workers.
 - Each request opens its own Postgres connection (Hyperdrive pools). Webhook deliveries kicked by a request run after
   the response on that request's connection; the every-minute cron runs expirations, voided purchases and deliveries.
+- Email goes through the `EMAIL` `send_email` binding (Cloudflare Email Service, sender `no-reply@mail.revenuedot.app`)
+  with the structured `send()`. Its `headers` field carries win-back and payment-recovery email's RFC 8058 one-click
+  headers (`List-Unsubscribe`, `List-Unsubscribe-Post`); Cloudflare rejects the whole send if `List-Unsubscribe` is not
+  angle-bracketed https or mailto, so the server sends them only when its public URL is https
+  ([Email headers](https://developers.cloudflare.com/email-service/reference/headers/)). Self-host SMTP sends the same headers.

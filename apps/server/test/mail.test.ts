@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SMTPServer } from "smtp-server";
 import type { AddressInfo } from "node:net";
 import { smtpMailer } from "../src/mail/smtp.js";
-import { cloudflareMailer, isEmailAddress, logMailer, parseAddress } from "../src/mail/index.js";
-import { alertEmail, inviteEmail, passwordResetEmail, verifyEmail } from "../src/mail/templates.js";
+import { cloudflareMailer, isEmailAddress, logMailer, oneClickUnsubscribeHeaders, parseAddress } from "../src/mail/index.js";
+import { alertEmail, inviteEmail, passwordResetEmail, verifyEmail, winbackEmail } from "../src/mail/templates.js";
 
 let server: SMTPServer | undefined;
 afterEach(async () => { await new Promise<void>((r) => (server ? server.close(() => r()) : r())); server = undefined; });
@@ -47,6 +47,22 @@ describe("SMTP driver", () => {
     expect(raw).toContain("text/plain");
     expect(raw).toContain("text/html");
     expect(raw).toContain("reset-password?token=3Dabc"); // quoted-printable "="
+  });
+
+  it("sends a win-back email's RFC 8058 one-click headers in the raw MIME", async () => {
+    const { port, got } = await catcher();
+    const url = "https://api.example.com/v1/winback/u/tok_123";
+    const mail = winbackEmail({ appName: "Scanner", subject: "Come back", heading: "Hi", body: "B", buttonLabel: "Resubscribe", offerUrl: "https://apps.apple.com/account/subscriptions", unsubscribeUrl: url });
+    await smtpMailer(`smtp://mailer:${encodeURIComponent("p@ss w0rd")}@127.0.0.1:${port}`, "RevenueDot <no-reply@example.com>").send({ to: "ana@example.com", ...mail, fromName: "Scanner", headers: oneClickUnsubscribeHeaders(url) });
+    const head = got[0]!.raw.split(/\r?\n\r?\n/)[0]!;
+    expect(head).toMatch(/^List-Unsubscribe: <https:\/\/api\.example\.com\/v1\/winback\/u\/tok_123>$/m);
+    expect(head).toMatch(/^List-Unsubscribe-Post: List-Unsubscribe=One-Click$/m);
+    expect(head).toMatch(/^From: Scanner <no-reply@example.com>$/m);
+  });
+
+  it("one-click headers only for an https link (Cloudflare and Gmail take angle-bracketed https)", () => {
+    expect(oneClickUnsubscribeHeaders("https://a.example/u/t")).toEqual({ "List-Unsubscribe": "<https://a.example/u/t>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    expect(oneClickUnsubscribeHeaders("http://localhost:8080/u/t")).toBeUndefined();
   });
 
   it("rejects wrong credentials and bad URLs", async () => {

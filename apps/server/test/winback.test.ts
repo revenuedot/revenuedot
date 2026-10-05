@@ -99,6 +99,14 @@ describe("win-back campaigns", () => {
     expect(done.status).toBe(200);
     expect(await done.text()).toContain("You are unsubscribed");
     expect((await h.db.select().from(schema.emailSuppressions)).map((s) => s.email).sort()).toEqual(["lapsed@example.com", "quiet@example.com"]);
+    // A second one-click POST (mail providers retry) is a no-op that still answers 200.
+    const again = await h.fetch(`/v1/winback/u/${ios.token}`, { key: "", method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } });
+    expect(again.status).toBe(200);
+    expect(await h.db.select().from(schema.emailSuppressions)).toHaveLength(2);
+    // A token that matches no send is rejected and suppresses nobody.
+    const bad = await h.fetch("/v1/winback/u/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", { key: "", method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } });
+    expect(bad.status).toBe(404);
+    expect(await h.db.select().from(schema.emailSuppressions)).toHaveLength(2);
 
     // A second campaign skips the unsubscribed address.
     const second = await v2("/winback_campaigns", { method: "POST", json: campaign({ name: "Second" }) });
@@ -193,6 +201,13 @@ describe("win-back campaigns", () => {
     expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "me@scanner.app?cc=x@evil.example" } })).status).toBe(400);
     expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "a@x.example, b@y.example" } })).status).toBe(400);
     for (let i = 0; i < 10; i++) expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "me@scanner.app" } })).status).toBe(200);
+    // The test email carries the same one-click headers; its token unsubscribes nobody.
+    const t = mail.sent.at(-1)!;
+    expect(t.headers).toEqual({ "List-Unsubscribe": "<https://app.example.test/v1/winback/u/test-email-preview-token>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    const tp = await h.fetch("/v1/winback/u/test-email-preview-token", { key: "", method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } });
+    expect(tp.status).toBe(200);
+    expect(await tp.text()).toContain("This was a test email");
+    expect(await h.db.select().from(schema.emailSuppressions)).toHaveLength(0);
     expect((await v2(`/winback_campaigns/${c.body.id}/actions/send_test`, { method: "POST", json: { email: "me@scanner.app" } })).status).toBe(429);
   });
 
