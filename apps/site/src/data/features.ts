@@ -1866,17 +1866,17 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
     slug: "ai-connectors",
     section: "features",
     name: "AI connectors",
-    card: "Connect ChatGPT, Claude, Cursor and Codex to your project with one URL and OAuth, with 34 tools.",
+    card: "Connect ChatGPT, Claude, Cursor and Codex to your project with one URL and OAuth, with 38 tools.",
     label: "Feature",
     title: "Connect ChatGPT, Claude and Cursor to your subscription data with an MCP server",
     metaTitle: "Connect ChatGPT, Claude and Cursor via MCP",
     metaDescription:
-      "Connect ChatGPT, Claude, Claude Code, Codex or Cursor to RevenueDot with OAuth. 34 tools set up your catalog, find customers, debug webhooks and read revenue.",
+      "Connect ChatGPT, Claude, Claude Code, Codex or Cursor to RevenueDot with OAuth. 38 tools set up your catalog, find customers, debug webhooks and read revenue.",
     answer:
-      "RevenueDot has a hosted MCP server at https://mcp.revenuedot.app/mcp that connects ChatGPT, Claude, Claude Code, Codex and Cursor to your project with OAuth. Its 34 tools set up your catalog, find customers, grant access, debug webhooks and read revenue. You pick one project and one access level: read only, read and change, or money actions.",
+      "RevenueDot has a hosted MCP server at https://mcp.revenuedot.app/mcp that connects ChatGPT, Claude, Claude Code, Codex and Cursor to your project with OAuth. Its 38 tools set up your catalog, find customers, grant access, debug webhooks and read revenue. You pick one project and one access level: read only, read and change, or money actions.",
     points: [
       { title: "One URL", text: "The same server is the RevenueDot connector for Claude and the plugin for ChatGPT and Codex." },
-      { title: "34 tools", text: "Catalog setup, customer lookup, grants, webhooks, store connection checks and revenue reads." },
+      { title: "38 tools", text: "Catalog setup, customer lookup, grants, webhooks, store connection checks and revenue reads." },
       { title: "You choose the access", text: "Read only, read and change, and a separate Money actions checkbox for refunds and cancels." },
       { title: "No secrets in chat", text: "No tool accepts a store key, a password or an API key. You add those in the dashboard." },
     ],
@@ -1911,7 +1911,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
           label: "Shell",
           code: `claude mcp add --transport http revenuedot https://mcp.revenuedot.app/mcp`,
         },
-        paras: ["Then run `/mcp` in Claude Code to sign in. You can also install the plugin with `/plugin marketplace add revenuedot/agent-skills`, then `/plugin install revenuedot@revenuedot`."],
+        paras: ["Config blocks for Claude Code, Claude Desktop, Codex, Cursor, ChatGPT and Windsurf, the full tool table and what RevenueCat's own MCP server offers are on [RevenueCat MCP server, official and open source](/revenuecat-mcp).", "Then run `/mcp` in Claude Code to sign in. You can also install the plugin with `/plugin marketplace add revenuedot/agent-skills`, then `/plugin install revenuedot@revenuedot`."],
       },
       {
         h2: "What can an assistant do with each access level?",
@@ -1943,7 +1943,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
       },
       {
         q: "Is there an MCP server for in-app purchases?",
-        a: "Yes. RevenueDot's hosted MCP server at https://mcp.revenuedot.app/mcp has 34 tools for catalog setup, customer lookup, entitlement grants, webhooks, store connection checks and revenue. It works with ChatGPT, Claude, Claude Code, Codex and Cursor, and uses OAuth 2.1.",
+        a: "Yes. RevenueDot's hosted MCP server at https://mcp.revenuedot.app/mcp has 38 tools for catalog setup, customer lookup, entitlement grants, webhooks, store connection checks and revenue. It works with ChatGPT, Claude, Claude Code, Codex and Cursor, and uses OAuth 2.1.",
       },
       {
         q: "Can an AI assistant refund my customers by itself?",
@@ -1963,7 +1963,7 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
       { href: "/docs/api/authentication", label: "API keys and permissions" },
       { href: "/docs/guides/webhooks", label: "Webhooks" },
     ],
-    related: ["/features/rest-api", "/features/webhooks", "/features/migration", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat"],
+    related: ["/revenuecat-mcp", "/features/rest-api", "/features/webhooks", "/features/migration", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat"],
   },
 
   // ---------------------------------------------------------------------------------------------------------------

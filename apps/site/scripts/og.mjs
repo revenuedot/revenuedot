@@ -176,6 +176,7 @@ for (const [p, label, title, s] of [
   ["/pricing", "Pricing", "Free on Cloud up to $10K a month", "screens/overview-light.png"],
   ["/migrate-from-revenuecat", "Migrate", "Move off RevenueCat in an afternoon", "screens/customers-light.png"],
   ["/self-host", "Self-host", "Run it on your own servers", "dashboard-light.png"],
+  ["/revenuecat-mcp", "MCP · 38 tools", "RevenueCat MCP server, official and open source", "screens/mcp/claude-connector-tools.png"],
   ["/blog", "Blog", "Guides for subscription app developers", "paywalls-gallery.png"],
   ["/docs", "Docs", "RevenueDot documentation", "screens/offerings-light.png"],
   ["/changelog", "Changelog", "What shipped in RevenueDot", "charts-light.png"],

@@ -1,0 +1,303 @@
+---
+// /revenuecat-mcp: answers "revenuecat mcp" head on. RevenueCat's own MCP server, stated from its docs, and RevenueDot's
+// open-source one for apps that ship the RevenueCat SDK, with checked config blocks for six clients. Facts come from
+// github.com/revenuedot/mcp (README and src/tools.ts) and revenuecat.com/docs/tools/mcp, both read on 2026-10-04.
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Code from "../components/Code.astro";
+import Faq from "../components/Faq.astro";
+import Related from "../components/Related.astro";
+import CtaBand from "../components/CtaBand.astro";
+import Shot from "../components/Shot.astro";
+import { shot } from "../lib/shots";
+import { playerUrl, VIDEOS } from "../lib/videos.mjs";
+import { ogFor } from "../lib/og";
+import { webPage, howTo } from "../lib/jsonld";
+import { SITE } from "../site";
+
+const CHECKED = "October 4, 2026";
+const URL_MCP = "https://mcp.revenuedot.app/mcp";
+const URL_KIT = "https://mcp.revenuedot.app/kit/mcp";
+const RC_DOCS = "https://www.revenuecat.com/docs/tools/mcp";
+const RC_TOOLS = "https://www.revenuecat.com/docs/tools/mcp/tools-reference";
+const RC_SETUP = "https://www.revenuecat.com/docs/tools/mcp/setup";
+const path = "/revenuecat-mcp";
+const title = "RevenueCat MCP server, official and open source";
+const description =
+  "RevenueCat's MCP server and RevenueDot's open-source one, compared: 38 tools for apps on the RevenueCat SDK, OAuth, reads free and writes after approval, with config for Claude Code, Claude, Codex, Cursor, ChatGPT and Windsurf.";
+
+// The 38 tools of github.com/revenuedot/mcp (src/tools.ts), grouped by what they do. (d) marks a destructive write.
+const groups: { name: string; scope: string; tools: string[] }[] = [
+  { name: "Apps and store connections", scope: "read", tools: ["list-projects", "list-apps", "list-public-api-keys", "get-app-store-settings", "verify-store-credentials", "get-project-health", "get-import-status"] },
+  { name: "Apps and store connections", scope: "write", tools: ["create-app", "update-app (d)"] },
+  { name: "Catalog: products, entitlements, offerings", scope: "read", tools: ["list-products", "list-entitlements", "list-offerings"] },
+  { name: "Catalog: products, entitlements, offerings", scope: "write", tools: ["create-product", "create-entitlement", "attach-products-to-entitlement", "create-offering", "create-packages", "attach-products-to-package", "archive-offering (d)"] },
+  { name: "Customers and access", scope: "read", tools: ["get-customer", "list-customers", "list-transactions", "list-events"] },
+  { name: "Customers and access", scope: "write", tools: ["grant-customer-entitlement", "revoke-customer-entitlement", "set-customer-attributes (d)", "delete-customer (d)"] },
+  { name: "Subscriptions and money", scope: "support", tools: ["extend-subscription", "cancel-subscription (d)", "refund-subscription (d)", "create-test-purchase"] },
+  { name: "Webhooks", scope: "read", tools: ["list-webhook-integrations", "list-webhook-deliveries"] },
+  { name: "Webhooks", scope: "write", tools: ["create-webhook-integration", "retry-webhook-delivery", "send-test-webhook", "delete-webhook-integration (d)"] },
+  { name: "Revenue", scope: "read", tools: ["get-metrics"] },
+];
+const toolCount = groups.reduce((n, g) => n + g.tools.length, 0);
+if (toolCount !== 38) throw new Error(`The tool table lists ${toolCount} tools; the server has 38`);
+const scopeName: Record<string, string> = { read: "Read only (project:read)", write: "Read and change (project:write)", support: "Money actions (project:support)" };
+
+const steps = [
+  { name: "Add the URL", text: `Paste ${URL_MCP} into your assistant as a remote (streamable HTTP) MCP server. The config for each client is below.` },
+  { name: "Sign in and choose the access", text: "The assistant opens a RevenueDot page. Sign in with your dashboard account, pick one project, and choose Read only or Read and change. Money actions is a separate box the assistant asks for only when a tool needs it." },
+  { name: "Ask", text: "Try: Is everything connected? Did any webhook fail this week? Or: Find the customer with email jane@example.com and tell me why they don't have access." },
+];
+
+const faq = [
+  { q: "Does RevenueCat have an MCP server?", a: `Yes. RevenueCat's docs describe a cloud-hosted MCP server at https://mcp.revenuecat.ai/mcp that authenticates with OAuth or a RevenueCat API v2 secret key and documents Claude, Claude Code, Codex, Cursor and VS Code Copilot as clients (checked ${CHECKED}). It manages a RevenueCat project. RevenueDot's server at ${URL_MCP} is the open-source counterpart for apps that use the RevenueCat SDK with a RevenueDot backend.` },
+  { q: "Which MCP server do I use if my app ships the RevenueCat SDK?", a: "The one that matches your backend. If RevenueCat is your backend, use RevenueCat's server. If RevenueDot is your backend, or you are running both side by side during a migration, use RevenueDot's server: the app keeps the RevenueCat SDK, and the assistant manages the project the SDK talks to. Tool names match RevenueCat's where the tool does the same thing, so prompts written for one work on the other." },
+  { q: "Can an assistant refund or cancel a subscription by itself?", a: "No. Extend, cancel, refund and Test Store purchases sit behind a separate Money actions permission (the project:support scope). A first connection asks for read and change only; when a tool needs more, the server answers with the missing scope and the assistant asks you to approve it. Refunds and cancels work for Google Play; Apple does not let any server refund or cancel." },
+  { q: "Does the RevenueDot MCP server work for a self-hosted server?", a: "Yes. Run npx -y @revenuedot/mcp --http --url https://your-server and point the client at it, or use the stdio form with REVENUEDOT_URL. Your own RevenueDot server is the OAuth authorization server, so sign-in works the same way. The package is MIT licensed on npm." },
+  { q: "Is there a version that needs no account?", a: `Yes. ${URL_KIT} serves six read-only tools with sourced paywall patterns, App Store and Google Play rules and code snippets. It needs no sign-in and never touches a RevenueDot project. It is the free half of the RevenueDot App Monetization plugin.` },
+  { q: "How do I disconnect an assistant?", a: "The OAuth connection is a secret API key named OAuth plus the client's name, limited to the project and the access you chose. Delete it under API keys in the RevenueDot dashboard. It does not expire on its own." },
+];
+
+const image = ogFor(path);
+const jsonld = [
+  webPage({ title, description, path, image, about: "RevenueCat MCP server" }),
+  howTo("Connect an AI assistant to a RevenueCat-SDK app with RevenueDot's MCP server", "Add the server URL, sign in with OAuth and choose the access, then ask.", steps, path),
+];
+---
+<Base title={title} description={description} path={path} image={image} imageAlt={title}
+  crumbs={[{ name: "AI connectors", path: "/features/ai-connectors" }, { name: "RevenueCat MCP", path }]} faq={faq} jsonld={jsonld}>
+  <div class="wrap">
+    <PageHead label={`MCP · checked ${CHECKED}`} title={title}
+      lede={`RevenueCat runs a hosted MCP server for RevenueCat projects. RevenueDot runs an open-source one at ${URL_MCP}, with 38 tools, for any app that ships the RevenueCat SDK with a RevenueDot backend: reads are free, writes wait for your approval, and the same server works self-hosted.`}>
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn secondary" href="#config">Copy the config <span class="arrow">↓</span></a>
+      </div>
+      <p class="small muted note">Free up to $10,000 a month in tracked revenue. Already have an account? <a href={SITE.login}>Sign in</a></p>
+    </PageHead>
+  </div>
+
+  <section class="section first tight" id="what">
+    <div class="wrap">
+      <div class="grid"><div class="gi cols-3">
+        <div class="cell"><p class="label">What it is</p><h2 class="h3">A tool list your assistant can call</h2><p>An MCP server gives ChatGPT, Claude, Codex or Cursor named tools such as get-customer or create-offering, each with a schema. You ask in plain words; the assistant picks the tool and shows you the call.</p></div>
+        <div class="cell"><p class="label">What it does for a subscription app</p><h2 class="h3">Setup, support and checks from chat</h2><p>Create products, entitlements and offerings, find a customer and see why access ended, grant seven days of Pro, retry a failed webhook, read MRR, and check that the App Store and Google Play connections work.</p></div>
+        <div class="cell"><p class="label">What it never does</p><h2 class="h3">No secrets, no money without you</h2><p>No tool accepts a store key, a password or an API key. Refunds, cancels and extensions need a separate permission, and the assistant asks before each one.</p></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="demo">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">87 seconds</p>
+        <h2 class="h2">What a session looks like</h2>
+        <p class="lede">A health check, a customer lookup, a 7-day grant, a new weekly plan, a webhook retry, and a refund that waits for approval, run from ChatGPT against a RevenueDot project.</p>
+      </div>
+      <div class="shot stream">
+        <iframe src={playerUrl("revenuedot-chatgpt-demo")} title={VIDEOS["revenuedot-chatgpt-demo"].title} loading="lazy" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="steps">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Three steps</p>
+        <h2 class="h2">Connect in about a minute</h2>
+      </div>
+      <ol class="steps">
+        {steps.map((s, i) => <li><span class="num">{String(i + 1).padStart(2, "0")}</span><div><h3 class="h3">{s.name}</h3><p>{s.text}</p></div></li>)}
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" id="config">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Config, checked against each client's docs on {CHECKED}</p>
+        <h2 class="h2">The config for each client</h2>
+        <p class="lede">Every client takes the same URL. OAuth is the default; where a client cannot run the sign-in, send a secret key from API keys as a bearer header instead.</p>
+      </div>
+      <div class="cfg-grid">
+        <Code title="Claude Code" label="terminal" code={`claude mcp add --transport http revenuedot ${URL_MCP}
+# then, inside Claude Code, sign in:
+/mcp`} />
+        <Code title="Claude Code, shared with the team" label=".mcp.json in the project root" code={`{
+  "mcpServers": {
+    "revenuedot": {
+      "type": "http",
+      "url": "${URL_MCP}"
+    }
+  }
+}`} />
+        <Code title="Claude Desktop and claude.ai" label="Settings → Connectors" code={`# Settings → Connectors → Add → Add custom connector
+# Name: RevenueDot
+# URL:  ${URL_MCP}
+# Click Add, then sign in on the RevenueDot page.
+# Pro, Max, Team and Enterprise plans; a free plan can use one custom connector.`} />
+        <Code title="Codex" label="~/.codex/config.toml" code={`[mcp_servers.revenuedot]
+url = "${URL_MCP}"
+
+# then sign in once:
+# codex mcp login revenuedot`} />
+        <Code title="Cursor" label=".cursor/mcp.json or ~/.cursor/mcp.json" code={`{
+  "mcpServers": {
+    "revenuedot": {
+      "url": "${URL_MCP}"
+    }
+  }
+}`} />
+        <Code title="ChatGPT" label="developer mode" code={`# Settings → Security and login → Developer mode (Plus, Pro, Business, Enterprise, Education)
+# Then add an MCP connector:
+# Name: RevenueDot
+# URL:  ${URL_MCP}
+# Authentication: OAuth
+# Or search RevenueDot in the plugin directory once the listing is live.`} />
+        <Code title="Windsurf" label="~/.codeium/windsurf/mcp_config.json" code={`{
+  "mcpServers": {
+    "revenuedot": {
+      "serverUrl": "${URL_MCP}"
+    }
+  }
+}`} />
+        <Code title="Any client, with your own key" label="bearer header" code={`# A secret key from API keys, limited to the scopes you want the assistant to have
+Authorization: Bearer sk_...
+
+# Self-hosted RevenueDot (stdio form; REVENUEDOT_URL defaults to https://api.revenuedot.app)
+npx -y @revenuedot/mcp
+#   env: REVENUEDOT_API_KEY=sk_...  REVENUEDOT_URL=https://your-server`} />
+      </div>
+      <p class="tiny caption">Sources: <a href="https://code.claude.com/docs/en/mcp" rel="noopener">Claude Code MCP docs</a>, <a href="https://modelcontextprotocol.io/docs/develop/connect-remote-servers" rel="noopener">MCP: connect to remote servers (Claude custom connectors)</a>, <a href="https://learn.chatgpt.com/docs/extend/mcp?surface=cli" rel="noopener">Codex MCP docs</a>, <a href="https://cursor.com/docs/context/mcp" rel="noopener">Cursor MCP docs</a>, <a href="https://developers.openai.com/api/docs/guides/developer-mode" rel="noopener">ChatGPT developer mode</a>, <a href="https://docs.windsurf.com/windsurf/cascade/mcp" rel="noopener">Windsurf MCP docs</a>. The Claude Code plugin is another route: <code>/plugin marketplace add revenuedot/agent-skills</code>, then <code>/plugin install revenuedot@revenuedot</code>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="screens">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Real screens</p>
+        <h2 class="h2">The tools as Claude shows them</h2>
+        <p class="lede">Captured on {CHECKED} from claude.ai with the RevenueDot connector attached: the tool list the connector exposes, and one tool call with its result.</p>
+      </div>
+      <div class="shots">
+        <Shot light={shot("screens/mcp/claude-connector-tools.png")} alt="The RevenueDot connector in Claude's Connectors settings, listing its tools with their permission toggles" caption="Claude's Connectors settings: the RevenueDot connector and its tools, each with a permission toggle." />
+        <Shot light={shot("screens/mcp/claude-tool-call.png")} alt="A Claude conversation where the get-project-health tool is called on a RevenueDot project and returns the result" caption="One tool call in a Claude chat: the request, the tool Claude picked, and the result from the RevenueDot project." />
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="tools">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">38 tools</p>
+        <h2 class="h2">Every tool, grouped by what it does</h2>
+        <p class="lede">Each tool is one REST API v2 call. The scope column is the permission the connection needs; (d) marks a tool that changes or removes something and that the assistant confirms with you first.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Area</th><th scope="col">Scope</th><th scope="col">Tools</th></tr></thead>
+          <tbody>
+            {groups.map((g) => <tr><th scope="row">{g.name}</th><td>{scopeName[g.scope]}</td><td>{g.tools.map((t, i) => <>{i > 0 && ", "}<code>{t}</code></>)}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny caption">Source: <a href={`${SITE.mcp}#tools`} rel="noopener">revenuedot/mcp README, Tools</a>, with each tool's API call. No tool accepts a key, password or credential; store keys and webhook headers are entered in the dashboard.</p>
+    </div>
+  </section>
+
+  <section class="section" id="approval">
+    <div class="wrap two">
+      <div class="copy">
+        <p class="label">Approval model</p>
+        <h2 class="h2">Reads are free, writes wait for you</h2>
+        <p class="muted">The OAuth consent screen uses your dashboard session. You pick one project and an access level; the access token is a secret key limited to that project and those scopes, listed under API keys as <code>OAuth: &lt;client name&gt;</code>.</p>
+        <ul class="list">
+          <li><strong>Read only</strong> (<code>project:read</code>): the 17 read tools. Nothing can change.</li>
+          <li><strong>Read and change</strong> (<code>project:write</code>): 17 more tools that create and update apps, the catalog, grants, attributes and webhooks, including the five destructive ones.</li>
+          <li><strong>Money actions</strong> (<code>project:support</code>): extend, cancel, refund and Test Store purchases. Asked for separately, only when a tool needs it.</li>
+        </ul>
+        <p class="muted small">A tool that needs more than the connection has returns an error with the missing scope in <code>_meta["mcp/www_authenticate"]</code>, which ChatGPT and Claude turn into a permission request. The assistant also asks before it cancels, refunds or deletes; check the customer and product it names.</p>
+      </div>
+      <div class="stack">
+        <Code title="What the server answers without a token" label="HTTP 401" code={`WWW-Authenticate: Bearer resource_metadata="https://mcp.revenuedot.app/.well-known/oauth-protected-resource/mcp", scope="project:read project:write"`} />
+        <Code title="Protected resource metadata" label="GET /.well-known/oauth-protected-resource" code={`{
+  "resource": "${URL_MCP}",
+  "authorization_servers": ["https://app.revenuedot.app"],
+  "scopes_supported": ["project:read", "project:write", "project:support"],
+  "bearer_methods_supported": ["header"],
+  "resource_name": "RevenueDot"
+}`} />
+        <p class="tiny">Both responses as returned by the live server on {CHECKED}. OAuth 2.1 with PKCE and dynamic client registration; your own RevenueDot server is the authorization server when you self-host.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="revenuecat">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">RevenueCat's own MCP server</p>
+        <h2 class="h2">What RevenueCat's docs say</h2>
+        <p class="lede">Read on {CHECKED} from <a href={RC_DOCS} rel="noopener">revenuecat.com/docs/tools/mcp</a>, its <a href={RC_SETUP} rel="noopener">setup page</a> and its <a href={RC_TOOLS} rel="noopener">tools reference</a>. Nothing here is our characterisation beyond the last row.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col"></th><th scope="col">RevenueCat MCP</th><th scope="col">RevenueDot MCP</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">URL</th><td><code>https://mcp.revenuecat.ai/mcp</code>, cloud-hosted</td><td><code>{URL_MCP}</code>, hosted; or <code>npx -y @revenuedot/mcp</code> locally or against your own server</td></tr>
+            <tr><th scope="row">Sign-in</th><td>OAuth with a RevenueCat account, or a bearer token with a RevenueCat API v2 secret key</td><td>OAuth 2.1 with a RevenueDot account (one project, chosen scopes), or a bearer secret key</td></tr>
+            <tr><th scope="row">Clients the docs list</th><td>Claude (web, Desktop, Code), Codex, Cursor, VS Code Copilot, MCP Inspector; "the recommended way to get started" is its AI Toolkit plugin</td><td>Claude, Claude Code, ChatGPT, Codex, Cursor, Windsurf and any streamable HTTP client; the Claude connector and ChatGPT plugin are the same server</td></tr>
+            <tr><th scope="row">Tools</th><td>A tools reference grouped into projects and apps, products and prices, entitlements, offerings and packages, targeting and audiences, paywalls, customers and subscriptions, in-app currencies, charts and experiments, integrations and webhooks, and SDK compatibility; each tool marked Read or Write</td><td>38 tools in the table above: apps and store connections, catalog, customers and access, subscriptions and money, webhooks, revenue. No paywall, experiment, targeting or currency tools yet</td></tr>
+            <tr><th scope="row">Permissions</th><td>"Access follows your RevenueCat account permissions"; a read-only API key works for viewing</td><td>Three scopes chosen at sign-in; money actions behind a separate permission the assistant must ask for</td></tr>
+            <tr><th scope="row">Plan note</th><td>"Custom remote MCP connectors are in beta on Claude; free plans can use one custom connector"</td><td>Same Claude limit applies to any custom connector. RevenueDot Cloud is free up to $10,000 a month; self-host is free</td></tr>
+            <tr><th scope="row">Source</th><td>Closed</td><td>Open source, MIT, on <a href={SITE.mcp} rel="noopener">GitHub</a> and <a href="https://www.npmjs.com/package/@revenuedot/mcp" rel="noopener">npm</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny caption">Tool names on RevenueDot match RevenueCat's where the tool does the same thing (<code>list-apps</code>, <code>create-offering</code>, <code>grant-customer-entitlement</code> and so on), so a prompt or skill written for one runs on the other. RevenueDot is not affiliated with RevenueCat, Inc.</p>
+    </div>
+  </section>
+
+  <section class="section" id="free">
+    <div class="wrap two">
+      <div class="copy">
+        <p class="label">No account needed</p>
+        <h2 class="h2">A free knowledge server for any assistant</h2>
+        <p class="muted">{URL_KIT} serves six read-only tools with sourced paywall patterns, App Store and Google Play rules and code snippets. It never calls a RevenueDot project and needs no key. Every result says RevenueDot maintains it.</p>
+      </div>
+      <div class="stack">
+        <Code title="Claude Code" label="terminal" code={`claude mcp add --transport http revenuedot-kit ${URL_KIT}`} />
+        <Code title="Tools" label="six, read only" code={`search-monetization-knowledge   list-paywall-patterns   get-paywall-pattern
+get-store-guideline             get-code-snippet        list-skills`} />
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2 sm">Questions people ask</h2></div>
+      <Faq items={faq} open={0} />
+    </div>
+  </section>
+
+  <Related items={["/features/ai-connectors", "/migrate-from-revenuecat", "/compare/revenuedot-vs-revenuecat", "/features/rest-api", "/features/webhooks", "/self-host"]}
+    docs={[{ href: "/docs/guides/connect-ai-assistants", label: "Connect AI assistants" }, { href: "/docs/api/authentication", label: "API keys and permissions" }, { href: SITE.mcp, label: "MCP server on GitHub" }]} />
+  <CtaBand title="Connect an assistant to your project today." body="Create a free Cloud account, paste one URL into Claude, ChatGPT, Codex or Cursor, and ask whether everything is connected." />
+</Base>
+<style>
+  .note a { color: var(--fg); }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
+  .copy { display: grid; gap: 16px; }
+  .stack { display: grid; gap: 16px; min-width: 0; }
+  .list { margin: 0; padding-left: 18px; display: grid; gap: 8px; color: var(--fg-2); }
+  .cfg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .shots { display: grid; gap: 32px; }
+  .steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); background: var(--panel); }
+  .steps li { display: grid; grid-template-columns: 48px 1fr; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border-2); }
+  .steps li:last-child { border-bottom: 0; }
+  .steps .h3 { font-size: 17px; margin-bottom: 6px; }
+  .steps p { color: var(--fg-2); font-size: 15px; line-height: 1.6; }
+  .caption a { color: var(--fg); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  @media (max-width: 900px) { .two { grid-template-columns: 1fr; gap: 32px; } }
+  @media (max-width: 760px) { .cfg-grid { grid-template-columns: 1fr; } }
+</style>

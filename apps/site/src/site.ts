@@ -87,6 +87,7 @@ export const FOOTER = [
       { href: "/in-app-purchases", label: "In-app purchases guide" },
       { href: "/do-i-need-revenuecat", label: "Do I need RevenueCat?" },
       { href: "/docs", label: "Docs" },
+      { href: "/revenuecat-mcp", label: "MCP server" },
       { href: "/sdks", label: "SDKs" },
       { href: "/stores", label: "Stores" },
       { href: "/errors", label: "SDK error codes" },

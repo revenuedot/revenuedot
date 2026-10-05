@@ -63,6 +63,7 @@ const STATIC: Record<string, Entry> = {
   "/pricing": { title: "Pricing", card: "Free on Cloud up to $10K a month in tracked revenue, or self-host for free.", label: "Pricing" },
   "/migrate-from-revenuecat": { title: "Migrate from RevenueCat", card: "Import everything, run both side by side, then switch with one line.", label: "Guide" },
   "/self-host": { title: "Self-host RevenueDot", card: "Run the open-source server with Docker and Postgres on your own servers.", label: "Self-host" },
+  "/revenuecat-mcp": { title: "RevenueCat MCP server, official and open source", card: "RevenueCat's MCP server and RevenueDot's open-source one: 38 tools, OAuth, config for six clients.", label: "MCP" },
   "/revenuecat-alternative": { title: "The open-source RevenueCat alternative", card: "Keep the RevenueCat SDK, change one line, own your purchase data.", label: "Alternative" },
   "/revenuecat-alternatives": { title: "Best RevenueCat alternatives in 2026", card: "RevenueDot, Adapty, Superwall, Qonversion, Apphud and more, compared with sources.", label: "Alternatives" },
   "/integrations": { title: "Integrations", card: "Send subscription events to 36 analytics, attribution, messaging and support tools.", label: "Hub" },
