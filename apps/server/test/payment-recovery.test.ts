@@ -304,6 +304,10 @@ describe("Stripe", () => {
     const t = await web.api("POST", `${P()}/payment_recovery/actions/send_test`, { email: "dev@scanner.example" });
     expect(t.status).toBe(200);
     expect(web.mail.sent.at(-1)).toMatchObject({ to: "dev@scanner.example", subject: "[Test] Your payment for Scanner Pro didn't go through", fromName: "Scanner Pro" });
+    // The test email's unsubscribe link changes nothing.
+    const tp = await web.h.fetch("/v1/recovery/u/test-email-preview-token", { key: "", method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } });
+    expect(tp.status).toBe(200);
+    expect(await tp.text()).toContain("This was a test email");
     expect((await web.api("POST", `${P()}/payment_recovery/actions/send_test`, { email: "a@b.c, d@e.f" })).status).toBe(400);
     expect((await web.api("POST", `${P()}/payment_recovery/actions/send_test`, { email: "dev@scanner.example", step: 3 })).status).toBe(400);
   });
