@@ -225,7 +225,8 @@ export function dataExportRoutes(r: V2Router, deps: Deps) {
   // Runs go with it (FK cascade). Files already written stay in the bucket; files kept for an email export are deleted.
   r.delete(`${P}/:export_id`, scope("project_configuration:integrations:read_write"), async (c) => {
     const j = await find(c.get("projectId"), c.req.param("export_id"));
-    if (j.destination === "email") await (deps.archiveStore ?? dbStore(db)).deletePrefix(emailJobPrefix(j.projectId, j.id));
+    // Email files, and for every destination the bytes an unfinished run kept between ticks (`<job>/staging/<run>/`).
+    await (deps.archiveStore ?? dbStore(db)).deletePrefix(emailJobPrefix(j.projectId, j.id));
     await db.delete(schema.exportJobs).where(eq(schema.exportJobs.id, j.id));
     return c.json({ object: "data_export", id: j.id, deleted_at: deps.now().getTime() });
   });

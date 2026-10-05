@@ -1104,8 +1104,15 @@ export interface ExportFile { table: string; key: string; rows: number; bytes: n
  * completing the multipart upload or committing the block list is left.
  */
 export interface ExportUpload { key: string; contentType: string; destination?: string; chunks: number; rows: number; bytes: number; staged: number; pieces: number; uploadId?: string; etags?: string[]; sent?: boolean }
-/** Where an unfinished run stopped: the index into the job's tables, the page cursor inside it, the last part written. */
-export interface ExportProgress { table: number; cursor: { t: string; id: string } | null; part: number; upload?: ExportUpload }
+/**
+ * Where an unfinished run stopped: the index into the job's tables, the page cursor inside it, the last part written.
+ * `buffered`: rows read for the current chunk but not yet written, kept in RevenueDot's file store under `seq` because the
+ * tick ran out of time mid-chunk (gzip of CSV text without the header for CSV, or of JSON rows for Parquet; `columns` is the CSV's columns). `pace`: measured milliseconds per row read and per chunk written, to size the next reads.
+ */
+export interface ExportProgress {
+  table: number; cursor: { t: string; id: string } | null; part: number; upload?: ExportUpload;
+  buffered?: { seq: number; rows: number; columns?: string }; pace?: { msPerRow?: number; chunkMs?: number; stashMs?: number };
+}
 
 export const exportRuns = pgTable("export_runs", {
   id: text("id").primaryKey(),
