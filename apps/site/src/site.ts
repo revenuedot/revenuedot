@@ -93,6 +93,7 @@ export const FOOTER = [
       { href: "/errors", label: "SDK error codes" },
       { href: "/solutions", label: "Solutions" },
       { href: "/blog", label: "Blog" },
+      { href: "/watch", label: "Videos" },
       { href: "https://github.com/revenuedot/revenuedot", label: "GitHub" },
       { href: "https://github.com/revenuedot/examples", label: "Examples" },
       { href: "/llms.txt", label: "llms.txt" },

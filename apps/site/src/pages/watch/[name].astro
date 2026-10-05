@@ -1,6 +1,6 @@
 ---
 // A page per tutorial video (prd/onboarding-emails/PRD.md): Stream's player, what the video shows, and the next step.
-// Onboarding emails link here until the video is on YouTube.
+// Onboarding emails link here; the same video is also on YouTube (`sameAs` in the structured data, plus a button).
 import Base from "../../layouts/Base.astro";
 import CtaBand from "../../components/CtaBand.astro";
 import TourPlayer from "../../components/TourPlayer.astro";
@@ -19,12 +19,12 @@ const length = `${Math.floor(w.seconds / 60)}:${String(w.seconds % 60).padStart(
 const chapters = CHAPTERS[name];
 const jsonld = [{
   "@context": "https://schema.org", "@type": "VideoObject", name: w.heading, description: w.summary, thumbnailUrl: poster, uploadDate: w.date, duration: iso,
-  contentUrl: `https://revenuedot.app/videos/${name}.mp4`, embedUrl: playerUrl(name), publisher: { "@type": "Organization", name: "RevenueDot", url: "https://revenuedot.app" },
+  contentUrl: `https://revenuedot.app/videos/${name}.mp4`, embedUrl: playerUrl(name), inLanguage: "en", ...(w.youtube && { sameAs: w.youtube }), publisher: { "@type": "Organization", name: "RevenueDot", url: "https://revenuedot.app" },
   ...(chapters && { hasPart: chapters.map((c, i) => ({ "@type": "Clip", name: c.title, startOffset: Math.floor(c.start), endOffset: Math.floor(chapters[i + 1]?.start ?? w.seconds) })) }),
 }];
 ---
 <Base title={w.heading} description={w.description} path={path} image={poster} imageAlt={v.title} jsonld={jsonld}
-  crumbs={[{ name: "Docs", path: "/docs" }, { name: w.heading, path }]}>
+  crumbs={[{ name: "Videos", path: "/watch" }, { name: w.heading, path }]}>
   <section class="watch">
     <div class="wrap">
       <p class="label">Video · {length}</p>

@@ -12,6 +12,8 @@
 **Open-source monetization infrastructure for mobile apps: the SDKs, the server, paywalls, experiments, web checkout, Customer Center, 43 charts and 36 integrations, in one codebase you can run yourself.**<br>
 It works with the RevenueCat SDK your app already ships, so you switch by changing one line of code.
 
+RevenueDot is the open-source RevenueCat alternative: the first release is [v2026.10.03](https://github.com/revenuedot/revenuedot/releases/tag/v2026.10.03), it has run in production beside RevenueCat since 2026-10-02, RevenueDot Cloud is free up to $10,000 a month in tracked revenue and then 0.5% of the revenue above that (never more than $999 a month), and self-hosting is free (AGPL-3.0 server, MIT SDKs).
+
 **[Start free on RevenueDot Cloud](https://app.revenuedot.app/signup)** · [Self-host](#self-host) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [Docs](https://revenuedot.app/docs) · [Pricing](#pricing) · [Compare](#revenuedot-compared) · [FAQ](#faq)
 
 [![Server: AGPL-3.0](https://img.shields.io/badge/server-AGPL--3.0-0A0A0A)](LICENSING.md)
@@ -25,7 +27,7 @@ It works with the RevenueCat SDK your app already ships, so you switch by changi
 
 <a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.gif"><img alt="RevenueDot dashboard tour: overview metrics, charts, the paywall editor and experiment results" src="docs/assets/readme/hero.gif" width="100%"></picture></a>
 
-<sub>Example data. <a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4">Watch the dashboard tour</a> · <a href="https://revenuedot.app/videos/revenuedot-chatgpt-demo.mp4">87 seconds of RevenueDot run from ChatGPT</a> · <a href="https://revenuedot.app/videos/revenuedot-platform-demo.mp4">The whole platform in 2½ minutes</a></sub>
+<sub>Example data. <a href="https://revenuedot.app/videos/revenuedot-dashboard-tour.mp4">Watch the dashboard tour</a> · <a href="https://revenuedot.app/videos/revenuedot-chatgpt-demo.mp4">87 seconds of RevenueDot run from ChatGPT</a> · <a href="https://revenuedot.app/videos/revenuedot-platform-demo.mp4">The whole platform in 2½ minutes</a> (<a href="https://www.youtube.com/watch?v=iZH8eTC5B1c">on YouTube</a>)</sub>
 
 </div>
 
@@ -90,6 +92,8 @@ RevenueDot is the only open-source product that ships every layer a subscription
 </tr>
 </table>
 
+Video: [Build a paywall and test it in minutes](https://www.youtube.com/watch?v=daXVK_4XD8I) (1:04).
+
 ## Proof
 
 - **Compatibility is tested, not claimed.** Every build runs RevenueCat's own SDK test fixtures (94 request and response samples and 21 webhook samples) and RevenueCat's published OpenAPI files; a change that breaks one does not merge. The unmodified RevenueCat iOS SDK 5.92 and Android SDK 10.24 complete purchases against RevenueDot on the simulator and emulator ([`scripts/e2e`](scripts/e2e)).
@@ -106,6 +110,8 @@ RevenueDot is the only open-source product that ships every layer a subscription
    It asks for your RevenueCat and RevenueDot secret keys and hides what you type, so they stay out of your shell history. The CLI is on npm as [`revenuedot`](https://www.npmjs.com/package/revenuedot) ([guide](https://revenuedot.app/docs/migrate/importer)). `import verify` then checks every customer on both sides.
 2. **Run side by side.** Point App Store and Google Play notifications at RevenueDot. It forwards every notification to RevenueCat, so both systems stay accurate while you compare them.
 3. **Switch.** Ship an app update that sets the proxy URL. When most users are on the new version, turn RevenueCat off.
+
+Video: [Migrate from RevenueCat without losing a renewal](https://www.youtube.com/watch?v=Smjskzwwo7o) (1:34).
 
 <details>
 <summary><b>The one line, for every SDK</b></summary>
@@ -342,6 +348,8 @@ RevenueCat charges 1% of all tracked revenue once it passes $2,500 a month, befo
 
 Keep the RevenueCat SDK you already ship, or switch to our MIT forks. They keep RevenueCat's class and method names (`Purchases`, `CustomerInfo`, `Offerings`), so the swap is a package change.
 
+Video: [Connect your iOS or Android app to RevenueDot](https://www.youtube.com/watch?v=M_D0YodECkU) (1:17).
+
 | Platform | Repository | Install the fork | Proxy-URL migration |
 |---|---|---|---|
 | iOS, macOS, tvOS, watchOS, visionOS | [revenuedot/purchases-ios](https://github.com/revenuedot/purchases-ios) | CocoaPods `pod 'RevenueDotPurchases', '5.91.0'` (and `RevenueDotPurchasesUI`), or Swift Package Manager `https://github.com/revenuedot/purchases-ios` at `5.91.0-revenuedot` | Yes |
@@ -415,6 +423,8 @@ For no single point of failure, run two or more replicas behind a load balancer 
 ## RevenueDot Cloud
 
 RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan. Cloud Free covers up to $10,000 of tracked revenue a month; the Billing page shows each project's usage. Moving between Cloud and your own server is one command either way: `npx revenuedot move` ([guide](https://revenuedot.app/docs/guides/move-projects)).
+
+Video: [Your first test purchase in 5 minutes](https://www.youtube.com/watch?v=1YLygdbWOKM) (1:18).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/overview-dark.png">

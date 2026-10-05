@@ -1,0 +1,51 @@
+---
+// Index of the tutorial videos: one row each with title, length, a sentence and both links (the /watch/<name> page and YouTube).
+import Base from "../../layouts/Base.astro";
+import CtaBand from "../../components/CtaBand.astro";
+import { WATCH, WATCH_ORDER, VIDEOS, clock } from "../../lib/videos.mjs";
+
+const names = WATCH_ORDER.filter((n) => WATCH[n] && VIDEOS[n]);
+const url = (n: string) => `https://revenuedot.app/watch/${n}`;
+const jsonld = [{
+  "@context": "https://schema.org", "@type": "CollectionPage", name: "RevenueDot videos", url: "https://revenuedot.app/watch",
+  mainEntity: { "@type": "ItemList", itemListElement: names.map((n, i) => ({ "@type": "ListItem", position: i + 1, url: url(n), name: WATCH[n].heading })) },
+}];
+---
+<Base title="RevenueDot videos" description="Six short RevenueDot videos: your first purchase, connecting your app, switching from RevenueCat, paywalls and experiments, the full platform demo and ChatGPT." path="/watch" jsonld={jsonld}
+  crumbs={[{ name: "Videos", path: "/watch" }]}>
+  <section class="videos">
+    <div class="wrap">
+      <p class="label">Videos</p>
+      <h1 class="h2 title">Learn RevenueDot in minutes</h1>
+      <p class="lede">Six short videos, from your first test purchase to the full platform demo. Each one is also on <a href="https://www.youtube.com/@revenuedot" rel="noopener">our YouTube channel</a>.</p>
+      <ol class="list">
+        {names.map((n) => (
+          <li>
+            <a class="thumb" href={`/watch/${n}`} tabindex="-1" aria-hidden="true"><img src={`/videos/${n}.webp`} alt="" width="320" height="180" loading="lazy" decoding="async" /></a>
+            <div class="text">
+              <h2 class="name"><a href={`/watch/${n}`}>{WATCH[n].heading}</a> <span class="len">{clock(WATCH[n].seconds)}</span></h2>
+              <p>{WATCH[n].description}</p>
+              <p class="alt"><a href={`/watch/${n}`}>Watch here</a> · <a href={WATCH[n].youtube} rel="noopener">Watch on YouTube</a></p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+  <CtaBand />
+</Base>
+<style>
+  .videos { padding: 56px 0 80px; }
+  .title { margin: 12px 0 20px; max-width: 900px; text-wrap: balance; }
+  .list { list-style: none; margin: 40px 0 0; padding: 0; border-top: 1px solid var(--border); max-width: 960px; }
+  .list li { display: grid; grid-template-columns: 240px 1fr; gap: 24px; padding: 24px 0; border-bottom: 1px solid var(--border); align-items: start; }
+  .thumb img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border: 1px solid var(--border); }
+  .name { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .name a { color: var(--fg); text-decoration: none; }
+  .name a:hover { text-decoration: underline; }
+  .len { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--fg-3); margin-left: 8px; letter-spacing: 0; }
+  .text p { margin: 0; color: var(--fg-2); font-size: 15px; line-height: 24px; }
+  .text .alt { margin-top: 10px; font-size: 14px; color: var(--fg-3); }
+  .text .alt a { color: var(--fg); }
+  @media (max-width: 720px) { .videos { padding: 32px 0 56px; } .list li { grid-template-columns: 1fr; gap: 14px; } }
+</style>
