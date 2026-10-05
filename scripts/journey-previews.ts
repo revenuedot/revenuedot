@@ -52,7 +52,7 @@ const VARIANTS: [string, JourneyCtx][] = [
   ["need_hand-connect", at(sam("need_hand"), true, false, false)],
   ["need_hand-store", at(sam("need_hand"), true, true, false)],
   ["first_sale", { ...sam("first_sale"), progress: { testPurchase: true, app: true, store: true, live: true } }],
-  ["first_sale-existing", { ...sam("first_sale"), projectName: "Pocket Yoga", sale: { product: "yoga_annual", amount: "$59.99", country: "United States", renewal: true }, progress: { testPurchase: false, app: false, store: true, live: true } }],
+  ["first_sale-existing", { ...sam("first_sale"), projectName: "Pocket Yoga", sale: { product: "yoga_annual", amount: "$59.99", country: "United States", existing: true }, appCreated: true, progress: { testPurchase: false, app: false, store: true, live: true } }],
   ["standard_welcome", sam("standard_welcome")],
   ["teammate_welcome", { ...sam("teammate_welcome"), first: "Jordan", to: "jordan@notely.app" }],
   ["need_hand-switch", { ...maya("need_hand"), importedOn: undefined }],

@@ -285,6 +285,27 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     expect(sale.text).toContain("Germany");
   });
 
+  it("tells a converted trial apart from an app that already sold before RevenueDot", async () => {
+    await cloud();
+    await signup("lee@yoga.app");
+    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "lee@yoga.app"));
+    const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+    const { loadFacts } = await import("../src/services/journeys.js");
+    const tx = (id: string, customerId: string, kind: string, revenue: number, at: Date) => ({ id, projectId: p!.id, customerId, store: "app_store", storeTransactionId: id, productIdentifier: "yoga_annual",
+      kind, purchasedAt: at, revenueUsd: revenue, priceAmount: revenue, priceCurrency: "USD", countryCode: "US", isSandbox: false, createdAt: at });
+    const now = s!.now(), earlier = new Date(now.getTime() - 3 * D);
+    await s!.db.insert(schema.customers).values([{ id: "cus_t", projectId: p!.id, originalAppUserId: "t", firstSeen: earlier, lastSeen: now }, { id: "cus_o", projectId: p!.id, originalAppUserId: "o", firstSeen: now, lastSeen: now }]);
+    // A trial that converts: the trial start is an earlier row, so this is still the app's first real sale.
+    await s!.db.insert(schema.transactions).values([tx("t1", "cus_t", "purchase", 0, earlier), tx("t2", "cus_t", "renewal", 59.99, now)]);
+    let [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
+    expect(f!.firstSale!.existing).toBe(false);
+    // A renewal from a subscriber RevenueDot never saw start: the app sold before it came to RevenueDot.
+    await s!.db.delete(schema.transactions).where(eq(schema.transactions.projectId, p!.id));
+    await s!.db.insert(schema.transactions).values([tx("o1", "cus_o", "renewal", 59.99, now)]);
+    [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
+    expect(f!.firstSale!.existing).toBe(true);
+  });
+
   it("never counts an imported purchase as a live sale, and gives a failed send's step back", async () => {
     await cloud();
     await signup("dana@fit.app");
@@ -357,7 +378,7 @@ describe("templates", () => {
   it("celebrates a brand-new app's first sale, but tells an app that already sold that RevenueDot recorded it", () => {
     const base = { step: "first_sale" as const, app: "https://app.revenuedot.app", first: "Lee", projectId: "p", projectName: "Pocket Yoga", unsubscribeUrl: "https://app.revenuedot.app/auth/journeys/unsubscribe/x" };
     expect(journeyEmail({ ...base, sale: { product: "yoga_annual", amount: "$59.99", country: "Canada" } }).subject).toBe("You made your first real sale");
-    const existing = journeyEmail({ ...base, sale: { product: "yoga_annual", amount: "$59.99", country: "Canada", renewal: true } });
+    const existing = journeyEmail({ ...base, sale: { product: "yoga_annual", amount: "$59.99", country: "Canada", existing: true } });
     expect(existing.subject).toBe("RevenueDot recorded its first Pocket Yoga sale");
     expect(existing.text).not.toMatch(/first real sale|Congratulations/);
   });

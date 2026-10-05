@@ -72,7 +72,9 @@ export interface JourneyCtx {
   progress?: { testPurchase: boolean; app: boolean; store: boolean; live: boolean };
   testPurchase?: boolean;
   sdk?: { platform: string; version: string } | null;
-  sale?: { product: string; amount: string | null; country: string | null; renewal?: boolean } | null;
+  sale?: { product: string; amount: string | null; country: string | null; existing?: boolean } | null;
+  /** The project has an app (any store), so this is more than an empty sign-up. */
+  appCreated?: boolean;
   /** Store notifications have reached RevenueDot (since the RevenueCat import, for switchers). */
   notificationsSeen?: boolean;
   importedCustomers?: number | null;
@@ -204,8 +206,9 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     preheader: "Install the RevenueDot SDK for your platform and add your API key.",
     heading: c.testPurchase ? "Your test purchase worked" : "Add RevenueDot to your app",
     blocks: [
-      { t: "lead", text: `${c.testPurchase ? "That purchase went through the same steps a real one does. " : ""}Next, install the RevenueDot SDK in your app and add your API key. Your app can then load your products, show a paywall and unlock paid features.` },
+      { t: "lead", text: "Next, install the RevenueDot SDK in your app and add your API key, so it can load your products, show a paywall and unlock paid features." },
       { t: "list", items: [
+        ...(c.progress?.store ? ["**Already selling?** Turn on **Track new purchases from server-to-server notifications** on each app's page, so your current subscribers show up before your app update ships."] : []),
         `**Your platform:** iOS, Android, Flutter, React Native, Expo, Capacitor, Unity and the web each have a [setup page](${docs("sdks")}).`,
         `**Your API key:** copy it from [API keys](${dash(c, "/api-keys")}) in the dashboard.`,
         `**Using an AI coding tool?** Point it at [revenuedot.app/llms.txt](${SITE}/llms.txt) and ask it to add RevenueDot.`,
@@ -254,26 +257,26 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   // One email to anyone stuck, written for the step they stalled on.
   need_hand: (c) => {
     const p = c.progress ?? { testPurchase: !!c.testPurchase, app: false, store: false, live: false };
-    const stuck = (subject: string, lead: string, picture: Block, label: string, url: string): JourneyMail => ({
-      look: "rich", subject, preheader: "The next step takes a few minutes.", heading: subject,
-      blocks: [{ t: "lead", text: lead }, picture, { t: "button", label, url }],
-    });
-    if (c.migrating && !c.importedOn) return stuck("Bring your RevenueCat project over",
-      `One command copies your apps, products, offerings, customers and purchase history into ${proj(c)}. Running it twice changes nothing, and RevenueCat keeps working while you check the result.`,
-      { t: "picture", video: "switch-from-revenuecat", shot: "customers" }, "Open the import guide", docs("migrate/importer"));
-    if (c.migrating) return stuck("RevenueDot isn't hearing from your stores yet",
-      `Your RevenueCat data is in ${proj(c)}, but no store notifications have reached RevenueDot since the import. Forward them to RevenueCat first, then point the stores at RevenueDot, so neither side misses a renewal.`,
-      { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." }, "Open the side-by-side guide", docs("migrate/dual-run"));
-    if (p.app) return stuck("Connect your store to start selling",
-      "Your app talks to RevenueDot, but no store is connected yet, so RevenueDot can't check real purchases. Each app's page in the dashboard lists exactly what is missing, and the store guides walk through every field.",
-      { t: "picture", shot: "app-store", href: dash(c, "/apps") }, "Connect my store", dash(c, "/apps"));
-    if (p.testPurchase) return stuck("Start from a working example app",
-      `Your app hasn't connected to ${proj(c)} yet. Our example apps for iOS, Android, Flutter and React Native already sell a subscription through RevenueDot, so you can copy what they do or start from one.`,
-      { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "You need one of these keys in your app." }, "See the example apps", "https://github.com/revenuedot/examples/tree/main/mobile");
-    return stuck("Your first test purchase takes five minutes",
-      `${proj(c)} is ready. A test purchase from the dashboard shows how RevenueDot works from start to finish, and it needs no App Store or Google Play account.`,
-      { t: "picture", shot: "checklist", href: dash(c, "/overview"), caption: "Your setup checklist on the Overview." }, "Make a test purchase", dash(c, "/overview"));
+    const stuck = (subject: string, preheader: string, blocks: Block[], label: string, url: string): JourneyMail =>
+      ({ look: "rich", subject, preheader, heading: subject, blocks: [...blocks, { t: "button", label, url }] });
+    if (c.migrating && !c.importedOn) return stuck("Bring your RevenueCat project over", "One command copies your catalog, customers and purchase history.", [
+      { t: "lead", text: `One command copies your apps, products, offerings, customers and purchase history into ${proj(c)}. Running it twice changes nothing, and RevenueCat keeps working while you check the result.` },
+      { t: "picture", video: "switch-from-revenuecat", shot: "customers" }], "Open the import guide", docs("migrate/importer"));
+    if (c.migrating) return stuck("RevenueDot isn't hearing from your stores yet", "Set up forwarding so RevenueCat and RevenueDot both see every renewal.", [
+      { t: "lead", text: `Your RevenueCat data is in ${proj(c)}, but no store notifications have reached RevenueDot since the import. Set RevenueCat's notification URL as the forwarding address on each app's page, then point the stores at RevenueDot, so neither side misses a renewal.` },
+      { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." }], "Open the side-by-side guide", docs("migrate/dual-run"));
+    if (p.app) return stuck("Connect your store to start selling", "Each app's page lists exactly what is missing.", [
+      { t: "lead", text: "Your app talks to RevenueDot, but no store is connected yet, so RevenueDot can't check real purchases. Each app's page in the dashboard lists exactly what is missing, and the store guides walk through every field." },
+      { t: "picture", shot: "app-store", href: dash(c, "/apps") }], "Connect my store", dash(c, "/apps"));
+    if (p.testPurchase || p.store || c.appCreated) return stuck("Let your AI coding tool add RevenueDot", "Paste one prompt into Claude Code, Cursor or Codex.", [
+      { t: "lead", text: `Your app hasn't connected to ${proj(c)} yet. If you use an AI coding tool, paste this prompt and it reads our setup guide and adds RevenueDot to your app:` },
+      { t: "prompts", items: ["Add in-app purchases to my app with RevenueDot. Read https://revenuedot.app/llms.txt and follow the setup for my platform."] },
+      { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "Your app needs one of these keys." }], "Or follow the setup guide", docs("getting-started/connect-your-app"));
+    return stuck("Your first test purchase takes five minutes", "No App Store or Google Play account needed.", [
+      { t: "lead", text: `${proj(c)} is ready. A test purchase from the dashboard shows how RevenueDot works from start to finish, and it needs no App Store or Google Play account.` },
+      { t: "picture", shot: "checklist", href: dash(c, "/overview"), caption: "Your setup checklist on the Overview." }], "Make a test purchase", dash(c, "/overview"));
   },
+
 
   // Switching from RevenueCat: the import is done.
   side_by_side: (c) => ({
@@ -299,8 +302,8 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       preheader: c.bills ? `At your last 7 days' pace: ${usd(rdM)} a month on RevenueDot, ${usd(rcM)} at RevenueCat's list price.` : "Your cutover checklist.",
       heading: "A week of live sales on RevenueDot",
       blocks: [
-        ...(c.bills && save > 0 ? [{ t: "stat", value: usd(save), label: `a year less: ${usd(rdM)} a month on RevenueDot against ${usd(rcM)} at RevenueCat's list price, at your last 7 days' pace`, tone: "up" } as Block] : []),
-        { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week, and your app update is talking to RevenueDot. Turn RevenueCat off when all three are true:` },
+        ...(c.bills && save > 0 ? [{ t: "stat", value: usd(save), label: `saved a year: ${usd(rdM)} a month on RevenueDot against ${usd(rcM)} at RevenueCat's list price, at your last 7 days' pace`, tone: "up" } as Block] : []),
+        { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. Turn RevenueCat off when all three are true:` },
         { t: "checklist", items: [{ title: "The numbers match", text: "The comparison in the cutover checklist shows no differences." }, { title: "Most users have updated", text: "Older app versions still talk to RevenueCat." }, { title: "Webhooks move together", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." }] },
         { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
       ],
@@ -310,20 +313,20 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   // The first live sale. Three cases: a brand-new app, an app that already sold before RevenueDot, and a switch.
   first_sale: (c) => {
     const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)}: first sale on RevenueDot`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
-    const preheader = c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}${c.sale.country ? ` from ${c.sale.country}` : ""}.` : "Store notifications are reaching RevenueDot.";
+    const preheader = c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}.` : "Store notifications are reaching RevenueDot.";
     const app = !!c.progress?.app;
     if (c.migrating) return {
       look: "rich", subject: `RevenueDot recorded its first ${proj(c)} sale`, preheader, heading: "Sales are reaching RevenueDot",
       blocks: [...rows, { t: "lead", text: app
-        ? "RevenueDot now records sales alongside RevenueCat, and your app update is talking to it. Let both run for a few days, then compare them."
+        ? "RevenueDot now records sales alongside RevenueCat, and a build of your app talks to RevenueDot. Let both run for a few days, then compare them."
         : "Store notifications reach RevenueDot, so it records sales alongside RevenueCat. Next, ship the app update that points your app at RevenueDot. Older versions keep using RevenueCat until you turn it off." },
         app ? { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }
           : { t: "button", label: "Plan the app update", url: docs("migrate/sdk-changes") }],
     };
-    if (c.sale?.renewal) return {
+    if (c.sale?.existing) return {
       look: "rich", subject: `RevenueDot recorded its first ${proj(c)} sale`, preheader, heading: "Sales are reaching RevenueDot",
-      blocks: [...rows, { t: "lead", text: `Your store is sending purchases and renewals to RevenueDot, so revenue, subscribers and webhooks are live for ${proj(c)}.` },
-        { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Revenue, subscribers and trials update as sales come in." },
+      blocks: [...rows, { t: "lead", text: `Your store is sending purchases and renewals to RevenueDot, so revenue and subscribers for ${proj(c)} update as sales come in.` },
+        { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Your Overview." },
         { t: "button", label: "See it on your dashboard", url: dash(c, "/overview"), ...(app ? {} : { secondary: { label: "Next: add RevenueDot to your app", url: docs("getting-started/connect-your-app") } }) }],
     };
     return {
@@ -438,7 +441,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
         `<td valign="top" style="padding:0 0 ${i < b.items.length - 1 ? 18 : 0}px;"><p style="margin:0;font-size:11px;line-height:16px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${FG3};">${esc(x.when)}</p>` +
         `<p style="margin:2px 0 0;font-size:16px;line-height:22px;font-weight:700;color:${INK};">${h(x.title)}</p><p style="margin:3px 0 0;font-size:14px;line-height:22px;color:${FG2};">${h(x.text)}</p></td></tr></table>`).join(""));
       case "faq": return row(b.items.map((x, i) => `<div style="${i ? `border-top:1px solid ${BORDER};padding-top:14px;margin-top:14px;` : ""}"><p style="margin:0;font-size:15px;line-height:22px;font-weight:700;color:${INK};">${h(x.q)}</p><p style="margin:4px 0 0;font-size:15px;line-height:23px;color:${FG2};">${h(x.a)}</p></div>`).join(""));
-      case "prompts": return row(b.items.map((x) => `<p style="margin:0 0 8px;"><span style="display:inline-block;background:${PANEL};border:1px solid ${BORDER};border-radius:16px;padding:7px 14px;font-size:14px;line-height:20px;color:${INK};">&ldquo;${esc(x)}&rdquo;</span></p>`).join(""), 14);
+      case "prompts": return row(b.items.map((x) => `<p style="margin:0 0 8px;"><span style="display:inline-block;background:${PANEL};border:1px solid ${BORDER};padding:10px 14px;font-size:14px;line-height:21px;color:${INK};">${esc(x)}</span></p>`).join(""), 14);
       case "code": return row(label(b.label) + box(esc(b.text), `background:${INK};padding:14px 16px;font-family:${MONO};font-size:12.5px;line-height:20px;color:#F5F5F5;white-space:pre-wrap;word-break:normal;overflow-wrap:anywhere;`), 16);
       case "table": return row(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid ${BORDER};">` +
         `<tr>${b.head.map((x, i) => `<td style="padding:10px 14px;background:${PANEL};border-bottom:1px solid ${BORDER};font-size:11px;line-height:16px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${FG3};${i ? "text-align:right;" : ""}">${esc(x)}</td>`).join("")}</tr>` +
@@ -526,7 +529,7 @@ export function journeyEmail(c: JourneyCtx): Rendered {
   const safe: JourneyCtx = {
     ...c, first: plain(c.first), projectName: plain(c.projectName), inviter: plain(c.inviter),
     sdk: c.sdk ? { platform: plain(c.sdk.platform) ?? "", version: plain(c.sdk.version) ?? "" } : c.sdk,
-    sale: c.sale ? { product: plain(c.sale.product) ?? "a product", amount: plain(c.sale.amount), country: plain(c.sale.country), renewal: c.sale.renewal === true } : c.sale,
+    sale: c.sale ? { product: plain(c.sale.product) ?? "a product", amount: plain(c.sale.amount), country: plain(c.sale.country), existing: c.sale.existing === true } : c.sale,
   };
   return render(safe, EMAILS[safe.step](safe));
 }

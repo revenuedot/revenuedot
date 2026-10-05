@@ -40,8 +40,8 @@ export interface Facts {
   firstAppAt: number | null; testPurchaseAt: number | null;
   sdkFirstAt: number | null; sdkLastAt: number | null; sdk: { platform: string; version: string } | null;
   storeConnected: boolean; liveAt: number | null; lastSaleAt: number | null;
-  /** The first live sale; `renewal` means the app already had subscribers before RevenueDot saw it. */
-  firstSale: { product: string; amount: number | null; currency: string | null; country: string | null; renewal?: boolean } | null;
+  /** The first live sale; `existing` means the app already had subscribers before RevenueDot saw it. */
+  firstSale: { product: string; amount: number | null; currency: string | null; country: string | null; existing?: boolean } | null;
   rcImportAt: number | null; importedCustomers: number;
   paywallPublishedAt: number | null; experimentStartedAt: number | null;
   teammates: number; recoveryOn: boolean; assistantConnected: boolean;
@@ -167,7 +167,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT t.created_at FROM transactions t WHERE t.project_id = o.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0 AND t.kind IN ('purchase','renewal','one_time')
           AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at DESC LIMIT 1) AS last_at
       FROM owned o),
-    firsts AS (SELECT pm.uid, t.created_at, t.kind, t.product_identifier, t.price_amount, t.price_currency, t.country_code FROM pm JOIN transactions t ON t.id = pm.first_tx)
+    firsts AS (SELECT pm.uid, t.project_id, t.customer_id, t.created_at, t.kind, t.product_identifier, t.price_amount, t.price_currency, t.country_code FROM pm JOIN transactions t ON t.id = pm.first_tx)
     SELECT u.id, u.email, u.name, u.created_at, u.email_verified_at, u.time_zone, u.journey_path, u.referral_code, u.product_emails,
       (SELECT count(*) FROM owned o WHERE o.uid = u.id) AS owned,
       -- The project to link to: the oldest one whose app has talked to RevenueDot, else the oldest.
@@ -186,7 +186,10 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       -- Live: a paid production sale recorded within 2 days of the purchase (imported history is recorded much later).
       (SELECT min(f.created_at) FROM firsts f WHERE f.uid = u.id) AS live_at,
       (SELECT max(pm.last_at) FROM pm WHERE pm.uid = u.id) AS last_sale_at,
-      (SELECT json_build_object('product', f.product_identifier, 'amount', f.price_amount, 'currency', f.price_currency, 'country', f.country_code, 'renewal', f.kind = 'renewal')
+      (SELECT json_build_object('product', f.product_identifier, 'amount', f.price_amount, 'currency', f.price_currency, 'country', f.country_code,
+          -- A renewal of a customer RevenueDot never saw before: the app already sold before it came to RevenueDot. A trial that
+          -- converts is a renewal too, but its trial start is an earlier row for the same customer.
+          'existing', f.kind = 'renewal' AND NOT EXISTS (SELECT 1 FROM transactions t2 WHERE t2.project_id = f.project_id AND t2.customer_id = f.customer_id AND t2.created_at < f.created_at))
           FROM firsts f WHERE f.uid = u.id ORDER BY f.created_at ASC LIMIT 1) AS first_sale,
       (SELECT min(o.rc_import_at) FROM owned o WHERE o.uid = u.id) AS rc_import_at,
       (SELECT min(pw.published_at) FROM paywalls pw JOIN owned o ON o.id = pw.project_id WHERE o.uid = u.id) AS paywall_published_at,
@@ -214,7 +217,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
   return rows.map((r): Facts => {
     const json = <T>(v: unknown): T | null => (v === null || v === undefined ? null : (typeof v === "string" ? JSON.parse(v) : v) as T);
     const sdk = json<{ platform: string; os: string; version: string }>(r.sdk);
-    const sale = json<{ product: string; amount: number | null; currency: string | null; country: string | null; renewal?: boolean }>(r.first_sale);
+    const sale = json<{ product: string; amount: number | null; currency: string | null; country: string | null; existing?: boolean }>(r.first_sale);
     const member = json<{ project_id: string; project_name: string; inviter: string | null }>(r.member_of);
     const sent = new Map<StepId, number>(Object.entries(json<Record<string, string>>(r.sent) ?? {}).map(([k, v]) => [k as StepId, new Date(v).getTime()]));
     const paying = r.ba_plan === "standard" && ["active", "past_due"].includes(String(r.ba_status));
@@ -274,7 +277,8 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
     migrating: migrating(f),
     liveSince: f.liveAt ? new Date(f.liveAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : undefined,
     inviter: member ? f.memberOf!.inviter : null,
-    sale: f.firstSale ? { product: f.firstSale.product, amount: money(f.firstSale.amount, f.firstSale.currency), country: COUNTRY(f.firstSale.country), renewal: f.firstSale.renewal === true } : null,
+    sale: f.firstSale ? { product: f.firstSale.product, amount: money(f.firstSale.amount, f.firstSale.currency), country: COUNTRY(f.firstSale.country), existing: f.firstSale.existing === true } : null,
+    appCreated: f.firstAppAt !== null,
     notificationsSeen: f.lastNotificationAt !== null && (f.rcImportAt === null || f.lastNotificationAt >= f.rcImportAt),
   };
   // The cutover compares a whole month at this month's pace; the upgrade emails quote the revenue so far.
