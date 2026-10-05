@@ -369,7 +369,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   forwarding_check: (c) => ({
     look: "guide",
     subject: "No store notifications have reached RevenueDot yet",
-    preheader: "One setting in App Store Connect and Google Play finishes the side-by-side run.",
+    preheader: "Turn on forwarding to RevenueCat first, then point the stores at RevenueDot.",
     heading: "Point the stores at RevenueDot",
     paragraphs: [
       `${hi(c)} your import finished${c.importedOn ? ` on ${c.importedOn}` : ""}, but no App Store or Google Play notification has reached ${proj(c)} since. Without them, RevenueDot can't see renewals, refunds or cancellations as they happen.`,
@@ -516,10 +516,10 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   how_going: (c) => ({
     look: "letter",
     subject: `How is RevenueDot working for ${proj(c)}?`,
-    preheader: "Two weeks live. One line back helps a lot.",
+    preheader: "One line back helps a lot.",
     paragraphs: [
       hi(c),
-      `${proj(c)} has been selling through RevenueDot for two weeks. Thank you for trusting us with your purchases.`,
+      `${proj(c)} has been selling through RevenueDot since ${c.liveSince ?? "your first sale"}. Thank you for trusting us with your purchases.`,
       "How is it going, and what's the one thing you'd change? One line back is plenty.",
     ],
   }),

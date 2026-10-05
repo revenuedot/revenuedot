@@ -213,7 +213,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT EXISTS (SELECT 1 FROM api_keys k WHERE k.created_by_user_id = u.id AND k.oauth_client_id IS NOT NULL)) AS assistant_connected,
       ba.plan AS ba_plan, ba.status AS ba_status, ba.updated_at AS ba_updated_at, ba.standard_started_at AS ba_started, ba.stripe_subscription_id AS ba_sub,
       (SELECT coalesce(sum(t.revenue_usd), 0) FROM transactions t JOIN owned o ON o.id = t.project_id WHERE o.uid = u.id AND NOT t.is_sandbox AND t.revenue_usd > 0
-          AND t.kind IN ('purchase','renewal','one_time') AND t.created_at >= ${new Date(now.getTime() - 7 * D).toISOString()}::timestamptz) AS last7,
+          AND t.kind IN ('purchase','renewal','one_time') AND t.purchased_at >= ${new Date(now.getTime() - 7 * D).toISOString()}::timestamptz) AS last7,
       (SELECT coalesce(sum(bu.tracked_revenue_usd), 0) FROM billing_usage bu WHERE bu.owner_user_id = u.id AND bu.month = (
           SELECT split_part(bn.key, ':', 1) FROM billing_notices bn WHERE bn.user_id = u.id AND bn.key LIKE '%:free_100' ORDER BY bn.sent_at DESC LIMIT 1)) AS over_tracked,
       (SELECT max(a.last_notification_at) FROM apps a JOIN owned o ON o.id = a.project_id WHERE o.uid = u.id) AS last_notification_at,
