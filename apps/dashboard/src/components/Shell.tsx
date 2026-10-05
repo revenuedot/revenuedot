@@ -10,7 +10,7 @@ import { applyTheme, clearCachedPrefs, effectiveTheme } from "../lib/prefs";
 export interface Preferences { theme: "system" | "light" | "dark"; tint: string | null; week_start: number; display_currency: string }
 export interface Me {
   user: {
-    id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean; integration_alert_emails?: boolean; insights_emails?: boolean;
+    id: string; email: string; name: string | null; email_verified: boolean; alert_emails: boolean; integration_alert_emails?: boolean; insights_emails?: boolean; product_emails?: boolean; time_zone?: string | null; journey_path?: string | null;
     /** Account settings (prd/account-settings/PRD.md). Optional: older servers do not send them. */
     preferences?: Preferences; has_password?: boolean;
     two_factor?: { enabled: boolean; enabled_at: number | null; recovery_codes_left: number };
@@ -21,9 +21,21 @@ export interface Me {
   /** With an enterprise licence, and always on RevenueDot Cloud, where `mode` is "cloud" and the plan decides (src/extensions.tsx). */
   enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
 }
+let tzSent = false;
+export const browserTimeZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; } };
 export function useMe(enabled = true) {
   const q = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me"), retry: false, enabled });
   useEffect(() => { if (q.data) identifyUser(q.data); }, [q.data]);
+  // Onboarding emails arrive in the reader's daytime (prd/onboarding-emails/PRD.md): store the browser's time zone, once per
+  // page load however many components read the account, and keep the answer in the cache.
+  const qc = useQueryClient();
+  const tz = q.data && q.data.user.time_zone === null ? browserTimeZone() : null;
+  useEffect(() => {
+    if (!tz || tzSent) return;
+    tzSent = true;
+    void api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: { time_zone: tz } })
+      .then((r) => qc.setQueryData<Me>(["me"], (m) => (m ? { ...m, user: { ...m.user, ...r.user } } : m))).catch(() => {});
+  }, [tz, qc]);
   return q;
 }
 

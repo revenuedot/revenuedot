@@ -46,6 +46,8 @@ export const projects = pgTable("projects", {
   /** When this project was copied in from another RevenueDot server; Cloud billing ignores revenue recorded before it. */
   movedInAt: ts("moved_in_at"),
   movedInFrom: text("moved_in_from"),
+  /** The first RevenueCat customer import (POST /v2/projects/{id}/import/customers); onboarding emails switch to the migration path. */
+  rcImportAt: ts("rc_import_at"),
   createdAt: created(),
 });
 
@@ -427,9 +429,15 @@ export const transactions = pgTable("transactions", {
   /** Offer used for this transaction (see subscriptions.offerType) and the store's offer id. */
   offerType: text("offer_type"),
   offerId: text("offer_id"),
+  /** "import" for rows written by a RevenueCat import (history, not a live sale); null for everything RevenueDot saw happen. */
+  source: text("source"),
   /** When RevenueDot recorded the row (incremental data exports read this; rows from before migration 0013 carry its run time). */
   createdAt: created(),
-}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id), index("transactions_customer").on(t.customerId, t.purchasedAt)]);
+}, (t) => [uniqueIndex("transactions_store_tx").on(t.projectId, t.store, t.storeTransactionId, t.kind), index("transactions_time").on(t.projectId, t.purchasedAt), index("transactions_project_created").on(t.projectId, t.createdAt, t.id), index("transactions_customer").on(t.customerId, t.purchasedAt),
+  // Onboarding emails (services/journeys.ts) find a project's first and last live sale and first test purchase from these
+  // without reading imported history: each lookup stops at its first row.
+  index("transactions_live_sales").on(t.projectId, t.createdAt).where(sql`${t.source} IS NULL AND NOT ${t.isSandbox} AND ${t.revenueUsd} > 0 AND ${t.kind} IN ('purchase', 'renewal', 'one_time')`),
+  index("transactions_sandbox").on(t.projectId, t.createdAt).where(sql`${t.isSandbox}`)]);
 
 /** Customer lifecycle events; the source for webhooks and the customer history timeline (paged newest first on events_customer_time). */
 export const events = pgTable("events", {
@@ -523,8 +531,18 @@ export const users = pgTable("users", {
   passwordChangedAt: ts("password_changed_at"),
   /** The weekly AI growth insights digest for projects this user administers (prd/attribution-benchmarks-insights). */
   insightsEmails: boolean("insights_emails").notNull().default(true),
+  /** Cloud onboarding and growth emails (prd/onboarding-emails/PRD.md): setup help, tips and product news. */
+  productEmails: boolean("product_emails").notNull().default(true),
+  /** IANA time zone from the browser ("Europe/Berlin"), so journey emails arrive in the reader's daytime. */
+  timeZone: text("time_zone"),
+  /** "new" (first in-app purchases) or "revenuecat" (switching), from the welcome email or the Overview. */
+  journeyPath: text("journey_path"),
+  /** This user's referral code (app.revenuedot.app/signup?ref=…), made when the referral email first goes out. */
+  referralCode: text("referral_code"),
+  /** The referral code this account signed up with, as given. */
+  referredBy: text("referred_by"),
   createdAt: created(),
-}, (t) => [uniqueIndex("users_email").on(t.email)]);
+}, (t) => [uniqueIndex("users_email").on(t.email), uniqueIndex("users_referral_code").on(t.referralCode), index("users_referred_by").on(t.referredBy)]);
 
 /** A user's access to a project. `role`: "admin", "developer" or "viewer". */
 export const memberships = pgTable("memberships", {
@@ -682,6 +700,17 @@ export const notificationSends = pgTable("notification_sends", {
   tokenHash: text("token_hash"),
   sentAt: ts("sent_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.userId, t.projectId, t.kind, t.key] }), uniqueIndex("notification_sends_token").on(t.tokenHash)]);
+
+/**
+ * One row per onboarding or growth email (prd/onboarding-emails/PRD.md), written before it is sent: each step goes to a
+ * person at most once. `tokenHash`: SHA-256 of the email's one-click unsubscribe link, which turns product emails off.
+ */
+export const journeySends = pgTable("journey_sends", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  step: text("step").notNull(),
+  tokenHash: text("token_hash"),
+  sentAt: ts("sent_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.step] }), uniqueIndex("journey_sends_token").on(t.tokenHash), index("journey_sends_time").on(t.userId, t.sentAt)]);
 
 /** The daily revenue anomaly check per project and UTC day (YYYY-MM-DD): run once, emailed from the result. */
 export const anomalyChecks = pgTable("anomaly_checks", {
@@ -1966,6 +1995,8 @@ export const billingAccounts = pgTable("billing_accounts", {
   stripeSubscriptionId: text("stripe_subscription_id"),
   currentPeriodEnd: ts("current_period_end"),
   cancelAt: ts("cancel_at"),
+  /** When the account first became Standard (onboarding emails thank it once, prd/onboarding-emails/PRD.md). Kept when it lapses. */
+  standardStartedAt: ts("standard_started_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
   createdAt: created(),
 }, (t) => [uniqueIndex("billing_accounts_customer").on(t.stripeCustomerId)]);

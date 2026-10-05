@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { SITE } from "../site";
 import { docsNav, blogPosts, lastModified } from "../lib/docs";
 import { seoPaths } from "../data";
+import { VIDEOS, WATCH } from "../lib/videos.mjs";
 
 // Every static .astro page except the 404 (derived from the file tree, so a new page is listed automatically),
 // plus every docs page and blog post from the docs repo with its last commit date.
@@ -15,6 +16,7 @@ const priority = (p: string) => (p === "/" ? "1.0" : p.startsWith("/legal") || p
 
 export const GET: APIRoute = async () => {
   const entries: { path: string; lastmod: string; priority: string }[] = pages.map((p) => ({ path: p, lastmod: LASTMOD, priority: priority(p) }));
+  for (const name of Object.keys(WATCH)) if (VIDEOS[name]) entries.push({ path: `/watch/${name}`, lastmod: WATCH[name].date, priority: "0.6" });
   for (const p of seoPaths()) if (!entries.some((e) => e.path === p.path)) entries.push({ path: p.path, lastmod: LASTMOD, priority: "0.8" });
   for (const s of await docsNav()) for (const i of s.items) entries.push({ path: i.href, lastmod: lastModified(`${i.id}.md`) ?? LASTMOD, priority: "0.7" });
   for (const p of await blogPosts()) entries.push({ path: p.href, lastmod: lastModified(`${p.entry.id}.md`) ?? (p.date || LASTMOD), priority: "0.6" });

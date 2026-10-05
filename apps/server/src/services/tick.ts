@@ -17,6 +17,7 @@ import { processServerMoves } from "./archive/server-move.js";
 import { runBilling } from "./billing/meter.js";
 import { runAlerts } from "./alerts.js";
 import { runAccountNotifications } from "./account-notifications.js";
+import { runJourneys } from "./journeys.js";
 import { retryDueConsumption } from "./refunds.js";
 import { runDueCampaigns } from "./winback.js";
 import { runPaymentRecovery } from "./payment-recovery.js";
@@ -86,6 +87,8 @@ export interface TickOptions {
   billing?: import("./billing/stripe.js").BillingConfig | null;
   /** Weekly summaries, experiment results and anomaly alerts (prd/account-settings §4) run here unless false. */
   accountNotifications?: boolean;
+  /** Onboarding and growth emails to Cloud accounts (prd/onboarding-emails/PRD.md), every 5 minutes; null or unset: off. Cloud only. */
+  journeys?: import("./journeys.js").JourneyConfig | null;
   /** Aborted when this replica starts shutting down: the run stops sending webhooks after those in flight and skips the
    *  steps it has not started (each resumes on the next run, on any replica). */
   signal?: AbortSignal;
@@ -194,6 +197,10 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
       moves = await processServerMoves(deps, 10_000);
     } catch (e) { console.error("tick: exports and moves failed", e); }
   }
+  let journeys = 0;
+  if (opts.edition === "cloud" && opts.journeys && now.getUTCMinutes() % 5 === 0 && !draining()) {
+    try { journeys = (await runJourneys({ db, mailer: opts.mailer, publicUrl: opts.publicUrl, config: opts.journeys }, now)).sent; } catch (e) { console.error("tick: journey emails failed", e); }
+  }
   if (opts.edition === "cloud") {
     try { billing = await runBilling({ db, now, fetch: fetchImpl, mailer: opts.mailer, publicUrl: opts.publicUrl, config: opts.billing ?? null }); } catch (e) { console.error("tick: billing failed", e); }
   }
@@ -201,7 +208,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

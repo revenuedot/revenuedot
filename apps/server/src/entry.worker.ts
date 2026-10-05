@@ -13,6 +13,7 @@ import { loadExtensions } from "./extensions.js";
 import type { ServerExtension } from "./extensions.js";
 import { archiveStoreFor, baseDeps, googleOAuthFor, stripeConnectFor, mailerFor, publicUrlFor, stores, type Env, type ExecutionContext, type ScheduledController } from "./worker-deps.js";
 import { billingConfigFromEnv } from "./services/billing/stripe.js";
+import { journeyConfig } from "./services/journeys.js";
 export { AssistantAgent } from "./assistant-agent.worker.js";
 export type { Env } from "./worker-deps.js";
 
@@ -60,8 +61,10 @@ async function runTick(env: Env, db: DB, why: string) {
       // Full exports, server-run moves and billing run from the cron only.
       archives: why === "cron", archiveStore: archiveStoreFor(env), edition: why === "cron" ? "cloud" : undefined,
       billing: billingConfigFromEnv(env as unknown as Record<string, string | undefined>),
+      // Onboarding and growth emails: REVENUEDOT_JOURNEYS=on turns them on (prd/onboarding-emails/PRD.md).
+      journeys: journeyConfig(env as unknown as Record<string, string | undefined>),
     });
-    if (r.expired || r.voided || r.consumption || r.winback || r.recovery.sent || r.recovery.closed || r.sent || r.integrations || r.exports || r.credentialsChecked || r.storePrices || r.notifications || r.admob || r.archives || r.moves || r.billing || r.attemptLogsPruned || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
+    if (r.expired || r.voided || r.consumption || r.winback || r.recovery.sent || r.recovery.closed || r.sent || r.integrations || r.exports || r.credentialsChecked || r.storePrices || r.notifications || r.admob || r.archives || r.moves || r.billing || r.journeys || r.attemptLogsPruned || r.alerts.opened || r.alerts.reminded || r.alerts.resolved) console.log(`tick (${why})`, JSON.stringify(r));
     return r;
   } catch (e) {
     console.error(`tick (${why}) failed`, e);

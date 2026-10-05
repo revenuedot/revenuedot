@@ -22,6 +22,7 @@ import { OAUTH_SCOPES } from "./oauth.js";
 import { page } from "./lifecycle-public.js";
 import { UNSUBSCRIBE_COLUMN, type NotificationKind } from "../services/account-notifications.js";
 import { sha256Hex } from "../services/auth.js";
+import { journeyTokenUser } from "../services/journeys.js";
 import { connectAvailability } from "../services/stripe-connect.js";
 import { storeSecretHintOf, stripeConnected } from "../services/store-secrets.js";
 import { releaseVerifiedHostnames } from "../services/verified.js";
@@ -516,6 +517,29 @@ export function accountRoutes(deps: Deps) {
     const N = schema.notificationPrefs;
     await db.update(N).set({ [UNSUBSCRIBE_COLUMN[u.kind]]: false, updatedAt: deps.now() }).where(and(eq(N.userId, u.send.userId), eq(N.projectId, u.send.projectId)));
     return c.html(page("You are unsubscribed", `${u.email} gets no more ${KIND_LABEL[u.kind]} for ${u.project}. Turn them back on in Account settings → Notifications.`));
+  });
+
+  // ---------- Onboarding and growth emails (prd/onboarding-emails/PRD.md): one-click unsubscribe and the welcome's path links ----------
+  const JOURNEY_NOT_FOUND = () => page("Link not found", "This link is not valid. Choose your emails in Account settings → Notifications.");
+  r.get("/auth/journeys/unsubscribe/:token", async (c) => {
+    const u = await journeyTokenUser(db, c.req.param("token"));
+    if (!u) return c.html(JOURNEY_NOT_FOUND(), 404);
+    return c.html(page("Unsubscribe?", `Stop setup help, tips and product news to ${u.email}. Security, billing and alert emails still arrive.`, `<form method="post"><button type="submit">Unsubscribe</button></form>`));
+  });
+  r.post("/auth/journeys/unsubscribe/:token", async (c) => {
+    const u = await journeyTokenUser(db, c.req.param("token"));
+    if (!u) return c.html(JOURNEY_NOT_FOUND(), 404);
+    await db.update(schema.users).set({ productEmails: false }).where(eq(schema.users.id, u.userId));
+    return c.html(page("You are unsubscribed", `${u.email} gets no more setup help, tips or product news. Turn them back on in Account settings → Notifications.`));
+  });
+  // The welcome email's two paths: records which one the reader picked, then opens its guide. A wrong or missing path still
+  // opens a guide, so a mail scanner that follows the link changes nothing that matters.
+  r.get("/auth/journeys/path/:token", async (c) => {
+    const path = c.req.query("path") === "revenuecat" ? "revenuecat" : "new";
+    const u = await journeyTokenUser(db, c.req.param("token"));
+    if (u) await db.update(schema.users).set({ journeyPath: path }).where(eq(schema.users.id, u.userId));
+    const guide = path === "revenuecat" ? "https://revenuedot.app/docs/migrate" : "https://revenuedot.app/docs/getting-started/quickstart";
+    return c.redirect(`${guide}?utm_source=revenuedot&utm_medium=email&utm_campaign=journeys&utm_content=welcome_${path}`, 302);
   });
 
   // ---------- General: Stripe accounts (RevenueCat's account-level list; RevenueDot connects per app, prd/web-billing §8) ----------

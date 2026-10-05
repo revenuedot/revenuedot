@@ -49,12 +49,13 @@ export default defineConfig({
       ...(process.env.REVENUEDOT_API_URL ? { REVENUEDOT_API_URL: bindings.text(process.env.REVENUEDOT_API_URL) } : {}),
       ...(process.env.REVENUEDOT_PUBLIC_URL ? { REVENUEDOT_PUBLIC_URL: bindings.text(process.env.REVENUEDOT_PUBLIC_URL) } : {}),
       // Cloudflare Email Sending: password resets, verification, invites and alerts (prd/account-email/PRD.md). The
-      // sending domain mail.revenuedot.app is onboarded on the Circo account; the binding may only send as no-reply@.
+      // sending domain mail.revenuedot.app is onboarded on the Circo account; the binding may send as no-reply@ and, for the
+      // onboarding and growth emails (prd/onboarding-emails/PRD.md), hello@.
       // `cf dev` simulates it (emails are logged) unless REVENUEDOT_EMAIL_REMOTE=1, which sends real email.
       // Full-export archives (prd/moves-export/PRD.md) in R2 once the bucket exists: REVENUEDOT_EXPORTS_BUCKET in the deploy
       // environment names it. Without it the Worker keeps archives in Postgres (archive_blobs). Setup: docs/cloud.md.
       ...(process.env.REVENUEDOT_EXPORTS_BUCKET ? { EXPORTS: bindings.r2({ name: process.env.REVENUEDOT_EXPORTS_BUCKET }) } : {}),
-      EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
+      EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["no-reply@mail.revenuedot.app", "hello@mail.revenuedot.app"], dev: { remote: process.env.REVENUEDOT_EMAIL_REMOTE === "1" } }),
     },
   },
 });
