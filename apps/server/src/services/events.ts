@@ -1,6 +1,6 @@
 import { commissionRateFor } from "./commission.js";
 import { and, eq, sql } from "drizzle-orm";
-import { OPT_IN_EVENT_TYPES, commission, rcDate, splitGross, taxShare, webhookStore, type DerivedEvent, type EventType, type Store } from "@revenuedot/core";
+import { OPT_IN_EVENT_TYPES, commission, productKeysFor, rcDate, splitGross, taxShare, webhookStore, type DerivedEvent, type EventType, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { aliasesOf, type CustomerRow } from "../repo/customers.js";
 import { entitlementMap } from "../repo/catalog.js";
@@ -94,8 +94,8 @@ export async function recordEvent(db: DB, opts: {
     };
   } else {
     const map = await entitlementMap(db, projectId);
-    const productKey = subject.productPlanId ? `${subject.productId}:${subject.productPlanId}` : subject.productId;
-    const entitlementIds = Object.entries(map).filter(([, p]) => p.includes(productKey) || p.includes(subject.productId)).map(([k]) => k);
+    const keys = productKeysFor({ store: subject.store, productIdentifier: subject.productId, productPlanIdentifier: subject.productPlanId });
+    const entitlementIds = Object.entries(map).filter(([, p]) => keys.some((k) => p.includes(k))).map(([k]) => k);
     // The store's commission for this transaction: program dates, Google Play's yearly tier (services/commission.ts).
     const oneTime = type === "NON_RENEWING_PURCHASE" || (subject.expiresAt === null && subject.periodType !== "prepaid");
     const comm = round4(await commissionRateFor(db, projectId, { store: subject.store, appId, at: subject.purchasedAt, kind: oneTime ? "one_time" : "renewal", isSandbox: subject.isSandbox, country: subject.countryCode ?? null, firstSeen: customer.firstSeen }));

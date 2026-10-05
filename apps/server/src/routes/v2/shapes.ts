@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { accessEndsAt, commission, computeEntitlements, isActive, splitGross, taxShare, willRenew, type Store } from "@revenuedot/core";
+import { accessEndsAt, commission, computeEntitlements, isActive, productKeysFor, splitGross, taxShare, willRenew, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../../repo/catalog.js";
 import { loadState, subRowToDomain, type CustomerRow } from "../../repo/customers.js";
@@ -207,8 +207,8 @@ export async function loadCatalog(db: DB, projectId: string) {
     db.select({ id: schema.offerings.id, lookupKey: schema.offerings.lookupKey }).from(schema.offerings).where(eq(schema.offerings.projectId, projectId)),
   ]);
   const links = ents.length ? await db.select().from(schema.entitlementProducts).where(inArray(schema.entitlementProducts.entitlementId, ents.map((e) => e.id))) : [];
-  const findProduct = (storeId: string, plan: string | null | undefined, appId: string | null | undefined) => {
-    const keys = plan ? [`${storeId}:${plan}`, storeId] : [storeId];
+  const findProduct = (storeId: string, plan: string | null | undefined, appId: string | null | undefined, store = "") => {
+    const keys = productKeysFor({ store, productIdentifier: storeId, productPlanIdentifier: plan });
     for (const k of keys) {
       const hit = products.find((p) => p.storeIdentifier === k && (!appId || p.appId === appId)) ?? products.find((p) => p.storeIdentifier === k);
       if (hit) return hit;
@@ -217,8 +217,8 @@ export async function loadCatalog(db: DB, projectId: string) {
   };
   const entitlementsFor = (productIds: string[], promoLookupKey?: string | null) =>
     ents.filter((e) => (promoLookupKey && e.lookupKey === promoLookupKey) || links.some((l) => l.entitlementId === e.id && productIds.includes(l.productId)));
-  const productIdsFor = (storeId: string, plan?: string | null) => {
-    const keys = plan ? [`${storeId}:${plan}`, storeId] : [storeId];
+  const productIdsFor = (storeId: string, plan?: string | null, store = "") => {
+    const keys = productKeysFor({ store, productIdentifier: storeId, productPlanIdentifier: plan });
     return products.filter((p) => keys.includes(p.storeIdentifier)).map((p) => p.id);
   };
   /** The SDK sends the offering's identifier (lookup key); REST objects carry the offering id, or the identifier when it is gone. */
@@ -258,8 +258,8 @@ export function subscriptionStatus(s: SubRow, now: Date) {
  * sandbox testing access, give no access even while the store period runs, like their entitlements.
  */
 export function subscriptionShape(s: SubRow, customerAppUserId: string, cat: Catalog, revenueUsd: number, now: Date, access?: Access) {
-  const prod = s.store === "promotional" ? null : cat.findProduct(s.productIdentifier, s.productPlanIdentifier, s.appId);
-  const ents = cat.entitlementsFor(prod ? cat.productIdsFor(s.productIdentifier, s.productPlanIdentifier) : [], s.store === "promotional" ? s.entitlementIdentifier : null);
+  const prod = s.store === "promotional" ? null : cat.findProduct(s.productIdentifier, s.productPlanIdentifier, s.appId, s.store);
+  const ents = cat.entitlementsFor(prod ? cat.productIdsFor(s.productIdentifier, s.productPlanIdentifier, s.store) : [], s.store === "promotional" ? s.entitlementIdentifier : null);
   const st = subscriptionStatus(s, now);
   return {
     object: "subscription" as const, id: s.id, customer_id: customerAppUserId, original_customer_id: customerAppUserId,

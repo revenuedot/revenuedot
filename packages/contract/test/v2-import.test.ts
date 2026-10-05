@@ -108,4 +108,16 @@ describe("POST /v2/projects/{id}/import/customers", () => {
     const status = await call("GET", "/v2/projects/{project_id}/import/status", {}, { ext: true });
     expect(status.body).toEqual({ object: "import_status", customers: 2, subscriptions: 2, needs_token_refresh: 1, needs_token_refresh_by_app: { app_play: 1 } });
   });
+
+  it("App Store billing plans: product:monthly is split into product and plan, product:upFront is the bare product", async () => {
+    const sub = (product: string, id: string) => ({ app_id: "app_ios", store: "app_store", product_identifier: product, starts_at: T, current_period_starts_at: T, current_period_ends_at: MONTH_LATER, status: "active", store_subscription_identifier: id });
+    const res = await call("POST", IMPORT, {}, { ext: true, json: { customers: [
+      { id: "plan_monthly", subscriptions: [sub("pro_monthly:monthly", "300000901")] }, { id: "plan_upfront", subscriptions: [sub("pro_annual:upFront", "300000902")] },
+    ] } });
+    expect(res.status).toBe(200);
+    const rows = (await h.db.select().from(schema.subscriptions)).map((r) => [r.productIdentifier, r.productPlanIdentifier]).sort();
+    expect(rows).toEqual([["pro_annual", null], ["pro_monthly", "monthly"]]);
+    const info = await (await h.fetch("/v1/subscribers/plan_monthly")).json();
+    expect(info.subscriber.entitlements.pro).toMatchObject({ product_identifier: "pro_monthly", product_plan_identifier: "monthly" });
+  });
 });

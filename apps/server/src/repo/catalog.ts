@@ -79,6 +79,7 @@ export async function offeringsJSON(db: DB, projectId: string, appId: string, op
 /** App Store products: iOS files an up-front billing plan under the bare product id (`BillingPlanType.compoundProductIDPlanComponent`). */
 const APPLE_STORES = new Set(["app_store", "mac_app_store"]);
 const UP_FRONT = "upFront";
+const MONTHLY = "monthly";
 
 type MappingEntry = { product_identifier: string; base_plan_id?: string; entitlements: string[] };
 
@@ -86,7 +87,9 @@ type MappingEntry = { product_identifier: string; base_plan_id?: string; entitle
  * `GET /v1/product_entitlement_mapping`, the table the SDKs use for offline entitlements (prd/offline-entitlements/PRD.md).
  * With an app (public keys), only that app's products; without one (a secret key), the whole project.
  * - App Store: key `product`, or `product:plan` for a billing plan other than up-front, which is how iOS re-keys entries
- *   (`ProductEntitlementMapping.swift`). No bare duplicate: iOS ignores the key and would file it under the plan.
+ *   (`ProductEntitlementMapping.swift`). No bare duplicate: iOS ignores the key and would file it under the plan. A
+ *   `product:monthly` key also carries the bare `product`'s entitlements, as the server grants them online, and a bare
+ *   subscription gets one even when the catalog has no `product:monthly`, so monthly-plan buyers keep access offline.
  * - Google Play and other stores: `sub:plan` with that plan's entitlements, plus the bare `sub` that Android looks up
  *   (`PurchasedProductsFetcher.kt`) with the union of all its plans' entitlements and the first plan as `base_plan_id`.
  * Only active entitlements; archived products keep mapping; consumables never unlock an entitlement, so they are left out.
@@ -105,16 +108,29 @@ export async function productEntitlementMappingJSON(db: DB, projectId: string, a
     const e = (out[key] ??= { ...entry, entitlements: [] });
     if (!e.entitlements.includes(ent)) e.entitlements.push(ent);
   };
+  const appleBare = new Map<string, string[]>();
+  const applePlanKeys = new Set<string>();
   for (const r of rows) {
     if (r.type === "consumable") continue;
     const [productId, plan] = r.storeId.split(":") as [string, string | undefined];
     const entry = { product_identifier: productId, ...(plan ? { base_plan_id: plan } : {}) };
     if (APPLE_STORES.has(r.appType)) {
+      if (plan && plan !== UP_FRONT) applePlanKeys.add(`${productId}:${plan}`);
+      else if (!plan) {
+        appleBare.set(productId, [...(appleBare.get(productId) ?? []), r.ent]);
+        // A bare subscription is also bought on the monthly plan (iOS 26.4), which iOS looks up as `product:monthly`.
+        if (r.type === "subscription") applePlanKeys.add(`${productId}:${MONTHLY}`);
+      }
       add(plan && plan !== UP_FRONT ? `${productId}:${plan}` : productId, entry, r.ent);
       continue;
     }
     add(r.storeId, entry, r.ent);
     if (plan) add(productId, entry, r.ent);
+  }
+  // Online, a billing-plan purchase also matches the bare product (core productKeysFor), so its key carries both.
+  for (const key of applePlanKeys) {
+    const [productId, plan] = key.split(":") as [string, string];
+    for (const ent of appleBare.get(productId) ?? []) add(key, { product_identifier: productId, base_plan_id: plan }, ent);
   }
   return { product_entitlement_mapping: out };
 }
