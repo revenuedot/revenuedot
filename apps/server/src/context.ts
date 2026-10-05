@@ -58,6 +58,10 @@ export interface Deps {
    * the root of that host) or https://api.example.com/pay. Unset: `<request origin>/pay`.
    */
   payUrl?: string;
+  /** Daily chart rollups (services/charts/rollups.ts) are built by the scheduled job unless false. */
+  chartRollups?: boolean;
+  /** Time the scheduled job may spend on rollups per run (default 20 s). */
+  chartRollupBudgetMs?: number;
   /** The host custom domains must CNAME to (REVENUEDOT_CUSTOM_DOMAIN_TARGET). Unset: the pay host. */
   customDomainTarget?: string;
   /**

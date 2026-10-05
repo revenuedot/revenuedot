@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { commissionRates, taxShare, type ChartInput, type ChartLifecycle, type ChartRefundEvent, type TxKind } from "@revenuedot/core";
 import { commissionSettingsOf } from "../commission.js";
 import { schema, type DB } from "@revenuedot/db";
@@ -53,14 +53,15 @@ export function chartSources(name: string, range: { from: number; to: number } |
  * of one environment, customers, lifecycle events, and what `sources` asks for (SDK events, activity days, Apple refund
  * requests), plus a USD → display currency rate per date.
  */
-export async function loadChartInput(db: DB, opts: { projectId: string; sandbox: boolean; now: Date; currency: string; fetch?: FxFetch | null; sources: ChartSources }): Promise<ChartInput> {
+export async function loadChartInput(db: DB, opts: { projectId: string; sandbox: boolean; now: Date; currency: string; fetch?: FxFetch | null; sources: ChartSources; asOf?: Date }): Promise<ChartInput> {
   const { projectId, sandbox, sources } = opts;
   const env = sandbox ? "sandbox" : "production";
   const T = schema.transactions, S = schema.subscriptions, N = schema.nonSubscriptions, C = schema.customers, E = schema.events, X = schema.sdkEvents, A = schema.customerAliases;
   const CA = schema.customerActivity, SN = schema.storeNotifications, CAT = schema.customerAttribution, ATTR = schema.customerAttributes;
   const keys = sources.attributeKeys ?? [];
   const [txs, subs, nonSubs, customers, products, lifecycle, sdk, activity, notes, attrs] = await Promise.all([
-    db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox))),
+    // `asOf` (daily rollups, a build over several runs): only rows recorded by then, where the table says when.
+    db.select().from(T).where(and(eq(T.projectId, projectId), eq(T.isSandbox, sandbox), ...(opts.asOf ? [lte(T.createdAt, opts.asOf)] : []))),
     db.select().from(S).where(and(eq(S.projectId, projectId), eq(S.isSandbox, sandbox))),
     db.select({ store: N.store, tx: N.storeTransactionId, offering: N.presentedOfferingId }).from(N).where(and(eq(N.projectId, projectId), eq(N.isSandbox, sandbox))),
     // project_id in the join lets Postgres read only this project's attribution rows (customer_attribution_media index).
@@ -70,14 +71,14 @@ export async function loadChartInput(db: DB, opts: { projectId: string; sandbox:
     }).from(C).leftJoin(CAT, and(eq(CAT.customerId, C.id), eq(CAT.projectId, projectId))).where(eq(C.projectId, projectId)),
     db.select().from(schema.products).where(eq(schema.products.projectId, projectId)),
     db.select({ customerId: E.customerId, type: E.type, at: E.eventTimestampMs, store: sql<string | null>`${E.payload}->'event'->>'store'`, productId: sql<string | null>`${E.payload}->'event'->>'product_id'`, cancelReason: sql<string | null>`${E.payload}->'event'->>'cancel_reason'` }).from(E)
-      .where(and(eq(E.projectId, projectId), eq(E.environment, env), inArray(E.type, ["CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE"]))),
+      .where(and(eq(E.projectId, projectId), eq(E.environment, env), inArray(E.type, ["CANCELLATION", "UNCANCELLATION", "BILLING_ISSUE"]), ...(opts.asOf ? [lte(E.createdAt, opts.asOf)] : []))),
     // Only the fields the charts read, with the customer resolved through the alias when the event came before it.
     sources.sdkTypes.length ? db.select({
       customerId: sql<string | null>`coalesce(${X.customerId}, ${A.customerId})`, appId: X.appId, type: X.type, at: X.occurredAt,
       paywallId: sql<string | null>`coalesce(${X.payload}->>'paywall_id', ${X.payload}->'presented_offering_context'->>'paywall_id', ${X.payload}->>'offering_id')`,
       surveyOptionId: sql<string | null>`${X.payload}->>'survey_option_id'`, revenueMicros: sql<string | null>`${X.payload}->>'revenue_micros'`, currency: sql<string | null>`${X.payload}->>'currency'`,
     }).from(X).leftJoin(A, and(eq(A.projectId, X.projectId), eq(A.appUserId, X.appUserId)))
-      .where(and(eq(X.projectId, projectId), eq(X.isSandbox, sandbox), inArray(X.type, sources.sdkTypes))) : Promise.resolve([]),
+      .where(and(eq(X.projectId, projectId), eq(X.isSandbox, sandbox), inArray(X.type, sources.sdkTypes), ...(opts.asOf ? [lte(X.receivedAt, opts.asOf)] : []))) : Promise.resolve([]),
     sources.activity ? db.select({ customerId: CA.customerId, day: CA.day }).from(CA)
       .where(and(eq(CA.projectId, projectId), gte(CA.day, sources.activity.from), lt(CA.day, sources.activity.to))) : Promise.resolve([]),
     sources.refundRequests ? db.select({ type: SN.type, body: SN.body, store: SN.store, appId: SN.appId, receivedAt: SN.receivedAt }).from(SN)

@@ -44,6 +44,8 @@ export interface Env {
   /** The host custom domains CNAME to (the Cloudflare for SaaS fallback origin, docs/cloud.md). */
   REVENUEDOT_CUSTOM_DOMAIN_TARGET?: string;
   REVENUEDOT_CF_SAAS_ZONE_ID?: string;
+  REVENUEDOT_CHART_ROLLUPS?: string;
+  REVENUEDOT_CHART_ROLLUP_BUDGET_MS?: string;
   REVENUEDOT_CF_SAAS_API_TOKEN?: string;
   /** RevenueDot AI: one Cloudflare Agents Durable Object per conversation (assistant-agent.worker.ts, prd/ai-assistant/PRD.md). */
   AssistantAgent?: DurableObjectNamespaceLike;
@@ -121,6 +123,8 @@ export function baseDeps(env: Env): Omit<Deps, "db"> {
   stripeConnect: stripeConnectFor(env),
   payUrl: env.REVENUEDOT_PAY_URL || `${env.REVENUEDOT_API_URL || "https://api.revenuedot.app"}/pay`,
   customDomainTarget: env.REVENUEDOT_CUSTOM_DOMAIN_TARGET || undefined,
+  chartRollups: env.REVENUEDOT_CHART_ROLLUPS !== "off",
+  chartRollupBudgetMs: Number(env.REVENUEDOT_CHART_ROLLUP_BUDGET_MS) > 0 ? Number(env.REVENUEDOT_CHART_ROLLUP_BUDGET_MS) : undefined,
   cloudflareSaas: env.REVENUEDOT_CF_SAAS_ZONE_ID && env.REVENUEDOT_CF_SAAS_API_TOKEN ? { zoneId: env.REVENUEDOT_CF_SAAS_ZONE_ID, apiToken: env.REVENUEDOT_CF_SAAS_API_TOKEN } : undefined,
   // RevenueDot AI: a provider key set as a secret wins; otherwise Workers AI (Kimi K2.6). Conversations run in Durable Objects.
   assistant: env.REVENUEDOT_ASSISTANT_FAKE === "1" ? fakeAssistantModel(undefined, { delayMs: 20 })
