@@ -175,7 +175,10 @@ const journey: Journey = {
       await page.getByText(/Ends /).waitFor({ timeout: 10_000 });
       c.check("cancelling at period end shows the end date", true);
       const cust = (await sql`SELECT stripe_customer_id FROM billing_accounts`)[0]!.stripe_customer_id as string;
-      const inv = billing.invoice(cust, { amount_due: 1000, status: "open" });
+      // As Stripe does: the failed renewal leaves the subscription past due, and its invoice open.
+      const sub = [...billing.subscriptions.values()].find((x) => x.customer === cust)!;
+      billing.updateSubscription(sub.id, { status: "past_due" });
+      const inv = billing.invoice(cust, { amount_due: 1000, status: "open", subscription: sub.id });
       c.eq("the payment_failed webhook is accepted", await send("invoice.payment_failed", inv), 200);
       await send("invoice.payment_failed", inv);
       await page.goto(`${S.base}/projects/${pid}/overview`);
@@ -185,6 +188,8 @@ const journey: Journey = {
       c.eq("one 'payment failed' email for the invoice (sent twice by Stripe)", failed.length, 1);
       const app = await sdk.customerInfo(`team_${ctx.stamp}`);
       c.check("the app keeps working: customer info still has pro", Object.keys(app.body.subscriber?.entitlements ?? {}).includes("pro"), app.body);
+      billing.updateSubscription(sub.id, { status: "active" });
+      billing.updateInvoice(inv.id, { status: "paid", amount_paid: 1000 });
       await send("invoice.paid", { ...inv, status: "paid", amount_paid: 1000 });
       const fixed = await call("GET", "/v2/billing");
       c.has("paid: active again, no banner", fixed.body, { account: { status: "active" }, flags: [] });
