@@ -9,7 +9,7 @@ export const llmsShards = () => readdirSync(path.join(docsDir(), "llms")).filter
 export const textResponse = (body: string) => new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
 
 /** One plain status sentence for the top of the llms files; keep it in step with the README and the pricing page. */
-export const STATUS_SENTENCE = "RevenueDot is the open-source RevenueCat alternative: the first release is v2026.10.03, it has run in production beside RevenueCat since 2026-10-02, RevenueDot Cloud is free up to $10,000 a month in tracked revenue and then 0.5% of the revenue above that (never more than $999 a month), and self-hosting is free (AGPL-3.0 server, MIT SDKs).";
+export const STATUS_SENTENCE = "RevenueDot is the open-source RevenueCat alternative: the first release is v2026.10.03, it has run in production beside RevenueCat since 2026-10-02, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month.";
 
 /** The "Videos" section: one line per tutorial with its YouTube title, a sentence, the watch page and the YouTube URL. */
 export function videosSection(heading = "## Videos"): string {
@@ -17,7 +17,7 @@ export function videosSection(heading = "## Videos"): string {
     const w = WATCH[n];
     return `- [${w.ytTitle}](https://revenuedot.app/watch/${n}): ${w.description} Watch page: https://revenuedot.app/watch/${n} . YouTube: ${w.youtube}`;
   });
-  return [heading, "", ...lines, "", "All videos: https://revenuedot.app/watch and https://www.youtube.com/@revenuedot", ""].join("\n");
+  return [heading, "", ...lines, "", "Start free on RevenueDot Cloud: https://app.revenuedot.app/signup", "All videos: https://revenuedot.app/watch and https://www.youtube.com/@revenuedot", ""].join("\n");
 }
 
 /** Puts the status sentence right after the file's opening blockquote (the first blank line after the first `>` line). */
