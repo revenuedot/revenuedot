@@ -1,5 +1,24 @@
 # Onboarding and growth emails (RevenueDot Cloud)
 
+> **v4 (2026-10-05): the program is 11 emails. Everything below that is not in this list was cut.** Kai: the v3 emails were too long and dense, code snippets belong in the docs (an email's copy goes stale when the usage code changes), and a few emails customers love beat many that cause ad fatigue. Each email is now a few lines and links to the docs for the how-to.
+>
+> | Email | Goes to |
+> |---|---|
+> | `welcome` | everyone, 5 minutes after sign-up |
+> | `verify_reminder` | unconfirmed accounts, day 1 |
+> | `connect_app` | test purchase done, SDK not seen |
+> | `store_keys` | SDK seen, no store credentials |
+> | `need_hand` | no SDK call by day 10, one offer of a call |
+> | `side_by_side` | RevenueCat import done, not live |
+> | `first_sale` | first real sale |
+> | `cutover` | migrators, a week after the first live sale |
+> | `upgrade_nudge` | 3 days after the $10,000 email |
+> | `standard_welcome` | Standard started |
+> | `teammate_welcome` | people invited to a project |
+>
+> Cut: first_purchase, checkin, ai_setup, go_live, last_call, switch_plan, import_help, forwarding_check, sandbox_only, upgrade_personal, pricing_explainer, enterprise, standard_canceled, paywalls, experiments, recovery, team, how_going, assistant, referral, went_quiet. The caps (one per 44 hours, three a week) are unchanged.
+
+
 **Status: building (2026-10-03), branch `lifecycle-email`.** Emails to the people who sign up for RevenueDot Cloud, sent on what each account has and has not done yet. Not to be confused with `prd/lifecycle/PRD.md` (win-back and retention emails a developer sends to *their* app's customers).
 
 ## Goal

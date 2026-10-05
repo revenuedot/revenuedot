@@ -70,11 +70,6 @@ interface Step {
 const after = (t: number | null, ms: number) => (t === null ? null : t + ms);
 const notYet = (f: Facts, ...steps: StepId[]) => steps.every((s) => !f.sent.has(s));
 const migrating = (f: Facts) => f.path === "revenuecat" || f.rcImportAt !== null;
-/** Live and past the switch: everyone live, except migrators until their cutover email has gone out. */
-const adopting = (f: Facts, now: number) => f.liveAt !== null && (!migrating(f) || f.sent.has("cutover") || now > f.liveAt + 21 * D);
-/** When adoption emails start counting: going live, or for migrators the cutover email (else 21 days after going live). */
-const adoptAt = (f: Facts) => (!migrating(f) ? f.liveAt! : f.sent.get("cutover") ?? f.liveAt! + 21 * D);
-
 /** The plan, in priority order: when two steps are due, the first one wins and the other waits. */
 export const STEPS: Step[] = [
   { id: "welcome", onboarding: true, anyHour: true, uncapped: true, freshFor: 2 * D, due: (f) => (f.ownsProjects ? f.createdAt + 5 * 60_000 : null) },
@@ -83,46 +78,16 @@ export const STEPS: Step[] = [
   // Celebrations and replies to what just happened.
   { id: "first_sale", anyDay: true, freshFor: 3 * D, due: (f) => f.liveAt },
   { id: "standard_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
-  { id: "standard_canceled", anyDay: true, freshFor: 7 * D, due: (f) => (f.plan === "free" ? f.canceledAt : null) },
   // Switching from RevenueCat: the cutover is the most valuable email of all, so it outranks the rest.
   { id: "cutover", freshFor: 14 * D, due: (f, now) => (migrating(f) && f.liveAt && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
-  // Revenue.
-  { id: "enterprise", freshFor: 20 * D, due: (f, now) => (f.plan !== "enterprise" && f.tracked >= 500_000 ? now : null) },
-  { id: "upgrade_personal", freshFor: 10 * D, due: (f) => (f.plan === "free" && f.free100At !== null && f.sent.has("upgrade_nudge") ? f.free100At + 10 * D : null) },
   { id: "upgrade_nudge", freshFor: 10 * D, due: (f) => (f.plan === "free" && f.free100At !== null ? f.free100At + 3 * D : null) },
-  { id: "pricing_explainer", freshFor: 20 * D, due: (f, now) => (f.plan === "free" && f.tracked >= 5_000 && f.tracked < 10_000 && f.free100At === null ? now : null) },
-  // Switching from RevenueCat, before it is live.
-  { id: "forwarding_check", onboarding: true, freshFor: 7 * D,
-    due: (f) => (f.rcImportAt && !f.liveAt && (f.lastNotificationAt === null || f.lastNotificationAt < f.rcImportAt) ? f.rcImportAt + 5 * D : null) },
   { id: "side_by_side", onboarding: true, freshFor: 7 * D, due: (f) => (f.rcImportAt && !f.liveAt ? f.rcImportAt + D : null) },
-  { id: "switch_plan", onboarding: true, freshFor: 7 * D, due: (f) => (migrating(f) && !f.liveAt && !f.rcImportAt ? f.createdAt + D : null) },
-  { id: "import_help", onboarding: true, freshFor: 6 * D, due: (f) => (migrating(f) && !f.liveAt && !f.rcImportAt ? f.createdAt + 4 * D : null) },
   // Onboarding, by the next missing step.
-  { id: "go_live", onboarding: true, freshFor: 10 * D,
-    due: (f) => (f.storeConnected && !f.liveAt && f.sdkFirstAt ? Math.max(f.sdkFirstAt + 2 * D, f.createdAt + 4 * D, (f.sent.get("store_keys") ?? 0) + 2 * D) : null) },
   { id: "store_keys", onboarding: true, freshFor: 10 * D, due: (f) => (f.sdkFirstAt && !f.storeConnected && !f.liveAt ? f.sdkFirstAt + D : null) },
   { id: "connect_app", onboarding: true, freshFor: 10 * D,
     due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
-  { id: "first_purchase", onboarding: true, freshFor: 4 * D, due: (f) => (!migrating(f) && !f.testPurchaseAt && !f.sdkFirstAt && !f.liveAt ? f.createdAt + D : null) },
-  { id: "checkin", onboarding: true, freshFor: 4 * D, due: (f) => (!migrating(f) && !f.firstAppAt && !f.liveAt ? f.createdAt + 3 * D : null) },
-  { id: "ai_setup", onboarding: true, freshFor: 5 * D, due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt ? f.createdAt + 6 * D : null) },
-  // Migrators without an import already had the offer in import_help.
-  // Live in the sandbox but no real sale two weeks after the go-live checklist: usually a release waiting for review.
-  { id: "sandbox_only", onboarding: true, freshFor: 7 * D, due: (f) => (f.storeConnected && f.testPurchaseAt && !f.liveAt && f.sent.has("go_live") ? f.sent.get("go_live")! + 14 * D : null) },
+  // One offer of a call to anyone stuck for ten days (migrators who have not imported yet get no offer).
   { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt && !(migrating(f) && !f.rcImportAt) ? f.createdAt + 10 * D : null) },
-  { id: "last_call", onboarding: true, freshFor: 9 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt ? f.createdAt + 21 * D : null) },
-  // Adoption, once live. Migrators start once the cutover email has gone out.
-  { id: "paywalls", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && !f.paywallPublishedAt ? adoptAt(f) + 3 * D : null) },
-  { id: "experiments", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && f.paywallPublishedAt && !f.experimentStartedAt ? Math.max(f.paywallPublishedAt + 5 * D, adoptAt(f) + 5 * D) : null) },
-  { id: "recovery", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && !f.recoveryOn ? adoptAt(f) + 10 * D : null) },
-  { id: "team", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && f.verified && f.teammates === 0 ? adoptAt(f) + 12 * D : null) },
-  { id: "how_going", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && f.lastSaleAt && now - f.lastSaleAt < 7 * D ? adoptAt(f) + 14 * D : null) },
-  // Referral (after the "how is it going" note) and win-back.
-  { id: "referral", freshFor: 30 * D,
-    due: (f, now) => (adopting(f, now) && f.lastSaleAt && now - f.lastSaleAt < 7 * D && (!migrating(f) || (f.sent.get("cutover") ?? Infinity) + 14 * D <= now) ? adoptAt(f) + 28 * D : null) },
-  // After the referral, so the four weeks after going live stay light.
-  { id: "assistant", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && !f.assistantConnected && notYet(f, "ai_setup") ? adoptAt(f) + 35 * D : null) },
-  { id: "went_quiet", freshFor: 14 * D, due: (f, now) => (f.liveAt && f.sdkLastAt && now - f.sdkLastAt >= 7 * D && (!f.lastSaleAt || now - f.lastSaleAt >= 7 * D) ? f.sdkLastAt + 7 * D : null) },
 ];
 
 /** Hour (0–23) and weekday (0 = Sunday) in a time zone; an unknown zone falls back to the default. */
@@ -145,7 +110,6 @@ export function inWindow(step: Step, at: number, timeZone: string | null) {
 
 /** The step to send now, or null. Pure: tests drive it with hand-made facts. */
 export function pickStep(f: Facts, now: number, cfg: Pick<JourneyConfig, "since">, only?: StepId[]): StepId | null {
-  if (f.sent.has("last_call") && !f.sdkFirstAt && !f.liveAt) return null;
   // The welcome is sign-up mail: it neither waits for the caps nor counts towards them. The verification reminder skips the
   // caps but counts, so the day-1 nudge does not follow it minutes later.
   const times = [...f.sent.entries()].filter(([k]) => k !== "welcome").map(([, t]) => t);
@@ -329,16 +293,6 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
     await retireTokens(db, "email_verify", f.userId, now);
     const token = await issueToken(db, "email_verify", { id: f.userId, email: f.email }, now);
     c.verifyUrl = `${base}/verify-email?token=${encodeURIComponent(token)}`;
-  }
-  if (step === "referral") {
-    let code = f.referralCode;
-    for (let i = 0; !code && i < 3; i++) {
-      const candidate = randomToken().replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toLowerCase();
-      const [row] = await db.update(schema.users).set({ referralCode: candidate }).where(and(eq(schema.users.id, f.userId), sql`${schema.users.referralCode} IS NULL`)).returning({ c: schema.users.referralCode })
-        .catch(() => [] as { c: string | null }[]);
-      code = row?.c ?? (await db.select({ c: schema.users.referralCode }).from(schema.users).where(eq(schema.users.id, f.userId)))[0]?.c ?? null;
-    }
-    if (code) c.referralUrl = `${base}/signup?ref=${code}`;
   }
   return c;
 }

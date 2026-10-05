@@ -46,95 +46,80 @@ describe("picking the step", () => {
     expect(pickStep(facts({ ...old, liveAt: WED - 4 * D }), WED, cfg)).not.toBe("first_sale");
   });
 
-  it("follows the next missing step of a healthy account", () => {
+  it("nudges only when the next step is missing: connect the app, then the stores", () => {
     const welcomed = sent(["welcome", WED - 3 * D]);
     const created = WED - 3 * D;
-    expect(pickStep(facts({ createdAt: created, sent: welcomed }), WED, cfg)).toBe("first_purchase");
+    // Nothing built yet: a quiet account gets no nudge before day 10.
+    expect(pickStep(facts({ createdAt: created, sent: welcomed }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ createdAt: created, sent: welcomed, firstAppAt: created, testPurchaseAt: WED - 21 * H }), WED, cfg)).toBe("connect_app");
     expect(pickStep(facts({ createdAt: created, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 25 * H, sdk: { platform: "Flutter", version: "9.6.1" } }), WED, cfg)).toBe("store_keys");
-    expect(pickStep(facts({ createdAt: WED - 5 * D, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 3 * D, storeConnected: true }), WED, cfg)).toBe("go_live");
+    // Store connected: nothing more to say until the first sale.
+    expect(pickStep(facts({ createdAt: WED - 5 * D, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 3 * D, storeConnected: true }), WED, cfg)).toBeNull();
+  });
+
+  it("offers a call once, on day 10, to someone whose app never connected", () => {
+    const f = facts({ createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D]) });
+    expect(pickStep(f, WED, cfg)).toBe("need_hand");
+    expect(pickStep({ ...f, sent: sent(["welcome", WED - 10 * D], ["need_hand", WED - H]) }, WED, cfg)).toBeNull();
+    expect(pickStep({ ...f, sdkFirstAt: WED - 2 * D, storeConnected: true }, WED, cfg)).toBeNull();
   });
 
   it("never nudges for a step already done", () => {
     const f = facts({ createdAt: WED - 2 * D, sent: sent(["welcome", WED - 2 * D]), testPurchaseAt: WED - 30 * H, firstAppAt: WED - 31 * H, sdkFirstAt: WED - 2 * H });
-    // Test purchase and SDK both done: neither first_purchase nor connect_app; store_keys waits for its day.
+    // SDK done: no connect_app; store_keys waits for its day.
     expect(pickStep(f, WED, cfg)).toBeNull();
   });
 
-  it("asks what they are building on day 3 when no app exists", () => {
-    const f = facts({ createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D], ["first_purchase", WED - 2 * D]) });
-    expect(pickStep(f, WED, cfg)).toBe("checkin");
-  });
-
-  it("takes the RevenueCat path when the reader chose it or imported", () => {
-    const base = { createdAt: WED - D - H, sent: sent(["welcome", WED - D]) };
-    expect(pickStep(facts({ ...base, path: "revenuecat" }), WED, cfg)).toBe("switch_plan");
+  it("sends a migrator the side-by-side note after the import and no new-developer nudges", () => {
+    const base = { createdAt: WED - 2 * D, sent: sent(["welcome", WED - 2 * D]) };
+    expect(pickStep(facts({ ...base, path: "revenuecat" }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...base, rcImportAt: WED - 25 * H, firstAppAt: WED - D }), WED, cfg)).toBe("side_by_side");
+    // No import after 10 days: no "need help" offer either, since they chose to move from RevenueCat on their own pace.
+    expect(pickStep(facts({ path: "revenuecat", createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D]) }), WED, cfg)).toBeNull();
   });
 
-  it("keeps at most one email every 44 hours and three a week, except the welcome and verification reminder", () => {
-    const f = facts({ createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D], ["first_purchase", WED - MIN_GAP_MS + H]) });
+  it("sends the cutover email a week after a migrator's first live sale, before anything else", () => {
+    const f = { path: "revenuecat" as const, createdAt: WED - 30 * D, rcImportAt: WED - 25 * D, liveAt: WED - 8 * D, lastSaleAt: WED - H, tracked: 6_000 };
+    expect(pickStep(facts(f), WED, cfg)).toBe("cutover");
+    expect(pickStep(facts({ ...f, sent: sent(["cutover", WED - 2 * D]) }), WED, cfg)).toBeNull();
+  });
+
+  it("keeps at most one email every 44 hours, except the welcome and verification reminder", () => {
+    const f = facts({ createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D], ["connect_app", WED - MIN_GAP_MS + H]), firstAppAt: WED - 10 * D });
     expect(pickStep(f, WED, cfg)).toBeNull();
-    expect(pickStep(f, WED + H, cfg)).toBe("checkin");
-    const week = facts({ createdAt: WED - 30 * D, liveAt: WED - 13 * D, lastSaleAt: WED - H, sent: sent(["paywalls", WED - 6 * D], ["recovery", WED - 4 * D], ["team", WED - 2 * D]) });
-    expect(pickStep(week, WED, cfg)).toBeNull();
-    const unverified = facts({ createdAt: WED - 25 * H, verified: false, sent: sent(["welcome", WED - 25 * H], ["first_purchase", WED - 2 * H]) });
+    expect(pickStep(f, WED + H, cfg)).toBe("need_hand");
+    const unverified = facts({ createdAt: WED - 25 * H, verified: false, sent: sent(["welcome", WED - 25 * H]) });
     expect(pickStep(unverified, WED, cfg)).toBe("verify_reminder");
   });
 
   it("holds nudges outside 09:00–17:00 weekdays in the reader's time zone", () => {
-    const f = facts({ createdAt: WED - 3 * D, sent: sent(["welcome", WED - 3 * D]) });
+    const f = facts({ createdAt: WED - 10 * D, sent: sent(["welcome", WED - 10 * D]) });
     const nightInTokyo = { ...f, timeZone: "Asia/Tokyo" }; // 00:00 in Tokyo
     expect(pickStep(nightInTokyo, WED, cfg)).toBeNull();
     const saturday = Date.parse("2026-10-03T15:00:00Z");
-    expect(pickStep({ ...f, createdAt: saturday - 3 * D }, saturday, cfg)).toBeNull();
+    expect(pickStep({ ...f, createdAt: saturday - 10 * D }, saturday, cfg)).toBeNull();
     expect(localTime(WED, "Not/AZone")).toEqual(localTime(WED, "America/New_York"));
     expect(inWindow(STEPS.find((x) => x.id === "first_sale")!, saturday, "America/New_York")).toBe(true);
   });
 
   it("stays quiet within 24 hours of an alert email, except for the welcome", () => {
-    const f = facts({ createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D]), alertAt: WED - 2 * H });
+    const f = facts({ createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D]), alertAt: WED - 2 * H });
     expect(pickStep(f, WED, cfg)).toBeNull();
     expect(pickStep(facts({ alertAt: WED - H }), WED, cfg)).toBe("welcome");
   });
 
-  it("stops onboarding after the last call", () => {
-    const f = facts({ createdAt: WED - 40 * D, sent: sent(["last_call", WED - 19 * D]) });
-    expect(pickStep(f, WED, cfg)).toBeNull();
-  });
-
-  it("walks the upgrade: pricing at $5,000, nudge 3 days after the $10,000 email, then a personal note", () => {
-    const live = { createdAt: WED - 60 * D, liveAt: WED - 50 * D, lastSaleAt: WED - 5 * D, paywallPublishedAt: WED - 40 * D, experimentStartedAt: WED - 30 * D, recoveryOn: true, teammates: 2, assistantConnected: true, sent: sent(["referral", WED - 20 * D]) };
-    expect(pickStep(facts({ ...live, tracked: 6_000 }), WED, cfg)).toBe("pricing_explainer");
+  it("sends the upgrade email 3 days after the $10,000 email, and never to a Standard account", () => {
+    const live = { createdAt: WED - 60 * D, liveAt: WED - 50 * D, lastSaleAt: WED - 5 * D };
     expect(pickStep(facts({ ...live, tracked: 12_000, free100At: WED - 2 * D }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...live, tracked: 12_000, free100At: WED - 3 * D - H }), WED, cfg)).toBe("upgrade_nudge");
-    const nudged = new Map(live.sent); nudged.set("upgrade_nudge", WED - 7 * D);
-    expect(pickStep(facts({ ...live, sent: nudged, tracked: 14_000, free100At: WED - 10 * D - H }), WED, cfg)).toBe("upgrade_personal");
     expect(pickStep(facts({ ...live, tracked: 14_000, free100At: WED - 4 * D, plan: "standard" }), WED, cfg)).toBeNull();
   });
 
-  it("asks how it's going after two live weeks, for a referral after four, and checks in when an app goes quiet", () => {
-    const two = { createdAt: WED - 30 * D, liveAt: WED - 15 * D, paywallPublishedAt: WED - 14 * D, experimentStartedAt: WED - 10 * D, recoveryOn: true, teammates: 1, assistantConnected: true };
-    expect(pickStep(facts({ ...two, lastSaleAt: WED - D, sdkLastAt: WED - H }), WED, cfg)).toBe("how_going");
-    const live = { createdAt: WED - 40 * D, liveAt: WED - 29 * D, sent: sent(["how_going", WED - 14 * D]), paywallPublishedAt: WED - 20 * D, experimentStartedAt: WED - 15 * D, recoveryOn: true, teammates: 1, assistantConnected: true };
-    expect(pickStep(facts({ ...live, lastSaleAt: WED - D, sdkLastAt: WED - H }), WED, cfg)).toBe("referral");
-    expect(pickStep(facts({ ...live, lastSaleAt: WED - 9 * D, sdkLastAt: WED - 8 * D }), WED, cfg)).toBe("went_quiet");
-  });
-
-  it("helps migrators who have not imported, and checks that store notifications are forwarded after an import", () => {
-    const rc = { path: "revenuecat" as const, createdAt: WED - 4 * D - H, sent: sent(["welcome", WED - 4 * D], ["switch_plan", WED - 3 * D]) };
-    expect(pickStep(facts(rc), WED, cfg)).toBe("import_help");
-    // Migrators never get the new-developer nudges.
-    expect(pickStep(facts({ ...rc, createdAt: WED - 6 * D - H, sent: sent(["welcome", WED - 6 * D], ["switch_plan", WED - 5 * D], ["import_help", WED - 2 * D], ["checkin", WED - 2 * D]) }), WED, cfg)).toBeNull();
-    const imported = { createdAt: WED - 8 * D, rcImportAt: WED - 5 * D - H, firstAppAt: WED - 7 * D, sent: sent(["welcome", WED - 8 * D], ["side_by_side", WED - 4 * D]) };
-    expect(pickStep(facts(imported), WED, cfg)).toBe("forwarding_check");
-    expect(pickStep(facts({ ...imported, lastNotificationAt: WED - D }), WED, cfg)).toBeNull();
-  });
-
-  it("holds adoption emails for migrators until the cutover email, which comes first", () => {
-    const f = { path: "revenuecat" as const, createdAt: WED - 30 * D, rcImportAt: WED - 25 * D, liveAt: WED - 8 * D, lastSaleAt: WED - H, tracked: 6_000 };
-    expect(pickStep(facts(f), WED, cfg)).toBe("cutover");
-    expect(pickStep(facts({ ...f, sent: sent(["cutover", WED - 2 * D]) }), WED, cfg)).toBe("pricing_explainer");
+  it("sends nothing to a live account but the one-off emails: no growth tips, referral asks or win-backs", () => {
+    const live = facts({ createdAt: WED - 40 * D, liveAt: WED - 29 * D, lastSaleAt: WED - D, sdkLastAt: WED - H, tracked: 6_000 });
+    expect(pickStep(live, WED, cfg)).toBeNull();
+    expect(pickStep({ ...live, lastSaleAt: WED - 9 * D, sdkLastAt: WED - 8 * D }, WED, cfg)).toBeNull();
+    expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: WED - D }), WED, cfg)).toBeNull();
   });
 
   it("counts the verification reminder towards the 44-hour gap, so day 1 brings one email", () => {
@@ -142,33 +127,7 @@ describe("picking the step", () => {
     expect(pickStep(f, WED, cfg)).toBeNull();
   });
 
-  it("checks in when sandbox purchases work but no real sale came two weeks after the go-live checklist", () => {
-    const f = { createdAt: WED - 25 * D, firstAppAt: WED - 24 * D, testPurchaseAt: WED - 23 * D, sdkFirstAt: WED - 22 * D, storeConnected: true,
-      sent: sent(["welcome", WED - 25 * D], ["go_live", WED - 15 * D]) };
-    expect(pickStep(facts(f), WED, cfg)).toBe("sandbox_only");
-    expect(pickStep(facts({ ...f, sent: sent(["welcome", WED - 25 * D], ["go_live", WED - 10 * D]) }), WED, cfg)).toBeNull();
-  });
-
-  it("asks why when Standard is cancelled", () => {
-    expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: WED - D }), WED, cfg)).toBe("standard_canceled");
-  });
-
-  it("never sends migrators three emails with the same question", () => {
-    const rc = { path: "revenuecat" as const };
-    expect(pickStep(facts({ ...rc, createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D], ["switch_plan", WED - 2 * D]) }), WED, cfg)).toBeNull();
-    expect(pickStep(facts({ ...rc, createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D], ["switch_plan", WED - 9 * D], ["import_help", WED - 6 * D]) }), WED, cfg)).toBeNull();
-    expect(pickStep(facts({ ...rc, rcImportAt: WED - 8 * D, firstAppAt: WED - 9 * D, lastNotificationAt: WED - D, createdAt: WED - 10 * D - H,
-      sent: sent(["welcome", WED - 10 * D], ["switch_plan", WED - 9 * D], ["side_by_side", WED - 7 * D]) }), WED, cfg)).toBe("need_hand");
-  });
-
-  it("starts adoption for a migrator whose cutover email never went out, 21 days after going live", () => {
-    const f = { path: "revenuecat" as const, createdAt: WED - 40 * D, rcImportAt: WED - 35 * D, liveAt: WED - 25 * D, lastSaleAt: WED - 6 * D };
-    expect(pickStep(facts(f), WED, cfg)).toBe("paywalls");
-    expect(pickStep(facts({ ...f, liveAt: WED - 20 * D }), WED, cfg)).toBeNull();
-  });
-
-  it("asks why only after a real cancellation, and thanks Standard once from its first start after launch", () => {
-    expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: null }), WED, cfg)).toBeNull();
+  it("thanks Standard once from its first start after launch", () => {
     expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "standard", planSince: WED - D }), WED, cfg)).toBe("standard_welcome");
   });
 
@@ -373,10 +332,4 @@ describe("templates", () => {
     expect(m.html).not.toContain("<strong style=\"font-weight:600;color:#0A0A0A;\">Admin</strong> added");
   });
 
-  it("shows a video only once its page is live", () => {
-    const base = { app: "https://app.revenuedot.app", first: "Maya", projectId: "p", projectName: "Habitly", unsubscribeUrl: "https://app.revenuedot.app/auth/journeys/unsubscribe/x" };
-    expect(journeyEmail({ ...base, step: "assistant" }).html).toContain(`/email/${VIDEOS["chatgpt-demo"].slug}.jpg`);
-    const ready = VIDEOS["first-purchase"].ready;
-    expect(journeyEmail({ ...base, step: "first_purchase" }).html.includes("/email/revenuedot-first-purchase.jpg")).toBe(ready);
-  });
 });
