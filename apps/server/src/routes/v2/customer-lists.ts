@@ -43,18 +43,23 @@ export function customerListRoutes(r: V2Router, deps: Deps) {
     const now = deps.now();
     const pages = await exportPages(db, c.get("projectId"), q, now);
     if (!pages) throw notFound("Audience");
+    // The rows are written by a task the server keeps alive after the response starts (Workers: waitUntil, which also keeps
+    // the request's database connection open until the last row), so the stream never reads from a closed connection.
     const enc = new TextEncoder();
-    let head = true;
-    const body = new ReadableStream<Uint8Array>({
-      async pull(ctl) {
-        if (head) { head = false; ctl.enqueue(enc.encode(CSV_HEAD)); return; }
-        try {
-          const next = await pages.next();
-          if (next.done) ctl.close(); else ctl.enqueue(enc.encode(csvLines(next.value)));
-        } catch (e) { ctl.error(e); }
-      },
-      async cancel() { await pages.return(undefined); },
-    });
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = writable.getWriter();
+    const write = async () => {
+      try {
+        await writer.write(enc.encode(CSV_HEAD));
+        for await (const rows of pages) await writer.write(enc.encode(csvLines(rows)));
+        await writer.close();
+      } catch (e) {
+        console.error("customer list export failed", e);
+        await writer.abort(e).catch(() => {});
+      }
+    };
+    if (deps.defer) deps.defer(write); else void write();
+    const body = readable;
     const day = now.toISOString().slice(0, 10);
     return c.body(body, 200, {
       "content-type": "text/csv; charset=utf-8",
