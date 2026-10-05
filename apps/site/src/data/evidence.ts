@@ -1177,6 +1177,39 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- RevenueDot ----
+  {
+    vendor: "RevenueDot",
+    page: "pricing",
+    url: "https://revenuedot.app/pricing",
+    captured: DATE,
+    full: asset("revenuedot", "pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("revenuedot", "pricing-full-1-2026-10-04.png"), asset("revenuedot", "pricing-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "plans",
+        file: asset("revenuedot", "pricing-plans-2026-10-04.png"),
+        alt: "RevenueDot pricing: Cloud Free up to $10,000 a month, Cloud Standard 0.5% above $10,000 capped at $999 a month, self-hosting free.",
+        caption: "RevenueDot pricing page, captured 2026-10-04: Cloud free to $10K; Standard 0.5% capped at $999; self-host free.",
+      },
+    ],
+  },
+  {
+    vendor: "RevenueDot",
+    page: "github-revenuedot",
+    url: "https://github.com/revenuedot/revenuedot",
+    captured: DATE,
+    full: asset("revenuedot", "github-revenuedot-full-1-2026-10-04.png"),
+    fullParts: [asset("revenuedot", "github-revenuedot-full-1-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-2-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-3-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-4-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-5-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-6-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-7-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-8-2026-10-04.png"), asset("revenuedot", "github-revenuedot-full-9-2026-10-04.png")],
+    crops: [
+      {
+        claim: "license",
+        file: asset("revenuedot", "github-revenuedot-license-2026-10-04.png"),
+        alt: "GitHub repository page of revenuedot/revenuedot with the AGPL-3.0 license in the About sidebar.",
+        caption: "RevenueDot GitHub page, captured 2026-10-04: Server and dashboard under AGPL-3.0.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */

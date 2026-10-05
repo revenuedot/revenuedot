@@ -253,7 +253,7 @@ export const PAGES = [
   p("purchasely", "github-purchasely-ios", "https://github.com/Purchasely/Purchasely-iOS", { crops: [c("about", "About", "GitHub repository page of Purchasely-iOS; the About sidebar shows no recognized license.", "No recognized license on GitHub", { selector: "h2:has-text('About')", minH: 480, extraBottom: 100 })] }),
 
   // ---- IAPHUB ---------------------------------------------------------------------------------------------------
-  p("iaphub", "home", "https://www.iaphub.com/", { crops: [c("hero", "IAPHUB", "IAPHUB homepage hero.", "Homepage hero", { selector: "h1", minH: 620, maxH: 1100, extraTop: 120 })] }),
+  p("iaphub", "home", "https://www.iaphub.com/", { crops: [c("hero", "THAT JUST WORKS, ON ALL PLATFORMS", "IAPHUB homepage hero: 'The easiest in-app purchase SDK that just works, on all platforms'.", "Homepage hero", { minH: 620, maxH: 1100, extraTop: 160 })] }),
   p("iaphub", "pricing", "https://www.iaphub.com/pricing", { crops: [c("plans", "of MTR (min $59/month)", "IAPHUB pricing plans: Sandbox free, Basic $29 a month until $10k/month, Pro 0.7% of MTR with a $59 monthly minimum (0.6% promotional rate before Nov 15, 2026).", "Basic $29 a month; Pro 0.7% with a $59 minimum", { verify: "0.7%", minH: 700, maxH: 1300 })] }),
   p("iaphub", "github-iaphub-ios-sdk", "https://github.com/iaphub/iaphub-ios-sdk", { crops: [c("mit-license", "MIT license", "GitHub repository page of iaphub-ios-sdk with the MIT license in the About sidebar.", "The iOS SDK is MIT licensed", { minH: 420 })] }),
 
