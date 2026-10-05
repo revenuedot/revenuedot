@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { accountServer } from "./account-helpers.js";
 import { inWindow, localTime, MIN_GAP_MS, pickStep, runJourneys, STEPS, type Facts, type JourneyConfig } from "../src/services/journeys.js";
-import { journeyEmail, STEP_IDS, VIDEOS, type StepId } from "../src/mail/journeys.js";
+import { journeyEmail, STEP_IDS, VIDEOS, videoUrl, type StepId } from "../src/mail/journeys.js";
 
 type S = Awaited<ReturnType<typeof accountServer>>;
 let s: S | undefined;
@@ -332,4 +332,10 @@ describe("templates", () => {
     expect(m.html).not.toContain("<strong style=\"font-weight:600;color:#0A0A0A;\">Admin</strong> added");
   });
 
+  it("links a video's own page first and keeps its YouTube copy as a separate address", () => {
+    for (const id of Object.keys(VIDEOS) as (keyof typeof VIDEOS)[]) {
+      expect(videoUrl(id)).toBe("https://revenuedot.app/watch/" + VIDEOS[id].slug);
+      expect(VIDEOS[id].youtube).toMatch(/^https:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}$/);
+    }
+  });
 });

@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { SITE } from "../site";
 import { PLANS } from "../lib/pricing";
-import { llmsFile, textResponse } from "../lib/llms";
+import { llmsFile, textResponse, videosSection, withStatus } from "../lib/llms";
 import { TOOLS, ALTERNATIVES, CHART_PAGES, COMPARISONS, INTEGRATIONS, LANDINGS, SECTIONS, chartPath, comparePath, integrationPath, landingPath } from "../data";
 import { plain } from "../lib/md";
 import { GLOSSARY } from "../data/glossary";
@@ -30,6 +30,7 @@ export const GET: APIRoute = () => {
     `- [Security](${u("/security")}): report vulnerabilities to ${SITE.email.security}`,
     `- [Licensing and trademarks](${u("/legal/licensing")})`,
     "",
+    videosSection("## Videos"),
     "## Free tools",
     "",
     ...TOOLS.map((t) => `- [${t.title}](${u(t.path)}): ${t.card}`),
@@ -62,7 +63,7 @@ export const GET: APIRoute = () => {
     "",
     "",
   ].join("\n");
-  const docs = llmsFile("llms.txt").trimEnd() + "\n";
+  const docs = withStatus(llmsFile("llms.txt")).trimEnd() + "\n";
   const at = docs.indexOf("\n## Optional\n");
   return textResponse(at < 0 ? `${docs}\n${site}` : `${docs.slice(0, at + 1)}${site}${docs.slice(at + 1)}`);
 };

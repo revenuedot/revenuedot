@@ -22,18 +22,18 @@ export const JOURNEY_REPLY_TO = "hello@revenuedot.app";
 export type VideoId = "first-purchase" | "connect-your-app" | "switch-from-revenuecat" | "paywalls-and-experiments" | "chatgpt-demo";
 
 /**
- * Tutorial videos shown as a playable cover. `youtube` wins once the video is published there; until then the cover opens
- * the video's page on revenuedot.app. Covers (1200×675 JPEG, play button and length drawn in) live in apps/site/public/email/.
+ * Tutorial videos shown as a playable cover. The cover opens the video's page on revenuedot.app; `youtube` is the same
+ * video on our channel, offered as a small secondary link next to the title. Covers (1200×675 JPEG, play button and length drawn in) live in apps/site/public/email/.
  * `ready`: the video has its /watch page and cover live; until then the picture block shows nothing for it.
  */
-export const VIDEOS: Record<VideoId, { title: string; length: string; slug: string; youtube?: string; ready: boolean }> = {
-  "first-purchase": { title: "Your first purchase in 5 minutes", length: "1:18", slug: "revenuedot-first-purchase", ready: true },
-  "connect-your-app": { title: "Connect your app to RevenueDot", length: "1:17", slug: "revenuedot-connect-your-app", ready: true },
-  "switch-from-revenuecat": { title: "Switch from RevenueCat without losing a renewal", length: "1:34", slug: "revenuedot-switch-from-revenuecat", ready: true },
-  "paywalls-and-experiments": { title: "Build a paywall and test it", length: "1:04", slug: "revenuedot-paywalls-and-experiments", ready: true },
-  "chatgpt-demo": { title: "Run your subscriptions from ChatGPT", length: "1:27", slug: "revenuedot-chatgpt-demo", ready: true },
+export const VIDEOS: Record<VideoId, { title: string; length: string; slug: string; youtube: string; ready: boolean }> = {
+  "first-purchase": { youtube: "https://www.youtube.com/watch?v=1YLygdbWOKM", title: "Your first purchase in 5 minutes", length: "1:18", slug: "revenuedot-first-purchase", ready: true },
+  "connect-your-app": { youtube: "https://www.youtube.com/watch?v=M_D0YodECkU", title: "Connect your app to RevenueDot", length: "1:17", slug: "revenuedot-connect-your-app", ready: true },
+  "switch-from-revenuecat": { youtube: "https://www.youtube.com/watch?v=Smjskzwwo7o", title: "Switch from RevenueCat without losing a renewal", length: "1:34", slug: "revenuedot-switch-from-revenuecat", ready: true },
+  "paywalls-and-experiments": { youtube: "https://www.youtube.com/watch?v=daXVK_4XD8I", title: "Build a paywall and test it", length: "1:04", slug: "revenuedot-paywalls-and-experiments", ready: true },
+  "chatgpt-demo": { youtube: "https://www.youtube.com/watch?v=bq8JAlei4x8", title: "Run your subscriptions from ChatGPT", length: "1:27", slug: "revenuedot-chatgpt-demo", ready: true },
 };
-export const videoUrl = (id: VideoId) => VIDEOS[id].youtube ?? `${SITE}/watch/${VIDEOS[id].slug}`;
+export const videoUrl = (id: VideoId) => `${SITE}/watch/${VIDEOS[id].slug}`;
 export const videoCover = (id: VideoId) => `${SITE}/email/${VIDEOS[id].slug}.jpg`;
 
 /** Dashboard screenshots (apps/site/scripts/email-shots.mjs) and renders of our own emails (scripts/email-art.ts). */
@@ -355,7 +355,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
         const href = tag(v ? videoUrl(v) : b.href ?? `${c.app}/`, s);
         const alt = v ? `Play the video: ${VIDEOS[v].title} (${VIDEOS[v].length})` : b.art ? ART_ALT[b.art] : SHOT_ALT[b.shot!];
         const caption = v
-          ? `<a href="${esc(href)}" style="color:${INK};text-decoration:none;">&#9654;&nbsp; <strong style="font-weight:700;">Watch: ${esc(VIDEOS[v].title)}</strong> <span style="font-family:${MONO};font-size:12px;color:${FG3};">${VIDEOS[v].length}</span></a>${b.caption ? `<br><span style="color:${FG3};">${h(b.caption)}</span>` : ""}`
+          ? `<a href="${esc(href)}" style="color:${INK};text-decoration:none;">&#9654;&nbsp; <strong style="font-weight:700;">Watch: ${esc(VIDEOS[v].title)}</strong> <span style="font-family:${MONO};font-size:12px;color:${FG3};">${VIDEOS[v].length}</span></a> <a href="${esc(VIDEOS[v].youtube)}" style="font-size:12px;color:${FG3};text-decoration:underline;">on YouTube</a>${b.caption ? `<br><span style="color:${FG3};">${h(b.caption)}</span>` : ""}`
           : b.caption ? `<span style="color:${FG3};">${h(b.caption)}</span>` : "";
         return row(`<a href="${esc(href)}" style="display:block;text-decoration:none;"><img src="${esc(src)}" width="520" alt="${esc(alt)}" style="display:block;width:100%;max-width:520px;height:auto;border:1px solid ${BORDER};outline:none;background:${PANEL};font-family:${FONT};font-size:14px;color:${FG2};"></a>` +
           (caption ? `<p style="margin:10px 0 0;font-size:14px;line-height:20px;color:${INK};">${caption}</p>` : ""), 26);
@@ -407,7 +407,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
       case "lead": case "p": return [t(b.text), ""];
       case "h2": return [b.text.toUpperCase(), ""];
       case "progress": return [progressItems(b.current).map((x) => `[${x.done ? "x" : " "}] ${x.label}`).join("\n"), ""];
-      case "picture": { const v = b.video && VIDEOS[b.video].ready ? b.video : null; return v ? [`Watch: ${VIDEOS[v].title} (${VIDEOS[v].length}): ${tag(videoUrl(v), s)}`, ""] : []; }
+      case "picture": { const v = b.video && VIDEOS[b.video].ready ? b.video : null; return v ? [`Watch: ${VIDEOS[v].title} (${VIDEOS[v].length}): ${tag(videoUrl(v), s)}`, `On YouTube: ${VIDEOS[v].youtube}`, ""] : []; }
       case "stat": return [`${b.value} ${t(b.label)}`, ""];
       case "receipt": return [b.title, ...b.rows.map(([k, v]) => `${k}: ${v}`), ""];
       case "cards": return [...b.items.map((x) => `${t(x.title)}: ${t(x.text)}${x.link ? ` ${x.link.label}: ${tag(x.link.url, s)}` : ""}`), ""];
