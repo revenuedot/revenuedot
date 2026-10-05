@@ -30,7 +30,7 @@ const jsonld = [{
       <p class="label">Video · {length}</p>
       <h1 class="h2 title">{w.heading}</h1>
       {chapters ? (
-        <div class="player"><TourPlayer name={name} seconds={w.seconds} location="watch" /></div>
+        <div class="player"><TourPlayer name={name} seconds={w.seconds} location="watch" eager /></div>
       ) : (
         <div class="shot stream player">
           <iframe src={playerUrl(name)} title={v.title} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
