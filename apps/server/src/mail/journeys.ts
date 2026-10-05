@@ -101,6 +101,8 @@ export interface JourneyCtx {
   lastSaleAt?: Date | null;
   referralUrl?: string;
   inviter?: string | null;
+  /** The recipient, for the footer's "This landed in …" line. */
+  to?: string;
 }
 
 /** The building blocks an email is made of. */
@@ -512,40 +514,40 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
 
   paywalls: (c) => ({
     look: "rich",
-    subject: "89% of trials start on install day. Is your paywall ready?",
-    preheader: "Start from a paywall pattern that has worked for other apps, and change it from the dashboard.",
+    subject: "Hard paywall or free first? What the data says",
+    preheader: "Hard-paywall apps convert about five times more users. Here's when free first still wins.",
     eyebrow: "Grow your revenue",
-    heading: "Install day decides most of your trials",
+    heading: "Hard paywall or free first?",
     blocks: [
-      { t: "stat", value: "89.4%", label: "of trial starts happen on install day (Adapty, 2026)" },
-      { t: "lead", text: "Most people decide on the day they install, usually on one screen. RevenueDot lets you build that screen from a proven pattern and change it from the dashboard." },
-      { t: "picture", video: "paywalls-and-experiments" },
-      { t: "h2", text: "Four patterns to start from" },
-      { t: "defs", items: [
-        { term: "Trial timeline", text: "Today, the reminder day and the charge day, then the plans. Blinkist saw **+23% trial conversions** after explaining its trial this way." },
-        { term: "Annual first", text: "Benefits, then yearly and monthly with yearly selected and a savings badge." },
-        { term: "Feature hero", text: "A full-width image, five benefits with icons and the plans side by side." },
-        { term: "Free vs Pro", text: "A short comparison of what the free plan and Pro include." },
-      ] },
+      { t: "lead", text: `Quick question: does ${proj(c)} ask for a subscription before people use it (a hard paywall), or let them use a free version first (freemium)?` },
+      { t: "p", text: "There's no universal answer, but across the median app the numbers are hard to ignore:" },
+      { t: "table", head: ["", "Hard paywall", "Freemium"], rows: [["Paying by day 35", "10.7%", "2.1%"], ["Revenue per install, day 60", "$3.09", "$0.38"], ["Yearly subscribers after a year", "27%", "28%"], ["Refund rate", "5.8%", "3.4%"]],
+        note: "Medians from RevenueCat's State of Subscription Apps 2026 (refunds: 2025 edition)." },
+      { t: "p", text: "Free first still wins when your growth comes from the free tier, such as users who invite friends or share what they make. For most other apps, the offer belongs in the first session: about 89% of trials start on install day." },
+      { t: "p", text: "The hard paywall's cost is refunds, so make the terms impossible to miss. For example, a trial timeline: **Today: full access. Day 2: we remind you. Day 3: you're charged $39.99 a year.**" },
+      { t: "picture", video: "paywalls-and-experiments", caption: "Build that paywall from a template, then test it." },
       { t: "callout", text: "**One release first.** Your app needs one update that shows paywalls with RevenueCatUI's `PaywallView` (iOS SDK 5.83 or later). After that, every change reaches your app on its next launch." },
-      { t: "button", label: "Pick a template", url: dash(c, "/paywalls/templates"), secondary: { label: "What the data says about paywalls", url: `${SITE}/blog/paywall-best-practices-2026` } },
+      { t: "button", label: "Pick a paywall template", url: dash(c, "/paywalls/templates"), secondary: { label: "Read the full comparison", url: `${SITE}/blog/hard-paywall-vs-freemium` } },
     ],
   }),
 
   experiments: (c) => ({
     look: "rich",
-    subject: "Three paywall tests worth running first",
-    preheader: "Show new customers two versions and see which earns more per customer.",
+    subject: "Annual first or monthly first?",
+    preheader: "The plan you select by default shapes what people buy. An experiment settles which one is right for you.",
     eyebrow: "Grow your revenue",
-    heading: "What to test first",
+    heading: "Annual first or monthly first?",
     blocks: [
-      { t: "lead", text: "Your paywall is live, so the next lift usually comes from a test. RevenueDot splits new customers between two versions and shows which one earns more." },
+      { t: "lead", text: `Quick question: on ${proj(c)}'s paywall, which plan is selected when it opens, annual or monthly?` },
+      { t: "p", text: "The default shapes both how many people start and how much each one pays, and the right answer differs from app to app. That's what an experiment settles: RevenueDot shows each version to part of your new customers and tells you which earns more." },
+      { t: "p", text: "Example: **Annual first** against **Monthly first**, each shown to half of your new customers until both have enough data." },
+      { t: "h2", text: "Three tests worth running first" },
       { t: "cards", items: [
-        { title: "Annual first or monthly first", text: "The same plans in another order; the first is the one selected. Judged on how many start a purchase." },
-        { title: "A longer or shorter trial", text: "Each plan swapped for a store product with another trial length, which you create in App Store Connect or Google Play first. Judged on how many end up paying." },
-        { title: "A new paywall design", text: "A copy of your paywall to change freely. Judged on how many start a purchase." },
+        { title: "Plan order", text: "The same plans in another order; the first is the one selected. Judged on how many start a purchase." },
+        { title: "Trial length", text: "Each plan swapped for a store product with another trial length, which you create in App Store Connect or Google Play first. Judged on how many end up paying." },
+        { title: "Paywall design", text: "A copy of your paywall to change freely. Judged on how many start a purchase." },
       ] },
-      { t: "p", text: "Results show the lift for each metric with a confidence interval, and the chance each version beats the other. Let a test run until it has enough customers in each version; RevenueDot tells you when." },
+      { t: "p", text: "Results show the lift with a confidence interval and the chance each version wins, and RevenueDot tells you when a test has enough customers to read." },
       { t: "picture", shot: "experiments", href: dash(c, "/experiments"), caption: "Each test starts from a template that fills in its metrics." },
       { t: "button", label: "Start an experiment", url: dash(c, "/experiments/new"), secondary: { label: "How experiments work", url: docs("guides/experiments") } },
     ],
@@ -553,12 +555,13 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
 
   recovery: (c) => ({
     look: "rich",
-    subject: "Some of your subscribers didn't mean to leave",
+    subject: "What happens when a subscriber's card fails?",
     preheader: "When a renewal fails, email the customer a link to fix their payment, in your app's name.",
     eyebrow: "Grow your revenue",
     heading: "Save renewals that fail",
     blocks: [
-      { t: "lead", text: "When a renewal fails because a card expired or a bank declined it, the customer usually didn't choose to leave. Apple and Google retry the charge for a while; RevenueDot can also ask the customer to fix it." },
+      { t: "lead", text: `Quick question: what happens today when a ${proj(c)} subscriber's card fails at renewal?` },
+      { t: "p", text: "Usually the card expired or the bank said no, and the customer never chose to leave. Apple and Google retry the charge for a while. RevenueDot can also ask the customer to fix it, with an email in your app's name." },
       { t: "picture", art: "recovery-email", href: dash(c, "/lifecycle/payment-recovery"), caption: "What your customer receives, from your app's name. You can edit every word." },
       { t: "h2", text: "How it works" },
       { t: "defs", items: [
@@ -751,9 +754,10 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
   const s = c.step;
   const t = (x: string) => inline(x, s, "text");
   const h = (x: string) => inline(x, s, "html");
+  const where = c.to ? `This landed in ${c.to} because you` : "You're getting this because you";
   const reason = ONBOARDING.has(s)
-    ? "You're getting this because you signed up for RevenueDot Cloud. Setup emails stop once your app is live."
-    : "You're getting this because you have a RevenueDot Cloud account.";
+    ? `${where} signed up for RevenueDot Cloud. Setup emails stop once your app is live.`
+    : `${where} have a RevenueDot Cloud account.`;
   const prefs = tag(`${c.app}/account/notifications`, s);
   const pad = "&#8203;&nbsp;".repeat(Math.max(0, 110 - m.preheader.length));
   const row = (inner: string, bottom = 22) => `<tr><td style="padding:0 0 ${bottom}px;">${inner}</td></tr>`;
@@ -867,7 +871,10 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
     `<body style="margin:0;padding:0;background:#FFFFFF;"><div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(m.preheader)}${pad}</div>` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;"><tr><td align="center" style="padding:28px 16px;">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;font-family:${FONT};">`;
-  const foot = `<tr><td style="border-top:1px solid ${BORDER};padding:18px 0 0;font-size:12px;line-height:18px;color:${FG3};">${esc(reason)}<br>RevenueDot &middot; <a href="${esc(prefs)}" style="color:${FG3};">Email preferences</a> &middot; <a href="${esc(c.unsubscribeUrl)}" style="color:${FG3};">Unsubscribe</a></td></tr></table></td></tr></table></body></html>`;
+  const flink = (label: string, url: string) => `<a href="${esc(tag(url, s))}" style="color:${FG3};">${label}</a>`;
+  const foot = `<tr><td style="border-top:1px solid ${BORDER};padding:18px 0 0;font-size:12px;line-height:18px;color:${FG3};">${esc(reason)} ` +
+    `If you'd rather not get these emails, <a href="${esc(c.unsubscribeUrl)}" style="color:${FG3};">unsubscribe</a> or change your <a href="${esc(prefs)}" style="color:${FG3};">email preferences</a>.` +
+    `<br><br>RevenueDot &middot; ${flink("Docs", `${SITE}/docs`)} &middot; ${flink("Blog", `${SITE}/blog`)} &middot; ${flink("GitHub", "https://github.com/revenuedot/revenuedot")}</td></tr></table></td></tr></table></body></html>`;
 
   let html: string;
   if (m.look === "note") {

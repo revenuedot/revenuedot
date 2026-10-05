@@ -20,7 +20,7 @@ const token = "preview-token-0123456789abcdef";
 
 /** The account each email is shown for: a Flutter habit app founder, the persona most of these emails speak to. */
 const base = (step: StepId): JourneyCtx => ({
-  step, app, first: "Maya", projectId: "proj_hab1t5", projectName: "Habitly",
+  step, app, first: "Maya", projectId: "proj_hab1t5", projectName: "Habitly", to: "maya@habitly.app",
   unsubscribeUrl: `${app}/auth/journeys/unsubscribe/${token}`,
   pathUrl: (p) => `${app}/auth/journeys/path/${token}?path=${p}`,
   verifyUrl: `${app}/verify-email?token=${token}`,

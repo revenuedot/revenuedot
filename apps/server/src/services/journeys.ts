@@ -290,7 +290,7 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
   const rc = (r: number) => (r >= 2_500 ? Math.round(r) / 100 : 0);
   const member = !f.ownsProjects && f.memberOf;
   const c: JourneyCtx = {
-    step, app: base, first: firstName(f.name), unsubscribeUrl,
+    step, app: base, first: firstName(f.name), unsubscribeUrl, to: f.email,
     projectId: member ? f.memberOf!.projectId : f.projectId, projectName: member ? f.memberOf!.projectName : f.projectName,
     testPurchase: f.testPurchaseAt !== null, sdk: f.sdk, importedCustomers: f.importedCustomers, lastSaleAt: f.lastSaleAt ? new Date(f.lastSaleAt) : null,
     tracked: f.tracked, month: now.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }),
