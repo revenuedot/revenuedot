@@ -4,6 +4,7 @@
 export const STREAM = "https://customer-fmxk2rh71xv35llp.cloudflarestream.com";
 
 export const VIDEOS = {
+  "revenuedot-platform-demo": { uid: "4122bc21c1ebbdd9019d9003326be207", title: "RevenueDot in 2 minutes 32: switch from RevenueCat in one line, run every subscription from one dashboard, self-host or Cloud with a bill that stops at $999 a month" },
   "revenuedot-chatgpt-demo": { uid: "268e07161316f8ff9857a94fe1c7d195", title: "87-second demo: RevenueDot running a subscription app from ChatGPT" },
   "revenuedot-first-purchase": { uid: "e38ce0c11f5a379b85897f5bde1bf711", title: "78-second tutorial: your first in-app purchase with RevenueDot in 5 minutes, no server and no App Store account" },
   "revenuedot-switch-from-revenuecat": { uid: "25e90e770134f68c17f037fe5650a0d9", title: "94-second tutorial: switch from RevenueCat to RevenueDot without losing a renewal: import, run both side by side, cut over" },
@@ -17,6 +18,12 @@ export const VIDEOS = {
  * links to YouTube too). `seconds` and `date` feed the VideoObject structured data.
  */
 export const WATCH = {
+  "revenuedot-platform-demo": {
+    heading: "RevenueDot in two and a half minutes", seconds: 152, date: "2026-10-05", youtube: null,
+    description: "The whole platform in 2:32: switch from RevenueCat in one line, import and verify, charts, customers, paywalls, experiments, refunds, enterprise, self-host and the $999 cap.",
+    summary: "The 1% fee problem, then the fix: change one Purchases.proxyURL line, import your RevenueCat data and verify it, and run everything from one dashboard: Overview, 43 charts, the customer page, the paywall editor, experiment results, refund rules and payment recovery, enterprise SSO and roles, self-hosting with Docker, and a Cloud bill that never passes $999 a month.",
+    next: { label: "Start free on Cloud", href: "https://app.revenuedot.app/signup" },
+  },
   "revenuedot-connect-your-app": {
     heading: "Connect your app to RevenueDot", seconds: 77, date: "2026-10-05", youtube: null,
     description: "Connect an iOS, Android, React Native or Flutter app to RevenueDot: the SDK URL, the signature check and your key.",
