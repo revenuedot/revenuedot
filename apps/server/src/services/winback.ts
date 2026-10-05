@@ -109,7 +109,7 @@ async function specOf(db: DB, c: CampaignRow): Promise<WinbackCountSpec> {
   let audienceRules: Rules | null = null;
   if (a.audience_id) {
     const [aud] = await db.select().from(schema.audiences).where(and(eq(schema.audiences.projectId, c.projectId), eq(schema.audiences.id, a.audience_id))).limit(1);
-    audienceRules = aud ? aud.rules as Rules : { groups: [{ conditions: [{ field: "customerId", operator: "is", value: "\u0000none" }] }] };
+    audienceRules = aud ? aud.rules as Rules : { groups: [{ conditions: [{ field: "customerId", operator: "is", value: "$RevenueDot:deleted-audience" }] }] };
   }
   return { campaign_id: c.id, audience: a, audience_rules: audienceRules };
 }
@@ -131,13 +131,23 @@ export const winbackCounter = {
   add(acc: { eligible: number }, i: LoadedContext, s: WinbackCountSpec, now: Date, p: WinbackPrep) { acc.eligible += selectCandidates([i], s.audience, now.getTime(), p).length; },
 };
 
-/** Everyone the campaign would email now, over every customer of the project, a page at a time. */
-export async function candidatesFor(db: DB, c: CampaignRow, now: Date) {
+/**
+ * Who the campaign would email now, over every customer of the project, a page at a time. `max` stops the scan once that
+ * many are found (`complete` is then false); `sendable` keeps only candidates the email has an offer link for.
+ */
+export async function candidatesFor(db: DB, c: CampaignRow, now: Date, o: { max?: number; sendable?: boolean } = {}) {
   const spec = await specOf(db, c);
   const prep = await prepOf(db, c.projectId, spec);
+  const max = o.max ?? Infinity;
   const candidates: Candidate[] = [];
-  for await (const page of contextPages(db, c.projectId, now, CANDIDATE_FILTER)) candidates.push(...selectCandidates(page.items, spec.audience, now.getTime(), prep));
-  return { candidates };
+  for await (const page of contextPages(db, c.projectId, now, CANDIDATE_FILTER)) {
+    for (const cand of selectCandidates(page.items, spec.audience, now.getTime(), prep)) {
+      if (o.sendable && !offerUrlFor(offerOf(c), cand)) continue;
+      candidates.push(cand);
+      if (candidates.length >= max) return { candidates, complete: false };
+    }
+  }
+  return { candidates, complete: true };
 }
 
 /** The preview: the exact eligible count (counted now, or by the tick in a large project) and 10 recently seen candidates. */
@@ -169,7 +179,6 @@ export function renderFor(c: CampaignRow, appName: string, base: string, tok: st
 export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string, limit = MAX_PER_RUN): Promise<{ sent: number; failed: number; skipped: number; done: boolean }> {
   const { db } = deps;
   const now = deps.now();
-  const { candidates } = await candidatesFor(db, c, now);
   const [project] = await db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, c.projectId));
   const support = await supportSettingsFor(db, c.projectId);
   const replyTo = isEmailAddress(support.email) && !support.email.endsWith("@example.com") ? support.email : undefined;
@@ -177,6 +186,8 @@ export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string, 
   const [{ n: lastDay }] = await db.select({ n: count() }).from(schema.winbackSends)
     .where(and(eq(schema.winbackSends.projectId, c.projectId), gte(schema.winbackSends.sentAt, new Date(now.getTime() - DAY)))) as [{ n: number }];
   limit = Math.min(limit, PROJECT_DAILY_MAX - Number(lastDay));
+  // Reads the project only until this run's emails are found (a large project is never read whole in one tick).
+  const { candidates, complete } = limit > 0 ? await candidatesFor(db, c, now, { max: limit, sendable: true }) : { candidates: [], complete: true };
   let sent = 0, failed = 0, skipped = 0, looked = 0;
   for (const cand of candidates) {
     if (sent + failed >= limit) break;
@@ -195,7 +206,7 @@ export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string, 
     if (ok) sent++;
     else { failed++; await db.update(schema.winbackSends).set({ error: "The mailer did not accept the email." }).where(eq(schema.winbackSends.id, inserted[0]!.id)); }
   }
-  return { sent, failed, skipped, done: limit <= 0 || looked >= candidates.length };
+  return { sent, failed, skipped, done: limit <= 0 || (complete && looked >= candidates.length) };
 }
 
 /**

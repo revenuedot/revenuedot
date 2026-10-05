@@ -51,7 +51,7 @@ const displayIdSql = sql`(CASE WHEN left(c.original_app_user_id, 15) <> ${ANON} 
   ELSE coalesce((SELECT min(a.app_user_id COLLATE "C") FROM customer_aliases a WHERE a.customer_id = c.id AND left(a.app_user_id, 15) <> ${ANON}), c.original_app_user_id) END)`;
 
 /** The subscription a row's status and auto-renewal come from: the active one (sandbox too) that expires last. */
-const leadSql = (now: Date, col: SQL) => sql`(SELECT ${col} FROM subscriptions s WHERE s.customer_id = c.id AND s.store <> 'promotional' AND ${activeSql(now)} ORDER BY s.expires_date DESC NULLS FIRST LIMIT 1)`;
+const leadSql = (now: Date, col: SQL) => sql`(SELECT ${col} FROM subscriptions s WHERE s.customer_id = c.id AND s.store <> 'promotional' AND ${activeSql(now)} ORDER BY s.expires_date DESC NULLS FIRST, s.id COLLATE "C" DESC LIMIT 1)`;
 
 /**
  * Sort value `k` of each sort column and `nk`, which puts rows without a value last in both directions (anonymous IDs
@@ -96,9 +96,11 @@ export async function orderedPage(db: DB, projectId: string, now: Date, q: Order
     const op = asc ? sql`>` : sql`<`;
     const found = rowsOf<{ id: string }>(await db.execute(sql`${base} SELECT id FROM base WHERE id = ${after}`));
     if (!found.length) return null;
+    // The default order compares as a row, so the customers (project_id, last_seen, id) index jumps to the cursor.
+    const after_ = !q.sort ? sql`(b.ls, b.id) < (cur.ls, cur.id)`
+      : sql`b.nk > cur.nk OR (b.nk = cur.nk AND (b.k ${op} cur.k OR (b.k IS NOT DISTINCT FROM cur.k AND (b.ls < cur.ls OR (b.ls = cur.ls AND b.id < cur.id)))))`;
     ids = rowsOf<{ id: string }>(await db.execute(sql`${base}
-      SELECT b.id FROM base b, (SELECT nk, k, ls, id FROM base WHERE id = ${after}) cur
-      WHERE b.nk > cur.nk OR (b.nk = cur.nk AND (b.k ${op} cur.k OR (b.k IS NOT DISTINCT FROM cur.k AND (b.ls < cur.ls OR (b.ls = cur.ls AND b.id < cur.id)))))
+      SELECT b.id FROM base b, (SELECT nk, k, ls, id FROM base WHERE id = ${after}) cur WHERE ${after_}
       ${order}`)).map((r) => r.id);
   } else {
     ids = rowsOf<{ id: string }>(await db.execute(sql`${base} SELECT b.id FROM base b ${order}`)).map((r) => r.id);

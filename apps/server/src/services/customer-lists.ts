@@ -51,7 +51,8 @@ export function displayId(original: string, aliases: string[]): string {
 export function rowOf(i: LoadedContext, now: Date): ListRow {
   const d = i.data;
   const real = d.subs.filter((s) => s.store !== "promotional");
-  const active = real.filter((s) => subActive(s, now)).sort((a, b) => (b.expiresDate?.getTime() ?? Infinity) - (a.expiresDate?.getTime() ?? Infinity));
+  // The active subscription that expires last (none: never), then the highest id: the same one SQL picks (customer-scan.ts).
+  const active = real.filter((s) => subActive(s, now)).sort((a, b) => (b.expiresDate?.getTime() ?? Infinity) - (a.expiresDate?.getTime() ?? Infinity) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
   const lead = active[0];
   let status: ListRow["subscription_status"] = real.length ? "expired" : "none";
   if (lead) {
@@ -85,26 +86,36 @@ async function resolve(db: DB, projectId: string, q: ListQuery): Promise<Resolve
 const matches = (r: Resolved, i: LoadedContext, now: Date) => inBuiltIn(r.builtIn, i, now)
   && (!r.audienceRules || rulesMatch(i.ctx, r.audienceRules, now.getTime())) && (!r.q.rules || rulesMatch(i.ctx, r.q.rules, now.getTime()));
 
+/** A list page with audience conditions reads at most this many pages (20,000 customers) before it answers. */
+export const LIST_SCAN_PAGES = 20;
+/** The CSV export writes at most this many rows and reads at most EXPORT_SCAN_PAGES pages, inside the Worker's CPU limit. */
+export const EXPORT_MAX_ROWS = 100_000;
+export const EXPORT_SCAN_PAGES = 200;
+
+interface Chunk { rows: ListRow[]; last: string; end: boolean }
+
 /**
- * Matching rows in list order after customer `after`, up to `limit` (`null`: to the end), streamed in pages. Without
- * audience conditions SQL picks the rows; with them pages of 1,000 customers are read until enough match.
- * Yields `null` once when `after` is not in the list.
+ * Matching rows in list order after customer `after`, up to `limit`, a page at a time. Without audience conditions SQL
+ * picks the rows; with them pages of 1,000 customers are read until enough match or `maxPages` pages were read. Each
+ * chunk says the last customer read (a valid `starting_after`) and whether the list ended. Yields `null` once when
+ * `after` is not in the list.
  */
-async function* matchingRows(db: DB, projectId: string, r: Resolved, now: Date, after: string | null, limit: number | null): AsyncGenerator<ListRow[] | null> {
+async function* matchingRows(db: DB, projectId: string, r: Resolved, now: Date, after: string | null, limit: number, maxPages: number): AsyncGenerator<Chunk | null> {
   const catalog = await projectCatalog(db, projectId);
   const oq = { filter: { list: r.builtIn, search: r.q.search }, sort: r.q.sort ?? null, direction: r.q.direction };
-  let cursor = after, left = limit ?? Infinity;
-  while (left > 0) {
-    const size = r.js || limit === null ? PAGE_SIZE : Math.min(left, PAGE_SIZE);
+  let cursor = after, left = limit;
+  for (let p = 0; left > 0 && p < maxPages; p++) {
+    const size = r.js ? PAGE_SIZE : Math.min(left, PAGE_SIZE);
     const page = await orderedPage(db, projectId, now, oq, cursor, size);
     if (!page) { if (cursor === after) yield null; return; }
-    if (!page.length) return;
+    if (!page.length) { yield { rows: [], last: cursor ?? "", end: true }; return; }
     const ctxs = await contextsFor(db, projectId, page, now, catalog);
     const rows = ctxs.filter((i) => !r.js || matches(r, i, now)).slice(0, left).map((i) => rowOf(i, now));
     left -= rows.length;
-    if (rows.length) yield rows;
-    if (page.length < size) return;
     cursor = page[page.length - 1]!.id;
+    const end = page.length < size;
+    yield { rows, last: cursor, end };
+    if (end) return;
   }
 }
 
@@ -137,24 +148,32 @@ async function summaryOf(db: DB, projectId: string, r: Resolved, now: Date, inli
   };
 }
 
-/** One page of the list (`limit` rows after customer `startingAfter`) and its exact summary cards. */
+/**
+ * One page of the list (`limit` rows after customer `startingAfter`) and its exact summary cards. A sparse audience on a
+ * large project may answer fewer rows with a `next` cursor: the customers up to it were all checked.
+ */
 export async function listPage(db: DB, projectId: string, q: ListQuery, now: Date, o: { limit: number; startingAfter?: string | null; inlineLimit?: number }) {
   const r = await resolve(db, projectId, q);
   if (!r) return null;
   const rows: ListRow[] = [];
-  for await (const part of matchingRows(db, projectId, r, now, o.startingAfter ?? null, o.limit + 1)) {
-    if (!part) return { badCursor: true as const };
-    rows.push(...part);
+  let last: string | null = null, end = false;
+  for await (const chunk of matchingRows(db, projectId, r, now, o.startingAfter ?? null, o.limit + 1, LIST_SCAN_PAGES)) {
+    if (!chunk) return { badCursor: true as const };
+    rows.push(...chunk.rows);
+    last = chunk.last; end = chunk.end;
   }
   const page = rows.slice(0, o.limit);
-  return { badCursor: false as const, rows: page, next: rows.length > o.limit ? page[page.length - 1]!.customer_uuid : null, summary: await summaryOf(db, projectId, r, now, o.inlineLimit) };
+  const next = rows.length > o.limit ? page[page.length - 1]!.customer_uuid : !end && last ? last : null;
+  return { badCursor: false as const, rows: page, next, summary: await summaryOf(db, projectId, r, now, o.inlineLimit) };
 }
 
-/** Every matching row, in list order, a page at a time (the CSV export streams these). */
+/** The list's rows in list order, a page at a time (the CSV export streams these), within the export's limits. */
 export async function exportPages(db: DB, projectId: string, q: ListQuery, now: Date): Promise<AsyncGenerator<ListRow[]> | null> {
   const r = await resolve(db, projectId, q);
   if (!r) return null;
-  return (async function* () { for await (const part of matchingRows(db, projectId, r, now, null, null)) if (part) yield part; })();
+  return (async function* () {
+    for await (const chunk of matchingRows(db, projectId, r, now, null, EXPORT_MAX_ROWS, EXPORT_SCAN_PAGES)) if (chunk?.rows.length) yield chunk.rows;
+  })();
 }
 
 export const csvCell = (v: unknown) => {

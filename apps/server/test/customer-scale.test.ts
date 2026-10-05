@@ -71,6 +71,14 @@ describe("customer lists at scale", () => {
     expect(first).toMatchObject({ customers: want.length, total_revenue_in_usd: expected(N, pick).revenue, is_counting: false });
   }, 120_000);
 
+  it("finds a rare audience member among the least recently seen customers", async () => {
+    const only = { groups: [{ conditions: [{ field: "customerId", operator: "is", value: `user${N}` }] }] };
+    const p = await list(`list=all&limit=20&rules=${enc(only)}`);
+    expect(p.body.items.map((r: any) => r.id)).toEqual([`user${N}`]);
+    expect(p.body.next_page).toBeNull();
+    expect(p.body.summary.customers).toBe(1);
+  });
+
   it("exports every row", async () => {
     const res = await h.fetch("/v2/projects/proj1/customer_lists/export?list=expired", { key: h.ids.secretKey });
     const lines = (await res.text()).trim().split("\r\n");

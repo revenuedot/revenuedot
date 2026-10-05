@@ -1,10 +1,8 @@
-import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, or } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
-import type { LoadedContext } from "./customer-context.js";
-import { projectCatalog } from "./customer-context.js";
+import { projectCatalog, subActive, type LoadedContext } from "./customer-context.js";
 import { contextPages, customerCount, type BuiltInList, type ScanFilter } from "./customer-scan.js";
 import { inBuiltIn, prodSubs } from "./customer-lists.js";
-import { subActive } from "./customer-context.js";
 import { rulesMatch, type Rules } from "./targeting.js";
 import { choosePolicy, type PolicyRow } from "./refunds.js";
 import { winbackCounter, type WinbackCountSpec } from "./winback.js";
@@ -141,43 +139,45 @@ export async function runCountJobs(db: DB, now: Date, o: { budgetMs?: number; pa
   while (pages === 0 || clock() < until) {
     const [due] = await db.select().from(T).where(and(eq(T.state, "pending"), or(isNull(T.leaseUntil), lt(T.leaseUntil, now)))).orderBy(asc(T.requestedAt)).limit(1);
     if (!due) break;
-    const leased = await db.update(T).set({ leaseUntil: new Date(now.getTime() + LEASE_MS) })
+    const lease = new Date(now.getTime() + LEASE_MS);
+    const leased = await db.update(T).set({ leaseUntil: lease })
       .where(and(eq(T.key, due.key), eq(T.state, "pending"), or(isNull(T.leaseUntil), lt(T.leaseUntil, now)))).returning({ key: T.key });
     if (!leased.length) continue;
+    // Writes only while this tick still holds the lease.
+    const mine = and(eq(T.key, due.key), eq(T.leaseUntil, lease));
     const c = counterOf(due.kind);
     if (!c) { await db.delete(T).where(eq(T.key, due.key)); continue; }
-    const asOf = due.asOf ?? now;
-    const prep = c.prepare ? await c.prepare(db, due.projectId, due.spec) : undefined;
-    let acc = (due.partial as Record<string, unknown> | null) ?? c.empty(due.spec);
-    let done = false;
-    const catalog = await projectCatalog(db, due.projectId);
-    const pagesOf = contextPages(db, due.projectId, asOf, c.filter(due.spec), { after: due.cursor, pageSize: o.pageSize, catalog });
-    for (;;) {
-      const next = await pagesOf.next();
-      if (next.done) { done = true; break; }
-      for (const i of next.value.items) c.add(acc, i, due.spec, asOf, prep);
-      pages++;
-      if (!next.value.more) { done = true; break; }
-      await db.update(T).set({ cursor: next.value.last, partial: acc, asOf }).where(eq(T.key, due.key));
-      if (clock() >= until) break;
-    }
-    if (done) {
-      if (c.finish) acc = c.finish(acc);
-      await db.update(T).set({ result: acc, countedAt: new Date(Math.max(now.getTime(), asOf.getTime())), state: "idle", cursor: null, partial: null, asOf: null, leaseUntil: null }).where(eq(T.key, due.key));
-      finished++;
-    } else {
-      await db.update(T).set({ leaseUntil: null }).where(eq(T.key, due.key));
-      break;
+    try {
+      const asOf = due.asOf ?? now;
+      const prep = c.prepare ? await c.prepare(db, due.projectId, due.spec) : undefined;
+      let acc = (due.partial as Record<string, unknown> | null) ?? c.empty(due.spec);
+      let done = false;
+      const catalog = await projectCatalog(db, due.projectId);
+      const pagesOf = contextPages(db, due.projectId, asOf, c.filter(due.spec), { after: due.cursor, pageSize: o.pageSize, catalog });
+      for (;;) {
+        const next = await pagesOf.next();
+        if (next.done) { done = true; break; }
+        for (const i of next.value.items) c.add(acc, i, due.spec, asOf, prep);
+        pages++;
+        if (!next.value.more) { done = true; break; }
+        await db.update(T).set({ cursor: next.value.last, partial: acc, asOf }).where(mine);
+        if (clock() >= until) break;
+      }
+      if (done) {
+        if (c.finish) acc = c.finish(acc);
+        await db.update(T).set({ result: acc, countedAt: now, state: "idle", cursor: null, partial: null, asOf: null, leaseUntil: null }).where(mine);
+        finished++;
+      } else {
+        await db.update(T).set({ leaseUntil: null }).where(mine);
+        break;
+      }
+    } catch (e) {
+      // A count that fails waits an hour and goes to the back of the queue, so it never blocks the others.
+      console.error("customer counts: a count failed", due.kind, e);
+      await db.update(T).set({ leaseUntil: new Date(now.getTime() + 3600_000), requestedAt: now }).where(mine);
     }
   }
   return { pages, finished };
-}
-
-/** The share of a project's pending counts (for tests and the API's "counting" state). */
-export async function pendingCounts(db: DB, projectId: string): Promise<number> {
-  const T = schema.customerCounts;
-  const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(T).where(and(eq(T.projectId, projectId), eq(T.state, "pending")));
-  return Number(r?.n ?? 0);
 }
 
 export type { WinbackCountSpec };
