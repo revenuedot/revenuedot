@@ -57,6 +57,9 @@ export const ALTERNATIVES: Alternative[] = [
       src("RevenueDot pricing", "https://revenuedot.app/pricing"),
       src("RevenueDot on GitHub", "https://github.com/revenuedot/revenuedot"),
     ],
+    evidence: ["RevenueDot/pricing/plans", "RevenueDot/github-revenuedot/license"],
+    visual: "paywalls",
+    clip: "charts",
     compare: "/compare/revenuedot-vs-revenuecat",
   },
   {
@@ -72,7 +75,7 @@ export const ALTERNATIVES: Alternative[] = [
       "Higher free tier than RevenueCat: $5K against $2,500.",
       "SOC 2 Type II, and US or EU data residency on Enterprise.",
       "Flow and paywall builder with an AI generator, and A/B tests with custom traffic splits.",
-      "Documented migration from RevenueCat that takes about 2 hours, Adapty says.",
+      "Documented migration from RevenueCat; Adapty says it typically takes a few days to a week.",
     ],
     cons: [
       "Its own SDK, so purchase code changes.",
@@ -85,6 +88,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("Adapty migration guide from RevenueCat", "https://adapty.io/docs/migration-from-revenuecat"),
       src("Adapty iOS SDK on GitHub (MIT)", "https://github.com/adaptyteam/AdaptySDK-iOS"),
     ],
+    evidence: ["Adapty/home/hero", "Adapty/pricing/free-under-5k-then-1-percent", "Adapty/pricing/faq-migration"],
     compare: "/compare/revenuedot-vs-adapty",
   },
   {
@@ -112,6 +116,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("Superwall on its October 2025 pricing change", "https://superwall.com/blog/superwalls-new-pricing-more-aligned-generous-and-transparent"),
       src("Superwall iOS SDK on GitHub (MIT)", "https://github.com/superwall/Superwall-iOS"),
     ],
+    evidence: ["Superwall/home/hero", "Superwall/pricing/indie-10k-then-1-percent", "Superwall/pricing/attributed-revenue-only"],
     compare: "/compare/revenuedot-vs-superwall",
   },
   {
@@ -139,6 +144,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("Qonversion's RevenueCat comparison", "https://qonversion.io/revenuecat-alternative"),
       src("Qonversion iOS SDK on GitHub (MIT)", "https://github.com/qonversion/qonversion-ios-sdk"),
     ],
+    evidence: ["Qonversion/home/hero", "Qonversion/pricing/free-to-7k-then-0-8-percent", "Qonversion/pricing/faq-total-tracked-revenue"],
     compare: "/compare/revenuedot-vs-qonversion",
   },
   {
@@ -166,6 +172,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("Apphud web payments docs", "https://docs.apphud.com/docs/web-payments"),
       src("Apphud iOS SDK on GitHub (MIT)", "https://github.com/apphud/ApphudSDK"),
     ],
+    evidence: ["Apphud/home/hero", "Apphud/pricing/free-10k-pro-expert", "Apphud/pricing/overage-rates"],
     compare: "/compare/revenuedot-vs-apphud",
   },
   {
@@ -189,10 +196,11 @@ export const ALTERNATIVES: Alternative[] = [
     ],
     sources: [
       src("Purchasely homepage", "https://www.purchasely.com/"),
-      src("Purchasely pricing page", "https://www.purchasely.com/pricing"),
+      src("Purchasely /pricing (serves the homepage, no prices)", "https://www.purchasely.com/pricing"),
       src("Purchasely docs", "https://docs.purchasely.com/"),
       src("Purchasely iOS SDK on GitHub", "https://github.com/Purchasely/Purchasely-iOS"),
     ],
+    evidence: ["Purchasely/home/hero", "Purchasely/pricing/no-public-price"],
   },
   {
     name: "IAPHUB",
@@ -200,7 +208,7 @@ export const ALTERNATIVES: Alternative[] = [
     bestFor: "Small teams that want a low flat fee and web billing through Stripe.",
     summary:
       "A hosted in-app purchase service with SDKs for iOS, Android, React Native, Flutter and .NET, receipt validation, cross-platform sync, webhooks and Stripe web billing. Its SDKs are open source.",
-    pricing: "Sandbox is free. Basic is $29 a month up to $10K a month of revenue. Pro is 0.7% of monthly tracked revenue with a $59 monthly minimum; the page says 0.6% for plans started before July 15, 2026.",
+    pricing: "Sandbox is free. Basic is $29 a month up to $10K a month of revenue. Pro is 0.7% of monthly tracked revenue with a $59 monthly minimum; the page offers 0.6% for Pro plans started before Nov 15, 2026.",
     openSource: "SDKs only (MIT). The backend is a hosted service.",
     selfHost: "No self-host option is listed.",
     pros: [
@@ -217,6 +225,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("IAPHUB pricing page", "https://www.iaphub.com/pricing"),
       src("IAPHUB iOS SDK on GitHub (MIT)", "https://github.com/iaphub/iaphub-ios-sdk"),
     ],
+    evidence: ["IAPHUB/home/hero", "IAPHUB/pricing/plans"],
   },
   {
     name: "Nami ML",
@@ -262,5 +271,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("Apple App Store Server Library (Node.js)", "https://github.com/apple/app-store-server-library-node"),
       src("Apple StoreKit in-app purchase docs", "https://developer.apple.com/documentation/storekit/in-app_purchase"),
     ],
+    evidence: ["Apple/storekit-in-app-purchase/overview", "Apple/app-store-server-notifications/overview", "Google/play-billing-integrate/guide"],
+    evidence: ["Nami ML/pricing/enterprise-only"],
   },
 ];

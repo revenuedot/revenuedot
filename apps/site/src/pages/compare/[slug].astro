@@ -1,5 +1,7 @@
 ---
-// RevenueDot vs a vendor, or vendor vs vendor with RevenueDot as the third column (src/data/compare.ts).
+// RevenueDot vs a vendor, or vendor vs vendor with RevenueDot as the third column (src/data/compare.ts). Every row that
+// cites a vendor page carries an "Evidence" row under it with the dated crops that show the cited facts, and the
+// RevenueDot cell's feature shot; the price table shows its pricing crops in the open.
 import Base from "../../layouts/Base.astro";
 import PageHead from "../../components/PageHead.astro";
 import Blocks from "../../components/Blocks.astro";
@@ -7,8 +9,14 @@ import Faq from "../../components/Faq.astro";
 import Related from "../../components/Related.astro";
 import CtaBand from "../../components/CtaBand.astro";
 import Md from "../../components/Md.astro";
+import Evidence from "../../components/Evidence.astro";
+import Visual from "../../components/Visual.astro";
+import SeeIt from "../../components/SeeIt.astro";
+import YouTube from "../../components/YouTube.astro";
 import { COMPARISONS, comparePath } from "../../data";
 import type { ComparePage } from "../../data/types";
+import { evidenceList } from "../../lib/evidence";
+import { visual } from "../../lib/visuals";
 import { md, plain } from "../../lib/md";
 import { ogFor } from "../../lib/og";
 import { webPage } from "../../lib/jsonld";
@@ -22,6 +30,14 @@ const image = ogFor(path);
 const faq = page.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
 const crumb = page.short ?? page.columns.slice(0, 2).join(" vs ");
 const rdCol = page.columns.indexOf("RevenueDot");
+const span = page.columns.length + 2;
+/** "RevenueCat pricing page · RevenueCat community thread · RevenueDot paywall editor" for the evidence row's summary. */
+const summaryOf = (r: ComparePage["rows"][number]) => {
+  const pages = [...new Set(evidenceList(r.evidence).map((e) => e.pageName))];
+  const v = r.visual ? [`RevenueDot: ${visual(r.visual).title.toLowerCase()}`] : [];
+  return [...pages, ...v].join(" · ");
+};
+const shotCount = (r: ComparePage["rows"][number]) => (r.evidence?.length ?? 0) + (r.visual ? 1 : 0);
 ---
 <Base title={page.metaTitle} description={page.metaDescription} path={path} image={image} imageAlt={page.title}
   crumbs={[{ name: "Compare", path: "/compare" }, { name: crumb, path }]} faq={faq}
@@ -48,22 +64,37 @@ const rdCol = page.columns.indexOf("RevenueDot");
 
   <section class="section" id="table">
     <div class="wrap">
-      <div class="head"><p class="label">Side by side</p><h2 class="h2 sm">{page.columns.join(" vs ")}: feature by feature</h2></div>
+      <div class="head"><p class="label">Side by side</p><h2 class="h2 sm">{page.columns.join(" vs ")}: feature by feature</h2><p class="lede">Each row links its sources. Open <strong>Evidence</strong> under a row to see the dated screenshot of the vendor page it cites, and the real RevenueDot screen for the RevenueDot cell.</p></div>
       <div class="table-wrap">
         <table class="cmp">
           <thead><tr><th scope="col">Topic</th>{page.columns.map((c, i) => <th scope="col" class={i === rdCol ? "rd" : ""}>{c}</th>)}<th scope="col">Sources</th></tr></thead>
           <tbody>
             {page.rows.map((r) => (
-              <tr>
-                <th scope="row">{r.topic}</th>
-                {r.cells.map((c, i) => <td class={i === rdCol ? "rd" : ""} set:html={md(c)} />)}
-                <td class="src">{r.sources.map((s, i) => <>{i > 0 && <br />}<a href={s.url} rel="noopener">{s.label}</a></>)}</td>
-              </tr>
+              <>
+                <tr class={shotCount(r) ? "has-ev" : ""}>
+                  <th scope="row">{r.topic}</th>
+                  {r.cells.map((c, i) => <td class={i === rdCol ? "rd" : ""} set:html={md(c)} />)}
+                  <td class="src">{r.sources.map((s, i) => <>{i > 0 && <br />}<a href={s.url} rel="noopener">{s.label}</a></>)}</td>
+                </tr>
+                {shotCount(r) > 0 && (
+                  <tr class="ev-row">
+                    <td colspan={span}>
+                      <details class="evd">
+                        <summary><span class="evs-label">Evidence</span> <span class="evs-count">{shotCount(r)} {shotCount(r) === 1 ? "screenshot" : "screenshots"}</span> <span class="evs-pages tiny">{summaryOf(r)}</span></summary>
+                        <div class="evd-body">
+                          <Evidence keys={r.evidence} layout="strip" width={300} />
+                          {r.visual && <div class="rdv"><Visual name={r.visual} width={480} titled /></div>}
+                        </div>
+                      </details>
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>
       </div>
-      <p class="tiny caption">Facts about other companies come from their public pages, checked {page.checked}. Tell us about anything out of date at <a href={`mailto:${SITE.email.hello}`}>{SITE.email.hello}</a>.</p>
+      <p class="tiny caption">Facts about other companies come from their public pages, checked {page.checked}; the screenshots under each row were captured on 4 October 2026 and link to the live page. Tell us about anything out of date at <a href={`mailto:${SITE.email.hello}`}>{SITE.email.hello}</a>.</p>
     </div>
   </section>
 
@@ -76,16 +107,34 @@ const rdCol = page.columns.indexOf("RevenueDot");
           <tbody>{page.price.rows.map((r) => <tr>{r.map((c, i) => i === 0 ? <th scope="row" class="num-cell">{c}</th> : <td class="num-cell">{c}</td>)}</tr>)}</tbody>
         </table></div>
         <p class="tiny caption">Sources: {page.price.sources.map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel="noopener">{s.label}</a></>)}.</p>
+        {page.price.evidence && page.price.evidence.length > 0 && (
+          <div class="price-ev">
+            <p class="label">The pricing pages behind the numbers</p>
+            <Evidence keys={page.price.evidence} layout="grid" width={340} />
+          </div>
+        )}
       </div>
     </section>
   )}
 
+  {page.seeIt && page.seeIt.length > 0 && <SeeIt features={page.seeIt} />}
+
   <Blocks blocks={page.blocks} />
+
+  {page.video && (
+    <section class="section" id="video">
+      <div class="wrap">
+        <div class="head"><p class="label">From a third party</p><h2 class="h2 sm">A developer's take, not ours</h2><p class="lede">An independent video on the same question. We did not make it and the opinions in it are the creator's.</p></div>
+        <div class="video"><YouTube url={page.video} /></div>
+      </div>
+    </section>
+  )}
+
   <section class="section" id="faq">
     <div class="wrap">
       <div class="head"><p class="label">FAQ</p><h2 class="h2 sm">{crumb}: questions people ask</h2></div>
       <Faq items={faq} open={0} />
-      <p class="tiny caption">RevenueDot is not affiliated with, endorsed by or sponsored by any company named on this page. Names are trademarks of their owners, used only to compare products.</p>
+      <p class="tiny caption">RevenueDot is not affiliated with, endorsed by or sponsored by any company named on this page. Names are trademarks of their owners, used only to compare products. Screenshots of other companies' pages are shown as evidence for the facts quoted, with their capture date and a link to the live page.</p>
     </div>
   </section>
   <Related items={page.related} />
@@ -108,4 +157,29 @@ const rdCol = page.columns.indexOf("RevenueDot");
   .src a { color: var(--fg-3) !important; white-space: nowrap; }
   .caption a { color: var(--fg-2); }
   .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  .lede strong { color: var(--fg); }
+
+  /* Evidence rows: one per cited row, closed by default so the table stays short; the box sticks to the left edge of the
+     scrolling table so it reads in place on a phone. */
+  .cmp tr.has-ev th, .cmp tr.has-ev td { border-bottom: 0; padding-bottom: 8px; }
+  .ev-row td { padding: 0 18px 14px; }
+  .evd { position: sticky; left: 18px; max-width: min(100%, calc(100vw - 2 * var(--page-pad) - 38px)); }
+  .evd summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 6px 0; font-size: 12px; color: var(--fg-3); }
+  .evd summary::-webkit-details-marker { display: none; }
+  .evs-label { font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--fg-2); }
+  .evs-label::before { content: "+"; display: inline-block; width: 12px; font-family: var(--mono); color: var(--fg-3); }
+  .evd[open] .evs-label::before { content: "−"; }
+  .evs-count { font-family: var(--mono); }
+  .evs-pages { flex-basis: 100%; }
+  .evd summary:hover .evs-label { color: var(--fg); }
+  .evd-body { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-start; padding: 10px 0 6px; }
+  .evd-body > :global(.ev) { flex: 1 1 320px; min-width: 0; }
+  .rdv { flex: 0 1 440px; min-width: 0; }
+  .price-ev { margin-top: 32px; display: grid; gap: 16px; }
+  .video { max-width: 860px; }
+  @media (max-width: 640px) {
+    .ev-row td { padding: 0 14px 12px; }
+    .evd { left: 14px; max-width: calc(100vw - 2 * 16px - 30px); }
+    .rdv { max-width: none; }
+  }
 </style>

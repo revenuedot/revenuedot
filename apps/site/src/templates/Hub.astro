@@ -7,6 +7,7 @@ import CtaBand from "../components/CtaBand.astro";
 import Md from "../components/Md.astro";
 import Clip from "../components/Clip.astro";
 import { CLIPS } from "../lib/clips";
+import { playerUrl, VIDEOS } from "../lib/videos.mjs";
 import { itemList, webPage } from "../lib/jsonld";
 import { ogFor } from "../lib/og";
 import { SITE, type Faq as F } from "../site";
@@ -14,8 +15,10 @@ type Card = { href: string; title: string; text: string; logo?: string; tag?: st
 interface Props {
   path: string; name: string; label: string; title: string; metaTitle: string; description: string; answer: string;
   groups: { title: string; intro?: string; cards: Card[] }[]; faq?: F[]; cols?: 2 | 3 | 4;
+  /** A Cloudflare Stream video (src/lib/videos.mjs) shown under the head. */
+  video?: keyof typeof VIDEOS;
 }
-const { path, name, label, title, metaTitle, description, answer, groups, faq = [], cols = 3 } = Astro.props;
+const { path, name, label, title, metaTitle, description, answer, groups, faq = [], cols = 3, video } = Astro.props;
 const all = groups.flatMap((g) => g.cards);
 const image = ogFor(path);
 const clip = CLIPS[path];
@@ -28,6 +31,12 @@ const clip = CLIPS[path];
       <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud</a><a class="btn secondary" href="/docs">Read the docs <span class="arrow">→</span></a></div>
     </PageHead>
   </div>
+  {video && (
+    <div class="wrap clipwrap">
+      <div class="shot stream"><iframe src={playerUrl(video)} title={VIDEOS[video].title} loading="lazy" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
+      <p class="tiny caption">{VIDEOS[video].title}.</p>
+    </div>
+  )}
   {clip && <div class="wrap clipwrap"><Clip name={clip.name} alt={clip.alt} caption={clip.caption} /></div>}
   {groups.map((g, gi) => (
     <section class={`section${gi === 0 ? " first tight" : ""}`} id={g.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}>

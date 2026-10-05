@@ -1,0 +1,34 @@
+---
+// A first-party feature visual (src/data/visuals.ts): the real dashboard shot (light and dark), or its silent clip when
+// the page asks for motion, with the caption and a link to the guide that explains the feature.
+import Shot from "./Shot.astro";
+import Clip from "./Clip.astro";
+import { visual, docsPath } from "../lib/visuals";
+import type { FeatureKey } from "../data/visuals";
+interface Props {
+  name: FeatureKey;
+  /** Prefer the clip when the visual has one. */
+  clip?: boolean;
+  /** Pixel width the figure is shown at, for responsive image sizes. */
+  width?: number;
+  /** Show the visual's title above it. */
+  titled?: boolean;
+}
+const { name, clip = false, width = 1200, titled = false } = Astro.props;
+const v = visual(name);
+const useClip = clip && v.clip;
+const sizes = `(max-width: 640px) calc(100vw - 32px), ${width}px`;
+---
+<div class="vis">
+  {titled && <p class="label">RevenueDot: {v.title}</p>}
+  {useClip && v.clip ? (
+    <Clip name={v.clip.name} alt={v.clip.alt} caption={v.clip.caption} />
+  ) : v.light ? (
+    <Shot light={v.light} dark={v.dark} alt={v.shot!.alt} caption={v.shot!.caption} sizes={sizes} />
+  ) : null}
+  <p class="tiny more"><a href={docsPath(v.docs)}>{v.title}: read the guide →</a></p>
+</div>
+<style>
+  .vis { display: grid; gap: 8px; min-width: 0; }
+  .more a { color: var(--fg-2); }
+</style>

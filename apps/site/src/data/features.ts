@@ -159,6 +159,12 @@ struct HomeView: View {
       "Target offerings by country, platform, spend or attribute, use placements, and A/B test two offerings with conversion, revenue and chance-to-win results.",
     answer:
       "RevenueDot lets you show different offerings to different customers and A/B test two of them, with no app release. Audiences filter customers by country, platform, spend and attributes. Ordered targeting rules and placements pick the offering. An experiment splits customers deterministically and reports conversion, revenue and the chance the new offering wins.",
+    shot: {
+      src: "screens/experiments-light.png",
+      dark: "screens/experiments-dark.png",
+      alt: "An experiment page in RevenueDot, 'Annual plan first on the paywall': the results panel compares the control and treatment offerings on customers, paywall views, purchases, conversion and revenue, with the treatment's lift and chance to win.",
+      caption: "Experiment results in the dashboard: control against treatment, with lift and chance to win. Captured with example data.",
+    },
     points: [
       { title: "Audiences", text: "Conditions on country, platform, app version, subscription status, entitlements, spend, dates, attribution and custom attributes." },
       { title: "Ordered rules", text: "The first live rule that matches decides the current offering. Reorder rules and set start and end times." },
@@ -1230,6 +1236,12 @@ struct SettingsView: View {
       "Receive purchase, renewal, cancellation and refund webhooks in RevenueCat's format. HMAC-signed, retried 5 times, with a delivery log and test events.",
     answer:
       "RevenueDot sends each subscription event to your URL as JSON in RevenueCat's webhook format, so handlers written for RevenueCat work unchanged. It sends 19 of RevenueCat's 21 event types. Each delivery carries an HMAC signature, is retried after 5, 10, 20, 40 and 80 minutes, and shows in a delivery log with a Retry button.",
+    shot: {
+      src: "screens/webhooks-light.png",
+      dark: "screens/webhooks-dark.png",
+      alt: "A RevenueDot webhook, 'Scanner backend', posting to api.scanner.example: deliveries on, production and sandbox, all apps and events, the signature header, and the delivery log of INITIAL_PURCHASE events each delivered with a 200 in a few milliseconds.",
+      caption: "A webhook with its delivery log: every event, its response code and how long it took. Captured with example data.",
+    },
     points: [
       { title: "RevenueCat's format", text: "The same field names and values, so existing handlers keep working." },
       { title: "HMAC signature", text: "Verify X-RevenueCat-Webhook-Signature against the raw body. A timestamp stops replays." },
@@ -1454,6 +1466,12 @@ export function verifySignature(rawBody, header, secret, { now = new Date(), tol
       "Send purchases, trials, renewals and refunds to Segment, Amplitude, Mixpanel, AppsFlyer, Meta, Braze and 30 more, or export CSV or Parquet to S3, R2, GCS, Azure or email.",
     answer:
       "RevenueDot connects to 36 partners, among them Segment, Amplitude, Mixpanel, PostHog, AppsFlyer, Adjust, Meta, Braze and BigQuery, and sends every purchase, trial, renewal and refund with RevenueCat's event names. Failed sends retry and are logged. Scheduled exports write CSV or Parquet files to Amazon S3, Cloudflare R2 or Google Cloud Storage.",
+    shot: {
+      src: "screens/integrations-light.png",
+      dark: "screens/integrations-dark.png",
+      alt: "The RevenueDot Integrations page scrolled to the Analytics section: cards for Amplitude, Mixpanel, PostHog, Segment, Firebase and the other analytics, engagement and attribution tools, each with its connection status.",
+      caption: "The Integrations page: one card per tool, with its connection status. Captured with example data.",
+    },
     points: [
       { title: "36 partners", text: "Analytics, attribution, marketing, support, ads and BigQuery. Browse them all at /integrations." },
       { title: "RevenueCat's event names", text: "Charts and funnels built on rc_initial_purchase_event keep working after you switch." },
@@ -1874,6 +1892,12 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
       "Connect ChatGPT, Claude, Claude Code, Codex or Cursor to RevenueDot with OAuth. 38 tools set up your catalog, find customers, debug webhooks and read revenue.",
     answer:
       "RevenueDot has a hosted MCP server at https://mcp.revenuedot.app/mcp that connects ChatGPT, Claude, Claude Code, Codex and Cursor to your project with OAuth. Its 38 tools set up your catalog, find customers, grant access, debug webhooks and read revenue. You pick one project and one access level: read only, read and change, or money actions.",
+    shot: {
+      src: "screens/ai-light.png",
+      dark: "screens/ai-dark.png",
+      alt: "The RevenueDot AI page: the question 'How is revenue doing this month?' answered with the month's revenue, MRR, new and churned subscribers and a comparison with last month, with the suggested questions below.",
+      caption: "The same questions you can ask from ChatGPT or Claude, answered from your project's data. Captured with example data.",
+    },
     points: [
       { title: "One URL", text: "The same server is the RevenueDot connector for Claude and the plugin for ChatGPT and Codex." },
       { title: "38 tools", text: "Catalog setup, customer lookup, grants, webhooks, store connection checks and revenue reads." },
@@ -1979,6 +2003,12 @@ if let gems = result.verifiedReward?.virtualCurrency { showReward(gems.amount) }
       "Import your RevenueCat apps, SDK keys, catalog, customers and purchases, run both systems with notification forwarding, ship one SDK setting and cut over.",
     answer:
       "Migrate in four phases: import your RevenueCat project with RevenueDot's importer, run both systems side by side with store notification forwarding, ship an app update that sets the SDK's proxy URL, then cut over. The importer copies your catalog, customers, purchases and SDK keys, so current access is imported and old app versions keep working.",
+    shot: {
+      src: "screens/importer-light.png",
+      dark: "screens/importer-dark.png",
+      alt: "Terminal output of 'npx revenuedot import --from-revenuecat --dry-run': the catalog it would create (apps, products, entitlements, offerings, packages, SDK keys kept), 14 customers read with their subscriptions and purchases, and the store credentials to re-enter because RevenueCat cannot export them.",
+      caption: "The importer's dry run against a copy of a RevenueCat project: what it would create, what it read, and what you re-enter.",
+    },
     points: [
       { title: "Importer", text: "Apps, public SDK keys, catalog, customers, aliases, attributes, subscriptions, one-time purchases and revenue history." },
       { title: "Dual run", text: "RevenueDot forwards the exact store notification body to RevenueCat, so both stay current while old app versions run." },

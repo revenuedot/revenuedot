@@ -3,10 +3,10 @@ import { z } from "zod";
 import { newId } from "@revenuedot/core";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { isEmailAddress, trySend } from "../../mail/index.js";
+import { isEmailAddress, oneClickUnsubscribeHeaders, trySend } from "../../mail/index.js";
 import { hit } from "../../services/rate-limit.js";
 import { publicOrigin } from "../oauth.js";
-import { DEFAULT_AUDIENCE, audienceOf, campaignStats, candidatesFor, emailOf, offerOf, recentSends, renderFor, runCampaign, type CampaignRow } from "../../services/winback.js";
+import { DEFAULT_AUDIENCE, TEST_EMAIL_TOKEN, audienceOf, campaignStats, candidatesFor, emailOf, offerOf, recentSends, renderFor, runCampaign, type CampaignRow } from "../../services/winback.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Router } from "./common.js";
 
 /** Win-back campaigns (RevenueDot extension; prd/lifecycle/PRD.md). */
@@ -113,8 +113,9 @@ export function winbackRoutes(r: V2Router, deps: Deps) {
     const [project] = await db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, row.projectId));
     const base = deps.publicUrl ?? publicOrigin(c);
     const offer = offerOf(row);
-    const mail = renderFor(row, project?.name ?? "Your app", base, "test-email-preview-token", offer.type === "url" && offer.url ? offer.url : "https://apps.apple.com/account/subscriptions");
-    const ok = await trySend(deps.mailer, { to: b.email, ...mail, subject: `[Test] ${mail.subject}`, fromName: emailOf(row).sender_name?.trim() || project?.name || undefined });
+    const mail = renderFor(row, project?.name ?? "Your app", base, TEST_EMAIL_TOKEN, offer.type === "url" && offer.url ? offer.url : "https://apps.apple.com/account/subscriptions");
+    // The same one-click headers as a real send, so the test shows what mail providers see.
+    const ok = await trySend(deps.mailer, { to: b.email, ...mail, subject: `[Test] ${mail.subject}`, fromName: emailOf(row).sender_name?.trim() || project?.name || undefined, headers: oneClickUnsubscribeHeaders(`${base}/v1/winback/u/${TEST_EMAIL_TOKEN}`) });
     if (!ok) throw new V2Error(502, "server_error", "The mailer did not accept the test email. Check the server's mail settings.", undefined, true);
     return c.json({ object: "winback_test", sent_to: b.email });
   });

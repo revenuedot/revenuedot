@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } fro
 import { newId, type DerivedEvent } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../context.js";
-import { isEmailAddress, trySend, type Mailer } from "../mail/index.js";
+import { isEmailAddress, oneClickUnsubscribeHeaders, trySend, type Mailer } from "../mail/index.js";
 import { portalLinkEmail, recoveryEmail } from "../mail/templates.js";
 import { hit } from "./rate-limit.js";
 import { supportSettingsFor } from "./customer-center.js";
@@ -192,11 +192,7 @@ export async function sendDueStep(d: RecoveryDeps, c: CaseRow, base: string, o: 
   if (c.unsubscribedAt || await suppressed(db, c.projectId, email)) return skip("unsubscribed", true);
   const appName = s.sender_name ?? o.projectName;
   const mail = renderStep(s.steps[step]!, appName, base, c.token);
-  const unsubscribe = `${base}/v1/recovery/u/${c.token}`;
-  const ok = await trySend(d.mailer, {
-    to: email, ...mail, replyTo: o.replyTo, fromName: appName,
-    ...(unsubscribe.startsWith("https://") ? { headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
-  });
+  const ok = await trySend(d.mailer, { to: email, ...mail, replyTo: o.replyTo, fromName: appName, headers: oneClickUnsubscribeHeaders(`${base}/v1/recovery/u/${c.token}`) });
   await db.insert(schema.recoveryMessages).values({ id: newId("rcm_", 16), caseId: c.id, projectId: c.projectId, step, email, sentAt: now, error: ok ? null : "The mailer did not accept the email." });
   await db.update(schema.recoveryCases).set(ok
     ? { email, firstSentAt: c.firstSentAt ?? now, lastSentAt: now, skipReason: null, updatedAt: now }

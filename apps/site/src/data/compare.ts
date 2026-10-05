@@ -18,7 +18,7 @@ const RC_HOME = src("RevenueCat homepage", "https://www.revenuecat.com/");
 const RC_SEC = src("RevenueCat security and compliance", "https://www.revenuecat.com/security-and-compliance/");
 const RC_GDPR = src("RevenueCat GDPR page", "https://www.revenuecat.com/gdpr/");
 const RC_LICENSE = src("RevenueCat iOS SDK license (MIT)", "https://github.com/RevenueCat/purchases-ios/blob/main/LICENSE");
-const RC_QUICKSTART = src("RevenueCat quickstart (Amazon configuration)", "https://www.revenuecat.com/docs/getting-started/quickstart");
+const RC_QUICKSTART = src("RevenueCat SDK quickstart (platforms)", "https://www.revenuecat.com/docs/getting-started/quickstart");
 const RC_WEB = src("RevenueCat web docs (Stripe, Paddle)", "https://www.revenuecat.com/docs/web/overview");
 const RC_STRIPE = src("RevenueCat Stripe Billing docs", "https://www.revenuecat.com/docs/web/integrations/stripe");
 const RC_INTEGRATIONS = src("RevenueCat integrations docs", "https://www.revenuecat.com/docs/integrations/third-party-integrations");
@@ -58,6 +58,93 @@ const AP_DOCS = src("Apphud docs index", "https://docs.apphud.com/llms.txt");
 const AP_MCP = src("Apphud public MCP docs", "https://docs.apphud.com/docs/mcp");
 const AP_GH = src("Apphud iOS SDK on GitHub (MIT)", "https://github.com/apphud/ApphudSDK");
 
+// ---- Evidence crops ------------------------------------------------------------------------------------------------
+// Dated screenshots of the cited pages (src/data/evidence.ts), as "Vendor/page/claim" keys. Each row names the crops that
+// show its vendor facts; components/Evidence.astro renders them under the row, and the build fails on an unknown key.
+const E = {
+  rcHero: "RevenueCat/home/hero",
+  rcApps: "RevenueCat/home/apps-and-revenue",
+  rcPaywall: "RevenueCat/home/paywall-templates",
+  rcRefund: "RevenueCat/home/refund-handling",
+  rcPrice: "RevenueCat/pricing/free-to-2500-then-1-percent",
+  rcGrowth: "RevenueCat/pricing/growth-tools-1-percent",
+  rcFeatures: "RevenueCat/pricing/features",
+  rcSupport: "RevenueCat/pricing/support",
+  rcEnterprise: "RevenueCat/pricing/enterprise",
+  rcSoc2: "RevenueCat/security-and-compliance/soc2",
+  rcGdpr: "RevenueCat/gdpr/processor",
+  rcStaff: "RevenueCat/community-pro-plan-payments/staff-reply-1-percent-of-whole-mtr",
+  rcMit: "RevenueCat/github-purchases-ios-license/mit",
+  rcSdks: "RevenueCat/docs-quickstart/platforms",
+  rcWeb: "RevenueCat/docs-web-overview/stripe-paddle-billing",
+  rcStripe: "RevenueCat/docs-web-stripe/unlock-entitlements",
+  rcIntegrations: "RevenueCat/docs-third-party-integrations/categories",
+  rcExports: "RevenueCat/docs-scheduled-data-exports/destinations",
+  rcCC: "RevenueCat/docs-customer-center/self-service-ui",
+  rcVirtual: "RevenueCat/docs-llms-txt/virtual-currency",
+  rcStores: "RevenueCat/docs-platform-resources-llms-txt/amazon-galaxy",
+  rcAi: "RevenueCat/docs-ai-toolkit/toolkit",
+  adHero: "Adapty/home/hero",
+  adPrice: "Adapty/pricing/free-under-5k-then-1-percent",
+  adAddons: "Adapty/pricing/add-ons",
+  adTools: "Adapty/pricing/templates-and-ab-tests",
+  adResidency: "Adapty/pricing/soc2-and-residency",
+  adCounts: "Adapty/pricing/faq-what-counts",
+  adWhen: "Adapty/pricing/faq-when-1-percent",
+  adMigration: "Adapty/pricing/faq-migration",
+  adSoc2: "Adapty/security-and-compliance/soc2-type-ii",
+  adLimits: "Adapty/docs-migration-from-revenuecat/limits",
+  adWeb: "Adapty/docs-llms-txt/stripe-paddle",
+  adMit: "Adapty/github-adaptysdk-ios/mit-license",
+  adBlog: "Adapty/blog-new-pricing-2026/free-to-5000",
+  qoHero: "Qonversion/home/hero",
+  qoPrice: "Qonversion/pricing/free-to-7k-then-0-8-percent",
+  qoTotal: "Qonversion/pricing/faq-total-tracked-revenue",
+  qoPlan: "Qonversion/pricing/plan-includes",
+  qoCompliance: "Qonversion/pricing/compliance-and-support",
+  qoSdks: "Qonversion/docs-llms-txt/sdks-and-stores",
+  qoStripe: "Qonversion/docs-stripe-integration/stripe",
+  qoMcp: "Qonversion/docs-mcp-server/mcp-server",
+  qoGuide: "Qonversion/docs-migrating-from-revenuecat/guide",
+  qoMit: "Qonversion/github-qonversion-ios-sdk/mit-license",
+  qoVsRc: "Qonversion/revenuecat-alternative/free-tier-comparison",
+  swHero: "Superwall/home/hero",
+  swInfra: "Superwall/pricing/infrastructure-free",
+  swIndie: "Superwall/pricing/indie-10k-then-1-percent",
+  swAttributed: "Superwall/pricing/attributed-revenue-only",
+  swSql: "Superwall/pricing/sql-query-api",
+  swAgent: "Superwall/pricing/migration-agent",
+  swMar: "Superwall/docs-pricing-faq/mar-definition",
+  swBlogDate: "Superwall/blog-new-pricing/date",
+  swBlogIndie: "Superwall/blog-new-pricing/indie-free-to-10k",
+  swLimits: "Superwall/llms-txt/coverage-and-limits",
+  swEditorMcp: "Superwall/llms-txt/editor-mcp",
+  swA2W: "Superwall/features-app-to-web-checkout/stripe-checkout",
+  swGdpr: "Superwall/legal-gdpr/processor",
+  swMit: "Superwall/github-superwall-ios/mit-license",
+  apHero: "Apphud/home/hero",
+  apPlans: "Apphud/pricing/free-10k-pro-expert",
+  apOverage: "Apphud/pricing/overage-rates",
+  apGrace: "Apphud/pricing/grace-period",
+  apSeats: "Apphud/pricing/seats-and-webhooks",
+  apData: "Apphud/data-protection/eu-and-us",
+  apWeb: "Apphud/docs-web-payments/stripe-paddle",
+  apS3: "Apphud/docs-llms-txt/web-payments-and-s3",
+  apMcp: "Apphud/docs-mcp/public-mcp",
+  apMit: "Apphud/github-apphudsdk/mit-license",
+  stCard: "Stripe/pricing/card-fee",
+  stIntl: "Stripe/pricing/international-cards",
+  stBilling: "Stripe/billing-pricing/0-7-percent",
+  stCheckout: "Stripe/docs-checkout-quickstart/hosted-page",
+  stAnalytics: "Stripe/docs-billing-analytics/mrr-churn",
+  appleGuideline: "Apple/app-review-guidelines/3-1-1-in-app-purchase",
+  appleSbp: "Apple/subscriptions/small-business-program",
+  gFees: "Google/play-service-fees/service-fees",
+  gPolicy: "Google/play-payments-policy/billing-system",
+  rdPlans: "RevenueDot/pricing/plans",
+  rdLicense: "RevenueDot/github-revenuedot/license",
+};
+
 // ---- Price maths ---------------------------------------------------------------------------------------------------
 // Monthly tracked revenue (MTR) levels shown on every price table.
 const LEVELS = [5_000, 10_000, 50_000, 250_000, 1_000_000];
@@ -79,11 +166,12 @@ const COL_APPHUD: Col = {
 const COL_CLOUD: Col = { head: "RevenueDot Cloud", cell: (m) => usd(cloudBill(m)) };
 const COL_SELF: Col = { head: "RevenueDot self-host", cell: () => "$0 + servers" };
 
-const priceTable = (intro: string, cols: Col[], sources: Source[], levels = LEVELS): NonNullable<ComparePage["price"]> => ({
+const priceTable = (intro: string, cols: Col[], sources: Source[], evidence: string[], levels = LEVELS): NonNullable<ComparePage["price"]> => ({
   intro,
   head: ["Monthly tracked revenue", ...cols.map((c) => c.head)],
   rows: levels.map((m) => [usd(m), ...cols.map((c) => c.cell(m))]),
   sources,
+  evidence,
 });
 
 const RD_RATE =
@@ -145,7 +233,7 @@ const VS_REVENUECAT: ComparePage = {
     {
       name: "RevenueCat",
       reasons: [
-        "You need a service with years of live purchase traffic behind it today. RevenueCat says it supports 148K+ apps.",
+        "You need a service with years of live purchase traffic behind it today. RevenueCat says it supports 149K+ apps.",
         "You need a vendor with a SOC 2 Type II report now.",
         "You sell through Paddle, Roku or the Samsung Galaxy Store and need a backend proven on live purchases there: RevenueDot supports them but has tested them only against copies of those stores' APIs.",
         "You depend on paywall depth beyond single-screen paywalls, such as multi-step flows, which RevenueDot has not built.",
@@ -157,17 +245,21 @@ const VS_REVENUECAT: ComparePage = {
     {
       topic: "Server license",
       cells: [RD.license, "The hosted service is closed source; its SDKs are open source (MIT)"],
-      sources: [RC_PRICING, RC_LICENSE],
+      sources: [RC_LICENSE, RC_PRICING],
+      evidence: [E.rcMit, E.rdLicense],
     },
     {
       topic: "Where it runs",
       cells: [RD.where, "RevenueCat's cloud; no self-host option is listed"],
       sources: [RC_PRICING, RC_HOME],
+      evidence: [E.rcHero],
+      visual: "self-host",
     },
     {
       topic: "Client SDKs",
       cells: [RD.sdk, "Its own open-source SDKs for all platforms"],
-      sources: [RC_PRICING, RC_LICENSE],
+      sources: [RC_QUICKSTART, RC_LICENSE],
+      evidence: [E.rcSdks, E.rcMit],
     },
     {
       topic: "Price",
@@ -176,31 +268,42 @@ const VS_REVENUECAT: ComparePage = {
         "Free to $2,500 monthly tracked revenue, then 1% of all tracked revenue, not only the part above $2,500",
       ],
       sources: [RC_PRICING, RC_STAFF],
+      evidence: [E.rcPrice, E.rcStaff, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "Stores",
       cells: [RD.stores, "App Store, Google Play, Amazon, Samsung Galaxy Store, Stripe and Paddle"],
-      sources: [RC_QUICKSTART, RC_PLATFORMS, RC_WEB],
+      sources: [RC_PLATFORMS, RC_WEB],
+      evidence: [E.rcStores, E.rcWeb],
     },
     {
       topic: "Web billing and funnels",
       cells: [RD.web, "Web Billing with Stripe and Paddle, web purchase links and no-code web-to-app funnels"],
       sources: [RC_WEB, RC_STRIPE, RC_PRICING],
+      evidence: [E.rcWeb, E.rcStripe],
+      visual: "web-checkout",
     },
     {
       topic: "Paywalls",
       cells: [RD.paywalls, "Remotely configurable paywall editor with pre-built templates"],
       sources: [RC_PRICING, RC_HOME],
+      evidence: [E.rcPaywall, E.rcFeatures],
+      visual: "paywalls",
     },
     {
       topic: "Targeting and experiments",
       cells: [RD.experiments, "Targeting by audience and placement, and A/B testing with remote configuration"],
       sources: [RC_PRICING],
+      evidence: [E.rcFeatures],
+      visual: "experiments",
     },
     {
       topic: "Charts and analytics",
       cells: [RD.charts, "Dashboard and reporting for 40+ metrics"],
       sources: [RC_PRICING],
+      evidence: [E.rcFeatures],
+      visual: "charts",
     },
     {
       topic: "Integrations, webhooks and exports",
@@ -209,36 +312,46 @@ const VS_REVENUECAT: ComparePage = {
         "Integrations for engagement, analytics and app tools, MMP and ad-network integrations, webhooks, and scheduled exports (CSV or Parquet to S3, GCS, Azure or email)",
       ],
       sources: [RC_INTEGRATIONS, RC_EXPORTS],
+      evidence: [E.rcIntegrations, E.rcExports],
+      visual: "integrations",
     },
     {
       topic: "Refunds, win-back and support UI",
       cells: [RD.lifecycle, "Automated Apple refund handling, win-back tools and a no-code Customer Center"],
       sources: [RC_HOME, RC_CC],
+      evidence: [E.rcRefund, E.rcCC],
+      visual: "customer-center",
     },
     {
       topic: "REST API",
       cells: [RD.api, "REST API v1 and v2"],
       sources: [RC_PRICING],
+      evidence: [E.rcFeatures],
     },
     {
       topic: "AI assistants",
       cells: [RD.mcp, "An AI toolkit with plugins, skills, an MCP server and a CLI"],
       sources: [RC_AI],
+      evidence: [E.rcAi],
+      visual: "ai",
     },
     {
       topic: "Compliance and data location",
       cells: [RD.compliance, "SOC 2 Type II (report under NDA) and GDPR; its security and GDPR pages name no hosting region"],
       sources: [RC_SEC, RC_GDPR],
+      evidence: [E.rcSoc2, E.rcGdpr],
     },
     {
       topic: "Maturity",
-      cells: [RD.maturity, "Mature: its homepage cites 148K+ apps and $17B+ revenue processed"],
+      cells: [RD.maturity, "Mature: its homepage cites 149K+ apps and $17B+ revenue processed"],
       sources: [RC_HOME],
+      evidence: [E.rcApps],
     },
     {
       topic: "Support",
       cells: [RD.support, "Email and technical support forums; dedicated support and custom SLAs on Enterprise"],
       sources: [RC_PRICING],
+      evidence: [E.rcSupport, E.rcEnterprise],
     },
   ],
   price: priceTable(
@@ -247,6 +360,7 @@ const VS_REVENUECAT: ComparePage = {
       " Enterprise plans on either side are custom and not shown.",
     [COL_RC, COL_CLOUD, COL_SELF],
     [RC_PRICING, RC_STAFF],
+    [E.rcPrice, E.rcStaff, E.rdPlans],
   ),
   blocks: [
     RD_MIGRATION_RC,
@@ -298,6 +412,8 @@ const VS_REVENUECAT: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "customer-center"],
+  video: "https://www.youtube.com/watch?v=zbXBbXJ-Ltw",
   related: ["/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-adapty", "/compare/revenuedot-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/self-host"],
 };
 
@@ -337,16 +453,20 @@ const VS_ADAPTY: ComparePage = {
       topic: "Source code",
       cells: [RD.license, "Open-source SDKs (MIT); the backend runs as Adapty's hosted service"],
       sources: [AD_PRICING, AD_GH],
+      evidence: [E.adMit, E.rdLicense],
     },
     {
       topic: "Where it runs",
       cells: [RD.where, "Adapty's cloud; its pricing and docs list no self-host option"],
       sources: [AD_PRICING, AD_DOCS],
+      evidence: [E.adHero],
+      visual: "self-host",
     },
     {
       topic: "Client SDK",
       cells: [RD.sdk, "Adapty's own SDKs: iOS, Android, React Native, Flutter, FlutterFlow, Kotlin Multiplatform, Capacitor, Unity"],
       sources: [AD_PRICING, AD_DOCS],
+      evidence: [E.adMit],
     },
     {
       topic: "Price",
@@ -355,6 +475,8 @@ const VS_ADAPTY: ComparePage = {
         "Free under $5K a month, then 1% of that month's revenue, counted before store fees",
       ],
       sources: [AD_PRICING, AD_BLOG],
+      evidence: [E.adPrice, E.adWhen, E.adBlog, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "Add-on fees",
@@ -363,41 +485,54 @@ const VS_ADAPTY: ComparePage = {
         "Refund Saver 0.2% of revenue after $5K; Ads Manager 3.5% of ad spend; Mail 20% revenue share; payout acceleration 2.5%; attribution $0.03 per attributed install",
       ],
       sources: [AD_PRICING],
+      evidence: [E.adAddons],
     },
     {
       topic: "Stores and web",
       cells: [RD.stores + "; web checkout and funnels through Stripe", "App Store and Google Play, plus web payments through Stripe and Paddle; no Amazon Appstore in its docs"],
       sources: [AD_PRICING, AD_DOCS],
+      evidence: [E.adWeb],
+      visual: "web-checkout",
     },
     {
       topic: "Paywalls and flows",
       cells: [RD.paywalls + ". Paywalls are single-screen", "Drag-and-drop flow and paywall builder, 50+ templates, AI generator, video, timers, quizzes and localization"],
       sources: [AD_PRICING],
+      evidence: [E.adTools],
+      visual: "paywalls",
     },
     {
       topic: "Targeting and A/B tests",
       cells: [RD.experiments, "A/B tests with custom traffic splits, unlimited variants and early winner predictions; segments by attributes or behavior"],
       sources: [AD_PRICING],
+      evidence: [E.adTools],
+      visual: "experiments",
     },
     {
       topic: "Analytics",
       cells: [RD.charts, "Revenue, MRR, churn, ARPU, 10+ conversion metrics, cohorts and predicted LTV"],
       sources: [AD_PRICING],
+      visual: "charts",
     },
     {
       topic: "Integrations and exports",
       cells: [RD.integrations, "Integrations with attribution, analytics and messaging tools, webhooks, and cloud data export to Amazon S3"],
       sources: [AD_PRICING, AD_DOCS],
+      evidence: [E.adTools],
+      visual: "integrations",
     },
     {
       topic: "Compliance and data location",
       cells: [RD.compliance, "SOC 2 Type II and GDPR; US or EU data residency on Enterprise only"],
       sources: [AD_SEC, AD_PRICING],
+      evidence: [E.adSoc2, E.adResidency],
     },
     {
       topic: "Migration from RevenueCat",
-      cells: ["Importer for RevenueCat projects; no Adapty importer yet", "Adapty says a typical migration takes about 2 hours; promotional entitlements and refund history do not come across"],
-      sources: [AD_MIGRATE],
+      cells: ["Importer for RevenueCat projects; no Adapty importer yet", "Adapty says a migration typically takes a few days to a week; promotional entitlements and refund history do not come across"],
+      sources: [AD_PRICING, AD_MIGRATE],
+      evidence: [E.adMigration, E.adLimits],
+      visual: "importer",
     },
     {
       topic: "Support",
@@ -411,6 +546,7 @@ const VS_ADAPTY: ComparePage = {
       " Adapty add-ons and Enterprise are not included.",
     [COL_ADAPTY, COL_CLOUD, COL_SELF],
     [AD_PRICING],
+    [E.adPrice, E.adWhen, E.rdPlans],
   ),
   blocks: [
     {
@@ -467,6 +603,8 @@ const VS_ADAPTY: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "web-checkout"],
+  video: "https://www.youtube.com/watch?v=OpVzL6kBMn4",
   related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing", "/self-host"],
 };
 
@@ -506,16 +644,20 @@ const VS_QONVERSION: ComparePage = {
       topic: "Source code",
       cells: [RD.license, "Open-source SDKs (MIT); the backend is Qonversion's hosted service"],
       sources: [QO_GH, QO_PRICING],
+      evidence: [E.qoMit, E.rdLicense],
     },
     {
       topic: "Where it runs",
       cells: [RD.where, "Qonversion's cloud; no self-host option is listed in its docs"],
       sources: [QO_PRICING, QO_DOCS],
+      evidence: [E.qoHero],
+      visual: "self-host",
     },
     {
       topic: "Client SDK",
       cells: [RD.sdk, "Qonversion's own SDKs: iOS, Android, Flutter, React Native, Unity, Cordova, Capacitor, Web and macOS"],
       sources: [QO_DOCS],
+      evidence: [E.qoSdks],
     },
     {
       topic: "Price",
@@ -524,56 +666,75 @@ const VS_QONVERSION: ComparePage = {
         "Free to $7K a month in tracked revenue, then 0.8% of all of it, not only the part above $7K",
       ],
       sources: [QO_PRICING],
+      evidence: [E.qoPrice, E.qoTotal, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "Plans and add-ons",
       cells: ["Cloud Free, Cloud Standard and Enterprise, plus free self-hosting; every plan has the full open-source core", "One Pro plan with every feature, unlimited apps and seats; Enterprise adds contract terms, an SLA and a success manager"],
       sources: [QO_PRICING],
+      evidence: [E.qoPlan],
     },
     {
       topic: "Stores and web",
       cells: [RD.stores + "; web checkout and funnels through Stripe", "App Store, Google Play, Stripe and Paddle; no Amazon Appstore in its docs"],
       sources: [QO_DOCS, QO_STRIPE],
+      evidence: [E.qoSdks, E.qoStripe],
+      visual: "web-checkout",
     },
     {
       topic: "Paywalls",
       cells: [RD.paywalls, "No-Code Paywall Builder 2.0 with remote paywall management and localization"],
       sources: [QO_PRICING, QO_DOCS],
+      evidence: [E.qoPlan],
+      visual: "paywalls",
     },
     {
       topic: "Targeting and experiments",
       cells: [RD.experiments, "A/B experiments on paywalls, pricing and onboarding, with advanced segmentation"],
       sources: [QO_PRICING],
+      evidence: [E.qoPlan],
+      visual: "experiments",
     },
     {
       topic: "Analytics",
       cells: [RD.charts, "LTV, cohorts, MRR and ARR charts, conversion charts, attribution filtering and grouping"],
       sources: [QO_PRICING],
+      evidence: [E.qoPlan],
+      visual: "charts",
     },
     {
       topic: "Integrations, webhooks and exports",
       cells: [RD.integrations, "Attribution, analytics and marketing integrations, Apple Search Ads, webhooks, raw data export and scheduled reports to Amazon S3 or Google Cloud Storage"],
       sources: [QO_PRICING, QO_DOCS],
+      evidence: [E.qoPlan],
+      visual: "integrations",
     },
     {
       topic: "Refund tools",
       cells: ["Refund Control, included", "Refund Keeper, included in Pro"],
       sources: [QO_PRICING],
+      evidence: [E.qoPlan],
+      visual: "refunds",
     },
     {
       topic: "AI assistants",
       cells: [RD.mcp, "An MCP server that connects AI assistants to your project data"],
       sources: [QO_MCP],
+      evidence: [E.qoMcp],
+      visual: "ai",
     },
     {
       topic: "Compliance",
       cells: [RD.compliance, "Lists GDPR and CCPA compliance; no SOC 2 is listed on its pricing page"],
       sources: [QO_PRICING],
+      evidence: [E.qoCompliance],
     },
     {
       topic: "Support",
       cells: [RD.support, "24/7 priority support on Pro; a success manager and onboarding engineer on Enterprise"],
       sources: [QO_PRICING],
+      evidence: [E.qoCompliance],
     },
   ],
   price: priceTable(
@@ -582,6 +743,7 @@ const VS_QONVERSION: ComparePage = {
       " Enterprise plans are custom and not shown.",
     [COL_QONVERSION, COL_CLOUD, COL_SELF],
     [QO_PRICING],
+    [E.qoPrice, E.qoTotal, E.rdPlans],
   ),
   blocks: [
     {
@@ -635,6 +797,8 @@ const VS_QONVERSION: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "refunds"],
+  video: "https://www.youtube.com/watch?v=OpVzL6kBMn4",
   related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-qonversion", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
 };
 
@@ -674,21 +838,26 @@ const VS_SUPERWALL: ComparePage = {
       topic: "What it is",
       cells: ["A purchase backend with paywalls, charts and lifecycle tools, built to work with the RevenueCat SDK", "A paywall platform with free subscription infrastructure: entitlements, purchase APIs, webhooks and SQL access"],
       sources: [SW_PRICING, SW_LLMS],
+      evidence: [E.swInfra, E.swHero],
     },
     {
       topic: "Source code",
       cells: [RD.license, "Open-source SDKs (MIT) for all platforms; the backend is a hosted service"],
       sources: [SW_GH, SW_LLMS],
+      evidence: [E.swMit, E.rdLicense],
     },
     {
       topic: "Where it runs",
       cells: [RD.where, "Superwall's cloud; no self-host option is described on its pricing or docs pages"],
       sources: [SW_PRICING, SW_LLMS],
+      evidence: [E.swHero],
+      visual: "self-host",
     },
     {
       topic: "Client SDK",
       cells: [RD.sdk, "Superwall's own SDKs: iOS, Android, React Native, Flutter, Expo, Unity, Web, Kotlin Multiplatform and Capacitor"],
       sources: [SW_PRICING, SW_LLMS],
+      evidence: [E.swLimits],
     },
     {
       topic: "Price",
@@ -697,51 +866,68 @@ const VS_SUPERWALL: ComparePage = {
         "Infrastructure free. Paywalls free up to $10K of paywall-attributed revenue a month, then 1% of all of it; Startup adds $49 a month and Scale $199",
       ],
       sources: [SW_PRICING, SW_FAQ, SW_BLOG],
+      evidence: [E.swIndie, E.swMar, E.swBlogIndie, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "What the bill counts",
       cells: ["All tracked revenue above $10K", "Only revenue attributed to a Superwall paywall; purchases made outside its paywalls are not billed"],
       sources: [SW_PRICING, SW_FAQ],
+      evidence: [E.swAttributed, E.swMar],
     },
     {
       topic: "Stores and web",
       cells: [RD.stores + "; web checkout and funnels through Stripe", "App Store, Google Play and Stripe, including web checkout and App-to-Web; no Amazon or Roku"],
       sources: [SW_LLMS, SW_A2W],
+      evidence: [E.swLimits, E.swA2W],
+      visual: "web-checkout",
     },
     {
       topic: "Paywalls",
       cells: [RD.paywalls + ". Paywalls are single-screen", "Paywall editor, template gallery, localization, AI paywall builder and an editor MCP server for coding agents"],
       sources: [SW_PRICING, SW_LLMS],
+      evidence: [E.swIndie, E.swEditorMcp],
+      visual: "paywalls",
     },
     {
       topic: "Targeting and experiments",
       cells: [RD.experiments, "Paywall A/B testing, audiences, campaigns and placements"],
       sources: [SW_PRICING],
+      evidence: [E.swIndie],
+      visual: "experiments",
     },
     {
       topic: "Analytics and data access",
       cells: [RD.charts + "; SQL against your own Postgres when self-hosted", "Charts and conversion stats, plus row-level SQL access on its Query API"],
       sources: [SW_PRICING, SW_FAQ],
+      evidence: [E.swSql],
+      visual: "charts",
     },
     {
       topic: "In-app currency and ad revenue",
       cells: ["In-app currencies with a ledger, and an ads overview with AdMob rewards", "Says it does not run virtual-currency systems and does not track ad revenue"],
       sources: [SW_LLMS],
+      evidence: [E.swLimits],
     },
     {
       topic: "Webhooks and integrations",
       cells: [RD.integrations, "Webhooks and integrations on every plan, standardized across App Store, Google Play and Stripe"],
       sources: [SW_PRICING, SW_LLMS],
+      evidence: [E.swIndie],
+      visual: "integrations",
     },
     {
       topic: "Compliance and data location",
       cells: [RD.compliance, "Acts as a data processor under GDPR with a DPA; its GDPR page names no hosting region and no SOC 2 report"],
       sources: [SW_GDPR],
+      evidence: [E.swGdpr],
     },
     {
       topic: "Migration from RevenueCat",
       cells: ["Importer for RevenueCat projects; keep the SDK, change the URL", "Says an automated agent swaps the SDK and ports history, entitlements and webhooks; your app uses Superwall's SDK afterward"],
       sources: [SW_PRICING],
+      evidence: [E.swAgent],
+      visual: "importer",
     },
   ],
   price: priceTable(
@@ -749,6 +935,7 @@ const VS_SUPERWALL: ComparePage = {
       RD_RATE,
     [COL_SUPERWALL, COL_CLOUD, COL_SELF],
     [SW_PRICING, SW_FAQ],
+    [E.swIndie, E.swAttributed, E.rdPlans],
   ),
   blocks: [
     {
@@ -802,6 +989,8 @@ const VS_SUPERWALL: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "web-checkout", "charts"],
+  video: "https://www.youtube.com/watch?v=lkwX_kc0NS8",
   related: ["/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
 };
 
@@ -841,16 +1030,20 @@ const VS_APPHUD: ComparePage = {
       topic: "Source code",
       cells: [RD.license, "Open-source SDKs (MIT); the backend is Apphud's hosted service"],
       sources: [AP_GH, AP_PRICING],
+      evidence: [E.apMit, E.rdLicense],
     },
     {
       topic: "Where it runs",
       cells: [RD.where, "Apphud's cloud, with data stored in the EU and US; no self-host option is listed"],
       sources: [AP_DATA, AP_PRICING],
+      evidence: [E.apData],
+      visual: "self-host",
     },
     {
       topic: "Client SDK",
       cells: [RD.sdk, "Apphud's own SDKs for iOS, Android, Flutter and React Native"],
       sources: [AP_GH, AP_DOCS],
+      evidence: [E.apMit],
     },
     {
       topic: "Price",
@@ -859,6 +1052,8 @@ const VS_APPHUD: ComparePage = {
         "Free with $10K of tracked revenue; Pro $49 a month with $5K included, then $9.99 per extra $1,000; Expert $59 with $5K included, then $11.99 per $1,000; Enterprise from $100K",
       ],
       sources: [AP_PRICING],
+      evidence: [E.apPlans, E.apOverage, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "What counts as revenue",
@@ -869,46 +1064,60 @@ const VS_APPHUD: ComparePage = {
       topic: "Free plan over the limit",
       cells: ["Cloud Free keeps working; above $10K, Cloud Standard is 0.5% of the revenue above $10K", "After $10K, a 7-day grace period; then purchases are still handled, but renewals are not tracked and dashboard access ends"],
       sources: [AP_PRICING],
+      evidence: [E.apGrace],
     },
     {
       topic: "Stores and web",
       cells: [RD.stores + "; web checkout and funnels through Stripe", "iOS and Android, plus no-code web funnels (Flows) paid through Stripe or Paddle"],
       sources: [AP_PRICING, AP_WEB],
+      evidence: [E.apWeb, E.apS3],
+      visual: "web-checkout",
     },
     {
       topic: "Paywalls",
       cells: [RD.paywalls, "Visual screen builder and paywall screens built from Figma designs"],
       sources: [AP_PRICING],
+      visual: "paywalls",
     },
     {
       topic: "Experiments and rules",
       cells: [RD.experiments, "Price experiments; placements in experiments and Rules on Pro and above"],
       sources: [AP_PRICING],
+      evidence: [E.apPlans],
+      visual: "experiments",
     },
     {
       topic: "Webhooks and exports",
       cells: [RD.integrations + ", on every plan", "Server-to-server webhooks and daily data exports on Expert and above; integrations with 20+ tools; Amazon S3 export"],
       sources: [AP_PRICING, AP_DOCS],
+      evidence: [E.apSeats, E.apS3],
+      visual: "integrations",
     },
     {
       topic: "Analytics",
       cells: [RD.charts, "Revenue analytics with cohorts and churn analysis on every plan; saved charts on Pro; LTV predictions on Expert"],
       sources: [AP_PRICING],
+      evidence: [E.apPlans],
+      visual: "charts",
     },
     {
       topic: "Seats",
       cells: ["Unlimited team members with roles", "1 seat on Free, 5 on Pro, 10 on Expert, unlimited on Enterprise"],
       sources: [AP_PRICING],
+      evidence: [E.apSeats],
     },
     {
       topic: "AI assistants",
       cells: [RD.mcp, "A public MCP server"],
       sources: [AP_MCP],
+      evidence: [E.apMcp],
+      visual: "ai",
     },
     {
       topic: "Compliance",
       cells: [RD.compliance, "GDPR and CCPA; its data protection page lists no SOC 2"],
       sources: [AP_DATA],
+      evidence: [E.apData],
     },
   ],
   price: priceTable(
@@ -916,6 +1125,7 @@ const VS_APPHUD: ComparePage = {
       RD_RATE,
     [COL_APPHUD, COL_CLOUD, COL_SELF],
     [AP_PRICING],
+    [E.apPlans, E.apOverage, E.rdPlans],
   ),
   blocks: [
     {
@@ -969,6 +1179,8 @@ const VS_APPHUD: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "web-checkout"],
+  video: "https://www.youtube.com/watch?v=zbXBbXJ-Ltw",
   related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-adapty", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
 };
 
@@ -988,7 +1200,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
       name: "RevenueCat",
       reasons: [
         "You want the widest store coverage: App Store, Google Play, Amazon, Samsung Galaxy Store, Stripe and Paddle.",
-        "You want the largest base of users and integrations behind the SDK. Its homepage cites 148K+ apps.",
+        "You want the largest base of users and integrations behind the SDK. Its homepage cites 149K+ apps.",
         "You use its Growth Tools, which bill 1% only on conversions from paywalls, funnels and tests.",
       ],
     },
@@ -1018,6 +1230,8 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         "Cloud free to $10K; Standard 0.5% above that, capped at $999. Self-host $0",
       ],
       sources: [RC_PRICING, RC_STAFF, AD_PRICING],
+      evidence: [E.rcPrice, E.rcStaff, E.adPrice, E.adWhen, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "What revenue counts",
@@ -1027,6 +1241,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         "Tracked revenue in USD, before store fees; sandbox purchases are not counted",
       ],
       sources: [RC_PRICING, AD_PRICING],
+      evidence: [E.rcPrice, E.adCounts],
     },
     {
       topic: "Other plans and fees",
@@ -1036,6 +1251,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         "No add-on fees",
       ],
       sources: [RC_PRICING, AD_PRICING],
+      evidence: [E.rcGrowth, E.rcEnterprise, E.adAddons],
     },
     {
       topic: "Stores and web",
@@ -1044,7 +1260,8 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         "App Store and Google Play, plus web payments through Stripe and Paddle",
         RD.stores,
       ],
-      sources: [RC_QUICKSTART, RC_PLATFORMS, RC_WEB, AD_PRICING],
+      sources: [RC_PLATFORMS, RC_WEB, AD_PRICING],
+      evidence: [E.rcStores, E.rcWeb, E.adWeb],
     },
     {
       topic: "Paywalls",
@@ -1054,6 +1271,8 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         RD.paywalls,
       ],
       sources: [RC_PRICING, AD_PRICING],
+      evidence: [E.rcPaywall, E.adTools],
+      visual: "paywalls",
     },
     {
       topic: "Targeting and A/B tests",
@@ -1063,11 +1282,15 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         RD.experiments,
       ],
       sources: [RC_PRICING, AD_PRICING],
+      evidence: [E.rcFeatures, E.adTools],
+      visual: "experiments",
     },
     {
       topic: "Analytics",
       cells: ["40+ metrics", "Revenue, MRR, churn, ARPU, cohorts and predicted LTV", RD.charts],
       sources: [RC_PRICING, AD_PRICING],
+      evidence: [E.rcFeatures],
+      visual: "charts",
     },
     {
       topic: "Integrations and exports",
@@ -1077,16 +1300,21 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         RD.integrations,
       ],
       sources: [RC_INTEGRATIONS, RC_EXPORTS, AD_PRICING, AD_DOCS],
+      evidence: [E.rcIntegrations, E.rcExports],
+      visual: "integrations",
     },
     {
       topic: "Refund tools",
       cells: ["Automated Apple refund handling", "Refund Saver, a paid add-on", "Refund Control, included"],
       sources: [RC_HOME, AD_PRICING],
+      evidence: [E.rcRefund, E.adAddons],
+      visual: "refunds",
     },
     {
       topic: "Compliance",
       cells: ["SOC 2 Type II and GDPR", "SOC 2 Type II and GDPR", RD.compliance],
       sources: [RC_SEC, AD_SEC],
+      evidence: [E.rcSoc2, E.adSoc2],
     },
     {
       topic: "Data location",
@@ -1096,6 +1324,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         "Cloud runs on Cloudflare's network; a self-hosted server lives in the region you choose",
       ],
       sources: [RC_SEC, RC_GDPR, AD_PRICING],
+      evidence: [E.rcGdpr, E.adResidency],
     },
     {
       topic: "Open source and self-hosting",
@@ -1105,15 +1334,18 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         "Server under AGPL-3.0, SDK forks under MIT; self-hostable",
       ],
       sources: [RC_LICENSE, AD_GH, AD_PRICING],
+      evidence: [E.rcMit, E.adMit, E.rdLicense],
     },
     {
       topic: "Switching cost",
       cells: [
         "The reference SDK; other vendors build importers for it",
-        "Its own SDK, so purchase code changes. A typical migration from RevenueCat takes about 2 hours, Adapty says",
+        "Its own SDK, so purchase code changes. A migration from RevenueCat typically takes a few days to a week, Adapty says",
         "Keeps the RevenueCat SDK, so purchase code does not change",
       ],
-      sources: [RC_LICENSE, AD_MIGRATE],
+      sources: [RC_LICENSE, AD_PRICING, AD_MIGRATE],
+      evidence: [E.adMigration, E.adLimits],
+      visual: "importer",
     },
     {
       topic: "Support",
@@ -1123,6 +1355,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
         RD.support,
       ],
       sources: [RC_PRICING, AD_PRICING],
+      evidence: [E.rcSupport],
     },
   ],
   price: priceTable(
@@ -1131,6 +1364,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
       " Add-ons and Enterprise plans are not included.",
     [COL_RC, COL_ADAPTY, COL_CLOUD, COL_SELF],
     [RC_PRICING, RC_STAFF, AD_PRICING],
+    [E.rcPrice, E.rcStaff, E.adPrice, E.adWhen, E.rdPlans],
   ),
   blocks: [
     {
@@ -1167,7 +1401,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
     },
     {
       q: "Can I migrate from RevenueCat to Adapty?",
-      a: "Yes. Adapty says the average migration takes about 2 hours. You export RevenueCat data as CSV, get Google purchase tokens from RevenueCat support, and Adapty imports them. Promotional entitlements and refund history do not come across.",
+      a: "Yes. Adapty says a migration typically takes a few days to a week. You export RevenueCat data as CSV, get Google purchase tokens from RevenueCat support, and Adapty imports them. Promotional entitlements and refund history do not come across.",
     },
     {
       q: "Do RevenueCat and Adapty charge on all revenue?",
@@ -1179,6 +1413,8 @@ const VERSUS_RC_ADAPTY: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "importer"],
+  video: "https://www.youtube.com/watch?v=OpVzL6kBMn4",
   related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-adapty", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives", "/pricing"],
 };
 
@@ -1228,6 +1464,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         "An open-source backend that speaks the RevenueCat SDK's API, with paywalls and charts included",
       ],
       sources: [RC_HOME, SW_PRICING],
+      evidence: [E.rcHero, E.swInfra],
     },
     {
       topic: "Free tier and rate",
@@ -1237,6 +1474,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         "Cloud free to $10K; Standard 0.5% above that, capped at $999. Self-host $0",
       ],
       sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+      evidence: [E.rcPrice, E.rcStaff, E.swIndie, E.swMar, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "What the bill counts",
@@ -1246,11 +1485,13 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         "All tracked revenue above $10K",
       ],
       sources: [RC_PRICING, SW_PRICING],
+      evidence: [E.rcPrice, E.swAttributed],
     },
     {
       topic: "Paid tiers",
       cells: ["Pro, Growth Tools and Enterprise", "Indie $0, Startup $49 a month, Scale $199 a month, plus 1% of attributed revenue; Enterprise is custom", "Cloud Standard at 0.5% above $10K, capped at $999; Enterprise is custom"],
       sources: [RC_PRICING, SW_PRICING],
+      evidence: [E.rcGrowth, E.swIndie],
     },
     {
       topic: "Stores and web",
@@ -1259,7 +1500,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         "App Store, Google Play and Stripe, with App-to-Web checkout; no Amazon or Roku",
         RD.stores,
       ],
-      sources: [RC_QUICKSTART, RC_PLATFORMS, RC_WEB, SW_LLMS, SW_A2W],
+      sources: [RC_PLATFORMS, RC_WEB, SW_LLMS, SW_A2W],
+      evidence: [E.rcStores, E.rcWeb, E.swLimits, E.swA2W],
     },
     {
       topic: "Paywalls and experiments",
@@ -1269,6 +1511,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         RD.paywalls + "; " + RD.experiments,
       ],
       sources: [RC_PRICING, SW_PRICING, SW_LLMS],
+      evidence: [E.rcFeatures, E.swIndie, E.swEditorMcp],
+      visual: "paywalls",
     },
     {
       topic: "Analytics and data access",
@@ -1278,6 +1522,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         RD.charts + "; SQL on your own Postgres when self-hosted",
       ],
       sources: [RC_PRICING, RC_EXPORTS, SW_PRICING],
+      evidence: [E.rcFeatures, E.rcExports, E.swSql],
+      visual: "charts",
     },
     {
       topic: "In-app currency and ad revenue",
@@ -1287,6 +1533,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         "In-app currencies with a ledger, and an ads overview with AdMob rewards",
       ],
       sources: [RC_PRICING, RC_DOCS_INDEX, SW_LLMS],
+      evidence: [E.rcVirtual, E.swLimits],
     },
     {
       topic: "Integrations",
@@ -1296,6 +1543,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         RD.integrations,
       ],
       sources: [RC_INTEGRATIONS, SW_PRICING],
+      evidence: [E.rcIntegrations, E.swIndie],
+      visual: "integrations",
     },
     {
       topic: "Compliance and data location",
@@ -1305,6 +1554,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         RD.compliance,
       ],
       sources: [RC_SEC, RC_GDPR, SW_GDPR],
+      evidence: [E.rcSoc2, E.rcGdpr, E.swGdpr],
     },
     {
       topic: "Open source and self-hosting",
@@ -1314,6 +1564,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         "Server under AGPL-3.0, SDK forks under MIT; self-hostable",
       ],
       sources: [RC_LICENSE, SW_GH, SW_LLMS],
+      evidence: [E.rcMit, E.swMit, E.rdLicense],
     },
     {
       topic: "Switching cost",
@@ -1323,6 +1574,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
         "Keeps the RevenueCat SDK, so purchase code does not change",
       ],
       sources: [RC_LICENSE, SW_PRICING],
+      evidence: [E.swAgent],
+      visual: "importer",
     },
   ],
   price: priceTable(
@@ -1330,6 +1583,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
       RD_RATE,
     [COL_RC, COL_SUPERWALL, COL_CLOUD, COL_SELF],
     [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+    [E.rcPrice, E.rcStaff, E.swIndie, E.swAttributed, E.rdPlans],
   ),
   blocks: [
     {
@@ -1378,6 +1632,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "web-checkout"],
+  video: "https://www.youtube.com/watch?v=lkwX_kc0NS8",
   related: ["/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-superwall", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/pricing"],
 };
 
@@ -1427,6 +1683,8 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         "Cloud free to $10K; Standard 0.5% above that, capped at $999. Self-host $0",
       ],
       sources: [RC_PRICING, RC_STAFF, QO_PRICING],
+      evidence: [E.rcPrice, E.rcStaff, E.qoPrice, E.qoTotal, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "Plans",
@@ -1436,6 +1694,7 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         "Cloud Standard at 0.5% above $10K, capped at $999; Enterprise is custom",
       ],
       sources: [RC_PRICING, QO_PRICING],
+      evidence: [E.rcGrowth, E.qoPlan],
     },
     {
       topic: "Stores and web",
@@ -1444,7 +1703,8 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         "App Store, Google Play, Stripe and Paddle",
         RD.stores,
       ],
-      sources: [RC_QUICKSTART, RC_PLATFORMS, RC_WEB, QO_DOCS],
+      sources: [RC_PLATFORMS, RC_WEB, QO_DOCS],
+      evidence: [E.rcStores, E.rcWeb, E.qoSdks],
     },
     {
       topic: "Paywalls",
@@ -1454,6 +1714,8 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         RD.paywalls,
       ],
       sources: [RC_PRICING, QO_PRICING],
+      evidence: [E.rcPaywall, E.qoPlan],
+      visual: "paywalls",
     },
     {
       topic: "Targeting and A/B tests",
@@ -1463,11 +1725,15 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         RD.experiments,
       ],
       sources: [RC_PRICING, QO_PRICING],
+      evidence: [E.rcFeatures, E.qoPlan],
+      visual: "experiments",
     },
     {
       topic: "Analytics",
       cells: ["40+ metrics", "LTV, cohorts, MRR and ARR, conversion charts and attribution filtering", RD.charts],
       sources: [RC_PRICING, QO_PRICING],
+      evidence: [E.rcFeatures, E.qoPlan],
+      visual: "charts",
     },
     {
       topic: "Integrations and exports",
@@ -1477,21 +1743,28 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         RD.integrations,
       ],
       sources: [RC_INTEGRATIONS, RC_EXPORTS, QO_PRICING, QO_DOCS],
+      evidence: [E.rcIntegrations, E.rcExports, E.qoPlan],
+      visual: "integrations",
     },
     {
       topic: "Refund tools",
       cells: ["Automated Apple refund handling", "Refund Keeper, included", "Refund Control, included"],
       sources: [RC_HOME, QO_PRICING],
+      evidence: [E.rcRefund, E.qoPlan],
+      visual: "refunds",
     },
     {
       topic: "AI assistants",
       cells: ["An AI toolkit with plugins, skills, an MCP server and a CLI", "An MCP server for project data", RD.mcp],
       sources: [RC_AI, QO_MCP],
+      evidence: [E.rcAi, E.qoMcp],
+      visual: "ai",
     },
     {
       topic: "Compliance",
       cells: ["SOC 2 Type II and GDPR", "GDPR and CCPA; no SOC 2 listed on its pricing page", RD.compliance],
       sources: [RC_SEC, QO_PRICING],
+      evidence: [E.rcSoc2, E.qoCompliance],
     },
     {
       topic: "Open source and self-hosting",
@@ -1501,6 +1774,7 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         "Server under AGPL-3.0, SDK forks under MIT; self-hostable",
       ],
       sources: [RC_LICENSE, QO_GH, QO_PRICING],
+      evidence: [E.rcMit, E.qoMit, E.rdLicense],
     },
     {
       topic: "Switching cost",
@@ -1510,6 +1784,8 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         "Keeps the RevenueCat SDK, so purchase code does not change",
       ],
       sources: [RC_LICENSE, QO_MIGRATE, QO_VS_RC],
+      evidence: [E.qoGuide, E.qoVsRc],
+      visual: "importer",
     },
     {
       topic: "Support",
@@ -1519,6 +1795,7 @@ const VERSUS_RC_QONVERSION: ComparePage = {
         RD.support,
       ],
       sources: [RC_PRICING, QO_PRICING],
+      evidence: [E.rcSupport, E.qoCompliance],
     },
   ],
   price: priceTable(
@@ -1527,6 +1804,7 @@ const VERSUS_RC_QONVERSION: ComparePage = {
       " Enterprise plans are custom and not shown.",
     [COL_RC, COL_QONVERSION, COL_CLOUD, COL_SELF],
     [RC_PRICING, RC_STAFF, QO_PRICING],
+    [E.rcPrice, E.rcStaff, E.qoPrice, E.qoTotal, E.rdPlans],
   ),
   blocks: [
     {
@@ -1574,6 +1852,8 @@ const VERSUS_RC_QONVERSION: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "refunds"],
+  video: "https://www.youtube.com/watch?v=OpVzL6kBMn4",
   related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-qonversion", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/pricing"],
 };
 
@@ -1636,6 +1916,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
         "An open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK",
       ],
       sources: [RC_HOME, STRIPE_PRICING],
+      evidence: [E.rcHero, E.stCheckout],
     },
     {
       topic: "Who charges the customer",
@@ -1645,6 +1926,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
         "Apple, Google or Amazon for store purchases. On the web, your own Stripe account",
       ],
       sources: [RC_WEB, STRIPE_PRICING],
+      evidence: [E.rcWeb, E.stCard],
     },
     {
       topic: "Digital features inside an iOS or Android app",
@@ -1654,6 +1936,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
         "Yes, through each store's in-app purchase system",
       ],
       sources: [APPLE_GUIDELINES, GOOGLE_PAYMENTS],
+      evidence: [E.appleGuideline, E.gPolicy],
     },
     {
       topic: "Web checkout",
@@ -1663,6 +1946,8 @@ const VERSUS_RC_STRIPE: ComparePage = {
         RD.web + ", on your own Stripe account",
       ],
       sources: [RC_WEB, RC_STRIPE, STRIPE_CHECKOUT],
+      evidence: [E.rcWeb, E.stCheckout],
+      visual: "web-checkout",
     },
     {
       topic: "Unlocks access in the mobile app",
@@ -1672,6 +1957,8 @@ const VERSUS_RC_STRIPE: ComparePage = {
         "Yes. A Stripe purchase unlocks the same entitlement as App Store and Google Play, with redemption links",
       ],
       sources: [RC_WEB, RC_STRIPE, STRIPE_CHECKOUT],
+      evidence: [E.rcStripe, E.stCheckout],
+      visual: "redemption-links",
     },
     {
       topic: "App Store and Google Play purchases",
@@ -1681,6 +1968,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
         "Validates them and handles the stores' server notifications",
       ],
       sources: [RC_QUICKSTART, STRIPE_PRICING],
+      evidence: [E.rcSdks],
     },
     {
       topic: "Fees",
@@ -1690,6 +1978,8 @@ const VERSUS_RC_STRIPE: ComparePage = {
         "Cloud free to $10K a month; Standard 0.5% above, capped at $999. Self-host $0. Stripe's fees still apply on web sales",
       ],
       sources: [RC_PRICING, RC_WEB, STRIPE_PRICING, STRIPE_BILLING],
+      evidence: [E.rcPrice, E.stCard, E.stIntl, E.stBilling, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "Subscription analytics",
@@ -1699,6 +1989,8 @@ const VERSUS_RC_STRIPE: ComparePage = {
         RD.charts + ", across stores and Stripe",
       ],
       sources: [RC_PRICING, STRIPE_ANALYTICS],
+      evidence: [E.rcFeatures, E.stAnalytics],
+      visual: "charts",
     },
     {
       topic: "Open source",
@@ -1708,6 +2000,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
         "Server under AGPL-3.0, SDK forks under MIT; self-hostable",
       ],
       sources: [RC_LICENSE, STRIPE_PRICING],
+      evidence: [E.rcMit, E.rdLicense],
     },
   ],
   price: {
@@ -1717,6 +2010,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
     head: ["Monthly revenue", "Store fee (15%)", "RevenueCat", "Stripe (web, $9.99 plans)", "RevenueDot Cloud"],
     rows: LEVELS.map((m) => [usd(m), usd(m * 0.15), usd(rcBill(m)), usd(stripeFee(m)), usd(cloudBill(m))]),
     sources: [APPLE_SUBS, GOOGLE_FEES, RC_PRICING, STRIPE_PRICING, STRIPE_BILLING],
+    evidence: [E.appleSbp, E.gFees, E.rcPrice, E.stCard, E.stBilling, E.rdPlans],
   },
   blocks: [
     {
@@ -1792,6 +2086,8 @@ const VERSUS_RC_STRIPE: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["web-checkout", "redemption-links", "charts", "funnels"],
+  video: "https://www.youtube.com/watch?v=hcvvo6Sag0Q",
   related: ["/stores/stripe", "/features/web-billing", "/blog/web-checkout-for-ios-apps-stripe", "/in-app-purchases", "/tools/app-store-fee-calculator", "/compare/revenuedot-vs-revenuecat"],
 };
 
@@ -1846,6 +2142,7 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
         "An open-source backend that speaks the RevenueCat SDK's API, with paywalls and charts included",
       ],
       sources: [RC_HOME, SW_PRICING],
+      evidence: [E.rcHero, E.swInfra],
     },
     {
       topic: "Free tier and rate",
@@ -1855,31 +2152,39 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
         "Cloud free to $10K; Standard 0.5% above that, capped at $999. Self-host $0",
       ],
       sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+      evidence: [E.rcPrice, E.rcStaff, E.swIndie, E.swMar, E.rdPlans],
+      visual: "cloud-billing",
     },
     {
       topic: "What the bill counts",
       cells: ["All revenue RevenueCat tracks, before the platform cut", "Only revenue attributed to a Superwall paywall", "All tracked revenue above $10K"],
       sources: [RC_PRICING, SW_PRICING],
+      evidence: [E.rcPrice, E.swAttributed],
     },
     {
       topic: "Bill at $100,000 a month",
       cells: [usd(rcBill(100_000)), COL_SUPERWALL.cell(100_000) + ", depending on how much converts through its paywalls", usd(cloudBill(100_000)) + " on Cloud; $0 self-hosted"],
       sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+      evidence: [E.rcStaff, E.swMar, E.rdPlans],
     },
     {
       topic: "Paid tiers",
       cells: ["Pro, Growth Tools and Enterprise", "Indie $0, Startup $49 a month, Scale $199 a month, plus 1% of attributed revenue; Enterprise is custom", "Cloud Standard at 0.5% above $10K, capped at $999; Enterprise is custom"],
       sources: [RC_PRICING, SW_PRICING],
+      evidence: [E.rcGrowth, E.swIndie],
     },
     {
       topic: "Client SDK",
       cells: ["The reference SDK, open source (MIT)", "Its own SDKs: iOS, Android, React Native, Flutter, Expo, Unity, Web, Kotlin Multiplatform and Capacitor", RD.sdk],
       sources: [RC_LICENSE, SW_PRICING, SW_LLMS],
+      evidence: [E.rcMit, E.swLimits],
     },
     {
       topic: "Where it runs",
       cells: ["RevenueCat's cloud; no self-host option is listed", "Superwall's cloud; no self-host option is described on its pricing or docs pages", RD.where],
       sources: [RC_PRICING, RC_HOME, SW_PRICING, SW_LLMS],
+      evidence: [E.rcHero, E.swHero],
+      visual: "self-host",
     },
     {
       topic: "Stores and web",
@@ -1888,7 +2193,8 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
         "App Store, Google Play and Stripe, with App-to-Web checkout; no Amazon or Roku",
         RD.stores,
       ],
-      sources: [RC_QUICKSTART, RC_PLATFORMS, RC_WEB, SW_LLMS, SW_A2W],
+      sources: [RC_PLATFORMS, RC_WEB, SW_LLMS, SW_A2W],
+      evidence: [E.rcStores, E.rcWeb, E.swLimits, E.swA2W],
     },
     {
       topic: "Paywalls and experiments",
@@ -1898,6 +2204,8 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
         RD.paywalls + ". Paywalls are single-screen; " + RD.experiments,
       ],
       sources: [RC_PRICING, SW_PRICING, SW_LLMS],
+      evidence: [E.rcFeatures, E.swIndie, E.swEditorMcp],
+      visual: "paywalls",
     },
     {
       topic: "Analytics and data access",
@@ -1907,11 +2215,15 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
         RD.charts + "; SQL on your own Postgres when self-hosted",
       ],
       sources: [RC_PRICING, RC_EXPORTS, SW_PRICING],
+      evidence: [E.rcFeatures, E.rcExports, E.swSql],
+      visual: "charts",
     },
     {
       topic: "Integrations",
       cells: ["Engagement, analytics, MMP and ad-network integrations, plus webhooks", "Integrations and webhooks on every plan", RD.integrations],
       sources: [RC_INTEGRATIONS, SW_PRICING],
+      evidence: [E.rcIntegrations, E.swIndie],
+      visual: "integrations",
     },
     {
       topic: "In-app currency and ad revenue",
@@ -1921,6 +2233,7 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
         "In-app currencies with a ledger, and an ads overview with AdMob rewards",
       ],
       sources: [RC_PRICING, RC_DOCS_INDEX, SW_LLMS],
+      evidence: [E.rcVirtual, E.swLimits],
     },
     {
       topic: "Compliance and data location",
@@ -1930,21 +2243,26 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
         RD.compliance,
       ],
       sources: [RC_SEC, RC_GDPR, SW_GDPR],
+      evidence: [E.rcSoc2, E.rcGdpr, E.swGdpr],
     },
     {
       topic: "Open source and self-hosting",
       cells: ["Open-source SDKs (MIT); hosted service", "Open-source SDKs (MIT); hosted service", "Server under AGPL-3.0, SDK forks under MIT; self-hostable"],
       sources: [RC_LICENSE, SW_GH, SW_LLMS],
+      evidence: [E.rcMit, E.swMit, E.rdLicense],
     },
     {
       topic: "Maturity",
-      cells: ["Mature: its homepage cites 148K+ apps and $17B+ revenue processed", "Hosted service with open-source SDKs; its pricing model changed in October 2025", RD.maturity],
+      cells: ["Mature: its homepage cites 149K+ apps and $17B+ revenue processed", "Hosted service with open-source SDKs; its pricing model changed in October 2025", RD.maturity],
       sources: [RC_HOME, SW_BLOG, SW_PRICING],
+      evidence: [E.rcApps, E.swBlogDate],
     },
     {
       topic: "Switching cost from RevenueCat",
       cells: ["None: it is the reference", "Its own SDK. Superwall says an automated agent ports an app from RevenueCat in under an hour", "Keeps the RevenueCat SDK, so purchase code does not change; an importer copies the project"],
       sources: [RC_LICENSE, SW_PRICING],
+      evidence: [E.swAgent],
+      visual: "importer",
     },
   ],
   price: priceTable(
@@ -1953,6 +2271,7 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
       " Enterprise plans are custom and not shown.",
     [COL_RC, COL_SUPERWALL, COL_CLOUD, COL_SELF],
     [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
+    [E.rcPrice, E.rcStaff, E.swIndie, E.swAttributed, E.rdPlans],
     THREE_LEVELS,
   ),
   blocks: [
@@ -2008,6 +2327,8 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
     },
   ],
   checked: CHECKED,
+  seeIt: ["paywalls", "experiments", "charts", "dual-run"],
+  video: "https://www.youtube.com/watch?v=lkwX_kc0NS8",
   related: ["/cheaper-revenuecat-alternatives", "/compare/revenuecat-vs-superwall", "/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat"],
 };
 
@@ -2016,6 +2337,7 @@ export const CHEAPER_FEES = priceTable(
   "",
   [COL_RC, COL_ADAPTY, COL_QONVERSION, COL_SUPERWALL, COL_APPHUD, COL_CLOUD, COL_SELF],
   [RC_PRICING, RC_STAFF, AD_PRICING, QO_PRICING, SW_PRICING, SW_FAQ, AP_PRICING],
+  [E.rcPrice, E.rcStaff, E.adPrice, E.qoPrice, E.qoTotal, E.swIndie, E.swAttributed, E.apPlans, E.apOverage, E.rdPlans],
   THREE_LEVELS,
 );
 
@@ -2062,6 +2384,7 @@ export const ALTERNATIVE_PAGE: {
         "**Data ownership.** Your subscribers' purchase history sits in RevenueCat's hosted service. You can pull it through the REST API and [scheduled exports](https://www.revenuecat.com/docs/integrations/scheduled-data-exports), but it is not in a database you run. RevenueCat's [security page](https://www.revenuecat.com/security-and-compliance/) names no hosting region.",
         "**Lock-in.** The SDK, the entitlement model, the webhook shapes and your paywalls all point at one vendor. Adapty's [migration guide](https://adapty.io/docs/migration-from-revenuecat) notes that Google purchase tokens come from RevenueCat support, and that promotional entitlements and refund history do not move.",
       ],
+      evidence: [E.rcPrice, E.rcStaff, E.rcGdpr, E.adLimits],
     },
     {
       h2: "How RevenueDot keeps the RevenueCat SDK",
@@ -2085,6 +2408,7 @@ Purchases.configure(withAPIKey: "appl_...")`,
         { name: "Run both side by side", text: "Point App Store and Google Play server notifications at RevenueDot, which forwards each one to RevenueCat so both stay current." },
         { name: "Ship the one-line change", text: "Set the proxy URL in your next release, watch the dashboard fill, and turn RevenueCat off when most active users have updated." },
       ],
+      visual: "importer",
     },
     {
       h2: "What is different from RevenueCat",

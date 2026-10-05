@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, gte, sql } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { notMoving } from "./archive/moving.js";
-import { isEmailAddress, trySend, type Mailer } from "../mail/index.js";
+import { isEmailAddress, oneClickUnsubscribeHeaders, trySend, type Mailer } from "../mail/index.js";
 import { winbackEmail } from "../mail/templates.js";
 import { projectContexts, subActive, type LoadedContext } from "./customer-context.js";
 import { supportSettingsFor } from "./customer-center.js";
@@ -79,6 +79,9 @@ export function offerUrlFor(offer: WinbackOffer, c: Pick<Candidate, "store" | "p
   return offer.url ?? null;
 }
 
+/** The token in a test email's links: it matches no send, and its unsubscribe page says nothing changed. */
+export const TEST_EMAIL_TOKEN = "test-email-preview-token";
+
 const token = () => {
   const b = crypto.getRandomValues(new Uint8Array(24));
   return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -145,11 +148,9 @@ export async function runCampaign(deps: SendDeps, c: CampaignRow, base: string, 
       .onConflictDoNothing().returning({ id: schema.winbackSends.id });
     if (!inserted.length) { skipped++; continue; }
     const mail = renderFor(c, project?.name ?? "Your app", base, tok, offerUrl);
-    const unsubscribe = `${base}/v1/winback/u/${tok}`;
     const ok = await trySend(deps.mailer, {
       to: cand.email, ...mail, replyTo, fromName: appName,
-      // RFC 8058 one-click unsubscribe; mail providers (and Cloudflare Email Sending) take https links only.
-      ...(unsubscribe.startsWith("https://") ? { headers: { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
+      headers: oneClickUnsubscribeHeaders(`${base}/v1/winback/u/${tok}`),
     });
     if (ok) sent++;
     else { failed++; await db.update(schema.winbackSends).set({ error: "The mailer did not accept the email." }).where(eq(schema.winbackSends.id, inserted[0]!.id)); }

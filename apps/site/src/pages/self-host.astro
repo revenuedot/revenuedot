@@ -5,6 +5,7 @@ import Code from "../components/Code.astro";
 import Faq from "../components/Faq.astro";
 import CtaBand from "../components/CtaBand.astro";
 import { FAQ_SELF_HOST, FAQ_DATA, FAQ_LICENSE, FAQ_READY } from "../lib/faq";
+import Visual from "../components/Visual.astro";
 import { SITE } from "../site";
 
 const faq = [
@@ -51,6 +52,7 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
         <div class="cell"><h3 class="h3">The dashboard</h3><p>Customers, catalog, apps, API keys, webhooks with a delivery log, and setup health, served by the same image.</p></div>
         <div class="cell"><h3 class="h3">Postgres</h3><p>Every purchase, customer and receipt, in tables you can query with SQL. Migrations run on start.</p></div>
       </div></div>
+      <div class="sh-shot"><Visual name="self-host" /></div>
     </div>
   </section>
 
@@ -69,6 +71,7 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
           </tbody>
         </table>
       </div>
+      <div class="sh-shot"><Visual name="export-move" /></div>
     </div>
   </section>
 
@@ -98,5 +101,6 @@ docker compose up -d        # API, dashboard and Postgres on http://localhost:87
   .two { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
   .copy { display: grid; gap: 16px; }
   .more { margin-top: 20px; }
+  .sh-shot { margin-top: 32px; }
   @media (max-width: 900px) { .two { grid-template-columns: 1fr; gap: 24px; } }
 </style>

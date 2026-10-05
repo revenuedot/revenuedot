@@ -5,7 +5,7 @@ import type { Deps } from "../context.js";
 import { esc } from "../mail/templates.js";
 import { JwsError, verifyAppleJws } from "../stores/apple/jws.js";
 import { messagingOf, realtimeAnswer, type RealtimeRequest } from "../services/retention.js";
-import { markClicked, markOpened, sendByToken, unsubscribe } from "../services/winback.js";
+import { TEST_EMAIL_TOKEN, markClicked, markOpened, sendByToken, unsubscribe } from "../services/winback.js";
 import { caseByCenterToken, caseByToken, destinationFor, emailFor, markClicked as markRecoveryClicked, portalLink, PORTAL_LINK_TTL_MS, sendPortalLink, unsubscribeCase } from "../services/payment-recovery.js";
 import { clientIp } from "../services/rate-limit.js";
 import { publicOrigin } from "./oauth.js";
@@ -134,14 +134,18 @@ export function lifecyclePublicRoutes(deps: Deps) {
     if (to.kind === "redirect") return c.redirect(to.url, 303);
     return c.html(page(to.title, to.body));
   });
-  // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also RFC 8058 one-click.
+  // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also RFC 8058 one-click
+  // (the token is the only credential: no session, cookie or key, and no confirmation page or redirect).
+  const TEST_PAGE = () => page("This was a test email", "Unsubscribe links in test emails change nothing. In a real email, this link unsubscribes the address.");
   r.get("/v1/winback/u/:token", async (c) => {
+    if (c.req.param("token") === TEST_EMAIL_TOKEN) return c.html(TEST_PAGE());
     const s = await sendByToken(db, c.req.param("token"));
     if (!s) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
     if (s.unsubscribedAt) return c.html(page("You are unsubscribed", `${s.email} will get no more of these emails.`));
     return c.html(page("Unsubscribe?", `Stop offers like this one to ${s.email}.`, `<form method="post"><button type="submit">Unsubscribe</button></form>`));
   });
   r.post("/v1/winback/u/:token", async (c) => {
+    if (c.req.param("token") === TEST_EMAIL_TOKEN) return c.html(TEST_PAGE());
     const s = await sendByToken(db, c.req.param("token"));
     if (!s || !(await unsubscribe(db, c.req.param("token"), deps.now()))) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
     return c.html(page("You are unsubscribed", `${s.email} will get no more of these emails.`));
@@ -167,12 +171,14 @@ export function lifecyclePublicRoutes(deps: Deps) {
   });
   // GET shows a button (mail scanners follow links, so a GET never unsubscribes); POST unsubscribes, also RFC 8058 one-click.
   r.get("/v1/recovery/u/:token", async (c) => {
+    if (c.req.param("token") === TEST_EMAIL_TOKEN) return c.html(TEST_PAGE());
     const rc = await caseByToken(db, c.req.param("token"));
     if (!rc) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
     if (rc.unsubscribedAt) return c.html(page("You are unsubscribed", "You will get no more of these emails."));
     return c.html(page("Unsubscribe?", `Stop emails about failed payments${rc.email ? ` to ${rc.email}` : ""}.`, `<form method="post"><button type="submit">Unsubscribe</button></form>`));
   });
   r.post("/v1/recovery/u/:token", async (c) => {
+    if (c.req.param("token") === TEST_EMAIL_TOKEN) return c.html(TEST_PAGE());
     const rc = await caseByToken(db, c.req.param("token"));
     if (!rc) return c.html(page("Link not found", "This unsubscribe link is not valid."), 404);
     await unsubscribeCase(db, rc, deps.now());

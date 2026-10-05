@@ -28,6 +28,16 @@ export function isEmailAddress(s: string): boolean {
   return s.length <= 254 && /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/.test(s);
 }
 
+/**
+ * RFC 8058 one-click unsubscribe headers (RFC 2369 `List-Unsubscribe` plus `List-Unsubscribe-Post`) for an https link.
+ * Gmail and Yahoo honour https only, and Cloudflare Email Service rejects the whole send unless `List-Unsubscribe` holds
+ * angle-bracketed https or mailto URIs (https://developers.cloudflare.com/email-service/reference/headers/), so an http
+ * link (a local server) gets no headers; the body link is always there. No mailto: no inbox processes unsubscribe mail.
+ */
+export function oneClickUnsubscribeHeaders(url: string): Record<string, string> | undefined {
+  return url.startsWith("https://") ? { "List-Unsubscribe": `<${url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined;
+}
+
 /** A header value without line breaks or other control characters (subjects built from user text). */
 export const headerSafe = (s: string) => s.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
 

@@ -1,0 +1,69 @@
+---
+// Dated screenshots of other companies' pages (src/data/evidence.ts) next to the claims they prove. Each figure shows the
+// crop, its one-line claim, the capture date, a link to the live source and a link to the full-page capture. Images are
+// lazy and served as WebP at two widths; a closed <details> parent keeps them unloaded until opened.
+import { getImage } from "astro:assets";
+import { evidenceList, claimOf } from "../lib/evidence";
+interface Props {
+  keys: string[] | undefined;
+  /** "strip": a horizontal row of cards (inside a table); "grid": wrapping cards under a table or section. */
+  layout?: "strip" | "grid";
+  /** Pixel width the cards are shown at, for the img sizes attribute. */
+  width?: number;
+}
+const { keys, layout = "grid", width = layout === "strip" ? 300 : 360 } = Astro.props;
+const items = evidenceList(keys);
+const cards = await Promise.all(
+  items.map(async (r) => {
+    const [w480, w960, full, page] = await Promise.all([
+      getImage({ src: r.image, width: 480, format: "webp", quality: 74 }),
+      getImage({ src: r.image, width: Math.min(960, r.image.width), format: "webp", quality: 74 }),
+      getImage({ src: r.image, format: "webp", quality: 80 }),
+      getImage({ src: r.full, format: "webp", quality: 70 }),
+    ]);
+    return { r, w480, w960, full, page };
+  }),
+);
+---
+{cards.length > 0 && (
+  <div class={`ev ${layout}`}>
+    {cards.map(({ r, w480, w960, full, page }) => (
+      <figure class="evf">
+        <a class="shot evi" href={full.src} target="_blank" rel="noopener" title="Open the screenshot at full size">
+          <img
+            src={w480.src}
+            srcset={`${w480.src} 480w, ${w960.src} ${w960.options.width}w`}
+            sizes={`(max-width: 640px) calc(100vw - 64px), ${width}px`}
+            width={r.image.width}
+            height={r.image.height}
+            alt={r.crop.alt}
+            loading="lazy"
+            decoding="async"
+          />
+        </a>
+        <figcaption class="tiny">
+          <strong>{r.pageName}</strong>, captured {r.captured}: {claimOf(r)}
+          <span class="links"><a href={r.evidence.url} rel="noopener nofollow" target="_blank">Source ↗</a> · <a href={page.src} target="_blank" rel="noopener">Full page ↗</a></span>
+        </figcaption>
+      </figure>
+    ))}
+  </div>
+)}
+<style define:vars={{ w: `${width}px` }}>
+  .ev { display: flex; gap: 16px; min-width: 0; }
+  .ev.grid { flex-wrap: wrap; }
+  .ev.strip { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+  .evf { margin: 0; flex: 0 0 var(--w); max-width: 100%; display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .ev.grid .evf { flex: 1 1 var(--w); max-width: calc(var(--w) * 1.35); }
+  .evi { display: block; }
+  .evi img { display: block; width: 100%; height: auto; max-height: 240px; object-fit: cover; object-position: top; }
+  .ev.grid .evi img { max-height: 280px; }
+  figcaption { color: var(--fg-3); }
+  figcaption strong { color: var(--fg-2); font-weight: 600; }
+  .links { display: block; margin-top: 4px; }
+  .links a { color: var(--fg-2); white-space: nowrap; }
+  @media (max-width: 640px) {
+    .evf { flex-basis: calc(100vw - 64px); }
+    .ev.grid .evf { max-width: none; }
+  }
+</style>

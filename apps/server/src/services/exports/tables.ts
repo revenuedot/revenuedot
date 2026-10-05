@@ -6,7 +6,7 @@ import { entitlementMap } from "../../repo/catalog.js";
 import { baseOrderId } from "../../stores/google/map.js";
 
 /**
- * The five tables a data export can write, read in pages of PAGE rows ordered by a stable key.
+ * The six tables a data export can write, read in pages (PAGE rows unless the caller asks for fewer) ordered by a stable key.
  * - transactions: one row per store transaction (purchase, trial, renewal, one-time purchase) with the column names of
  *   RevenueCat's transactions export, so existing warehouse queries keep working. Refunds lower `price_in_usd` to 0 and
  *   set `refunded_at` on the original row instead of adding a negative row.
@@ -102,7 +102,7 @@ const inWindow = (col: AnyColumn, w: Window) => (w.since ? and(gt(col, w.since),
 const after = (time: AnyColumn, id: AnyColumn, c: Cursor | null) => (c ? sql`(${time}, ${id}) > (${c.t}::timestamptz, ${c.id})` : undefined);
 /** The exact text of a timestamp column, for the next page's cursor. */
 const exact = (col: AnyColumn) => sql<string>`${col}::text`;
-const nextCursor = <T extends { k: string }>(rows: T[], id: (r: T) => string): Cursor | null => (rows.length === PAGE ? { t: rows[rows.length - 1]!.k, id: id(rows[rows.length - 1]!) } : null);
+const nextCursor = <T extends { k: string }>(limit: number, rows: T[], id: (r: T) => string): Cursor | null => (rows.length === limit ? { t: rows[rows.length - 1]!.k, id: id(rows[rows.length - 1]!) } : null);
 
 async function customerInfo(db: DB, ids: string[]) {
   if (!ids.length) return new Map<string, { c: typeof C.$inferSelect; last: string; aliases: string[]; reserved: Record<string, unknown>; custom: Record<string, unknown>; attrsAt: number }>();
@@ -127,13 +127,14 @@ const envCond = (col: AnyColumn, w: Window) => (w.environment === "both" ? undef
 const maxDate = (...d: (Date | null | undefined)[]) => d.reduce<Date | null>((m, x) => (x && (!m || x > m) ? x : m), null);
 
 /** One page of rows and the cursor for the next page (null when done). */
-export async function readPage(db: DB, projectId: string, table: ExportTable, w: Window, cursor: Cursor | null): Promise<{ rows: Row[]; next: Cursor | null }> {
-  if (table === "transactions") return transactionsPage(db, projectId, w, cursor);
-  if (table === "paywall_events") return paywallEventsPage(db, projectId, w, cursor);
-  if (table === "virtual_currency") return virtualCurrencyPage(db, projectId, w, cursor);
+/** One page of at most `limit` rows (default PAGE); the export loop sizes pages from the time rows take to read. */
+export async function readPage(db: DB, projectId: string, table: ExportTable, w: Window, cursor: Cursor | null, limit = PAGE): Promise<{ rows: Row[]; next: Cursor | null }> {
+  if (table === "transactions") return transactionsPage(db, projectId, w, cursor, limit);
+  if (table === "paywall_events") return paywallEventsPage(db, projectId, w, cursor, limit);
+  if (table === "virtual_currency") return virtualCurrencyPage(db, projectId, w, cursor, limit);
   if (table === "subscriptions") {
     const page = await db.select({ s: S, k: exact(S.updatedAt) }).from(S).where(and(eq(S.projectId, projectId), envCond(S.isSandbox, w), inWindow(S.updatedAt, w), after(S.updatedAt, S.id, cursor)))
-      .orderBy(asc(S.updatedAt), asc(S.id)).limit(PAGE);
+      .orderBy(asc(S.updatedAt), asc(S.id)).limit(limit);
     const rows = page.map((r) => r.s);
     const info = await customerInfo(db, [...new Set(rows.map((r) => r.customerId))]);
     return {
@@ -145,13 +146,13 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
         original_store_transaction_id: s.originalTransactionId ?? s.storeKey, price_in_purchased_currency: s.priceAmount, purchased_currency: s.priceCurrency, price_in_usd: s.priceUsd,
         country: s.countryCode, presented_offering: s.presentedOfferingId, auto_renew_product_identifier: s.autoRenewProductId, updated_at: s.updatedAt,
       })),
-      next: nextCursor(page, (r) => r.s.id),
+      next: nextCursor(limit, page, (r) => r.s.id),
     };
   }
   if (table === "events") {
     const envE = w.environment === "both" ? undefined : eq(E.environment, w.environment);
     const page = await db.select({ e: E, k: exact(E.createdAt) }).from(E).where(and(eq(E.projectId, projectId), envE, inWindow(E.createdAt, w), after(E.createdAt, E.id, cursor)))
-      .orderBy(asc(E.createdAt), asc(E.id)).limit(PAGE);
+      .orderBy(asc(E.createdAt), asc(E.id)).limit(limit);
     return {
       rows: page.map(({ e }) => {
         const ev = ((e.payload as { event?: Record<string, any> }).event ?? {}) as Record<string, any>;
@@ -162,7 +163,7 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
           price_in_purchased_currency: typeof ev.price_in_purchased_currency === "number" ? ev.price_in_purchased_currency : null, payload: JSON.stringify(ev),
         };
       }),
-      next: nextCursor(page, (r) => r.e.id),
+      next: nextCursor(limit, page, (r) => r.e.id),
     };
   }
   // customers: new, seen, or with attributes changed in the window. The keyset is first_seen + id.
@@ -173,7 +174,7 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
   const sandboxCond = w.environment === "both" ? undefined
     : sql`exists (select 1 from ${T} where ${T.customerId} = ${C.id} and ${T.isSandbox} = ${w.environment === "sandbox"})`;
   const page = await db.select({ c: C, k: exact(C.firstSeen) }).from(C).where(and(eq(C.projectId, projectId), windowCond, sandboxCond, after(C.firstSeen, C.id, cursor)))
-    .orderBy(asc(C.firstSeen), asc(C.id)).limit(PAGE);
+    .orderBy(asc(C.firstSeen), asc(C.id)).limit(limit);
   const rows = page.map((r) => r.c);
   const info = await customerInfo(db, rows.map((r) => r.id));
   return {
@@ -186,11 +187,11 @@ export async function readPage(db: DB, projectId: string, table: ExportTable, w:
         updated_at: maxDate(c.lastSeen, i.attrsAt ? new Date(i.attrsAt) : null),
       };
     }),
-    next: nextCursor(page, (r) => r.c.id),
+    next: nextCursor(limit, page, (r) => r.c.id),
   };
 }
 
-async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cursor | null) {
+async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cursor | null, limit = PAGE) {
   const R = schema.transactions;
   // A transaction is in the window when it was recorded, refunded (or the refund reversed), or its subscription changed then.
   const changed = w.since ? or(
@@ -201,7 +202,7 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
       and s.updated_at > ${w.since.toISOString()}::timestamptz and s.updated_at <= ${w.until.toISOString()}::timestamptz)`,
   ) : undefined;
   const page = await db.select({ t: T, k: exact(T.createdAt) }).from(T).where(and(eq(T.projectId, projectId), inArray(T.kind, PAID), envCond(T.isSandbox, w), lte(T.createdAt, w.until), changed, after(T.createdAt, T.id, cursor)))
-    .orderBy(asc(T.createdAt), asc(T.id)).limit(PAGE);
+    .orderBy(asc(T.createdAt), asc(T.id)).limit(limit);
   const rows = page.map((r) => r.t);
   if (!rows.length) return { rows: [], next: null };
   const customerIds = [...new Set(rows.map((r) => r.customerId))];
@@ -279,19 +280,19 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
       offer: t.offerId ?? null, offer_type: t.offerType ?? null, first_seen_time: i?.c.firstSeen ?? null, auto_resume_time: current ? s?.autoResumeDate ?? null : null, app_id: t.appId,
     };
   });
-  return { rows: out, next: nextCursor(page, (r) => r.t.id) };
+  return { rows: out, next: nextCursor(limit, page, (r) => r.t.id) };
 }
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 
-async function paywallEventsPage(db: DB, projectId: string, w: Window, cursor: Cursor | null) {
+async function paywallEventsPage(db: DB, projectId: string, w: Window, cursor: Cursor | null, limit = PAGE) {
   const X = schema.sdkEvents;
   const envX = w.environment === "both" ? undefined : eq(X.isSandbox, w.environment === "sandbox");
   // The customer comes through the alias when the event arrived before the customer existed.
   const page = await db.select({ x: X, k: exact(X.receivedAt), aliasCustomer: AL.customerId }).from(X)
     .leftJoin(AL, and(eq(AL.projectId, X.projectId), eq(AL.appUserId, X.appUserId)))
     .where(and(eq(X.projectId, projectId), sql`${X.type} like 'paywall\\_%'`, envX, inWindow(X.receivedAt, w), after(X.receivedAt, X.id, cursor)))
-    .orderBy(asc(X.receivedAt), asc(X.id)).limit(PAGE);
+    .orderBy(asc(X.receivedAt), asc(X.id)).limit(limit);
   return {
     rows: page.map(({ x, aliasCustomer }) => {
       const p = x.payload as Record<string, unknown>;
@@ -304,7 +305,7 @@ async function paywallEventsPage(db: DB, projectId: string, w: Window, cursor: C
         locale: str(p.locale), display_mode: str(p.display_mode), package_id: str(p.package_id), product_id: str(p.product_id), payload: JSON.stringify(p),
       };
     }),
-    next: nextCursor(page, (r) => r.x.id),
+    next: nextCursor(limit, page, (r) => r.x.id),
   };
 }
 
@@ -316,7 +317,7 @@ function ledgerType(source: string, amount: number): string {
   return amount < 0 ? "DEDUCTION" : "GRANT";
 }
 
-async function virtualCurrencyPage(db: DB, projectId: string, w: Window, cursor: Cursor | null) {
+async function virtualCurrencyPage(db: DB, projectId: string, w: Window, cursor: Cursor | null, limit = PAGE) {
   const V = schema.virtualCurrencyTransactions;
   // A purchase grant changes when its purchase is refunded (price_in_usd drops to 0), so incremental runs take it again then.
   const changed = w.since ? or(
@@ -327,7 +328,7 @@ async function virtualCurrencyPage(db: DB, projectId: string, w: Window, cursor:
   ) : undefined;
   const page = await db.select({ v: V, k: exact(V.createdAt) }).from(V)
     .where(and(eq(V.projectId, projectId), lte(V.createdAt, w.until), changed, after(V.createdAt, V.id, cursor)))
-    .orderBy(asc(V.createdAt), asc(V.id)).limit(PAGE);
+    .orderBy(asc(V.createdAt), asc(V.id)).limit(limit);
   if (!page.length) return { rows: [], next: null };
   const customerIds = [...new Set(page.map((r) => r.v.customerId))];
   const keys = [...new Set(page.filter((r) => r.v.source === "purchase" && r.v.sourceKey).map((r) => r.v.sourceKey!))];
@@ -371,5 +372,5 @@ async function virtualCurrencyPage(db: DB, projectId: string, w: Window, cursor:
       refund_type: refund && t ? (refundUsd! + 1e-9 >= t.revenueUsd ? "FULL" : "PARTIAL") : null,
     });
   }
-  return { rows, next: nextCursor(page, (r) => r.v.id) };
+  return { rows, next: nextCursor(limit, page, (r) => r.v.id) };
 }

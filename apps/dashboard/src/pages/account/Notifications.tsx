@@ -88,9 +88,9 @@ export function AccountNotificationsPage() {
               <tbody>{q.data.projects.map((p) => (
                 <tr key={p.project.id} data-project={p.project.id}>
                   <td className="p"><b>{p.project.name}</b></td>
-                  <td><Switch checked={p.weekly_summary} onChange={(v) => save(p, { weekly_summary: v }, v ? `Weekly summary on for ${p.project.name}.` : `Weekly summary off for ${p.project.name}.`)} label={`Weekly summary for ${p.project.name}`} hideLabel /></td>
-                  <td><Switch checked={p.experiment_results} onChange={(v) => save(p, { experiment_results: v }, v ? `Experiment results on for ${p.project.name}.` : `Experiment results off for ${p.project.name}.`)} label={`Experiment results for ${p.project.name}`} hideLabel /></td>
-                  <td>
+                  <td data-label="Weekly summary"><Switch checked={p.weekly_summary} onChange={(v) => save(p, { weekly_summary: v }, v ? `Weekly summary on for ${p.project.name}.` : `Weekly summary off for ${p.project.name}.`)} label={`Weekly summary for ${p.project.name}`} hideLabel /></td>
+                  <td data-label="Experiment results"><Switch checked={p.experiment_results} onChange={(v) => save(p, { experiment_results: v }, v ? `Experiment results on for ${p.project.name}.` : `Experiment results off for ${p.project.name}.`)} label={`Experiment results for ${p.project.name}`} hideLabel /></td>
+                  <td data-label="Revenue anomalies (beta)">
                     <div className="nmx-cell">
                       <Switch checked={p.anomaly_alerts} onChange={(v) => save(p, { anomaly_alerts: v }, v ? `Anomaly alerts on for ${p.project.name}.` : `Anomaly alerts off for ${p.project.name}.`)} label={`Revenue anomalies for ${p.project.name}`} hideLabel />
                       {p.anomaly_alerts && (

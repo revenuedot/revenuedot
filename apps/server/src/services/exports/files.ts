@@ -68,6 +68,17 @@ export const gunzip = (b: Uint8Array) => pipe(b, new DecompressionStream("gzip")
 
 export interface ExportFileBytes { bytes: Uint8Array; contentType: string; extension: string }
 
+/**
+ * A CSV chunk from rows carried over from earlier ticks (`before`, CSV text without a header) and rows read now. The bytes
+ * are the same as encoding every row at once: CSV is one line per row, so the text simply concatenates.
+ */
+export async function encodeCsvChunk(compression: "gzip" | "none", columns: [string, ColumnType][], before: string, rows: Row[], header: boolean): Promise<ExportFileBytes> {
+  const text = (header ? toCsv(columns, []) : "") + before + toCsv(columns, rows, false);
+  const csv = new TextEncoder().encode(text);
+  if (compression === "gzip") return { bytes: await gzip(csv), contentType: "application/gzip", extension: "csv.gz" };
+  return { bytes: csv, contentType: "text/csv", extension: "csv" };
+}
+
 /** `header: false` leaves out the header row: a later chunk of a single-file CSV (services/exports/upload.ts). */
 export async function encodeFile(format: "csv" | "parquet", compression: "gzip" | "none", columns: [string, ColumnType][], rows: Row[], header = true): Promise<ExportFileBytes> {
   if (format === "parquet") return { bytes: toParquet(columns, rows), contentType: "application/vnd.apache.parquet", extension: "parquet" };

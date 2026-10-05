@@ -419,8 +419,9 @@ const CHEAPER: Guide = {
       table: {
         head: CHEAPER_FEES.head,
         rows: CHEAPER_FEES.rows,
-        caption: "Monthly fee at three levels of tracked revenue; Enterprise plans are custom and not shown. Sources: " + feeSources + ", and [RevenueDot pricing](/pricing). Vendors change prices, so check the page before you decide.",
+        caption: "Monthly fee at three levels of tracked revenue; Enterprise plans are custom and not shown. Sources: " + feeSources + ", and [RevenueDot pricing](/pricing). Vendors change prices, so check the page before you decide. The pricing pages as captured on 4 October 2026:",
       },
+      evidence: CHEAPER_FEES.evidence,
     },
     {
       h2: "The cheapest option at each size",
@@ -452,7 +453,7 @@ const CHEAPER: Guide = {
         "**Qonversion** has no ceiling, so the 0.8% keeps growing: $8,000 a month at $1,000,000. Its docs list no Amazon Appstore support.",
         "**Adapty** charges 1% of all revenue past $5,000 plus add-on fees, and it uses its own SDK.",
         "**Apphud** gates server-to-server webhooks and daily exports behind its Expert plan, and past the free limit it stops tracking renewals after a 7-day grace period.",
-        "**RevenueCat** is the one everyone else is measured against: SOC 2 Type II, 148K+ apps and years of production traffic, which is what the 1% pays for.",
+        "**RevenueCat** is the one everyone else is measured against: SOC 2 Type II, 149K+ apps and years of production traffic, which is what the 1% pays for.",
       ],
     },
     {
