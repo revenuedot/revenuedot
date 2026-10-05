@@ -79,12 +79,12 @@ export async function canAccess(db: DB, userId: string, projectId: string) {
 }
 
 /** Signup creates the user and, when given, their first project. */
-export async function signup(db: DB, input: { email: string; password: string; name?: string; projectName?: string; emailVerifiedAt?: Date | null }) {
+export async function signup(db: DB, input: { email: string; password: string; name?: string; projectName?: string; emailVerifiedAt?: Date | null; timeZone?: string | null; referredBy?: string | null }) {
   const email = input.email.trim().toLowerCase();
   const [exists] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (exists) return { error: "An account with this email already exists." as const };
   const id = newId("usr_", 16);
-  await db.insert(users).values({ id, email, name: input.name ?? null, passwordHash: await hashPassword(input.password), emailVerifiedAt: input.emailVerifiedAt ?? null });
+  await db.insert(users).values({ id, email, name: input.name ?? null, passwordHash: await hashPassword(input.password), emailVerifiedAt: input.emailVerifiedAt ?? null, timeZone: input.timeZone ?? null, referredBy: input.referredBy ?? null });
   if (input.projectName) {
     const pid = newId("proj", 8);
     await db.insert(projects).values({ id: pid, name: input.projectName, ownerUserId: id });

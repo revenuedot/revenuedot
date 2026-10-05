@@ -46,6 +46,8 @@ export const projects = pgTable("projects", {
   /** When this project was copied in from another RevenueDot server; Cloud billing ignores revenue recorded before it. */
   movedInAt: ts("moved_in_at"),
   movedInFrom: text("moved_in_from"),
+  /** The first RevenueCat customer import (POST /v2/projects/{id}/import/customers); onboarding emails switch to the migration path. */
+  rcImportAt: ts("rc_import_at"),
   createdAt: created(),
 });
 
@@ -508,8 +510,18 @@ export const users = pgTable("users", {
   passwordChangedAt: ts("password_changed_at"),
   /** The weekly AI growth insights digest for projects this user administers (prd/attribution-benchmarks-insights). */
   insightsEmails: boolean("insights_emails").notNull().default(true),
+  /** Cloud onboarding and growth emails (prd/onboarding-emails/PRD.md): setup help, tips and product news. */
+  productEmails: boolean("product_emails").notNull().default(true),
+  /** IANA time zone from the browser ("Europe/Berlin"), so journey emails arrive in the reader's daytime. */
+  timeZone: text("time_zone"),
+  /** "new" (first in-app purchases) or "revenuecat" (switching), from the welcome email or the Overview. */
+  journeyPath: text("journey_path"),
+  /** This user's referral code (app.revenuedot.app/signup?ref=…), made when the referral email first goes out. */
+  referralCode: text("referral_code"),
+  /** The referral code this account signed up with, as given. */
+  referredBy: text("referred_by"),
   createdAt: created(),
-}, (t) => [uniqueIndex("users_email").on(t.email)]);
+}, (t) => [uniqueIndex("users_email").on(t.email), uniqueIndex("users_referral_code").on(t.referralCode)]);
 
 /** A user's access to a project. `role`: "admin", "developer" or "viewer". */
 export const memberships = pgTable("memberships", {
@@ -667,6 +679,17 @@ export const notificationSends = pgTable("notification_sends", {
   tokenHash: text("token_hash"),
   sentAt: ts("sent_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.userId, t.projectId, t.kind, t.key] }), uniqueIndex("notification_sends_token").on(t.tokenHash)]);
+
+/**
+ * One row per onboarding or growth email (prd/onboarding-emails/PRD.md), written before it is sent: each step goes to a
+ * person at most once. `tokenHash`: SHA-256 of the email's one-click unsubscribe link, which turns product emails off.
+ */
+export const journeySends = pgTable("journey_sends", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  step: text("step").notNull(),
+  tokenHash: text("token_hash"),
+  sentAt: ts("sent_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.step] }), uniqueIndex("journey_sends_token").on(t.tokenHash), index("journey_sends_time").on(t.userId, t.sentAt)]);
 
 /** The daily revenue anomaly check per project and UTC day (YYYY-MM-DD): run once, emailed from the result. */
 export const anomalyChecks = pgTable("anomaly_checks", {

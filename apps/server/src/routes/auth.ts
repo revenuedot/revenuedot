@@ -17,7 +17,16 @@ import { stripeProblem } from "../services/billing/stripe.js";
 
 const Password = z.string().min(8, "Use at least 8 characters for your password.").max(200, "Use at most 200 characters for your password.");
 const Email = z.string().trim().toLowerCase().email("Enter a valid email address.");
-const Signup = z.object({ email: Email, password: Password, name: z.string().max(100).optional(), project_name: z.string().max(100).optional(), invite_token: z.string().max(200).optional() });
+/** An IANA time zone ("Europe/Berlin") the runtime knows; anything else is dropped rather than refused. */
+const TimeZone = z.string().max(64).optional().transform((v) => {
+  if (!v) return undefined;
+  try { new Intl.DateTimeFormat("en-US", { timeZone: v }); return v; } catch { return undefined; }
+});
+const Signup = z.object({
+  email: Email, password: Password, name: z.string().max(100).optional(), project_name: z.string().max(100).optional(), invite_token: z.string().max(200).optional(),
+  // Onboarding emails (prd/onboarding-emails/PRD.md): the browser's time zone, and a referral code from /signup?ref=….
+  time_zone: TimeZone, ref: z.string().max(40).regex(/^[A-Za-z0-9_-]*$/).optional().catch(undefined),
+});
 const Login = z.object({ email: Email, password: z.string().min(1) });
 const Forgot = z.object({ email: z.string().max(320) });
 const Token = z.object({ token: z.string().min(1).max(200) });
@@ -26,6 +35,8 @@ const MeUpdate = z.object({
   name: z.string().trim().max(100).nullable().optional(), alert_emails: z.boolean().optional(), integration_alert_emails: z.boolean().optional(), insights_emails: z.boolean().optional(),
   // Account settings → Interface and Date and region (prd/account-settings); checked by preferencesPatch.
   theme: z.unknown().optional(), tint: z.unknown().optional(), week_start: z.unknown().optional(), display_currency: z.unknown().optional(),
+  // Onboarding and growth emails (prd/onboarding-emails/PRD.md).
+  product_emails: z.boolean().optional(), time_zone: TimeZone, journey_path: z.enum(["new", "revenuecat"]).optional(),
 });
 const TwoFactorLogin = z.object({ challenge: z.string().min(1).max(200), code: z.string().max(40).optional(), recovery_code: z.string().max(40).optional() });
 
@@ -56,6 +67,7 @@ export function authRoutes(deps: Deps) {
   /** The user as GET /auth/me shows it: profile, preferences, security state and a waiting email change. */
   const userOut = async (u: User) => ({
     id: u.id, email: u.email, name: u.name, email_verified: !!u.emailVerifiedAt, alert_emails: u.alertEmails, integration_alert_emails: u.integrationAlertEmails, insights_emails: u.insightsEmails,
+    product_emails: u.productEmails, time_zone: u.timeZone, journey_path: u.journeyPath,
     preferences: preferencesOf(u), has_password: !!u.passwordHash,
     two_factor: { enabled: twoFactorOn(u), enabled_at: u.totpEnabledAt?.getTime() ?? null, recovery_codes_left: twoFactorOn(u) ? await recoveryCodesLeft(deps.db, u.id) : 0 },
     pending_email: await pendingEmailChange(deps.db, u, deps.now()), password_changed_at: u.passwordChangedAt?.getTime() ?? null, created_at: u.createdAt.getTime(),
@@ -111,6 +123,7 @@ export function authRoutes(deps: Deps) {
       projectName: invite ? undefined : p.data.project_name?.trim() || "My project",
       // The invite link proved the inbox.
       emailVerifiedAt: invite ? now : null,
+      timeZone: p.data.time_zone ?? null, referredBy: p.data.ref || null,
     });
     if ("error" in res) return c.json({ type: "conflict", message: invite ? "An account with this email already exists. Sign in to accept the invite." : res.error }, 409);
     if (invite) await acceptInvite(deps.db, invite, res.userId!, now);
@@ -219,6 +232,9 @@ export function authRoutes(deps: Deps) {
     if (p.data.alert_emails !== undefined) set.alertEmails = p.data.alert_emails;
     if (p.data.integration_alert_emails !== undefined) set.integrationAlertEmails = p.data.integration_alert_emails;
     if (p.data.insights_emails !== undefined) set.insightsEmails = p.data.insights_emails;
+    if (p.data.product_emails !== undefined) set.productEmails = p.data.product_emails;
+    if (p.data.time_zone) set.timeZone = p.data.time_zone;
+    if (p.data.journey_path) set.journeyPath = p.data.journey_path;
     const [row] = Object.keys(set).length ? await deps.db.update(schema.users).set(set).where(eq(schema.users.id, u.id)).returning() : [u];
     return c.json({ user: await userOut(row!) });
   });

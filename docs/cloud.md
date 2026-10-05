@@ -235,6 +235,18 @@ Prove a change before shipping it: `pnpm tsx scripts/e2e/real-stripe/billing.ts`
 test clock renewal, declined card, recovery, portal), plus `apps/server/test/billing.test.ts` and
 `apps/dashboard/e2e/billing.spec.ts`.
 
+## Onboarding and growth emails (off until `REVENUEDOT_JOURNEYS=on`)
+Spec: `prd/onboarding-emails/PRD.md`. The cron tick picks at most one email per account every 5 minutes from 27 steps
+(welcome to referral) and sends it from `Kai from RevenueDot <kai@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`.
+- **Secrets** on Worker `revenuedot`: `REVENUEDOT_JOURNEYS` (`on` sends; anything else is off), `REVENUEDOT_JOURNEYS_SINCE`
+  (ISO time; onboarding steps go only to accounts created after it), `REVENUEDOT_JOURNEYS_EXCLUDE` (comma list of domains
+  and addresses never emailed, for example `circo.so,revenuedot.app`). Set with
+  `printf %s on | cf workers secrets update REVENUEDOT_JOURNEYS --worker revenuedot`; turning it off takes effect on the next tick.
+- **Preview every email** with real sample data: `ALL_VIDEOS=1 pnpm tsx scripts/journey-previews.ts /tmp/journeys`.
+- **Video covers** (`apps/site/public/email/*.jpg`): `node apps/site/scripts/email-covers.mjs <posters-dir>`; a video shows in
+  emails once `ready: true` in `apps/server/src/mail/journeys.ts` and its `/watch/<name>` page exists (`apps/site/src/lib/videos.mjs`).
+- **What was sent:** `journey_sends` (one row per person and step). Unsubscribes set `users.product_emails = false`.
+
 ## Full-export archives in R2 (manual step, needs Kai's approval)
 
 Exports and moves (`prd/moves-export/PRD.md`) work on Cloud today with the archive files in Postgres (`archive_blobs`,

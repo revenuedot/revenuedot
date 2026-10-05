@@ -1,7 +1,7 @@
 // RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
 // This file: the migration import endpoints used by `npx revenuedot import` (bulk customers, public keys, status).
 // Docs: https://revenuedot.app/docs/migrate
-import { and, eq, like, sql } from "drizzle-orm";
+import { and, eq, like, sql, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
@@ -154,6 +154,8 @@ export function importRoutes(r: V2Router, deps: Deps) {
     // page untouched; the importer then repeats it, which is safe because pages are idempotent.
     const results = await db.transaction(async (tx) => importPage(tx as unknown as DB, { projectId, now, products, keys, emit: b.emit_events }, b.customers));
     if (b.emit_events) deps.kick?.();
+    // Marks the project as migrating from RevenueCat, so Cloud's onboarding emails switch to the migration path.
+    if (b.customers.length) await db.update(schema.projects).set({ rcImportAt: now }).where(and(eq(schema.projects.id, projectId), isNull(schema.projects.rcImportAt)));
     return c.json({ object: "import_result", emit_events: b.emit_events, customers: results });
   });
 

@@ -34,6 +34,13 @@ export function AccountNotificationsPage() {
       toast(v ? "Integration failure emails are on." : "Integration failure emails are off.");
     } catch (e) { toast(errText(e)); }
   };
+  const saveProduct = async (v: boolean) => {
+    try {
+      const r = await api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: { product_emails: v } });
+      qc.setQueryData<Me>(["me"], (m) => (m ? { ...m, user: { ...m.user, ...r.user } } : m));
+      toast(v ? "Setup help and tips are on." : "Setup help and tips are off.");
+    } catch (e) { toast(errText(e)); }
+  };
   const saveDigest = async (v: boolean) => {
     try {
       const r = await api<{ user: Me["user"] }>("/auth/me", { method: "POST", json: { insights_emails: v } });
@@ -65,6 +72,13 @@ export function AccountNotificationsPage() {
             </Row>
           )}
         </Section>
+        {me.data.account?.edition === "cloud" && (
+          <Section title="Setup help and tips" id="product">
+            <Row label="Setup help, tips and product news" help="Short emails from Kai, the founder, while you set up: one step and a short video each, and they stop once a step is done. Security, billing and alert emails are separate.">
+              <Switch checked={me.data.user.product_emails ?? true} onChange={saveProduct} label="Email me setup help, tips and product news" />
+            </Row>
+          </Section>
+        )}
         <Section title="Performance emails" id="performance" sub={<>Per project. The weekly summary arrives each {week} (your first day of the week, in Date and region) with MRR, revenue, new customers, trials and churn against the week before. Revenue anomaly alerts compare yesterday with the 28 days before it, every morning (UTC).</>}>
           {q.isError ? <div className="acct-pad"><div className="banner err" role="alert">{errText(q.error)}</div></div> : !q.data ? <div className="acct-empty">Loading…</div> : !q.data.projects.length ? (
             <div className="acct-empty">You are not in any project yet.</div>

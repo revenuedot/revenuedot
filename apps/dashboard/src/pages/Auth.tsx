@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { useMe, type Me } from "../components/Shell";
+import { browserTimeZone, useMe, type Me } from "../components/Shell";
 import { Mark } from "../components/icons";
 import { TwoFactorStep } from "../components/TwoFactorStep";
 
@@ -61,7 +61,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
     e.preventDefault();
     setError(null); setBusy(true);
     try {
-      const r = await api<{ two_factor_required?: boolean; challenge?: string }>(signup ? "/auth/signup" : "/auth/login", { method: "POST", json: signup ? form : { email: form.email, password: form.password } });
+      const r = await api<{ two_factor_required?: boolean; challenge?: string }>(signup ? "/auth/signup" : "/auth/login", { method: "POST", json: signup ? { ...form, time_zone: browserTimeZone() ?? undefined, ref: params.get("ref") ?? undefined } : { email: form.email, password: form.password } });
       if (r?.two_factor_required && r.challenge) { setChallenge(r.challenge); return; }
       await home();
     } catch (err) {

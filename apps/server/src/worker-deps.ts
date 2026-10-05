@@ -74,6 +74,12 @@ export interface Env {
   REVENUEDOT_BILLING_METER_EVENT?: string;
   REVENUEDOT_BILLING_LIVE?: string;
   REVENUEDOT_BILLING_PLANS?: string;
+  /** Onboarding and growth emails (prd/onboarding-emails/PRD.md): "on" sends them from the cron; anything else: off. */
+  REVENUEDOT_JOURNEYS?: string;
+  /** Onboarding steps go only to accounts created at or after this ISO time (the launch). */
+  REVENUEDOT_JOURNEYS_SINCE?: string;
+  /** Comma list of domains and addresses that never get journey emails (internal and test accounts). */
+  REVENUEDOT_JOURNEYS_EXCLUDE?: string;
   /** Local `cf dev` only: "1" answers with the scripted fake model, so the Durable Object runtime can be tried without a model call. Never set in production. */
   REVENUEDOT_ASSISTANT_FAKE?: string;
   /** Optional secret: the RevenueDot Enterprise licence key that turns on the `ee/` features (extensions.ts). Unset: off. */

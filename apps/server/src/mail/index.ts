@@ -16,6 +16,8 @@ export interface MailMessage {
   headers?: Record<string, string>;
   /** The sender's display name instead of the configured one (win-back email speaks for the app); the address stays. */
   fromName?: string;
+  /** A whole sender ("Name <address>") instead of the configured one (onboarding emails come from a person). The Cloud binding must allow the address. */
+  from?: string;
 }
 
 /**
@@ -54,7 +56,7 @@ export function cloudflareMailer(binding: SendEmailBinding, from = CLOUD_FROM, r
   return {
     driver: "cloudflare",
     async send(msg) {
-      const sender = parseAddress(from);
+      const sender = parseAddress(msg.from ?? from);
       const r = await binding.send({
         to: msg.to, from: msg.fromName ? { email: sender.email, name: headerSafe(msg.fromName) } : sender, subject: headerSafe(msg.subject), text: msg.text, html: msg.html,
         replyTo: msg.replyTo ?? replyTo, ...(msg.headers ? { headers: msg.headers } : {}),

@@ -398,7 +398,10 @@ function TestPurchaseDialog({ pid, apps, products, onClose, onDone }: { pid: str
 
 function SetupChecklist({ pid, s, onHide, firstRun }: { pid: string; s: SetupState; onHide?: () => void; firstRun: boolean }) {
   const [buying, setBuying] = useState(false);
-  const [mode, setMode] = useState<Mode>("fresh");
+  const me = useMe();
+  const [mode, setModeState] = useState<Mode>(me.data?.user.journey_path === "revenuecat" ? "moving" : "fresh");
+  // The choice also picks which onboarding emails come next (prd/onboarding-emails/PRD.md).
+  const setMode = (m: Mode) => { setModeState(m); void api("/auth/me", { method: "POST", json: { journey_path: m === "moving" ? "revenuecat" : "new" } }).catch(() => {}); };
   const qc = useQueryClient();
   const nav = useNavigate();
   const base = `/projects/${pid}`;
