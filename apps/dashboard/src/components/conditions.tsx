@@ -31,7 +31,7 @@ export const SUGGESTED_FIELDS = ["mediaSource", "campaign", "adGroup", "keyword"
 /** The project's attribution values, as suggestions for the value box. */
 export function useFieldSuggestions(pid: string) {
   return useQuery({
-    queryKey: ["filter-options", pid], enabled: !!pid, staleTime: 60_000,
+    queryKey: ["filter-options", pid], enabled: !!pid, staleTime: 60_000, meta: { gate: "ignore" },
     queryFn: async () => {
       const r = await api<{ items: { field: string; options: { id: string }[] }[] }>(`/v2/projects/${pid}/audiences/filter_options?fields=${SUGGESTED_FIELDS.join(",")}`);
       return Object.fromEntries(r.items.map((i) => [i.field, i.options.map((o) => o.id)])) as Record<string, string[]>;

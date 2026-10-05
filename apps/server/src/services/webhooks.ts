@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, lte, ne, not, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { schema, type DB, type DeliveryAttempt } from "@revenuedot/db";
 import { webhookStore, type Store } from "@revenuedot/core";
 import { notMoving } from "./archive/moving.js";
@@ -145,9 +145,10 @@ const webhookIdle = (now: Date) =>
  * its lease 2 minutes past the claim) only while it is due and no other delivery to its webhook is being sent, so it is
  * never sent twice and never overtakes an earlier one in flight. Different webhooks are sent to in parallel. A run that
  * dies mid-attempt leaves the claim to lapse, and the delivery is sent again after it (at least once, as RevenueCat
- * does). `signal` (a replica draining on SIGTERM) stops it after the attempts in flight.
+ * does). `signal` (a replica draining on SIGTERM) stops it after the attempts in flight. `skip`: deliveries left in the
+ * queue (Cloud's go-live gate, services/billing/gate.ts).
  */
-export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50, budgetMs = 20_000, signal?: AbortSignal) {
+export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, limit = 50, budgetMs = 20_000, signal?: AbortSignal, skip?: (eventId: SQLWrapper) => SQL) {
   const started = Date.now();
   const stop = () => signal?.aborted === true || Date.now() - started >= budgetMs;
   // `now` is when the job run started, possibly a while ago; a lease counts from the claim itself.
@@ -159,7 +160,7 @@ export async function deliverDue(db: DB, fetchImpl: typeof fetch, now: Date, lim
   for (;;) {
     const due = await db.select({ id: D.id, webhookId: D.webhookId }).from(D)
       .innerJoin(webhooks, eq(webhooks.id, D.webhookId)).innerJoin(events, eq(events.id, D.eventId))
-      .where(and(sendable, lte(D.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId), webhookIdle(now)))
+      .where(and(sendable, lte(D.nextAttemptAt, now), eq(webhooks.enabled, true), notMoving(webhooks.projectId), webhookIdle(now), skip ? not(skip(D.eventId)) : undefined))
       // A claim whose run died goes first: its lease moved its next attempt behind newer deliveries to the same webhook.
       // Events recorded at the same instant (one store notification can make two) keep the order they were recorded in.
       .orderBy(desc(sql`${D.status} = 'sending'`), asc(D.nextAttemptAt), asc(events.createdAt)).limit(limit);

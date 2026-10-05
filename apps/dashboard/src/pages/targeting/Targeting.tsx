@@ -21,7 +21,7 @@ import { useCanEdit, useOrderSaver, type Audience, type TargetingRule as Rule } 
 
 export { describeRules };
 
-const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
+const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, meta: { gate: "ignore" }, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
 const useRules = (pid: string) => useQuery({ queryKey: ["targeting-rules", pid], enabled: !!pid, queryFn: async () => (await api<List<Rule>>(`${v2(pid)}/targeting_rules`)).items });
 const useOfferingList = (pid: string) => useQuery({ queryKey: ["offering-list", pid], enabled: !!pid, queryFn: () => listAll<Offering>(`${v2(pid)}/offerings`) });
 

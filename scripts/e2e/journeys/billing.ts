@@ -2,11 +2,13 @@
 // This file: journey (billing), RevenueDot Cloud billing (prd/cloud-billing/PRD.md) on a real Node server run as Cloud
 // (REVENUEDOT_EDITION=cloud) with its own Railway development database, and RevenueDot's own Stripe account played by a
 // fake on the capture server (packages/contract/src/fake-billing-stripe.ts; Stripe is never called):
-//   - A developer signs up; a live-mode Stripe subscription of $12,000 a year from their app (the developer's own Stripe,
-//     the web-billing fake) is real production revenue; the server's own tick meters it, and the "passed Cloud Free" email
-//     arrives through SMTP. Sandbox purchases do not count.
-//   - In Chromium: the Billing page shows the plan, the tracked revenue and the banner; Upgrade goes through the fake
-//     Checkout page, whose signed webhooks make the account Standard; the meter gets the month's bill ($10.00) at once.
+//   - A developer signs up with no plan (building); a live-mode Stripe subscription of $12,000 a year from their app (the
+//     developer's own Stripe, the web-billing fake) is real production revenue: the server's own tick meters it, and the
+//     go-live gate marks the account live (14 days to start Pro) and sends "RevenueDot recorded your first live sale"
+//     through SMTP. Sandbox purchases do not count.
+//   - The 14 days run out (moved forward in SQL): live data answers 402 plan_required; the SDK keeps working.
+//   - In Chromium: the Billing page shows the paused stage and the tracked revenue; Start Pro goes through the fake
+//     Checkout page, whose signed webhooks start Pro; live data opens again; the meter gets the month's bill ($10.00) at once.
 //   - Manage billing opens the fake Customer Portal; cancelling shows the end date. A failed invoice payment shows the
 //     banner on every page and emails once; the app keeps working; payment recovers it.
 import { join } from "node:path";
@@ -18,13 +20,15 @@ import { type Ctx, sdkClient, standardCatalog, type Dev } from "./lib/context.ts
 import { DB_PREFIX, PORT_BASE, PORTS, RdServer, ROOT, createDatabase, dropDatabase, hideUrls, linksOf, postgres, type Captured } from "./lib/stack.ts";
 import { FAKE_STRIPE_KEY } from "../../../packages/contract/src/fake-stripe.ts";
 import { FAKE_BILLING_KEY, FAKE_BILLING_PRICE, FAKE_BILLING_WEBHOOK_SECRET, FakeBillingStripe } from "../../../packages/contract/src/fake-billing-stripe.ts";
+import { PRO_CHECKOUT_TEXT } from "../../../apps/server/src/services/billing/stripe.ts";
+import { EXISTING_GRACE_DAYS, GATE_SHIPPED, GRACE_DAYS } from "../../../apps/server/src/services/billing/gate.ts";
 
 const chromium = () => (createRequire(join(ROOT, "apps/dashboard/package.json"))("playwright") as typeof import("playwright")).chromium;
 const DAY = 86400_000;
 
 const journey: Journey = {
   name: "billing",
-  title: "Cloud billing: metered production revenue, upgrade through Checkout, the meter, Portal, failed payment",
+  title: "Cloud billing: the go-live gate, metered production revenue, Start Pro through Checkout, the meter, Portal, failed payment",
   needsDashboard: true,
   async run(ctx: Ctx) {
     const { c } = ctx;
@@ -33,7 +37,7 @@ const journey: Journey = {
     const port = PORT_BASE + 8;
     const S = new RdServer({
       databaseUrl: url, port, smtpPort: PORTS.smtp, capturePort: PORTS.capture, logDir: join(ctx.out, "cloud"),
-      env: { REVENUEDOT_EDITION: "cloud", REVENUEDOT_BILLING_STRIPE_SECRET_KEY: FAKE_BILLING_KEY, REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET: FAKE_BILLING_WEBHOOK_SECRET, REVENUEDOT_BILLING_PRICE_STANDARD: FAKE_BILLING_PRICE },
+      env: { REVENUEDOT_EDITION: "cloud", REVENUEDOT_BILLING_STRIPE_SECRET_KEY: FAKE_BILLING_KEY, REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET: FAKE_BILLING_WEBHOOK_SECRET, REVENUEDOT_BILLING_PRICE_PRO: FAKE_BILLING_PRICE },
     });
     const sql = postgres(url, { max: 2, onnotice: () => {} });
     // RevenueDot's own Stripe account: API calls with the billing key, and its Checkout and Portal pages, on the capture server.
@@ -95,7 +99,7 @@ const journey: Journey = {
       const pid = me.body.projects[0].id as string;
       const dev: Dev = { email, password: "", cookie, projectId: pid, call: (m, p, j, h = {}) => fetch(S.base + p, { method: m, headers: { cookie, ...h, ...(j !== undefined ? { "content-type": "application/json" } : {}) }, body: j === undefined ? undefined : JSON.stringify(j) }).then(async (r) => { const t = await r.text(); return { status: r.status, body: t ? JSON.parse(t) : null, headers: r.headers }; }), v2: async (m, p, j) => (await call(m, `/v2/projects/${pid}${p}`, j)).body, v2r: (m, p, j) => call(m, `/v2/projects/${pid}${p}`, j) as never };
       const before = await call("GET", "/v2/billing");
-      c.has("Billing starts on Cloud Free with $0 tracked", before.body, { account: { plan: "free", status: "none" }, usage: { tracked_revenue_usd: 0, bill_usd: 0 }, stripe_ready: true });
+      c.has("Billing starts with no plan, building, $0 tracked", before.body, { account: { plan: "none", status: "none" }, gate: { stage: "building", live_at: null }, usage: { tracked_revenue_usd: 0, bill_usd: 0 }, flags: [], stripe_ready: true });
       const cat = await standardCatalog(dev);
       // Sandbox revenue never counts: a Test Store purchase.
       const sdk = sdkClient({ ...ctx, base: S.base }, cat.testKey);
@@ -115,44 +119,69 @@ const journey: Journey = {
       const tx = await sql`SELECT is_sandbox, revenue_usd FROM transactions WHERE project_id = ${pid} ORDER BY revenue_usd`;
       c.check("SQL: a sandbox purchase and a $12,000 production purchase", tx.length === 2 && tx[0]!.is_sandbox === true && tx[1]!.is_sandbox === false && Number(tx[1]!.revenue_usd) === 12_000, tx);
 
-      c.begin("the server's tick meters it and emails once");
+      c.begin("the server's tick meters it, marks the account live and emails once");
       const metered = await until(async () => { const r = await call("GET", "/v2/billing"); return r.body.usage.tracked_revenue_usd === 12_000 ? r.body : null; }, { timeoutMs: 90_000, everyMs: 2000 });
-      c.has("tracked revenue $12,000 (sandbox left out), Free bill $0, Standard would be $10.00, over the free limit", metered, { usage: { tracked_revenue_usd: 12_000, bill_usd: 0, standard_bill_usd: 10 }, flags: ["over_free_limit"] });
-      const usageMail = await until(async () => ctx.mails.find((m) => m.to.includes(email) && /passed RevenueDot Cloud Free/.test(m.subject)), { timeoutMs: 20_000 });
-      c.check("the 'passed Cloud Free' email arrived through SMTP, with the Billing link", !!usageMail && linksOf(usageMail).some((l) => l.endsWith("/account/billing")), usageMail?.subject);
+      c.has("tracked revenue $12,000 (sandbox left out), no bill without a plan, Pro would be $10.00", metered, { usage: { tracked_revenue_usd: 12_000, bill_usd: 0, pro_bill_usd: 10, free_up_to_usd: 10_000 } });
+      // The gate marks live accounts once every 10 minutes (services/billing/gate.ts), so this can take that long.
+      const live = await until(async () => { const r = await call("GET", "/v2/billing"); return r.body.gate.stage === "grace" ? r.body : null; }, { timeoutMs: 11 * 60_000, everyMs: 5000 });
+      c.has("the first live sale starts 14 days: the grace stage and its flag", live, { gate: { stage: "grace", grace_days: 14 }, flags: ["live_grace"] });
+      // 14 days; a sale from before the gate shipped gets 30 (Terms of Service section 5).
+      const graceDays = Date.now() < GATE_SHIPPED.getTime() ? EXISTING_GRACE_DAYS : GRACE_DAYS;
+      c.check(`grace ends ${graceDays} days after the sale was seen`, !!live && live.gate.grace_ends_at - live.gate.live_at === graceDays * DAY, live?.gate);
+      const liveMail = await until(async () => ctx.mails.find((m) => m.to.includes(email) && (Date.now() < GATE_SHIPPED.getTime() ? /^Live apps on RevenueDot now need Pro, by / : /^RevenueDot recorded your first live sale$/).test(m.subject)), { timeoutMs: 20_000 });
+      c.check("the first-live-sale email arrived through SMTP, with the Billing link", !!liveMail && linksOf(liveMail).some((l) => l.endsWith("/account/billing")), liveMail?.subject);
+      c.check("no Free usage email any more", !ctx.mails.some((m) => m.to.includes(email) && /Cloud Free/.test(m.subject)), ctx.mails.map((m) => m.subject));
+      const overview = await dev.v2r("GET", "/metrics/overview");
+      c.eq("grace: live data still opens", overview.status, 200);
 
-      c.begin("Billing page: Upgrade through Checkout");
+      c.begin("the 14 days run out: live data pauses, the app keeps working");
+      await sql`UPDATE billing_accounts SET grace_ends_at = now() - interval '1 minute'`;
+      const paused = await dev.v2r("GET", "/metrics/overview");
+      c.has("live data answers 402 plan_required with the upgrade link", { status: paused.status, body: paused.body }, { status: 402, body: { type: "plan_required", upgrade_url: "https://app.revenuedot.app/account/billing" } });
+      c.eq("sandbox data still opens", (await dev.v2r("GET", "/metrics/overview?environment=sandbox")).status, 200);
+      const stillApp = await sdk.customerInfo(`team_${ctx.stamp}`);
+      c.check("the SDK still answers with pro for the paying customer", Object.keys(stillApp.body.subscriber?.entitlements ?? {}).includes("pro"), stillApp.body);
+      c.has("Billing flags the pause", (await call("GET", "/v2/billing")).body, { gate: { stage: "paused" }, flags: ["live_paused"] });
+
+      c.begin("Billing page: Start Pro through Checkout");
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       await context.addCookies([{ name: "rd_session", value: cookie.split("=")[1]!, url: S.base }]);
       const page = await context.newPage();
       page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) consoleErrors.push(m.text()); });
       await page.goto(`${S.base}/account/billing`);
       await page.locator("[data-tracked]").filter({ hasText: "$12,000.00" }).waitFor({ timeout: 20_000 });
-      c.check("the page shows $12,000 tracked and the over-limit banner", (await page.locator("body").innerText()).includes("above Cloud Free's $10,000"));
-      await page.screenshot({ path: join(ctx.out, "billing-free.png"), fullPage: true });
-      await page.getByRole("button", { name: "Upgrade to Standard" }).click();
+      await page.locator("[data-stage=paused]").waitFor({ timeout: 10_000 });
+      c.check("the page shows $12,000 tracked and the paused stage", (await page.locator("[data-stage=paused]").innerText()).includes("Live data and webhooks are paused"));
+      await page.screenshot({ path: join(ctx.out, "billing-paused.png"), fullPage: true });
+      await page.locator("[data-stage=paused] [data-start-pro]").click();
       await page.getByRole("heading", { name: "Fake Stripe Checkout" }).waitFor();
       const session = [...billing.sessions.values()][0]!;
-      c.has("Checkout: the metered price, anchored to the 1st of next month, no proration", session, { mode: "subscription", subscription_data: { proration_behavior: "none" } });
+      c.has("Checkout: the metered price, anchored to the 1st of next month, no proration, plan pro", session, { mode: "subscription", metadata: { plan: "pro" }, subscription_data: { proration_behavior: "none", metadata: { plan: "pro" } } });
+      const sent = billing.calls.find((x) => x.method === "POST" && x.path === "/v1/checkout/sessions")?.params;
+      c.has("Checkout always collects a card and explains the $0 under the button", sent, { payment_method_collection: "always", custom_text: { submit: { message: PRO_CHECKOUT_TEXT } } });
       await page.getByRole("button", { name: "Subscribe" }).click();
       await page.waitForURL(/\/account\/billing\?checkout=success/);
-      await page.locator("[data-plan=standard]").getByText("Current").waitFor({ timeout: 20_000 });
+      await page.locator("[data-plan=pro]").getByText("Current").waitFor({ timeout: 20_000 });
       const acct = await sql`SELECT plan, status, stripe_customer_id IS NOT NULL AS has_customer FROM billing_accounts`;
-      c.has("SQL: the account is Standard and active", acct[0], { plan: "standard", status: "active", has_customer: true });
+      c.has("SQL: the account is on Pro and active", acct[0], { plan: "pro", status: "active", has_customer: true });
+      c.eq("Pro opens live data again", (await dev.v2r("GET", "/metrics/overview")).status, 200);
       const meter = await until(async () => billing.meterEvents.at(-1), { timeoutMs: 15_000 });
       c.has("the meter got this month's bill in cents at once", meter, { event_name: "revenuedot_cloud_bill_cents", payload: { value: "1000" } });
       c.check("the bill shows $10.00", ((await page.locator("[data-bill]").textContent()) ?? "") === "$10.00");
-      await page.screenshot({ path: join(ctx.out, "billing-standard.png"), fullPage: true });
+      await page.screenshot({ path: join(ctx.out, "billing-pro.png"), fullPage: true });
 
       c.begin("Customer Portal, then a failed payment and its recovery");
-      await page.locator("[data-plan=standard]").getByRole("button", { name: "Manage billing" }).click();
+      await page.locator("[data-plan=pro]").getByRole("button", { name: "Manage billing" }).click();
       await page.getByRole("heading", { name: "Fake Stripe Customer Portal" }).waitFor();
       await page.getByRole("button", { name: "Cancel plan" }).click();
       await page.waitForURL(/\/account\/billing$/);
       await page.getByText(/Ends /).waitFor({ timeout: 10_000 });
       c.check("cancelling at period end shows the end date", true);
       const cust = (await sql`SELECT stripe_customer_id FROM billing_accounts`)[0]!.stripe_customer_id as string;
-      const inv = billing.invoice(cust, { amount_due: 1000, status: "open" });
+      // As Stripe does: the failed renewal leaves the subscription past due, and its invoice open.
+      const sub = [...billing.subscriptions.values()].find((x) => x.customer === cust)!;
+      billing.updateSubscription(sub.id, { status: "past_due" });
+      const inv = billing.invoice(cust, { amount_due: 1000, status: "open", subscription: sub.id });
       c.eq("the payment_failed webhook is accepted", await send("invoice.payment_failed", inv), 200);
       await send("invoice.payment_failed", inv);
       await page.goto(`${S.base}/projects/${pid}/overview`);
@@ -162,6 +191,8 @@ const journey: Journey = {
       c.eq("one 'payment failed' email for the invoice (sent twice by Stripe)", failed.length, 1);
       const app = await sdk.customerInfo(`team_${ctx.stamp}`);
       c.check("the app keeps working: customer info still has pro", Object.keys(app.body.subscriber?.entitlements ?? {}).includes("pro"), app.body);
+      billing.updateSubscription(sub.id, { status: "active" });
+      billing.updateInvoice(inv.id, { status: "paid", amount_paid: 1000 });
       await send("invoice.paid", { ...inv, status: "paid", amount_paid: 1000 });
       const fixed = await call("GET", "/v2/billing");
       c.has("paid: active again, no banner", fixed.body, { account: { status: "active" }, flags: [] });

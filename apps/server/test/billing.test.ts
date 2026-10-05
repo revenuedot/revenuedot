@@ -7,7 +7,7 @@ import { createApp } from "../src/app.js";
 import { defaultStores } from "../src/stores/index.js";
 import { memoryMailer } from "../src/mail/index.js";
 import { createSession } from "../src/services/sessions.js";
-import { DEFAULT_PLANS, billCents, planOf } from "../src/services/billing/plans.js";
+import { DEFAULT_PLANS, NO_PLAN, accountPlanOf, billCents, planOf, plansFrom } from "../src/services/billing/plans.js";
 import { accountUsage, meterMonth, runBilling } from "../src/services/billing/meter.js";
 import { stripeProblem, type BillingConfig } from "../src/services/billing/stripe.js";
 
@@ -23,7 +23,7 @@ let stripe: FakeBillingStripe;
 let mail: ReturnType<typeof memoryMailer>;
 let app: ReturnType<typeof createApp>;
 let cookie = "";
-const config = (over: Partial<BillingConfig> = {}): BillingConfig => ({ secretKey: FAKE_BILLING_KEY, webhookSecret: FAKE_BILLING_WEBHOOK_SECRET, priceStandard: FAKE_BILLING_PRICE, meterEvent: "revenuedot_cloud_bill_cents", live: false, ...over });
+const config = (over: Partial<BillingConfig> = {}): BillingConfig => ({ secretKey: FAKE_BILLING_KEY, webhookSecret: FAKE_BILLING_WEBHOOK_SECRET, pricePro: FAKE_BILLING_PRICE, meterEvent: "revenuedot_cloud_bill_cents", live: false, ...over });
 
 beforeEach(async () => {
   h = await harness();
@@ -57,14 +57,38 @@ async function txn(o: { usd: number; at?: Date; kind?: string; sandbox?: boolean
 }
 
 describe("plans and the bill", () => {
-  it("Free costs nothing; Standard is 0.5% above $10,000, rounded to the cent, capped at $999", () => {
-    const std = planOf(DEFAULT_PLANS, "standard"), free = planOf(DEFAULT_PLANS, "free");
-    expect(billCents(free, 50_000)).toBe(0);
-    expect([0, 9_999.99, 10_000, 10_001, 50_000, 209_800, 2_000_000].map((x) => billCents(std, x))).toEqual([0, 0, 0, 1, 20_000, 99_900, 99_900]);
-    expect(billCents(std, 10_000.99)).toBe(0);
-    expect(billCents(std, 10_001.5)).toBe(1);
+  it("no plan costs nothing; Pro is $0 up to $10,000, then 0.5% above it, rounded to the cent, capped at $999", () => {
+    const pro = planOf(DEFAULT_PLANS, "pro");
+    expect(DEFAULT_PLANS.map((p) => p.id)).toEqual(["pro", "enterprise"]);
+    expect(pro).toMatchObject({ id: "pro", name: "Pro", rate: 0.005, free_up_to_usd: 10_000, cap_usd: 999, limit_usd: 1_000_000, self_serve: true });
+    expect(billCents(NO_PLAN, 50_000)).toBe(0);
+    expect(billCents(NO_PLAN, 5_000_000)).toBe(0);
+    expect([0, 9_999.99, 10_000, 10_001, 50_000, 209_800, 2_000_000].map((x) => billCents(pro, x))).toEqual([0, 0, 0, 1, 20_000, 99_900, 99_900]);
+    expect(billCents(pro, 10_000.99)).toBe(0);
+    expect(billCents(pro, 10_001.5)).toBe(1);
     expect(billCents(planOf(DEFAULT_PLANS, "enterprise"), 5_000_000)).toBe(0);
-    expect(planOf(DEFAULT_PLANS, "unknown").id).toBe("free");
+    // No plan, the old "free" id and anything unknown compute with NO_PLAN; "standard" is Pro's old name.
+    for (const id of [null, undefined, "none", "free", "unknown"]) expect(planOf(DEFAULT_PLANS, id)).toBe(NO_PLAN);
+    expect(planOf(DEFAULT_PLANS, "standard")).toBe(pro);
+    expect([null, "none", "free", "pro", "standard", "enterprise", "x"].map(accountPlanOf)).toEqual(["none", "none", "none", "pro", "pro", "enterprise", "none"]);
+  });
+
+  it("an older REVENUEDOT_BILLING_PLANS table with free and standard ids reads as Pro; a table without Pro falls back to the built-in plans", () => {
+    const old = JSON.stringify([
+      { id: "free", name: "Cloud Free", price_label: "$0", description: "", free_up_to_usd: 10_000, rate: 0, cap_usd: 0, limit_usd: 10_000, self_serve: false },
+      { id: "standard", name: "Cloud Standard", price_label: "0.4%", description: "", free_up_to_usd: 20_000, rate: 0.004, cap_usd: 500, limit_usd: 1_000_000, self_serve: true },
+    ]);
+    const plans = plansFrom(old);
+    expect(plans.map((p) => p.id)).toEqual(["pro"]);
+    expect(plans[0]).toMatchObject({ id: "pro", name: "Pro", rate: 0.004, free_up_to_usd: 20_000, cap_usd: 500, ee_features: ["organizations", "custom_roles", "sso"] });
+    expect(billCents(planOf(plans, "standard"), 30_000)).toBe(4_000);
+    // Enterprise is not in that table: the built-in one is used.
+    expect(planOf(plans, "enterprise").id).toBe("enterprise");
+    const errors: unknown[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => { errors.push(a); };
+    try { expect(plansFrom(JSON.stringify([{ id: "free" }]))).toBe(DEFAULT_PLANS); } finally { console.error = orig; }
+    expect(errors).toHaveLength(1);
   });
 
   it("tracked revenue: production money in the month only; sandbox, trials, refunds and moved-in history do not count", async () => {
@@ -93,13 +117,13 @@ describe("plans and the bill", () => {
 describe("billing page, upgrade and the meter", () => {
   it("Checkout carries the visitor's DataFast ids, so DataFast credits the payment to the channel that brought them", async () => {
     const withCookies = async (extra: string) => {
-      const res = await app.fetch(new Request("https://app.revenuedot.test/v2/billing/checkout", { method: "POST", headers: { cookie: `${cookie}; ${extra}`, "content-type": "application/json" }, body: JSON.stringify({ plan: "standard" }) }));
+      const res = await app.fetch(new Request("https://app.revenuedot.test/v2/billing/checkout", { method: "POST", headers: { cookie: `${cookie}; ${extra}`, "content-type": "application/json" }, body: JSON.stringify({ plan: "pro" }) }));
       const body = await res.json() as any;
       return stripe.sessions.get(body.id)!;
     };
     const visitor = "a3ab2331-989f-4cfa-91c6-2461c9e3c6bd", visit = "0f2c5d7e-1b4a-4c1e-9d3f-7a6b5c4d3e2f";
     const s1 = await withCookies(`datafast_visitor_id=${visitor}; datafast_session_id=${visit}`);
-    expect(s1.metadata).toMatchObject({ revenuedot_user_id: "usr_1", plan: "standard", datafast_visitor_id: visitor, datafast_session_id: visit });
+    expect(s1.metadata).toMatchObject({ revenuedot_user_id: "usr_1", plan: "pro", datafast_visitor_id: visitor, datafast_session_id: visit });
     expect(s1.subscription_data.metadata).toMatchObject({ datafast_visitor_id: visitor, datafast_session_id: visit });
     // No cookies, or values that are not plain ids: nothing extra reaches Stripe.
     const s2 = await withCookies("other=1");
@@ -108,23 +132,25 @@ describe("billing page, upgrade and the meter", () => {
     expect(Object.keys(s3.metadata).sort()).toEqual(["plan", "revenuedot_user_id"]);
   });
 
-  it("free account over the limit: the page, one usage email, then Checkout, the webhook, the meter and the portal", async () => {
+  it("an account with no plan over $10,000: the page shows what Pro would cost and no usage email goes out; then Checkout, the webhook, the meter and the portal", async () => {
     await txn({ usd: 12_000 });
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, publicUrl: "https://app.revenuedot.test", config: config() });
     let page = await call("GET", "/v2/billing");
     expect(page.status).toBe(200);
-    expect(page.body).toMatchObject({ account: { plan: "free", status: "none" }, flags: ["over_free_limit"], stripe_ready: true, usage: { month: "2026-10", tracked_revenue_usd: 12_000, bill_usd: 0, standard_bill_usd: 10, free_limit_usd: 10_000, cap_usd: 999, ceiling_usd: 1_000_000 } });
-    expect(page.body.plans.map((p: { id: string }) => p.id)).toEqual(["free", "standard", "enterprise"]);
-    // Usage email: once, the 100% one (not also 80%), with the billing link.
-    expect(mail.sent.map((m) => m.subject)).toEqual(["Your apps passed RevenueDot Cloud Free's $10,000 for October 2026"]);
-    expect(mail.sent[0]!.text).toContain("https://app.revenuedot.test/account/billing");
+    expect(page.body).toMatchObject({ account: { plan: "none", status: "none", has_payment_method: false }, gate: { stage: "building", live_at: null, grace_ends_at: null, grace_days: 14 }, flags: [], stripe_ready: true, usage: { month: "2026-10", tracked_revenue_usd: 12_000, bill_usd: 0, pro_bill_usd: 10, free_up_to_usd: 10_000, cap_usd: 999, ceiling_usd: 1_000_000 } });
+    expect(page.body.usage).not.toHaveProperty("standard_bill_usd");
+    expect(page.body.usage).not.toHaveProperty("free_limit_usd");
+    expect(page.body.plans.map((p: { id: string }) => p.id)).toEqual(["pro", "enterprise"]);
+    // The Free usage emails are gone: an account with no plan hears from the go-live gate instead (live-gate.test.ts).
+    expect(mail.sent).toEqual([]);
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config(), force: true });
-    expect(mail.sent).toHaveLength(1);
+    expect(mail.sent).toEqual([]);
+    expect(await h.db.select().from(schema.billingNotices).where(eq(schema.billingNotices.userId, "usr_1"))).toEqual([]);
     // Hourly: a second pass within the hour does nothing.
     expect(await runBilling({ db: h.db, now: new Date(h.now().getTime() + 60_000), fetch: stripe.fetch, mailer: mail, config: config() })).toBe(0);
 
-    // Upgrade: a Stripe customer, then Checkout for the metered price anchored to Nov 1 without proration.
-    const co = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    // Start Pro: a Stripe customer, then Checkout for the metered price anchored to Nov 1 without proration.
+    const co = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     expect(co.status).toBe(200);
     expect(co.body.url).toMatch(/^https:\/\/checkout\.stripe\.com\/c\/pay\/cs_test_/);
     const [cust] = [...stripe.customers.values()];
@@ -132,17 +158,20 @@ describe("billing page, upgrade and the meter", () => {
     const session = stripe.sessions.get(co.body.id)!;
     expect(session).toMatchObject({ customer: cust!.id, client_reference_id: "usr_1", success_url: "https://app.revenuedot.test/account/billing?checkout=success", subscription_data: { billing_cycle_anchor: String(Date.UTC(2026, 10, 1) / 1000), proration_behavior: "none" } });
     expect((await call("POST", "/v2/billing/checkout", { plan: "enterprise" })).status).toBe(400);
-    // The webhook with a bad signature is refused; the real one makes the account Standard.
+    // The webhook with a bad signature is refused; the real one starts Pro.
     const bad = await app.fetch(new Request("https://api.revenuedot.test/v2/billing/stripe/webhook", { method: "POST", headers: { "stripe-signature": "t=1,v1=00" }, body: "{}" }));
     expect(bad.status).toBe(400);
     const { subscription } = stripe.complete(session.id);
     expect((await hook("checkout.session.completed", stripe.sessions.get(session.id)!)).body.result).toBe("subscribed");
     expect((await hook("customer.subscription.created", subscription)).body.result).toBe("active");
     page = await call("GET", "/v2/billing");
-    expect(page.body.account).toMatchObject({ plan: "standard", status: "active", has_payment_method: true });
+    expect(page.body.account).toMatchObject({ plan: "pro", status: "active", has_payment_method: true });
+    expect(page.body.gate.stage).toBe("active");
     expect(page.body.usage.bill_usd).toBe(10);
     expect(page.body.flags).toEqual([]);
-    expect((await call("GET", "/auth/me")).body.account).toMatchObject({ plan: "standard", billing_status: "active" });
+    expect((await call("GET", "/auth/me")).body.account).toMatchObject({ plan: "pro", billing_status: "active", gate: { stage: "active" } });
+    expect((await h.db.select().from(schema.users).where(eq(schema.users.id, "usr_1")))[0]!.plan).toBe("pro");
+    expect((await call("POST", "/v2/billing/checkout", { plan: "pro" })).status).toBe(409);
     expect((await call("POST", "/v2/billing/checkout", { plan: "standard" })).status).toBe(409);
 
     // The meter gets the month's bill in cents, again only when it changes.
@@ -173,8 +202,8 @@ describe("billing page, upgrade and the meter", () => {
     expect(stripe.portalSessions[0]).toMatchObject({ customer: cust!.id, return_url: "https://app.revenuedot.test/account/billing" });
   });
 
-  it("dunning: a failed payment emails once and marks past due, payment recovers it, unpaid goes back to Free; apps keep working", async () => {
-    const co = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+  it("dunning: a failed payment emails once and marks past due, payment recovers it, unpaid ends Pro; apps keep working", async () => {
+    const co = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     const { subscription } = stripe.complete(co.body.id);
     await hook("checkout.session.completed", stripe.sessions.get(co.body.id)!);
     const cust = subscription.customer as string;
@@ -198,30 +227,47 @@ describe("billing page, upgrade and the meter", () => {
     page = await call("GET", "/v2/billing");
     expect(page.body.account.status).toBe("active");
     expect(mail.sent.at(-1)!.subject).toBe("Your RevenueDot payment went through");
-    // Cancel at period end (Customer Portal), then retries run out on a later invoice: unpaid, back to Free.
+    // Cancel at period end (Customer Portal), then retries run out on a later invoice: unpaid, Pro ends (no plan).
     await hook("customer.subscription.updated", stripe.updateSubscription(subscription.id, { cancel_at_period_end: true }));
     expect((await call("GET", "/v2/billing")).body.account.cancel_at).toBe(subscription.items.data[0].current_period_end * 1000);
     await hook("customer.subscription.updated", stripe.updateSubscription(subscription.id, { status: "unpaid" }));
     page = await call("GET", "/v2/billing");
-    expect(page.body.account).toMatchObject({ plan: "free", status: "unpaid" });
-    expect(mail.sent.at(-1)!.subject).toBe("Your RevenueDot subscription moved to Cloud Free");
+    expect(page.body.account).toMatchObject({ plan: "none", status: "unpaid" });
+    expect(page.body.flags).toEqual(["unpaid"]);
+    expect(mail.sent.at(-1)!.subject).toBe("Your RevenueDot Pro plan ended");
+    expect(mail.sent.at(-1)!.text).toContain("Pay the open invoice and start Pro again");
     await hook("customer.subscription.deleted", stripe.updateSubscription(subscription.id, { status: "canceled" }));
-    expect((await call("GET", "/v2/billing")).body.account).toMatchObject({ plan: "free", status: "canceled", cancel_at: null });
+    expect((await call("GET", "/v2/billing")).body.account).toMatchObject({ plan: "none", status: "canceled", cancel_at: null });
     // An event for another account's customer changes nothing here.
     expect((await hook("customer.subscription.updated", { id: "sub_other", customer: "cus_nobody", status: "active" })).body.result).toBe("unknown customer");
   });
 
-  it("near the Standard ceiling: the 80% email once", async () => {
-    await h.db.insert(schema.billingAccounts).values({ userId: "usr_1", plan: "standard", status: "active", stripeCustomerId: null });
+  it("near the top of Pro: the cap and the 80% emails once each; past it, the 100% email instead of the 80% one", async () => {
+    await h.db.insert(schema.billingAccounts).values({ userId: "usr_1", plan: "pro", status: "active", stripeCustomerId: null });
     await txn({ usd: 850_000 });
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config(), force: true });
-    expect(mail.sent.map((m) => m.subject)).toEqual(["Your RevenueDot bill for October 2026 reached the $999 cap", "Your apps are near Cloud Standard's $1,000,000 a month"]);
+    expect(mail.sent.map((m) => m.subject)).toEqual(["Your RevenueDot bill for October 2026 reached the $999 cap", "Your apps are near $1,000,000 a month"]);
+    expect(mail.sent[0]!.text).toContain("your Pro bill reached its cap of $999");
+    await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config(), force: true });
+    expect(mail.sent).toHaveLength(2);
+    await txn({ usd: 200_000 });
+    await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config(), force: true });
+    expect(mail.sent.map((m) => m.subject).slice(2)).toEqual(["Your apps passed $1,000,000 tracked revenue in October 2026"]);
+    expect((await call("GET", "/v2/billing")).body.flags).toEqual(["over_pro_limit"]);
+  });
+
+  it("an account that still says standard (written before the rename) is Pro everywhere", async () => {
+    await h.db.insert(schema.billingAccounts).values({ userId: "usr_1", plan: "pro", status: "active", stripeCustomerId: null });
+    const page = await call("GET", "/v2/billing");
+    expect(page.body.account.plan).toBe("pro");
+    expect(page.body.gate.stage).toBe("active");
+    expect((await call("POST", "/v2/billing/checkout", { plan: "pro" })).status).toBe(409);
   });
 });
 
 describe("Stripe is the source of truth: order, repeats, lost and failed deliveries", () => {
   const upgrade = async () => {
-    const co = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    const co = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     expect(co.status).toBe(200);
     return { sessionId: co.body.id as string, subscription: stripe.complete(co.body.id).subscription };
   };
@@ -240,8 +286,8 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
       await hook("checkout.session.completed", completedSnap);
       await hook("customer.subscription.updated", { ...createdSnap, status: "active" });
     }
-    expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
-    expect(await userPlan()).toBe("free");
+    expect(await account()).toMatchObject({ plan: "none", status: "canceled" });
+    expect(await userPlan()).toBe("none");
   });
 
   it("an old 'active' event after a newer 'past_due' leaves the account past due", async () => {
@@ -249,7 +295,7 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     const activeSnap = stripe.snapshot(subscription);
     await hook("customer.subscription.updated", stripe.updateSubscription(subscription.id, { status: "past_due" }));
     await hook("customer.subscription.updated", activeSnap);
-    expect(await account()).toMatchObject({ plan: "standard", status: "past_due" });
+    expect(await account()).toMatchObject({ plan: "pro", status: "past_due" });
   });
 
   it("a late payment_failed for an invoice already paid sends no email and changes nothing; recovery mail needs a failure mail first", async () => {
@@ -257,7 +303,7 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     const inv = stripe.invoice(subscription.customer, { amount_due: 500, status: "paid", subscription: subscription.id, attempt_count: 1 });
     await hook("invoice.paid", inv);
     await hook("invoice.payment_failed", { ...stripe.snapshot(inv), status: "open", amount_paid: 0 });
-    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect(await account()).toMatchObject({ plan: "pro", status: "active" });
     expect(mail.sent.filter((m) => /payment (failed|went through)/.test(m.subject))).toEqual([]);
   });
 
@@ -266,10 +312,10 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     stripe.failReads = true;
     const r = await hook("checkout.session.completed", stripe.sessions.get(session)!);
     expect(r.status).toBe(500);
-    expect((await account()).plan).toBe("free");
+    expect((await account()).plan).toBe("none");
     stripe.failReads = false;
     expect((await hook("checkout.session.completed", stripe.sessions.get(session)!)).body.result).toBe("subscribed");
-    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect(await account()).toMatchObject({ plan: "pro", status: "active" });
     expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeSubscriptionId).toBe(subscription.id);
   });
 
@@ -277,23 +323,23 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     const { subscription } = await upgrade();
     // No webhook at all. Back on the Billing page after Checkout:
     const page = await call("GET", "/v2/billing?sync=1");
-    expect(page.body.account).toMatchObject({ plan: "standard", status: "active" });
+    expect(page.body.account).toMatchObject({ plan: "pro", status: "active" });
     // Later the customer cancels in the portal and that webhook is lost too: the hourly pass catches it.
     stripe.updateSubscription(subscription.id, { status: "canceled" });
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, publicUrl: "https://app.revenuedot.test", config: config(), force: true });
-    expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
+    expect(await account()).toMatchObject({ plan: "none", status: "canceled" });
   });
 
   it("one subscription per account: Checkout expires older open sessions, refuses while Stripe has a live one, and a duplicate is cancelled", async () => {
-    const first = await call("POST", "/v2/billing/checkout", { plan: "standard" });
-    const second = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    const first = await call("POST", "/v2/billing/checkout", { plan: "pro" });
+    const second = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     expect(stripe.sessions.get(first.body.id)!.status).toBe("expired");
     expect(() => stripe.complete(first.body.id)).toThrow(/expired/);
     const { subscription } = stripe.complete(second.body.id);
     // The webhook has not arrived, but Stripe already has the subscription: a third Checkout is refused, and the account syncs.
-    const third = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    const third = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     expect(third.status).toBe(409);
-    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect(await account()).toMatchObject({ plan: "pro", status: "active" });
     // A second live subscription appears anyway (made outside the app): it is cancelled, the first one stays.
     const dup = { ...stripe.snapshot(subscription), id: "sub_test_duplicate", created: subscription.created + 60 };
     stripe.subscriptions.set(dup.id, dup);
@@ -309,7 +355,7 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     expect((await account()).status).toBe("canceled");
     const again = await upgrade();
     await hook("customer.subscription.created", again.subscription);
-    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect(await account()).toMatchObject({ plan: "pro", status: "active" });
     expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeSubscriptionId).toBe(again.subscription.id);
     await h.db.update(schema.billingAccounts).set({ plan: "enterprise", status: "active" });
     await hook("customer.subscription.deleted", stripe.updateSubscription(again.subscription.id, { status: "canceled" }));
@@ -328,7 +374,7 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     await new Promise((r) => setTimeout(r, 50));
     release();
     await Promise.all([a, b]);
-    expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
+    expect(await account()).toMatchObject({ plan: "none", status: "canceled" });
   });
 
   it("a paying subscription wins over an abandoned or unpaid one; an unpaid account can subscribe again without two subscriptions", async () => {
@@ -337,32 +383,32 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     const stale = { ...stripe.snapshot(subscription), id: "sub_test_incomplete", status: "incomplete", created: subscription.created - 60 };
     stripe.subscriptions.set(stale.id, stale);
     await hook("customer.subscription.created", subscription);
-    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect(await account()).toMatchObject({ plan: "pro", status: "active" });
     expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeSubscriptionId).toBe(subscription.id);
     expect(stripe.subscriptions.get(stale.id)!.status).toBe("incomplete");
-    // Every retry failed: unpaid, on Free with one email (the amount comes from Stripe's invoice, not a local copy).
+    // Every retry failed: unpaid, Pro ends with one email (the amount comes from Stripe's invoice, not a local copy).
     const inv = stripe.invoice(subscription.customer, { amount_due: 4321, status: "open", subscription: subscription.id, attempt_count: 4 });
     await hook("customer.subscription.updated", stripe.updateSubscription(subscription.id, { status: "unpaid", latest_invoice: inv.id }));
-    expect(await account()).toMatchObject({ plan: "free", status: "unpaid" });
-    const unpaidMail = mail.sent.find((m) => m.subject === "Your RevenueDot subscription moved to Cloud Free")!;
+    expect(await account()).toMatchObject({ plan: "none", status: "unpaid" });
+    const unpaidMail = mail.sent.find((m) => m.subject === "Your RevenueDot Pro plan ended")!;
     expect(unpaidMail.text).toContain("43.21");
     // Upgrade again: the unpaid subscription is ended first, so only the new one can bill the meter.
-    const again = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    const again = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     expect(again.status).toBe(200);
     expect(stripe.subscriptions.get(subscription.id)!.status).toBe("canceled");
     const next = stripe.complete(again.body.id).subscription;
     await hook("checkout.session.completed", stripe.sessions.get(again.body.id)!);
-    expect(await account()).toMatchObject({ plan: "standard", status: "active" });
+    expect(await account()).toMatchObject({ plan: "pro", status: "active" });
     expect((await h.db.select().from(schema.billingAccounts))[0]!.stripeSubscriptionId).toBe(next.id);
   });
 
-  it("a customer Stripe no longer has moves the account to Free, and Checkout starts over with a new customer", async () => {
+  it("a customer Stripe no longer has leaves the account with no plan, and Checkout starts over with a new customer", async () => {
     const { subscription } = await upgrade();
     await hook("customer.subscription.created", subscription);
     stripe.customers.delete(subscription.customer);
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, publicUrl: "https://app.revenuedot.test", config: config(), force: true });
-    expect(await account()).toMatchObject({ plan: "free", status: "canceled" });
-    const again = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    expect(await account()).toMatchObject({ plan: "none", status: "canceled" });
+    const again = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     expect(again.status).toBe(200);
     const newCustomer = stripe.sessions.get(again.body.id)!.customer;
     expect(newCustomer).not.toBe(subscription.customer);
@@ -383,9 +429,9 @@ describe("Stripe is the source of truth: order, repeats, lost and failed deliver
     expect(lists() - n0).toBe(2);
   });
 
-  it("an Enterprise account cannot open a Standard Checkout", async () => {
+  it("an Enterprise account cannot open a Pro Checkout", async () => {
     await h.db.insert(schema.billingAccounts).values({ userId: "usr_1", plan: "enterprise", status: "active" });
-    const r = await call("POST", "/v2/billing/checkout", { plan: "standard" });
+    const r = await call("POST", "/v2/billing/checkout", { plan: "pro" });
     expect(r.status).toBe(409);
     expect(r.body.message).toMatch(/Enterprise/);
   });
@@ -408,17 +454,18 @@ describe("where billing does not run", () => {
   });
 
   it("Cloud without Stripe keys: usage is measured for the page, but no usage email goes out", async () => {
-    await txn({ usd: 12_000 });
+    await h.db.insert(schema.billingAccounts).values({ userId: "usr_1", plan: "pro", status: "active", stripeCustomerId: null });
+    await txn({ usd: 850_000 });
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, publicUrl: "https://app.revenuedot.test", config: null });
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config({ secretKey: "" }), force: true });
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config({ secretKey: "sk_live_abc" }), force: true });
     expect(mail.sent).toEqual([]);
     expect(stripe.calls).toEqual([]);
-    expect((await accountUsage(h.db, "usr_1", "2026-10")).tracked_revenue_usd).toBe(12_000);
+    expect((await accountUsage(h.db, "usr_1", "2026-10")).tracked_revenue_usd).toBe(850_000);
     expect(await h.db.select().from(schema.billingNotices)).toEqual([]);
-    // Once Stripe is set up, the first pass sends the email it held back.
+    // Once Stripe is set up, the first pass sends the emails it held back.
     await runBilling({ db: h.db, now: h.now(), fetch: stripe.fetch, mailer: mail, config: config(), force: true });
-    expect(mail.sent.map((m) => m.subject)).toEqual(["Your apps passed RevenueDot Cloud Free's $10,000 for October 2026"]);
+    expect(mail.sent.map((m) => m.subject)).toEqual(["Your RevenueDot bill for October 2026 reached the $999 cap", "Your apps are near $1,000,000 a month"]);
   });
 
   it("a live key without REVENUEDOT_BILLING_LIVE never reaches Stripe; no key means 'not set up yet'", async () => {
@@ -427,12 +474,12 @@ describe("where billing does not run", () => {
     expect(stripeProblem(undefined)).toMatch(/not set up/);
     const live = createApp({ db: h.db, now: h.now, stores: defaultStores(), edition: "cloud", billing: config({ secretKey: "rk_live_abc" }), fetch: stripe.fetch });
     const before = stripe.calls.length;
-    const r = await call("POST", "/v2/billing/checkout", { plan: "standard" }, live);
+    const r = await call("POST", "/v2/billing/checkout", { plan: "pro" }, live);
     expect(r.status).toBe(503);
     expect(stripe.calls.length).toBe(before);
     const none = createApp({ db: h.db, now: h.now, stores: defaultStores(), edition: "cloud" });
     const page = await call("GET", "/v2/billing", undefined, none);
-    expect(page.body).toMatchObject({ stripe_ready: false, account: { plan: "free" } });
+    expect(page.body).toMatchObject({ stripe_ready: false, account: { plan: "none" }, gate: { stage: "off" }, flags: [] });
     // Until Stripe is set up the dashboard links no Billing page (production today); with it, it does.
     expect((await call("GET", "/auth/me", undefined, none)).body.account).toMatchObject({ edition: "cloud", billing_ready: false });
     expect((await call("GET", "/auth/me", undefined, live)).body.account.billing_ready).toBe(false);

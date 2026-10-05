@@ -5,7 +5,7 @@ Goal: know which channel brings each visitor, signup and paying Cloud customer, 
 ## Scope
 1. **Tracking script** on every page of `revenuedot.app` (site and docs) and on `app.revenuedot.app` (dashboard). Never on a self-hosted dashboard.
 2. **Cross-subdomain visitor**: `data-domain=revenuedot.app` makes the visitor and session cookies readable on `app.` and `api.`.
-3. **Stripe revenue attribution**: Cloud Standard Checkout sends `datafast_visitor_id` and `datafast_session_id` in the session and subscription metadata. DataFast reads the payments from RevenueDot's own Stripe account (restricted key, connected in DataFast).
+3. **Stripe revenue attribution**: Pro Checkout sends `datafast_visitor_id` and `datafast_session_id` in the session and subscription metadata. DataFast reads the payments from RevenueDot's own Stripe account (restricted key, connected in DataFast).
 4. **User profile**: the dashboard identifies the signed-in user by email, with plan, project count and email-verified.
 5. **Goals** for each step toward paying (site clicks, contact-sales form, signup, first project, app, API key, checkout), and scroll goals on the home and pricing sections.
 6. **Bot traffic**: the site Worker reports AI, search and training crawlers to DataFast, server side.

@@ -6,6 +6,7 @@ import { identifyUser } from "../lib/analytics";
 import { Icon, Mark } from "./icons";
 import { enterpriseAvailable } from "../extensions";
 import { applyTheme, clearCachedPrefs, effectiveTheme } from "../lib/prefs";
+import { gateDate, PlanProvider, PlanRequiredDialog, StartPro, type Gate, type ProjectGate } from "./PlanRequired";
 
 export interface Preferences { theme: "system" | "light" | "dark"; tint: string | null; week_start: number; display_currency: string }
 export interface Me {
@@ -16,7 +17,11 @@ export interface Me {
     two_factor?: { enabled: boolean; enabled_at: number | null; recovery_codes_left: number };
     pending_email?: { email: string; expires_at: number } | null; password_changed_at?: number | null; created_at?: number;
   };
-  account?: { edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean; features?: { stripe_connect?: boolean; benchmarks?: boolean; insights_digest?: boolean } };
+  account?: {
+    edition: string; plan: string; billing_ready?: boolean; billing_status?: string | null; email_verification_required: boolean; features?: { stripe_connect?: boolean; benchmarks?: boolean; insights_digest?: boolean };
+    /** Cloud's go-live gate (prd/cloud-billing/PRD.md): this account's stage, and the stage of each project's owner. */
+    gate?: Gate; project_gates?: Record<string, ProjectGate>;
+  };
   projects: { id: string; name: string; role: string }[];
   /** With an enterprise licence, and always on RevenueDot Cloud, where `mode` is "cloud" and the plan decides (src/extensions.tsx). */
   enterprise?: { mode: string; features: string[]; organizations: { id: string; name: string; role: string }[] };
@@ -162,6 +167,16 @@ export function Shell({ title, crumbs, children, actions, projectId: pinned, sid
   // Signed out: sign in, then come back to this exact page.
   useEffect(() => { if (me.isError) nav(`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`, { replace: true }); }, [me.isError, nav, loc.pathname, loc.search]);
   const qc = useQueryClient();
+  // The go-live gate of the project on screen (its owner's account), or of this account on account pages.
+  const acct = me.data?.account;
+  const gate: ProjectGate | null = !acct ? null : routeProject ? acct.project_gates?.[routeProject] ?? null : acct.gate ? { ...acct.gate, owner_is_you: true, owner_name: null } : null;
+  // An edit the gate refused (lib/api.ts dispatches it): a dialog with the way out.
+  const [editBlocked, setEditBlocked] = useState<string | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setEditBlocked((e as CustomEvent<string>).detail);
+    window.addEventListener("rd:plan-required", on);
+    return () => window.removeEventListener("rd:plan-required", on);
+  }, []);
   // The theme is saved on the account (Account settings → Interface), so it follows the person to other browsers.
   const toggleTheme = () => {
     const next = effectiveTheme() === "dark" ? "light" : "dark";
@@ -203,13 +218,38 @@ export function Shell({ title, crumbs, children, actions, projectId: pinned, sid
         {me.data?.account?.email_verification_required && <VerifyBanner email={me.data.user.email} />}
         {(me.data?.account?.billing_status === "past_due" || me.data?.account?.billing_status === "unpaid") && (
           <div className="verify-banner" role="status">
-            <span>{me.data.account.billing_status === "past_due" ? "A RevenueDot payment failed. Your apps keep working; update your card to settle the invoice." : "We could not collect your RevenueDot payment, so your account is back on Cloud Free. Your apps keep working."}</span>
+            <span>{me.data.account.billing_status === "past_due" ? "A RevenueDot payment failed. Your apps keep working; update your card to settle the invoice." : "We could not collect your RevenueDot payment, so Pro has ended. Your apps keep working; start Pro again in Billing."}</span>
             <Link className="btn btn-line" to="/account/billing">Open billing</Link>
           </div>
         )}
+        {gate && !loc.pathname.startsWith("/account/billing") && <GateBanner gate={gate} />}
         {routeProject && <MoveBanner pid={routeProject} />}
-        <div className="scroll">{children}</div>
+        <PlanProvider gate={gate} render={(c) => <div className="scroll">{c}</div>}>{children}</PlanProvider>
+        {editBlocked && <PlanRequiredDialog message={editBlocked} owner={gate ? gate.owner_is_you : true} onClose={() => setEditBlocked(null)} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Cloud's go-live gate on every page (prd/cloud-billing/PRD.md): after the first live sale, the date to start Pro by; after
+ * it, that live data and webhooks are paused. The owner starts Pro from here; members are told whom to ask. Building and
+ * active accounts see nothing.
+ */
+function GateBanner({ gate }: { gate: ProjectGate }) {
+  if (gate.stage !== "grace" && gate.stage !== "paused") return null;
+  const owner = gate.owner_is_you;
+  const who = gate.owner_name ?? "the project owner";
+  const date = gateDate(gate.grace_ends_at);
+  const text = gate.stage === "grace"
+    ? owner ? `Your app is live. Start Pro by ${date} to keep live charts, customer data and webhooks running. It costs $0 until your apps make $10,000 a month.`
+      : `This project is live. Ask ${who} to start Pro by ${date} to keep live charts, customer data and webhooks running.`
+    : owner ? "Live data and webhooks are paused. Your app still works and every purchase still unlocks. Start Pro to see your data and send the held webhooks."
+      : `Live data and webhooks are paused because ${who} has not started Pro. Your app still works and every purchase still unlocks.`;
+  return (
+    <div className={`gate-banner ${gate.stage}`} role={gate.stage === "paused" ? "alert" : "status"} data-gate={gate.stage}>
+      <span>{text}</span>
+      {owner && <StartPro />}
     </div>
   );
 }

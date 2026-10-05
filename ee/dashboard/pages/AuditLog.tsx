@@ -38,7 +38,7 @@ export function AuditLogTab({ org }: { org: Overview }) {
       {!org.features.includes("audit_retention") && (
         <section className="panel" data-locked="audit_retention">
           <div className="ph"><b>Retention</b></div>
-          <div className="pb"><p className="section-sub">{org.plan ? "Entries are kept 90 days on Cloud Free and Cloud Standard. " : ""}Choosing how long to keep them, up to 10 years, is part of Enterprise. <a href={CONTACT_SALES} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>Contact sales</a>.</p></div>
+          <div className="pb"><p className="section-sub">{org.plan ? "Entries are kept 90 days on Pro. " : ""}Choosing how long to keep them, up to 10 years, is part of Enterprise. <a href={CONTACT_SALES} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>Contact sales</a>.</p></div>
         </section>
       )}
       {org.features.includes("audit_retention") && (

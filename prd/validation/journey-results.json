@@ -1,8 +1,8 @@
 {
   "onboarding": {
     "title": "Developer onboarding: sign-up, email, team, catalog, keys, webhook backend, paywall",
-    "date": "2026-10-02",
-    "run": "202610020513165600",
+    "date": "2026-10-05",
+    "run": "202610052211325600",
     "passed": 52,
     "failed": 0
   },
@@ -126,10 +126,10 @@
     "failed": 0
   },
   "billing": {
-    "title": "Cloud billing: metered production revenue, upgrade through Checkout, the meter, Portal, failed payment",
-    "date": "2026-10-02",
-    "run": "202610020513165600",
-    "passed": 18,
+    "title": "Cloud billing: the go-live gate, metered production revenue, Start Pro through Checkout, the meter, Portal, failed payment",
+    "date": "2026-10-05",
+    "run": "202610052211325600",
+    "passed": 28,
     "failed": 0
   },
   "import": {

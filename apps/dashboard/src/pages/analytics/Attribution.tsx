@@ -6,6 +6,7 @@ import { Icon } from "../../components/icons";
 import { Segmented, Tag, useProjectId } from "../../components/ui";
 import { api, ApiError, fmt } from "../../lib/api";
 import "./analytics.css";
+import { PlanSlot } from "../../components/PlanRequired";
 
 /**
  * Revenue by campaign (/projects/:projectId/attribution; prd/attribution-benchmarks-insights §1): new customers of a
@@ -141,6 +142,7 @@ export function AttributionPage() {
             <button type="button" className="btn btn-line" disabled={!r?.rows.length} onClick={download}><Icon name="docs" />CSV</button>
           </div>
         </div>
+        <PlanSlot />
         <div className="ctools" role="group" aria-label="Report controls">
           <Segmented label="Date range" value={range} options={RANGES.map((x) => ({ value: x.value, label: x.label }))}
             onChange={(v) => set({ range: v === "30d" ? null : v, start: v === "custom" ? start : null, end: v === "custom" ? end : null })} />

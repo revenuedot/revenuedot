@@ -81,14 +81,11 @@ export interface JourneyCtx {
   /** This month's tracked revenue (USD) and its name ("October"). */
   tracked?: number;
   month?: string;
-  /** What RevenueDot Standard and RevenueCat charge at given monthly revenues: [revenue, RevenueDot, RevenueCat]. */
+  /** What RevenueDot Pro and RevenueCat charge at given monthly revenues: [revenue, RevenueDot, RevenueCat]. */
   priceRows?: [number, number, number][];
   /** A month at the last 7 days' pace (last7 × 30 / 7), and the 7 days' production revenue. */
   projected?: number;
   last7?: number;
-  /** The month that passed Cloud Free's $10,000, and its tracked revenue. */
-  overMonth?: string;
-  overTracked?: number;
   /** The first RevenueCat import's date, "October 2". */
   importedOn?: string;
   /** A month's bill on each: at the last 7 days' pace for the cutover, on the month that passed $10,000 for the upgrade. */
@@ -341,12 +338,12 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
 
   standard_welcome: (c) => ({
     look: "rich",
-    subject: "You're on Cloud Standard",
-    preheader: "0.5% above $10,000 a month, never more than $999.",
-    heading: "You're on Cloud Standard",
+    subject: "You're on RevenueDot Pro",
+    preheader: "$0 until your apps make $10,000 a month, then 0.5% above it, never more than $999.",
+    heading: "You're on Pro",
     blocks: [
-      { t: "receipt", title: "Your plan", rows: [["Plan", "Cloud Standard"], ["Above $10,000 a month", "0.5%"], ["Never more than", "$999 a month"], ["First invoice", "1st of next month"]] },
-      { t: "lead", text: "Thank you for upgrading. The rate never rises, and there's no proration. Standard adds single sign-on, organizations and custom roles for your team." },
+      { t: "receipt", title: "Your plan", rows: [["Plan", "Pro"], ["Up to $10,000 a month", "$0"], ["Above $10,000 a month", "0.5%"], ["Never more than", "$999 a month"], ["First invoice", "1st of next month"]] },
+      { t: "lead", text: "Thank you for starting Pro. Live charts, customer data and webhooks keep running, the rate never rises, and there's no proration. Pro also adds single sign-on, organizations and custom roles for your team." },
       { t: "picture", shot: "team", href: `${c.app}/account/billing` },
       { t: "button", label: "See billing and invoices", url: `${c.app}/account/billing` },
     ],

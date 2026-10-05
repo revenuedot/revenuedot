@@ -352,15 +352,13 @@ export const billingUrl = (base: string) => `${base}/account/billing`;
 
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: n % 1 ? 2 : 0 });
 
-/** Usage thresholds: Free at 80% and 100% of its limit, Standard at its cap and near the Enterprise ceiling. */
-export function billingUsageEmail(o: { base: string; kind: "free_80" | "free_100" | "cap" | "ceiling_80" | "ceiling_100"; month: string; tracked: number; limit: number; bill?: number }): Rendered {
+/** Usage thresholds of Pro: its cap, and near and past the Enterprise ceiling. */
+export function billingUsageEmail(o: { base: string; kind: "cap" | "ceiling_80" | "ceiling_100"; month: string; tracked: number; limit: number; bill?: number }): Rendered {
   const monthName = new Date(`${o.month}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
   const t = {
-    free_80: { subject: `You have used 80% of RevenueDot Cloud Free for ${monthName}`, heading: "80% of your free tracked revenue is used", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}. Cloud Free covers up to ${usd(o.limit)} a month.`, "Nothing stops working when you pass it. Upgrade to Cloud Standard to keep growing: 0.5% of tracked revenue above $10,000, never more than $999 a month."], button: "See your usage" },
-    free_100: { subject: `Your apps passed RevenueDot Cloud Free's ${usd(o.limit)} for ${monthName}`, heading: "Time to move to Cloud Standard", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}, above Cloud Free's ${usd(o.limit)}.`, "Everything keeps working: purchases, webhooks and the dashboard. Upgrade to Cloud Standard to stay on a plan that fits: 0.5% of tracked revenue above $10,000, capped at $999 a month."], button: "Upgrade to Standard" },
-    cap: { subject: `Your RevenueDot bill for ${monthName} reached the $999 cap`, heading: "You will not pay more this month", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}, so your Cloud Standard bill reached its cap of ${usd(o.bill ?? 999)}.`, "Revenue above this point is free for the rest of the month."], button: "See your usage" },
-    ceiling_80: { subject: `Your apps are near Cloud Standard's ${usd(o.limit)} a month`, heading: "Close to the Standard plan's ceiling", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}. Cloud Standard is for apps up to ${usd(o.limit)} a month.`, "Above that, RevenueDot Enterprise adds a support promise, single sign-on and data-location controls. Reply to this email to talk about it."], button: "See your usage" },
-    ceiling_100: { subject: `Your apps passed ${usd(o.limit)} tracked revenue in ${monthName}`, heading: "Your apps outgrew Cloud Standard", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}, above Cloud Standard's ${usd(o.limit)} a month.`, "Nothing changes in your apps. Reply to this email and we will set up RevenueDot Enterprise with you."], button: "See your usage" },
+    cap: { subject: `Your RevenueDot bill for ${monthName} reached the $999 cap`, heading: "You will not pay more this month", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}, so your Pro bill reached its cap of ${usd(o.bill ?? 999)}.`, "Revenue above this point is free for the rest of the month."], button: "See your usage" },
+    ceiling_80: { subject: `Your apps are near ${usd(o.limit)} a month`, heading: "Close to the top of Pro", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}. Pro is for apps up to ${usd(o.limit)} a month.`, "Above that, RevenueDot Enterprise adds volume pricing, a support promise and an uptime SLA. Reply to this email to talk about it."], button: "See your usage" },
+    ceiling_100: { subject: `Your apps passed ${usd(o.limit)} tracked revenue in ${monthName}`, heading: "Your apps outgrew Pro", body: [`Your apps tracked ${usd(o.tracked)} in ${monthName}, above Pro's ${usd(o.limit)} a month.`, "Nothing changes in your apps, and your bill stays capped. Reply to this email and we will set up RevenueDot Enterprise with you."], button: "See your usage" },
   }[o.kind];
   return layout({
     subject: t.subject, preheader: t.body[0]!, heading: t.heading, paragraphs: t.body, button: { label: t.button, url: billingUrl(o.base) },
@@ -368,12 +366,32 @@ export function billingUsageEmail(o: { base: string; kind: "free_80" | "free_100
   });
 }
 
-/** Dunning: a payment failed (Stripe retries), or the retries ran out and the account went back to Free. */
+/**
+ * The go-live gate (services/billing/gate.ts): the first live sale of an account with no plan, a reminder two days before
+ * its 14 days end, and the pause. Plain ASCII, one button.
+ */
+export function billingLiveEmail(o: { base: string; kind: "grace" | "reminder" | "paused"; graceEndsAt: Date; existing?: boolean }): Rendered {
+  const date = o.graceEndsAt.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+  const price = "Pro costs $0 until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month.";
+  const t = {
+    grace: { subject: "RevenueDot recorded your first live sale", heading: "Your app is live on RevenueDot", body: [`RevenueDot just recorded a live purchase in your app. Start Pro by ${date} to keep live charts, customer data and webhooks running.`, price], button: "Start Pro" },
+    // An account that was already live when the gate shipped: its sales are not new, the rule is (30 days' notice).
+    ...(o.existing ? { grace: { subject: `Live apps on RevenueDot now need Pro, by ${date}`, heading: "Live apps now start Pro", body: [`Your apps already sell through RevenueDot. From now on, apps with live purchases need Pro: start it by ${date} to keep live charts, customer data and webhooks running. Your app keeps working and every purchase still unlocks.`, price], button: "Start Pro" } } : {}),
+    reminder: { subject: `Start Pro by ${date} to keep your live data`, heading: `Two days left to start Pro`, body: [`On ${date}, live charts, customer data and webhooks pause for accounts without a plan. Your app keeps working and every purchase still unlocks.`, price], button: "Start Pro" },
+    paused: { subject: "Your live data and webhooks are paused", heading: "Live data is paused", body: ["Your account has no plan, so live charts, customer data and exports are paused, and webhooks for live purchases are held. Your app still works and every purchase still unlocks.", `Start Pro to see your data again and send the held webhooks. ${price}`], button: "Start Pro" },
+  }[o.kind];
+  return layout({
+    subject: t.subject, preheader: t.body[0]!, heading: t.heading, paragraphs: t.body, button: { label: t.button, url: billingUrl(o.base) },
+    settingsUrl: settingsUrl(o.base), reason: "You received this because you own a project with live purchases on RevenueDot Cloud.",
+  });
+}
+
+/** Dunning: a payment failed (Stripe retries), or the retries ran out and the account lost Pro. */
 export function billingPaymentEmail(o: { base: string; kind: "failed" | "unpaid" | "recovered"; amount: number; invoiceUrl?: string | null }): Rendered {
   const t = {
-    failed: { subject: "Your RevenueDot payment failed", heading: "We could not charge your card", body: [`The payment of ${usd(o.amount)} for RevenueDot Cloud did not go through. Stripe tries again over the next days.`, "Your apps keep working. Update your card to settle the invoice."], button: "Update payment method" },
-    unpaid: { subject: "Your RevenueDot subscription moved to Cloud Free", heading: "Your account is back on Cloud Free", body: [`We could not collect ${usd(o.amount)} after several tries, so your account moved to Cloud Free.`, "Your apps keep working. Upgrade again from the Billing page whenever you are ready."], button: "Open billing" },
-    recovered: { subject: "Your RevenueDot payment went through", heading: "Thanks, you are all set", body: [`We received your payment of ${usd(o.amount)}. Your Cloud Standard plan is active.`], button: "Open billing" },
+    failed: { subject: "Your RevenueDot payment failed", heading: "We could not charge your card", body: [`The payment of ${usd(o.amount)} for RevenueDot Pro did not go through. Stripe tries again over the next days.`, "Your apps and your dashboard keep working while it does. Update your card to settle the invoice."], button: "Update payment method" },
+    unpaid: { subject: "Your RevenueDot Pro plan ended", heading: "Pro ended because the payment failed", body: [`We could not collect ${usd(o.amount)} after several tries, so your Pro plan ended. Live charts, customer data and webhooks are paused; your apps keep working and every purchase still unlocks.`, "Pay the open invoice and start Pro again from the Billing page to turn everything back on."], button: "Open billing" },
+    recovered: { subject: "Your RevenueDot payment went through", heading: "Thanks, you are all set", body: [`We received your payment of ${usd(o.amount)}. Your Pro plan is active.`], button: "Open billing" },
   }[o.kind];
   return layout({
     subject: t.subject, preheader: t.body[0]!, heading: t.heading, paragraphs: t.body, button: { label: t.button, url: billingUrl(o.base) },

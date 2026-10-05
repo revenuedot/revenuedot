@@ -268,7 +268,7 @@ export function partnerIntegrationRoutes(r: V2Router, deps: Deps) {
     const conds = [eq(D.integrationId, i.id)];
     const status = c.req.query("status");
     if (status) {
-      if (!["pending", "delivered", "failed", "skipped"].includes(status)) throw paramError("status must be pending, delivered, failed or skipped.", "status");
+      if (!["pending", "delivered", "failed", "skipped", "held"].includes(status)) throw paramError("status must be pending, delivered, failed, skipped or held.", "status");
       // A delivery being sent right now ("sending", leased by a tick) is still pending to the API.
       conds.push(status === "pending" ? inArray(D.status, ["pending", "sending"]) : eq(D.status, status));
     }

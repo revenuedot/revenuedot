@@ -12,9 +12,9 @@
 **Open-source monetization infrastructure for mobile apps: the SDKs, the server, paywalls, experiments, web checkout, Customer Center, 43 charts and 36 integrations, in one codebase you can run yourself.**<br>
 New apps install the RevenueDot SDK for their platform. Apps on RevenueCat keep the SDK they already ship and switch by changing one line of code.
 
-RevenueDot is the open-source RevenueCat alternative: the first release is [v2026.10.03](https://github.com/revenuedot/revenuedot/releases/tag/v2026.10.03), it has run in production beside RevenueCat since 2026-10-02, and RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month.
+RevenueDot is the open-source RevenueCat alternative: the first release is [v2026.10.03](https://github.com/revenuedot/revenuedot/releases/tag/v2026.10.03), it has run in production beside RevenueCat since 2026-10-02, and RevenueDot Cloud Pro is free until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month; Enterprise is custom. The server is AGPL-3.0 and the SDKs are MIT.
 
-**[Start free on RevenueDot Cloud](https://app.revenuedot.app/signup)** · [Add in-app purchases](https://revenuedot.app/add-in-app-purchases) · [Self-host](#self-host) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [Docs](https://revenuedot.app/docs) · [Pricing](#pricing) · [Compare](#revenuedot-compared) · [FAQ](#faq)
+**[Start for free on RevenueDot Cloud](https://app.revenuedot.app/signup)** · [Add in-app purchases](https://revenuedot.app/add-in-app-purchases) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [Docs](https://revenuedot.app/docs) · [Pricing](#pricing) · [Compare](#revenuedot-compared) · [FAQ](#faq)
 
 [![Server: AGPL-3.0](https://img.shields.io/badge/server-AGPL--3.0-0A0A0A)](LICENSING.md)
 [![SDKs: MIT](https://img.shields.io/badge/SDKs-MIT-0A0A0A)](#sdks)
@@ -34,8 +34,8 @@ RevenueDot is the open-source RevenueCat alternative: the first release is [v202
 ## In one minute
 
 - **What it is:** an open-source server that verifies App Store and Google Play purchases, keeps every customer's entitlements current from store notifications, and sends webhooks to your backend, with the paywalls, experiments, web checkout, Customer Center, charts and integrations that normally cost a second vendor.
-- **Why it is different:** it is open source, free until $10,000 a month, and includes paywalls, experiments and charts. A new app installs the RevenueDot SDK for its platform. An app that already ships the RevenueCat SDK keeps it and switches by setting one URL, with no purchase code to rewrite and no subscriber lost.
-- **How you run it:** `docker compose up` on your own servers, free with no limits, or [RevenueDot Cloud](https://app.revenuedot.app/signup), free up to $10,000 a month in tracked revenue and never more than $999 a month after that.
+- **Why it is different:** it is open source, costs $0 until your apps make $10,000 a month, and includes paywalls, experiments and charts. A new app installs the RevenueDot SDK for its platform. An app that already ships the RevenueCat SDK keeps it and switches by setting one URL, with no purchase code to rewrite and no subscriber lost.
+- **How you run it:** on [RevenueDot Cloud](https://app.revenuedot.app/signup), where Pro costs $0 until your apps make $10,000 a month, then 0.5% of revenue above $10,000, never more than $999 a month. Building and testing are free, no card needed; you add a card when you go live. The same code also runs on your own servers with Docker and Postgres ([Self-host](#self-host)).
 - **Who it is for:** subscription apps on iOS, Android and the web, from a solo developer's first paywall to a studio running fourteen apps and a company that needs SSO, data location and an audit trail.
 - **Status:** first release [v2026.10.03](https://github.com/revenuedot/revenuedot/releases/tag/v2026.10.03). A real App Store sandbox purchase ran end to end on a physical iPhone on 2026-10-02, a production app has run RevenueDot beside RevenueCat since 2026-10-02, and RevenueDot Cloud has billed real cards through Stripe since 2026-10-03. Google Play, Amazon, Paddle, Roku and Galaxy Store are tested against copies of each store's API; their first real purchases are next. Feature by feature: [docs/STATUS.md](docs/STATUS.md).
 
@@ -207,19 +207,19 @@ One TypeScript codebase runs two ways: in Docker next to your own Postgres, or o
 
 | | Price | What it includes |
 |---|---|---|
-| **Self-host** | **$0**, no limits | The whole stack above, AGPL-3.0, on your servers and your Postgres, in your region |
-| **Cloud Free** | **$0** up to $10,000 a month in tracked revenue | Every feature, open sign-up, no card |
-| **Cloud Standard** | **0.5%** of tracked revenue above $10,000, **never more than $999 a month** | The rate never rises. Upgrade from the dashboard, no sales call |
-| **Enterprise** | From $50,000 a year, custom | A commercial licence to self-host the `ee/` features, an uptime guarantee with service credits, priority support, migration help, security reviews |
+| **Pro** ([Start for free](https://app.revenuedot.app/signup)) | **$0** until your apps make $10,000 a month, then **0.5%** of revenue above $10,000, **never more than $999 a month** | Every feature, unlimited apps, projects and teammates, organizations, custom roles, single sign-on and email support, for apps up to $1M a month. The rate never rises |
+| **Enterprise** ([Contact sales](https://revenuedot.app/contact-sales)) | Custom pricing from $50,000 a year | Everything in Pro, plus SCIM, long audit-log retention, compliance exports, a 99.9% uptime SLA, 1-hour support for purchase problems and a commercial licence to self-host every `ee/` feature |
+
+Building and testing are free, no card needed. Add a card when you go live; Pro costs $0 until your apps make $10,000 a month. After an account's first live sale it has 14 days to start Pro; after that, live charts, customer data, exports and webhooks pause until it does. The app keeps working the whole time: purchases are always verified and every purchase unlocks.
 
 RevenueCat charges 1% of all tracked revenue once it passes $2,500 a month, before Apple and Google take their cut ([pricing](https://www.revenuecat.com/pricing/), [staff answer](https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618)).
 
-| Monthly tracked revenue | RevenueCat | RevenueDot Cloud | RevenueDot self-host |
-|---|---|---|---|
-| $10,000 | $100 | $0 | $0 |
-| $50,000 | $500 | $200 | $0 |
-| $250,000 | $2,500 | $999 | $0 |
-| $1,000,000 | $10,000 | $999 | $0 |
+| Monthly tracked revenue | RevenueCat | RevenueDot Pro |
+|---|---|---|
+| $10,000 | $100 | $0 |
+| $50,000 | $500 | $200 |
+| $250,000 | $2,500 | $999 |
+| $1,000,000 | $10,000 | $999 |
 
 [Work out your bill](https://revenuedot.app/pricing) · [RevenueCat fee calculator](https://revenuedot.app/tools/revenuecat-fee-calculator)
 
@@ -233,7 +233,7 @@ RevenueCat charges 1% of all tracked revenue once it passes $2,500 a month, befo
 | Keep the RevenueCat SDK | **Yes, one line** | Yes | Swap SDK | Swap SDK | Swap SDK | Swap SDK |
 | Paywalls, experiments, Customer Center | **Included** | Included | Paywalls are the product | Included | Included | Included |
 | Web checkout and web-to-app funnels | **Your Stripe account, no fee** | Web Billing, 1% | App-to-Web Checkout | Stripe and Paddle | Stripe and Paddle | Flows, Stripe and Paddle |
-| Price | **Self-host $0. Cloud free to $10K, then 0.5% above it, capped at $999** | Free to $2.5K, then 1% of all tracked revenue | Infrastructure free; paywalls 1% above $10K | Free to $5K, then 1% | Free to $7K, then 0.8% | Free to $10K; Pro $49 + $9.99 per extra $1K |
+| Price | **Free until $10K a month, then 0.5%, capped at $999** | Free to $2.5K, then 1% of all tracked revenue | Infrastructure free; paywalls 1% above $10K | Free to $5K, then 1% | Free to $7K, then 0.8% | Free to $10K; Pro $49 + $9.99 per extra $1K |
 | Data location | **Your cloud, your region** | Vendor cloud | Vendor cloud | Vendor cloud | Vendor cloud | Vendor cloud |
 | MCP server for AI agents | **Hosted and local, 38 tools** | Yes | Paywall editor MCP | Not in its docs | Yes | Yes |
 
@@ -259,7 +259,7 @@ RevenueCat charges 1% of all tracked revenue once it passes $2,500 a month, befo
 | **Dashboard** | Overview metrics, customers and their history, catalog, webhooks, API keys, setup health, SDK compatibility | Tier 1 · live at [app.revenuedot.app](https://app.revenuedot.app) |
 | **Run it anywhere** | `docker compose up` with Postgres; the same code in RevenueDot Cloud | Tier 1 · self-host built; Cloud live |
 | **Move and export** | `npx revenuedot move --from <old server> --to <new server>` or the dashboard's **Export and move** copies a project between self-host and Cloud (either way) with the same ids, SDK keys, secret keys and webhook signing secrets: dry run with a diff, resumable copy, row counts and checksums per table, then the old server forwards SDK calls and store notifications. A full export of all 70 tables as JSON Lines with a manifest and checksums, secrets only with a passphrase ([guide](https://revenuedot.app/docs/guides/move-projects)) | Tier 2 · built, tested on two servers with two Postgres databases and a real purchases-js purchase before and after |
-| **Cloud billing** | Cloud Free up to $10,000 of tracked revenue a month; Cloud Standard 0.5% above that, capped at $999 a month; usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners, apps never blocked. Self-host stays free and unmetered ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · live on RevenueDot Cloud since 2026-10-03; tested against a fake Stripe and with real Stripe test-mode purchases, renewals, failed payments and refunds |
+| **Cloud billing** | Pro: $0 until an account's apps make $10,000 a month, then 0.5% above that, capped at $999 a month; Enterprise is custom. A card is needed to go live: 14 days after the first live sale, live data and webhooks pause until Pro starts, while the SDK, purchase checks and access never stop. Usage per project, Stripe Checkout and Customer Portal, failed-payment emails and banners ([guide](https://revenuedot.app/docs/guides/cloud-billing)) | Tier 2 · live on RevenueDot Cloud since 2026-10-03; tested against a fake Stripe and with real Stripe test-mode purchases, renewals, failed payments and refunds |
 | **SDKs** | MIT forks of all ten RevenueCat SDKs with the same classes and methods | Tier 1 · all ten released on npm, CocoaPods, Maven Central, OpenUPM and as git tags |
 | **AI-native** | MCP server, agent skills, `llms.txt` | Tier 1 · hosted MCP live at `mcp.revenuedot.app`; local server on npm as [`@revenuedot/mcp`](https://www.npmjs.com/package/@revenuedot/mcp) |
 | **Charts** | All 43 built-in charts (MRR, revenue, churn, retention, trial conversion, LTV, refunds, paywalls, ads) with [RevenueCat's definitions](https://www.revenuecat.com/docs/dashboard-and-metrics/charts), filters, segments (renewal cycle, offer type, custom attributes and attribution included), five chart types, the customers behind every number, annotations on every chart, public share links, CSV, the same `/v2/.../charts` API, and [published SQL](https://revenuedot.app/docs/guides/charts) | Tier 2 · built and tested |
@@ -422,7 +422,7 @@ For no single point of failure, run two or more replicas behind a load balancer 
 
 ## RevenueDot Cloud
 
-RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live, sign-up is open and every account is on the free plan. Cloud Free covers up to $10,000 of tracked revenue a month; the Billing page shows each project's usage. Moving between Cloud and your own server is one command either way: `npx revenuedot move` ([guide](https://revenuedot.app/docs/guides/move-projects)).
+RevenueDot Cloud runs this repository on Cloudflare Workers with Postgres through Hyperdrive. It is live and sign-up is open. Building and testing are free, no card needed; an account adds a card and starts Pro when its apps go live, and Pro costs $0 until they make $10,000 a month. The Billing page shows each project's usage. Moving between Cloud and your own server is one command either way: `npx revenuedot move` ([guide](https://revenuedot.app/docs/guides/move-projects)).
 
 Video: [Your first test purchase in 5 minutes](https://www.youtube.com/watch?v=1YLygdbWOKM) (1:18).
 
@@ -433,7 +433,7 @@ Video: [Your first test purchase in 5 minutes](https://www.youtube.com/watch?v=1
 
 <img alt="RevenueDot Project settings, Export and move: the export list with Download, and a move to another server copied and verified (all 64 tables match by count and checksum)" src="docs/assets/export-move-light.png" width="100%">
 
-<img alt="RevenueDot Cloud Billing page: Cloud Standard, $12,000 tracked this month, a $10.00 bill, revenue per project, the three plans and invoices" src="docs/assets/billing-light.png" width="100%">
+<img alt="RevenueDot Cloud Billing page: Pro, $12,000 tracked this month, a $10.00 bill, revenue per project and invoices" src="docs/assets/billing-light.png" width="100%">
 
 | Host | What it is |
 |---|---|
@@ -710,17 +710,17 @@ To your support email, with the customer's subscription details and Reply-To set
 
 <details><summary><b>How much does RevenueDot cost?</b></summary>
 
-Self-hosting is free, with no revenue share and no limits. RevenueDot Cloud is free up to $10,000 of tracked revenue a month. Cloud Standard is 0.5% of the tracked revenue above $10,000, never more than $999 a month; Cloud has billed real cards through Stripe since 2026-10-03 ([Cloud billing](https://revenuedot.app/docs/guides/cloud-billing)). RevenueCat charges 1% of all tracked revenue once an app passes $2,500 a month ([pricing](https://www.revenuecat.com/pricing)). Enterprise starts at $50,000 a year. Enterprise licences cover SSO, SCIM, custom roles, organizations, data location, audit retention, compliance exports and support.
+RevenueDot Cloud Pro is free until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month; Enterprise is custom. Building and testing are free, no card needed; you add a card when you go live. Pro includes every feature, organizations, custom roles and single sign-on, and Cloud has billed real cards through Stripe since 2026-10-03 ([Cloud billing](https://revenuedot.app/docs/guides/cloud-billing)). RevenueCat charges 1% of all tracked revenue once an app passes $2,500 a month ([pricing](https://www.revenuecat.com/pricing)). Enterprise has custom pricing from $50,000 a year and adds SCIM, long audit retention, compliance exports, a 99.9% uptime SLA, 1-hour purchase support and a commercial licence to self-host the `ee/` features.
 </details>
 
 <details><summary><b>Does RevenueDot support SAML single sign-on and SCIM provisioning?</b></summary>
 
-Yes, with an Enterprise licence. Connect Okta, Microsoft Entra ID, Google Workspace or any SAML 2.0 or OpenID Connect provider, verify your email domain with a DNS TXT record, and optionally require single sign-on for that domain (owners keep a password for emergencies). SCIM 2.0 creates, updates and deactivates people from your identity provider and maps its groups to project roles; deactivating someone removes their access and signs them out at once. RevenueCat offers SSO and SCIM on its Enterprise plan through WorkOS ([RevenueCat SSO](https://www.revenuecat.com/docs/projects/sso)). See [Single sign-on](https://revenuedot.app/docs/guides/single-sign-on) and [SCIM](https://revenuedot.app/docs/guides/scim).
+Yes. Single sign-on comes with Pro on Cloud, or with an Enterprise licence when self-hosting; SCIM comes with Enterprise. Connect Okta, Microsoft Entra ID, Google Workspace or any SAML 2.0 or OpenID Connect provider, verify your email domain with a DNS TXT record, and optionally require single sign-on for that domain (owners keep a password for emergencies). SCIM 2.0 creates, updates and deactivates people from your identity provider and maps its groups to project roles; deactivating someone removes their access and signs them out at once. RevenueCat offers SSO and SCIM on its Enterprise plan through WorkOS ([RevenueCat SSO](https://www.revenuecat.com/docs/projects/sso)). See [Single sign-on](https://revenuedot.app/docs/guides/single-sign-on) and [SCIM](https://revenuedot.app/docs/guides/scim).
 </details>
 
 <details><summary><b>Can I create custom roles, for example a support agent who can refund but not edit the catalog?</b></summary>
 
-Yes, with an Enterprise licence. A custom role is any set of the 33 API v2 permission scopes, for one project or every project of an organization, and the server checks it on every request, from the dashboard, RevenueDot AI and the API alike. RevenueCat has six fixed roles ([collaborators](https://www.revenuecat.com/docs/projects/collaborators)). See [Enterprise](https://revenuedot.app/docs/guides/enterprise).
+Yes, with Pro on Cloud or an Enterprise licence when self-hosting. A custom role is any set of the 33 API v2 permission scopes, for one project or every project of an organization, and the server checks it on every request, from the dashboard, RevenueDot AI and the API alike. RevenueCat has six fixed roles ([collaborators](https://www.revenuecat.com/docs/projects/collaborators)). See [Enterprise](https://revenuedot.app/docs/guides/enterprise).
 </details>
 
 <details><summary><b>Can I keep my customers' purchase data in the EU?</b></summary>

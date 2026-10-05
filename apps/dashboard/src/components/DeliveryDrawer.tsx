@@ -12,7 +12,7 @@ import { CodeBlock, Tag, useToast } from "./ui";
  */
 export interface DeliveryAttempt { attempted_at: number; response_status: number | null; response_ms: number | null; error: string | null; response_body: string | null; signature?: string | null; request?: string | null }
 export interface DeliveryDetail {
-  id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed" | "skipped"; attempts: number; next_attempt_at: number | null;
+  id: string; event_id: string; event_type: string; status: "pending" | "delivered" | "failed" | "skipped" | "held"; attempts: number; next_attempt_at: number | null;
   last_error: string | null; created_at: number; sent_as?: string | null;
   /** Webhooks: the request exactly as sent. */
   request?: { method: string; url: string; headers: { name: string; value: string }[]; body: string } | string | null;
@@ -21,7 +21,16 @@ export interface DeliveryDetail {
   curl: string | null; attempt_log: DeliveryAttempt[]; attempt_log_kept_days: number;
 }
 
-const TONE: Record<string, "up" | "info" | "down" | "muted"> = { delivered: "up", pending: "info", failed: "down", skipped: "muted" };
+const TONE: Record<string, "up" | "info" | "down" | "muted" | "gold"> = { delivered: "up", pending: "info", failed: "down", skipped: "muted", held: "gold" };
+
+/**
+ * A delivery's status in the logs. "Held": Cloud's go-live gate keeps production deliveries of a paused account until Pro
+ * starts, then sends them oldest first (prd/cloud-billing/PRD.md).
+ */
+export function DeliveryStatus({ status, lastError }: { status: string; lastError?: string | null }) {
+  if (status === "held") return <><Tag tone="gold">Held</Tag><span className="cellsub">Sent when Pro starts</span></>;
+  return <><Tag tone={TONE[status] ?? "muted"}>{status}</Tag>{lastError && status !== "delivered" && <span className="cellsub">{lastError}</span>}</>;
+}
 const pretty = (body: string) => { try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; } };
 const ok = (s: number | null) => s !== null && s >= 200 && s < 300;
 /** Attempts the server keeps per delivery (services/webhooks.ts ATTEMPT_LOG_MAX). */
@@ -71,11 +80,12 @@ export function DeliveryDrawer({ path, title, onClose, onRetry, canRetry }: { pa
           {d && (
             <>
               <div className="hrow" style={{ flexWrap: "wrap", gap: 8 }}>
-                <Tag tone={TONE[d.status] ?? "muted"}>{d.status}</Tag>
+                {d.status === "held" ? <><Tag tone="gold">Held</Tag><span className="subtle">Sent when Pro starts</span></> : <Tag tone={TONE[d.status] ?? "muted"}>{d.status}</Tag>}
                 <span className="subtle">{d.attempts} attempt{d.attempts === 1 ? "" : "s"} · created {fmt.dateTime(d.created_at)}</span>
                 {d.status === "pending" && d.next_attempt_at && <span className="subtle">· next attempt {d.next_attempt_at <= Date.now() ? "now" : fmt.dateTime(d.next_attempt_at)}</span>}
               </div>
-              {d.last_error && d.status !== "delivered" && <div className="banner err" role="status">{d.last_error}</div>}
+              {d.status === "held" ? <div className="banner warn" role="status">Held because the project owner has no plan. It is sent, with the others held, as soon as Pro starts.</div>
+                : d.last_error && d.status !== "delivered" && <div className="banner err" role="status">{d.last_error}</div>}
 
               <section className="drawer-s" aria-label="Request">
                 <h3>Request</h3>

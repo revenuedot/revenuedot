@@ -33,23 +33,23 @@ Patterns followed: WorkOS for SSO set-up fields, DNS TXT domain verification, en
 - Server hooks (`ServerExtension`): `mount` (middleware and routes before the core's), `projectAccess` (deny, or a custom role's permissions), `passwordPolicy` (enforced SSO), `config` and `me` (dashboard flags), `tick` (periodic work). Dashboard hook: a lazily loaded module that adds `/organizations/*` routes and an "Organization settings" entry; loaded only when `/auth/me` returns `enterprise`.
 - `ee/scripts/license-keygen.ts` makes the signing key pair; `ee/scripts/license-issue.ts` issues keys. **Decision for Kai:** the production public key is not pinned yet (§12).
 
-## 2a. Plans on RevenueDot Cloud (decided 2026-10-02)
+## 2a. Plans on RevenueDot Cloud (decided 2026-10-02; plans renamed 2026-10-05: Pro and Enterprise, `prd/cloud-billing/PRD.md`)
 Which plan gets which feature is a company decision (private `company/docs/business-model.md`, "Plans"); the public table is on revenuedot.app/pricing.
 
-| Feature | Self-hosted | Cloud Free | Cloud Standard | Enterprise |
+| Feature | Cloud, no plan (building) | Pro | Enterprise | Self-hosted |
 |---|---|---|---|---|
-| `organizations`, `custom_roles`, `sso` | Licence key | Locked | Yes | Yes |
-| `scim`, `data_location`, `audit_retention`, `compliance_exports` | Licence key | Locked | Locked | Yes |
-| Audit log kept | Forever (or the organization's retention) | 90 days | 90 days | The organization's choice (default forever) |
+| `organizations`, `custom_roles`, `sso` | Locked | Yes | Yes | Enterprise licence key |
+| `scim`, `data_location`, `audit_retention`, `compliance_exports` | Locked | Locked | Yes | Enterprise licence key |
+| Audit log kept | 90 days | 90 days | The organization's choice (default forever) | Forever (or the organization's retention) |
 
 - **Cloud always loads `ee/`** (`extensionsRequested(env, "cloud")`) and ignores `REVENUEDOT_LICENSE_KEY` and development mode. Every route is mounted; each request checks the features of its organization (`orgFeatures` in `ee/server/util.ts`).
 - **An organization's plan** is the best `billing_accounts.plan` among its active owners (`ee/server/plans.ts`). Creating an organization needs the creator's own plan to include `organizations`. Enterprise accounts are set by hand when the contract is signed.
 - **The plan table** (`apps/server/src/services/billing/plans.ts`, replaceable with `REVENUEDOT_BILLING_PLANS`) lists each plan's `ee_features` and `audit_log_days`, so the Billing page, the gates and the purge read one source.
-- **Locked, not hidden:** `GET /auth/me` → `enterprise` and `GET /v2/enterprise` answer `mode: "cloud"`, the person's `plan`, `features` and `locked` (`[{ feature, plan }]`, the cheapest plan that has it); organizations carry `plan` (Cloud) and `locked` (every server). The dashboard shows every tab; a locked one opens a panel ending in "Part of Cloud Standard. Upgrade in Billing" or "Part of Enterprise. Contact sales". A refused request answers 403 with the same words.
+- **Locked, not hidden:** `GET /auth/me` → `enterprise` and `GET /v2/enterprise` answer `mode: "cloud"`, the person's `plan`, `features` and `locked` (`[{ feature, plan }]`, the cheapest plan that has it); organizations carry `plan` (Cloud) and `locked` (every server). The dashboard shows every tab; a locked one opens a panel ending in "... part of Pro, which costs $0 until your apps make $10,000 a month. Start Pro in Billing." or "... part of Enterprise. Contact sales at https://revenuedot.app/contact-sales." (`lockedMessage` in `ee/server/util.ts`). A refused request answers 403 with the same words.
 - **Downgrades** never stop apps or projects: the organization stays readable and its projects can be moved out or it can be deleted, and admins can still delete custom roles, SSO connections, verified domains and SCIM tokens (other writes answer 403); custom roles give no access (least privilege) until an admin picks a built-in role; required SSO is not enforced and SSO connections act as off; SCIM tokens answer 403; settings are kept for when the plan returns.
-- **Retention:** the hourly enterprise job deletes project and organization audit log rows older than 90 days, except for projects owned by an Enterprise account or in an Enterprise organization, whose retention setting applies instead (`purgeCloudAuditLogs`, at most 5,000 rows a tick). The 90 days count from 2026-10-03, so nothing is deleted before 2027-01-01, and an account whose plan changed in the last 30 days keeps its history. Stripe events never change an `enterprise` plan, and Enterprise accounts cannot start a Standard checkout.
+- **Retention:** the hourly enterprise job deletes project and organization audit log rows older than 90 days, except for projects owned by an Enterprise account or in an Enterprise organization, whose retention setting applies instead (`purgeCloudAuditLogs`, at most 5,000 rows a tick). The 90 days count from 2026-10-03, so nothing is deleted before 2027-01-01, and an account whose plan changed in the last 30 days keeps its history. Stripe events never change an `enterprise` plan, and Enterprise accounts cannot start a Pro checkout.
 - **RevenueDot AI on Cloud** runs the same `projectAccess` when a conversation connects, so required SSO and deprovisioning apply there too.
-- Tests: `ee/test/plans.test.ts` (Cloud Free, Standard, Enterprise, a downgrade, retention, self-hosted with and without a licence).
+- Tests: `ee/test/plans.test.ts` (no plan, Pro, Enterprise, a downgrade, retention, self-hosted with and without a licence).
 
 ## 3. Organizations
 - An organization has a name, a default region, audit retention, SSO enforcement, seats bought (Cloud billing reads it; counting only here) and a billing email.
@@ -106,10 +106,10 @@ Which plan gets which feature is a company decision (private `company/docs/busin
 
 ## 12. Decisions for Kai
 1. **Licence signing key:** generate the Ed25519 pair (`pnpm tsx ee/scripts/license-keygen.ts`), keep the private key in 1Password, pin the public key in `ee/server/license.ts`, and set a Cloud licence (`REVENUEDOT_LICENSE_KEY` Worker secret). Until then only development mode turns features on.
-2. **Which features are on Cloud Standard:** decided 2026-10-02, see §2a.
+2. **Which features are on Pro:** decided 2026-10-02, see §2a.
 3. **Development mode:** `REVENUEDOT_EE_DEV=true` unlocks everything on a self-hosted server with no key (ee/LICENSE allows development and testing use without a subscription). Alternative: free 30-day development keys.
 4. **EU region on Cloud:** whether and when to stand up the EU deployment (cost in `docs/data-location.md`).
-5. **Retention on Cloud for non-enterprise projects:** decided 2026-10-02: 90 days on Cloud Free and Standard (§2a).
+5. **Retention on Cloud for non-enterprise projects:** decided 2026-10-02: 90 days on Pro and without a plan (§2a).
 
 ## 13. Gaps
 - RevenueDot AI on Cloud (the Durable Object runtime) builds its app without extensions: a custom role's tool calls are refused (least privilege, so nothing leaks) and enforced SSO is checked only when the conversation is created through the API. Wiring `projectAccess` and the session into the Durable Object is the next step now that Cloud loads `ee/`.

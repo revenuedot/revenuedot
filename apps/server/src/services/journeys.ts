@@ -4,7 +4,7 @@ import { trySend, type Mailer } from "../mail/index.js";
 import { journeyEmail, JOURNEY_FROM, JOURNEY_REPLY_TO, type JourneyCtx, type StepId } from "../mail/journeys.js";
 import { issueToken, linkBase, randomToken, retireTokens } from "./account-email.js";
 import { sha256Hex } from "./auth.js";
-import { billCents, monthOf, planOf, plansFrom } from "./billing/plans.js";
+import { accountPlanOf, billCents, monthOf, planOf, plansFrom } from "./billing/plans.js";
 import { rowsOf } from "./archive/tables.js";
 
 /**
@@ -45,9 +45,7 @@ export interface Facts {
   rcImportAt: number | null; importedCustomers: number;
   paywallPublishedAt: number | null; experimentStartedAt: number | null;
   teammates: number; recoveryOn: boolean; assistantConnected: boolean;
-  plan: string; planSince: number | null; canceledAt: number | null; tracked: number; free100At: number | null;
-  /** The tracked revenue of the month the free_100 email was about. */
-  overTracked: number;
+  plan: string; planSince: number | null; canceledAt: number | null; tracked: number;
   alertAt: number | null; lastNotificationAt: number | null;
   /** Switchers waiting for the cutover email: customers whose app called RevenueDot (up to 25) and all customers (up to 250); else 0. */
   sdkCustomers: number; customers: number; referralJoinedAt: number | null;
@@ -81,8 +79,10 @@ export const STEPS: Step[] = [
   { id: "teammate_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (!f.ownsProjects && f.memberOf ? f.createdAt + 10 * 60_000 : null) },
   { id: "verify_reminder", onboarding: true, anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.ownsProjects && !f.verified ? f.createdAt + D : null) },
   // Celebrations and receipts answer something that just happened, so they skip the caps.
-  { id: "first_sale", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => f.liveAt },
-  { id: "standard_welcome", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
+  // An account with no plan hears about its first sale from the go-live gate's email instead (services/billing/gate.ts),
+  // which asks it to start Pro: one email, not two.
+  { id: "first_sale", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.plan !== "none" ? f.liveAt : null) },
+  { id: "standard_welcome", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.plan === "pro" ? f.planSince : null) },
   // Switching from RevenueCat: the cutover, after a week of live sales and once the app update reaches real customers
   // (a tenth of them through the SDK, at least 3 and at most 25; a test build brings one or two). The rollout can take weeks,
   // so it stays fresh for 60 days.
@@ -214,13 +214,9 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT EXISTS (SELECT 1 FROM owned o WHERE o.uid = u.id AND o.recovery_settings->>'enabled' = 'true')) AS recovery_on,
       (SELECT EXISTS (SELECT 1 FROM api_keys k WHERE k.created_by_user_id = u.id AND k.oauth_client_id IS NOT NULL)) AS assistant_connected,
       ba.plan AS ba_plan, ba.status AS ba_status, ba.updated_at AS ba_updated_at, ba.standard_started_at AS ba_started, ba.stripe_subscription_id AS ba_sub,
-      (SELECT coalesce(sum(bu.tracked_revenue_usd), 0) FROM billing_usage bu WHERE bu.owner_user_id = u.id AND bu.month = (
-          SELECT split_part(bn.key, ':', 1) FROM billing_notices bn WHERE bn.user_id = u.id AND bn.key LIKE '%:free_100' ORDER BY bn.sent_at DESC LIMIT 1)) AS over_tracked,
       (SELECT max(a.last_notification_at) FROM apps a JOIN owned o ON o.id = a.project_id WHERE o.uid = u.id) AS last_notification_at,
       (SELECT max(r.created_at) FROM users r WHERE u.referral_code IS NOT NULL AND r.referred_by = u.referral_code) AS referral_joined_at,
       (SELECT coalesce(sum(bu.tracked_revenue_usd), 0) FROM billing_usage bu WHERE bu.owner_user_id = u.id AND bu.month = ${month}) AS tracked,
-      -- The latest "passed Cloud Free" email, also last month's: the follow-ups must survive the month boundary.
-      (SELECT max(bn.sent_at) FROM billing_notices bn WHERE bn.user_id = u.id AND bn.key LIKE '%:free_100' AND bn.sent_at >= ${new Date(now.getTime() - 35 * D).toISOString()}::timestamptz) AS free100_at,
       (SELECT max(coalesce(al.last_notified_at, al.opened_at)) FROM alerts al JOIN owned o ON o.id = al.project_id WHERE o.uid = u.id) AS alert_at,
       (SELECT json_build_object('project_id', p.id, 'project_name', p.name, 'inviter', iu.name)
           FROM memberships m JOIN projects p ON p.id = m.project_id
@@ -235,8 +231,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
     const sale = json<{ product: string; amount: number | null; currency: string | null; country: string | null; existing?: boolean }>(r.first_sale);
     const member = json<{ project_id: string; project_name: string; inviter: string | null }>(r.member_of);
     const sent = new Map<StepId, number>(Object.entries(json<Record<string, string>>(r.sent) ?? {}).map(([k, v]) => [k as StepId, new Date(v).getTime()]));
-    const paying = r.ba_plan === "standard" && ["active", "past_due"].includes(String(r.ba_status));
-    const plan = r.ba_plan === "enterprise" ? "enterprise" : paying ? "standard" : "free";
+    const plan = accountPlanOf(r.ba_plan as string | null);
     return {
       userId: String(r.id), email: String(r.email), name: (r.name as string | null) ?? null, createdAt: ts(r.created_at)!, verified: r.email_verified_at !== null,
       timeZone: (r.time_zone as string | null) ?? null, path: r.journey_path === "revenuecat" || r.journey_path === "new" ? r.journey_path : null,
@@ -251,12 +246,11 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       rcImportAt: ts(r.rc_import_at), importedCustomers: 0,
       paywallPublishedAt: ts(r.paywall_published_at), experimentStartedAt: ts(r.experiment_started_at),
       teammates: Number(r.teammates ?? 0), recoveryOn: r.recovery_on === true, assistantConnected: r.assistant_connected === true,
-      // Standard: thanked once, from the first time it became active, and only when that was after the launch. Asked why only
+      // Pro: thanked once, from the first time it became active, and only when that was after the launch. Asked why only
       // after a real cancellation (a failed card is "unpaid", an unpaid checkout is "incomplete": neither is a choice).
-      plan, planSince: plan === "standard" && (ts(r.ba_started) ?? 0) >= sinceMs ? ts(r.ba_started) : null,
-      canceledAt: plan === "free" && r.ba_sub && r.ba_started && String(r.ba_status) === "canceled" ? ts(r.ba_updated_at) : null,
-      overTracked: Number(r.over_tracked ?? 0),
-      tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at), sdkCustomers: Number(r.sdk_customers ?? 0), customers: Number(r.customers ?? 0),
+      plan, planSince: plan === "pro" && (ts(r.ba_started) ?? 0) >= sinceMs ? ts(r.ba_started) : null,
+      canceledAt: plan === "none" && r.ba_sub && r.ba_started && String(r.ba_status) === "canceled" ? ts(r.ba_updated_at) : null,
+      tracked: Number(r.tracked ?? 0), alertAt: ts(r.alert_at), sdkCustomers: Number(r.sdk_customers ?? 0), customers: Number(r.customers ?? 0),
       lastNotificationAt: ts(r.last_notification_at), referralJoinedAt: ts(r.referral_joined_at), sent,
     };
   });
@@ -281,7 +275,7 @@ const COUNTRY = (code: string | null) => {
 /** The context a step's copy needs. Creates the verification token and referral code for the steps that show them. */
 export async function contextFor(db: DB, f: Facts, step: StepId, base: string, unsubscribeUrl: string, token: string | null, now: Date, plansJson?: string | null): Promise<JourneyCtx> {
   const plans = plansFrom(plansJson);
-  const std = planOf(plans, "standard");
+  const std = planOf(plans, "pro");
   const rd = (r: number) => billCents(std, r) / 100;
   const rc = (r: number) => (r >= 2_500 ? Math.round(r) / 100 : 0);
   const member = !f.ownsProjects && f.memberOf;
@@ -314,9 +308,7 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
     c.importedCustomers = Number(n?.n ?? 0);
   }
   c.projected = Math.round(((c.last7 ?? 0) * 30) / 7);
-  c.overTracked = f.overTracked || f.tracked;
-  c.overMonth = f.free100At ? new Date(f.free100At).toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }) : c.month;
-  const basis = step === "cutover" ? c.projected : step.startsWith("upgrade") ? c.overTracked : f.tracked;
+  const basis = step === "cutover" ? c.projected : f.tracked;
   c.bills = { revenuedot: rd(basis), revenuecat: rc(basis) };
   c.importedOn = f.rcImportAt ? new Date(f.rcImportAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : undefined;
   // The send's token (the unsubscribe link's) also identifies the reader for the welcome's path links and one-click answers.

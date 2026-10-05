@@ -47,7 +47,7 @@ test("sign up, create a project and upgrade: goals, the user profile and the Str
   await expect(page).toHaveURL(/\/projects\/[^/]+\/overview/);
   await expect.poll(names).toEqual(expect.arrayContaining(["signup_completed", "identify"]));
   const identify = (await calls()).find((c) => c[0] === "identify")![1] as Record<string, string>;
-  expect(identify).toMatchObject({ user_id: user.email, name: user.name, plan: "free", projects: "1", email_verified: "false" });
+  expect(identify).toMatchObject({ user_id: user.email, name: user.name, plan: "none", projects: "1", email_verified: "false" });
 
   await page.goto("/projects/new");
   await page.getByLabel("Project name").fill("Second app");
@@ -56,10 +56,10 @@ test("sign up, create a project and upgrade: goals, the user profile and the Str
   await expect.poll(names).toContain("project_created");
 
   await page.goto("/account/billing");
-  await page.getByRole("button", { name: "Upgrade to Standard" }).click();
+  await page.locator("[data-plan=pro]").getByRole("button", { name: "Start Pro" }).click();
   await expect(page.getByRole("heading", { name: "Fake Stripe Checkout" })).toBeVisible();
   const sent = JSON.parse(await page.locator("[data-session-metadata]").innerText()) as { metadata: Record<string, string>; subscription: Record<string, string> };
-  expect(sent.metadata).toMatchObject({ plan: "standard", datafast_visitor_id: VISITOR, datafast_session_id: VISIT });
+  expect(sent.metadata).toMatchObject({ plan: "pro", datafast_visitor_id: VISITOR, datafast_session_id: VISIT });
   expect(sent.subscription).toMatchObject({ datafast_visitor_id: VISITOR, datafast_session_id: VISIT });
   await page.getByRole("button", { name: "Subscribe" }).click();
   await expect(page).toHaveURL(/\/account\/billing\?checkout=success/);
@@ -67,8 +67,8 @@ test("sign up, create a project and upgrade: goals, the user profile and the Str
   const returned = (await calls()).find((c) => c[0] === "checkout_returned")![1];
   expect(returned).toEqual({ result: "success" });
   // The plan change reaches the profile.
-  await expect(page.locator("[data-plan=standard]").getByText("Current")).toBeVisible();
-  await expect.poll(async () => (await calls()).filter((c) => c[0] === "identify").map((c) => (c[1] as Record<string, string>).plan)).toContain("standard");
+  await expect(page.locator("[data-plan=pro]").getByText("Current")).toBeVisible();
+  await expect.poll(async () => (await calls()).filter((c) => c[0] === "identify").map((c) => (c[1] as Record<string, string>).plan)).toContain("pro");
 
   const all = JSON.stringify(await calls());
   expect(all).not.toContain(user.project);

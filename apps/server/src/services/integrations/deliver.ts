@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, ne, not, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import {
   BIGQUERY_SCOPE, bigQueryCreateTable, buildIntegration, responseError, retryableStatus, type EventContext, type IntegrationKind, type OutRequest,
 } from "@revenuedot/core/integrations";
@@ -35,6 +35,8 @@ export interface IntegrationRuntime {
   strictUrls?: boolean;
   /** No new delivery starts after this many milliseconds (default 15 s), so the tick stays short on Workers. */
   budgetMs?: number;
+  /** Deliveries left in the queue (Cloud's go-live gate, services/billing/gate.ts). */
+  skip?: (eventId: SQLWrapper) => SQL;
 }
 
 const LOG_BODY = 4000, LOG_RESPONSE = 1000, LOG_REQUEST = 2000;
@@ -226,7 +228,7 @@ export async function deliverDueIntegrations(db: DB, rt: IntegrationRuntime, lim
   const budget = rt.budgetMs ?? 15_000;
   const ranked = db.select({ id: D.id, at: D.nextAttemptAt, rank: sql<number>`row_number() over (partition by ${D.integrationId} order by ${D.nextAttemptAt}, ${D.id})`.as("rank") })
     .from(D).innerJoin(I, eq(I.id, D.integrationId))
-    .where(and(inArray(D.status, ["pending", "sending"]), lte(D.nextAttemptAt, rt.now), eq(I.enabled, true), notMoving(I.projectId))).as("ranked");
+    .where(and(inArray(D.status, ["pending", "sending"]), lte(D.nextAttemptAt, rt.now), eq(I.enabled, true), notMoving(I.projectId), rt.skip ? not(rt.skip(D.eventId)) : undefined)).as("ranked");
   const due = await db.select({ id: ranked.id }).from(ranked).where(lte(ranked.rank, PER_INTEGRATION)).orderBy(ranked.at, ranked.id).limit(limit);
   let next = 0, attempted = 0;
   const lease = new Date(rt.now.getTime() + LEASE_MS);

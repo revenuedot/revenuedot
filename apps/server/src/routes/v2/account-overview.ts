@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { HISTORY_METRICS, metricHistory, type HistoryMetric, type MetricHistory } from "../../services/metric-history.js";
+import { gateOn, pausedMessage, projectGate } from "../../services/billing/gate.js";
 import { projectsForUser } from "../../services/sessions.js";
 import { METRICS, overviewValues, type OverviewValues } from "./metrics.js";
 import { V2Error, allows, listOf, pageParams, paramError, round2, type V2Context, type V2Router } from "./common.js";
@@ -63,7 +64,13 @@ async function accessibleProjects(deps: Deps, c: V2Context, need: Scope): Promis
   for (const x of mine) {
     try {
       const principal = await userProjectPrincipal(deps, c, p, x.id);
-      out.push(allows(principal, need) ? { id: x.id, name: x.name, included: true } : { id: x.id, name: x.name, included: false, reason: "Your role in this project does not include this data." });
+      if (!allows(principal, need)) { out.push({ id: x.id, name: x.name, included: false, reason: "Your role in this project does not include this data." }); continue; }
+      // Cloud's go-live gate (services/billing/gate.ts): a paused project's live numbers stay out of the totals.
+      if (gateOn(deps) && (c.req.query("environment") || "production") === "production") {
+        const g = await projectGate(deps.db, x.id, deps.now(), true);
+        if (g.stage === "paused") { out.push({ id: x.id, name: x.name, included: false, reason: pausedMessage(g.owner, p.userId) }); continue; }
+      }
+      out.push({ id: x.id, name: x.name, included: true });
     } catch (e) {
       // 404: the membership is gone or an extension closed the project to this person (deprovisioned): the project route
       // would answer "Project not found", which reads oddly next to a project listed by name.

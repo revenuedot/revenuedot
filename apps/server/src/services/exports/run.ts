@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lte, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { newId } from "@revenuedot/core";
 import { schema, type DB, type ExportFile, type ExportProgress, type ExportUpload } from "@revenuedot/db";
 import { SecretsError, unseal, type SecretKey } from "../secrets.js";
@@ -67,8 +67,11 @@ export function nextRunAt(job: Pick<Job, "schedule" | "hourUtc" | "weekday"> & {
 }
 
 /** Queues a run for every enabled job that is due, and moves the job's next_run_at forward. */
-export async function queueDueExports(db: DB, now: Date) {
-  const due = await db.select().from(J).where(and(eq(J.enabled, true), isNotNull(J.nextRunAt), lte(J.nextRunAt, now), notMoving(J.projectId))).limit(50);
+export async function queueDueExports(db: DB, now: Date, skip?: (projectId: SQLWrapper) => SQL) {
+  // `skip`: Cloud's go-live gate (services/billing/gate.ts). A paused project's exports of live data stay due and run
+  // once Pro starts, from where their cursors stopped; sandbox-only exports keep running.
+  const due = await db.select().from(J).where(and(eq(J.enabled, true), isNotNull(J.nextRunAt), lte(J.nextRunAt, now), notMoving(J.projectId),
+    skip ? sql`NOT (${J.environment} <> 'sandbox' AND ${skip(J.projectId)})` : undefined)).limit(50);
   for (const job of due) {
     // Move next_run_at first, only if no other tick did: the tick that wins queues the run.
     const [won] = await db.update(J).set({ nextRunAt: nextRunAt(job, now) }).where(and(eq(J.id, job.id), eq(J.nextRunAt, job.nextRunAt!))).returning({ id: J.id });

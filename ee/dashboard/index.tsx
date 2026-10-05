@@ -53,7 +53,7 @@ function CreateOrg({ first }: { first: boolean }) {
 function OrgIndex() {
   const [params] = useSearchParams();
   const ent = useEnterprise();
-  // Cloud Free: organizations are locked, so the page explains the plan instead of offering a form that would be refused.
+  // No plan yet: organizations are part of Pro, so the page explains it instead of offering a form that would be refused.
   const lock = ent.data?.locked?.find((l) => l.feature === "organizations");
   const list = useQuery({ queryKey: ["orgs"], queryFn: async () => (await api<List<Org>>("/v2/organizations")).items, retry: false });
   const nav = useNavigate();
@@ -97,7 +97,7 @@ function OrgPage() {
         {org.isError && <div className="banner err" role="alert">The organization could not be loaded: {errMsg(org.error)}</div>}
         {orgLock && (
           <div className="banner" role="status" style={{ marginBottom: 16 }}>
-            This organization's owners are on Cloud Free, so it is read-only: you can see it, move projects out and delete it. <LockNote plan={orgLock.plan} />.
+            This organization's owners have not started Pro, so it is read-only: you can see it, move projects out and delete it. <LockNote plan={orgLock.plan} />.
           </div>
         )}
         {org.data && lock && <LockedPanel lock={lock} />}

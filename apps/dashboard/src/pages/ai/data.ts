@@ -23,7 +23,8 @@ export interface StoreKitProduct {
 }
 export interface StoreKitConfig { formatVersion: number | null; storefront: string | null; products: StoreKitProduct[]; warnings: string[] }
 
-export const useAiStatus = (pid: string) => useQuery({ queryKey: ["ai-status", pid], queryFn: () => api<AiStatus>(aiBase(pid)), enabled: !!pid });
+// Whether AI is available decides buttons on many pages (catalog, targeting, experiments): never the go-live gate's panel.
+export const useAiStatus = (pid: string) => useQuery({ queryKey: ["ai-status", pid], queryFn: () => api<AiStatus>(aiBase(pid)), enabled: !!pid, meta: { gate: "ignore" } });
 export const useConversations = (pid: string, q = "") => useQuery({
   queryKey: ["ai-conversations", pid, q],
   queryFn: () => api<{ items: Conversation[] }>(`${aiBase(pid)}/conversations${q ? `?q=${encodeURIComponent(q)}` : ""}`).then((r) => r.items),

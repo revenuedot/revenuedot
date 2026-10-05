@@ -1,17 +1,22 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "./icons";
+import { PlanSlot } from "./PlanRequired";
 
 /** Shared dashboard building blocks. Pages compose these; they never restyle them (see DESIGN.md). */
 
 export const useProjectId = () => useParams().projectId ?? "";
 
-export function PageHead({ title, sub, actions }: { title: string; sub?: ReactNode; actions?: ReactNode }) {
+/** `sandbox`: what "Show sandbox data" does when live data needs Pro (components/PlanRequired.tsx, shown under the head). */
+export function PageHead({ title, sub, actions, sandbox }: { title: string; sub?: ReactNode; actions?: ReactNode; sandbox?: () => void }) {
   return (
-    <div className="head">
-      <div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>
-      {actions && <div className="actions">{actions}</div>}
-    </div>
+    <>
+      <div className="head">
+        <div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>
+        {actions && <div className="actions">{actions}</div>}
+      </div>
+      <PlanSlot onSandbox={sandbox} />
+    </>
   );
 }
 

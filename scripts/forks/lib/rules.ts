@@ -356,7 +356,7 @@ export function renderReadme(rule: ReadmeRule, vars: Vars): string {
     `[![Upstream](https://img.shields.io/badge/upstream-${shieldsText(`RevenueCat/${vars.repo} ${vars.forkVersion}`)}-lightgrey)](${upstreamRepo})`,
   ];
   const adds = rule.adds ?? [
-    "**Start free on [RevenueDot Cloud](https://app.revenuedot.app/signup)**: free up to $10,000 a month of tracked revenue, then 0.5%, never more than $999 a month ([pricing](https://revenuedot.app/pricing)).",
+    "**Start for free on [RevenueDot Cloud](https://app.revenuedot.app/signup)**: free until your apps make $10,000 a month, then 0.5%, never more than $999 a month ([pricing](https://revenuedot.app/pricing)).",
     "**The same REST API and webhook payloads** as RevenueCat, so your backend and integrations keep working ([API reference](https://revenuedot.app/docs/api)).",
     "**Paywalls, experiments and the Customer Center** built in the RevenueDot dashboard and rendered by this SDK ([guides](https://revenuedot.app/docs/guides)).",
     "**A one-line migration:** point the stock SDK at RevenueDot with `setProxyURL`, or install this fork and drop the line ([migration guide](https://revenuedot.app/docs/migrate)).",

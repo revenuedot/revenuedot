@@ -316,6 +316,13 @@
       "when": 1791233148177,
       "tag": "0047_sdk_seen_customers",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791236302749,
+      "tag": "0048_pro_live_gate",
+      "breakpoints": true
     }
   ]
 }

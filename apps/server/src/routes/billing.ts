@@ -6,15 +6,16 @@ import type { Deps } from "../context.js";
 import { SESSION_COOKIE, sessionUser } from "../services/sessions.js";
 import { linkBase, requestOrigin } from "../services/account-email.js";
 import { accountOf, accountUsage, reportAccountNow } from "../services/billing/meter.js";
-import { billCents, monthBounds, monthOf, planOf, plansFrom } from "../services/billing/plans.js";
+import { accountPlanOf, billCents, monthBounds, monthOf, planOf, plansFrom } from "../services/billing/plans.js";
 import { BillingStripeError, billingStripe, datafastIds, stripeProblem } from "../services/billing/stripe.js";
 import { claim, handleBillingEvent, syncCustomer } from "../services/billing/webhook.js";
+import { GRACE_DAYS, gateOf, gateOn } from "../services/billing/gate.js";
 import { StripeSignatureError, verifyStripeSignature } from "../stores/stripe/signature.js";
 
 /**
  * RevenueDot Cloud billing (prd/cloud-billing/PRD.md): the Billing page's data, Stripe Checkout and Customer Portal, and
- * the webhook of RevenueDot's own Stripe account. Session auth (an account, not a project). Self-host answers 404:
- * self-hosting is free and unmetered.
+ * the webhook of RevenueDot's own Stripe account. Session auth (an account, not a project). Self-hosted servers have no
+ * billing and answer 404.
  */
 export function billingRoutes(deps: Deps) {
   const r = new Hono();
@@ -24,8 +25,8 @@ export function billingRoutes(deps: Deps) {
   const plans = () => plansFrom(deps.billing?.plansJson);
   const base = (c: Context) => linkBase(deps, requestOrigin(c.req.url, (n) => c.req.header(n)));
 
-  r.use("/v2/billing/*", async (c, next) => { if (!cloud()) return err(c, 404, "resource_missing", "Billing is only on RevenueDot Cloud. Self-hosting is free and unmetered."); await next(); });
-  r.use("/v2/billing", async (c, next) => { if (!cloud()) return err(c, 404, "resource_missing", "Billing is only on RevenueDot Cloud. Self-hosting is free and unmetered."); await next(); });
+  r.use("/v2/billing/*", async (c, next) => { if (!cloud()) return err(c, 404, "resource_missing", "Billing is only on RevenueDot Cloud."); await next(); });
+  r.use("/v2/billing", async (c, next) => { if (!cloud()) return err(c, 404, "resource_missing", "Billing is only on RevenueDot Cloud."); await next(); });
 
   const user = async (c: Context) => sessionUser(db, getCookie(c, SESSION_COOKIE), deps.now());
 
@@ -42,28 +43,31 @@ export function billingRoutes(deps: Deps) {
       catch (e) { console.error("billing: sync on return from Checkout failed", e); }
     }
     const all = plans();
-    const plan = planOf(all, acct?.plan ?? "free");
+    const plan = planOf(all, acct?.plan);
     const usage = await accountUsage(db, u.id, month);
-    const standard = planOf(all, "standard");
+    const pro = planOf(all, "pro");
     const invoices = await db.select().from(schema.billingInvoices).where(eq(schema.billingInvoices.userId, u.id)).orderBy(desc(schema.billingInvoices.createdAt)).limit(24);
     const owned = await db.select({ id: schema.projects.id, name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.ownerUserId, u.id));
     const { end } = monthBounds(month);
+    const gate = gateOf(acct, now, gateOn(deps));
     const flags: string[] = [];
     if (acct?.status === "past_due") flags.push("past_due");
     if (acct?.status === "unpaid") flags.push("unpaid");
-    if (plan.id === "free" && plan.limit_usd !== null && usage.tracked_revenue_usd > plan.limit_usd) flags.push("over_free_limit");
-    if (plan.id === "standard" && plan.limit_usd !== null && usage.tracked_revenue_usd > plan.limit_usd) flags.push("over_standard_limit");
+    if (gate.stage === "grace") flags.push("live_grace");
+    if (gate.stage === "paused") flags.push("live_paused");
+    if (plan.id === "pro" && plan.rate > 0 && plan.limit_usd !== null && usage.tracked_revenue_usd > plan.limit_usd) flags.push("over_pro_limit");
     return c.json({
       object: "billing", edition: "cloud",
-      account: { plan: plan.id, status: acct?.status ?? "none", cancel_at: acct?.cancelAt?.getTime() ?? null, current_period_end: acct?.currentPeriodEnd?.getTime() ?? null, has_payment_method: !!acct?.stripeCustomerId },
+      account: { plan: accountPlanOf(acct?.plan), status: acct?.status ?? "none", cancel_at: acct?.cancelAt?.getTime() ?? null, current_period_end: acct?.currentPeriodEnd?.getTime() ?? null, has_payment_method: !!acct?.stripeCustomerId },
+      gate: { ...gate, grace_days: GRACE_DAYS },
       plans: all,
       usage: {
         ...usage,
         // Owned projects with no revenue yet still show, at $0.
         projects: [...usage.projects, ...owned.filter((p) => !usage.projects.some((x) => x.project_id === p.id)).map((p) => ({ project_id: p.id, name: p.name, tracked_revenue_usd: 0, transactions: 0 }))],
         bill_usd: billCents(plan, usage.tracked_revenue_usd) / 100,
-        standard_bill_usd: billCents(standard, usage.tracked_revenue_usd) / 100,
-        free_limit_usd: planOf(all, "free").limit_usd, cap_usd: standard.cap_usd, ceiling_usd: standard.limit_usd, period_end: end.getTime(),
+        pro_bill_usd: billCents(pro, usage.tracked_revenue_usd) / 100,
+        free_up_to_usd: pro.free_up_to_usd, cap_usd: pro.cap_usd, ceiling_usd: pro.limit_usd, period_end: end.getTime(),
       },
       flags,
       invoices: invoices.map((i) => ({ id: i.id, number: i.number, status: i.status, amount_due: i.amountDue / 100, amount_paid: i.amountPaid / 100, currency: i.currency, period_start: i.periodStart?.getTime() ?? null, period_end: i.periodEnd?.getTime() ?? null, hosted_invoice_url: i.hostedInvoiceUrl, invoice_pdf: i.invoicePdf, created_at: i.createdAt.getTime() })),
@@ -81,12 +85,13 @@ export function billingRoutes(deps: Deps) {
     if (!u) return err(c, 401, "authentication_error", "Sign in first.");
     if (writeGuard(c)) return err(c, 403, "authorization_error", "Dashboard requests must come from the dashboard.");
     const b = await c.req.json().catch(() => ({})) as { plan?: string };
-    if (b.plan !== "standard") return err(c, 400, "parameter_error", "Only Cloud Standard has a self-serve checkout. For Enterprise, contact sales at https://revenuedot.app/contact-sales.");
+    // "standard" is Pro's old name (dashboards open before 2026-10-05 still send it).
+    if (b.plan !== "pro" && b.plan !== "standard") return err(c, 400, "parameter_error", "Only Pro starts with a self-serve checkout. For Enterprise, contact sales at https://revenuedot.app/contact-sales.");
     const problem = stripeProblem(deps.billing);
     if (problem) return err(c, 503, "server_error", problem);
     const acct = await accountOf(db, u.id);
-    if (acct?.plan === "enterprise") return err(c, 409, "resource_already_exists", "You are on Enterprise, which includes everything in Cloud Standard. Contact sales at https://revenuedot.app/contact-sales to change it.");
-    if (acct?.plan === "standard" && ["active", "past_due"].includes(acct.status)) return err(c, 409, "resource_already_exists", "You are on Cloud Standard already. Manage it with Manage billing.");
+    if (acct?.plan === "enterprise") return err(c, 409, "resource_already_exists", "You are on Enterprise, which includes everything in Pro. Contact sales at https://revenuedot.app/contact-sales to change it.");
+    if (accountPlanOf(acct?.plan) === "pro" && ["active", "past_due"].includes(acct!.status)) return err(c, 409, "resource_already_exists", "You are on Pro already. Manage it with Manage billing.");
     try {
       const stripe = billingStripe(deps.billing!, deps.fetch);
       let customer = acct?.stripeCustomerId ?? null;
@@ -94,8 +99,8 @@ export function billingRoutes(deps: Deps) {
       if (customer) {
         // Stripe, not our copy, says whether a subscription is already running (a webhook may still be on its way).
         const r = await syncCustomer({ db, now: deps.now(), stripe, mailer: deps.mailer, publicUrl: deps.publicUrl }, customer, u.id);
-        if (r && ["active", "past_due"].includes(r.after.status)) return err(c, 409, "resource_already_exists", "You are on Cloud Standard already. Manage it with Manage billing.");
-        // Unpaid (every retry failed, the account is on Free): end that subscription before a new one, so the two never
+        if (r && ["active", "past_due"].includes(r.after.status)) return err(c, 409, "resource_already_exists", "You are on Pro already. Manage it with Manage billing.");
+        // Unpaid (every retry failed, the account has no plan): end that subscription before a new one, so the two never
         // share the meter. Its open invoice stays open and payable from the Billing page.
         if (r?.after.status === "unpaid" && r.subscription) await stripe.cancelSubscription(r.subscription);
         // Stripe no longer has this customer (deleted, or from the other mode): start over with a new one.
@@ -124,7 +129,7 @@ export function billingRoutes(deps: Deps) {
     const problem = stripeProblem(deps.billing);
     if (problem) return err(c, 503, "server_error", problem);
     const acct = await accountOf(db, u.id);
-    if (!acct?.stripeCustomerId) return err(c, 409, "resource_missing", "There is no payment method yet. Upgrade first.");
+    if (!acct?.stripeCustomerId) return err(c, 409, "resource_missing", "There is no payment method yet. Start Pro first.");
     try {
       const s = await billingStripe(deps.billing!, deps.fetch).createPortal({ customer: acct.stripeCustomerId, returnUrl: `${base(c)}/account/billing` });
       return c.json({ object: "portal", url: s.url });

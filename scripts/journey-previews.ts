@@ -26,7 +26,7 @@ const sam = (step: StepId): JourneyCtx => ({
   verifyUrl: `${app}/verify-email?token=${token}`,
   testPurchase: true, sdk: { platform: "React Native", version: "10.10.2" }, migrating: false,
   sale: { product: "notely_pro_monthly", amount: "$4.99", country: "Canada" },
-  tracked: 13_870, month: "October", overTracked: 13_870, overMonth: "September",
+  tracked: 13_870, month: "October",
   inviter: "Sam Rivera",
 });
 const maya = (step: StepId): JourneyCtx => ({

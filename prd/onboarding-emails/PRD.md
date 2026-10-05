@@ -13,17 +13,16 @@
 > | `paywall` | builders with a store connected, no paywall, no sale | 3 days after the first SDK call, at least 2 days after `store_keys` |
 > | `need_hand` | anyone stuck, matched to their step: no test purchase, no SDK, or (switchers) no import | day 5 for builders, day 3 for switchers who never imported |
 > | `side_by_side` | switchers, after the import | a day after the import |
-> | `first_sale` | everyone (switchers get their own version) | first real sale |
+> | `first_sale` | accounts on Pro or Enterprise (switchers get their own version); an account with no plan gets the go-live gate's email instead (`prd/cloud-billing/PRD.md`) | first real sale |
 > | `cutover` | switchers | a week after the first live sale |
-> | `upgrade_nudge` | Cloud Free accounts past $10,000 a month (RevenueCat comparison only for switchers) | 3 days after the billing notice |
-> | `standard_welcome` | new Standard accounts | when Standard starts |
+> | `standard_welcome` | new Pro accounts (the step id keeps Pro's old name) | when Pro starts |
 > | `teammate_welcome` | people invited to a project | 10 minutes after joining |
 
 
 **Status: building (2026-10-03), branch `lifecycle-email`.** Emails to the people who sign up for RevenueDot Cloud, sent on what each account has and has not done yet. Not to be confused with `prd/lifecycle/PRD.md` (win-back and retention emails a developer sends to *their* app's customers).
 
 ## Goal
-Take every new Cloud account from sign-up to a live app, then to Cloud Standard and to referring other teams, with the fewest emails that still help. Each email answers the one question the person is stuck on, shows a short video of exactly that step, and has one button.
+Take every new Cloud account from sign-up to a live app, then to Pro and to referring other teams, with the fewest emails that still help. Each email answers the one question the person is stuck on, shows a short video of exactly that step, and has one button.
 
 The journey, in the order a healthy account walks it:
 1. **Signed up** → confirmed email.
@@ -32,7 +31,7 @@ The journey, in the order a healthy account walks it:
 4. **Store connected**: App Store or Google Play credentials, or a Stripe app.
 5. **Live**: the first production sale (`transactions`, not sandbox, revenue above zero).
 6. **Adopted**: a published paywall, an experiment, a teammate, payment recovery, an AI assistant.
-7. **Paying**: Cloud Standard once tracked revenue passes $10K a month; Enterprise above $500K.
+7. **Paying**: Pro, started when the app goes live (a card on file; $0 until the apps make $10,000 a month, then 0.5% above it, never more than $999); Enterprise above $500K.
 8. **Referring**: a referral link once they have had real sales for three weeks.
 
 ## Why the every-minute tick, not Cloudflare Workflows
@@ -74,8 +73,8 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 | Step | When | Condition | Goal |
 |---|---|---|---|
 | `first_sale` | after the first production sale, within 3 days | live | new developers: what comes next; migrators: "notifications reach RevenueDot, compare with import verify" |
-| `standard_welcome` | after Standard first starts (`billing_accounts.standard_started_at`), within 3 days | started after the launch | SSO, organizations, support promise, billing date |
-| `standard_canceled` | after the subscription is cancelled (one-click reasons, recorded) | Stripe status `canceled` after Standard started (a failed card or an unpaid checkout is not a choice, so it never triggers this) | reply: why? |
+| `standard_welcome` | after Pro first starts (`billing_accounts.standard_started_at`), within 3 days | started after the launch | SSO, organizations, support promise, billing date |
+| `standard_canceled` | after the subscription is cancelled (one-click reasons, recorded) | Stripe status `canceled` after Pro started (a failed card or an unpaid checkout is not a choice, so it never triggers this) | reply: why? |
 
 ### C. Switching from RevenueCat
 | Step | When | Condition | Goal | Video |
@@ -86,13 +85,13 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 | `side_by_side` | 1 day after the import | not live | forward store notifications, point a test build | Switch from RevenueCat |
 | `forwarding_check` | 5 days after the import | no store notification since the import, not live | forwarding to RevenueCat first, then the stores' notification URLs | none |
 
-### D. Revenue (complements the billing emails at 80% and 100% of Free)
+### D. Revenue (v4 keeps only `upgrade_nudge`, which no longer fires: the Free $10,000 email it follows is gone since 2026-10-05)
 | Step | When | Condition | Goal |
 |---|---|---|---|
 | `enterprise` | tracked this month ≥ $500,000 | not Enterprise | book a call |
-| `upgrade_personal` | 10 days after the latest `free_100` billing email (last 35 days) | still Free, `upgrade_nudge` sent | reply or upgrade |
-| `upgrade_nudge` | 3 days after the latest `free_100` | still Free | upgrade to Standard; the bill for the month that passed $10,000 (may be last month) |
-| `pricing_explainer` | tracked this month ≥ $5,000 | Free, below $10,000 | understand the bill; add a card ($0 under $10,000) |
+| `upgrade_personal` | 10 days after the latest `free_100` billing email (last 35 days) | no plan, `upgrade_nudge` sent | reply or start Pro |
+| `upgrade_nudge` | 3 days after the latest `free_100` | no plan | start Pro; the bill for the month that passed $10,000 (may be last month) |
+| `pricing_explainer` | tracked this month ≥ $5,000 | no plan, below $10,000 | understand the bill; start Pro ($0 under $10,000) |
 
 ### E. Onboarding (new developers; the next missing step)
 | Step | When | Condition | Goal | Video |
@@ -134,7 +133,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 - `projects.rc_import_at timestamptz`: set by the first `POST /v2/projects/{id}/import/customers`.
 - `journey_feedback (user_id, kind, value, comment, created_at)`, primary key `(user_id, kind)`: one-click answers (`nps` 0 to 10, `cancel` reasons). `GET /auth/journeys/feedback/:token?kind=&value=` shows the answer with a confirm button and a comment box (a mail scanner that opens the link records nothing); `POST` records it.
 - `transactions.source text`: `import` for rows an import wrote. Partial indexes `transactions_live_sales` and `transactions_sandbox` let each pass find a project's first and last live sale and first test purchase without reading imported history.
-- `billing_accounts.standard_started_at`: the first time the account became Standard.
+- `billing_accounts.standard_started_at`: the first time the account started Pro (the column keeps the plan's old name).
 - `journey_sends (user_id, step, sent_at, token_hash)`, primary key `(user_id, step)`; `token_hash` is the unsubscribe token's SHA-256.
 
 ## Endpoints and screens

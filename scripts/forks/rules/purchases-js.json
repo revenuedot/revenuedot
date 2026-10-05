@@ -83,7 +83,7 @@
       },
       "configureNote": "Analytics events follow `proxyURL` too, so `collectAnalyticsEvents` can stay on, and the checkout reads \"Secure checkout by RevenueDot\".",
       "adds": [
-        "**Start free on [RevenueDot Cloud](https://app.revenuedot.app/signup)**: free up to $10,000 a month of tracked revenue, then 0.5%, never more than $999 a month ([pricing](https://revenuedot.app/pricing)).",
+        "**Start for free on [RevenueDot Cloud](https://app.revenuedot.app/signup)**: free until your apps make $10,000 a month, then 0.5%, never more than $999 a month ([pricing](https://revenuedot.app/pricing)).",
         "**The same REST API and webhook payloads** as RevenueCat, so your backend and integrations keep working ([API reference](https://revenuedot.app/docs/api)).",
         "**Entitlements shared with your iOS and Android apps,** Test Store purchases in the browser, and real payments through RevenueDot's hosted Stripe checkout ([web billing guide](https://revenuedot.app/docs/guides/web-billing)).",
         "**A one-line migration:** point the stock SDK at RevenueDot with `httpConfig.proxyURL`, or install this fork and drop the line ([migration guide](https://revenuedot.app/docs/migrate))."

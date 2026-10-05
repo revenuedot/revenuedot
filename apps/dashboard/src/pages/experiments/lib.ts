@@ -50,7 +50,7 @@ export const signedPct = (v: number | null | undefined) => (v === null || v === 
 export const pct0 = (v: number | null | undefined) => (v === null || v === undefined ? "—" : v > 0.99 ? ">99%" : v < 0.01 ? "<1%" : `${Math.round(v * 100)}%`);
 
 export const useExperiments = (pid: string) => useQuery({ queryKey: ["experiments", pid], enabled: !!pid, queryFn: () => listAll<Experiment>(`${v2(pid)}/experiments`) });
-export const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
+export const useAudiences = (pid: string) => useQuery({ queryKey: ["audiences", pid], enabled: !!pid, meta: { gate: "ignore" }, queryFn: async () => (await api<List<Audience>>(`${v2(pid)}/audiences`)).items });
 export const useRules = (pid: string) => useQuery({ queryKey: ["targeting-rules", pid], enabled: !!pid, queryFn: async () => (await api<List<TargetingRule>>(`${v2(pid)}/targeting_rules`)).items });
 /** Offerings with their packages and products (the duplicate dialog swaps products). */
 export const useOfferingsFull = (pid: string) => useQuery({ queryKey: ["offering-list-full", pid], enabled: !!pid, queryFn: () => listAll<Offering>(`${v2(pid)}/offerings?expand=items.package.product`) });

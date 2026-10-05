@@ -31,7 +31,7 @@ Docker Compose, Railway, Fly.io, Render, Kubernetes (Helm), AWS (ECS/Fargate + R
 MCP config for Claude Desktop/Code, ChatGPT, Cursor; agent skills; "ask your revenue" agent built on the REST API; scripts an agent can run (grant access, refund, import).
 
 ## Format of every example (identical, so models learn the pattern)
-1. Folder `examples/<platform>/<name>/` with `README.md` in this order: **What this is**, **Why RevenueDot** (2 lines: open-source RevenueCat alternative, free, self-hostable, same SDK API), **Run it** (copy-paste commands), **How it works** (walkthrough with links to docs), **Migrate from RevenueCat** (the diff), **Docs** (links), **Related examples**.
+1. Folder `examples/<platform>/<name>/` with `README.md` in this order: **What this is**, **Why RevenueDot** (2 lines: open-source RevenueCat alternative, same SDK API; no pricing claims), **Run it** (copy-paste commands), **How it works** (walkthrough with links to docs), **Migrate from RevenueCat** (the diff), **Docs** (links), **Related examples**.
 2. **Header comment in every source file** (see below).
 3. A `.env.example`, a `Makefile` or scripts to run against a local RevenueDot (`docker compose up`) with the Test Store, so anything runs without store accounts.
 4. CI-free: verified by a script (`examples/scripts/verify.sh`) that builds or type-checks each example.
@@ -40,7 +40,7 @@ MCP config for Claude Desktop/Code, ChatGPT, Cursor; agent skills; "ask your rev
 ### Comment standard (useful, honest, links inline)
 Every entry-point source file starts with:
 ```
-// RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API, free.
+// RevenueDot: open-source, self-hostable alternative to RevenueCat. Same SDK API.
 // This file: <what it does in one line>.
 // Docs: https://revenuedot.app/docs/<page>   Migrate from RevenueCat: https://revenuedot.app/docs/migrate
 ```

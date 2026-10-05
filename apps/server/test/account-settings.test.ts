@@ -419,12 +419,15 @@ describe("account deletion", () => {
     expect(await s.db.select().from(schema.projects).where(eq(schema.projects.id, b.projectId!))).toHaveLength(1);
   });
 
-  it("on Cloud, refuses while Cloud Standard is active", async () => {
+  it("on Cloud, refuses while Pro is active", async () => {
     s = await accountServer({ edition: "cloud" });
     const a = await s.signup("tia@example.com");
-    await s.db.insert(schema.billingAccounts).values({ userId: a.userId, plan: "standard", status: "active", stripeCustomerId: "cus_1" });
+    await s.db.insert(schema.billingAccounts).values({ userId: a.userId, plan: "pro", status: "active", stripeCustomerId: "cus_1" });
+    expect((await a.browser.call("POST", "/auth/account/delete", { email: "tia@example.com", password: PW })).body).toMatchObject({ type: "billing_active", message: "Cancel your Pro plan on the Billing page first, so you are not charged for a deleted account." });
+    // A row written before the rename ("standard") is Pro too.
+    await s.db.update(schema.billingAccounts).set({ plan: "standard" });
     expect((await a.browser.call("POST", "/auth/account/delete", { email: "tia@example.com", password: PW })).body).toMatchObject({ type: "billing_active" });
-    await s.db.update(schema.billingAccounts).set({ status: "canceled", plan: "free" });
+    await s.db.update(schema.billingAccounts).set({ status: "canceled", plan: "none" });
     expect((await a.browser.call("POST", "/auth/account/delete", { email: "tia@example.com", password: PW })).status).toBe(200);
   });
 });
@@ -461,8 +464,14 @@ describe("preferences, projects, notifications and the exchange rate", () => {
   it("lists projects with the owner's Cloud plan", async () => {
     s = await accountServer({ edition: "cloud" });
     const a = await s.signup("yan@example.com");
-    await s.db.insert(schema.billingAccounts).values({ userId: a.userId, plan: "standard", status: "active" });
-    expect((await a.browser.call("GET", "/auth/account/projects")).body.items[0].plan).toEqual({ id: "standard", name: "Cloud Standard" });
+    const plan = async () => (await a.browser.call("GET", "/auth/account/projects")).body.items[0].plan;
+    expect(await plan()).toEqual({ id: "none", name: "No plan" });
+    await s.db.insert(schema.billingAccounts).values({ userId: a.userId, plan: "pro", status: "active" });
+    expect(await plan()).toEqual({ id: "pro", name: "Pro" });
+    await s.db.update(schema.billingAccounts).set({ plan: "standard" });
+    expect(await plan()).toEqual({ id: "pro", name: "Pro" });
+    await s.db.update(schema.billingAccounts).set({ plan: "enterprise" });
+    expect(await plan()).toEqual({ id: "enterprise", name: "Enterprise" });
   });
 
   it("keeps notification choices per user and project; only members may choose", async () => {

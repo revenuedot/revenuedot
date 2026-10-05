@@ -133,7 +133,7 @@ export function ssoRoutes(ctx: EeCtx) {
     const features = await orgFeatures(ctx, orgId);
     const { org, member } = await orgMembership(db, orgId, user.id, { sessionId, features });
     requireOrgAdmin(member.role);
-    // Cloud: the organization's plan must include single sign-on (Cloud Standard or Enterprise). Removing connections and
+    // Cloud: the organization's plan must include single sign-on (Pro or Enterprise). Removing connections and
     // domains stays possible after a downgrade, so a domain can move to another organization.
     if (c.req.method !== "DELETE") needFeature(ctx, "sso", features);
     return { user, org };

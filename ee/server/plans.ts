@@ -2,12 +2,12 @@
 // an organization has (company decision 2026-10-02; prd/enterprise/PRD.md §2a). Self-hosted servers never use this file.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
-import { planOf, plansFrom, type Plan, type PlanId } from "../../apps/server/src/services/billing/plans.js";
+import { accountPlanOf, planOf, plansFrom, type AccountPlan, type Plan, type PlanId } from "../../apps/server/src/services/billing/plans.js";
 import { FEATURES, type Feature } from "./license.js";
 import { eeOrgMembers } from "./schema.js";
 
-const RANK: Record<string, number> = { free: 0, standard: 1, enterprise: 2 };
-const rank = (p: string) => RANK[p] ?? 0;
+const RANK: Record<AccountPlan, number> = { none: 0, pro: 1, enterprise: 2 };
+const rank = (p: string) => RANK[accountPlanOf(p)];
 
 /** The features a plan turns on (`ee_features` in the plan table; "*" for all). Organizations come with any feature. */
 export function planFeatures(plan: Plan): Set<Feature> {
@@ -18,23 +18,23 @@ export function planFeatures(plan: Plan): Set<Feature> {
 
 /** The cheapest plan that includes a feature: what the dashboard and error messages point to. */
 export function planFor(plans: Plan[], f: Feature): PlanId {
-  for (const id of ["standard", "enterprise"] as const) if (planFeatures(planOf(plans, id)).has(f)) return id;
+  for (const id of ["pro", "enterprise"] as const) if (planFeatures(planOf(plans, id)).has(f)) return id;
   return "enterprise";
 }
 
-/** An account's plan (billing_accounts.plan; no row: Free). Unpaid and cancelled accounts are moved back to Free by the billing webhook. */
-export async function userPlan(db: DB, userId: string): Promise<PlanId> {
+/** An account's plan (billing_accounts.plan; no row: none). Unpaid and cancelled accounts lose Pro through the billing webhook. */
+export async function userPlan(db: DB, userId: string): Promise<AccountPlan> {
   const [row] = await db.select({ plan: schema.billingAccounts.plan }).from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, userId)).limit(1);
-  return (row?.plan as PlanId | undefined) ?? "free";
+  return accountPlanOf(row?.plan);
 }
 
 /** An organization's plan: the best plan among its active owners, so the owner who pays unlocks it for everyone. */
-export async function orgPlan(db: DB, orgId: string): Promise<PlanId> {
+export async function orgPlan(db: DB, orgId: string): Promise<AccountPlan> {
   const rows = await db.select({ plan: schema.billingAccounts.plan }).from(eeOrgMembers)
     .innerJoin(schema.billingAccounts, eq(schema.billingAccounts.userId, eeOrgMembers.userId))
     .where(and(eq(eeOrgMembers.orgId, orgId), eq(eeOrgMembers.role, "owner"), eq(eeOrgMembers.active, true)));
-  let best: PlanId = "free";
-  for (const r of rows) if (rank(r.plan) > rank(best)) best = r.plan as PlanId;
+  let best: AccountPlan = "none";
+  for (const r of rows) if (rank(r.plan) > rank(best)) best = accountPlanOf(r.plan);
   return best;
 }
 
@@ -61,7 +61,7 @@ export const CLOUD_RETENTION_FROM = Date.UTC(2026, 9, 3);
 export const DOWNGRADE_GRACE_DAYS = 30;
 
 /**
- * Cloud Free and Standard keep audit log entries `audit_log_days` (90) days: deletes older project and organization log
+ * Pro, and accounts with no plan, keep audit log entries `audit_log_days` (90) days: deletes older project and organization log
  * rows, at most `budget` rows a call, except for projects owned by, or in an organization of, an account whose plan
  * lets the organization choose (Enterprise: `audit_log_days` null; its own retention setting applies, retention.ts).
  */

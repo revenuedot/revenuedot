@@ -15,11 +15,12 @@ import { Check, ConfirmDialog, DataTable, Dialog, EmptyState, Field, Panel, Tag,
 import { countNote, money, pollWhileCounting, relative, storeLabel } from "../../lib/customers";
 import { errMsg, useApps, useProducts, v2 } from "../catalog/lib";
 import { CAMPAIGN_STATUS, type Audience, type WinbackCampaign } from "./lib";
+import { PlanSlot } from "../../components/PlanRequired";
 
 const base = (pid: string) => `/projects/${pid}/lifecycle/winback`;
 const SUB = "Bring churned subscribers back by emailing them an offer.";
 
-function Head({ title, actions }: { title: string; actions?: ReactNode }) {
+function HeadRow({ title, actions }: { title: string; actions?: ReactNode }) {
   return (
     <div className="head">
       <div><h1>{title}<span className="beta">BETA</span></h1><p>{SUB}</p></div>
@@ -27,6 +28,8 @@ function Head({ title, actions }: { title: string; actions?: ReactNode }) {
     </div>
   );
 }
+/** The head, then the go-live gate's panel when live data needs Pro. */
+const Head = (p: { title: string; actions?: ReactNode }) => <><HeadRow {...p} /><PlanSlot /></>;
 
 export function WinbackListPage() {
   const pid = useProjectId();

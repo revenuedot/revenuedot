@@ -1153,3 +1153,25 @@ td .c-narrow{display:none}
 .tg-default .field{max-width:520px}
 @media (max-width:640px){.tg-card-b{padding-left:16px}.tg-when{flex-basis:100%;order:5}}
 .xp-hint{display:block;margin-top:6px;font-size:12px}
+
+/* Cloud's go-live gate (prd/cloud-billing/PRD.md): the Start Pro button, the plan-required panel, the gate banners */
+.start-pro{display:inline-flex;flex-direction:column;align-items:flex-start;gap:4px}
+.start-pro small{font:500 11.5px/16px var(--font);color:var(--fg-3)}
+.plan-req{border:1px solid var(--border);background:var(--panel);padding:28px 28px 26px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;position:relative}
+.plan-req::before,.plan-req::after{content:"";position:absolute;width:9px;height:9px;border:1px solid var(--fg);pointer-events:none}
+.plan-req::before{top:-5px;left:-5px;border-right:0;border-bottom:0}
+.plan-req::after{bottom:-5px;right:-5px;border-left:0;border-top:0}
+.plan-req .label{display:inline-flex;align-items:center;gap:8px;color:var(--down)}
+.plan-req .sq{width:8px;height:8px;background:var(--down);display:inline-block}
+.plan-req h2{margin:2px 0 0;font:600 22px/28px var(--font);letter-spacing:-.03em;text-wrap:balance}
+.plan-req p{margin:0;font-size:14px;line-height:21px;color:var(--fg-2);max-width:560px}
+.plan-req p.subtle{font-size:13px;color:var(--fg-3)}
+.plan-req-a{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-top:8px}
+.plan-req ~ *{display:none!important}
+.plan-dialog .df{align-items:flex-start}
+.plan-dialog-note{margin:-10px 20px 16px;text-align:right;font-size:11.5px}
+.gate-banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px var(--page-pad);border-bottom:1px solid var(--accent);background:var(--accent-wash);font-size:13px}
+.gate-banner>span:first-child{flex:1 1 320px;min-width:0}
+.gate-banner.paused{border-bottom-color:var(--down);background:color-mix(in srgb,var(--down) 9%,var(--bg))}
+.gate-banner .start-pro{flex-direction:row;align-items:center;gap:10px}
+@media (max-width:640px){.gate-banner{padding:10px 16px}.plan-req{padding:22px 18px 20px}.plan-req h2{font-size:19px;line-height:25px}}

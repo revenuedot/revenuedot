@@ -7,8 +7,8 @@
 export interface BillingConfig {
   secretKey: string;
   webhookSecret: string;
-  /** The metered price of Cloud Standard ($0.01 a unit; the unit is one cent of the bill). */
-  priceStandard: string;
+  /** The metered price of Pro ($0.01 a unit; the unit is one cent of the bill). REVENUEDOT_BILLING_PRICE_STANDARD, Pro's old name. */
+  pricePro: string;
   /** The Billing Meter's event name (aggregation "last"). */
   meterEvent: string;
   /** True only in production, with live keys. */
@@ -21,11 +21,14 @@ export interface BillingConfig {
 
 export const DEFAULT_METER_EVENT = "revenuedot_cloud_bill_cents";
 
+/** Under Checkout's button, so the $0 today is never a surprise (prd/cloud-billing/PRD.md, "Checkout"). */
+export const PRO_CHECKOUT_TEXT = "$0 today. Pro costs nothing until your apps make $10,000 in a month; then 0.5% of revenue above $10,000, never more than $999 a month. Cancel any time.";
+
 export function billingConfigFromEnv(env: Record<string, string | undefined>): BillingConfig | undefined {
   const secretKey = env.REVENUEDOT_BILLING_STRIPE_SECRET_KEY?.trim();
-  if (!secretKey) return env.REVENUEDOT_BILLING_PLANS ? { secretKey: "", webhookSecret: "", priceStandard: "", meterEvent: DEFAULT_METER_EVENT, live: false, plansJson: env.REVENUEDOT_BILLING_PLANS } : undefined;
+  if (!secretKey) return env.REVENUEDOT_BILLING_PLANS ? { secretKey: "", webhookSecret: "", pricePro: "", meterEvent: DEFAULT_METER_EVENT, live: false, plansJson: env.REVENUEDOT_BILLING_PLANS } : undefined;
   return {
-    secretKey, webhookSecret: env.REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET?.trim() ?? "", priceStandard: env.REVENUEDOT_BILLING_PRICE_STANDARD?.trim() ?? "",
+    secretKey, webhookSecret: env.REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET?.trim() ?? "", pricePro: (env.REVENUEDOT_BILLING_PRICE_PRO?.trim() || env.REVENUEDOT_BILLING_PRICE_STANDARD?.trim()) ?? "",
     meterEvent: env.REVENUEDOT_BILLING_METER_EVENT?.trim() || DEFAULT_METER_EVENT, live: env.REVENUEDOT_BILLING_LIVE === "true", plansJson: env.REVENUEDOT_BILLING_PLANS,
   };
 }
@@ -40,7 +43,7 @@ export class BillingStripeError extends Error {
 export function stripeProblem(c: BillingConfig | null | undefined): string | null {
   if (!c?.secretKey) return "Billing is not set up on this server yet (no Stripe key).";
   if (/^(sk|rk)_live_/.test(c.secretKey) && !c.live) return "A live Stripe key is set without REVENUEDOT_BILLING_LIVE=true; billing stays off so nobody is charged by accident.";
-  if (!c.priceStandard) return "Billing is not set up on this server yet (no Cloud Standard price).";
+  if (!c.pricePro) return "Billing is not set up on this server yet (no Pro price).";
   return null;
 }
 
@@ -95,15 +98,20 @@ export function billingStripe(c: BillingConfig, f: typeof fetch = fetch) {
     /** `replacing`: the old customer is gone, so a new idempotency key (the old one would answer with the deleted customer for 24 hours). */
     createCustomer: (o: { email: string; name?: string | null; userId: string; replacing?: string | null }) =>
       call<{ id: string }>("POST", "/v1/customers", { email: o.email, name: o.name ?? undefined, metadata: { revenuedot_user_id: o.userId } }, o.replacing ? `rd-customer-${o.userId}-after-${o.replacing}` : `rd-customer-${o.userId}`),
-    /** Checkout for Cloud Standard: monthly, anchored to the 1st of next month (UTC) without proration, so a Stripe period is a calendar month. */
+    /**
+     * Checkout for Pro: monthly, anchored to the 1st of next month (UTC) without proration, so a Stripe period is a calendar
+     * month. Nothing is due today, but the card is always collected: the card on file is what lets an app go live.
+     */
     createCheckout: (o: { customer: string; userId: string; successUrl: string; cancelUrl: string; anchor: Date; datafast?: DatafastIds }) =>
       call<{ id: string; url: string }>("POST", "/v1/checkout/sessions", {
         mode: "subscription", customer: o.customer, client_reference_id: o.userId, success_url: o.successUrl, cancel_url: o.cancelUrl,
-        line_items: [{ price: c.priceStandard }],
+        line_items: [{ price: c.pricePro }],
+        payment_method_collection: "always",
+        custom_text: { submit: { message: PRO_CHECKOUT_TEXT } },
         // The DataFast ids on the session (and the subscription, which carries them to its invoices) let DataFast credit the
         // payment to the channel that brought the visitor (docs/analytics.md).
-        subscription_data: { billing_cycle_anchor: Math.floor(o.anchor.getTime() / 1000), proration_behavior: "none", metadata: { revenuedot_user_id: o.userId, plan: "standard", ...o.datafast } },
-        metadata: { revenuedot_user_id: o.userId, plan: "standard", ...o.datafast },
+        subscription_data: { billing_cycle_anchor: Math.floor(o.anchor.getTime() / 1000), proration_behavior: "none", metadata: { revenuedot_user_id: o.userId, plan: "pro", ...o.datafast } },
+        metadata: { revenuedot_user_id: o.userId, plan: "pro", ...o.datafast },
       }),
     createPortal: (o: { customer: string; returnUrl: string }) => call<{ id: string; url: string }>("POST", "/v1/billing_portal/sessions", { customer: o.customer, return_url: o.returnUrl }),
     /** The month's bill so far, in cents. The meter keeps the last value of the period ("last"). */
