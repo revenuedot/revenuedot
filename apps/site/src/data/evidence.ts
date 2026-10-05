@@ -1160,6 +1160,23 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Nami ML ----
+  {
+    vendor: "Nami ML",
+    page: "pricing",
+    url: "https://www.nami.ml/pricing",
+    captured: DATE,
+    full: asset("nami", "pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("nami", "pricing-full-1-2026-10-04.png"), asset("nami", "pricing-full-2-2026-10-04.png")],
+    crops: [
+      {
+        claim: "enterprise-only",
+        file: asset("nami", "pricing-enterprise-only-2026-10-04.png"),
+        alt: "Nami ML pricing page: 'Enterprise pricing', a single Custom plan priced annually by volume and surfaces, with Book a demo and Talk to sales.",
+        caption: "Nami ML pricing page, captured 2026-10-04: Enterprise only, custom annual contracts, no list price.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */

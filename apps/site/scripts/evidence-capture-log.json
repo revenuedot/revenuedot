@@ -1574,15 +1574,6 @@
     "pageHeight": 37513
   },
   {
-    "vendor": "nami",
-    "page": "pricing",
-    "url": "https://www.nami.ml/pricing",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.nami.ml/pricing\nCall log:\n  - navigating to \"https://www.nami.ml/pricing\", waiting until \"domcontentloaded\"\n"
-  },
-  {
     "vendor": "revenuedot",
     "page": "pricing",
     "url": "https://revenuedot.app/pricing",
@@ -2043,5 +2034,32 @@
     "status": 200,
     "title": "GitHub - iaphub/iaphub-ios-sdk: The easiest way to implement IAP (In-app purchase) in your iOS app. · GitHub",
     "pageHeight": 1578
+  },
+  {
+    "vendor": "nami",
+    "page": "pricing",
+    "url": "https://www.nami.ml/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "enterprise-only",
+        "file": "pricing-enterprise-only-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 808.03125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing — Nami ML",
+    "pageHeight": 7906
   }
 ]
