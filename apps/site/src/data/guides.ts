@@ -120,7 +120,7 @@ const IN_APP_PURCHASES: Guide = {
       h2: "How RevenueDot fits",
       label: "RevenueDot",
       paras: [
-        "RevenueDot is an open-source backend for in-app purchases and subscriptions. Your app uses the RevenueCat SDK, an open-source library, pointed at RevenueDot with one line of code. RevenueDot validates App Store, Google Play, Amazon Appstore and Stripe purchases, keeps entitlements, receives store notifications and sends webhooks.",
+        "RevenueDot is an open-source backend for in-app purchases and subscriptions. Your app installs the RevenueDot SDK for its platform and configures it with one key. RevenueDot validates App Store, Google Play, Amazon Appstore and Stripe purchases, keeps entitlements, receives store notifications and sends webhooks.",
         "RevenueDot Cloud is free up to $10,000 a month in revenue, and you can run the same code on your own servers. Start with [the step-by-step setup](/add-in-app-purchases), or read [whether an iOS-only app needs a backend at all](/do-i-need-revenuecat).",
       ],
     },
@@ -167,13 +167,13 @@ const ADD_IAP: Guide = {
   title: "Add subscriptions to your app for free until it makes $10K a month",
   metaTitle: "How to Add In-App Purchases and Subscriptions to an App",
   metaDescription:
-    "Add in-app purchases and subscriptions to an iOS, Android, Flutter, React Native or web app with RevenueDot. No RevenueCat account needed. Free up to $10K a month.",
+    "Add in-app purchases and subscriptions to an iOS, Android, Flutter, React Native or web app with the RevenueDot SDK. Test before launch. Free up to $10K a month.",
   answer:
-    "RevenueDot is a free backend for in-app purchases and subscriptions. You install the RevenueCat SDK, an open-source library that needs no RevenueCat account, and point it at RevenueDot with one line of code. Then you sell on the App Store and Google Play, and on the web with Stripe. RevenueDot Cloud is free until your app makes $10,000 a month.",
+    "RevenueDot is a backend for in-app purchases and subscriptions. You install the RevenueDot SDK for your platform, configure it with your app's key, and sell on the App Store and Google Play, and on the web with Stripe. RevenueDot checks every purchase with the store and keeps each customer's access in sync. RevenueDot Cloud is free until your app makes $10,000 a month.",
   secondary: { href: "/docs/getting-started/quickstart", label: "Read the 5-minute quickstart" },
-  note: "No RevenueCat account and no credit card needed. Test purchases work before you have an App Store or Google Play account.",
+  note: "No credit card needed. Test purchases work before you have an App Store or Google Play account.",
   points: [
-    { title: "No RevenueCat account", text: "The RevenueCat SDK is open source under the MIT licence. RevenueDot gives each of your apps its own key." },
+    { title: "One SDK per platform", text: "The RevenueDot SDK covers iOS, Android, React Native and Expo, Flutter, the web and four more platforms." },
     { title: "Free until it earns", text: "RevenueDot Cloud costs nothing up to $10,000 a month in store revenue, counted before Apple and Google take their cut." },
     { title: "Test without a store account", text: "The built-in Test Store makes purchases that unlock access and send events like real ones, so you can build the paywall first." },
     { title: "Your AI tool can set it up", text: "Connect Claude Code or Cursor to RevenueDot's MCP server and paste the prompt below. It creates the products and writes the code." },
@@ -186,34 +186,38 @@ const ADD_IAP: Guide = {
       steps: [
         { name: "Create a free account", text: "Sign up at [app.revenuedot.app](" + SIGNUP + ") and name your first project. A project holds your apps, products and customers." },
         { name: "Add an app, a product and a plan", text: "Add a **Test Store** app. Add a product such as `pro_monthly`, an entitlement called `pro` that the product unlocks, and an offering called `default` that your paywall shows." },
-        { name: "Install the SDK", text: "Install the RevenueCat SDK for your framework from the table below. RevenueDot also publishes MIT forks that point at RevenueDot by default: iOS on CocoaPods, Android on Maven Central and web on npm." },
-        { name: "Point it at RevenueDot", text: "Before you configure the SDK, set its proxy URL to `https://api.revenuedot.app` and use the key RevenueDot shows for your app. With the stock SDK, also turn off its signature check, as in the code below." },
+        { name: "Install the SDK", text: "Install the RevenueDot SDK for your framework from the table below. It is open source under the MIT license." },
+        { name: "Configure it with your key", text: "When your app starts, configure the SDK with the key RevenueDot shows for your app, as in the code below. The SDK already talks to RevenueDot Cloud, so there is nothing else to set." },
         { name: "Show the paywall and check access", text: "Load the current offering, show its packages, and buy one. Then check whether the customer has the `pro` entitlement. When it works with the Test Store, connect the App Store and Google Play in the dashboard." },
       ],
       code: {
-        title: "Step 4 on iOS",
+        title: "Steps 3 and 4 on iOS",
         label: "Swift",
-        code: `// Set before configure. Nothing else in your purchase code is specific to RevenueDot.
-Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!
-Purchases.configure(with: Configuration.Builder(withAPIKey: "test_...")
-    .with(entitlementVerificationMode: .disabled)
-    .build())`,
+        code: `// Xcode: File > Add Package Dependencies, then pick Exact Version 5.91.0-revenuedot
+.package(url: "https://github.com/revenuedot/purchases-ios", exact: "5.91.0-revenuedot")
+
+// When the app starts. The module keeps the name of the open-source SDK it is built from.
+import RevenueCat
+Purchases.configure(withAPIKey: "test_...")`,
       },
     },
     {
       h2: "Pick your framework",
       label: "SDKs",
-      paras: ["Each guide has the install line, the proxy setting and a full paywall example for that framework."],
+      paras: [
+        "Each guide has the install line and a full paywall example for that framework.",
+        "The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCat` and calls `Purchases`. It sends every request to RevenueDot and needs no RevenueCat account.",
+      ],
       table: {
-        head: ["Framework", "Install", "Guides"],
+        head: ["Framework", "Install the RevenueDot SDK", "Guides"],
         rows: [
-          ["iOS (Swift, SwiftUI)", "Swift Package Manager: `github.com/RevenueCat/purchases-ios-spm`. Fork: `RevenueDotPurchases` on CocoaPods", "[iOS SDK](/sdks/ios) · [SwiftUI tutorial](/blog/swiftui-subscriptions-tutorial)"],
-          ["Android (Kotlin)", "Gradle: `com.revenuecat.purchases:purchases`. Fork: `app.revenuedot.purchases:purchases` on Maven Central", "[Android SDK](/sdks/android) · [Google Play Billing tutorial](/blog/android-google-play-billing-subscriptions)"],
-          ["React Native and Expo", "`npm install react-native-purchases`", "[React Native SDK](/sdks/react-native) · [Expo tutorial](/blog/react-native-expo-subscriptions-tutorial)"],
-          ["Flutter", "`purchases_flutter` in `pubspec.yaml`", "[Flutter SDK](/sdks/flutter) · [Flutter tutorial](/blog/flutter-in-app-purchases-tutorial)"],
+          ["iOS (Swift, SwiftUI)", "Swift Package Manager: `github.com/revenuedot/purchases-ios`, exact version `5.91.0-revenuedot`. CocoaPods: `RevenueDotPurchases`", "[iOS SDK](/sdks/ios) · [SwiftUI tutorial](/blog/swiftui-subscriptions-tutorial)"],
+          ["Android (Kotlin)", "Gradle: `app.revenuedot.purchases:purchases:10.23.3` on Maven Central", "[Android SDK](/sdks/android) · [Google Play Billing tutorial](/blog/android-google-play-billing-subscriptions)"],
+          ["React Native and Expo", "`npm install react-native-purchases@npm:@revenuedot/react-native-purchases@10.10.2`", "[React Native SDK](/sdks/react-native) · [Expo tutorial](/blog/react-native-expo-subscriptions-tutorial)"],
+          ["Flutter", "`purchases_flutter` from `github.com/revenuedot/purchases-flutter`, ref `10.13.2-revenuedot`, in `pubspec.yaml`", "[Flutter SDK](/sdks/flutter) · [Flutter tutorial](/blog/flutter-in-app-purchases-tutorial)"],
           ["Web", "A hosted Stripe checkout page, or `@revenuedot/purchases-js` on npm", "[Web SDK](/sdks/web) · [Web checkout](/features/web-billing)"],
         ],
-        caption: "Capacitor, Cordova, Kotlin Multiplatform and Unity work too. See [all SDKs](/sdks).",
+        caption: "Capacitor, Cordova, Kotlin Multiplatform and Unity have a RevenueDot SDK too. See [all SDKs](/sdks).",
       },
     },
     {
@@ -241,11 +245,11 @@ Purchases.configure(with: Configuration.Builder(withAPIKey: "test_...")
   faq: [
     {
       q: "Do I need a RevenueCat account to use RevenueDot?",
-      a: "No. The RevenueCat SDK is an open-source library that you install from its usual package registry. RevenueDot gives each of your apps its own key, and the SDK talks only to RevenueDot once you set its proxy URL. RevenueDot is not affiliated with RevenueCat.",
+      a: "No. You install the RevenueDot SDK and use the key RevenueDot gives each of your apps. The SDK is built from RevenueCat's open-source SDK, so your code says `import RevenueCat`, but it sends every request to RevenueDot. RevenueDot is not affiliated with RevenueCat.",
     },
     {
-      q: "Is the RevenueCat SDK free to use?",
-      a: "Yes. RevenueCat publishes its SDKs under the MIT licence on [GitHub](https://github.com/RevenueCat/purchases-ios/blob/main/LICENSE), which allows anyone to use them. RevenueDot also publishes MIT forks that point at RevenueDot by default.",
+      q: "Why does the RevenueDot SDK say import RevenueCat?",
+      a: "The RevenueDot SDK is built from RevenueCat's SDKs, which RevenueCat publishes under the MIT license on [GitHub](https://github.com/RevenueCat/purchases-ios/blob/main/LICENSE). The module and class names stay the same, so tutorials and AI coding tools that know that API work as written. The RevenueDot SDK points at RevenueDot and trusts RevenueDot's signing key.",
     },
     {
       q: "Can I test purchases before I have an App Store or Google Play account?",

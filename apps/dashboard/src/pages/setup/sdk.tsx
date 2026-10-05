@@ -4,7 +4,7 @@ import type { AppType } from "./data";
 
 type Platform = "ios" | "android" | "react-native" | "flutter" | "curl" | "node" | "brightscript";
 
-/** The one change an app needs: the SDK's proxy URL, set before configure, plus this app's public key. */
+/** Configure code for the RevenueDot SDK (or the RevenueCat SDK an app already ships): the proxy URL, set before configure, plus this app's public key. */
 export function snippet(platform: Platform, origin: string, key: string, type: AppType = "app_store"): string {
   const amazon = type === "amazon";
   const galaxy = type === "galaxy";

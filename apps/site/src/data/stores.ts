@@ -14,7 +14,7 @@ export const STORES: Landing[] = [
     title: "App Store Server Notifications v2 setup and StoreKit 2 validation for your subscription backend",
     metaTitle: "App Store Server Notifications v2 setup (StoreKit 2)",
     metaDescription:
-      "Set up App Store Server Notifications v2 in five steps. RevenueDot verifies StoreKit 2 purchases, reads Apple's App Store Server API and keeps your SDK.",
+      "Set up App Store Server Notifications v2 in five steps. RevenueDot verifies StoreKit 2 purchases and reads full purchase history from the App Store Server API.",
     answer:
       "To set up App Store Server Notifications v2, copy your app's notification URL from RevenueDot, paste it as both the Production and Sandbox Server URL in App Store Connect, and choose Version 2. Add an In-App Purchase key so RevenueDot can read each customer's full StoreKit 2 history from Apple's App Store Server API.",
     shot: {
@@ -26,7 +26,7 @@ export const STORES: Landing[] = [
       { title: "StoreKit 2 verified", text: "RevenueDot checks every signed JWS transaction against Apple's root certificate." },
       { title: "Notifications v2", text: "Renewals, cancellations, billing retries and refunds arrive when they happen, not when the app next opens." },
       { title: "One key, many jobs", text: "The In-App Purchase key also signs promotional offers, answers refund requests and looks up order IDs." },
-      { title: "RevenueCat SDK unchanged", text: "Your app keeps `import RevenueCat` and changes one proxy URL line." },
+      { title: "One SDK in your app", text: "Your app installs the RevenueDot SDK. An app on the RevenueCat SDK keeps it and changes one line." },
     ],
     blocks: [
       {
@@ -282,7 +282,7 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/store_settings" \\
     title: "Amazon Appstore receipt verification and real-time notifications for subscriptions",
     metaTitle: "Amazon Appstore receipt verification (RVS) setup",
     metaDescription:
-      "Verify Amazon Appstore receipts with the Receipt Verification Service and receive Real-time Notifications over SNS. Your Android app keeps the RevenueCat SDK.",
+      "Verify Amazon Appstore receipts with the Receipt Verification Service and receive Real-time Notifications over SNS, for Fire tablets and Android apps.",
     answer:
       "Amazon Appstore receipt verification works through Amazon's Receipt Verification Service (RVS). Save your Amazon shared key in RevenueDot, and it sends every receipt to RVS, which is the only source of dates and state. Add RevenueDot's URL as a Real-time Notifications endpoint so renewals, grace periods and cancellations arrive through SNS.",
     shot: {
@@ -317,8 +317,8 @@ curl -s "$REVENUEDOT_URL/v2/projects/$PROJECT_ID/apps/$APP_ID/store_settings" \\
             text: "In the Amazon Appstore Console open your app, App Services, Real-time Notifications. Add an endpoint with your notification URL, which looks like `https://api.revenuedot.app/v1/notifications/amazon/{app_id}`, and click Submit. RevenueDot confirms the SNS subscription by itself.",
           },
           {
-            name: "Point the SDK at RevenueDot",
-            text: "Set the proxy URL and configure the SDK with the Amazon key, as in the code below. Your Android app keeps the RevenueCat SDK.",
+            name: "Configure the SDK with the Amazon key",
+            text: "Configure the Android SDK with your `amzn_` key, as in the code below. The proxy URL line is needed only on your own server or with the stock RevenueCat SDK, because the RevenueDot SDK already points at RevenueDot Cloud.",
           },
         ],
       },
@@ -374,15 +374,15 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
     faq: [
       {
         q: "How do I verify Amazon Appstore receipts on my server?",
-        a: "Send each receipt to Amazon's Receipt Verification Service (RVS) with your shared key. RevenueDot does this for you: save the shared key on the Amazon app, and every receipt the RevenueCat SDK posts is checked with RVS before access is granted.",
+        a: "Send each receipt to Amazon's Receipt Verification Service (RVS) with your shared key. RevenueDot does this for you: save the shared key on the Amazon app, and every receipt the SDK posts is checked with RVS before access is granted.",
       },
       {
         q: "Where do I find the Amazon shared key?",
         a: "In the Amazon Developer Console under Settings, Identity. Copy the Shared Key and paste it on the app in RevenueDot, then click Check credentials.",
       },
       {
-        q: "Does the RevenueCat SDK work on Fire tablets with RevenueDot?",
-        a: "Yes. Configure the Android SDK with AmazonConfiguration and your amzn_ key, and set the proxy URL to RevenueDot before configure. Only that URL changes.",
+        q: "Does RevenueDot work on Fire tablets?",
+        a: "Yes. Configure the Android SDK with AmazonConfiguration and your amzn_ key. An app on the stock RevenueCat SDK also sets the proxy URL to RevenueDot before configure, and nothing else changes.",
       },
       {
         q: "How do Amazon Real-time Notifications reach RevenueDot?",
@@ -406,14 +406,14 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
     slug: "stripe",
     section: "stores",
     name: "Stripe",
-    card: "Track subscriptions from your own Stripe account and grant access in apps that use the RevenueCat SDK.",
+    card: "Track subscriptions from your own Stripe account and grant the same access in your iOS, Android and web apps.",
     label: "Store",
-    title: "Stripe subscriptions with the RevenueCat SDK, on your own Stripe account",
-    metaTitle: "Stripe subscriptions with the RevenueCat SDK",
+    title: "Stripe subscriptions for your app, on your own Stripe account",
+    metaTitle: "Track Stripe subscriptions in your mobile app",
     metaDescription:
-      "Track Stripe subscriptions in RevenueDot with a restricted key and webhooks. The same app user ID grants the entitlement in RevenueCat SDK apps.",
+      "Track Stripe subscriptions in RevenueDot with a restricted key and webhooks. The same app user ID grants the same access in your iOS, Android and web apps.",
     answer:
-      "To use Stripe subscriptions with the RevenueCat SDK, create a Stripe app in RevenueDot, save a restricted API key and a webhook signing secret from your own Stripe account, and post each new subscription to the receipts endpoint with the customer's app user ID. The customer then has the same entitlements in every app that uses that ID.",
+      "To use Stripe subscriptions in your app, create a Stripe app in RevenueDot, save a restricted API key and a webhook signing secret from your own Stripe account, and post each new subscription to the receipts endpoint with the customer's app user ID. The customer then has the same entitlements in every app that uses that ID.",
     shot: {
       src: "stripe-webhooks.png",
       alt: "The Stripe app page in the RevenueDot dashboard showing the webhook URL, its live status and the events to select in Stripe",
@@ -426,7 +426,7 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
     ],
     blocks: [
       {
-        h2: "How to track Stripe subscriptions with RevenueDot and the RevenueCat SDK",
+        h2: "How to track Stripe subscriptions with RevenueDot and grant access in your app",
         label: "Setup",
         steps: [
           {
@@ -447,7 +447,7 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
           },
           {
             name: "Read the entitlement in your app",
-            text: "Log in to the RevenueCat SDK with the same app user ID. `customerInfo.entitlements` now includes the entitlements the Stripe purchase grants.",
+            text: "Log in to the RevenueDot SDK with the same app user ID. `customerInfo.entitlements` now includes the entitlements the Stripe purchase grants.",
           },
         ],
       },
@@ -500,11 +500,11 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
         ],
       },
     ],
-    howTo: "How to track Stripe subscriptions with RevenueDot and the RevenueCat SDK",
+    howTo: "How to track Stripe subscriptions with RevenueDot and grant access in your app",
     faq: [
       {
-        q: "Can I use Stripe subscriptions with the RevenueCat SDK?",
-        a: "Yes, through RevenueDot. Create a Stripe app, save a restricted key and a webhook secret, and post each purchase to the receipts endpoint with an app user ID. The RevenueCat SDK in your app then shows the entitlement for that user, because entitlements belong to the customer and not to one store.",
+        q: "Can I use Stripe subscriptions with the RevenueDot or RevenueCat SDK?",
+        a: "Yes, through RevenueDot. Create a Stripe app, save a restricted key and a webhook secret, and post each purchase to the receipts endpoint with an app user ID. The SDK in your app then shows the entitlement for that user, because entitlements belong to the customer and not to one store.",
       },
       {
         q: "Does RevenueDot charge my Stripe customers?",
@@ -543,7 +543,7 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
     metaDescription:
       "RevenueDot's Test Store lets you buy, renew, cancel and refund test subscriptions with a test_ key. No App Store Connect or Play Console account is needed.",
     answer:
-      "To test in-app purchases without sandbox accounts, create a Test Store app in RevenueDot and give its test_ key to the RevenueCat SDK in a debug build. Purchases go through the SDK's own test dialog instead of Apple or Google. They grant entitlements, record events and send webhooks like real purchases, and they are always sandbox data.",
+      "To test in-app purchases without sandbox accounts, create a Test Store app in RevenueDot and give its test_ key to the RevenueDot SDK in a debug build. Purchases go through the SDK's own test dialog instead of Apple or Google. They grant entitlements, record events and send webhooks like real purchases, and they are always sandbox data.",
     shot: {
       src: "screens/overview-light.png",
       alt: "The RevenueDot dashboard overview with a sandbox switch and setup health, where a Test Store purchase shows up",
@@ -573,7 +573,7 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
           },
           {
             name: "Configure the SDK with the test key",
-            text: "Use the `test_` key as the SDK's API key and set the proxy URL to `https://api.revenuedot.app` before `configure`. Use the key in debug builds only.",
+            text: "Install the RevenueDot SDK and use the `test_` key as its API key, in debug builds only. An app on the stock RevenueCat SDK also sets the proxy URL to `https://api.revenuedot.app` before `configure`.",
           },
           {
             name: "Buy in the app",
@@ -632,7 +632,7 @@ Purchases.configure(AmazonConfiguration.Builder(this, "amzn_…").build())`,
     faq: [
       {
         q: "How do I test in-app purchases without a sandbox account?",
-        a: "Create a Test Store app in RevenueDot, use its test_ key in the RevenueCat SDK in a debug build, and buy through the SDK's test dialog. The purchase grants entitlements and sends webhooks like a real one, and it is stored as sandbox data.",
+        a: "Create a Test Store app in RevenueDot, use its test_ key in the RevenueDot SDK in a debug build, and buy through the SDK's test dialog. The purchase grants entitlements and sends webhooks like a real one, and it is stored as sandbox data.",
       },
       {
         q: "Can I test renewals and refunds without waiting a month?",

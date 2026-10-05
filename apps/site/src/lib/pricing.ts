@@ -79,7 +79,7 @@ export const PLANS: Plan[] = [
       "The whole open-source server and dashboard",
       "Unlimited apps, customers and tracked revenue",
       "Your own Postgres, with the audit log in your database",
-      "Works with the RevenueCat SDK or our MIT forks",
+      "Works with the RevenueDot SDK for every platform",
       "Organizations, SSO and SCIM need an Enterprise license",
       "Community support on GitHub",
     ],

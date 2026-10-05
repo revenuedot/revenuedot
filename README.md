@@ -7,14 +7,14 @@
 </picture>
 </h1>
 
-### The open-source RevenueCat alternative
+### In-app purchases and subscriptions for every app
 
 **Open-source monetization infrastructure for mobile apps: the SDKs, the server, paywalls, experiments, web checkout, Customer Center, 43 charts and 36 integrations, in one codebase you can run yourself.**<br>
-It works with the RevenueCat SDK your app already ships, so you switch by changing one line of code.
+New apps install the RevenueDot SDK for their platform. Apps on RevenueCat keep the SDK they already ship and switch by changing one line of code.
 
 RevenueDot is the open-source RevenueCat alternative: the first release is [v2026.10.03](https://github.com/revenuedot/revenuedot/releases/tag/v2026.10.03), it has run in production beside RevenueCat since 2026-10-02, RevenueDot Cloud is free up to $10,000 a month in tracked revenue and then 0.5% of the revenue above that (never more than $999 a month), and self-hosting is free (AGPL-3.0 server, MIT SDKs).
 
-**[Start free on RevenueDot Cloud](https://app.revenuedot.app/signup)** · [Self-host](#self-host) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [Docs](https://revenuedot.app/docs) · [Pricing](#pricing) · [Compare](#revenuedot-compared) · [FAQ](#faq)
+**[Start free on RevenueDot Cloud](https://app.revenuedot.app/signup)** · [Add in-app purchases](https://revenuedot.app/add-in-app-purchases) · [Self-host](#self-host) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [Docs](https://revenuedot.app/docs) · [Pricing](#pricing) · [Compare](#revenuedot-compared) · [FAQ](#faq)
 
 [![Server: AGPL-3.0](https://img.shields.io/badge/server-AGPL--3.0-0A0A0A)](LICENSING.md)
 [![SDKs: MIT](https://img.shields.io/badge/SDKs-MIT-0A0A0A)](#sdks)

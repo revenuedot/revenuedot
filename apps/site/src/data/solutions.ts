@@ -6,17 +6,150 @@ const SIGNUP = "https://app.revenuedot.app/signup";
 
 export const SOLUTIONS: Landing[] = [
   {
+    slug: "existing-apps",
+    section: "solutions",
+    name: "Apps already selling",
+    card: "Already selling with your own code, Adapty or Stripe? Import your products and keep every subscriber.",
+    label: "Solution",
+    title: "Move your existing in-app purchases to RevenueDot and keep every subscriber",
+    metaTitle: "Move existing in-app purchases to RevenueDot",
+    metaDescription:
+      "Already sell subscriptions with your own StoreKit or Play Billing code, Adapty or Stripe? Import your products, install one SDK and keep every subscriber.",
+    answer:
+      "If your app already sells subscriptions with its own StoreKit or Google Play Billing code, or with another tool, you can move it to RevenueDot without losing a subscriber. Import your products from App Store Connect, Google Play or Stripe, install the RevenueDot SDK, and call `syncPurchases()` once in the update. Each subscriber's purchases are checked with the store, and their access carries over.",
+    shot: {
+      src: "screens/offerings-light.png",
+      alt: "The Offerings page in RevenueDot: the default offering with its monthly and yearly packages",
+    },
+    points: [
+      { title: "Products imported", text: "One click reads App Store Connect, Google Play or Stripe and fills your catalog." },
+      { title: "Subscribers kept", text: "The update sends each device's purchases, and the store's notifications fill in the rest." },
+      { title: "Your server keeps working", text: "RevenueDot can forward every store notification to your old endpoint while you move." },
+      { title: "Less code to maintain", text: "Receipt checks, renewals, refunds and grace periods move out of your codebase." },
+    ],
+    blocks: [
+      {
+        h2: "RevenueDot takes over the purchase work your own code does today",
+        label: "What moves",
+        bullets: [
+          "**Checking purchases with the store.** RevenueDot verifies StoreKit 2 signed transactions with Apple and reads Google Play purchase tokens with the Play Developer API. Your server no longer trusts the device.",
+          "**Renewals, cancellations, billing problems and refunds.** App Store Server Notifications and Google Play real-time notifications update each customer, and [webhooks](/docs/guides/webhooks) tell your backend.",
+          "**One answer to \"is this user premium?\"** A customer who pays on iOS, Android or the web has the same access everywhere.",
+          "**Paywalls, experiments and charts.** [Paywall templates](/features/paywalls), [price tests](/features/experiments) and [43 charts](/charts) work from the first purchase.",
+        ],
+      },
+      {
+        h2: "How to move an app that already sells in-app purchases",
+        label: "Steps",
+        steps: [
+          {
+            name: "Create a free project and add your store apps",
+            text: `[Start free on Cloud](${SIGNUP}) and add your App Store, Google Play or Stripe app with its credentials. Paste RevenueDot's notification URLs into App Store Connect and Google Play. If your own server receives those notifications today, set the app's forward URL to it, so it keeps getting every notification while you move.`,
+          },
+          {
+            name: "Import your products",
+            text: "Click **Import products**. RevenueDot reads App Store Connect, Google Play or Stripe and creates each product with its type and duration. Attach them to an entitlement such as `pro` (the access your app checks) and put them in the offering your paywall shows. See [import products](/docs/guides/import-products).",
+          },
+          {
+            name: "Install the RevenueDot SDK",
+            text: "Add the [RevenueDot SDK](/sdks) for your platform and configure it with your app's key and your own user ID, so purchases land on the right customer. Replace your purchase calls with the SDK's: load the offering, buy a package, check the entitlement.",
+          },
+          {
+            name: "Bring your subscribers over",
+            text: "Call `syncPurchases()` once on the first launch of the update. It sends the device's purchases to RevenueDot, which checks them with the store. To also record subscribers who have not opened the update yet, turn on `track_new_purchases` for the app.",
+          },
+          {
+            name: "Check access from your backend",
+            text: "Read a customer's active entitlements with a secret key, or receive [webhooks](/docs/guides/webhooks) for every renewal, cancellation and refund. Then retire your own receipt code.",
+          },
+        ],
+      },
+      {
+        h2: "The update configures the SDK and syncs purchases once",
+        label: "Swift",
+        code: {
+          title: "First launch of the update",
+          label: "Swift",
+          code: `import RevenueCat   // the module name of the open-source SDK the RevenueDot SDK is built from
+
+Purchases.configure(withAPIKey: "appl_...", appUserID: currentUser.id)
+
+// Once, on the first launch of this update: send the device's existing App Store purchases to RevenueDot.
+if !UserDefaults.standard.bool(forKey: "revenuedotSynced") {
+    _ = try? await Purchases.shared.syncPurchases()
+    UserDefaults.standard.set(true, forKey: "revenuedotSynced")
+}
+let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isActive == true`,
+        },
+        paras: [
+          "The RevenueDot SDK is built from RevenueCat's open-source SDK (MIT license), so your code imports `RevenueCat` and calls `Purchases`. It sends every request to RevenueDot and needs no RevenueCat account. Android, React Native and Flutter have the same calls; see [the SDK guides](/docs/sdks).",
+        ],
+      },
+      {
+        h2: "Apps on Adapty, Qonversion or Stripe follow the same steps",
+        label: "Other tools",
+        bullets: [
+          "**Adapty or Qonversion:** replace their SDK with the RevenueDot SDK. Your App Store and Google Play products stay exactly as they are, and `syncPurchases()` brings each subscriber over. See [RevenueDot vs Adapty](/compare/revenuedot-vs-adapty) and [RevenueDot vs Qonversion](/compare/revenuedot-vs-qonversion).",
+          "**Stripe:** your backend posts each Stripe subscription ID to RevenueDot with the Stripe app's key, and new web sales can use RevenueDot's [web checkout](/features/web-billing) on your own Stripe account. See [Stripe](/stores/stripe).",
+          "**RevenueCat:** you do not need these steps. Keep your SDK and change one line; see [Migrate from RevenueCat](/migrate-from-revenuecat).",
+        ],
+      },
+      {
+        h2: "What to know before you move",
+        label: "Honest notes",
+        bullets: [
+          "**You change code.** Moving from your own code means replacing your purchase calls with the SDK's. Most apps touch the paywall screen, the purchase call and the access check.",
+          "**RevenueDot launched in 2026.** A real App Store sandbox purchase has run end to end on an iPhone. Google Play handling is tested against a copy of Google's API, so run a Play sandbox purchase before you ship.",
+          "**Subscribers who never open the update** are recorded from store notifications only when `track_new_purchases` is on. Without it, they come over the next time they open the app.",
+        ],
+      },
+    ],
+    howTo: "How to move an app that already sells in-app purchases",
+    faq: [
+      {
+        q: "Can I move to RevenueDot if I wrote my own StoreKit or Play Billing code?",
+        a: "Yes. Import your products, install the RevenueDot SDK in place of your purchase code, and call syncPurchases() once on the first launch of the update. RevenueDot checks each device's purchases with Apple or Google and gives the customer the same access they had.",
+      },
+      {
+        q: "Will my current subscribers lose access when I move?",
+        a: "No, as long as the update syncs their purchases. syncPurchases() sends the device's App Store or Google Play purchases to RevenueDot, which verifies them with the store. Turn on track_new_purchases to also record subscribers from store notifications before they open the update.",
+      },
+      {
+        q: "Do I have to change my products in App Store Connect or Google Play?",
+        a: "No. Your products, prices and subscription groups stay in the stores as they are. RevenueDot imports their identifiers, types and durations, and reads prices from the stores.",
+      },
+      {
+        q: "Can my own server keep receiving App Store and Google Play notifications?",
+        a: "Yes. Each app has a forward URL. RevenueDot sends every store notification to it, byte for byte, so your old server keeps working while you move.",
+      },
+      {
+        q: "What does RevenueDot cost for an app that already sells?",
+        a: "RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. Self-hosting is free.",
+      },
+    ],
+    docs: [
+      { href: "/docs/guides/import-products", label: "Import products from the stores" },
+      { href: "/docs/sdks", label: "SDK guides" },
+      { href: "/docs/guides/app-store", label: "Connect the App Store" },
+      { href: "/docs/guides/google-play", label: "Connect Google Play" },
+      { href: "/docs/help/store-notifications-not-arriving", label: "Store notifications and track_new_purchases" },
+      { href: "/docs/guides/webhooks", label: "Webhooks" },
+    ],
+    related: ["/add-in-app-purchases", "/solutions/receipt-validation", "/sdks/ios", "/sdks/android", "/compare/revenuedot-vs-adapty", "/pricing"],
+  },
+
+  {
     slug: "indie-developers",
     section: "solutions",
     name: "Indie developers",
-    card: "Keep the RevenueCat SDK, stop paying 1% of revenue past $2,500. Free on Cloud up to $10K a month.",
+    card: "A free backend until your app makes $10K a month, with paywalls, charts, web checkout and a Test Store.",
     label: "Solution",
-    title: "Cut your RevenueCat bill: a free in-app purchase backend for indie developers",
-    metaTitle: "Cut your RevenueCat bill as an indie developer",
+    title: "A free in-app purchase backend for indie developers",
+    metaTitle: "Free in-app purchase backend for indie developers",
     metaDescription:
-      "Once you reach $2,500 a month, RevenueCat charges 1% of all tracked revenue. RevenueDot Cloud is free up to $10,000 a month, and self-hosting is free. Keep your SDK code.",
+      "RevenueDot Cloud is free until your app makes $10,000 a month, with paywalls, 43 charts, web checkout and a Test Store included. Self-hosting is free too.",
     answer:
-      "Once an app reaches $2,500 a month, RevenueCat charges 1% of all monthly tracked revenue. RevenueDot Cloud is free up to $10,000 a month, so an app making $10,000 a month saves $100 every month, and self-hosting costs nothing but your server. You keep the RevenueCat SDK and change one proxy URL line. Cloud Standard is 0.5% above $10,000, capped at $999 a month.",
+      "RevenueDot gives indie developers a free backend for subscriptions and in-app purchases. RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of the revenue above that, capped at $999 a month. Paywalls, 43 charts and web checkout on your own Stripe account are included, and the Test Store lets you buy before you have an App Store or Google Play account.",
     shot: {
       src: "screens/overview-light.png",
       alt: "The RevenueDot dashboard overview with monthly revenue, active subscriptions and a sandbox switch",
@@ -24,20 +157,57 @@ export const SOLUTIONS: Landing[] = [
     points: [
       { title: "Free to $10K a month", text: "RevenueDot Cloud costs $0 while your app tracks up to $10,000 a month." },
       { title: "Self-host for $0", text: "The server is AGPL-3.0, with no revenue share and no limits." },
-      { title: "Same SDK, one line", text: "Keep your offerings, entitlements and purchase code. Set the SDK's proxy URL." },
+      { title: "Test before the stores", text: "The Test Store lets you make purchases before you have an App Store or Google Play account." },
       { title: "Your data stays yours", text: "Customers and purchases live in Postgres tables you can query, on Cloud or on your server." },
     ],
     blocks: [
       {
-        h2: "What the bill looks like at each revenue level",
-        label: "Price",
+        h2: "How to add subscriptions to an indie app for free",
+        label: "Steps",
+        steps: [
+          {
+            name: "Create a free Cloud project",
+            text: `[Start free on Cloud](${SIGNUP}). It takes an email address and a project name.`,
+          },
+          {
+            name: "Add a Test Store app",
+            text: "Make purchases before you have an App Store or Google Play account. See [the Test Store](/stores/test-store).",
+          },
+          {
+            name: "Create your products",
+            text: "Add your plans, an entitlement such as `pro` (the access your app checks) and an offering (the products your paywall shows).",
+          },
+          {
+            name: "Install the RevenueDot SDK",
+            text: "Add the [RevenueDot SDK](/sdks) for your platform and configure it with your app's key. It needs no RevenueCat account.",
+          },
+          {
+            name: "Show a paywall and buy",
+            text: "Publish a paywall from a template, show it in your app and make a test purchase. Connect the App Store and Google Play when you are ready to ship.",
+          },
+        ],
+      },
+      {
+        h2: "What an indie app gets on the free plan",
+        label: "Included",
+        bullets: [
+          "Offerings, entitlements and a REST API, plus webhooks with a delivery log.",
+          "[Paywalls](/features/paywalls) with a template gallery and a visual editor, and [charts](/features/charts) for MRR, trial conversion and churn.",
+          "Web checkout on your own Stripe account, with purchase links and funnels. See [web to app](/solutions/web-to-app).",
+          "Win-back offers, refund control for Apple's refund requests and support integrations.",
+          "A Test Store, so you can test with no store account. See [test in-app purchases without sandbox](/stores/test-store).",
+        ],
+      },
+      {
+        h2: "Already on RevenueCat? Here is the bill and the five-step move",
+        label: "Switching",
         paras: [
-          "RevenueCat is free up to $2,500 of monthly tracked revenue and then charges 1% of the revenue above that, according to its [pricing page](https://www.revenuecat.com/pricing) (checked September 2026). Its paywall and funnel tools are priced separately.",
+          "RevenueCat is free below $2,500 of monthly tracked revenue. Once an app reaches $2,500, it charges 1% of all tracked revenue, according to its [pricing page](https://www.revenuecat.com/pricing) (checked October 2026). Its paywall and funnel tools are priced separately.",
         ],
         table: {
           head: ["Monthly tracked revenue", "RevenueCat", "RevenueDot Cloud", "RevenueDot self-hosted"],
           rows: [
-            ["$5,000", "$25", "$0", "$0 plus your server"],
+            ["$5,000", "$50", "$0", "$0 plus your server"],
             ["$10,000", "$100", "$0", "$0 plus your server"],
             ["$25,000", "$250", "$75", "$0 plus your server"],
             ["$50,000", "$500", "$200", "$0 plus your server"],
@@ -48,7 +218,7 @@ export const SOLUTIONS: Landing[] = [
       },
       {
         h2: "How to move an indie app from RevenueCat to RevenueDot",
-        label: "Switch",
+        label: "Switching",
         steps: [
           {
             name: "Create a free Cloud project",
@@ -73,36 +243,29 @@ export const SOLUTIONS: Landing[] = [
         ],
       },
       {
-        h2: "What an indie app gets on the free plan",
-        label: "Included",
-        bullets: [
-          "Offerings, entitlements and the RevenueCat-compatible REST API, plus webhooks with a delivery log.",
-          "[Paywalls](/features/paywalls) with a template gallery and a visual editor, and [charts](/features/charts) for MRR, trial conversion and churn.",
-          "Web checkout on your own Stripe account, with purchase links and funnels. See [web to app](/solutions/web-to-app).",
-          "Win-back offers, refund control for Apple's refund requests and support integrations.",
-          "A Test Store, so you can test with no store account. See [test in-app purchases without sandbox](/stores/test-store).",
-        ],
-      },
-      {
         h2: "What you give up, said plainly",
         label: "Tradeoffs",
         bullets: [
-          "**Age.** RevenueCat has years of production use at far larger scale. RevenueDot launched in 2026. Run it side by side with RevenueCat during the migration and compare both before you switch.",
-          "**Fork packages are new.** RevenueDot's SDK forks are published (CocoaPods, Maven Central, npm, OpenUPM and git tags), and were first released in October 2026. You can keep the stock RevenueCat SDK with a proxy URL instead.",
+          "**Age.** RevenueDot launched in 2026, and RevenueCat has years of production use at far larger scale. If you are switching, run both side by side and compare them before you turn RevenueCat off.",
+          "**The SDK packages are new.** The RevenueDot SDKs are published (CocoaPods, Maven Central, npm, OpenUPM and git tags) and were first released in October 2026. An app switching from RevenueCat can keep the stock RevenueCat SDK with a proxy URL instead.",
           "**Some RevenueCat features are not copied.** [What differs from RevenueCat](/docs/migrate/what-differs) lists them, and the [comparison](/compare/revenuedot-vs-revenuecat) shows both sides.",
-          "You can run both in parallel for as long as you like, so the switch is reversible.",
+          "If you switch from RevenueCat, you can run both in parallel for as long as you like, so the switch is reversible.",
         ],
       },
     ],
-    howTo: "How to move an indie app from RevenueCat to RevenueDot",
+    howTo: "How to add subscriptions to an indie app for free",
     faq: [
+      {
+        q: "Is there a free in-app purchase backend for indie developers?",
+        a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue, and self-hosting is free under AGPL-3.0. Paywalls, charts, web checkout and the Test Store are included, and the RevenueDot SDK needs no RevenueCat account.",
+      },
       {
         q: "How much does RevenueCat cost for a small app?",
         a: "RevenueCat is free up to $2,500 of monthly tracked revenue, then 1% of all tracked revenue once you pass it, per its pricing page checked in October 2026. An app with $10,000 a month pays $100, and one with $50,000 pays $500. Paywall and funnel tools are priced separately.",
       },
       {
         q: "Is there a free alternative to RevenueCat?",
-        a: "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and self-hosted RevenueDot is free with no limits under AGPL-3.0. Both work with the RevenueCat SDK, so you change one proxy URL line.",
+        a: "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and self-hosted RevenueDot is free with no limits under AGPL-3.0. An app on the RevenueCat SDK keeps it and changes one proxy URL line.",
       },
       {
         q: "What does RevenueDot Cloud cost above $10,000 a month?",
@@ -118,11 +281,11 @@ export const SOLUTIONS: Landing[] = [
       },
     ],
     docs: [
+      { href: "/docs/getting-started/quickstart", label: "First purchase in 5 minutes" },
       { href: "/docs/migrate", label: "Migrate from RevenueCat" },
       { href: "/docs/migrate/importer", label: "The importer" },
       { href: "/docs/migrate/dual-run", label: "Run both side by side" },
       { href: "/docs/migrate/what-differs", label: "What differs from RevenueCat" },
-      { href: "/docs/getting-started/quickstart", label: "First purchase in 5 minutes" },
     ],
     related: ["/pricing", "/compare/revenuedot-vs-revenuecat", "/migrate-from-revenuecat", "/self-host", "/solutions/self-hosted-in-app-purchases", "/stores/test-store"],
   },
@@ -143,7 +306,7 @@ export const SOLUTIONS: Landing[] = [
       { title: "One project per product", text: "Each project owns its catalog, customers, webhooks and secret keys, so clients never see each other's data." },
       { title: "Roles per project", text: "Admin, Developer and Viewer. A person can hold a different role in each project." },
       { title: "One server", text: "A self-hosted server holds any number of projects, and its cost does not grow with client revenue." },
-      { title: "Same SDK for all", text: "Every app keeps the RevenueCat SDK and sets one proxy URL." },
+      { title: "One SDK for every app", text: "Every client app installs the RevenueDot SDK with its own app key." },
     ],
     blocks: [
       {
@@ -203,8 +366,8 @@ export const SOLUTIONS: Landing[] = [
             text: "Add products, entitlements and offerings, then create a secret key for the client's backend and set up webhooks.",
           },
           {
-            name: "Set the proxy URL in the client app",
-            text: "Ship the app with the RevenueCat SDK and the proxy URL for your server. For a client already on RevenueCat, import their project first.",
+            name: "Install the RevenueDot SDK in the client app",
+            text: "Install the RevenueDot SDK and configure it with the app's key. On a self-hosted server, also set its proxy URL to your server. For a client already on RevenueCat, import their project first; their app can keep the RevenueCat SDK and change one line.",
           },
         ],
       },
@@ -256,14 +419,14 @@ export const SOLUTIONS: Landing[] = [
     slug: "self-hosted-in-app-purchases",
     section: "solutions",
     name: "Self-hosted in-app purchases",
-    card: "One Docker image and Postgres run your own in-app purchase server for the RevenueCat SDK.",
+    card: "One Docker image and Postgres run your own in-app purchase server, with the SDK API, REST API and dashboard.",
     label: "Solution",
     title: "Self-hosted in-app purchase server with Docker and Postgres",
     metaTitle: "Self-hosted in-app purchase server (Docker, Postgres)",
     metaDescription:
-      "Run a self-hosted in-app purchase server for the RevenueCat SDK. One Docker image plus Postgres 16, AGPL-3.0, no revenue share and no telemetry.",
+      "Run your own in-app purchase server for iOS, Android and web apps. One Docker image plus Postgres 16, AGPL-3.0, no revenue share and no telemetry.",
     answer:
-      "A self-hosted in-app purchase server is one Docker image next to Postgres 16. Clone RevenueDot, copy .env.example to .env, run docker compose up -d, and the SDK API, REST API, store notifications and dashboard answer on port 8787. It is AGPL-3.0, takes no revenue share and works with the RevenueCat SDK.",
+      "A self-hosted in-app purchase server is one Docker image next to Postgres 16. Clone RevenueDot, copy .env.example to .env, run docker compose up -d, and the SDK API, REST API, store notifications and dashboard answer on port 8787. It is AGPL-3.0, takes no revenue share and works with the RevenueDot SDK, or the RevenueCat SDK if your app already ships it.",
     shot: {
       src: "dashboard-light.png",
       alt: "The RevenueDot dashboard served by a self-hosted server, showing customers, revenue and setup health",
@@ -297,7 +460,7 @@ export const SOLUTIONS: Landing[] = [
           },
           {
             name: "Connect the stores and your app",
-            text: "Add your App Store key and Google Play service account, set the notification URLs the dashboard shows, then set your app's SDK proxy URL to your server.",
+            text: "Add your App Store key and Google Play service account, set the notification URLs the dashboard shows, then install the RevenueDot SDK in your app and set its proxy URL to your server.",
           },
         ],
       },
@@ -345,7 +508,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           `Self-host and RevenueDot Cloud run the same code, API and schema, so a project can move either way. Cloud is free up to $10,000 of monthly tracked revenue and needs no servers: [start free on Cloud](${SIGNUP}). Self-hosting is free forever and costs your own infrastructure. Self-hosted servers send no telemetry, and talk only to Apple, Google, Stripe or Amazon if you connect them, your webhook endpoints and any forwarding URL you set.`,
         ],
         bullets: [
-          "**Signatures:** a self-hosted server signs with its own key, so keep the stock SDK's verification disabled, or build the SDK forks with your own public key.",
+          "**Signatures:** a self-hosted server signs with its own key, so keep the SDK's entitlement verification disabled, or build the RevenueDot SDK with your own public key.",
           "**Status:** the Docker image builds on `node:24-slim`, and CI starts it against Postgres 16 on every pull request.",
         ],
       },
@@ -354,7 +517,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
     faq: [
       {
         q: "Can I self-host an in-app purchase server?",
-        a: "Yes. RevenueDot is an open-source server you run with Docker Compose next to Postgres 16. It implements the API the RevenueCat SDKs call, so your app keeps its SDK and sets one proxy URL to your server.",
+        a: "Yes. RevenueDot is an open-source server you run with Docker Compose next to Postgres 16. Your app installs the RevenueDot SDK and sets its proxy URL to your server. An app on the RevenueCat SDK keeps it and changes that one line.",
       },
       {
         q: "What do I need to run RevenueDot on my own server?",
@@ -430,8 +593,8 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
             text: "Terminate TLS in front of the server and keep database dumps in storage in the same region, encrypted.",
           },
           {
-            name: "Connect your stores and point the SDK at your server",
-            text: "Add your Apple and Google credentials, set the notification URLs, then set the SDK's proxy URL to your own HTTPS address.",
+            name: "Connect your stores and install the SDK",
+            text: "Add your Apple and Google credentials, set the notification URLs, then install the RevenueDot SDK in your app and set its proxy URL to your own HTTPS address.",
           },
         ],
       },
@@ -442,7 +605,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           "**The stores.** The server calls Apple, Google, Amazon or Stripe for the apps you connect. They process purchase data under their own terms.",
           "**Integrations you turn on.** Segment, Amplitude, Mixpanel, Meta, Slack and the other integrations send events to those vendors. Webhooks send events to your own endpoints. Turn on only what fits your policy.",
           "**Emails.** Password resets, invites and alerts leave through the SMTP provider you configure.",
-          "**Your app.** The stock Android SDK still sends diagnostics, paywall events and ad events to RevenueCat's hosts. The RevenueDot fork (`app.revenuedot.purchases:purchases` on Maven Central) sends them to your server. See [the Android SDK page](/sdks/android).",
+          "**Your app.** The RevenueDot Android SDK (`app.revenuedot.purchases:purchases` on Maven Central) sends diagnostics, paywall events and ad events to your server. An app that keeps the stock RevenueCat Android SDK still sends them to RevenueCat's hosts. See [the Android SDK page](/sdks/android).",
         ],
       },
       {
@@ -543,7 +706,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           },
           {
             name: "Redeem in the app",
-            text: "Register your URL scheme and pass the redemption link to `redeemWebPurchase`. The entitlement is active at once.",
+            text: "Register your URL scheme and pass the redemption link to the RevenueDot SDK's `redeemWebPurchase`. The entitlement is active at once.",
           },
         ],
       },
@@ -636,7 +799,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
     metaDescription:
       "Validate in-app purchase receipts on your server. RevenueDot verifies StoreKit 2 and Google Play purchases with Apple and Google, and retries safely on errors.",
     answer:
-      "Server-side receipt validation means your server asks Apple or Google whether a purchase is real instead of trusting the phone. RevenueDot does this for the RevenueCat SDK: it verifies StoreKit 2 transactions against Apple's root certificate and the App Store Server API, reads Google Play purchase tokens from the Play Developer API, and answers 5xx for its own failures so no purchase is lost.",
+      "Server-side receipt validation means your server asks Apple or Google whether a purchase is real instead of trusting the phone. RevenueDot does this for your app: it verifies StoreKit 2 transactions against Apple's root certificate and the App Store Server API, reads Google Play purchase tokens from the Play Developer API, and answers 5xx for its own failures so no purchase is lost.",
     points: [
       { title: "Apple and Google asked", text: "Entitlements come from what the stores say, not from what the device posts." },
       { title: "Retry-safe", text: "A 5xx tells the SDK to keep the purchase and try again. A 4xx means it can never succeed." },
@@ -676,8 +839,8 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
             text: "Paste the notification URLs into App Store Connect (Version 2) and a Pub/Sub push subscription. Watch each app's status turn **Ready**.",
           },
           {
-            name: "Point the SDK at RevenueDot",
-            text: "Set the proxy URL before `configure`. The SDK then posts receipts to `POST /v1/receipts`.",
+            name: "Install the RevenueDot SDK",
+            text: "Install the RevenueDot SDK and configure it with the app's key. The SDK then posts each purchase to `POST /v1/receipts`. An app on the RevenueCat SDK sets the proxy URL before `configure` instead.",
           },
           {
             name: "Check access from your backend",
@@ -720,7 +883,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
     faq: [
       {
         q: "How do I validate in-app purchase receipts on my server?",
-        a: "Send the purchase to a server that asks the store. For Apple that means verifying the signed transaction and calling the App Store Server API. For Google it means reading the purchase token with the Play Developer API. RevenueDot does both for the RevenueCat SDK.",
+        a: "Send the purchase to a server that asks the store. For Apple that means verifying the signed transaction and calling the App Store Server API. For Google it means reading the purchase token with the Play Developer API. RevenueDot does both for every purchase your app's SDK sends.",
       },
       {
         q: "Is Apple's verifyReceipt endpoint still the way to validate?",
@@ -760,7 +923,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
     metaDescription:
       "Let Claude Code, Cursor or another AI agent add subscriptions to your app. Connect the RevenueDot MCP server, install agent skills and use llms.txt.",
     answer:
-      "To add subscriptions to an app built with an AI agent, connect the agent to RevenueDot's hosted MCP server at https://mcp.revenuedot.app/mcp, install the add-subscriptions skill, and let it set up products, entitlements and the SDK's proxy URL. The agent signs in with OAuth, and you choose what it may do.",
+      "To add subscriptions to an app built with an AI agent, connect the agent to RevenueDot's hosted MCP server at https://mcp.revenuedot.app/mcp, install the add-subscriptions skill, and let it set up products, entitlements and the RevenueDot SDK. The agent signs in with OAuth, and you choose what it may do.",
     points: [
       { title: "Hosted MCP server", text: "One connector for Claude, ChatGPT in developer mode, Cursor and other MCP clients." },
       { title: "Agent skills", text: "add-subscriptions, migrate-from-revenuecat, support-playbook, weekly-revenue-check and self-host." },
@@ -790,7 +953,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
           },
           {
             name: "Check the SDK change",
-            text: "The agent adds the RevenueCat SDK and sets the proxy URL to `https://api.revenuedot.app`. Review the diff, then test with a Test Store key in a debug build.",
+            text: "The agent installs the RevenueDot SDK and configures it with your app's key. Review the diff, then test with a Test Store key in a debug build.",
           },
         ],
       },
@@ -862,7 +1025,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
       },
       {
         q: "Does an AI-built app need a backend for in-app purchases?",
-        a: "Yes, something has to verify store receipts and track entitlements. RevenueDot is that server, so the agent only adds the RevenueCat SDK and one proxy URL line, with no purchase backend to write.",
+        a: "Yes, something has to verify store receipts and track entitlements. RevenueDot is that server, so the agent only adds the RevenueDot SDK and your app's key, with no purchase backend to write.",
       },
     ],
     docs: [

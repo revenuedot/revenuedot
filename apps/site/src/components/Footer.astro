@@ -7,7 +7,7 @@ import { FOOTER, SITE } from "../site";
     <div class="cols">
       <div class="about">
         <a href="/" aria-label="RevenueDot home" class="brand"><Logo height={20} /></a>
-        <p class="small muted">The open-source backend for in-app purchases and subscriptions. Works with the RevenueCat SDK.</p>
+        <p class="small muted">The open-source backend for in-app purchases and subscriptions on the App Store, Google Play and the web. Free until your app makes $10,000 a month.</p>
         <p class="pill"><span class="dot" aria-hidden="true"></span>Open source · AGPL-3.0</p>
       </div>
       {FOOTER.map((col) => (
@@ -25,7 +25,7 @@ import { FOOTER, SITE } from "../site";
 </footer>
 <style>
   .foot { border-top: 1px solid var(--border); background: var(--sidebar); padding: 64px 0 40px; margin-top: 0; }
-  .cols { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 32px; }
+  .cols { display: grid; grid-template-columns: 1.3fr repeat(5, 1fr); gap: 28px; }
   .about { display: grid; gap: 16px; align-content: start; max-width: 320px; }
   .brand { color: var(--fg); display: inline-flex; }
   .pill { width: fit-content; }
@@ -34,6 +34,7 @@ import { FOOTER, SITE } from "../site";
   ul a:hover { color: var(--fg); }
   .legal { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); display: grid; gap: 6px; }
   .legal a { color: var(--fg-2); }
-  @media (max-width: 960px) { .cols { grid-template-columns: 1fr 1fr; } .about { grid-column: 1 / -1; } }
+  @media (max-width: 1100px) { .cols { grid-template-columns: repeat(3, 1fr); } .about { grid-column: 1 / -1; } }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 420px) { .cols { grid-template-columns: 1fr; } }
 </style>

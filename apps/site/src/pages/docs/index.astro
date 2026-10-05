@@ -10,13 +10,13 @@ const title = "RevenueDot documentation";
 const description = "RevenueDot docs: start on Cloud or self-host, SDK guides, App Store and Google Play setup, webhooks, API reference and migrating from RevenueCat.";
 const start = [
   { href: "/docs/getting-started/quickstart", title: "Quickstart", body: "Sign up free on Cloud, seed a Test Store app and make a first purchase in 5 minutes. Or run it with Docker." },
-  { href: "/docs/getting-started/connect-your-app", title: "Connect your app", body: "Set the proxy URL in the RevenueCat SDK, switch to the fork, or import from RevenueCat." },
+  { href: "/docs/getting-started/connect-your-app", title: "Connect your app", body: "Install the RevenueDot SDK for your platform, or keep the RevenueCat SDK and change one line." },
   { href: "/docs/migrate", title: "Migrate from RevenueCat", body: "The importer, a side-by-side run and the cutover checklist." },
 ];
 ---
 <Docs
   title={title}
-  fullTitle="Docs: start on Cloud, migrate or self-host RevenueDot"
+  fullTitle="Docs: start on Cloud, self-host or migrate to RevenueDot"
   description={description}
   path="/docs"
   crumbs={[{ name: "Docs", path: "/docs" }]}
@@ -27,7 +27,7 @@ const start = [
   jsonld={[techArticle({ title, description, path: "/docs" })]}
 >
   <h1>RevenueDot documentation</h1>
-  <p>RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. Start free on <a href={SITE.signup}>RevenueDot Cloud</a>, or self-host the same code with Docker and Postgres. These docs cover getting started, connecting an app, setting up the App Store and Google Play, the API, and moving from RevenueCat.</p>
+  <p>RevenueDot is an open-source backend for in-app purchases and subscriptions on the App Store, Google Play, Amazon, Stripe and the web. Start free on <a href={SITE.signup}>RevenueDot Cloud</a>, or self-host the same code with Docker and Postgres. These docs cover getting started, installing the RevenueDot SDK, setting up the App Store and Google Play, the API, and moving from RevenueCat.</p>
   <div class="grid dhome-start"><div class="gi cols-3">
     {start.map((s) => <a class="cell link" href={s.href}><span class="h3">{s.title}</span><span class="muted small">{s.body}</span></a>)}
   </div></div>
