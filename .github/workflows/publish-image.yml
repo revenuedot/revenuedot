@@ -27,9 +27,11 @@ on:
       - .github/workflows/publish-image.yml
   workflow_dispatch:
 
+# On main only the newest commit matters: a newer merge cancels a build still running (nothing is pushed until the end).
+# Tags always finish.
 concurrency:
   group: publish-image-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}

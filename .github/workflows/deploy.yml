@@ -5,7 +5,8 @@
 # Tests: the server and site deploys wait for the whole of ci.yml (type checks, unit tests, real Postgres, the
 # dashboard's browser tests, Docker). A pull request merged while main stood still produces a merge commit with exactly
 # the tree its CI tested (CI records it as the artifact tested-tree-<tree>). Then the deploy starts at once. When main
-# moved in between (another merge landed first), the merged tree is new and the full CI runs here first.
+# moved in between (another merge landed first), the merged tree is new and CI runs here first, but only the jobs that
+# the changes since the last successful deploy can affect (each of those changes already passed its own pull request).
 name: Deploy
 
 on:
@@ -27,6 +28,7 @@ jobs:
       actions: read
     outputs:
       tree: ${{ steps.t.outputs.tree }}
+      base: ${{ steps.t.outputs.base }}
     steps:
       - id: t
         env:
@@ -39,7 +41,10 @@ jobs:
             echo "Tree $tree passed CI in run(s) $runs: skipping the tests."
             echo "tree=passed" >> "$GITHUB_OUTPUT"
           else
-            echo "Tree $tree has not passed CI yet: running it."
+            # The last deploy that succeeded: CI picks its jobs from the changes since then.
+            base=$(gh api "repos/${{ github.repository }}/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1" -q '.workflow_runs[0].head_sha' 2>/dev/null || true)
+            echo "base=$base" >> "$GITHUB_OUTPUT"
+            echo "Tree $tree has not passed CI yet: running the jobs the changes since ${base:-the start} can affect."
           fi
 
   ci:
@@ -50,7 +55,8 @@ jobs:
       pull-requests: read
     uses: ./.github/workflows/ci.yml
     with:
-      full: true
+      base: ${{ needs.tested.outputs.base }}
+      full: ${{ needs.tested.outputs.base == '' }}
 
   changes:
     runs-on: ubuntu-latest
