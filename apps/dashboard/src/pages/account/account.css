@@ -39,6 +39,8 @@
 .nmx td.p{white-space:normal;min-width:160px}
 .nmx .sens{height:28px;width:auto;font-size:12px}
 .nmx-cell{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Phone width: one block per project, each switch on its own line with its column name, so none hides off to the right. */
+@media (max-width:640px){.nmx thead{display:none}.nmx,.nmx tbody,.nmx tr{display:block}.nmx tr{padding:6px 0;border-bottom:1px solid var(--border-2)}.nmx tr:last-child{border-bottom:0}.nmx td{display:flex;align-items:center;justify-content:space-between;gap:12px;height:auto;min-height:36px;padding:4px 16px;border:0}.nmx td.p{min-width:0}.nmx td[data-label]::before{content:attr(data-label);font-size:13px;color:var(--fg-2)}.nmx .nmx-cell{justify-content:flex-end}}
 
 /* Interface */
 .theme-opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}

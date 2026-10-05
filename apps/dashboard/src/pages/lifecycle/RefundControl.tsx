@@ -231,9 +231,9 @@ export function RefundControlPage() {
                 empty={<EmptyState title="No refund requests yet" text="Requests appear when Apple asks for consumption information or a store refunds a purchase. Answers go out within Apple's 12-hour window." />}
                 columns={[
                   { key: "c", header: "Customer", className: "w2", render: (r) => r.app_user_id ? <span className="idcell"><Link className="mono" style={{ fontSize: 12 }} to={`/projects/${pid}/customers/${encodeURIComponent(r.app_user_id)}`}>{r.app_user_id}</Link></span> : <span className="subtle">Unknown</span> },
-                  { key: "p", header: "Product", className: "w2", render: (r) => <span><span className="mono" style={{ fontSize: 12 }}>{r.product_id ?? "—"}</span><span className="cellsub">{storeLabel(r.store)}{r.environment === "sandbox" ? " · Sandbox" : ""}</span></span> },
+                  { key: "p", header: "Product", render: (r) => <span><span className="mono" style={{ fontSize: 12 }}>{r.product_id ?? "—"}</span><span className="cellsub">{storeLabel(r.store)}{r.environment === "sandbox" ? " · Sandbox" : ""}</span></span> },
                   { key: "a", header: "Amount", align: "right", render: (r) => money(r.amount_in_usd) },
-                  { key: "pol", header: "Policy", className: "w2", render: (r) => <span>{r.policy_name ?? <span className="subtle">—</span>}<span className="cellsub">{r.preference ? preferenceLabel(r.preference) : ""}</span></span> },
+                  { key: "pol", header: "Policy", className: "w2 rq-pol", render: (r) => <span>{r.policy_name ?? <span className="subtle">—</span>}<span className="cellsub">{r.preference ? preferenceLabel(r.preference) : ""}</span></span> },
                   { key: "ans", header: "Answer", render: (r) => { const a = ANSWER[r.consumption_status] ?? { label: r.consumption_status, tone: "muted" as const }; return <span title={r.last_error ?? undefined}><Tag tone={a.tone}>{a.label}</Tag></span>; } },
                   { key: "o", header: "Outcome", render: (r) => { const o = OUTCOME[r.outcome] ?? OUTCOME.pending!; return <Tag tone={o.tone}>{o.label}</Tag>; } },
                   { key: "t", header: "Requested", render: (r) => <span className="subtle" title={fmt.dateTime(r.requested_at)}>{relative(r.requested_at)}</span> },
